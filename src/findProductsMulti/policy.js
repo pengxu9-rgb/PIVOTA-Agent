@@ -4315,6 +4315,10 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
   ) {
     queryClass = 'exploratory';
   }
+  const preserveLiteralConstraintQueryExpansion =
+    Boolean(strictQueryOwnerDecision?.strictConstraintQuery) &&
+    semanticContractIsBeautyDiscovery &&
+    ['lookup', 'attribute'].includes(String(queryClass || '').trim().toLowerCase());
   const ambiguityScorePre = computeAmbiguityScorePre(intent, queryClass);
   const associationPlan = SEARCH_SCENARIO_ASSOCIATION_ENABLED
     ? buildScenarioAssociationPlan({
@@ -4664,7 +4668,7 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     return candidate.length > maxCombinedLength ? candidate.slice(0, maxCombinedLength).trim() : candidate;
   })();
 
-  const effectiveExpandedQuery = preserveStrictQueryOwner
+  const effectiveExpandedQuery = preserveStrictQueryOwner || preserveLiteralConstraintQueryExpansion
     ? latestUserQuery
     : semanticOwnerLocked
     ? buildSemanticOwnerSearchQuery({

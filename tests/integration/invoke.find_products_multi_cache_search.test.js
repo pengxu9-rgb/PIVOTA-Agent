@@ -2454,6 +2454,144 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     ]);
   });
 
+  test('source=search budget beauty queries preserve the literal query on upstream fallback', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) {
+          return { rows: [{ total: 0 }] };
+        }
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return { rows: [] };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const rawQuery = 'vitamin c serum under €30';
+    let capturedQuery = null;
+    let capturedStrictInvokeBody = null;
+    const strictInvoke = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke', (body) => {
+        capturedStrictInvokeBody = body;
+        return String(body?.payload?.search?.query || '') === rawQuery;
+      })
+      .optionally()
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            id: 'prod_vitc_1',
+            product_id: 'prod_vitc_1',
+            merchant_id: 'merch_live_1',
+            title: 'Vitamin C Brightening Serum',
+            description: '15% vitamin c serum under the requested budget.',
+            status: 'active',
+            inventory_quantity: 7,
+            price: 28.0,
+            currency: 'EUR',
+          },
+        ],
+        total: 1,
+        metadata: {
+          query_source: 'agent_products_search',
+          strict_constraint_query: true,
+          strict_constraint_reason: 'multi_constraint',
+          budget_fx_applied: true,
+          budget_fx_rate: 1,
+          budget_fx_source: 'fx_table',
+          budget_fx_candidate_currency: 'EUR',
+          budget_fx_unresolved: false,
+          route_health: {
+            fallback_triggered: false,
+          },
+        },
+      });
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        if (String(q.merchant_id || '')) return false;
+        capturedQuery = String(q.query || '');
+        return capturedQuery === rawQuery;
+      })
+      .optionally()
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            id: 'prod_vitc_1',
+            product_id: 'prod_vitc_1',
+            merchant_id: 'merch_live_1',
+            title: 'Vitamin C Brightening Serum',
+            description: '15% vitamin c serum under the requested budget.',
+            status: 'active',
+            inventory_quantity: 7,
+            price: 28.0,
+            currency: 'EUR',
+          },
+        ],
+        total: 1,
+        metadata: {
+          query_source: 'agent_products_search',
+          strict_constraint_query: true,
+          strict_constraint_reason: 'multi_constraint',
+          budget_fx_applied: true,
+          budget_fx_rate: 1,
+          budget_fx_source: 'fx_table',
+          budget_fx_candidate_currency: 'EUR',
+          budget_fx_unresolved: false,
+        },
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: rawQuery,
+            page: 1,
+            limit: 5,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'search',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(strictInvoke.isDone() || upstreamSearch.isDone()).toBe(true);
+    const observedQuery =
+      String(capturedStrictInvokeBody?.payload?.search?.query || '').trim() || String(capturedQuery || '').trim();
+    expect(observedQuery).toBe(rawQuery);
+    expect(resp.body.products).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          product_id: 'prod_vitc_1',
+          merchant_id: 'merch_live_1',
+          title: 'Vitamin C Brightening Serum',
+        }),
+      ]),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_search',
+        strict_constraint_query: true,
+        strict_constraint_reason: 'multi_constraint',
+        budget_fx_applied: true,
+        budget_fx_source: 'fx_table',
+        budget_fx_unresolved: false,
+        route_health: expect.objectContaining({
+          fallback_triggered: false,
+        }),
+      }),
+    );
+  });
+
   test('serum cache preference helper keeps upstream when beauty mainline contract is active', async () => {
     const app = require('../../src/server');
     const decision = app._debug.decideGenericSkincareCachePreference({

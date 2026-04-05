@@ -756,6 +756,30 @@ describe('find_products_multi intent + filtering', () => {
     );
   });
 
+  test('search source preserves literal beauty multi-constraint queries as the upstream search text', async () => {
+    const { adjustedPayload, expansion_meta } = await buildFindProductsMultiContext({
+      payload: {
+        search: {
+          query: 'vitamin c serum under €30',
+        },
+      },
+      metadata: {
+        source: 'search',
+      },
+    });
+
+    expect(adjustedPayload?.search?.query).toBe('vitamin c serum under €30');
+    expect(expansion_meta).toEqual(
+      expect.objectContaining({
+        raw_query: 'vitamin c serum under €30',
+        expanded_query: 'vitamin c serum under €30',
+        semantic_contract: expect.objectContaining({
+          target_step_family: 'treatment',
+        }),
+      }),
+    );
+  });
+
   test('pet harness is recognized and not filtered; large-dog query asks for measurements', () => {
     const intent = extractIntentRuleBased('大型犬的衣服或者背带', [], []);
     expect(intent.target_object.type).toBe('pet');
