@@ -259,6 +259,17 @@ jobs:
         with:
           name: shopping-search-release-gate
           path: reports/search-prod-skincare-release-gate
+      - name: Auto rollback failed release (webhook)
+        if: failure()
+        shell: bash
+        env:
+          ROLLBACK_WEBHOOK_URL: ${{ secrets.RAILWAY_ROLLBACK_WEBHOOK_URL }}
+          ROLLBACK_REASON: shopping_search_release_gate_failed
+          FAILED_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          FAILED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          bash scripts/trigger_rollback_webhook.sh
 
   runtime_smoke_discovery:
     name: Shopping Discovery Runtime Smoke
@@ -305,4 +316,15 @@ jobs:
           VERIFY_DEPLOY=0 \
           TIMEOUT_MS=25000 \
           bash scripts/smoke_discovery_feed_prod.sh
-          if-no-files-found: error
+
+      - name: Auto rollback failed release (webhook)
+        if: failure()
+        shell: bash
+        env:
+          ROLLBACK_WEBHOOK_URL: ${{ secrets.RAILWAY_ROLLBACK_WEBHOOK_URL }}
+          ROLLBACK_REASON: shopping_search_release_gate_failed
+          FAILED_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          FAILED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          bash scripts/trigger_rollback_webhook.sh
