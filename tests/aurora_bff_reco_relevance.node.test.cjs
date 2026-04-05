@@ -5516,6 +5516,8 @@ test('/v1/chat: plain-text beauty reco ask uses the same beauty mainline handoff
     assert.equal(payload.metadata?.mainline_status, 'grounded_success');
     assert.equal(payload.metadata?.contract_bridge?.resolved_contract, 'agent_v1_search_beauty_mainline');
     assert.equal(payload.recommendation_meta?.resolved_contract, 'agent_v1_search_beauty_mainline');
+    assert.equal(payload.metadata?.beauty_mainline_handoff_applied, undefined);
+    assert.equal(payload.metadata?.beauty_mainline_handoff_attempted, undefined);
     assert.deepEqual(
       payload.recommendation_meta?.final_selection?.selected_product_ids,
       ['generic_plain_text_1'],
