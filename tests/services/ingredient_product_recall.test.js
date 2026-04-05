@@ -2145,6 +2145,98 @@ describe('ingredientProductRecall', () => {
     expect(out.diagnostics.ingredient_direct_miss_reason).toBeNull();
   });
 
+  test('skips unattached recall when KB attached results already satisfy direct recall coverage', async () => {
+    let unattachedCalls = 0;
+    jest.doMock('../../src/services/pciKbClient', () => ({
+      kbQuery: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('to_regclass')) {
+          return { rows: [{ table_name: 'pci_kb.sku_ingredients' }] };
+        }
+        if (text.includes('FROM pci_kb.sku_ingredients')) {
+          return {
+            rows: [1, 2, 3, 4].map((index) => ({
+              sku_key: `extseed:seed_bpo_${index}:variant_${index}`,
+              brand: 'Acme',
+              product_name: `Benzoyl Peroxide ${index}% Gel`,
+              source_ref: `https://acme.example.com/products/benzoyl-peroxide-${index}-gel`,
+              raw_ingredient_text_clean: 'benzoyl peroxide',
+              inci_list: 'benzoyl peroxide',
+              created_at: new Date().toISOString(),
+            })),
+          };
+        }
+        return { rows: [] };
+      }),
+    }));
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('FROM products_cache')) return { rows: [] };
+        if (!text.includes('FROM external_product_seeds')) return { rows: [] };
+        if (text.includes("coalesce(attached_product_key, '') = ''")) {
+          unattachedCalls += 1;
+          return { rows: [] };
+        }
+        if (text.includes('LIKE ANY($3::text[])')) {
+          return { rows: [] };
+        }
+        if (text.includes("coalesce(attached_product_key, '') <> ''")) {
+          const now = new Date().toISOString();
+          return {
+            rows: [1, 2, 3, 4].map((index) => ({
+              id: `seed_bpo_${index}`,
+              external_product_id: `ext_bpo_${index}`,
+              destination_url: `https://acme.example.com/products/benzoyl-peroxide-${index}-gel`,
+              canonical_url: `https://acme.example.com/products/benzoyl-peroxide-${index}-gel`,
+              domain: 'acme.example.com',
+              title: `Benzoyl Peroxide ${index}% Gel`,
+              image_url: `https://acme.example.com/bpo-${index}.jpg`,
+              price_amount: 18 + index,
+              price_currency: 'USD',
+              availability: 'in stock',
+              attached_product_key: `shopify:bpo-${index}`,
+              seed_data: {
+                brand: 'Acme',
+                category: 'Treatment',
+                snapshot: {
+                  title: `Benzoyl Peroxide ${index}% Gel`,
+                  description: 'benzoyl peroxide acne treatment gel',
+                  brand: 'Acme',
+                  category: 'Treatment',
+                  canonical_url: `https://acme.example.com/products/benzoyl-peroxide-${index}-gel`,
+                  destination_url: `https://acme.example.com/products/benzoyl-peroxide-${index}-gel`,
+                },
+              },
+              updated_at: now,
+              created_at: now,
+            })),
+          };
+        }
+        return { rows: [] };
+      }),
+    }));
+
+    const { recallIngredientProducts } = require('../../src/services/ingredientProductRecall');
+    const out = await recallIngredientProducts({
+      query: 'benzoyl peroxide gel',
+      ingredientId: 'benzoyl_peroxide',
+      targetStepFamily: 'treatment',
+      limit: 10,
+    });
+
+    expect(out.products.map((row) => row.title || row.name)).toEqual([
+      'Benzoyl Peroxide 1% Gel',
+      'Benzoyl Peroxide 2% Gel',
+      'Benzoyl Peroxide 3% Gel',
+      'Benzoyl Peroxide 4% Gel',
+    ]);
+    expect(out.diagnostics.kb_recall_attempted).toBe(true);
+    expect(out.diagnostics.unattached_seed_recall_attempted).toBe(false);
+    expect(unattachedCalls).toBe(0);
+    expect(Number(out.diagnostics.ingredient_direct_source_stage_counts.kb_attached_seed.final || 0)).toBe(4);
+  });
+
   test('glycerin moisturizer rejects off-family hand-mask noise before ranking', async () => {
     jest.doMock('../../src/services/ingredientReferenceStore', () => ({
       getBestIngredientReferenceMatch: jest.fn(async () => null),

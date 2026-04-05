@@ -2395,7 +2395,6 @@ async function recallIngredientProductsFromProfile({
 
   if (!hasEnoughDirectRecallProducts(stabilizedProducts, limit)) {
     diagnostics.kb_recall_attempted = true;
-    diagnostics.unattached_seed_recall_attempted = true;
 
     const kbRows = await fetchKbRowsForProfile({
       profile,
@@ -2406,15 +2405,7 @@ async function recallIngredientProductsFromProfile({
     const kbSeedIds = uniqStrings(kbRows.map((row) => extractSeedIdFromSkuKey(row?.sku_key)).filter(Boolean), 40);
     const kbUrls = uniqStrings(kbRows.map((row) => normalizeUrl(row?.source_ref)).filter(Boolean), 40);
 
-    const [
-      kbAttachedRows,
-      kbNamedAttachedRows,
-      kbNamedCacheRows,
-      kbUnattachedRows,
-      unattachedAnchoredRows,
-      unattachedSeedRows,
-      kbNamedUnattachedRows,
-    ] = await Promise.all([
+    const [kbAttachedRows, kbNamedAttachedRows, kbNamedCacheRows] = await Promise.all([
       fetchSeedRowsByIdentity({
         seedIds: kbSeedIds,
         urls: kbUrls,
@@ -2435,38 +2426,6 @@ async function recallIngredientProductsFromProfile({
         patterns: kbProductNamePatterns,
         limit: resolveRecallFetchLimit(profile, limit, 2, 12, 12),
       }),
-      fetchSeedRowsByIdentity({
-        seedIds: kbSeedIds,
-        urls: kbUrls,
-        market,
-        tool,
-        attachedState: 'unattached',
-        limit: resolveRecallFetchLimit(profile, limit, 2, 12, 12),
-      }),
-      fetchSeedRowsByPatterns({
-        patterns: targetAnchoredExplicitPatterns,
-        market,
-        tool,
-        attachedState: 'unattached',
-        limit: resolveRecallFetchLimit(profile, limit, 2, 12, 12),
-        inStockOnly,
-      }),
-      fetchSeedRowsByPatterns({
-        patterns: explicitPatterns,
-        market,
-        tool,
-        attachedState: 'unattached',
-        limit: resolveRecallFetchLimit(profile, limit, 3, 16, 16),
-        inStockOnly,
-      }),
-      fetchSeedRowsByPatterns({
-        patterns: kbProductNamePatterns,
-        market,
-        tool,
-        attachedState: 'unattached',
-        limit: resolveRecallFetchLimit(profile, limit, 2, 12, 12),
-        inStockOnly,
-      }),
     ]);
 
     diagnostics.kb_recall_recovered =
@@ -2481,18 +2440,6 @@ async function recallIngredientProductsFromProfile({
       useKbEvidence: true,
     });
 
-    diagnostics.unattached_seed_recall_recovered =
-      kbUnattachedRows.length > 0 ||
-      unattachedAnchoredRows.length > 0 ||
-      unattachedSeedRows.length > 0 ||
-      kbNamedUnattachedRows.length > 0
-        ? 1
-        : 0;
-    addRows(unattachedAnchoredRows, 'unattached_seed_target_anchored');
-    addRows(kbUnattachedRows, 'kb_unattached_seed', { useKbEvidence: true });
-    addRows(kbNamedUnattachedRows, 'kb_named_unattached_seed', { useKbEvidence: true });
-    addRows(unattachedSeedRows, 'unattached_seed');
-
     candidates = rankIngredientRecallCandidates(explicitCandidates);
     stabilizedProducts = buildStabilizedIngredientRecallProducts(candidates, {
       profile,
@@ -2500,6 +2447,70 @@ async function recallIngredientProductsFromProfile({
       query,
       limit,
     });
+
+    if (!hasEnoughDirectRecallProducts(stabilizedProducts, limit)) {
+      diagnostics.unattached_seed_recall_attempted = true;
+
+      const [
+        kbUnattachedRows,
+        unattachedAnchoredRows,
+        unattachedSeedRows,
+        kbNamedUnattachedRows,
+      ] = await Promise.all([
+        fetchSeedRowsByIdentity({
+          seedIds: kbSeedIds,
+          urls: kbUrls,
+          market,
+          tool,
+          attachedState: 'unattached',
+          limit: resolveRecallFetchLimit(profile, limit, 2, 12, 12),
+        }),
+        fetchSeedRowsByPatterns({
+          patterns: targetAnchoredExplicitPatterns,
+          market,
+          tool,
+          attachedState: 'unattached',
+          limit: resolveRecallFetchLimit(profile, limit, 2, 12, 12),
+          inStockOnly,
+        }),
+        fetchSeedRowsByPatterns({
+          patterns: explicitPatterns,
+          market,
+          tool,
+          attachedState: 'unattached',
+          limit: resolveRecallFetchLimit(profile, limit, 3, 16, 16),
+          inStockOnly,
+        }),
+        fetchSeedRowsByPatterns({
+          patterns: kbProductNamePatterns,
+          market,
+          tool,
+          attachedState: 'unattached',
+          limit: resolveRecallFetchLimit(profile, limit, 2, 12, 12),
+          inStockOnly,
+        }),
+      ]);
+
+      diagnostics.unattached_seed_recall_recovered =
+        kbUnattachedRows.length > 0 ||
+        unattachedAnchoredRows.length > 0 ||
+        unattachedSeedRows.length > 0 ||
+        kbNamedUnattachedRows.length > 0
+          ? 1
+          : 0;
+      addRows(unattachedAnchoredRows, 'unattached_seed_target_anchored');
+      addRows(kbUnattachedRows, 'kb_unattached_seed', { useKbEvidence: true });
+      addRows(kbNamedUnattachedRows, 'kb_named_unattached_seed', { useKbEvidence: true });
+      addRows(unattachedSeedRows, 'unattached_seed');
+
+      candidates = rankIngredientRecallCandidates(explicitCandidates);
+      stabilizedProducts = buildStabilizedIngredientRecallProducts(candidates, {
+        profile,
+        targetStepFamily,
+        query,
+        limit,
+      });
+    }
   }
 
   const lateRejectedRows = [];
