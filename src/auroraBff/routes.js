@@ -80770,13 +80770,39 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       // If user explicitly asks for product recommendations (via chip OR explicit free text), generate them deterministically
       // (some upstream chat flows only return clarifying chips without a recommendations card).
+      const hardPathRecoTargetContext = resolveRecommendationTargetContext({
+        explicitStep: '',
+        focus: '',
+        text: recoRequestMessage || message,
+        entryType: 'chat',
+      });
+      const hardPathBeautyRecoOwnership =
+        RECO_CATALOG_GROUNDED_ENABLED
+        && !forceUpstreamAfterPendingAbandon
+        && !ingredientRecoOptInRequested
+        && recoEntrySourceDetail !== 'travel_handoff'
+        && (
+          typedRecoOwnershipKeepsV1Mainline
+          || Boolean(
+            hardPathRecoTargetContext
+            && hardPathRecoTargetContext.step_aware_intent
+            && hardPathRecoTargetContext.resolved_target_step,
+          )
+          || (
+            hardPathRecoTargetContext
+            && Array.isArray(hardPathRecoTargetContext.framework_roles)
+            && hardPathRecoTargetContext.framework_roles.length > 0
+          )
+          || looksLikeRecommendationRequest(message)
+        );
+
       const wantsProductRecommendations =
         !forceUpstreamAfterPendingAbandon &&
-        allowRecoCards &&
+        (allowRecoCards || hardPathBeautyRecoOwnership) &&
         (!looksLikeIngredientScienceIntent(message, normalizedActionPayload) || ingredientRecoOptInRequested) &&
         !looksLikeRoutineRequest(message, normalizedActionPayload) &&
         !looksLikeSuitabilityRequest(message) &&
-        (recoInteractionAllowed || typedRecoOwnershipKeepsV1Mainline) &&
+        (recoInteractionAllowed || typedRecoOwnershipKeepsV1Mainline || hardPathBeautyRecoOwnership) &&
         (
           actionId === 'chip.start.reco_products' ||
           actionId === 'chip_get_recos' ||
@@ -80784,6 +80810,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           profileClarificationAction ||
           ingredientDrivenRecommendationRequested ||
           typedRecoOwnershipKeepsV1Mainline ||
+          hardPathBeautyRecoOwnership ||
           looksLikeRecommendationRequest(message) ||
           shouldAutoRerunRecommendationsFromProfilePatch
         );
@@ -81234,12 +81261,19 @@ function mountAuroraBffRoutes(app, { logger }) {
             && Array.isArray(earlyChatRecoTargetContext.framework_roles)
             && earlyChatRecoTargetContext.framework_roles.length > 0
           );
+        const beautyOwnedRecoHardPath =
+          hardPathBeautyRecoOwnership
+          && !ingredientRecoOptInRequested
+          && !travelRecoHandoff;
         const beautyMainlineHandoffSuperEarlyEligible =
           RECO_CATALOG_GROUNDED_ENABLED
-          && (wantsProductRecommendations || typedRecoOwnershipKeepsV1Mainline)
+          && (wantsProductRecommendations || typedRecoOwnershipKeepsV1Mainline || beautyOwnedRecoHardPath)
           && !ingredientRecoOptInRequested
           && !travelRecoHandoff
           && (
+            beautyOwnedRecoHardPath
+            || hardPathBeautyRecoOwnership
+            ||
             earlyGenericConcernRecoMainline
             || earlyHasExplicitRecoTarget
             || typedRecoOwnershipKeepsV1Mainline
@@ -81826,6 +81860,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         let recoMetaPromptTemplateId = '';
         let upstreamReco = null;
         const shouldShortCircuitVerifiedContextRestore =
+          !beautyOwnedRecoHardPath
+          &&
           !ingredientRecoOptInRequested
           && !travelRecoHandoff
           && Boolean(shouldApplySessionRecoContext || recoAutoAnchoredByAnalysis || effectiveRecoEntrySourceDetail === 'analysis_handoff')
@@ -81879,6 +81915,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           && Boolean(pickFirstTrimmed(recoContextIngredientQuery, recoContextGoal) || recoIngredientCandidates.length > 0)
           && !normHasRecommendations;
         if (
+          !beautyOwnedRecoHardPath &&
           (!norm || shouldAttemptIngredientOptInCatalogRecovery)
           && (!matcherPayload || !Array.isArray(matcherPayload.recommendations) || matcherPayload.recommendations.length === 0)
         ) {
@@ -83045,6 +83082,17 @@ function mountAuroraBffRoutes(app, { logger }) {
         recordResumePrefixHistoryItems({ count: resumePrefixHistoryCount });
       }
       const upstreamStartedAt = Date.now();
+      if (hardPathBeautyRecoOwnership) {
+        const hardPathFallbackEnvelope = buildBeautyMainlineHandoffFallbackEnvelope({
+          ctx,
+          fallback: classifyBeautyMainlineHandoffFallback({
+            handoff: prefetchedBeautyMainlineHandoff,
+            err: null,
+          }),
+          suggestedChips: refinementChips,
+        });
+        return sendChatEnvelope(hardPathFallbackEnvelope);
+      }
       try {
         upstream = await auroraChat({
           baseUrl: AURORA_DECISION_BASE_URL,
