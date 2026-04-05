@@ -1526,7 +1526,7 @@ async function shouldDelegateV1ChatToV2(body) {
     const localMessage = pickFirstTrimmed(payload.message, payload.text) || '';
     if (looksLikeDiagnosisStart(localMessage)) return false;
     if (looksLikeProgressCheckRequest(localMessage, actionId)) return false;
-    if (shouldKeepTypedRecoRequestOnV1Mainline(payload)) return false;
+    if (shouldKeepTypedRecoRequestOnV1MainlinePolicy(payload)) return false;
   }
   if (hasMessage) return true;
 
@@ -1540,10 +1540,6 @@ async function shouldDelegateV1ChatToV2(body) {
       payload.canonical_intent,
     ),
   ) || isPlainObject(payload.params);
-}
-
-function shouldKeepTypedRecoRequestOnV1Mainline(body) {
-  return shouldKeepTypedRecoRequestOnV1MainlinePolicy(body);
 }
 
 function extractLastUserMessageFromChatRequestMessages(messages) {
@@ -77677,7 +77673,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
       agentStateForReplay = agentState;
 
-      const typedRecoOwnershipKeepsV1Mainline = shouldKeepTypedRecoRequestOnV1Mainline(parsed.data);
+      const typedRecoOwnershipKeepsV1Mainline = shouldKeepTypedRecoRequestOnV1MainlinePolicy(parsed.data);
 
       const recoInteractionAllowed = recommendationsAllowed({
         triggerSource: ctx.trigger_source,
@@ -80768,25 +80764,32 @@ function mountAuroraBffRoutes(app, { logger }) {
         return sendChatEnvelope(envelope);
       }
 
-      // If user explicitly asks for product recommendations (via chip OR explicit free text), generate them deterministically
-      // (some upstream chat flows only return clarifying chips without a recommendations card).
+      const hardPathRecoFocusForMainline = pickFirstTrimmed(
+        latestRecoContextFromSession && latestRecoContextFromSession.resolved_target_step,
+        latestRecoContextFromSession && latestRecoContextFromSession.ingredient_query,
+        latestRecoContextFromSession && latestRecoContextFromSession.goal,
+      );
       const hardPathRecoTargetContext = resolveRecommendationTargetContext({
-        explicitStep: '',
-        focus: '',
+        explicitStep: pickFirstTrimmed(
+          latestRecoContextFromSession && latestRecoContextFromSession.target_step,
+          latestRecoContextFromSession && latestRecoContextFromSession.step,
+          latestRecoContextFromSession && latestRecoContextFromSession.resolved_target_step,
+        ),
+        focus: hardPathRecoFocusForMainline,
         text: recoRequestMessage || message,
         entryType: 'chat',
       });
       const hardPathBeautyRecoOwnership =
         RECO_CATALOG_GROUNDED_ENABLED
         && !forceUpstreamAfterPendingAbandon
-        && !ingredientRecoOptInRequested
+        && !ingredientDrivenRecommendationRequested
         && recoEntrySourceDetail !== 'travel_handoff'
         && (
           typedRecoOwnershipKeepsV1Mainline
           || Boolean(
             hardPathRecoTargetContext
             && hardPathRecoTargetContext.step_aware_intent
-            && hardPathRecoTargetContext.resolved_target_step,
+            && hardPathRecoTargetContext.resolved_target_step
           )
           || (
             hardPathRecoTargetContext
@@ -80796,13 +80799,160 @@ function mountAuroraBffRoutes(app, { logger }) {
           || looksLikeRecommendationRequest(message)
         );
 
+      if (hardPathBeautyRecoOwnership) {
+        let hardPathHandoff = null;
+        let hardPathHandoffErr = null;
+        try {
+          hardPathHandoff = await handoffRecoToBeautyMainlineSearch({
+            ctx,
+            logger,
+            primaryQuery: pickFirstTrimmed(recoRequestMessage, message),
+            fallbackMessage: message,
+            targetContext: hardPathRecoTargetContext,
+            fallbackFocus: hardPathRecoFocusForMainline,
+            profileSummary: summarizeProfileForContext(profile),
+            debug: debugUpstream,
+            timeoutMs: RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
+            minTimeoutMs: RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
+          });
+        } catch (err) {
+          hardPathHandoffErr = err;
+          logger?.warn(
+            {
+              request_id: ctx.request_id,
+              trace_id: ctx.trace_id,
+              err: err && err.message ? err.message : String(err),
+            },
+            'aurora bff: beauty mainline handoff failed during outer hard path',
+          );
+        }
+        const hardPathRecommendations = Array.isArray(hardPathHandoff?.recommendations)
+          ? hardPathHandoff.recommendations
+          : [];
+        if (hardPathRecommendations.length > 0) {
+          const hardPathSelectionContract = extractRecoFinalSelectionContract(hardPathHandoff.searchResult);
+          const hardPathSelectionOwner = pickFirstTrimmed(
+            hardPathHandoff?.searchResult?.decision_owner,
+            hardPathSelectionContract?.selection_owner,
+            BEAUTY_DISCOVERY_MAINLINE_OWNER,
+          ) || BEAUTY_DISCOVERY_MAINLINE_OWNER;
+          const hardPathRecoContext = mergeIngredientRecoContextValue(latestRecoContextFromSession, {
+            target_step: pickFirstTrimmed(hardPathRecoTargetContext?.resolved_target_step),
+            step: pickFirstTrimmed(hardPathRecoTargetContext?.resolved_target_step),
+            resolved_target_step: pickFirstTrimmed(hardPathRecoTargetContext?.resolved_target_step),
+            resolved_target_step_confidence: pickFirstTrimmed(hardPathRecoTargetContext?.resolved_target_step_confidence),
+            resolved_target_step_source: pickFirstTrimmed(hardPathRecoTargetContext?.resolved_target_step_source),
+            query: pickFirstTrimmed(
+              latestRecoContextFromSession && latestRecoContextFromSession.ingredient_query,
+              latestRecoContextFromSession && latestRecoContextFromSession.query,
+            ),
+            goal: pickFirstTrimmed(latestRecoContextFromSession && latestRecoContextFromSession.goal),
+            updated_at_ms: Date.now(),
+          });
+          const hardPathPayloadBundle = buildRecoPayloadFromBeautyMainlineHandoff({
+            handoff: hardPathHandoff,
+            profile,
+            targetContext: hardPathRecoTargetContext,
+            recoContext: hardPathRecoContext,
+            taskMode: 'goal_based_products',
+            triggerSource: recoEntrySourceDetail,
+            sourceMode:
+              String(hardPathRecoTargetContext?.intent_mode || '').trim().toLowerCase() === 'generic_concern'
+                ? 'framework_mainline'
+                : 'step_aware_mainline',
+            basePayload: {
+              recommendation_confidence_score: 0.61,
+              recommendation_confidence_level: 'medium',
+              recommendation_meta: {
+                recompute_from_profile_update: shouldAutoRerunRecommendationsFromProfilePatch === true,
+                used_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
+                used_safety_flags: false,
+              },
+            },
+            selectionOwner: hardPathSelectionOwner,
+            entryType: 'chat',
+          });
+          if (isPlainObject(hardPathPayloadBundle?.payload) && isPlainObject(hardPathPayloadBundle?.contract)) {
+            const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S7_PRODUCT_RECO' : undefined;
+            const sessionPatch = nextState ? { next_state: nextState } : {};
+            appendLatestRecoContextToSessionPatch(sessionPatch, mergeIngredientRecoContextValue(hardPathRecoContext, {
+              intent: 'reco_products',
+              source_detail: recoEntrySourceDetail,
+              trigger_source: ctx.trigger_source,
+              action_id: actionId || '',
+              message: recoRequestMessage || message,
+              include_alternatives: includeAlternatives === true,
+              context_origin: 'beauty_mainline_handoff',
+              updated_at_ms: Date.now(),
+            }));
+            const assistantText =
+              buildRouteAwareAssistantText({
+                route: 'reco',
+                payload: hardPathPayloadBundle.payload,
+                language: ctx.lang,
+                profile,
+              })
+              || (
+                ctx.lang === 'CN'
+                  ? '我已经把这轮候选收成结构化推荐卡片。'
+                  : 'I summarized this pass into structured recommendation cards.'
+              );
+            const envelope = buildEnvelope(ctx, {
+              assistant_message: makeAssistantMessage(assistantText),
+              suggested_chips: [],
+              cards: [
+                {
+                  card_id: `reco_${ctx.request_id}`,
+                  type: 'recommendations',
+                  payload: hardPathPayloadBundle.payload,
+                },
+              ],
+              session_patch: sessionPatch,
+              events: applyRecoContractToRecoRequestedEvents(
+                [makeEvent(ctx, 'value_moment', { kind: 'product_reco' })],
+                hardPathPayloadBundle.contract,
+                {
+                  ctx,
+                  emitIfMissing: true,
+                  eventData: buildRecoRequestedEventData({
+                    explicit: true,
+                    payload: hardPathPayloadBundle.payload,
+                    source: String(
+                      hardPathPayloadBundle.payload?.source
+                      || hardPathPayloadBundle.payload?.recommendation_meta?.source_mode
+                      || 'catalog_grounded_v1',
+                    ),
+                    sourceDetail: normalizeRecoSourceDetail(recoEntrySourceDetail),
+                    recomputeFromProfileUpdate: shouldAutoRerunRecommendationsFromProfilePatch === true,
+                    lowConfidence: false,
+                    confidenceLevel: 'medium',
+                  }),
+                },
+              ).events,
+            });
+            return sendChatEnvelope(envelope);
+          }
+        }
+        const hardPathFallbackEnvelope = buildBeautyMainlineHandoffFallbackEnvelope({
+          ctx,
+          fallback: classifyBeautyMainlineHandoffFallback({
+            handoff: hardPathHandoff,
+            err: hardPathHandoffErr,
+          }),
+          suggestedChips: [],
+        });
+        return sendChatEnvelope(hardPathFallbackEnvelope);
+      }
+
+      // If user explicitly asks for product recommendations (via chip OR explicit free text), generate them deterministically
+      // (some upstream chat flows only return clarifying chips without a recommendations card).
       const wantsProductRecommendations =
         !forceUpstreamAfterPendingAbandon &&
-        (allowRecoCards || hardPathBeautyRecoOwnership) &&
+        allowRecoCards &&
         (!looksLikeIngredientScienceIntent(message, normalizedActionPayload) || ingredientRecoOptInRequested) &&
         !looksLikeRoutineRequest(message, normalizedActionPayload) &&
         !looksLikeSuitabilityRequest(message) &&
-        (recoInteractionAllowed || typedRecoOwnershipKeepsV1Mainline || hardPathBeautyRecoOwnership) &&
+        (recoInteractionAllowed || typedRecoOwnershipKeepsV1Mainline) &&
         (
           actionId === 'chip.start.reco_products' ||
           actionId === 'chip_get_recos' ||
@@ -80810,15 +80960,12 @@ function mountAuroraBffRoutes(app, { logger }) {
           profileClarificationAction ||
           ingredientDrivenRecommendationRequested ||
           typedRecoOwnershipKeepsV1Mainline ||
-          hardPathBeautyRecoOwnership ||
           looksLikeRecommendationRequest(message) ||
           shouldAutoRerunRecommendationsFromProfilePatch
         );
 
       let analysisContextSnapshotForConversation = null;
       let chatAnalysisTaskContext = null;
-      let prefetchedBeautyMainlineHandoff = null;
-      let prefetchedBeautyMainlineHandoffApplied = false;
 
       if (wantsProductRecommendations) {
         let recoIngredientContext = mergeIngredientRecoContextValue(
@@ -81232,262 +81379,6 @@ function mountAuroraBffRoutes(app, { logger }) {
           return sendChatEnvelope(envelope);
         }
 
-        const earlyRecoFocusForMainline = pickFirstTrimmed(
-          recoIngredientContext && recoIngredientContext.resolved_target_step,
-          recoIngredientContext && recoIngredientContext.target_step,
-          recoIngredientContext && recoIngredientContext.step,
-          recoContextIngredientQuery,
-          recoContextGoal,
-        );
-        const earlyChatRecoTargetContext = resolveRecommendationTargetContext({
-          explicitStep: pickFirstTrimmed(
-            recoIngredientContext && recoIngredientContext.target_step,
-            recoIngredientContext && recoIngredientContext.step,
-            recoIngredientContext && recoIngredientContext.resolved_target_step,
-          ),
-          focus: earlyRecoFocusForMainline,
-          text: recoRequestMessage || message,
-          entryType: 'chat',
-        });
-        const earlyHasExplicitRecoTarget = Boolean(
-          earlyChatRecoTargetContext
-          && earlyChatRecoTargetContext.step_aware_intent
-          && earlyChatRecoTargetContext.resolved_target_step,
-        );
-        const earlyGenericConcernRecoMainline =
-          String(earlyChatRecoTargetContext?.intent_mode || '').trim().toLowerCase() === 'generic_concern'
-          || (
-            earlyChatRecoTargetContext
-            && Array.isArray(earlyChatRecoTargetContext.framework_roles)
-            && earlyChatRecoTargetContext.framework_roles.length > 0
-          );
-        const beautyOwnedRecoHardPath =
-          hardPathBeautyRecoOwnership
-          && !ingredientRecoOptInRequested
-          && !travelRecoHandoff;
-        const beautyMainlineHandoffSuperEarlyEligible =
-          RECO_CATALOG_GROUNDED_ENABLED
-          && (wantsProductRecommendations || typedRecoOwnershipKeepsV1Mainline || beautyOwnedRecoHardPath)
-          && !ingredientRecoOptInRequested
-          && !travelRecoHandoff
-          && (
-            beautyOwnedRecoHardPath
-            || hardPathBeautyRecoOwnership
-            ||
-            earlyGenericConcernRecoMainline
-            || earlyHasExplicitRecoTarget
-            || typedRecoOwnershipKeepsV1Mainline
-            || looksLikeRecommendationRequest(message)
-            || profileClarificationAction
-            || shouldApplySessionRecoContext
-            || shouldAutoRerunRecommendationsFromProfilePatch === true
-          );
-
-        if (beautyMainlineHandoffSuperEarlyEligible) {
-          let earlyHandoffErr = null;
-          try {
-            prefetchedBeautyMainlineHandoff = await handoffRecoToBeautyMainlineSearch({
-              ctx,
-              logger,
-              primaryQuery: pickFirstTrimmed(recoRequestMessage, message),
-              fallbackMessage: message,
-              targetContext: earlyChatRecoTargetContext,
-              fallbackFocus: earlyRecoFocusForMainline,
-              profileSummary: summarizeProfileForContext(profile),
-              debug: debugUpstream,
-              timeoutMs: RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
-              minTimeoutMs: RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
-            });
-          } catch (err) {
-            earlyHandoffErr = err;
-            logger?.warn(
-              {
-                request_id: ctx.request_id,
-                trace_id: ctx.trace_id,
-                err: err && err.message ? err.message : String(err),
-              },
-              'aurora bff: beauty mainline handoff failed during hard path',
-            );
-          }
-          const earlyHandoffRecommendations = Array.isArray(prefetchedBeautyMainlineHandoff?.recommendations)
-            ? prefetchedBeautyMainlineHandoff.recommendations
-            : [];
-          if (earlyHandoffRecommendations.length > 0) {
-            prefetchedBeautyMainlineHandoffApplied = true;
-            const earlySelectionContract = extractRecoFinalSelectionContract(prefetchedBeautyMainlineHandoff.searchResult);
-            const earlySelectionOwner = pickFirstTrimmed(
-              prefetchedBeautyMainlineHandoff?.searchResult?.decision_owner,
-              earlySelectionContract?.selection_owner,
-              BEAUTY_DISCOVERY_MAINLINE_OWNER,
-            ) || BEAUTY_DISCOVERY_MAINLINE_OWNER;
-            const fastRecoContext = mergeIngredientRecoContextValue(recoIngredientContext, {
-              target_step: pickFirstTrimmed(earlyChatRecoTargetContext?.resolved_target_step),
-              step: pickFirstTrimmed(earlyChatRecoTargetContext?.resolved_target_step),
-              resolved_target_step: pickFirstTrimmed(earlyChatRecoTargetContext?.resolved_target_step),
-              resolved_target_step_confidence: pickFirstTrimmed(earlyChatRecoTargetContext?.resolved_target_step_confidence),
-              resolved_target_step_source: pickFirstTrimmed(earlyChatRecoTargetContext?.resolved_target_step_source),
-              query: recoContextIngredientQuery,
-              goal: recoContextGoal,
-              updated_at_ms: Date.now(),
-            });
-            const earlyCanonicalPayload = buildRecoPayloadFromBeautyMainlineHandoff({
-              handoff: prefetchedBeautyMainlineHandoff,
-              profile,
-              targetContext: earlyChatRecoTargetContext,
-              recoContext: fastRecoContext,
-              taskMode: recoTaskMode,
-              triggerSource: effectiveRecoEntrySourceDetail,
-              sourceMode: earlyGenericConcernRecoMainline ? 'framework_mainline' : 'step_aware_mainline',
-              basePayload: {
-                recommendation_confidence_score: 0.61,
-                recommendation_confidence_level: 'medium',
-                recommendation_meta: {
-                  recompute_from_profile_update: shouldAutoRerunRecommendationsFromProfilePatch === true,
-                  used_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
-                  used_safety_flags: false,
-                },
-              },
-              selectionOwner: earlySelectionOwner,
-              entryType: 'chat',
-            });
-            const fastPayload = earlyCanonicalPayload?.payload;
-            const fastRecoContract = earlyCanonicalPayload?.contract;
-            if (!isPlainObject(fastPayload) || !isPlainObject(fastRecoContract)) {
-              prefetchedBeautyMainlineHandoffApplied = false;
-            } else {
-            const fastSelectedProductCandidates = extractRecoContextProductCandidatesFromRecommendations(
-              Array.isArray(fastPayload?.recommendations) ? fastPayload.recommendations : [],
-              {
-                max: 12,
-                normalizeRecoCatalogProduct,
-                pickFirstTrimmed,
-                joinBrandAndName,
-                isPlainObject,
-              },
-            );
-            const fastLatestRecoContextPatch = mergeIngredientRecoContextValue(recoIngredientContext, {
-              intent: 'reco_products',
-              source_detail: effectiveRecoEntrySourceDetail,
-              trigger_source: ctx.trigger_source,
-              action_id: actionId || '',
-              message: recoRequestMessage || message,
-              include_alternatives: includeAlternatives === true,
-              ingredient_query: recoContextIngredientQuery || '',
-              goal: recoContextGoal || '',
-              context_origin: pickFirstTrimmed(
-                fastPayload?.recommendation_meta?.source_mode,
-                'beauty_mainline_handoff',
-              ) || 'beauty_mainline_handoff',
-              resolved_target_step: pickFirstTrimmed(
-                fastPayload?.recommendation_meta?.resolved_target_step,
-                earlyChatRecoTargetContext?.resolved_target_step,
-              ) || '',
-              resolved_target_step_confidence: pickFirstTrimmed(
-                fastPayload?.recommendation_meta?.resolved_target_step_confidence,
-                earlyChatRecoTargetContext?.resolved_target_step_confidence,
-              ) || '',
-              resolved_target_step_source: pickFirstTrimmed(
-                fastPayload?.recommendation_meta?.resolved_target_step_source,
-                earlyChatRecoTargetContext?.resolved_target_step_source,
-              ) || '',
-              primary_focus: fastPayload?.recommendation_meta?.primary_focus,
-              confidence_policy: fastPayload?.recommendation_meta?.confidence_policy,
-              ranked_targets: Array.isArray(fastPayload?.recommendation_meta?.ranked_targets)
-                ? fastPayload.recommendation_meta.ranked_targets
-                : [],
-              primary_target_id: pickFirstTrimmed(fastPayload?.recommendation_meta?.primary_target_id),
-              selected_target_ids: Array.isArray(fastPayload?.recommendation_meta?.selected_target_ids)
-                ? fastPayload.recommendation_meta.selected_target_ids
-                : [],
-              ...(fastSelectedProductCandidates.length ? { product_candidates: fastSelectedProductCandidates } : {}),
-              updated_at_ms: Date.now(),
-            });
-            const nextState = stateChangeAllowed(ctx.trigger_source) && (earlyHandoffRecommendations.length > 0 || wantsProductRecommendations)
-              ? 'S7_PRODUCT_RECO'
-              : undefined;
-            const sessionPatch = nextState ? { next_state: nextState } : {};
-            if (recoIngredientContext) {
-              sessionPatch.meta = {
-                ...(isPlainObject(sessionPatch.meta) ? sessionPatch.meta : {}),
-                ingredient_context: recoIngredientContext,
-              };
-            }
-            appendLatestRecoContextToSessionPatch(sessionPatch, fastLatestRecoContextPatch);
-            const fastAssistantText =
-              buildRouteAwareAssistantText({
-                route: 'reco',
-                payload: fastPayload,
-                language: ctx.lang,
-                profile,
-              })
-              || (
-                ctx.lang === 'CN'
-                  ? '我已经把这轮候选收成结构化推荐卡片。'
-                  : 'I summarized this pass into structured recommendation cards.'
-              );
-            const envelope = buildEnvelope(ctx, {
-              assistant_message: makeAssistantMessage(fastAssistantText),
-              suggested_chips: refinementChips,
-              cards: [
-                {
-                  card_id: `reco_${ctx.request_id}`,
-                  type: 'recommendations',
-                  payload: fastPayload,
-                },
-              ],
-              session_patch: sessionPatch,
-              events: applyRecoContractToRecoRequestedEvents(
-                [makeEvent(ctx, 'value_moment', { kind: 'product_reco' })],
-                fastRecoContract,
-                {
-                  ctx,
-                  emitIfMissing: true,
-                  eventData: buildRecoRequestedEventData({
-                    explicit: true,
-                    payload: fastPayload,
-                    source: String(
-                      fastPayload?.source
-                      || fastPayload?.recommendation_meta?.source_mode
-                      || 'catalog_grounded_v1',
-                    ),
-                    sourceDetail: normalizeRecoSourceDetail(effectiveRecoEntrySourceDetail),
-                    recomputeFromProfileUpdate: shouldAutoRerunRecommendationsFromProfilePatch === true,
-                    lowConfidence: false,
-                    confidenceLevel: 'medium',
-                  }),
-                },
-              ).events,
-            });
-            return sendChatEnvelope(envelope);
-            }
-          }
-          const earlyFallbackEnvelope = buildBeautyMainlineHandoffFallbackEnvelope({
-            ctx,
-            fallback: classifyBeautyMainlineHandoffFallback({
-              handoff: prefetchedBeautyMainlineHandoff,
-              err: earlyHandoffErr,
-            }),
-            handoff: prefetchedBeautyMainlineHandoff,
-            profile,
-            targetContext: earlyChatRecoTargetContext,
-            recoContext: mergeIngredientRecoContextValue(recoIngredientContext, {
-              target_step: pickFirstTrimmed(earlyChatRecoTargetContext?.resolved_target_step),
-              step: pickFirstTrimmed(earlyChatRecoTargetContext?.resolved_target_step),
-              resolved_target_step: pickFirstTrimmed(earlyChatRecoTargetContext?.resolved_target_step),
-              resolved_target_step_confidence: pickFirstTrimmed(earlyChatRecoTargetContext?.resolved_target_step_confidence),
-              resolved_target_step_source: pickFirstTrimmed(earlyChatRecoTargetContext?.resolved_target_step_source),
-              query: recoContextIngredientQuery,
-              goal: recoContextGoal,
-              updated_at_ms: Date.now(),
-            }),
-            taskMode: recoTaskMode,
-            triggerSource: effectiveRecoEntrySourceDetail,
-            sourceMode: earlyGenericConcernRecoMainline ? 'framework_mainline' : 'step_aware_mainline',
-            suggestedChips: refinementChips,
-          });
-          return sendChatEnvelope(earlyFallbackEnvelope);
-        }
-
         const latestArtifactForGate = await ensureLatestArtifactForConversation();
         const latestArtifact = latestArtifactForGate;
         const artifactGate = hasUsableArtifactForRecommendations(latestArtifactForGate);
@@ -81860,8 +81751,6 @@ function mountAuroraBffRoutes(app, { logger }) {
         let recoMetaPromptTemplateId = '';
         let upstreamReco = null;
         const shouldShortCircuitVerifiedContextRestore =
-          !beautyOwnedRecoHardPath
-          &&
           !ingredientRecoOptInRequested
           && !travelRecoHandoff
           && Boolean(shouldApplySessionRecoContext || recoAutoAnchoredByAnalysis || effectiveRecoEntrySourceDetail === 'analysis_handoff')
@@ -81915,7 +81804,6 @@ function mountAuroraBffRoutes(app, { logger }) {
           && Boolean(pickFirstTrimmed(recoContextIngredientQuery, recoContextGoal) || recoIngredientCandidates.length > 0)
           && !normHasRecommendations;
         if (
-          !beautyOwnedRecoHardPath &&
           (!norm || shouldAttemptIngredientOptInCatalogRecovery)
           && (!matcherPayload || !Array.isArray(matcherPayload.recommendations) || matcherPayload.recommendations.length === 0)
         ) {
@@ -82116,7 +82004,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
 
         let matcherRecoCount = 0;
-        if (!prefetchedBeautyMainlineHandoffApplied && !generatedPrimaryUsed && !ingredientRecoOptInRequested) {
+        if (!generatedPrimaryUsed && !ingredientRecoOptInRequested) {
           ({ matcherBundle, matcherPayload } = computeMatcherIfNeeded());
           matcherRecoCount = Array.isArray(matcherPayload?.recommendations) ? matcherPayload.recommendations.length : 0;
         }
@@ -83082,17 +82970,6 @@ function mountAuroraBffRoutes(app, { logger }) {
         recordResumePrefixHistoryItems({ count: resumePrefixHistoryCount });
       }
       const upstreamStartedAt = Date.now();
-      if (hardPathBeautyRecoOwnership) {
-        const hardPathFallbackEnvelope = buildBeautyMainlineHandoffFallbackEnvelope({
-          ctx,
-          fallback: classifyBeautyMainlineHandoffFallback({
-            handoff: prefetchedBeautyMainlineHandoff,
-            err: null,
-          }),
-          suggestedChips: refinementChips,
-        });
-        return sendChatEnvelope(hardPathFallbackEnvelope);
-      }
       try {
         upstream = await auroraChat({
           baseUrl: AURORA_DECISION_BASE_URL,
@@ -84668,7 +84545,7 @@ const __internal = {
   FIT_CHECK_ANCHOR_PROMPT_VERSION,
   buildFitCheckAnchorPrompt,
   shouldDelegateV1ChatToV2,
-  shouldKeepTypedRecoRequestOnV1Mainline,
+  shouldKeepTypedRecoRequestOnV1Mainline: shouldKeepTypedRecoRequestOnV1MainlinePolicy,
   isRecoKnownTestSeedItem,
   limitRecoKnownTestSeedRecommendations,
   buildRecoDiversityToken,
@@ -84805,7 +84682,7 @@ const __internal = {
       delete auroraRouteDependencyOverridesForTest[name];
     }
   },
-  shouldKeepTypedRecoRequestOnV1Mainline,
+  shouldKeepTypedRecoRequestOnV1Mainline: shouldKeepTypedRecoRequestOnV1MainlinePolicy,
 };
 
 module.exports = { mountAuroraBffRoutes, __internal };
