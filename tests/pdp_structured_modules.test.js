@@ -7,7 +7,7 @@ function findModule(payload, type) {
 }
 
 describe('pdpBuilder structured PDP modules', () => {
-  test('media_gallery keeps only the active variant gallery when multi-variant seed product images are polluted', () => {
+  test('media_gallery keeps the default variant gallery first and adds preview images for other variants', () => {
     const payload = buildPdpPayload({
       product: {
         product_id: 'p_media_1',
@@ -55,9 +55,9 @@ describe('pdpBuilder structured PDP modules', () => {
 
     expect(urls).toEqual([
       'https://sdcdn.io/tf/tf_sku_T1QT01_3000x3000_0.png?height=1400px&width=1400px',
-      'https://sdcdn.io/tf/tf_sku_T1QT01_2000x2000_1.jpg?height=1400px&width=1400px',
+      'https://sdcdn.io/tf/tf_sku_T1QT01_2000x2000_1.jpg',
+      'https://sdcdn.io/tf/tf_sku_T1QW01_3000x3000_0.png?height=1400px&width=1400px',
     ]);
-    expect(urls.some((url) => url.includes('T1QW01'))).toBe(false);
     expect(urls.some((url) => url.includes('plpbanner'))).toBe(false);
   });
 
