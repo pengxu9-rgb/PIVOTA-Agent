@@ -6,11 +6,11 @@ const { lookupExternalSeedImageOverride } = require('../src/services/externalSee
 const {
   ensureJsonObject,
   collectSeedImageUrls,
-  normalizeSeedImageUrls,
   normalizeSeedVariants,
   normalizeSeedAvailability,
 } = require('../src/services/externalSeedProducts');
 const { enrichExternalSeedRowIngredients } = require('../src/services/externalSeedIngredientEnrichment');
+const { normalizePdpImageUrl } = require('../src/utils/pdpImageUrls');
 
 const DEFAULT_CATALOG_BASE_URL =
   process.env.CATALOG_INTELLIGENCE_BASE_URL ||
@@ -106,6 +106,49 @@ function uniqueStrings(values) {
     const next = normalizeNonEmptyString(value);
     if (!next || out.includes(next)) continue;
     out.push(next);
+  }
+  return out;
+}
+
+function isDecorativeSeedImageUrl(value) {
+  const normalized = normalizeUrlLike(value).toLowerCase();
+  if (!normalized) return false;
+  return (
+    normalized.endsWith('.svg') ||
+    normalized.includes('.svg?') ||
+    normalized.includes('/menu.svg') ||
+    normalized.includes('/close.svg') ||
+    normalized.includes('/icon-') ||
+    normalized.includes('icon-search') ||
+    normalized.includes('icon-cart') ||
+    normalized.includes('icon-account') ||
+    normalized.includes('/logo.svg') ||
+    normalized.includes('/tf_logo.svg')
+  );
+}
+
+function normalizeComparableImageKey(value) {
+  const normalized = normalizePdpImageUrl(value) || normalizeUrlLike(value);
+  if (!normalized) return '';
+  try {
+    const parsed = new URL(normalized);
+    const segments = parsed.pathname.split('/').filter(Boolean);
+    return String(segments[segments.length - 1] || '').toLowerCase();
+  } catch {
+    return normalized.toLowerCase();
+  }
+}
+
+function sanitizeSeedImageUrls(values) {
+  const out = [];
+  const seen = new Set();
+  for (const value of Array.isArray(values) ? values : []) {
+    const normalized = normalizePdpImageUrl(value) || normalizeUrlLike(value);
+    if (!normalized || isDecorativeSeedImageUrl(normalized)) continue;
+    const comparableKey = normalizeComparableImageKey(normalized);
+    if (!comparableKey || seen.has(comparableKey)) continue;
+    seen.add(comparableKey);
+    out.push(normalized);
   }
   return out;
 }
@@ -364,6 +407,17 @@ function comparableSeedData(value) {
   });
 }
 
+function shouldClearStaleSeedActiveIngredients(seedData, nextPdpActiveIngredientsRaw) {
+  if (normalizeNonEmptyString(nextPdpActiveIngredientsRaw)) return false;
+  const currentActiveIngredients = uniqueStrings([
+    ...((Array.isArray(seedData?.active_ingredients) ? seedData.active_ingredients : [])),
+    ...((Array.isArray(seedData?.activeIngredients) ? seedData.activeIngredients : [])),
+    ...((Array.isArray(seedData?.snapshot?.active_ingredients) ? seedData.snapshot.active_ingredients : [])),
+    ...((Array.isArray(seedData?.snapshot?.activeIngredients) ? seedData.snapshot.activeIngredients : [])),
+  ]);
+  return currentActiveIngredients.length > 0;
+}
+
 function buildSeedUpdatePayload(row, response, targetUrl) {
   const seedData = ensureJsonObject(row?.seed_data);
   const snapshot = ensureJsonObject(seedData.snapshot);
@@ -379,12 +433,16 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   const representativeProductUrl = normalizeUrlLike(representativeProduct?.url) || normalizeUrlLike(targetUrl) || normalizeUrlLike(row?.canonical_url);
   const snapshotVariants = mapSnapshotVariants(representativeProduct, response, seedData);
   const effectiveSnapshotVariants = fallbackPollutedRow && !representativeProduct ? [] : snapshotVariants;
-  const extractedImageUrls = uniqueStrings([
+  const hasLiveVariantImages =
+    Array.isArray(response?.variants) &&
+    response.variants.length > 0 &&
+    effectiveSnapshotVariants.some((variant) => Array.isArray(variant.image_urls) && variant.image_urls.length > 0);
+  const extractedImageUrls = sanitizeSeedImageUrls([
     ...(Array.isArray(representativeProduct?.image_urls) ? representativeProduct.image_urls : []),
     representativeProduct?.image_url,
-    ...effectiveSnapshotVariants.flatMap((variant) => variant.image_urls || []),
+    ...(hasLiveVariantImages ? effectiveSnapshotVariants.flatMap((variant) => variant.image_urls || []) : []),
   ]);
-  const existingImageUrls = fallbackPollutedRow ? [] : collectSeedImageUrls(seedData, row);
+  const existingImageUrls = fallbackPollutedRow ? [] : sanitizeSeedImageUrls(collectSeedImageUrls(seedData, row));
   const imageOverride = lookupExternalSeedImageOverride(
     representativeProductUrl,
     targetUrl,
@@ -395,11 +453,11 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     snapshot.canonical_url,
     snapshot.destination_url,
   );
-  const overrideImageUrls = uniqueStrings([
+  const overrideImageUrls = sanitizeSeedImageUrls([
     ...(Array.isArray(imageOverride?.image_urls) ? imageOverride.image_urls : []),
     imageOverride?.image_url,
   ]);
-  let mergedImageUrls = extractedImageUrls.length > 0 ? uniqueStrings([...extractedImageUrls, ...existingImageUrls]) : existingImageUrls;
+  let mergedImageUrls = extractedImageUrls.length > 0 ? extractedImageUrls : existingImageUrls;
   const manualImageOverrideApplied = mergedImageUrls.length === 0 && overrideImageUrls.length > 0;
   if (manualImageOverrideApplied) mergedImageUrls = overrideImageUrls;
   const imageUrl = mergedImageUrls[0] || '';
@@ -559,6 +617,12 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     ...(effectiveSnapshotVariants.length > 0 ? { variants: effectiveSnapshotVariants } : {}),
     snapshot: nextSnapshot,
   };
+  if (shouldClearStaleSeedActiveIngredients(nextSeedData, nextPdpActiveIngredientsRaw)) {
+    delete nextSeedData.active_ingredients;
+    delete nextSeedData.activeIngredients;
+    delete nextSeedData.snapshot.active_ingredients;
+    delete nextSeedData.snapshot.activeIngredients;
+  }
   if (!description && suppressStaleDescriptionFallback) {
     delete nextSeedData.description;
   }
@@ -595,7 +659,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
 function buildFailureSeedData(row, targetUrl, error) {
   const seedData = ensureJsonObject(row?.seed_data);
   const snapshot = ensureJsonObject(seedData.snapshot);
-  const existingImageUrls = collectSeedImageUrls(seedData, row);
+  const existingImageUrls = sanitizeSeedImageUrls(collectSeedImageUrls(seedData, row));
   const imageOverride = lookupExternalSeedImageOverride(
     targetUrl,
     row?.canonical_url,
@@ -605,7 +669,7 @@ function buildFailureSeedData(row, targetUrl, error) {
     snapshot.canonical_url,
     snapshot.destination_url,
   );
-  const overrideImageUrls = uniqueStrings([
+  const overrideImageUrls = sanitizeSeedImageUrls([
     ...(Array.isArray(imageOverride?.image_urls) ? imageOverride.image_urls : []),
     imageOverride?.image_url,
   ]);
@@ -894,4 +958,5 @@ module.exports = {
   normalizeComparableUrlKey,
   normalizeTargetUrlForMarket,
   recoverTargetUrlFromDiagnostics,
+  sanitizeSeedImageUrls,
 };
