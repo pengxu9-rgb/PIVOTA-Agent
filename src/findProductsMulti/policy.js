@@ -4170,6 +4170,7 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     (
       !normalizedSource ||
       normalizedSource === 'aurora-bff' ||
+      normalizedSource === 'shopping-agent-ui' ||
       requestedCatalogSurface === 'beauty' ||
       explicitStrictCatalogSurface ||
       Boolean(strictQueryOwnerDecision.enabled)

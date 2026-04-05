@@ -74,6 +74,12 @@ const {
   shouldKeepTypedRecoRequestOnV1Mainline: shouldKeepTypedRecoRequestOnV1MainlinePolicy,
 } = require('./recoOwnershipPolicy');
 const {
+  createBeautyChatMainlineEnvelopeRuntime,
+} = require('./beautyChatMainlineEnvelope');
+const {
+  createBeautyChatMainlineEntryRuntime,
+} = require('./beautyChatMainlineEntry');
+const {
   buildExternalSeedSurfacingText,
   choosePreferredExternalSeedCandidate,
   computeExternalSeedSurfacingMatch,
@@ -1232,6 +1238,54 @@ const RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 5000;
   return Math.max(300, Math.min(8000, v));
 })();
+const {
+  classifyBeautyMainlineHandoffFallback,
+  buildBeautyMainlineHandoffFallbackEnvelope,
+  buildRecoPayloadFromBeautyMainlineHandoff,
+} = createBeautyChatMainlineEnvelopeRuntime({
+  BEAUTY_DISCOVERY_MAINLINE_OWNER,
+  classifyRecoUpstreamFailureCode,
+  isTransientRecoUpstreamFailureCode,
+  buildConfidenceNoticeCardPayload,
+  buildEnvelope,
+  makeAssistantMessage,
+  makeEvent,
+  summarizeProfileForContext,
+  applyRecoCanonicalSearchResultToPayload,
+  applyRecoContentSpineToPayload,
+  buildRecoMainlineContract,
+  extractRecoOutcomeContractArgsFromPayload,
+  attachRecoContractMeta,
+  applyRecoAssistantSelectionSignature,
+  extractRecoFinalSelectionContract,
+  orderRecoRecommendationsBySelection,
+  normalizeRecoSourceDetail,
+});
+const {
+  maybeHandleBeautyOwnedChatReco,
+} = createBeautyChatMainlineEntryRuntime({
+  RECO_CATALOG_GROUNDED_ENABLED,
+  RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
+  BEAUTY_DISCOVERY_MAINLINE_OWNER,
+  resolveRecommendationTargetContext,
+  summarizeProfileForContext,
+  mergeIngredientRecoContextValue,
+  appendLatestRecoContextToSessionPatch,
+  extractRecoFinalSelectionContract,
+  buildRouteAwareAssistantText,
+  makeAssistantMessage,
+  buildEnvelope,
+  makeEvent,
+  applyRecoContractToRecoRequestedEvents,
+  buildRecoRequestedEventData,
+  normalizeRecoSourceDetail,
+  stateChangeAllowed,
+  handoffRecoToBeautyMainlineSearch,
+  buildRecoPayloadFromBeautyMainlineHandoff,
+  classifyBeautyMainlineHandoffFallback,
+  buildBeautyMainlineHandoffFallbackEnvelope,
+  looksLikeRecommendationRequest,
+});
 const RECO_CATALOG_MAIN_PATH_SEARCH_SOURCE = (() => {
   const raw = String(process.env.AURORA_BFF_RECO_CATALOG_MAIN_PATH_SEARCH_SOURCE || 'shopping-agent')
     .trim()
@@ -17657,189 +17711,6 @@ async function handoffRecoToBeautyMainlineSearch({
       : [],
     applied_query: recommendations.length > 0 ? query : null,
     timeout_ms: effectiveTimeoutMs,
-  };
-}
-
-function classifyBeautyMainlineHandoffFallback({ handoff = null, err = null } = {}) {
-  const transientCode = err ? classifyRecoUpstreamFailureCode(err) : '';
-  if (isTransientRecoUpstreamFailureCode(transientCode)) {
-    return {
-      fallback_reason: 'beauty_mainline_handoff_timeout',
-      notice_reason: 'upstream_timeout_primary_role',
-      mainline_status: 'upstream_timeout',
-      upstream_failure_code: transientCode || null,
-    };
-  }
-  if (handoff?.attempted === true) {
-    return {
-      fallback_reason: 'beauty_mainline_handoff_empty',
-      notice_reason: 'upstream_empty_recommendations',
-      mainline_status: 'needs_more_context',
-      upstream_failure_code: transientCode || null,
-    };
-  }
-  return {
-    fallback_reason: 'beauty_mainline_handoff_unavailable',
-    notice_reason: 'upstream_empty_recommendations',
-    mainline_status: 'needs_more_context',
-    upstream_failure_code: transientCode || null,
-  };
-}
-
-function buildBeautyMainlineHandoffFallbackEnvelope({
-  ctx,
-  fallback = null,
-  suggestedChips = [],
-} = {}) {
-  const fallbackMeta = isPlainObject(fallback) ? fallback : {};
-  const noticePayload = buildConfidenceNoticeCardPayload({
-    language: ctx?.lang,
-    reason: pickFirstTrimmed(fallbackMeta.notice_reason, 'upstream_empty_recommendations') || 'upstream_empty_recommendations',
-    confidence: {
-      score: pickFirstTrimmed(fallbackMeta.mainline_status) === 'upstream_timeout' ? 0.12 : 0.2,
-      level: 'low',
-      rationale: ['beauty_mainline_handoff_controlled_fallback'],
-    },
-    actions: ['retry_recommendations', 'update_current_routine'],
-    details: [
-      `fallback_reason: ${pickFirstTrimmed(fallbackMeta.fallback_reason, 'beauty_mainline_handoff_unavailable') || 'beauty_mainline_handoff_unavailable'}`,
-    ],
-  });
-  return buildEnvelope(ctx, {
-    assistant_message: makeAssistantMessage(
-      String(noticePayload.message || '').trim()
-        || (
-          ctx?.lang === 'CN'
-            ? '这轮 beauty 主链没有稳定拿到可落地商品，我先保留保守结果。'
-            : 'The beauty mainline did not return a stable grounded product set for this turn, so I am keeping this in a conservative fallback.'
-        ),
-    ),
-    suggested_chips: Array.isArray(suggestedChips) ? suggestedChips : [],
-    cards: [
-      {
-        card_id: `conf_${ctx && ctx.request_id ? ctx.request_id : Date.now()}_beauty_mainline_handoff_fallback`,
-        type: 'confidence_notice',
-        payload: noticePayload,
-      },
-    ],
-    session_patch: {},
-    events: [
-      makeEvent(ctx, 'recos_requested', {
-        explicit: true,
-        source: 'beauty_mainline_handoff',
-        source_detail: 'beauty_mainline_handoff',
-        fallback_reason: pickFirstTrimmed(fallbackMeta.fallback_reason, 'beauty_mainline_handoff_unavailable') || 'beauty_mainline_handoff_unavailable',
-      }),
-    ],
-  });
-}
-
-function buildRecoPayloadFromBeautyMainlineHandoff({
-  handoff = null,
-  profile = null,
-  targetContext = null,
-  recoContext = null,
-  taskMode = 'goal_based_products',
-  triggerSource = '',
-  sourceMode = '',
-  basePayload = null,
-  selectionOwner = null,
-  entryType = 'chat',
-} = {}) {
-  if (!isPlainObject(handoff?.searchResult)) return null;
-  const searchResult = handoff.searchResult;
-  const selectionContract = extractRecoFinalSelectionContract(searchResult);
-  const rawRecommendations = Array.isArray(handoff?.recommendations) ? handoff.recommendations : [];
-  const canonicalRecommendations = orderRecoRecommendationsBySelection(rawRecommendations, selectionContract);
-  if (!canonicalRecommendations.length) return null;
-
-  const effectiveSelectionOwner = pickFirstTrimmed(
-    selectionOwner,
-    searchResult?.decision_owner,
-    selectionContract?.selection_owner,
-    BEAUTY_DISCOVERY_MAINLINE_OWNER,
-  ) || BEAUTY_DISCOVERY_MAINLINE_OWNER;
-  const mainlineStatus = pickFirstTrimmed(
-    selectionContract?.mainline_status,
-    'grounded_success',
-  ) || 'grounded_success';
-
-  let nextPayload = {
-    intent: 'reco_products',
-    profile: summarizeProfileForContext(profile),
-    recommendations: canonicalRecommendations,
-    source: 'catalog_grounded_v1',
-    grounding_status: 'grounded',
-    grounded_count: canonicalRecommendations.length,
-    ungrounded_count: 0,
-    mainline_status: mainlineStatus,
-    recommendation_confidence_score: Number.isFinite(Number(basePayload?.recommendation_confidence_score))
-      ? Number(basePayload.recommendation_confidence_score)
-      : 0.61,
-    recommendation_confidence_level: pickFirstTrimmed(
-      basePayload?.recommendation_confidence_level,
-      'medium',
-    ) || 'medium',
-    task_mode: taskMode,
-    recommendation_meta: {
-      task_mode: taskMode,
-      source_mode: pickFirstTrimmed(
-        sourceMode,
-        basePayload?.recommendation_meta?.source_mode,
-        targetContext?.resolved_target_step ? 'step_aware_mainline' : 'framework_mainline',
-      ) || 'framework_mainline',
-      trigger_source: normalizeRecoSourceDetail(triggerSource),
-      recompute_from_profile_update: basePayload?.recommendation_meta?.recompute_from_profile_update === true,
-      used_recent_logs: basePayload?.recommendation_meta?.used_recent_logs === true,
-      used_itinerary: false,
-      used_safety_flags: basePayload?.recommendation_meta?.used_safety_flags === true,
-      mainline_status: mainlineStatus,
-      ...(targetContext?.resolved_target_step
-        ? { resolved_target_step: targetContext.resolved_target_step }
-        : {}),
-      ...(targetContext?.resolved_target_step_confidence
-        ? { resolved_target_step_confidence: targetContext.resolved_target_step_confidence }
-        : {}),
-      ...(targetContext?.resolved_target_step_source
-        ? { resolved_target_step_source: targetContext.resolved_target_step_source }
-        : {}),
-    },
-    metadata: {
-      mainline_status: mainlineStatus,
-    },
-  };
-
-  nextPayload = applyRecoCanonicalSearchResultToPayload(nextPayload, searchResult, {
-    selectionOwner: effectiveSelectionOwner,
-  });
-  nextPayload = applyRecoContentSpineToPayload(nextPayload, recoContext);
-
-  const recoContract = buildRecoMainlineContract({
-    recommendations: nextPayload.recommendations,
-    sourceMode: nextPayload.recommendation_meta?.source_mode,
-    source: nextPayload.source,
-    promptContractOk: nextPayload.prompt_contract_ok !== false,
-    structuredSource: nextPayload.recommendation_meta?.source_mode,
-    catalogSkipReason: nextPayload.recommendation_meta?.catalog_skip_reason,
-    productsEmptyReason: nextPayload.products_empty_reason,
-    groundingStatus: nextPayload.grounding_status || nextPayload.recommendation_meta?.grounding_status,
-    groundedCount: nextPayload.grounded_count || nextPayload.recommendation_meta?.grounded_count,
-    ungroundedCount: nextPayload.ungrounded_count || nextPayload.recommendation_meta?.ungrounded_count,
-    mainlineStatusOverride: nextPayload.mainline_status || nextPayload.recommendation_meta?.mainline_status,
-    promptTemplateId: nextPayload.prompt_template_id || nextPayload.recommendation_meta?.prompt_template_id,
-    entryType,
-    ...extractRecoOutcomeContractArgsFromPayload(nextPayload, null),
-  });
-  nextPayload = attachRecoContractMeta(nextPayload, recoContract);
-  nextPayload = applyRecoCanonicalSearchResultToPayload(nextPayload, searchResult, {
-    selectionOwner: effectiveSelectionOwner,
-  });
-  nextPayload = applyRecoAssistantSelectionSignature(nextPayload);
-
-  return {
-    payload: nextPayload,
-    contract: recoContract,
-    selectionContract: extractRecoFinalSelectionContract(nextPayload),
   };
 }
 
@@ -80764,184 +80635,24 @@ function mountAuroraBffRoutes(app, { logger }) {
         return sendChatEnvelope(envelope);
       }
 
-      const hardPathRecoFocusForMainline = pickFirstTrimmed(
-        latestRecoContextFromSession && latestRecoContextFromSession.resolved_target_step,
-        latestRecoContextFromSession && latestRecoContextFromSession.ingredient_query,
-        latestRecoContextFromSession && latestRecoContextFromSession.goal,
-      );
-      const hardPathRecoTargetContext = resolveRecommendationTargetContext({
-        explicitStep: pickFirstTrimmed(
-          latestRecoContextFromSession && latestRecoContextFromSession.target_step,
-          latestRecoContextFromSession && latestRecoContextFromSession.step,
-          latestRecoContextFromSession && latestRecoContextFromSession.resolved_target_step,
-        ),
-        focus: hardPathRecoFocusForMainline,
-        text: recoRequestMessage || message,
-        entryType: 'chat',
+      const beautyOwnedRecoResponse = await maybeHandleBeautyOwnedChatReco({
+        ctx,
+        logger,
+        message: recoRequestMessage || message,
+        typedRecoOwnershipKeepsV1Mainline,
+        forceUpstreamAfterPendingAbandon,
+        ingredientDrivenRecommendationRequested,
+        recoEntrySourceDetail,
+        latestRecoContextFromSession,
+        profile,
+        recentLogs,
+        includeAlternatives,
+        actionId,
+        shouldAutoRerunRecommendationsFromProfilePatch,
+        debugUpstream,
       });
-      const hardPathBeautyRecoOwnership =
-        RECO_CATALOG_GROUNDED_ENABLED
-        && !forceUpstreamAfterPendingAbandon
-        && !ingredientDrivenRecommendationRequested
-        && recoEntrySourceDetail !== 'travel_handoff'
-        && (
-          typedRecoOwnershipKeepsV1Mainline
-          || Boolean(
-            hardPathRecoTargetContext
-            && hardPathRecoTargetContext.step_aware_intent
-            && hardPathRecoTargetContext.resolved_target_step
-          )
-          || (
-            hardPathRecoTargetContext
-            && Array.isArray(hardPathRecoTargetContext.framework_roles)
-            && hardPathRecoTargetContext.framework_roles.length > 0
-          )
-          || looksLikeRecommendationRequest(message)
-        );
-
-      if (hardPathBeautyRecoOwnership) {
-        let hardPathHandoff = null;
-        let hardPathHandoffErr = null;
-        try {
-          hardPathHandoff = await handoffRecoToBeautyMainlineSearch({
-            ctx,
-            logger,
-            primaryQuery: pickFirstTrimmed(recoRequestMessage, message),
-            fallbackMessage: message,
-            targetContext: hardPathRecoTargetContext,
-            fallbackFocus: hardPathRecoFocusForMainline,
-            profileSummary: summarizeProfileForContext(profile),
-            debug: debugUpstream,
-            timeoutMs: RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
-            minTimeoutMs: RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
-          });
-        } catch (err) {
-          hardPathHandoffErr = err;
-          logger?.warn(
-            {
-              request_id: ctx.request_id,
-              trace_id: ctx.trace_id,
-              err: err && err.message ? err.message : String(err),
-            },
-            'aurora bff: beauty mainline handoff failed during outer hard path',
-          );
-        }
-        const hardPathRecommendations = Array.isArray(hardPathHandoff?.recommendations)
-          ? hardPathHandoff.recommendations
-          : [];
-        if (hardPathRecommendations.length > 0) {
-          const hardPathSelectionContract = extractRecoFinalSelectionContract(hardPathHandoff.searchResult);
-          const hardPathSelectionOwner = pickFirstTrimmed(
-            hardPathHandoff?.searchResult?.decision_owner,
-            hardPathSelectionContract?.selection_owner,
-            BEAUTY_DISCOVERY_MAINLINE_OWNER,
-          ) || BEAUTY_DISCOVERY_MAINLINE_OWNER;
-          const hardPathRecoContext = mergeIngredientRecoContextValue(latestRecoContextFromSession, {
-            target_step: pickFirstTrimmed(hardPathRecoTargetContext?.resolved_target_step),
-            step: pickFirstTrimmed(hardPathRecoTargetContext?.resolved_target_step),
-            resolved_target_step: pickFirstTrimmed(hardPathRecoTargetContext?.resolved_target_step),
-            resolved_target_step_confidence: pickFirstTrimmed(hardPathRecoTargetContext?.resolved_target_step_confidence),
-            resolved_target_step_source: pickFirstTrimmed(hardPathRecoTargetContext?.resolved_target_step_source),
-            query: pickFirstTrimmed(
-              latestRecoContextFromSession && latestRecoContextFromSession.ingredient_query,
-              latestRecoContextFromSession && latestRecoContextFromSession.query,
-            ),
-            goal: pickFirstTrimmed(latestRecoContextFromSession && latestRecoContextFromSession.goal),
-            updated_at_ms: Date.now(),
-          });
-          const hardPathPayloadBundle = buildRecoPayloadFromBeautyMainlineHandoff({
-            handoff: hardPathHandoff,
-            profile,
-            targetContext: hardPathRecoTargetContext,
-            recoContext: hardPathRecoContext,
-            taskMode: 'goal_based_products',
-            triggerSource: recoEntrySourceDetail,
-            sourceMode:
-              String(hardPathRecoTargetContext?.intent_mode || '').trim().toLowerCase() === 'generic_concern'
-                ? 'framework_mainline'
-                : 'step_aware_mainline',
-            basePayload: {
-              recommendation_confidence_score: 0.61,
-              recommendation_confidence_level: 'medium',
-              recommendation_meta: {
-                recompute_from_profile_update: shouldAutoRerunRecommendationsFromProfilePatch === true,
-                used_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
-                used_safety_flags: false,
-              },
-            },
-            selectionOwner: hardPathSelectionOwner,
-            entryType: 'chat',
-          });
-          if (isPlainObject(hardPathPayloadBundle?.payload) && isPlainObject(hardPathPayloadBundle?.contract)) {
-            const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S7_PRODUCT_RECO' : undefined;
-            const sessionPatch = nextState ? { next_state: nextState } : {};
-            appendLatestRecoContextToSessionPatch(sessionPatch, mergeIngredientRecoContextValue(hardPathRecoContext, {
-              intent: 'reco_products',
-              source_detail: recoEntrySourceDetail,
-              trigger_source: ctx.trigger_source,
-              action_id: actionId || '',
-              message: recoRequestMessage || message,
-              include_alternatives: includeAlternatives === true,
-              context_origin: 'beauty_mainline_handoff',
-              updated_at_ms: Date.now(),
-            }));
-            const assistantText =
-              buildRouteAwareAssistantText({
-                route: 'reco',
-                payload: hardPathPayloadBundle.payload,
-                language: ctx.lang,
-                profile,
-              })
-              || (
-                ctx.lang === 'CN'
-                  ? '我已经把这轮候选收成结构化推荐卡片。'
-                  : 'I summarized this pass into structured recommendation cards.'
-              );
-            const envelope = buildEnvelope(ctx, {
-              assistant_message: makeAssistantMessage(assistantText),
-              suggested_chips: [],
-              cards: [
-                {
-                  card_id: `reco_${ctx.request_id}`,
-                  type: 'recommendations',
-                  payload: hardPathPayloadBundle.payload,
-                },
-              ],
-              session_patch: sessionPatch,
-              events: applyRecoContractToRecoRequestedEvents(
-                [makeEvent(ctx, 'value_moment', { kind: 'product_reco' })],
-                hardPathPayloadBundle.contract,
-                {
-                  ctx,
-                  emitIfMissing: true,
-                  eventData: buildRecoRequestedEventData({
-                    explicit: true,
-                    payload: hardPathPayloadBundle.payload,
-                    source: String(
-                      hardPathPayloadBundle.payload?.source
-                      || hardPathPayloadBundle.payload?.recommendation_meta?.source_mode
-                      || 'catalog_grounded_v1',
-                    ),
-                    sourceDetail: normalizeRecoSourceDetail(recoEntrySourceDetail),
-                    recomputeFromProfileUpdate: shouldAutoRerunRecommendationsFromProfilePatch === true,
-                    lowConfidence: false,
-                    confidenceLevel: 'medium',
-                  }),
-                },
-              ).events,
-            });
-            return sendChatEnvelope(envelope);
-          }
-        }
-        const hardPathFallbackEnvelope = buildBeautyMainlineHandoffFallbackEnvelope({
-          ctx,
-          fallback: classifyBeautyMainlineHandoffFallback({
-            handoff: hardPathHandoff,
-            err: hardPathHandoffErr,
-          }),
-          suggestedChips: [],
-        });
-        return sendChatEnvelope(hardPathFallbackEnvelope);
+      if (beautyOwnedRecoResponse?.handled) {
+        return sendChatEnvelope(beautyOwnedRecoResponse.envelope);
       }
 
       // If user explicitly asks for product recommendations (via chip OR explicit free text), generate them deterministically
@@ -80952,14 +80663,13 @@ function mountAuroraBffRoutes(app, { logger }) {
         (!looksLikeIngredientScienceIntent(message, normalizedActionPayload) || ingredientRecoOptInRequested) &&
         !looksLikeRoutineRequest(message, normalizedActionPayload) &&
         !looksLikeSuitabilityRequest(message) &&
-        (recoInteractionAllowed || typedRecoOwnershipKeepsV1Mainline) &&
+        recoInteractionAllowed &&
         (
           actionId === 'chip.start.reco_products' ||
           actionId === 'chip_get_recos' ||
           budgetChipCanContinueReco ||
           profileClarificationAction ||
           ingredientDrivenRecommendationRequested ||
-          typedRecoOwnershipKeepsV1Mainline ||
           looksLikeRecommendationRequest(message) ||
           shouldAutoRerunRecommendationsFromProfilePatch
         );

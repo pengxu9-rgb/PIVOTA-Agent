@@ -134,6 +134,14 @@ const {
   isWithinPriceConstraint,
 } = require('./findProductsMulti/policy');
 const {
+  buildBeautySearchSourceBreakdown,
+} = require('./beautySearchSourceAuthority');
+const {
+  buildSearchContractBridgeMeta,
+  applyBeautySearchContractAuthority,
+  shouldUseBeautyMainlineContractAuthority,
+} = require('./beautySearchContractAuthority');
+const {
   extractHumanApparelCategories,
   extractIntentRuleBased,
 } = require('./findProductsMulti/intent');
@@ -4459,116 +4467,6 @@ function firstNonEmptyString(...values) {
     if (normalized) return normalized;
   }
   return '';
-}
-
-function extractSearchSelectionProductId(product) {
-  if (!product || typeof product !== 'object' || Array.isArray(product)) return '';
-  return firstNonEmptyString(
-    product.product_id,
-    product.productId,
-    product.id,
-    product.sku && (product.sku.product_id || product.sku.productId || product.sku.id),
-  );
-}
-
-function extractSearchSelectionTitle(product) {
-  if (!product || typeof product !== 'object' || Array.isArray(product)) return '';
-  const brand = firstNonEmptyString(
-    product.brand,
-    product.brand_name,
-    product.brandName,
-    product.sku && product.sku.brand,
-  );
-  const name = firstNonEmptyString(
-    product.display_name,
-    product.displayName,
-    product.name,
-    product.title,
-    product.sku && (product.sku.display_name || product.sku.displayName || product.sku.name || product.sku.title),
-  );
-  return [brand, name].filter(Boolean).join(' ').trim() || firstNonEmptyString(product.use_case);
-}
-
-function normalizeSearchSelectionStrings(values, max = 12) {
-  const out = [];
-  const seen = new Set();
-  for (const raw of Array.isArray(values) ? values : []) {
-    const normalized = String(raw || '').trim();
-    if (!normalized) continue;
-    const key = normalized.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(normalized);
-    if (out.length >= Math.max(1, Number(max) || 12)) break;
-  }
-  return out;
-}
-
-function buildSearchSelectionSignature({ selectedProductIds = [], selectedTitles = [] } = {}) {
-  const ids = normalizeSearchSelectionStrings(selectedProductIds, 16);
-  const titles = normalizeSearchSelectionStrings(selectedTitles, 16);
-  const parts = ids.length ? ids : titles;
-  if (!parts.length) return null;
-  return `search_sel_${createHash('sha1').update(parts.join('|')).digest('hex').slice(0, 16)}`;
-}
-
-function buildSearchFinalSelectionContract({
-  products = [],
-  decisionOwner = null,
-  finalDecision = null,
-  hasClarification = false,
-  lowConfidence = false,
-  sourceTierCounts = null,
-  topCandidateProvenance = null,
-  selectionReasonCodes = null,
-} = {}) {
-  const rows = Array.isArray(products) ? products.filter((item) => item && typeof item === 'object' && !Array.isArray(item)) : [];
-  const selectedProductIds = normalizeSearchSelectionStrings(
-    rows.map((item) => extractSearchSelectionProductId(item)),
-    12,
-  );
-  const selectedTitles = normalizeSearchSelectionStrings(
-    rows.map((item) => extractSearchSelectionTitle(item)),
-    12,
-  );
-  const warningReasons = [];
-  if (rows.length > 0 && hasClarification) warningReasons.push('clarify_preferred');
-  if (rows.length > 0 && lowConfidence) warningReasons.push('low_confidence');
-  const normalizedReasonCodes = Array.from(
-    new Set(
-      [
-        finalDecision,
-        ...(Array.isArray(selectionReasonCodes) ? selectionReasonCodes : []),
-        ...warningReasons,
-      ]
-        .map((item) => String(item || '').trim())
-        .filter(Boolean),
-    ),
-  );
-  return {
-    selection_owner: firstNonEmptyString(decisionOwner, BEAUTY_DISCOVERY_MAINLINE_OWNER) || BEAUTY_DISCOVERY_MAINLINE_OWNER,
-    selected_products_count: rows.length,
-    selected_product_ids: selectedProductIds,
-    selected_titles: selectedTitles,
-    selection_signature: buildSearchSelectionSignature({ selectedProductIds, selectedTitles }),
-    mainline_status: rows.length > 0
-      ? 'grounded_success'
-      : String(finalDecision || '').trim().toLowerCase() === 'clarify'
-        ? 'needs_more_context'
-        : 'empty_structured',
-    context_warning: warningReasons.length
-      ? { applied: true, reasons: warningReasons }
-      : null,
-    selection_reason_codes: normalizedReasonCodes,
-    source_tier_counts:
-      sourceTierCounts && typeof sourceTierCounts === 'object' && !Array.isArray(sourceTierCounts)
-        ? sourceTierCounts
-        : {},
-    top_candidate_provenance:
-      topCandidateProvenance && typeof topCandidateProvenance === 'object' && !Array.isArray(topCandidateProvenance)
-        ? topCandidateProvenance
-        : null,
-  };
 }
 
 function classifyBeautyMixBucket(product) {
@@ -22674,6 +22572,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       case 'find_products_multi': {
         // Cross-merchant search via Agent Search endpoint.
         const search = effectivePayload.search || effectivePayload || {};
+        const canonicalExpandedQuery = String(
+          findProductsExpansionMeta?.expanded_query || search.query || '',
+        ).trim();
         const strictSurfaceState = extractExplicitCommerceSurface(search, metadata);
         const page = Math.max(1, Number(search.page || 1) || 1);
         const limit = Math.min(Math.max(1, Number(search.limit || search.page_size || 20) || 20), SEARCH_LIMIT_MAX);
@@ -22710,7 +22611,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           ...(!merchantId && merchantIds.length === 0 && !shouldScopeToCreatorCatalog
             ? { search_all_merchants: true }
             : {}),
-          ...(search.query != null ? { query: String(search.query || '') } : {}),
+          ...(canonicalExpandedQuery ? { query: canonicalExpandedQuery } : {}),
           ...(search.category ? { category: search.category } : {}),
           ...(priceMin != null ? { min_price: priceMin } : {}),
           ...(priceMax != null ? { max_price: priceMax } : {}),
@@ -22896,8 +22797,20 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               : {};
           queryParams = {
             ...queryParams,
-            ...(String(rawUserQuery || directSearchRequest.query || '').trim()
-              ? { query: String(rawUserQuery || directSearchRequest.query || '').trim() }
+            ...(String(
+              findProductsExpansionMeta?.expanded_query ||
+                directSearchRequest.query ||
+                rawUserQuery ||
+                '',
+            ).trim()
+              ? {
+                  query: String(
+                    findProductsExpansionMeta?.expanded_query ||
+                      directSearchRequest.query ||
+                      rawUserQuery ||
+                      '',
+                  ).trim(),
+                }
               : {}),
             ...(directSearchCommerceSurface
               ? {
@@ -23906,16 +23819,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     };
 
     let response;
-    let searchContractBridgeMeta =
-      operation === 'find_products_multi' && strictCommerceFindProductsMulti
-        ? {
-            attempted_contract: 'shop_invoke_strict',
-            resolved_contract: strictBeautyDirectSearch
-              ? 'agent_v1_search_beauty_mainline'
-              : 'shop_invoke_strict',
-            legacy_fallback: false,
-          }
-        : null;
+    let searchContractBridgeMeta = buildSearchContractBridgeMeta({
+      operation,
+      strictCommerceFindProductsMulti,
+      strictBeautyDirectSearch,
+      semanticOwnerControlled,
+      explicitResolvedContract:
+        strictCommerceFindProductsMulti && !strictBeautyDirectSearch && !semanticOwnerControlled
+          ? 'shop_invoke_strict'
+          : (strictBeautyDirectSearch || semanticOwnerControlled)
+            ? 'agent_v1_search_beauty_mainline'
+            : '',
+    });
     if (
       !response &&
       operation === 'find_products_multi' &&
@@ -23970,11 +23885,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             status: 200,
             data: localIngredientDirectResponse,
           };
-          searchContractBridgeMeta = {
-            attempted_contract: 'shop_invoke_strict',
-            resolved_contract: 'shop_invoke_strict',
-            legacy_fallback: false,
-          };
+          searchContractBridgeMeta = buildSearchContractBridgeMeta({
+            operation,
+            strictCommerceFindProductsMulti,
+            strictBeautyDirectSearch,
+            semanticOwnerControlled,
+            explicitResolvedContract: 'shop_invoke_strict',
+          });
         }
       } catch (localIngredientDirectErr) {
         logger.warn(
@@ -24200,24 +24117,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         try {
           response = await callTrackedUpstream(operation, axiosConfig);
           if (operation === 'find_products' || operation === 'find_products_multi') {
-            searchContractBridgeMeta =
-              operation === 'find_products_multi' && strictCommerceFindProductsMulti
-                ? {
-                    attempted_contract: 'shop_invoke_strict',
-                    resolved_contract: 'shop_invoke_strict',
-                    legacy_fallback: false,
-                  }
-                : strictBeautyDirectSearch
-                ? {
-                    attempted_contract: 'agent_v1_search_beauty_mainline',
-                    resolved_contract: 'agent_v1_search_beauty_mainline',
-                    legacy_fallback: false,
-                  }
-                : {
-                    attempted_contract: 'agent_v2',
-                    resolved_contract: 'agent_v2',
-                    legacy_fallback: false,
-                  };
+            searchContractBridgeMeta = buildSearchContractBridgeMeta({
+              operation,
+              strictCommerceFindProductsMulti,
+              strictBeautyDirectSearch,
+              semanticOwnerControlled,
+              explicitResolvedContract:
+                strictCommerceFindProductsMulti && !strictBeautyDirectSearch && !semanticOwnerControlled
+                  ? 'shop_invoke_strict'
+                  : (strictBeautyDirectSearch || semanticOwnerControlled)
+                    ? 'agent_v1_search_beauty_mainline'
+                    : '',
+            });
           }
         } catch (primaryErr) {
           throw primaryErr;
@@ -27090,6 +27001,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         .toLowerCase();
       const beautyDecisionOwner = String(existingMeta?.decision_owner || '').trim().toLowerCase();
       const beautySemanticOwner = String(existingMeta?.semantic_owner || '').trim().toLowerCase();
+      const beautyMainlineAuthorityActive = shouldUseBeautyMainlineContractAuthority({
+        operation,
+        strictBeautyDirectSearch,
+        semanticOwnerControlled,
+        beautyDecisionOwner,
+        beautySemanticOwner,
+      });
       const observationOnlyBeautySkincareHitQualityGate =
         semanticOwnerControlled ||
         beautyDecisionOwner === 'shopping_agent_beauty_mainline' ||
@@ -27468,6 +27386,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         ? 'invalid_hit'
         : isStrictEmpty
         ? 'strict_empty'
+        : hasClarification && beautyMainlineAuthorityActive && products.length > 0
+          ? 'products_returned_with_clarification'
         : hasClarification && (!FPM_CLARIFY_NEVER_EMPTY || products.length === 0)
           ? 'clarify'
           : searchDecision?.final_decision
@@ -27554,56 +27474,23 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   ? secondarySupplementMeta?.reason || null
                   : null,
               finalDecision,
-              decisionOwner: semanticOwnerDecision || querySource,
+              decisionOwner:
+                beautyMainlineAuthorityActive
+                  ? BEAUTY_DISCOVERY_MAINLINE_OWNER
+                  : (semanticOwnerDecision || querySource),
             })
           : null;
-      const mergedSourceBreakdown = {
-        ...(
+      const mergedSourceBreakdown = buildBeautySearchSourceBreakdown({
+        existingSourceBreakdown:
           existingMeta?.source_breakdown &&
           typeof existingMeta.source_breakdown === 'object' &&
           !Array.isArray(existingMeta.source_breakdown)
             ? existingMeta.source_breakdown
-            : {}
-        ),
-        internal_count: Math.max(0, Number(sourceObservability.internal_live || 0) || 0),
-        external_seed_count: Math.max(0, Number(sourceObservability.external_supplement || 0) || 0),
-        stable_prior_count: Math.max(0, Number(sourceObservability.stable_prior || 0) || 0),
-        stale_cache_used: Number(sourceObservability.source_tier_counts?.cache_stale || 0) > 0,
-        source_channel_counts:
-          sourceObservability.source_channel_counts &&
-          typeof sourceObservability.source_channel_counts === 'object'
-            ? sourceObservability.source_channel_counts
             : {},
-        source_tier_counts:
-          sourceObservability.source_tier_counts &&
-          typeof sourceObservability.source_tier_counts === 'object'
-            ? sourceObservability.source_tier_counts
-            : {},
-        source_quality_counts:
-          sourceObservability.source_quality_counts &&
-          typeof sourceObservability.source_quality_counts === 'object'
-            ? sourceObservability.source_quality_counts
-            : {},
-        cache_owner_paths: Array.isArray(sourceObservability.cache_owner_paths)
-          ? sourceObservability.cache_owner_paths
-          : [],
-        top_candidate_provenance:
-          sourceObservability.top_candidate_provenance &&
-          typeof sourceObservability.top_candidate_provenance === 'object'
-            ? sourceObservability.top_candidate_provenance
-            : null,
-        ...(semanticOwnerCacheSourceIsolated
-          ? { strategy_applied: 'semantic_owner_cache_source_isolated' }
-          : semanticOwnerLastResortCacheApplied
-          ? { strategy_applied: 'semantic_owner_last_resort_cache' }
-          : {}),
-      };
-      const normalizedExistingContractBridge =
-        existingMeta?.contract_bridge &&
-        typeof existingMeta.contract_bridge === 'object' &&
-        !Array.isArray(existingMeta.contract_bridge)
-          ? existingMeta.contract_bridge
-          : {};
+        sourceObservability,
+        semanticOwnerCacheSourceIsolated,
+        semanticOwnerLastResortCacheApplied,
+      });
       const existingMetaForGates =
         existingMeta && typeof existingMeta === 'object' && !Array.isArray(existingMeta)
           ? existingMeta
@@ -27624,93 +27511,48 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         Boolean(existingMetaForGates.low_confidence) ||
         Boolean(searchDecision?.low_confidence) ||
         normalizedLowConfidenceReasons.length > 0;
-      const shouldStampBeautyMainlineContract =
-        operation === 'find_products_multi' &&
-        (
-          strictBeautyDirectSearch ||
-          semanticOwnerControlled ||
-          beautyDecisionOwner === 'shopping_agent_beauty_mainline' ||
-          beautySemanticOwner === 'shopping_agent_beauty_mainline'
-        );
-      const resolvedContractForMetadata =
-        shouldStampBeautyMainlineContract
-          ? 'agent_v1_search_beauty_mainline'
-          : (String(normalizedExistingContractBridge.resolved_contract || '').trim() || '');
-      const attemptedContractForMetadata =
-        shouldStampBeautyMainlineContract
-          ? 'agent_v1_search_beauty_mainline'
-          : (
-            String(normalizedExistingContractBridge.attempted_contract || '').trim() ||
-            (resolvedContractForMetadata ? resolvedContractForMetadata : '')
+      const beautyContractAuthority = applyBeautySearchContractAuthority({
+        enriched,
+        existingMeta,
+        operation,
+        strictBeautyDirectSearch,
+        semanticOwnerControlled,
+        beautyDecisionOwner,
+        beautySemanticOwner,
+        products,
+        finalDecision,
+        hasClarification,
+        lowConfidenceFlag,
+        mergedSourceBreakdown,
+        querySource,
+        searchStageLedger,
+        defaultSelectionOwner: BEAUTY_DISCOVERY_MAINLINE_OWNER,
+      });
+      const finalSelection = beautyContractAuthority.finalSelection;
+      enriched = beautyContractAuthority.enriched;
+      if (
+        finalSelection &&
+        Number(finalSelection.selected_products_count || 0) > 0 &&
+        enriched &&
+        typeof enriched === 'object' &&
+        !Array.isArray(enriched)
+      ) {
+        if (Array.isArray(enriched.reason_codes)) {
+          enriched.reason_codes = enriched.reason_codes.filter(
+            (code) => String(code || '').trim().toUpperCase() !== 'FILTERED_TO_EMPTY',
           );
-      const finalSelection =
-        shouldStampBeautyMainlineContract
-          ? buildSearchFinalSelectionContract({
-              products,
-              decisionOwner: BEAUTY_DISCOVERY_MAINLINE_OWNER,
-              finalDecision,
-              hasClarification,
-              lowConfidence: lowConfidenceFlag,
-              sourceTierCounts: mergedSourceBreakdown.source_tier_counts,
-              topCandidateProvenance: mergedSourceBreakdown.top_candidate_provenance,
-              selectionReasonCodes: [
-                mergedSourceBreakdown.strategy_applied,
-                querySource,
-              ],
-            })
-          : null;
-      if (searchStageLedger && typeof searchStageLedger === 'object' && !Array.isArray(searchStageLedger) && finalSelection) {
-        searchStageLedger.final_selection = finalSelection;
+        }
+        if (
+          enriched.metadata &&
+          typeof enriched.metadata === 'object' &&
+          !Array.isArray(enriched.metadata) &&
+          Array.isArray(enriched.metadata.reason_codes)
+        ) {
+          enriched.metadata.reason_codes = enriched.metadata.reason_codes.filter(
+            (code) => String(code || '').trim().toUpperCase() !== 'FILTERED_TO_EMPTY',
+          );
+        }
       }
-      enriched = {
-        ...enriched,
-        metadata: {
-          ...(existingMeta && typeof existingMeta === 'object' && !Array.isArray(existingMeta) ? existingMeta : {}),
-            ...(resolvedContractForMetadata
-              ? {
-                  contract_bridge: {
-                  ...normalizedExistingContractBridge,
-                  attempted_contract: attemptedContractForMetadata,
-                  resolved_contract: resolvedContractForMetadata,
-                  legacy_fallback:
-                    normalizedExistingContractBridge.legacy_fallback === true ? true : false,
-                },
-              }
-            : {}),
-          ...(finalSelection
-            ? {
-                mainline_status: finalSelection.mainline_status,
-                final_selection: finalSelection,
-                selection_signature: finalSelection.selection_signature,
-                selected_product_ids: finalSelection.selected_product_ids,
-                selected_titles: finalSelection.selected_titles,
-                ...(finalSelection.context_warning
-                  ? { context_warning: finalSelection.context_warning }
-                  : {}),
-              }
-            : {}),
-          source_breakdown: mergedSourceBreakdown,
-          search_decision: {
-            ...(
-              existingMeta?.search_decision &&
-              typeof existingMeta.search_decision === 'object' &&
-              !Array.isArray(existingMeta.search_decision)
-                ? existingMeta.search_decision
-                : {}
-            ),
-            source_tier_counts: mergedSourceBreakdown.source_tier_counts,
-            source_quality_counts: mergedSourceBreakdown.source_quality_counts,
-            cache_owner_paths: mergedSourceBreakdown.cache_owner_paths,
-            top_candidate_provenance: mergedSourceBreakdown.top_candidate_provenance,
-            ...(finalSelection
-              ? {
-                  mainline_status: finalSelection.mainline_status,
-                  final_selection: finalSelection,
-                }
-              : {}),
-          },
-        },
-      };
       existingMeta = enriched?.metadata && typeof enriched.metadata === 'object' ? enriched.metadata : existingMeta;
 
       enriched = withSearchDiagnostics(enriched, {

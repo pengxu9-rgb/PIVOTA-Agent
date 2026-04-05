@@ -87,6 +87,32 @@ const STRICT_FIND_PRODUCTS_MULTI_VISIBLE_ATTRIBUTE_TERMS = Object.freeze([
   'brightening',
 ]);
 
+function isBeautyMainlineSemanticContract(contract) {
+  if (!contract || typeof contract !== 'object' || Array.isArray(contract)) return false;
+  const version = String(contract.version || '').trim().toLowerCase();
+  const owner = String(contract.owner || '').trim().toLowerCase();
+  const sourceSurface = String(contract.source_surface || contract.sourceSurface || '')
+    .trim()
+    .toLowerCase();
+  const targetStepFamily = String(contract.target_step_family || contract.targetStepFamily || '')
+    .trim()
+    .toLowerCase();
+  const requestClass = String(contract.request_class || contract.requestClass || '')
+    .trim()
+    .toLowerCase();
+  return (
+    version === 'beauty_semantic_contract_v1' ||
+    owner === 'shopping_agent_beauty_contract_builder' ||
+    sourceSurface === 'shopping_agent_public_beauty' ||
+    (
+      ['sunscreen', 'treatment', 'serum', 'moisturizer', 'cleanser', 'toner'].includes(
+        targetStepFamily,
+      ) &&
+      requestClass !== 'exact_lookup'
+    )
+  );
+}
+
 const STRICT_FIND_PRODUCTS_MULTI_SKINCARE_CATEGORY_TERMS = Object.freeze([
   'serum',
   'moisturizer',
@@ -757,6 +783,9 @@ function createStrictFindProductsMultiRuntime(deps = {}) {
             }),
           }
         : payload;
+    const preserveBeautyMainlineQuery =
+      isBeautyMainlineSemanticContract(search?.semantic_contract || search?.semanticContract) &&
+      String(search?.query || '').trim().length > 0;
     const normalizedSearch = {
       ...(search && typeof search === 'object' ? search : {}),
       ...(requestedCatalogSurface
@@ -769,7 +798,9 @@ function createStrictFindProductsMultiRuntime(deps = {}) {
       allow_stale_cache: false,
       external_seed_strategy: 'unified_relevance',
       ...(
-        resolvedStrictInvokeDecision?.strictConstraintQuery && String(rawQueryText || '').trim()
+        resolvedStrictInvokeDecision?.strictConstraintQuery &&
+        !preserveBeautyMainlineQuery &&
+        String(rawQueryText || '').trim()
           ? { query: String(rawQueryText || '').trim() }
           : {}
       ),
