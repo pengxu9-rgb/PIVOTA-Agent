@@ -1403,6 +1403,70 @@ describe('discovery feed service', () => {
     expect(response.products.map((product) => product.product_id)).toEqual(['serum_1', 'serum_2', 'toner_1']);
   });
 
+  test('cold start home recalls specific skincare queries before generic beauty umbrella queries', async () => {
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+    process.env.PIVOTA_API_KEY = 'test-key';
+
+    const capturedQueries = [];
+    nock('http://catalog.test')
+      .get('/agent/v1/products/search')
+      .query((params) => {
+        capturedQueries.push(String(params.query || '').trim());
+        return true;
+      })
+      .times(2)
+      .reply(200, () => ({
+        products: [
+          makeProduct({
+            merchant_id: 'm1',
+            product_id: `serum_${capturedQueries.length}_1`,
+            title: 'Niacinamide Recovery Serum',
+            brand: 'Alpha',
+            category: 'Skincare',
+            product_type: 'Serum',
+          }),
+          makeProduct({
+            merchant_id: 'm2',
+            product_id: `serum_${capturedQueries.length}_2`,
+            title: 'Vitamin C Brightening Serum',
+            brand: 'Beta',
+            category: 'Skincare',
+            product_type: 'Serum',
+          }),
+          makeProduct({
+            merchant_id: 'm3',
+            product_id: `cream_${capturedQueries.length}_1`,
+            title: 'Barrier Repair Cream',
+            brand: 'Gamma',
+            category: 'Skincare',
+            product_type: 'Cream',
+          }),
+        ],
+      }));
+
+    const response = await getDiscoveryFeed({
+      surface: 'home_hot_deals',
+      limit: 4,
+      debug: true,
+      context: {
+        auth_state: 'anonymous',
+        locale: 'en-US',
+        recent_views: [],
+        recent_queries: [],
+      },
+    });
+
+    expect(capturedQueries).toHaveLength(2);
+    expect(capturedQueries.some((queryText) => /beauty skincare serum/i.test(queryText))).toBe(false);
+    expect(capturedQueries).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/niacinamide serum/i),
+        expect.stringMatching(/vitamin c serum|barrier moisturizer|gentle cleanser sunscreen/i),
+      ]),
+    );
+    expect(response.products).toHaveLength(3);
+  });
+
   test('home_hot_deals still runs browse fill when a large interest pool is mostly filtered out', async () => {
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
     process.env.PIVOTA_API_KEY = 'test-key';
@@ -2072,6 +2136,113 @@ describe('discovery feed service', () => {
     expect(response.metadata.rank_debug.recall_summary).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ provider: 'external_seeds', skipped: true, skip_reason: 'sufficient_primary_candidates' }),
+      ]),
+    );
+  });
+
+  test('generic discovery still loads external seeds when primary pools are numerically sufficient but tool-heavy', async () => {
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://wrong-backend.test';
+    delete process.env.PIVOTA_API_BASE;
+    delete process.env.PIVOTA_API_KEY;
+    process.env.PIVOTA_BACKEND_AGENT_API_KEY = 'bridge-key';
+
+    const products = Array.from({ length: 24 }, (_, idx) =>
+      makeProduct({
+        merchant_id: `m${idx + 1}`,
+        product_id: `tool_${idx + 1}`,
+        title: `Precision Makeup Brush ${idx + 1}`,
+        brand: `BrushLab ${idx + 1}`,
+        category: 'Beauty Tools',
+        product_type: 'Brush',
+      }),
+    );
+    const externalSpy = jest.fn(async () => [
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'external_1',
+        title: 'External Rescue Serum',
+        brand: 'Seeded',
+        category: 'Skincare',
+        product_type: 'Serum',
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'external_2',
+        title: 'External Barrier Cream',
+        brand: 'Seeded',
+        category: 'Skincare',
+        product_type: 'Cream',
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'external_3',
+        title: 'External Recovery Toner',
+        brand: 'Seeded',
+        category: 'Skincare',
+        product_type: 'Toner',
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'external_4',
+        title: 'External Vitamin C Serum',
+        brand: 'Seeded',
+        category: 'Skincare',
+        product_type: 'Serum',
+      }),
+    ]);
+
+    nock('http://discovery-catalog.test')
+      .matchHeader('x-agent-api-key', 'bridge-key')
+      .matchHeader('x-api-key', 'bridge-key')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .times(2)
+      .reply(200, { products });
+
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'home_hot_deals',
+        limit: 4,
+        debug: true,
+        context: {
+          auth_state: 'authenticated',
+          locale: 'en-US',
+          recent_views: [
+            {
+              merchant_id: 'm0',
+              product_id: 'view_1',
+              title: 'Niacinamide Repair Serum',
+              brand: 'Viewed',
+              category: 'Skincare',
+              product_type: 'Serum',
+              viewed_at: '2026-04-05T10:00:00Z',
+            },
+          ],
+          recent_queries: ['niacinamide serum'],
+        },
+      },
+      {
+        providerOverrides: {
+          internal_catalog: async () => [],
+          external_seeds: externalSpy,
+        },
+      },
+    );
+
+    expect(externalSpy).toHaveBeenCalled();
+    expect(response.products.map((product) => product.product_id)).toEqual(
+      expect.arrayContaining(['external_1', 'external_4']),
+    );
+    expect(response.metadata.provider_breakdown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ provider: 'products_search', successful: true }),
+        expect.objectContaining({ provider: 'external_seeds', successful: true, returned: 4 }),
+      ]),
+    );
+    expect(response.metadata.rank_debug.recall_summary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ provider: 'external_seeds', label: 'external_seed_pool', status: 200 }),
       ]),
     );
   });

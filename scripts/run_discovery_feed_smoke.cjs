@@ -99,8 +99,27 @@ function validateDiscoveryResponse(response, expectations = {}) {
   ensure(response && typeof response === 'object', 'response must be an object');
   const products = Array.isArray(response.products) ? response.products : [];
   const metadata = response.metadata && typeof response.metadata === 'object' ? response.metadata : {};
-
-  ensure(products.length >= (expectations.minProducts || 1), 'response returned no products');
+  const minimumProducts = expectations.minProducts || 1;
+  ensure(
+    products.length >= minimumProducts,
+    `response returned insufficient products: ${JSON.stringify({
+      returned: products.length,
+      required: minimumProducts,
+      titles: summarizeProducts(products),
+      strategy: metadata.discovery_strategy || null,
+      candidate_source: metadata.candidate_source || null,
+      candidate_counts: metadata.candidate_counts || {},
+      filter_counts: metadata.filter_counts || {},
+      provider_breakdown: Array.isArray(metadata.provider_breakdown)
+        ? metadata.provider_breakdown.map((entry) => ({
+            provider: entry?.provider || null,
+            successful: entry?.successful === true,
+            returned: Number(entry?.returned || 0),
+            skipped: entry?.skipped === true,
+          }))
+        : [],
+    })}`,
+  );
   ensure(
     String(metadata.candidate_source || '') === String(expectations.candidateSource || EXPECTED_CANDIDATE_SOURCE),
     `unexpected candidate_source: ${metadata.candidate_source || 'missing'}`,
