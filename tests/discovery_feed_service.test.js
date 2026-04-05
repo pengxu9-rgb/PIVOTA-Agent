@@ -130,6 +130,38 @@ describe('discovery feed service', () => {
     expect(profile.queryTokens.has('repair')).toBe(true);
   });
 
+  test('beauty personalized query builder uses anchor descriptors instead of generic beauty umbrella queries', () => {
+    const request = _internals.normalizeDiscoveryRequest({
+      surface: 'home_hot_deals',
+      context: {
+        auth_state: 'authenticated',
+        locale: 'en-US',
+        recent_views: [
+          {
+            merchant_id: 'm1',
+            product_id: 'view_1',
+            title: 'Winona Soothing Repair Serum',
+            brand: 'Winona',
+            category: 'Skincare',
+            product_type: 'Serum',
+            viewed_at: '2026-04-05T10:00:00Z',
+          },
+        ],
+        recent_queries: ['Serum'],
+      },
+    });
+    const profile = buildDiscoveryProfile(request.context);
+
+    const beautyQueries = _internals.buildBeautyPersonalizedQueries(request, profile);
+
+    expect(beautyQueries.primary).toContain('serum');
+    expect(beautyQueries.primary).toMatch(/repair|soothing|winona/i);
+    expect(beautyQueries.providerQueries).not.toContain('beauty skincare');
+    expect(_internals.buildDiscoveryInterestQuery(request, profile)).toBe(beautyQueries.primary);
+    expect(_internals.buildDiscoveryExpansionQuery(request, profile)).toBe(beautyQueries.expansion);
+    expect(_internals.buildDiscoverySeededBrowseQuery(request, profile)).toBe(beautyQueries.browse);
+  });
+
   test('database discovery terms drop generic-only cold-start umbrella phrases when specific variants exist', () => {
     const terms = _internals.buildDiscoveryDatabaseSearchTerms([
       'beauty skincare serum',
@@ -1276,6 +1308,101 @@ describe('discovery feed service', () => {
     );
   });
 
+  test('home_hot_deals generic serum history recalls descriptor-led skincare queries instead of beauty umbrella queries', async () => {
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+    process.env.PIVOTA_API_KEY = 'test-key';
+
+    const capturedQueries = [];
+    nock('http://catalog.test')
+      .get('/agent/v1/products/search')
+      .query((params) => {
+        capturedQueries.push(String(params.query || '').trim());
+        return true;
+      })
+      .times(2)
+      .reply(200, () => {
+        const currentQuery = capturedQueries[capturedQueries.length - 1] || '';
+        if (/beauty skincare/i.test(currentQuery)) {
+          return {
+            products: [
+              makeProduct({
+                merchant_id: 'm_tool_1',
+                product_id: 'tool_1',
+                title: 'Small Eyeshadow Brush',
+                brand: 'BrushLab',
+                category: 'Beauty Tools',
+                product_type: 'Brush',
+              }),
+              makeProduct({
+                merchant_id: 'm_tool_2',
+                product_id: 'tool_2',
+                title: 'Small Foundation Brush',
+                brand: 'BrushLab',
+                category: 'Beauty Tools',
+                product_type: 'Brush',
+              }),
+            ],
+          };
+        }
+
+        return {
+          products: [
+            makeProduct({
+              merchant_id: 'm1',
+              product_id: 'serum_1',
+              title: 'Calming Repair Serum',
+              brand: 'Alpha',
+              category: 'Skincare',
+              product_type: 'Serum',
+            }),
+            makeProduct({
+              merchant_id: 'm2',
+              product_id: 'serum_2',
+              title: 'Barrier Repair Serum',
+              brand: 'Beta',
+              category: 'Skincare',
+              product_type: 'Serum',
+            }),
+            makeProduct({
+              merchant_id: 'm3',
+              product_id: 'toner_1',
+              title: 'Hydrating Recovery Toner',
+              brand: 'Gamma',
+              category: 'Skincare',
+              product_type: 'Toner',
+            }),
+          ],
+        };
+      });
+
+    const response = await getDiscoveryFeed({
+      surface: 'home_hot_deals',
+      limit: 3,
+      debug: true,
+      context: {
+        auth_state: 'authenticated',
+        locale: 'en-US',
+        recent_views: [
+          {
+            merchant_id: 'm0',
+            product_id: 'seed_1',
+            title: 'Winona Soothing Repair Serum',
+            brand: 'Winona',
+            category: 'Skincare',
+            product_type: 'Serum',
+            viewed_at: '2026-04-05T10:00:00Z',
+          },
+        ],
+        recent_queries: ['Serum'],
+      },
+    });
+
+    expect(capturedQueries).toHaveLength(2);
+    expect(capturedQueries.some((queryText) => /beauty skincare/i.test(queryText))).toBe(false);
+    expect(capturedQueries.some((queryText) => /repair serum|winona serum|niacinamide serum|vitamin c serum/i.test(queryText))).toBe(true);
+    expect(response.products.map((product) => product.product_id)).toEqual(['serum_1', 'serum_2', 'toner_1']);
+  });
+
   test('home_hot_deals still runs browse fill when a large interest pool is mostly filtered out', async () => {
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
     process.env.PIVOTA_API_KEY = 'test-key';
@@ -1434,8 +1561,9 @@ describe('discovery feed service', () => {
     });
 
     expect(capturedParams).toHaveLength(2);
-    expect(String(capturedParams[0]?.query || '').toLowerCase()).toContain('alpha');
-    expect(String(capturedParams[1]?.query || '').toLowerCase()).toContain('skincare');
+    expect(String(capturedParams[0]?.query || '').toLowerCase()).toContain('repair');
+    expect(String(capturedParams[0]?.query || '').toLowerCase()).toContain('serum');
+    expect(String(capturedParams[1]?.query || '').toLowerCase()).not.toContain('beauty skincare');
   });
 
   test('dominant beauty discovery filters pet and sleepwear candidates from top results', async () => {
