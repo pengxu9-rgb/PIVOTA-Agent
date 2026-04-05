@@ -144,7 +144,7 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     });
 
     expect(payload.product.image_url).toBe(
-      'https://cdn.shopify.com/s/files/1/2139/2967/files/Tinted_Blush_1200.png',
+      'https://cdn.shopify.com/s/files/1/2139/2967/files/Tinted_Blush_1200_f93c0d07-3570-4717-a2ec-d2af4ab28d1b.png',
     );
     expect(payload.modules.find((module) => module.type === 'active_ingredients')).toBeFalsy();
     expect(
@@ -162,7 +162,7 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
       'Repeat as needed.',
     ]);
     expect(payload.modules.find((module) => module.type === 'recommendations')?.data?.items[0]?.image_url).toBe(
-      'https://cdn.shopify.com/s/files/1/2139/2967/files/Related_Blush_1200.png',
+      'https://cdn.shopify.com/s/files/1/2139/2967/files/Related_Blush_1200_4ee4c5e8-a218-4e0a-8af8-2db3c98f0c79.png',
     );
   });
 
@@ -539,9 +539,9 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(ingredientsItems).not.toContain('Key Ingredients');
     expect(ingredientsItems.filter((item) => /^Iron Oxides\b/i.test(item))).toHaveLength(1);
     expect(mediaUrls).toEqual([
-      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tfb_sku_TC7Y09_2000x2000_0.png',
-      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tfb_sku_TC7Y09_2000x2000_1.jpg',
-      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tfb_sku_TC7Y01_2000x2000_0.png',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tfb_sku_TC7Y09_2000x2000_0_74c2dfd9-3f5f-4832-af13-85e0ec7891c9.png',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tfb_sku_TC7Y09_2000x2000_1_dfe99888-59ba-49f2-b8ca-dc58168cbaae.jpg',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tfb_sku_TC7Y01_2000x2000_0_61efefcf-0a72-4b47-9615-c812efa685db.png',
     ]);
   });
 });

@@ -40,7 +40,10 @@ function isShopifyLikeAsset(parsed) {
 
 function rewriteTomFordAssetToOfficialShopify(parsed) {
   const next = new URL(parsed.toString());
-  const filename = normalizeShopifyLikeFilename(String(next.pathname.split('/').pop() || '').trim());
+  const filename = normalizeShopifyLikeFilename(
+    String(next.pathname.split('/').pop() || '').trim(),
+    { stripHash: false },
+  );
   if (!filename) return next;
 
   if (/^tfb?_sku_/i.test(filename)) {
@@ -50,7 +53,8 @@ function rewriteTomFordAssetToOfficialShopify(parsed) {
   return next;
 }
 
-function normalizeShopifyLikeFilename(filename) {
+function normalizeShopifyLikeFilename(filename, options = {}) {
+  const stripHash = options.stripHash === true;
   const trimmed = String(filename || '').trim();
   if (!trimmed) return trimmed;
   let decoded = trimmed;
@@ -61,6 +65,9 @@ function normalizeShopifyLikeFilename(filename) {
   }
   const compacted = decoded.replace(/\s*_\s*/g, '_').trim();
   const aliased = KNOWN_SDCND_FILENAME_ALIASES[compacted.toLowerCase()] || compacted;
+  if (!stripHash) {
+    return aliased;
+  }
   const matched = aliased.match(SHOPIFY_FILE_HASH_SUFFIX_RE);
   if (matched) {
     return `${matched[1]}.${matched[2]}`;
@@ -78,7 +85,9 @@ function normalizePdpImageUrl(value) {
       parsed.searchParams.delete('v');
       const segments = parsed.pathname.split('/');
       const lastIndex = segments.length - 1;
-      segments[lastIndex] = normalizeShopifyLikeFilename(segments[lastIndex] || '');
+      segments[lastIndex] = normalizeShopifyLikeFilename(segments[lastIndex] || '', {
+        stripHash: false,
+      });
       parsed.pathname = segments.join('/');
     }
     parsed = rewriteTomFordAssetToOfficialShopify(parsed);
@@ -112,7 +121,9 @@ function buildPdpImageDedupeKey(value) {
   try {
     const parsed = new URL(normalized);
     if (isShopifyLikeAsset(parsed)) {
-      const filename = normalizeShopifyLikeFilename(parsed.pathname.split('/').pop() || '');
+      const filename = normalizeShopifyLikeFilename(parsed.pathname.split('/').pop() || '', {
+        stripHash: true,
+      });
       if (filename) {
         return `asset:${filename.toLowerCase()}`;
       }
