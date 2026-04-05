@@ -24,13 +24,25 @@ function normalizeEndpoint(raw) {
   return value.startsWith('/') ? value : `/${value}`;
 }
 
-function buildAuthHeaders(apiKey) {
-  const normalized = String(apiKey || '').trim();
-  if (!normalized) return {};
-  return {
-    'X-Agent-API-Key': normalized,
-    Authorization: `Bearer ${normalized}`,
-  };
+function buildAuthHeaders(authInput, authTokenInput = '') {
+  let apiKey = '';
+  let authToken = '';
+  if (authInput && typeof authInput === 'object' && !Array.isArray(authInput)) {
+    apiKey = String(authInput.apiKey || '').trim();
+    authToken = String(authInput.authToken || '').trim();
+  } else {
+    apiKey = String(authInput || '').trim();
+    authToken = String(authTokenInput || apiKey || '').trim();
+  }
+
+  const headers = {};
+  if (apiKey) {
+    headers['X-Agent-API-Key'] = apiKey;
+  }
+  if (authToken) {
+    headers.Authorization = `Bearer ${authToken}`;
+  }
+  return headers;
 }
 
 function deriveRecentQuery(seedProduct) {
@@ -192,7 +204,7 @@ function pickSeedProduct(response) {
   return seed;
 }
 
-async function postDiscoveryFeed({ baseUrl, endpoint, apiKey, payload, metadata, timeoutMs }) {
+async function postDiscoveryFeed({ baseUrl, endpoint, apiKey, authToken, payload, metadata, timeoutMs }) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -200,7 +212,7 @@ async function postDiscoveryFeed({ baseUrl, endpoint, apiKey, payload, metadata,
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...buildAuthHeaders(apiKey),
+        ...buildAuthHeaders({ apiKey, authToken }),
       },
       body: JSON.stringify({
         operation: 'get_discovery_feed',
@@ -243,6 +255,14 @@ async function runSmoke(options = {}) {
     process.env.AGENT_API_KEY,
     process.env.PIVOTA_API_KEY,
   ]);
+  const authToken = firstNonEmpty([
+    options.authToken,
+    process.env.AUTH_TOKEN,
+    process.env.COMMERCE_CORE_PROD_AUTH_TOKEN,
+    process.env.PIVOTA_AGENT_PROD_AUTH_TOKEN,
+    process.env.PIVOTA_AUTH_TOKEN,
+    apiKey,
+  ]);
   const tracePrefix = `discovery_smoke_${Date.now()}`;
   const source = String(options.source || process.env.SOURCE || 'shopping_agent').trim() || 'shopping_agent';
 
@@ -251,11 +271,13 @@ async function runSmoke(options = {}) {
   console.log(`TIMEOUT_MS=${timeoutMs}`);
   console.log(`SOURCE=${source}`);
   console.log(`API_KEY_CONFIGURED=${apiKey ? 'true' : 'false'}`);
+  console.log(`AUTH_TOKEN_CONFIGURED=${authToken ? 'true' : 'false'}`);
 
   const coldStart = await postDiscoveryFeed({
     baseUrl,
     endpoint,
     apiKey,
+    authToken,
     timeoutMs,
     payload: {
       surface: 'home_hot_deals',
@@ -306,6 +328,7 @@ async function runSmoke(options = {}) {
     baseUrl,
     endpoint,
     apiKey,
+    authToken,
     timeoutMs,
     payload: {
       surface: 'home_hot_deals',
@@ -341,6 +364,7 @@ async function runSmoke(options = {}) {
     baseUrl,
     endpoint,
     apiKey,
+    authToken,
     timeoutMs,
     payload: {
       surface: 'browse_products',
