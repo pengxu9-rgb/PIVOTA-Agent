@@ -197,3 +197,89 @@ test('canonical search result mirror keeps payload-bound assistant text ahead of
     delete require.cache[moduleId];
   }
 });
+
+test('beauty handoff payload builder replaces mixed planner rows with canonical selected set', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const out = __internal.buildRecoPayloadFromBeautyMainlineHandoff({
+      handoff: {
+        recommendations: [
+          {
+            product_id: '9886499864904',
+            display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+            category: 'Serum',
+          },
+          {
+            product_id: '9886500749640',
+            display_name: 'Winona Soothing Repair Serum',
+            category: 'Serum',
+          },
+        ],
+        searchResult: {
+          decision_owner: 'shopping_agent_beauty_mainline',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+          query_source: 'agent_products_search',
+          metadata: {
+            contract_bridge: {
+              attempted_contract: 'agent_v1_search_beauty_mainline',
+              resolved_contract: 'agent_v1_search_beauty_mainline',
+            },
+            source_breakdown: {
+              source_tier_counts: { fresh_internal: 1, fresh_external: 1 },
+              top_candidate_provenance: { source_owner: 'internal_search' },
+            },
+            search_stage_ledger: {
+              final_selection: {
+                selection_owner: 'shopping_agent_beauty_mainline',
+                selected_product_ids: ['9886499864904'],
+                selected_titles: ['The Ordinary Niacinamide 10% + Zinc 1%'],
+                selection_signature: 'sel_niacinamide_only',
+                mainline_status: 'grounded_success',
+                source_tier_counts: { fresh_internal: 1, fresh_external: 1 },
+                top_candidate_provenance: { source_owner: 'internal_search' },
+              },
+            },
+          },
+        },
+      },
+      profile: { skinType: 'oily', goals: ['oil control'] },
+      targetContext: {
+        resolved_target_step: 'treatment',
+        resolved_target_step_confidence: 'high',
+        resolved_target_step_source: 'analysis_ingredient_plan',
+      },
+      recoContext: {
+        resolved_target_step: 'treatment',
+      },
+      taskMode: 'goal_based_products',
+      triggerSource: 'text_freeform',
+      sourceMode: 'step_aware_mainline',
+      basePayload: {
+        recommendation_confidence_score: 0.73,
+        recommendation_confidence_level: 'medium',
+        recommendation_meta: {
+          used_recent_logs: true,
+        },
+      },
+      selectionOwner: 'shopping_agent_beauty_mainline',
+      entryType: 'chat',
+    });
+
+    assert.deepEqual(
+      out?.payload?.recommendations?.map((item) => item.product_id),
+      ['9886499864904'],
+    );
+    assert.deepEqual(
+      out?.payload?.metadata?.final_selection?.selected_product_ids,
+      ['9886499864904'],
+    );
+    assert.equal(out?.payload?.recommendation_meta?.resolved_contract, 'agent_v1_search_beauty_mainline');
+    assert.equal(out?.payload?.recommendation_meta?.semantic_owner, 'shopping_agent_beauty_mainline');
+    assert.deepEqual(
+      out?.payload?.recommendation_meta?.source_tier_counts,
+      { fresh_internal: 1, fresh_external: 1 },
+    );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
