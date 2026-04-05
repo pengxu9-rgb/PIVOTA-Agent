@@ -187,7 +187,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          BASE_URL="$BASE_URL" \
+          RAIL_MODE="authoritative_commerce" \
           INVOKE_BASE_URL="$PROD_SMOKE_BASE_URL" \
           TARGET_COMMIT="${GITHUB_SHA:0:12}" \
           bash scripts/verify_deployed_commit_matches.sh
