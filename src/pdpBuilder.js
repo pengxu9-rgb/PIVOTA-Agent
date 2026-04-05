@@ -498,6 +498,8 @@ function buildMediaItems(product, variants) {
       ]
     : [];
   const primaryVariantImageKeys = collectImageKeys(primaryVariantImages);
+  const hasAuthoritativePrimaryVariantGallery =
+    primaryVariantImageKeys.size > 0 && Array.isArray(variants) && variants.length > 1;
   const nonPrimaryVariantImageKeys = (() => {
     const out = new Set();
     (Array.isArray(variants) ? variants.slice(1) : []).forEach((variant) => {
@@ -513,9 +515,12 @@ function buildMediaItems(product, variants) {
 
   const shouldKeepGalleryImage = (url) => {
     if (!url) return false;
-    if (!primaryVariantImageKeys.size || !Array.isArray(variants) || variants.length <= 1) return true;
     const key = buildPdpImageDedupeKey(url);
     if (!key) return false;
+    if (hasAuthoritativePrimaryVariantGallery) {
+      return primaryVariantImageKeys.has(key);
+    }
+    if (!primaryVariantImageKeys.size || !Array.isArray(variants) || variants.length <= 1) return true;
     if (primaryVariantImageKeys.has(key)) return true;
     if (nonPrimaryVariantImageKeys.has(key)) return false;
     return true;
