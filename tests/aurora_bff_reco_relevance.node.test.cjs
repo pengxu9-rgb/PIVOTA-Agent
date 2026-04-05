@@ -5871,6 +5871,84 @@ test('/v1/chat: beauty-owned hard path fails closed when handoff products lack c
   }
 });
 
+test('/v1/chat: beauty-owned reco helper miss still fails closed before legacy planner', async () => {
+  const originalGet = axios.get;
+  let auroraChatCallCount = 0;
+  const harness = createAppWithPatchedAuroraChat({
+    auroraChatImpl: async () => {
+      auroraChatCallCount += 1;
+      return {
+        intent: 'recommend_products',
+        answer: '{"summary":"legacy planner should not run after beauty helper miss"}',
+        structured: {
+          recommendations: [
+            {
+              product_id: 'legacy_wrong_after_helper_miss',
+              display_name: 'Legacy Wrong After Helper Miss',
+            },
+          ],
+        },
+        context: {},
+      };
+    },
+  });
+
+  harness.routesMod.__internal.__setRouteDependencyOverridesForTest({
+    maybeHandleBeautyOwnedChatReco: async () => ({
+      handled: false,
+      targetContext: {
+        step_aware_intent: true,
+        resolved_target_step: 'treatment',
+      },
+    }),
+  });
+
+  axios.get = async (url) => {
+    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    throw new Error('beauty handoff search should not be called after helper override');
+  };
+
+  try {
+    const response = await harness.request
+      .post('/v1/chat')
+      .set({
+        'X-Aurora-UID': 'chat_plain_text_helper_miss_uid',
+        'X-Trace-ID': 'trace_chat_plain_text_helper_miss',
+        'X-Brief-ID': 'chat_plain_text_helper_miss_brief',
+      })
+      .send({
+        message: 'what products should i use for oily skin?',
+        client_state: 'IDLE_CHAT',
+        session: { state: 'idle' },
+        context: {
+          locale: 'en',
+          profile: {
+            skinType: 'oily',
+            sensitivity: 'low',
+            barrierStatus: 'stable',
+            goals: ['oil control'],
+          },
+        },
+        language: 'EN',
+      });
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(auroraChatCallCount, 0);
+    assert.equal(getRecommendationsPayload(response.body), null);
+    const notice = getConfidenceNoticePayload(response.body);
+    assert.ok(notice);
+    assert.equal(String(notice.reason || ''), 'upstream_empty_recommendations');
+    assert.match(
+      String(response.body?.assistant_message?.content || ''),
+      /grounded product shortlist|保守结果/i,
+    );
+  } finally {
+    axios.get = originalGet;
+    harness.routesMod.__internal.__resetRouteDependencyOverridesForTest();
+    harness.restore();
+  }
+});
+
 test('/v1/chat: plain-text sunscreen reco short-circuits to beauty mainline before aurora planner and keeps canonical sunscreen selection', async () => {
   const originalGet = axios.get;
   const originalGetLatestDiagnosisArtifact = diagnosisArtifactStore.getLatestDiagnosisArtifact;
