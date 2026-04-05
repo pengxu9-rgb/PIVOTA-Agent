@@ -2454,7 +2454,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     ]);
   });
 
-  test('source=search budget beauty queries preserve the literal query on upstream fallback', async () => {
+  test('source=search budget beauty queries rescue through local external seed direct search before upstream fallback', async () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
         const text = String(sql || '');
@@ -2464,24 +2464,94 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
           return { rows: [] };
         }
+        if (text.includes('FROM external_product_seeds')) {
+          return {
+            rows: [
+              {
+                id: 'seed_vitc_1',
+                external_product_id: 'seed_vitc_1',
+                destination_url: 'https://example.com/products/vitamin-c-budget-serum',
+                canonical_url: 'https://example.com/products/vitamin-c-budget-serum',
+                domain: 'example.com',
+                title: 'Vitamin-C Serum',
+                image_url: 'https://cdn.example.com/vitamin-c-budget-serum.jpg',
+                price_amount: 29,
+                price_currency: 'USD',
+                availability: 'in_stock',
+                seed_data: {
+                  title: 'Vitamin-C Serum',
+                  description: '15% vitamin c treatment serum.',
+                  category: 'serum',
+                  product_type: 'serum',
+                  brand: 'Rescue Brand',
+                  image_url: 'https://cdn.example.com/vitamin-c-budget-serum.jpg',
+                  price: 29,
+                  currency: 'USD',
+                  canonical_url: 'https://example.com/products/vitamin-c-budget-serum',
+                  destination_url: 'https://example.com/products/vitamin-c-budget-serum',
+                },
+                updated_at: new Date().toISOString(),
+                created_at: new Date().toISOString(),
+              },
+            ],
+          };
+        }
         return { rows: [] };
       },
     }));
 
+    jest.doMock('../../src/services/ingredientProductRecall', () => ({
+      recallIngredientProducts: jest.fn(async () => ({
+        products: [],
+        diagnostics: {
+          ingredient_intent_detected: true,
+          ingredient_registry_match: true,
+          ingredient_registry_source: 'local',
+          ingredient_profile_source: 'local',
+          ingredient_direct_main_path_status: 'direct_empty_unrecovered',
+          recall_source_breakdown: {},
+          ingredient_candidate_evidence_breakdown: {
+            family_only: 1,
+          },
+        },
+      })),
+      resolveIngredientRecallProfileKnowledge: jest.fn(async () => ({
+        profile: {
+          ingredient_id: 'ascorbic_acid',
+          ingredient_name: 'Vitamin C (Ascorbic acid)',
+          exact_phrases: ['vitamin c'],
+          alias_phrases: ['ascorbic acid'],
+          family_phrases: ['serum'],
+          ingredient_class: 'tone_evening_active',
+          expected_step_families: ['serum', 'treatment'],
+        },
+        diagnostics: {
+          registry_match: true,
+          registry_source: 'local',
+          profile_source: 'local',
+        },
+      })),
+      resolveIngredientRecallProfile: jest.fn(() => ({
+        ingredient_id: 'ascorbic_acid',
+        ingredient_name: 'Vitamin C (Ascorbic acid)',
+        exact_phrases: ['vitamin c'],
+        alias_phrases: ['ascorbic acid'],
+        family_phrases: ['serum'],
+        ingredient_class: 'tone_evening_active',
+        expected_step_families: ['serum', 'treatment'],
+      })),
+      hasIngredientRegistryIntentSignal: jest.fn(() => true),
+      getIngredientRecallRegistryHealth: jest.fn(async () => ({ ok: true })),
+    }));
+
     const rawQuery = 'vitamin c serum under €30';
-    let capturedQuery = null;
-    let capturedCatalogSurface = null;
-    const upstreamSearch = nock('http://pivota.test')
+    const rescueSearch = nock('http://pivota.test')
       .get('/agent/v1/products/search')
-      .query((q) => {
-        if (String(q.merchant_id || '')) return false;
-        capturedQuery = String(q.query || '');
-        capturedCatalogSurface = String(q.catalog_surface || q.commerce_surface || '');
-        return (
-          capturedQuery === rawQuery &&
-          String(q.source || '') === 'search' &&
-          capturedCatalogSurface === 'beauty'
-        );
+      .query((query) => {
+        expect(query.merchant_id).toBe('external_seed');
+        expect(query.external_seed_only).toBe('true');
+        expect(query.query).toBe(rawQuery);
+        return true;
       })
       .optionally()
       .reply(200, {
@@ -2489,27 +2559,33 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         success: true,
         products: [
           {
-            id: 'prod_vitc_1',
-            product_id: 'prod_vitc_1',
-            merchant_id: 'merch_live_1',
-            title: 'Vitamin C Brightening Serum',
-            description: '15% vitamin c serum under the requested budget.',
-            status: 'active',
-            inventory_quantity: 7,
-            price: 28.0,
-            currency: 'EUR',
+            product_id: 'seed-vitamin-c-serum',
+            merchant_id: 'external_seed',
+            name: 'Vitamin-C Serum',
+            price: 29,
+            image_url: 'https://cdn.example.com/vitamin-c-serum.jpg',
+            category: 'beauty',
+            product_type: 'serum',
+            in_stock: true,
           },
         ],
         total: 1,
         metadata: {
           query_source: 'agent_products_search',
-          strict_constraint_query: true,
-          strict_constraint_reason: 'multi_constraint',
-          budget_fx_applied: true,
-          budget_fx_rate: 1,
-          budget_fx_source: 'fx_table',
-          budget_fx_candidate_currency: 'EUR',
-          budget_fx_unresolved: false,
+        },
+      });
+
+    const genericFallbackSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((query) => query.external_seed_only !== 'true')
+      .optionally()
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+        metadata: {
+          query_source: 'agent_products_search',
         },
       });
 
@@ -2532,28 +2608,31 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       });
 
     expect(resp.status).toBe(200);
-    expect(upstreamSearch.isDone()).toBe(true);
-    expect(String(capturedQuery || '').trim()).toBe(rawQuery);
-    expect(capturedCatalogSurface).toBe('beauty');
     expect(resp.body.products).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          product_id: 'prod_vitc_1',
-          merchant_id: 'merch_live_1',
-          title: 'Vitamin C Brightening Serum',
+          title: 'Vitamin-C Serum',
         }),
       ]),
     );
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
-        query_source: 'agent_products_search',
+        query_source: 'agent_products_ingredient_external_seed_rescue',
         strict_constraint_query: true,
         strict_constraint_reason: 'multi_constraint',
-        budget_fx_applied: true,
-        budget_fx_source: 'fx_table',
-        budget_fx_unresolved: false,
+        ingredient_intents: ['ascorbic_acid'],
+        matched_ingredient_ids: ['ascorbic_acid'],
+        ingredient_external_seed_rescue_attempted: true,
+        ingredient_external_seed_rescue_recovered: true,
         route_health: expect.objectContaining({
+          primary_path_used: 'ingredient_external_seed_rescue',
           fallback_triggered: false,
+        }),
+        search_decision: expect.objectContaining({
+          final_decision: 'products_returned',
+          primary_path_used: 'ingredient_external_seed_rescue',
+          decision_authority: 'agent_products_ingredient_external_seed_rescue',
+          decision_locked: true,
         }),
       }),
     );

@@ -10322,6 +10322,140 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
       !directRecallHasExplicitEvidence &&
       Number(baseMetadata.ingredient_candidate_evidence_breakdown.family_only || 0) > 0);
   if (shouldTreatAsDirectMiss) {
+    const rescueLimit = Math.max(safeLimit + safeOffset, safeLimit);
+    try {
+      const externalSeedRescueResponse = await searchExternalSeedOnlyProductsDirect({
+        search: {
+          ...(search && typeof search === 'object' && !Array.isArray(search) ? search : {}),
+          query: relevanceQueryText,
+          limit: rescueLimit,
+          page: 1,
+          offset: 0,
+          in_stock_only: inStockOnly,
+          allow_external_seed: true,
+          allow_stale_cache: false,
+          external_seed_strategy: 'unified_relevance',
+          product_only: true,
+          ...(targetStepFamily ? { target_step_family: targetStepFamily } : {}),
+        },
+        metadata: {
+          ...(metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {}),
+          relevance_query_text: relevanceQueryText,
+          ...(targetStepFamily ? { query_target_step_family: targetStepFamily } : {}),
+        },
+      });
+      const rescueResponseProductsRaw = Array.isArray(externalSeedRescueResponse?.products)
+        ? externalSeedRescueResponse.products
+        : [];
+      const rescuedProducts = stabilizeIngredientIntentDirectProducts(
+        rescueResponseProductsRaw,
+        {
+          recallProfile,
+          targetStepFamily,
+          queryText: relevanceQueryText,
+        },
+      );
+      if (rescuedProducts.length > 0) {
+        const pagedRescuedProducts = rescuedProducts.slice(safeOffset, safeOffset + safeLimit);
+        return {
+          status: 'success',
+          success: true,
+          products: guidanceOnlyDiscovery
+            ? pagedRescuedProducts.map((product) =>
+                normalizeGuidanceDiscoveryProductPdpContract(product),
+              )
+            : pagedRescuedProducts,
+          total: rescuedProducts.length,
+          page: safePage,
+          page_size: Math.min(safeLimit, Math.max(0, rescuedProducts.length - safeOffset)),
+          reply: null,
+          metadata: {
+            ...baseMetadata,
+            ingredient_direct_main_path_status: 'direct_hit',
+            query_source: 'agent_products_ingredient_external_seed_rescue',
+            strict_empty_reason: null,
+            ...(ingredientIntentIds.length > 0 ? { matched_ingredient_ids: ingredientIntentIds } : {}),
+            ingredient_external_seed_rescue_attempted: true,
+            ingredient_external_seed_rescue_recovered: true,
+            products_returned_count: Math.min(safeLimit, Math.max(0, rescuedProducts.length - safeOffset)),
+            external_seed_returned_count: Math.min(
+              safeLimit,
+              Math.max(0, rescuedProducts.length - safeOffset),
+            ),
+            source_breakdown: {
+              internal_count: 0,
+              external_seed_count: Math.min(
+                safeLimit,
+                Math.max(0, rescuedProducts.length - safeOffset),
+              ),
+              stale_cache_used: false,
+              strategy_applied: 'ingredient_registry_then_external_seed_rescue',
+            },
+            route_health: {
+              ...(
+                baseMetadata.route_health &&
+                typeof baseMetadata.route_health === 'object' &&
+                !Array.isArray(baseMetadata.route_health)
+                  ? baseMetadata.route_health
+                  : {}
+              ),
+              primary_path_used: 'ingredient_external_seed_rescue',
+              fallback_triggered: false,
+              fallback_reason: null,
+              final_returned_count: Math.min(
+                safeLimit,
+                Math.max(0, rescuedProducts.length - safeOffset),
+              ),
+            },
+            search_trace: {
+              ...(
+                baseMetadata.search_trace &&
+                typeof baseMetadata.search_trace === 'object' &&
+                !Array.isArray(baseMetadata.search_trace)
+                  ? baseMetadata.search_trace
+                  : {}
+              ),
+              final_decision: 'products_returned',
+              primary_path_used: 'ingredient_external_seed_rescue',
+            },
+            search_decision: {
+              final_decision: 'products_returned',
+              primary_path_used: 'ingredient_external_seed_rescue',
+              decision_authority: 'agent_products_ingredient_external_seed_rescue',
+              decision_locked: true,
+              decision_lock_reason: 'primary_authority',
+              hit_quality: 'valid_hit',
+              ingredient_intent_detected:
+                diagnostics.ingredient_intent_detected === true || ingredientIntentDetected,
+              ingredient_registry_match:
+                recallProfileDiagnostics.registry_match === true ||
+                diagnostics.ingredient_registry_match === true,
+              ingredient_registry_source:
+                diagnostics.ingredient_registry_source ||
+                recallProfileDiagnostics.registry_source ||
+                'none',
+              ingredient_direct_miss_reason: null,
+              kb_recall_attempted: diagnostics.kb_recall_attempted === true,
+              attached_seed_recall_attempted: diagnostics.attached_seed_recall_attempted === true,
+              products_cache_recall_attempted: diagnostics.products_cache_recall_attempted === true,
+              family_fallback_used: diagnostics.family_fallback_used === true,
+              clarify_applied_after_kb_exhausted: false,
+              query_target_step_family: targetStepFamily || null,
+            },
+          },
+        };
+      }
+    } catch (ingredientExternalSeedRescueErr) {
+      logger.warn(
+        {
+          err:
+            ingredientExternalSeedRescueErr?.message ||
+            String(ingredientExternalSeedRescueErr),
+          query: relevanceQueryText,
+        },
+        'ingredient external seed rescue failed after direct miss',
+      );
+    }
     return {
       status: 'success',
       success: true,
@@ -10334,9 +10468,39 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
         ...baseMetadata,
         ingredient_direct_main_path_status: 'direct_empty_unrecovered',
         query_source: 'agent_products_ingredient_recall_direct_empty',
-        matched_ingredient_ids: [],
+        matched_ingredient_ids: ingredientIntentIds,
+        ingredient_external_seed_rescue_attempted: true,
+        ingredient_external_seed_rescue_recovered: false,
+        route_health: {
+          ...(
+            baseMetadata.route_health &&
+            typeof baseMetadata.route_health === 'object' &&
+            !Array.isArray(baseMetadata.route_health)
+              ? baseMetadata.route_health
+              : {}
+          ),
+          primary_path_used: 'ingredient_recall_direct_empty',
+          fallback_triggered: false,
+          fallback_reason: null,
+          final_returned_count: 0,
+        },
+        search_trace: {
+          ...(
+            baseMetadata.search_trace &&
+            typeof baseMetadata.search_trace === 'object' &&
+            !Array.isArray(baseMetadata.search_trace)
+              ? baseMetadata.search_trace
+              : {}
+          ),
+          final_decision: 'strict_empty',
+          primary_path_used: 'ingredient_recall_direct_empty',
+        },
         search_decision: {
-          final_decision: 'direct_empty',
+          final_decision: 'strict_empty',
+          primary_path_used: 'ingredient_recall_direct_empty',
+          decision_authority: 'agent_products_ingredient_recall_direct_empty',
+          decision_locked: true,
+          decision_lock_reason: 'strict_empty_contract',
           hit_quality: 'strict_empty',
           ingredient_intent_detected:
             diagnostics.ingredient_intent_detected === true || ingredientIntentDetected,
@@ -10379,8 +10543,36 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
       ...(ingredientIntentIds.length > 0 ? { matched_ingredient_ids: ingredientIntentIds } : {}),
       products_returned_count: responseProducts.length,
       external_seed_returned_count: responseProducts.length,
+      route_health: {
+        ...(
+          baseMetadata.route_health &&
+          typeof baseMetadata.route_health === 'object' &&
+          !Array.isArray(baseMetadata.route_health)
+            ? baseMetadata.route_health
+            : {}
+        ),
+        primary_path_used: 'ingredient_recall_direct',
+        fallback_triggered: false,
+        fallback_reason: null,
+        final_returned_count: responseProducts.length,
+      },
+      search_trace: {
+        ...(
+          baseMetadata.search_trace &&
+          typeof baseMetadata.search_trace === 'object' &&
+          !Array.isArray(baseMetadata.search_trace)
+            ? baseMetadata.search_trace
+            : {}
+        ),
+        final_decision: 'products_returned',
+        primary_path_used: 'ingredient_recall_direct',
+      },
       search_decision: {
         final_decision: 'products_returned',
+        primary_path_used: 'ingredient_recall_direct',
+        decision_authority: 'agent_products_ingredient_recall_direct',
+        decision_locked: true,
+        decision_lock_reason: 'primary_authority',
         hit_quality: responseProducts.length > 0 ? 'valid_hit' : 'strict_empty',
         ingredient_intent_detected:
           diagnostics.ingredient_intent_detected === true || ingredientIntentDetected,
@@ -22331,7 +22523,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           strictCommerceFindProductsMulti &&
           !explicitStrictCatalogSurfaceRequested &&
           normalizeAgentSource(metadata?.source) === 'search' &&
-          strictAutoBeautyQueryProfile?.isBeautyQuery === true;
+          strictFindProductsMultiDecision?.strictConstraintQuery === true;
         strictBeautyDirectSearch =
           beautyExactTitleDirectSearch ||
           (!beautyExactTitleLookup &&
@@ -23493,7 +23685,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             commerce_surface: 'beauty',
           },
         });
-        if (Array.isArray(localIngredientDirectResponse?.products) && localIngredientDirectResponse.products.length > 0) {
+        const localIngredientDirectProducts = Array.isArray(localIngredientDirectResponse?.products)
+          ? localIngredientDirectResponse.products
+          : [];
+        const localIngredientDirectQuerySource = String(
+          localIngredientDirectResponse?.metadata?.query_source || '',
+        ).trim();
+        if (
+          localIngredientDirectProducts.length > 0 ||
+          localIngredientDirectQuerySource.startsWith('agent_products_ingredient_')
+        ) {
           response = {
             status: 200,
             data: localIngredientDirectResponse,
@@ -26835,12 +27036,36 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         !hasClarification &&
         !invalidHitApplied;
       const querySource = String(existingMeta?.query_source || '').trim() || 'agent_products_search';
+      const existingRouteHealth =
+        existingMeta &&
+        typeof existingMeta === 'object' &&
+        !Array.isArray(existingMeta) &&
+        existingMeta.route_health &&
+        typeof existingMeta.route_health === 'object' &&
+        !Array.isArray(existingMeta.route_health)
+          ? existingMeta.route_health
+          : null;
+      const existingSearchTrace =
+        existingMeta &&
+        typeof existingMeta === 'object' &&
+        !Array.isArray(existingMeta) &&
+        existingMeta.search_trace &&
+        typeof existingMeta.search_trace === 'object' &&
+        !Array.isArray(existingMeta.search_trace)
+          ? existingMeta.search_trace
+          : null;
+      const existingPrimaryPathUsed =
+        toNonEmptyStringOrNull(existingRouteHealth?.primary_path_used) ||
+        toNonEmptyStringOrNull(searchDecision?.primary_path_used) ||
+        toNonEmptyStringOrNull(existingSearchTrace?.primary_path_used) ||
+        null;
       const primaryPathUsed =
-        querySource.startsWith('cache_')
+        existingPrimaryPathUsed ||
+        (querySource.startsWith('cache_')
           ? 'cache_stage'
           : querySource.includes('resolver')
           ? 'resolver_stage'
-          : 'upstream_stage';
+          : 'upstream_stage');
       const fallbackTriggered =
         Boolean(fallbackMeta?.applied) ||
         isErrorSoftFallbackQuerySource(querySource) ||
