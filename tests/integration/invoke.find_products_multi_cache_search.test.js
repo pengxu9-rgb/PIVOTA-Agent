@@ -2762,12 +2762,17 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       expect.objectContaining({
         ingredientId: 'ascorbic_acid',
         allowFamilyFallback: true,
+        limit: 5,
+        minimumDirectProductCount: 2,
       }),
     );
     expect(resp.body.products.map((item) => item.product_id)).toEqual(['prod_vitc_direct_1']);
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
         query_source: 'agent_products_ingredient_recall_direct',
+        ingredient_budget_query_rescue_attempted: false,
+        ingredient_direct_recall_limit: 5,
+        ingredient_direct_minimum_products: 2,
         strict_constraint_query: true,
         strict_constraint_reason: 'multi_constraint',
         ingredient_intents: ['ascorbic_acid'],
@@ -2928,6 +2933,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       });
 
     const app = require('../../src/server');
+    const { recallIngredientProducts } = require('../../src/services/ingredientProductRecall');
 
     const resp = await request(app)
       .post('/agent/shop/v1/invoke')
@@ -2954,12 +2960,22 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         }),
       ]),
     );
+    expect(recallIngredientProducts).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ingredientId: 'ascorbic_acid',
+        allowFamilyFallback: true,
+        limit: 5,
+        minimumDirectProductCount: 2,
+      }),
+    );
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
         query_source: 'agent_products_ingredient_recall_direct',
         ingredient_budget_query_rescue_attempted: true,
         ingredient_budget_query_rescue_recovered: true,
         ingredient_budget_query_rescue_query: 'vitamin c serum',
+        ingredient_direct_recall_limit: 5,
+        ingredient_direct_minimum_products: 2,
         strict_constraint_query: true,
         strict_constraint_reason: 'multi_constraint',
       }),

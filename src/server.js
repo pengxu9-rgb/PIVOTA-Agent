@@ -6638,8 +6638,41 @@ function stabilizeIngredientIntentDirectProducts(
       ) score -= 12;
       if (/\b(concealer|foundation|brush|powder|spa|coupon)\b/.test(titleText)) score -= 40;
 
+      let stabilizedProduct = product;
+      if (!recallMeta && product && typeof product === 'object') {
+        const syntheticRecallMeta = {
+          evidence: {
+            kb_explicit: 0,
+            title_exact: exactHits,
+            title_alias: aliasHits,
+            ingredient_token_exact: exactHits,
+            ingredient_token_alias: aliasHits,
+            url_alias: 0,
+            explicit_hits: explicitHits,
+            target_surface_anchor_hits: surfaceExplicitHits,
+            surface_explicit_hits: surfaceExplicitHits,
+            target_anchor_hits: explicitHits,
+            strong_target_anchor_hits: Math.max(exactHits, surfaceExplicitHits),
+          },
+          candidate_step: candidateStep || null,
+          family_relation: familyRelation || null,
+          source_tag: 'route_stabilized_direct',
+        };
+        stabilizedProduct = { ...product };
+        try {
+          Object.defineProperty(stabilizedProduct, '__ingredient_recall_meta', {
+            value: syntheticRecallMeta,
+            enumerable: false,
+            configurable: true,
+            writable: true,
+          });
+        } catch (_err) {
+          stabilizedProduct.__ingredient_recall_meta = syntheticRecallMeta;
+        }
+      }
+
       return {
-        product,
+        product: stabilizedProduct,
         index,
         score,
         explicitHits,
@@ -10179,7 +10212,47 @@ function hasBudgetQualifiedIngredientCandidate(products, priceConstraint = null)
       typeof product.__ingredient_recall_meta.evidence === 'object'
         ? product.__ingredient_recall_meta.evidence
         : null;
-    if (!evidence || Number(evidence.target_surface_anchor_hits || 0) <= 0) continue;
+    const hasStrongIngredientEvidence =
+      evidence &&
+      (
+        Number(evidence.target_surface_anchor_hits || 0) > 0 ||
+        Number(evidence.strong_target_anchor_hits || 0) > 0 ||
+        Number(evidence.target_anchor_hits || 0) > 0 ||
+        Number(evidence.surface_explicit_hits || 0) > 0 ||
+        Number(evidence.title_exact || 0) > 0 ||
+        Number(evidence.title_alias || 0) > 0 ||
+        Number(evidence.ingredient_token_exact || 0) > 0 ||
+        Number(evidence.ingredient_token_alias || 0) > 0
+      );
+    if (!hasStrongIngredientEvidence) continue;
+    const price = parseNullableProductPrice(
+      product?.price ??
+        product?.sale_price ??
+        product?.salePrice ??
+        product?.price_amount ??
+        product?.priceAmount,
+    );
+    if (!Number.isFinite(price)) continue;
+    const candidateCurrency = getProductPriceCurrency(
+      product,
+      String(priceConstraint.currency || 'USD').trim().toUpperCase() || 'USD',
+    );
+    const resolvedConstraint = resolveBudgetConstraintForCurrency(
+      priceConstraint,
+      candidateCurrency,
+      candidateCurrency,
+    )?.constraint;
+    if (resolvedConstraint && isWithinPriceConstraint(price, resolvedConstraint)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function hasPriceQualifiedCandidate(products, priceConstraint = null) {
+  const list = Array.isArray(products) ? products : [];
+  if (!priceConstraint || (priceConstraint.min == null && priceConstraint.max == null)) return false;
+  for (const product of list) {
     const price = parseNullableProductPrice(
       product?.price ??
         product?.sale_price ??
@@ -10208,6 +10281,11 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
   if (!process.env.DATABASE_URL) return null;
 
   const queryText = extractSearchQueryText(search);
+  const source = String(
+    (metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+      ? metadata.source
+      : null) || '',
+  ).trim();
   const relevanceQueryText = String(
     firstQueryParamValue(
       metadata?.relevance_query_text ??
@@ -10285,15 +10363,22 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
   const strictConstraintReason =
     directStrictDecision?.strictConstraintReason ||
     (recallProfile && String(recallProfile.ingredient_id || '').trim() ? 'ingredient' : null);
+  const directRecallResultWindow = Math.max(safeLimit + safeOffset, safeLimit);
+  const useTighterStrictIngredientRecallWindow = source === 'search' && Boolean(strictConstraintReason);
   const ingredientDirectMinimumProducts =
-    strictConstraintReason === 'multi_constraint' && directPriceConstraint ? 2 : null;
+    useTighterStrictIngredientRecallWindow || (strictConstraintReason === 'multi_constraint' && directPriceConstraint)
+      ? 2
+      : null;
+  const ingredientDirectRecallLimit = useTighterStrictIngredientRecallWindow
+    ? Math.min(directRecallResultWindow, 6)
+    : directRecallResultWindow;
 
   const recalled = await recallIngredientProducts({
     query: relevanceQueryText,
     ingredientId: recallProfile?.ingredient_id || '',
     recallKnowledge,
     targetStepFamily,
-    limit: Math.max(safeLimit + safeOffset, safeLimit),
+    limit: ingredientDirectRecallLimit,
     inStockOnly,
     allowFamilyFallback: true,
     minimumDirectProductCount: ingredientDirectMinimumProducts,
@@ -10329,16 +10414,22 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
     recallProfile,
     targetStepFamily,
   );
+  const explicitDirectEvidencePresent = hasIngredientIntentExplicitEvidenceBreakdown(
+    diagnostics.ingredient_candidate_evidence_breakdown,
+  );
+  const hasBudgetQualifiedDirectCandidate =
+    hasBudgetQualifiedIngredientCandidate(recalledProducts, directPriceConstraint) ||
+    (explicitDirectEvidencePresent && hasPriceQualifiedCandidate(recalledProducts, directPriceConstraint));
   const shouldAttemptIngredientBudgetRescue =
     ingredientBudgetRescueQueries.length > 0 &&
-    !hasBudgetQualifiedIngredientCandidate(recalledProducts, directPriceConstraint);
+    !hasBudgetQualifiedDirectCandidate;
   let ingredientBudgetRescueAttempted = false;
   let ingredientBudgetRescueRecovered = false;
   let ingredientBudgetRescueProducts = [];
   if (shouldAttemptIngredientBudgetRescue) {
     ingredientBudgetRescueAttempted = true;
     try {
-      const budgetRescueLimit = Math.max(safeLimit + safeOffset, safeLimit);
+      const budgetRescueLimit = ingredientDirectRecallLimit;
       const budgetRescueResponse = await fetchExternalSeedSupplementFromBackend({
         queryParams: {
           ...(search && typeof search === 'object' && !Array.isArray(search) ? search : {}),
@@ -10484,6 +10575,7 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
       ingredientBudgetRescueAttempted && ingredientBudgetRescueQueries.length > 0
         ? ingredientBudgetRescueQueries[0]
         : null,
+    ingredient_direct_recall_limit: ingredientDirectRecallLimit,
     ingredient_direct_minimum_products: ingredientDirectMinimumProducts,
     products_returned_count: mergedRecalledProducts.length,
     external_seed_returned_count: mergedRecalledProducts.length,
