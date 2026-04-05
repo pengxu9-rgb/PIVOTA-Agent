@@ -81390,6 +81390,13 @@ function mountAuroraBffRoutes(app, { logger }) {
             && Array.isArray(chatRecoTargetContext.framework_roles)
             && chatRecoTargetContext.framework_roles.length > 0
           );
+        const beautyMainlineHandoffFirstEligible =
+          RECO_CATALOG_GROUNDED_ENABLED
+          && !ingredientRecoOptInRequested
+          && !travelRecoHandoff
+          && !shouldApplySessionRecoContext
+          && !recoAutoAnchoredByAnalysis
+          && (genericConcernRecoMainline || hasExplicitRecoTarget);
         const genericGoalDrivenNeedsMoreContext =
           !genericConcernRecoMainline
           && !hasStableRecoTarget
@@ -81457,6 +81464,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         let recoTelemetryFailureReason = '';
         let recoMetaPromptTemplateId = '';
         let upstreamReco = null;
+        let prefetchedBeautyMainlineHandoff = null;
+        let prefetchedBeautyMainlineHandoffApplied = false;
         const shouldShortCircuitVerifiedContextRestore =
           !ingredientRecoOptInRequested
           && !travelRecoHandoff
@@ -81502,6 +81511,67 @@ function mountAuroraBffRoutes(app, { logger }) {
             recoSource = 'catalog_grounded_v1';
             recoMainlineStatus = 'grounded_success';
             recoTelemetryFailureReason = '';
+          }
+        }
+        if (!norm && beautyMainlineHandoffFirstEligible) {
+          prefetchedBeautyMainlineHandoff = await handoffRecoToBeautyMainlineSearch({
+            ctx,
+            logger,
+            primaryQuery: pickFirstTrimmed(
+              recoRequestMessageForMainline,
+              message,
+            ),
+            fallbackMessage: message,
+            targetContext: chatRecoTargetContext,
+            fallbackFocus: recoFocusForMainline,
+            profileSummary: summarizeProfileForContext(profile),
+            debug: debugUpstream,
+            timeoutMs: RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
+            minTimeoutMs: RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
+          });
+          if (Array.isArray(prefetchedBeautyMainlineHandoff?.recommendations) && prefetchedBeautyMainlineHandoff.recommendations.length > 0) {
+            const prefetchedSelection = extractRecoFinalSelectionContract(prefetchedBeautyMainlineHandoff.searchResult);
+            const prefetchedMainlineStatus = pickFirstTrimmed(
+              prefetchedSelection?.mainline_status,
+              'grounded_success',
+            ) || 'grounded_success';
+            prefetchedBeautyMainlineHandoffApplied = true;
+            norm = {
+              payload: {
+                intent: 'reco_products',
+                profile: summarizeProfileForContext(profile),
+                recommendations: prefetchedBeautyMainlineHandoff.recommendations,
+                source: 'catalog_grounded_v1',
+                grounding_status: 'grounded',
+                grounded_count: prefetchedBeautyMainlineHandoff.recommendations.length,
+                ungrounded_count: 0,
+                mainline_status: prefetchedMainlineStatus,
+                recommendation_confidence_score:
+                  artifactConfidenceScore != null ? artifactConfidenceScore : 0.61,
+                recommendation_confidence_level:
+                  artifactConfidenceLevel && artifactConfidenceLevel !== 'unknown'
+                    ? artifactConfidenceLevel
+                    : 'medium',
+                recommendation_meta: {
+                  task_mode: recoTaskMode,
+                  source_mode: genericConcernRecoMainline ? 'framework_mainline' : 'step_aware_mainline',
+                  trigger_source: normalizeRecoSourceDetail(effectiveRecoEntrySourceDetail),
+                  used_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
+                  used_itinerary: false,
+                  used_safety_flags: lowConfidenceArtifact,
+                  mainline_status: prefetchedMainlineStatus,
+                },
+                metadata: {
+                  mainline_status: prefetchedMainlineStatus,
+                },
+              },
+              field_missing: [],
+            };
+            recoSource = 'catalog_grounded_v1';
+            recoMainlineStatus = prefetchedMainlineStatus;
+            recoTelemetryFailureReason = '';
+            llmFailureClass = '';
+            upstreamFailureCode = '';
           }
         }
         const normHasRecommendations = Array.isArray(norm?.payload?.recommendations) && norm.payload.recommendations.length > 0;
@@ -81711,7 +81781,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
 
         let matcherRecoCount = 0;
-        if (!generatedPrimaryUsed && !ingredientRecoOptInRequested) {
+        if (!prefetchedBeautyMainlineHandoffApplied && !generatedPrimaryUsed && !ingredientRecoOptInRequested) {
           ({ matcherBundle, matcherPayload } = computeMatcherIfNeeded());
           matcherRecoCount = Array.isArray(matcherPayload?.recommendations) ? matcherPayload.recommendations.length : 0;
         }
@@ -81970,15 +82040,17 @@ function mountAuroraBffRoutes(app, { logger }) {
             recoTaskMode === 'ingredient_lookup_no_candidates'
             || String(payload.products_empty_reason || '').trim() === 'ingredient_no_verified_candidates';
           let payloadHasRecs = Array.isArray(payload.recommendations) && payload.recommendations.length > 0;
-          let chatBeautyMainlineHandoff = null;
-          let chatBeautyHandoffSnapshot = null;
-          let chatBeautyHandoffSelection = null;
-          let chatBeautyHandoffSelectionLocked = false;
+          let chatBeautyMainlineHandoff = prefetchedBeautyMainlineHandoff;
+          let chatBeautyHandoffSnapshot = extractRecoCanonicalSearchResultSnapshot(chatBeautyMainlineHandoff?.searchResult);
+          let chatBeautyHandoffSelection = chatBeautyHandoffSnapshot?.finalSelection || null;
+          let chatBeautyHandoffSelectionLocked = Array.isArray(chatBeautyHandoffSelection?.selected_product_ids)
+            && chatBeautyHandoffSelection.selected_product_ids.length > 0;
           if (
             !payloadHasRecs
             && !noCandidatesMode
             && !ingredientRecoOptInRequested
             && !travelRecoHandoff
+            && !chatBeautyMainlineHandoff
           ) {
             chatBeautyMainlineHandoff = await handoffRecoToBeautyMainlineSearch({
               ctx,
