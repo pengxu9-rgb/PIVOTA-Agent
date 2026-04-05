@@ -2,6 +2,9 @@ const crypto = require('node:crypto');
 const { lookupExternalSeedImageOverride } = require('./externalSeedImageOverrides');
 const { normalizePdpImageUrl } = require('../utils/pdpImageUrls');
 
+const SHOPIFY_ASSET_HASH_SUFFIX_RE =
+  /^(.*?_[0-9a-z]+(?:[a-z])?)_(?:[0-9a-f]{8,}(?:-[0-9a-f]{4,}){2,}|[0-9a-f-]{16,})(\.[a-z0-9]+)$/i;
+
 const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
 const SKINCARE_STEP_CATEGORY_PATTERNS = [
   ['Cleanser', /\b(cleanser|cleansing|face wash|facial wash|cleansing milk|cleansing foam|cleansing gel|wash)\b/i],
@@ -427,7 +430,8 @@ function extractImageFamilyKey(url) {
   if (!normalizedUrl) return '';
   try {
     const parsed = new URL(normalizedUrl);
-    const filename = String(parsed.pathname.split('/').pop() || '').trim().toLowerCase();
+    const rawFilename = String(parsed.pathname.split('/').pop() || '').trim().toLowerCase();
+    const filename = rawFilename.replace(SHOPIFY_ASSET_HASH_SUFFIX_RE, '$1$2');
     if (!filename) return '';
 
     const tfSkuMatch = filename.match(/^(tf_sku_[a-z0-9]+(?:_us)?)_\d+x\d+_[0-9a-z]+(?:[a-z])?\.[a-z0-9]+$/i);
@@ -587,6 +591,20 @@ function normalizeSeedImageUrls(seedData, row) {
 
   appendImageUrls(out, override.image_urls);
   appendImageUrls(out, override.image_url);
+  return out;
+}
+
+function collectPrimaryVariantImageUrls(variants) {
+  const primaryVariant =
+    Array.isArray(variants) && variants.length > 0 && variants[0] && typeof variants[0] === 'object'
+      ? variants[0]
+      : null;
+  if (!primaryVariant) return [];
+
+  const out = [];
+  appendImageUrls(out, primaryVariant.image_urls);
+  appendImageUrls(out, primaryVariant.images);
+  appendImageUrls(out, primaryVariant.image_url);
   return out;
 }
 
@@ -1031,6 +1049,10 @@ function buildExternalSeedProduct(row) {
 
   let variants = normalizeSeedVariants(seedData, row);
   let imageUrls = normalizeSeedImageUrls(seedData, row);
+  const primaryVariantImageUrls = collectPrimaryVariantImageUrls(variants);
+  if (primaryVariantImageUrls.length > 0) {
+    imageUrls = Array.from(new Set([...primaryVariantImageUrls, ...imageUrls]));
+  }
   if (!imageUrls.length && variants.length) {
     imageUrls = Array.from(
       new Set(
