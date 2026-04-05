@@ -47378,7 +47378,19 @@ function applyBeautyCanonicalOwnershipToEnvelope({ envelope, route = '', assista
       if (String(card.type || '').trim().toLowerCase() !== 'recommendations') return card;
       const payload = isPlainObject(card.payload) ? { ...card.payload } : {};
       payload.recommendation_meta = recommendationMetaPatch(payload.recommendation_meta);
-      const selectionStampedPayload = applyRecoAssistantSelectionSignature(payload);
+      const envelopeFallbackSelection = extractRecoFinalSelectionContract(payload);
+      const canonicalSelection = buildRecoFinalSelectionContract({
+        payload,
+        fallbackSelection: envelopeFallbackSelection,
+        selectionOwner: pickFirstTrimmed(
+          envelopeFallbackSelection?.selection_owner,
+          payload.recommendation_meta?.beauty_mainline_handoff_owner,
+          payload.metadata?.beauty_mainline_handoff_owner,
+          BEAUTY_DISCOVERY_MAINLINE_OWNER,
+        ) || BEAUTY_DISCOVERY_MAINLINE_OWNER,
+      });
+      const canonicalizedPayload = applyRecoFinalSelectionContractToPayload(payload, canonicalSelection);
+      const selectionStampedPayload = applyRecoAssistantSelectionSignature(canonicalizedPayload);
       return {
         ...card,
         payload: selectionStampedPayload,
@@ -47389,6 +47401,25 @@ function applyBeautyCanonicalOwnershipToEnvelope({ envelope, route = '', assista
   if (Array.isArray(out.cards)) {
     const recoCard = out.cards.find((card) => isPlainObject(card) && String(card.type || '').trim().toLowerCase() === 'recommendations');
     const recoPayload = isPlainObject(recoCard && recoCard.payload) ? recoCard.payload : null;
+    if (recoPayload) {
+      const recoSelectionContract = extractRecoFinalSelectionContract(recoPayload);
+      const mirroredRecommendationMeta = recommendationMetaPatch({
+        ...(isPlainObject(out.recommendation_meta) ? out.recommendation_meta : {}),
+        ...(isPlainObject(recoPayload.recommendation_meta) ? recoPayload.recommendation_meta : {}),
+      });
+      if (recoSelectionContract?.context_warning) mirroredRecommendationMeta.context_warning = recoSelectionContract.context_warning;
+      else delete mirroredRecommendationMeta.context_warning;
+      out.recommendation_meta = mirroredRecommendationMeta;
+      out.mainline_status = pickFirstTrimmed(
+        recoSelectionContract?.mainline_status,
+        recoPayload.mainline_status,
+        recoPayload.recommendation_meta?.mainline_status,
+        recoPayload.metadata?.mainline_status,
+        out.mainline_status,
+      ) || out.mainline_status;
+      if (recoSelectionContract?.context_warning) out.context_warning = recoSelectionContract.context_warning;
+      else delete out.context_warning;
+    }
     const currentAssistantText =
       isPlainObject(out.assistant_message) && typeof out.assistant_message.content === 'string'
         ? out.assistant_message.content
