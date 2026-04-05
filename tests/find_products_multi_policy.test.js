@@ -756,6 +756,88 @@ describe('find_products_multi intent + filtering', () => {
     );
   });
 
+  test('raw-query budget constraints still apply when upstream intent omits price', () => {
+    withPolicyEnv(
+      {
+        FIND_PRODUCTS_MULTI_BUDGET_FX_USD_RATES: JSON.stringify({
+          USD: 1,
+          EUR: 1.1,
+        }),
+        FIND_PRODUCTS_MULTI_BUDGET_FX_SOURCE: 'unit_test_fx_table',
+      },
+      ({ applyFindProductsMultiPolicy: applyWithEnv }) => {
+        const resp = applyWithEnv({
+          response: {
+            products: [
+              makeRawProduct({
+                id: 'vitc-ok',
+                title: 'Vitamin-C Serum',
+                description: 'Vitamin C serum brightening treatment',
+                price: 29,
+                currency: 'USD',
+              }),
+              makeRawProduct({
+                id: 'vitc-over',
+                title: 'Vitamin-C Serum Premium',
+                description: 'Vitamin C serum intensive treatment',
+                price: 40,
+                currency: 'USD',
+              }),
+            ],
+            total: 2,
+            page_size: 2,
+            reply: null,
+            metadata: {
+              strict_constraint_query: true,
+              budget_fx_applied: true,
+              budget_fx_candidate_currency: 'USD',
+            },
+          },
+          intent: {
+            intent_version: '1.0',
+            language: 'en',
+            primary_domain: 'beauty',
+            target_object: { type: 'human', age_group: 'adult', notes: '' },
+            category: { required: [], optional: [] },
+            scenario: { name: 'general', signals: [] },
+            hard_constraints: {
+              temperature_c: { min: null, max: null },
+              must_include_keywords: [],
+              must_exclude_domains: ['toy_accessory'],
+              must_exclude_keywords: [],
+              in_stock_only: true,
+            },
+            soft_preferences: { style: [], colors: [], brands: [], materials: [] },
+            confidence: { overall: 0.7, domain: 0.8, target_object: 0.9, category: 0.4, notes: '' },
+            ambiguity: { needs_clarification: false, missing_slots: [], clarifying_questions: [] },
+            history_usage: { used: false, reason: '', ignored_queries: [] },
+            query_class: 'attribute',
+          },
+          requestPayload: { search: { query: 'vitamin c serum under €30' } },
+          metadata: {
+            query_source: 'agent_products_ingredient_recall_direct',
+            route_health: {
+              fallback_triggered: false,
+              primary_path_used: 'ingredient_recall_direct',
+            },
+          },
+          rawUserQuery: 'vitamin c serum under €30',
+        });
+
+        expect(resp.products.map((item) => item.id)).toEqual(['vitc-ok']);
+        expect(resp.metadata).toEqual(
+          expect.objectContaining({
+            budget_fx_applied: true,
+            budget_fx_rate: 1.1,
+            budget_fx_source: 'unit_test_fx_table',
+            budget_fx_candidate_currency: 'USD',
+            budget_fx_unresolved: false,
+          }),
+        );
+      },
+    );
+  });
+
   test('search source preserves literal beauty multi-constraint queries as the upstream search text', async () => {
     const { adjustedPayload, expansion_meta } = await buildFindProductsMultiContext({
       payload: {

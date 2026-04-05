@@ -26610,8 +26610,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         isErrorSoftFallbackSource && (isLookupPolicyQuery || isAliasLookupQuery);
       const skipPolicyForLookupSoftFallback =
         !fashionConstraintSignalForPolicy &&
-        (resolvedContract === 'shop_invoke_strict' ||
-          isLookupSoftFallbackSource ||
+        (isLookupSoftFallbackSource ||
           (isResolverLookupSource && isLookupPolicyQuery) ||
           (isCacheLookupSource && isLookupPolicyQuery) ||
           (querySource === 'agent_products_search' && isAliasLookupQuery));
@@ -26829,8 +26828,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         strictResolvedContract === 'shop_invoke_strict' ||
         observationOnlyBeautySkincareHitQualityGate;
       const rawProductsBeforeQualityGate = Array.isArray(enriched?.products) ? enriched.products : [];
+      const strictContractPolicyAuthoritative =
+        strictResolvedContract === 'shop_invoke_strict' ||
+        existingMeta?.strict_constraint_query === true;
       const rawProductsForQualityGate = Array.isArray(upstreamData?.products)
-        ? upstreamData.products
+        ? strictContractPolicyAuthoritative
+          ? rawProductsBeforeQualityGate
+          : upstreamData.products
         : rawProductsBeforeQualityGate;
       const skincareHitDecision =
         rawProductsForQualityGate.length > 0 || !bypassBeautySkincareHitQualityGate
@@ -26981,12 +26985,26 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           ...guidanceOnlyPatches.searchDecisionPatch,
           ...(blockingBeautySkincareHitQualityGate ? { final_decision: 'invalid_hit' } : {}),
         };
+        const refreshedFashionConstraintMetadata =
+          nextProducts.length > 0 &&
+          (
+            Array.isArray(existingMeta?.visible_category_intents) ||
+            Array.isArray(existingMeta?.visible_attribute_intents) ||
+            Array.isArray(existingMeta?.visible_option_intents)
+          )
+            ? require('./findProductsMulti/policy').buildFashionConstraintMetadata({
+                rawQuery: queryText,
+                products: nextProducts,
+                existingMetadata: existingMeta,
+              })
+            : {};
         enriched = {
           ...enriched,
           products: nextProducts,
           total: nextProducts.length,
           metadata: {
             ...existingMeta,
+            ...refreshedFashionConstraintMetadata,
             raw_result_count: skincareHitDecision.raw_result_count,
             products_returned_count: skincareHitDecision.products_returned_count,
             ...guidanceOnlyPatches.metadataPatch,
@@ -27016,6 +27034,39 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         typeof enriched.clarification === 'object'
           ? enriched.clarification
           : null;
+      const shouldRefreshFashionConstraintMatches =
+        products.length > 0 &&
+        (
+          Array.isArray(existingMeta?.visible_category_intents) ||
+          Array.isArray(existingMeta?.visible_attribute_intents) ||
+          Array.isArray(existingMeta?.visible_option_intents)
+        ) &&
+        (
+          !Array.isArray(existingMeta?.matched_visible_categories) ||
+          existingMeta.matched_visible_categories.length === 0 ||
+          !Array.isArray(existingMeta?.matched_visible_attribute_labels) ||
+          existingMeta.matched_visible_attribute_labels.length === 0 ||
+          !Array.isArray(existingMeta?.matched_visible_option_labels) ||
+          existingMeta.matched_visible_option_labels.length === 0
+        );
+      if (shouldRefreshFashionConstraintMatches) {
+        const refreshedFashionConstraintMetadata = require('./findProductsMulti/policy').buildFashionConstraintMetadata({
+          rawQuery: queryText,
+          products,
+          existingMetadata: existingMeta,
+        });
+        enriched = {
+          ...enriched,
+          metadata: {
+            ...existingMeta,
+            ...refreshedFashionConstraintMetadata,
+          },
+        };
+        existingMeta =
+          enriched && typeof enriched === 'object' && !Array.isArray(enriched) && enriched.metadata
+            ? enriched.metadata
+            : {};
+      }
       const hasClarification = Boolean(clarificationPayload?.question);
       const searchDecision =
         existingMeta &&

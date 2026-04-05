@@ -111,4 +111,111 @@ describe('Celestial commerce-core production smoke wrapper', () => {
       await new Promise((resolve) => server.close(resolve));
     }
   });
+
+  test('fails the gate when returned products violate the query budget', async () => {
+    const repoRoot = path.join(__dirname, '..');
+    const scriptPath = path.join(repoRoot, 'scripts', 'smoke_celestial_commerce_core_prod.sh');
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'commerce-core-prod-budget-gate-'));
+    const queryFile = path.join(outDir, 'prod-smoke-budget.json');
+    fs.writeFileSync(
+      queryFile,
+      JSON.stringify(
+        [
+          {
+            id: 'budget_case',
+            family: 'strict_ingredient_budget',
+            query: 'vitamin c serum under $30',
+            source: 'search',
+            allow_zero_results: false,
+            must_have_metadata: ['service_version.commit', 'query_source', 'budget_fx_applied'],
+            must_equal_metadata: {
+              budget_fx_applied: true,
+              budget_fx_candidate_currency: 'USD',
+            },
+            must_respect_budget: true,
+          },
+        ],
+        null,
+        2,
+      ),
+    );
+
+    const server = http.createServer(async (req, res) => {
+      const body = await readJsonBody(req);
+      if (req.url !== '/agent/shop/v1/invoke') {
+        res.statusCode = 404;
+        res.end('not found');
+        return;
+      }
+
+      if (req.headers.authorization !== 'Bearer ak_live_test_prod_key') {
+        res.statusCode = 401;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ error: 'UNAUTHORIZED', message: 'Missing or invalid API key' }));
+        return;
+      }
+
+      expect(body?.payload?.search?.query).toBe('vitamin c serum under $30');
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(
+        JSON.stringify({
+          products: [
+            {
+              title: 'Budget Breaker Serum',
+              price: 70,
+              currency: 'USD',
+            },
+          ],
+          metadata: {
+            service_version: { commit: 'smoke123' },
+            query_source: 'agent_products_ingredient_recall_direct',
+            budget_fx_applied: true,
+            budget_fx_rate: 1,
+            budget_fx_candidate_currency: 'USD',
+            contract_bridge: { resolved_contract: 'shop_invoke_strict' },
+            search_trace: { final_decision: 'products_returned' },
+          },
+        }),
+      );
+    });
+
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+
+    try {
+      await expect(
+        execFileAsync('bash', [scriptPath], {
+          cwd: repoRoot,
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            BASE_URL: baseUrl,
+            COMMERCE_CORE_PROD_AUTH_TOKEN: 'ak_live_test_prod_key',
+            OUT_DIR: outDir,
+            QUERY_FILE: queryFile,
+            VERIFY_DEPLOY: '0',
+            ROUNDS: '1',
+            TIMEOUT_MS: '5000',
+          },
+        }),
+      ).rejects.toMatchObject({
+        stdout: expect.stringContaining('"ok": false'),
+      });
+
+      const reportPath = fs
+        .readdirSync(outDir)
+        .find((entry) => entry.startsWith('search_stability_matrix_') && entry.endsWith('.json'));
+      const report = JSON.parse(fs.readFileSync(path.join(outDir, reportPath), 'utf8'));
+      expect(report.summary.gate_failure_rate).toBe(1);
+      expect(report.per_case.budget_case.latest_reasons).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining('over_budget_product:Budget Breaker Serum@70USD:max=30USD'),
+        ]),
+      );
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
 });

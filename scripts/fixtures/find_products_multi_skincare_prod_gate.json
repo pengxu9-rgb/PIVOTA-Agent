@@ -114,6 +114,7 @@
       "budget_fx_candidate_currency": "USD",
       "budget_fx_unresolved": false
     },
+    "must_respect_budget": true,
     "must_return_one_of_titles": [
       "Vitamin-C Serum"
     ]
@@ -140,6 +141,7 @@
       "strict_constraint_query": true,
       "strict_constraint_reason": "multi_constraint"
     },
+    "must_respect_budget": true,
     "must_return_one_of_titles": [
       "Vitamin-C Serum"
     ]
