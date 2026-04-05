@@ -62768,58 +62768,6 @@ async function generateProductRecommendations({
     concernWinnerSource = 'deterministic';
     concernSupportRolesSurfaced = [];
   }
-  let beautyMainlineHandoffNonBlocking = false;
-  if (
-    deterministicCatalogFirstEnabled
-    && !concernSemanticPlanBlockedReason
-    && promptContract.ok !== false
-    && (!Array.isArray(norm.payload?.recommendations) || norm.payload.recommendations.length === 0)
-  ) {
-    const handedOffReco = await handoffRecoToBeautyMainlineSearch({
-      ctx,
-      logger,
-      primaryQuery: userAsk,
-      fallbackMessage: userAsk,
-      targetContext,
-      profileSummary,
-      deadlineAtMs,
-      debug,
-    });
-    if (Array.isArray(handedOffReco.recommendations) && handedOffReco.recommendations.length > 0) {
-      beautyMainlineHandoffNonBlocking = true;
-      effectiveFailureClass = 'none';
-      failureOrigin = 'none';
-      presentationMode = presentationMode || 'deterministic_degraded';
-      successMode = successMode || 'degraded_success';
-      const nextPayload = {
-        ...norm.payload,
-        recommendations: handedOffReco.recommendations,
-        mainline_status: pickFirstTrimmed(norm.payload?.mainline_status, 'grounded_success') || 'grounded_success',
-        recommendation_meta: {
-          ...(isPlainObject(norm.payload?.recommendation_meta) ? norm.payload.recommendation_meta : {}),
-          beauty_mainline_handoff_attempted: Boolean(handedOffReco?.attempted),
-          beauty_mainline_handoff_attempt_count: Array.isArray(handedOffReco?.attempts) ? handedOffReco.attempts.length : 0,
-          beauty_mainline_handoff_attempts: Array.isArray(handedOffReco?.attempts) ? handedOffReco.attempts.slice(0, 4) : [],
-          beauty_mainline_handoff_timeout_ms: Number.isFinite(Number(handedOffReco?.timeout_ms)) ? Number(handedOffReco.timeout_ms) : RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
-          beauty_mainline_handoff_applied: true,
-          beauty_mainline_handoff_owner: pickFirstTrimmed(
-            handedOffReco.searchResult?.decision_owner,
-            BEAUTY_DISCOVERY_MAINLINE_OWNER,
-          ) || BEAUTY_DISCOVERY_MAINLINE_OWNER,
-          beauty_mainline_handoff_query_source: pickFirstTrimmed(handedOffReco.searchResult?.query_source) || null,
-          beauty_mainline_handoff_result_count: handedOffReco.recommendations.length,
-          beauty_mainline_handoff_contract_owner: pickFirstTrimmed(handedOffReco.semanticContract?.owner) || null,
-          beauty_mainline_handoff_applied_query: pickFirstTrimmed(handedOffReco?.applied_query) || null,
-        },
-        metadata: {
-          ...(isPlainObject(norm.payload?.metadata) ? norm.payload.metadata : {}),
-        },
-      };
-      delete nextPayload.products_empty_reason;
-      delete nextPayload.telemetry_reason;
-      norm.payload = nextPayload;
-    }
-  }
   if (frameworkMode && Array.isArray(norm.payload?.recommendations) && norm.payload.recommendations.length > 0) {
     const finalRecoRowsForPdp = Array.isArray(norm.payload.recommendations) ? norm.payload.recommendations : [];
     const groundedRecoRows = [];
@@ -81810,13 +81758,6 @@ function mountAuroraBffRoutes(app, { logger }) {
             && Array.isArray(chatRecoTargetContext.framework_roles)
             && chatRecoTargetContext.framework_roles.length > 0
           );
-        const beautyMainlineHandoffFirstEligible =
-          RECO_CATALOG_GROUNDED_ENABLED
-          && !ingredientRecoOptInRequested
-          && !travelRecoHandoff
-          && (!shouldApplySessionRecoContext || typedRecoOwnershipKeepsV1Mainline)
-          && (!recoAutoAnchoredByAnalysis || typedRecoOwnershipKeepsV1Mainline)
-          && (genericConcernRecoMainline || hasExplicitRecoTarget || typedRecoOwnershipKeepsV1Mainline);
         const genericGoalDrivenNeedsMoreContext =
           !genericConcernRecoMainline
           && !hasStableRecoTarget
@@ -81929,67 +81870,6 @@ function mountAuroraBffRoutes(app, { logger }) {
             recoSource = 'catalog_grounded_v1';
             recoMainlineStatus = 'grounded_success';
             recoTelemetryFailureReason = '';
-          }
-        }
-        if (!norm && beautyMainlineHandoffFirstEligible) {
-          prefetchedBeautyMainlineHandoff = await handoffRecoToBeautyMainlineSearch({
-            ctx,
-            logger,
-            primaryQuery: pickFirstTrimmed(
-              recoRequestMessageForMainline,
-              message,
-            ),
-            fallbackMessage: message,
-            targetContext: chatRecoTargetContext,
-            fallbackFocus: recoFocusForMainline,
-            profileSummary: summarizeProfileForContext(profile),
-            debug: debugUpstream,
-            timeoutMs: RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
-            minTimeoutMs: RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
-          });
-          if (Array.isArray(prefetchedBeautyMainlineHandoff?.recommendations) && prefetchedBeautyMainlineHandoff.recommendations.length > 0) {
-            const prefetchedSelection = extractRecoFinalSelectionContract(prefetchedBeautyMainlineHandoff.searchResult);
-            const prefetchedMainlineStatus = pickFirstTrimmed(
-              prefetchedSelection?.mainline_status,
-              'grounded_success',
-            ) || 'grounded_success';
-            prefetchedBeautyMainlineHandoffApplied = true;
-            norm = {
-              payload: {
-                intent: 'reco_products',
-                profile: summarizeProfileForContext(profile),
-                recommendations: prefetchedBeautyMainlineHandoff.recommendations,
-                source: 'catalog_grounded_v1',
-                grounding_status: 'grounded',
-                grounded_count: prefetchedBeautyMainlineHandoff.recommendations.length,
-                ungrounded_count: 0,
-                mainline_status: prefetchedMainlineStatus,
-                recommendation_confidence_score:
-                  artifactConfidenceScore != null ? artifactConfidenceScore : 0.61,
-                recommendation_confidence_level:
-                  artifactConfidenceLevel && artifactConfidenceLevel !== 'unknown'
-                    ? artifactConfidenceLevel
-                    : 'medium',
-                recommendation_meta: {
-                  task_mode: recoTaskMode,
-                  source_mode: genericConcernRecoMainline ? 'framework_mainline' : 'step_aware_mainline',
-                  trigger_source: normalizeRecoSourceDetail(effectiveRecoEntrySourceDetail),
-                  used_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
-                  used_itinerary: false,
-                  used_safety_flags: lowConfidenceArtifact,
-                  mainline_status: prefetchedMainlineStatus,
-                },
-                metadata: {
-                  mainline_status: prefetchedMainlineStatus,
-                },
-              },
-              field_missing: [],
-            };
-            recoSource = 'catalog_grounded_v1';
-            recoMainlineStatus = prefetchedMainlineStatus;
-            recoTelemetryFailureReason = '';
-            llmFailureClass = '';
-            upstreamFailureCode = '';
           }
         }
         const normHasRecommendations = Array.isArray(norm?.payload?.recommendations) && norm.payload.recommendations.length > 0;
@@ -82458,92 +82338,9 @@ function mountAuroraBffRoutes(app, { logger }) {
             recoTaskMode === 'ingredient_lookup_no_candidates'
             || String(payload.products_empty_reason || '').trim() === 'ingredient_no_verified_candidates';
           let payloadHasRecs = Array.isArray(payload.recommendations) && payload.recommendations.length > 0;
-          let chatBeautyMainlineHandoff = prefetchedBeautyMainlineHandoff;
-          let chatBeautyHandoffSnapshot = extractRecoCanonicalSearchResultSnapshot(chatBeautyMainlineHandoff?.searchResult);
-          let chatBeautyHandoffSelection = chatBeautyHandoffSnapshot?.finalSelection || null;
-          let chatBeautyHandoffSelectionLocked = Array.isArray(chatBeautyHandoffSelection?.selected_product_ids)
-            && chatBeautyHandoffSelection.selected_product_ids.length > 0;
-          const shouldAttemptLateBeautyMainlineHandoff =
-            !noCandidatesMode
-            && !ingredientRecoOptInRequested
-            && !travelRecoHandoff
-            && !chatBeautyMainlineHandoff
-            && (
-              !payloadHasRecs
-              || typedRecoOwnershipKeepsV1Mainline
-              || looksLikeRecommendationRequest(message)
-              || profileClarificationAction
-              || shouldAutoRerunRecommendationsFromProfilePatch === true
-            );
-          if (shouldAttemptLateBeautyMainlineHandoff) {
-            chatBeautyMainlineHandoff = await handoffRecoToBeautyMainlineSearch({
-              ctx,
-              logger,
-              primaryQuery: pickFirstTrimmed(
-                recoRequestMessageForMainline,
-                payload?.recommendation_meta?.semantic_query,
-              ),
-              fallbackMessage: message,
-              targetContext: chatRecoTargetContext,
-              fallbackFocus: recoFocusForMainline,
-              profileSummary: summarizeProfileForContext(profile),
-              debug: debugUpstream,
-              timeoutMs: RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
-              minTimeoutMs: RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
-            });
-            chatBeautyHandoffSnapshot = extractRecoCanonicalSearchResultSnapshot(chatBeautyMainlineHandoff?.searchResult);
-            chatBeautyHandoffSelection = chatBeautyHandoffSnapshot?.finalSelection || null;
-            chatBeautyHandoffSelectionLocked = Array.isArray(chatBeautyHandoffSelection?.selected_product_ids)
-              && chatBeautyHandoffSelection.selected_product_ids.length > 0;
-          }
-          const shouldPreferCanonicalHandoffPayload =
-            chatBeautyHandoffSelectionLocked
-            && Array.isArray(chatBeautyMainlineHandoff?.recommendations)
-            && chatBeautyMainlineHandoff.recommendations.length > 0
-            && (
-              !payloadHasRecs
-              || typedRecoOwnershipKeepsV1Mainline
-              || looksLikeRecommendationRequest(message)
-              || profileClarificationAction
-              || shouldAutoRerunRecommendationsFromProfilePatch === true
-            );
-          if (shouldPreferCanonicalHandoffPayload) {
-            const canonicalHandoffPayload = buildRecoPayloadFromBeautyMainlineHandoff({
-              handoff: chatBeautyMainlineHandoff,
-              profile,
-              targetContext: chatRecoTargetContext,
-              recoContext: recoIngredientContext || latestRecoContextPatch,
-              taskMode: recoTaskMode,
-              triggerSource: effectiveRecoEntrySourceDetail,
-              sourceMode: genericConcernRecoMainline ? 'framework_mainline' : hasDeterministicRecoTarget ? 'step_aware_mainline' : '',
-              basePayload: payload,
-              selectionOwner: pickFirstTrimmed(
-                chatBeautyMainlineHandoff?.searchResult?.decision_owner,
-                BEAUTY_DISCOVERY_MAINLINE_OWNER,
-              ) || BEAUTY_DISCOVERY_MAINLINE_OWNER,
-              entryType: 'chat',
-            });
-            if (isPlainObject(canonicalHandoffPayload?.payload)) {
-              for (const key of Object.keys(payload)) delete payload[key];
-              Object.assign(payload, canonicalHandoffPayload.payload);
-              recoContract = isPlainObject(canonicalHandoffPayload.contract)
-                ? canonicalHandoffPayload.contract
-                : recoContract;
-              chatBeautyHandoffSelection = canonicalHandoffPayload.selectionContract || chatBeautyHandoffSelection;
-              chatBeautyHandoffSelectionLocked = Array.isArray(chatBeautyHandoffSelection?.selected_product_ids)
-                && chatBeautyHandoffSelection.selected_product_ids.length > 0;
-              recoMainlineStatus = pickFirstTrimmed(
-                payload.mainline_status,
-                chatBeautyHandoffSelection?.mainline_status,
-                'grounded_success',
-              ) || 'grounded_success';
-              recoSource = 'catalog_grounded_v1';
-              recoTelemetryFailureReason = '';
-              llmFailureClass = '';
-              upstreamFailureCode = '';
-              payloadHasRecs = Array.isArray(payload.recommendations) && payload.recommendations.length > 0;
-            }
-          }
+          const chatBeautyMainlineHandoff = null;
+          const chatBeautyHandoffSelection = null;
+          const chatBeautyHandoffSelectionLocked = false;
           payload.recommendation_confidence_level = noCandidatesMode ? 'low' : artifactConfidenceLevel;
           if (noCandidatesMode) {
             payload.recommendation_confidence_score = 0;
@@ -82614,33 +82411,6 @@ function mountAuroraBffRoutes(app, { logger }) {
             ...(Number.isFinite(Number(payloadOutcomeArgs.preLlmSelectedCandidateCount)) ? { pre_llm_selected_candidate_count: Number(payloadOutcomeArgs.preLlmSelectedCandidateCount) } : {}),
             ...(Number.isFinite(Number(payloadOutcomeArgs.finalSelectedCandidateCount)) ? { final_selected_candidate_count: Number(payloadOutcomeArgs.finalSelectedCandidateCount) } : {}),
             ...(Number.isFinite(Number(payloadOutcomeArgs.postGuardrailCount)) ? { post_guardrail_count: Number(payloadOutcomeArgs.postGuardrailCount) } : {}),
-            ...(Array.isArray(chatBeautyMainlineHandoff?.recommendations) && chatBeautyMainlineHandoff.recommendations.length > 0
-              ? {
-                  beauty_mainline_handoff_applied: true,
-                  beauty_mainline_handoff_owner: pickFirstTrimmed(
-                    chatBeautyMainlineHandoff.searchResult?.decision_owner,
-                    BEAUTY_DISCOVERY_MAINLINE_OWNER,
-                  ) || BEAUTY_DISCOVERY_MAINLINE_OWNER,
-                  beauty_mainline_handoff_query_source: pickFirstTrimmed(chatBeautyMainlineHandoff.searchResult?.query_source) || null,
-                  beauty_mainline_handoff_result_count: chatBeautyMainlineHandoff.recommendations.length,
-                  beauty_mainline_handoff_contract_owner: pickFirstTrimmed(chatBeautyMainlineHandoff.semanticContract?.owner) || null,
-                  beauty_mainline_handoff_applied_query: pickFirstTrimmed(chatBeautyMainlineHandoff.applied_query) || null,
-                }
-              : {}),
-            ...(chatBeautyMainlineHandoff?.attempted
-              ? {
-                  beauty_mainline_handoff_attempted: true,
-                  beauty_mainline_handoff_attempt_count: Array.isArray(chatBeautyMainlineHandoff.attempts)
-                    ? chatBeautyMainlineHandoff.attempts.length
-                    : 0,
-                  beauty_mainline_handoff_attempts: Array.isArray(chatBeautyMainlineHandoff.attempts)
-                    ? chatBeautyMainlineHandoff.attempts.slice(0, 4)
-                    : [],
-                  beauty_mainline_handoff_timeout_ms: Number.isFinite(Number(chatBeautyMainlineHandoff.timeout_ms))
-                    ? Number(chatBeautyMainlineHandoff.timeout_ms)
-                    : RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
-                }
-              : {}),
             prompt_template_id: pickFirstTrimmed(
               payload.prompt_template_id,
               recoMetaPromptTemplateId,
@@ -82660,120 +82430,84 @@ function mountAuroraBffRoutes(app, { logger }) {
             ...(recoTimeoutDegradedWarning || {}),
             ...(verifiedCandidateRestoreApplied ? { verified_candidate_restore_applied: true, verified_candidate_restore_count: verifiedCandidateRestoreCount } : {}),
           };
-          if (chatBeautyHandoffSelectionLocked && isPlainObject(chatBeautyMainlineHandoff?.searchResult)) {
-            Object.assign(
-              payload,
-              applyRecoCanonicalSearchResultToPayload(payload, chatBeautyMainlineHandoff.searchResult, {
-                selectionOwner: pickFirstTrimmed(
-                  chatBeautyMainlineHandoff?.searchResult?.decision_owner,
-                  BEAUTY_DISCOVERY_MAINLINE_OWNER,
-                ) || BEAUTY_DISCOVERY_MAINLINE_OWNER,
-              }),
-            );
-            recoMainlineStatus = pickFirstTrimmed(payload.mainline_status, recoMainlineStatus) || recoMainlineStatus;
-            recoContract = buildRecoMainlineContract({
-              recommendations: payload.recommendations,
-              sourceMode: payload.recommendation_meta && payload.recommendation_meta.source_mode,
-              source: payload.source,
-              llmFailureClass: llmFailureClass || recoContract?.failure_class,
-              upstreamFailureCode,
-              promptContractOk: payload.prompt_contract_ok !== false,
-              fieldMissing: norm?.field_missing,
-              structuredSource: payload.recommendation_meta && payload.recommendation_meta.source_mode,
-              catalogSkipReason: payload.recommendation_meta && payload.recommendation_meta.catalog_skip_reason,
-              productsEmptyReason: payload.products_empty_reason,
-              groundingStatus: payload.recommendation_meta && payload.recommendation_meta.grounding_status,
-              groundedCount: payload.recommendation_meta && payload.recommendation_meta.grounded_count,
-              ungroundedCount: payload.recommendation_meta && payload.recommendation_meta.ungrounded_count,
-              mainlineStatusOverride: payload.recommendation_meta && payload.recommendation_meta.mainline_status,
-              promptTemplateId: payload.recommendation_meta && payload.recommendation_meta.prompt_template_id,
-              entryType: 'chat',
-              ...extractRecoOutcomeContractArgsFromPayload(payload, recoContract),
-            });
-          } else {
-            const finalRecoContract = buildRecoMainlineContract({
-              recommendations: payload.recommendations,
-              sourceMode: payload.recommendation_meta && payload.recommendation_meta.source_mode,
-              source: payload.source,
-              llmFailureClass: llmFailureClass || recoContract?.failure_class,
-              upstreamFailureCode,
-              promptContractOk: payload.prompt_contract_ok !== false,
-              fieldMissing: norm?.field_missing,
-              structuredSource: payload.recommendation_meta && payload.recommendation_meta.source_mode,
-              catalogSkipReason: payload.recommendation_meta && payload.recommendation_meta.catalog_skip_reason,
-              productsEmptyReason: payload.products_empty_reason,
-              groundingStatus: payload.recommendation_meta && payload.recommendation_meta.grounding_status,
-              groundedCount: payload.recommendation_meta && payload.recommendation_meta.grounded_count,
-              ungroundedCount: payload.recommendation_meta && payload.recommendation_meta.ungrounded_count,
-              mainlineStatusOverride: payload.recommendation_meta && payload.recommendation_meta.mainline_status,
-              promptTemplateId: payload.recommendation_meta && payload.recommendation_meta.prompt_template_id,
-              entryType: 'chat',
-              ...extractRecoOutcomeContractArgsFromPayload(payload, recoContract),
-            });
-            finalRecoContract.mainline_status = pickFirstTrimmed(
-              payload.mainline_status,
-              payload.recommendation_meta && payload.recommendation_meta.mainline_status,
-              finalRecoContract.mainline_status,
-            ) || finalRecoContract.mainline_status;
-            finalRecoContract.grounding_status = normalizeRecoGroundingStatus(
-              payload.grounding_status || (payload.recommendation_meta && payload.recommendation_meta.grounding_status),
-            ) || finalRecoContract.grounding_status || null;
-            finalRecoContract.grounded_count = Number.isFinite(Number(payload.grounded_count))
-              ? Number(payload.grounded_count)
-              : Number.isFinite(Number(payload.recommendation_meta?.grounded_count))
-                ? Number(payload.recommendation_meta.grounded_count)
-                : finalRecoContract.grounded_count;
-            finalRecoContract.ungrounded_count = Number.isFinite(Number(payload.ungrounded_count))
-              ? Number(payload.ungrounded_count)
-              : Number.isFinite(Number(payload.recommendation_meta?.ungrounded_count))
-                ? Number(payload.recommendation_meta.ungrounded_count)
-                : finalRecoContract.ungrounded_count;
-            finalRecoContract.prompt_template_id = pickFirstTrimmed(
-              payload.recommendation_meta && payload.recommendation_meta.prompt_template_id,
-              finalRecoContract.prompt_template_id,
-            ) || finalRecoContract.prompt_template_id;
-            recoContract = finalRecoContract;
-            const nextPayload = attachRecoContractMeta(
-              restorePlanOnlyRecommendations(payload, {
-                sourceMode: finalRecoContract.source_mode,
-              }),
-              finalRecoContract,
-            );
-            Object.assign(payload, nextPayload);
-            recoContract = buildRecoMainlineContract({
-              recommendations: payload.recommendations,
-              sourceMode: payload.recommendation_meta && payload.recommendation_meta.source_mode,
-              source: payload.source,
-              llmFailureClass: llmFailureClass || recoContract?.failure_class,
-              upstreamFailureCode,
-              promptContractOk: payload.prompt_contract_ok !== false,
-              fieldMissing: norm?.field_missing,
-              structuredSource: payload.recommendation_meta && payload.recommendation_meta.source_mode,
-              catalogSkipReason: payload.recommendation_meta && payload.recommendation_meta.catalog_skip_reason,
-              productsEmptyReason: payload.products_empty_reason,
-              groundingStatus: payload.recommendation_meta && payload.recommendation_meta.grounding_status,
-              groundedCount: payload.recommendation_meta && payload.recommendation_meta.grounded_count,
-              ungroundedCount: payload.recommendation_meta && payload.recommendation_meta.ungrounded_count,
-              mainlineStatusOverride: payload.recommendation_meta && payload.recommendation_meta.mainline_status,
-              promptTemplateId: payload.recommendation_meta && payload.recommendation_meta.prompt_template_id,
-              entryType: 'chat',
-              ...extractRecoOutcomeContractArgsFromPayload(payload, recoContract),
-            });
-            Object.assign(payload, attachRecoContractMeta(payload, recoContract));
-          }
+          const finalRecoContract = buildRecoMainlineContract({
+            recommendations: payload.recommendations,
+            sourceMode: payload.recommendation_meta && payload.recommendation_meta.source_mode,
+            source: payload.source,
+            llmFailureClass: llmFailureClass || recoContract?.failure_class,
+            upstreamFailureCode,
+            promptContractOk: payload.prompt_contract_ok !== false,
+            fieldMissing: norm?.field_missing,
+            structuredSource: payload.recommendation_meta && payload.recommendation_meta.source_mode,
+            catalogSkipReason: payload.recommendation_meta && payload.recommendation_meta.catalog_skip_reason,
+            productsEmptyReason: payload.products_empty_reason,
+            groundingStatus: payload.recommendation_meta && payload.recommendation_meta.grounding_status,
+            groundedCount: payload.recommendation_meta && payload.recommendation_meta.grounded_count,
+            ungroundedCount: payload.recommendation_meta && payload.recommendation_meta.ungrounded_count,
+            mainlineStatusOverride: payload.recommendation_meta && payload.recommendation_meta.mainline_status,
+            promptTemplateId: payload.recommendation_meta && payload.recommendation_meta.prompt_template_id,
+            entryType: 'chat',
+            ...extractRecoOutcomeContractArgsFromPayload(payload, recoContract),
+          });
+          finalRecoContract.mainline_status = pickFirstTrimmed(
+            payload.mainline_status,
+            payload.recommendation_meta && payload.recommendation_meta.mainline_status,
+            finalRecoContract.mainline_status,
+          ) || finalRecoContract.mainline_status;
+          finalRecoContract.grounding_status = normalizeRecoGroundingStatus(
+            payload.grounding_status || (payload.recommendation_meta && payload.recommendation_meta.grounding_status),
+          ) || finalRecoContract.grounding_status || null;
+          finalRecoContract.grounded_count = Number.isFinite(Number(payload.grounded_count))
+            ? Number(payload.grounded_count)
+            : Number.isFinite(Number(payload.recommendation_meta?.grounded_count))
+              ? Number(payload.recommendation_meta.grounded_count)
+              : finalRecoContract.grounded_count;
+          finalRecoContract.ungrounded_count = Number.isFinite(Number(payload.ungrounded_count))
+            ? Number(payload.ungrounded_count)
+            : Number.isFinite(Number(payload.recommendation_meta?.ungrounded_count))
+              ? Number(payload.recommendation_meta.ungrounded_count)
+              : finalRecoContract.ungrounded_count;
+          finalRecoContract.prompt_template_id = pickFirstTrimmed(
+            payload.recommendation_meta && payload.recommendation_meta.prompt_template_id,
+            finalRecoContract.prompt_template_id,
+          ) || finalRecoContract.prompt_template_id;
+          recoContract = finalRecoContract;
+          const nextPayload = attachRecoContractMeta(
+            restorePlanOnlyRecommendations(payload, {
+              sourceMode: finalRecoContract.source_mode,
+            }),
+            finalRecoContract,
+          );
+          Object.assign(payload, nextPayload);
+          recoContract = buildRecoMainlineContract({
+            recommendations: payload.recommendations,
+            sourceMode: payload.recommendation_meta && payload.recommendation_meta.source_mode,
+            source: payload.source,
+            llmFailureClass: llmFailureClass || recoContract?.failure_class,
+            upstreamFailureCode,
+            promptContractOk: payload.prompt_contract_ok !== false,
+            fieldMissing: norm?.field_missing,
+            structuredSource: payload.recommendation_meta && payload.recommendation_meta.source_mode,
+            catalogSkipReason: payload.recommendation_meta && payload.recommendation_meta.catalog_skip_reason,
+            productsEmptyReason: payload.products_empty_reason,
+            groundingStatus: payload.recommendation_meta && payload.recommendation_meta.grounding_status,
+            groundedCount: payload.recommendation_meta && payload.recommendation_meta.grounded_count,
+            ungroundedCount: payload.recommendation_meta && payload.recommendation_meta.ungrounded_count,
+            mainlineStatusOverride: payload.recommendation_meta && payload.recommendation_meta.mainline_status,
+            promptTemplateId: payload.recommendation_meta && payload.recommendation_meta.prompt_template_id,
+            entryType: 'chat',
+            ...extractRecoOutcomeContractArgsFromPayload(payload, recoContract),
+          });
+          Object.assign(payload, attachRecoContractMeta(payload, recoContract));
           Object.assign(
             payload,
             applyRecoContentSpineToPayload(payload, recoIngredientContext || latestRecoContextPatch),
           );
-          if (!chatBeautyHandoffSelectionLocked && shouldApplyRecoFinalSelectionContract(payload, chatBeautyHandoffSelection)) {
+          if (shouldApplyRecoFinalSelectionContract(payload, null)) {
             const finalSelectionContract = buildRecoFinalSelectionContract({
               payload,
-              fallbackSelection: chatBeautyHandoffSelection,
-              selectionOwner: pickFirstTrimmed(
-                chatBeautyMainlineHandoff?.searchResult?.decision_owner,
-                chatBeautyMainlineHandoff?.searchResult?.metadata?.decision_owner,
-                BEAUTY_DISCOVERY_MAINLINE_OWNER,
-              ) || BEAUTY_DISCOVERY_MAINLINE_OWNER,
+              fallbackSelection: null,
+              selectionOwner: BEAUTY_DISCOVERY_MAINLINE_OWNER,
             });
             Object.assign(payload, applyRecoFinalSelectionContractToPayload(payload, finalSelectionContract));
             Object.assign(payload, applyRecoAssistantSelectionSignature(payload));
