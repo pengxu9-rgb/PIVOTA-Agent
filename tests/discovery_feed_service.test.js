@@ -271,7 +271,85 @@ describe('discovery feed service', () => {
     expect(response.metadata.brand_scope_applied).toEqual(['Tom Ford Beauty']);
   });
 
+  test('brand-scoped discovery supplements existing brand pool with direct brand recall before recommendations', async () => {
+    let recommendCalls = 0;
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        sort: 'popular',
+        scope: {
+          brand_names: ['Tom Ford Beauty'],
+        },
+        source_product_ref: {
+          product_id: 'ext_seed_1',
+          merchant_id: 'external_seed',
+        },
+        context: {
+          locale: 'en-US',
+        },
+      },
+      {
+        candidateProducts: [
+          makeProduct({
+            merchant_id: 'm1',
+            product_id: 'rose_prick',
+            title: 'Rose Prick Eau de Parfum',
+            brand: 'Tom Ford Beauty',
+            category: 'Fragrance',
+            product_type: 'Perfume',
+            price: 410,
+          }),
+          makeProduct({
+            merchant_id: 'm9',
+            product_id: 'other_brand',
+            title: 'Hydrating Serum',
+            brand: 'Acme',
+            category: 'Skincare',
+            product_type: 'Serum',
+          }),
+        ],
+        brandFallbackFetchInternalCandidatesFn: async () => [
+          makeProduct({
+            merchant_id: 'm2',
+            product_id: 'electric_cherry',
+            title: 'Electric Cherry Eau de Parfum',
+            brand: 'Tom Ford',
+            category: 'Fragrance',
+            product_type: 'Perfume',
+            price: 395,
+          }),
+        ],
+        brandFallbackFetchExternalCandidatesFn: async () => [
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'lost_cherry',
+            title: 'Lost Cherry Eau de Parfum',
+            brand: 'Tom Ford Beauty',
+            category: 'Fragrance',
+            product_type: 'Perfume',
+            price: 550,
+          }),
+        ],
+        brandFallbackRecommendFn: async () => {
+          recommendCalls += 1;
+          return { items: [] };
+        },
+      },
+    );
+
+    expect(response.products.map((product) => product.product_id)).toEqual([
+      'rose_prick',
+      'electric_cherry',
+      'lost_cherry',
+    ]);
+    expect(response.metadata.candidate_source).toBe('override+brand_direct');
+    expect(recommendCalls).toBe(0);
+  });
+
   test('brand-scoped discovery falls back to source-product recommendations when brand pool is empty', async () => {
+    let recommendCalls = 0;
     const response = await getDiscoveryFeed(
       {
         surface: 'browse_products',
@@ -302,28 +380,31 @@ describe('discovery feed service', () => {
         ],
         brandFallbackFetchInternalCandidatesFn: async () => [],
         brandFallbackFetchExternalCandidatesFn: async () => [],
-        brandFallbackRecommendFn: async () => ({
-          items: [
-            makeProduct({
-              merchant_id: 'external_seed',
-              product_id: 'rose_prick',
-              title: 'Rose Prick Eau de Parfum',
-              brand: 'Tom Ford Beauty',
-              category: 'Fragrance',
-              product_type: 'Perfume',
-              price: 410,
-            }),
-            makeProduct({
-              merchant_id: 'm2',
-              product_id: 'electric_cherry',
-              title: 'Electric Cherry Eau de Parfum',
-              brand: 'Tom Ford',
-              category: 'Fragrance',
-              product_type: 'Perfume',
-              price: 395,
-            }),
-          ],
-        }),
+        brandFallbackRecommendFn: async () => {
+          recommendCalls += 1;
+          return {
+            items: [
+              makeProduct({
+                merchant_id: 'external_seed',
+                product_id: 'rose_prick',
+                title: 'Rose Prick Eau de Parfum',
+                brand: 'Tom Ford Beauty',
+                category: 'Fragrance',
+                product_type: 'Perfume',
+                price: 410,
+              }),
+              makeProduct({
+                merchant_id: 'm2',
+                product_id: 'electric_cherry',
+                title: 'Electric Cherry Eau de Parfum',
+                brand: 'Tom Ford',
+                category: 'Fragrance',
+                product_type: 'Perfume',
+                price: 395,
+              }),
+            ],
+          };
+        },
       },
     );
 
@@ -331,7 +412,8 @@ describe('discovery feed service', () => {
       'rose_prick',
       'electric_cherry',
     ]);
-    expect(response.metadata.candidate_source).toBe('products_search+brand_recommendation_fallback');
+    expect(response.metadata.candidate_source).toBe('override+brand_recommendation_fallback');
+    expect(recommendCalls).toBe(1);
   });
 
   test('browse selection applies explicit query text filtering within a brand scope', async () => {

@@ -1,5 +1,6 @@
 const axios = require('axios');
 const logger = require('../logger');
+const { query } = require('../db');
 const {
   observeDiscoveryCandidateCount,
   observeDiscoveryFeedLatency,
@@ -11,8 +12,6 @@ const recommendationEngine = require('./RecommendationEngine');
 const {
   recommend,
   _internals: {
-    fetchExternalCandidates,
-    fetchInternalCandidates,
     normalizeText,
     tokenize,
     jaccard,
@@ -21,6 +20,10 @@ const {
     getParentCategory,
   },
 } = recommendationEngine;
+const {
+  EXTERNAL_SEED_MERCHANT_ID,
+  buildExternalSeedProduct,
+} = require('./externalSeedProducts');
 const { classifyBeautyBucketFromText } = require('../findProductsMulti/beautyQueryProfile');
 const {
   buildBrandQueryVariants,
@@ -36,7 +39,6 @@ const MAX_CANDIDATE_FETCH = 120;
 const DEFAULT_DEBUG_TOP_CANDIDATES = 10;
 const PRODUCTS_SEARCH_PAGE_SIZE = 60;
 const MAX_PRODUCTS_SEARCH_CALLS = 2;
-const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
 const VALID_SURFACES = new Set(['home_hot_deals', 'browse_products']);
 const VALID_AUTH_STATES = new Set(['authenticated', 'anonymous']);
 const VALID_DISCOVERY_SORTS = new Set(['popular', 'price_desc', 'price_asc']);
@@ -244,6 +246,16 @@ function buildBrandScopeAliases(brandNames = []) {
     });
   }
   return Array.from(aliases);
+}
+
+function resolveBrandDirectCandidateLimit(request, limit) {
+  const safeLimit = clampInt(limit, resolveDiscoveryCandidateLimit(request), 24, MAX_CANDIDATE_FETCH);
+  const pageNeed = Math.max(
+    request?.page * request?.limit + request?.limit * 3,
+    safeLimit * 3,
+    120,
+  );
+  return clampInt(pageNeed, 120, 48, 360);
 }
 
 function buildCandidateBrandAliases(candidate) {
@@ -1381,8 +1393,6 @@ async function loadBrandScopedRecommendationFallback({
   request,
   limit = 24,
   recommendFn = recommend,
-  fetchExternalCandidatesFn = fetchExternalCandidates,
-  fetchInternalCandidatesFn = fetchInternalCandidates,
 } = {}) {
   const sourceProductId = String(request?.source_product_ref?.product_id || '').trim();
   const merchantId = String(request?.source_product_ref?.merchant_id || '').trim() || null;
@@ -1393,50 +1403,6 @@ async function loadBrandScopedRecommendationFallback({
     ...(merchantId ? { merchant_id: merchantId } : {}),
     ...(brandName ? { brand: brandName, vendor: brandName } : {}),
   };
-
-  if (typeof fetchExternalCandidatesFn === 'function' || typeof fetchInternalCandidatesFn === 'function') {
-    try {
-      const [internalCandidates, externalCandidates] = await Promise.all([
-        typeof fetchInternalCandidatesFn === 'function'
-          ? fetchInternalCandidatesFn({
-              merchantId: merchantId || undefined,
-              limit: safeLimit,
-              excludeMerchantId: merchantId || undefined,
-              baseProduct,
-            })
-          : Promise.resolve([]),
-        typeof fetchExternalCandidatesFn === 'function'
-          ? fetchExternalCandidatesFn({
-              brandHint: brandName,
-              categoryHint: request?.query?.text || '',
-              limit: Math.max(safeLimit, 60),
-            })
-          : Promise.resolve([]),
-      ]);
-
-      const merged = [...(Array.isArray(internalCandidates) ? internalCandidates : []), ...(Array.isArray(externalCandidates) ? externalCandidates : [])];
-      const seen = new Set();
-      const deduped = merged.filter((item) => {
-        const key = buildProductKey(item?.merchant_id || item?.merchantId, item?.product_id || item?.productId || item?.id);
-        if (!key || seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-      if (deduped.length > 0) {
-        return deduped;
-      }
-    } catch (err) {
-      logger.warn(
-        {
-          err: err?.message || String(err),
-          product_id: sourceProductId || null,
-          merchant_id: merchantId,
-          brand: brandName || null,
-        },
-        'brand scoped discovery direct recall failed',
-      );
-    }
-  }
 
   if (!sourceProductId || typeof recommendFn !== 'function') return [];
   try {
@@ -1460,6 +1426,223 @@ async function loadBrandScopedRecommendationFallback({
       'brand scoped discovery fallback failed',
     );
     return [];
+  }
+}
+
+async function fetchBrandScopedExternalSeedCandidates({ brandAliases = [], limit = 120 } = {}) {
+  if (!process.env.DATABASE_URL) return [];
+  const normalizedAliases = uniqStrings(
+    brandAliases.map((alias) => normalizeBrandText(alias)).filter(Boolean),
+    16,
+  );
+  if (!normalizedAliases.length) return [];
+
+  const safeLimit = clampInt(limit, Math.max(limit, 120), 24, 500);
+  const market = String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
+  const tool = 'creator_agents';
+
+  try {
+    const res = await query(
+      `
+        SELECT
+          id,
+          external_product_id,
+          destination_url,
+          canonical_url,
+          domain,
+          title,
+          image_url,
+          price_amount,
+          price_currency,
+          availability,
+          seed_data,
+          updated_at,
+          created_at
+        FROM external_product_seeds
+        WHERE status = 'active'
+          AND market = $1
+          AND (tool = '*' OR tool = $2)
+          AND (
+            lower(coalesce(seed_data->>'brand', '')) = ANY($3::text[])
+            OR lower(coalesce(seed_data->>'brand_name', '')) = ANY($3::text[])
+            OR lower(coalesce(seed_data->>'vendor', '')) = ANY($3::text[])
+            OR lower(coalesce(seed_data->>'vendor_name', '')) = ANY($3::text[])
+            OR lower(coalesce(seed_data->'snapshot'->>'brand', '')) = ANY($3::text[])
+            OR lower(coalesce(seed_data->'snapshot'->>'brand_name', '')) = ANY($3::text[])
+            OR lower(coalesce(seed_data->'snapshot'->>'vendor', '')) = ANY($3::text[])
+            OR lower(coalesce(seed_data->'snapshot'->>'vendor_name', '')) = ANY($3::text[])
+            OR EXISTS (
+              SELECT 1
+              FROM unnest($3::text[]) AS alias
+              WHERE lower(coalesce(seed_data->'snapshot'->>'title', seed_data->>'title', title, '')) LIKE alias || ' %'
+            )
+          )
+        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+        LIMIT $4
+      `,
+      [market, tool, normalizedAliases, safeLimit],
+    );
+    return (res.rows || [])
+      .map((row) => buildExternalSeedProduct(row))
+      .filter(Boolean);
+  } catch (err) {
+    logger.warn(
+      {
+        err: err?.message || String(err),
+        brand_aliases: normalizedAliases,
+      },
+      'brand scoped discovery external query failed',
+    );
+    return [];
+  }
+}
+
+async function fetchBrandScopedInternalCatalogCandidates({ brandAliases = [], limit = 120 } = {}) {
+  if (!process.env.DATABASE_URL) return [];
+  const normalizedAliases = uniqStrings(
+    brandAliases.map((alias) => normalizeBrandText(alias)).filter(Boolean),
+    16,
+  );
+  if (!normalizedAliases.length) return [];
+
+  const safeLimit = clampInt(limit, Math.max(limit, 120), 24, 400);
+
+  try {
+    const res = await query(
+      `
+        SELECT merchant_id, product_data
+        FROM products_cache
+        WHERE (expires_at IS NULL OR expires_at > now())
+          AND COALESCE(lower(product_data->>'status'), 'active') = 'active'
+          AND merchant_id <> $1
+          AND (
+            lower(coalesce(product_data->>'brand', '')) = ANY($2::text[])
+            OR lower(coalesce(product_data->>'brand_name', '')) = ANY($2::text[])
+            OR lower(coalesce(product_data->>'vendor', '')) = ANY($2::text[])
+            OR lower(coalesce(product_data->>'vendor_name', '')) = ANY($2::text[])
+            OR lower(coalesce(product_data->>'manufacturer', '')) = ANY($2::text[])
+            OR EXISTS (
+              SELECT 1
+              FROM unnest($2::text[]) AS alias
+              WHERE lower(coalesce(product_data->>'title', product_data->>'name', '')) LIKE alias || ' %'
+            )
+          )
+        ORDER BY cached_at DESC NULLS LAST, id DESC
+        LIMIT $3
+      `,
+      [EXTERNAL_SEED_MERCHANT_ID, normalizedAliases, safeLimit],
+    );
+    return (res.rows || [])
+      .map((row) => {
+        if (!row?.product_data || !row?.merchant_id) return null;
+        return {
+          ...row.product_data,
+          merchant_id: String(row.merchant_id).trim(),
+        };
+      })
+      .filter(Boolean);
+  } catch (err) {
+    logger.warn(
+      {
+        err: err?.message || String(err),
+        brand_aliases: normalizedAliases,
+      },
+      'brand scoped discovery internal query failed',
+    );
+    return [];
+  }
+}
+
+async function loadBrandScopedDirectCandidates({
+  request,
+  brandAliases = [],
+  limit = 120,
+  fetchExternalCandidatesFn = null,
+  fetchInternalCandidatesFn = null,
+} = {}) {
+  const normalizedAliases = uniqStrings(
+    brandAliases.map((alias) => normalizeBrandText(alias)).filter(Boolean),
+    16,
+  );
+  if (!normalizedAliases.length) {
+    return {
+      products: [],
+      recallSummary: [],
+    };
+  }
+
+  const safeLimit = clampInt(limit, Math.max(limit, 120), 24, 360);
+  const stepStartedAt = Date.now();
+
+  try {
+    const [internalCandidates, externalCandidates] = await Promise.all([
+      typeof fetchInternalCandidatesFn === 'function'
+        ? fetchInternalCandidatesFn({
+            brandAliases: normalizedAliases,
+            limit: safeLimit,
+            request,
+          })
+        : fetchBrandScopedInternalCatalogCandidates({
+            brandAliases: normalizedAliases,
+            limit: safeLimit,
+          }),
+      typeof fetchExternalCandidatesFn === 'function'
+        ? fetchExternalCandidatesFn({
+            brandAliases: normalizedAliases,
+            limit: safeLimit,
+            request,
+          })
+        : fetchBrandScopedExternalSeedCandidates({
+            brandAliases: normalizedAliases,
+            limit: safeLimit,
+          }),
+    ]);
+
+    const merged = [...(Array.isArray(internalCandidates) ? internalCandidates : []), ...(Array.isArray(externalCandidates) ? externalCandidates : [])];
+    const deduped = [];
+    const seen = new Set();
+    for (const item of merged) {
+      const key = buildProductKey(
+        item?.merchant_id || item?.merchantId,
+        item?.product_id || item?.productId || item?.id,
+      );
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      deduped.push(item);
+    }
+
+    return {
+      products: deduped,
+      recallSummary: [
+        {
+          label: 'brand_direct_pool',
+          query: normalizedAliases.join(' | '),
+          offset: 0,
+          limit: safeLimit,
+          status: 200,
+          returned: deduped.length,
+          latency_ms: Date.now() - stepStartedAt,
+          cache_hit: false,
+        },
+      ],
+    };
+  } catch (err) {
+    return {
+      products: [],
+      recallSummary: [
+        {
+          label: 'brand_direct_pool',
+          query: normalizedAliases.join(' | '),
+          offset: 0,
+          limit: safeLimit,
+          status: null,
+          returned: 0,
+          latency_ms: Date.now() - stepStartedAt,
+          cache_hit: false,
+          error: err?.message || String(err),
+        },
+      ],
+    };
   }
 }
 
@@ -1886,13 +2069,33 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
     recallSummary = Array.isArray(candidateLoadResult?.recallSummary)
       ? candidateLoadResult.recallSummary
       : [];
+    let effectiveRawCandidates = rawCandidates;
+    const brandScopeAliases = buildBrandScopeAliases(request.scope?.brand_names || []);
+    if (brandScopeAliases.length > 0) {
+      const directBrandLoadResult = await loadBrandScopedDirectCandidates({
+        request,
+        brandAliases: brandScopeAliases,
+        limit: resolveBrandDirectCandidateLimit(
+          request,
+          options.candidateLimit || resolveDiscoveryCandidateLimit(request),
+        ),
+        fetchExternalCandidatesFn: options.brandFallbackFetchExternalCandidatesFn,
+        fetchInternalCandidatesFn: options.brandFallbackFetchInternalCandidatesFn,
+      });
+      if (Array.isArray(directBrandLoadResult?.products) && directBrandLoadResult.products.length > 0) {
+        effectiveCandidateSource = `${effectiveCandidateSource}+brand_direct`;
+        effectiveRawCandidates = effectiveRawCandidates.concat(directBrandLoadResult.products);
+      }
+      if (Array.isArray(directBrandLoadResult?.recallSummary) && directBrandLoadResult.recallSummary.length > 0) {
+        recallSummary = recallSummary.concat(directBrandLoadResult.recallSummary);
+      }
+    }
     observeDiscoveryCandidateCount({
       surface: request.surface,
       stage: 'raw',
-      count: rawCandidates.length,
+      count: effectiveRawCandidates.length,
     });
 
-    let effectiveRawCandidates = rawCandidates;
     let normalizedCandidates = [];
     const seenKeys = new Set();
     for (let idx = 0; idx < effectiveRawCandidates.length; idx += 1) {
@@ -1901,7 +2104,6 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       seenKeys.add(normalized.key);
       normalizedCandidates.push(normalized);
     }
-    const brandScopeAliases = buildBrandScopeAliases(request.scope?.brand_names || []);
     let scopedCandidates =
       brandScopeAliases.length > 0
         ? normalizedCandidates.filter((candidate) => matchesBrandScopeCandidate(candidate, brandScopeAliases))
@@ -1912,12 +2114,10 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
         request,
         limit: options.candidateLimit || resolveDiscoveryCandidateLimit(request),
         recommendFn: options.brandFallbackRecommendFn,
-        fetchExternalCandidatesFn: options.brandFallbackFetchExternalCandidatesFn,
-        fetchInternalCandidatesFn: options.brandFallbackFetchInternalCandidatesFn,
       });
       if (fallbackProducts.length > 0) {
-        effectiveCandidateSource = 'products_search+brand_recommendation_fallback';
-        effectiveRawCandidates = rawCandidates.concat(fallbackProducts);
+        effectiveCandidateSource = `${effectiveCandidateSource}+brand_recommendation_fallback`;
+        effectiveRawCandidates = effectiveRawCandidates.concat(fallbackProducts);
         normalizedCandidates = [];
         seenKeys.clear();
         for (let idx = 0; idx < effectiveRawCandidates.length; idx += 1) {
@@ -2004,7 +2204,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
     }
 
     candidateCounts = buildCandidateCounts({
-      raw: rawCandidates.length,
+      raw: effectiveRawCandidates.length,
       normalized: normalizedCandidates.length,
       scored: scoredCandidates.length,
       eligiblePool: eligiblePoolCount,
