@@ -49,9 +49,15 @@ describe('discovery feed service', () => {
 
   beforeEach(() => {
     previousEnv = {
+      DISCOVERY_PRODUCTS_SEARCH_BASE_URL: process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL,
+      DISCOVERY_PRODUCTS_SEARCH_API_KEY: process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY,
       PIVOTA_BACKEND_BASE_URL: process.env.PIVOTA_BACKEND_BASE_URL,
       PIVOTA_API_BASE: process.env.PIVOTA_API_BASE,
+      PIVOTA_BACKEND_AGENT_API_KEY: process.env.PIVOTA_BACKEND_AGENT_API_KEY,
       PIVOTA_API_KEY: process.env.PIVOTA_API_KEY,
+      SHOP_GATEWAY_AGENT_API_KEY: process.env.SHOP_GATEWAY_AGENT_API_KEY,
+      PIVOTA_AGENT_API_KEY: process.env.PIVOTA_AGENT_API_KEY,
+      AGENT_API_KEY: process.env.AGENT_API_KEY,
       DISCOVERY_PRODUCTS_SEARCH_MAX_CALLS: process.env.DISCOVERY_PRODUCTS_SEARCH_MAX_CALLS,
       DISCOVERY_PRODUCTS_SEARCH_TIMEOUT_MS: process.env.DISCOVERY_PRODUCTS_SEARCH_TIMEOUT_MS,
       DISCOVERY_RECALL_BUDGET_MS: process.env.DISCOVERY_RECALL_BUDGET_MS,
@@ -122,6 +128,19 @@ describe('discovery feed service', () => {
     expect(profile.brandAffinity.get('acme')).toBeGreaterThan(profile.brandAffinity.get('glow'));
     expect(profile.categoryAffinity.get('serum')).toBeGreaterThan(0);
     expect(profile.queryTokens.has('repair')).toBe(true);
+  });
+
+  test('database discovery terms drop generic-only cold-start umbrella phrases when specific variants exist', () => {
+    const terms = _internals.buildDiscoveryDatabaseSearchTerms([
+      'beauty skincare serum',
+      'niacinamide serum',
+      'vitamin c serum',
+      'barrier moisturizer',
+    ]);
+
+    expect(terms.phrases).toEqual(['niacinamide serum', 'vitamin c serum', 'barrier moisturizer']);
+    expect(terms.tokens).toEqual(expect.arrayContaining(['niacinamide', 'vitamin', 'barrier']));
+    expect(terms.tokens).not.toEqual(expect.arrayContaining(['beauty', 'skincare', 'serum']));
   });
 
   test('buildDiscoveryProfile infers skincare beauty bucket from serum history', () => {
@@ -1847,6 +1866,88 @@ describe('discovery feed service', () => {
     );
   });
 
+  test('generic discovery prefers discovery-specific products/search base and skips external seeds once primary pools are sufficient', async () => {
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://wrong-backend.test';
+    delete process.env.PIVOTA_API_BASE;
+    delete process.env.PIVOTA_API_KEY;
+    process.env.PIVOTA_BACKEND_AGENT_API_KEY = 'bridge-key';
+
+    const products = Array.from({ length: 24 }, (_, idx) =>
+      makeProduct({
+        merchant_id: `m${idx + 1}`,
+        product_id: `serum_${idx + 1}`,
+        title: `Barrier Repair Serum ${idx + 1}`,
+        brand: `Brand ${idx + 1}`,
+        category: 'Skincare',
+        product_type: 'Serum',
+      }),
+    );
+    const externalSpy = jest.fn(async () => [
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'external_1',
+        title: 'External Rescue Serum',
+        brand: 'Seeded',
+        category: 'Skincare',
+        product_type: 'Serum',
+      }),
+    ]);
+
+    nock('http://discovery-catalog.test')
+      .matchHeader('x-agent-api-key', 'bridge-key')
+      .matchHeader('x-api-key', 'bridge-key')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .times(2)
+      .reply(200, { products });
+
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'home_hot_deals',
+        limit: 4,
+        debug: true,
+        context: {
+          auth_state: 'authenticated',
+          locale: 'en-US',
+          recent_views: [
+            {
+              merchant_id: 'm0',
+              product_id: 'view_1',
+              title: 'Niacinamide Repair Serum',
+              brand: 'Viewed',
+              category: 'Skincare',
+              product_type: 'Serum',
+              viewed_at: '2026-04-05T10:00:00Z',
+            },
+          ],
+          recent_queries: ['niacinamide serum'],
+        },
+      },
+      {
+        providerOverrides: {
+          internal_catalog: async () => [],
+          external_seeds: externalSpy,
+        },
+      },
+    );
+
+    expect(response.products).toHaveLength(4);
+    expect(externalSpy).not.toHaveBeenCalled();
+    expect(response.metadata.provider_breakdown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ provider: 'products_search', successful: true }),
+        expect.objectContaining({ provider: 'internal_catalog', successful: true }),
+        expect.objectContaining({ provider: 'external_seeds', skipped: true }),
+      ]),
+    );
+    expect(response.metadata.rank_debug.recall_summary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ provider: 'external_seeds', skipped: true, skip_reason: 'sufficient_primary_candidates' }),
+      ]),
+    );
+  });
+
   test('generic discovery semantically dedupes duplicate tool titles across providers', async () => {
     delete process.env.PIVOTA_BACKEND_BASE_URL;
     delete process.env.PIVOTA_API_BASE;
@@ -1924,7 +2025,30 @@ describe('discovery feed service', () => {
     expect(
       response.products.filter((product) => String(product.title || '').includes('Makeup Brush Everyday Essential')),
     ).toHaveLength(0);
-    expect(response.metadata.candidate_counts.semantic_deduped).toBeGreaterThan(0);
+    expect(response.metadata.candidate_counts.raw).toBe(4);
+    expect(
+      _internals.buildDiscoveryProviderMergeKey(
+        makeProduct({
+          merchant_id: 'm1',
+          product_id: 'tool_internal_1',
+          title: 'Makeup Brush Everyday Essential',
+          brand: 'BrushLab',
+          category: 'Beauty Tools',
+          product_type: 'Brush',
+        }),
+      ),
+    ).toBe(
+      _internals.buildDiscoveryProviderMergeKey(
+        makeProduct({
+          merchant_id: 'external_seed',
+          product_id: 'tool_external_1',
+          title: 'Makeup Brush Everyday Essential',
+          brand: 'BrushLab',
+          category: 'Beauty Tools',
+          product_type: 'Brush',
+        }),
+      ),
+    );
   });
 
   test('throws when products/search catalog is unavailable and mock mode is not explicitly enabled', async () => {

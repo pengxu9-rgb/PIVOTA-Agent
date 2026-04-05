@@ -253,7 +253,23 @@ function normalizeBaseUrl(raw) {
 }
 
 function getDiscoveryProductsSearchBaseUrl() {
-  return normalizeBaseUrl(process.env.PIVOTA_BACKEND_BASE_URL || process.env.PIVOTA_API_BASE);
+  return normalizeBaseUrl(
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL ||
+      process.env.PIVOTA_BACKEND_BASE_URL ||
+      process.env.PIVOTA_API_BASE,
+  );
+}
+
+function getDiscoveryProductsSearchApiKey() {
+  return String(
+    process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY ||
+      process.env.PIVOTA_BACKEND_AGENT_API_KEY ||
+      process.env.PIVOTA_API_KEY ||
+      process.env.SHOP_GATEWAY_AGENT_API_KEY ||
+      process.env.PIVOTA_AGENT_API_KEY ||
+      process.env.AGENT_API_KEY ||
+      '',
+  ).trim();
 }
 
 function getDiscoveryProductsSearchTimeoutMs() {
@@ -383,6 +399,26 @@ function buildDiscoverySearchTerms(values = []) {
   );
   return {
     phrases,
+    tokens,
+  };
+}
+
+function buildDiscoveryDatabaseSearchTerms(values = [], options = {}) {
+  const maxPhrases = clampInt(options.maxPhrases, 4, 1, 8);
+  const phrases = buildDiscoverySearchPhraseSet(values, 8);
+  const specificPhrases = phrases.filter((phrase) => isSpecificDiscoveryQueryText(phrase));
+  const effectivePhrases = uniqStrings(
+    (specificPhrases.length > 0 ? specificPhrases : phrases).slice(0, maxPhrases),
+    maxPhrases,
+  );
+  const tokens = uniqStrings(
+    effectivePhrases
+      .flatMap((phrase) => tokenizeDiscoverySearchText(phrase))
+      .filter((token) => !GENERIC_DISCOVERY_QUERY_TOKENS.has(token)),
+    24,
+  );
+  return {
+    phrases: effectivePhrases,
     tokens,
   };
 }
@@ -1439,10 +1475,24 @@ async function fetchDiscoveryRecallStep({
 async function loadProductsSearchCandidates({ request, profile, limit = MAX_CANDIDATE_FETCH } = {}) {
   const safeLimit = clampInt(limit, resolveDiscoveryCandidateLimit(request), 24, MAX_CANDIDATE_FETCH);
   const baseUrl = getDiscoveryProductsSearchBaseUrl();
+  const provider = 'products_search';
   if (!baseUrl) {
-    throw new DiscoveryCatalogUnavailableError(
-      'PIVOTA_BACKEND_BASE_URL or PIVOTA_API_BASE is not configured for discovery feed',
-    );
+    return {
+      products: [],
+      recallSummary: [
+        buildDiscoveryProviderStepSummary({
+          provider,
+          label: 'products_search_pool',
+          query: null,
+          limit: safeLimit,
+          returned: 0,
+          status: null,
+          latencyMs: 0,
+          error:
+            'DISCOVERY_PRODUCTS_SEARCH_BASE_URL, PIVOTA_BACKEND_BASE_URL, or PIVOTA_API_BASE is not configured for discovery feed',
+        }),
+      ],
+    };
   }
 
   if (request?.surface === 'browse_products') {
@@ -1477,32 +1527,33 @@ async function loadProductsSearchCandidates({ request, profile, limit = MAX_CAND
   }
 
   const requestHeaders = {};
-  const apiKey = String(process.env.PIVOTA_API_KEY || '').trim();
+  const apiKey = getDiscoveryProductsSearchApiKey();
   if (apiKey) {
+    requestHeaders['X-Agent-API-Key'] = apiKey;
     requestHeaders['X-API-Key'] = apiKey;
     requestHeaders.Authorization = `Bearer ${apiKey}`;
   }
 
   const recallPlan = buildDiscoveryRecallPlan(request, profile, safeLimit);
-    const mergedProducts = [];
-    const seenKeys = new Set();
-    const brandScoped = Array.isArray(request?.scope?.brand_names) && request.scope.brand_names.length > 0;
-    const recallSummary = [];
+  const mergedProducts = [];
+  const seenKeys = new Set();
+  const brandScoped = Array.isArray(request?.scope?.brand_names) && request.scope.brand_names.length > 0;
+  const recallSummary = [];
   let successCount = 0;
   const recallStartedAt = Date.now();
   const recallBudgetMs = getDiscoveryRecallBudgetMs();
   const enoughThreshold = getRecallEnoughThreshold(request, safeLimit);
   let truncatedByBudget = false;
 
-    const mergeProducts = (products) => {
-      for (const product of Array.isArray(products) ? products : []) {
-        const key = buildDiscoveryDedupKey(product, { brandScoped });
-        if (!key || seenKeys.has(key)) continue;
-        seenKeys.add(key);
-        mergedProducts.push(product);
-        if (mergedProducts.length >= safeLimit) break;
-      }
-    };
+  const mergeProducts = (products) => {
+    for (const product of Array.isArray(products) ? products : []) {
+      const key = buildDiscoveryDedupKey(product, { brandScoped });
+      if (!key || seenKeys.has(key)) continue;
+      seenKeys.add(key);
+      mergedProducts.push(product);
+      if (mergedProducts.length >= safeLimit) break;
+    }
+  };
 
   if (request?.surface === 'home_hot_deals' && recallPlan.length > 1) {
     const stepResults = await Promise.all(
@@ -1532,7 +1583,6 @@ async function loadProductsSearchCandidates({ request, profile, limit = MAX_CAND
         },
         'discovery feed products/search recall failed',
       );
-      throw new DiscoveryCatalogUnavailableError('Failed to load discovery candidates from products/search');
     }
 
     return {
@@ -1575,7 +1625,6 @@ async function loadProductsSearchCandidates({ request, profile, limit = MAX_CAND
       },
       'discovery feed products/search recall failed',
     );
-    throw new DiscoveryCatalogUnavailableError('Failed to load discovery candidates from products/search');
   }
 
   if (truncatedByBudget && recallSummary.length > 0) {
@@ -1630,6 +1679,37 @@ function annotateProviderProducts(provider, products = []) {
   }));
 }
 
+function buildDiscoveryProviderMergeKey(product) {
+  if (!product || typeof product !== 'object') return '';
+  return (
+    buildDiscoverySemanticProductKey(product) ||
+    buildProductKey(
+      product?.merchant_id || product?.merchantId,
+      product?.product_id || product?.productId || product?.id,
+    )
+  );
+}
+
+function buildSkippedProviderResult(provider, { label, query, limit, skipReason } = {}) {
+  return {
+    provider,
+    products: [],
+    recallSummary: [
+      buildDiscoveryProviderStepSummary({
+        provider,
+        label,
+        query,
+        limit,
+        returned: 0,
+        status: null,
+        latencyMs: 0,
+        skipped: true,
+        skipReason,
+      }),
+    ],
+  };
+}
+
 async function fetchInternalCatalogCandidates({
   request,
   profile,
@@ -1640,8 +1720,8 @@ async function fetchInternalCatalogCandidates({
   const provider = 'internal_catalog';
   const stepStartedAt = Date.now();
   const safeLimit = clampInt(limit, Math.max(limit, 24), 12, 240);
-  const phrases = buildDiscoverySearchPhraseSet(queries, 8);
-  const searchTerms = buildDiscoverySearchTerms(queries);
+  const searchTerms = buildDiscoveryDatabaseSearchTerms(queries, { maxPhrases: 4 });
+  const phrases = searchTerms.phrases;
 
   if (typeof fetchFn === 'function') {
     try {
@@ -1847,8 +1927,8 @@ async function fetchExternalSeedCandidates({
   const provider = 'external_seeds';
   const stepStartedAt = Date.now();
   const safeLimit = clampInt(limit, Math.max(limit, 24), 12, 240);
-  const phrases = buildDiscoverySearchPhraseSet(queries, 8);
-  const searchTerms = buildDiscoverySearchTerms(queries);
+  const searchTerms = buildDiscoveryDatabaseSearchTerms(queries, { maxPhrases: 4 });
+  const phrases = searchTerms.phrases;
   const market =
     String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US')
       .trim()
@@ -2094,91 +2174,107 @@ async function loadCatalogCandidates({
 } = {}) {
   const safeLimit = clampInt(limit, resolveDiscoveryCandidateLimit(request), 24, MAX_CANDIDATE_FETCH);
   const providerQueries = buildDiscoveryProviderQueries(request, profile);
-  const providerResults = await Promise.all(
-    DISCOVERY_PROVIDER_ORDER.map(async (provider) => {
-      try {
-        if (provider === 'products_search') {
-          const result = await loadProductsSearchCandidates({
-            request,
-            profile,
-            limit: safeLimit,
-          });
-          return {
-            provider,
-            products: annotateProviderProducts(provider, result?.products || []),
-            recallSummary: Array.isArray(result?.recallSummary)
-              ? result.recallSummary.map((step) => ({ provider, ...step }))
-              : [],
-          };
-        }
-        if (provider === 'internal_catalog') {
-          const result = await fetchInternalCatalogCandidates({
-            request,
-            profile,
-            queries: providerQueries,
+  const enoughThreshold = getRecallEnoughThreshold(request, safeLimit);
+  const providerResults = [];
+  const mergedProducts = [];
+  const seenKeys = new Set();
+
+  const mergeProducts = (products = []) => {
+    for (const product of Array.isArray(products) ? products : []) {
+      const key = buildDiscoveryProviderMergeKey(product);
+      if (!key || seenKeys.has(key)) continue;
+      seenKeys.add(key);
+      mergedProducts.push(product);
+      if (mergedProducts.length >= safeLimit) break;
+    }
+  };
+
+  const buildProviderErrorResult = (provider, err) => ({
+    provider,
+    products: [],
+    recallSummary: [
+      buildDiscoveryProviderStepSummary({
+        provider,
+        label:
+          provider === 'products_search'
+            ? 'products_search_pool'
+            : provider === 'internal_catalog'
+              ? 'internal_catalog_pool'
+              : 'external_seed_pool',
+        query: providerQueries.join(' | '),
+        limit: safeLimit,
+        returned: 0,
+        status: null,
+        latencyMs: 0,
+        error: err?.message || String(err),
+      }),
+    ],
+  });
+
+  for (const provider of DISCOVERY_PROVIDER_ORDER) {
+    try {
+      let result = null;
+      if (provider === 'products_search') {
+        const searchResult = await loadProductsSearchCandidates({
+          request,
+          profile,
+          limit: safeLimit,
+        });
+        result = {
+          provider,
+          products: annotateProviderProducts(provider, searchResult?.products || []),
+          recallSummary: Array.isArray(searchResult?.recallSummary)
+            ? searchResult.recallSummary.map((step) => ({ provider, ...step }))
+            : [],
+        };
+      } else if (provider === 'internal_catalog') {
+        const internalResult = await fetchInternalCatalogCandidates({
+          request,
+          profile,
+          queries: providerQueries,
+          limit: Math.min(safeLimit, 72),
+          fetchFn: providerOverrides?.internal_catalog || null,
+        });
+        result = {
+          provider,
+          products: internalResult.products,
+          recallSummary: internalResult.recallSummary,
+        };
+      } else if (provider === 'external_seeds') {
+        if (mergedProducts.length >= enoughThreshold) {
+          result = buildSkippedProviderResult(provider, {
+            label: 'external_seed_pool',
+            query: providerQueries.join(' | '),
             limit: Math.min(safeLimit, 72),
-            fetchFn: providerOverrides?.internal_catalog || null,
+            skipReason: 'sufficient_primary_candidates',
           });
-          return {
-            provider,
-            products: result.products,
-            recallSummary: result.recallSummary,
-          };
-        }
-        if (provider === 'external_seeds') {
-          const result = await fetchExternalSeedCandidates({
+        } else {
+          const externalResult = await fetchExternalSeedCandidates({
             request,
             profile,
             queries: providerQueries,
             limit: Math.min(safeLimit, 72),
             fetchFn: providerOverrides?.external_seeds || null,
           });
-          return {
+          result = {
             provider,
-            products: result.products,
-            recallSummary: result.recallSummary,
+            products: externalResult.products,
+            recallSummary: externalResult.recallSummary,
           };
         }
-        return {
+      } else {
+        result = {
           provider,
           products: [],
           recallSummary: [],
         };
-      } catch (err) {
-        return {
-          provider,
-          products: [],
-          recallSummary: [
-            buildDiscoveryProviderStepSummary({
-              provider,
-              label: `${provider}_pool`,
-              query: providerQueries.join(' | '),
-              limit: safeLimit,
-              returned: 0,
-              status: null,
-              latencyMs: 0,
-              error: err?.message || String(err),
-            }),
-          ],
-        };
       }
-    }),
-  );
 
-  const mergedProducts = [];
-  const seenKeys = new Set();
-  for (const result of providerResults) {
-    for (const product of Array.isArray(result?.products) ? result.products : []) {
-      const key = buildProductKey(
-        product?.merchant_id || product?.merchantId,
-        product?.product_id || product?.productId || product?.id,
-      );
-      if (!key || seenKeys.has(key)) continue;
-      seenKeys.add(key);
-      mergedProducts.push(product);
-      if (mergedProducts.length >= safeLimit) break;
+      providerResults.push(result);
+      mergeProducts(result.products);
+    } catch (err) {
+      providerResults.push(buildProviderErrorResult(provider, err));
     }
-    if (mergedProducts.length >= safeLimit) break;
   }
 
   const recallSummary = providerResults.flatMap((result) =>
@@ -3394,7 +3490,11 @@ module.exports = {
   _internals: {
     buildBrandScopeAliases,
     buildDiscoveryContextCacheKey,
+    buildDiscoveryDatabaseSearchTerms,
     buildDiscoveryRecallPlan,
+    buildDiscoveryProviderMergeKey,
+    getDiscoveryProductsSearchApiKey,
+    getDiscoveryProductsSearchBaseUrl,
     getDiscoveryPoolCacheTtlMs,
     loadBrandScopedRecommendationFallback,
     matchesQueryTextCandidate,
