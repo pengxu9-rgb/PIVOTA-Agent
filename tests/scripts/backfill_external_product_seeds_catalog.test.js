@@ -531,10 +531,10 @@ describe('backfill-external-product-seeds-catalog', () => {
     );
 
     expect(payload.nextRow.image_url).toBe(
-      'https://cdn.shopify.com/s/files/1/2139/2967/files/Duo_Mousse_Nettoyante_Detox_-_Packshot.jpg?v=1750422282',
+      'https://cdn.shopify.com/s/files/1/2139/2967/files/Duo_Mousse_Nettoyante_Detox_-_Packshot.jpg',
     );
     expect(payload.nextRow.seed_data.image_urls).toContain(
-      'https://cdn.shopify.com/s/files/1/2139/2967/files/Mousse_Nettoyante_Detox_-_Texture.jpg?v=1763980849',
+      'https://cdn.shopify.com/s/files/1/2139/2967/files/Mousse_Nettoyante_Detox_-_Texture.jpg',
     );
     expect(payload.nextRow.seed_data.snapshot.diagnostics).toEqual(
       expect.objectContaining({
@@ -688,5 +688,68 @@ describe('backfill-external-product-seeds-catalog', () => {
     });
 
     expect(before).toEqual(after);
+  });
+
+  test('drops decorative extracted images and stale active ingredients during backfill refresh', () => {
+    const row = {
+      id: 'eps_tom_ford_cleanup',
+      title: 'TOM FORD RESEARCH Cleansing Concentrate',
+      canonical_url: 'https://www.tomfordbeauty.com/products/tom-ford-research-cleansing-concentrate',
+      destination_url: 'https://www.tomfordbeauty.com/products/tom-ford-research-cleansing-concentrate',
+      image_url: 'https://www.tomfordbeauty.com/cdn/shop/files/Menu.svg?v=1771253635&width=24',
+      price_amount: 100,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        brand: 'Tom Ford Beauty',
+        active_ingredients: ['Glycerin', 'Hyaluronic acid'],
+        image_urls: [
+          'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T93Y01_2000x2000_0.png?v=1774376808',
+          'https://www.tomfordbeauty.com/cdn/shop/files/tf_sku_T93Y01_2000x2000_0.png?v=1774376808&width=2000',
+          'https://www.tomfordbeauty.com/cdn/shop/files/Menu.svg?v=1771253635&width=24',
+          'https://sdcdn.io/tf/tf_sku_TAGL01_2000x2000_0.png?width=650px&height=750px',
+        ],
+        snapshot: {
+          canonical_url: 'https://www.tomfordbeauty.com/products/tom-ford-research-cleansing-concentrate',
+          image_urls: [
+            'https://www.tomfordbeauty.com/cdn/shop/files/icon-cart.svg?v=1758691434&width=24',
+          ],
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: 'TOM FORD RESEARCH Cleansing Concentrate',
+            url: 'https://www.tomfordbeauty.com/products/tom-ford-research-cleansing-concentrate',
+            image_url: 'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T93Y01_2000x2000_0.png?v=1774596807',
+            image_urls: [
+              'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T93Y01_2000x2000_0.png?v=1774596807',
+              'https://www.tomfordbeauty.com/cdn/shop/files/tf_sku_T93Y01_2000x2000_0.png?v=1774596807&width=2000',
+              'https://www.tomfordbeauty.com/cdn/shop/files/Menu.svg?v=1771253635&width=24',
+            ],
+            variants: [],
+          },
+        ],
+        variants: [],
+        diagnostics: {},
+      },
+      'https://www.tomfordbeauty.com/products/tom-ford-research-cleansing-concentrate',
+    );
+
+    expect(payload.nextRow.image_url).toBe(
+      'https://sdcdn.io/tf/tf_sku_T93Y01_2000x2000_0.png?height=1400px&width=1400px',
+    );
+    expect(payload.nextRow.seed_data.image_urls).toEqual([
+      'https://sdcdn.io/tf/tf_sku_T93Y01_2000x2000_0.png?height=1400px&width=1400px',
+    ]);
+    expect(payload.nextRow.seed_data.snapshot.image_urls).toEqual([
+      'https://sdcdn.io/tf/tf_sku_T93Y01_2000x2000_0.png?height=1400px&width=1400px',
+    ]);
+    expect(payload.nextRow.seed_data.active_ingredients).toBeUndefined();
+    expect(payload.nextRow.seed_data.snapshot.active_ingredients).toBeUndefined();
   });
 });
