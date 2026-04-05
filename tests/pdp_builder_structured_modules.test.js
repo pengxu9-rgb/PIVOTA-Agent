@@ -256,4 +256,80 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
       'https://sdcdn.io/tf/tf_sku_T2SS02_3000x3000_1.png?width=650px&height=750px',
     );
   });
+
+  test('cleans polluted Tom Ford external-seed sections before emitting canonical PDP modules', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_tf_live_1',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'TOM FORD RESEARCH Cleansing Concentrate',
+        brand: 'Tom Ford Beauty',
+        description:
+          'Key Notes Skin Type Skin Concern Finish Coverage This cleanser transforms from a tiny pearl to a luscious foam, rinsing clean, and leaving skin feeling refreshed and energized. Infused with hyaluronic acid, the formula is perfect for all skin types, including sensitive. Benefits Set Includes Shades Included What Else You Need To Know Free From',
+        image_url:
+          'https://sdcdn.io/tf/tf_sku_T93Y01_2000x2000_0.png?height=1400px&width=1400px',
+        image_urls: [
+          'https://sdcdn.io/tf/tf_sku_T93Y01_2000x2000_0.png?height=1400px&width=1400px',
+          'https://www.tomfordbeauty.com/cdn/shop/files/tf_sku_T93Y01_2000x2000_0.png?width=2000',
+          'http://www.tomfordbeauty.com/cdn/shop/files/tf_sku_T93Y01_2000x2000_0.png',
+          'https://www.tomfordbeauty.com/cdn/shop/files/Menu.svg?width=24',
+          'https://www.tomfordbeauty.com/cdn/shop/files/icon-cart.svg?width=24',
+          'https://sdcdn.io/tf/tf_sku_TAGL01_2000x2000_0.png?width=650px&height=750px',
+          'https://sdcdn.io/tf/tf_sku_T6CK01_2000x2000_0.png?width=650px&height=750px',
+        ],
+        price: { amount: 100, currency: 'USD' },
+        variants: [
+          {
+            id: '52015779545301',
+            sku: 'T93Y01',
+            title: '125.0 ml',
+            image_url:
+              'https://sdcdn.io/tf/tf_sku_T93Y01_2000x2000_0.png?height=1400px&width=1400px',
+            image_urls: [
+              'https://sdcdn.io/tf/tf_sku_T93Y01_2000x2000_0.png?height=1400px&width=1400px',
+              'https://www.tomfordbeauty.com/cdn/shop/files/tf_sku_T93Y01_2000x2000_0.png?width=2000',
+              'http://www.tomfordbeauty.com/cdn/shop/files/tf_sku_T93Y01_2000x2000_0.png',
+            ],
+            price: { amount: 100, currency: 'USD' },
+          },
+        ],
+        active_ingredients: ['Glycerin', 'Hyaluronic acid'],
+        pdp_ingredients_raw:
+          'Key Ingredients Sodium PCA, Glycerin, Hyaluronic Acid, and Algae Extract help create a soothing lather. Tom Ford Research’s caffeine-containing ingredients: - White Porcelain Cacao: A rare variety of cacao - Caffeine: At heightened concentrations utilized by Tom Ford Research - Gyokuro: A highly prized Japanese tea Ingredients: Water Aqua Eau, Glycerin, Myristic Acid, Behenic Acid, Sodium Methyl Cocoyl Taurate, Palmitic Acid, Potassium Hydroxide, Lauric Acid, Stearic Acid, Tocopheryl Acetate, Sodium Hyaluronate, Cucumis Sativus (cucumber) Fruit Extract, Pyrus Malus (apple) Fruit Extract, Scutellaria Baicalensis Root Extract, Camellia Sinensis Leaf Extract, Algae Extract, Sorbitol, Caffeine, Sodium Pca, Theobroma Cacao (cocoa) Seed Extract, Magnesium Nitrate, Sodium Sulfite, Sucrose, Sodium Metabisulfite, Peg-3 Distearate, Butylene Glycol, Fragrance (parfum), Limonene, Linalool, Bht, Tetrasodium Edta, Disodium Edta, Phenoxyethanol, Methylchloroisothiazolinone, Methylisothiazolinone, Mica, Titanium Dioxide (ci 77891), Iron Oxides (ci 77491) Please be aware that ingredient lists & safety information may change or vary from time to time. Please refer to the ingredient list & safety information on the product package you receive for the most up-to-date information.',
+        pdp_how_to_use_raw:
+          '- Apply a pearl-sized amount to the fingertips - Add lukewarm water to generate a rich foam - Using fingers, massage lather onto the skin in a circular motion - Rinse clean with warm water',
+        pdp_details_sections: [
+          {
+            heading: 'PRODUCT DETAILS',
+            body:
+              'Key Notes Skin Type Skin Concern Finish Coverage This cleanser transforms from a tiny pearl to a luscious foam, rinsing clean, and leaving skin feeling refreshed and energized. Infused with hyaluronic acid, the formula is perfect for all skin types, including sensitive. Benefits Set Includes Shades Included What Else You Need To Know Free From',
+          },
+        ],
+        category: 'Serum',
+      },
+      entryPoint: 'agent',
+    });
+
+    const mediaUrls = payload.modules
+      .find((module) => module.type === 'media_gallery')
+      ?.data?.items?.map((item) => item.url);
+    const ingredientsModule = payload.modules.find((module) => module.type === 'ingredients_inci');
+
+    expect(payload.product.description).toBe(
+      'This cleanser transforms from a tiny pearl to a luscious foam, rinsing clean, and leaving skin feeling refreshed and energized. Infused with hyaluronic acid, the formula is perfect for all skin types, including sensitive.',
+    );
+    expect(mediaUrls).toEqual([
+      'https://sdcdn.io/tf/tf_sku_T93Y01_2000x2000_0.png?height=1400px&width=1400px',
+    ]);
+    expect(payload.modules.find((module) => module.type === 'active_ingredients')).toBeFalsy();
+    expect(ingredientsModule?.data?.raw_text).toBe(
+      'Water Aqua Eau, Glycerin, Myristic Acid, Behenic Acid, Sodium Methyl Cocoyl Taurate, Palmitic Acid, Potassium Hydroxide, Lauric Acid, Stearic Acid, Tocopheryl Acetate, Sodium Hyaluronate, Cucumis Sativus (cucumber) Fruit Extract, Pyrus Malus (apple) Fruit Extract, Scutellaria Baicalensis Root Extract, Camellia Sinensis Leaf Extract, Algae Extract, Sorbitol, Caffeine, Sodium Pca, Theobroma Cacao (cocoa) Seed Extract, Magnesium Nitrate, Sodium Sulfite, Sucrose, Sodium Metabisulfite, Peg-3 Distearate, Butylene Glycol, Fragrance (parfum), Limonene, Linalool, Bht, Tetrasodium Edta, Disodium Edta, Phenoxyethanol, Methylchloroisothiazolinone, Methylisothiazolinone, Mica, Titanium Dioxide (ci 77891), Iron Oxides (ci 77491)',
+    );
+    expect(ingredientsModule?.data?.items).toContain('Water Aqua Eau');
+    expect(ingredientsModule?.data?.items).not.toContain(
+      'and Algae Extract help create a soothing lather. Tom Ford Research’s caffeine-containing ingredients:',
+    );
+    expect(payload.modules.find((module) => module.type === 'product_details')).toBeFalsy();
+  });
 });

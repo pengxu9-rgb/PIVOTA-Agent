@@ -116,6 +116,12 @@ function buildPdpImageDedupeKey(value) {
 
   try {
     const parsed = new URL(normalized);
+    if (isShopifyLikeAsset(parsed)) {
+      const filename = normalizeShopifyLikeFilename(parsed.pathname.split('/').pop() || '');
+      if (filename) {
+        return `asset:${filename.toLowerCase()}`;
+      }
+    }
     const normalizedSearch = new URLSearchParams();
     Array.from(parsed.searchParams.entries())
       .sort(([aKey, aValue], [bKey, bValue]) => {
