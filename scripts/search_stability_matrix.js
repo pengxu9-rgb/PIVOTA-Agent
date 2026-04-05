@@ -198,6 +198,7 @@ function normalizeCase(rawCase, defaultSource, fallbackId = '') {
       must_not_return_titles: [],
       must_return_titles: [],
       must_return_one_of_titles: [],
+      must_return_one_of_title_token_sets: [],
       must_respect_budget: false,
       must_have_reason_codes: [],
       must_equal_metadata: {},
@@ -243,6 +244,15 @@ function normalizeCase(rawCase, defaultSource, fallbackId = '') {
       : [],
     must_return_one_of_titles: Array.isArray(rawCase?.must_return_one_of_titles)
       ? rawCase.must_return_one_of_titles.map((item) => String(item || '').trim()).filter(Boolean)
+      : [],
+    must_return_one_of_title_token_sets: Array.isArray(rawCase?.must_return_one_of_title_token_sets)
+      ? rawCase.must_return_one_of_title_token_sets
+          .map((tokenSet) =>
+            Array.isArray(tokenSet)
+              ? tokenSet.map((item) => String(item || '').trim()).filter(Boolean)
+              : [String(tokenSet || '').trim()].filter(Boolean),
+          )
+          .filter((tokenSet) => tokenSet.length > 0)
       : [],
     must_respect_budget: rawCase?.must_respect_budget === true,
     must_have_reason_codes: Array.isArray(rawCase?.must_have_reason_codes)
@@ -501,6 +511,28 @@ function evaluateCase(row) {
     });
     if (!hasAllowedTitle) {
       reasons.push(`missing_required_title:${mustReturnOneOf.join(' | ')}`);
+    }
+  }
+
+  const mustReturnOneOfTitleTokenSets = Array.isArray(spec.must_return_one_of_title_token_sets)
+    ? spec.must_return_one_of_title_token_sets
+    : [];
+  if (mustReturnOneOfTitleTokenSets.length > 0) {
+    const hasAllowedTokenSet = mustReturnOneOfTitleTokenSets.some((tokenSet) => {
+      const normalizedTokens = (Array.isArray(tokenSet) ? tokenSet : [])
+        .map((token) => normalizeText(token))
+        .filter(Boolean);
+      if (normalizedTokens.length === 0) return false;
+      return titles.some((title) => {
+        const normalizedTitle = normalizeText(title);
+        return normalizedTokens.every((token) => normalizedTitle.includes(token));
+      });
+    });
+    if (!hasAllowedTokenSet) {
+      const serializedTokenSets = mustReturnOneOfTitleTokenSets
+        .map((tokenSet) => (Array.isArray(tokenSet) ? tokenSet.join(' & ') : ''))
+        .filter(Boolean);
+      reasons.push(`missing_required_title_tokens:${serializedTokenSets.join(' | ')}`);
     }
   }
 

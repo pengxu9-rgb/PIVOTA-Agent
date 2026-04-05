@@ -134,6 +134,103 @@ describe('ingredientProductRecall', () => {
     expect(out.diagnostics.family_fallback_used).toBe(false);
   });
 
+  test('stops direct recall after enough anchored products when a stricter minimum is provided', async () => {
+    jest.doMock('../../src/services/pciKbClient', () => ({
+      kbQuery: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('to_regclass')) {
+          return { rows: [{ table_name: 'pci_kb.sku_ingredients' }] };
+        }
+        return { rows: [] };
+      }),
+    }));
+
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (!text.includes('FROM external_product_seeds')) return { rows: [] };
+        if (!text.includes("coalesce(attached_product_key, '') <> ''")) return { rows: [] };
+        const now = new Date().toISOString();
+        return {
+          rows: [
+            {
+              id: 'seed_vitc_travel',
+              external_product_id: 'ext_vitc_travel',
+              destination_url: 'https://naturium.example.com/products/vitamin-c-complex-serum-travel-size',
+              canonical_url: 'https://naturium.example.com/products/vitamin-c-complex-serum-travel-size',
+              domain: 'naturium.example.com',
+              title: 'Vitamin C Complex Serum - Travel Size',
+              image_url: 'https://naturium.example.com/vitc-travel.jpg',
+              price_amount: 12,
+              price_currency: 'USD',
+              availability: 'in stock',
+              attached_product_key: 'shopify:vitc-travel',
+              seed_data: {
+                brand: 'Naturium',
+                category: 'Serum',
+                snapshot: {
+                  title: 'Vitamin C Complex Serum - Travel Size',
+                  description: 'vitamin c serum travel size',
+                  brand: 'Naturium',
+                  category: 'Serum',
+                  canonical_url: 'https://naturium.example.com/products/vitamin-c-complex-serum-travel-size',
+                  destination_url: 'https://naturium.example.com/products/vitamin-c-complex-serum-travel-size',
+                },
+              },
+              updated_at: now,
+              created_at: now,
+            },
+            {
+              id: 'seed_banana_bright',
+              external_product_id: 'ext_banana_bright',
+              destination_url: 'https://olehenriksen.example.com/products/banana-bright-15-vitamin-c-dark-spot-serum',
+              canonical_url: 'https://olehenriksen.example.com/products/banana-bright-15-vitamin-c-dark-spot-serum',
+              domain: 'olehenriksen.example.com',
+              title: 'Banana Bright 15% Vitamin C Dark Spot Serum',
+              image_url: 'https://olehenriksen.example.com/banana-bright.jpg',
+              price_amount: 24,
+              price_currency: 'USD',
+              availability: 'in stock',
+              attached_product_key: 'shopify:banana-bright',
+              seed_data: {
+                brand: 'Ole Henriksen',
+                category: 'Serum',
+                snapshot: {
+                  title: 'Banana Bright 15% Vitamin C Dark Spot Serum',
+                  description: 'vitamin c brightening serum',
+                  brand: 'Ole Henriksen',
+                  category: 'Serum',
+                  canonical_url: 'https://olehenriksen.example.com/products/banana-bright-15-vitamin-c-dark-spot-serum',
+                  destination_url: 'https://olehenriksen.example.com/products/banana-bright-15-vitamin-c-dark-spot-serum',
+                },
+              },
+              updated_at: now,
+              created_at: now,
+            },
+          ],
+        };
+      }),
+    }));
+
+    const { recallIngredientProducts } = require('../../src/services/ingredientProductRecall');
+    const out = await recallIngredientProducts({
+      query: 'vitamin c serum',
+      ingredientId: 'ascorbic_acid',
+      targetStepFamily: 'serum',
+      limit: 10,
+      minimumDirectProductCount: 2,
+    });
+
+    expect(out.products.map((row) => row.title || row.name)).toEqual([
+      'Vitamin C Complex Serum - Travel Size',
+      'Banana Bright 15% Vitamin C Dark Spot Serum',
+    ]);
+    expect(out.diagnostics.ingredient_direct_minimum_products).toBe(2);
+    expect(out.diagnostics.kb_recall_attempted).toBe(false);
+    expect(out.diagnostics.unattached_seed_recall_attempted).toBe(false);
+    expect(out.diagnostics.ingredient_direct_main_path_status).toBe('direct_hit');
+  });
+
   test('keeps routine-safe default behavior when exact ingredient recall is empty', async () => {
     jest.doMock('../../src/services/pciKbClient', () => ({
       kbQuery: jest.fn(async (sql) => {

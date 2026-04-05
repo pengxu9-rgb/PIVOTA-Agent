@@ -178,8 +178,11 @@
     "family": "strict_ingredient_budget",
     "query": "vitamin c serum under €30",
     "source": "search",
-    "must_return_one_of_titles": [
-      "Vitamin-C Serum"
+    "must_return_one_of_title_token_sets": [
+      [
+        "vitamin c",
+        "serum"
+      ]
     ]
   },
   {

@@ -2177,9 +2177,15 @@ function buildStabilizedIngredientRecallProducts(candidates, { profile = null, t
   );
 }
 
-function hasEnoughDirectRecallProducts(products, limit) {
+function hasEnoughDirectRecallProducts(products, limit, minimumDirectProductCount = null) {
   const safeLimit = Math.max(1, Number(limit) || 6);
-  const required = Math.min(safeLimit, safeLimit >= 4 ? 4 : Math.max(2, safeLimit));
+  const normalizedMinimum = Number.isFinite(Number(minimumDirectProductCount))
+    ? Math.max(1, Math.floor(Number(minimumDirectProductCount)))
+    : null;
+  const required =
+    normalizedMinimum != null
+      ? Math.min(safeLimit, normalizedMinimum)
+      : Math.min(safeLimit, safeLimit >= 4 ? 4 : Math.max(2, safeLimit));
   return (Array.isArray(products) ? products.length : 0) >= required;
 }
 
@@ -2207,6 +2213,7 @@ async function recallIngredientProductsFromProfile({
   limit = 6,
   inStockOnly = false,
   allowFamilyFallback = false,
+  minimumDirectProductCount = null,
 } = {}) {
   const diagnostics = {
     ingredient_intent_detected: Boolean(profile),
@@ -2253,6 +2260,10 @@ async function recallIngredientProductsFromProfile({
     runtime_ingredient_evidence_source: 'none',
     seed_anchor_source_kind: 'none',
     seed_anchor_conflict_status: 'none',
+    ingredient_direct_minimum_products:
+      Number.isFinite(Number(minimumDirectProductCount)) && Number(minimumDirectProductCount) > 0
+        ? Math.max(1, Math.floor(Number(minimumDirectProductCount)))
+        : null,
   };
 
   if (!profile) {
@@ -2416,7 +2427,7 @@ async function recallIngredientProductsFromProfile({
     limit,
   });
 
-  if (!hasEnoughDirectRecallProducts(stabilizedProducts, limit)) {
+  if (!hasEnoughDirectRecallProducts(stabilizedProducts, limit, minimumDirectProductCount)) {
     diagnostics.kb_recall_attempted = true;
 
     const kbRows = await fetchKbRowsForProfile({
@@ -2471,7 +2482,7 @@ async function recallIngredientProductsFromProfile({
       limit,
     });
 
-    if (!hasEnoughDirectRecallProducts(stabilizedProducts, limit)) {
+    if (!hasEnoughDirectRecallProducts(stabilizedProducts, limit, minimumDirectProductCount)) {
       diagnostics.unattached_seed_recall_attempted = true;
 
       const [

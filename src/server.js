@@ -10266,6 +10266,27 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
     recallProfile,
   });
   const inStockOnly = parseQueryBoolean(search.in_stock_only ?? search.inStockOnly) !== false;
+  const directStrictDecision = getStrictFindProductsMultiConstraintDecision({
+    search: relevanceQueryText ? { query: relevanceQueryText } : {},
+    metadata,
+  });
+  const directRuleBasedIntent =
+    relevanceQueryText && typeof extractIntentRuleBased === 'function'
+      ? extractIntentRuleBased(relevanceQueryText, [], [])
+      : null;
+  const directPriceConstraint =
+    directRuleBasedIntent?.hard_constraints &&
+    directRuleBasedIntent.hard_constraints.price &&
+    typeof directRuleBasedIntent.hard_constraints.price === 'object'
+      ? {
+          ...directRuleBasedIntent.hard_constraints.price,
+        }
+      : null;
+  const strictConstraintReason =
+    directStrictDecision?.strictConstraintReason ||
+    (recallProfile && String(recallProfile.ingredient_id || '').trim() ? 'ingredient' : null);
+  const ingredientDirectMinimumProducts =
+    strictConstraintReason === 'multi_constraint' && directPriceConstraint ? 2 : null;
 
   const recalled = await recallIngredientProducts({
     query: relevanceQueryText,
@@ -10275,6 +10296,7 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
     limit: Math.max(safeLimit + safeOffset, safeLimit),
     inStockOnly,
     allowFamilyFallback: true,
+    minimumDirectProductCount: ingredientDirectMinimumProducts,
   });
   const diagnostics =
     recalled?.diagnostics && typeof recalled.diagnostics === 'object' && !Array.isArray(recalled.diagnostics)
@@ -10302,25 +10324,6 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
     recallProfile && String(recallProfile.ingredient_id || '').trim()
       ? [String(recallProfile.ingredient_id || '').trim()]
       : [];
-  const directStrictDecision = getStrictFindProductsMultiConstraintDecision({
-    search: relevanceQueryText ? { query: relevanceQueryText } : {},
-    metadata,
-  });
-  const strictConstraintReason =
-    directStrictDecision?.strictConstraintReason ||
-    (ingredientIntentIds.length > 0 ? 'ingredient' : null);
-  const directRuleBasedIntent =
-    relevanceQueryText && typeof extractIntentRuleBased === 'function'
-      ? extractIntentRuleBased(relevanceQueryText, [], [])
-      : null;
-  const directPriceConstraint =
-    directRuleBasedIntent?.hard_constraints &&
-    directRuleBasedIntent.hard_constraints.price &&
-    typeof directRuleBasedIntent.hard_constraints.price === 'object'
-      ? {
-          ...directRuleBasedIntent.hard_constraints.price,
-        }
-      : null;
   const ingredientBudgetRescueQueries = buildStrictIngredientBudgetRescueQueries(
     relevanceQueryText,
     recallProfile,
@@ -10481,6 +10484,7 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
       ingredientBudgetRescueAttempted && ingredientBudgetRescueQueries.length > 0
         ? ingredientBudgetRescueQueries[0]
         : null,
+    ingredient_direct_minimum_products: ingredientDirectMinimumProducts,
     products_returned_count: mergedRecalledProducts.length,
     external_seed_returned_count: mergedRecalledProducts.length,
   };
