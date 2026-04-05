@@ -236,4 +236,65 @@ describe('chatCardsAssembler safety mapping', () => {
       reasons: ['clarify_preferred'],
     });
   });
+
+  test('availability commerce cards stay renderable in chatcards mode', () => {
+    const out = buildChatCardsResponse({
+      envelope: makeEnvelope({
+        assistant_message: {
+          role: 'assistant',
+          content: 'I found Winona items for you.',
+        },
+        cards: [
+          {
+            type: 'product_parse',
+            card_id: 'parse_req',
+            payload: {
+              product: {
+                product_id: 'prod_winona_repair',
+                merchant_id: 'mid_winona',
+              },
+            },
+          },
+          {
+            type: 'offers_resolved',
+            card_id: 'offers_req',
+            payload: {
+              items: [
+                {
+                  product: {
+                    product_id: 'prod_winona_repair',
+                    merchant_id: 'mid_winona',
+                    brand: 'Winona',
+                    display_name: 'Winona Soothing Repair Serum',
+                  },
+                  metadata: {
+                    pdp_open_path: 'internal',
+                  },
+                  pdp_open: {
+                    path: 'ref',
+                    product_ref: {
+                      product_id: 'prod_winona_repair',
+                      merchant_id: 'mid_winona',
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      }),
+      ctx: makeCtx(),
+      intent: 'reco_products',
+    });
+
+    expect(out.cards).toHaveLength(1);
+    expect(out.cards[0].type).toBe('recommendations');
+    expect(out.cards[0].title).toBe('Items Found');
+    const section = out.cards[0].sections.find((entry) => entry && entry.kind === 'product_cards');
+    expect(section).toBeTruthy();
+    expect(section.products[0]).toMatchObject({
+      name: 'Winona Soothing Repair Serum',
+      brand: 'Winona',
+    });
+  });
 });

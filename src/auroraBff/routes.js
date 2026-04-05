@@ -1250,6 +1250,12 @@ const CATALOG_AVAIL_RESOLVE_FALLBACK_ON_TRANSIENT = (() => {
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
+const CATALOG_AVAIL_LOCAL_RESOLVE_FALLBACK_ENABLED = (() => {
+  const raw = String(process.env.AURORA_CHAT_CATALOG_AVAIL_LOCAL_RESOLVE_FALLBACK || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
 const CATALOG_AVAIL_RESOLVE_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_CHAT_CATALOG_AVAIL_RESOLVE_TIMEOUT_MS || 1400);
   const v = Number.isFinite(n) ? Math.trunc(n) : 1400;
@@ -5632,37 +5638,6 @@ async function resolveAvailabilityProductByQuery({
   if (!q) return { ok: false, reason: 'query_missing', product: null, resolve_reason_code: 'no_candidates', latency_ms: 0 };
   const startedAt = Date.now();
 
-  const stableAliasMatch = resolveRecoStableAliasRefByQuery(q);
-  if (stableAliasMatch?.canonicalProductRef) {
-    const product = buildAvailabilityResolvedProduct({
-      resolvedRef: stableAliasMatch.canonicalProductRef,
-      resolveBody: null,
-      fallbackQuery: q,
-      fallbackBrand: hints && typeof hints === 'object' ? hints.brand : '',
-      fallbackProduct: stableAliasMatch.stableAnchorProduct,
-    });
-    if (product) {
-      logger?.info?.(
-        {
-          event: 'aurora_product_anchor_resolved_via_local_stable_alias',
-          query: q,
-          match_id: stableAliasMatch.matchId,
-          matched_alias: stableAliasMatch.matchedAlias,
-          score: stableAliasMatch.score,
-        },
-      );
-      return {
-        ok: true,
-        reason: null,
-        product,
-        resolve_reason_code: null,
-        decision_source: 'local_stable_alias_ref',
-        status_code: 200,
-        latency_ms: Date.now() - startedAt,
-      };
-    }
-  }
-
   if (!PIVOTA_BACKEND_BASE_URL) {
     return { ok: false, reason: 'pivota_backend_not_configured', product: null, resolve_reason_code: 'db_error', latency_ms: 0 };
   }
@@ -5957,22 +5932,6 @@ async function resolveAvailabilityProductByLocalResolver({
     resolver_attempts: buildResolverAttempts(),
     status_code: null,
     latency_ms: Date.now() - startedAt,
-  };
-}
-
-function buildBrandPlaceholderProduct({ brandId, brandName, lang } = {}) {
-  const isCn = String(lang || '').toUpperCase() === 'CN';
-  const brand = String(brandName || '').trim() || (isCn ? '未知品牌' : 'Unknown brand');
-  const skuId = String(brandId || '').trim() || `brand_${stableHashBase36(brand).slice(0, 10)}`;
-  const name = isCn ? `${brand}（品牌）` : `${brand} (brand)`;
-  return {
-    product_id: `brand:${skuId}`,
-    sku_id: skuId,
-    brand,
-    name,
-    display_name: name,
-    image_url: '',
-    category: isCn ? '品牌' : 'Brand',
   };
 }
 
@@ -78807,12 +78766,6 @@ function mountAuroraBffRoutes(app, { logger }) {
             .trim()
             .slice(0, 120);
 
-          const brandProduct = buildBrandPlaceholderProduct({
-            brandId: availabilityIntent.brand_id,
-            brandName: availabilityLabel,
-            lang: ctx.lang,
-          });
-
           const resolveAliasCandidates = [
             availabilityIntent.brand_name,
             availabilityIntent.matched_alias,
@@ -78832,6 +78785,15 @@ function mountAuroraBffRoutes(app, { logger }) {
           let availabilityLocalResolveFallback = null;
           let availabilityResolveAttempted = false;
           let availabilityLocalResolveAttempted = false;
+          let availabilityResolvedVia = null;
+          const availabilityResolveQuery = String(
+            availabilityQuery ||
+              availabilityIntent.brand_name ||
+              availabilityIntent.matched_alias ||
+              availabilityLabel ||
+              availabilityIntent.brand_id ||
+              '',
+          ).trim();
           if (PIVOTA_BACKEND_BASE_URL) {
             catalogResult = await searchPivotaBackendProducts({
               query: availabilityQuery || availabilityLabel || availabilityIntent.brand_id,
@@ -78845,38 +78807,67 @@ function mountAuroraBffRoutes(app, { logger }) {
             catalogResult = { ok: false, products: [], reason: 'pivota_backend_not_configured' };
           }
 
-          if (!products.length && CATALOG_AVAIL_RESOLVE_FALLBACK_ENABLED && PIVOTA_BACKEND_BASE_URL) {
-            const reason = String(catalogResult.reason || '').trim().toLowerCase();
-            const neutralCatalogMiss =
-              !reason || reason === 'empty' || reason === 'no_candidates' || reason === 'not_found';
-            const transientCatalogMiss =
-              reason === 'upstream_timeout' || reason === 'upstream_error' || reason === 'rate_limited';
-            const shouldRunResolveFallback =
-              specificAvailabilityQuery &&
-              (neutralCatalogMiss || (transientCatalogMiss && CATALOG_AVAIL_RESOLVE_FALLBACK_ON_TRANSIENT));
+          const reason = String(catalogResult.reason || '').trim().toLowerCase();
+          const neutralCatalogMiss =
+            !reason || reason === 'empty' || reason === 'no_candidates' || reason === 'not_found';
+          const transientCatalogMiss =
+            reason === 'upstream_timeout' || reason === 'upstream_error' || reason === 'rate_limited';
+          const shouldRunResolveFallback =
+            Boolean(availabilityResolveQuery) &&
+            CATALOG_AVAIL_RESOLVE_FALLBACK_ENABLED &&
+            PIVOTA_BACKEND_BASE_URL &&
+            (neutralCatalogMiss || (transientCatalogMiss && CATALOG_AVAIL_RESOLVE_FALLBACK_ON_TRANSIENT));
+          const shouldRunLocalResolveFallback =
+            Boolean(availabilityResolveQuery) && CATALOG_AVAIL_LOCAL_RESOLVE_FALLBACK_ENABLED;
+
+          if (!products.length && (shouldRunResolveFallback || shouldRunLocalResolveFallback)) {
+            // Keep internal and external resolution lanes concurrent so availability recovery
+            // does not regress into a serialized "internal first" chain.
             if (shouldRunResolveFallback) {
               availabilityResolveAttempted = true;
-              availabilityResolveFallback = await resolveAvailabilityProductByQuery({
-                query: availabilityQuery || availabilityIntent.brand_name,
-                lang: ctx.lang,
-                hints: Object.keys(resolveHints).length ? resolveHints : null,
-                logger,
-              });
-              if (availabilityResolveFallback?.ok && availabilityResolveFallback?.product) {
-                products = [availabilityResolveFallback.product];
-              }
             }
-          }
-          if (!products.length && specificAvailabilityQuery && RECO_PDP_STRICT_INTERNAL_FIRST) {
-            availabilityLocalResolveAttempted = true;
-            availabilityLocalResolveFallback = await resolveAvailabilityProductByLocalResolver({
-              query: availabilityQuery || availabilityIntent.brand_name,
-              lang: ctx.lang,
-              hints: Object.keys(resolveHints).length ? resolveHints : null,
-              logger,
-            });
-            if (availabilityLocalResolveFallback?.ok && availabilityLocalResolveFallback?.product) {
-              products = [availabilityLocalResolveFallback.product];
+            if (shouldRunLocalResolveFallback) {
+              availabilityLocalResolveAttempted = true;
+            }
+
+            [availabilityResolveFallback, availabilityLocalResolveFallback] = await Promise.all([
+              shouldRunResolveFallback
+                ? resolveAvailabilityProductByQuery({
+                    query: availabilityResolveQuery,
+                    lang: ctx.lang,
+                    hints: Object.keys(resolveHints).length ? resolveHints : null,
+                    logger,
+                  })
+                : Promise.resolve(null),
+              shouldRunLocalResolveFallback
+                ? resolveAvailabilityProductByLocalResolver({
+                    query: availabilityResolveQuery,
+                    lang: ctx.lang,
+                    hints: Object.keys(resolveHints).length ? resolveHints : null,
+                    logger,
+                  })
+                : Promise.resolve(null),
+            ]);
+
+            const resolvedRemoteProduct =
+              availabilityResolveFallback?.ok && availabilityResolveFallback?.product
+                ? availabilityResolveFallback.product
+                : null;
+            const resolvedLocalProduct =
+              availabilityLocalResolveFallback?.ok && availabilityLocalResolveFallback?.product
+                ? availabilityLocalResolveFallback.product
+                : null;
+            const remoteMerchantId = String(resolvedRemoteProduct?.merchant_id || '').trim();
+
+            if (resolvedRemoteProduct && remoteMerchantId && remoteMerchantId !== 'external_seed') {
+              products = [resolvedRemoteProduct];
+              availabilityResolvedVia = 'products_resolve';
+            } else if (resolvedLocalProduct) {
+              products = [resolvedLocalProduct];
+              availabilityResolvedVia = 'local_resolver';
+            } else if (resolvedRemoteProduct) {
+              products = [resolvedRemoteProduct];
+              availabilityResolvedVia = 'products_resolve';
             }
           }
 
@@ -78890,7 +78881,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             }
           }
 
-          const offersItems = (products.length ? products : [brandProduct])
+          const offersItems = products
             .slice(0, 8)
             .map((product) => applyOfferItemPdpOpenContract({ product, offer: null }, { timeToPdpMs: 0 }));
           const offersPdpMeta = summarizeOfferPdpOpen(offersItems);
@@ -78899,14 +78890,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           const market = marketRaw ? marketRaw.slice(0, 8).toUpperCase() : 'US';
 
           const hasResults = products.length > 0;
-          const resolvedVia =
-            availabilityResolveFallback?.ok
-              ? 'products_resolve'
-              : availabilityLocalResolveFallback?.ok
-                ? 'local_resolver'
-                : hasResults
-                  ? 'products_search'
-                  : 'none';
+          const resolvedVia = availabilityResolvedVia || (hasResults ? 'products_search' : 'none');
           const assistantRaw =
             ctx.lang === 'CN'
               ? hasResults
@@ -78955,7 +78939,8 @@ function mountAuroraBffRoutes(app, { logger }) {
                 card_id: `parse_${ctx.request_id}`,
                 type: 'product_parse',
                 payload: {
-                  product: hasResults && products[0] ? products[0] : brandProduct,
+                  ...(hasResults && products[0] ? { product: products[0] } : {}),
+                  ...(hasResults ? {} : { parse_failed: true }),
                   confidence: 1,
                   missing_info: [],
                   intent: 'availability',

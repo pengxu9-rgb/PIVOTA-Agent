@@ -580,15 +580,90 @@ function buildRecommendationsCard({ card, requestId, index, language = 'EN' }) {
   };
 }
 
+function normalizeOffersResolvedProduct(raw) {
+  const item = isPlainObject(raw) ? raw : {};
+  const product = isPlainObject(item.product) ? item.product : {};
+  const metadata = isPlainObject(item.metadata) ? item.metadata : {};
+  const pdpOpen = isPlainObject(item.pdp_open) ? item.pdp_open : {};
+  const canonicalProductRef = isPlainObject(product.canonical_product_ref) ? product.canonical_product_ref : {};
+  const directProductRef = isPlainObject(pdpOpen.product_ref) ? pdpOpen.product_ref : {};
+  const productRef =
+    Object.keys(directProductRef).length > 0
+      ? directProductRef
+      : Object.keys(canonicalProductRef).length > 0
+        ? canonicalProductRef
+        : undefined;
+  const displayName =
+    asString(product.display_name) ||
+    asString(product.name) ||
+    asString(product.title);
+  if (!displayName) return null;
+
+  return {
+    category: inferRoutineCategory(displayName),
+    name: displayName,
+    brand: asString(product.brand) || asString(product.vendor),
+    best_for: asString(product.product_type) || asString(product.category),
+    key_features: asStringArray(product.tags, 4),
+    price_tier: 'mid',
+    why_this_one:
+      asString(metadata.pdp_open_path) === 'internal'
+        ? 'Open product details'
+        : 'Open merchant page',
+    see_more: true,
+    ...(asString(product.image_url) ? { image_url: asString(product.image_url) } : {}),
+    ...(productRef ? { product_ref: productRef } : {}),
+    ...(Object.keys(pdpOpen).length > 0 ? { pdp_open: pdpOpen } : {}),
+    ...(asString(product.product_id) ? { product_id: asString(product.product_id) } : {}),
+    ...(asString(product.merchant_id) ? { merchant_id: asString(product.merchant_id) } : {}),
+  };
+}
+
+function buildOffersResolvedCard({ card, requestId, index, language = 'EN' }) {
+  const payload = isPlainObject(card && card.payload) ? card.payload : {};
+  const items = asRecordArray(payload.items, 8);
+  const products = items.map((item) => normalizeOffersResolvedProduct(item)).filter((item) => item && item.name);
+  if (products.length === 0) return null;
+
+  return {
+    id: normalizeCardId(card && card.card_id, 'offers_resolved', requestId, index),
+    type: 'recommendations',
+    priority: 1,
+    title: language === 'CN' ? '找到的商品' : 'Items Found',
+    tags: [],
+    sections: [
+      {
+        kind: 'product_cards',
+        products,
+      },
+    ],
+    actions: [],
+    payload: {
+      source_card_type: 'offers_resolved',
+      items,
+      products,
+      ...(asString(payload.market) ? { market: asString(payload.market) } : {}),
+      ...(isPlainObject(payload.metadata) ? { metadata: payload.metadata } : {}),
+    },
+  };
+}
+
 function mapLegacyCardToSpecCards(card, { requestId, language = 'EN', index = 0 } = {}) {
   const type = asString(card && card.type).toLowerCase();
   if (!type) return [];
 
+  if (type === 'product_parse') {
+    return [];
+  }
   if (type === 'product_analysis') {
     return [buildProductVerdictCard({ card, requestId, index, language })];
   }
   if (type === 'recommendations') {
     return [buildRecommendationsCard({ card, requestId, index, language })];
+  }
+  if (type === 'offers_resolved') {
+    const offersCard = buildOffersResolvedCard({ card, requestId, index, language });
+    return offersCard ? [offersCard] : [];
   }
   if (type === 'routine_simulation' || type === 'conflict_heatmap') {
     return [buildCompatibilityCard({ card, requestId, index, language })];
