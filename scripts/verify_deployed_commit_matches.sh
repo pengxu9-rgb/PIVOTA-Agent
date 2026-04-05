@@ -18,10 +18,12 @@ if [[ "${RAIL_MODE}" == "public_observability" ]]; then
   if [[ -z "${BASE_URL}" ]]; then
     BASE_URL="${DEFAULT_PUBLIC_BASE_URL}"
   fi
+  PROBE_BASE_URL="${BASE_URL}"
 else
   if [[ -z "${BASE_URL}" ]]; then
     BASE_URL="${DEFAULT_INVOKE_BASE_URL}"
   fi
+  PROBE_BASE_URL="${INVOKE_BASE_URL:-$BASE_URL}"
 fi
 
 if ! [[ "$MAX_ATTEMPTS" =~ ^[0-9]+$ ]] || [ "$MAX_ATTEMPTS" -le 0 ]; then
@@ -36,6 +38,7 @@ fi
 
 echo "BASE_URL=$BASE_URL"
 echo "INVOKE_BASE_URL=${INVOKE_BASE_URL:-$BASE_URL}"
+echo "PROBE_BASE_URL=$PROBE_BASE_URL"
 echo "RAIL_MODE=$RAIL_MODE"
 echo "TARGET_COMMIT=$TARGET_COMMIT"
 echo "VERSION_ENDPOINT=$VERSION_ENDPOINT"
@@ -110,12 +113,12 @@ for i in $(seq 1 "$MAX_ATTEMPTS"); do
   deployed=""
   detected_via="missing"
 
-  deployed="$(extract_version_commit "$VERSION_ENDPOINT" "$BASE_URL")"
-  detected_via="version:${BASE_URL%/}${VERSION_ENDPOINT}"
+  deployed="$(extract_version_commit "$VERSION_ENDPOINT" "$PROBE_BASE_URL")"
+  detected_via="version:${PROBE_BASE_URL%/}${VERSION_ENDPOINT}"
 
   if [ -z "${deployed:-}" ] && [ -n "${HEALTH_ENDPOINT:-}" ]; then
-    deployed="$(extract_health_commit "$HEALTH_ENDPOINT" "$BASE_URL")"
-    detected_via="health:${BASE_URL%/}${HEALTH_ENDPOINT}"
+    deployed="$(extract_health_commit "$HEALTH_ENDPOINT" "$PROBE_BASE_URL")"
+    detected_via="health:${PROBE_BASE_URL%/}${HEALTH_ENDPOINT}"
   fi
   echo "${i}/${MAX_ATTEMPTS} deployed_commit=${deployed:-missing} via=${detected_via}"
   if [ -n "${deployed:-}" ] && [ "$deployed" = "$TARGET_COMMIT" ]; then
