@@ -473,4 +473,82 @@ describe('externalSeedProducts helper', () => {
     expect(product.product_type).toBe('Serum');
     expect(product.category).toBe('Serum');
   });
+
+  test('builds recommendation candidates from lean external rows without full seed_data hydration', () => {
+    const row = {
+      id: 'eps_lean_tom_ford',
+      external_product_id: 'ext_lean_tom_ford_serum',
+      canonical_url: 'https://www.tomfordbeauty.com/products/tom-ford-research-serum-concentrate',
+      destination_url: 'https://www.tomfordbeauty.com/products/tom-ford-research-serum-concentrate',
+      domain: 'www.tomfordbeauty.com',
+      title: 'TOM FORD RESEARCH Serum Concentrate',
+      image_url: 'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T93Y01_2000x2000_0.png',
+      price_amount: 100,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_brand: 'Tom Ford Beauty',
+      seed_category: '',
+      seed_product_type: '',
+      seed_description: 'A concentrated treatment serum.',
+    };
+
+    const product = buildExternalSeedProduct(row);
+    expect(product).toEqual(
+      expect.objectContaining({
+        product_id: 'ext_lean_tom_ford_serum',
+        merchant_id: 'external_seed',
+        brand: 'Tom Ford Beauty',
+        vendor: 'Tom Ford Beauty',
+        category: 'Serum',
+        product_type: 'Serum',
+        description: 'A concentrated treatment serum.',
+      }),
+    );
+    expect(product.variants).toHaveLength(1);
+    expect(product.variants[0]).toEqual(
+      expect.objectContaining({
+        variant_id: 'ext_lean_tom_ford_serum',
+        image_url: expect.stringContaining('tf_sku_T93Y01_2000x2000_0'),
+      }),
+    );
+  });
+
+  test('prefers cleanser intent over generic concentrate terms for lean recommendation candidates', () => {
+    const row = {
+      id: 'eps_lean_tom_ford_cleanser',
+      external_product_id: 'ext_lean_tom_ford_cleanser',
+      canonical_url: 'https://www.tomfordbeauty.com/products/tom-ford-research-cleansing-concentrate',
+      destination_url: 'https://www.tomfordbeauty.com/products/tom-ford-research-cleansing-concentrate',
+      domain: 'www.tomfordbeauty.com',
+      title: 'TOM FORD RESEARCH Cleansing Concentrate',
+      seed_brand: 'Tom Ford Beauty',
+      seed_category: '',
+      seed_product_type: '',
+    };
+
+    const product = buildExternalSeedProduct(row);
+    expect(product.category).toBe('Cleanser');
+    expect(product.product_type).toBe('Cleanser');
+  });
+
+  test('does not infer serum from fragrance marketing copy on lean recommendation candidates', () => {
+    const row = {
+      id: 'eps_lean_grey_vetiver',
+      external_product_id: 'ext_lean_grey_vetiver',
+      canonical_url: 'https://www.tomfordbeauty.com/products/grey-vetiver-parfum',
+      destination_url: 'https://www.tomfordbeauty.com/products/grey-vetiver-parfum',
+      domain: 'www.tomfordbeauty.com',
+      title: 'Grey Vetiver Parfum',
+      seed_brand: 'Tom Ford Beauty',
+      seed_category: '',
+      seed_product_type: '',
+      seed_description:
+        'With its elegant and refined heart of natural vetiver, Grey Vetiver captures the essence of debonair masculinity.',
+    };
+
+    const product = buildExternalSeedProduct(row);
+    expect(product.category).toBeUndefined();
+    expect(product.product_type).toBe('external');
+    expect(product.description).toContain('essence of debonair masculinity');
+  });
 });

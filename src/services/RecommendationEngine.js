@@ -503,7 +503,9 @@ function buildBaseFeatures(baseProduct) {
   const parentCategory = getParentCategory(baseProduct);
   const priceAmount = getPriceAmount(baseProduct);
   const verticalSignal = inferVerticalFromProduct(baseProduct);
-  const tokens = tokenize([baseProduct.title, baseProduct.name, brand, leafCategory, parentCategory].filter(Boolean).join(' '));
+  const tokens = tokenize(
+    [baseProduct.title, baseProduct.name, leafCategory, parentCategory].filter(Boolean).join(' '),
+  );
   return {
     productId: getProductId(baseProduct),
     merchantId: getMerchantId(baseProduct),
@@ -527,7 +529,9 @@ function buildCandidateFeatures(candidateProduct, baseCurrency) {
   const priceAmount = getPriceAmount(candidateProduct);
   const currency = normalizeCurrency(candidateProduct, baseCurrency);
   const verticalSignal = inferVerticalFromProduct(candidateProduct);
-  const tokens = tokenize([candidateProduct.title, candidateProduct.name, brand, leafCategory, parentCategory].filter(Boolean).join(' '));
+  const tokens = tokenize(
+    [candidateProduct.title, candidateProduct.name, leafCategory, parentCategory].filter(Boolean).join(' '),
+  );
   return {
     productId: getProductId(candidateProduct),
     merchantId: getMerchantId(candidateProduct),
@@ -1017,6 +1021,7 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit }) {
   const safeLimit = Math.min(Math.max(1, Number(limit || 180)), 500);
   const market = String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
   const tool = 'creator_agents';
+  const focusedFallbackThreshold = Math.max(12, Math.min(safeLimit, 18));
 
   const brand = normalizeText(brandHint);
   const category = normalizeText(categoryHint);
@@ -1036,7 +1041,20 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit }) {
             price_amount,
             price_currency,
             availability,
-            seed_data,
+            coalesce(seed_data->>'brand', seed_data->'snapshot'->>'brand', '') as seed_brand,
+            coalesce(
+              seed_data->>'category',
+              seed_data->'product'->>'category',
+              seed_data->'snapshot'->>'category',
+              ''
+            ) as seed_category,
+            coalesce(
+              seed_data->>'product_type',
+              seed_data->'product'->>'product_type',
+              seed_data->'snapshot'->>'product_type',
+              ''
+            ) as seed_product_type,
+            left(coalesce(seed_data->>'description', seed_data->'snapshot'->>'description', ''), 1200) as seed_description,
             updated_at,
             created_at
           FROM external_product_seeds
@@ -1076,7 +1094,15 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit }) {
       : Promise.resolve([]),
     category
       ? runQuery(
-          `AND lower(coalesce(seed_data->>'category','')) = $4`,
+          `AND lower(coalesce(
+              seed_data->>'category',
+              seed_data->'product'->>'category',
+              seed_data->'snapshot'->>'category',
+              seed_data->>'product_type',
+              seed_data->'product'->>'product_type',
+              seed_data->'snapshot'->>'product_type',
+              ''
+            )) = $4`,
           [category],
           Math.min(120, safeLimit),
           'external_category',
@@ -1085,7 +1111,9 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit }) {
   ]);
 
   const out = [...brandMatches, ...categoryMatches];
-  const enoughFocusedCandidates = out.length >= Math.max(safeLimit, 80);
+  // Once focused brand/category candidates are ample for the first page, global recent
+  // fallback only adds latency and noisy matches.
+  const enoughFocusedCandidates = out.length >= focusedFallbackThreshold;
   if (!enoughFocusedCandidates) {
     const recent = await runQuery('', [], Math.min(240, safeLimit), 'external_recent');
     out.push(...recent);
