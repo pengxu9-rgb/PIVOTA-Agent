@@ -10205,8 +10205,22 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
           queryText: relevanceQueryText,
         },
       );
+  const ingredientIntentIds =
+    recallProfile && String(recallProfile.ingredient_id || '').trim()
+      ? [String(recallProfile.ingredient_id || '').trim()]
+      : [];
+  const directStrictDecision = getStrictFindProductsMultiConstraintDecision({
+    search: relevanceQueryText ? { query: relevanceQueryText } : {},
+    metadata,
+  });
+  const strictConstraintReason =
+    directStrictDecision?.strictConstraintReason ||
+    (ingredientIntentIds.length > 0 ? 'ingredient' : null);
   const baseMetadata = {
     fetched_at: new Date().toISOString(),
+    strict_constraint_query: ingredientIntentIds.length > 0,
+    strict_constraint_reason: strictConstraintReason,
+    ...(ingredientIntentIds.length > 0 ? { ingredient_intents: ingredientIntentIds } : {}),
     ingredient_direct_main_path_status:
       diagnostics.ingredient_direct_main_path_status === 'direct_hit'
         ? 'direct_hit'
@@ -10320,6 +10334,7 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
         ...baseMetadata,
         ingredient_direct_main_path_status: 'direct_empty_unrecovered',
         query_source: 'agent_products_ingredient_recall_direct_empty',
+        matched_ingredient_ids: [],
         search_decision: {
           final_decision: 'direct_empty',
           hit_quality: 'strict_empty',
@@ -10361,6 +10376,7 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
       ingredient_direct_main_path_status: 'direct_hit',
       query_source: 'agent_products_ingredient_recall_direct',
       strict_empty_reason: null,
+      ...(ingredientIntentIds.length > 0 ? { matched_ingredient_ids: ingredientIntentIds } : {}),
       products_returned_count: responseProducts.length,
       external_seed_returned_count: responseProducts.length,
       search_decision: {
@@ -20825,6 +20841,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   let strictCommerceFindProductsMulti = false;
   let strictBeautyDirectSearch = false;
   let useStableCrossMerchantAgentSearch = false;
+  let findProductsMultiSearchPayload = null;
+  let rawFindProductsMultiQueryText = '';
+  let autoStrictSearchSourceBeautyDirectSearch = false;
   let strictFindProductsMultiDecision = {
     enabled: false,
     catalogSurface: null,
@@ -22260,7 +22279,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ? strictFindProductsMultiDecision
             : getStrictFindProductsMultiConstraintDecision({ search, metadata });
         strictCommerceFindProductsMulti = Boolean(strictFindProductsMultiDecision.enabled);
-        const rawFindProductsMultiQuery = String(rawUserQuery || search?.query || '').trim();
+        findProductsMultiSearchPayload =
+          search && typeof search === 'object' && !Array.isArray(search) ? { ...search } : {};
+        rawFindProductsMultiQueryText = String(rawUserQuery || search?.query || '').trim();
         const explicitStrictCatalogSurfaceRequested = ['agent_api', 'acp', 'ucp'].includes(
           String(
             search?.catalog_surface ||
@@ -22273,18 +22294,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             .toLowerCase(),
         );
         const strictAutoBeautyQueryProfile = buildBeautyQueryProfile({
-          rawQuery: rawFindProductsMultiQuery,
+          rawQuery: rawFindProductsMultiQueryText,
           queryClass: traceQueryClass || null,
           intent: effectiveIntent,
         });
         const beautyExactTitleLookup =
           isShoppingSource(metadata?.source) &&
           shouldRunExternalSeedExactTitleRecall({
-            queryText: rawFindProductsMultiQuery,
+            queryText: rawFindProductsMultiQueryText,
             queryTokens: Array.from(
               new Set(
                 tokenizeSearchTextForMatch(
-                  normalizeSearchTextForMatch(rawFindProductsMultiQuery),
+                  normalizeSearchTextForMatch(rawFindProductsMultiQueryText),
                 ),
               ),
             ),
@@ -22306,7 +22327,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ['lookup', 'attribute'].includes(normalizedTraceQueryClass) ||
             beautyMainlineBypass.reason === 'beauty_mainline_contract'
           );
-        const autoStrictSearchSourceBeautyDirectSearch =
+        autoStrictSearchSourceBeautyDirectSearch =
           strictCommerceFindProductsMulti &&
           !explicitStrictCatalogSurfaceRequested &&
           normalizeAgentSource(metadata?.source) === 'search' &&
@@ -23432,6 +23453,72 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             legacy_fallback: false,
           }
         : null;
+    if (
+      !response &&
+      operation === 'find_products_multi' &&
+      autoStrictSearchSourceBeautyDirectSearch &&
+      strictFindProductsMultiDecision?.strictConstraintQuery === true
+    ) {
+      try {
+        const localIngredientDirectResponse = await searchIngredientIntentProductsDirect({
+          search: {
+            ...(findProductsMultiSearchPayload &&
+            typeof findProductsMultiSearchPayload === 'object' &&
+            !Array.isArray(findProductsMultiSearchPayload)
+              ? findProductsMultiSearchPayload
+              : {}),
+            query: String(
+              rawFindProductsMultiQueryText ||
+                rawUserQuery ||
+                findProductsMultiSearchPayload?.query ||
+                '',
+            ).trim(),
+            ...(queryParams?.limit != null ? { limit: queryParams.limit } : {}),
+            ...(queryParams?.page != null ? { page: queryParams.page } : {}),
+            ...(queryParams?.offset != null ? { offset: queryParams.offset } : {}),
+            ...(queryParams?.target_step_family
+              ? { target_step_family: queryParams.target_step_family }
+              : {}),
+            ...(queryParams?.query_step_strength
+              ? { query_step_strength: queryParams.query_step_strength }
+              : {}),
+            ...(queryParams?.semantic_family ? { semantic_family: queryParams.semantic_family } : {}),
+            catalog_surface: 'beauty',
+            commerce_surface: 'beauty',
+          },
+          metadata: {
+            ...(metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {}),
+            source: String(metadata?.source || 'search').trim() || 'search',
+            catalog_surface: 'beauty',
+            commerce_surface: 'beauty',
+          },
+        });
+        if (Array.isArray(localIngredientDirectResponse?.products) && localIngredientDirectResponse.products.length > 0) {
+          response = {
+            status: 200,
+            data: localIngredientDirectResponse,
+          };
+          searchContractBridgeMeta = {
+            attempted_contract: 'shop_invoke_strict',
+            resolved_contract: 'shop_invoke_strict',
+            legacy_fallback: false,
+          };
+        }
+      } catch (localIngredientDirectErr) {
+        logger.warn(
+          {
+            err: localIngredientDirectErr?.message || String(localIngredientDirectErr),
+            query: String(
+              rawFindProductsMultiQueryText ||
+                rawUserQuery ||
+                findProductsMultiSearchPayload?.query ||
+                '',
+            ).trim(),
+          },
+          'strict ingredient local direct recall failed; continuing to products/search upstream',
+        );
+      }
+    }
     let resolverRejectedReason = null;
     let resolverRejectedQueryUsed = null;
     const searchQueryText = String(extractSearchQueryText(queryParams) || rawUserQuery || '').trim();
