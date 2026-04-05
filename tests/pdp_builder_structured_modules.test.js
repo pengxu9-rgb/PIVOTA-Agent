@@ -199,13 +199,13 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     });
 
     expect(payload.product.image_url).toBe(
-      'https://sdcdn.io/tf/tf_sku_T1QS01_2000x2000_1.jpg?height=1400px&width=1400px',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QS01_2000x2000_1.jpg',
     );
     expect(payload.product.variants[0].image_url).toBe(
-      'https://sdcdn.io/tf/tf_sku_T1QS01_2000x2000_1.jpg?height=1400px&width=1400px',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QS01_2000x2000_1.jpg',
     );
     expect(payload.modules.find((module) => module.type === 'recommendations')?.data?.items[0]?.image_url).toBe(
-      'https://sdcdn.io/tf/tf_sku_T1QT01_3000x3000_0.png?height=1400px&width=1400px',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QT01_3000x3000_0.png',
     );
   });
 
@@ -278,10 +278,10 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     });
 
     expect(payload.product.image_url).toBe(
-      'https://sdcdn.io/tf/tf_sku_T2SS02_3000x3000_1.png?width=650px&height=750px',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T2SS02_3000x3000_1.png',
     );
     expect(payload.modules.find((module) => module.type === 'recommendations')?.data?.items[0]?.image_url).toBe(
-      'https://sdcdn.io/tf/tf_sku_T2SS02_3000x3000_1.png?width=650px&height=750px',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T2SS02_3000x3000_1.png',
     );
   });
 
@@ -298,7 +298,7 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     });
 
     expect(payload.product.image_url).toBe(
-      'https://sdcdn.io/tf/tf_sku_T2SS02_3000x3000_1.png?width=650px&height=750px',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T2SS02_3000x3000_1.png',
     );
   });
 
@@ -386,7 +386,7 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
       'This cleanser transforms from a tiny pearl to a luscious foam, rinsing clean, and leaving skin feeling refreshed and energized. Infused with hyaluronic acid, the formula is perfect for all skin types, including sensitive.',
     );
     expect(mediaUrls).toEqual([
-      'https://sdcdn.io/tf/tf_sku_T93Y01_2000x2000_0.png?height=1400px&width=1400px',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T93Y01_2000x2000_0.png',
     ]);
     expect(payload.modules.find((module) => module.type === 'active_ingredients')).toBeFalsy();
     expect(ingredientsModule?.data?.raw_text).toBe(
@@ -539,9 +539,9 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(ingredientsItems).not.toContain('Key Ingredients');
     expect(ingredientsItems.filter((item) => /^Iron Oxides\b/i.test(item))).toHaveLength(1);
     expect(mediaUrls).toEqual([
-      'https://sdcdn.io/tf/tfb_sku_TC7Y09_2000x2000_0.png?height=1400px&width=1400px',
-      'https://sdcdn.io/tf/tfb_sku_TC7Y09_2000x2000_1.jpg?height=1400px&width=1400px',
-      'https://sdcdn.io/tf/tfb_sku_TC7Y01_2000x2000_0.png?height=1400px&width=1400px',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tfb_sku_TC7Y09_2000x2000_0.png',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tfb_sku_TC7Y09_2000x2000_1.jpg',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tfb_sku_TC7Y01_2000x2000_0.png',
     ]);
   });
 });
