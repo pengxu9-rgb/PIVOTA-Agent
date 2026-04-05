@@ -1,4 +1,8 @@
-const { normalizePdpImageUrl, normalizePdpImageUrls } = require('./utils/pdpImageUrls');
+const {
+  buildPdpImageDedupeKey,
+  normalizePdpImageUrl,
+  normalizePdpImageUrls,
+} = require('./utils/pdpImageUrls');
 
 const BEAUTY_KEYWORDS = [
   'beauty',
@@ -461,32 +465,101 @@ function buildVariants(product) {
 
 function buildMediaItems(product, variants) {
   const items = [];
+  const seenMediaKeys = new Set();
   const media = Array.isArray(product.media) ? product.media : [];
   const images = Array.isArray(product.images)
     ? product.images
     : Array.isArray(product.image_urls)
       ? product.image_urls
       : [];
+  const primaryVariant =
+    Array.isArray(variants) && variants.length > 0 && variants[0] && typeof variants[0] === 'object'
+      ? variants[0]
+      : null;
+
+  const collectImageKeys = (values) => {
+    const out = new Set();
+    for (const value of Array.isArray(values) ? values : []) {
+      const url = normalizePdpImageUrl(
+        typeof value === 'string' ? value : value?.url || value?.src || value?.image_url,
+      );
+      const key = buildPdpImageDedupeKey(url);
+      if (!key) continue;
+      out.add(key);
+    }
+    return out;
+  };
+
+  const primaryVariantImages = primaryVariant
+    ? [
+        ...(Array.isArray(primaryVariant.images) ? primaryVariant.images : []),
+        ...(Array.isArray(primaryVariant.image_urls) ? primaryVariant.image_urls : []),
+        ...(primaryVariant.image_url ? [primaryVariant.image_url] : []),
+      ]
+    : [];
+  const primaryVariantImageKeys = collectImageKeys(primaryVariantImages);
+  const nonPrimaryVariantImageKeys = (() => {
+    const out = new Set();
+    (Array.isArray(variants) ? variants.slice(1) : []).forEach((variant) => {
+      const variantImages = [
+        ...(Array.isArray(variant?.images) ? variant.images : []),
+        ...(Array.isArray(variant?.image_urls) ? variant.image_urls : []),
+        ...(variant?.image_url ? [variant.image_url] : []),
+      ];
+      collectImageKeys(variantImages).forEach((key) => out.add(key));
+    });
+    return out;
+  })();
+
+  const shouldKeepGalleryImage = (url) => {
+    if (!url) return false;
+    if (!primaryVariantImageKeys.size || !Array.isArray(variants) || variants.length <= 1) return true;
+    const key = buildPdpImageDedupeKey(url);
+    if (!key) return false;
+    if (primaryVariantImageKeys.has(key)) return true;
+    if (nonPrimaryVariantImageKeys.has(key)) return false;
+    return true;
+  };
+
+  const pushImageItem = (rawUrl, extra = {}) => {
+    const url = normalizePdpImageUrl(rawUrl);
+    const key = buildPdpImageDedupeKey(url);
+    if (!url || !key || seenMediaKeys.has(key)) return;
+    seenMediaKeys.add(key);
+    items.push({
+      type: 'image',
+      url,
+      ...extra,
+    });
+  };
 
   media.forEach((m) => {
     const url = normalizePdpImageUrl(m.url || m.image_url || m.src);
+    const mediaType = m.type || m.media_type || 'image';
     if (!url) return;
-    items.push({
-      type: m.type || m.media_type || 'image',
-      url,
-      thumbnail_url: normalizePdpImageUrl(m.thumbnail_url || m.thumbnail) || undefined,
+    if (String(mediaType).trim().toLowerCase() === 'video') {
+      items.push({
+        type: mediaType,
+        url,
+        thumbnail_url: normalizePdpImageUrl(m.thumbnail_url || m.thumbnail) || undefined,
+        alt_text: m.alt_text || product.title,
+        source: m.source,
+        duration_ms: m.duration_ms,
+      });
+      return;
+    }
+    if (!shouldKeepGalleryImage(url)) return;
+    pushImageItem(url, {
       alt_text: m.alt_text || product.title,
       source: m.source,
-      duration_ms: m.duration_ms,
+      thumbnail_url: normalizePdpImageUrl(m.thumbnail_url || m.thumbnail) || undefined,
     });
   });
 
   images.forEach((img) => {
     const url = normalizePdpImageUrl(typeof img === 'string' ? img : img.url || img.image_url);
-    if (!url) return;
-    items.push({
-      type: 'image',
-      url,
+    if (!url || !shouldKeepGalleryImage(url)) return;
+    pushImageItem(url, {
       alt_text: typeof img === 'object' ? img.alt_text : product.title,
       source: typeof img === 'object' ? img.source : undefined,
       thumbnail_url:
@@ -496,44 +569,29 @@ function buildMediaItems(product, variants) {
     });
   });
 
-  variants.forEach((v) => {
-    const variantImages = Array.isArray(v.images)
-      ? v.images
-      : Array.isArray(v.image_urls)
-        ? v.image_urls
-        : v.image_url
-          ? [v.image_url]
-          : [];
+  const variantGalleryImages = primaryVariant
+    ? [
+        ...(Array.isArray(primaryVariant.images) ? primaryVariant.images : []),
+        ...(Array.isArray(primaryVariant.image_urls) ? primaryVariant.image_urls : []),
+        ...(primaryVariant.image_url ? [primaryVariant.image_url] : []),
+      ]
+    : [];
 
-    variantImages.forEach((variantImage) => {
-      const url = normalizePdpImageUrl(
-        typeof variantImage === 'string'
-          ? variantImage
-          : variantImage?.url || variantImage?.src || variantImage?.image_url,
-      );
-      if (!url || items.some((item) => item.url === url)) return;
-      items.push({
-        type: 'image',
-        url,
-        alt_text: product.title,
-      });
+  variantGalleryImages.forEach((variantImage) => {
+    const url = normalizePdpImageUrl(
+      typeof variantImage === 'string'
+        ? variantImage
+        : variantImage?.url || variantImage?.src || variantImage?.image_url,
+    );
+    if (!url) return;
+    pushImageItem(url, {
+      alt_text: product.title,
     });
-
-    const variantImageUrl = normalizePdpImageUrl(v.image_url);
-    if (variantImageUrl && !items.some((i) => i.url === variantImageUrl)) {
-      items.push({
-        type: 'image',
-        url: variantImageUrl,
-        alt_text: product.title,
-      });
-    }
   });
 
   const fallbackProductImage = normalizePdpImageUrl(product.image_url);
   if (!items.length && fallbackProductImage) {
-    items.push({
-      type: 'image',
-      url: fallbackProductImage,
+    pushImageItem(fallbackProductImage, {
       alt_text: product.title,
     });
   }

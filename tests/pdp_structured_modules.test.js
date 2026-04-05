@@ -7,6 +7,60 @@ function findModule(payload, type) {
 }
 
 describe('pdpBuilder structured PDP modules', () => {
+  test('media_gallery keeps default variant gallery and excludes repeated images from other variants', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'p_media_1',
+        merchant_id: 'external_seed',
+        title: 'Runway Eye Color Quad Creme',
+        image_url: 'https://sdcdn.io/tf/tf_sku_T1QT01_3000x3000_0.png?height=1400px&width=1400px',
+        image_urls: [
+          'https://sdcdn.io/tf/tf_sku_T1QT01_3000x3000_0.png?height=1400px&width=1400px',
+          'https://sdcdn.io/tf/tf_sku_T1QT01_2000x2000_1.jpg?height=1400px&width=1400px',
+          'https://sdcdn.io/tf/tf_sku_T1QT01_3000x3000_0.png?height=700px&width=700px',
+          'https://sdcdn.io/tf/tf_sku_T1QW01_3000x3000_0.png?height=1400px&width=1400px',
+          'https://sdcdn.io/tf/tf_sku_T1QW01_2000x2000_1.jpg?height=1400px&width=1400px',
+          'https://assets.sdcdn.io/_sb/f/1018472/2500x584/cbfb93877a/tfb_online_plpbanner_mostwanted_desktop_2500x584.jpg',
+        ],
+        price: { amount: 96, currency: 'USD' },
+        variants: [
+          {
+            variant_id: 'v_default',
+            title: '35 Rose Topaz / 8.0 g',
+            image_url: 'https://sdcdn.io/tf/tf_sku_T1QT01_3000x3000_0.png?height=1400px&width=1400px',
+            image_urls: [
+              'https://sdcdn.io/tf/tf_sku_T1QT01_3000x3000_0.png',
+              'https://sdcdn.io/tf/tf_sku_T1QT01_2000x2000_1.jpg',
+            ],
+          },
+          {
+            variant_id: 'v_other',
+            title: '01 Iconic Nude / 8.0 g',
+            image_url: 'https://sdcdn.io/tf/tf_sku_T1QW01_3000x3000_0.png?height=1400px&width=1400px',
+            image_urls: [
+              'https://sdcdn.io/tf/tf_sku_T1QW01_3000x3000_0.png',
+              'https://sdcdn.io/tf/tf_sku_T1QW01_2000x2000_1.jpg',
+            ],
+          },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const mediaGallery = findModule(payload, 'media_gallery');
+    const urls = Array.isArray(mediaGallery?.data?.items)
+      ? mediaGallery.data.items.map((item) => item.url)
+      : [];
+
+    expect(urls).toEqual([
+      'https://sdcdn.io/tf/tf_sku_T1QT01_3000x3000_0.png?height=1400px&width=1400px',
+      'https://sdcdn.io/tf/tf_sku_T1QT01_2000x2000_1.jpg?height=1400px&width=1400px',
+      'https://assets.sdcdn.io/_sb/f/1018472/2500x584/cbfb93877a/tfb_online_plpbanner_mostwanted_desktop_2500x584.jpg',
+    ]);
+    expect(urls.some((url) => url.includes('T1QW01'))).toBe(false);
+  });
+
   test('emits additive beauty modules from structured ingredient fields and keeps product_details facts-only', () => {
     const payload = buildPdpPayload({
       product: {
