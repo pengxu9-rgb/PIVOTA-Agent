@@ -5454,6 +5454,17 @@ test('/v1/chat: plain-text beauty reco ask uses the same beauty mainline handoff
             query_source: 'agent_products_search',
             decision_owner: 'shopping_agent_beauty_mainline',
             final_decision: 'products_returned',
+            search_stage_ledger: {
+              final_selection: {
+                selection_owner: 'shopping_agent_beauty_mainline',
+                selected_product_ids: ['generic_plain_text_1'],
+                selected_titles: ['GoalSkin Oil Control Serum'],
+                selection_signature: 'search_sel_plain_text_test',
+                mainline_status: 'grounded_success',
+                source_tier_counts: { fresh_external: 2 },
+                top_candidate_provenance: { source_owner: 'external_seed' },
+              },
+            },
           },
         },
       };
@@ -5488,10 +5499,20 @@ test('/v1/chat: plain-text beauty reco ask uses the same beauty mainline handoff
     assert.equal(response.statusCode, 200);
     const payload = getRecommendationsPayload(response.body);
     assert.ok(payload);
-    assert.ok(Array.isArray(payload.recommendations) && payload.recommendations.length >= 1);
+    assert.ok(Array.isArray(payload.recommendations) && payload.recommendations.length === 1);
     assert.equal(payload.recommendations[0]?.product_id, 'generic_plain_text_1');
+    assert.equal(payload?.mainline_status, 'grounded_success');
     assert.equal(payload.recommendation_meta?.beauty_mainline_handoff_applied, true);
     assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
+    assert.equal(payload.metadata?.mainline_status, 'grounded_success');
+    assert.deepEqual(
+      payload.recommendation_meta?.final_selection?.selected_product_ids,
+      ['generic_plain_text_1'],
+    );
+    assert.equal(
+      payload.recommendation_meta?.assistant_text_selection_signature,
+      payload.recommendation_meta?.final_selection?.selection_signature,
+    );
     assert.ok(Array.isArray(payload.recommendation_meta?.beauty_mainline_handoff_attempts));
     assert.ok(
       payload.recommendation_meta.beauty_mainline_handoff_attempts.some((entry) => String(entry?.query || '').trim().toLowerCase() === 'what products should i use for oily skin?'),
@@ -5519,6 +5540,8 @@ test('/v1/chat: plain-text beauty reco ask uses the same beauty mainline handoff
     assert.equal(cards.some((card) => card && card.type === 'nudge'), false);
     assert.equal(cards.some((card) => card && card.type === 'confidence_notice'), false);
     assert.equal(cards.some((card) => card && card.type === 'recommendations'), true);
+    assert.match(String(response.body?.assistant_message?.content || ''), /Oil Control Serum/i);
+    assert.doesNotMatch(String(response.body?.assistant_message?.content || ''), /Body Oil/i);
   } finally {
     axios.get = originalGet;
     harness.restore();

@@ -4106,12 +4106,35 @@ async function searchPivotaBackendProducts({
         resolver_first_applied: false,
         resolver_first_skipped_for_aurora: false,
         search_source: null,
+        decision_owner: null,
+        query_source: null,
+        final_selection: null,
+        search_stage_ledger: null,
       };
     }
     const metadata =
       body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
         ? body.metadata
         : null;
+    const stageLedger =
+      metadata &&
+      metadata.search_stage_ledger &&
+      typeof metadata.search_stage_ledger === 'object' &&
+      !Array.isArray(metadata.search_stage_ledger)
+        ? metadata.search_stage_ledger
+        : null;
+    const finalSelection =
+      metadata &&
+      metadata.final_selection &&
+      typeof metadata.final_selection === 'object' &&
+      !Array.isArray(metadata.final_selection)
+        ? metadata.final_selection
+        : stageLedger &&
+          stageLedger.final_selection &&
+          typeof stageLedger.final_selection === 'object' &&
+          !Array.isArray(stageLedger.final_selection)
+          ? stageLedger.final_selection
+          : null;
     const searchTrace =
       metadata &&
       metadata.search_trace &&
@@ -4173,6 +4196,16 @@ async function searchPivotaBackendProducts({
       resolver_first_applied: resolverFirstApplied,
       resolver_first_skipped_for_aurora: resolverFirstSkippedForAurora,
       search_source: sourceToken || null,
+      decision_owner: pickFirstTrimmed(
+        metadata?.decision_owner,
+        body?.decision_owner,
+      ) || null,
+      query_source: pickFirstTrimmed(
+        metadata?.query_source,
+        body?.query_source,
+      ) || null,
+      final_selection: finalSelection,
+      search_stage_ledger: stageLedger,
     };
   };
   const mapProxySearchFallbackReason = (raw) => {
@@ -46225,6 +46258,351 @@ function applyRecoContentSpineToPayload(payload, recoContext) {
   return nextPayload;
 }
 
+function extractRecoSelectionProductId(row) {
+  if (!isPlainObject(row)) return '';
+  return pickFirstTrimmed(
+    row.product_id,
+    row.productId,
+    row.id,
+    row.sku?.product_id,
+    row.sku?.productId,
+    row.sku?.id,
+    row.product?.product_id,
+    row.product?.productId,
+    row.product?.id,
+  ) || '';
+}
+
+function extractRecoSelectionTitle(row) {
+  if (!isPlainObject(row)) return '';
+  const sku = isPlainObject(row.sku) ? row.sku : isPlainObject(row.product) ? row.product : null;
+  const brand = pickFirstTrimmed(
+    row.brand,
+    sku?.brand,
+    row.brand_name,
+    row.brandName,
+  );
+  const name = pickFirstTrimmed(
+    row.display_name,
+    row.displayName,
+    row.name,
+    row.title,
+    sku?.display_name,
+    sku?.displayName,
+    sku?.name,
+    sku?.title,
+  );
+  return [brand, name].filter(Boolean).join(' ').trim() || pickFirstTrimmed(row.use_case) || '';
+}
+
+function normalizeRecoSelectionIds(values, max = 12) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(values) ? values : []) {
+    const normalized = String(raw || '').trim();
+    if (!normalized) continue;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(normalized);
+    if (out.length >= Math.max(1, Number(max) || 12)) break;
+  }
+  return out;
+}
+
+function normalizeRecoSelectionTitles(values, max = 12) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(values) ? values : []) {
+    const normalized = String(raw || '').trim();
+    if (!normalized) continue;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(normalized);
+    if (out.length >= Math.max(1, Number(max) || 12)) break;
+  }
+  return out;
+}
+
+function buildRecoSelectionSignature({ selectedProductIds = [], selectedTitles = [] } = {}) {
+  const ids = normalizeRecoSelectionIds(selectedProductIds, 16);
+  const titles = normalizeRecoSelectionTitles(selectedTitles, 16);
+  const parts = ids.length ? ids : titles;
+  if (!parts.length) return '';
+  return `reco_sel_${crypto.createHash('sha1').update(parts.join('|')).digest('hex').slice(0, 16)}`;
+}
+
+function extractRecoFinalSelectionContract(payload) {
+  const payloadObj = isPlainObject(payload) ? payload : {};
+  const meta = isPlainObject(payloadObj.recommendation_meta) ? payloadObj.recommendation_meta : {};
+  const payloadMeta = isPlainObject(payloadObj.metadata) ? payloadObj.metadata : {};
+  const payloadStageLedger =
+    isPlainObject(payloadObj.search_stage_ledger) ? payloadObj.search_stage_ledger : {};
+  const payloadMetaStageLedger =
+    isPlainObject(payloadMeta.search_stage_ledger) ? payloadMeta.search_stage_ledger : {};
+  const metaStageLedger =
+    isPlainObject(meta.search_stage_ledger) ? meta.search_stage_ledger : {};
+  const rawContract =
+    (isPlainObject(meta.final_selection) ? meta.final_selection : null)
+    || (isPlainObject(payloadMeta.final_selection) ? payloadMeta.final_selection : null)
+    || (isPlainObject(payloadObj.final_selection) ? payloadObj.final_selection : null)
+    || (isPlainObject(metaStageLedger.final_selection) ? metaStageLedger.final_selection : null)
+    || (isPlainObject(payloadMetaStageLedger.final_selection) ? payloadMetaStageLedger.final_selection : null)
+    || (isPlainObject(payloadStageLedger.final_selection) ? payloadStageLedger.final_selection : null);
+  if (!rawContract) return null;
+  const selectedProductIds = normalizeRecoSelectionIds(rawContract.selected_product_ids, 12);
+  const selectedTitles = normalizeRecoSelectionTitles(rawContract.selected_titles, 12);
+  const selectionSignature = pickFirstTrimmed(rawContract.selection_signature)
+    || buildRecoSelectionSignature({ selectedProductIds, selectedTitles });
+  return {
+    selection_owner: pickFirstTrimmed(rawContract.selection_owner) || null,
+    selected_product_ids: selectedProductIds,
+    selected_titles: selectedTitles,
+    selection_signature: selectionSignature || null,
+    mainline_status: pickFirstTrimmed(rawContract.mainline_status) || null,
+    context_warning:
+      rawContract.context_warning && isPlainObject(rawContract.context_warning)
+        ? rawContract.context_warning
+        : null,
+    selection_reason_codes: Array.isArray(rawContract.selection_reason_codes)
+      ? rawContract.selection_reason_codes.map((item) => String(item || '').trim()).filter(Boolean)
+      : [],
+    source_tier_counts:
+      rawContract.source_tier_counts && isPlainObject(rawContract.source_tier_counts)
+        ? rawContract.source_tier_counts
+        : {},
+    top_candidate_provenance:
+      rawContract.top_candidate_provenance && isPlainObject(rawContract.top_candidate_provenance)
+        ? rawContract.top_candidate_provenance
+        : null,
+  };
+}
+
+function orderRecoRecommendationsBySelection(recommendations, selectionContract) {
+  const rows = Array.isArray(recommendations) ? recommendations.filter((item) => isPlainObject(item)) : [];
+  const contract = selectionContract && isPlainObject(selectionContract) ? selectionContract : null;
+  const selectedIds = normalizeRecoSelectionIds(contract?.selected_product_ids, 12);
+  if (!selectedIds.length) return rows;
+  const byId = new Map();
+  for (const row of rows) {
+    const productId = extractRecoSelectionProductId(row);
+    if (!productId || byId.has(productId)) continue;
+    byId.set(productId, row);
+  }
+  const ordered = [];
+  const seen = new Set();
+  for (const productId of selectedIds) {
+    const row = byId.get(productId);
+    if (!row) continue;
+    ordered.push(row);
+    seen.add(productId);
+  }
+  return ordered.length > 0 ? ordered : rows;
+}
+
+function buildRecoContextWarningFromPayload(payload) {
+  const payloadObj = isPlainObject(payload) ? payload : {};
+  const meta = isPlainObject(payloadObj.recommendation_meta) ? payloadObj.recommendation_meta : {};
+  const payloadMeta = isPlainObject(payloadObj.metadata) ? payloadObj.metadata : {};
+  const reasons = [];
+  if (meta.minimum_recommendation_context_warning === true || payloadMeta.minimum_recommendation_context_warning === true) {
+    reasons.push(
+      pickFirstTrimmed(
+        meta.minimum_recommendation_context_reason,
+        payloadMeta.minimum_recommendation_context_reason,
+        'minimum_recommendation_context_unsatisfied',
+      ) || 'minimum_recommendation_context_unsatisfied',
+    );
+  }
+  if (
+    pickFirstTrimmed(meta.surface_kind, payloadObj.surface_kind) === 'clarify'
+    || (
+      meta.user_fixable === true &&
+      Array.isArray(payloadObj.recommendations) &&
+      payloadObj.recommendations.length > 0
+    )
+  ) {
+    reasons.push('clarify_preferred');
+  }
+  if (payloadMeta.reco_timeout_degraded_warning === true || meta.reco_timeout_degraded_warning === true) {
+    reasons.push(
+      pickFirstTrimmed(
+        payloadMeta.reco_timeout_degraded_reason,
+        meta.reco_timeout_degraded_reason,
+        'timeout_degraded',
+      ) || 'timeout_degraded',
+    );
+  }
+  const normalizedReasons = Array.from(new Set(reasons.map((item) => String(item || '').trim()).filter(Boolean)));
+  if (!normalizedReasons.length) return null;
+  return {
+    applied: true,
+    reasons: normalizedReasons,
+  };
+}
+
+function buildRecoFinalSelectionContract({
+  payload,
+  fallbackSelection = null,
+  selectionOwner = null,
+} = {}) {
+  const payloadObj = isPlainObject(payload) ? payload : {};
+  const normalizedFallback = fallbackSelection && isPlainObject(fallbackSelection) ? fallbackSelection : null;
+  const orderedRecommendations = orderRecoRecommendationsBySelection(
+    Array.isArray(payloadObj.recommendations) ? payloadObj.recommendations : [],
+    normalizedFallback,
+  );
+  const selectedProductIds = normalizeRecoSelectionIds(
+    orderedRecommendations.map((row) => extractRecoSelectionProductId(row)),
+    12,
+  );
+  const selectedTitles = normalizeRecoSelectionTitles(
+    orderedRecommendations.map((row) => extractRecoSelectionTitle(row)),
+    12,
+  );
+  const mainlineStatus = selectedProductIds.length > 0
+    ? 'grounded_success'
+    : pickFirstTrimmed(
+      payloadObj.mainline_status,
+      payloadObj.recommendation_meta?.mainline_status,
+      normalizedFallback?.mainline_status,
+      'empty_structured',
+    ) || 'empty_structured';
+  const contextWarning = selectedProductIds.length > 0 ? buildRecoContextWarningFromPayload(payloadObj) : null;
+  const selectionReasonCodes = Array.from(
+    new Set(
+      [
+        ...(
+          Array.isArray(normalizedFallback?.selection_reason_codes)
+            ? normalizedFallback.selection_reason_codes
+            : []
+        ),
+        ...(contextWarning?.reasons || []),
+        pickFirstTrimmed(payloadObj.recommendation_meta?.source_mode),
+        pickFirstTrimmed(payloadObj.recommendation_meta?.beauty_mainline_handoff_query_source),
+      ]
+        .map((item) => String(item || '').trim())
+        .filter(Boolean),
+    ),
+  );
+  return {
+    selection_owner: pickFirstTrimmed(
+      selectionOwner,
+      normalizedFallback?.selection_owner,
+      payloadObj.recommendation_meta?.beauty_mainline_handoff_owner,
+      BEAUTY_DISCOVERY_MAINLINE_OWNER,
+    ) || BEAUTY_DISCOVERY_MAINLINE_OWNER,
+    selected_products_count: selectedProductIds.length,
+    selected_product_ids: selectedProductIds,
+    selected_titles: selectedTitles,
+    selection_signature: buildRecoSelectionSignature({ selectedProductIds, selectedTitles }) || null,
+    mainline_status: mainlineStatus,
+    context_warning: contextWarning,
+    selection_reason_codes: selectionReasonCodes,
+    source_tier_counts:
+      normalizedFallback?.source_tier_counts && isPlainObject(normalizedFallback.source_tier_counts)
+        ? normalizedFallback.source_tier_counts
+        : {},
+    top_candidate_provenance:
+      normalizedFallback?.top_candidate_provenance && isPlainObject(normalizedFallback.top_candidate_provenance)
+        ? normalizedFallback.top_candidate_provenance
+        : null,
+  };
+}
+
+function shouldApplyRecoFinalSelectionContract(payload, fallbackSelection = null) {
+  const payloadObj = isPlainObject(payload) ? payload : {};
+  const meta = isPlainObject(payloadObj.recommendation_meta) ? payloadObj.recommendation_meta : {};
+  const payloadMeta = isPlainObject(payloadObj.metadata) ? payloadObj.metadata : {};
+  if (fallbackSelection && isPlainObject(fallbackSelection)) return true;
+  return (
+    meta.beauty_mainline_handoff_applied === true
+    || payloadMeta.beauty_mainline_handoff_applied === true
+    || pickFirstTrimmed(meta.beauty_mainline_handoff_owner, payloadMeta.beauty_mainline_handoff_owner)
+      === BEAUTY_DISCOVERY_MAINLINE_OWNER
+  );
+}
+
+function applyRecoFinalSelectionContractToPayload(payload, selectionContract) {
+  if (!isPlainObject(payload) || !isPlainObject(selectionContract)) return payload;
+  const nextPayload = { ...payload };
+  const orderedRecommendations = orderRecoRecommendationsBySelection(
+    Array.isArray(nextPayload.recommendations) ? nextPayload.recommendations : [],
+    selectionContract,
+  );
+  if (orderedRecommendations.length > 0) nextPayload.recommendations = orderedRecommendations;
+  const primaryRecommendationId = pickFirstTrimmed(
+    nextPayload.primary_recommendation_id,
+    selectionContract.selected_product_ids?.[0],
+    orderedRecommendations[0] && extractRecoSelectionProductId(orderedRecommendations[0]),
+  );
+  if (primaryRecommendationId) nextPayload.primary_recommendation_id = primaryRecommendationId;
+  nextPayload.mainline_status = pickFirstTrimmed(
+    selectionContract.mainline_status,
+    nextPayload.mainline_status,
+  ) || nextPayload.mainline_status;
+  if (selectionContract.context_warning) {
+    nextPayload.context_warning = selectionContract.context_warning;
+  } else {
+    delete nextPayload.context_warning;
+  }
+  const recommendationMeta = isPlainObject(nextPayload.recommendation_meta) ? { ...nextPayload.recommendation_meta } : {};
+  recommendationMeta.mainline_status = pickFirstTrimmed(
+    selectionContract.mainline_status,
+    recommendationMeta.mainline_status,
+  ) || recommendationMeta.mainline_status;
+  recommendationMeta.final_selection = selectionContract;
+  recommendationMeta.selection_signature = selectionContract.selection_signature || null;
+  recommendationMeta.selected_product_ids = Array.isArray(selectionContract.selected_product_ids)
+    ? selectionContract.selected_product_ids
+    : [];
+  recommendationMeta.selected_titles = Array.isArray(selectionContract.selected_titles)
+    ? selectionContract.selected_titles
+    : [];
+  if (selectionContract.context_warning) recommendationMeta.context_warning = selectionContract.context_warning;
+  else delete recommendationMeta.context_warning;
+  nextPayload.recommendation_meta = recommendationMeta;
+  const payloadMeta = isPlainObject(nextPayload.metadata) ? { ...nextPayload.metadata } : {};
+  payloadMeta.mainline_status = pickFirstTrimmed(
+    selectionContract.mainline_status,
+    payloadMeta.mainline_status,
+  ) || payloadMeta.mainline_status;
+  payloadMeta.final_selection = selectionContract;
+  payloadMeta.selection_signature = selectionContract.selection_signature || null;
+  payloadMeta.selected_product_ids = Array.isArray(selectionContract.selected_product_ids)
+    ? selectionContract.selected_product_ids
+    : [];
+  payloadMeta.selected_titles = Array.isArray(selectionContract.selected_titles)
+    ? selectionContract.selected_titles
+    : [];
+  if (selectionContract.context_warning) payloadMeta.context_warning = selectionContract.context_warning;
+  else delete payloadMeta.context_warning;
+  nextPayload.metadata = payloadMeta;
+  return nextPayload;
+}
+
+function applyRecoAssistantSelectionSignature(payload) {
+  if (!isPlainObject(payload)) return payload;
+  const selectionContract = extractRecoFinalSelectionContract(payload);
+  if (!selectionContract?.selection_signature) return payload;
+  const nextPayload = { ...payload };
+  const recommendationMeta = isPlainObject(nextPayload.recommendation_meta) ? { ...nextPayload.recommendation_meta } : {};
+  recommendationMeta.assistant_text_selection_signature = selectionContract.selection_signature;
+  nextPayload.recommendation_meta = recommendationMeta;
+  const payloadMeta = isPlainObject(nextPayload.metadata) ? { ...nextPayload.metadata } : {};
+  payloadMeta.assistant_text_selection_signature = selectionContract.selection_signature;
+  nextPayload.metadata = payloadMeta;
+  return nextPayload;
+}
+
+function assistantTextMatchesRecoSelectionContract(text, selectionContract) {
+  if (!isPlainObject(selectionContract)) return true;
+  const selectedTitles = normalizeRecoSelectionTitles(selectionContract.selected_titles, 6);
+  if (!selectedTitles.length) return true;
+  return assistantTextMentionsAny(text, selectedTitles);
+}
+
 function pickRecoMetaTargets(payload) {
   const meta = isPlainObject(payload && payload.recommendation_meta) ? payload.recommendation_meta : {};
   const rankedTargets = normalizeRecoContextRankedTargets(meta.ranked_targets);
@@ -46407,6 +46785,9 @@ function buildRecoAssistantRewritePrompt({ payload, language, profile, baseText 
 async function maybeRewriteRecoAssistantTextWithLlm({ payload, language, profile, baseText } = {}) {
   const fallbackText = String(baseText || '').trim();
   if (!fallbackText) return { text: '', llm_used: false, reason: 'empty_base_text' };
+  if (extractRecoFinalSelectionContract(payload)?.selection_signature) {
+    return { text: fallbackText, llm_used: false, reason: 'selection_contract_locked' };
+  }
   if (!AURORA_RECO_ASSISTANT_REWRITE_ENABLED || USE_AURORA_BFF_MOCK) {
     return { text: fallbackText, llm_used: false, reason: 'rewrite_disabled' };
   }
@@ -46997,23 +47378,35 @@ function applyBeautyCanonicalOwnershipToEnvelope({ envelope, route = '', assista
       if (String(card.type || '').trim().toLowerCase() !== 'recommendations') return card;
       const payload = isPlainObject(card.payload) ? { ...card.payload } : {};
       payload.recommendation_meta = recommendationMetaPatch(payload.recommendation_meta);
+      const selectionStampedPayload = applyRecoAssistantSelectionSignature(payload);
       return {
         ...card,
-        payload,
+        payload: selectionStampedPayload,
       };
     });
   }
 
-  if (Array.isArray(out.cards) && ownerShiftReason) {
+  if (Array.isArray(out.cards)) {
     const recoCard = out.cards.find((card) => isPlainObject(card) && String(card.type || '').trim().toLowerCase() === 'recommendations');
     const recoPayload = isPlainObject(recoCard && recoCard.payload) ? recoCard.payload : null;
     const currentAssistantText =
       isPlainObject(out.assistant_message) && typeof out.assistant_message.content === 'string'
         ? out.assistant_message.content
         : assistantText;
+    const selectionContract = extractRecoFinalSelectionContract(recoPayload);
+    const shouldRebuildForSelectionContract =
+      recoPayload &&
+      selectionContract &&
+      !assistantTextMatchesRecoSelectionContract(currentAssistantText, selectionContract);
     if (
       recoPayload &&
-      !/(secondary direction|shifted to|closest verified secondary|次方向|改用|已切到)/i.test(String(currentAssistantText || ''))
+      (
+        shouldRebuildForSelectionContract
+        || (
+          ownerShiftReason &&
+          !/(secondary direction|shifted to|closest verified secondary|次方向|改用|已切到)/i.test(String(currentAssistantText || ''))
+        )
+      )
     ) {
       const rebuiltAssistantText = buildPayloadBoundRecoAssistantText({
         payload: recoPayload,
@@ -47405,6 +47798,11 @@ function summarizeProfileForAnswer(profile, lang) {
 }
 
 function pickRecoNames(payload, max = 3) {
+  const selectedTitles = normalizeRecoSelectionTitles(
+    extractRecoFinalSelectionContract(payload)?.selected_titles,
+    Math.max(1, Number(max) || 3),
+  );
+  if (selectedTitles.length) return selectedTitles;
   const recos = Array.isArray(payload && payload.recommendations) ? payload.recommendations : [];
   const out = [];
   const seen = new Set();
@@ -81308,10 +81706,18 @@ function mountAuroraBffRoutes(app, { logger }) {
               minTimeoutMs: RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
             });
             if (Array.isArray(chatBeautyMainlineHandoff?.recommendations) && chatBeautyMainlineHandoff.recommendations.length > 0) {
-              payload.recommendations = chatBeautyMainlineHandoff.recommendations;
+              const handoffFinalSelection = extractRecoFinalSelectionContract(chatBeautyMainlineHandoff.searchResult);
+              const canonicalHandoffRecommendations = orderRecoRecommendationsBySelection(
+                chatBeautyMainlineHandoff.recommendations,
+                handoffFinalSelection,
+              );
+              payload.recommendations =
+                canonicalHandoffRecommendations.length > 0
+                  ? canonicalHandoffRecommendations
+                  : chatBeautyMainlineHandoff.recommendations;
               payload.primary_recommendation_id = pickFirstTrimmed(
                 payload.primary_recommendation_id,
-                chatBeautyMainlineHandoff.recommendations[0]?.product_id,
+                payload.recommendations[0]?.product_id,
               ) || null;
               payload.source = 'catalog_grounded_v1';
               payload.mainline_status = 'grounded_success';
@@ -81545,6 +81951,30 @@ function mountAuroraBffRoutes(app, { logger }) {
             payload,
             applyRecoContentSpineToPayload(payload, recoIngredientContext || latestRecoContextPatch),
           );
+          const handoffFinalSelection = extractRecoFinalSelectionContract(chatBeautyMainlineHandoff?.searchResult);
+          if (shouldApplyRecoFinalSelectionContract(payload, handoffFinalSelection)) {
+            const finalSelectionContract = buildRecoFinalSelectionContract({
+              payload,
+              fallbackSelection: handoffFinalSelection,
+              selectionOwner: pickFirstTrimmed(
+                chatBeautyMainlineHandoff?.searchResult?.decision_owner,
+                chatBeautyMainlineHandoff?.searchResult?.metadata?.decision_owner,
+                BEAUTY_DISCOVERY_MAINLINE_OWNER,
+              ) || BEAUTY_DISCOVERY_MAINLINE_OWNER,
+            });
+            Object.assign(payload, applyRecoFinalSelectionContractToPayload(payload, finalSelectionContract));
+            Object.assign(payload, applyRecoAssistantSelectionSignature(payload));
+            recoMainlineStatus = pickFirstTrimmed(
+              finalSelectionContract.mainline_status,
+              recoMainlineStatus,
+            ) || recoMainlineStatus;
+            if (isPlainObject(recoContract)) {
+              recoContract.mainline_status = pickFirstTrimmed(
+                finalSelectionContract.mainline_status,
+                recoContract.mainline_status,
+              ) || recoContract.mainline_status;
+            }
+          }
           if (genericGoalDrivenNeedsMoreContextWarning || recoTimeoutDegradedWarning) {
             payload.metadata = {
               ...(isPlainObject(payload.metadata) ? payload.metadata : {}),
@@ -81636,8 +82066,16 @@ function mountAuroraBffRoutes(app, { logger }) {
             baseText: assistantTextRaw,
           })
           : { text: assistantTextRaw, llm_used: false, reason: 'no_recommendations' };
+        const recoSelectionContract = extractRecoFinalSelectionContract(payload);
         const assistantText = finalHasRecs
-          ? String(recoAssistantRewrite && recoAssistantRewrite.text || assistantTextRaw).trim()
+          ? String(
+            assistantTextMatchesRecoSelectionContract(
+              recoAssistantRewrite && recoAssistantRewrite.text,
+              recoSelectionContract,
+            )
+              ? (recoAssistantRewrite && recoAssistantRewrite.text || assistantTextRaw)
+              : recoAssistantBase,
+          ).trim()
           : String(assistantTextRaw || '').trim();
         const finalAssistantText = [safetyWarnText, assistantText].filter(Boolean).join('\n\n');
 

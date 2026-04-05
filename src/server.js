@@ -4449,6 +4449,124 @@ function buildSearchStageLedger({
   };
 }
 
+function firstNonEmptyString(...values) {
+  for (const value of values) {
+    const normalized = String(value || '').trim();
+    if (normalized) return normalized;
+  }
+  return '';
+}
+
+function extractSearchSelectionProductId(product) {
+  if (!product || typeof product !== 'object' || Array.isArray(product)) return '';
+  return firstNonEmptyString(
+    product.product_id,
+    product.productId,
+    product.id,
+    product.sku && (product.sku.product_id || product.sku.productId || product.sku.id),
+  );
+}
+
+function extractSearchSelectionTitle(product) {
+  if (!product || typeof product !== 'object' || Array.isArray(product)) return '';
+  const brand = firstNonEmptyString(
+    product.brand,
+    product.brand_name,
+    product.brandName,
+    product.sku && product.sku.brand,
+  );
+  const name = firstNonEmptyString(
+    product.display_name,
+    product.displayName,
+    product.name,
+    product.title,
+    product.sku && (product.sku.display_name || product.sku.displayName || product.sku.name || product.sku.title),
+  );
+  return [brand, name].filter(Boolean).join(' ').trim() || firstNonEmptyString(product.use_case);
+}
+
+function normalizeSearchSelectionStrings(values, max = 12) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(values) ? values : []) {
+    const normalized = String(raw || '').trim();
+    if (!normalized) continue;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(normalized);
+    if (out.length >= Math.max(1, Number(max) || 12)) break;
+  }
+  return out;
+}
+
+function buildSearchSelectionSignature({ selectedProductIds = [], selectedTitles = [] } = {}) {
+  const ids = normalizeSearchSelectionStrings(selectedProductIds, 16);
+  const titles = normalizeSearchSelectionStrings(selectedTitles, 16);
+  const parts = ids.length ? ids : titles;
+  if (!parts.length) return null;
+  return `search_sel_${createHash('sha1').update(parts.join('|')).digest('hex').slice(0, 16)}`;
+}
+
+function buildSearchFinalSelectionContract({
+  products = [],
+  decisionOwner = null,
+  finalDecision = null,
+  hasClarification = false,
+  lowConfidence = false,
+  sourceTierCounts = null,
+  topCandidateProvenance = null,
+  selectionReasonCodes = null,
+} = {}) {
+  const rows = Array.isArray(products) ? products.filter((item) => item && typeof item === 'object' && !Array.isArray(item)) : [];
+  const selectedProductIds = normalizeSearchSelectionStrings(
+    rows.map((item) => extractSearchSelectionProductId(item)),
+    12,
+  );
+  const selectedTitles = normalizeSearchSelectionStrings(
+    rows.map((item) => extractSearchSelectionTitle(item)),
+    12,
+  );
+  const warningReasons = [];
+  if (rows.length > 0 && hasClarification) warningReasons.push('clarify_preferred');
+  if (rows.length > 0 && lowConfidence) warningReasons.push('low_confidence');
+  const normalizedReasonCodes = Array.from(
+    new Set(
+      [
+        finalDecision,
+        ...(Array.isArray(selectionReasonCodes) ? selectionReasonCodes : []),
+        ...warningReasons,
+      ]
+        .map((item) => String(item || '').trim())
+        .filter(Boolean),
+    ),
+  );
+  return {
+    selection_owner: firstNonEmptyString(decisionOwner, BEAUTY_DISCOVERY_MAINLINE_OWNER) || BEAUTY_DISCOVERY_MAINLINE_OWNER,
+    selected_products_count: rows.length,
+    selected_product_ids: selectedProductIds,
+    selected_titles: selectedTitles,
+    selection_signature: buildSearchSelectionSignature({ selectedProductIds, selectedTitles }),
+    mainline_status: rows.length > 0
+      ? 'grounded_success'
+      : String(finalDecision || '').trim().toLowerCase() === 'clarify'
+        ? 'needs_more_context'
+        : 'empty_structured',
+    context_warning: warningReasons.length
+      ? { applied: true, reasons: warningReasons }
+      : null,
+    selection_reason_codes: normalizedReasonCodes,
+    source_tier_counts:
+      sourceTierCounts && typeof sourceTierCounts === 'object' && !Array.isArray(sourceTierCounts)
+        ? sourceTierCounts
+        : {},
+    top_candidate_provenance:
+      topCandidateProvenance && typeof topCandidateProvenance === 'object' && !Array.isArray(topCandidateProvenance)
+        ? topCandidateProvenance
+        : null,
+  };
+}
+
 function classifyBeautyMixBucket(product) {
   const text = buildFallbackCandidateText(product);
   if (!text) return 'other';
@@ -26811,6 +26929,26 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         !Array.isArray(existingMeta.contract_bridge)
           ? existingMeta.contract_bridge
           : {};
+      const existingMetaForGates =
+        existingMeta && typeof existingMeta === 'object' && !Array.isArray(existingMeta)
+          ? existingMeta
+          : {};
+      const existingLowConfidenceReasons = Array.isArray(existingMetaForGates.low_confidence_reasons)
+        ? existingMetaForGates.low_confidence_reasons
+        : Array.isArray(searchDecision?.low_confidence_reasons)
+          ? searchDecision.low_confidence_reasons
+          : [];
+      const normalizedLowConfidenceReasons = Array.from(
+        new Set(
+          existingLowConfidenceReasons
+            .map((item) => String(item || '').trim())
+            .filter(Boolean),
+        ),
+      );
+      const lowConfidenceFlag =
+        Boolean(existingMetaForGates.low_confidence) ||
+        Boolean(searchDecision?.low_confidence) ||
+        normalizedLowConfidenceReasons.length > 0;
       const shouldStampBeautyMainlineContract =
         operation === 'find_products_multi' &&
         (
@@ -26825,19 +26963,50 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const attemptedContractForMetadata =
         String(normalizedExistingContractBridge.attempted_contract || '').trim() ||
         (resolvedContractForMetadata ? resolvedContractForMetadata : '');
+      const finalSelection =
+        shouldStampBeautyMainlineContract
+          ? buildSearchFinalSelectionContract({
+              products,
+              decisionOwner: BEAUTY_DISCOVERY_MAINLINE_OWNER,
+              finalDecision,
+              hasClarification,
+              lowConfidence: lowConfidenceFlag,
+              sourceTierCounts: mergedSourceBreakdown.source_tier_counts,
+              topCandidateProvenance: mergedSourceBreakdown.top_candidate_provenance,
+              selectionReasonCodes: [
+                mergedSourceBreakdown.strategy_applied,
+                querySource,
+              ],
+            })
+          : null;
+      if (searchStageLedger && typeof searchStageLedger === 'object' && !Array.isArray(searchStageLedger) && finalSelection) {
+        searchStageLedger.final_selection = finalSelection;
+      }
       enriched = {
         ...enriched,
         metadata: {
           ...(existingMeta && typeof existingMeta === 'object' && !Array.isArray(existingMeta) ? existingMeta : {}),
-          ...(resolvedContractForMetadata
-            ? {
-                contract_bridge: {
+            ...(resolvedContractForMetadata
+              ? {
+                  contract_bridge: {
                   ...normalizedExistingContractBridge,
                   attempted_contract: attemptedContractForMetadata,
                   resolved_contract: resolvedContractForMetadata,
                   legacy_fallback:
                     normalizedExistingContractBridge.legacy_fallback === true ? true : false,
                 },
+              }
+            : {}),
+          ...(finalSelection
+            ? {
+                mainline_status: finalSelection.mainline_status,
+                final_selection: finalSelection,
+                selection_signature: finalSelection.selection_signature,
+                selected_product_ids: finalSelection.selected_product_ids,
+                selected_titles: finalSelection.selected_titles,
+                ...(finalSelection.context_warning
+                  ? { context_warning: finalSelection.context_warning }
+                  : {}),
               }
             : {}),
           source_breakdown: mergedSourceBreakdown,
@@ -26853,6 +27022,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             source_quality_counts: mergedSourceBreakdown.source_quality_counts,
             cache_owner_paths: mergedSourceBreakdown.cache_owner_paths,
             top_candidate_provenance: mergedSourceBreakdown.top_candidate_provenance,
+            ...(finalSelection
+              ? {
+                  mainline_status: finalSelection.mainline_status,
+                  final_selection: finalSelection,
+                }
+              : {}),
           },
         },
       };
@@ -26910,19 +27085,19 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           : {}),
       });
       if (enriched && typeof enriched === 'object' && !Array.isArray(enriched)) {
-        const existingMetaForGates =
+        const enrichedMetaForGates =
           enriched.metadata && typeof enriched.metadata === 'object' && !Array.isArray(enriched.metadata)
             ? enriched.metadata
             : {};
         const effectiveSemanticOwner =
           semanticOwnerDecision ||
-          String(existingMetaForGates.semantic_owner || '').trim() ||
-          (String(existingMetaForGates.decision_owner || '').trim() ===
+          String(enrichedMetaForGates.semantic_owner || '').trim() ||
+          (String(enrichedMetaForGates.decision_owner || '').trim() ===
           BEAUTY_DISCOVERY_MAINLINE_OWNER
             ? BEAUTY_DISCOVERY_MAINLINE_OWNER
             : null);
-        const existingGateTrace = Array.isArray(existingMetaForGates.gate_trace)
-          ? existingMetaForGates.gate_trace
+        const existingGateTrace = Array.isArray(enrichedMetaForGates.gate_trace)
+          ? enrichedMetaForGates.gate_trace
           : [];
         const combinedGateTrace = existingGateTrace.concat(fpmGateTrace);
         const dedupSkippedGates = Array.from(
@@ -26932,31 +27107,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               .filter(Boolean),
           ),
         );
-        const existingLowConfidenceReasons = Array.isArray(existingMetaForGates.low_confidence_reasons)
-          ? existingMetaForGates.low_confidence_reasons
-          : Array.isArray(searchDecision?.low_confidence_reasons)
-            ? searchDecision.low_confidence_reasons
-            : [];
-        const normalizedLowConfidenceReasons = Array.from(
-          new Set(
-            existingLowConfidenceReasons
-              .map((item) => String(item || '').trim())
-              .filter(Boolean),
-          ),
-        );
-        const lowConfidenceFlag =
-          Boolean(existingMetaForGates.low_confidence) ||
-          Boolean(searchDecision?.low_confidence) ||
-          normalizedLowConfidenceReasons.length > 0;
         enriched = {
           ...enriched,
           metadata: {
-            ...existingMetaForGates,
+            ...enrichedMetaForGates,
             resolver_rejected_reason:
-              existingMetaForGates.resolver_rejected_reason || resolverRejectedReason || null,
+              enrichedMetaForGates.resolver_rejected_reason || resolverRejectedReason || null,
             resolver_query_used:
-              existingMetaForGates.resolver_query_used ||
-              existingMetaForGates.resolve_query_used ||
+              enrichedMetaForGates.resolver_query_used ||
+              enrichedMetaForGates.resolve_query_used ||
               resolverRejectedQueryUsed ||
               null,
             gate_trace: combinedGateTrace,
@@ -27003,7 +27162,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             semantic_owner: effectiveSemanticOwner,
             decision_owner:
               effectiveSemanticOwner ||
-              existingMetaForGates.decision_owner ||
+              enrichedMetaForGates.decision_owner ||
               querySource,
             search_stage_ledger: searchStageLedger,
             effective_timeout_ms: {
@@ -27019,10 +27178,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ...(blockingGateInfo
               ? {
                   search_decision: {
-                    ...(existingMetaForGates.search_decision &&
-                    typeof existingMetaForGates.search_decision === 'object' &&
-                    !Array.isArray(existingMetaForGates.search_decision)
-                      ? existingMetaForGates.search_decision
+                    ...(enrichedMetaForGates.search_decision &&
+                    typeof enrichedMetaForGates.search_decision === 'object' &&
+                    !Array.isArray(enrichedMetaForGates.search_decision)
+                      ? enrichedMetaForGates.search_decision
                       : {}),
                     ...blockingGateInfo,
                   },

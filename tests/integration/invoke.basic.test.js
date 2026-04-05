@@ -214,20 +214,26 @@ describe('/agent/shop/v1/invoke gateway', () => {
       .expect(200);
 
     expect(String(capturedQuery?.query || '').toLowerCase()).toBe('lightweight sunscreen oily skin');
-    expect(res.body.metadata).toEqual(
-      expect.objectContaining({
-        semantic_owner: 'shopping_agent_beauty_mainline',
-        decision_owner: 'shopping_agent_beauty_mainline',
-        semantic_owner_query_attempts: expect.arrayContaining([
-          expect.objectContaining({
-            query: 'lightweight sunscreen oily skin',
+      expect(res.body.metadata).toEqual(
+        expect.objectContaining({
+          mainline_status: 'grounded_success',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+          decision_owner: 'shopping_agent_beauty_mainline',
+          final_selection: expect.objectContaining({
+            selection_owner: 'shopping_agent_beauty_mainline',
+            selected_product_ids: ['spf_1'],
+            mainline_status: 'grounded_success',
+          }),
+          semantic_owner_query_attempts: expect.arrayContaining([
+            expect.objectContaining({
+              query: 'lightweight sunscreen oily skin',
             query_index: 0,
             query_total: 3,
           }),
         ]),
-        search_stage_ledger: expect.objectContaining({
-          semantic_rewrite: expect.objectContaining({
-            owner_locked: true,
+          search_stage_ledger: expect.objectContaining({
+            semantic_rewrite: expect.objectContaining({
+              owner_locked: true,
             owner: 'shopping_agent_beauty_mainline',
             mode: 'deterministic_contract',
             single_provider_locked: true,
@@ -245,12 +251,17 @@ describe('/agent/shop/v1/invoke gateway', () => {
               }),
             ]),
           }),
-          final_decision: expect.objectContaining({
-            owner: 'shopping_agent_beauty_mainline',
+            final_decision: expect.objectContaining({
+              owner: 'shopping_agent_beauty_mainline',
+            }),
+            final_selection: expect.objectContaining({
+              selection_owner: 'shopping_agent_beauty_mainline',
+              selected_product_ids: ['spf_1'],
+              mainline_status: 'grounded_success',
+            }),
           }),
-        }),
-        effective_timeout_ms: expect.objectContaining({
-          gateway_total_budget_ms: 9000,
+          effective_timeout_ms: expect.objectContaining({
+            gateway_total_budget_ms: 9000,
         }),
       }),
     );
