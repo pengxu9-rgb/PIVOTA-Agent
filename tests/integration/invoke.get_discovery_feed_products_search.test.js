@@ -89,7 +89,8 @@ describe('/agent/shop/v1/invoke get_discovery_feed via products/search', () => {
     expect(res.body.products).toHaveLength(3);
     expect(res.body.metadata).toEqual(
       expect.objectContaining({
-        candidate_source: 'products_search',
+        candidate_source: 'multi_provider',
+        provider_breakdown: expect.any(Array),
         discovery_strategy: 'personalized_interest',
         personalization_source: 'account_history',
         rank_debug: expect.any(Object),
@@ -98,6 +99,7 @@ describe('/agent/shop/v1/invoke get_discovery_feed via products/search', () => {
     expect(res.body.metadata.rank_debug.recall_summary).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ label: 'interest_pool', status: 200, latency_ms: expect.any(Number) }),
+        expect.objectContaining({ label: 'expansion_pool', status: 200, latency_ms: expect.any(Number) }),
       ]),
     );
     expect(capturedParams.some((params) => String(params.query || '').trim().length > 0)).toBe(true);

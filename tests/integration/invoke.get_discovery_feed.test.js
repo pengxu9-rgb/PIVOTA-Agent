@@ -90,7 +90,8 @@ describe('/agent/shop/v1/invoke get_discovery_feed', () => {
         personalization_source: 'account_history',
         scoring_version: 'discovery_v2',
         surface: 'home_hot_deals',
-        candidate_source: 'products_search',
+        candidate_source: 'multi_provider',
+        provider_breakdown: expect.any(Array),
         rank_debug: expect.any(Object),
       }),
     );

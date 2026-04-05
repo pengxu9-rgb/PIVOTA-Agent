@@ -39,6 +39,7 @@ const MAX_CANDIDATE_FETCH = 120;
 const DEFAULT_DEBUG_TOP_CANDIDATES = 10;
 const PRODUCTS_SEARCH_PAGE_SIZE = 60;
 const MAX_PRODUCTS_SEARCH_CALLS = 2;
+const DISCOVERY_PROVIDER_ORDER = ['products_search', 'internal_catalog', 'external_seeds'];
 const VALID_SURFACES = new Set(['home_hot_deals', 'browse_products']);
 const VALID_AUTH_STATES = new Set(['authenticated', 'anonymous']);
 const VALID_DISCOVERY_SORTS = new Set(['popular', 'price_desc', 'price_asc']);
@@ -50,6 +51,13 @@ const BROWSE_FILL_RECALL_LIMIT = 24;
 const MIN_COLD_START_NON_DEFERRED_RESULTS = 2;
 const COLD_START_DEFERRED_DOMAINS = new Set(['pet', 'sleepwear', 'apparel']);
 const COLD_START_DEFERRED_BEAUTY_BUCKETS = new Set(['tools']);
+const DEFAULT_COLD_START_QUERY_BASKET = [
+  'beauty skincare serum',
+  'niacinamide serum',
+  'vitamin c serum',
+  'barrier moisturizer',
+  'gentle cleanser sunscreen',
+];
 const GENERIC_DISCOVERY_QUERY_TOKENS = new Set([
   'beauty',
   'skincare',
@@ -261,6 +269,15 @@ function getDiscoveryColdStartQuery() {
   return configured || 'beauty skincare serum';
 }
 
+function getDiscoveryColdStartQueries() {
+  const configured = String(process.env.DISCOVERY_COLD_START_QUERY_BASKET || '')
+    .split(/[|\n]+/)
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+  const queries = uniqStrings(configured.length > 0 ? configured : DEFAULT_COLD_START_QUERY_BASKET, 8);
+  return queries.length > 0 ? queries : [getDiscoveryColdStartQuery()];
+}
+
 function getDiscoveryPoolCacheTtlMs() {
   return clampInt(process.env.DISCOVERY_POOL_CACHE_TTL_MS, 45000, 1000, 300000);
 }
@@ -304,6 +321,30 @@ function buildExternalSemanticProductKey(product) {
   return '';
 }
 
+function buildDiscoverySemanticProductKey(product) {
+  const canonicalUrl = normalizeProductUrlForDedupe(
+    product?.canonical_url || product?.url || product?.destination_url,
+  );
+  if (canonicalUrl) return `semantic_url::${canonicalUrl}`;
+
+  const brand = normalizeBrandText(
+    product?.brand ||
+      product?.brand_name ||
+      product?.vendor ||
+      product?.vendor_name ||
+      product?.manufacturer ||
+      '',
+  );
+  const title = normalizeText(product?.title || product?.name || '');
+  const category = normalizeText(
+    product?.product_type || product?.productType || product?.category || product?.parent_category || '',
+  );
+  if (brand && title) return `semantic_brand_title::${brand}::${title}`;
+  if (title && category) return `semantic_title_category::${title}::${category}`;
+  if (title) return `semantic_title::${title}`;
+  return '';
+}
+
 function buildDiscoveryDedupKey(product, { brandScoped = false } = {}) {
   const merchantId = String(product?.merchant_id || product?.merchantId || '').trim();
   const productId = String(product?.product_id || product?.productId || product?.id || '').trim();
@@ -314,6 +355,36 @@ function buildDiscoveryDedupKey(product, { brandScoped = false } = {}) {
 
 function normalizeCacheText(value) {
   return normalizeText(value || '').slice(0, 120);
+}
+
+function tokenizeDiscoverySearchText(value) {
+  return uniqStrings(
+    tokenize(String(value || ''))
+      .map((token) => String(token || '').trim().toLowerCase())
+      .filter((token) => token.length >= 3),
+    24,
+  );
+}
+
+function buildDiscoverySearchPhraseSet(values = [], limit = 6) {
+  return uniqStrings(
+    (Array.isArray(values) ? values : [values])
+      .map((value) => String(value || '').trim().replace(/\s+/g, ' '))
+      .filter(Boolean),
+    limit,
+  );
+}
+
+function buildDiscoverySearchTerms(values = []) {
+  const phrases = buildDiscoverySearchPhraseSet(values, 8);
+  const tokens = uniqStrings(
+    phrases.flatMap((phrase) => tokenizeDiscoverySearchText(phrase)),
+    24,
+  );
+  return {
+    phrases,
+    tokens,
+  };
 }
 
 function compactBrandToken(value) {
@@ -960,6 +1031,7 @@ function normalizeCandidateProduct(product, browseRank = 0) {
     key: buildProductKey(merchantId, productId),
     merchantId,
     productId,
+    provider: String(product.__discovery_provider || '').trim() || 'unknown',
     brand,
     category,
     parentCategory,
@@ -983,59 +1055,123 @@ function buildDiscoveryInterestQuery(request, profile) {
   const specificRecentQueries = recentQueries.filter((queryText) => isSpecificDiscoveryQueryText(queryText));
   const genericRecentQueries = recentQueries.filter((queryText) => !isSpecificDiscoveryQueryText(queryText));
   const topCategories = getTopMapKeys(profile?.categoryAffinity, 3).filter((key) => !isWeakCategoryLabel(key));
-  const topBrands = getTopMapKeys(profile?.brandAffinity, profile?.dominantDomain === 'beauty' ? 1 : 2);
+  const topBrands = getTopMapKeys(profile?.brandAffinity, 2);
   const anchorCategories = (Array.isArray(profile?.anchors) ? profile.anchors : [])
     .map((anchor) => anchor.category || anchor.parent_category)
-    .filter(Boolean);
+    .filter((key) => !isWeakCategoryLabel(key))
+    .slice(0, 2);
+  const bucketLabel = buildDiscoveryBucketLabel(profile?.preferredBeautyBucket);
   const terms = buildDiscoveryQueryTerms(
     profile?.dominantDomain === 'beauty'
       ? [
-          ...specificRecentQueries,
+          specificRecentQueries[0],
+          bucketLabel,
+          topCategories[0],
+          anchorCategories[0],
+          genericRecentQueries[0],
           topBrands[0],
-          buildDiscoveryBucketLabel(profile?.preferredBeautyBucket),
-          ...topCategories,
-          ...anchorCategories,
-          ...genericRecentQueries,
         ]
       : [
-          ...recentQueries,
-          buildDiscoveryBucketLabel(profile?.preferredBeautyBucket),
-          ...topCategories,
-          ...anchorCategories,
-          ...topBrands,
+          recentQueries[0],
+          topCategories[0],
+          anchorCategories[0],
+          topBrands[0],
+          bucketLabel,
         ],
-    4,
+    3,
+  );
+
+  if (terms.length < 2 && profile?.dominantDomain === 'beauty') {
+    return buildDiscoveryQueryTerms([bucketLabel, topCategories[0], 'skincare'], 3).join(' ').trim();
+  }
+  return terms.join(' ').trim();
+}
+
+function buildDiscoveryExpansionQuery(request, profile) {
+  const topCategories = getTopMapKeys(profile?.categoryAffinity, 3).filter((key) => !isWeakCategoryLabel(key));
+  const anchorCategories = (Array.isArray(profile?.anchors) ? profile.anchors : [])
+    .map((anchor) => anchor.category || anchor.parent_category)
+    .filter(Boolean);
+  const recentQueries = uniqStrings(request?.context?.recent_queries, 2);
+  const bucketLabel = buildDiscoveryBucketLabel(profile?.preferredBeautyBucket);
+  const topBrands = getTopMapKeys(profile?.brandAffinity, 1);
+  const terms = buildDiscoveryQueryTerms(
+    profile?.dominantDomain === 'beauty'
+      ? [
+          bucketLabel,
+          topCategories[0],
+          anchorCategories[0],
+          'beauty skincare',
+          recentQueries[0],
+        ]
+      : [
+          topCategories[0],
+          anchorCategories[0],
+          recentQueries[0],
+          topBrands[0],
+          bucketLabel,
+        ],
+    3,
   );
 
   return terms.join(' ').trim();
 }
 
 function buildDiscoverySeededBrowseQuery(request, profile) {
-  const topCategories = getTopMapKeys(profile?.categoryAffinity, 3).filter((key) => !isWeakCategoryLabel(key));
   const recentQueries = uniqStrings(request?.context?.recent_queries, 2);
-  const specificRecentQueries = recentQueries.filter((queryText) => isSpecificDiscoveryQueryText(queryText));
-  const genericRecentQueries = recentQueries.filter((queryText) => !isSpecificDiscoveryQueryText(queryText));
+  const topCategories = getTopMapKeys(profile?.categoryAffinity, 3).filter((key) => !isWeakCategoryLabel(key));
+  const bucketLabel = buildDiscoveryBucketLabel(profile?.preferredBeautyBucket);
   const topBrands = getTopMapKeys(profile?.brandAffinity, 1);
   const terms = buildDiscoveryQueryTerms(
     profile?.dominantDomain === 'beauty'
       ? [
-          ...specificRecentQueries,
+          bucketLabel,
+          topCategories[0],
+          'beauty skincare',
+          recentQueries[0],
           topBrands[0],
-          buildDiscoveryBucketLabel(profile?.preferredBeautyBucket),
-          ...topCategories,
-          'beauty',
-          ...genericRecentQueries,
         ]
       : [
-          buildDiscoveryBucketLabel(profile?.preferredBeautyBucket),
-          ...topCategories,
-          ...recentQueries,
-          ...topBrands,
+          topCategories[0],
+          recentQueries[0],
+          topBrands[0],
+          bucketLabel,
         ],
     3,
   );
 
   return terms.join(' ').trim();
+}
+
+function buildDiscoveryProviderQueries(request, profile) {
+  const brandQuery = buildDiscoveryBrandScopedQuery(request);
+  if (Array.isArray(request?.scope?.brand_names) && request.scope.brand_names.length > 0) {
+    return buildDiscoverySearchPhraseSet([brandQuery], 2);
+  }
+
+  if (!profile?.hasInterestSignals) {
+    return getDiscoveryColdStartQueries();
+  }
+
+  if (request?.surface === 'browse_products') {
+    return buildDiscoverySearchPhraseSet(
+      [
+        buildDiscoverySeededBrowseQuery(request, profile),
+        buildDiscoveryExpansionQuery(request, profile),
+        buildDiscoveryInterestQuery(request, profile),
+      ],
+      4,
+    );
+  }
+
+  return buildDiscoverySearchPhraseSet(
+    [
+      buildDiscoveryInterestQuery(request, profile),
+      buildDiscoveryExpansionQuery(request, profile),
+      buildDiscoverySeededBrowseQuery(request, profile),
+    ],
+    4,
+  );
 }
 
 function resolveDiscoveryCandidateLimit(request) {
@@ -1133,8 +1269,10 @@ function buildDiscoveryRecallPlan(request, profile, limit) {
         : []),
     ];
   }
+  const providerQueries = buildDiscoveryProviderQueries(request, profile);
   if (request?.surface === 'browse_products') {
-    const seededBrowseQuery = buildDiscoverySeededBrowseQuery(request, profile);
+    const seededBrowseQuery = providerQueries[0] || buildDiscoverySeededBrowseQuery(request, profile);
+    const expansionQuery = providerQueries[1] || buildDiscoveryExpansionQuery(request, profile);
     const firstLimit = Math.min(BROWSE_PRIMARY_RECALL_LIMIT, safeLimit);
     const remaining = Math.max(0, safeLimit - firstLimit);
     return [
@@ -1148,9 +1286,9 @@ function buildDiscoveryRecallPlan(request, profile, limit) {
       ...(remaining > 0
         ? [
             {
-              label: 'browse_pool',
-              query: '',
-              offset: seededBrowseQuery ? 0 : firstLimit,
+              label: 'expansion_pool',
+              query: expansionQuery,
+              offset: 0,
               limit: Math.min(BROWSE_FILL_RECALL_LIMIT, remaining),
               allow_early_exit: true,
             },
@@ -1159,22 +1297,36 @@ function buildDiscoveryRecallPlan(request, profile, limit) {
     ];
   }
 
-  const interestQuery = buildDiscoveryInterestQuery(request, profile);
-  if (!interestQuery) {
+  if (!profile?.hasInterestSignals) {
+    const coldStartQueries = providerQueries.slice(0, 2);
+    const firstLimit = Math.min(PRODUCTS_SEARCH_PAGE_SIZE, safeLimit);
+    const remaining = Math.max(0, safeLimit - firstLimit);
     return [
       {
         label: 'cold_start_curated',
-        query: request?.surface === 'home_hot_deals' ? getDiscoveryColdStartQuery() : '',
+        query: coldStartQueries[0] || getDiscoveryColdStartQuery(),
         offset: 0,
-        limit: Math.min(PRODUCTS_SEARCH_PAGE_SIZE, safeLimit),
-        allow_early_exit: true,
+        limit: firstLimit,
+        allow_early_exit: remaining <= 0,
       },
-    ];
+      ...(remaining > 0 && coldStartQueries[1]
+        ? [
+            {
+              label: 'cold_start_fill',
+              query: coldStartQueries[1],
+              offset: 0,
+              limit: Math.min(PRODUCTS_SEARCH_PAGE_SIZE, remaining),
+              allow_early_exit: true,
+            },
+          ]
+        : []),
+    ].slice(0, clampInt(process.env.DISCOVERY_PRODUCTS_SEARCH_MAX_CALLS, MAX_PRODUCTS_SEARCH_CALLS, 1, 4));
   }
 
+  const interestQuery = providerQueries[0] || buildDiscoveryInterestQuery(request, profile);
+  const fillQuery = providerQueries[1] || buildDiscoveryExpansionQuery(request, profile);
   const interestLimit = Math.min(HOME_INTEREST_RECALL_LIMIT, safeLimit);
   const remaining = Math.max(0, safeLimit - interestLimit);
-  const fillQuery = buildDiscoverySeededBrowseQuery(request, profile);
   return [
     {
       label: 'interest_pool',
@@ -1186,7 +1338,7 @@ function buildDiscoveryRecallPlan(request, profile, limit) {
     ...(remaining > 0
       ? [
           {
-            label: 'browse_pool',
+            label: 'expansion_pool',
             query: fillQuery,
             offset: 0,
             limit: Math.min(Math.max(HOME_MIN_BROWSE_FILL_LIMIT, remaining), HOME_BROWSE_FILL_LIMIT),
@@ -1209,6 +1361,7 @@ async function fetchDiscoveryRecallStep({
   request,
   step,
   requestHeaders,
+  provider = 'products_search',
 } = {}) {
   const stepStartedAt = Date.now();
   try {
@@ -1231,6 +1384,7 @@ async function fetchDiscoveryRecallStep({
         : [];
     const stepLatencyMs = Date.now() - stepStartedAt;
     const summary = {
+      provider,
       label: step?.label || 'unknown',
       query: step?.query || null,
       offset: Number(step?.offset || 0),
@@ -1267,6 +1421,7 @@ async function fetchDiscoveryRecallStep({
       success: false,
       products: [],
       summary: {
+        provider,
         label: step?.label || 'unknown',
         query: step?.query || null,
         offset: Number(step?.offset || 0),
@@ -1440,17 +1595,610 @@ async function loadProductsSearchCandidates({ request, profile, limit = MAX_CAND
   };
 }
 
+function buildDiscoveryProviderStepSummary({
+  provider,
+  label,
+  query,
+  limit,
+  returned,
+  status,
+  latencyMs,
+  error,
+  skipped,
+  skipReason,
+} = {}) {
+  return {
+    provider,
+    label,
+    query,
+    offset: 0,
+    limit: Number(limit || 0),
+    status: status == null ? null : Number(status),
+    returned: Number(returned || 0),
+    latency_ms: Number(latencyMs || 0),
+    cache_hit: false,
+    ...(skipped ? { skipped: true } : {}),
+    ...(skipReason ? { skip_reason: skipReason } : {}),
+    ...(error ? { error: String(error) } : {}),
+  };
+}
+
+function annotateProviderProducts(provider, products = []) {
+  return (Array.isArray(products) ? products : []).map((product) => ({
+    ...product,
+    __discovery_provider: provider,
+  }));
+}
+
+async function fetchInternalCatalogCandidates({
+  request,
+  profile,
+  queries = [],
+  limit = MAX_CANDIDATE_FETCH,
+  fetchFn = null,
+} = {}) {
+  const provider = 'internal_catalog';
+  const stepStartedAt = Date.now();
+  const safeLimit = clampInt(limit, Math.max(limit, 24), 12, 240);
+  const phrases = buildDiscoverySearchPhraseSet(queries, 8);
+  const searchTerms = buildDiscoverySearchTerms(queries);
+
+  if (typeof fetchFn === 'function') {
+    try {
+      const products = annotateProviderProducts(
+        provider,
+        await fetchFn({ request, profile, queries: phrases, limit: safeLimit }),
+      );
+      recordDiscoveryRecallStep({
+        surface: request?.surface,
+        step: 'internal_catalog_pool',
+        status: 'success',
+        latencyMs: Date.now() - stepStartedAt,
+        cacheHit: false,
+      });
+      return {
+        products,
+        recallSummary: [
+          buildDiscoveryProviderStepSummary({
+            provider,
+            label: 'internal_catalog_pool',
+            query: phrases.join(' | '),
+            limit: safeLimit,
+            returned: products.length,
+            status: 200,
+            latencyMs: Date.now() - stepStartedAt,
+          }),
+        ],
+      };
+    } catch (err) {
+      recordDiscoveryRecallStep({
+        surface: request?.surface,
+        step: 'internal_catalog_pool',
+        status: 'error',
+        latencyMs: Date.now() - stepStartedAt,
+        cacheHit: false,
+      });
+      return {
+        products: [],
+        recallSummary: [
+          buildDiscoveryProviderStepSummary({
+            provider,
+            label: 'internal_catalog_pool',
+            query: phrases.join(' | '),
+            limit: safeLimit,
+            returned: 0,
+            status: null,
+            latencyMs: Date.now() - stepStartedAt,
+            error: err?.message || String(err),
+          }),
+        ],
+      };
+    }
+  }
+
+  if (!process.env.DATABASE_URL) {
+    recordDiscoveryRecallStep({
+      surface: request?.surface,
+      step: 'internal_catalog_pool',
+      status: 'skipped',
+      latencyMs: Date.now() - stepStartedAt,
+      cacheHit: false,
+    });
+    return {
+      products: [],
+      recallSummary: [
+        buildDiscoveryProviderStepSummary({
+          provider,
+          label: 'internal_catalog_pool',
+          query: phrases.join(' | '),
+          limit: safeLimit,
+          returned: 0,
+          status: null,
+          latencyMs: Date.now() - stepStartedAt,
+          skipped: true,
+          skipReason: 'missing_database',
+        }),
+      ],
+    };
+  }
+
+  try {
+    const res = await query(
+      `
+        WITH source AS (
+          SELECT
+            id,
+            merchant_id,
+            product_data,
+            cached_at,
+            lower(
+              concat_ws(
+                ' ',
+                coalesce(product_data->>'title', ''),
+                coalesce(product_data->>'name', ''),
+                coalesce(product_data->>'description', ''),
+                coalesce(product_data->>'brand', ''),
+                coalesce(product_data->>'brand_name', ''),
+                coalesce(product_data->>'vendor', ''),
+                coalesce(product_data->>'vendor_name', ''),
+                coalesce(product_data->>'manufacturer', ''),
+                coalesce(product_data->>'category', ''),
+                coalesce(product_data->>'product_type', '')
+              )
+            ) AS search_text
+          FROM products_cache
+          WHERE (expires_at IS NULL OR expires_at > now())
+            AND COALESCE(lower(product_data->>'status'), 'active') = 'active'
+            AND merchant_id <> $1
+        )
+        SELECT merchant_id, product_data
+        FROM (
+          SELECT
+            merchant_id,
+            product_data,
+            cached_at,
+            id,
+            (
+              (SELECT count(*)::int FROM unnest($2::text[]) phrase WHERE phrase <> '' AND search_text LIKE '%' || phrase || '%') * 6
+              +
+              (SELECT count(*)::int FROM unnest($3::text[]) token WHERE token <> '' AND search_text LIKE '%' || token || '%')
+            ) AS match_score
+          FROM source
+        ) ranked
+        WHERE ($4::boolean = false OR match_score > 0)
+        ORDER BY match_score DESC, cached_at DESC NULLS LAST, id DESC
+        LIMIT $5
+      `,
+      [
+        EXTERNAL_SEED_MERCHANT_ID,
+        searchTerms.phrases,
+        searchTerms.tokens,
+        searchTerms.phrases.length > 0 || searchTerms.tokens.length > 0,
+        safeLimit,
+      ],
+    );
+    const products = annotateProviderProducts(
+      provider,
+      (res.rows || [])
+        .map((row) =>
+          row?.product_data && row?.merchant_id
+            ? {
+                ...row.product_data,
+                merchant_id: String(row.merchant_id).trim(),
+              }
+            : null,
+        )
+        .filter(Boolean),
+    );
+    recordDiscoveryRecallStep({
+      surface: request?.surface,
+      step: 'internal_catalog_pool',
+      status: 'success',
+      latencyMs: Date.now() - stepStartedAt,
+      cacheHit: false,
+    });
+    return {
+      products,
+      recallSummary: [
+        buildDiscoveryProviderStepSummary({
+          provider,
+          label: 'internal_catalog_pool',
+          query: phrases.join(' | '),
+          limit: safeLimit,
+          returned: products.length,
+          status: 200,
+          latencyMs: Date.now() - stepStartedAt,
+        }),
+      ],
+    };
+  } catch (err) {
+    recordDiscoveryRecallStep({
+      surface: request?.surface,
+      step: 'internal_catalog_pool',
+      status: 'error',
+      latencyMs: Date.now() - stepStartedAt,
+      cacheHit: false,
+    });
+    return {
+      products: [],
+      recallSummary: [
+        buildDiscoveryProviderStepSummary({
+          provider,
+          label: 'internal_catalog_pool',
+          query: phrases.join(' | '),
+          limit: safeLimit,
+          returned: 0,
+          status: null,
+          latencyMs: Date.now() - stepStartedAt,
+          error: err?.message || String(err),
+        }),
+      ],
+    };
+  }
+}
+
+async function fetchExternalSeedCandidates({
+  request,
+  profile,
+  queries = [],
+  limit = MAX_CANDIDATE_FETCH,
+  fetchFn = null,
+} = {}) {
+  const provider = 'external_seeds';
+  const stepStartedAt = Date.now();
+  const safeLimit = clampInt(limit, Math.max(limit, 24), 12, 240);
+  const phrases = buildDiscoverySearchPhraseSet(queries, 8);
+  const searchTerms = buildDiscoverySearchTerms(queries);
+  const market =
+    String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US')
+      .trim()
+      .toUpperCase() || 'US';
+  const tool = 'creator_agents';
+
+  if (typeof fetchFn === 'function') {
+    try {
+      const products = annotateProviderProducts(
+        provider,
+        await fetchFn({ request, profile, queries: phrases, limit: safeLimit }),
+      );
+      recordDiscoveryRecallStep({
+        surface: request?.surface,
+        step: 'external_seed_pool',
+        status: 'success',
+        latencyMs: Date.now() - stepStartedAt,
+        cacheHit: false,
+      });
+      return {
+        products,
+        recallSummary: [
+          buildDiscoveryProviderStepSummary({
+            provider,
+            label: 'external_seed_pool',
+            query: phrases.join(' | '),
+            limit: safeLimit,
+            returned: products.length,
+            status: 200,
+            latencyMs: Date.now() - stepStartedAt,
+          }),
+        ],
+      };
+    } catch (err) {
+      recordDiscoveryRecallStep({
+        surface: request?.surface,
+        step: 'external_seed_pool',
+        status: 'error',
+        latencyMs: Date.now() - stepStartedAt,
+        cacheHit: false,
+      });
+      return {
+        products: [],
+        recallSummary: [
+          buildDiscoveryProviderStepSummary({
+            provider,
+            label: 'external_seed_pool',
+            query: phrases.join(' | '),
+            limit: safeLimit,
+            returned: 0,
+            status: null,
+            latencyMs: Date.now() - stepStartedAt,
+            error: err?.message || String(err),
+          }),
+        ],
+      };
+    }
+  }
+
+  if (!process.env.DATABASE_URL) {
+    recordDiscoveryRecallStep({
+      surface: request?.surface,
+      step: 'external_seed_pool',
+      status: 'skipped',
+      latencyMs: Date.now() - stepStartedAt,
+      cacheHit: false,
+    });
+    return {
+      products: [],
+      recallSummary: [
+        buildDiscoveryProviderStepSummary({
+          provider,
+          label: 'external_seed_pool',
+          query: phrases.join(' | '),
+          limit: safeLimit,
+          returned: 0,
+          status: null,
+          latencyMs: Date.now() - stepStartedAt,
+          skipped: true,
+          skipReason: 'missing_database',
+        }),
+      ],
+    };
+  }
+
+  try {
+    const res = await query(
+      `
+        WITH source AS (
+          SELECT
+            id,
+            external_product_id,
+            destination_url,
+            canonical_url,
+            domain,
+            title,
+            image_url,
+            price_amount,
+            price_currency,
+            availability,
+            seed_data,
+            updated_at,
+            created_at,
+            lower(
+              concat_ws(
+                ' ',
+                coalesce(seed_data->>'title', ''),
+                coalesce(seed_data->'snapshot'->>'title', ''),
+                coalesce(title, ''),
+                coalesce(seed_data->>'description', ''),
+                coalesce(seed_data->'snapshot'->>'description', ''),
+                coalesce(seed_data->>'brand', ''),
+                coalesce(seed_data->>'brand_name', ''),
+                coalesce(seed_data->>'vendor', ''),
+                coalesce(seed_data->>'vendor_name', ''),
+                coalesce(seed_data->'snapshot'->>'brand', ''),
+                coalesce(seed_data->'snapshot'->>'brand_name', ''),
+                coalesce(seed_data->'snapshot'->>'vendor', ''),
+                coalesce(seed_data->'snapshot'->>'vendor_name', ''),
+                coalesce(seed_data->>'category', ''),
+                coalesce(seed_data->>'product_type', ''),
+                coalesce(seed_data->'snapshot'->>'category', ''),
+                coalesce(seed_data->'snapshot'->>'product_type', '')
+              )
+            ) AS search_text
+          FROM external_product_seeds
+          WHERE status = 'active'
+            AND market = $1
+            AND (tool = '*' OR tool = $2)
+        )
+        SELECT
+          id,
+          external_product_id,
+          destination_url,
+          canonical_url,
+          domain,
+          title,
+          image_url,
+          price_amount,
+          price_currency,
+          availability,
+          seed_data,
+          updated_at,
+          created_at
+        FROM (
+          SELECT
+            *,
+            (
+              (SELECT count(*)::int FROM unnest($3::text[]) phrase WHERE phrase <> '' AND search_text LIKE '%' || phrase || '%') * 6
+              +
+              (SELECT count(*)::int FROM unnest($4::text[]) token WHERE token <> '' AND search_text LIKE '%' || token || '%')
+            ) AS match_score
+          FROM source
+        ) ranked
+        WHERE ($5::boolean = false OR match_score > 0)
+        ORDER BY match_score DESC, updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
+        LIMIT $6
+      `,
+      [
+        market,
+        tool,
+        searchTerms.phrases,
+        searchTerms.tokens,
+        searchTerms.phrases.length > 0 || searchTerms.tokens.length > 0,
+        safeLimit,
+      ],
+    );
+    const products = annotateProviderProducts(
+      provider,
+      (res.rows || [])
+        .map((row) => buildExternalSeedProduct(row))
+        .filter(Boolean),
+    );
+    recordDiscoveryRecallStep({
+      surface: request?.surface,
+      step: 'external_seed_pool',
+      status: 'success',
+      latencyMs: Date.now() - stepStartedAt,
+      cacheHit: false,
+    });
+    return {
+      products,
+      recallSummary: [
+        buildDiscoveryProviderStepSummary({
+          provider,
+          label: 'external_seed_pool',
+          query: phrases.join(' | '),
+          limit: safeLimit,
+          returned: products.length,
+          status: 200,
+          latencyMs: Date.now() - stepStartedAt,
+        }),
+      ],
+    };
+  } catch (err) {
+    recordDiscoveryRecallStep({
+      surface: request?.surface,
+      step: 'external_seed_pool',
+      status: 'error',
+      latencyMs: Date.now() - stepStartedAt,
+      cacheHit: false,
+    });
+    return {
+      products: [],
+      recallSummary: [
+        buildDiscoveryProviderStepSummary({
+          provider,
+          label: 'external_seed_pool',
+          query: phrases.join(' | '),
+          limit: safeLimit,
+          returned: 0,
+          status: null,
+          latencyMs: Date.now() - stepStartedAt,
+          error: err?.message || String(err),
+        }),
+      ],
+    };
+  }
+}
+
+function buildProviderBreakdown(results = []) {
+  return DISCOVERY_PROVIDER_ORDER.map((provider) => {
+    const result = (Array.isArray(results) ? results : []).find((entry) => entry?.provider === provider) || null;
+    const recallSummary = Array.isArray(result?.recallSummary) ? result.recallSummary : [];
+    const attempted = recallSummary.length > 0;
+    const successfulSteps = recallSummary.filter((step) => Number(step?.status || 0) >= 200 && Number(step?.status || 0) < 300);
+    return {
+      provider,
+      attempted,
+      successful: successfulSteps.length > 0,
+      returned: Array.isArray(result?.products) ? result.products.length : 0,
+      steps: recallSummary.length,
+      skipped: recallSummary.every((step) => step?.skipped === true),
+    };
+  });
+}
+
 async function loadCatalogCandidates({
   request = null,
   profile = null,
   limit = MAX_CANDIDATE_FETCH,
+  providerOverrides = null,
 } = {}) {
   const safeLimit = clampInt(limit, resolveDiscoveryCandidateLimit(request), 24, MAX_CANDIDATE_FETCH);
-  return loadProductsSearchCandidates({
-    request,
-    profile,
-    limit: safeLimit,
-  });
+  const providerQueries = buildDiscoveryProviderQueries(request, profile);
+  const providerResults = await Promise.all(
+    DISCOVERY_PROVIDER_ORDER.map(async (provider) => {
+      try {
+        if (provider === 'products_search') {
+          const result = await loadProductsSearchCandidates({
+            request,
+            profile,
+            limit: safeLimit,
+          });
+          return {
+            provider,
+            products: annotateProviderProducts(provider, result?.products || []),
+            recallSummary: Array.isArray(result?.recallSummary)
+              ? result.recallSummary.map((step) => ({ provider, ...step }))
+              : [],
+          };
+        }
+        if (provider === 'internal_catalog') {
+          const result = await fetchInternalCatalogCandidates({
+            request,
+            profile,
+            queries: providerQueries,
+            limit: Math.min(safeLimit, 72),
+            fetchFn: providerOverrides?.internal_catalog || null,
+          });
+          return {
+            provider,
+            products: result.products,
+            recallSummary: result.recallSummary,
+          };
+        }
+        if (provider === 'external_seeds') {
+          const result = await fetchExternalSeedCandidates({
+            request,
+            profile,
+            queries: providerQueries,
+            limit: Math.min(safeLimit, 72),
+            fetchFn: providerOverrides?.external_seeds || null,
+          });
+          return {
+            provider,
+            products: result.products,
+            recallSummary: result.recallSummary,
+          };
+        }
+        return {
+          provider,
+          products: [],
+          recallSummary: [],
+        };
+      } catch (err) {
+        return {
+          provider,
+          products: [],
+          recallSummary: [
+            buildDiscoveryProviderStepSummary({
+              provider,
+              label: `${provider}_pool`,
+              query: providerQueries.join(' | '),
+              limit: safeLimit,
+              returned: 0,
+              status: null,
+              latencyMs: 0,
+              error: err?.message || String(err),
+            }),
+          ],
+        };
+      }
+    }),
+  );
+
+  const mergedProducts = [];
+  const seenKeys = new Set();
+  for (const result of providerResults) {
+    for (const product of Array.isArray(result?.products) ? result.products : []) {
+      const key = buildProductKey(
+        product?.merchant_id || product?.merchantId,
+        product?.product_id || product?.productId || product?.id,
+      );
+      if (!key || seenKeys.has(key)) continue;
+      seenKeys.add(key);
+      mergedProducts.push(product);
+      if (mergedProducts.length >= safeLimit) break;
+    }
+    if (mergedProducts.length >= safeLimit) break;
+  }
+
+  const recallSummary = providerResults.flatMap((result) =>
+    (Array.isArray(result?.recallSummary) ? result.recallSummary : []).map((step) => ({
+      provider: result.provider,
+      ...step,
+    })),
+  );
+  const providerBreakdown = buildProviderBreakdown(providerResults);
+  const successfulProviders = providerBreakdown.filter((entry) => entry.successful);
+
+  if (successfulProviders.length <= 0) {
+    throw new DiscoveryCatalogUnavailableError('Failed to load discovery candidates from discovery providers');
+  }
+
+  return {
+    products: mergedProducts,
+    recallSummary,
+    providerBreakdown,
+  };
 }
 
 function scoreAnchorSimilarity(candidate, anchors) {
@@ -1859,15 +2607,6 @@ function getDiscoveryRejectReason(entry, profile, surface) {
     entry.scores.interestScore >= 0.28;
 
   if (profile.dominantDomain !== 'beauty') return null;
-  if (
-    profile.preferredBeautyBucket &&
-    entry.candidate.domain === 'beauty' &&
-    entry.candidate.beautyBucket &&
-    entry.candidate.beautyBucket !== profile.preferredBeautyBucket
-  ) {
-    if (surface === 'home_hot_deals') return 'filtered_beauty_bucket';
-    if (strongBeautySignal || entry.scores.bucketScore <= -0.4) return 'filtered_beauty_bucket';
-  }
   if (entry.candidate.domain === 'beauty') return null;
 
   if (entry.candidate.domain === 'pet' || entry.candidate.domain === 'sleepwear') {
@@ -1963,6 +2702,7 @@ function selectHomeProducts(scoredCandidates, viewedKeys, limit, options = {}) {
   const brandCounts = new Map();
   const rankedEligible = [];
   const coldStartDeferred = [];
+  const recentViewDeferred = [];
   for (const entry of ranked) {
     const rejectReason = getDiscoveryRejectReason(entry, profile, 'home_hot_deals');
     if (rejectReason) {
@@ -1970,6 +2710,7 @@ function selectHomeProducts(scoredCandidates, viewedKeys, limit, options = {}) {
       continue;
     }
     if (viewedKeys.has(entry.candidate.key)) {
+      recentViewDeferred.push(entry);
       if (decisions) decisions.set(entry.candidate.key, 'filtered_recent_view');
       continue;
     }
@@ -2001,12 +2742,23 @@ function selectHomeProducts(scoredCandidates, viewedKeys, limit, options = {}) {
   for (const entry of coldStartDeferred) {
     if (selected.length >= limit) break;
     if (selected.some((picked) => picked.candidate.key === entry.candidate.key)) continue;
+    if (entry.candidate.domain !== 'beauty') {
+      if (decisions) decisions.set(entry.candidate.key, 'not_selected_cold_start_deferred');
+      continue;
+    }
     if (coldStartCuration && selected.length >= Math.min(limit, MIN_COLD_START_NON_DEFERRED_RESULTS)) {
       if (decisions) decisions.set(entry.candidate.key, 'not_selected_cold_start_deferred');
       continue;
     }
     selected.push(entry);
     if (decisions) decisions.set(entry.candidate.key, 'selected_cold_start_backfill');
+  }
+
+  for (const entry of recentViewDeferred) {
+    if (selected.length >= limit) break;
+    if (selected.some((picked) => picked.candidate.key === entry.candidate.key)) continue;
+    selected.push(entry);
+    if (decisions) decisions.set(entry.candidate.key, 'selected_recent_view_backfill');
   }
 
   const selectedItems = selected.slice(0, limit);
@@ -2037,6 +2789,7 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
   const decisions = collectDebug ? new Map() : null;
 
   const preCategoryPool = [];
+  const recentViewDeferred = [];
   for (const entry of ranked) {
     const rejectReason = getDiscoveryRejectReason(entry, profile, 'browse_products');
     if (rejectReason) {
@@ -2044,6 +2797,7 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
       continue;
     }
     if (page <= 1 && viewedKeys.has(entry.candidate.key) && !brandScoped) {
+      recentViewDeferred.push(entry);
       if (decisions) decisions.set(entry.candidate.key, 'filtered_recent_view');
       continue;
     }
@@ -2065,6 +2819,14 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
 
   const start = (page - 1) * limit;
   const pageItems = orderedPool.slice(start, start + limit);
+  if (page <= 1 && pageItems.length < limit) {
+    for (const entry of recentViewDeferred) {
+      if (pageItems.length >= limit) break;
+      if (pageItems.some((picked) => picked.candidate.key === entry.candidate.key)) continue;
+      pageItems.push(entry);
+      if (decisions) decisions.set(entry.candidate.key, 'selected_recent_view_backfill');
+    }
+  }
   if (!collectDebug) {
     return {
       preCategoryPool,
@@ -2092,14 +2854,15 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
 }
 
 function formatDiscoveryResponseProduct(candidate) {
+  const { __discovery_provider, ...raw } = candidate.raw || {};
   return {
-    ...candidate.raw,
-    id: candidate.raw.id || candidate.productId,
-    product_id: candidate.raw.product_id || candidate.productId,
-    merchant_id: candidate.raw.merchant_id || candidate.merchantId,
-    ...(candidate.raw.brand ? {} : candidate.brand ? { brand: candidate.brand } : {}),
-    ...(candidate.raw.category ? {} : candidate.category ? { category: candidate.category } : {}),
-    ...(candidate.raw.product_type || !candidate.category ? {} : { product_type: candidate.category }),
+    ...raw,
+    id: raw.id || candidate.productId,
+    product_id: raw.product_id || candidate.productId,
+    merchant_id: raw.merchant_id || candidate.merchantId,
+    ...(raw.brand ? {} : candidate.brand ? { brand: candidate.brand } : {}),
+    ...(raw.category ? {} : candidate.category ? { category: candidate.category } : {}),
+    ...(raw.product_type || !candidate.category ? {} : { product_type: candidate.category }),
   };
 }
 
@@ -2125,12 +2888,33 @@ function buildNormalizedCandidateKey(candidate, { brandScoped = false } = {}) {
   );
 }
 
+function buildNormalizedCandidateSemanticKey(candidate) {
+  if (!candidate || typeof candidate !== 'object') return '';
+  return buildDiscoverySemanticProductKey({
+    canonical_url: candidate.raw?.canonical_url,
+    destination_url: candidate.raw?.destination_url,
+    url: candidate.raw?.url,
+    brand: candidate.raw?.brand || candidate.brand,
+    brand_name: candidate.raw?.brand_name,
+    vendor: candidate.raw?.vendor,
+    vendor_name: candidate.raw?.vendor_name,
+    manufacturer: candidate.raw?.manufacturer,
+    title: candidate.raw?.title || candidate.raw?.name,
+    name: candidate.raw?.name,
+    product_type: candidate.raw?.product_type || candidate.category,
+    category: candidate.raw?.category || candidate.parentCategory,
+    parent_category: candidate.parentCategory,
+  });
+}
+
 function buildCandidateCounts({
   raw,
   normalized,
   scored,
   eligiblePool,
   returned,
+  sameDomain,
+  semanticDeduped,
 } = {}) {
   return {
     raw: Number(raw || 0),
@@ -2138,12 +2922,33 @@ function buildCandidateCounts({
     scored: Number(scored || 0),
     eligible_pool: Number(eligiblePool || 0),
     returned: Number(returned || 0),
+    ...(sameDomain != null ? { same_domain: Number(sameDomain || 0) } : {}),
+    ...(semanticDeduped != null ? { semantic_deduped: Number(semanticDeduped || 0) } : {}),
   };
 }
 
 function getCandidateSource(options = {}) {
   if (Array.isArray(options.candidateProducts)) return 'override';
-  return 'products_search';
+  return 'multi_provider';
+}
+
+function countSameDomainCandidates(candidates = [], profile = null) {
+  if (!Array.isArray(candidates) || candidates.length === 0) return 0;
+  const dominantDomain = String(profile?.dominantDomain || '').trim();
+  if (dominantDomain) {
+    return candidates.filter((candidate) => candidate?.domain === dominantDomain).length;
+  }
+  return candidates.filter((candidate) => candidate?.domain === 'beauty').length;
+}
+
+function buildFilterCounts(decisions = new Map()) {
+  const counts = {};
+  for (const decision of decisions instanceof Map ? decisions.values() : []) {
+    const key = String(decision || '').trim();
+    if (!key) continue;
+    counts[key] = Number(counts[key] || 0) + 1;
+  }
+  return counts;
 }
 
 function topMapEntries(map, limit = 5) {
@@ -2163,6 +2968,8 @@ function buildRankDebug({
   profile,
   topCandidates,
   recallSummary,
+  providerBreakdown,
+  filterCounts,
 } = {}) {
   const decisionMap = decisions instanceof Map ? decisions : new Map();
   const poolRanks = new Map(
@@ -2178,6 +2985,7 @@ function buildRankDebug({
       decision: decisionMap.get(entry.candidate.key) || 'not_selected',
       merchant_id: entry.candidate.merchantId,
       product_id: entry.candidate.productId,
+      provider: entry.candidate.provider || null,
       title: entry.candidate.raw.title || '',
       brand: entry.candidate.raw.brand || entry.candidate.brand || null,
       category: entry.candidate.raw.category || entry.candidate.parentCategory || null,
@@ -2214,6 +3022,7 @@ function buildRankDebug({
       recent_query_tokens: Array.from(profile.queryTokens || []).sort((a, b) => a.localeCompare(b)),
     },
     recall_summary: (Array.isArray(recallSummary) ? recallSummary : []).map((step) => ({
+      provider: String(step?.provider || '').trim() || null,
       label: String(step?.label || '').trim() || 'unknown',
       query: step?.query ? String(step.query) : null,
       offset: Number(step?.offset || 0),
@@ -2224,8 +3033,12 @@ function buildRankDebug({
       cache_hit: step?.cache_hit === true,
       ...(step?.cache_age_ms != null ? { cache_age_ms: Number(step.cache_age_ms || 0) } : {}),
       ...(step?.truncated_by_budget ? { truncated_by_budget: true } : {}),
+      ...(step?.skipped ? { skipped: true } : {}),
+      ...(step?.skip_reason ? { skip_reason: String(step.skip_reason) } : {}),
       ...(step?.error ? { error: String(step.error) } : {}),
     })),
+    provider_breakdown: Array.isArray(providerBreakdown) ? providerBreakdown : [],
+    filter_counts: filterCounts && typeof filterCounts === 'object' ? filterCounts : {},
   };
 }
 
@@ -2239,6 +3052,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
   let effectiveCandidateSource = candidateSource;
   let candidateCounts = buildCandidateCounts();
   let recallSummary = [];
+  let providerBreakdown = [];
 
   try {
     request = normalizeDiscoveryRequest(payload);
@@ -2256,12 +3070,16 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
           request,
           profile,
           limit: options.candidateLimit || resolveDiscoveryCandidateLimit(request),
+          providerOverrides: options.providerOverrides || null,
         });
     const rawCandidates = Array.isArray(candidateLoadResult?.products)
       ? candidateLoadResult.products
       : [];
     recallSummary = Array.isArray(candidateLoadResult?.recallSummary)
       ? candidateLoadResult.recallSummary
+      : [];
+    providerBreakdown = Array.isArray(candidateLoadResult?.providerBreakdown)
+      ? candidateLoadResult.providerBreakdown
       : [];
     let effectiveRawCandidates = rawCandidates;
     const brandScopeAliases = buildBrandScopeAliases(request.scope?.brand_names || []);
@@ -2292,13 +3110,21 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
 
     let normalizedCandidates = [];
     const seenKeys = new Set();
+    const seenSemanticKeys = new Set();
     const brandScoped = brandScopeAliases.length > 0;
+    let semanticDeduped = 0;
     for (let idx = 0; idx < effectiveRawCandidates.length; idx += 1) {
       const normalized = normalizeCandidateProduct(effectiveRawCandidates[idx], idx);
       if (!normalized) continue;
       const dedupKey = buildNormalizedCandidateKey(normalized, { brandScoped });
       if (!dedupKey || seenKeys.has(dedupKey)) continue;
+      const semanticKey = buildNormalizedCandidateSemanticKey(normalized);
+      if (semanticKey && seenSemanticKeys.has(semanticKey)) {
+        semanticDeduped += 1;
+        continue;
+      }
       seenKeys.add(dedupKey);
+      if (semanticKey) seenSemanticKeys.add(semanticKey);
       normalizedCandidates.push(normalized);
     }
     let scopedCandidates =
@@ -2359,26 +3185,22 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
     let orderedPool = [];
     let categoryFacets = [];
     let decisions = new Map();
+    let filterCounts = {};
 
     if (request.surface === 'home_hot_deals') {
       const homeSelection = selectHomeProducts(
         scoredCandidates,
         viewedKeys,
         request.limit,
-        { collectDebug: request.debug.enabled, profile },
+        { collectDebug: true, profile },
       );
-      if (request.debug.enabled) {
-        selectedEntries = homeSelection.selected;
-        total = homeSelection.eligiblePool.length;
-        eligiblePoolCount = homeSelection.eligiblePool.length;
-        ranked = homeSelection.ranked;
-        orderedPool = homeSelection.eligiblePool;
-        decisions = homeSelection.decisions;
-      } else {
-        selectedEntries = homeSelection;
-        total = scoredCandidates.filter((entry) => !viewedKeys.has(entry.candidate.key)).length;
-        eligiblePoolCount = total;
-      }
+      selectedEntries = homeSelection.selected;
+      total = homeSelection.eligiblePool.length;
+      eligiblePoolCount = homeSelection.eligiblePool.length;
+      ranked = homeSelection.ranked;
+      orderedPool = homeSelection.eligiblePool;
+      decisions = homeSelection.decisions;
+      filterCounts = buildFilterCounts(decisions);
     } else {
       const browseSelection = selectBrowseProducts(
         scoredCandidates,
@@ -2386,7 +3208,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
         request.page,
         request.limit,
         {
-          collectDebug: request.debug.enabled,
+          collectDebug: true,
           profile,
           sort: request.sort,
           brandScoped: brandScopeAliases.length > 0,
@@ -2401,11 +3223,10 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
         brandScopeAliases.length > 0
           ? buildDiscoveryCategoryFacets(browseSelection.preCategoryPool)
           : [];
-      if (request.debug.enabled) {
-        ranked = browseSelection.ranked;
-        orderedPool = browseSelection.orderedPool;
-        decisions = browseSelection.decisions;
-      }
+      ranked = browseSelection.ranked;
+      orderedPool = browseSelection.orderedPool;
+      decisions = browseSelection.decisions;
+      filterCounts = buildFilterCounts(decisions);
     }
 
     candidateCounts = buildCandidateCounts({
@@ -2414,6 +3235,8 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       scored: scoredCandidates.length,
       eligiblePool: eligiblePoolCount,
       returned: selectedEntries.length,
+      sameDomain: countSameDomainCandidates(scopedCandidates, profile),
+      semanticDeduped,
     });
 
     observeDiscoveryCandidateCount({
@@ -2438,6 +3261,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       surface: request.surface,
       locale: request.context.locale,
       candidate_source: effectiveCandidateSource,
+      provider_breakdown: providerBreakdown,
       candidate_counts: candidateCounts,
       request_latency_ms: latencyMs,
       sort_applied: request.sort,
@@ -2448,6 +3272,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       facets: {
         categories: categoryFacets,
       },
+      filter_counts: filterCounts,
       ...(profile.dominantDomain ? { dominant_domain: profile.dominantDomain } : {}),
     };
 
@@ -2459,6 +3284,8 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
         profile,
         topCandidates: request.debug.top_candidates,
         recallSummary,
+        providerBreakdown,
+        filterCounts,
       });
     }
 
@@ -2492,6 +3319,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       personalization_source: personalizationSource,
       candidate_source: effectiveCandidateSource,
       candidate_counts: candidateCounts,
+      provider_breakdown: providerBreakdown,
       history_items_used: profile.historyItemsUsed,
       anchor_count: profile.anchors.length,
       total,
@@ -2510,6 +3338,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
         personalization_source: personalizationSource,
         candidate_source: effectiveCandidateSource,
         candidate_counts: candidateCounts,
+        provider_breakdown: providerBreakdown,
         latency_ms: latencyMs,
       },
       'discovery feed built',
@@ -2547,6 +3376,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       personalization_source: personalizationSource,
       candidate_source: effectiveCandidateSource,
       candidate_counts: candidateCounts,
+      provider_breakdown: providerBreakdown,
       latency_ms: latencyMs,
       dominant_domain: profile?.dominantDomain || null,
       error_code: err?.code || err?.name || 'UNKNOWN_ERROR',

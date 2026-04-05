@@ -63,13 +63,18 @@ describe('run_discovery_feed_smoke helpers', () => {
           },
         ],
         metadata: {
-          candidate_source: 'products_search',
+          candidate_source: 'multi_provider',
+          provider_breakdown: [
+            { provider: 'products_search', successful: true },
+            { provider: 'internal_catalog', successful: false },
+            { provider: 'external_seeds', successful: true },
+          ],
           discovery_strategy: 'personalized_interest',
           personalization_source: 'account_history',
           rank_debug: {
             recall_summary: [
               { label: 'interest_pool', status: 200, returned: 3 },
-              { label: 'browse_pool', status: 200, returned: 6 },
+              { label: 'expansion_pool', status: 200, returned: 6 },
             ],
           },
         },
@@ -77,16 +82,17 @@ describe('run_discovery_feed_smoke helpers', () => {
       {
         discoveryStrategy: 'personalized_interest',
         personalizationSource: 'account_history',
-        candidateSource: 'products_search',
+        candidateSource: 'multi_provider',
         requireRankDebug: true,
-        requiredRecallLabels: ['interest_pool', 'browse_pool'],
+        requiredRecallLabels: ['interest_pool', 'expansion_pool'],
+        requiredProviders: ['products_search', 'external_seeds'],
         excludeProductKeys: ['m1::p1'],
       },
     );
 
     expect(summary).toEqual(
       expect.objectContaining({
-        candidateSource: 'products_search',
+        candidateSource: 'multi_provider',
         strategy: 'personalized_interest',
       }),
     );
@@ -103,12 +109,18 @@ describe('run_discovery_feed_smoke helpers', () => {
           },
         ],
         metadata: {
-          candidate_source: 'products_search',
+          candidate_source: 'multi_provider',
+          provider_breakdown: [
+            { provider: 'products_search', successful: true },
+            { provider: 'internal_catalog', successful: true },
+            { provider: 'external_seeds', successful: false },
+          ],
           discovery_strategy: 'cold_start_curated',
           personalization_source: 'none',
           rank_debug: {
             recall_summary: [
               { label: 'cold_start_curated', status: 200, returned: 6 },
+              { label: 'cold_start_fill', status: 200, returned: 4 },
             ],
           },
         },
@@ -116,9 +128,10 @@ describe('run_discovery_feed_smoke helpers', () => {
       {
         discoveryStrategy: 'cold_start_curated',
         personalizationSource: 'none',
-        candidateSource: 'products_search',
+        candidateSource: 'multi_provider',
         requireRankDebug: true,
-        requiredRecallLabels: [['cold_start_curated', 'browse_pool']],
+        requiredRecallLabels: [['cold_start_curated', 'cold_start_fill']],
+        requiredProviders: ['products_search', 'internal_catalog'],
       },
     );
 
@@ -137,7 +150,7 @@ describe('run_discovery_feed_smoke helpers', () => {
             },
           ],
           metadata: {
-            candidate_source: 'products_search',
+            candidate_source: 'multi_provider',
             discovery_strategy: 'cold_start_curated',
             personalization_source: 'none',
             rank_debug: {
@@ -148,9 +161,9 @@ describe('run_discovery_feed_smoke helpers', () => {
         {
           discoveryStrategy: 'cold_start_curated',
           personalizationSource: 'none',
-          candidateSource: 'products_search',
+          candidateSource: 'multi_provider',
           requireRankDebug: true,
-          requiredRecallLabels: [['cold_start_curated', 'browse_pool']],
+          requiredRecallLabels: [['cold_start_curated', 'cold_start_fill']],
           disallowTopN: 3,
           disallowTitlePatterns: ['\\blingerie\\b'],
         },
