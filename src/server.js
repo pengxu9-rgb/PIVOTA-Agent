@@ -11939,10 +11939,23 @@ async function fetchReviewSummaryCached(args = {}) {
 }
 
 async function fetchSimilarProductsDeduped(args = {}) {
+  const normalizeRecommendationPayload = (value) => {
+    if (Array.isArray(value)) {
+      return { items: value };
+    }
+    if (value && typeof value === 'object') {
+      return {
+        ...value,
+        items: Array.isArray(value.items) ? value.items : [],
+      };
+    }
+    return { items: [] };
+  };
+
   const inflightKey = buildPdpSimilarInflightKey(args);
   const runOnce = async () => {
     const rec = await recommendPdpProducts(args);
-    return Array.isArray(rec?.items) ? rec.items : [];
+    return normalizeRecommendationPayload(rec);
   };
 
   if (!inflightKey) return runOnce();
@@ -20173,7 +20186,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	              markPdpV2Module('similar', moduleStartedAt);
 	            }
 	          })()
-	        : Promise.resolve([]);
+	        : Promise.resolve({ items: [] });
 
 	      const fetchOptionalModulesStartedAt = Date.now();
 	      const [reviewSummaryResult, relatedProductsResult] = await Promise.allSettled([
@@ -20193,11 +20206,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        };
 	      }
 
-	      let relatedProducts = [];
+	      let relatedProducts = { items: [] };
 	      if (relatedProductsResult.status === 'fulfilled') {
-	        relatedProducts = Array.isArray(relatedProductsResult.value)
-	          ? relatedProductsResult.value
-	          : [];
+	        relatedProducts = relatedProductsResult.value && typeof relatedProductsResult.value === 'object'
+	          ? {
+	              ...relatedProductsResult.value,
+	              items: Array.isArray(relatedProductsResult.value.items)
+	                ? relatedProductsResult.value.items
+	                : [],
+	            }
+	          : { items: [] };
 	      } else if (wantsSimilar) {
 	        logger.warn(
 	          {
@@ -20475,7 +20493,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         });
       }
 
-      let relatedProducts = [];
+      let relatedProducts = { items: [] };
       if (pdpOptions.includeRecommendations) {
         const bypassCache =
           payload?.options?.no_cache === true ||
@@ -20494,13 +20512,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               bypass_cache: bypassCache,
             },
           });
-          relatedProducts = Array.isArray(rec?.items) ? rec.items : [];
+          relatedProducts = rec && typeof rec === 'object'
+            ? { ...rec, items: Array.isArray(rec.items) ? rec.items : [] }
+            : { items: [] };
         } catch (err) {
           logger.warn(
             { err: err?.message || String(err), merchantId, productId },
             'PDP recommendations failed; returning without recommendations module',
           );
-          relatedProducts = [];
+          relatedProducts = { items: [] };
         }
       }
 
@@ -26616,7 +26636,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         null;
       if (product) {
         const pdpOptions = getPdpOptions(payload);
-        let relatedProducts = [];
+        let relatedProducts = { items: [] };
         if (pdpOptions.includeRecommendations) {
           const bypassCache =
             payload?.options?.no_cache === true ||
@@ -26635,13 +26655,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 bypass_cache: bypassCache,
               },
             });
-            relatedProducts = Array.isArray(rec?.items) ? rec.items : [];
+            relatedProducts = rec && typeof rec === 'object'
+              ? { ...rec, items: Array.isArray(rec.items) ? rec.items : [] }
+              : { items: [] };
           } catch (err) {
             logger.warn(
               { err: err?.message || String(err), merchant_id: product.merchant_id, product_id: product.product_id },
               'PDP recommendations failed (get_product_detail include=pdp); continuing without recommendations module',
             );
-            relatedProducts = [];
+            relatedProducts = { items: [] };
           }
         }
         upstreamData = {

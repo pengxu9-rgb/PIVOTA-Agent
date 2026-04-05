@@ -8,9 +8,9 @@ describe('RecommendationEngine external candidate fetch', () => {
   test('uses focused brand/category candidates without dropping into recent fallback when pool is already sufficient', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 
-    const queryMock = jest.fn(async (_sql, params) => {
-      const predicate = String(params?.[3] || '');
-      if (predicate === 'tom ford beauty') {
+    const queryMock = jest.fn(async (sql, params) => {
+      const predicate = params?.[3];
+      if (String(predicate || '') === 'tom ford beauty') {
         return {
           rows: Array.from({ length: 18 }).map((_, index) => ({
             id: `eps_brand_${index + 1}`,
@@ -30,29 +30,13 @@ describe('RecommendationEngine external candidate fetch', () => {
           })),
         };
       }
-      if (predicate === 'serum') {
+      if (Array.isArray(predicate) && sql.includes('LIKE ANY($4::text[])')) {
         return { rows: [] };
       }
-      return {
-        rows: [
-          {
-            id: 'eps_recent_1',
-            external_product_id: 'ext_recent_1',
-            canonical_url: 'https://example.com/products/recent-1',
-            destination_url: 'https://example.com/products/recent-1',
-            domain: 'example.com',
-            title: 'Recent Pool Candidate',
-            image_url: 'https://example.com/recent-1.jpg',
-            price_amount: 42,
-            price_currency: 'USD',
-            availability: 'in_stock',
-            seed_brand: 'Other Brand',
-            seed_category: 'Serum',
-            seed_product_type: 'Serum',
-            seed_description: 'Should not be fetched',
-          },
-        ],
-      };
+      if (Array.isArray(predicate) && predicate.includes('serum')) {
+        return { rows: [] };
+      }
+      return { rows: [] };
     });
 
     jest.doMock('../../src/db', () => ({ query: queryMock }));
@@ -71,11 +55,11 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(queryMock.mock.calls.filter(([, params]) => Array.isArray(params) && params.length === 3)).toHaveLength(0);
   });
 
-  test('does not fall back to global recent candidates when focused pool underfills', async () => {
+  test('semantic category lane can add other-brand same-category candidates without reviving recent fallback', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 
-    const queryMock = jest.fn(async (_sql, params) => {
-      const predicate = String(params?.[3] || '');
+    const queryMock = jest.fn(async (sql, params) => {
+      const predicate = params?.[3];
       if (predicate === 'tom ford beauty') {
         return {
           rows: [
@@ -98,7 +82,124 @@ describe('RecommendationEngine external candidate fetch', () => {
           ],
         };
       }
-      if (predicate === 'cleanser') {
+      if (Array.isArray(predicate) && sql.includes('LIKE ANY($4::text[])')) {
+        return {
+          rows: [
+            {
+              id: 'eps_other_brand_cleanser',
+              external_product_id: 'ext_other_brand_cleanser',
+              canonical_url: 'https://example.com/products/gentle-face-wash',
+              destination_url: 'https://example.com/products/gentle-face-wash',
+              domain: 'example.com',
+              title: 'Other Brand Gentle Face Wash',
+              image_url: 'https://example.com/gentle-face-wash.jpg',
+              price_amount: 38,
+              price_currency: 'USD',
+              availability: 'in_stock',
+              seed_brand: 'Other Brand',
+              seed_category: '',
+              seed_product_type: '',
+              seed_description: 'A gentle cleansing gel for daily use',
+            },
+          ],
+        };
+      }
+      if (Array.isArray(predicate) && predicate.includes('cleanser')) {
+        return { rows: [] };
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchExternalCandidates({
+      brandHint: 'Tom Ford Beauty',
+      categoryHint: 'Cleanser',
+      limit: 120,
+      baseProduct: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_base_cleanser',
+        title: 'Tom Ford Cleansing Concentrate',
+        brand: 'Tom Ford Beauty',
+        category: 'Cleanser',
+        source: 'external_seed',
+      },
+    });
+
+    expect(products.map((product) => product.product_id)).toEqual(
+      expect.arrayContaining(['ext_brand_1', 'ext_other_brand_cleanser']),
+    );
+    expect(queryMock.mock.calls.filter(([, params]) => Array.isArray(params) && params.length === 3)).toHaveLength(0);
+  });
+
+  test('external base semantic rescue can infer missing category from the seed snapshot itself', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryMock = jest.fn(async () => ({
+      rows: [
+        {
+          id: 'eps_tf_cleanser',
+          external_product_id: 'ext_tf_cleanser',
+          title: 'TOM FORD RESEARCH Cleansing Concentrate',
+          canonical_url: 'https://example.com/products/cleansing-concentrate',
+          destination_url: 'https://example.com/products/cleansing-concentrate',
+          domain: 'example.com',
+          seed_data: {
+            brand: 'Tom Ford Beauty',
+            description: 'A luxurious daily cleanser.',
+          },
+        },
+      ],
+    }));
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const out = await _internals.enrichExternalBaseProduct({
+      merchant_id: 'external_seed',
+      product_id: 'ext_tf_cleanser',
+      source: 'external_seed',
+    });
+
+    expect(out.product.brand).toBe('Tom Ford Beauty');
+    expect(out.product.category).toBe('Cleanser');
+    expect(out.semantic?.rescue_fields).toEqual(expect.arrayContaining(['brand', 'category', 'description']));
+  });
+
+  test('does not fall back to global recent candidates when focused pool underfills', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryMock = jest.fn(async (sql, params) => {
+      const predicate = params?.[3];
+      if (predicate === 'tom ford beauty') {
+        return {
+          rows: [
+            {
+              id: 'eps_brand_1',
+              external_product_id: 'ext_brand_1',
+              canonical_url: 'https://example.com/products/cleanser-1',
+              destination_url: 'https://example.com/products/cleanser-1',
+              domain: 'example.com',
+              title: 'Tom Ford Cleansing Concentrate',
+              image_url: 'https://example.com/cleanser-1.jpg',
+              price_amount: 100,
+              price_currency: 'USD',
+              availability: 'in_stock',
+              seed_brand: 'Tom Ford Beauty',
+              seed_category: '',
+              seed_product_type: '',
+              seed_description: 'Focused cleanser candidate',
+            },
+          ],
+        };
+      }
+      if (Array.isArray(predicate) && sql.includes('LIKE ANY($4::text[])')) {
+        return { rows: [] };
+      }
+      if (Array.isArray(predicate) && predicate.includes('cleanser')) {
         return { rows: [] };
       }
       return {

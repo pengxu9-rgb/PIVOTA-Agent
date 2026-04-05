@@ -1363,10 +1363,19 @@ function buildReviewsPreview(product, options = {}) {
   };
 }
 
-function buildRecommendations(items, currencyFallback) {
+function buildRecommendations(input, currencyFallback) {
+  const items = Array.isArray(input) ? input : Array.isArray(input?.items) ? input.items : [];
+  const metadata = input && !Array.isArray(input) && typeof input === 'object' && input.metadata && typeof input.metadata === 'object'
+    ? input.metadata
+    : null;
+
   return {
-    strategy: 'related_products',
-    items: (items || []).map((p) => ({
+    strategy:
+      input && !Array.isArray(input) && typeof input === 'object' && String(input.strategy || '').trim()
+        ? String(input.strategy || '').trim()
+        : 'related_products',
+    ...(metadata ? { metadata } : {}),
+    items: items.map((p) => ({
       product_id: p.product_id || p.id,
       merchant_id: p.merchant_id || p.merchant?.id || p.merchant_uuid,
       title: p.title || p.name,
@@ -1406,8 +1415,13 @@ function buildPdpPayload(args) {
   const howToUseModule = buildHowToUseModule(product, detailSections);
   const productFactsSections = buildProductFactSections(product, detailSections, primaryDescription);
   const reviews = buildReviewsPreview(product, { includeEmpty: args.includeEmptyReviews });
-  const recommendations = args.relatedProducts?.length
-    ? buildRecommendations(args.relatedProducts, currency)
+  const relatedProducts = Array.isArray(args.relatedProducts)
+    ? { items: args.relatedProducts }
+    : args.relatedProducts && typeof args.relatedProducts === 'object'
+      ? { ...args.relatedProducts, items: Array.isArray(args.relatedProducts.items) ? args.relatedProducts.items : [] }
+      : { items: [] };
+  const recommendations = relatedProducts.items.length
+    ? buildRecommendations(relatedProducts, currency)
     : null;
   const brandStory = extractBrandStory(product, productFactsSections);
 
