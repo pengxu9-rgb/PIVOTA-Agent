@@ -161,7 +161,7 @@ jobs:
     name: Shopping Search + Discovery Runtime Smoke
     runs-on: ubuntu-latest
     needs: [unit]
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref_name == 'main')
     env:
       BASE_URL: ${{ inputs.base_url || vars.PIVOTA_AGENT_PUBLIC_BASE_URL || vars.AGENT_PUBLIC_BASE_URL || 'https://agent.pivota.cc' }}
       PROD_SMOKE_BASE_URL: ${{ vars.PIVOTA_AGENT_PROD_INVOKE_BASE_URL || vars.COMMERCE_CORE_PROD_SMOKE_BASE_URL || 'https://pivota-agent-production.up.railway.app' }}
