@@ -87,6 +87,104 @@ function normalizeText(input) {
     .trim();
 }
 
+function normalizeCurrency(value, fallback = '') {
+  const text = String(value || '').trim();
+  if (!text) return String(fallback || '').trim().toUpperCase();
+  const upper = text.toUpperCase();
+  if (upper === '$' || upper === 'USD' || /USD|DOLLAR|美元|美金/.test(upper)) return 'USD';
+  if (upper === '€' || upper === 'EUR' || /EUR|EURO|欧元/.test(upper)) return 'EUR';
+  if (upper === '£' || upper === 'GBP' || /GBP|POUND|英镑/.test(upper)) return 'GBP';
+  if (
+    upper === '¥' ||
+    upper === '￥' ||
+    upper === 'CNY' ||
+    upper === 'RMB' ||
+    /人民币|元/.test(String(value || ''))
+  ) {
+    return 'CNY';
+  }
+  if (upper === 'JPY' || /YEN|円|日元|日圆/.test(String(value || ''))) return 'JPY';
+  return upper || String(fallback || '').trim().toUpperCase();
+}
+
+function getProductPriceMajor(product) {
+  if (!product || typeof product !== 'object') return NaN;
+  const majorCandidates = [
+    product.price,
+    product.sale_price,
+    product.salePrice,
+    product.unit_price,
+    product.unitPrice,
+    product.price_amount,
+    product.priceAmount,
+    product.pricing?.current?.amount,
+  ];
+  for (const raw of majorCandidates) {
+    const n = typeof raw === 'number' ? raw : Number(String(raw || '').trim());
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  const minorCandidates = [
+    product.price_cents,
+    product.priceCents,
+    product.amount_minor,
+    product.amountMinor,
+  ];
+  for (const raw of minorCandidates) {
+    const n = typeof raw === 'number' ? raw : Number(String(raw || '').trim());
+    if (Number.isFinite(n) && n > 0) return n / 100;
+  }
+  return NaN;
+}
+
+function getProductPriceCurrency(product, fallback = '') {
+  if (!product || typeof product !== 'object') {
+    return normalizeCurrency(fallback, '') || '';
+  }
+  return normalizeCurrency(
+    product.currency ||
+      product.price_currency ||
+      product.priceCurrency ||
+      product.pricing?.current?.currency,
+    fallback,
+  );
+}
+
+function parseBudgetConstraintFromQuery(query) {
+  const text = String(query || '').trim();
+  if (!text) return null;
+  const patterns = [
+    /\b(?:under|below|less than|up to|max(?:imum)?|<=?)\s*(\$|€|£|¥|￥)\s*([0-9]+(?:\.[0-9]+)?)/i,
+    /\b(?:under|below|less than|up to|max(?:imum)?|<=?)\s*([0-9]+(?:\.[0-9]+)?)\s*(usd|eur|gbp|cny|jpy)\b/i,
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (!match) continue;
+    const [, left, right] = match;
+    const symbolOrCurrency = pattern === patterns[0] ? left : right;
+    const amountText = pattern === patterns[0] ? right : left;
+    const amount = Number(amountText);
+    const currency = normalizeCurrency(symbolOrCurrency, '');
+    if (Number.isFinite(amount) && amount > 0 && currency) {
+      return { max: amount, currency };
+    }
+  }
+  return null;
+}
+
+function resolveBudgetMaxForCurrency(budgetConstraint, candidateCurrency, metadata = {}) {
+  if (!budgetConstraint || !(Number(budgetConstraint.max) > 0)) return null;
+  const sourceCurrency = normalizeCurrency(budgetConstraint.currency, '');
+  const targetCurrency = normalizeCurrency(candidateCurrency, sourceCurrency);
+  if (!sourceCurrency || !targetCurrency) return null;
+  if (sourceCurrency === targetCurrency) return Number(budgetConstraint.max);
+  const metadataCurrency = normalizeCurrency(metadata.budget_fx_candidate_currency, '');
+  const fxRate = Number(metadata.budget_fx_rate);
+  if (metadataCurrency === targetCurrency && Number.isFinite(fxRate) && fxRate > 0) {
+    return Math.round(Number(budgetConstraint.max) * fxRate * 100) / 100;
+  }
+  return null;
+}
+
 function normalizeCase(rawCase, defaultSource, fallbackId = '') {
   if (typeof rawCase === 'string') {
     return {
@@ -100,6 +198,7 @@ function normalizeCase(rawCase, defaultSource, fallbackId = '') {
       must_not_return_titles: [],
       must_return_titles: [],
       must_return_one_of_titles: [],
+      must_respect_budget: false,
       must_have_reason_codes: [],
       must_equal_metadata: {},
       must_be_positive_metadata: [],
@@ -145,6 +244,7 @@ function normalizeCase(rawCase, defaultSource, fallbackId = '') {
     must_return_one_of_titles: Array.isArray(rawCase?.must_return_one_of_titles)
       ? rawCase.must_return_one_of_titles.map((item) => String(item || '').trim()).filter(Boolean)
       : [],
+    must_respect_budget: rawCase?.must_respect_budget === true,
     must_have_reason_codes: Array.isArray(rawCase?.must_have_reason_codes)
       ? rawCase.must_have_reason_codes.map((item) => String(item || '').trim()).filter(Boolean)
       : [],
@@ -401,6 +501,35 @@ function evaluateCase(row) {
     });
     if (!hasAllowedTitle) {
       reasons.push(`missing_required_title:${mustReturnOneOf.join(' | ')}`);
+    }
+  }
+
+  if (spec.must_respect_budget === true) {
+    const budgetConstraint = parseBudgetConstraintFromQuery(spec.query);
+    if (!budgetConstraint) {
+      reasons.push('budget_constraint_unparsed');
+    } else {
+      for (const product of products) {
+        const price = getProductPriceMajor(product);
+        if (!Number.isFinite(price)) continue;
+        const currency = getProductPriceCurrency(
+          product,
+          metadata.budget_fx_candidate_currency || budgetConstraint.currency,
+        );
+        const resolvedMax = resolveBudgetMaxForCurrency(budgetConstraint, currency, metadata);
+        if (!(Number.isFinite(resolvedMax) && resolvedMax > 0)) {
+          reasons.push(`budget_constraint_unresolved:${currency || 'unknown_currency'}`);
+          continue;
+        }
+        if (price - resolvedMax > 1e-9) {
+          const title =
+            String(product?.title || product?.name || product?.display_name || product?.product_id || 'unknown').trim() ||
+            'unknown';
+          reasons.push(
+            `over_budget_product:${title}@${price}${currency || ''}:max=${resolvedMax}${currency || ''}`,
+          );
+        }
+      }
     }
   }
 

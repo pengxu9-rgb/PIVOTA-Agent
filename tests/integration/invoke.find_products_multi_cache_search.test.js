@@ -2672,6 +2672,23 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
             image_url: 'https://cdn.example.com/vitamin-c-serum.jpg',
             source: 'external_seed',
           },
+          {
+            id: 'prod_vitc_direct_2',
+            product_id: 'prod_vitc_direct_2',
+            merchant_id: 'external_seed',
+            title: 'Vitamin-C Serum Premium',
+            description: 'Explicit vitamin c serum above budget.',
+            category: 'serum',
+            product_type: 'serum',
+            brand: 'Test Brand',
+            price: 40,
+            currency: 'USD',
+            canonical_url: 'https://example.com/products/vitamin-c-serum-premium',
+            destination_url: 'https://example.com/products/vitamin-c-serum-premium',
+            url: 'https://example.com/products/vitamin-c-serum-premium',
+            image_url: 'https://cdn.example.com/vitamin-c-serum-premium.jpg',
+            source: 'external_seed',
+          },
         ],
         diagnostics: {
           ingredient_intent_detected: true,
@@ -2746,14 +2763,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         allowFamilyFallback: true,
       }),
     );
-    expect(resp.body.products).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          product_id: 'prod_vitc_direct_1',
-          title: 'Vitamin-C Serum',
-        }),
-      ]),
-    );
+    expect(resp.body.products.map((item) => item.product_id)).toEqual(['prod_vitc_direct_1']);
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
         query_source: 'agent_products_ingredient_recall_direct',
@@ -2761,6 +2771,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         strict_constraint_reason: 'multi_constraint',
         ingredient_intents: ['ascorbic_acid'],
         matched_ingredient_ids: ['ascorbic_acid'],
+        budget_fx_applied: true,
+        budget_fx_candidate_currency: 'USD',
+        budget_fx_unresolved: false,
         contract_bridge: expect.objectContaining({
           resolved_contract: 'shop_invoke_strict',
         }),
@@ -4327,7 +4340,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
             product_id: 'prod_sweater_striped_1',
             merchant_id: 'merch_fashion_1',
             title: 'Warm Fall/Winter Striped Knitted Sweater',
-            description: 'Striped knitted sweater for pets.',
+            description: 'Striped knitted sweater for everyday wear.',
             status: 'active',
             inventory_quantity: 6,
           },

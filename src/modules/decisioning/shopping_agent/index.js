@@ -51,7 +51,19 @@ function createShoppingAgentDecisioningRuntime(deps = {}) {
       : true;
 
   function shouldApplyFindProductsMultiPolicyForQuery({ intent, rawQuery, responseMetadata }) {
+    const metadata =
+      responseMetadata && typeof responseMetadata === 'object' && !Array.isArray(responseMetadata)
+        ? responseMetadata
+        : {};
     if (intent) return true;
+    if (metadata.strict_constraint_query === true) return true;
+    if (
+      metadata.budget_fx_applied != null ||
+      metadata.budget_fx_rate != null ||
+      metadata.budget_fx_candidate_currency != null
+    ) {
+      return true;
+    }
     return hasFashionConstraintQuerySignalImpl(rawQuery, responseMetadata);
   }
 

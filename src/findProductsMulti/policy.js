@@ -1005,26 +1005,40 @@ function buildFashionConstraintMetadata({ rawQuery, products, existingMetadata }
   } = buildFashionConstraintState(rawQuery, existingMeta);
   if (!hasFashionConstraintSignal) return {};
 
-  const matchedVisibleCategories = Array.isArray(existingMeta.matched_visible_categories)
+  const existingMatchedVisibleCategories = Array.isArray(existingMeta.matched_visible_categories)
     ? existingMeta.matched_visible_categories.map((item) => String(item || '')).filter(Boolean)
-    : matchLabelsFromProducts(products, visibleCategoryIntents, FASHION_VISIBLE_CATEGORY_RULES, (product) =>
-        buildProductText(product),
-      );
-  const matchedVisibleAttributeLabels = Array.isArray(existingMeta.matched_visible_attribute_labels)
+    : null;
+  const matchedVisibleCategories =
+    existingMatchedVisibleCategories && existingMatchedVisibleCategories.length > 0
+      ? existingMatchedVisibleCategories
+      : matchLabelsFromProducts(products, visibleCategoryIntents, FASHION_VISIBLE_CATEGORY_RULES, (product) =>
+          buildProductText(product),
+        );
+  const existingMatchedVisibleAttributeLabels = Array.isArray(
+    existingMeta.matched_visible_attribute_labels,
+  )
     ? existingMeta.matched_visible_attribute_labels.map((item) => String(item || '')).filter(Boolean)
-    : matchLabelsFromProducts(products, visibleAttributeIntents, FASHION_VISIBLE_ATTRIBUTE_RULES, (product) =>
-        buildProductText(product),
-      );
-  const matchedVisibleOptionLabels = Array.isArray(existingMeta.matched_visible_option_labels)
+    : null;
+  const matchedVisibleAttributeLabels =
+    existingMatchedVisibleAttributeLabels && existingMatchedVisibleAttributeLabels.length > 0
+      ? existingMatchedVisibleAttributeLabels
+      : matchLabelsFromProducts(products, visibleAttributeIntents, FASHION_VISIBLE_ATTRIBUTE_RULES, (product) =>
+          buildProductText(product),
+        );
+  const existingMatchedVisibleOptionLabels = Array.isArray(existingMeta.matched_visible_option_labels)
     ? existingMeta.matched_visible_option_labels.map((item) => String(item || '')).filter(Boolean)
-    : [
-        ...matchLabelsFromProducts(products, visibleOptionIntents, FASHION_VISIBLE_SIZE_OPTION_RULES, (product) =>
-          collectProductOptionText(product),
-        ),
-        ...matchLabelsFromProducts(products, visibleOptionIntents, FASHION_VISIBLE_COLOR_OPTION_RULES, (product) =>
-          `${buildProductText(product)} ${collectProductOptionText(product)}`,
-        ),
-      ];
+    : null;
+  const matchedVisibleOptionLabels =
+    existingMatchedVisibleOptionLabels && existingMatchedVisibleOptionLabels.length > 0
+      ? existingMatchedVisibleOptionLabels
+      : [
+          ...matchLabelsFromProducts(products, visibleOptionIntents, FASHION_VISIBLE_SIZE_OPTION_RULES, (product) =>
+            collectProductOptionText(product),
+          ),
+          ...matchLabelsFromProducts(products, visibleOptionIntents, FASHION_VISIBLE_COLOR_OPTION_RULES, (product) =>
+            `${buildProductText(product)} ${collectProductOptionText(product)}`,
+          ),
+        ];
 
   return {
     visible_category_intents: visibleCategoryIntents,
@@ -4788,6 +4802,56 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     String(rawUserQuery || '').trim() ||
     String(requestPayload?.search?.query || '').trim() ||
     '';
+  const intentHasHardPriceConstraint =
+    Number.isFinite(Number(intent?.hard_constraints?.price?.min)) ||
+    Number.isFinite(Number(intent?.hard_constraints?.price?.max));
+  const shouldBackfillIntentFromRawQuery =
+    Boolean(rawQuery) &&
+    (
+      !intent ||
+      !intentHasHardPriceConstraint
+    );
+  if (shouldBackfillIntentFromRawQuery) {
+    const deterministicIntentWithMeta = buildDeterministicIntentWithMeta(
+      rawQuery,
+      [],
+      Array.isArray(requestPayload?.messages) ? requestPayload.messages : [],
+      'policy_missing_intent',
+    );
+    const deterministicIntent = deterministicIntentWithMeta?.intent || null;
+    if (!intent) {
+      intent = deterministicIntent;
+    } else if (deterministicIntent) {
+      const deterministicHardConstraints =
+        deterministicIntent.hard_constraints &&
+        typeof deterministicIntent.hard_constraints === 'object' &&
+        !Array.isArray(deterministicIntent.hard_constraints)
+          ? deterministicIntent.hard_constraints
+          : {};
+      const deterministicPrice =
+        deterministicHardConstraints.price &&
+        typeof deterministicHardConstraints.price === 'object' &&
+        !Array.isArray(deterministicHardConstraints.price) &&
+        (
+          deterministicHardConstraints.price.min != null ||
+          deterministicHardConstraints.price.max != null
+        )
+          ? deterministicHardConstraints.price
+          : null;
+      if (deterministicPrice && !intentHasHardPriceConstraint) {
+        intent = {
+          ...intent,
+          hard_constraints: {
+            ...(deterministicHardConstraints || {}),
+            ...(intent?.hard_constraints && typeof intent.hard_constraints === 'object'
+              ? intent.hard_constraints
+              : {}),
+            price: deterministicPrice,
+          },
+        };
+      }
+    }
+  }
   const semanticContract = normalizeSearchSemanticContract(
     requestPayload?.search?.semantic_contract ||
       requestPayload?.search?.semanticContract ||
@@ -5730,6 +5794,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
 module.exports = {
   buildFindProductsMultiContext,
   applyFindProductsMultiPolicy,
+  buildFashionConstraintMetadata,
   BEAUTY_DISCOVERY_CONTRACT_OWNER,
   BEAUTY_DISCOVERY_MAINLINE_OWNER,
   buildBeautyDiscoverySemanticContract,
