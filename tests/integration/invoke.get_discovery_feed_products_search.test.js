@@ -199,4 +199,72 @@ describe('/agent/shop/v1/invoke get_discovery_feed via products/search', () => {
     );
     expect(capturedParams.some((params) => /Tom Ford Beauty/i.test(String(params.query || '')))).toBe(true);
   });
+
+  test('accepts brand category scope and returns category facets for brand discovery', async () => {
+    nock('http://catalog.test')
+      .matchHeader('x-api-key', 'test-token')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .times(2)
+      .reply(200, {
+        products: [
+          {
+            merchant_id: 'm1',
+            product_id: 'rose_prick',
+            title: 'Rose Prick Eau de Parfum',
+            brand: 'Tom Ford Beauty',
+            category: 'Fragrance',
+            product_type: 'Perfume',
+            inventory_quantity: 12,
+            price: 410,
+            status: 'active',
+          },
+          {
+            merchant_id: 'm2',
+            product_id: 'soleil',
+            title: 'Soleil Summer Lip Balm',
+            brand: 'Tom Ford Beauty',
+            category: 'Makeup',
+            product_type: 'Lip Balm',
+            inventory_quantity: 8,
+            price: 62,
+            status: 'active',
+          },
+        ],
+      });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'get_discovery_feed',
+        payload: {
+          surface: 'browse_products',
+          page: 1,
+          limit: 12,
+          sort: 'popular',
+          scope: {
+            brand_names: ['Tom Ford Beauty'],
+            categories: ['lip balm'],
+          },
+          context: {
+            locale: 'en-US',
+          },
+        },
+      })
+      .expect(200);
+
+    expect(res.body.products.map((product) => product.product_id)).toEqual(['soleil']);
+    expect(res.body.metadata).toEqual(
+      expect.objectContaining({
+        brand_scope_applied: ['Tom Ford Beauty'],
+        category_scope_applied: ['lip balm'],
+        facets: {
+          categories: [
+            expect.objectContaining({ value: 'lip balm', label: 'Lip Balm', count: 1 }),
+            expect.objectContaining({ value: 'perfume', label: 'Perfume', count: 1 }),
+          ],
+        },
+      }),
+    );
+  });
 });
