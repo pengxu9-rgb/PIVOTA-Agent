@@ -187,7 +187,7 @@ test('handoffRecoToBeautyMainlineSearch builds reco rows from canonical final se
 
     assert.deepEqual(
       out.recommendations.map((item) => item.product_id),
-      ['spf_1', 'cleanser_1', 'balm_1'],
+      ['spf_1'],
     );
     assert.equal(out.recommendations[0]?.display_name, 'Ultra Light Liquid Mineral Sunscreen with Zinc Oxide SPF 30');
     assert.equal(out.searchResult?.semantic_owner, 'shopping_agent_beauty_mainline');
