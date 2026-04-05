@@ -22,6 +22,9 @@ function makeProduct({
   price = 20,
   currency = 'USD',
   inventory_quantity = 10,
+  canonical_url,
+  destination_url,
+  url,
 } = {}) {
   return {
     merchant_id,
@@ -34,6 +37,9 @@ function makeProduct({
     price,
     currency,
     inventory_quantity,
+    ...(canonical_url ? { canonical_url } : {}),
+    ...(destination_url ? { destination_url } : {}),
+    ...(url ? { url } : {}),
     status: 'active',
   };
 }
@@ -346,6 +352,67 @@ describe('discovery feed service', () => {
     ]);
     expect(response.metadata.candidate_source).toBe('override+brand_direct');
     expect(recommendCalls).toBe(0);
+  });
+
+  test('brand-scoped discovery dedupes repeated external seed products by canonical identity', async () => {
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        sort: 'popular',
+        scope: {
+          brand_names: ['Tom Ford Beauty'],
+        },
+        context: {
+          locale: 'en-US',
+        },
+      },
+      {
+        candidateProducts: [
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'soleil_1',
+            title: 'Soleil Summer Lip Balm',
+            brand: 'Tom Ford Beauty',
+            category: 'Makeup',
+            product_type: 'Lip Balm',
+            canonical_url: 'https://www.tomfordbeauty.com/products/soleil-summer-lip-balm?variant=1',
+          }),
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'soleil_2',
+            title: 'Soleil Summer Lip Balm',
+            brand: 'Tom Ford',
+            category: 'Makeup',
+            product_type: 'Lip Balm',
+            canonical_url: 'https://www.tomfordbeauty.com/products/soleil-summer-lip-balm?variant=2',
+          }),
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'soleil_3',
+            title: 'Soleil Summer Lip Balm',
+            brand: 'Tom Ford Beauty',
+            category: 'Makeup',
+            product_type: 'Lip Balm',
+            destination_url: 'https://www.tomfordbeauty.com/products/soleil-summer-lip-balm',
+          }),
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'rose_prick',
+            title: 'Rose Prick Eau de Parfum',
+            brand: 'Tom Ford Beauty',
+            category: 'Fragrance',
+            product_type: 'Perfume',
+          }),
+        ],
+      },
+    );
+
+    expect(response.products.map((product) => product.product_id)).toEqual([
+      'soleil_1',
+      'rose_prick',
+    ]);
   });
 
   test('brand-scoped discovery falls back to source-product recommendations when brand pool is empty', async () => {

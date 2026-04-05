@@ -222,6 +222,47 @@ function buildProductKey(merchantId, productId) {
   return mid && pid ? `${mid}::${pid}` : '';
 }
 
+function normalizeProductUrlForDedupe(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  try {
+    const parsed = new URL(raw);
+    parsed.hash = '';
+    parsed.search = '';
+    return parsed.toString().replace(/\/+$/, '');
+  } catch {
+    return raw.replace(/[?#].*$/, '').replace(/\/+$/, '');
+  }
+}
+
+function buildExternalSemanticProductKey(product) {
+  const canonicalUrl = normalizeProductUrlForDedupe(
+    product?.canonical_url || product?.url || product?.destination_url,
+  );
+  if (canonicalUrl) return `external_url::${canonicalUrl}`;
+
+  const brand = normalizeBrandText(
+    product?.brand ||
+      product?.brand_name ||
+      product?.vendor ||
+      product?.vendor_name ||
+      product?.manufacturer ||
+      '',
+  );
+  const title = normalizeText(product?.title || product?.name || '');
+  if (brand && title) return `external_title::${brand}::${title}`;
+  if (title) return `external_title::${title}`;
+  return '';
+}
+
+function buildDiscoveryDedupKey(product, { brandScoped = false } = {}) {
+  const merchantId = String(product?.merchant_id || product?.merchantId || '').trim();
+  const productId = String(product?.product_id || product?.productId || product?.id || '').trim();
+  const baseKey = buildProductKey(merchantId, productId);
+  if (!brandScoped || merchantId !== EXTERNAL_SEED_MERCHANT_ID) return baseKey;
+  return buildExternalSemanticProductKey(product) || baseKey;
+}
+
 function normalizeCacheText(value) {
   return normalizeText(value || '').slice(0, 120);
 }
@@ -1213,26 +1254,25 @@ async function loadProductsSearchCandidates({ request, profile, limit = MAX_CAND
   }
 
   const recallPlan = buildDiscoveryRecallPlan(request, profile, safeLimit);
-  const mergedProducts = [];
-  const seenKeys = new Set();
-  const recallSummary = [];
+    const mergedProducts = [];
+    const seenKeys = new Set();
+    const brandScoped = Array.isArray(request?.scope?.brand_names) && request.scope.brand_names.length > 0;
+    const recallSummary = [];
   let successCount = 0;
   const recallStartedAt = Date.now();
   const recallBudgetMs = getDiscoveryRecallBudgetMs();
   const enoughThreshold = getRecallEnoughThreshold(request, safeLimit);
   let truncatedByBudget = false;
 
-  const mergeProducts = (products) => {
-    for (const product of Array.isArray(products) ? products : []) {
-      const merchantId = String(product?.merchant_id || product?.merchantId || '').trim();
-      const productId = String(product?.product_id || product?.productId || product?.id || '').trim();
-      const key = buildProductKey(merchantId, productId);
-      if (!key || seenKeys.has(key)) continue;
-      seenKeys.add(key);
-      mergedProducts.push(product);
-      if (mergedProducts.length >= safeLimit) break;
-    }
-  };
+    const mergeProducts = (products) => {
+      for (const product of Array.isArray(products) ? products : []) {
+        const key = buildDiscoveryDedupKey(product, { brandScoped });
+        if (!key || seenKeys.has(key)) continue;
+        seenKeys.add(key);
+        mergedProducts.push(product);
+        if (mergedProducts.length >= safeLimit) break;
+      }
+    };
 
   if (request?.surface === 'home_hot_deals' && recallPlan.length > 1) {
     const stepResults = await Promise.all(
@@ -1931,6 +1971,28 @@ function formatDiscoveryResponseProduct(candidate) {
   };
 }
 
+function buildNormalizedCandidateKey(candidate, { brandScoped = false } = {}) {
+  if (!candidate || typeof candidate !== 'object') return '';
+  return buildDiscoveryDedupKey(
+    {
+      merchant_id: candidate.raw?.merchant_id || candidate.merchantId,
+      product_id: candidate.raw?.product_id || candidate.productId,
+      id: candidate.raw?.id || candidate.productId,
+      canonical_url: candidate.raw?.canonical_url,
+      destination_url: candidate.raw?.destination_url,
+      url: candidate.raw?.url,
+      brand: candidate.raw?.brand || candidate.brand,
+      brand_name: candidate.raw?.brand_name,
+      vendor: candidate.raw?.vendor,
+      vendor_name: candidate.raw?.vendor_name,
+      manufacturer: candidate.raw?.manufacturer,
+      title: candidate.raw?.title || candidate.raw?.name,
+      name: candidate.raw?.name,
+    },
+    { brandScoped },
+  );
+}
+
 function buildCandidateCounts({
   raw,
   normalized,
@@ -2098,10 +2160,13 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
 
     let normalizedCandidates = [];
     const seenKeys = new Set();
+    const brandScoped = brandScopeAliases.length > 0;
     for (let idx = 0; idx < effectiveRawCandidates.length; idx += 1) {
       const normalized = normalizeCandidateProduct(effectiveRawCandidates[idx], idx);
-      if (!normalized || seenKeys.has(normalized.key)) continue;
-      seenKeys.add(normalized.key);
+      if (!normalized) continue;
+      const dedupKey = buildNormalizedCandidateKey(normalized, { brandScoped });
+      if (!dedupKey || seenKeys.has(dedupKey)) continue;
+      seenKeys.add(dedupKey);
       normalizedCandidates.push(normalized);
     }
     let scopedCandidates =
@@ -2122,8 +2187,10 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
         seenKeys.clear();
         for (let idx = 0; idx < effectiveRawCandidates.length; idx += 1) {
           const normalized = normalizeCandidateProduct(effectiveRawCandidates[idx], idx);
-          if (!normalized || seenKeys.has(normalized.key)) continue;
-          seenKeys.add(normalized.key);
+          if (!normalized) continue;
+          const dedupKey = buildNormalizedCandidateKey(normalized, { brandScoped });
+          if (!dedupKey || seenKeys.has(dedupKey)) continue;
+          seenKeys.add(dedupKey);
           normalizedCandidates.push(normalized);
         }
         scopedCandidates = normalizedCandidates.filter((candidate) =>
