@@ -31934,6 +31934,13 @@ function upsertSkinLogForIdentityForRoute(identity, payload) {
   return resolveAuroraRouteDependency('upsertSkinLogForIdentity', upsertSkinLogForIdentity)(identity, payload);
 }
 
+function maybeHandleBeautyOwnedChatRecoForRoute(args) {
+  return resolveAuroraRouteDependency(
+    'maybeHandleBeautyOwnedChatReco',
+    maybeHandleBeautyOwnedChatReco,
+  )(args);
+}
+
 function loadLatestDiagnosisArtifactForRouteWithOverride(args) {
   return resolveAuroraRouteDependency('loadLatestDiagnosisArtifactForRoute', loadLatestDiagnosisArtifactForRoute)(args);
 }
@@ -80635,7 +80642,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         return sendChatEnvelope(envelope);
       }
 
-      const beautyOwnedRecoResponse = await maybeHandleBeautyOwnedChatReco({
+      const beautyOwnedRecoResponse = await maybeHandleBeautyOwnedChatRecoForRoute({
         ctx,
         logger,
         message: recoRequestMessage || message,
@@ -80655,11 +80662,45 @@ function mountAuroraBffRoutes(app, { logger }) {
         return sendChatEnvelope(beautyOwnedRecoResponse.envelope);
       }
 
+      const legacyBeautyOwnedRecoRouteBlocked =
+        RECO_CATALOG_GROUNDED_ENABLED &&
+        !forceUpstreamAfterPendingAbandon &&
+        !ingredientDrivenRecommendationRequested &&
+        recoEntrySourceDetail !== 'travel_handoff' &&
+        (
+          typedRecoOwnershipKeepsV1Mainline ||
+          actionId === 'chip.start.reco_products' ||
+          actionId === 'chip_get_recos' ||
+          looksLikeRecommendationRequest(message) ||
+          (
+            hasRecoContextForAutoRerun &&
+            (
+              budgetChipCanContinueReco ||
+              profileClarificationAction ||
+              shouldAutoRerunRecommendationsFromProfilePatch
+            )
+          )
+        );
+      if (legacyBeautyOwnedRecoRouteBlocked) {
+        return sendChatEnvelope(
+          buildBeautyMainlineHandoffFallbackEnvelope({
+            ctx,
+            fallback: {
+              fallback_reason: 'beauty_mainline_handoff_required',
+              notice_reason: 'upstream_empty_recommendations',
+              mainline_status: 'needs_more_context',
+            },
+            suggestedChips: [],
+          }),
+        );
+      }
+
       // If user explicitly asks for product recommendations (via chip OR explicit free text), generate them deterministically
       // (some upstream chat flows only return clarifying chips without a recommendations card).
       const wantsProductRecommendations =
         !forceUpstreamAfterPendingAbandon &&
         allowRecoCards &&
+        !legacyBeautyOwnedRecoRouteBlocked &&
         (!looksLikeIngredientScienceIntent(message, normalizedActionPayload) || ingredientRecoOptInRequested) &&
         !looksLikeRoutineRequest(message, normalizedActionPayload) &&
         !looksLikeSuitabilityRequest(message) &&
