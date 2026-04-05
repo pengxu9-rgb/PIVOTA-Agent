@@ -45,6 +45,15 @@ const INGREDIENT_DISCLAIMER_PATTERNS = [
   /\bplease refer to the ingredient list[\s\S]*$/i,
   /\bfor the most up-to-date information[\s\S]*$/i,
 ];
+const INGREDIENT_ITEM_NOISE_PATTERNS = [
+  /\bplease be aware\b/i,
+  /\bplease refer to\b/i,
+  /\bfor the most up-to-date information\b/i,
+  /\bhelp create a soothing lather\b/i,
+  /\bcaffeine-containing ingredients\b/i,
+  /\bhighly prized japanese tea\b/i,
+  /\btom ford research\b/i,
+];
 const UI_CHROME_IMAGE_FILENAME_RE =
   /^(?:menu|close|search|cart|account|icon[-_](?:search|cart|account)|tf_logo|logo)\.(?:svg|ico|gif)$/i;
 
@@ -748,6 +757,52 @@ function sanitizeIngredientRawText(value) {
   return text;
 }
 
+function cleanIngredientItem(value) {
+  return normalizeTextValue(value)
+    .replace(/^full ingredients[:\s-]*/i, '')
+    .replace(/^ingredients(?:\s*\(inci\))?[:\s-]*/i, '')
+    .trim();
+}
+
+function isLikelyIngredientNoise(value) {
+  const normalized = cleanIngredientItem(value);
+  if (!normalized) return false;
+  if (INGREDIENT_ITEM_NOISE_PATTERNS.some((pattern) => pattern.test(normalized))) return true;
+  if (/^-\s*/.test(normalized) && /:/.test(normalized)) return true;
+  return false;
+}
+
+function normalizeIngredientItems(values, maxItems = 48) {
+  const out = [];
+  const seen = new Set();
+  const normalizedValues =
+    typeof values === 'string'
+      ? values.split(/[,\n;|•]+/)
+      : Array.isArray(values)
+        ? values
+        : [];
+  for (const value of normalizedValues) {
+    const normalized =
+      typeof value === 'string'
+        ? cleanIngredientItem(value)
+        : cleanIngredientItem(
+            value?.name ||
+              value?.label ||
+              value?.title ||
+              value?.ingredient ||
+              value?.value ||
+              value?.text,
+          );
+    if (!normalized || isLikelyIngredientNoise(normalized)) continue;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(normalized);
+    if (out.length >= Math.max(1, Number(maxItems) || 48)) break;
+  }
+  return out;
+}
+
 function normalizeStringList(values, maxItems = 48) {
   const out = [];
   const seen = new Set();
@@ -937,7 +992,7 @@ function shouldSuppressLowConfidenceActiveIngredients(product, items, ingredient
   if (detectTemplateHint(product) !== 'beauty') return false;
   if (isRegulatoryActiveIngredientSource(sourceMeta, rawText)) return false;
   const qualityStatus = String(sourceMeta?.source_quality_status || '').trim().toLowerCase();
-  if (qualityStatus === 'reviewed' || qualityStatus === 'captured' || qualityStatus === 'high') {
+  if (qualityStatus === 'reviewed' || qualityStatus === 'high') {
     return false;
   }
   const activeCount = Array.isArray(items) ? items.length : 0;
@@ -952,6 +1007,8 @@ function shouldSuppressLowConfidenceActiveIngredients(product, items, ingredient
   const subsetOfIngredients =
     activeKeys.length > 0 && activeKeys.every((item) => ingredientKeys.has(item));
   if (activeCount <= 1 && ingredientsCount >= 4) return true;
+  if (subsetOfIngredients && activeCount <= 3 && ingredientsCount >= 8) return true;
+  if (qualityStatus === 'captured') return false;
   return (
     !normalizeTextValue(rawText) &&
     activeCount <= 3 &&
@@ -969,20 +1026,24 @@ function buildIngredientsModule(product, detailSections) {
     null;
   const rawText =
     sanitizeIngredientRawText(directIngredientsPayload?.raw_text || directIngredientsPayload?.text) ||
-    normalizeTextValue(product.raw_ingredient_text_clean) ||
+    sanitizeIngredientRawText(product.raw_ingredient_text_clean) ||
     sanitizeIngredientRawText(product.pdp_ingredients_raw) ||
     sanitizeIngredientRawText(
       detailSections.find((section) => matchesSectionHeading(section, INGREDIENT_SECTION_HEADING_RE))
         ?.content,
     );
-  const directItems = normalizeStringList(
+  const directItems = normalizeIngredientItems(
     directIngredientsPayload?.items || directIngredientsPayload?.list || directIngredientsPayload,
   );
-  const inciItems = normalizeStringList(product.inci_list);
-  const tokenItems = normalizeStringList(product.ingredient_tokens);
+  const inciItems = normalizeIngredientItems(product.inci_list);
+  const tokenItems = normalizeIngredientItems(product.ingredient_tokens);
   const parsedRawItems = splitIngredientsText(rawText);
-  const normalizedItems = directItems.length
-    ? normalizeStringList([...directItems, ...parsedRawItems])
+  const preferParsedRawItems =
+    parsedRawItems.length >= 8 && directItems.some((item) => isLikelyIngredientNoise(item));
+  const normalizedItems = preferParsedRawItems
+    ? parsedRawItems
+    : directItems.length
+    ? normalizeIngredientItems([...directItems, ...parsedRawItems])
     : inciItems.length
     ? inciItems
     : tokenItems.length

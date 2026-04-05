@@ -258,6 +258,8 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
   });
 
   test('cleans polluted Tom Ford external-seed sections before emitting canonical PDP modules', () => {
+    const pollutedIngredientRaw =
+      'Key Ingredients Sodium PCA, Glycerin, Hyaluronic Acid, and Algae Extract help create a soothing lather. Tom Ford Research’s caffeine-containing ingredients: - White Porcelain Cacao: A rare variety of cacao - Caffeine: At heightened concentrations utilized by Tom Ford Research - Gyokuro: A highly prized Japanese tea Ingredients: Water Aqua Eau, Glycerin, Myristic Acid, Behenic Acid, Sodium Methyl Cocoyl Taurate, Palmitic Acid, Potassium Hydroxide, Lauric Acid, Stearic Acid, Tocopheryl Acetate, Sodium Hyaluronate, Cucumis Sativus (cucumber) Fruit Extract, Pyrus Malus (apple) Fruit Extract, Scutellaria Baicalensis Root Extract, Camellia Sinensis Leaf Extract, Algae Extract, Sorbitol, Caffeine, Sodium Pca, Theobroma Cacao (cocoa) Seed Extract, Magnesium Nitrate, Sodium Sulfite, Sucrose, Sodium Metabisulfite, Peg-3 Distearate, Butylene Glycol, Fragrance (parfum), Limonene, Linalool, Bht, Tetrasodium Edta, Disodium Edta, Phenoxyethanol, Methylchloroisothiazolinone, Methylisothiazolinone, Mica, Titanium Dioxide (ci 77891), Iron Oxides (ci 77491) Please be aware that ingredient lists & safety information may change or vary from time to time. Please refer to the ingredient list & safety information on the product package you receive for the most up-to-date information.';
     const payload = buildPdpPayload({
       product: {
         product_id: 'ext_tf_live_1',
@@ -294,9 +296,28 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
             price: { amount: 100, currency: 'USD' },
           },
         ],
-        active_ingredients: ['Glycerin', 'Hyaluronic acid'],
-        pdp_ingredients_raw:
-          'Key Ingredients Sodium PCA, Glycerin, Hyaluronic Acid, and Algae Extract help create a soothing lather. Tom Ford Research’s caffeine-containing ingredients: - White Porcelain Cacao: A rare variety of cacao - Caffeine: At heightened concentrations utilized by Tom Ford Research - Gyokuro: A highly prized Japanese tea Ingredients: Water Aqua Eau, Glycerin, Myristic Acid, Behenic Acid, Sodium Methyl Cocoyl Taurate, Palmitic Acid, Potassium Hydroxide, Lauric Acid, Stearic Acid, Tocopheryl Acetate, Sodium Hyaluronate, Cucumis Sativus (cucumber) Fruit Extract, Pyrus Malus (apple) Fruit Extract, Scutellaria Baicalensis Root Extract, Camellia Sinensis Leaf Extract, Algae Extract, Sorbitol, Caffeine, Sodium Pca, Theobroma Cacao (cocoa) Seed Extract, Magnesium Nitrate, Sodium Sulfite, Sucrose, Sodium Metabisulfite, Peg-3 Distearate, Butylene Glycol, Fragrance (parfum), Limonene, Linalool, Bht, Tetrasodium Edta, Disodium Edta, Phenoxyethanol, Methylchloroisothiazolinone, Methylisothiazolinone, Mica, Titanium Dioxide (ci 77891), Iron Oxides (ci 77491) Please be aware that ingredient lists & safety information may change or vary from time to time. Please refer to the ingredient list & safety information on the product package you receive for the most up-to-date information.',
+        active_ingredients: {
+          items: ['Glycerin', 'Hyaluronic acid'],
+          source_origin: 'retail_pdp',
+          source_quality_status: 'captured',
+        },
+        ingredients_inci: {
+          raw_text: pollutedIngredientRaw,
+          items: [
+            'Sodium PCA',
+            'Glycerin',
+            'Hyaluronic Acid',
+            'and Algae Extract help create a soothing lather. Tom Ford Research’s caffeine-containing ingredients:',
+            '- White Porcelain Cacao: A rare variety of cacao',
+            '- Caffeine: At heightened concentrations utilized by Tom Ford Research',
+            '- Gyokuro: A highly prized Japanese tea',
+            'Ingredients: Water Aqua Eau',
+            'Myristic Acid',
+          ],
+          source_origin: 'retail_pdp',
+          source_quality_status: 'captured',
+        },
+        raw_ingredient_text_clean: pollutedIngredientRaw,
         pdp_how_to_use_raw:
           '- Apply a pearl-sized amount to the fingertips - Add lukewarm water to generate a rich foam - Using fingers, massage lather onto the skin in a circular motion - Rinse clean with warm water',
         pdp_details_sections: [
