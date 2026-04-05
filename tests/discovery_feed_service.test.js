@@ -271,6 +271,112 @@ describe('discovery feed service', () => {
     expect(response.metadata.brand_scope_applied).toEqual(['Tom Ford Beauty']);
   });
 
+  test('brand-scoped discovery falls back to source-product recommendations when brand pool is empty', async () => {
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        sort: 'popular',
+        scope: {
+          brand_names: ['Tom Ford Beauty'],
+        },
+        source_product_ref: {
+          product_id: 'ext_seed_1',
+          merchant_id: 'external_seed',
+        },
+        context: {
+          locale: 'en-US',
+        },
+      },
+      {
+        candidateProducts: [
+          makeProduct({
+            merchant_id: 'm1',
+            product_id: 'generic_serum',
+            title: 'Hydrating Serum',
+            brand: 'Acme',
+            category: 'Skincare',
+            product_type: 'Serum',
+          }),
+        ],
+        brandFallbackRecommendFn: async () => ({
+          items: [
+            makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'rose_prick',
+              title: 'Rose Prick Eau de Parfum',
+              brand: 'Tom Ford Beauty',
+              category: 'Fragrance',
+              product_type: 'Perfume',
+              price: 410,
+            }),
+            makeProduct({
+              merchant_id: 'm2',
+              product_id: 'electric_cherry',
+              title: 'Electric Cherry Eau de Parfum',
+              brand: 'Tom Ford',
+              category: 'Fragrance',
+              product_type: 'Perfume',
+              price: 395,
+            }),
+          ],
+        }),
+      },
+    );
+
+    expect(response.products.map((product) => product.product_id)).toEqual([
+      'rose_prick',
+      'electric_cherry',
+    ]);
+    expect(response.metadata.candidate_source).toBe('products_search+brand_recommendation_fallback');
+  });
+
+  test('browse selection applies explicit query text filtering within a brand scope', async () => {
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        sort: 'popular',
+        scope: {
+          brand_names: ['Tom Ford Beauty'],
+        },
+        query: {
+          text: 'cherry',
+        },
+        context: {
+          locale: 'en-US',
+        },
+      },
+      {
+        candidateProducts: [
+          makeProduct({
+            merchant_id: 'm1',
+            product_id: 'rose_prick',
+            title: 'Rose Prick Eau de Parfum',
+            brand: 'Tom Ford Beauty',
+            category: 'Fragrance',
+            product_type: 'Perfume',
+            price: 410,
+          }),
+          makeProduct({
+            merchant_id: 'm2',
+            product_id: 'electric_cherry',
+            title: 'Electric Cherry Eau de Parfum',
+            brand: 'Tom Ford',
+            category: 'Fragrance',
+            product_type: 'Perfume',
+            price: 395,
+          }),
+        ],
+      },
+    );
+
+    expect(response.products.map((product) => product.product_id)).toEqual(['electric_cherry']);
+    expect(response.metadata.query_text).toBe('cherry');
+  });
+
   test('home_hot_deals excludes exact recent views and caps same brand at two items', async () => {
     const response = await getDiscoveryFeed(
       {

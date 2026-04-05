@@ -7,7 +7,9 @@ const {
   recordDiscoveryFeedRequest,
   setLastDiscoverySnapshot,
 } = require('../observability/discoveryMetrics');
+const recommendationEngine = require('./RecommendationEngine');
 const {
+  recommend,
   _internals: {
     normalizeText,
     tokenize,
@@ -16,7 +18,7 @@ const {
     getLeafCategory,
     getParentCategory,
   },
-} = require('./RecommendationEngine');
+} = recommendationEngine;
 const { classifyBeautyBucketFromText } = require('../findProductsMulti/beautyQueryProfile');
 const {
   buildBrandQueryVariants,
@@ -610,6 +612,16 @@ function normalizeDiscoveryRequest(input = {}) {
   const scope = normalizeDiscoveryScope(source.scope);
   const query = normalizeDiscoveryQuery(source.query ?? source.query_text ?? source.queryText);
   const sort = normalizeDiscoverySort(source.sort);
+  const sourceProductRef =
+    source.source_product_ref && typeof source.source_product_ref === 'object'
+      ? {
+          product_id: String(source.source_product_ref.product_id || source.source_product_ref.id || '').trim() || null,
+          merchant_id: String(source.source_product_ref.merchant_id || '').trim() || null,
+        }
+      : {
+          product_id: null,
+          merchant_id: null,
+        };
 
   return {
     surface,
@@ -624,6 +636,7 @@ function normalizeDiscoveryRequest(input = {}) {
       auth_state: authState,
       locale,
     },
+    source_product_ref: sourceProductRef,
     debug,
   };
 }
@@ -1335,6 +1348,71 @@ function scoreRecentQueryOverlap(candidate, queryTokens) {
   return overlap / queryTokens.size;
 }
 
+function matchesQueryTextCandidate(candidate, queryText) {
+  const normalizedQuery = normalizeText(queryText || '');
+  if (!normalizedQuery) return true;
+
+  const candidateText = normalizeText(
+    [
+      candidate?.raw?.title,
+      candidate?.raw?.name,
+      candidate?.raw?.description,
+      candidate?.raw?.brand,
+      candidate?.brand,
+      candidate?.category,
+      candidate?.parentCategory,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+  if (!candidateText) return false;
+  if (candidateText.includes(normalizedQuery)) return true;
+
+  const queryTokens = tokenize(normalizedQuery).filter((token) => token.length >= 2);
+  if (!queryTokens.length) return candidateText.includes(normalizedQuery);
+  const candidateTokens = new Set(candidate?.tokens || tokenize(candidateText));
+  const tokenHits = queryTokens.filter((token) => candidateTokens.has(token) || candidateText.includes(token)).length;
+  return tokenHits >= Math.max(1, Math.ceil(queryTokens.length * 0.6));
+}
+
+async function loadBrandScopedRecommendationFallback({
+  request,
+  limit = 24,
+  recommendFn = recommend,
+} = {}) {
+  const sourceProductId = String(request?.source_product_ref?.product_id || '').trim();
+  if (!sourceProductId || typeof recommendFn !== 'function') return [];
+  const merchantId = String(request?.source_product_ref?.merchant_id || '').trim() || null;
+  const brandName = Array.isArray(request?.scope?.brand_names) ? String(request.scope.brand_names[0] || '').trim() : '';
+
+  try {
+    const result = await recommendFn({
+      pdp_product: {
+        product_id: sourceProductId,
+        ...(merchantId ? { merchant_id: merchantId } : {}),
+        ...(brandName ? { brand: brandName, vendor: brandName } : {}),
+      },
+      k: clampInt(limit, Math.max(limit, 24), 1, 72),
+      locale: request?.context?.locale || 'en-US',
+      options: {
+        no_cache: true,
+        cache_bypass: true,
+      },
+    });
+    return Array.isArray(result?.items) ? result.items : [];
+  } catch (err) {
+    logger.warn(
+      {
+        err: err?.message || String(err),
+        product_id: sourceProductId,
+        merchant_id: merchantId,
+      },
+      'brand scoped discovery fallback failed',
+    );
+    return [];
+  }
+}
+
 function scoreBeautyBucketAlignment(candidate, profile) {
   if (!profile?.preferredBeautyBucket || profile?.dominantDomain !== 'beauty') return 0;
   if (candidate.domain !== 'beauty') return -0.2;
@@ -1560,6 +1638,7 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
   const profile = options.profile || null;
   const sort = normalizeDiscoverySort(options.sort);
   const brandScoped = options.brandScoped === true;
+  const queryText = String(options.queryText || '').trim();
   const ranked = [...scoredCandidates].sort(compareBrowseEntriesBySort(sort));
   const decisions = collectDebug ? new Map() : null;
 
@@ -1572,6 +1651,10 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
     }
     if (page <= 1 && viewedKeys.has(entry.candidate.key) && !brandScoped) {
       if (decisions) decisions.set(entry.candidate.key, 'filtered_recent_view');
+      continue;
+    }
+    if (queryText && !matchesQueryTextCandidate(entry.candidate, queryText)) {
+      if (decisions) decisions.set(entry.candidate.key, 'filtered_query_text');
       continue;
     }
     orderedPool.push(entry);
@@ -1726,6 +1809,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
   let strategy = 'unknown';
   let personalizationSource = 'unknown';
   const candidateSource = getCandidateSource(options);
+  let effectiveCandidateSource = candidateSource;
   let candidateCounts = buildCandidateCounts();
   let recallSummary = [];
 
@@ -1758,19 +1842,43 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       count: rawCandidates.length,
     });
 
-    const normalizedCandidates = [];
+    let effectiveRawCandidates = rawCandidates;
+    let normalizedCandidates = [];
     const seenKeys = new Set();
-    for (let idx = 0; idx < rawCandidates.length; idx += 1) {
-      const normalized = normalizeCandidateProduct(rawCandidates[idx], idx);
+    for (let idx = 0; idx < effectiveRawCandidates.length; idx += 1) {
+      const normalized = normalizeCandidateProduct(effectiveRawCandidates[idx], idx);
       if (!normalized || seenKeys.has(normalized.key)) continue;
       seenKeys.add(normalized.key);
       normalizedCandidates.push(normalized);
     }
     const brandScopeAliases = buildBrandScopeAliases(request.scope?.brand_names || []);
-    const scopedCandidates =
+    let scopedCandidates =
       brandScopeAliases.length > 0
         ? normalizedCandidates.filter((candidate) => matchesBrandScopeCandidate(candidate, brandScopeAliases))
         : normalizedCandidates;
+
+    if (brandScopeAliases.length > 0 && scopedCandidates.length === 0) {
+      const fallbackProducts = await loadBrandScopedRecommendationFallback({
+        request,
+        limit: options.candidateLimit || resolveDiscoveryCandidateLimit(request),
+        recommendFn: options.brandFallbackRecommendFn,
+      });
+      if (fallbackProducts.length > 0) {
+        effectiveCandidateSource = 'products_search+brand_recommendation_fallback';
+        effectiveRawCandidates = rawCandidates.concat(fallbackProducts);
+        normalizedCandidates = [];
+        seenKeys.clear();
+        for (let idx = 0; idx < effectiveRawCandidates.length; idx += 1) {
+          const normalized = normalizeCandidateProduct(effectiveRawCandidates[idx], idx);
+          if (!normalized || seenKeys.has(normalized.key)) continue;
+          seenKeys.add(normalized.key);
+          normalizedCandidates.push(normalized);
+        }
+        scopedCandidates = normalizedCandidates.filter((candidate) =>
+          matchesBrandScopeCandidate(candidate, brandScopeAliases),
+        );
+      }
+    }
     observeDiscoveryCandidateCount({
       surface: request.surface,
       stage: 'normalized',
@@ -1830,6 +1938,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
           profile,
           sort: request.sort,
           brandScoped: brandScopeAliases.length > 0,
+          queryText: request.query.text,
         },
       );
       selectedEntries = browseSelection.pageItems;
@@ -1871,7 +1980,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       scoring_version: SCORING_VERSION,
       surface: request.surface,
       locale: request.context.locale,
-      candidate_source: candidateSource,
+      candidate_source: effectiveCandidateSource,
       candidate_counts: candidateCounts,
       request_latency_ms: latencyMs,
       sort_applied: request.sort,
@@ -1907,7 +2016,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       status: 'success',
       strategy,
       personalizationSource,
-      candidateSource,
+      candidateSource: effectiveCandidateSource,
       reason: 'none',
     });
     observeDiscoveryFeedLatency({
@@ -1920,7 +2029,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       status: 'success',
       strategy,
       personalization_source: personalizationSource,
-      candidate_source: candidateSource,
+      candidate_source: effectiveCandidateSource,
       candidate_counts: candidateCounts,
       history_items_used: profile.historyItemsUsed,
       anchor_count: profile.anchors.length,
@@ -1938,7 +2047,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
         limit: request.limit,
         strategy,
         personalization_source: personalizationSource,
-        candidate_source: candidateSource,
+        candidate_source: effectiveCandidateSource,
         candidate_counts: candidateCounts,
         latency_ms: latencyMs,
       },
@@ -1962,7 +2071,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       status,
       strategy,
       personalizationSource,
-      candidateSource,
+      candidateSource: effectiveCandidateSource,
       reason: err?.code || err?.name || 'unknown_error',
     });
     observeDiscoveryFeedLatency({
@@ -1975,7 +2084,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       status,
       strategy,
       personalization_source: personalizationSource,
-      candidate_source: candidateSource,
+      candidate_source: effectiveCandidateSource,
       candidate_counts: candidateCounts,
       latency_ms: latencyMs,
       dominant_domain: profile?.dominantDomain || null,
@@ -1996,6 +2105,8 @@ module.exports = {
     buildDiscoveryContextCacheKey,
     buildDiscoveryRecallPlan,
     getDiscoveryPoolCacheTtlMs,
+    loadBrandScopedRecommendationFallback,
+    matchesQueryTextCandidate,
     matchesBrandScopeCandidate,
     normalizeDiscoveryRequest,
     normalizeCandidateProduct,
