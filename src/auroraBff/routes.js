@@ -1265,6 +1265,7 @@ const {
   normalizeRecoSourceDetail,
 });
 const {
+  isBeautyOwnedChatRecoRequest,
   maybeHandleBeautyOwnedChatReco,
 } = createBeautyChatMainlineEntryRuntime({
   RECO_CATALOG_GROUNDED_ENABLED,
@@ -1290,7 +1291,6 @@ const {
   looksLikeRecommendationRequest,
 });
 const {
-  shouldBlockLegacyBeautyOwnedRecoRoute,
   shouldEnterLegacyProductRecommendations,
   shouldUseLegacyVerifiedContextRestore,
 } = createBeautyChatLegacyIsolationRuntime({
@@ -80726,19 +80726,15 @@ function mountAuroraBffRoutes(app, { logger }) {
         return sendChatEnvelope(beautyOwnedRecoResponse.envelope);
       }
 
-      const legacyBeautyOwnedRecoRouteBlocked = shouldBlockLegacyBeautyOwnedRecoRoute({
+      const beautyOwnedRecoHardStop = isBeautyOwnedChatRecoRequest({
+        typedRecoOwnershipKeepsV1Mainline,
         forceUpstreamAfterPendingAbandon,
         ingredientDrivenRecommendationRequested,
         recoEntrySourceDetail,
-        typedRecoOwnershipKeepsV1Mainline,
-        actionId,
+        targetContext: beautyOwnedRecoResponse?.targetContext,
         message,
-        hasRecoContextForAutoRerun,
-        budgetChipCanContinueReco,
-        profileClarificationAction,
-        shouldAutoRerunRecommendationsFromProfilePatch,
       });
-      if (legacyBeautyOwnedRecoRouteBlocked) {
+      if (beautyOwnedRecoHardStop) {
         return sendChatEnvelope(
           buildBeautyMainlineHandoffFallbackEnvelope({
             ctx,
@@ -80757,7 +80753,6 @@ function mountAuroraBffRoutes(app, { logger }) {
       const wantsProductRecommendations = shouldEnterLegacyProductRecommendations({
         forceUpstreamAfterPendingAbandon,
         allowRecoCards,
-        legacyBeautyOwnedRecoRouteBlocked,
         message,
         normalizedActionPayload,
         ingredientRecoOptInRequested,

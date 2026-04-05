@@ -133,12 +133,10 @@ const {
   resolveBudgetConstraintForCurrency,
   isWithinPriceConstraint,
 } = require('./findProductsMulti/policy');
-const {
-  buildSearchContractBridgeMeta,
-  shouldUseBeautyMainlineContractAuthority,
-} = require('./beautySearchContractAuthority');
+const { shouldUseBeautyMainlineContractAuthority } = require('./beautySearchContractAuthority');
 const {
   applyBeautySearchAuthority,
+  resolveInvokeSearchContractBridgeMeta,
 } = require('./beautySearchAuthority');
 const {
   extractHumanApparelCategories,
@@ -23838,17 +23836,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     };
 
     let response;
-    let searchContractBridgeMeta = buildSearchContractBridgeMeta({
+    let searchContractBridgeMeta = resolveInvokeSearchContractBridgeMeta({
       operation,
       strictCommerceFindProductsMulti,
       strictBeautyDirectSearch,
       semanticOwnerControlled,
-      explicitResolvedContract:
-        strictCommerceFindProductsMulti && !strictBeautyDirectSearch && !semanticOwnerControlled
-          ? 'shop_invoke_strict'
-          : (strictBeautyDirectSearch || semanticOwnerControlled)
-            ? 'agent_v1_search_beauty_mainline'
-            : '',
     });
     if (
       !response &&
@@ -23904,7 +23896,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             status: 200,
             data: localIngredientDirectResponse,
           };
-          searchContractBridgeMeta = buildSearchContractBridgeMeta({
+          searchContractBridgeMeta = resolveInvokeSearchContractBridgeMeta({
             operation,
             strictCommerceFindProductsMulti,
             strictBeautyDirectSearch,
@@ -24136,17 +24128,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         try {
           response = await callTrackedUpstream(operation, axiosConfig);
           if (operation === 'find_products' || operation === 'find_products_multi') {
-            searchContractBridgeMeta = buildSearchContractBridgeMeta({
+            searchContractBridgeMeta = resolveInvokeSearchContractBridgeMeta({
               operation,
               strictCommerceFindProductsMulti,
               strictBeautyDirectSearch,
               semanticOwnerControlled,
-              explicitResolvedContract:
-                strictCommerceFindProductsMulti && !strictBeautyDirectSearch && !semanticOwnerControlled
-                  ? 'shop_invoke_strict'
-                  : (strictBeautyDirectSearch || semanticOwnerControlled)
-                    ? 'agent_v1_search_beauty_mainline'
-                    : '',
             });
           }
         } catch (primaryErr) {

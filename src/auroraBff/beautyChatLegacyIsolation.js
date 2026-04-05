@@ -7,46 +7,9 @@ function createBeautyChatLegacyIsolationRuntime(deps = {}) {
     looksLikeRecommendationRequest,
   } = deps;
 
-  function shouldBlockLegacyBeautyOwnedRecoRoute({
-    forceUpstreamAfterPendingAbandon = false,
-    ingredientDrivenRecommendationRequested = false,
-    recoEntrySourceDetail = '',
-    typedRecoOwnershipKeepsV1Mainline = false,
-    actionId = '',
-    message = '',
-    hasRecoContextForAutoRerun = false,
-    budgetChipCanContinueReco = false,
-    profileClarificationAction = false,
-    shouldAutoRerunRecommendationsFromProfilePatch = false,
-  } = {}) {
-    return (
-      RECO_CATALOG_GROUNDED_ENABLED &&
-      !forceUpstreamAfterPendingAbandon &&
-      !ingredientDrivenRecommendationRequested &&
-      recoEntrySourceDetail !== 'travel_handoff' &&
-      (
-        typedRecoOwnershipKeepsV1Mainline ||
-        actionId === 'chip.start.reco_products' ||
-        actionId === 'chip_get_recos' ||
-        (typeof looksLikeRecommendationRequest === 'function'
-          ? looksLikeRecommendationRequest(message)
-          : false) ||
-        (
-          hasRecoContextForAutoRerun &&
-          (
-            budgetChipCanContinueReco ||
-            profileClarificationAction ||
-            shouldAutoRerunRecommendationsFromProfilePatch
-          )
-        )
-      )
-    );
-  }
-
   function shouldEnterLegacyProductRecommendations({
     forceUpstreamAfterPendingAbandon = false,
     allowRecoCards = false,
-    legacyBeautyOwnedRecoRouteBlocked = false,
     message = '',
     normalizedActionPayload = null,
     ingredientRecoOptInRequested = false,
@@ -60,7 +23,6 @@ function createBeautyChatLegacyIsolationRuntime(deps = {}) {
     return (
       !forceUpstreamAfterPendingAbandon &&
       allowRecoCards &&
-      !legacyBeautyOwnedRecoRouteBlocked &&
       (
         typeof looksLikeIngredientScienceIntent !== 'function' ||
         !looksLikeIngredientScienceIntent(message, normalizedActionPayload) ||
@@ -113,7 +75,6 @@ function createBeautyChatLegacyIsolationRuntime(deps = {}) {
   }
 
   return {
-    shouldBlockLegacyBeautyOwnedRecoRoute,
     shouldEnterLegacyProductRecommendations,
     shouldUseLegacyVerifiedContextRestore,
   };

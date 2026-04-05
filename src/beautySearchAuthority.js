@@ -1,9 +1,10 @@
 const {
+  buildSearchContractBridgeMeta,
+} = require('./beautySearchContractAuthority');
+const {
   buildBeautySearchSourceBreakdown,
 } = require('./beautySearchSourceAuthority');
-const {
-  applyBeautySearchContractAuthority,
-} = require('./beautySearchContractAuthority');
+const { applyBeautySearchContractAuthority } = require('./beautySearchContractAuthority');
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -121,6 +122,32 @@ function applyBeautySearchAuthority({
   };
 }
 
+function resolveInvokeSearchContractBridgeMeta({
+  operation = '',
+  strictCommerceFindProductsMulti = false,
+  strictBeautyDirectSearch = false,
+  semanticOwnerControlled = false,
+  explicitResolvedContract = '',
+} = {}) {
+  const normalizedExplicit = String(explicitResolvedContract || '').trim();
+  const fallbackResolvedContract = normalizedExplicit ||
+    (
+      strictCommerceFindProductsMulti && !strictBeautyDirectSearch && !semanticOwnerControlled
+        ? 'shop_invoke_strict'
+        : (strictBeautyDirectSearch || semanticOwnerControlled)
+          ? 'agent_v1_search_beauty_mainline'
+          : ''
+    );
+  return buildSearchContractBridgeMeta({
+    operation,
+    strictCommerceFindProductsMulti,
+    strictBeautyDirectSearch,
+    semanticOwnerControlled,
+    explicitResolvedContract: fallbackResolvedContract,
+  });
+}
+
 module.exports = {
   applyBeautySearchAuthority,
+  resolveInvokeSearchContractBridgeMeta,
 };
