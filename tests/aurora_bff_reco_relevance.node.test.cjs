@@ -19,6 +19,7 @@ process.env.AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED = 'true';
 
 const axios = require('axios');
 const dbModule = require('../src/db');
+const diagnosisArtifactStore = require('../src/auroraBff/diagnosisArtifactStore');
 const ROUTES_MODULE_PATH = require.resolve('../src/auroraBff/routes');
 const AURORA_DECISION_CLIENT_MODULE_PATH = require.resolve('../src/auroraBff/auroraDecisionClient');
 const { saveDiagnosisArtifact } = require('../src/auroraBff/diagnosisArtifactStore');
@@ -5573,8 +5574,14 @@ test('/v1/chat: plain-text beauty reco ask uses the same beauty mainline handoff
 
 test('/v1/chat: plain-text sunscreen reco short-circuits to beauty mainline before aurora planner and keeps canonical sunscreen selection', async () => {
   const originalGet = axios.get;
+  const originalGetLatestDiagnosisArtifact = diagnosisArtifactStore.getLatestDiagnosisArtifact;
   const observedCalls = [];
   let auroraChatCallCount = 0;
+  let latestArtifactLookupCount = 0;
+  diagnosisArtifactStore.getLatestDiagnosisArtifact = async (...args) => {
+    latestArtifactLookupCount += 1;
+    return originalGetLatestDiagnosisArtifact(...args);
+  };
   const harness = createAppWithPatchedAuroraChat({
     auroraChatImpl: async () => {
       auroraChatCallCount += 1;
@@ -5715,6 +5722,7 @@ test('/v1/chat: plain-text sunscreen reco short-circuits to beauty mainline befo
     assert.equal(payload.recommendation_meta?.semantic_owner, 'shopping_agent_beauty_mainline');
     assert.deepEqual(payload.recommendation_meta?.source_tier_counts, { fresh_external: 3 });
     assert.equal(auroraChatCallCount, 0);
+    assert.equal(latestArtifactLookupCount, 0);
     assert.ok(
       observedCalls.some((entry) =>
         entry.query === 'best sunscreen for oily skin'
@@ -5727,6 +5735,7 @@ test('/v1/chat: plain-text sunscreen reco short-circuits to beauty mainline befo
     );
   } finally {
     axios.get = originalGet;
+    diagnosisArtifactStore.getLatestDiagnosisArtifact = originalGetLatestDiagnosisArtifact;
     harness.restore();
   }
 });
