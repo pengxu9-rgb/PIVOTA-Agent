@@ -1836,6 +1836,56 @@ describe('ingredientProductRecall', () => {
     );
   });
 
+  test('buildCandidateEvidence rejects description-parsed ingredient noise with conflicting title/url cues', () => {
+    const { LOCAL_INGREDIENT_RECALL_REGISTRY } = require('../../src/services/ingredientRecallRegistry');
+    const { _internals } = require('../../src/services/ingredientSkuEvidence');
+    const out = _internals.buildCandidateEvidence(
+      {
+        title: 'Watch Ya Tone Niacinamide Dark Spot Serum Refill',
+        category: 'Serum',
+        product_type: 'Serum',
+        ingredient_tokens: ['vitamin c'],
+        canonical_url: 'https://example.com/products/watch-ya-tone-niacinamide-dark-spot-serum-refill',
+        destination_url: 'https://example.com/products/watch-ya-tone-niacinamide-dark-spot-serum-refill',
+        seed_data: {
+          ingredient_tokens: ['vitamin c'],
+          ingredient_intel: {
+            inci_normalized: ['ascorbic acid'],
+            external_seed_enrichment: {
+              seed_anchor_source_kind: 'description_parse',
+            },
+          },
+        },
+      },
+      {
+        profile: LOCAL_INGREDIENT_RECALL_REGISTRY.ascorbic_acid,
+        targetStepFamily: 'serum',
+        allowFamilyOnly: false,
+        kbEvidence: {
+          exact_hits: 1,
+          alias_hits: 0,
+          family_hits: 1,
+          strong_family_hits: 1,
+          explicit_hits: 1,
+          candidate_step_hints: ['serum'],
+        },
+        queryText: 'vitamin c serum',
+      },
+    );
+
+    expect(out).toEqual(
+      expect.objectContaining({
+        reject_reason: 'all_candidates_filtered_noise',
+        evidence: expect.objectContaining({
+          target_surface_anchor_hits: 0,
+          competing_title_url_hits: expect.any(Number),
+          structured_token_tier: 'description_parsed_seed',
+        }),
+      }),
+    );
+    expect(Number(out?.evidence?.competing_title_url_hits || 0)).toBeGreaterThan(0);
+  });
+
   test('fetchProductsCacheRowsByPatterns searches combined strong text for cross-field ingredient-step anchors', async () => {
     const queryMock = jest.fn(async () => ({ rows: [] }));
     jest.doMock('../../src/db', () => ({
