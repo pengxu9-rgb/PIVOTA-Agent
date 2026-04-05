@@ -110,3 +110,90 @@ test('beauty canonical ownership recomputes final selection from surfaced recomm
     delete require.cache[moduleId];
   }
 });
+
+test('canonical search result mirror keeps payload-bound assistant text ahead of framework summary text', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = {
+      recommendations: [
+        {
+          product_id: 'generic_plain_text_1',
+          display_name: 'GoalSkin Oil Control Serum',
+          category: 'Serum',
+          matched_role_id: 'oil_control_treatment',
+        },
+      ],
+      roles: [
+        {
+          role_id: 'oil_control_treatment',
+          label: 'Oil-control treatment',
+          rank: 1,
+          why_this_role: 'Reduce excess sebum.',
+        },
+      ],
+      framework_summary: {
+        concern_text: 'oily skin',
+        primary_role_id: 'oil_control_treatment',
+      },
+      recommendation_meta: {
+        beauty_mainline_handoff_applied: true,
+      },
+      metadata: {},
+    };
+    const searchResult = {
+      decision_owner: 'shopping_agent_beauty_mainline',
+      semantic_owner: 'shopping_agent_beauty_mainline',
+      query_source: 'agent_products_search',
+      metadata: {
+        contract_bridge: {
+          attempted_contract: 'agent_v1_search_beauty_mainline',
+          resolved_contract: 'agent_v1_search_beauty_mainline',
+        },
+        source_breakdown: {
+          source_tier_counts: { fresh_internal: 1 },
+          top_candidate_provenance: { source_owner: 'internal_search' },
+        },
+        search_stage_ledger: {
+          primary_search: {
+            query_pack_attempts: [
+              { query: 'oil control treatment', adopted: true, result_count: 1 },
+            ],
+          },
+          final_selection: {
+            selection_owner: 'shopping_agent_beauty_mainline',
+            selected_product_ids: ['generic_plain_text_1'],
+            selected_titles: ['GoalSkin Oil Control Serum'],
+            selection_signature: 'selection_sig_payload_bound',
+            mainline_status: 'grounded_success',
+            source_tier_counts: { fresh_internal: 1 },
+            top_candidate_provenance: { source_owner: 'internal_search' },
+          },
+        },
+      },
+    };
+
+    const mirrored = __internal.applyRecoCanonicalSearchResultToPayload(payload, searchResult, {
+      selectionOwner: 'shopping_agent_beauty_mainline',
+    });
+    const assistantText = __internal.buildPayloadBoundRecoAssistantText({
+      payload: mirrored,
+      language: 'EN',
+      profile: { skinType: 'oily', goals: ['oil control'] },
+    });
+    const routeAwareText = __internal.buildRouteAwareAssistantText({
+      route: 'reco',
+      payload: mirrored,
+      language: 'EN',
+      profile: { skinType: 'oily', goals: ['oil control'] },
+    });
+
+    assert.equal(mirrored.metadata?.contract_bridge?.resolved_contract, 'agent_v1_search_beauty_mainline');
+    assert.deepEqual(mirrored.metadata?.search_stage_ledger?.final_selection?.selected_product_ids, ['generic_plain_text_1']);
+    assert.equal(mirrored.recommendation_meta?.assistant_text_selection_signature, undefined);
+    assert.match(String(assistantText || ''), /Products actually selected this time: GoalSkin Oil Control Serum\./i);
+    assert.equal(routeAwareText, assistantText);
+    assert.doesNotMatch(String(routeAwareText || ''), /Top pick for that first role|Priority order:|care framework/i);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});

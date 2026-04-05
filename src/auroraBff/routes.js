@@ -46660,6 +46660,135 @@ function applyRecoAssistantSelectionSignature(payload) {
   return nextPayload;
 }
 
+function extractRecoCanonicalSearchResultSnapshot(searchResult) {
+  if (!isPlainObject(searchResult)) return null;
+  const metadata = isPlainObject(searchResult.metadata) ? searchResult.metadata : {};
+  const searchStageLedger =
+    metadata.search_stage_ledger && isPlainObject(metadata.search_stage_ledger)
+      ? metadata.search_stage_ledger
+      : null;
+  const sourceBreakdown =
+    metadata.source_breakdown && isPlainObject(metadata.source_breakdown)
+      ? metadata.source_breakdown
+      : null;
+  const searchDecision =
+    metadata.search_decision && isPlainObject(metadata.search_decision)
+      ? metadata.search_decision
+      : null;
+  const contractBridge =
+    metadata.contract_bridge && isPlainObject(metadata.contract_bridge)
+      ? metadata.contract_bridge
+      : null;
+  return {
+    finalSelection: extractRecoFinalSelectionContract(searchResult),
+    searchStageLedger,
+    sourceBreakdown,
+    searchDecision,
+    contractBridge,
+    querySource: pickFirstTrimmed(searchResult.query_source, metadata.query_source) || null,
+    decisionOwner: pickFirstTrimmed(
+      searchResult.decision_owner,
+      metadata.decision_owner,
+      searchDecision?.decision_owner,
+    ) || null,
+    semanticOwner: pickFirstTrimmed(
+      searchResult.semantic_owner,
+      metadata.semantic_owner,
+      searchDecision?.semantic_owner,
+    ) || null,
+  };
+}
+
+function applyRecoCanonicalSearchResultToPayload(payload, searchResult, { selectionOwner = null } = {}) {
+  if (!isPlainObject(payload) || !isPlainObject(searchResult)) return payload;
+  const snapshot = extractRecoCanonicalSearchResultSnapshot(searchResult);
+  if (!snapshot) return payload;
+
+  let nextPayload = { ...payload };
+  if (snapshot.finalSelection) {
+    const canonicalSelection = buildRecoFinalSelectionContract({
+      payload: nextPayload,
+      fallbackSelection: snapshot.finalSelection,
+      selectionOwner: pickFirstTrimmed(
+        selectionOwner,
+        snapshot.decisionOwner,
+        snapshot.finalSelection.selection_owner,
+        BEAUTY_DISCOVERY_MAINLINE_OWNER,
+      ) || BEAUTY_DISCOVERY_MAINLINE_OWNER,
+    });
+    nextPayload = applyRecoFinalSelectionContractToPayload(nextPayload, canonicalSelection);
+  }
+
+  const nextSelection = extractRecoFinalSelectionContract(nextPayload);
+  const recommendationMeta = isPlainObject(nextPayload.recommendation_meta) ? { ...nextPayload.recommendation_meta } : {};
+  const payloadMeta = isPlainObject(nextPayload.metadata) ? { ...nextPayload.metadata } : {};
+
+  if (snapshot.querySource) {
+    nextPayload.query_source = snapshot.querySource;
+    recommendationMeta.query_source = snapshot.querySource;
+    payloadMeta.query_source = snapshot.querySource;
+  }
+  if (snapshot.decisionOwner) {
+    nextPayload.decision_owner = snapshot.decisionOwner;
+    recommendationMeta.decision_owner = snapshot.decisionOwner;
+    payloadMeta.decision_owner = snapshot.decisionOwner;
+  }
+  if (snapshot.semanticOwner) {
+    nextPayload.semantic_owner = snapshot.semanticOwner;
+    recommendationMeta.semantic_owner = snapshot.semanticOwner;
+    payloadMeta.semantic_owner = snapshot.semanticOwner;
+  }
+
+  if (snapshot.searchStageLedger) {
+    payloadMeta.search_stage_ledger = {
+      ...snapshot.searchStageLedger,
+      ...(nextSelection ? { final_selection: nextSelection } : {}),
+    };
+  }
+  if (snapshot.searchDecision) {
+    payloadMeta.search_decision = {
+      ...snapshot.searchDecision,
+      ...(nextSelection
+        ? {
+            final_selection: nextSelection,
+            mainline_status: nextSelection.mainline_status,
+          }
+        : {}),
+    };
+  }
+  if (snapshot.sourceBreakdown) {
+    payloadMeta.source_breakdown = {
+      ...snapshot.sourceBreakdown,
+    };
+    if (isPlainObject(snapshot.sourceBreakdown.source_tier_counts)) {
+      recommendationMeta.source_tier_counts = snapshot.sourceBreakdown.source_tier_counts;
+    }
+    if (isPlainObject(snapshot.sourceBreakdown.top_candidate_provenance)) {
+      recommendationMeta.top_candidate_provenance = snapshot.sourceBreakdown.top_candidate_provenance;
+    }
+  }
+  if (snapshot.contractBridge) {
+    payloadMeta.contract_bridge = {
+      ...snapshot.contractBridge,
+    };
+    const attemptedContract = pickFirstTrimmed(snapshot.contractBridge.attempted_contract);
+    const resolvedContract = pickFirstTrimmed(snapshot.contractBridge.resolved_contract);
+    if (attemptedContract) recommendationMeta.attempted_contract = attemptedContract;
+    if (resolvedContract) recommendationMeta.resolved_contract = resolvedContract;
+  }
+
+  if (nextSelection?.context_warning) recommendationMeta.context_warning = nextSelection.context_warning;
+  if (nextSelection?.mainline_status) {
+    nextPayload.mainline_status = nextSelection.mainline_status;
+    recommendationMeta.mainline_status = nextSelection.mainline_status;
+    payloadMeta.mainline_status = nextSelection.mainline_status;
+  }
+
+  nextPayload.recommendation_meta = recommendationMeta;
+  nextPayload.metadata = payloadMeta;
+  return nextPayload;
+}
+
 function assistantTextMatchesRecoSelectionContract(text, selectionContract) {
   if (!isPlainObject(selectionContract)) return true;
   const selectedTitles = normalizeRecoSelectionTitles(selectionContract.selected_titles, 6);
@@ -47966,6 +48095,19 @@ function buildRouteAwareAssistantText({ route, payload, language, profile }) {
   }
 
   if (route === 'reco') {
+    const payloadBound = buildPayloadBoundRecoAssistantText({
+      payload: p,
+      language: lang,
+      profile,
+    });
+    const recoSelectionContract = extractRecoFinalSelectionContract(p);
+    const hasCanonicalRecoSelection = Boolean(
+      recoSelectionContract?.selection_signature &&
+      Array.isArray(recoSelectionContract.selected_product_ids) &&
+      recoSelectionContract.selected_product_ids.length > 0
+    );
+    if (hasCanonicalRecoSelection && payloadBound) return payloadBound;
+
     const frameworkSummary = isPlainObject(p.framework_summary) ? p.framework_summary : null;
     const frameworkRoles = Array.isArray(p.roles) ? p.roles.filter((item) => isPlainObject(item)) : [];
     if (frameworkSummary && frameworkRoles.length) {
@@ -48059,11 +48201,6 @@ function buildRouteAwareAssistantText({ route, payload, language, profile }) {
         .join('\n');
     }
 
-    const payloadBound = buildPayloadBoundRecoAssistantText({
-      payload: p,
-      language: lang,
-      profile,
-    });
     const hasRecoSpine = Boolean(
       (Array.isArray(p.recommendations) && p.recommendations.length > 0)
       || pickFirstTrimmed(
@@ -82067,6 +82204,18 @@ function mountAuroraBffRoutes(app, { logger }) {
               ) || recoContract.mainline_status;
             }
           }
+          if (isPlainObject(chatBeautyMainlineHandoff?.searchResult)) {
+            Object.assign(
+              payload,
+              applyRecoCanonicalSearchResultToPayload(payload, chatBeautyMainlineHandoff.searchResult, {
+                selectionOwner: pickFirstTrimmed(
+                  chatBeautyMainlineHandoff?.searchResult?.decision_owner,
+                  BEAUTY_DISCOVERY_MAINLINE_OWNER,
+                ) || BEAUTY_DISCOVERY_MAINLINE_OWNER,
+              }),
+            );
+            recoMainlineStatus = pickFirstTrimmed(payload.mainline_status, recoMainlineStatus) || recoMainlineStatus;
+          }
           if (genericGoalDrivenNeedsMoreContextWarning || recoTimeoutDegradedWarning) {
             payload.metadata = {
               ...(isPlainObject(payload.metadata) ? payload.metadata : {}),
@@ -83991,10 +84140,13 @@ const __internal = {
   looksLikeStallPhrase,
   buildBeautyCanonicalOwnershipAudit,
   applyBeautyCanonicalOwnershipToEnvelope,
+  extractRecoCanonicalSearchResultSnapshot,
+  applyRecoCanonicalSearchResultToPayload,
   deriveBeautyMainlineHandoff,
   handoffRecoToBeautyMainlineSearch,
   evaluateQualityContractForEnvelope,
   applyRecoContentSpineToPayload,
+  buildRouteAwareAssistantText,
   buildPayloadBoundRecoAssistantText,
   maybeRewriteRecoAssistantTextWithLlm,
   isSkincareCategory,

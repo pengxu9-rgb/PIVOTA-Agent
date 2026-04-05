@@ -5453,7 +5453,16 @@ test('/v1/chat: plain-text beauty reco ask uses the same beauty mainline handoff
           metadata: {
             query_source: 'agent_products_search',
             decision_owner: 'shopping_agent_beauty_mainline',
+            semantic_owner: 'shopping_agent_beauty_mainline',
             final_decision: 'products_returned',
+            contract_bridge: {
+              attempted_contract: 'agent_v1_search_beauty_mainline',
+              resolved_contract: 'agent_v1_search_beauty_mainline',
+            },
+            source_breakdown: {
+              source_tier_counts: { fresh_external: 2 },
+              top_candidate_provenance: { source_owner: 'external_seed' },
+            },
             search_stage_ledger: {
               final_selection: {
                 selection_owner: 'shopping_agent_beauty_mainline',
@@ -5505,14 +5514,26 @@ test('/v1/chat: plain-text beauty reco ask uses the same beauty mainline handoff
     assert.equal(payload.recommendation_meta?.beauty_mainline_handoff_applied, true);
     assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
     assert.equal(payload.metadata?.mainline_status, 'grounded_success');
+    assert.equal(payload.metadata?.contract_bridge?.resolved_contract, 'agent_v1_search_beauty_mainline');
+    assert.equal(payload.recommendation_meta?.resolved_contract, 'agent_v1_search_beauty_mainline');
     assert.deepEqual(
       payload.recommendation_meta?.final_selection?.selected_product_ids,
       ['generic_plain_text_1'],
+    );
+    assert.deepEqual(
+      payload.metadata?.search_stage_ledger?.final_selection?.selected_product_ids,
+      ['generic_plain_text_1'],
+    );
+    assert.deepEqual(
+      payload.metadata?.source_breakdown?.source_tier_counts,
+      { fresh_external: 2 },
     );
     assert.equal(
       payload.recommendation_meta?.assistant_text_selection_signature,
       payload.recommendation_meta?.final_selection?.selection_signature,
     );
+    assert.match(String(response.body?.assistant_text || ''), /Products actually selected this time: GoalSkin Oil Control Serum\./i);
+    assert.doesNotMatch(String(response.body?.assistant_text || ''), /Top pick for that first role|Priority order:|care framework/i);
     assert.ok(Array.isArray(payload.recommendation_meta?.beauty_mainline_handoff_attempts));
     assert.ok(
       payload.recommendation_meta.beauty_mainline_handoff_attempts.some((entry) => String(entry?.query || '').trim().toLowerCase() === 'what products should i use for oily skin?'),
