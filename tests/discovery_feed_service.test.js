@@ -218,6 +218,59 @@ describe('discovery feed service', () => {
     expect(plan[0].query).toMatch(/lip/i);
   });
 
+  test('brand scope matches truncated brand fields and title-derived brand entities', async () => {
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        sort: 'popular',
+        scope: {
+          brand_names: ['Tom Ford Beauty'],
+        },
+        context: {
+          locale: 'en-US',
+        },
+      },
+      {
+        candidateProducts: [
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'rose_prick',
+            title: 'Rose Prick Eau de Parfum',
+            brand: 'Tom Ford Bea',
+            category: 'Fragrance',
+            product_type: 'Perfume',
+            price: 410,
+          }),
+          makeProduct({
+            merchant_id: 'm2',
+            product_id: 'electric_cherry',
+            title: 'Tom Ford Beauty Electric Cherry Eau de Parfum',
+            category: 'Fragrance',
+            product_type: 'Perfume',
+            price: 395,
+          }),
+          makeProduct({
+            merchant_id: 'm3',
+            product_id: 'gypsy_water',
+            title: 'Gypsy Water',
+            brand: 'Byredo',
+            category: 'Fragrance',
+            product_type: 'Perfume',
+            price: 320,
+          }),
+        ],
+      },
+    );
+
+    expect(response.products.map((product) => product.product_id)).toEqual([
+      'rose_prick',
+      'electric_cherry',
+    ]);
+    expect(response.metadata.brand_scope_applied).toEqual(['Tom Ford Beauty']);
+  });
+
   test('home_hot_deals excludes exact recent views and caps same brand at two items', async () => {
     const response = await getDiscoveryFeed(
       {

@@ -242,21 +242,75 @@ function buildBrandScopeAliases(brandNames = []) {
   return Array.from(aliases);
 }
 
+function buildCandidateBrandAliases(candidate) {
+  const aliases = new Set();
+  const directSignals = [
+    candidate?.brand,
+    candidate?.raw?.brand,
+    candidate?.raw?.brand_name,
+    candidate?.raw?.vendor,
+    candidate?.raw?.vendor_name,
+    candidate?.raw?.manufacturer,
+  ];
+
+  directSignals.forEach((value) => {
+    const normalized = normalizeBrandText(value);
+    if (normalized) aliases.add(normalized);
+  });
+
+  const detectionText = [
+    candidate?.raw?.title,
+    candidate?.raw?.name,
+    candidate?.raw?.description,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+
+  if (detectionText) {
+    const detected = detectBrandEntities(detectionText, { candidateProducts: [] });
+    const detectedBrands = Array.isArray(detected?.brands) ? detected.brands : [];
+    detectedBrands.forEach((brandName) => {
+      buildBrandQueryVariants(brandName, [brandName]).forEach((variant) => {
+        const normalized = normalizeBrandText(variant);
+        if (normalized) aliases.add(normalized);
+      });
+    });
+  }
+
+  return Array.from(aliases);
+}
+
+function matchesNormalizedBrandAlias(candidateBrand, normalizedAlias) {
+  if (!candidateBrand || !normalizedAlias) return false;
+  if (
+    candidateBrand === normalizedAlias ||
+    candidateBrand.startsWith(`${normalizedAlias} `) ||
+    candidateBrand.endsWith(` ${normalizedAlias}`) ||
+    normalizedAlias.startsWith(`${candidateBrand} `) ||
+    normalizedAlias.endsWith(` ${candidateBrand}`)
+  ) {
+    return true;
+  }
+
+  const candidateCompact = compactBrandToken(candidateBrand);
+  const aliasCompact = compactBrandToken(normalizedAlias);
+  if (!candidateCompact || !aliasCompact) return false;
+  if (candidateCompact === aliasCompact) return true;
+  if (candidateCompact.startsWith(aliasCompact)) return true;
+  if (aliasCompact.startsWith(candidateCompact) && candidateCompact.length >= 8) return true;
+  return false;
+}
+
 function matchesBrandScopeCandidate(candidate, aliases = []) {
   if (!Array.isArray(aliases) || aliases.length === 0) return true;
-  const candidateBrand = normalizeBrandText(candidate?.brand || candidate?.raw?.brand || '');
-  if (!candidateBrand) return false;
-  const candidateCompact = compactBrandToken(candidateBrand);
+  const candidateAliases = buildCandidateBrandAliases(candidate);
+  if (candidateAliases.length === 0) return false;
   return aliases.some((alias) => {
     const normalizedAlias = normalizeBrandText(alias);
     if (!normalizedAlias) return false;
-    const aliasCompact = compactBrandToken(normalizedAlias);
-    return (
-      candidateBrand === normalizedAlias ||
-      candidateBrand.startsWith(`${normalizedAlias} `) ||
-      candidateBrand.endsWith(` ${normalizedAlias}`) ||
-      candidateCompact === aliasCompact ||
-      candidateCompact.startsWith(aliasCompact)
+    return candidateAliases.some((candidateBrand) =>
+      matchesNormalizedBrandAlias(candidateBrand, normalizedAlias),
     );
   });
 }
@@ -1938,9 +1992,11 @@ module.exports = {
   buildDiscoveryProfile,
   getDiscoveryFeed,
   _internals: {
+    buildBrandScopeAliases,
     buildDiscoveryContextCacheKey,
     buildDiscoveryRecallPlan,
     getDiscoveryPoolCacheTtlMs,
+    matchesBrandScopeCandidate,
     normalizeDiscoveryRequest,
     normalizeCandidateProduct,
     resolveDiscoveryCandidateLimit,
