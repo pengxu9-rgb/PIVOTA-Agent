@@ -5384,6 +5384,147 @@ test('/v1/chat: generic concern beauty mainline handoff uses raw ask and still r
   }
 });
 
+test('/v1/chat: plain-text beauty reco ask uses the same beauty mainline handoff without action chips', async () => {
+  const originalGet = axios.get;
+  const observedCalls = [];
+  const harness = createAppWithPatchedAuroraChat({
+    auroraChatImpl: async () => ({
+      intent: 'recommend_products',
+      answer: '{"summary":"empty structured reco"}',
+      structured: {
+        recommendations: [],
+        confidence: null,
+        warnings: ['upstream_missing_or_empty'],
+      },
+      context: {},
+    }),
+  });
+
+  axios.get = async (url, config = {}) => {
+    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    const query = String(config?.params?.query || '').trim().toLowerCase();
+    const semanticContract = (() => {
+      try {
+        return JSON.parse(String(config?.params?.semantic_contract || '{}'));
+      } catch (_err) {
+        return null;
+      }
+    })();
+    observedCalls.push({
+      query,
+      semanticContractOwner: String(semanticContract?.owner || ''),
+      semanticContractTargetStep: String(semanticContract?.target_step_family || ''),
+      semanticContractPrimaryRole: String(semanticContract?.primary_role_id || ''),
+      queryStepStrength: String(config?.params?.query_step_strength || ''),
+      targetStepFamily: String(config?.params?.target_step_family || ''),
+      semanticFamily: String(config?.params?.semantic_family || ''),
+    });
+    if (query === 'what products should i use for oily skin?') {
+      return {
+        status: 200,
+        data: {
+          products: [
+            {
+              product_id: 'generic_plain_text_1',
+              merchant_id: 'external_seed',
+              brand: 'GoalSkin',
+              name: 'Oil Control Serum',
+              display_name: 'Oil Control Serum',
+              category: 'skincare',
+              product_type: 'serum',
+              source: 'external_seed',
+              url: 'https://example.com/oil-control-serum',
+              short_description: 'A lightweight serum for oily skin.',
+              ingredient_tokens: ['niacinamide', 'zinc pca'],
+            },
+            {
+              product_id: 'generic_plain_text_wrong_body',
+              merchant_id: 'external_seed',
+              brand: 'BodyBrand',
+              name: 'After-Shower Nourishing Body Oil',
+              display_name: 'After-Shower Nourishing Body Oil',
+              category: 'body oil',
+              product_type: 'body oil',
+              source: 'external_seed',
+              url: 'https://example.com/body-oil',
+              short_description: 'A nourishing oil for body care.',
+            },
+          ],
+          metadata: {
+            query_source: 'agent_products_search',
+            decision_owner: 'shopping_agent_beauty_mainline',
+            final_decision: 'products_returned',
+          },
+        },
+      };
+    }
+    return { status: 200, data: { products: [] } };
+  };
+
+  try {
+    const response = await harness.request
+      .post('/v1/chat')
+      .set({
+        'X-Aurora-UID': 'chat_plain_text_bridge_uid',
+        'X-Trace-ID': 'trace_chat_plain_text_bridge',
+        'X-Brief-ID': 'chat_plain_text_bridge_brief',
+      })
+      .send({
+        message: 'what products should i use for oily skin?',
+        client_state: 'IDLE_CHAT',
+        session: { state: 'idle' },
+        context: {
+          locale: 'en',
+          profile: {
+            skinType: 'oily',
+            sensitivity: 'low',
+            barrierStatus: 'stable',
+            goals: ['oil control'],
+          },
+        },
+        language: 'EN',
+      });
+
+    assert.equal(response.statusCode, 200);
+    const payload = getRecommendationsPayload(response.body);
+    assert.ok(payload);
+    assert.ok(Array.isArray(payload.recommendations) && payload.recommendations.length >= 1);
+    assert.equal(payload.recommendations[0]?.product_id, 'generic_plain_text_1');
+    assert.equal(payload.recommendation_meta?.beauty_mainline_handoff_applied, true);
+    assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
+    assert.ok(Array.isArray(payload.recommendation_meta?.beauty_mainline_handoff_attempts));
+    assert.ok(
+      payload.recommendation_meta.beauty_mainline_handoff_attempts.some((entry) => String(entry?.query || '').trim().toLowerCase() === 'what products should i use for oily skin?'),
+      JSON.stringify(payload.recommendation_meta.beauty_mainline_handoff_attempts),
+    );
+    assert.equal(payload.recommendation_meta?.beauty_mainline_handoff_applied_query, 'what products should i use for oily skin?');
+    assert.ok(
+      observedCalls.some((entry) =>
+        entry.query === 'what products should i use for oily skin?'
+        && entry.semanticContractOwner === 'aurora_reco_planner'
+        && entry.semanticContractTargetStep === 'treatment'
+        && entry.semanticContractPrimaryRole === 'oil_control_treatment'),
+      JSON.stringify(observedCalls),
+    );
+    assert.ok(
+      observedCalls.some((entry) =>
+        entry.query === 'what products should i use for oily skin?'
+        && entry.queryStepStrength === 'strong_goal_family'
+        && entry.targetStepFamily === 'treatment'
+        && entry.semanticFamily === 'oil_control'),
+      JSON.stringify(observedCalls),
+    );
+    assert.equal(observedCalls.some((entry) => entry.query === 'oil control serum'), false);
+    const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
+    assert.equal(cards.some((card) => card && card.type === 'nudge'), false);
+    assert.equal(cards.some((card) => card && card.type === 'confidence_notice'), false);
+    assert.equal(cards.some((card) => card && card.type === 'recommendations'), true);
+  } finally {
+    axios.get = originalGet;
+    harness.restore();
+  }
+});
+
 test('/v1/chat: step-aware typed reco still returns products when upstream reco times out', async () => {
   const originalGet = axios.get;
   const observedCalls = [];

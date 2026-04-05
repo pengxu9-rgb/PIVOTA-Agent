@@ -996,6 +996,32 @@ test('/v1/chat keeps typed skincare reco questions on the v1 framework-first mai
         }),
         false,
       );
+      assert.equal(
+        routes.__internal.shouldKeepTypedRecoRequestOnV1Mainline({
+          message: 'what products should i use for oily skin?',
+          context: {
+            locale: 'en',
+            profile: {
+              skinType: 'oily',
+              goals: ['oil control'],
+            },
+          },
+        }),
+        true,
+      );
+      assert.equal(
+        await routes.__internal.shouldDelegateV1ChatToV2({
+          message: 'what products should i use for oily skin?',
+          context: {
+            locale: 'en',
+            profile: {
+              skinType: 'oily',
+              goals: ['oil control'],
+            },
+          },
+        }),
+        false,
+      );
     },
   );
 });

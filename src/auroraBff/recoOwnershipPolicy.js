@@ -80,10 +80,24 @@ function resolveRecoOwnershipTargetContext(input) {
   }
 }
 
+function looksLikeFrameworkRecoConcernAsk(input) {
+  const message = extractRecoUserMessage(input);
+  if (!message) return false;
+  const normalized = String(message).trim().toLowerCase();
+  if (!normalized) return false;
+  const hasConcernSignal = /\b(oily|dry|dehydrated|sensitive|combination|acne|breakout|redness|pores?|dark spots?)\b/.test(normalized);
+  const hasProductAskSignal = /\b(product|products|routine|use|recommend|should i use|what should i use)\b/.test(normalized);
+  return hasConcernSignal && hasProductAskSignal;
+}
+
 function shouldKeepTypedRecoRequestOnV1Mainline(input) {
   const targetContext = resolveRecoOwnershipTargetContext(input);
   const hasFrameworkRoles = Array.isArray(targetContext?.framework_roles) && targetContext.framework_roles.length > 0;
-  return Boolean(hasFrameworkRoles || targetContext?.step_aware_intent);
+  return Boolean(
+    hasFrameworkRoles
+    || targetContext?.step_aware_intent
+    || looksLikeFrameworkRecoConcernAsk(input),
+  );
 }
 
 function shouldProxyFrameworkRecoToV1Mainline(input) {
@@ -92,12 +106,7 @@ function shouldProxyFrameworkRecoToV1Mainline(input) {
   const action = isPlainObject(payload.action) ? payload.action : {};
   const hasAction = Boolean(pickFirstTrimmed(payload.action_id, action.action_id));
   if (hasAction) return false;
-  const message = extractRecoUserMessage(payload);
-  if (!message) return false;
-  const normalized = String(message).trim().toLowerCase();
-  const hasConcernSignal = /\b(oily|dry|dehydrated|sensitive|combination|acne|breakout|redness|pores?|dark spots?)\b/.test(normalized);
-  const hasProductAskSignal = /\b(product|products|routine|use|recommend|should i use|what should i use)\b/.test(normalized);
-  return hasConcernSignal && hasProductAskSignal;
+  return looksLikeFrameworkRecoConcernAsk(payload);
 }
 
 function shouldKeepFrameworkRecoOffLegacySkill({ request, classification, baseSkillId }) {
@@ -136,6 +145,7 @@ module.exports = {
   shouldKeepTypedRecoRequestOnV1Mainline,
   shouldProxyFrameworkRecoToV1Mainline,
   resolveRecoOwnershipTargetContext,
+  looksLikeFrameworkRecoConcernAsk,
   isPlainObject,
   extractRecoTargetStepFromText,
 };
