@@ -17664,6 +17664,252 @@ async function handoffRecoToBeautyMainlineSearch({
   };
 }
 
+function classifyBeautyMainlineHandoffFallback({ handoff = null, err = null } = {}) {
+  const transientCode = err ? classifyRecoUpstreamFailureCode(err) : '';
+  if (isTransientRecoUpstreamFailureCode(transientCode)) {
+    return {
+      fallback_reason: 'beauty_mainline_handoff_timeout',
+      notice_reason: 'upstream_timeout_primary_role',
+      mainline_status: 'upstream_timeout',
+      upstream_failure_code: transientCode || null,
+    };
+  }
+  if (handoff?.attempted === true) {
+    return {
+      fallback_reason: 'beauty_mainline_handoff_empty',
+      notice_reason: 'upstream_empty_recommendations',
+      mainline_status: 'needs_more_context',
+      upstream_failure_code: transientCode || null,
+    };
+  }
+  return {
+    fallback_reason: 'beauty_mainline_handoff_unavailable',
+    notice_reason: 'upstream_empty_recommendations',
+    mainline_status: 'needs_more_context',
+    upstream_failure_code: transientCode || null,
+  };
+}
+
+function buildBeautyMainlineHandoffFallbackPayload({
+  handoff = null,
+  fallback = null,
+  profile = null,
+  targetContext = null,
+  recoContext = null,
+  taskMode = 'goal_based_products',
+  triggerSource = '',
+  sourceMode = '',
+  entryType = 'chat',
+} = {}) {
+  const fallbackMeta = isPlainObject(fallback) ? fallback : {};
+  const snapshot = extractRecoCanonicalSearchResultSnapshot(handoff?.searchResult);
+  const effectiveSourceMode = pickFirstTrimmed(
+    sourceMode,
+    targetContext?.resolved_target_step ? 'step_aware_mainline' : 'framework_mainline',
+  ) || 'framework_mainline';
+  const mainlineStatus = pickFirstTrimmed(
+    fallbackMeta.mainline_status,
+    'needs_more_context',
+  ) || 'needs_more_context';
+  const nextSelection = {
+    selection_owner: BEAUTY_DISCOVERY_MAINLINE_OWNER,
+    selected_products_count: 0,
+    selected_product_ids: [],
+    selected_titles: [],
+    selection_signature: null,
+    mainline_status: mainlineStatus,
+    context_warning: {
+      applied: true,
+      reasons: [pickFirstTrimmed(fallbackMeta.fallback_reason, 'beauty_mainline_handoff_unavailable') || 'beauty_mainline_handoff_unavailable'],
+    },
+    selection_reason_codes: [
+      pickFirstTrimmed(fallbackMeta.fallback_reason, 'beauty_mainline_handoff_unavailable') || 'beauty_mainline_handoff_unavailable',
+    ],
+    source_tier_counts:
+      snapshot?.sourceBreakdown?.source_tier_counts && isPlainObject(snapshot.sourceBreakdown.source_tier_counts)
+        ? snapshot.sourceBreakdown.source_tier_counts
+        : {},
+    top_candidate_provenance:
+      snapshot?.sourceBreakdown?.top_candidate_provenance && isPlainObject(snapshot.sourceBreakdown.top_candidate_provenance)
+        ? snapshot.sourceBreakdown.top_candidate_provenance
+        : null,
+  };
+  let nextPayload = {
+    intent: 'reco_products',
+    profile: summarizeProfileForContext(profile),
+    recommendations: [],
+    source: 'catalog_grounded_v1',
+    grounding_status: 'ungrounded',
+    grounded_count: 0,
+    ungrounded_count: 0,
+    mainline_status: mainlineStatus,
+    recommendation_confidence_score: 0,
+    recommendation_confidence_level: 'low',
+    task_mode: taskMode,
+    products_empty_reason: pickFirstTrimmed(fallbackMeta.notice_reason, 'upstream_empty_recommendations') || 'upstream_empty_recommendations',
+    recommendation_meta: {
+      task_mode: taskMode,
+      source_mode: effectiveSourceMode,
+      trigger_source: normalizeRecoSourceDetail(triggerSource),
+      mainline_status: mainlineStatus,
+      fallback_reason: pickFirstTrimmed(fallbackMeta.fallback_reason) || 'beauty_mainline_handoff_unavailable',
+      ...(fallbackMeta.upstream_failure_code ? { upstream_failure_code: fallbackMeta.upstream_failure_code } : {}),
+    },
+    metadata: {
+      mainline_status: mainlineStatus,
+    },
+  };
+  nextPayload = applyRecoContentSpineToPayload(nextPayload, recoContext);
+  if (isPlainObject(handoff?.searchResult)) {
+    nextPayload = applyRecoCanonicalSearchResultToPayload(nextPayload, handoff.searchResult, {
+      selectionOwner: BEAUTY_DISCOVERY_MAINLINE_OWNER,
+    });
+  }
+  const nextContract = buildRecoMainlineContract({
+    recommendations: [],
+    sourceMode: effectiveSourceMode,
+    source: nextPayload.source,
+    llmFailureClass: mainlineStatus === 'upstream_timeout' ? 'timeout' : '',
+    upstreamFailureCode: pickFirstTrimmed(fallbackMeta.upstream_failure_code),
+    promptContractOk: true,
+    structuredSource: effectiveSourceMode,
+    productsEmptyReason: pickFirstTrimmed(fallbackMeta.notice_reason, 'upstream_empty_recommendations') || 'upstream_empty_recommendations',
+    groundingStatus: 'ungrounded',
+    groundedCount: 0,
+    ungroundedCount: 0,
+    mainlineStatusOverride: mainlineStatus,
+    entryType,
+  });
+  nextPayload = attachRecoContractMeta(nextPayload, nextContract);
+  nextPayload = applyRecoFinalSelectionContractToPayload(nextPayload, nextSelection);
+  nextPayload = applyRecoAssistantSelectionSignature(nextPayload);
+
+  const recommendationMeta = isPlainObject(nextPayload.recommendation_meta) ? { ...nextPayload.recommendation_meta } : {};
+  const payloadMeta = isPlainObject(nextPayload.metadata) ? { ...nextPayload.metadata } : {};
+  nextPayload.decision_owner = pickFirstTrimmed(nextPayload.decision_owner, BEAUTY_DISCOVERY_MAINLINE_OWNER) || BEAUTY_DISCOVERY_MAINLINE_OWNER;
+  nextPayload.semantic_owner = pickFirstTrimmed(nextPayload.semantic_owner, BEAUTY_DISCOVERY_MAINLINE_OWNER) || BEAUTY_DISCOVERY_MAINLINE_OWNER;
+  recommendationMeta.decision_owner = pickFirstTrimmed(recommendationMeta.decision_owner, nextPayload.decision_owner) || nextPayload.decision_owner;
+  recommendationMeta.semantic_owner = pickFirstTrimmed(recommendationMeta.semantic_owner, nextPayload.semantic_owner) || nextPayload.semantic_owner;
+  recommendationMeta.resolved_contract = pickFirstTrimmed(
+    recommendationMeta.resolved_contract,
+    payloadMeta.contract_bridge?.resolved_contract,
+    'agent_v1_search_beauty_mainline',
+  ) || 'agent_v1_search_beauty_mainline';
+  recommendationMeta.attempted_contract = pickFirstTrimmed(
+    recommendationMeta.attempted_contract,
+    payloadMeta.contract_bridge?.attempted_contract,
+    recommendationMeta.resolved_contract,
+  ) || recommendationMeta.resolved_contract;
+  recommendationMeta.final_selection = nextSelection;
+  if (!isPlainObject(recommendationMeta.source_tier_counts)) recommendationMeta.source_tier_counts = nextSelection.source_tier_counts;
+  if (nextSelection.top_candidate_provenance && !isPlainObject(recommendationMeta.top_candidate_provenance)) {
+    recommendationMeta.top_candidate_provenance = nextSelection.top_candidate_provenance;
+  }
+  payloadMeta.contract_bridge = {
+    ...(isPlainObject(payloadMeta.contract_bridge) ? payloadMeta.contract_bridge : {}),
+    attempted_contract: pickFirstTrimmed(payloadMeta.contract_bridge?.attempted_contract, recommendationMeta.attempted_contract) || recommendationMeta.attempted_contract,
+    resolved_contract: pickFirstTrimmed(payloadMeta.contract_bridge?.resolved_contract, recommendationMeta.resolved_contract) || recommendationMeta.resolved_contract,
+  };
+  payloadMeta.decision_owner = pickFirstTrimmed(payloadMeta.decision_owner, nextPayload.decision_owner) || nextPayload.decision_owner;
+  payloadMeta.semantic_owner = pickFirstTrimmed(payloadMeta.semantic_owner, nextPayload.semantic_owner) || nextPayload.semantic_owner;
+  payloadMeta.final_selection = nextSelection;
+  payloadMeta.selection_signature = nextSelection.selection_signature || null;
+  payloadMeta.selected_product_ids = [];
+  payloadMeta.selected_titles = [];
+  payloadMeta.context_warning = nextSelection.context_warning;
+  payloadMeta.search_stage_ledger = {
+    ...(isPlainObject(payloadMeta.search_stage_ledger) ? payloadMeta.search_stage_ledger : {}),
+    final_selection: nextSelection,
+  };
+  if (isPlainObject(payloadMeta.search_decision)) {
+    payloadMeta.search_decision = {
+      ...payloadMeta.search_decision,
+      final_selection: nextSelection,
+      mainline_status: nextSelection.mainline_status,
+    };
+  }
+  nextPayload.recommendation_meta = recommendationMeta;
+  nextPayload.metadata = payloadMeta;
+  return {
+    payload: nextPayload,
+    contract: nextContract,
+    selectionContract: nextSelection,
+    fallback: fallbackMeta,
+  };
+}
+
+function buildBeautyMainlineHandoffFallbackEnvelope({
+  ctx,
+  fallback = null,
+  handoff = null,
+  profile = null,
+  targetContext = null,
+  recoContext = null,
+  taskMode = 'goal_based_products',
+  triggerSource = '',
+  sourceMode = '',
+  suggestedChips = [],
+} = {}) {
+  const builtPayload = buildBeautyMainlineHandoffFallbackPayload({
+    handoff,
+    fallback,
+    profile,
+    targetContext,
+    recoContext,
+    taskMode,
+    triggerSource,
+    sourceMode,
+    entryType: 'chat',
+  });
+  const payload = builtPayload?.payload;
+  const fallbackMeta = isPlainObject(builtPayload?.fallback) ? builtPayload.fallback : {};
+  const noticePayload = buildConfidenceNoticeCardPayload({
+    language: ctx?.lang,
+    reason: pickFirstTrimmed(fallbackMeta.notice_reason, 'upstream_empty_recommendations') || 'upstream_empty_recommendations',
+    confidence: {
+      score: pickFirstTrimmed(fallbackMeta.mainline_status) === 'upstream_timeout' ? 0.12 : 0.2,
+      level: 'low',
+      rationale: ['beauty_mainline_handoff_controlled_fallback'],
+    },
+    actions: ['retry_recommendations', 'update_current_routine'],
+    details: [
+      `fallback_reason: ${pickFirstTrimmed(fallbackMeta.fallback_reason, 'beauty_mainline_handoff_unavailable') || 'beauty_mainline_handoff_unavailable'}`,
+    ],
+  });
+  return buildEnvelope(ctx, {
+    assistant_message: makeAssistantMessage(
+      String(noticePayload.message || '').trim()
+        || (
+          ctx?.lang === 'CN'
+            ? '这轮 beauty 主链没有稳定拿到可落地商品，我先保留保守结果。'
+            : 'The beauty mainline did not return a stable grounded product set for this turn, so I am keeping this in a conservative fallback.'
+        ),
+    ),
+    suggested_chips: Array.isArray(suggestedChips) ? suggestedChips : [],
+    cards: [
+      {
+        card_id: `reco_${ctx && ctx.request_id ? ctx.request_id : Date.now()}`,
+        type: 'recommendations',
+        payload,
+      },
+      {
+        card_id: `conf_${ctx && ctx.request_id ? ctx.request_id : Date.now()}_beauty_mainline_handoff_fallback`,
+        type: 'confidence_notice',
+        payload: noticePayload,
+      },
+    ],
+    session_patch: {},
+    events: [
+      makeEvent(ctx, 'recos_requested', {
+        explicit: true,
+        source: 'beauty_mainline_handoff',
+        source_detail: 'beauty_mainline_handoff',
+        fallback_reason: pickFirstTrimmed(fallbackMeta.fallback_reason, 'beauty_mainline_handoff_unavailable') || 'beauty_mainline_handoff_unavailable',
+      }),
+    ],
+  });
+}
+
 function buildRecoPayloadFromBeautyMainlineHandoff({
   handoff = null,
   profile = null,
@@ -26823,7 +27069,9 @@ function applyRecoCardContractInvariant({ envelope, ctx, language } = {}) {
       continue;
     }
     const payload = isPlainObject(card.payload) ? card.payload : {};
-    if (hasNonEmptyRecommendationsPayload(payload) || isExplicitIngredientRecoEmptyMode(payload)) {
+    const controlledBeautyMainlineFallback =
+      String(payload?.recommendation_meta?.fallback_reason || '').trim().startsWith('beauty_mainline_handoff_');
+    if (hasNonEmptyRecommendationsPayload(payload) || isExplicitIngredientRecoEmptyMode(payload) || controlledBeautyMainlineFallback) {
       nextCards.push(card);
       continue;
     }
@@ -62739,19 +62987,6 @@ async function generateProductRecommendations({
         },
         metadata: {
           ...(isPlainObject(norm.payload?.metadata) ? norm.payload.metadata : {}),
-          beauty_mainline_handoff_attempted: Boolean(handedOffReco?.attempted),
-          beauty_mainline_handoff_attempt_count: Array.isArray(handedOffReco?.attempts) ? handedOffReco.attempts.length : 0,
-          beauty_mainline_handoff_attempts: Array.isArray(handedOffReco?.attempts) ? handedOffReco.attempts.slice(0, 4) : [],
-          beauty_mainline_handoff_timeout_ms: Number.isFinite(Number(handedOffReco?.timeout_ms)) ? Number(handedOffReco.timeout_ms) : RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
-          beauty_mainline_handoff_applied: true,
-          beauty_mainline_handoff_owner: pickFirstTrimmed(
-            handedOffReco.searchResult?.decision_owner,
-            BEAUTY_DISCOVERY_MAINLINE_OWNER,
-          ) || BEAUTY_DISCOVERY_MAINLINE_OWNER,
-          beauty_mainline_handoff_query_source: pickFirstTrimmed(handedOffReco.searchResult?.query_source) || null,
-          beauty_mainline_handoff_result_count: handedOffReco.recommendations.length,
-          beauty_mainline_handoff_contract_owner: pickFirstTrimmed(handedOffReco.semanticContract?.owner) || null,
-          beauty_mainline_handoff_applied_query: pickFirstTrimmed(handedOffReco?.applied_query) || null,
         },
       };
       delete nextPayload.products_empty_reason;
@@ -81241,18 +81476,31 @@ function mountAuroraBffRoutes(app, { logger }) {
           );
 
         if (beautyMainlineHandoffSuperEarlyEligible) {
-          prefetchedBeautyMainlineHandoff = await handoffRecoToBeautyMainlineSearch({
-            ctx,
-            logger,
-            primaryQuery: pickFirstTrimmed(recoRequestMessage, message),
-            fallbackMessage: message,
-            targetContext: earlyChatRecoTargetContext,
-            fallbackFocus: earlyRecoFocusForMainline,
-            profileSummary: summarizeProfileForContext(profile),
-            debug: debugUpstream,
-            timeoutMs: RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
-            minTimeoutMs: RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
-          });
+          let earlyHandoffErr = null;
+          try {
+            prefetchedBeautyMainlineHandoff = await handoffRecoToBeautyMainlineSearch({
+              ctx,
+              logger,
+              primaryQuery: pickFirstTrimmed(recoRequestMessage, message),
+              fallbackMessage: message,
+              targetContext: earlyChatRecoTargetContext,
+              fallbackFocus: earlyRecoFocusForMainline,
+              profileSummary: summarizeProfileForContext(profile),
+              debug: debugUpstream,
+              timeoutMs: RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
+              minTimeoutMs: RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
+            });
+          } catch (err) {
+            earlyHandoffErr = err;
+            logger?.warn(
+              {
+                request_id: ctx.request_id,
+                trace_id: ctx.trace_id,
+                err: err && err.message ? err.message : String(err),
+              },
+              'aurora bff: beauty mainline handoff failed during hard path',
+            );
+          }
           const earlyHandoffRecommendations = Array.isArray(prefetchedBeautyMainlineHandoff?.recommendations)
             ? prefetchedBeautyMainlineHandoff.recommendations
             : [];
@@ -81405,6 +81653,31 @@ function mountAuroraBffRoutes(app, { logger }) {
             return sendChatEnvelope(envelope);
             }
           }
+          const earlyFallbackEnvelope = buildBeautyMainlineHandoffFallbackEnvelope({
+            ctx,
+            fallback: classifyBeautyMainlineHandoffFallback({
+              handoff: prefetchedBeautyMainlineHandoff,
+              err: earlyHandoffErr,
+            }),
+            handoff: prefetchedBeautyMainlineHandoff,
+            profile,
+            targetContext: earlyChatRecoTargetContext,
+            recoContext: mergeIngredientRecoContextValue(recoIngredientContext, {
+              target_step: pickFirstTrimmed(earlyChatRecoTargetContext?.resolved_target_step),
+              step: pickFirstTrimmed(earlyChatRecoTargetContext?.resolved_target_step),
+              resolved_target_step: pickFirstTrimmed(earlyChatRecoTargetContext?.resolved_target_step),
+              resolved_target_step_confidence: pickFirstTrimmed(earlyChatRecoTargetContext?.resolved_target_step_confidence),
+              resolved_target_step_source: pickFirstTrimmed(earlyChatRecoTargetContext?.resolved_target_step_source),
+              query: recoContextIngredientQuery,
+              goal: recoContextGoal,
+              updated_at_ms: Date.now(),
+            }),
+            taskMode: recoTaskMode,
+            triggerSource: effectiveRecoEntrySourceDetail,
+            sourceMode: earlyGenericConcernRecoMainline ? 'framework_mainline' : 'step_aware_mainline',
+            suggestedChips: refinementChips,
+          });
+          return sendChatEnvelope(earlyFallbackEnvelope);
         }
 
         const latestArtifactForGate = await ensureLatestArtifactForConversation();

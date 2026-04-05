@@ -5686,6 +5686,87 @@ test('/v1/chat: typed beauty ownership bypasses legacy recommendationsAllowed ga
   }
 });
 
+test('/v1/chat: beauty-owned hard path returns controlled fallback when beauty mainline handoff times out', async () => {
+  const originalGet = axios.get;
+  let auroraChatCallCount = 0;
+  const harness = createAppWithPatchedAuroraChat({
+    auroraChatImpl: async () => {
+      auroraChatCallCount += 1;
+      return {
+        intent: 'recommend_products',
+        answer: '{"summary":"legacy planner should not run after handoff timeout"}',
+        structured: {
+          recommendations: [
+            {
+              product_id: 'legacy_wrong_timeout_path',
+              display_name: 'Legacy Wrong Timeout Path',
+            },
+          ],
+        },
+        context: {},
+      };
+    },
+  });
+
+  axios.get = async (url) => {
+    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    const err = new Error('beauty mainline handoff timeout');
+    err.code = 'ECONNABORTED';
+    throw err;
+  };
+
+  try {
+    const response = await harness.request
+      .post('/v1/chat')
+      .set({
+        'X-Aurora-UID': 'chat_plain_text_handoff_timeout_uid',
+        'X-Trace-ID': 'trace_chat_plain_text_handoff_timeout',
+        'X-Brief-ID': 'chat_plain_text_handoff_timeout_brief',
+      })
+      .send({
+        message: 'what products should i use for oily skin?',
+        client_state: 'IDLE_CHAT',
+        session: { state: 'idle' },
+        context: {
+          locale: 'en',
+          profile: {
+            skinType: 'oily',
+            sensitivity: 'low',
+            barrierStatus: 'stable',
+            goals: ['oil control'],
+          },
+        },
+        language: 'EN',
+      });
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(auroraChatCallCount, 0);
+    const payload = getRecommendationsPayload(response.body);
+    assert.ok(payload);
+    assert.deepEqual(
+      Array.isArray(payload.recommendations) ? payload.recommendations.map((item) => item?.product_id).filter(Boolean) : [],
+      [],
+    );
+    assert.equal(payload.mainline_status, 'needs_more_context');
+    assert.equal(payload.recommendation_meta?.mainline_status, 'needs_more_context');
+    assert.ok(
+      ['beauty_mainline_handoff_timeout', 'beauty_mainline_handoff_empty'].includes(
+        String(payload.recommendation_meta?.fallback_reason || ''),
+      ),
+    );
+    assert.equal(payload.recommendation_meta?.resolved_contract, 'agent_v1_search_beauty_mainline');
+    assert.equal(payload.recommendation_meta?.decision_owner, 'shopping_agent_beauty_mainline');
+    assert.equal(payload.recommendation_meta?.semantic_owner, 'shopping_agent_beauty_mainline');
+    assert.deepEqual(payload.recommendation_meta?.final_selection?.selected_product_ids, []);
+    assert.deepEqual(payload.metadata?.search_stage_ledger?.final_selection?.selected_product_ids, []);
+    const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
+    assert.equal(cards.some((card) => card && card.type === 'confidence_notice'), true);
+  } finally {
+    axios.get = originalGet;
+    harness.restore();
+  }
+});
+
 test('/v1/chat: plain-text sunscreen reco short-circuits to beauty mainline before aurora planner and keeps canonical sunscreen selection', async () => {
   const originalGet = axios.get;
   const originalGetLatestDiagnosisArtifact = diagnosisArtifactStore.getLatestDiagnosisArtifact;

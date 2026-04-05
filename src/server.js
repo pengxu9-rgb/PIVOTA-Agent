@@ -27633,11 +27633,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           beautySemanticOwner === 'shopping_agent_beauty_mainline'
         );
       const resolvedContractForMetadata =
-        String(normalizedExistingContractBridge.resolved_contract || '').trim() ||
-        (shouldStampBeautyMainlineContract ? 'agent_v1_search_beauty_mainline' : '');
+        shouldStampBeautyMainlineContract
+          ? 'agent_v1_search_beauty_mainline'
+          : (String(normalizedExistingContractBridge.resolved_contract || '').trim() || '');
       const attemptedContractForMetadata =
-        String(normalizedExistingContractBridge.attempted_contract || '').trim() ||
-        (resolvedContractForMetadata ? resolvedContractForMetadata : '');
+        shouldStampBeautyMainlineContract
+          ? 'agent_v1_search_beauty_mainline'
+          : (
+            String(normalizedExistingContractBridge.attempted_contract || '').trim() ||
+            (resolvedContractForMetadata ? resolvedContractForMetadata : '')
+          );
       const finalSelection =
         shouldStampBeautyMainlineContract
           ? buildSearchFinalSelectionContract({
