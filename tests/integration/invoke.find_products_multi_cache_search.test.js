@@ -2559,6 +2559,139 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     );
   });
 
+  test('source=search strict beauty queries use local ingredient direct recall before upstream products search', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) {
+          return { rows: [{ total: 0 }] };
+        }
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return { rows: [] };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    jest.doMock('../../src/services/ingredientProductRecall', () => ({
+      recallIngredientProducts: jest.fn(async () => ({
+        products: [
+          {
+            id: 'prod_vitc_direct_1',
+            product_id: 'prod_vitc_direct_1',
+            merchant_id: 'external_seed',
+            title: 'Vitamin-C Serum',
+            description: 'Explicit vitamin c treatment serum.',
+            category: 'serum',
+            product_type: 'serum',
+            brand: 'Test Brand',
+            price: 29,
+            currency: 'USD',
+            canonical_url: 'https://example.com/products/vitamin-c-serum',
+            destination_url: 'https://example.com/products/vitamin-c-serum',
+            url: 'https://example.com/products/vitamin-c-serum',
+            image_url: 'https://cdn.example.com/vitamin-c-serum.jpg',
+            source: 'external_seed',
+          },
+        ],
+        diagnostics: {
+          ingredient_intent_detected: true,
+          ingredient_registry_match: true,
+          ingredient_registry_source: 'local',
+          ingredient_profile_source: 'local',
+          ingredient_direct_main_path_status: 'direct_hit',
+          recall_source_breakdown: {
+            products_cache: 1,
+          },
+          ingredient_candidate_evidence_breakdown: {
+            kb_explicit: 0,
+            title_exact: 0,
+            title_alias: 1,
+            ingredient_token_exact: 1,
+            ingredient_token_alias: 0,
+            url_alias: 0,
+            family_only: 0,
+          },
+        },
+      })),
+      resolveIngredientRecallProfileKnowledge: jest.fn(async () => ({
+        profile: {
+          ingredient_id: 'ascorbic_acid',
+          ingredient_name: 'Vitamin C (Ascorbic acid)',
+          expected_step_families: ['serum', 'treatment'],
+        },
+        diagnostics: {
+          registry_match: true,
+          registry_source: 'local',
+          profile_source: 'local',
+        },
+      })),
+      resolveIngredientRecallProfile: jest.fn(() => ({
+        ingredient_id: 'ascorbic_acid',
+        ingredient_name: 'Vitamin C (Ascorbic acid)',
+        expected_step_families: ['serum', 'treatment'],
+      })),
+      hasIngredientRegistryIntentSignal: jest.fn(() => true),
+      getIngredientRecallRegistryHealth: jest.fn(async () => ({ ok: true })),
+    }));
+
+    const app = require('../../src/server');
+    const {
+      recallIngredientProducts,
+      resolveIngredientRecallProfileKnowledge,
+    } = require('../../src/services/ingredientProductRecall');
+
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'vitamin c serum under €30',
+            page: 1,
+            limit: 5,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'search',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resolveIngredientRecallProfileKnowledge).toHaveBeenCalledTimes(1);
+    expect(recallIngredientProducts).toHaveBeenCalledTimes(1);
+    expect(recallIngredientProducts).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ingredientId: 'ascorbic_acid',
+        allowFamilyFallback: true,
+      }),
+    );
+    expect(resp.body.products).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          product_id: 'prod_vitc_direct_1',
+          title: 'Vitamin-C Serum',
+        }),
+      ]),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_ingredient_recall_direct',
+        strict_constraint_query: true,
+        strict_constraint_reason: 'multi_constraint',
+        ingredient_intents: ['ascorbic_acid'],
+        matched_ingredient_ids: ['ascorbic_acid'],
+        contract_bridge: expect.objectContaining({
+          resolved_contract: 'shop_invoke_strict',
+        }),
+        route_health: expect.objectContaining({
+          fallback_triggered: false,
+        }),
+      }),
+    );
+  });
+
   test('serum cache preference helper keeps upstream when beauty mainline contract is active', async () => {
     const app = require('../../src/server');
     const decision = app._debug.decideGenericSkincareCachePreference({
