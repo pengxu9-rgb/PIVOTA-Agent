@@ -587,13 +587,13 @@ describe('RecommendationEngine (PDP)', () => {
 
     const capturedParams = [];
     nock('http://catalog.test')
+      .persist()
       .matchHeader('x-api-key', 'test-key')
       .get('/agent/v1/products/search')
       .query((params) => {
         capturedParams.push(params);
         return true;
       })
-      .twice()
       .reply(200, {
         products: [
           makeProduct({
@@ -704,5 +704,87 @@ describe('RecommendationEngine (PDP)', () => {
         requestedCount: 6,
       }),
     ).toBe(true);
+  });
+
+  test('o) diversified similar keeps same-brand adjacent items and other-brand same-category items in the mainline mix', () => {
+    const base = makeProduct({
+      merchant_id: 'external_seed',
+      product_id: 'ext_tom_ford_cleanser',
+      title: 'TOM FORD RESEARCH Cleansing Concentrate',
+      brand: 'Tom Ford Beauty',
+      category: 'Cleanser',
+      source: 'external_seed',
+      price: 100,
+    });
+
+    const external = [
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_same_brand_cleanser',
+        title: 'TOM FORD RESEARCH Purifying Cleanser',
+        brand: 'Tom Ford Beauty',
+        category: 'Cleanser',
+        source: 'external_seed',
+        price: 98,
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_same_brand_serum',
+        title: 'TOM FORD RESEARCH Serum Concentrate',
+        brand: 'Tom Ford Beauty',
+        category: 'Serum',
+        source: 'external_seed',
+        price: 96,
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_same_brand_emulsion',
+        title: 'TOM FORD RESEARCH Intensive Treatment Emulsion',
+        brand: 'Tom Ford Beauty',
+        category: 'Moisturizer',
+        source: 'external_seed',
+        price: 102,
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_other_brand_cleanser',
+        title: 'Other Brand Gentle Face Wash',
+        brand: 'Other Brand',
+        category: 'Cleanser',
+        source: 'external_seed',
+        price: 38,
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_other_brand_cleansing_gel',
+        title: 'Another Brand Cleansing Gel',
+        brand: 'Another Brand',
+        category: 'Cleanser',
+        source: 'external_seed',
+        price: 42,
+      }),
+    ];
+
+    const out = pickLayeredRecommendations({
+      baseProduct: base,
+      internalCandidates: [],
+      externalCandidates: external,
+      k: 5,
+    });
+
+    const productIds = out.items.map((item) => item.product_id);
+    expect(productIds).toEqual(expect.arrayContaining(['ext_same_brand_cleanser', 'ext_same_brand_serum']));
+    expect(
+      productIds.some((productId) =>
+        ['ext_other_brand_cleanser', 'ext_other_brand_cleansing_gel'].includes(productId),
+      ),
+    ).toBe(true);
+    expect(out.metadata?.selection_mix).toEqual(
+      expect.objectContaining({
+        same_brand_same_category: expect.any(Number),
+        same_brand_other_category: expect.any(Number),
+        other_brand_same_category: expect.any(Number),
+      }),
+    );
   });
 });

@@ -209,6 +209,51 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     );
   });
 
+  test('preserves similar metadata on the PDP recommendations module', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_meta_1',
+        merchant_id: 'external_seed',
+        title: 'Focused Cleanser',
+        image_url: 'https://example.com/cleanser.png',
+        price: { amount: 44, currency: 'USD' },
+      },
+      relatedProducts: {
+        items: [
+          {
+            id: 'rec_meta_1',
+            merchant_id: 'external_seed',
+            title: 'Adjacent Serum',
+            image_url: 'https://example.com/serum.png',
+            price: '42.00',
+            currency: 'USD',
+          },
+        ],
+        metadata: {
+          low_confidence: true,
+          low_confidence_reason_codes: ['UNDERFILL_FOR_QUALITY'],
+          retrieval_mix: { internal: 0, external: 1 },
+          selection_mix: {
+            same_brand_same_category: 0,
+            same_brand_other_category: 1,
+            other_brand_same_category: 0,
+            other_brand_same_vertical: 0,
+            semantic_peer: 0,
+          },
+        },
+      },
+      entryPoint: 'agent',
+    });
+
+    expect(payload.modules.find((module) => module.type === 'recommendations')?.data?.metadata).toEqual(
+      expect.objectContaining({
+        low_confidence: true,
+        low_confidence_reason_codes: ['UNDERFILL_FOR_QUALITY'],
+        retrieval_mix: { internal: 0, external: 1 },
+      }),
+    );
+  });
+
   test('normalizes encoded whitespace in sdcdn Tom Ford asset names', () => {
     const payload = buildPdpPayload({
       product: {

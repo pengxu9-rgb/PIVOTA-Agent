@@ -219,6 +219,49 @@ const STOPWORDS = new Set([
   'with',
 ]);
 
+const CATEGORY_SEMANTIC_ALIASES = [
+  {
+    key: 'cleanser',
+    terms: ['cleanser', 'cleansing', 'face wash', 'facial wash', 'cleansing gel', 'cleansing milk'],
+  },
+  {
+    key: 'toner',
+    terms: ['toner', 'mist', 'toning pad', 'toner pad'],
+  },
+  {
+    key: 'moisturizer',
+    terms: ['moisturizer', 'moisturiser', 'cream', 'lotion', 'emulsion', 'gel cream', 'gel-cream'],
+  },
+  {
+    key: 'serum',
+    terms: ['serum', 'essence', 'ampoule', 'concentrate'],
+  },
+  {
+    key: 'fragrance',
+    terms: ['fragrance', 'perfume', 'parfum', 'eau de parfum', 'eau de toilette', 'cologne'],
+  },
+  {
+    key: 'concealer',
+    terms: ['concealer'],
+  },
+  {
+    key: 'foundation',
+    terms: ['foundation', 'skin tint', 'tinted serum'],
+  },
+  {
+    key: 'lip balm',
+    terms: ['lip balm', 'lip treatment'],
+  },
+  {
+    key: 'lipstick',
+    terms: ['lipstick', 'lip color', 'lip colour', 'lip stick'],
+  },
+  {
+    key: 'brush',
+    terms: ['brush', 'makeup brush', 'foundation brush', 'powder brush', 'blush brush'],
+  },
+];
+
 function tokenize(text) {
   const s = normalizeText(text);
   if (!s) return [];
@@ -234,6 +277,36 @@ function tokenize(text) {
     if (out.length >= 24) break;
   }
   return out;
+}
+
+function appendUniquePhrase(out, seen, value) {
+  const normalized = normalizeText(value);
+  if (!normalized || seen.has(normalized)) return;
+  seen.add(normalized);
+  out.push(normalized);
+}
+
+function expandCategorySemanticTerms(...hints) {
+  const out = [];
+  const seen = new Set();
+  const normalizedHints = hints.map((value) => normalizeText(value)).filter(Boolean);
+
+  for (const hint of normalizedHints) {
+    appendUniquePhrase(out, seen, hint);
+
+    for (const alias of CATEGORY_SEMANTIC_ALIASES) {
+      const matched = alias.terms.some((term) => {
+        const normalizedTerm = normalizeText(term);
+        return normalizedTerm === hint || normalizedTerm.includes(hint) || hint.includes(normalizedTerm);
+      });
+      if (!matched) continue;
+      for (const term of alias.terms) appendUniquePhrase(out, seen, term);
+    }
+
+    for (const token of tokenize(hint)) appendUniquePhrase(out, seen, token);
+  }
+
+  return out.slice(0, 8);
 }
 
 function jaccard(a, b) {
@@ -569,27 +642,81 @@ function classifyConfidenceLevel(base, candidate, layerId) {
   return 'low';
 }
 
+function classifySemanticFamily(base, candidate) {
+  const sameVertical =
+    base.vertical !== UNKNOWN_VERTICAL &&
+    candidate?.features?.vertical !== UNKNOWN_VERTICAL &&
+    base.vertical === candidate.features.vertical;
+
+  if (candidate.brandMatch && candidate.leafMatch) return 'same_brand_same_category';
+  if (candidate.brandMatch && !candidate.leafMatch && (candidate.parentMatch || sameVertical || candidate.tokenOverlap >= 0.18)) {
+    return 'same_brand_other_category';
+  }
+  if (!candidate.brandMatch && (candidate.leafMatch || candidate.parentMatch)) return 'other_brand_same_category';
+  if (!candidate.brandMatch && sameVertical) return 'other_brand_same_vertical';
+  return 'semantic_peer';
+}
+
 function pickBalancedCandidates(candidates, k, baseIsExternal) {
   const K = Math.max(1, Math.min(Number(k || 6) || 6, 30));
-  const internalQueue = candidates.filter((c) => c.source === 'internal');
-  const externalQueue = candidates.filter((c) => c.source === 'external');
+  const selected = [];
+  const used = new Set();
+
+  const trySelectCandidate = (candidate) => {
+    if (!candidate) return false;
+    const key = `${candidate.features.merchantId}::${candidate.features.productId}`;
+    if (!key || used.has(key)) return false;
+    used.add(key);
+    selected.push(candidate);
+    return true;
+  };
+
+  const reserveFamilies = [];
+  if (candidates.some((candidate) => candidate.semanticFamily === 'same_brand_same_category')) {
+    reserveFamilies.push('same_brand_same_category');
+  }
+  if (K >= 5 && candidates.some((candidate) => candidate.semanticFamily === 'other_brand_same_category')) {
+    reserveFamilies.push('other_brand_same_category');
+  }
+  if (K >= 5 && candidates.some((candidate) => candidate.semanticFamily === 'same_brand_other_category')) {
+    reserveFamilies.push('same_brand_other_category');
+  }
+  if (K >= 6 && candidates.some((candidate) => candidate.semanticFamily === 'other_brand_same_vertical')) {
+    reserveFamilies.push('other_brand_same_vertical');
+  }
+
+  for (const family of reserveFamilies) {
+    const next = candidates.find(
+      (candidate) =>
+        candidate.semanticFamily === family &&
+        !used.has(`${candidate.features.merchantId}::${candidate.features.productId}`),
+    );
+    trySelectCandidate(next);
+    if (selected.length >= K) return selected.slice(0, K);
+  }
+
+  const remainingCandidates = candidates.filter(
+    (candidate) => !used.has(`${candidate.features.merchantId}::${candidate.features.productId}`),
+  );
+  const internalQueue = remainingCandidates.filter((c) => c.source === 'internal');
+  const externalQueue = remainingCandidates.filter((c) => c.source === 'external');
   if (!internalQueue.length || !externalQueue.length) {
-    return candidates.slice(0, K);
+    for (const candidate of remainingCandidates) {
+      if (!trySelectCandidate(candidate)) continue;
+      if (selected.length >= K) break;
+    }
+    return selected.slice(0, K);
   }
 
   const pattern = baseIsExternal ? ['internal', 'external'] : ['internal', 'internal', 'external'];
   const pointers = { internal: 0, external: 0 };
-  const selected = [];
-  const used = new Set();
 
   const nextFromSource = (source) => {
     const queue = source === 'internal' ? internalQueue : externalQueue;
     while (pointers[source] < queue.length) {
       const candidate = queue[pointers[source]];
       pointers[source] += 1;
-      const key = `${candidate.features.merchantId}::${candidate.features.productId}`;
-      if (used.has(key)) continue;
-      used.add(key);
+      if (used.has(`${candidate.features.merchantId}::${candidate.features.productId}`)) continue;
       return candidate;
     }
     return null;
@@ -601,19 +728,16 @@ function pickBalancedCandidates(candidates, k, baseIsExternal) {
       if (selected.length >= K) break;
       const next = nextFromSource(source);
       if (!next) continue;
-      selected.push(next);
+      trySelectCandidate(next);
       progress = true;
     }
     if (!progress) break;
   }
 
   if (selected.length < K) {
-    for (const candidate of candidates) {
+    for (const candidate of remainingCandidates) {
       if (selected.length >= K) break;
-      const key = `${candidate.features.merchantId}::${candidate.features.productId}`;
-      if (used.has(key)) continue;
-      used.add(key);
-      selected.push(candidate);
+      trySelectCandidate(candidate);
     }
   }
 
@@ -662,7 +786,7 @@ function pickLayeredRecommendations({
     },
     {
       id: 'L5',
-      name: 'fallback_recent_or_popular',
+      name: 'semantic_fill',
       priority: 5,
       predicate: () => true,
     },
@@ -717,6 +841,7 @@ function pickLayeredRecommendations({
         layerName: matchedLayer.name,
         layerPriority: matchedLayer.priority,
         confidence,
+        semanticFamily: classifySemanticFamily(base, { ...scoreDetail, features }),
         ...scoreDetail,
       };
     })
@@ -783,6 +908,21 @@ function pickLayeredRecommendations({
     { high: 0, medium: 0, low: 0 },
   );
 
+  const familyCounts = chosenCandidates.reduce(
+    (acc, candidate) => {
+      const family = String(candidate.semanticFamily || 'semantic_peer');
+      acc[family] = (acc[family] || 0) + 1;
+      return acc;
+    },
+    {
+      same_brand_same_category: 0,
+      same_brand_other_category: 0,
+      other_brand_same_category: 0,
+      other_brand_same_vertical: 0,
+      semantic_peer: 0,
+    },
+  );
+
   const signalStrength =
     Number(baseSemantic?.signal_strength) ||
     computeSemanticSignalStrength({
@@ -815,10 +955,12 @@ function pickLayeredRecommendations({
       similar_confidence: similarConfidence,
       low_confidence: lowConfidence,
       low_confidence_reason_codes: lowConfidenceReasonCodes,
+      underfill: Math.max(0, K - selected.length),
       retrieval_mix: {
         internal: sourceCounts.internal,
         external: sourceCounts.external,
       },
+      selection_mix: familyCounts,
       base_semantic: {
         brand: base.brand || null,
         vertical: base.vertical || UNKNOWN_VERTICAL,
@@ -839,6 +981,7 @@ function pickLayeredRecommendations({
         vertical: base.vertical || UNKNOWN_VERTICAL,
       },
       layers: layerCounts,
+      families: familyCounts,
       candidates_total: semanticallyDedupedCandidates.length,
       sources: sourceCounts,
       confidence: confidenceCounts,
@@ -873,6 +1016,42 @@ function buildProductsSearchRecallQuery(baseProduct) {
   return terms.slice(0, 4).join(' ').trim();
 }
 
+function buildProductsSearchRecallQueries(baseProduct) {
+  const queries = [];
+  const seen = new Set();
+  const brand = getBrandName(baseProduct);
+  const leafCategory = getLeafCategory(baseProduct);
+  const parentCategory = getParentCategory(baseProduct);
+  const titleTokens = tokenize(String(baseProduct?.title || '')).slice(0, 2);
+
+  const pushQuery = (...parts) => {
+    const normalized = parts
+      .flatMap((value) => (Array.isArray(value) ? value : [value]))
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const key = normalizeText(normalized);
+    if (!normalized || !key || seen.has(key)) return;
+    seen.add(key);
+    queries.push(normalized);
+  };
+
+  pushQuery(brand, leafCategory);
+  pushQuery(brand);
+  pushQuery(leafCategory, titleTokens);
+  pushQuery(leafCategory);
+  if (parentCategory && parentCategory !== leafCategory) pushQuery(brand, parentCategory);
+  if (!queries.length) pushQuery(buildProductsSearchRecallQuery(baseProduct));
+
+  return queries.slice(0, 4);
+}
+
+function buildSemanticSearchPatterns(...hints) {
+  return expandCategorySemanticTerms(...hints).map((term) => `%${term}%`);
+}
+
 async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId, baseProduct = null }) {
   const mid = String(merchantId || '').trim();
   const safeLimit = Math.min(Math.max(1, Number(limit || 120)), 400);
@@ -883,27 +1062,39 @@ async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId, b
     if (!baseUrl) return [];
 
     const headers = buildProductsSearchHeaders();
-    const queryText = buildProductsSearchRecallQuery(baseProduct);
+    const queryTexts = buildProductsSearchRecallQueries(baseProduct);
+    const primaryQuery = queryTexts[0] || buildProductsSearchRecallQuery(baseProduct);
     const requests = [];
     if (mid && mid !== EXTERNAL_SEED_MERCHANT_ID) {
       requests.push({
         merchantId: mid,
-        limit: Math.min(120, maxResults),
+        query: primaryQuery || '',
+        limit: Math.min(80, maxResults),
       });
     }
-    requests.push({
-      merchantId: null,
-      limit: Math.min(240, maxResults),
-    });
+    for (const [index, queryText] of queryTexts.entries()) {
+      requests.push({
+        merchantId: null,
+        query: queryText,
+        limit: index === 0 ? Math.min(140, maxResults) : Math.min(100, maxResults),
+      });
+    }
+    if (!requests.length) {
+      requests.push({
+        merchantId: null,
+        query: primaryQuery || '',
+        limit: Math.min(140, maxResults),
+      });
+    }
 
     const out = [];
     const seen = new Set();
-    for (const step of requests) {
-      try {
+    const responses = await Promise.all(
+      requests.map(async (step) => {
         const resp = await axios.get(`${baseUrl}/agent/v1/products/search`, {
           params: {
             ...(step.merchantId ? { merchant_id: step.merchantId } : {}),
-            ...(queryText ? { query: queryText } : {}),
+            ...(step.query ? { query: step.query } : {}),
             in_stock_only: false,
             limit: step.limit,
             offset: 0,
@@ -912,41 +1103,50 @@ async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId, b
           timeout: Math.max(500, PDP_RECS_INTERNAL_FETCH_TIMEOUT_MS),
           validateStatus: () => true,
         });
-        if (!(resp.status >= 200 && resp.status < 300)) continue;
+        return { step, resp };
+      }).map((task) =>
+        task.catch((err) => ({ err })),
+      ),
+    );
 
-        const products = Array.isArray(resp.data?.products)
-          ? resp.data.products
-          : Array.isArray(resp.data?.results)
-            ? resp.data.results
-            : [];
-
-        for (const product of products) {
-          const candidate = toCandidate(product, {
-            merchant_id: product?.merchant_id || step.merchantId || undefined,
-          });
-          if (!candidate) continue;
-          const candidateMerchantId = String(getMerchantId(candidate) || '').trim();
-          if (!candidateMerchantId || candidateMerchantId === EXTERNAL_SEED_MERCHANT_ID) continue;
-          if (!step.merchantId && excludeMerchantId && candidateMerchantId === String(excludeMerchantId || '').trim()) {
-            continue;
-          }
-          const key = `${candidateMerchantId}::${getProductId(candidate)}`;
-          if (!key || seen.has(key)) continue;
-          seen.add(key);
-          out.push(candidate);
-          if (out.length >= maxResults) break;
-        }
-        if (out.length >= maxResults) break;
-      } catch (err) {
+    for (const response of responses) {
+      if (response?.err) {
         logger.warn(
           {
-            err: err?.message || String(err),
-            merchant_id: step.merchantId || null,
-            query: queryText || null,
+            err: response.err?.message || String(response.err),
+            merchant_id: response?.step?.merchantId || null,
+            query: response?.step?.query || null,
           },
-          'recommendations internal products/search fallback failed',
+          'recommendations internal focused products/search failed',
         );
+        continue;
       }
+      const { step, resp } = response;
+      if (!(resp.status >= 200 && resp.status < 300)) continue;
+
+      const products = Array.isArray(resp.data?.products)
+        ? resp.data.products
+        : Array.isArray(resp.data?.results)
+          ? resp.data.results
+          : [];
+
+      for (const product of products) {
+        const candidate = toCandidate(product, {
+          merchant_id: product?.merchant_id || step?.merchantId || undefined,
+        });
+        if (!candidate) continue;
+        const candidateMerchantId = String(getMerchantId(candidate) || '').trim();
+        if (!candidateMerchantId || candidateMerchantId === EXTERNAL_SEED_MERCHANT_ID) continue;
+        if (!step?.merchantId && excludeMerchantId && candidateMerchantId === String(excludeMerchantId || '').trim()) {
+          continue;
+        }
+        const key = `${candidateMerchantId}::${getProductId(candidate)}`;
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        out.push(candidate);
+        if (out.length >= maxResults) break;
+      }
+      if (out.length >= maxResults) break;
     }
 
     return out.slice(0, maxResults);
@@ -979,51 +1179,57 @@ async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId, b
     logger.warn({ err: err?.message || String(err), merchantId: mid }, 'recommendations internal merchant query failed');
   }
 
-  try {
-    // Global recent internal fallback (keeps cold-start non-empty).
-    const res = await query(
-      `
-        SELECT merchant_id, product_data
-        FROM products_cache
-        WHERE (expires_at IS NULL OR expires_at > now())
-          AND COALESCE(lower(product_data->>'status'), 'active') = 'active'
-          AND merchant_id <> $1
-          ${excludeMerchantId ? 'AND merchant_id <> $2' : ''}
-        ORDER BY cached_at DESC NULLS LAST, id DESC
-        LIMIT $3
-      `,
-      excludeMerchantId
-        ? [EXTERNAL_SEED_MERCHANT_ID, String(excludeMerchantId || '').trim(), Math.min(safeLimit * 3, 600)]
-        : [EXTERNAL_SEED_MERCHANT_ID, Math.min(safeLimit * 3, 600), Math.min(safeLimit * 3, 600)],
-    );
-
-    for (const row of res.rows || []) {
-      const p = row?.product_data;
-      const merchant_id = String(row?.merchant_id || '').trim();
-      if (!p || !merchant_id) continue;
-      out.push(toCandidate(p, { merchant_id }));
-    }
-  } catch (err) {
-    logger.warn({ err: err?.message || String(err) }, 'recommendations internal global query failed');
-  }
-
-  const deduped = uniqueByKey(out.filter(Boolean), (p) => `${getMerchantId(p)}::${getProductId(p)}`).slice(0, maxResults);
-  if (deduped.length > 0) {
-    return deduped;
-  }
-
-  const fallback = await fetchFromProductsSearch(baseProduct);
-  return uniqueByKey(fallback.filter(Boolean), (p) => `${getMerchantId(p)}::${getProductId(p)}`).slice(0, maxResults);
+  const focusedSearchCandidates = await fetchFromProductsSearch(baseProduct);
+  return uniqueByKey([...out, ...focusedSearchCandidates].filter(Boolean), (p) => `${getMerchantId(p)}::${getProductId(p)}`).slice(
+    0,
+    maxResults,
+  );
 }
 
-async function fetchExternalCandidates({ brandHint, categoryHint, limit }) {
+function matchesFocusedCategoryRecall(
+  product,
+  { leafCategory = '', parentCategory = '', semanticPatterns = [], vertical = UNKNOWN_VERTICAL } = {},
+) {
+  const candidateLeaf = getLeafCategory(product);
+  const candidateParent = getParentCategory(product);
+  const candidateVertical = inferVerticalFromProduct(product).vertical || UNKNOWN_VERTICAL;
+  if (leafCategory && candidateLeaf === leafCategory) return true;
+  if (parentCategory && candidateParent === parentCategory && candidateVertical === vertical) return true;
+  if (!semanticPatterns.length) {
+    return vertical !== UNKNOWN_VERTICAL && candidateVertical === vertical;
+  }
+  const haystack = normalizeText(
+    [
+      product?.title,
+      product?.category,
+      product?.product_type,
+      product?.description,
+      product?.destination_url,
+      product?.canonical_url,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+  return semanticPatterns.some((pattern) => {
+    const token = String(pattern || '').replace(/^%+|%+$/g, '').trim();
+    return token && haystack.includes(token);
+  });
+}
+
+async function fetchExternalCandidates({ brandHint, categoryHint, limit, baseProduct = null }) {
   if (!process.env.DATABASE_URL) return [];
   const safeLimit = Math.min(Math.max(1, Number(limit || 180)), 500);
   const market = String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
   const tool = 'creator_agents';
 
   const brand = normalizeText(brandHint);
-  const category = normalizeText(categoryHint);
+  const leafCategory = normalizeText(categoryHint);
+  const parentCategory = normalizeText(getParentCategory(baseProduct));
+  const vertical = inferVerticalFromProduct(baseProduct || {}).vertical || UNKNOWN_VERTICAL;
+  const exactCategoryTerms = [leafCategory, parentCategory]
+    .filter(Boolean)
+    .filter((value, index, self) => self.indexOf(value) === index);
+  const semanticPatterns = buildSemanticSearchPatterns(categoryHint, parentCategory, vertical);
 
   async function runQuery(whereSql, params, cap, queryName) {
     try {
@@ -1082,7 +1288,28 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit }) {
     }
   }
 
-  const [brandMatches, categoryMatches] = await Promise.all([
+  const categorySurfaceSql = `
+    lower(concat_ws(' ',
+      coalesce(title, ''),
+      coalesce(destination_url, ''),
+      coalesce(canonical_url, ''),
+      coalesce(seed_data->>'description', seed_data->'snapshot'->>'description', ''),
+      coalesce(
+        seed_data->>'category',
+        seed_data->'product'->>'category',
+        seed_data->'snapshot'->>'category',
+        ''
+      ),
+      coalesce(
+        seed_data->>'product_type',
+        seed_data->'product'->>'product_type',
+        seed_data->'snapshot'->>'product_type',
+        ''
+      )
+    ))
+  `;
+
+  const [brandMatches, categoryExactMatches, categorySemanticMatches] = await Promise.all([
     brand
       ? runQuery(
           `AND lower(coalesce(seed_data->>'brand','')) = $4`,
@@ -1091,7 +1318,7 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit }) {
           'external_brand',
         )
       : Promise.resolve([]),
-    category
+    exactCategoryTerms.length
       ? runQuery(
           `AND lower(coalesce(
               seed_data->>'category',
@@ -1101,18 +1328,35 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit }) {
               seed_data->'product'->>'product_type',
               seed_data->'snapshot'->>'product_type',
               ''
-            )) = $4`,
-          [category],
+            )) = ANY($4::text[])`,
+          [exactCategoryTerms],
           Math.min(120, safeLimit),
-          'external_category',
+          'external_category_exact',
+        )
+      : Promise.resolve([]),
+    semanticPatterns.length
+      ? runQuery(
+          `AND ${categorySurfaceSql} LIKE ANY($4::text[])`,
+          [semanticPatterns],
+          Math.min(160, safeLimit),
+          'external_category_semantic',
         )
       : Promise.resolve([]),
   ]);
 
-  return uniqueByKey([...brandMatches, ...categoryMatches], (p) => `${getMerchantId(p)}::${getProductId(p)}`).slice(
-    0,
-    safeLimit * 3,
+  const focusedCategoryMatches = uniqueByKey(
+    [...categoryExactMatches, ...categorySemanticMatches],
+    (p) => `${getMerchantId(p)}::${getProductId(p)}`,
+  ).filter((product) =>
+    matchesFocusedCategoryRecall(product, {
+      leafCategory,
+      parentCategory,
+      semanticPatterns,
+      vertical,
+    }),
   );
+
+  return uniqueByKey([...brandMatches, ...focusedCategoryMatches], (p) => `${getMerchantId(p)}::${getProductId(p)}`).slice(0, safeLimit * 3);
 }
 
 function collectExternalLookupKeys(baseProduct) {
@@ -1157,7 +1401,7 @@ async function loadExternalSeedSemanticRecord(baseProduct) {
   try {
     const res = await query(
       `
-        SELECT id, external_product_id, title, seed_data, updated_at
+        SELECT id, external_product_id, title, seed_data, canonical_url, destination_url, domain, updated_at
         FROM external_product_seeds
         WHERE status = 'active'
           AND (${clauses.join(' OR ')})
@@ -1206,8 +1450,15 @@ async function enrichExternalBaseProduct(baseProduct) {
   const rescueFields = [];
   const seedRecord = await loadExternalSeedSemanticRecord(baseProduct);
   const seedData = ensureJsonObject(seedRecord?.seed_data);
+  const seedCanonicalProduct = seedRecord ? buildExternalSeedProduct(seedRecord) : null;
 
-  const seedBrand = String(seedData?.brand || seedData?.snapshot?.brand || '').trim();
+  const seedBrand = String(
+    seedCanonicalProduct?.brand ||
+    seedCanonicalProduct?.vendor ||
+    seedData?.brand ||
+    seedData?.snapshot?.brand ||
+    '',
+  ).trim();
   if (!getBrandName(enriched) && seedBrand) {
     if (!String(enriched.brand || '').trim()) enriched.brand = seedBrand;
     if (!String(enriched.vendor || '').trim()) enriched.vendor = seedBrand;
@@ -1215,7 +1466,12 @@ async function enrichExternalBaseProduct(baseProduct) {
   }
 
   const seedCategory = String(
-    seedData?.category || seedData?.product?.category || seedData?.snapshot?.category || '',
+    seedCanonicalProduct?.category ||
+    seedCanonicalProduct?.product_type ||
+    seedData?.category ||
+    seedData?.product?.category ||
+    seedData?.snapshot?.category ||
+    '',
   ).trim();
   if (!getLeafCategory(enriched) && seedCategory) {
     if (!String(enriched.category || '').trim()) enriched.category = seedCategory;
@@ -1223,13 +1479,18 @@ async function enrichExternalBaseProduct(baseProduct) {
     rescueFields.push('category');
   }
 
-  const seedTitle = String(seedData?.title || seedRecord?.title || '').trim();
+  const seedTitle = String(seedCanonicalProduct?.title || seedData?.title || seedRecord?.title || '').trim();
   if (!String(enriched.title || '').trim() && seedTitle) {
     enriched.title = seedTitle;
     rescueFields.push('title');
   }
 
-  const seedDescription = String(seedData?.description || seedData?.snapshot?.description || '').trim();
+  const seedDescription = String(
+    seedCanonicalProduct?.description ||
+    seedData?.description ||
+    seedData?.snapshot?.description ||
+    '',
+  ).trim();
   if (!String(enriched.description || '').trim() && seedDescription) {
     enriched.description = seedDescription;
     rescueFields.push('description');
@@ -1346,6 +1607,7 @@ async function recommend({
           fetchExternalCandidates({
             brandHint: baseBrand,
             categoryHint: baseLeaf,
+            baseProduct,
             limit: Math.max(120, safeK * 15),
           }),
           effectiveExternalFetchTimeoutMs,
@@ -1404,6 +1666,7 @@ async function recommend({
           : fetchExternalCandidates({
               brandHint: baseBrand,
               categoryHint: baseLeaf,
+              baseProduct,
               limit: Math.max(120, safeK * 15),
             }),
         effectiveExternalFetchTimeoutMs,
@@ -1511,6 +1774,7 @@ module.exports = {
     getLeafCategory,
     getParentCategory,
     isExternalProduct,
+    enrichExternalBaseProduct,
     fetchInternalCandidates,
     fetchExternalCandidates,
     shouldCacheRecommendationResult,
