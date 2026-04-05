@@ -77668,6 +77668,8 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
       agentStateForReplay = agentState;
 
+      const typedRecoOwnershipKeepsV1Mainline = shouldKeepTypedRecoRequestOnV1Mainline(parsed.data);
+
       const recoInteractionAllowed = recommendationsAllowed({
         triggerSource: ctx.trigger_source,
         actionId,
@@ -77683,7 +77685,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         agentState === 'RECO_RESULTS' ||
         // Dynamic clarification chips (for example: chip.clarify.budget.*) may not exist in the
         // static state-machine map, but are still explicit recommendation interactions.
-        recoInteractionAllowed;
+        recoInteractionAllowed ||
+        typedRecoOwnershipKeepsV1Mainline;
 
       let upstreamMessage = message;
       let clarificationHistoryForUpstream = null;
@@ -78379,6 +78382,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         actionId === 'chip_get_recos' ||
         actionId === 'chip.action.reco_routine' ||
         actionId === 'chip.start.routine' ||
+        typedRecoOwnershipKeepsV1Mainline ||
         looksLikeRecommendationRequest(message),
       );
       const reassessRequested = actionId === 'chip.action.reassess';
@@ -78446,7 +78450,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         const wantsCompat = looksLikeCompatibilityOrConflictQuestion(message);
         const wantsScience = ingredientScienceIntentEffective;
         const wantsRecoNoRoutine =
-          looksLikeRecommendationRequest(message) &&
+          (looksLikeRecommendationRequest(message) || typedRecoOwnershipKeepsV1Mainline) &&
           !looksLikeRoutineRequest(message, normalizedActionPayload);
         const wantsEnvStress =
           looksLikeWeatherOrEnvironmentQuestion(message) &&
@@ -80408,7 +80412,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         const wantsCompat = looksLikeCompatibilityOrConflictQuestion(message);
         const wantsScience = ingredientScienceIntentEffective;
         const wantsRecoNoRoutine =
-          looksLikeRecommendationRequest(message) &&
+          (looksLikeRecommendationRequest(message) || typedRecoOwnershipKeepsV1Mainline) &&
           !looksLikeRoutineRequest(message, normalizedActionPayload);
         const wantsEnvStress =
           looksLikeWeatherOrEnvironmentQuestion(message) &&
@@ -80770,6 +80774,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           budgetChipCanContinueReco ||
           profileClarificationAction ||
           ingredientDrivenRecommendationRequested ||
+          typedRecoOwnershipKeepsV1Mainline ||
           looksLikeRecommendationRequest(message) ||
           shouldAutoRerunRecommendationsFromProfilePatch
         );
@@ -81222,12 +81227,13 @@ function mountAuroraBffRoutes(app, { logger }) {
           );
         const beautyMainlineHandoffSuperEarlyEligible =
           RECO_CATALOG_GROUNDED_ENABLED
-          && wantsProductRecommendations
+          && (wantsProductRecommendations || typedRecoOwnershipKeepsV1Mainline)
           && !ingredientRecoOptInRequested
           && !travelRecoHandoff
           && (
             earlyGenericConcernRecoMainline
             || earlyHasExplicitRecoTarget
+            || typedRecoOwnershipKeepsV1Mainline
             || looksLikeRecommendationRequest(message)
             || profileClarificationAction
             || shouldApplySessionRecoContext
@@ -81709,9 +81715,9 @@ function mountAuroraBffRoutes(app, { logger }) {
           RECO_CATALOG_GROUNDED_ENABLED
           && !ingredientRecoOptInRequested
           && !travelRecoHandoff
-          && !shouldApplySessionRecoContext
-          && !recoAutoAnchoredByAnalysis
-          && (genericConcernRecoMainline || hasExplicitRecoTarget);
+          && (!shouldApplySessionRecoContext || typedRecoOwnershipKeepsV1Mainline)
+          && (!recoAutoAnchoredByAnalysis || typedRecoOwnershipKeepsV1Mainline)
+          && (genericConcernRecoMainline || hasExplicitRecoTarget || typedRecoOwnershipKeepsV1Mainline);
         const genericGoalDrivenNeedsMoreContext =
           !genericConcernRecoMainline
           && !hasStableRecoTarget
@@ -82365,6 +82371,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             && !chatBeautyMainlineHandoff
             && (
               !payloadHasRecs
+              || typedRecoOwnershipKeepsV1Mainline
               || looksLikeRecommendationRequest(message)
               || profileClarificationAction
               || shouldAutoRerunRecommendationsFromProfilePatch === true
@@ -82396,6 +82403,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             && chatBeautyMainlineHandoff.recommendations.length > 0
             && (
               !payloadHasRecs
+              || typedRecoOwnershipKeepsV1Mainline
               || looksLikeRecommendationRequest(message)
               || profileClarificationAction
               || shouldAutoRerunRecommendationsFromProfilePatch === true
@@ -83015,6 +83023,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         looksLikeSuitabilityRequest(message) ||
         looksLikeCompatibilityOrConflictQuestion(message) ||
         looksLikeWeatherOrEnvironmentQuestion(message) ||
+        typedRecoOwnershipKeepsV1Mainline ||
         looksLikeRecommendationRequest(message);
 
       if (appliedProfilePatch && (!hasExplicitUserTextInput || profileClarificationAction) && !hasExplicitUserIntentMessage) {
