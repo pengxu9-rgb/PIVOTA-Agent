@@ -92,6 +92,40 @@ function pickSemanticFamily(targetContext = null, primaryRole = null) {
   return null;
 }
 
+function findAlignedFrameworkRoleForStep(targetContext = null, targetStepFamily = null) {
+  const normalizedTargetStep = normalizeSemanticStepFamily(targetStepFamily);
+  if (!normalizedTargetStep) return null;
+  const roles = Array.isArray(targetContext?.framework_roles)
+    ? targetContext.framework_roles.filter((role) => role && typeof role === 'object' && !Array.isArray(role))
+    : [];
+  return roles.find((role) =>
+    normalizeSemanticStepFamily(role?.preferred_step || role?.step) === normalizedTargetStep
+  ) || null;
+}
+
+function buildStepAwareIngredientHypotheses(targetContext = null, targetStepFamily = null, alignedRole = null) {
+  const roleIngredients = uniqueCaseInsensitiveStrings(
+    Array.isArray(alignedRole?.ingredient_hypotheses) ? alignedRole.ingredient_hypotheses : [],
+    8,
+  );
+  if (roleIngredients.length > 0) return roleIngredients;
+
+  const semanticIngredients = uniqueCaseInsensitiveStrings(
+    Array.isArray(targetContext?.semantic_plan?.ingredient_hypotheses)
+      ? targetContext.semantic_plan.ingredient_hypotheses
+      : [],
+    8,
+  );
+  if (normalizeSemanticStepFamily(targetStepFamily) !== 'sunscreen') return semanticIngredients;
+
+  const sunscreenSpecific = semanticIngredients.filter((value) =>
+    /\b(uv|spf|filter|zinc oxide|titanium dioxide|avobenzone|octocrylene|homosalate|uvasorb|tinosorb|bemotrizinol|bisoctrizole)\b/i.test(
+      String(value || ''),
+    )
+  );
+  return sunscreenSpecific.length > 0 ? sunscreenSpecific : ['UV filters'];
+}
+
 function buildFrameworkSemanticContract({ targetContext } = {}) {
   const roles = Array.isArray(targetContext?.framework_roles)
     ? [...targetContext.framework_roles]
@@ -139,31 +173,28 @@ function buildStepAwareSemanticContract({ targetContext, queryLevels } = {}) {
     queryLevels?.[0]?.queries?.[0]?.step,
   );
   if (!targetStepFamily) return null;
+  const alignedRole = findAlignedFrameworkRoleForStep(targetContext, targetStepFamily);
+  const primaryRoleId =
+    normalizeConcernQueryToken(alignedRole?.role_id) ||
+    (targetStepFamily === 'sunscreen' ? 'daily_sunscreen' : `${targetStepFamily}_primary`);
   return {
     version: BEAUTY_SEMANTIC_CONTRACT_VERSION,
     owner: 'aurora_reco_planner',
     planner_mode: 'step_aware',
     request_class: targetStepFamily === 'sunscreen' ? 'sunscreen' : 'routine_followup',
     target_step_family: targetStepFamily,
-    primary_role_id:
-      normalizeConcernQueryToken(targetContext?.primary_role_id) ||
-      (targetStepFamily === 'sunscreen' ? 'daily_sunscreen' : `${targetStepFamily}_primary`),
+    primary_role_id: primaryRoleId,
     support_role_ids: [],
     semantic_family: normalizeConcernQueryToken(
-      targetContext?.semantic_plan?.semantic_family ||
       targetContext?.step_aware_intent?.semantic_family ||
+      deriveSemanticFamilyFromRole(alignedRole) ||
       targetStepFamily,
     ).toLowerCase() || null,
     allowed_step_families: buildSemanticStepFamilyList([targetStepFamily], {
       includeSerumForTreatment: targetStepFamily === 'treatment',
     }),
     blocked_step_families: [],
-    ingredient_hypotheses: uniqueCaseInsensitiveStrings(
-      Array.isArray(targetContext?.semantic_plan?.ingredient_hypotheses)
-        ? targetContext.semantic_plan.ingredient_hypotheses
-        : [],
-      8,
-    ),
+    ingredient_hypotheses: buildStepAwareIngredientHypotheses(targetContext, targetStepFamily, alignedRole),
     source_surface: 'aurora_beauty_strict',
   };
 }

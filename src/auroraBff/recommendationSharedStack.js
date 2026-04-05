@@ -293,7 +293,7 @@ function collectConcernFrameworkSignals({ text = '', focus = '', profileSummary 
   const barrier = normalizeQueryToken(profileSummary?.barrier_status || profileSummary?.barrierStatus).toLowerCase();
   const haystack = [normalized, skinType, sensitivity, barrier, ...goals].filter(Boolean).join(' ');
   return {
-    oily: /\boily\b|出油|油皮|控油|sebum|shine|greasy/.test(haystack),
+    oily: /\boily\b|oil control|oil[-\s]?balance|mattify|mattifying|anti-shine|出油|油皮|控油|sebum|shine|greasy/.test(haystack),
     acne: /\bacne\b|\bbreakout\b|blemish|spot|pore|痘|闭口|粉刺|毛孔/.test(haystack),
     dry: /\bdry\b|dehydrat|干燥|缺水|起皮|脱皮/.test(haystack),
     redness: /redness|flush|泛红|发红|红血丝/.test(haystack),

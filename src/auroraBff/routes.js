@@ -17447,45 +17447,107 @@ function deriveBeautyMainlineHandoff({
   profileSummary = null,
   fallbackFocus = '',
 } = {}) {
+  const handoffText = pickFirstTrimmed(primaryQuery, fallbackMessage);
+  const fallbackConcernTargetContext = buildConcernTargetContextFromSemanticPlan(
+    buildConcernSemanticPlanFallback({
+      text: handoffText,
+      focus: fallbackFocus,
+      profileSummary,
+    }),
+    {
+      text: handoffText,
+      focus: fallbackFocus,
+      entryType: 'chat',
+    },
+  );
   const effectiveTargetContext = (() => {
     if (Array.isArray(targetContext?.framework_roles) && targetContext.framework_roles.length > 0) return targetContext;
     const normalizedResolvedStep = normalizeRecoTargetStep(targetContext?.resolved_target_step);
-    if (normalizedResolvedStep) return targetContext;
-    return buildConcernTargetContextFromSemanticPlan(
-      buildConcernSemanticPlanFallback({
-        text: pickFirstTrimmed(primaryQuery, fallbackMessage),
-        focus: fallbackFocus,
-        profileSummary,
-      }),
-      {
-        text: pickFirstTrimmed(primaryQuery, fallbackMessage),
-        focus: fallbackFocus,
-        entryType: 'chat',
-      },
-    );
+    if (normalizedResolvedStep) {
+      const mergedTargetContext = {
+        ...fallbackConcernTargetContext,
+        ...(targetContext && typeof targetContext === 'object' && !Array.isArray(targetContext) ? targetContext : {}),
+      };
+      if (!Array.isArray(targetContext?.framework_roles) || targetContext.framework_roles.length === 0) {
+        mergedTargetContext.framework_roles = Array.isArray(fallbackConcernTargetContext.framework_roles)
+          ? fallbackConcernTargetContext.framework_roles
+          : [];
+      }
+      if (!Array.isArray(targetContext?.support_roles) || targetContext.support_roles.length === 0) {
+        mergedTargetContext.support_roles = Array.isArray(fallbackConcernTargetContext.support_roles)
+          ? fallbackConcernTargetContext.support_roles
+          : [];
+      }
+      if (!pickFirstTrimmed(targetContext?.primary_role_id)) {
+        mergedTargetContext.primary_role_id = pickFirstTrimmed(fallbackConcernTargetContext.primary_role_id) || null;
+      }
+      if (!(targetContext?.semantic_plan && typeof targetContext.semantic_plan === 'object' && !Array.isArray(targetContext.semantic_plan))) {
+        mergedTargetContext.semantic_plan =
+          fallbackConcernTargetContext?.semantic_plan && typeof fallbackConcernTargetContext.semantic_plan === 'object'
+            ? fallbackConcernTargetContext.semantic_plan
+            : null;
+      }
+      if (!(targetContext?.framework_summary && typeof targetContext.framework_summary === 'object' && !Array.isArray(targetContext.framework_summary))) {
+        mergedTargetContext.framework_summary =
+          fallbackConcernTargetContext?.framework_summary && typeof fallbackConcernTargetContext.framework_summary === 'object'
+            ? fallbackConcernTargetContext.framework_summary
+            : null;
+      }
+      if (!(targetContext?.concern_signals && typeof targetContext.concern_signals === 'object' && !Array.isArray(targetContext.concern_signals))) {
+        mergedTargetContext.concern_signals =
+          fallbackConcernTargetContext?.concern_signals && typeof fallbackConcernTargetContext.concern_signals === 'object'
+            ? fallbackConcernTargetContext.concern_signals
+            : null;
+      }
+      return {
+        ...mergedTargetContext,
+        resolved_target_step: normalizedResolvedStep,
+        resolved_target_step_confidence:
+          pickFirstTrimmed(targetContext?.resolved_target_step_confidence, 'high') || 'high',
+        resolved_target_step_source:
+          pickFirstTrimmed(targetContext?.resolved_target_step_source, 'explicit_step_handoff') || 'explicit_step_handoff',
+        step_aware_intent: true,
+      };
+    }
+    return fallbackConcernTargetContext;
+  })();
+  const stepAlignedTargetContext = (() => {
+    const resolvedStep = normalizeRecoTargetStep(effectiveTargetContext?.resolved_target_step);
+    if (!resolvedStep) return effectiveTargetContext;
+    const frameworkRoles = Array.isArray(effectiveTargetContext?.framework_roles)
+      ? effectiveTargetContext.framework_roles
+      : [];
+    const alignedRole = frameworkRoles.find((role) =>
+      normalizeRecoTargetStep(role?.preferred_step || role?.step) === resolvedStep
+    ) || null;
+    if (!alignedRole) return effectiveTargetContext;
+    return {
+      ...effectiveTargetContext,
+      primary_role_id: pickFirstTrimmed(alignedRole?.role_id, effectiveTargetContext?.primary_role_id) || null,
+    };
   })();
   const semanticContract = (() => {
-    if (Array.isArray(effectiveTargetContext?.framework_roles) && effectiveTargetContext.framework_roles.length > 0) {
-      return buildRecoSearchSemanticContract({
-        mode: 'framework_generic',
-        targetContext: effectiveTargetContext,
-      });
-    }
-    const normalizedResolvedStep = normalizeRecoTargetStep(effectiveTargetContext?.resolved_target_step);
-    if (effectiveTargetContext?.step_aware_intent || normalizedResolvedStep) {
+    const normalizedResolvedStep = normalizeRecoTargetStep(stepAlignedTargetContext?.resolved_target_step);
+    if (stepAlignedTargetContext?.step_aware_intent || normalizedResolvedStep) {
       return buildRecoSearchSemanticContract({
         mode: 'step_aware',
-        targetContext: effectiveTargetContext,
+        targetContext: stepAlignedTargetContext,
+      });
+    }
+    if (Array.isArray(stepAlignedTargetContext?.framework_roles) && stepAlignedTargetContext.framework_roles.length > 0) {
+      return buildRecoSearchSemanticContract({
+        mode: 'framework_generic',
+        targetContext: stepAlignedTargetContext,
       });
     }
     return null;
   })();
-  const query = pickFirstTrimmed(primaryQuery, fallbackMessage) || '';
+  const query = handoffText || '';
 
   return {
     query,
     semanticContract,
-    targetContext: effectiveTargetContext,
+    targetContext: stepAlignedTargetContext,
   };
 }
 
@@ -17502,6 +17564,7 @@ async function handoffRecoToBeautyMainlineSearch({
   authHeaders = null,
   timeoutMs = 0,
   minTimeoutMs = 0,
+  searchFn = null,
 } = {}) {
   const handoff = deriveBeautyMainlineHandoff({
     primaryQuery,
@@ -17537,7 +17600,8 @@ async function handoffRecoToBeautyMainlineSearch({
       : semanticTargetStepFamily
         ? 'strong_goal_family'
         : '';
-  const searchResult = await searchPivotaBackendProducts({
+  const runSearch = typeof searchFn === 'function' ? searchFn : searchPivotaBackendProducts;
+  const searchResult = await runSearch({
     query,
     limit: 6,
     logger,
@@ -83927,6 +83991,8 @@ const __internal = {
   looksLikeStallPhrase,
   buildBeautyCanonicalOwnershipAudit,
   applyBeautyCanonicalOwnershipToEnvelope,
+  deriveBeautyMainlineHandoff,
+  handoffRecoToBeautyMainlineSearch,
   evaluateQualityContractForEnvelope,
   applyRecoContentSpineToPayload,
   buildPayloadBoundRecoAssistantText,
