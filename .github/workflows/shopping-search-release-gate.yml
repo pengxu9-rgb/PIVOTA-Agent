@@ -164,8 +164,8 @@ jobs:
             tests/services/ingredient_product_recall.test.js \
             -t "skips unattached recall when KB attached results already satisfy direct recall coverage"
 
-  runtime_smoke:
-    name: Shopping Search + Discovery Runtime Smoke
+  runtime_smoke_search:
+    name: Shopping Search Runtime Smoke
     runs-on: ubuntu-latest
     needs: [unit]
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref_name == 'main')
@@ -258,4 +258,50 @@ jobs:
         with:
           name: shopping-search-release-gate
           path: reports/search-prod-skincare-release-gate
+
+  runtime_smoke_discovery:
+    name: Shopping Discovery Runtime Smoke
+    runs-on: ubuntu-latest
+    needs: [unit]
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref_name == 'main')
+    env:
+      BASE_URL: ${{ inputs.base_url || vars.PIVOTA_AGENT_PUBLIC_BASE_URL || vars.AGENT_PUBLIC_BASE_URL || 'https://agent.pivota.cc' }}
+      PROD_SMOKE_BASE_URL: ${{ vars.PIVOTA_AGENT_PROD_INVOKE_BASE_URL || vars.COMMERCE_CORE_PROD_SMOKE_BASE_URL || 'https://pivota-agent-production.up.railway.app' }}
+      PROD_SMOKE_ENDPOINT: /agent/shop/v1/invoke
+      COMMERCE_CORE_PROD_AUTH_TOKEN: ${{ secrets.COMMERCE_CORE_PROD_AUTH_TOKEN || secrets.PIVOTA_AGENT_PROD_AUTH_TOKEN || '' }}
+      COMMERCE_CORE_PROD_AGENT_API_KEY: ${{ secrets.COMMERCE_CORE_PROD_AGENT_API_KEY || secrets.PIVOTA_AGENT_PROD_AGENT_API_KEY || '' }}
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Verify deployed commit via /version
+        if: github.event_name != 'workflow_dispatch' || inputs.wait_for_commit == true
+        shell: bash
+        run: |
+          set -euo pipefail
+          RAIL_MODE="authoritative_commerce" \
+          INVOKE_BASE_URL="$PROD_SMOKE_BASE_URL" \
+          TARGET_COMMIT="${GITHUB_SHA:0:12}" \
+          bash scripts/verify_deployed_commit_matches.sh
+
+      - name: Production discovery smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_URL="$PROD_SMOKE_BASE_URL" \
+          ENDPOINT="$PROD_SMOKE_ENDPOINT" \
+          AGENT_API_KEY="$COMMERCE_CORE_PROD_AGENT_API_KEY" \
+          VERIFY_DEPLOY=0 \
+          TIMEOUT_MS=25000 \
+          bash scripts/smoke_discovery_feed_prod.sh
           if-no-files-found: error

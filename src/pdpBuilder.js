@@ -4,6 +4,9 @@ const {
   normalizePdpImageUrls,
 } = require('./utils/pdpImageUrls');
 
+const SHOPIFY_FILE_HASH_SUFFIX_RE =
+  /^(.*?_[0-9]+)_(?:[0-9a-f]{8,}(?:-[0-9a-f]{4,}){2,}|[0-9a-f-]{16,})\.(avif|gif|jpe?g|png|webp)$/i;
+
 const BEAUTY_KEYWORDS = [
   'beauty',
   'makeup',
@@ -694,12 +697,40 @@ function extractAssetSkuFromUrl(value) {
   return matched?.[1] ? String(matched[1]).trim().toLowerCase() : '';
 }
 
+function isHashedShopifyAssetFilename(filename) {
+  return SHOPIFY_FILE_HASH_SUFFIX_RE.test(String(filename || '').trim());
+}
+
+function isLowConfidenceTomFordVariantImage(url) {
+  const filename = extractImageFilename(url);
+  if (!/^tfb?_sku_/i.test(filename)) return false;
+  if (isHashedShopifyAssetFilename(filename)) return false;
+  const matched = filename.match(/_(\d+)\.(?:avif|gif|jpe?g|png|webp)$/i);
+  if (!matched?.[1]) return false;
+  const slot = Number(matched[1]);
+  if (!Number.isFinite(slot)) return false;
+  return slot === 0 || slot >= 3;
+}
+
+function filterLowConfidenceTomFordVariantImages(values) {
+  const normalized = Array.isArray(values) ? values.filter(Boolean) : [];
+  const hasPreferredTomFordAsset = normalized.some((value) => {
+    const filename = extractImageFilename(value);
+    if (!/^tfb?_sku_/i.test(filename)) return false;
+    if (isHashedShopifyAssetFilename(filename)) return true;
+    return /_1\.(?:jpe?g|png|webp)$/i.test(filename);
+  });
+
+  if (!hasPreferredTomFordAsset) return normalized;
+  return normalized.filter((value) => !isLowConfidenceTomFordVariantImage(value));
+}
+
 function filterVariantImagesBySku(values, sku) {
   const normalized = normalizePdpImageUrls(values).filter((value) => !isLikelyUiChromeImageUrl(value));
   const normalizedSku = String(sku || '').trim().toLowerCase();
-  if (!normalizedSku || !normalized.length) return normalized;
+  if (!normalizedSku || !normalized.length) return filterLowConfidenceTomFordVariantImages(normalized);
   const exactMatches = normalized.filter((value) => extractAssetSkuFromUrl(value) === normalizedSku);
-  return exactMatches.length ? exactMatches : normalized;
+  return filterLowConfidenceTomFordVariantImages(exactMatches.length ? exactMatches : normalized);
 }
 
 function normalizeIngredientComparisonKey(value) {
