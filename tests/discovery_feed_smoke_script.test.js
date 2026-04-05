@@ -20,6 +20,9 @@ describe('run_discovery_feed_smoke helpers', () => {
       'X-Agent-API-Key': 'test-key',
       Authorization: 'Bearer test-key',
     });
+    expect(buildAuthHeaders({ authToken: 'bearer-only-token' })).toEqual({
+      Authorization: 'Bearer bearer-only-token',
+    });
   });
 
   test('picks seed product and builds recent view payload', () => {
@@ -169,5 +172,37 @@ describe('run_discovery_feed_smoke helpers', () => {
         },
       ),
     ).toThrow(/disallowed cold-start titles/i);
+  });
+
+  test('reports product counts and provider breakdown when the response underfills', () => {
+    expect(() =>
+      validateDiscoveryResponse(
+        {
+          products: [
+            {
+              merchant_id: 'm1',
+              product_id: 'p1',
+              title: 'Barrier Repair Serum',
+            },
+          ],
+          metadata: {
+            candidate_source: 'multi_provider',
+            discovery_strategy: 'cold_start_curated',
+            personalization_source: 'none',
+            candidate_counts: { returned: 1, eligible_pool: 2 },
+            provider_breakdown: [
+              { provider: 'products_search', successful: true, returned: 24 },
+              { provider: 'external_seeds', successful: false, returned: 0 },
+            ],
+          },
+        },
+        {
+          discoveryStrategy: 'cold_start_curated',
+          personalizationSource: 'none',
+          candidateSource: 'multi_provider',
+          minProducts: 3,
+        },
+      ),
+    ).toThrow(/returned.*1.*required.*3/i);
   });
 });

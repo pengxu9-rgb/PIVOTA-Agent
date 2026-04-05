@@ -5385,7 +5385,7 @@ test('/v1/chat: generic concern beauty mainline handoff uses raw ask and still r
   }
 });
 
-test('/v1/chat: plain-text beauty reco ask uses the same beauty mainline handoff without action chips', async () => {
+test('/v1/chat: plain-text beauty reco ask uses the same beauty mainline handoff without action chips', { concurrency: false }, async () => {
   const originalGet = axios.get;
   const observedCalls = [];
   const harness = createAppWithPatchedAuroraChat({
@@ -5565,7 +5565,7 @@ test('/v1/chat: plain-text beauty reco ask uses the same beauty mainline handoff
   }
 });
 
-test('/v1/chat: typed beauty ownership bypasses legacy recommendationsAllowed gate and still short-circuits to canonical handoff', async () => {
+test('/v1/chat: typed beauty ownership bypasses legacy recommendationsAllowed gate and still short-circuits to canonical handoff', { concurrency: false }, async () => {
   const originalGet = axios.get;
   const gatingModulePath = require.resolve('../src/auroraBff/gating');
   delete require.cache[gatingModulePath];
@@ -5686,7 +5686,7 @@ test('/v1/chat: typed beauty ownership bypasses legacy recommendationsAllowed ga
   }
 });
 
-test('/v1/chat: beauty-owned hard path fails closed when beauty mainline handoff times out', async () => {
+test('/v1/chat: beauty-owned hard path fails closed when beauty mainline handoff times out', { concurrency: false }, async () => {
   const originalGet = axios.get;
   let auroraChatCallCount = 0;
   const harness = createAppWithPatchedAuroraChat({
@@ -5761,7 +5761,7 @@ test('/v1/chat: beauty-owned hard path fails closed when beauty mainline handoff
   }
 });
 
-test('/v1/chat: beauty-owned hard path fails closed when handoff products lack canonical authority', async () => {
+test('/v1/chat: beauty-owned hard path fails closed when handoff products lack canonical authority', { concurrency: false }, async () => {
   const originalGet = axios.get;
   let auroraChatCallCount = 0;
   const harness = createAppWithPatchedAuroraChat({
@@ -5871,7 +5871,7 @@ test('/v1/chat: beauty-owned hard path fails closed when handoff products lack c
   }
 });
 
-test('/v1/chat: beauty-owned reco helper miss still fails closed before legacy planner', async () => {
+test('/v1/chat: beauty-owned reco helper miss still fails closed before legacy planner', { concurrency: false }, async () => {
   const originalGet = axios.get;
   let auroraChatCallCount = 0;
   const harness = createAppWithPatchedAuroraChat({
@@ -5949,7 +5949,7 @@ test('/v1/chat: beauty-owned reco helper miss still fails closed before legacy p
   }
 });
 
-test('/v1/chat: plain-text sunscreen reco short-circuits to beauty mainline before aurora planner and keeps canonical sunscreen selection', async () => {
+test('/v1/chat: plain-text sunscreen reco short-circuits to beauty mainline before aurora planner and keeps canonical sunscreen selection', { concurrency: false }, async () => {
   const originalGet = axios.get;
   const originalGetLatestDiagnosisArtifact = diagnosisArtifactStore.getLatestDiagnosisArtifact;
   const observedCalls = [];
@@ -6117,7 +6117,7 @@ test('/v1/chat: plain-text sunscreen reco short-circuits to beauty mainline befo
   }
 });
 
-test('/v1/chat: plain-text beauty reco with latest_reco_context still short-circuits to canonical handoff before aurora planner', async () => {
+test('/v1/chat: plain-text beauty reco with latest_reco_context still short-circuits to canonical handoff before aurora planner', { concurrency: false }, async () => {
   const originalGet = axios.get;
   let auroraChatCallCount = 0;
   const observedCalls = [];

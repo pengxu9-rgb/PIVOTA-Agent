@@ -46,6 +46,8 @@ const VALID_DISCOVERY_SORTS = new Set(['popular', 'price_desc', 'price_asc']);
 const HOME_INTEREST_RECALL_LIMIT = 24;
 const HOME_BROWSE_FILL_LIMIT = 24;
 const HOME_MIN_BROWSE_FILL_LIMIT = 16;
+const COLD_START_PRIMARY_RECALL_LIMIT = 24;
+const COLD_START_FILL_RECALL_LIMIT = 24;
 const BROWSE_PRIMARY_RECALL_LIMIT = 24;
 const BROWSE_FILL_RECALL_LIMIT = 24;
 const MIN_COLD_START_NON_DEFERRED_RESULTS = 2;
@@ -1357,6 +1359,13 @@ function buildDiscoveryProviderQueries(request, profile) {
   );
 }
 
+function prioritizeDiscoveryRecallQueries(queries = []) {
+  const normalized = buildDiscoverySearchPhraseSet(queries, 8);
+  const specific = normalized.filter((queryText) => isSpecificDiscoveryQueryText(queryText));
+  const broad = normalized.filter((queryText) => !isSpecificDiscoveryQueryText(queryText));
+  return [...specific, ...broad];
+}
+
 function resolveDiscoveryCandidateLimit(request) {
   if (request?.surface === 'browse_products') {
     const pageNeed = request.page * request.limit + Math.max(request.limit, 24);
@@ -1481,8 +1490,8 @@ function buildDiscoveryRecallPlan(request, profile, limit) {
   }
 
   if (!profile?.hasInterestSignals) {
-    const coldStartQueries = providerQueries.slice(0, 2);
-    const firstLimit = Math.min(PRODUCTS_SEARCH_PAGE_SIZE, safeLimit);
+    const coldStartQueries = prioritizeDiscoveryRecallQueries(providerQueries).slice(0, 2);
+    const firstLimit = Math.min(COLD_START_PRIMARY_RECALL_LIMIT, safeLimit);
     const remaining = Math.max(0, safeLimit - firstLimit);
     return [
       {
@@ -1498,7 +1507,7 @@ function buildDiscoveryRecallPlan(request, profile, limit) {
               label: 'cold_start_fill',
               query: coldStartQueries[1],
               offset: 0,
-              limit: Math.min(PRODUCTS_SEARCH_PAGE_SIZE, remaining),
+              limit: Math.min(COLD_START_FILL_RECALL_LIMIT, remaining),
               allow_early_exit: true,
             },
           ]
@@ -2313,6 +2322,45 @@ function buildProviderBreakdown(results = []) {
   });
 }
 
+function isHighQualityProviderCandidate(candidate, request, profile) {
+  if (!candidate) return false;
+
+  if (request?.surface === 'home_hot_deals' && !profile?.hasInterestSignals) {
+    return candidate.domain === 'beauty' && candidate.beautyBucket !== 'tools';
+  }
+
+  if (profile?.dominantDomain === 'beauty') {
+    if (candidate.domain !== 'beauty') return false;
+    if (profile?.preferredBeautyBucket && profile.preferredBeautyBucket !== 'tools') {
+      return candidate.beautyBucket !== 'tools';
+    }
+    return true;
+  }
+
+  if (profile?.dominantDomain && profile.dominantDomain !== 'unknown') {
+    return candidate.domain === profile.dominantDomain || candidate.domain === 'unknown';
+  }
+
+  return candidate.domain !== 'pet' && candidate.domain !== 'sleepwear';
+}
+
+function countHighQualityProviderCandidates(products = [], { request, profile } = {}) {
+  let count = 0;
+  for (let idx = 0; idx < products.length; idx += 1) {
+    const candidate = normalizeCandidateProduct(products[idx], idx);
+    if (!candidate) continue;
+    if (isHighQualityProviderCandidate(candidate, request, profile)) count += 1;
+  }
+  return count;
+}
+
+function getProviderQualityThreshold(request) {
+  if (request?.surface === 'browse_products') {
+    return Math.min(Math.max((request?.page || 1) * (request?.limit || 0), request?.limit || 0), 12);
+  }
+  return Math.max(1, Math.min(request?.limit || 0, 6));
+}
+
 async function loadCatalogCandidates({
   request = null,
   profile = null,
@@ -2322,6 +2370,7 @@ async function loadCatalogCandidates({
   const safeLimit = clampInt(limit, resolveDiscoveryCandidateLimit(request), 24, MAX_CANDIDATE_FETCH);
   const providerQueries = buildDiscoveryProviderQueries(request, profile);
   const enoughThreshold = getRecallEnoughThreshold(request, safeLimit);
+  const qualityThreshold = getProviderQualityThreshold(request);
   const providerResults = [];
   const mergedProducts = [];
   const seenKeys = new Set();
@@ -2388,7 +2437,11 @@ async function loadCatalogCandidates({
           recallSummary: internalResult.recallSummary,
         };
       } else if (provider === 'external_seeds') {
-        if (mergedProducts.length >= enoughThreshold) {
+        const highQualityCount = countHighQualityProviderCandidates(mergedProducts, {
+          request,
+          profile,
+        });
+        if (mergedProducts.length >= enoughThreshold && highQualityCount >= qualityThreshold) {
           result = buildSkippedProviderResult(provider, {
             label: 'external_seed_pool',
             query: providerQueries.join(' | '),
@@ -2798,6 +2851,7 @@ function scoreBeautyBucketAlignment(candidate, profile) {
   if (candidate.domain !== 'beauty') return -0.2;
   if (!candidate.beautyBucket) return 0.1;
   if (candidate.beautyBucket === profile.preferredBeautyBucket) return 1;
+  if (profile.preferredBeautyBucket !== 'tools' && candidate.beautyBucket === 'tools') return -1.2;
   return -0.65;
 }
 

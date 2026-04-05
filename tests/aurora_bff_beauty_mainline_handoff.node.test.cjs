@@ -101,6 +101,10 @@ test('handoffRecoToBeautyMainlineSearch passes sunscreen-aligned contract to bac
     assert.equal(captured?.queryStepStrength, 'exact_step');
     assert.equal(captured?.targetStepFamily, 'sunscreen');
     assert.equal(captured?.semanticFamily, 'sunscreen');
+    assert.equal(captured?.transportPolicy?.mode, 'step_aware');
+    assert.equal(captured?.transportPolicy?.prefer_self_proxy_first, true);
+    assert.equal(captured?.transportPolicy?.max_base_urls, 1);
+    assert.equal(captured?.transportPolicy?.max_paths, 1);
     assert.equal(captured?.semanticContract?.planner_mode, 'step_aware');
     assert.equal(captured?.semanticContract?.primary_role_id, 'daily_sunscreen');
     assert.deepEqual(captured?.semanticContract?.ingredient_hypotheses, ['UV filters']);
@@ -108,6 +112,67 @@ test('handoffRecoToBeautyMainlineSearch passes sunscreen-aligned contract to bac
       out.recommendations.map((item) => item.display_name),
       ['Ultra Light Liquid Mineral Sunscreen with Zinc Oxide SPF 30'],
     );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('handoffRecoToBeautyMainlineSearch forces self-proxy-first transport for framework beauty asks', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    let captured = null;
+    await __internal.handoffRecoToBeautyMainlineSearch({
+      ctx: { lang: 'EN' },
+      primaryQuery: 'what products should i use for oily skin?',
+      fallbackMessage: 'what products should i use for oily skin?',
+      targetContext: resolveRecommendationTargetContext({
+        text: 'what products should i use for oily skin?',
+        focus: '',
+        entryType: 'chat',
+      }),
+      timeoutMs: 5000,
+      minTimeoutMs: 5000,
+      searchFn: async (args) => {
+        captured = args;
+        return {
+          ok: true,
+          products: [],
+          decision_owner: 'shopping_agent_beauty_mainline',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+          query_source: 'agent_products_search',
+          final_selection: {
+            selection_owner: 'shopping_agent_beauty_mainline',
+            selected_product_ids: [],
+            selected_titles: [],
+            selection_signature: null,
+            mainline_status: 'empty_structured',
+          },
+          search_stage_ledger: {
+            final_selection: {
+              selection_owner: 'shopping_agent_beauty_mainline',
+              selected_product_ids: [],
+              selected_titles: [],
+              selection_signature: null,
+              mainline_status: 'empty_structured',
+            },
+          },
+          source_breakdown: {
+            source_tier_counts: {},
+          },
+          contract_bridge: {
+            attempted_contract: 'agent_v1_search_beauty_mainline',
+            resolved_contract: 'agent_v1_search_beauty_mainline',
+          },
+        };
+      },
+    });
+
+    assert.equal(captured?.query, 'what products should i use for oily skin?');
+    assert.equal(captured?.transportPolicy?.mode, 'framework_first_turn');
+    assert.equal(captured?.transportPolicy?.prefer_self_proxy_first, true);
+    assert.equal(captured?.transportPolicy?.max_base_urls, 1);
+    assert.equal(captured?.transportPolicy?.max_paths, 1);
+    assert.equal(captured?.searchSourceOverride, 'aurora-bff');
   } finally {
     delete require.cache[moduleId];
   }

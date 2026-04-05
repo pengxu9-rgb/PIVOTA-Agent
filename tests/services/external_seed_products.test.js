@@ -160,7 +160,7 @@ describe('externalSeedProducts helper', () => {
       { name: 'Size', value: '8.0 g' },
     ]);
     expect(variants[0].image_url).toBe(
-      'https://cdn.shopify.com/s/files/1/2139/2967/files/Rose_Topaz_1200.png',
+      'https://cdn.shopify.com/s/files/1/2139/2967/files/Rose_Topaz_1200_4ee4c5e8-a218-4e0a-8af8-2db3c98f0c79.png',
     );
   });
 
@@ -212,22 +212,22 @@ describe('externalSeedProducts helper', () => {
     const variants = normalizeSeedVariants(row.seed_data, row);
     expect(variants).toHaveLength(2);
     expect(variants[0].images).toEqual([
-      'https://sdcdn.io/tf/tf_sku_T1QT01_2000x2000_1.jpg?height=700&width=700',
-      'https://sdcdn.io/tf/tf_sku_T1QT01_2000x2000_2.jpg?height=700&width=700',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QT01_2000x2000_1.jpg',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QT01_2000x2000_2.jpg',
     ]);
     expect(variants[1].images).toEqual([
-      'https://sdcdn.io/tf/tf_sku_T1QS01_2000x2000_1.jpg?height=700&width=700',
-      'https://sdcdn.io/tf/tf_sku_T1QS01_2000x2000_2.jpg?height=700&width=700',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QS01_2000x2000_1.jpg',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QS01_2000x2000_2.jpg',
     ]);
 
     const product = buildExternalSeedProduct(row);
     expect(product.variants[0].images).toEqual([
-      'https://sdcdn.io/tf/tf_sku_T1QT01_2000x2000_1.jpg?height=700&width=700',
-      'https://sdcdn.io/tf/tf_sku_T1QT01_2000x2000_2.jpg?height=700&width=700',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QT01_2000x2000_1.jpg',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QT01_2000x2000_2.jpg',
     ]);
     expect(product.variants[1].images).toEqual([
-      'https://sdcdn.io/tf/tf_sku_T1QS01_2000x2000_1.jpg?height=700&width=700',
-      'https://sdcdn.io/tf/tf_sku_T1QS01_2000x2000_2.jpg?height=700&width=700',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QS01_2000x2000_1.jpg',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QS01_2000x2000_2.jpg',
     ]);
   });
 
@@ -550,5 +550,76 @@ describe('externalSeedProducts helper', () => {
     expect(product.category).toBeUndefined();
     expect(product.product_type).toBe('external');
     expect(product.description).toContain('essence of debonair masculinity');
+  });
+
+  test('prefers primary variant image ordering over stale top-level seed image ordering', () => {
+    const row = {
+      id: 'eps_tomford_lip_liquid',
+      external_product_id: 'ext_tomford_lip_liquid',
+      canonical_url: 'https://www.tomfordbeauty.com/products/liquid-lip-luxe-matte',
+      destination_url: 'https://www.tomfordbeauty.com/products/liquid-lip-luxe-matte',
+      domain: 'www.tomfordbeauty.com',
+      title: 'Liquid Lip Luxe Matte',
+      image_url:
+        'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_TC4N11_2000x2000_0_a5de802c-b211-4ebd-ad88-77963f36118e.png?v=1774387264',
+      seed_data: {
+        brand: 'Tom Ford Beauty',
+        image_urls: [
+          'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_TC4N11_2000x2000_0_a5de802c-b211-4ebd-ad88-77963f36118e.png?v=1774387264',
+          'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_TC4N11_2000x2000_1G_aaedf664-7463-497f-9976-172f7ced1989.jpg?v=1774387264',
+        ],
+        snapshot: {
+          canonical_url: 'https://www.tomfordbeauty.com/products/liquid-lip-luxe-matte',
+          image_url:
+            'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_TC4N11_2000x2000_0_a5de802c-b211-4ebd-ad88-77963f36118e.png?v=1774387264',
+          image_urls: [
+            'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_TC4N11_2000x2000_0_a5de802c-b211-4ebd-ad88-77963f36118e.png?v=1774387264',
+            'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_TC4N11_2000x2000_1G_aaedf664-7463-497f-9976-172f7ced1989.jpg?v=1774387264',
+          ],
+          variants: [
+            {
+              sku: 'TC4N11',
+              variant_id: 'TC4N11',
+              option_name: 'Color',
+              option_value: 'Velvet Bloom',
+              price: '62.00',
+              currency: 'USD',
+              stock: 'In Stock',
+              image_url:
+                'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_TC4N11_2000x2000_0.png?v=1774610411',
+              image_urls: [
+                'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_TC4N11_2000x2000_0.png?v=1774610411',
+                'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_TC4N11_2000x2000_1G_72d7b843-7875-4c79-992d-2c4b900e2751.jpg?v=1774610411',
+              ],
+            },
+            {
+              sku: 'TC4N09',
+              variant_id: 'TC4N09',
+              option_name: 'Color',
+              option_value: 'Other Shade',
+              price: '62.00',
+              currency: 'USD',
+              stock: 'In Stock',
+              image_url:
+                'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_TC4N09_2000x2000_0.png?v=1774610411',
+              image_urls: [
+                'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_TC4N09_2000x2000_0.png?v=1774610411',
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const product = buildExternalSeedProduct(row);
+    expect(product.image_url).toBe(
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_TC4N11_2000x2000_0.png',
+    );
+    expect(product.images[0]).toBe(
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_TC4N11_2000x2000_0.png',
+    );
+    expect(product.images).toContain(
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_TC4N11_2000x2000_1G_72d7b843-7875-4c79-992d-2c4b900e2751.jpg',
+    );
   });
 });
