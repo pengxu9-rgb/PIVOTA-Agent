@@ -17690,179 +17690,12 @@ function classifyBeautyMainlineHandoffFallback({ handoff = null, err = null } = 
   };
 }
 
-function buildBeautyMainlineHandoffFallbackPayload({
-  handoff = null,
-  fallback = null,
-  profile = null,
-  targetContext = null,
-  recoContext = null,
-  taskMode = 'goal_based_products',
-  triggerSource = '',
-  sourceMode = '',
-  entryType = 'chat',
-} = {}) {
-  const fallbackMeta = isPlainObject(fallback) ? fallback : {};
-  const snapshot = extractRecoCanonicalSearchResultSnapshot(handoff?.searchResult);
-  const effectiveSourceMode = pickFirstTrimmed(
-    sourceMode,
-    targetContext?.resolved_target_step ? 'step_aware_mainline' : 'framework_mainline',
-  ) || 'framework_mainline';
-  const mainlineStatus = pickFirstTrimmed(
-    fallbackMeta.mainline_status,
-    'needs_more_context',
-  ) || 'needs_more_context';
-  const nextSelection = {
-    selection_owner: BEAUTY_DISCOVERY_MAINLINE_OWNER,
-    selected_products_count: 0,
-    selected_product_ids: [],
-    selected_titles: [],
-    selection_signature: null,
-    mainline_status: mainlineStatus,
-    context_warning: {
-      applied: true,
-      reasons: [pickFirstTrimmed(fallbackMeta.fallback_reason, 'beauty_mainline_handoff_unavailable') || 'beauty_mainline_handoff_unavailable'],
-    },
-    selection_reason_codes: [
-      pickFirstTrimmed(fallbackMeta.fallback_reason, 'beauty_mainline_handoff_unavailable') || 'beauty_mainline_handoff_unavailable',
-    ],
-    source_tier_counts:
-      snapshot?.sourceBreakdown?.source_tier_counts && isPlainObject(snapshot.sourceBreakdown.source_tier_counts)
-        ? snapshot.sourceBreakdown.source_tier_counts
-        : {},
-    top_candidate_provenance:
-      snapshot?.sourceBreakdown?.top_candidate_provenance && isPlainObject(snapshot.sourceBreakdown.top_candidate_provenance)
-        ? snapshot.sourceBreakdown.top_candidate_provenance
-        : null,
-  };
-  let nextPayload = {
-    intent: 'reco_products',
-    profile: summarizeProfileForContext(profile),
-    recommendations: [],
-    source: 'catalog_grounded_v1',
-    grounding_status: 'ungrounded',
-    grounded_count: 0,
-    ungrounded_count: 0,
-    mainline_status: mainlineStatus,
-    recommendation_confidence_score: 0,
-    recommendation_confidence_level: 'low',
-    task_mode: taskMode,
-    products_empty_reason: pickFirstTrimmed(fallbackMeta.notice_reason, 'upstream_empty_recommendations') || 'upstream_empty_recommendations',
-    recommendation_meta: {
-      task_mode: taskMode,
-      source_mode: effectiveSourceMode,
-      trigger_source: normalizeRecoSourceDetail(triggerSource),
-      mainline_status: mainlineStatus,
-      fallback_reason: pickFirstTrimmed(fallbackMeta.fallback_reason) || 'beauty_mainline_handoff_unavailable',
-      ...(fallbackMeta.upstream_failure_code ? { upstream_failure_code: fallbackMeta.upstream_failure_code } : {}),
-    },
-    metadata: {
-      mainline_status: mainlineStatus,
-    },
-  };
-  nextPayload = applyRecoContentSpineToPayload(nextPayload, recoContext);
-  if (isPlainObject(handoff?.searchResult)) {
-    nextPayload = applyRecoCanonicalSearchResultToPayload(nextPayload, handoff.searchResult, {
-      selectionOwner: BEAUTY_DISCOVERY_MAINLINE_OWNER,
-    });
-  }
-  const nextContract = buildRecoMainlineContract({
-    recommendations: [],
-    sourceMode: effectiveSourceMode,
-    source: nextPayload.source,
-    llmFailureClass: mainlineStatus === 'upstream_timeout' ? 'timeout' : '',
-    upstreamFailureCode: pickFirstTrimmed(fallbackMeta.upstream_failure_code),
-    promptContractOk: true,
-    structuredSource: effectiveSourceMode,
-    productsEmptyReason: pickFirstTrimmed(fallbackMeta.notice_reason, 'upstream_empty_recommendations') || 'upstream_empty_recommendations',
-    groundingStatus: 'ungrounded',
-    groundedCount: 0,
-    ungroundedCount: 0,
-    mainlineStatusOverride: mainlineStatus,
-    entryType,
-  });
-  nextPayload = attachRecoContractMeta(nextPayload, nextContract);
-  nextPayload = applyRecoFinalSelectionContractToPayload(nextPayload, nextSelection);
-  nextPayload = applyRecoAssistantSelectionSignature(nextPayload);
-
-  const recommendationMeta = isPlainObject(nextPayload.recommendation_meta) ? { ...nextPayload.recommendation_meta } : {};
-  const payloadMeta = isPlainObject(nextPayload.metadata) ? { ...nextPayload.metadata } : {};
-  nextPayload.decision_owner = pickFirstTrimmed(nextPayload.decision_owner, BEAUTY_DISCOVERY_MAINLINE_OWNER) || BEAUTY_DISCOVERY_MAINLINE_OWNER;
-  nextPayload.semantic_owner = pickFirstTrimmed(nextPayload.semantic_owner, BEAUTY_DISCOVERY_MAINLINE_OWNER) || BEAUTY_DISCOVERY_MAINLINE_OWNER;
-  recommendationMeta.decision_owner = pickFirstTrimmed(recommendationMeta.decision_owner, nextPayload.decision_owner) || nextPayload.decision_owner;
-  recommendationMeta.semantic_owner = pickFirstTrimmed(recommendationMeta.semantic_owner, nextPayload.semantic_owner) || nextPayload.semantic_owner;
-  recommendationMeta.resolved_contract = pickFirstTrimmed(
-    recommendationMeta.resolved_contract,
-    payloadMeta.contract_bridge?.resolved_contract,
-    'agent_v1_search_beauty_mainline',
-  ) || 'agent_v1_search_beauty_mainline';
-  recommendationMeta.attempted_contract = pickFirstTrimmed(
-    recommendationMeta.attempted_contract,
-    payloadMeta.contract_bridge?.attempted_contract,
-    recommendationMeta.resolved_contract,
-  ) || recommendationMeta.resolved_contract;
-  recommendationMeta.final_selection = nextSelection;
-  if (!isPlainObject(recommendationMeta.source_tier_counts)) recommendationMeta.source_tier_counts = nextSelection.source_tier_counts;
-  if (nextSelection.top_candidate_provenance && !isPlainObject(recommendationMeta.top_candidate_provenance)) {
-    recommendationMeta.top_candidate_provenance = nextSelection.top_candidate_provenance;
-  }
-  payloadMeta.contract_bridge = {
-    ...(isPlainObject(payloadMeta.contract_bridge) ? payloadMeta.contract_bridge : {}),
-    attempted_contract: pickFirstTrimmed(payloadMeta.contract_bridge?.attempted_contract, recommendationMeta.attempted_contract) || recommendationMeta.attempted_contract,
-    resolved_contract: pickFirstTrimmed(payloadMeta.contract_bridge?.resolved_contract, recommendationMeta.resolved_contract) || recommendationMeta.resolved_contract,
-  };
-  payloadMeta.decision_owner = pickFirstTrimmed(payloadMeta.decision_owner, nextPayload.decision_owner) || nextPayload.decision_owner;
-  payloadMeta.semantic_owner = pickFirstTrimmed(payloadMeta.semantic_owner, nextPayload.semantic_owner) || nextPayload.semantic_owner;
-  payloadMeta.final_selection = nextSelection;
-  payloadMeta.selection_signature = nextSelection.selection_signature || null;
-  payloadMeta.selected_product_ids = [];
-  payloadMeta.selected_titles = [];
-  payloadMeta.context_warning = nextSelection.context_warning;
-  payloadMeta.search_stage_ledger = {
-    ...(isPlainObject(payloadMeta.search_stage_ledger) ? payloadMeta.search_stage_ledger : {}),
-    final_selection: nextSelection,
-  };
-  if (isPlainObject(payloadMeta.search_decision)) {
-    payloadMeta.search_decision = {
-      ...payloadMeta.search_decision,
-      final_selection: nextSelection,
-      mainline_status: nextSelection.mainline_status,
-    };
-  }
-  nextPayload.recommendation_meta = recommendationMeta;
-  nextPayload.metadata = payloadMeta;
-  return {
-    payload: nextPayload,
-    contract: nextContract,
-    selectionContract: nextSelection,
-    fallback: fallbackMeta,
-  };
-}
-
 function buildBeautyMainlineHandoffFallbackEnvelope({
   ctx,
   fallback = null,
-  handoff = null,
-  profile = null,
-  targetContext = null,
-  recoContext = null,
-  taskMode = 'goal_based_products',
-  triggerSource = '',
-  sourceMode = '',
   suggestedChips = [],
 } = {}) {
-  const builtPayload = buildBeautyMainlineHandoffFallbackPayload({
-    handoff,
-    fallback,
-    profile,
-    targetContext,
-    recoContext,
-    taskMode,
-    triggerSource,
-    sourceMode,
-    entryType: 'chat',
-  });
-  const payload = builtPayload?.payload;
-  const fallbackMeta = isPlainObject(builtPayload?.fallback) ? builtPayload.fallback : {};
+  const fallbackMeta = isPlainObject(fallback) ? fallback : {};
   const noticePayload = buildConfidenceNoticeCardPayload({
     language: ctx?.lang,
     reason: pickFirstTrimmed(fallbackMeta.notice_reason, 'upstream_empty_recommendations') || 'upstream_empty_recommendations',
@@ -17887,11 +17720,6 @@ function buildBeautyMainlineHandoffFallbackEnvelope({
     ),
     suggested_chips: Array.isArray(suggestedChips) ? suggestedChips : [],
     cards: [
-      {
-        card_id: `reco_${ctx && ctx.request_id ? ctx.request_id : Date.now()}`,
-        type: 'recommendations',
-        payload,
-      },
       {
         card_id: `conf_${ctx && ctx.request_id ? ctx.request_id : Date.now()}_beauty_mainline_handoff_fallback`,
         type: 'confidence_notice',
@@ -27069,9 +26897,7 @@ function applyRecoCardContractInvariant({ envelope, ctx, language } = {}) {
       continue;
     }
     const payload = isPlainObject(card.payload) ? card.payload : {};
-    const controlledBeautyMainlineFallback =
-      String(payload?.recommendation_meta?.fallback_reason || '').trim().startsWith('beauty_mainline_handoff_');
-    if (hasNonEmptyRecommendationsPayload(payload) || isExplicitIngredientRecoEmptyMode(payload) || controlledBeautyMainlineFallback) {
+    if (hasNonEmptyRecommendationsPayload(payload) || isExplicitIngredientRecoEmptyMode(payload)) {
       nextCards.push(card);
       continue;
     }

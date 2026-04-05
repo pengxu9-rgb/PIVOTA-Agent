@@ -5686,7 +5686,7 @@ test('/v1/chat: typed beauty ownership bypasses legacy recommendationsAllowed ga
   }
 });
 
-test('/v1/chat: beauty-owned hard path returns controlled fallback when beauty mainline handoff times out', async () => {
+test('/v1/chat: beauty-owned hard path fails closed when beauty mainline handoff times out', async () => {
   const originalGet = axios.get;
   let auroraChatCallCount = 0;
   const harness = createAppWithPatchedAuroraChat({
@@ -5742,25 +5742,19 @@ test('/v1/chat: beauty-owned hard path returns controlled fallback when beauty m
     assert.equal(response.statusCode, 200);
     assert.equal(auroraChatCallCount, 0);
     const payload = getRecommendationsPayload(response.body);
-    assert.ok(payload);
-    assert.deepEqual(
-      Array.isArray(payload.recommendations) ? payload.recommendations.map((item) => item?.product_id).filter(Boolean) : [],
-      [],
-    );
-    assert.equal(payload.mainline_status, 'needs_more_context');
-    assert.equal(payload.recommendation_meta?.mainline_status, 'needs_more_context');
+    assert.equal(payload, null);
+    const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
+    const confidenceCard = cards.find((card) => card && card.type === 'confidence_notice') || null;
+    assert.ok(confidenceCard);
     assert.ok(
-      ['beauty_mainline_handoff_timeout', 'beauty_mainline_handoff_empty'].includes(
-        String(payload.recommendation_meta?.fallback_reason || ''),
+      ['upstream_timeout_primary_role', 'upstream_empty_recommendations'].includes(
+        String(confidenceCard?.payload?.reason || ''),
       ),
     );
-    assert.equal(payload.recommendation_meta?.resolved_contract, 'agent_v1_search_beauty_mainline');
-    assert.equal(payload.recommendation_meta?.decision_owner, 'shopping_agent_beauty_mainline');
-    assert.equal(payload.recommendation_meta?.semantic_owner, 'shopping_agent_beauty_mainline');
-    assert.deepEqual(payload.recommendation_meta?.final_selection?.selected_product_ids, []);
-    assert.deepEqual(payload.metadata?.search_stage_ledger?.final_selection?.selected_product_ids, []);
-    const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
-    assert.equal(cards.some((card) => card && card.type === 'confidence_notice'), true);
+    assert.match(
+      String(response.body?.assistant_message?.content || ''),
+      /retry shortly|稍后重试/i,
+    );
   } finally {
     axios.get = originalGet;
     harness.restore();
