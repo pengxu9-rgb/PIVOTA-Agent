@@ -18,6 +18,11 @@ const {
   },
 } = require('./RecommendationEngine');
 const { classifyBeautyBucketFromText } = require('../findProductsMulti/beautyQueryProfile');
+const {
+  buildBrandQueryVariants,
+  detectBrandEntities,
+  normalizeBrandText,
+} = require('../findProductsMulti/brandLexicon');
 
 const SCORING_VERSION = 'discovery_v2';
 const MAX_RECENT_VIEWS = 50;
@@ -30,6 +35,7 @@ const MAX_PRODUCTS_SEARCH_CALLS = 2;
 const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
 const VALID_SURFACES = new Set(['home_hot_deals', 'browse_products']);
 const VALID_AUTH_STATES = new Set(['authenticated', 'anonymous']);
+const VALID_DISCOVERY_SORTS = new Set(['popular', 'price_desc', 'price_asc']);
 const HOME_INTEREST_RECALL_LIMIT = 24;
 const HOME_BROWSE_FILL_LIMIT = 24;
 const HOME_MIN_BROWSE_FILL_LIMIT = 16;
@@ -127,6 +133,39 @@ function uniqStrings(values, limit) {
   return out;
 }
 
+function normalizeDiscoverySort(raw) {
+  const value = String(raw || '').trim().toLowerCase();
+  return VALID_DISCOVERY_SORTS.has(value) ? value : 'popular';
+}
+
+function normalizeDiscoveryQuery(raw) {
+  if (typeof raw === 'string') {
+    return { text: String(raw).trim() };
+  }
+  if (!raw || typeof raw !== 'object') {
+    return { text: '' };
+  }
+  return {
+    text: String(raw.text || raw.query || '').trim(),
+  };
+}
+
+function normalizeDiscoveryScope(raw) {
+  const source = raw && typeof raw === 'object' ? raw : {};
+  const brandNames = uniqStrings(
+    [
+      ...(Array.isArray(source.brand_names) ? source.brand_names : []),
+      ...(Array.isArray(source.brandNames) ? source.brandNames : []),
+      source.brand_name,
+      source.brandName,
+    ],
+    4,
+  );
+  return {
+    brand_names: brandNames,
+  };
+}
+
 function normalizeAuthState(raw) {
   const value = String(raw || '').trim().toLowerCase();
   return VALID_AUTH_STATES.has(value) ? value : 'anonymous';
@@ -172,6 +211,57 @@ function buildProductKey(merchantId, productId) {
 
 function normalizeCacheText(value) {
   return normalizeText(value || '').slice(0, 120);
+}
+
+function compactBrandToken(value) {
+  return normalizeBrandText(value).replace(/\s+/g, '');
+}
+
+function buildBrandScopeAliases(brandNames = []) {
+  const aliases = new Set();
+  for (const rawBrand of Array.isArray(brandNames) ? brandNames : []) {
+    const brandName = String(rawBrand || '').trim();
+    if (!brandName) continue;
+    const detected = detectBrandEntities(brandName, { candidateProducts: [] });
+    const variants = buildBrandQueryVariants(
+      brandName,
+      Array.isArray(detected?.brands) && detected.brands.length ? detected.brands : [brandName],
+    );
+    variants.forEach((variant) => {
+      const normalized = normalizeBrandText(variant);
+      if (normalized) aliases.add(normalized);
+    });
+  }
+  return Array.from(aliases);
+}
+
+function matchesBrandScopeCandidate(candidate, aliases = []) {
+  if (!Array.isArray(aliases) || aliases.length === 0) return true;
+  const candidateBrand = normalizeBrandText(candidate?.brand || candidate?.raw?.brand || '');
+  if (!candidateBrand) return false;
+  const candidateCompact = compactBrandToken(candidateBrand);
+  return aliases.some((alias) => {
+    const normalizedAlias = normalizeBrandText(alias);
+    if (!normalizedAlias) return false;
+    const aliasCompact = compactBrandToken(normalizedAlias);
+    return (
+      candidateBrand === normalizedAlias ||
+      candidateBrand.startsWith(`${normalizedAlias} `) ||
+      candidateBrand.endsWith(` ${normalizedAlias}`) ||
+      candidateCompact === aliasCompact ||
+      candidateCompact.startsWith(aliasCompact)
+    );
+  });
+}
+
+function parseCandidatePriceAmount(rawPrice) {
+  const amount =
+    rawPrice?.amount ??
+    rawPrice?.current?.amount ??
+    rawPrice?.price ??
+    rawPrice;
+  const numeric = Number(amount);
+  return Number.isFinite(numeric) ? numeric : null;
 }
 
 function getTopMapKeys(map, limit = 5) {
@@ -453,11 +543,17 @@ function normalizeDiscoveryRequest(input = {}) {
   const authState = normalizeAuthState(context.auth_state);
   const locale = String(context.locale || 'en-US').trim() || 'en-US';
   const debug = normalizeDiscoveryDebug(source.debug);
+  const scope = normalizeDiscoveryScope(source.scope);
+  const query = normalizeDiscoveryQuery(source.query ?? source.query_text ?? source.queryText);
+  const sort = normalizeDiscoverySort(source.sort);
 
   return {
     surface,
     page,
     limit,
+    sort,
+    scope,
+    query,
     context: {
       recent_views: dedupedRecentViews,
       recent_queries: recentQueries,
@@ -663,6 +759,7 @@ function normalizeCandidateProduct(product, browseRank = 0) {
       : beautyBucket && beautyBucket !== 'other'
         ? 'beauty'
         : 'unknown';
+  const priceAmount = parseCandidatePriceAmount(product.price);
   return {
     raw: {
       ...product,
@@ -682,8 +779,16 @@ function normalizeCandidateProduct(product, browseRank = 0) {
     domain: normalizedDomain,
     beautyBucket: beautyBucket && beautyBucket !== 'other' ? beautyBucket : null,
     tokens,
+    priceAmount,
     browseRank,
   };
+}
+
+function buildDiscoveryBrandScopedQuery(request) {
+  const brandNames = Array.isArray(request?.scope?.brand_names) ? request.scope.brand_names : [];
+  const primaryBrand = brandNames[0] || '';
+  const queryText = String(request?.query?.text || '').trim();
+  return buildDiscoveryQueryTerms([primaryBrand, queryText], 2).join(' ').trim();
 }
 
 function buildDiscoveryInterestQuery(request, profile) {
@@ -738,8 +843,15 @@ function resolveDiscoveryCandidateLimit(request) {
 function buildDiscoveryContextCacheKey(request) {
   return JSON.stringify({
     surface: request?.surface || 'unknown',
+    sort: request?.sort || 'popular',
     locale: String(request?.context?.locale || '').trim(),
     auth_state: String(request?.context?.auth_state || '').trim(),
+    scope: {
+      brand_names: uniqStrings(request?.scope?.brand_names, 4).map((value) => normalizeCacheText(value)),
+    },
+    query: {
+      text: normalizeCacheText(request?.query?.text),
+    },
     recent_queries: uniqStrings(request?.context?.recent_queries, 6).map(normalizeCacheText),
     recent_views: (Array.isArray(request?.context?.recent_views) ? request.context.recent_views : [])
       .slice(0, 12)
@@ -788,6 +900,32 @@ function setBrowsePoolCache(request, products, recallSummary) {
 
 function buildDiscoveryRecallPlan(request, profile, limit) {
   const safeLimit = clampInt(limit, resolveDiscoveryCandidateLimit(request), 24, MAX_CANDIDATE_FETCH);
+  const hasBrandScope = Array.isArray(request?.scope?.brand_names) && request.scope.brand_names.length > 0;
+  if (hasBrandScope) {
+    const brandQuery = buildDiscoveryBrandScopedQuery(request);
+    const firstLimit = Math.min(PRODUCTS_SEARCH_PAGE_SIZE, safeLimit);
+    const remaining = Math.max(0, safeLimit - firstLimit);
+    return [
+      {
+        label: 'brand_pool',
+        query: brandQuery,
+        offset: 0,
+        limit: firstLimit,
+        allow_early_exit: remaining <= 0,
+      },
+      ...(remaining > 0
+        ? [
+            {
+              label: 'brand_pool',
+              query: brandQuery,
+              offset: firstLimit,
+              limit: Math.min(PRODUCTS_SEARCH_PAGE_SIZE, remaining),
+              allow_early_exit: true,
+            },
+          ]
+        : []),
+    ];
+  }
   if (request?.surface === 'browse_products') {
     const seededBrowseQuery = buildDiscoverySeededBrowseQuery(request, profile);
     const firstLimit = Math.min(BROWSE_PRIMARY_RECALL_LIMIT, safeLimit);
@@ -1250,6 +1388,26 @@ function compareBrowseEntries(a, b) {
   return a.candidate.key.localeCompare(b.candidate.key);
 }
 
+function compareBrowseEntriesBySort(sort = 'popular') {
+  if (sort === 'price_desc') {
+    return (a, b) => {
+      const aPrice = Number.isFinite(a?.candidate?.priceAmount) ? a.candidate.priceAmount : Number.NEGATIVE_INFINITY;
+      const bPrice = Number.isFinite(b?.candidate?.priceAmount) ? b.candidate.priceAmount : Number.NEGATIVE_INFINITY;
+      if (bPrice !== aPrice) return bPrice - aPrice;
+      return compareBrowseEntries(a, b);
+    };
+  }
+  if (sort === 'price_asc') {
+    return (a, b) => {
+      const aPrice = Number.isFinite(a?.candidate?.priceAmount) ? a.candidate.priceAmount : Number.POSITIVE_INFINITY;
+      const bPrice = Number.isFinite(b?.candidate?.priceAmount) ? b.candidate.priceAmount : Number.POSITIVE_INFINITY;
+      if (aPrice !== bPrice) return aPrice - bPrice;
+      return compareBrowseEntries(a, b);
+    };
+  }
+  return compareBrowseEntries;
+}
+
 function selectHomeProducts(scoredCandidates, viewedKeys, limit, options = {}) {
   const collectDebug = options.collectDebug === true;
   const profile = options.profile || null;
@@ -1325,7 +1483,9 @@ function selectHomeProducts(scoredCandidates, viewedKeys, limit, options = {}) {
 function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options = {}) {
   const collectDebug = options.collectDebug === true;
   const profile = options.profile || null;
-  const ranked = [...scoredCandidates].sort(compareBrowseEntries);
+  const sort = normalizeDiscoverySort(options.sort);
+  const brandScoped = options.brandScoped === true;
+  const ranked = [...scoredCandidates].sort(compareBrowseEntriesBySort(sort));
   const decisions = collectDebug ? new Map() : null;
 
   const orderedPool = [];
@@ -1335,7 +1495,7 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
       if (decisions) decisions.set(entry.candidate.key, rejectReason);
       continue;
     }
-    if (page <= 1 && viewedKeys.has(entry.candidate.key)) {
+    if (page <= 1 && viewedKeys.has(entry.candidate.key) && !brandScoped) {
       if (decisions) decisions.set(entry.candidate.key, 'filtered_recent_view');
       continue;
     }
@@ -1531,10 +1691,15 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       seenKeys.add(normalized.key);
       normalizedCandidates.push(normalized);
     }
+    const brandScopeAliases = buildBrandScopeAliases(request.scope?.brand_names || []);
+    const scopedCandidates =
+      brandScopeAliases.length > 0
+        ? normalizedCandidates.filter((candidate) => matchesBrandScopeCandidate(candidate, brandScopeAliases))
+        : normalizedCandidates;
     observeDiscoveryCandidateCount({
       surface: request.surface,
       stage: 'normalized',
-      count: normalizedCandidates.length,
+      count: scopedCandidates.length,
     });
 
     const viewedKeys = new Set(
@@ -1543,7 +1708,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
         .filter(Boolean),
     );
 
-    const scoredCandidates = normalizedCandidates.map((candidate) => ({
+    const scoredCandidates = scopedCandidates.map((candidate) => ({
       candidate,
       scores: scoreCandidate(candidate, profile, request.surface),
     }));
@@ -1585,7 +1750,12 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
         viewedKeys,
         request.page,
         request.limit,
-        { collectDebug: request.debug.enabled, profile },
+        {
+          collectDebug: request.debug.enabled,
+          profile,
+          sort: request.sort,
+          brandScoped: brandScopeAliases.length > 0,
+        },
       );
       selectedEntries = browseSelection.pageItems;
       total = browseSelection.orderedPool.length;
@@ -1617,6 +1787,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
     });
 
     const latencyMs = Date.now() - startedAt;
+    const hasMore = total > request.page * request.limit;
     const metadata = {
       discovery_strategy: strategy,
       personalization_source: personalizationSource,
@@ -1628,6 +1799,10 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       candidate_source: candidateSource,
       candidate_counts: candidateCounts,
       request_latency_ms: latencyMs,
+      sort_applied: request.sort,
+      brand_scope_applied: request.scope.brand_names,
+      query_text: request.query.text,
+      has_more: hasMore,
       ...(profile.dominantDomain ? { dominant_domain: profile.dominantDomain } : {}),
     };
 

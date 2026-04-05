@@ -189,6 +189,35 @@ describe('discovery feed service', () => {
     expect(browsePlan[0].query).toMatch(/skincare|serum/i);
   });
 
+  test('brand-scoped browse recall switches to brand_pool queries', () => {
+    const request = _internals.normalizeDiscoveryRequest({
+      surface: 'browse_products',
+      page: 1,
+      limit: 12,
+      sort: 'popular',
+      scope: {
+        brand_names: ['Tom Ford Beauty'],
+      },
+      query: {
+        text: 'lip',
+      },
+      context: {
+        recent_queries: ['lip color'],
+      },
+    });
+
+    const profile = buildDiscoveryProfile(request.context);
+    const plan = _internals.buildDiscoveryRecallPlan(request, profile, 48);
+
+    expect(plan[0]).toEqual(
+      expect.objectContaining({
+        label: 'brand_pool',
+        query: expect.stringMatching(/Tom Ford Beauty/i),
+      }),
+    );
+    expect(plan[0].query).toMatch(/lip/i);
+  });
+
   test('home_hot_deals excludes exact recent views and caps same brand at two items', async () => {
     const response = await getDiscoveryFeed(
       {
@@ -270,6 +299,93 @@ describe('discovery feed service', () => {
     expect(response.metadata.discovery_strategy).toBe('personalized_interest');
     expect(ids).not.toContain('exact_viewed');
     expect(alphaCount).toBeLessThanOrEqual(2);
+  });
+
+  test('brand-scoped browse keeps matching viewed items, filters other brands, and supports price sort', async () => {
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 3,
+        sort: 'price_desc',
+        scope: {
+          brand_names: ['Tom Ford Beauty'],
+        },
+        query: {
+          text: 'fragrance',
+        },
+        context: {
+          auth_state: 'authenticated',
+          locale: 'en-US',
+          recent_views: [
+            {
+              merchant_id: 'm1',
+              product_id: 'rose_prick',
+              title: 'Rose Prick Eau de Parfum',
+              brand: 'Tom Ford Beauty',
+              category: 'Fragrance',
+              product_type: 'Perfume',
+              viewed_at: '2026-04-04T10:00:00Z',
+            },
+          ],
+        },
+      },
+      {
+        candidateProducts: [
+          makeProduct({
+            merchant_id: 'm1',
+            product_id: 'rose_prick',
+            title: 'Rose Prick Eau de Parfum',
+            brand: 'Tom Ford Beauty',
+            category: 'Fragrance',
+            product_type: 'Perfume',
+            price: 410,
+          }),
+          makeProduct({
+            merchant_id: 'm2',
+            product_id: 'electric_cherry',
+            title: 'Electric Cherry Eau de Parfum',
+            brand: 'Tom Ford',
+            category: 'Fragrance',
+            product_type: 'Perfume',
+            price: 395,
+          }),
+          makeProduct({
+            merchant_id: 'm3',
+            product_id: 'lost_cherry',
+            title: 'Lost Cherry Eau de Parfum',
+            brand: 'Tom Ford Beauty',
+            category: 'Fragrance',
+            product_type: 'Perfume',
+            price: 550,
+          }),
+          makeProduct({
+            merchant_id: 'm4',
+            product_id: 'other_brand',
+            title: 'Other Brand Perfume',
+            brand: 'Byredo',
+            category: 'Fragrance',
+            product_type: 'Perfume',
+            price: 600,
+          }),
+        ],
+      },
+    );
+
+    expect(response.products.map((product) => product.product_id)).toEqual([
+      'lost_cherry',
+      'rose_prick',
+      'electric_cherry',
+    ]);
+    expect(response.products.every((product) => /tom ford/i.test(String(product.brand || '')))).toBe(true);
+    expect(response.metadata).toEqual(
+      expect.objectContaining({
+        sort_applied: 'price_desc',
+        brand_scope_applied: ['Tom Ford Beauty'],
+        query_text: 'fragrance',
+        has_more: false,
+      }),
+    );
   });
 
   test('emits rank debug, candidate metadata, and discovery metrics for discovery feed requests', async () => {

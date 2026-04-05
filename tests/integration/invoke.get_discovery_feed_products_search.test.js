@@ -102,4 +102,101 @@ describe('/agent/shop/v1/invoke get_discovery_feed via products/search', () => {
     );
     expect(capturedParams.some((params) => String(params.query || '').trim().length > 0)).toBe(true);
   });
+
+  test('supports brand-scoped discovery with explicit sort and query text', async () => {
+    const capturedParams = [];
+    nock('http://catalog.test')
+      .matchHeader('x-api-key', 'test-token')
+      .get('/agent/v1/products/search')
+      .query((params) => {
+        capturedParams.push(params);
+        return true;
+      })
+      .times(2)
+      .reply(200, {
+        products: [
+          {
+            merchant_id: 'm1',
+            product_id: 'rose_prick',
+            title: 'Rose Prick Eau de Parfum',
+            brand: 'Tom Ford Beauty',
+            category: 'Fragrance',
+            product_type: 'Perfume',
+            inventory_quantity: 12,
+            price: 410,
+            status: 'active',
+          },
+          {
+            merchant_id: 'm2',
+            product_id: 'electric_cherry',
+            title: 'Electric Cherry Eau de Parfum',
+            brand: 'Tom Ford',
+            category: 'Fragrance',
+            product_type: 'Perfume',
+            inventory_quantity: 8,
+            price: 395,
+            status: 'active',
+          },
+          {
+            merchant_id: 'm3',
+            product_id: 'other_brand',
+            title: 'Gypsy Water',
+            brand: 'Byredo',
+            category: 'Fragrance',
+            product_type: 'Perfume',
+            inventory_quantity: 7,
+            price: 600,
+            status: 'active',
+          },
+        ],
+      });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'get_discovery_feed',
+        payload: {
+          surface: 'browse_products',
+          page: 1,
+          limit: 2,
+          sort: 'price_desc',
+          scope: {
+            brand_names: ['Tom Ford Beauty'],
+          },
+          query: {
+            text: 'fragrance',
+          },
+          context: {
+            auth_state: 'authenticated',
+            locale: 'en-US',
+            recent_views: [
+              {
+                merchant_id: 'm1',
+                product_id: 'rose_prick',
+                title: 'Rose Prick Eau de Parfum',
+                brand: 'Tom Ford Beauty',
+                category: 'Fragrance',
+                product_type: 'Perfume',
+                viewed_at: '2026-04-04T10:00:00Z',
+              },
+            ],
+          },
+        },
+      })
+      .expect(200);
+
+    expect(res.body.products.map((product) => product.product_id)).toEqual([
+      'rose_prick',
+      'electric_cherry',
+    ]);
+    expect(res.body.products.every((product) => /tom ford/i.test(String(product.brand || '')))).toBe(true);
+    expect(res.body.metadata).toEqual(
+      expect.objectContaining({
+        sort_applied: 'price_desc',
+        brand_scope_applied: ['Tom Ford Beauty'],
+        query_text: 'fragrance',
+      }),
+    );
+    expect(capturedParams.some((params) => /Tom Ford Beauty/i.test(String(params.query || '')))).toBe(true);
+  });
 });
