@@ -4,10 +4,10 @@ const { normalizePdpImageUrl } = require('../utils/pdpImageUrls');
 
 const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
 const SKINCARE_STEP_CATEGORY_PATTERNS = [
-  ['Serum', /\b(serum|essence|ampoule|concentrate)\b/i],
-  ['Moisturizer', /\b(moisturizer|moisturiser|cream|lotion|gel cream|gel-cream|barrier cream)\b/i],
   ['Cleanser', /\b(cleanser|cleansing|face wash|facial wash|cleansing milk|cleansing foam|cleansing gel|wash)\b/i],
   ['Toner', /\b(toner|mist|pad)\b/i],
+  ['Moisturizer', /\b(moisturizer|moisturiser|cream|lotion|gel cream|gel-cream|barrier cream)\b/i],
+  ['Serum', /\b(serum|essence|ampoule|concentrate)\b/i],
 ];
 const STRONG_ACTIVE_SOLUTION_INGREDIENT_IDS = new Set([
   'salicylic_acid',
@@ -906,7 +906,17 @@ function buildExternalSeedProduct(row) {
   const title =
     String(snapshot.title || row.title || seedData.title || canonicalUrl || destinationUrl || externalProductId).trim() ||
     externalProductId;
-  const description = String(snapshot.description || row.description || seedData.description || '').trim();
+  const description = firstNonEmptyString(
+    snapshot.description,
+    row.description,
+    row.seed_description,
+    seedData.description,
+  );
+  const categoryDescription = firstNonEmptyString(
+    snapshot.description,
+    row.description,
+    seedData.description,
+  );
   const pdpDescriptionRaw = firstNonEmptyString(
     seedData.pdp_description_raw,
     snapshot.pdp_description_raw,
@@ -989,7 +999,12 @@ function buildExternalSeedProduct(row) {
     canonicalUrl,
     destinationUrl,
   );
-  const brand = String(seedData.brand || snapshot.brand || '').trim() || undefined;
+  const brand = firstNonEmptyString(
+    seedData.brand,
+    snapshot.brand,
+    row.seed_brand,
+    row.brand,
+  ) || undefined;
   const explicitCategory =
     normalizeExplicitSkincareCategory(seedData.category) ||
     normalizeExplicitSkincareCategory(seedData.product?.category) ||
@@ -997,13 +1012,17 @@ function buildExternalSeedProduct(row) {
     normalizeExplicitSkincareCategory(seedData.product_type) ||
     normalizeExplicitSkincareCategory(seedData.productType) ||
     normalizeExplicitSkincareCategory(snapshot.product_type) ||
-    normalizeExplicitSkincareCategory(snapshot.productType);
+    normalizeExplicitSkincareCategory(snapshot.productType) ||
+    normalizeExplicitSkincareCategory(row.seed_category) ||
+    normalizeExplicitSkincareCategory(row.seed_product_type) ||
+    normalizeExplicitSkincareCategory(row.category) ||
+    normalizeExplicitSkincareCategory(row.product_type);
   const ingredientTokens = collectSeedIngredientSignalTokens(seedData, row);
   const ingredientIds = collectStructuredIngredientIds(row, seedData, snapshot);
   const category = inferExternalSeedSkincareCategory({
     explicitCategory,
     title,
-    description,
+    description: categoryDescription,
     canonicalUrl,
     destinationUrl,
     ingredientIds,

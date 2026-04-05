@@ -362,6 +362,49 @@ describe('RecommendationEngine (PDP)', () => {
     expect(internalCount + externalCount).toBe(out.items.length);
   });
 
+  test('j1) same-brand tokens alone must not lift unrelated category items into similar results', () => {
+    const base = makeProduct({
+      merchant_id: 'external_seed',
+      product_id: 'ext_tom_ford_cleanser',
+      title: 'TOM FORD RESEARCH Cleansing Concentrate',
+      brand: 'Tom Ford Beauty',
+      category: 'Cleanser',
+      source: 'external_seed',
+      price: 100,
+    });
+
+    const external = [
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_research_serum',
+        title: 'TOM FORD RESEARCH Serum Concentrate',
+        brand: 'Tom Ford Beauty',
+        category: 'Serum',
+        source: 'external_seed',
+        price: 96,
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_lip_color',
+        title: 'Lip Color Matte',
+        brand: 'Tom Ford Beauty',
+        category: 'external',
+        source: 'external_seed',
+        price: 62,
+      }),
+    ];
+
+    const out = pickLayeredRecommendations({
+      baseProduct: base,
+      internalCandidates: [],
+      externalCandidates: external,
+      k: 6,
+    });
+
+    expect(out.items.map((item) => item.product_id)).toContain('ext_research_serum');
+    expect(out.items.map((item) => item.product_id)).not.toContain('ext_lip_color');
+  });
+
   test('j2) recommendations dedupe repeated semantic titles across different product ids', () => {
     const base = makeProduct({
       merchant_id: 'external_seed',
