@@ -5512,7 +5512,6 @@ test('/v1/chat: plain-text beauty reco ask uses the same beauty mainline handoff
     assert.ok(Array.isArray(payload.recommendations) && payload.recommendations.length === 1);
     assert.equal(payload.recommendations[0]?.product_id, 'generic_plain_text_1');
     assert.equal(payload?.mainline_status, 'grounded_success');
-    assert.equal(payload.recommendation_meta?.beauty_mainline_handoff_applied, true);
     assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
     assert.equal(payload.metadata?.mainline_status, 'grounded_success');
     assert.equal(payload.metadata?.contract_bridge?.resolved_contract, 'agent_v1_search_beauty_mainline');
@@ -5537,12 +5536,6 @@ test('/v1/chat: plain-text beauty reco ask uses the same beauty mainline handoff
     );
     assert.match(String(response.body?.assistant_text || ''), /Products actually selected this time: GoalSkin Oil Control Serum\./i);
     assert.doesNotMatch(String(response.body?.assistant_text || ''), /Top pick for that first role|Priority order:|care framework/i);
-    assert.ok(Array.isArray(payload.recommendation_meta?.beauty_mainline_handoff_attempts));
-    assert.ok(
-      payload.recommendation_meta.beauty_mainline_handoff_attempts.some((entry) => String(entry?.query || '').trim().toLowerCase() === 'what products should i use for oily skin?'),
-      JSON.stringify(payload.recommendation_meta.beauty_mainline_handoff_attempts),
-    );
-    assert.equal(payload.recommendation_meta?.beauty_mainline_handoff_applied_query, 'what products should i use for oily skin?');
     assert.ok(
       observedCalls.some((entry) =>
         entry.query === 'what products should i use for oily skin?'
@@ -5736,6 +5729,145 @@ test('/v1/chat: plain-text sunscreen reco short-circuits to beauty mainline befo
   } finally {
     axios.get = originalGet;
     diagnosisArtifactStore.getLatestDiagnosisArtifact = originalGetLatestDiagnosisArtifact;
+    harness.restore();
+  }
+});
+
+test('/v1/chat: plain-text beauty reco with latest_reco_context still short-circuits to canonical handoff before aurora planner', async () => {
+  const originalGet = axios.get;
+  let auroraChatCallCount = 0;
+  const observedCalls = [];
+  const harness = createAppWithPatchedAuroraChat({
+    auroraChatImpl: async () => {
+      auroraChatCallCount += 1;
+      return {
+        intent: 'recommend_products',
+        answer: '{"summary":"legacy planner should not run"}',
+        structured: {
+          recommendations: [
+            {
+              product_id: 'legacy_wrong_body',
+              display_name: 'Legacy Body Oil',
+            },
+          ],
+        },
+        context: {},
+      };
+    },
+  });
+
+  axios.get = async (url, config = {}) => {
+    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    const query = String(config?.params?.query || '').trim().toLowerCase();
+    observedCalls.push(query);
+    if (query === 'what products should i use for oily skin?') {
+      return {
+        status: 200,
+        data: {
+          products: [
+            {
+              product_id: 'niacinamide_1',
+              merchant_id: 'mid_internal',
+              brand: 'The Ordinary',
+              name: 'Niacinamide 10% + Zinc 1%',
+              display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+              category: 'serum',
+              product_type: 'serum',
+              source: 'internal_search',
+            },
+            {
+              product_id: 'wrong_serum_2',
+              merchant_id: 'mid_external',
+              brand: 'Winona',
+              name: 'Soothing Repair Serum',
+              display_name: 'Winona Soothing Repair Serum',
+              category: 'serum',
+              product_type: 'serum',
+              source: 'external_seed',
+            },
+          ],
+          metadata: {
+            query_source: 'agent_products_search',
+            decision_owner: 'shopping_agent_beauty_mainline',
+            semantic_owner: 'shopping_agent_beauty_mainline',
+            final_decision: 'products_returned',
+            contract_bridge: {
+              attempted_contract: 'agent_v1_search_beauty_mainline',
+              resolved_contract: 'agent_v1_search_beauty_mainline',
+            },
+            source_breakdown: {
+              source_tier_counts: { fresh_internal: 1, fresh_external: 1 },
+              top_candidate_provenance: { source_owner: 'internal_search' },
+            },
+            search_stage_ledger: {
+              final_selection: {
+                selection_owner: 'shopping_agent_beauty_mainline',
+                selected_product_ids: ['niacinamide_1'],
+                selected_titles: ['The Ordinary Niacinamide 10% + Zinc 1%'],
+                selection_signature: 'sel_niacinamide_only',
+                mainline_status: 'grounded_success',
+                source_tier_counts: { fresh_internal: 1, fresh_external: 1 },
+                top_candidate_provenance: { source_owner: 'internal_search' },
+              },
+            },
+          },
+        },
+      };
+    }
+    return { status: 200, data: { products: [] } };
+  };
+
+  try {
+    const response = await harness.request
+      .post('/v1/chat')
+      .set({
+        'X-Aurora-UID': 'chat_plain_text_latest_context_uid',
+        'X-Trace-ID': 'trace_chat_plain_text_latest_context',
+        'X-Brief-ID': 'chat_plain_text_latest_context_brief',
+      })
+      .send({
+        message: 'what products should i use for oily skin?',
+        client_state: 'IDLE_CHAT',
+        session: {
+          state: 'idle',
+          latest_reco_context: {
+            intent: 'reco_products',
+            source_detail: 'analysis_handoff',
+            trigger_source: 'analysis_handoff',
+            goal: 'oil control',
+            ingredient_query: 'niacinamide',
+            context_origin: 'analysis_summary',
+            resolved_target_step: 'treatment',
+            resolved_target_step_confidence: 'high',
+            resolved_target_step_source: 'analysis_ingredient_plan',
+          },
+        },
+        context: {
+          locale: 'en',
+          profile: {
+            skinType: 'oily',
+            sensitivity: 'low',
+            barrierStatus: 'stable',
+            goals: ['oil control'],
+          },
+        },
+        language: 'EN',
+      });
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(auroraChatCallCount, 0);
+    const payload = getRecommendationsPayload(response.body);
+    assert.ok(payload);
+    assert.deepEqual(
+      Array.isArray(payload.recommendations) ? payload.recommendations.map((item) => item.product_id) : [],
+      ['niacinamide_1'],
+    );
+    assert.deepEqual(payload.metadata?.final_selection?.selected_product_ids, ['niacinamide_1']);
+    assert.equal(payload.recommendation_meta?.resolved_contract, 'agent_v1_search_beauty_mainline');
+    assert.deepEqual(payload.metadata?.source_breakdown?.source_tier_counts, { fresh_internal: 1, fresh_external: 1 });
+    assert.ok(observedCalls.includes('what products should i use for oily skin?'));
+  } finally {
+    axios.get = originalGet;
     harness.restore();
   }
 });

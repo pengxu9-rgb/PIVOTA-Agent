@@ -17356,20 +17356,29 @@ function buildRecoRowsFromMainlineProducts(products, {
     Array.isArray(selectionContract?.selected_product_ids) ? selectionContract.selected_product_ids : [],
     24,
   );
-  const selectedIdSet = new Set(selectedIds);
-  const mainlineRows = selectedIds.length > 0
-    ? [
-        ...selectedIds.map((id) =>
-          allRows.find((row) =>
-            pickFirstString(row?.product_id, row?.productId) === id
-          )
-        ).filter(Boolean),
-        ...allRows.filter((row) => {
-          const id = pickFirstString(row?.product_id, row?.productId);
-          return !selectedIdSet.has(id);
-        }),
-      ]
-    : allRows;
+  const selectedTitles = normalizeRecoSelectionTitles(
+    Array.isArray(selectionContract?.selected_titles) ? selectionContract.selected_titles : [],
+    24,
+  );
+  const selectedTitleSet = new Set(selectedTitles.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean));
+  const selectedRowsById = selectedIds.length > 0
+    ? selectedIds.map((id) =>
+      allRows.find((row) =>
+        pickFirstString(row?.product_id, row?.productId) === id
+      )
+    ).filter(Boolean)
+    : [];
+  const selectedRowsByTitle = selectedRowsById.length === 0 && selectedTitleSet.size > 0
+    ? allRows.filter((row) => {
+      const title = pickFirstTrimmed(row?.display_name, row?.displayName, row?.name, row?.title);
+      return title ? selectedTitleSet.has(String(title).trim().toLowerCase()) : false;
+    })
+    : [];
+  const mainlineRows = selectedRowsById.length > 0
+    ? selectedRowsById
+    : selectedRowsByTitle.length > 0
+      ? selectedRowsByTitle
+      : allRows;
   const primaryFrameworkRole = Array.isArray(targetContext?.framework_roles)
     ? targetContext.framework_roles.find((role) => String(role?.role_id || '').trim() === String(targetContext?.primary_role_id || '').trim())
       || targetContext.framework_roles[0]
@@ -81104,10 +81113,17 @@ function mountAuroraBffRoutes(app, { logger }) {
           );
         const beautyMainlineHandoffSuperEarlyEligible =
           RECO_CATALOG_GROUNDED_ENABLED
+          && wantsProductRecommendations
           && !ingredientRecoOptInRequested
           && !travelRecoHandoff
-          && !shouldApplySessionRecoContext
-          && (earlyGenericConcernRecoMainline || earlyHasExplicitRecoTarget);
+          && (
+            earlyGenericConcernRecoMainline
+            || earlyHasExplicitRecoTarget
+            || looksLikeRecommendationRequest(message)
+            || profileClarificationAction
+            || shouldApplySessionRecoContext
+            || shouldAutoRerunRecommendationsFromProfilePatch === true
+          );
 
         if (beautyMainlineHandoffSuperEarlyEligible) {
           prefetchedBeautyMainlineHandoff = await handoffRecoToBeautyMainlineSearch({
