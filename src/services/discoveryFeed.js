@@ -17,6 +17,7 @@ const {
     getParentCategory,
   },
 } = require('./RecommendationEngine');
+const { classifyBeautyBucketFromText } = require('../findProductsMulti/beautyQueryProfile');
 
 const SCORING_VERSION = 'discovery_v2';
 const MAX_RECENT_VIEWS = 50;
@@ -29,8 +30,11 @@ const MAX_PRODUCTS_SEARCH_CALLS = 2;
 const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
 const VALID_SURFACES = new Set(['home_hot_deals', 'browse_products']);
 const VALID_AUTH_STATES = new Set(['authenticated', 'anonymous']);
-const HOME_INTEREST_RECALL_LIMIT = 60;
-const HOME_BROWSE_FILL_LIMIT = 60;
+const HOME_INTEREST_RECALL_LIMIT = 44;
+const HOME_BROWSE_FILL_LIMIT = 24;
+const HOME_MIN_BROWSE_FILL_LIMIT = 16;
+const BROWSE_PRIMARY_RECALL_LIMIT = 24;
+const BROWSE_FILL_RECALL_LIMIT = 24;
 const DOMAIN_KEYWORDS = {
   beauty: [
     'beauty',
@@ -204,6 +208,25 @@ function mergeDomainScores(target, source) {
   return target;
 }
 
+function normalizeBeautyBucket(value) {
+  const bucket = String(value || '').trim().toLowerCase();
+  return bucket || null;
+}
+
+function scoreBeautyBucketHints(text, weight = 1) {
+  const bucket = normalizeBeautyBucket(classifyBeautyBucketFromText(text));
+  if (!bucket || bucket === 'general' || bucket === 'other') return new Map();
+  return new Map([[bucket, roundMetric(weight)]]);
+}
+
+function mergeBeautyBucketScores(target, source) {
+  if (!(target instanceof Map) || !(source instanceof Map)) return target;
+  for (const [bucket, score] of source.entries()) {
+    target.set(bucket, roundMetric((target.get(bucket) || 0) + Number(score || 0)));
+  }
+  return target;
+}
+
 function inferDominantDomain(domainScores) {
   const entries = Array.from(domainScores instanceof Map ? domainScores.entries() : []).sort(
     (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
@@ -216,6 +239,20 @@ function inferDominantDomain(domainScores) {
     return { domain: null, score: topScore };
   }
   return { domain: topDomain, score: topScore };
+}
+
+function inferPreferredBeautyBucket(beautyBucketScores) {
+  const entries = Array.from(beautyBucketScores instanceof Map ? beautyBucketScores.entries() : []).sort(
+    (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
+  );
+  if (entries.length === 0) return { bucket: null, score: 0 };
+  const [topBucket, topScore] = entries[0];
+  const runnerUp = Number(entries[1]?.[1] || 0);
+  if (!(topScore >= 1.5)) return { bucket: null, score: topScore };
+  if (topScore < runnerUp * 1.15 && topScore - runnerUp < 0.75) {
+    return { bucket: null, score: topScore };
+  }
+  return { bucket: topBucket, score: topScore };
 }
 
 function inferBeautyCategory(text) {
@@ -458,6 +495,29 @@ function inferPersonalizationSource(recentViews, authState) {
   return authState === 'authenticated' ? 'account_history' : 'session_history';
 }
 
+function buildDiscoveryQueryTerms(values, maxTerms = 4) {
+  const terms = [];
+  const seen = new Set();
+  for (const value of Array.isArray(values) ? values : []) {
+    const normalized = String(value || '').trim().replace(/\s+/g, ' ');
+    const key = normalizeText(normalized);
+    if (!normalized || !key || seen.has(key)) continue;
+    seen.add(key);
+    terms.push(normalized);
+    if (terms.length >= maxTerms) break;
+  }
+  return terms;
+}
+
+function buildDiscoveryBucketLabel(bucket) {
+  const normalized = normalizeBeautyBucket(bucket);
+  if (!normalized) return null;
+  if (normalized === 'skincare') return 'skincare';
+  if (normalized === 'tools') return 'beauty tools';
+  if (normalized === 'fragrance') return 'fragrance';
+  return normalized.replace(/_/g, ' ');
+}
+
 function buildDiscoveryProfile(context = {}) {
   const recentViews = Array.isArray(context.recent_views) ? context.recent_views : [];
   const recentQueries = uniqStrings(context.recent_queries, MAX_RECENT_QUERIES);
@@ -465,10 +525,12 @@ function buildDiscoveryProfile(context = {}) {
   const categoryAffinity = new Map();
   const queryTokens = new Set();
   const domainScores = new Map();
+  const beautyBucketScores = new Map();
 
   recentQueries.forEach((queryText) => {
     tokenize(queryText).forEach((token) => queryTokens.add(token));
     mergeDomainScores(domainScores, scoreDomainHints(queryText, 1.5));
+    mergeBeautyBucketScores(beautyBucketScores, scoreBeautyBucketHints(queryText, 1.5));
   });
 
   recentViews.forEach((view, idx) => {
@@ -483,13 +545,11 @@ function buildDiscoveryProfile(context = {}) {
       if (!key) return;
       categoryAffinity.set(key, (categoryAffinity.get(key) || 0) + weight);
     });
-    mergeDomainScores(
-      domainScores,
-      scoreDomainHints(
-        [view.title, view.description, view.brand, view.category, view.product_type].filter(Boolean).join(' '),
-        weight,
-      ),
-    );
+    const signalText = [view.title, view.description, view.brand, view.category, view.product_type]
+      .filter(Boolean)
+      .join(' ');
+    mergeDomainScores(domainScores, scoreDomainHints(signalText, weight));
+    mergeBeautyBucketScores(beautyBucketScores, scoreBeautyBucketHints(signalText, weight));
   });
 
   const anchors = [];
@@ -512,13 +572,17 @@ function buildDiscoveryProfile(context = {}) {
   const hasInterestSignals =
     historyItemsUsed > 0 && (brandAffinity.size > 0 || categoryAffinity.size > 0 || anchors.length > 0);
   const dominantDomain = inferDominantDomain(domainScores);
+  const preferredBeautyBucket = inferPreferredBeautyBucket(beautyBucketScores);
 
   return {
     brandAffinity,
     categoryAffinity,
+    beautyBucketScores,
     domainScores,
-    dominantDomain: dominantDomain.domain,
+    dominantDomain: dominantDomain.domain || (preferredBeautyBucket.bucket ? 'beauty' : null),
     dominantDomainScore: dominantDomain.score,
+    preferredBeautyBucket: preferredBeautyBucket.bucket,
+    preferredBeautyBucketScore: preferredBeautyBucket.score,
     anchors,
     historyItemsUsed,
     personalizationSource,
@@ -562,9 +626,22 @@ function normalizeCandidateProduct(product, browseRank = 0) {
     rawCategory: getParentCategory(product) || rawCategory,
     rawProductType: getLeafCategory(product) || rawProductType,
   });
+  const beautyBucket = normalizeBeautyBucket(
+    classifyBeautyBucketFromText(
+      [title, description, brand, rawCategory, rawProductType, inferredTaxonomy.category, inferredTaxonomy.parentCategory]
+        .filter(Boolean)
+        .join(' '),
+    ),
+  );
   const category = inferredTaxonomy.category || normalizeText(rawProductType || rawCategory || '');
   const parentCategory = inferredTaxonomy.parentCategory || normalizeText(rawCategory || '');
   const tokens = tokenize([title, description, brand, category, parentCategory].filter(Boolean).join(' '));
+  const normalizedDomain =
+    inferredTaxonomy.domain && inferredTaxonomy.domain !== 'unknown'
+      ? inferredTaxonomy.domain
+      : beautyBucket && beautyBucket !== 'other'
+        ? 'beauty'
+        : 'unknown';
   return {
     raw: {
       ...product,
@@ -581,37 +658,51 @@ function normalizeCandidateProduct(product, browseRank = 0) {
     brand,
     category,
     parentCategory,
-    domain: inferredTaxonomy.domain || 'unknown',
+    domain: normalizedDomain,
+    beautyBucket: beautyBucket && beautyBucket !== 'other' ? beautyBucket : null,
     tokens,
     browseRank,
   };
 }
 
 function buildDiscoveryInterestQuery(request, profile) {
-  const terms = [];
-  const seen = new Set();
-  const pushTerm = (value) => {
-    const normalized = String(value || '').trim().replace(/\s+/g, ' ');
-    const key = normalizeText(normalized);
-    if (!normalized || !key || seen.has(key)) return;
-    seen.add(key);
-    terms.push(normalized);
-  };
+  const recentQueries = uniqStrings(request?.context?.recent_queries, 2);
+  const topCategories = getTopMapKeys(profile?.categoryAffinity, 3).filter((key) => !isWeakCategoryLabel(key));
+  const topBrands = getTopMapKeys(profile?.brandAffinity, profile?.dominantDomain === 'beauty' ? 1 : 2);
+  const anchorCategories = (Array.isArray(profile?.anchors) ? profile.anchors : [])
+    .map((anchor) => anchor.category || anchor.parent_category)
+    .filter(Boolean);
+  const terms = buildDiscoveryQueryTerms(
+    [
+      ...recentQueries,
+      buildDiscoveryBucketLabel(profile?.preferredBeautyBucket),
+      ...topCategories,
+      ...anchorCategories,
+      ...(profile?.dominantDomain === 'beauty' ? [] : topBrands),
+      ...(profile?.dominantDomain === 'beauty' && topCategories.length === 0 ? topBrands : []),
+    ],
+    4,
+  );
 
-  uniqStrings(request?.context?.recent_queries, 2).forEach(pushTerm);
+  return terms.join(' ').trim();
+}
 
-  if (terms.length === 0) {
-    for (const anchor of Array.isArray(profile?.anchors) ? profile.anchors : []) {
-      pushTerm(anchor.brand);
-      pushTerm(anchor.category);
-      if (terms.length >= 2) break;
-    }
-  }
+function buildDiscoverySeededBrowseQuery(request, profile) {
+  const topCategories = getTopMapKeys(profile?.categoryAffinity, 3).filter((key) => !isWeakCategoryLabel(key));
+  const recentQueries = uniqStrings(request?.context?.recent_queries, 1);
+  const topBrands = getTopMapKeys(profile?.brandAffinity, 1);
+  const terms = buildDiscoveryQueryTerms(
+    [
+      buildDiscoveryBucketLabel(profile?.preferredBeautyBucket),
+      ...topCategories,
+      ...(profile?.dominantDomain === 'beauty' ? ['beauty'] : []),
+      ...(profile?.dominantDomain === 'beauty' ? [] : recentQueries),
+      ...(profile?.dominantDomain === 'beauty' ? [] : topBrands),
+    ],
+    3,
+  );
 
-  getTopMapKeys(profile?.brandAffinity, 2).forEach(pushTerm);
-  getTopMapKeys(profile?.categoryAffinity, 2).forEach(pushTerm);
-
-  return terms.slice(0, 4).join(' ').trim();
+  return terms.join(' ').trim();
 }
 
 function resolveDiscoveryCandidateLimit(request) {
@@ -677,22 +768,25 @@ function setBrowsePoolCache(request, products, recallSummary) {
 function buildDiscoveryRecallPlan(request, profile, limit) {
   const safeLimit = clampInt(limit, resolveDiscoveryCandidateLimit(request), 24, MAX_CANDIDATE_FETCH);
   if (request?.surface === 'browse_products') {
-    const firstLimit = Math.min(PRODUCTS_SEARCH_PAGE_SIZE, safeLimit);
+    const seededBrowseQuery = buildDiscoverySeededBrowseQuery(request, profile);
+    const firstLimit = Math.min(BROWSE_PRIMARY_RECALL_LIMIT, safeLimit);
     const remaining = Math.max(0, safeLimit - firstLimit);
     return [
       {
         label: 'browse_pool',
-        query: '',
+        query: seededBrowseQuery,
         offset: 0,
         limit: firstLimit,
+        allow_early_exit: remaining <= 0,
       },
       ...(remaining > 0
         ? [
             {
               label: 'browse_pool',
               query: '',
-              offset: firstLimit,
-              limit: Math.min(PRODUCTS_SEARCH_PAGE_SIZE, remaining),
+              offset: seededBrowseQuery ? 0 : firstLimit,
+              limit: Math.min(BROWSE_FILL_RECALL_LIMIT, remaining),
+              allow_early_exit: true,
             },
           ]
         : []),
@@ -706,27 +800,31 @@ function buildDiscoveryRecallPlan(request, profile, limit) {
         label: 'cold_start_curated',
         query: '',
         offset: 0,
-        limit: Math.min(HOME_BROWSE_FILL_LIMIT, safeLimit),
+        limit: Math.min(PRODUCTS_SEARCH_PAGE_SIZE, safeLimit),
+        allow_early_exit: true,
       },
     ];
   }
 
   const interestLimit = Math.min(HOME_INTEREST_RECALL_LIMIT, safeLimit);
   const remaining = Math.max(0, safeLimit - interestLimit);
+  const fillQuery = buildDiscoverySeededBrowseQuery(request, profile);
   return [
     {
       label: 'interest_pool',
       query: interestQuery,
       offset: 0,
       limit: interestLimit,
+      allow_early_exit: remaining <= 0,
     },
     ...(remaining > 0
       ? [
           {
             label: 'browse_pool',
-            query: '',
+            query: fillQuery,
             offset: 0,
-            limit: Math.min(HOME_BROWSE_FILL_LIMIT, remaining),
+            limit: Math.min(Math.max(HOME_MIN_BROWSE_FILL_LIMIT, remaining), HOME_BROWSE_FILL_LIMIT),
+            allow_early_exit: true,
           },
         ]
       : []),
@@ -853,7 +951,8 @@ async function loadProductsSearchCandidates({ request, profile, limit = MAX_CAND
         mergedProducts.push(product);
         if (mergedProducts.length >= safeLimit) break;
       }
-      if (mergedProducts.length >= safeLimit || mergedProducts.length >= enoughThreshold) break;
+      if (mergedProducts.length >= safeLimit) break;
+      if (step.allow_early_exit !== false && mergedProducts.length >= enoughThreshold) break;
       if (Date.now() - recallStartedAt >= recallBudgetMs) {
         truncatedByBudget = true;
         break;
@@ -947,6 +1046,14 @@ function scoreRecentQueryOverlap(candidate, queryTokens) {
   return overlap / queryTokens.size;
 }
 
+function scoreBeautyBucketAlignment(candidate, profile) {
+  if (!profile?.preferredBeautyBucket || profile?.dominantDomain !== 'beauty') return 0;
+  if (candidate.domain !== 'beauty') return -0.2;
+  if (!candidate.beautyBucket) return 0.1;
+  if (candidate.beautyBucket === profile.preferredBeautyBucket) return 1;
+  return -0.65;
+}
+
 function scoreCandidate(candidate, profile, surface) {
   const brandScore = mapScore(profile.brandAffinity, candidate.brand);
   const categoryScore = Math.max(
@@ -955,6 +1062,7 @@ function scoreCandidate(candidate, profile, surface) {
   );
   const anchorScore = scoreAnchorSimilarity(candidate, profile.anchors);
   const recentQueryScore = scoreRecentQueryOverlap(candidate, profile.queryTokens);
+  const bucketScore = scoreBeautyBucketAlignment(candidate, profile);
   const interestScore =
     brandScore * 0.46 +
     categoryScore * 0.31 +
@@ -971,13 +1079,14 @@ function scoreCandidate(candidate, profile, surface) {
       : 0;
   const finalScore =
     surface === 'home_hot_deals'
-      ? interestScore * 0.88 + browseBase * 0.08 + domainScore * 0.16
-      : browseBase * 0.74 + interestScore * 0.38 + domainScore * 0.12;
+      ? interestScore * 0.84 + browseBase * 0.08 + domainScore * 0.16 + bucketScore * 0.2
+      : browseBase * 0.68 + interestScore * 0.34 + domainScore * 0.12 + bucketScore * 0.22;
   return {
     brandScore,
     categoryScore,
     anchorScore,
     recentQueryScore,
+    bucketScore,
     interestScore,
     browseBase,
     domainScore,
@@ -985,16 +1094,25 @@ function scoreCandidate(candidate, profile, surface) {
   };
 }
 
-function getDiscoveryRejectReason(entry, profile) {
+function getDiscoveryRejectReason(entry, profile, surface) {
   if (!entry || !profile?.dominantDomain) return null;
-  if (profile.dominantDomain !== 'beauty') return null;
-  if (entry.candidate.domain === 'beauty') return null;
-
   const strongBeautySignal =
     entry.scores.categoryScore >= 0.35 ||
     entry.scores.anchorScore >= 0.22 ||
     entry.scores.recentQueryScore >= 0.34 ||
     entry.scores.interestScore >= 0.28;
+
+  if (profile.dominantDomain !== 'beauty') return null;
+  if (
+    profile.preferredBeautyBucket &&
+    entry.candidate.domain === 'beauty' &&
+    entry.candidate.beautyBucket &&
+    entry.candidate.beautyBucket !== profile.preferredBeautyBucket
+  ) {
+    if (surface === 'home_hot_deals') return 'filtered_beauty_bucket';
+    if (strongBeautySignal || entry.scores.bucketScore <= -0.4) return 'filtered_beauty_bucket';
+  }
+  if (entry.candidate.domain === 'beauty') return null;
 
   if (entry.candidate.domain === 'pet' || entry.candidate.domain === 'sleepwear') {
     return 'filtered_dominant_domain';
@@ -1032,7 +1150,7 @@ function selectHomeProducts(scoredCandidates, viewedKeys, limit, options = {}) {
   const brandCounts = new Map();
   const rankedEligible = [];
   for (const entry of ranked) {
-    const rejectReason = getDiscoveryRejectReason(entry, profile);
+    const rejectReason = getDiscoveryRejectReason(entry, profile, 'home_hot_deals');
     if (rejectReason) {
       if (decisions) decisions.set(entry.candidate.key, rejectReason);
       continue;
@@ -1086,7 +1204,7 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
 
   const orderedPool = [];
   for (const entry of ranked) {
-    const rejectReason = getDiscoveryRejectReason(entry, profile);
+    const rejectReason = getDiscoveryRejectReason(entry, profile, 'browse_products');
     if (rejectReason) {
       if (decisions) decisions.set(entry.candidate.key, rejectReason);
       continue;
@@ -1194,6 +1312,7 @@ function buildRankDebug({
       category: entry.candidate.raw.category || entry.candidate.parentCategory || null,
       product_type: entry.candidate.raw.product_type || entry.candidate.category || null,
       domain: entry.candidate.domain || 'unknown',
+      beauty_bucket: entry.candidate.beautyBucket || null,
       scores: {
         final_score: roundMetric(entry.scores.finalScore),
         interest_score: roundMetric(entry.scores.interestScore),
@@ -1203,6 +1322,7 @@ function buildRankDebug({
         anchor_score: roundMetric(entry.scores.anchorScore),
         recent_query_score: roundMetric(entry.scores.recentQueryScore),
         domain_score: roundMetric(entry.scores.domainScore),
+        bucket_score: roundMetric(entry.scores.bucketScore),
       },
     })),
     profile_summary: {
@@ -1210,6 +1330,9 @@ function buildRankDebug({
       top_categories: topMapEntries(profile.categoryAffinity, 5),
       dominant_domain: profile.dominantDomain || null,
       dominant_domain_score: roundMetric(profile.dominantDomainScore || 0),
+      preferred_beauty_bucket: profile.preferredBeautyBucket || null,
+      preferred_beauty_bucket_score: roundMetric(profile.preferredBeautyBucketScore || 0),
+      beauty_bucket_scores: topMapEntries(profile.beautyBucketScores || new Map(), 4),
       domain_scores: topMapEntries(profile.domainScores || new Map(), 4),
       anchors: (profile.anchors || []).slice(0, MAX_ANCHORS).map((anchor) => ({
         merchant_id: anchor.merchant_id || null,

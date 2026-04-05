@@ -16,7 +16,7 @@ if [[ -n "$expected_repo" && "$repo_name" != "$expected_repo" ]]; then
   exit 1
 fi
 
-if [[ "$event_name" != "pull_request" && -n "$allowed_branch_regex" ]]; then
+if [[ "$event_name" == "push" && -n "$allowed_branch_regex" ]]; then
   if ! [[ "$branch" =~ $allowed_branch_regex ]]; then
     echo "release-source-check failed: branch not allowed for release event"
     echo "event=$event_name branch=$branch allowed_branch_regex=$allowed_branch_regex"

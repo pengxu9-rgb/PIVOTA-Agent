@@ -431,7 +431,7 @@ function createStrictFindProductsMultiRuntime(deps = {}) {
       ingredientIntents,
       normalizeSearchTextForMatch,
     });
-    if (exactLookupLikeQuery) {
+    if (exactLookupLikeQuery && !explicitStrictSurface) {
       return {
         enabled: false,
         catalogSurface: null,

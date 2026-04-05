@@ -36,9 +36,9 @@ function buildAuthHeaders(apiKey) {
 function deriveRecentQuery(seedProduct) {
   if (!seedProduct || typeof seedProduct !== 'object') return 'recommended products';
   return firstNonEmpty([
-    seedProduct.brand,
     seedProduct.product_type,
     seedProduct.category,
+    seedProduct.brand,
     seedProduct.title,
     'recommended products',
   ]);
@@ -112,7 +112,15 @@ function validateDiscoveryResponse(response, expectations = {}) {
         .map((step) => String(step?.label || '').trim())
         .filter(Boolean),
     );
-    expectations.requiredRecallLabels.forEach((label) => {
+    expectations.requiredRecallLabels.forEach((labelOrLabels) => {
+      if (Array.isArray(labelOrLabels)) {
+        ensure(
+          labelOrLabels.some((label) => labels.has(String(label || '').trim())),
+          `missing recall label any-of: ${labelOrLabels.join(', ')}`,
+        );
+        return;
+      }
+      const label = String(labelOrLabels || '').trim();
       ensure(labels.has(label), `missing recall label: ${label}`);
     });
   }
@@ -243,7 +251,7 @@ async function runSmoke(options = {}) {
     candidateSource: EXPECTED_CANDIDATE_SOURCE,
     minProducts: 1,
     requireRankDebug: true,
-    requiredRecallLabels: ['browse_pool'],
+    requiredRecallLabels: [['cold_start_curated', 'browse_pool']],
   });
   console.log(`PASS cold_start_home ${JSON.stringify(coldStartResult)}`);
 

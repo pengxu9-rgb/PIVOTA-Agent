@@ -118,6 +118,77 @@ describe('discovery feed service', () => {
     expect(profile.queryTokens.has('repair')).toBe(true);
   });
 
+  test('buildDiscoveryProfile infers skincare beauty bucket from serum history', () => {
+    const request = _internals.normalizeDiscoveryRequest({
+      surface: 'home_hot_deals',
+      context: {
+        auth_state: 'authenticated',
+        recent_views: [
+          {
+            merchant_id: 'm1',
+            product_id: 'p1',
+            title: 'Barrier Repair Serum',
+            brand: 'Alpha',
+            category: 'Skincare',
+            product_type: 'Serum',
+            viewed_at: '2026-04-04T10:00:00Z',
+          },
+        ],
+        recent_queries: ['niacinamide serum', 'serum for oily skin'],
+      },
+    });
+
+    const profile = buildDiscoveryProfile(request.context);
+
+    expect(profile.dominantDomain).toBe('beauty');
+    expect(profile.preferredBeautyBucket).toBe('skincare');
+    expect(profile.preferredBeautyBucketScore).toBeGreaterThan(0);
+  });
+
+  test('buildDiscoveryRecallPlan keeps a home fill step and seeds browse recall for skincare history', () => {
+    const homeRequest = _internals.normalizeDiscoveryRequest({
+      surface: 'home_hot_deals',
+      page: 1,
+      limit: 6,
+      context: {
+        auth_state: 'authenticated',
+        recent_views: [
+          {
+            merchant_id: 'm1',
+            product_id: 'p1',
+            title: 'Barrier Repair Serum',
+            brand: 'Alpha',
+            category: 'Skincare',
+            product_type: 'Serum',
+            viewed_at: '2026-04-04T10:00:00Z',
+          },
+        ],
+        recent_queries: ['niacinamide serum'],
+      },
+    });
+    const profile = buildDiscoveryProfile(homeRequest.context);
+
+    const homePlan = _internals.buildDiscoveryRecallPlan(homeRequest, profile, 60);
+    const browsePlan = _internals.buildDiscoveryRecallPlan(
+      _internals.normalizeDiscoveryRequest({
+        ...homeRequest,
+        surface: 'browse_products',
+      }),
+      profile,
+      30,
+    );
+
+    expect(homePlan).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: 'interest_pool' }),
+        expect.objectContaining({ label: 'browse_pool' }),
+      ]),
+    );
+    expect(String(homePlan[1].query || '').trim()).not.toBe('');
+    expect(String(browsePlan[0].query || '').trim()).not.toBe('');
+    expect(browsePlan[0].query).toMatch(/skincare|serum/i);
+  });
+
   test('home_hot_deals excludes exact recent views and caps same brand at two items', async () => {
     const response = await getDiscoveryFeed(
       {
@@ -410,9 +481,7 @@ describe('discovery feed service', () => {
       ]),
     );
     expect(capturedParams.some((params) => String(params.query || '').trim().length > 0)).toBe(true);
-    expect(
-      capturedParams.some((params) => !Object.prototype.hasOwnProperty.call(params, 'query') || !String(params.query || '').trim()),
-    ).toBe(true);
+    expect(capturedParams).toHaveLength(2);
     const metrics = renderDiscoveryMetricsPrometheus();
     expect(metrics).toContain(
       'discovery_feed_recall_requests_total{cache_hit="false",status="success",step="interest_pool",surface="home_hot_deals"} 1',
@@ -531,12 +600,118 @@ describe('discovery feed service', () => {
       page: 2,
     });
 
-    expect(callCount).toBe(1);
+    expect(callCount).toBe(2);
     expect(pageOne.products).toHaveLength(2);
     expect(pageTwo.products).toHaveLength(2);
     expect(pageTwo.metadata?.rank_debug?.recall_summary).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ label: 'browse_pool_cache', cache_hit: true }),
+      ]),
+    );
+  });
+
+  test('home_hot_deals backfills with non-viewed skincare results after interest recall returns recent views', async () => {
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+    process.env.PIVOTA_API_KEY = 'test-key';
+
+    const capturedParams = [];
+    let searchCallIndex = 0;
+    nock('http://catalog.test')
+      .get('/agent/v1/products/search')
+      .query((params) => {
+        capturedParams.push(params);
+        return true;
+      })
+      .times(2)
+      .reply(200, () => {
+        const products =
+          searchCallIndex === 0
+            ? [
+                makeProduct({
+                  merchant_id: 'm1',
+                  product_id: 'view_1',
+                  title: 'Barrier Repair Serum',
+                  brand: 'Alpha',
+                  category: 'Skincare',
+                  product_type: 'Serum',
+                }),
+                makeProduct({
+                  merchant_id: 'm2',
+                  product_id: 'view_2',
+                  title: 'Niacinamide Serum',
+                  brand: 'Beta',
+                  category: 'Skincare',
+                  product_type: 'Serum',
+                }),
+              ]
+            : [
+                makeProduct({
+                  merchant_id: 'm3',
+                  product_id: 'fresh_1',
+                  title: 'Calming Recovery Serum',
+                  brand: 'Gamma',
+                  category: 'Skincare',
+                  product_type: 'Serum',
+                }),
+                makeProduct({
+                  merchant_id: 'm4',
+                  product_id: 'fresh_2',
+                  title: 'Hydrating Barrier Toner',
+                  brand: 'Delta',
+                  category: 'Skincare',
+                  product_type: 'Toner',
+                }),
+                makeProduct({
+                  merchant_id: 'm5',
+                  product_id: 'tool_1',
+                  title: 'Professional Makeup Brush',
+                  brand: 'BrushLab',
+                  category: 'Beauty Tools',
+                  product_type: 'Brush',
+                }),
+              ];
+        searchCallIndex += 1;
+        return { products };
+      });
+
+    const response = await getDiscoveryFeed({
+      surface: 'home_hot_deals',
+      limit: 2,
+      debug: true,
+      context: {
+        auth_state: 'authenticated',
+        locale: 'en-US',
+        recent_views: [
+          {
+            merchant_id: 'm1',
+            product_id: 'view_1',
+            title: 'Barrier Repair Serum',
+            brand: 'Alpha',
+            category: 'Skincare',
+            product_type: 'Serum',
+            viewed_at: '2026-04-04T10:00:00Z',
+          },
+          {
+            merchant_id: 'm2',
+            product_id: 'view_2',
+            title: 'Niacinamide Serum',
+            brand: 'Beta',
+            category: 'Skincare',
+            product_type: 'Serum',
+            viewed_at: '2026-04-03T10:00:00Z',
+          },
+        ],
+        recent_queries: ['niacinamide serum'],
+      },
+    });
+
+    expect(capturedParams).toHaveLength(2);
+    expect(response.products.map((product) => product.product_id)).toEqual(['fresh_1', 'fresh_2']);
+    expect(response.metadata.candidate_counts.eligible_pool).toBeGreaterThan(0);
+    expect(response.metadata.rank_debug.recall_summary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: 'interest_pool' }),
+        expect.objectContaining({ label: 'browse_pool' }),
       ]),
     );
   });
@@ -611,6 +786,84 @@ describe('discovery feed service', () => {
         dominant_domain: 'beauty',
       }),
     );
+  });
+
+  test('browse_products suppresses beauty tools when skincare candidates exist for skincare-heavy users', async () => {
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 3,
+        debug: true,
+        context: {
+          auth_state: 'authenticated',
+          locale: 'en-US',
+          recent_views: [
+            {
+              merchant_id: 'm1',
+              product_id: 'beauty_seed',
+              title: 'Alpha Repair Serum',
+              brand: 'Alpha',
+              category: 'Skincare',
+              product_type: 'Serum',
+              viewed_at: '2026-04-04T10:00:00Z',
+            },
+          ],
+          recent_queries: ['niacinamide serum'],
+        },
+      },
+      {
+        candidateProducts: [
+          makeProduct({
+            merchant_id: 'm1',
+            product_id: 'serum_1',
+            title: 'Niacinamide Repair Serum',
+            brand: 'Alpha',
+            category: 'Skincare',
+            product_type: 'Serum',
+          }),
+          makeProduct({
+            merchant_id: 'm2',
+            product_id: 'toner_1',
+            title: 'Hydrating Toner',
+            brand: 'Beta',
+            category: 'Skincare',
+            product_type: 'Toner',
+          }),
+          makeProduct({
+            merchant_id: 'm3',
+            product_id: 'cream_1',
+            title: 'Barrier Recovery Cream',
+            brand: 'Gamma',
+            category: 'Skincare',
+            product_type: 'Cream',
+          }),
+          makeProduct({
+            merchant_id: 'm4',
+            product_id: 'tool_1',
+            title: 'Precision Makeup Brush Set',
+            brand: 'BrushLab',
+            category: 'Beauty Tools',
+            product_type: 'Brush',
+          }),
+          makeProduct({
+            merchant_id: 'm5',
+            product_id: 'pet_1',
+            title: 'Dog Rain Jacket',
+            brand: 'Paws',
+            category: 'Pet',
+            product_type: 'Apparel',
+          }),
+        ],
+      },
+    );
+
+    const ids = response.products.map((product) => product.product_id);
+    expect(ids).toEqual(expect.arrayContaining(['serum_1', 'toner_1', 'cream_1']));
+    expect(ids).not.toContain('tool_1');
+    expect(ids).not.toContain('pet_1');
+    const topCandidates = response.metadata.rank_debug.top_candidates;
+    expect(topCandidates.find((candidate) => candidate.product_id === 'tool_1')?.decision).toBe('filtered_beauty_bucket');
   });
 
   test('cold start returns curated metadata with no personalization source', async () => {

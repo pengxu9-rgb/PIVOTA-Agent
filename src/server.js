@@ -167,10 +167,7 @@ const {
   buildBrandQueryVariants,
   hasExplicitCategoryHint,
 } = require('./findProductsMulti/brandLexicon');
-const {
-  EXTERNAL_SEED_MERCHANT_ID,
-  buildExternalSeedProduct,
-} = require('./services/externalSeedProducts');
+const { buildExternalSeedProduct } = require('./services/externalSeedProducts');
 const {
   recallIngredientProducts,
   resolveIngredientRecallProfile,
