@@ -636,4 +636,30 @@ describe('RecommendationEngine (PDP)', () => {
       }),
     ).toBe(false);
   });
+
+  test('n) strong semantic internal bases must not skip external when qualified internal recs underfill', () => {
+    expect(
+      _internals.shouldSkipExternalFetch({
+        hasProvidedExternal: false,
+        baseProductIsExternal: false,
+        baseSemanticStrong: true,
+        internalCount: 100,
+        internalQualifiedCount: 0,
+        skipExternalMin: 15,
+        requestedCount: 6,
+      }),
+    ).toBe(false);
+
+    expect(
+      _internals.shouldSkipExternalFetch({
+        hasProvidedExternal: false,
+        baseProductIsExternal: false,
+        baseSemanticStrong: true,
+        internalCount: 100,
+        internalQualifiedCount: 6,
+        skipExternalMin: 15,
+        requestedCount: 6,
+      }),
+    ).toBe(true);
+  });
 });

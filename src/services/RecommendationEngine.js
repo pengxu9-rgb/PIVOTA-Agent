@@ -100,6 +100,28 @@ function shouldCacheRecommendationResult({
   return Number(returnedCount || 0) >= Number(requestedCount || 0);
 }
 
+function shouldSkipExternalFetch({
+  hasProvidedExternal = false,
+  baseProductIsExternal = false,
+  baseSemanticStrong = false,
+  internalCount = 0,
+  internalQualifiedCount = 0,
+  skipExternalMin = 0,
+  requestedCount = 0,
+}) {
+  if (hasProvidedExternal) return false;
+  if (baseProductIsExternal) return false;
+  if (!baseSemanticStrong) return false;
+
+  const rawInternalCount = Math.max(0, Number(internalCount || 0));
+  const qualifiedInternalCount = Math.max(0, Number(internalQualifiedCount || 0));
+  const minInternalCount = Math.max(1, Number(skipExternalMin || 0));
+  const wantedCount = Math.max(1, Number(requestedCount || 0));
+
+  if (rawInternalCount < minInternalCount) return false;
+  return qualifiedInternalCount >= wantedCount;
+}
+
 function getCacheEntry(cacheKey) {
   const entry = PDP_RECS_CACHE.get(cacheKey);
   if (!entry) {
@@ -1327,11 +1349,29 @@ async function recommend({
     PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_ABS,
     Math.ceil(safeK * PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_MULTIPLIER),
   );
-  const shouldSkipExternal =
-    !providedExternal &&
-    internalCount >= skipExternalMin &&
-    baseSemanticStrong &&
-    !baseProductIsExternal;
+  const internalOnlyPreview =
+    !providedExternal && !baseProductIsExternal
+      ? pickLayeredRecommendations({
+          baseProduct,
+          internalCandidates,
+          externalCandidates: [],
+          k: safeK,
+          baseSemantic,
+          excludeItems,
+        })
+      : null;
+  const internalQualifiedCount = Array.isArray(internalOnlyPreview?.items)
+    ? internalOnlyPreview.items.length
+    : 0;
+  const shouldSkipExternal = shouldSkipExternalFetch({
+    hasProvidedExternal: Boolean(providedExternal),
+    baseProductIsExternal,
+    baseSemanticStrong,
+    internalCount,
+    internalQualifiedCount,
+    skipExternalMin,
+    requestedCount: safeK,
+  });
 
   const externalCandidates = shouldSkipExternal
     ? []
@@ -1380,6 +1420,7 @@ async function recommend({
       timing_ms: elapsedMs,
       fetch_strategy: {
         internal_count: internalCount,
+        internal_qualified_count: internalQualifiedCount,
         external_count: Array.isArray(externalCandidates) ? externalCandidates.length : 0,
         internal_timed_out: internalTimedOut,
         external_timed_out: externalTimedOut,
@@ -1451,5 +1492,6 @@ module.exports = {
     isExternalProduct,
     fetchInternalCandidates,
     shouldCacheRecommendationResult,
+    shouldSkipExternalFetch,
   },
 };
