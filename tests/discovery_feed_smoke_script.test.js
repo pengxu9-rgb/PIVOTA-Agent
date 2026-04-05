@@ -124,4 +124,37 @@ describe('run_discovery_feed_smoke helpers', () => {
 
     expect(summary.strategy).toBe('cold_start_curated');
   });
+
+  test('rejects disallowed cold-start titles in the top rows', () => {
+    expect(() =>
+      validateDiscoveryResponse(
+        {
+          products: [
+            {
+              merchant_id: 'm2',
+              product_id: 'p2',
+              title: 'Velvet Lingerie Set',
+            },
+          ],
+          metadata: {
+            candidate_source: 'products_search',
+            discovery_strategy: 'cold_start_curated',
+            personalization_source: 'none',
+            rank_debug: {
+              recall_summary: [{ label: 'cold_start_curated', status: 200, returned: 6 }],
+            },
+          },
+        },
+        {
+          discoveryStrategy: 'cold_start_curated',
+          personalizationSource: 'none',
+          candidateSource: 'products_search',
+          requireRankDebug: true,
+          requiredRecallLabels: [['cold_start_curated', 'browse_pool']],
+          disallowTopN: 3,
+          disallowTitlePatterns: ['\\blingerie\\b'],
+        },
+      ),
+    ).toThrow(/disallowed cold-start titles/i);
+  });
 });

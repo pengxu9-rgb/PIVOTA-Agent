@@ -1244,6 +1244,66 @@ describe('discovery feed service', () => {
     );
   });
 
+  test('beauty-dominant discovery includes brand context when recent queries are generic', async () => {
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+    process.env.PIVOTA_API_KEY = 'test-key';
+
+    const capturedParams = [];
+    nock('http://catalog.test')
+      .get('/agent/v1/products/search')
+      .query((params) => {
+        capturedParams.push(params);
+        return true;
+      })
+      .times(2)
+      .reply(200, {
+        products: [
+          makeProduct({
+            merchant_id: 'm2',
+            product_id: 'fresh_1',
+            title: 'Alpha Brightening Serum',
+            brand: 'Alpha',
+            category: 'Skincare',
+            product_type: 'Serum',
+          }),
+          makeProduct({
+            merchant_id: 'm3',
+            product_id: 'fresh_2',
+            title: 'Alpha Barrier Cream',
+            brand: 'Alpha',
+            category: 'Skincare',
+            product_type: 'Cream',
+          }),
+        ],
+      });
+
+    await getDiscoveryFeed({
+      surface: 'home_hot_deals',
+      limit: 2,
+      debug: true,
+      context: {
+        auth_state: 'authenticated',
+        locale: 'en-US',
+        recent_views: [
+          {
+            merchant_id: 'm1',
+            product_id: 'seed_alpha',
+            title: 'Alpha Repair Serum',
+            brand: 'Alpha',
+            category: 'Skincare',
+            product_type: 'Serum',
+            viewed_at: '2026-04-04T10:00:00Z',
+          },
+        ],
+        recent_queries: ['serum'],
+      },
+    });
+
+    expect(capturedParams).toHaveLength(2);
+    expect(String(capturedParams[0]?.query || '').toLowerCase()).toContain('alpha');
+    expect(String(capturedParams[1]?.query || '').toLowerCase()).toContain('alpha');
+  });
+
   test('dominant beauty discovery filters pet and sleepwear candidates from top results', async () => {
     const response = await getDiscoveryFeed(
       {
@@ -1521,6 +1581,69 @@ describe('discovery feed service', () => {
     expect(
       response.metadata.rank_debug.top_candidates.find((candidate) => candidate.product_id === 'tool_1')?.decision,
     ).toBe('filtered_cold_start_domain');
+  });
+
+  test('cold start does not backfill deferred domains once enough non-deferred home results exist', async () => {
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'home_hot_deals',
+        limit: 6,
+        debug: true,
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      },
+      {
+        candidateProducts: [
+          makeProduct({
+            merchant_id: 'm1',
+            product_id: 'beauty_1',
+            title: 'Barrier Repair Serum',
+            category: 'Skincare',
+            product_type: 'Serum',
+          }),
+          makeProduct({
+            merchant_id: 'm2',
+            product_id: 'beauty_2',
+            title: 'Calming Recovery Cream',
+            category: 'Skincare',
+            product_type: 'Cream',
+          }),
+          makeProduct({
+            merchant_id: 'm3',
+            product_id: 'pet_1',
+            title: 'Dog Rain Jacket',
+            category: 'Pet',
+            product_type: 'Apparel',
+          }),
+          makeProduct({
+            merchant_id: 'm4',
+            product_id: 'sleep_1',
+            title: 'Velvet Sleepwear Set',
+            category: 'Sleepwear',
+            product_type: 'Pajama',
+          }),
+          makeProduct({
+            merchant_id: 'm5',
+            product_id: 'lingerie_1',
+            title: 'Backless Lingerie Set',
+            category: 'Lingerie',
+            product_type: 'Bodysuit',
+          }),
+        ],
+      },
+    );
+
+    expect(response.products.map((product) => product.product_id)).toEqual(['beauty_1', 'beauty_2']);
+    const decisions = new Map(
+      response.metadata.rank_debug.top_candidates.map((candidate) => [candidate.product_id, candidate.decision]),
+    );
+    expect(decisions.get('pet_1')).toBe('not_selected_cold_start_deferred');
+    expect(decisions.get('sleep_1')).toBe('not_selected_cold_start_deferred');
+    expect(decisions.get('lingerie_1')).toBe('not_selected_cold_start_deferred');
   });
 
   test('throws when products/search catalog is unavailable and mock mode is not explicitly enabled', async () => {

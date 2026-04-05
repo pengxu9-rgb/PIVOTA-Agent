@@ -47,8 +47,26 @@ const HOME_BROWSE_FILL_LIMIT = 24;
 const HOME_MIN_BROWSE_FILL_LIMIT = 16;
 const BROWSE_PRIMARY_RECALL_LIMIT = 24;
 const BROWSE_FILL_RECALL_LIMIT = 24;
+const MIN_COLD_START_NON_DEFERRED_RESULTS = 2;
 const COLD_START_DEFERRED_DOMAINS = new Set(['pet', 'sleepwear', 'apparel']);
 const COLD_START_DEFERRED_BEAUTY_BUCKETS = new Set(['tools']);
+const GENERIC_DISCOVERY_QUERY_TOKENS = new Set([
+  'beauty',
+  'skincare',
+  'makeup',
+  'serum',
+  'toner',
+  'cream',
+  'cleanser',
+  'moisturizer',
+  'moisturiser',
+  'lotion',
+  'essence',
+  'ampoule',
+  'treatment',
+  'products',
+  'product',
+]);
 const DOMAIN_KEYWORDS = {
   beauty: [
     'beauty',
@@ -210,6 +228,11 @@ function getDiscoveryProductsSearchTimeoutMs() {
 
 function getDiscoveryRecallBudgetMs() {
   return clampInt(process.env.DISCOVERY_RECALL_BUDGET_MS, 1800, 500, 10000);
+}
+
+function getDiscoveryColdStartQuery() {
+  const configured = String(process.env.DISCOVERY_COLD_START_QUERY || '').trim();
+  return configured || 'beauty skincare serum';
 }
 
 function getDiscoveryPoolCacheTtlMs() {
@@ -758,6 +781,12 @@ function buildDiscoveryQueryTerms(values, maxTerms = 4) {
   return terms;
 }
 
+function isSpecificDiscoveryQueryText(value) {
+  const tokens = tokenize(String(value || ''));
+  if (!tokens.length) return false;
+  return tokens.some((token) => !GENERIC_DISCOVERY_QUERY_TOKENS.has(String(token || '').trim().toLowerCase()));
+}
+
 function buildDiscoveryBucketLabel(bucket) {
   const normalized = normalizeBeautyBucket(bucket);
   if (!normalized) return null;
@@ -925,20 +954,30 @@ function buildDiscoveryBrandScopedQuery(request) {
 
 function buildDiscoveryInterestQuery(request, profile) {
   const recentQueries = uniqStrings(request?.context?.recent_queries, 2);
+  const specificRecentQueries = recentQueries.filter((queryText) => isSpecificDiscoveryQueryText(queryText));
+  const genericRecentQueries = recentQueries.filter((queryText) => !isSpecificDiscoveryQueryText(queryText));
   const topCategories = getTopMapKeys(profile?.categoryAffinity, 3).filter((key) => !isWeakCategoryLabel(key));
   const topBrands = getTopMapKeys(profile?.brandAffinity, profile?.dominantDomain === 'beauty' ? 1 : 2);
   const anchorCategories = (Array.isArray(profile?.anchors) ? profile.anchors : [])
     .map((anchor) => anchor.category || anchor.parent_category)
     .filter(Boolean);
   const terms = buildDiscoveryQueryTerms(
-    [
-      ...recentQueries,
-      buildDiscoveryBucketLabel(profile?.preferredBeautyBucket),
-      ...topCategories,
-      ...anchorCategories,
-      ...(profile?.dominantDomain === 'beauty' ? [] : topBrands),
-      ...(profile?.dominantDomain === 'beauty' && topCategories.length === 0 ? topBrands : []),
-    ],
+    profile?.dominantDomain === 'beauty'
+      ? [
+          ...specificRecentQueries,
+          topBrands[0],
+          buildDiscoveryBucketLabel(profile?.preferredBeautyBucket),
+          ...topCategories,
+          ...anchorCategories,
+          ...genericRecentQueries,
+        ]
+      : [
+          ...recentQueries,
+          buildDiscoveryBucketLabel(profile?.preferredBeautyBucket),
+          ...topCategories,
+          ...anchorCategories,
+          ...topBrands,
+        ],
     4,
   );
 
@@ -947,16 +986,26 @@ function buildDiscoveryInterestQuery(request, profile) {
 
 function buildDiscoverySeededBrowseQuery(request, profile) {
   const topCategories = getTopMapKeys(profile?.categoryAffinity, 3).filter((key) => !isWeakCategoryLabel(key));
-  const recentQueries = uniqStrings(request?.context?.recent_queries, 1);
+  const recentQueries = uniqStrings(request?.context?.recent_queries, 2);
+  const specificRecentQueries = recentQueries.filter((queryText) => isSpecificDiscoveryQueryText(queryText));
+  const genericRecentQueries = recentQueries.filter((queryText) => !isSpecificDiscoveryQueryText(queryText));
   const topBrands = getTopMapKeys(profile?.brandAffinity, 1);
   const terms = buildDiscoveryQueryTerms(
-    [
-      buildDiscoveryBucketLabel(profile?.preferredBeautyBucket),
-      ...topCategories,
-      ...(profile?.dominantDomain === 'beauty' ? ['beauty'] : []),
-      ...(profile?.dominantDomain === 'beauty' ? [] : recentQueries),
-      ...(profile?.dominantDomain === 'beauty' ? [] : topBrands),
-    ],
+    profile?.dominantDomain === 'beauty'
+      ? [
+          ...specificRecentQueries,
+          topBrands[0],
+          buildDiscoveryBucketLabel(profile?.preferredBeautyBucket),
+          ...topCategories,
+          'beauty',
+          ...genericRecentQueries,
+        ]
+      : [
+          buildDiscoveryBucketLabel(profile?.preferredBeautyBucket),
+          ...topCategories,
+          ...recentQueries,
+          ...topBrands,
+        ],
     3,
   );
 
@@ -1089,7 +1138,7 @@ function buildDiscoveryRecallPlan(request, profile, limit) {
     return [
       {
         label: 'cold_start_curated',
-        query: '',
+        query: request?.surface === 'home_hot_deals' ? getDiscoveryColdStartQuery() : '',
         offset: 0,
         limit: Math.min(PRODUCTS_SEARCH_PAGE_SIZE, safeLimit),
         allow_early_exit: true,
@@ -1885,6 +1934,10 @@ function selectHomeProducts(scoredCandidates, viewedKeys, limit, options = {}) {
   for (const entry of coldStartDeferred) {
     if (selected.length >= limit) break;
     if (selected.some((picked) => picked.candidate.key === entry.candidate.key)) continue;
+    if (coldStartCuration && selected.length >= Math.min(limit, MIN_COLD_START_NON_DEFERRED_RESULTS)) {
+      if (decisions) decisions.set(entry.candidate.key, 'not_selected_cold_start_deferred');
+      continue;
+    }
     selected.push(entry);
     if (decisions) decisions.set(entry.candidate.key, 'selected_cold_start_backfill');
   }
