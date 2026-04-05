@@ -82065,9 +82065,6 @@ function mountAuroraBffRoutes(app, { logger }) {
             recoTaskMode === 'ingredient_lookup_no_candidates'
             || String(payload.products_empty_reason || '').trim() === 'ingredient_no_verified_candidates';
           let payloadHasRecs = Array.isArray(payload.recommendations) && payload.recommendations.length > 0;
-          const chatBeautyMainlineHandoff = null;
-          const chatBeautyHandoffSelection = null;
-          const chatBeautyHandoffSelectionLocked = false;
           payload.recommendation_confidence_level = noCandidatesMode ? 'low' : artifactConfidenceLevel;
           if (noCandidatesMode) {
             payload.recommendation_confidence_score = 0;

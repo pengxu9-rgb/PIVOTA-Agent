@@ -144,8 +144,14 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
     const canonicalSelectedTitles = Array.isArray(selectionContract?.selected_titles)
       ? selectionContract.selected_titles.filter((value) => String(value || '').trim())
       : [];
-    const canonicalDecisionOwner = pickFirstTrimmed(searchResult?.decision_owner);
-    const canonicalSemanticOwner = pickFirstTrimmed(searchResult?.semantic_owner);
+    const canonicalDecisionOwner = pickFirstTrimmed(
+      searchResult?.decision_owner,
+      searchResult?.metadata?.decision_owner,
+    );
+    const canonicalSemanticOwner = pickFirstTrimmed(
+      searchResult?.semantic_owner,
+      searchResult?.metadata?.semantic_owner,
+    );
     const canonicalResolvedContract = pickFirstTrimmed(
       searchResult?.contract_bridge?.resolved_contract,
       searchResult?.metadata?.contract_bridge?.resolved_contract,

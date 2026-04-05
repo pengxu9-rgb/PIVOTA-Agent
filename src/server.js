@@ -139,6 +139,11 @@ const {
   resolveInvokeSearchContractBridgeMeta,
 } = require('./beautySearchAuthority');
 const {
+  normalizeInvokeSearchOperationResponseData,
+  normalizeInvokeMaybePolicyResponse,
+  normalizeInvokeFinalSearchResponse,
+} = require('./findProductsResponseNormalization');
+const {
   extractHumanApparelCategories,
   extractIntentRuleBased,
 } = require('./findProductsMulti/intent');
@@ -24508,93 +24513,31 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         }),
       };
     }
-    const normalizeSearchOperationResponseData = ({
-      responseBody,
-      queryParamsOverride,
-      requestBodyOverride,
-      includeRouteDebug = false,
-    }) => {
-      let normalized = responseBody;
-      if (
-        includeRouteDebug &&
-        operation === 'find_products_multi' &&
-        ROUTE_DEBUG_ENABLED &&
-        (creatorCacheRouteDebug || creatorHumanApparelDirectRouteDebug || crossMerchantCacheRouteDebug)
-      ) {
-        normalized = {
-          ...normalized,
-          metadata: {
-            ...(normalized?.metadata || {}),
-            route_debug: {
-              ...((normalized?.metadata && normalized.metadata.route_debug) || {}),
-              ...(creatorCacheRouteDebug ? { creator_cache: creatorCacheRouteDebug } : {}),
-              ...(creatorHumanApparelDirectRouteDebug
-                ? { creator_external_seed_direct: creatorHumanApparelDirectRouteDebug }
-                : {}),
-              ...(crossMerchantCacheRouteDebug ? { cross_merchant_cache: crossMerchantCacheRouteDebug } : {}),
-            },
-          },
-        };
-      }
-
-      if (operation === 'find_products' || operation === 'find_products_multi') {
-        normalized = normalizeAgentProductsListResponse(normalized, {
-          limit: queryParamsOverride?.limit,
-          offset: queryParamsOverride?.offset,
-        });
-        if (searchContractBridgeMeta) {
-          normalized = {
-            ...normalized,
-            metadata: {
-              ...(normalized?.metadata || {}),
-              contract_bridge: searchContractBridgeMeta,
-            },
-          };
-        }
-        if (shoppingFreshMainlineSearch) {
-          normalized = normalizeShoppingFreshMainlineCacheResponse({
-            responseBody: normalized,
-            requestSource: metadata?.source,
-            queryParams: queryParamsOverride,
-            intent: effectiveIntent,
-            queryClass: traceQueryClass,
-            queryText: String(rawUserQuery || extractSearchQueryText(queryParamsOverride) || '').trim(),
-          });
-        }
-        if (operation === 'find_products_multi' && strictCommerceFindProductsMulti) {
-          normalized = recoverStrictMainPathResponseFromPrefetch({
-            responseBody: normalized,
-            invokeRequestBody: requestBodyOverride,
-            strictInvokeDecision: strictFindProductsMultiDecision,
-          });
-          normalized = normalizeStrictCacheMainPathFallbackMetadata({
-            responseBody: normalized,
-            strictInvokeDecision: strictFindProductsMultiDecision,
-          });
-          normalized = normalizeShoppingStrictMainlineCacheResponse({
-            responseBody: normalized,
-            strictInvokeDecision: strictFindProductsMultiDecision,
-            invokeRequestBody: requestBodyOverride,
-            queryParams: queryParamsOverride,
-            intent: effectiveIntent,
-            queryClass: traceQueryClass,
-            queryText: String(rawUserQuery || extractSearchQueryText(queryParamsOverride) || '').trim(),
-          });
-          normalized = normalizeStrictMainlineResponseMetadata({
-            responseBody: normalized,
-            strictInvokeDecision: strictFindProductsMultiDecision,
-            invokeRequestBody: requestBodyOverride,
-          });
-        }
-      }
-      return normalized;
-    };
-
-    let upstreamData = normalizeSearchOperationResponseData({
+    let upstreamData = normalizeInvokeSearchOperationResponseData({
       responseBody: response.data,
+      operation,
       queryParamsOverride: queryParams,
       requestBodyOverride: requestBody,
       includeRouteDebug: true,
+      routeDebugEnabled: ROUTE_DEBUG_ENABLED,
+      creatorCacheRouteDebug,
+      creatorHumanApparelDirectRouteDebug,
+      crossMerchantCacheRouteDebug,
+      searchContractBridgeMeta,
+      shoppingFreshMainlineSearch,
+      metadata,
+      effectiveIntent,
+      traceQueryClass,
+      rawUserQuery,
+      strictCommerceFindProductsMulti,
+      strictFindProductsMultiDecision,
+      extractSearchQueryText,
+      normalizeAgentProductsListResponse,
+      normalizeShoppingFreshMainlineCacheResponse,
+      recoverStrictMainPathResponseFromPrefetch,
+      normalizeStrictCacheMainPathFallbackMetadata,
+      normalizeShoppingStrictMainlineCacheResponse,
+      normalizeStrictMainlineResponseMetadata,
     });
     const primarySemanticOwnerAdoption = evaluateSemanticOwnerBeautyAdoption({
       upstreamData,
@@ -24726,10 +24669,30 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         let variantUpstreamData = null;
         try {
           variantResponse = await callTrackedUpstream(operation, variantAxiosConfig);
-          variantUpstreamData = normalizeSearchOperationResponseData({
+          variantUpstreamData = normalizeInvokeSearchOperationResponseData({
             responseBody: variantResponse.data,
+            operation,
             queryParamsOverride: variantQueryParams,
             requestBodyOverride: variantRequestBody,
+            routeDebugEnabled: ROUTE_DEBUG_ENABLED,
+            creatorCacheRouteDebug,
+            creatorHumanApparelDirectRouteDebug,
+            crossMerchantCacheRouteDebug,
+            searchContractBridgeMeta,
+            shoppingFreshMainlineSearch,
+            metadata,
+            effectiveIntent,
+            traceQueryClass,
+            rawUserQuery,
+            strictCommerceFindProductsMulti,
+            strictFindProductsMultiDecision,
+            extractSearchQueryText,
+            normalizeAgentProductsListResponse,
+            normalizeShoppingFreshMainlineCacheResponse,
+            recoverStrictMainPathResponseFromPrefetch,
+            normalizeStrictCacheMainPathFallbackMetadata,
+            normalizeShoppingStrictMainlineCacheResponse,
+            normalizeStrictMainlineResponseMetadata,
           });
         } catch (semanticOwnerRetryErr) {
           semanticOwnerQueryAttempts.push({
@@ -24940,13 +24903,33 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 },
               );
               const rescueResponse = { status: 200, data: rescueBody };
-              const rescueUpstreamData = normalizeSearchOperationResponseData({
+              const rescueUpstreamData = normalizeInvokeSearchOperationResponseData({
                 responseBody: rescueBody,
+                operation,
                 queryParamsOverride: {
                   ...rescueQueryParams,
                   query: semanticOwnerExternalRescueQuery,
                 },
                 requestBodyOverride: requestBody,
+                routeDebugEnabled: ROUTE_DEBUG_ENABLED,
+                creatorCacheRouteDebug,
+                creatorHumanApparelDirectRouteDebug,
+                crossMerchantCacheRouteDebug,
+                searchContractBridgeMeta,
+                shoppingFreshMainlineSearch,
+                metadata,
+                effectiveIntent,
+                traceQueryClass,
+                rawUserQuery,
+                strictCommerceFindProductsMulti,
+                strictFindProductsMultiDecision,
+                extractSearchQueryText,
+                normalizeAgentProductsListResponse,
+                normalizeShoppingFreshMainlineCacheResponse,
+                recoverStrictMainPathResponseFromPrefetch,
+                normalizeStrictCacheMainPathFallbackMetadata,
+                normalizeShoppingStrictMainlineCacheResponse,
+                normalizeStrictMainlineResponseMetadata,
               });
               const rescueQueryParamsApplied = {
                 ...rescueQueryParams,
@@ -25044,10 +25027,30 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             },
           );
           response = { status: 200, data: isolatedBody };
-          upstreamData = normalizeSearchOperationResponseData({
+          upstreamData = normalizeInvokeSearchOperationResponseData({
             responseBody: isolatedBody,
+            operation,
             queryParamsOverride: rescueQueryParams,
             requestBodyOverride: requestBody,
+            routeDebugEnabled: ROUTE_DEBUG_ENABLED,
+            creatorCacheRouteDebug,
+            creatorHumanApparelDirectRouteDebug,
+            crossMerchantCacheRouteDebug,
+            searchContractBridgeMeta,
+            shoppingFreshMainlineSearch,
+            metadata,
+            effectiveIntent,
+            traceQueryClass,
+            rawUserQuery,
+            strictCommerceFindProductsMulti,
+            strictFindProductsMultiDecision,
+            extractSearchQueryText,
+            normalizeAgentProductsListResponse,
+            normalizeShoppingFreshMainlineCacheResponse,
+            recoverStrictMainPathResponseFromPrefetch,
+            normalizeStrictCacheMainPathFallbackMetadata,
+            normalizeShoppingStrictMainlineCacheResponse,
+            normalizeStrictMainlineResponseMetadata,
           });
           queryParams = rescueQueryParams;
         }
@@ -26881,13 +26884,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         }
       }
 
-      if (strictCommerceFindProductsMulti) {
-        maybePolicy = normalizeStrictMainlineResponseMetadata({
-          responseBody: maybePolicy,
-          strictInvokeDecision: strictFindProductsMultiDecision,
-          invokeRequestBody: requestBody,
-        });
-      }
+      maybePolicy = normalizeInvokeMaybePolicyResponse({
+        maybePolicy,
+        strictCommerceFindProductsMulti,
+        strictFindProductsMultiDecision,
+        requestBody,
+        normalizeStrictMainlineResponseMetadata,
+      });
     }
 
     if (operation === 'find_products_multi') {
@@ -27710,19 +27713,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         );
       }
 
-      enriched = normalizeShoppingFinalSearchResponse({
-        responseBody: enriched,
-        requestSource:
-          metadata?.source ||
-          effectivePayload?.metadata?.source ||
-          effectivePayload?.context?.source ||
-          req?.query?.source ||
-          queryParams?.source ||
-          null,
+      enriched = normalizeInvokeFinalSearchResponse({
+        enriched,
+        operation,
+        metadata,
+        effectivePayload,
+        req,
         queryParams,
-        intent: effectiveIntent,
-        queryClass: traceQueryClass,
-        queryText: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim(),
+        effectiveIntent,
+        traceQueryClass,
+        rawUserQuery,
+        extractSearchQueryText,
+        normalizeShoppingFinalSearchResponse,
       });
     }
 
