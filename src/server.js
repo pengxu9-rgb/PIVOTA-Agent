@@ -2632,40 +2632,59 @@ async function fetchExternalSeedProductDetail(args) {
   if (!productId) return null;
 
   try {
-    const res = await query(
+    const baseSelect = `
+      SELECT
+        id,
+        external_product_id,
+        destination_url,
+        canonical_url,
+        domain,
+        title,
+        image_url,
+        price_amount,
+        price_currency,
+        availability,
+        seed_data,
+        status,
+        attached_product_key,
+        created_at,
+        updated_at
+      FROM external_product_seeds
+      WHERE status = 'active'
+        AND attached_product_key IS NULL
+    `;
+    const orderByLatest = `
+      ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+      LIMIT 1
+    `;
+
+    const exactRes = await query(
       `
-        SELECT
-          id,
-          external_product_id,
-          destination_url,
-          canonical_url,
-          domain,
-          title,
-          image_url,
-          price_amount,
-          price_currency,
-          availability,
-          seed_data,
-          status,
-          attached_product_key,
-          created_at,
-          updated_at
-        FROM external_product_seeds
-        WHERE status = 'active'
-          AND attached_product_key IS NULL
-          AND (
-            id::text = $1
-            OR external_product_id = $1
-            OR coalesce(seed_data->>'external_product_id', '') = $1
-            OR coalesce(seed_data->>'product_id', '') = $1
-            OR coalesce(seed_data->'snapshot'->>'product_id', '') = $1
-          )
-        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
-        LIMIT 1
+        ${baseSelect}
+        AND (
+          id::text = $1
+          OR external_product_id = $1
+        )
+        ${orderByLatest}
       `,
       [productId],
     );
-    const row = res?.rows && res.rows[0] ? res.rows[0] : null;
+    let row = exactRes?.rows && exactRes.rows[0] ? exactRes.rows[0] : null;
+    if (!row) {
+      const fallbackRes = await query(
+        `
+          ${baseSelect}
+          AND (
+            coalesce(seed_data->>'external_product_id', '') = $1
+            OR coalesce(seed_data->>'product_id', '') = $1
+            OR coalesce(seed_data->'snapshot'->>'product_id', '') = $1
+          )
+          ${orderByLatest}
+        `,
+        [productId],
+      );
+      row = fallbackRes?.rows && fallbackRes.rows[0] ? fallbackRes.rows[0] : null;
+    }
     if (!row) return null;
     const product = buildExternalSeedProduct(row);
     if (!product) return null;

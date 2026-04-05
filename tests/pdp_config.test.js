@@ -15,7 +15,6 @@ describe('pdpConfig', () => {
       'how_to_use',
       'product_details',
       'reviews_preview',
-      'similar',
     ]);
   });
 

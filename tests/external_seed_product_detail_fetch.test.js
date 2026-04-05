@@ -86,6 +86,8 @@ describe('external seed product detail hydration', () => {
     });
 
     expect(db.query).toHaveBeenCalledTimes(1);
+    expect(String(db.query.mock.calls[0][0] || '')).toContain('external_product_id = $1');
+    expect(String(db.query.mock.calls[0][0] || '')).not.toContain("seed_data->>'external_product_id'");
     expect(product).toMatchObject({
       merchant_id: 'external_seed',
       product_id: 'ext_rare_1',
@@ -99,5 +101,47 @@ describe('external seed product detail hydration', () => {
     expect(product.inci_list).toEqual(['Water', 'Niacinamide', 'Ceramide NP']);
     expect(product.active_ingredients).toEqual(['Niacinamide']);
     expect(product.pdp_details_sections).toHaveLength(2);
+  });
+
+  test('fetchProductDetailForOffers falls back to JSON product-id matches only after exact keys miss', async () => {
+    const { db, debug } = loadServerWithDb();
+
+    db.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'eps_json_1',
+            external_product_id: null,
+            canonical_url: 'https://example.com/products/json-fallback',
+            destination_url: 'https://example.com/products/json-fallback',
+            title: 'JSON Fallback Product',
+            image_url: 'https://cdn.example.com/json.jpg',
+            price_amount: '18.00',
+            price_currency: 'USD',
+            availability: 'In Stock',
+            seed_data: {
+              brand: 'Fallback Beauty',
+              snapshot: {
+                product_id: 'legacy_snapshot_id',
+              },
+            },
+          },
+        ],
+      });
+
+    const product = await debug.fetchProductDetailForOffers({
+      merchantId: 'external_seed',
+      productId: 'legacy_snapshot_id',
+    });
+
+    expect(db.query).toHaveBeenCalledTimes(2);
+    expect(String(db.query.mock.calls[0][0] || '')).not.toContain("seed_data->>'external_product_id'");
+    expect(String(db.query.mock.calls[1][0] || '')).toContain("seed_data->>'external_product_id'");
+    expect(product).toMatchObject({
+      merchant_id: 'external_seed',
+      product_id: 'legacy_snapshot_id',
+      title: 'JSON Fallback Product',
+    });
   });
 });
