@@ -1491,6 +1491,7 @@ module.exports = {
     getParentCategory,
     isExternalProduct,
     fetchInternalCandidates,
+    fetchExternalCandidates,
     shouldCacheRecommendationResult,
     shouldSkipExternalFetch,
   },

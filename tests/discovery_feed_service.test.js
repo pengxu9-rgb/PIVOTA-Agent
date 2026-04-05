@@ -300,6 +300,8 @@ describe('discovery feed service', () => {
             product_type: 'Serum',
           }),
         ],
+        brandFallbackFetchInternalCandidatesFn: async () => [],
+        brandFallbackFetchExternalCandidatesFn: async () => [],
         brandFallbackRecommendFn: async () => ({
           items: [
             makeProduct({

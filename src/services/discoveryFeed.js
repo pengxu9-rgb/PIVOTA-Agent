@@ -11,6 +11,8 @@ const recommendationEngine = require('./RecommendationEngine');
 const {
   recommend,
   _internals: {
+    fetchExternalCandidates,
+    fetchInternalCandidates,
     normalizeText,
     tokenize,
     jaccard,
@@ -1379,19 +1381,67 @@ async function loadBrandScopedRecommendationFallback({
   request,
   limit = 24,
   recommendFn = recommend,
+  fetchExternalCandidatesFn = fetchExternalCandidates,
+  fetchInternalCandidatesFn = fetchInternalCandidates,
 } = {}) {
   const sourceProductId = String(request?.source_product_ref?.product_id || '').trim();
-  if (!sourceProductId || typeof recommendFn !== 'function') return [];
   const merchantId = String(request?.source_product_ref?.merchant_id || '').trim() || null;
   const brandName = Array.isArray(request?.scope?.brand_names) ? String(request.scope.brand_names[0] || '').trim() : '';
+  const safeLimit = clampInt(limit, Math.max(limit, 24), 1, 180);
+  const baseProduct = {
+    ...(sourceProductId ? { product_id: sourceProductId } : {}),
+    ...(merchantId ? { merchant_id: merchantId } : {}),
+    ...(brandName ? { brand: brandName, vendor: brandName } : {}),
+  };
 
+  if (typeof fetchExternalCandidatesFn === 'function' || typeof fetchInternalCandidatesFn === 'function') {
+    try {
+      const [internalCandidates, externalCandidates] = await Promise.all([
+        typeof fetchInternalCandidatesFn === 'function'
+          ? fetchInternalCandidatesFn({
+              merchantId: merchantId || undefined,
+              limit: safeLimit,
+              excludeMerchantId: merchantId || undefined,
+              baseProduct,
+            })
+          : Promise.resolve([]),
+        typeof fetchExternalCandidatesFn === 'function'
+          ? fetchExternalCandidatesFn({
+              brandHint: brandName,
+              categoryHint: request?.query?.text || '',
+              limit: Math.max(safeLimit, 60),
+            })
+          : Promise.resolve([]),
+      ]);
+
+      const merged = [...(Array.isArray(internalCandidates) ? internalCandidates : []), ...(Array.isArray(externalCandidates) ? externalCandidates : [])];
+      const seen = new Set();
+      const deduped = merged.filter((item) => {
+        const key = buildProductKey(item?.merchant_id || item?.merchantId, item?.product_id || item?.productId || item?.id);
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      if (deduped.length > 0) {
+        return deduped;
+      }
+    } catch (err) {
+      logger.warn(
+        {
+          err: err?.message || String(err),
+          product_id: sourceProductId || null,
+          merchant_id: merchantId,
+          brand: brandName || null,
+        },
+        'brand scoped discovery direct recall failed',
+      );
+    }
+  }
+
+  if (!sourceProductId || typeof recommendFn !== 'function') return [];
   try {
     const result = await recommendFn({
-      pdp_product: {
-        product_id: sourceProductId,
-        ...(merchantId ? { merchant_id: merchantId } : {}),
-        ...(brandName ? { brand: brandName, vendor: brandName } : {}),
-      },
+      pdp_product: baseProduct,
       k: clampInt(limit, Math.max(limit, 24), 1, 72),
       locale: request?.context?.locale || 'en-US',
       options: {
@@ -1862,6 +1912,8 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
         request,
         limit: options.candidateLimit || resolveDiscoveryCandidateLimit(request),
         recommendFn: options.brandFallbackRecommendFn,
+        fetchExternalCandidatesFn: options.brandFallbackFetchExternalCandidatesFn,
+        fetchInternalCandidatesFn: options.brandFallbackFetchInternalCandidatesFn,
       });
       if (fallbackProducts.length > 0) {
         effectiveCandidateSource = 'products_search+brand_recommendation_fallback';
