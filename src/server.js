@@ -2715,6 +2715,15 @@ async function fetchProductDetailForOffers(args) {
   const merchantId = String(args?.merchantId || '').trim();
   const productId = String(args?.productId || '').trim();
   const checkoutToken = args?.checkoutToken;
+  const bypassCache =
+    args?.bypassCache === true ||
+    args?.no_cache === true ||
+    args?.cache_bypass === true ||
+    args?.bypass_cache === true ||
+    String(args?.no_cache || '').trim().toLowerCase() === 'true' ||
+    String(args?.cache_bypass || args?.bypass_cache || '')
+      .trim()
+      .toLowerCase() === 'true';
   if (!merchantId || !productId) return null;
 
   const cacheKey = JSON.stringify({
@@ -2723,7 +2732,7 @@ async function fetchProductDetailForOffers(args) {
     hasCheckoutToken: Boolean(checkoutToken),
   });
 
-  if (PRODUCT_DETAIL_CACHE_ENABLED) {
+  if (PRODUCT_DETAIL_CACHE_ENABLED && !bypassCache) {
     const cachedEntry = getProductDetailCacheEntry(cacheKey);
     const cachedValue = cachedEntry?.value;
     const cachedProduct =
@@ -2745,7 +2754,7 @@ async function fetchProductDetailForOffers(args) {
     }
   }
 
-  const inflight = PRODUCT_DETAIL_INFLIGHT.get(cacheKey);
+  const inflight = bypassCache ? null : PRODUCT_DETAIL_INFLIGHT.get(cacheKey);
   if (inflight) {
     return inflight;
   }
@@ -2859,11 +2868,15 @@ async function fetchProductDetailForOffers(args) {
     return null;
   })();
 
-  PRODUCT_DETAIL_INFLIGHT.set(cacheKey, loadPromise);
+  if (!bypassCache) {
+    PRODUCT_DETAIL_INFLIGHT.set(cacheKey, loadPromise);
+  }
   try {
     return await loadPromise;
   } finally {
-    PRODUCT_DETAIL_INFLIGHT.delete(cacheKey);
+    if (!bypassCache) {
+      PRODUCT_DETAIL_INFLIGHT.delete(cacheKey);
+    }
   }
 }
 
@@ -20015,6 +20028,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		          merchantId: requestedMerchantId,
 		          productId,
 		          checkoutToken,
+              bypassCache,
 		        });
 	        precheckEntryProductMissing = !precheckedMerchantProduct;
 	        if (precheckEntryProductMissing) {
@@ -20105,6 +20119,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		              merchantId: canonicalProductRef.merchant_id,
 	              productId: canonicalProductRef.product_id,
 	              checkoutToken,
+                bypassCache,
 	            });
 	      markPdpV2Phase('fetch_canonical_product', fetchCanonicalProductStartedAt);
 
