@@ -10,6 +10,10 @@ function pickFirstTrimmed(...values) {
   return '';
 }
 
+function hasOwnKeys(value) {
+  return isPlainObject(value) && Object.keys(value).length > 0;
+}
+
 function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
   const {
     BEAUTY_DISCOVERY_MAINLINE_OWNER = 'shopping_agent_beauty_mainline',
@@ -134,6 +138,32 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
     if (!isPlainObject(handoff?.searchResult)) return null;
     const searchResult = handoff.searchResult;
     const selectionContract = extractRecoFinalSelectionContract(searchResult);
+    const canonicalSelectedProductIds = Array.isArray(selectionContract?.selected_product_ids)
+      ? selectionContract.selected_product_ids.filter((value) => String(value || '').trim())
+      : [];
+    const canonicalSelectedTitles = Array.isArray(selectionContract?.selected_titles)
+      ? selectionContract.selected_titles.filter((value) => String(value || '').trim())
+      : [];
+    const canonicalDecisionOwner = pickFirstTrimmed(searchResult?.decision_owner);
+    const canonicalSemanticOwner = pickFirstTrimmed(searchResult?.semantic_owner);
+    const canonicalResolvedContract = pickFirstTrimmed(
+      searchResult?.contract_bridge?.resolved_contract,
+      searchResult?.metadata?.contract_bridge?.resolved_contract,
+    );
+    const canonicalSourceTierCounts =
+      searchResult?.source_breakdown?.source_tier_counts ||
+      searchResult?.metadata?.source_breakdown?.source_tier_counts ||
+      selectionContract?.source_tier_counts;
+    const hasCanonicalSelection =
+      canonicalSelectedProductIds.length > 0 || canonicalSelectedTitles.length > 0;
+    const hasCanonicalAuthority =
+      hasCanonicalSelection &&
+      canonicalDecisionOwner === BEAUTY_DISCOVERY_MAINLINE_OWNER &&
+      canonicalSemanticOwner === BEAUTY_DISCOVERY_MAINLINE_OWNER &&
+      canonicalResolvedContract === 'agent_v1_search_beauty_mainline' &&
+      hasOwnKeys(canonicalSourceTierCounts);
+    if (!hasCanonicalAuthority) return null;
+
     const rawRecommendations = Array.isArray(handoff?.recommendations) ? handoff.recommendations : [];
     const canonicalRecommendations = orderRecoRecommendationsBySelection(
       rawRecommendations,

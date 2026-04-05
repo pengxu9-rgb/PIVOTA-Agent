@@ -283,3 +283,55 @@ test('beauty handoff payload builder replaces mixed planner rows with canonical 
     delete require.cache[moduleId];
   }
 });
+
+test('beauty handoff payload builder fails closed when canonical authority is missing', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const out = __internal.buildRecoPayloadFromBeautyMainlineHandoff({
+      handoff: {
+        recommendations: [
+          {
+            product_id: '9886499864904',
+            display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+            category: 'Serum',
+          },
+          {
+            product_id: '9886500749640',
+            display_name: 'Winona Soothing Repair Serum',
+            category: 'Serum',
+          },
+        ],
+        searchResult: {
+          products: [
+            {
+              product_id: '9886499864904',
+              display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+            },
+            {
+              product_id: '9886500749640',
+              display_name: 'Winona Soothing Repair Serum',
+            },
+          ],
+          metadata: {
+            search_stage_ledger: {
+              final_selection: {
+                selection_owner: 'shopping_agent_beauty_mainline',
+                selected_product_ids: ['9886499864904'],
+                selected_titles: ['The Ordinary Niacinamide 10% + Zinc 1%'],
+                selection_signature: 'sel_missing_canonical_authority',
+                mainline_status: 'grounded_success',
+              },
+            },
+          },
+        },
+      },
+      profile: { skinType: 'oily', goals: ['oil control'] },
+      selectionOwner: 'shopping_agent_beauty_mainline',
+      entryType: 'chat',
+    });
+
+    assert.equal(out, null);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});

@@ -5761,6 +5761,116 @@ test('/v1/chat: beauty-owned hard path fails closed when beauty mainline handoff
   }
 });
 
+test('/v1/chat: beauty-owned hard path fails closed when handoff products lack canonical authority', async () => {
+  const originalGet = axios.get;
+  let auroraChatCallCount = 0;
+  const harness = createAppWithPatchedAuroraChat({
+    auroraChatImpl: async () => {
+      auroraChatCallCount += 1;
+      return {
+        intent: 'recommend_products',
+        answer: '{"summary":"legacy planner should not run after non-canonical handoff"}',
+        structured: {
+          recommendations: [
+            {
+              product_id: 'legacy_wrong_non_canonical_path',
+              display_name: 'Legacy Wrong Non Canonical Path',
+            },
+          ],
+        },
+        context: {},
+      };
+    },
+  });
+
+  axios.get = async (url, config = {}) => {
+    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    const query = String(config?.params?.query || '').trim().toLowerCase();
+    if (query !== 'what products should i use for oily skin?') {
+      return { status: 200, data: { products: [] } };
+    }
+    return {
+      status: 200,
+      data: {
+        products: [
+          {
+            product_id: 'niacinamide_1',
+            merchant_id: 'mid_internal',
+            brand: 'The Ordinary',
+            name: 'Niacinamide 10% + Zinc 1%',
+            display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+            category: 'serum',
+            product_type: 'serum',
+            source: 'internal_search',
+          },
+          {
+            product_id: 'wrong_serum_2',
+            merchant_id: 'mid_external',
+            brand: 'Winona',
+            name: 'Soothing Repair Serum',
+            display_name: 'Winona Soothing Repair Serum',
+            category: 'serum',
+            product_type: 'serum',
+            source: 'external_seed',
+          },
+        ],
+        metadata: {
+          query_source: 'agent_products_search',
+          search_stage_ledger: {
+            final_selection: {
+              selection_owner: 'shopping_agent_beauty_mainline',
+              selected_product_ids: ['niacinamide_1'],
+              selected_titles: ['The Ordinary Niacinamide 10% + Zinc 1%'],
+              selection_signature: 'sel_missing_authority',
+              mainline_status: 'grounded_success',
+            },
+          },
+        },
+      },
+    };
+  };
+
+  try {
+    const response = await harness.request
+      .post('/v1/chat')
+      .set({
+        'X-Aurora-UID': 'chat_plain_text_missing_authority_uid',
+        'X-Trace-ID': 'trace_chat_plain_text_missing_authority',
+        'X-Brief-ID': 'chat_plain_text_missing_authority_brief',
+      })
+      .send({
+        message: 'what products should i use for oily skin?',
+        client_state: 'IDLE_CHAT',
+        session: { state: 'idle' },
+        context: {
+          locale: 'en',
+          profile: {
+            skinType: 'oily',
+            sensitivity: 'low',
+            barrierStatus: 'stable',
+            goals: ['oil control'],
+          },
+        },
+        language: 'EN',
+      });
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(auroraChatCallCount, 0);
+    const payload = getRecommendationsPayload(response.body);
+    assert.equal(payload, null);
+    const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
+    const confidenceCard = cards.find((card) => card && card.type === 'confidence_notice') || null;
+    assert.ok(confidenceCard);
+    assert.match(
+      String(response.body?.assistant_message?.content || ''),
+      /grounded product shortlist|保守结果/i,
+    );
+  } finally {
+    axios.get = originalGet;
+    harness.restore();
+  }
+});
+
 test('/v1/chat: plain-text sunscreen reco short-circuits to beauty mainline before aurora planner and keeps canonical sunscreen selection', async () => {
   const originalGet = axios.get;
   const originalGetLatestDiagnosisArtifact = diagnosisArtifactStore.getLatestDiagnosisArtifact;
