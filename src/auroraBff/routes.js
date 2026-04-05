@@ -80,6 +80,9 @@ const {
   createBeautyChatMainlineEntryRuntime,
 } = require('./beautyChatMainlineEntry');
 const {
+  createBeautyChatLegacyIsolationRuntime,
+} = require('./beautyChatLegacyIsolation');
+const {
   buildExternalSeedSurfacingText,
   choosePreferredExternalSeedCandidate,
   computeExternalSeedSurfacingMatch,
@@ -1284,6 +1287,17 @@ const {
   buildRecoPayloadFromBeautyMainlineHandoff,
   classifyBeautyMainlineHandoffFallback,
   buildBeautyMainlineHandoffFallbackEnvelope,
+  looksLikeRecommendationRequest,
+});
+const {
+  shouldBlockLegacyBeautyOwnedRecoRoute,
+  shouldEnterLegacyProductRecommendations,
+  shouldUseLegacyVerifiedContextRestore,
+} = createBeautyChatLegacyIsolationRuntime({
+  RECO_CATALOG_GROUNDED_ENABLED,
+  looksLikeIngredientScienceIntent,
+  looksLikeRoutineRequest,
+  looksLikeSuitabilityRequest,
   looksLikeRecommendationRequest,
 });
 const RECO_CATALOG_MAIN_PATH_SEARCH_SOURCE = (() => {
@@ -46588,6 +46602,42 @@ function buildRecoContextWarningFromPayload(payload) {
   };
 }
 
+function hasRecoCanonicalAuthority(payload) {
+  const payloadObj = isPlainObject(payload) ? payload : {};
+  const meta = isPlainObject(payloadObj.recommendation_meta) ? payloadObj.recommendation_meta : {};
+  const payloadMeta = isPlainObject(payloadObj.metadata) ? payloadObj.metadata : {};
+  const decisionOwner = pickFirstTrimmed(
+    payloadObj.decision_owner,
+    meta.decision_owner,
+    payloadMeta.decision_owner,
+  );
+  const semanticOwner = pickFirstTrimmed(
+    payloadObj.semantic_owner,
+    meta.semantic_owner,
+    payloadMeta.semantic_owner,
+  );
+  const resolvedContract = pickFirstTrimmed(
+    meta.resolved_contract,
+    payloadMeta.resolved_contract,
+    meta.contract_bridge?.resolved_contract,
+    payloadMeta.contract_bridge?.resolved_contract,
+  );
+  const sourceTierCounts =
+    (isPlainObject(meta.source_tier_counts) ? meta.source_tier_counts : null)
+    || (isPlainObject(payloadMeta.source_tier_counts) ? payloadMeta.source_tier_counts : null)
+    || (
+      isPlainObject(payloadMeta.source_breakdown?.source_tier_counts)
+        ? payloadMeta.source_breakdown.source_tier_counts
+        : null
+    );
+  return (
+    decisionOwner === BEAUTY_DISCOVERY_MAINLINE_OWNER &&
+    semanticOwner === BEAUTY_DISCOVERY_MAINLINE_OWNER &&
+    resolvedContract === 'agent_v1_search_beauty_mainline' &&
+    Boolean(sourceTierCounts && Object.keys(sourceTierCounts).length > 0)
+  );
+}
+
 function buildRecoFinalSelectionContract({
   payload,
   fallbackSelection = null,
@@ -46626,7 +46676,11 @@ function buildRecoFinalSelectionContract({
         ),
         ...(contextWarning?.reasons || []),
         pickFirstTrimmed(payloadObj.recommendation_meta?.source_mode),
-        pickFirstTrimmed(payloadObj.recommendation_meta?.beauty_mainline_handoff_query_source),
+        pickFirstTrimmed(
+          payloadObj.query_source,
+          payloadObj.recommendation_meta?.query_source,
+          payloadObj.metadata?.query_source,
+        ),
       ]
         .map((item) => String(item || '').trim())
         .filter(Boolean),
@@ -46636,7 +46690,12 @@ function buildRecoFinalSelectionContract({
     selection_owner: pickFirstTrimmed(
       selectionOwner,
       normalizedFallback?.selection_owner,
-      payloadObj.recommendation_meta?.beauty_mainline_handoff_owner,
+      payloadObj.decision_owner,
+      payloadObj.semantic_owner,
+      payloadObj.recommendation_meta?.decision_owner,
+      payloadObj.recommendation_meta?.semantic_owner,
+      payloadObj.metadata?.decision_owner,
+      payloadObj.metadata?.semantic_owner,
       BEAUTY_DISCOVERY_MAINLINE_OWNER,
     ) || BEAUTY_DISCOVERY_MAINLINE_OWNER,
     selected_products_count: selectedProductIds.length,
@@ -46659,15 +46718,9 @@ function buildRecoFinalSelectionContract({
 
 function shouldApplyRecoFinalSelectionContract(payload, fallbackSelection = null) {
   const payloadObj = isPlainObject(payload) ? payload : {};
-  const meta = isPlainObject(payloadObj.recommendation_meta) ? payloadObj.recommendation_meta : {};
-  const payloadMeta = isPlainObject(payloadObj.metadata) ? payloadObj.metadata : {};
   if (fallbackSelection && isPlainObject(fallbackSelection)) return true;
-  return (
-    meta.beauty_mainline_handoff_applied === true
-    || payloadMeta.beauty_mainline_handoff_applied === true
-    || pickFirstTrimmed(meta.beauty_mainline_handoff_owner, payloadMeta.beauty_mainline_handoff_owner)
-      === BEAUTY_DISCOVERY_MAINLINE_OWNER
-  );
+  if (extractRecoFinalSelectionContract(payloadObj)) return true;
+  return hasRecoCanonicalAuthority(payloadObj);
 }
 
 function applyRecoFinalSelectionContractToPayload(payload, selectionContract) {
@@ -47667,8 +47720,12 @@ function applyBeautyCanonicalOwnershipToEnvelope({ envelope, route = '', assista
         fallbackSelection: envelopeFallbackSelection,
         selectionOwner: pickFirstTrimmed(
           envelopeFallbackSelection?.selection_owner,
-          payload.recommendation_meta?.beauty_mainline_handoff_owner,
-          payload.metadata?.beauty_mainline_handoff_owner,
+          payload.decision_owner,
+          payload.semantic_owner,
+          payload.recommendation_meta?.decision_owner,
+          payload.recommendation_meta?.semantic_owner,
+          payload.metadata?.decision_owner,
+          payload.metadata?.semantic_owner,
           BEAUTY_DISCOVERY_MAINLINE_OWNER,
         ) || BEAUTY_DISCOVERY_MAINLINE_OWNER,
       });
@@ -80669,25 +80726,18 @@ function mountAuroraBffRoutes(app, { logger }) {
         return sendChatEnvelope(beautyOwnedRecoResponse.envelope);
       }
 
-      const legacyBeautyOwnedRecoRouteBlocked =
-        RECO_CATALOG_GROUNDED_ENABLED &&
-        !forceUpstreamAfterPendingAbandon &&
-        !ingredientDrivenRecommendationRequested &&
-        recoEntrySourceDetail !== 'travel_handoff' &&
-        (
-          typedRecoOwnershipKeepsV1Mainline ||
-          actionId === 'chip.start.reco_products' ||
-          actionId === 'chip_get_recos' ||
-          looksLikeRecommendationRequest(message) ||
-          (
-            hasRecoContextForAutoRerun &&
-            (
-              budgetChipCanContinueReco ||
-              profileClarificationAction ||
-              shouldAutoRerunRecommendationsFromProfilePatch
-            )
-          )
-        );
+      const legacyBeautyOwnedRecoRouteBlocked = shouldBlockLegacyBeautyOwnedRecoRoute({
+        forceUpstreamAfterPendingAbandon,
+        ingredientDrivenRecommendationRequested,
+        recoEntrySourceDetail,
+        typedRecoOwnershipKeepsV1Mainline,
+        actionId,
+        message,
+        hasRecoContextForAutoRerun,
+        budgetChipCanContinueReco,
+        profileClarificationAction,
+        shouldAutoRerunRecommendationsFromProfilePatch,
+      });
       if (legacyBeautyOwnedRecoRouteBlocked) {
         return sendChatEnvelope(
           buildBeautyMainlineHandoffFallbackEnvelope({
@@ -80704,23 +80754,20 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       // If user explicitly asks for product recommendations (via chip OR explicit free text), generate them deterministically
       // (some upstream chat flows only return clarifying chips without a recommendations card).
-      const wantsProductRecommendations =
-        !forceUpstreamAfterPendingAbandon &&
-        allowRecoCards &&
-        !legacyBeautyOwnedRecoRouteBlocked &&
-        (!looksLikeIngredientScienceIntent(message, normalizedActionPayload) || ingredientRecoOptInRequested) &&
-        !looksLikeRoutineRequest(message, normalizedActionPayload) &&
-        !looksLikeSuitabilityRequest(message) &&
-        recoInteractionAllowed &&
-        (
-          actionId === 'chip.start.reco_products' ||
-          actionId === 'chip_get_recos' ||
-          budgetChipCanContinueReco ||
-          profileClarificationAction ||
-          ingredientDrivenRecommendationRequested ||
-          looksLikeRecommendationRequest(message) ||
-          shouldAutoRerunRecommendationsFromProfilePatch
-        );
+      const wantsProductRecommendations = shouldEnterLegacyProductRecommendations({
+        forceUpstreamAfterPendingAbandon,
+        allowRecoCards,
+        legacyBeautyOwnedRecoRouteBlocked,
+        message,
+        normalizedActionPayload,
+        ingredientRecoOptInRequested,
+        recoInteractionAllowed,
+        actionId,
+        budgetChipCanContinueReco,
+        profileClarificationAction,
+        ingredientDrivenRecommendationRequested,
+        shouldAutoRerunRecommendationsFromProfilePatch,
+      });
 
       let analysisContextSnapshotForConversation = null;
       let chatAnalysisTaskContext = null;
@@ -81508,13 +81555,15 @@ function mountAuroraBffRoutes(app, { logger }) {
         let recoTelemetryFailureReason = '';
         let recoMetaPromptTemplateId = '';
         let upstreamReco = null;
-        const shouldShortCircuitVerifiedContextRestore =
-          !ingredientRecoOptInRequested
-          && !travelRecoHandoff
-          && Boolean(shouldApplySessionRecoContext || recoAutoAnchoredByAnalysis || effectiveRecoEntrySourceDetail === 'analysis_handoff')
-          && hasStableRecoTarget
-          && Array.isArray((recoIngredientContext || latestRecoContextPatch)?.product_candidates)
-          && (recoIngredientContext || latestRecoContextPatch).product_candidates.length > 0;
+        const shouldShortCircuitVerifiedContextRestore = shouldUseLegacyVerifiedContextRestore({
+          ingredientRecoOptInRequested,
+          travelRecoHandoff,
+          shouldApplySessionRecoContext,
+          recoAutoAnchoredByAnalysis,
+          effectiveRecoEntrySourceDetail,
+          hasStableRecoTarget,
+          recoContext: recoIngredientContext || latestRecoContextPatch,
+        });
         if (shouldShortCircuitVerifiedContextRestore) {
           const restoredFromVerifiedCandidates = restoreRecoRecommendationsFromVerifiedContextCandidates({
             recoContext: recoIngredientContext || latestRecoContextPatch,

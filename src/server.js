@@ -134,13 +134,12 @@ const {
   isWithinPriceConstraint,
 } = require('./findProductsMulti/policy');
 const {
-  buildBeautySearchSourceBreakdown,
-} = require('./beautySearchSourceAuthority');
-const {
   buildSearchContractBridgeMeta,
-  applyBeautySearchContractAuthority,
   shouldUseBeautyMainlineContractAuthority,
 } = require('./beautySearchContractAuthority');
+const {
+  applyBeautySearchAuthority,
+} = require('./beautySearchAuthority');
 const {
   extractHumanApparelCategories,
   extractIntentRuleBased,
@@ -27502,38 +27501,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   : (semanticOwnerDecision || querySource),
             })
           : null;
-      const mergedSourceBreakdown = buildBeautySearchSourceBreakdown({
-        existingSourceBreakdown:
-          existingMeta?.source_breakdown &&
-          typeof existingMeta.source_breakdown === 'object' &&
-          !Array.isArray(existingMeta.source_breakdown)
-            ? existingMeta.source_breakdown
-            : {},
-        sourceObservability,
-        semanticOwnerCacheSourceIsolated,
-        semanticOwnerLastResortCacheApplied,
-      });
-      const existingMetaForGates =
-        existingMeta && typeof existingMeta === 'object' && !Array.isArray(existingMeta)
-          ? existingMeta
-          : {};
-      const existingLowConfidenceReasons = Array.isArray(existingMetaForGates.low_confidence_reasons)
-        ? existingMetaForGates.low_confidence_reasons
-        : Array.isArray(searchDecision?.low_confidence_reasons)
-          ? searchDecision.low_confidence_reasons
-          : [];
-      const normalizedLowConfidenceReasons = Array.from(
-        new Set(
-          existingLowConfidenceReasons
-            .map((item) => String(item || '').trim())
-            .filter(Boolean),
-        ),
-      );
-      const lowConfidenceFlag =
-        Boolean(existingMetaForGates.low_confidence) ||
-        Boolean(searchDecision?.low_confidence) ||
-        normalizedLowConfidenceReasons.length > 0;
-      const beautyContractAuthority = applyBeautySearchContractAuthority({
+      const beautyAuthority = applyBeautySearchAuthority({
         enriched,
         existingMeta,
         operation,
@@ -27544,38 +27512,20 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         products,
         finalDecision,
         hasClarification,
-        lowConfidenceFlag,
-        mergedSourceBreakdown,
         querySource,
         searchStageLedger,
         defaultSelectionOwner: BEAUTY_DISCOVERY_MAINLINE_OWNER,
+        sourceObservability,
+        semanticOwnerCacheSourceIsolated,
+        semanticOwnerLastResortCacheApplied,
+        searchDecision,
       });
-      const finalSelection = beautyContractAuthority.finalSelection;
-      enriched = beautyContractAuthority.enriched;
-      if (
-        finalSelection &&
-        Number(finalSelection.selected_products_count || 0) > 0 &&
-        enriched &&
-        typeof enriched === 'object' &&
-        !Array.isArray(enriched)
-      ) {
-        if (Array.isArray(enriched.reason_codes)) {
-          enriched.reason_codes = enriched.reason_codes.filter(
-            (code) => String(code || '').trim().toUpperCase() !== 'FILTERED_TO_EMPTY',
-          );
-        }
-        if (
-          enriched.metadata &&
-          typeof enriched.metadata === 'object' &&
-          !Array.isArray(enriched.metadata) &&
-          Array.isArray(enriched.metadata.reason_codes)
-        ) {
-          enriched.metadata.reason_codes = enriched.metadata.reason_codes.filter(
-            (code) => String(code || '').trim().toUpperCase() !== 'FILTERED_TO_EMPTY',
-          );
-        }
-      }
-      existingMeta = enriched?.metadata && typeof enriched.metadata === 'object' ? enriched.metadata : existingMeta;
+      const finalSelection = beautyAuthority.finalSelection;
+      const mergedSourceBreakdown = beautyAuthority.mergedSourceBreakdown;
+      const normalizedLowConfidenceReasons = beautyAuthority.normalizedLowConfidenceReasons;
+      const lowConfidenceFlag = beautyAuthority.lowConfidenceFlag;
+      enriched = beautyAuthority.enriched;
+      existingMeta = beautyAuthority.existingMeta;
 
       enriched = withSearchDiagnostics(enriched, {
         route_health: buildSearchRouteHealth({
