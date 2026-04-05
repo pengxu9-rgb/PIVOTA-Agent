@@ -1758,11 +1758,13 @@ function buildBeautyDiscoveryQueryPackFromContract({
   rawQuery = '',
   semanticContract = null,
   ambiguityScorePre = null,
+  preserveLiteralConstraintQuery = false,
 } = {}) {
   return buildDeterministicStrictSemanticQueryPack({
     rawQuery,
     semanticContract,
     ambiguityScorePre,
+    preserveLiteralConstraintQuery,
   });
 }
 
@@ -1770,6 +1772,7 @@ function buildDeterministicStrictSemanticQueryPack({
   rawQuery = '',
   semanticContract = null,
   ambiguityScorePre = null,
+  preserveLiteralConstraintQuery = false,
 } = {}) {
   const contract = normalizeSearchSemanticContract(semanticContract);
   const out = [];
@@ -1807,6 +1810,10 @@ function buildDeterministicStrictSemanticQueryPack({
   const allowedStepFamilies = normalizeSemanticStringList(contract?.allowed_step_families, 6)
     .map((value) => normalizeSemanticStepFamily(value))
     .filter(Boolean);
+
+  if (preserveLiteralConstraintQuery && raw) {
+    pushExactUnique(raw);
+  }
 
   const shouldAutoSeedPrimaryRole =
     targetStepFamily !== 'sunscreen' &&
@@ -1923,6 +1930,7 @@ function buildStrictSemanticRewriteResult({
   rewriteOutput = null,
   semanticContract = null,
   ambiguityScorePre = null,
+  preserveLiteralConstraintQuery = false,
 } = {}) {
   const llmMeta = isPlainObject(rewriteMeta)
     ? {
@@ -2012,6 +2020,7 @@ function buildStrictSemanticRewriteResult({
           rawQuery: normalizedRawQuery,
           semanticContract: contract,
           ambiguityScorePre,
+          preserveLiteralConstraintQuery,
         })
       : Array.isArray(normalizedRewriteOutput?.normalized_query_pack) &&
           normalizedRewriteOutput.normalized_query_pack.length > 0
@@ -4380,6 +4389,7 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     rewriteOutput: semanticRewriteOutput,
     semanticContract,
     ambiguityScorePre,
+    preserveLiteralConstraintQuery: preserveLiteralConstraintQueryExpansion,
   });
   semanticRewriteResult.latency_ms = strictSemanticRewritePath ? 0 : intentParseLatencyMs;
   const semanticOwnerLocked = shouldUseSemanticContractQueryOwner(semanticContract);

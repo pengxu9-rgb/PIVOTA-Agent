@@ -995,7 +995,7 @@ describe('discovery feed service', () => {
     expect(response.products).toHaveLength(3);
   });
 
-  test('cold start defers pet, sleepwear, and apparel when enough non-deferred options exist', async () => {
+  test('cold start defers pet, sleepwear, apparel, lingerie, and beauty tools when enough non-deferred options exist', async () => {
     const response = await getDiscoveryFeed(
       {
         surface: 'home_hot_deals',
@@ -1032,6 +1032,13 @@ describe('discovery feed service', () => {
             product_type: 'Outerwear',
           }),
           makeProduct({
+            merchant_id: 'm3b',
+            product_id: 'lingerie_1',
+            title: 'Backless Lingerie Set',
+            category: 'Lingerie',
+            product_type: 'Bodysuit',
+          }),
+          makeProduct({
             merchant_id: 'm4',
             product_id: 'beauty_1',
             title: 'Barrier Repair Serum',
@@ -1044,6 +1051,13 @@ describe('discovery feed service', () => {
             title: 'Calming Recovery Cream',
             category: 'Skincare',
             product_type: 'Cream',
+          }),
+          makeProduct({
+            merchant_id: 'm5b',
+            product_id: 'tool_1',
+            title: 'Precision Small Detail Brush',
+            category: 'Beauty Tools',
+            product_type: 'Brush',
           }),
           makeProduct({
             merchant_id: 'm6',
@@ -1069,11 +1083,17 @@ describe('discovery feed service', () => {
       'unknown_1',
       'unknown_2',
     ]);
-    expect(response.metadata.rank_debug.top_candidates.find((candidate) => candidate.product_id === 'pet_1')?.decision).toBe(
-      'filtered_cold_start_domain',
-    );
+    expect(
+      response.metadata.rank_debug.top_candidates.find((candidate) => candidate.product_id === 'pet_1')?.decision,
+    ).toBe('filtered_cold_start_domain');
     expect(
       response.metadata.rank_debug.top_candidates.find((candidate) => candidate.product_id === 'sleep_1')?.decision,
+    ).toBe('filtered_cold_start_domain');
+    expect(
+      response.metadata.rank_debug.top_candidates.find((candidate) => candidate.product_id === 'lingerie_1')?.decision,
+    ).toBe('filtered_cold_start_domain');
+    expect(
+      response.metadata.rank_debug.top_candidates.find((candidate) => candidate.product_id === 'tool_1')?.decision,
     ).toBe('filtered_cold_start_domain');
   });
 

@@ -769,6 +769,9 @@ describe('find_products_multi intent + filtering', () => {
     });
 
     expect(adjustedPayload?.search?.query).toBe('vitamin c serum under €30');
+    expect(expansion_meta?.semantic_rewrite_result?.normalized_query_pack?.[0]).toBe(
+      'vitamin c serum under €30',
+    );
     expect(expansion_meta).toEqual(
       expect.objectContaining({
         raw_query: 'vitamin c serum under €30',
