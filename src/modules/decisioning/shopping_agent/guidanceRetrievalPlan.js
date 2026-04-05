@@ -72,6 +72,65 @@ function createGuidanceRetrievalPlanRuntime(deps = {}) {
     return out;
   }
 
+  function buildBeautyFamilySupplementQueries(queryText, context = {}) {
+    const targetStepFamily = normalizeRecoTargetStep(
+      context?.target_step_family || context?.targetStepFamily || '',
+    );
+    if (!targetStepFamily) return [];
+    const normalized = normalizeSearchTextForMatch(queryText);
+    if (!normalized) return [];
+
+    const out = [];
+    const seen = new Set();
+    const push = (value) => {
+      const query = String(value || '').trim();
+      if (!query) return;
+      const key = normalizeSearchTextForMatch(query);
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      out.push(query);
+    };
+
+    if (targetStepFamily === 'sunscreen') {
+      const explicitSerumQuery =
+        /\b(serum|spf serum|sunscreen serum|uv filters?\s+serum)\b/.test(normalized);
+      const oilySignal =
+        /\b(oily skin|oil control|shine control|mattify|mattifying|non-greasy|non greasy|sebum|matte)\b/.test(
+          normalized,
+        );
+      const sensitiveSignal =
+        /\b(sensitive|barrier|redness|soothing|calming|fragrance free|fragrance-free)\b/.test(
+          normalized,
+        );
+      const mineralSignal = /\b(mineral|zinc oxide|titanium dioxide)\b/.test(normalized);
+
+      if (explicitSerumQuery) {
+        push('spf serum');
+        push('uv filters serum');
+        return out;
+      }
+
+      if (oilySignal) {
+        push('lightweight face sunscreen');
+        push('matte face sunscreen');
+        push('face sunscreen lotion');
+        push('sunscreen milk');
+      } else if (sensitiveSignal) {
+        push('sensitive skin sunscreen');
+        push('face sunscreen lotion');
+        push('sunscreen milk');
+      } else {
+        push('face sunscreen');
+        push('broad spectrum face sunscreen');
+        push('face sunscreen lotion');
+        push('sunscreen milk');
+      }
+      if (mineralSignal || !sensitiveSignal) push('mineral face sunscreen');
+    }
+
+    return out;
+  }
+
   function buildIngredientRecallQueryVariants(queryText, recallProfile, targetStepFamily = '') {
     if (!recallProfile || typeof recallProfile !== 'object') return [];
     const out = [];
@@ -233,6 +292,7 @@ function createGuidanceRetrievalPlanRuntime(deps = {}) {
   return {
     resolveGuidanceSearchStepStrength,
     buildGuidanceRecallSupplementQueries,
+    buildBeautyFamilySupplementQueries,
     buildIngredientRecallQueryVariants,
     buildGuidanceSearchNormalizedIntent,
     getGuidanceFastpathRemainingBudgetMs,

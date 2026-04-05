@@ -1,5 +1,6 @@
 const crypto = require('node:crypto');
 const { lookupExternalSeedImageOverride } = require('./externalSeedImageOverrides');
+const { normalizePdpImageUrl } = require('../utils/pdpImageUrls');
 
 const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
 const SKINCARE_STEP_CATEGORY_PATTERNS = [
@@ -396,7 +397,7 @@ function appendImageUrls(out, value) {
   if (!value) return;
 
   if (typeof value === 'string') {
-    const url = normalizeHttpUrl(value);
+    const url = normalizePdpImageUrl(value);
     if (!url || out.includes(url)) return;
     out.push(url);
     return;
@@ -412,6 +413,80 @@ function appendImageUrls(out, value) {
   appendImageUrls(out, value.url);
   appendImageUrls(out, value.src);
   appendImageUrls(out, value.contentUrl);
+}
+
+function normalizeOptionText(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ');
+}
+
+function normalizeOptionNameKey(name) {
+  return normalizeOptionText(name)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function isCombinedColorSizeOptionName(name) {
+  const normalized = normalizeOptionNameKey(name);
+  return normalized.includes('color') && normalized.includes('size');
+}
+
+function parseCombinedColorSizeValue(value) {
+  const parts = normalizeOptionText(value)
+    .split(/\s*\/\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length !== 2) return null;
+  const [color, size] = parts;
+  if (!color || !size) return null;
+  if (!/\d/.test(size) && !/\b(size|fit|pack|count|ml|g|oz|lb|kg|cm|mm)\b/i.test(size)) {
+    return null;
+  }
+  return { color, size };
+}
+
+function normalizeOptionEntries(options) {
+  const out = [];
+  const seen = new Set();
+
+  const append = (name, value) => {
+    const optionName = normalizeOptionText(name);
+    const optionValue = normalizeOptionText(value);
+    if (!optionName || !optionValue) return;
+
+    const normalizedEntries = isCombinedColorSizeOptionName(optionName)
+      ? (() => {
+          const parsed = parseCombinedColorSizeValue(optionValue);
+          return parsed
+            ? [
+                { name: 'Color', value: parsed.color },
+                { name: 'Size', value: parsed.size },
+              ]
+            : [{ name: 'Variant', value: optionValue }];
+        })()
+      : [{ name: optionName, value: optionValue }];
+
+    normalizedEntries.forEach((entry) => {
+      const key = `${entry.name.toLowerCase()}|${entry.value.toLowerCase()}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push(entry);
+    });
+  };
+
+  (Array.isArray(options) ? options : []).forEach((option) => {
+    if (option && typeof option === 'object' && option.name && option.value != null) {
+      append(option.name, option.value);
+      return;
+    }
+    if (option && typeof option === 'object') {
+      const name = option.name || option.option_name || option.label || option.key || option.title;
+      const value = option.value ?? option.option_value ?? option.selected ?? option.label_value;
+      append(name, value);
+    }
+  });
+
+  return out;
 }
 
 function collectSeedImageUrls(seedData, row) {
@@ -561,56 +636,41 @@ function normalizeOptions(rawVariant, optionName, optionValue, productOptionName
 
   for (const source of directOptionSources) {
     if (Array.isArray(source)) {
-      const normalized = source
-        .map((option) => {
-          if (option && typeof option === 'object' && option.name && option.value != null) {
-            return { name: String(option.name), value: String(option.value) };
-          }
-          if (option && typeof option === 'object') {
-            const name = option.name || option.option_name || option.label || option.key || option.title;
-            const value = option.value ?? option.option_value ?? option.selected ?? option.label_value;
-            if (name && value != null && value !== '') {
-              return { name: String(name), value: String(value) };
-            }
-          }
-          return null;
-        })
-        .filter(Boolean);
+      const normalized = normalizeOptionEntries(source);
       if (normalized.length > 0) return normalized;
     }
 
     if (source && typeof source === 'object') {
-      const normalized = Object.entries(source)
-        .map(([name, value]) => ({ name: String(name), value: String(value) }))
-        .filter((option) => option.name && option.value);
+      const normalized = normalizeOptionEntries(
+        Object.entries(source).map(([name, value]) => ({ name, value })),
+      );
       if (normalized.length > 0) return normalized;
     }
   }
 
   if (Array.isArray(rawVariant?.options)) {
-    return rawVariant.options
-      .map((option) => {
-        if (option && typeof option === 'object' && option.name && option.value != null) {
-          return { name: String(option.name), value: String(option.value) };
-        }
-        return null;
-      })
-      .filter(Boolean);
+    const normalized = normalizeOptionEntries(rawVariant.options);
+    if (normalized.length > 0) return normalized;
   }
 
-  const tupleOptions = [rawVariant?.option1, rawVariant?.option2, rawVariant?.option3]
-    .map((value, index) => {
-      if (value == null || value === '') return null;
-      return {
-        name: productOptionNames[index] || `Option ${index + 1}`,
-        value: String(value),
-      };
-    })
-    .filter(Boolean);
+  const tupleOptions = normalizeOptionEntries(
+    [rawVariant?.option1, rawVariant?.option2, rawVariant?.option3]
+      .map((value, index) => {
+        if (value == null || value === '') return null;
+        return {
+          name: productOptionNames[index] || `Option ${index + 1}`,
+          value,
+        };
+      })
+      .filter(Boolean),
+  );
   if (tupleOptions.length > 0) return tupleOptions;
 
   if (optionName || optionValue) {
-    return [{ name: optionName || 'Variant', value: optionValue || 'Default' }];
+    const direct = normalizeOptionEntries([
+      { name: optionName || 'Variant', value: optionValue || 'Default' },
+    ]);
+    if (direct.length > 0) return direct;
   }
 
   return [];

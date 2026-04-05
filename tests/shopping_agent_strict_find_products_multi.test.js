@@ -107,6 +107,24 @@ describe('Shopping agent strict find_products_multi runtime', () => {
     });
   });
 
+  test('does not misroute beauty exact title lookup with ingredient tokens into strict ingredient mode', () => {
+    const { runtime } = createTestRuntime({ hasDatabaseUrl: false });
+
+    expect(
+      runtime.getStrictFindProductsMultiConstraintDecision({
+        search: { query: 'The Ordinary Niacinamide 10% + Zinc 1%' },
+        metadata: { catalog_surface: 'beauty' },
+      }),
+    ).toMatchObject({
+      enabled: false,
+      catalogSurface: null,
+      strictConstraintQuery: false,
+      strictConstraintReason: null,
+      ingredientIntents: ['niacinamide', 'zinc_pca'],
+      shadeOptionIntents: [],
+    });
+  });
+
   test('can disable auto strict ingredient routing while preserving explicit strict surfaces', () => {
     process.env.STRICT_FIND_PRODUCTS_MULTI_AUTO_CONSTRAINT_ENABLED = 'false';
     const { runtime } = createTestRuntime({ hasDatabaseUrl: false });

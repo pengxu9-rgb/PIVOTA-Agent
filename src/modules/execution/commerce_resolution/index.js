@@ -1049,7 +1049,9 @@ function createCommerceResolutionRuntime(deps = {}) {
     const auroraSource = isAuroraSourceImpl(source);
     const isCatalogSource = isResolverFirstCatalogSourceImpl(source);
     const strongResolverQuery = isStrongResolverFirstQuery(queryText);
-    if (brandLike && !(strongResolverQuery && isCatalogSource && !auroraSource)) return false;
+    const anchorTokens = extractSearchAnchorTokensImpl(queryText);
+    const lookupStyle = isLookupStyleSearchQueryImpl(queryText, anchorTokens);
+    if (brandLike && !(strongResolverQuery || lookupStyle)) return false;
     const normalizedQueryClass = String(queryClass || '').trim().toLowerCase();
     const forceSearchFirstClasses = new Set([
       'category',
@@ -1063,20 +1065,18 @@ function createCommerceResolutionRuntime(deps = {}) {
       getSimplifyGateEnabled() &&
       normalizedQueryClass &&
       forceSearchFirstClasses.has(normalizedQueryClass) &&
-      !strongResolverQuery
+      !strongResolverQuery &&
+      !lookupStyle
     ) {
       return false;
     }
-
-    const anchorTokens = extractSearchAnchorTokensImpl(queryText);
-    const lookupStyle = isLookupStyleSearchQueryImpl(queryText, anchorTokens);
     const lookupOnlyClasses = new Set(['lookup', 'attribute']);
     if (
       getSimplifyGateEnabled() &&
       getLookupOnlyResolverEnabled() &&
       !strongResolverQuery &&
       ((!normalizedQueryClass && !lookupStyle) ||
-        (normalizedQueryClass && !lookupOnlyClasses.has(normalizedQueryClass)))
+        (normalizedQueryClass && !lookupOnlyClasses.has(normalizedQueryClass) && !lookupStyle))
     ) {
       return false;
     }

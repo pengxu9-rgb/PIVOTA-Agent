@@ -266,6 +266,20 @@ function getBrandName(product) {
   return norm || '';
 }
 
+function getDisplayTitle(product) {
+  return String(product?.title || product?.name || '').trim();
+}
+
+function getRecommendationSemanticKey(product, brandOverride = null) {
+  const brand = normalizeText(brandOverride || getBrandName(product));
+  let title = normalizeText(getDisplayTitle(product));
+  if (brand && title.startsWith(`${brand} `)) {
+    title = title.slice(brand.length).trim();
+  }
+  if (!title) return '';
+  return brand ? `${brand}::${title}` : title;
+}
+
 function getCategoryPath(product) {
   const raw = product?.category_path || product?.categoryPath;
   if (Array.isArray(raw)) return raw.map((v) => String(v || '').trim()).filter(Boolean);
@@ -516,6 +530,7 @@ function pickLayeredRecommendations({
 }) {
   const K = Math.max(1, Math.min(Number(k || 6) || 6, 30));
   const base = buildBaseFeatures(baseProduct);
+  const baseSemanticKey = getRecommendationSemanticKey(baseProduct, base.brand);
 
   const nearPriceTight = (relDiff) => relDiff != null && relDiff <= 0.25;
   const nearPriceLoose = (relDiff) => relDiff != null && relDiff <= 0.6;
@@ -594,6 +609,7 @@ function pickLayeredRecommendations({
       return {
         product: p,
         features,
+        semanticKey: getRecommendationSemanticKey(p, features.brand),
         source,
         layerId: matchedLayer.id,
         layerName: matchedLayer.name,
@@ -619,12 +635,25 @@ function pickLayeredRecommendations({
     })
     .slice(0, 400);
 
-  const layerCounts = {};
+  const seenSemanticKeys = new Set(baseSemanticKey ? [baseSemanticKey] : []);
+  const semanticallyDedupedCandidates = [];
   for (const candidate of candidates) {
+    const semanticKey = String(candidate.semanticKey || '').trim();
+    if (semanticKey && seenSemanticKeys.has(semanticKey)) {
+      continue;
+    }
+    if (semanticKey) {
+      seenSemanticKeys.add(semanticKey);
+    }
+    semanticallyDedupedCandidates.push(candidate);
+  }
+
+  const layerCounts = {};
+  for (const candidate of semanticallyDedupedCandidates) {
     layerCounts[candidate.layerId] = (layerCounts[candidate.layerId] || 0) + 1;
   }
 
-  const chosenCandidates = pickBalancedCandidates(candidates, K, base.isExternal);
+  const chosenCandidates = pickBalancedCandidates(semanticallyDedupedCandidates, K, base.isExternal);
   const selected = chosenCandidates.map((candidate) =>
     toCandidate(candidate.product, {
       source: candidate.source,
@@ -707,7 +736,7 @@ function pickLayeredRecommendations({
         vertical: base.vertical || UNKNOWN_VERTICAL,
       },
       layers: layerCounts,
-      candidates_total: candidates.length,
+      candidates_total: semanticallyDedupedCandidates.length,
       sources: sourceCounts,
       confidence: confidenceCounts,
       filters: {

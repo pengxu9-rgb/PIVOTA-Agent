@@ -2,6 +2,7 @@
 
 require('dotenv').config();
 const axios = require('axios');
+const { buildPdpCorePrewarmRequestBody } = require('../src/pdpConfig');
 
 function parseTargets(raw, defaultMerchantId) {
   const source = String(raw || '').trim();
@@ -79,22 +80,10 @@ async function run() {
     const roundStart = Date.now();
 
     for (const target of targets) {
-      const reqBody = {
-        operation: 'get_pdp_v2',
-        payload: {
-          product_ref: {
-            merchant_id: target.merchant_id,
-            product_id: target.product_id,
-          },
-          include: ['offers'],
-          options: {
-            debug: false,
-          },
-        },
-        metadata: {
-          source: 'pdp_core_prewarm_script',
-        },
-      };
+      const reqBody = buildPdpCorePrewarmRequestBody(
+        target,
+        'pdp_core_prewarm_script',
+      );
 
       const t0 = Date.now();
       try {

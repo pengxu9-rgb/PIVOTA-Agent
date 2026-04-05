@@ -27,6 +27,11 @@ const {
 const { prioritizeOffersResolveResponse } = require('./offers/offersPriority');
 const { buildPdpPayload } = require('./pdpBuilder');
 const {
+  EXTERNAL_SEED_MERCHANT_ID,
+  buildPdpCorePrewarmRequestBody,
+  inferCanonicalPdpMerchantId,
+} = require('./pdpConfig');
+const {
   getAllPromotions,
   getPromotionById,
   upsertPromotion,
@@ -162,10 +167,7 @@ const {
   buildBrandQueryVariants,
   hasExplicitCategoryHint,
 } = require('./findProductsMulti/brandLexicon');
-const {
-  EXTERNAL_SEED_MERCHANT_ID,
-  buildExternalSeedProduct,
-} = require('./services/externalSeedProducts');
+const { buildExternalSeedProduct } = require('./services/externalSeedProducts');
 const {
   recallIngredientProducts,
   resolveIngredientRecallProfile,
@@ -1453,6 +1455,7 @@ const {
 const {
   resolveGuidanceSearchStepStrength,
   buildGuidanceRecallSupplementQueries,
+  buildBeautyFamilySupplementQueries,
   buildIngredientRecallQueryVariants,
   buildGuidanceSearchNormalizedIntent,
   getGuidanceFastpathRemainingBudgetMs,
@@ -9152,6 +9155,7 @@ function scoreDirectExternalSeedProduct({
   const normalizedDecisionMode = normalizeRecommendationDecisionMode(decisionMode, {
     guidanceOnlyDiscovery: normalizeSearchUiSurface(uiSurface) === 'ingredient_plan_guidance_only',
   });
+  const normalizedTargetStepFamily = normalizeRecoTargetStep(targetStepFamily);
   const effectiveQueryStepStrength = shouldUseSharedTargetRelevancePipeline({
     mode: normalizedDecisionMode,
     targetStepFamily,
@@ -9164,6 +9168,19 @@ function scoreDirectExternalSeedProduct({
     buildFallbackCandidateText(product) ||
     titleText ||
     auxiliaryText;
+  const titleHasPrimarySunscreenForm =
+    /\b(face sunscreen|sunscreen|sun screen|sunblock|sun fluid|sun lotion|sun milk|sun cream|mineral sunscreen|mineral sun fluid|mineral sun lotion)\b/.test(
+      titleText,
+    );
+  const titleHasSunscreenFormFactor =
+    /\b(lotion|fluid|milk|cream|mineral|zinc oxide|broad spectrum)\b/.test(titleText);
+  const titleHasSerumCue = /\bserum\b/.test(titleText);
+  const queryRequestsSunscreenSerum =
+    /\b(serum|spf serum|sunscreen serum|uv filters?\s+serum)\b/.test(normalizedQuery);
+  const queryRequestsOilySunscreen =
+    /\b(oily skin|oil control|shine control|mattify|mattifying|non-greasy|non greasy|sebum|matte)\b/.test(
+      normalizedQuery,
+    );
   const coarse = classifySharedBeautyCoarseCandidate(product, {
     queryTargetStepFamily: targetStepFamily,
     queryText,
@@ -9218,6 +9235,17 @@ function scoreDirectExternalSeedProduct({
       if (coarse?.usage_scope === 'body') score -= 10;
       if (coarse?.domain_scope === 'bodycare') score -= 10;
       if (/\b(ceramide|barrier|repair|soothing|sensitive)\b/.test(titleText)) score += 6;
+    }
+  }
+
+  if (normalizedTargetStepFamily === 'sunscreen') {
+    if (titleHasPrimarySunscreenForm) score += 28;
+    if (titleHasSunscreenFormFactor) score += 12;
+    if (queryRequestsOilySunscreen && /\b(lightweight|matte|oil control|non-greasy|non greasy)\b/.test(titleText)) {
+      score += 10;
+    }
+    if (titleHasSerumCue && !queryRequestsSunscreenSerum) {
+      score -= titleHasPrimarySunscreenForm ? 18 : 52;
     }
   }
 
@@ -9412,6 +9440,15 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
         target_step_family: targetStepFamily,
       })
     : [];
+  const beautyFamilyQueryVariants = buildBeautyFamilySupplementQueries(relevanceQueryText, {
+    target_step_family: targetStepFamily,
+    semantic_family:
+      metadata?.semantic_family ||
+      metadata?.semanticFamily ||
+      search?.semantic_family ||
+      search?.semanticFamily ||
+      null,
+  });
   const ingredientRecallQueryVariants = ingredientIntentDetected
     ? buildIngredientRecallQueryVariants(relevanceQueryText, recallProfile, targetStepFamily)
     : [];
@@ -9425,12 +9462,13 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
     new Set(
       (
         retrievalQueryVariantsOverride.length > 0
-          ? retrievalQueryVariantsOverride
+          ? [...retrievalQueryVariantsOverride, ...beautyFamilyQueryVariants]
           : [
               queryText,
               ...ingredientRecallQueryVariants,
               ...serumCanaryQueryVariants,
               ...guidanceFamilyQueryVariants,
+              ...beautyFamilyQueryVariants,
             ]
       )
         .map((item) => String(item || '').trim())
@@ -19455,6 +19493,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      // We keep this as a soft precheck: do not fail the whole PDP when upstream jitters.
 	      let precheckedMerchantProduct = null;
 	      let precheckEntryProductMissing = false;
+      requestedMerchantId =
+        inferCanonicalPdpMerchantId(productId, requestedMerchantId) || requestedMerchantId;
+
 	      const shouldPrecheckMerchantScoped =
 	        Boolean(requestedMerchantId) &&
 	        Boolean(productId) &&
@@ -19482,7 +19523,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      markPdpV2Phase('precheck_entry_product', precheckEntryProductStartedAt);
 
 	      const resolveGroupCachedStartedAt = Date.now();
-	      if (!canonicalProductRef) {
+	      const shouldSkipExternalSeedGroupResolve =
+          !canonicalProductRef &&
+          requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID &&
+          inferCanonicalPdpMerchantId(productId, null) === EXTERNAL_SEED_MERCHANT_ID;
+	      if (!canonicalProductRef && !shouldSkipExternalSeedGroupResolve) {
 	        const resolvedGroup = await resolveProductGroupCached({
 			          productId,
 	          merchantId: requestedMerchantId || null,
@@ -19501,7 +19546,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      markPdpV2Phase('resolve_group_cached', resolveGroupCachedStartedAt);
 
         const recoverExactProductStartedAt = Date.now();
-        if (!canonicalProductRef && !requestedMerchantId && productId) {
+	      if (!canonicalProductRef && !requestedMerchantId && productId) {
           const configuredMerchantTarget = await resolveCatalogSyncMerchantIds().catch(() => ({
             merchantIds: [],
             source: 'resolve_failed',
@@ -22832,6 +22877,21 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       fallbackQuery = '',
     } = {}) => {
       const rescueQueries = [];
+      if (semanticOwnerTargetStepFamily === 'sunscreen') {
+        const rescueBaseQuery = String(rawUserQuery || fallbackQuery || '').trim();
+        rescueQueries.push(
+          ...buildBeautyFamilySupplementQueries(rescueBaseQuery, {
+            target_step_family: semanticOwnerTargetStepFamily,
+            semantic_family: semanticOwnerSemanticFamily,
+            query_step_strength: semanticOwnerQueryStepStrength,
+          }),
+        );
+        const normalizedRescueBaseQuery = normalizeSearchTextForMatch(rescueBaseQuery);
+        const explicitSerumRequested = /\b(?:spf|sunscreen|uv filters)\s+serum\b|\bserum\b/.test(
+          normalizedRescueBaseQuery,
+        );
+        if (!explicitSerumRequested) rescueQueries.push('face sunscreen spf');
+      }
       if (semanticOwnerTargetStepFamily === 'treatment') {
         for (const hypothesis of semanticOwnerIngredientHypotheses.slice(0, 2)) {
           rescueQueries.push(`${hypothesis} treatment`, `${hypothesis} serum`);
@@ -24130,7 +24190,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       operation === 'find_products_multi' &&
       semanticOwnerControlled &&
       !semanticOwnerAdoptedByValidHit &&
-      (semanticOwnerIgnoredObservationCandidate || semanticOwnerDeferredLastResortCache) &&
+      (
+        semanticOwnerIgnoredObservationCandidate ||
+        semanticOwnerDeferredLastResortCache ||
+        semanticOwnerQueryAttempts.every(
+          (attempt) =>
+            attempt &&
+            !attempt.adopted &&
+            !attempt.skipped_reason &&
+            !attempt.error &&
+            Number(attempt.result_count || 0) <= 0,
+        )
+      ) &&
       semanticOwnerQueryPack.length > 0
     ) {
       const semanticOwnerExternalRescueAttempt = [...semanticOwnerQueryAttempts]
@@ -27348,22 +27419,13 @@ async function runPdpCorePrewarmPass() {
     const productId = String(target?.product_id || '').trim();
     if (!merchantId || !productId) continue;
 
-    const reqBody = {
-      operation: 'get_pdp_v2',
-      payload: {
-        product_ref: {
-          merchant_id: merchantId,
-          product_id: productId,
-        },
-        include: ['offers'],
-        options: {
-          debug: false,
-        },
+    const reqBody = buildPdpCorePrewarmRequestBody(
+      {
+        merchant_id: merchantId,
+        product_id: productId,
       },
-      metadata: {
-        source: 'pdp_core_prewarm',
-      },
-    };
+      'pdp_core_prewarm',
+    );
 
     const reqStartedAt = Date.now();
     try {

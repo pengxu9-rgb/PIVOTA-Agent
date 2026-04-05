@@ -126,6 +126,44 @@ describe('externalSeedProducts helper', () => {
     ]);
   });
 
+  test('splits combined color and size seed options and normalizes stale shopify image urls', () => {
+    const row = {
+      id: 'eps_combined_color_size_1',
+      canonical_url: 'https://example.com/p/combined-color-size',
+      destination_url: 'https://example.com/p/combined-color-size',
+      title: 'Combined Color Size Product',
+      seed_data: {
+        snapshot: {
+          product: {
+            options: [{ name: 'Color / Size' }],
+            variants: [
+              {
+                id: 'SKU-35',
+                sku: 'SKU-35',
+                option1: '35 Rose Topaz / 8.0 g',
+                image_url:
+                  'https://cdn.shopify.com/s/files/1/2139/2967/files/Rose_Topaz_1200_4ee4c5e8-a218-4e0a-8af8-2db3c98f0c79.png?v=1750422282',
+                price: '39.00',
+                currency: 'USD',
+                stock: 'In Stock',
+              },
+            ],
+          },
+        },
+      },
+    };
+
+    const variants = normalizeSeedVariants(row.seed_data, row);
+    expect(variants).toHaveLength(1);
+    expect(variants[0].options).toEqual([
+      { name: 'Color', value: '35 Rose Topaz' },
+      { name: 'Size', value: '8.0 g' },
+    ]);
+    expect(variants[0].image_url).toBe(
+      'https://cdn.shopify.com/s/files/1/2139/2967/files/Rose_Topaz_1200.png',
+    );
+  });
+
   test('canonicalizes legacy variant containers into snapshot variants and strips legacy copies', () => {
     const seedData = {
       variants: [
@@ -270,13 +308,13 @@ describe('externalSeedProducts helper', () => {
 
     const product = buildExternalSeedProduct(row);
     expect(product.image_url).toBe(
-      'https://cdn.shopify.com/s/files/1/2139/2967/files/Duo_Mousse_Nettoyante_Detox_-_Packshot.jpg?v=1750422282',
+      'https://cdn.shopify.com/s/files/1/2139/2967/files/Duo_Mousse_Nettoyante_Detox_-_Packshot.jpg',
     );
     expect(product.images.length).toBeGreaterThan(1);
     expect(product.variants[0]).toEqual(
       expect.objectContaining({
         image_url:
-          'https://cdn.shopify.com/s/files/1/2139/2967/files/Duo_Mousse_Nettoyante_Detox_-_Packshot.jpg?v=1750422282',
+          'https://cdn.shopify.com/s/files/1/2139/2967/files/Duo_Mousse_Nettoyante_Detox_-_Packshot.jpg',
       }),
     );
   });

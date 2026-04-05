@@ -51,18 +51,17 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
             content: 'Supports the skin barrier in 7 days.',
           },
         ],
-        active_ingredients: [
-          {
-            title: 'Ceramide NP',
-            description: 'Helps support the skin barrier.',
-          },
-        ],
+        active_ingredients: {
+          items: ['Ceramide NP'],
+          source_quality_status: 'reviewed',
+        },
         ingredients_inci: {
           items: ['Water', 'Glycerin', 'Ceramide NP'],
+          raw_text: 'Ingredients: Water, Glycerin, Ceramide NP',
         },
         how_to_use: {
           title: 'How to use',
-          steps: ['Apply after cleansing.', 'Use SPF in the morning.'],
+          steps: ['- Step 1: Apply after cleansing. - Step 2: Use SPF in the morning.'],
         },
       },
       relatedProducts: [],
@@ -110,5 +109,151 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     );
     expect(ingredientsInci?.data?.items).toEqual(['Water', 'Glycerin', 'Ceramide NP']);
     expect(howToUse?.data?.steps).toEqual(['Apply after cleansing.', 'Use SPF in the morning.']);
+  });
+
+  test('suppresses low-confidence single active ingredient when ingredients are much richer', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_456',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Tinted Blush',
+        category: 'Makeup',
+        image_url:
+          'https://cdn.shopify.com/s/files/1/2139/2967/files/Tinted_Blush_1200_f93c0d07-3570-4717-a2ec-d2af4ab28d1b.png?v=1750422282',
+        active_ingredients: ['Mica'],
+        ingredients_inci: {
+          raw_text: 'Ingredients: Mica, Dimethicone, Silica, Iron Oxides, Titanium Dioxide',
+        },
+        how_to_use: {
+          raw_text: '- Swipe onto cheeks. - Blend with fingertips. - Repeat as needed.',
+        },
+      },
+      relatedProducts: [
+        {
+          id: 'rec_1',
+          merchant_id: 'external_seed',
+          title: 'Related Blush',
+          image_url:
+            'https://cdn.shopify.com/s/files/1/2139/2967/files/Related_Blush_1200_4ee4c5e8-a218-4e0a-8af8-2db3c98f0c79.png?v=1750422282',
+          price: '24.00',
+          currency: 'USD',
+        },
+      ],
+      entryPoint: 'agent',
+    });
+
+    expect(payload.product.image_url).toBe(
+      'https://cdn.shopify.com/s/files/1/2139/2967/files/Tinted_Blush_1200.png',
+    );
+    expect(payload.modules.find((module) => module.type === 'active_ingredients')).toBeFalsy();
+    expect(
+      payload.modules.find((module) => module.type === 'ingredients_inci')?.data?.items,
+    ).toEqual([
+      'Mica',
+      'Dimethicone',
+      'Silica',
+      'Iron Oxides',
+      'Titanium Dioxide',
+    ]);
+    expect(payload.modules.find((module) => module.type === 'how_to_use')?.data?.steps).toEqual([
+      'Swipe onto cheeks.',
+      'Blend with fingertips.',
+      'Repeat as needed.',
+    ]);
+    expect(payload.modules.find((module) => module.type === 'recommendations')?.data?.items[0]?.image_url).toBe(
+      'https://cdn.shopify.com/s/files/1/2139/2967/files/Related_Blush_1200.png',
+    );
+  });
+
+  test('rewrites known Tom Ford Shopify assets onto sdcdn mirrors', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_tf_1',
+        merchant_id: 'external_seed',
+        title: 'Tom Ford Beauty Product',
+        image_url:
+          'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QS01_2000x2000_1.jpg?v=1774376799',
+        variants: [
+          {
+            id: 'sku_tf_1',
+            sku: 'T1QS01',
+            image_url:
+              'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QS01_2000x2000_1.jpg?v=1774376799',
+            price: { amount: 96, currency: 'USD' },
+          },
+        ],
+      },
+      relatedProducts: [
+        {
+          id: 'rec_tf_1',
+          merchant_id: 'external_seed',
+          title: 'TF Rec',
+          image_url:
+            'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QT01_3000x3000_0.png?v=1774376799',
+          price: '90.00',
+          currency: 'USD',
+        },
+      ],
+      entryPoint: 'agent',
+    });
+
+    expect(payload.product.image_url).toBe(
+      'https://sdcdn.io/tf/tf_sku_T1QS01_2000x2000_1.jpg?height=1400px&width=1400px',
+    );
+    expect(payload.product.variants[0].image_url).toBe(
+      'https://sdcdn.io/tf/tf_sku_T1QS01_2000x2000_1.jpg?height=1400px&width=1400px',
+    );
+    expect(payload.modules.find((module) => module.type === 'recommendations')?.data?.items[0]?.image_url).toBe(
+      'https://sdcdn.io/tf/tf_sku_T1QT01_3000x3000_0.png?height=1400px&width=1400px',
+    );
+  });
+
+  test('normalizes encoded whitespace in sdcdn Tom Ford asset names', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_tf_2',
+        merchant_id: 'external_seed',
+        title: 'Tom Ford Beauty Product',
+        image_url:
+          'https://sdcdn.io/tf/tf_sku_T2SS02%20_3000x3000_1.png?width=650px&height=750px',
+      },
+      relatedProducts: [
+        {
+          id: 'rec_tf_2',
+          merchant_id: 'external_seed',
+          title: 'TF Rec 2',
+          image_url:
+            'https://sdcdn.io/tf/tf_sku_T2SS02%20_3000x3000_0.png?width=650px&height=750px',
+          price: '90.00',
+          currency: 'USD',
+        },
+      ],
+      entryPoint: 'agent',
+    });
+
+    expect(payload.product.image_url).toBe(
+      'https://sdcdn.io/tf/tf_sku_T2SS02_3000x3000_1.png?width=650px&height=750px',
+    );
+    expect(payload.modules.find((module) => module.type === 'recommendations')?.data?.items[0]?.image_url).toBe(
+      'https://sdcdn.io/tf/tf_sku_T2SS02_3000x3000_1.png?width=650px&height=750px',
+    );
+  });
+
+  test('aliases known missing Tom Ford sdcdn assets onto existing siblings', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_tf_3',
+        merchant_id: 'external_seed',
+        title: 'Tom Ford Beauty Product',
+        image_url:
+          'https://sdcdn.io/tf/tf_sku_T2SS02%20_3000x3000_0.png?width=650px&height=750px',
+      },
+      entryPoint: 'agent',
+    });
+
+    expect(payload.product.image_url).toBe(
+      'https://sdcdn.io/tf/tf_sku_T2SS02_3000x3000_1.png?width=650px&height=750px',
+    );
   });
 });
