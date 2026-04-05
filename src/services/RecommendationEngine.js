@@ -87,6 +87,19 @@ function getCacheStats() {
   };
 }
 
+function shouldCacheRecommendationResult({
+  bypassCache = false,
+  internalTimedOut = false,
+  externalTimedOut = false,
+  requestedCount = 0,
+  returnedCount = 0,
+}) {
+  if (!PDP_RECS_CACHE_ENABLED || bypassCache) return false;
+  const timedOut = internalTimedOut || externalTimedOut;
+  if (!timedOut) return true;
+  return Number(returnedCount || 0) >= Number(requestedCount || 0);
+}
+
 function getCacheEntry(cacheKey) {
   const entry = PDP_RECS_CACHE.get(cacheKey);
   if (!entry) {
@@ -278,6 +291,66 @@ function getRecommendationSemanticKey(product, brandOverride = null) {
   }
   if (!title) return '';
   return brand ? `${brand}::${title}` : title;
+}
+
+function getRecommendationTitleKey(product) {
+  return normalizeText(getDisplayTitle(product));
+}
+
+function buildRecommendationExclusionState(items) {
+  const productKeys = new Set();
+  const productIdsWithoutMerchant = new Set();
+  const merchantTitleKeys = new Set();
+  const looseTitleKeys = new Set();
+
+  for (const item of Array.isArray(items) ? items : []) {
+    if (!item || typeof item !== 'object') continue;
+    const productId = getProductId(item);
+    const merchantId = getMerchantId(item);
+    const titleKey = getRecommendationTitleKey(item);
+
+    if (productId) {
+      if (merchantId) {
+        productKeys.add(`${merchantId}::${productId}`);
+      } else {
+        productIdsWithoutMerchant.add(productId);
+      }
+    }
+
+    if (titleKey) {
+      if (merchantId) {
+        merchantTitleKeys.add(`${merchantId}::${titleKey}`);
+      } else {
+        looseTitleKeys.add(titleKey);
+      }
+    }
+  }
+
+  return {
+    productKeys,
+    productIdsWithoutMerchant,
+    merchantTitleKeys,
+    looseTitleKeys,
+  };
+}
+
+function shouldExcludeRecommendationProduct(product, exclusionState) {
+  if (!exclusionState) return false;
+  const productId = getProductId(product);
+  const merchantId = getMerchantId(product);
+
+  if (productId) {
+    const productKey = merchantId ? `${merchantId}::${productId}` : '';
+    if (productKey && exclusionState.productKeys.has(productKey)) return true;
+    if (exclusionState.productIdsWithoutMerchant.has(productId)) return true;
+  }
+
+  const titleKey = getRecommendationTitleKey(product);
+  if (!titleKey) return false;
+  const merchantTitleKey = merchantId ? `${merchantId}::${titleKey}` : '';
+  if (merchantTitleKey && exclusionState.merchantTitleKeys.has(merchantTitleKey)) return true;
+  if (exclusionState.looseTitleKeys.has(titleKey)) return true;
+  return false;
 }
 
 function getCategoryPath(product) {
@@ -527,10 +600,12 @@ function pickLayeredRecommendations({
   externalCandidates,
   k,
   baseSemantic = null,
+  excludeItems = [],
 }) {
   const K = Math.max(1, Math.min(Number(k || 6) || 6, 30));
   const base = buildBaseFeatures(baseProduct);
   const baseSemanticKey = getRecommendationSemanticKey(baseProduct, base.brand);
+  const exclusionState = buildRecommendationExclusionState(excludeItems);
 
   const nearPriceTight = (relDiff) => relDiff != null && relDiff <= 0.25;
   const nearPriceLoose = (relDiff) => relDiff != null && relDiff <= 0.6;
@@ -585,6 +660,7 @@ function pickLayeredRecommendations({
       // Exclude the base product even if multiple merchants share the same product_id.
       // (In multi-offer scenarios those belong in offers[], not recommendations.)
       if (pid === base.productId) return null;
+      if (shouldExcludeRecommendationProduct(p, exclusionState)) return null;
       const features = buildCandidateFeatures(p, base.currency);
       const source = features.isExternal ? 'external' : 'internal';
       const scoreDetail = scoreCandidate(base, features);
@@ -709,6 +785,7 @@ function pickLayeredRecommendations({
   return {
     items: selected.slice(0, K),
     metadata: {
+      has_more: semanticallyDedupedCandidates.length > chosenCandidates.length,
       similar_confidence: similarConfidence,
       low_confidence: lowConfidence,
       low_confidence_reason_codes: lowConfidenceReasonCodes,
@@ -1155,6 +1232,7 @@ async function recommend({
   const safeK = Math.max(1, Math.min(Number(k || 6) || 6, 30));
 
   const baseCurrency = currency || normalizeCurrency(rawBaseProduct, 'USD');
+  const excludeItems = Array.isArray(options?.exclude_items) ? options.exclude_items : [];
   const cacheKey = JSON.stringify({
     merchant_id: baseMerchantId || null,
     product_id: baseProductId,
@@ -1163,7 +1241,11 @@ async function recommend({
     currency: baseCurrency,
   });
 
-  const bypassCache = options?.no_cache === true || options?.cache_bypass === true || options?.bypass_cache === true;
+  const bypassCache =
+    excludeItems.length > 0 ||
+    options?.no_cache === true ||
+    options?.cache_bypass === true ||
+    options?.bypass_cache === true;
   const debugEnabled = options?.debug === true;
 
   if (!PDP_RECS_CACHE_ENABLED || bypassCache) {
@@ -1283,6 +1365,7 @@ async function recommend({
     externalCandidates,
     k: safeK,
     baseSemantic,
+    excludeItems,
   });
 
   const elapsedMs = Date.now() - start;
@@ -1304,13 +1387,22 @@ async function recommend({
         external_skip_min_candidates: skipExternalMin,
         base_semantic_strong: baseSemanticStrong,
         base_product_is_external: baseProductIsExternal,
+        excluded_items_count: excludeItems.length,
       },
       base_semantic: baseSemantic || null,
       cache_key_hash: debugEnabled ? stableHashShort(cacheKey) : undefined,
     },
   };
 
-  if (PDP_RECS_CACHE_ENABLED && !bypassCache) {
+  if (
+    shouldCacheRecommendationResult({
+      bypassCache,
+      internalTimedOut,
+      externalTimedOut,
+      requestedCount: safeK,
+      returnedCount: picked.items?.length || 0,
+    })
+  ) {
     setCacheEntry(cacheKey, result);
   }
 
@@ -1358,5 +1450,6 @@ module.exports = {
     getParentCategory,
     isExternalProduct,
     fetchInternalCandidates,
+    shouldCacheRecommendationResult,
   },
 };

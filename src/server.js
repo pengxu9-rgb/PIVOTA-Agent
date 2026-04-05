@@ -22335,6 +22335,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           const sim = payload.similar || {};
           const productId = String(sim.product_id || payload.product_id || '').trim();
           const merchantId = String(sim.merchant_id || payload.merchant_id || '').trim();
+          const excludeItems = Array.isArray(sim.exclude_items)
+            ? sim.exclude_items
+            : Array.isArray(payload.exclude_items)
+              ? payload.exclude_items
+              : [];
           const limit = Math.max(1, Math.min(Number(sim.limit || payload.limit || 6) || 6, 30));
           const bypassCache =
             payload?.options?.no_cache === true ||
@@ -22367,10 +22372,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 no_cache: bypassCache,
                 cache_bypass: bypassCache,
                 bypass_cache: bypassCache,
+                exclude_items: excludeItems,
               },
             });
 
             const products = Array.isArray(rec?.items) ? rec.items : [];
+            const recMetadata =
+              rec?.metadata && typeof rec.metadata === 'object' && !Array.isArray(rec.metadata)
+                ? rec.metadata
+                : null;
 
             // Keep response structure stable for existing clients.
             const baseResponse = {
@@ -22380,6 +22390,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               total: products.length,
               page: 1,
               page_size: products.length,
+              ...(typeof recMetadata?.has_more === 'boolean' ? { has_more: recMetadata.has_more } : {}),
+              ...(recMetadata ? { metadata: recMetadata } : {}),
             };
 
             return debugEnabled
@@ -22405,6 +22417,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           product_id: sim.product_id || payload.product_id,
           merchant_id: sim.merchant_id || payload.merchant_id,
           limit: sim.limit || payload.limit,
+          exclude_items: sim.exclude_items || payload.exclude_items,
           strategy: sim.strategy || payload.strategy,
           user: sim.user || payload.user,
           creator_id:

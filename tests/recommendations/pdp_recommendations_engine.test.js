@@ -443,6 +443,54 @@ describe('RecommendationEngine (PDP)', () => {
     expect(new Set(titles).size).toBe(titles.length);
   });
 
+  test('j3) exclude_items returns the next unique recommendation page and exposes has_more', () => {
+    const base = makeProduct({
+      merchant_id: 'external_seed',
+      product_id: 'ext_page_base',
+      title: 'Base Fragrance Eau de Parfum',
+      brand: 'Tom Ford',
+      category: 'Fragrance',
+      source: 'external_seed',
+      price: 180,
+    });
+
+    const external = Array.from({ length: 12 }).map((_, index) =>
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: `ext_page_${index + 1}`,
+        title: `Page Candidate ${index + 1} Eau de Parfum`,
+        brand: 'Tom Ford',
+        category: 'Fragrance',
+        source: 'external_seed',
+        price: 170 + index,
+      }),
+    );
+
+    const firstPage = pickLayeredRecommendations({
+      baseProduct: base,
+      internalCandidates: [],
+      externalCandidates: external,
+      k: 6,
+    });
+    const secondPage = pickLayeredRecommendations({
+      baseProduct: base,
+      internalCandidates: [],
+      externalCandidates: external,
+      k: 6,
+      excludeItems: firstPage.items,
+    });
+
+    const firstKeys = new Set(firstPage.items.map((item) => `${item.merchant_id}::${item.product_id}`));
+    const firstTitles = new Set(firstPage.items.map((item) => item.title));
+
+    expect(firstPage.items).toHaveLength(6);
+    expect(firstPage.metadata?.has_more).toBe(true);
+    expect(secondPage.items).toHaveLength(6);
+    expect(secondPage.items.every((item) => !firstKeys.has(`${item.merchant_id}::${item.product_id}`))).toBe(true);
+    expect(secondPage.items.every((item) => !firstTitles.has(item.title))).toBe(true);
+    expect(secondPage.metadata?.has_more).toBe(false);
+  });
+
   test('k) strong semantic external base still fetches external candidates', async () => {
     const base = makeProduct({
       merchant_id: 'external_seed',
@@ -555,5 +603,37 @@ describe('RecommendationEngine (PDP)', () => {
     expect(
       capturedParams.some((params) => !Object.prototype.hasOwnProperty.call(params, 'merchant_id')),
     ).toBe(true);
+  });
+
+  test('m) timeout-underfilled recommendation results are not cacheable', () => {
+    expect(
+      _internals.shouldCacheRecommendationResult({
+        bypassCache: false,
+        internalTimedOut: true,
+        externalTimedOut: false,
+        requestedCount: 6,
+        returnedCount: 0,
+      }),
+    ).toBe(false);
+
+    expect(
+      _internals.shouldCacheRecommendationResult({
+        bypassCache: false,
+        internalTimedOut: true,
+        externalTimedOut: false,
+        requestedCount: 6,
+        returnedCount: 6,
+      }),
+    ).toBe(true);
+
+    expect(
+      _internals.shouldCacheRecommendationResult({
+        bypassCache: true,
+        internalTimedOut: false,
+        externalTimedOut: false,
+        requestedCount: 6,
+        returnedCount: 6,
+      }),
+    ).toBe(false);
   });
 });
