@@ -1021,7 +1021,6 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit }) {
   const safeLimit = Math.min(Math.max(1, Number(limit || 180)), 500);
   const market = String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
   const tool = 'creator_agents';
-  const focusedFallbackThreshold = Math.max(12, Math.min(safeLimit, 18));
 
   const brand = normalizeText(brandHint);
   const category = normalizeText(categoryHint);
@@ -1110,16 +1109,10 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit }) {
       : Promise.resolve([]),
   ]);
 
-  const out = [...brandMatches, ...categoryMatches];
-  // Once focused brand/category candidates are ample for the first page, global recent
-  // fallback only adds latency and noisy matches.
-  const enoughFocusedCandidates = out.length >= focusedFallbackThreshold;
-  if (!enoughFocusedCandidates) {
-    const recent = await runQuery('', [], Math.min(240, safeLimit), 'external_recent');
-    out.push(...recent);
-  }
-
-  return uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`).slice(0, safeLimit * 3);
+  return uniqueByKey([...brandMatches, ...categoryMatches], (p) => `${getMerchantId(p)}::${getProductId(p)}`).slice(
+    0,
+    safeLimit * 3,
+  );
 }
 
 function collectExternalLookupKeys(baseProduct) {
