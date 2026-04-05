@@ -24,6 +24,13 @@ bash scripts/verify_deployed_commit_matches.sh
 ```
 
 6. Run runtime smoke gate (already covered by `.github/workflows/aurora-bff-release-gate.yml` on `push main`).
+7. Keep the production drift guard enabled:
+
+```bash
+gh workflow run production-deploy-drift-guard.yml
+```
+
+This verifies that production `/version.commit` still matches GitHub `main`. If production drifts to an older deployment and the rollback webhook is configured, the guard will trigger rollback automatically.
 
 ## Fast Local Check
 
@@ -34,6 +41,8 @@ npm run deploy:verify:production
 ```
 
 This checks `/version.commit`, with `/healthz.version.commit` as fallback, against local `HEAD` short SHA.
+
+For a repo-truth check against GitHub `main`, use the scheduled workflow instead of local `HEAD`.
 
 ## Emergency Exception
 
@@ -46,3 +55,4 @@ If manual `railway up` is unavoidable:
 5. Clear any temporary `AURORA_GIT_SHA` override after the deployment chain is healthy again.
 
 Do not keep production in a state where deployed commit is not traceable to `main`.
+The scheduled workflow `.github/workflows/production-deploy-drift-guard.yml` is the backstop that catches later drift or an accidental old redeploy.

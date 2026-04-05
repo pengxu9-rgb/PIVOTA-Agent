@@ -1,0 +1,68 @@
+name: Production Deploy Drift Guard
+
+on:
+  workflow_dispatch:
+    inputs:
+      wait_for_commit:
+        description: "Retry briefly before declaring production drift"
+        type: boolean
+        required: false
+        default: false
+  schedule:
+    - cron: "*/15 * * * *"
+
+concurrency:
+  group: production-deploy-drift-guard
+  cancel-in-progress: true
+
+jobs:
+  verify-production-head:
+    name: Verify Production Tracks GitHub Main
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      BASE_URL: ${{ vars.PIVOTA_AGENT_PUBLIC_BASE_URL || vars.AGENT_PUBLIC_BASE_URL || 'https://agent.pivota.cc' }}
+      PROD_SMOKE_BASE_URL: ${{ vars.PIVOTA_AGENT_PROD_INVOKE_BASE_URL || vars.COMMERCE_CORE_PROD_SMOKE_BASE_URL || 'https://pivota-agent-production.up.railway.app' }}
+      WAIT_FOR_COMMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.wait_for_commit || false }}
+      ROLLBACK_WEBHOOK_URL: ${{ secrets.RAILWAY_ROLLBACK_WEBHOOK_URL }}
+      ROLLBACK_REASON: production_deploy_drift_guard_failed
+      FAILED_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      FAILED_SHA: ${{ github.sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Resolve GitHub main head
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          target_commit="$(git rev-parse --short=12 origin/main)"
+          echo "TARGET_COMMIT=${target_commit}" >> "$GITHUB_ENV"
+          echo "Latest main commit: ${target_commit}"
+
+      - name: Verify deployed commit matches GitHub main
+        shell: bash
+        run: |
+          set -euo pipefail
+          max_attempts=1
+          sleep_seconds=0
+          if [[ "${WAIT_FOR_COMMIT}" == "true" ]]; then
+            max_attempts=12
+            sleep_seconds=10
+          fi
+          BASE_URL="$BASE_URL" \
+          INVOKE_BASE_URL="$PROD_SMOKE_BASE_URL" \
+          TARGET_COMMIT="$TARGET_COMMIT" \
+          MAX_ATTEMPTS="$max_attempts" \
+          SLEEP_SECONDS="$sleep_seconds" \
+          bash scripts/verify_deployed_commit_matches.sh
+
+      - name: Auto rollback drifted production (webhook)
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/trigger_rollback_webhook.sh
