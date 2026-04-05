@@ -511,8 +511,19 @@ function isDerivedStructuredTokenNoise(evidence = {}) {
   }
   if (Number(evidence?.ingredient_token_exact || 0) + Number(evidence?.ingredient_token_alias || 0) <= 0) return false;
   if (Number(evidence?.target_surface_anchor_hits || 0) > 0) return false;
-  if (Number(evidence?.competing_surface_hits || 0) <= 0) return false;
-  return true;
+  const competingSurfaceHits = Number(evidence?.competing_surface_hits || 0);
+  const competingTitleUrlHits = Number(evidence?.competing_title_url_hits || 0);
+  if (competingSurfaceHits > 0) return true;
+  if (
+    competingTitleUrlHits > 0 &&
+    (
+      tokenTier === STRUCTURED_TOKEN_TIER.descriptionParsedSeed ||
+      tokenTier === STRUCTURED_TOKEN_TIER.unknownSeedStructured
+    )
+  ) {
+    return true;
+  }
+  return false;
 }
 
 function requiresTargetSurfaceAnchorForDirectSuccess(evidence = {}) {
@@ -524,6 +535,18 @@ function requiresTargetSurfaceAnchorForDirectSuccess(evidence = {}) {
     return false;
   }
   if (Number(evidence?.target_surface_anchor_hits || 0) > 0) return false;
+  if (
+    provenance === KB_EXPLICIT_PROVENANCE.kbReviewedReadThrough &&
+    (
+      Number(evidence?.target_step_negative_signal || 0) > 0 ||
+      (
+        Number(evidence?.same_family_gate_required || 0) > 0 &&
+        String(evidence?.family_relation || '').trim() === 'same_family'
+      )
+    )
+  ) {
+    return false;
+  }
   return Number(evidence?.kb_explicit || 0) > 0 ||
     Number(evidence?.ingredient_token_exact || 0) > 0 ||
     Number(evidence?.ingredient_token_alias || 0) > 0;

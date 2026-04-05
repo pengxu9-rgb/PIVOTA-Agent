@@ -2545,12 +2545,13 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     }));
 
     const rawQuery = 'vitamin c serum under €30';
+    const rescueQuery = 'vitamin c serum';
     const rescueSearch = nock('http://pivota.test')
       .get('/agent/v1/products/search')
       .query((query) => {
         expect(query.merchant_id).toBe('external_seed');
         expect(query.external_seed_only).toBe('true');
-        expect(query.query).toBe(rawQuery);
+        expect(query.query).toBe(rescueQuery);
         return true;
       })
       .optionally()
@@ -2785,6 +2786,185 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         }),
       }),
     );
+  });
+
+  test('source=search strict beauty budget queries supplement weak direct hits with stripped-query rescue', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) {
+          return { rows: [{ total: 0 }] };
+        }
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return { rows: [] };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    jest.doMock('../../src/services/ingredientProductRecall', () => ({
+      recallIngredientProducts: jest.fn(async () => ({
+        products: [
+          {
+            id: 'prod_vitc_weak_1',
+            product_id: 'prod_vitc_weak_1',
+            merchant_id: 'external_seed',
+            title: 'Watch Ya Tone Niacinamide Dark Spot Serum Refill',
+            description: 'Description-parsed ingredient noise candidate.',
+            category: 'serum',
+            product_type: 'serum',
+            brand: 'Fenty Beauty',
+            price: 31,
+            currency: 'USD',
+            canonical_url: 'https://example.com/products/watch-ya-tone-niacinamide-dark-spot-serum-refill',
+            destination_url: 'https://example.com/products/watch-ya-tone-niacinamide-dark-spot-serum-refill',
+            url: 'https://example.com/products/watch-ya-tone-niacinamide-dark-spot-serum-refill',
+            image_url: 'https://cdn.example.com/watch-ya-tone.jpg',
+            source: 'external_seed',
+            __ingredient_recall_meta: {
+              evidence: {
+                kb_explicit: 1,
+                title_exact: 0,
+                title_alias: 0,
+                ingredient_token_exact: 0,
+                ingredient_token_alias: 1,
+                url_alias: 0,
+                explicit_hits: 2,
+                target_surface_anchor_hits: 0,
+                surface_explicit_hits: 1,
+                target_anchor_hits: 1,
+                strong_target_anchor_hits: 1,
+                competing_title_url_hits: 1,
+                candidate_step: 'serum',
+                family_relation: 'same_family',
+              },
+              candidate_step: 'serum',
+              family_relation: 'same_family',
+              source_tag: 'kb_attached_seed',
+            },
+          },
+        ],
+        diagnostics: {
+          ingredient_intent_detected: true,
+          ingredient_registry_match: true,
+          ingredient_registry_source: 'local',
+          ingredient_profile_source: 'local',
+          ingredient_direct_main_path_status: 'direct_hit',
+          recall_source_breakdown: {
+            kb_attached_seed: 1,
+          },
+          ingredient_candidate_evidence_breakdown: {
+            kb_explicit: 1,
+            title_exact: 0,
+            title_alias: 0,
+            ingredient_token_exact: 0,
+            ingredient_token_alias: 1,
+            url_alias: 0,
+            family_only: 0,
+          },
+        },
+      })),
+      resolveIngredientRecallProfileKnowledge: jest.fn(async () => ({
+        profile: {
+          ingredient_id: 'ascorbic_acid',
+          ingredient_name: 'Vitamin C (Ascorbic acid)',
+          exact_phrases: ['ascorbic acid'],
+          alias_phrases: ['vitamin c'],
+          family_phrases: ['brightening', 'serum'],
+          ingredient_class: 'tone_evening_active',
+          expected_step_families: ['serum', 'treatment'],
+        },
+        diagnostics: {
+          registry_match: true,
+          registry_source: 'local',
+          profile_source: 'local',
+        },
+      })),
+      resolveIngredientRecallProfile: jest.fn(() => ({
+        ingredient_id: 'ascorbic_acid',
+        ingredient_name: 'Vitamin C (Ascorbic acid)',
+        exact_phrases: ['ascorbic acid'],
+        alias_phrases: ['vitamin c'],
+        family_phrases: ['brightening', 'serum'],
+        ingredient_class: 'tone_evening_active',
+        expected_step_families: ['serum', 'treatment'],
+      })),
+      hasIngredientRegistryIntentSignal: jest.fn(() => true),
+      getIngredientRecallRegistryHealth: jest.fn(async () => ({ ok: true })),
+    }));
+
+    const rescueSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((query) => {
+        expect(query.merchant_id).toBe('external_seed');
+        expect(query.external_seed_only).toBe('true');
+        expect(query.query).toBe('vitamin c serum');
+        return true;
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'seed-vitamin-c-serum',
+            merchant_id: 'external_seed',
+            name: 'Vitamin-C Serum',
+            title: 'Vitamin-C Serum',
+            price: 29,
+            currency: 'USD',
+            image_url: 'https://cdn.example.com/vitamin-c-serum.jpg',
+            category: 'serum',
+            product_type: 'serum',
+            in_stock: true,
+            canonical_url: 'https://example.com/products/vitamin-c-serum',
+            destination_url: 'https://example.com/products/vitamin-c-serum',
+            url: 'https://example.com/products/vitamin-c-serum',
+          },
+        ],
+        total: 1,
+        metadata: {
+          query_source: 'agent_products_search',
+        },
+      });
+
+    const app = require('../../src/server');
+
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'vitamin c serum under $30',
+            page: 1,
+            limit: 5,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'search',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.products).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: 'Vitamin-C Serum',
+        }),
+      ]),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_ingredient_recall_direct',
+        ingredient_budget_query_rescue_attempted: true,
+        ingredient_budget_query_rescue_recovered: true,
+        ingredient_budget_query_rescue_query: 'vitamin c serum',
+        strict_constraint_query: true,
+        strict_constraint_reason: 'multi_constraint',
+      }),
+    );
+    expect(rescueSearch.isDone()).toBe(true);
   });
 
   test('serum cache preference helper keeps upstream when beauty mainline contract is active', async () => {

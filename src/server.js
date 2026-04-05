@@ -129,9 +129,13 @@ const {
   buildBeautyDiscoverySemanticContract,
   isBeautyDiscoverySemanticContract,
   hasFashionConstraintQuerySignal,
+  getProductPriceCurrency,
+  resolveBudgetConstraintForCurrency,
+  isWithinPriceConstraint,
 } = require('./findProductsMulti/policy');
 const {
   extractHumanApparelCategories,
+  extractIntentRuleBased,
 } = require('./findProductsMulti/intent');
 const {
   buildBeautyQueryProfile,
@@ -6521,13 +6525,20 @@ function buildIngredientIntentProductText(product) {
 }
 
 function countIngredientIntentPhraseMatches(text, phrases) {
-  const haystack = ` ${String(text || '').trim().toLowerCase()} `;
-  if (!haystack.trim()) return 0;
+  const rawHaystack = ` ${String(text || '').trim().toLowerCase()} `;
+  const normalizedHaystackValue = normalizeSearchTextForMatch(String(text || '').trim());
+  const normalizedHaystack = normalizedHaystackValue ? ` ${normalizedHaystackValue} ` : '';
+  if (!rawHaystack.trim() && !normalizedHaystack.trim()) return 0;
   let hits = 0;
   for (const phrase of Array.isArray(phrases) ? phrases : []) {
     const normalized = normalizeSearchTextForMatch(String(phrase || '').trim());
     if (!normalized) continue;
-    if (haystack.includes(` ${normalized} `)) hits += 1;
+    if (
+      rawHaystack.includes(` ${normalized} `) ||
+      (normalizedHaystack && normalizedHaystack.includes(` ${normalized} `))
+    ) {
+      hits += 1;
+    }
   }
   return hits;
 }
@@ -10111,6 +10122,88 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
   }
 }
 
+function stripBudgetConstraintFromStrictQuery(queryText = '') {
+  const text = String(queryText || '').trim();
+  if (!text) return '';
+  return text
+    .replace(
+      /\b(?:under|below|less than|up to|max(?:imum)?|<=?)\s*(?:\$|€|£|¥|￥)\s*[0-9]+(?:\.[0-9]+)?/gi,
+      ' ',
+    )
+    .replace(
+      /\b(?:under|below|less than|up to|max(?:imum)?|<=?)\s*[0-9]+(?:\.[0-9]+)?\s*(?:usd|eur|gbp|cny|jpy)\b/gi,
+      ' ',
+    )
+    .replace(
+      /\b(?:预算|預算)\s*(?:在)?\s*(?:\$|€|£|¥|￥)?\s*[0-9]+(?:\.[0-9]+)?(?:\s*(?:usd|eur|gbp|cny|jpy))?\b/gi,
+      ' ',
+    )
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function buildStrictIngredientBudgetRescueQueries(queryText = '', recallProfile = null, targetStepFamily = '') {
+  const strippedQuery = stripBudgetConstraintFromStrictQuery(queryText);
+  if (!strippedQuery) return [];
+  const out = [];
+  const seen = new Set();
+  const push = (value) => {
+    const query = String(value || '').trim();
+    if (!query) return;
+    const key = normalizeSearchTextForMatch(query);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    out.push(query);
+  };
+
+  push(strippedQuery);
+  if (/\bvitamin c\b/i.test(strippedQuery)) {
+    push(strippedQuery.replace(/\bvitamin c\b/gi, 'vitamin-c'));
+  }
+  for (const variant of buildIngredientRecallQueryVariants(strippedQuery, recallProfile, targetStepFamily)) {
+    push(variant);
+  }
+  return out;
+}
+
+function hasBudgetQualifiedIngredientCandidate(products, priceConstraint = null) {
+  const list = Array.isArray(products) ? products : [];
+  if (!priceConstraint || (priceConstraint.min == null && priceConstraint.max == null)) return false;
+  for (const product of list) {
+    const evidence =
+      product &&
+      typeof product === 'object' &&
+      product.__ingredient_recall_meta &&
+      typeof product.__ingredient_recall_meta === 'object' &&
+      product.__ingredient_recall_meta.evidence &&
+      typeof product.__ingredient_recall_meta.evidence === 'object'
+        ? product.__ingredient_recall_meta.evidence
+        : null;
+    if (!evidence || Number(evidence.target_surface_anchor_hits || 0) <= 0) continue;
+    const price = parseNullableProductPrice(
+      product?.price ??
+        product?.sale_price ??
+        product?.salePrice ??
+        product?.price_amount ??
+        product?.priceAmount,
+    );
+    if (!Number.isFinite(price)) continue;
+    const candidateCurrency = getProductPriceCurrency(
+      product,
+      String(priceConstraint.currency || 'USD').trim().toUpperCase() || 'USD',
+    );
+    const resolvedConstraint = resolveBudgetConstraintForCurrency(
+      priceConstraint,
+      candidateCurrency,
+      candidateCurrency,
+    )?.constraint;
+    if (resolvedConstraint && isWithinPriceConstraint(price, resolvedConstraint)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 async function searchIngredientIntentProductsDirect({ search = {}, metadata = {} } = {}) {
   if (!process.env.DATABASE_URL) return null;
 
@@ -10216,6 +10309,82 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
   const strictConstraintReason =
     directStrictDecision?.strictConstraintReason ||
     (ingredientIntentIds.length > 0 ? 'ingredient' : null);
+  const directRuleBasedIntent =
+    relevanceQueryText && typeof extractIntentRuleBased === 'function'
+      ? extractIntentRuleBased(relevanceQueryText, [], [])
+      : null;
+  const directPriceConstraint =
+    directRuleBasedIntent?.hard_constraints &&
+    directRuleBasedIntent.hard_constraints.price &&
+    typeof directRuleBasedIntent.hard_constraints.price === 'object'
+      ? {
+          ...directRuleBasedIntent.hard_constraints.price,
+        }
+      : null;
+  const ingredientBudgetRescueQueries = buildStrictIngredientBudgetRescueQueries(
+    relevanceQueryText,
+    recallProfile,
+    targetStepFamily,
+  );
+  const shouldAttemptIngredientBudgetRescue =
+    ingredientBudgetRescueQueries.length > 0 &&
+    !hasBudgetQualifiedIngredientCandidate(recalledProducts, directPriceConstraint);
+  let ingredientBudgetRescueAttempted = false;
+  let ingredientBudgetRescueRecovered = false;
+  let ingredientBudgetRescueProducts = [];
+  if (shouldAttemptIngredientBudgetRescue) {
+    ingredientBudgetRescueAttempted = true;
+    try {
+      const budgetRescueLimit = Math.max(safeLimit + safeOffset, safeLimit);
+      const budgetRescueResponse = await fetchExternalSeedSupplementFromBackend({
+        queryParams: {
+          ...(search && typeof search === 'object' && !Array.isArray(search) ? search : {}),
+          query: ingredientBudgetRescueQueries[0],
+          limit: budgetRescueLimit,
+          page: 1,
+          offset: 0,
+          in_stock_only: inStockOnly,
+          allow_external_seed: true,
+          allow_stale_cache: false,
+          external_seed_strategy: 'unified_relevance',
+          product_only: true,
+          ...(targetStepFamily ? { target_step_family: targetStepFamily } : {}),
+        },
+        neededCount: budgetRescueLimit,
+        source:
+          (metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+            ? metadata.source
+            : null) || null,
+      });
+      const budgetRescueRawProducts = Array.isArray(budgetRescueResponse?.products)
+        ? budgetRescueResponse.products
+        : [];
+      ingredientBudgetRescueProducts = budgetRescueRawProducts.filter(Boolean);
+      ingredientBudgetRescueRecovered = ingredientBudgetRescueProducts.length > 0;
+    } catch (ingredientBudgetRescueErr) {
+      logger.warn(
+        {
+          err:
+            ingredientBudgetRescueErr?.message ||
+            String(ingredientBudgetRescueErr),
+          query: relevanceQueryText,
+          rescue_query: ingredientBudgetRescueQueries[0],
+        },
+        'ingredient budget rescue failed after direct recall',
+      );
+    }
+  }
+  const mergedRecalledProducts =
+    ingredientBudgetRescueProducts.length > 0
+      ? stabilizeIngredientIntentDirectProducts(
+          [...recalledProducts, ...ingredientBudgetRescueProducts],
+          {
+            recallProfile,
+            targetStepFamily,
+            queryText: ingredientBudgetRescueQueries[0] || relevanceQueryText,
+          },
+        )
+      : recalledProducts;
   const baseMetadata = {
     fetched_at: new Date().toISOString(),
     strict_constraint_query: ingredientIntentIds.length > 0,
@@ -10285,7 +10454,7 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
     strict_empty_reason: diagnostics.ingredient_direct_miss_reason || null,
     source_breakdown: {
       internal_count: 0,
-      external_seed_count: recalledProducts.length,
+      external_seed_count: mergedRecalledProducts.length,
       stale_cache_used: false,
       strategy_applied: 'ingredient_registry_then_direct_evidence',
     },
@@ -10306,8 +10475,14 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
       : [],
     ingredient_direct_service_products_count: directServiceProducts.length,
     ingredient_direct_display_strategy: hasServiceRecallMeta ? 'service_stabilized' : 'route_stabilized',
-    products_returned_count: recalledProducts.length,
-    external_seed_returned_count: recalledProducts.length,
+    ingredient_budget_query_rescue_attempted: ingredientBudgetRescueAttempted,
+    ingredient_budget_query_rescue_recovered: ingredientBudgetRescueRecovered,
+    ingredient_budget_query_rescue_query:
+      ingredientBudgetRescueAttempted && ingredientBudgetRescueQueries.length > 0
+        ? ingredientBudgetRescueQueries[0]
+        : null,
+    products_returned_count: mergedRecalledProducts.length,
+    external_seed_returned_count: mergedRecalledProducts.length,
   };
   const directBreakdownProvided =
     hasIngredientIntentExplicitEvidenceBreakdown(baseMetadata.ingredient_candidate_evidence_breakdown) ||
@@ -10316,7 +10491,7 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
     baseMetadata.ingredient_candidate_evidence_breakdown,
   );
   const shouldTreatAsDirectMiss =
-    !recalledProducts.length ||
+    !mergedRecalledProducts.length ||
     (diagnostics.family_fallback_used === true && !directRecallHasExplicitEvidence) ||
     (directBreakdownProvided &&
       !directRecallHasExplicitEvidence &&
@@ -10522,7 +10697,7 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
     };
   }
 
-  const pagedProducts = recalledProducts.slice(safeOffset, safeOffset + safeLimit);
+  const pagedProducts = mergedRecalledProducts.slice(safeOffset, safeOffset + safeLimit);
   const responseProducts = guidanceOnlyDiscovery
     ? pagedProducts.map((product) => normalizeGuidanceDiscoveryProductPdpContract(product))
     : pagedProducts;
@@ -10531,7 +10706,7 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
     status: 'success',
     success: true,
     products: responseProducts,
-    total: recalledProducts.length,
+    total: mergedRecalledProducts.length,
     page: safePage,
     page_size: responseProducts.length,
     reply: null,
