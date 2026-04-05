@@ -1193,7 +1193,7 @@ async function recommend({
 
   let internalTimedOut = false;
   let externalTimedOut = false;
-  const internalCandidates = await withSoftTimeout(
+  const internalCandidatesPromise = withSoftTimeout(
     providedInternal
       ? Promise.resolve(providedInternal)
       : fetchInternalCandidates({
@@ -1215,6 +1215,30 @@ async function recommend({
       );
     },
   );
+  const parallelExternalCandidatesPromise =
+    baseProductIsExternal && !providedExternal
+      ? withSoftTimeout(
+          fetchExternalCandidates({
+            brandHint: baseBrand,
+            categoryHint: baseLeaf,
+            limit: Math.max(120, safeK * 15),
+          }),
+          effectiveExternalFetchTimeoutMs,
+          [],
+          () => {
+            externalTimedOut = true;
+            logger.warn(
+              {
+                product_id: baseProductId,
+                timeout_ms: effectiveExternalFetchTimeoutMs,
+              },
+              'PDP recommendations external candidate fetch timed out',
+            );
+          },
+        )
+      : null;
+
+  const internalCandidates = await internalCandidatesPromise;
 
   const internalCount = Array.isArray(internalCandidates) ? internalCandidates.length : 0;
   const skipExternalMin = Math.max(
@@ -1229,6 +1253,8 @@ async function recommend({
 
   const externalCandidates = shouldSkipExternal
     ? []
+      : parallelExternalCandidatesPromise
+        ? await parallelExternalCandidatesPromise
       : await withSoftTimeout(
         providedExternal
           ? Promise.resolve(providedExternal)
