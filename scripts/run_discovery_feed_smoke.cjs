@@ -4,7 +4,7 @@ const DEFAULT_BASE_URL = 'https://pivota-agent-production.up.railway.app';
 const DEFAULT_ENDPOINT = '/agent/shop/v1/invoke';
 const DEFAULT_TIMEOUT_MS = 20000;
 const DEFAULT_LOCALE = 'en-US';
-const EXPECTED_CANDIDATE_SOURCE = 'products_search';
+const EXPECTED_CANDIDATE_SOURCE = 'multi_provider';
 
 function firstNonEmpty(values) {
   for (const value of values || []) {
@@ -116,6 +116,17 @@ function validateDiscoveryResponse(response, expectations = {}) {
     );
   }
 
+  if (Array.isArray(expectations.requiredProviders) && expectations.requiredProviders.length > 0) {
+    const providerNames = new Set(
+      (Array.isArray(metadata.provider_breakdown) ? metadata.provider_breakdown : [])
+        .map((entry) => String(entry?.provider || '').trim())
+        .filter(Boolean),
+    );
+    expectations.requiredProviders.forEach((provider) => {
+      ensure(providerNames.has(String(provider || '').trim()), `missing provider breakdown entry: ${provider}`);
+    });
+  }
+
   if (Array.isArray(expectations.requiredRecallLabels) && expectations.requiredRecallLabels.length > 0) {
     const labels = new Set(
       (Array.isArray(metadata.rank_debug?.recall_summary) ? metadata.rank_debug.recall_summary : [])
@@ -161,6 +172,7 @@ function validateDiscoveryResponse(response, expectations = {}) {
     strategy: metadata.discovery_strategy || null,
     personalizationSource: metadata.personalization_source || null,
     candidateSource: metadata.candidate_source || null,
+    providerBreakdown: Array.isArray(metadata.provider_breakdown) ? metadata.provider_breakdown : [],
     topProducts: summarizeProducts(products),
     recallSummary: Array.isArray(metadata.rank_debug?.recall_summary)
       ? metadata.rank_debug.recall_summary
@@ -267,9 +279,10 @@ async function runSmoke(options = {}) {
     discoveryStrategy: 'cold_start_curated',
     personalizationSource: 'none',
     candidateSource: EXPECTED_CANDIDATE_SOURCE,
-    minProducts: 1,
+    minProducts: 3,
     requireRankDebug: true,
-    requiredRecallLabels: [['cold_start_curated', 'browse_pool']],
+    requiredRecallLabels: [['cold_start_curated', 'cold_start_fill']],
+    requiredProviders: ['products_search', 'internal_catalog', 'external_seeds'],
     disallowTopN: 3,
     disallowTitlePatterns: [
       '\\bpet\\b',
@@ -316,9 +329,10 @@ async function runSmoke(options = {}) {
     discoveryStrategy: 'personalized_interest',
     personalizationSource: 'account_history',
     candidateSource: EXPECTED_CANDIDATE_SOURCE,
-    minProducts: 1,
+    minProducts: 4,
     requireRankDebug: true,
-    requiredRecallLabels: ['interest_pool', 'browse_pool'],
+    requiredRecallLabels: ['interest_pool', 'expansion_pool'],
+    requiredProviders: ['products_search', 'internal_catalog', 'external_seeds'],
     excludeProductKeys: [suppressedKey],
   });
   console.log(`PASS personalized_home ${JSON.stringify(personalizedHomeResult)}`);
@@ -350,9 +364,10 @@ async function runSmoke(options = {}) {
     discoveryStrategy: 'personalized_interest',
     personalizationSource: 'account_history',
     candidateSource: EXPECTED_CANDIDATE_SOURCE,
-    minProducts: 1,
+    minProducts: 6,
     requireRankDebug: true,
-    requiredRecallLabels: ['browse_pool'],
+    requiredRecallLabels: ['browse_pool', 'expansion_pool'],
+    requiredProviders: ['products_search', 'internal_catalog', 'external_seeds'],
     excludeProductKeys: [suppressedKey],
   });
   console.log(`PASS browse_page_one ${JSON.stringify(browsePageOneResult)}`);

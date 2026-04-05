@@ -187,7 +187,7 @@ describe('discovery feed service', () => {
     expect(homePlan).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ label: 'interest_pool' }),
-        expect.objectContaining({ label: 'browse_pool' }),
+        expect.objectContaining({ label: 'expansion_pool' }),
       ]),
     );
     expect(String(homePlan[1].query || '').trim()).not.toBe('');
@@ -892,13 +892,13 @@ describe('discovery feed service', () => {
     expect(response.metadata).toEqual(
       expect.objectContaining({
         candidate_source: 'override',
-        candidate_counts: {
+        candidate_counts: expect.objectContaining({
           raw: 6,
           normalized: 6,
           scored: 6,
           eligible_pool: 5,
           returned: 4,
-        },
+        }),
         request_latency_ms: expect.any(Number),
         rank_debug: expect.any(Object),
       }),
@@ -1010,14 +1010,15 @@ describe('discovery feed service', () => {
 
     expect(response.metadata).toEqual(
       expect.objectContaining({
-        candidate_source: 'products_search',
+        candidate_source: 'multi_provider',
+        provider_breakdown: expect.any(Array),
         rank_debug: expect.any(Object),
       }),
     );
     expect(response.metadata.rank_debug.recall_summary).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ label: 'interest_pool', status: 200, latency_ms: expect.any(Number) }),
-        expect.objectContaining({ label: 'browse_pool', status: 200, latency_ms: expect.any(Number) }),
+        expect.objectContaining({ label: 'expansion_pool', status: 200, latency_ms: expect.any(Number) }),
       ]),
     );
     expect(capturedParams.some((params) => String(params.query || '').trim().length > 0)).toBe(true);
@@ -1027,7 +1028,7 @@ describe('discovery feed service', () => {
       'discovery_feed_recall_requests_total{cache_hit="false",status="success",step="interest_pool",surface="home_hot_deals"} 1',
     );
     expect(metrics).toContain(
-      'discovery_feed_recall_requests_total{cache_hit="false",status="success",step="browse_pool",surface="home_hot_deals"} 1',
+      'discovery_feed_recall_requests_total{cache_hit="false",status="success",step="expansion_pool",surface="home_hot_deals"} 1',
     );
   });
 
@@ -1251,7 +1252,7 @@ describe('discovery feed service', () => {
     expect(response.metadata.rank_debug.recall_summary).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ label: 'interest_pool' }),
-        expect.objectContaining({ label: 'browse_pool' }),
+        expect.objectContaining({ label: 'expansion_pool' }),
       ]),
     );
   });
@@ -1353,7 +1354,7 @@ describe('discovery feed service', () => {
     expect(response.metadata.rank_debug.recall_summary).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ label: 'interest_pool' }),
-        expect.objectContaining({ label: 'browse_pool' }),
+        expect.objectContaining({ label: 'expansion_pool' }),
       ]),
     );
   });
@@ -1415,7 +1416,7 @@ describe('discovery feed service', () => {
 
     expect(capturedParams).toHaveLength(2);
     expect(String(capturedParams[0]?.query || '').toLowerCase()).toContain('alpha');
-    expect(String(capturedParams[1]?.query || '').toLowerCase()).toContain('alpha');
+    expect(String(capturedParams[1]?.query || '').toLowerCase()).toContain('skincare');
   });
 
   test('dominant beauty discovery filters pet and sleepwear candidates from top results', async () => {
@@ -1565,7 +1566,7 @@ describe('discovery feed service', () => {
     expect(ids).not.toContain('tool_1');
     expect(ids).not.toContain('pet_1');
     const topCandidates = response.metadata.rank_debug.top_candidates;
-    expect(topCandidates.find((candidate) => candidate.product_id === 'tool_1')?.decision).toBe('filtered_beauty_bucket');
+    expect(topCandidates.find((candidate) => candidate.product_id === 'tool_1')?.decision).toBe('page_window_excluded');
   });
 
   test('cold start returns curated metadata with no personalization source', async () => {
@@ -1760,6 +1761,172 @@ describe('discovery feed service', () => {
     expect(decisions.get('lingerie_1')).toBe('not_selected_cold_start_deferred');
   });
 
+  test('generic discovery can succeed via external seeds even when products/search is unavailable', async () => {
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+    delete process.env.PIVOTA_API_BASE;
+
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'home_hot_deals',
+        limit: 4,
+        debug: true,
+        context: {
+          auth_state: 'authenticated',
+          locale: 'en-US',
+          recent_views: [
+            {
+              merchant_id: 'm1',
+              product_id: 'recent_alpha',
+              title: 'Barrier Repair Serum',
+              brand: 'Alpha',
+              category: 'Skincare',
+              product_type: 'Serum',
+              viewed_at: '2026-04-04T10:00:00Z',
+            },
+          ],
+          recent_queries: ['niacinamide serum'],
+        },
+      },
+      {
+        providerOverrides: {
+          internal_catalog: async () => [],
+          external_seeds: async () => [
+            makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'seed_1',
+              title: 'Niacinamide Recovery Serum',
+              brand: 'Seeded',
+              category: 'Skincare',
+              product_type: 'Serum',
+              canonical_url: 'https://example.com/niacinamide-recovery-serum',
+            }),
+            makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'seed_2',
+              title: 'Barrier Repair Toner',
+              brand: 'Seeded',
+              category: 'Skincare',
+              product_type: 'Toner',
+              canonical_url: 'https://example.com/barrier-repair-toner',
+            }),
+            makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'seed_3',
+              title: 'Calming Recovery Cream',
+              brand: 'Seeded',
+              category: 'Skincare',
+              product_type: 'Cream',
+              canonical_url: 'https://example.com/calming-recovery-cream',
+            }),
+            makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'seed_4',
+              title: 'Vitamin C Brightening Serum',
+              brand: 'Seeded',
+              category: 'Skincare',
+              product_type: 'Serum',
+              canonical_url: 'https://example.com/vitamin-c-brightening-serum',
+            }),
+          ],
+        },
+      },
+    );
+
+    expect(response.products).toHaveLength(4);
+    expect(response.metadata.candidate_source).toBe('multi_provider');
+    expect(response.metadata.provider_breakdown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ provider: 'products_search', successful: false }),
+        expect.objectContaining({ provider: 'external_seeds', successful: true, returned: 4 }),
+      ]),
+    );
+    expect(response.metadata.rank_debug.recall_summary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ provider: 'external_seeds', label: 'external_seed_pool', status: 200 }),
+      ]),
+    );
+  });
+
+  test('generic discovery semantically dedupes duplicate tool titles across providers', async () => {
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+    delete process.env.PIVOTA_API_BASE;
+
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'home_hot_deals',
+        limit: 4,
+        debug: true,
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      },
+      {
+        providerOverrides: {
+          internal_catalog: async () => [
+            makeProduct({
+              merchant_id: 'm1',
+              product_id: 'tool_internal_1',
+              title: 'Makeup Brush Everyday Essential',
+              brand: 'BrushLab',
+              category: 'Beauty Tools',
+              product_type: 'Brush',
+            }),
+            makeProduct({
+              merchant_id: 'm2',
+              product_id: 'serum_internal_1',
+              title: 'Barrier Repair Serum',
+              brand: 'Alpha',
+              category: 'Skincare',
+              product_type: 'Serum',
+            }),
+            makeProduct({
+              merchant_id: 'm3',
+              product_id: 'cream_internal_1',
+              title: 'Calming Recovery Cream',
+              brand: 'Beta',
+              category: 'Skincare',
+              product_type: 'Cream',
+            }),
+          ],
+          external_seeds: async () => [
+            makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'tool_external_1',
+              title: 'Makeup Brush Everyday Essential',
+              brand: 'BrushLab',
+              category: 'Beauty Tools',
+              product_type: 'Brush',
+            }),
+            makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'toner_external_1',
+              title: 'Hydrating Skin Toner',
+              brand: 'Gamma',
+              category: 'Skincare',
+              product_type: 'Toner',
+              canonical_url: 'https://example.com/hydrating-skin-toner',
+            }),
+          ],
+        },
+      },
+    );
+
+    expect(response.products.map((product) => product.title)).toEqual(
+      expect.arrayContaining([
+        'Barrier Repair Serum',
+        'Calming Recovery Cream',
+        'Hydrating Skin Toner',
+      ]),
+    );
+    expect(
+      response.products.filter((product) => String(product.title || '').includes('Makeup Brush Everyday Essential')),
+    ).toHaveLength(0);
+    expect(response.metadata.candidate_counts.semantic_deduped).toBeGreaterThan(0);
+  });
+
   test('throws when products/search catalog is unavailable and mock mode is not explicitly enabled', async () => {
     delete process.env.PIVOTA_BACKEND_BASE_URL;
     delete process.env.PIVOTA_API_BASE;
@@ -1782,14 +1949,14 @@ describe('discovery feed service', () => {
       expect.objectContaining({
         surface: 'home_hot_deals',
         status: 'catalog_unavailable',
-        candidate_source: 'products_search',
+        candidate_source: 'multi_provider',
         error_code: 'DISCOVERY_CATALOG_UNAVAILABLE',
       }),
     );
 
     const metrics = renderDiscoveryMetricsPrometheus();
     expect(metrics).toContain(
-      'discovery_feed_requests_total{candidate_source="products_search",personalization_source="none",reason="discovery_catalog_unavailable",status="catalog_unavailable",strategy="cold_start_curated",surface="home_hot_deals"} 1',
+      'discovery_feed_requests_total{candidate_source="multi_provider",personalization_source="none",reason="discovery_catalog_unavailable",status="catalog_unavailable",strategy="cold_start_curated",surface="home_hot_deals"} 1',
     );
   });
 });

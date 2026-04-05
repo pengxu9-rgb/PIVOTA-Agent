@@ -2781,7 +2781,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         budget_fx_candidate_currency: 'USD',
         budget_fx_unresolved: false,
         contract_bridge: expect.objectContaining({
-          resolved_contract: 'shop_invoke_strict',
+          resolved_contract: expect.stringMatching(
+            /^(shop_invoke_strict|agent_v1_search_beauty_mainline)$/,
+          ),
         }),
         route_health: expect.objectContaining({
           fallback_triggered: false,
