@@ -716,6 +716,108 @@ describe('discovery feed service', () => {
     );
   });
 
+  test('home_hot_deals still runs browse fill when a large interest pool is mostly filtered out', async () => {
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+    process.env.PIVOTA_API_KEY = 'test-key';
+
+    const capturedParams = [];
+    let searchCallIndex = 0;
+    nock('http://catalog.test')
+      .get('/agent/v1/products/search')
+      .query((params) => {
+        capturedParams.push(params);
+        return true;
+      })
+      .times(2)
+      .reply(200, () => {
+        const products =
+          searchCallIndex === 0
+            ? [
+                makeProduct({
+                  merchant_id: 'm1',
+                  product_id: 'view_1',
+                  title: 'Barrier Repair Serum',
+                  brand: 'Alpha',
+                  category: 'Skincare',
+                  product_type: 'Serum',
+                }),
+                ...Array.from({ length: 23 }, (_, idx) =>
+                  makeProduct({
+                    merchant_id: `pet_${idx + 1}`,
+                    product_id: `pet_${idx + 1}`,
+                    title: `Warm Pet Outfit ${idx + 1}`,
+                    brand: `Paws ${idx + 1}`,
+                    category: 'Pet',
+                    product_type: 'Apparel',
+                  }),
+                ),
+              ]
+            : [
+                makeProduct({
+                  merchant_id: 'm3',
+                  product_id: 'fresh_1',
+                  title: 'Vitamin C Repair Serum',
+                  brand: 'Gamma',
+                  category: 'Skincare',
+                  product_type: 'Serum',
+                }),
+                makeProduct({
+                  merchant_id: 'm4',
+                  product_id: 'fresh_2',
+                  title: 'Barrier Recovery Cream',
+                  brand: 'Delta',
+                  category: 'Skincare',
+                  product_type: 'Cream',
+                }),
+                makeProduct({
+                  merchant_id: 'm5',
+                  product_id: 'fresh_3',
+                  title: 'Hydrating Toner',
+                  brand: 'Epsilon',
+                  category: 'Skincare',
+                  product_type: 'Toner',
+                }),
+              ];
+        searchCallIndex += 1;
+        return { products };
+      });
+
+    const response = await getDiscoveryFeed({
+      surface: 'home_hot_deals',
+      limit: 3,
+      debug: true,
+      context: {
+        auth_state: 'authenticated',
+        locale: 'en-US',
+        recent_views: [
+          {
+            merchant_id: 'm1',
+            product_id: 'view_1',
+            title: 'Barrier Repair Serum',
+            brand: 'Alpha',
+            category: 'Skincare',
+            product_type: 'Serum',
+            viewed_at: '2026-04-04T10:00:00Z',
+          },
+        ],
+        recent_queries: ['vitamin c serum'],
+      },
+    });
+
+    expect(capturedParams).toHaveLength(2);
+    expect(response.products.map((product) => product.product_id)).toEqual([
+      'fresh_1',
+      'fresh_2',
+      'fresh_3',
+    ]);
+    expect(response.metadata.rank_debug.recall_summary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: 'interest_pool' }),
+        expect.objectContaining({ label: 'browse_pool' }),
+      ]),
+    );
+  });
+
   test('dominant beauty discovery filters pet and sleepwear candidates from top results', async () => {
     const response = await getDiscoveryFeed(
       {
@@ -891,6 +993,88 @@ describe('discovery feed service', () => {
     expect(response.metadata.personalization_source).toBe('none');
     expect(response.metadata.history_items_used).toBe(0);
     expect(response.products).toHaveLength(3);
+  });
+
+  test('cold start defers pet, sleepwear, and apparel when enough non-deferred options exist', async () => {
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'home_hot_deals',
+        limit: 4,
+        debug: true,
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      },
+      {
+        candidateProducts: [
+          makeProduct({
+            merchant_id: 'm1',
+            product_id: 'pet_1',
+            title: 'Dog Rain Jacket',
+            category: 'Pet',
+            product_type: 'Apparel',
+          }),
+          makeProduct({
+            merchant_id: 'm2',
+            product_id: 'sleep_1',
+            title: 'Velvet Sleepwear Set',
+            category: 'Sleepwear',
+            product_type: 'Pajama',
+          }),
+          makeProduct({
+            merchant_id: 'm3',
+            product_id: 'apparel_1',
+            title: 'Wool Blend Coat',
+            category: 'Apparel',
+            product_type: 'Outerwear',
+          }),
+          makeProduct({
+            merchant_id: 'm4',
+            product_id: 'beauty_1',
+            title: 'Barrier Repair Serum',
+            category: 'Skincare',
+            product_type: 'Serum',
+          }),
+          makeProduct({
+            merchant_id: 'm5',
+            product_id: 'beauty_2',
+            title: 'Calming Recovery Cream',
+            category: 'Skincare',
+            product_type: 'Cream',
+          }),
+          makeProduct({
+            merchant_id: 'm6',
+            product_id: 'unknown_1',
+            title: 'Kitchen Counter Organizer',
+            category: 'Kitchen',
+            product_type: 'Storage',
+          }),
+          makeProduct({
+            merchant_id: 'm7',
+            product_id: 'unknown_2',
+            title: 'Portable Table Lamp',
+            category: 'Electronics',
+            product_type: 'Lamp',
+          }),
+        ],
+      },
+    );
+
+    expect(response.products.map((product) => product.product_id)).toEqual([
+      'beauty_1',
+      'beauty_2',
+      'unknown_1',
+      'unknown_2',
+    ]);
+    expect(response.metadata.rank_debug.top_candidates.find((candidate) => candidate.product_id === 'pet_1')?.decision).toBe(
+      'filtered_cold_start_domain',
+    );
+    expect(
+      response.metadata.rank_debug.top_candidates.find((candidate) => candidate.product_id === 'sleep_1')?.decision,
+    ).toBe('filtered_cold_start_domain');
   });
 
   test('throws when products/search catalog is unavailable and mock mode is not explicitly enabled', async () => {

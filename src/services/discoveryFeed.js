@@ -30,11 +30,12 @@ const MAX_PRODUCTS_SEARCH_CALLS = 2;
 const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
 const VALID_SURFACES = new Set(['home_hot_deals', 'browse_products']);
 const VALID_AUTH_STATES = new Set(['authenticated', 'anonymous']);
-const HOME_INTEREST_RECALL_LIMIT = 44;
+const HOME_INTEREST_RECALL_LIMIT = 24;
 const HOME_BROWSE_FILL_LIMIT = 24;
 const HOME_MIN_BROWSE_FILL_LIMIT = 16;
 const BROWSE_PRIMARY_RECALL_LIMIT = 24;
 const BROWSE_FILL_RECALL_LIMIT = 24;
+const COLD_START_DEFERRED_DOMAINS = new Set(['pet', 'sleepwear', 'apparel']);
 const DOMAIN_KEYWORDS = {
   beauty: [
     'beauty',
@@ -299,10 +300,30 @@ function inferApparelCategory(text) {
   return 'apparel';
 }
 
+function inferExplicitDomainFromLabels(values = []) {
+  const normalized = normalizeText((Array.isArray(values) ? values : [values]).filter(Boolean).join(' '));
+  if (!normalized) return null;
+  if (DOMAIN_KEYWORDS.sleepwear.some((keyword) => normalized.includes(normalizeText(keyword)))) {
+    return 'sleepwear';
+  }
+  if (DOMAIN_KEYWORDS.pet.some((keyword) => normalized.includes(normalizeText(keyword)))) {
+    return 'pet';
+  }
+  if (DOMAIN_KEYWORDS.beauty.some((keyword) => normalized.includes(normalizeText(keyword)))) {
+    return 'beauty';
+  }
+  if (DOMAIN_KEYWORDS.apparel.some((keyword) => normalized.includes(normalizeText(keyword)))) {
+    return 'apparel';
+  }
+  return null;
+}
+
 function inferCandidateTaxonomy({ merchantId, title, description, rawCategory, rawProductType }) {
   const signalText = [rawProductType, rawCategory, title, description].filter(Boolean).join(' ');
   const domainScores = scoreDomainHints(signalText, 1);
   const { domain } = inferDominantDomain(domainScores);
+  const explicitDomain = inferExplicitDomainFromLabels([rawProductType, rawCategory]);
+  const resolvedDomain = domain || explicitDomain;
   const normalizedCategory = normalizeText(rawProductType || rawCategory || '');
   const normalizedParent = normalizeText(rawCategory || '');
   const needsInference =
@@ -314,31 +335,31 @@ function inferCandidateTaxonomy({ merchantId, title, description, rawCategory, r
   let parentCategory = !isWeakCategoryLabel(normalizedParent) ? normalizedParent : '';
 
   if (needsInference) {
-    if (domain === 'beauty') {
+    if (resolvedDomain === 'beauty') {
       category = inferBeautyCategory(signalText) || category;
       parentCategory = 'skincare';
-    } else if (domain === 'pet') {
+    } else if (resolvedDomain === 'pet') {
       category = inferPetCategory(signalText) || category;
       parentCategory = 'pet';
-    } else if (domain === 'sleepwear') {
+    } else if (resolvedDomain === 'sleepwear') {
       category = 'sleepwear';
       parentCategory = 'apparel';
-    } else if (domain === 'apparel') {
+    } else if (resolvedDomain === 'apparel') {
       category = inferApparelCategory(signalText) || category;
       parentCategory = 'apparel';
     }
   }
 
   if (!parentCategory && category) {
-    if (domain === 'beauty') parentCategory = 'skincare';
-    if (domain === 'pet') parentCategory = 'pet';
-    if (domain === 'sleepwear' || domain === 'apparel') parentCategory = 'apparel';
+    if (resolvedDomain === 'beauty') parentCategory = 'skincare';
+    if (resolvedDomain === 'pet') parentCategory = 'pet';
+    if (resolvedDomain === 'sleepwear' || resolvedDomain === 'apparel') parentCategory = 'apparel';
   }
 
   return {
     category: category || '',
     parentCategory: parentCategory || '',
-    domain: domain || 'unknown',
+    domain: resolvedDomain || 'unknown',
   };
 }
 
@@ -710,8 +731,8 @@ function resolveDiscoveryCandidateLimit(request) {
     const pageNeed = request.page * request.limit + Math.max(request.limit, 24);
     return clampInt(pageNeed, 72, 24, MAX_CANDIDATE_FETCH);
   }
-  const homeNeed = Math.max(request?.limit * 4, 60);
-  return clampInt(homeNeed, 60, 24, MAX_CANDIDATE_FETCH);
+  const homeNeed = Math.max(request?.limit * 4, 48);
+  return clampInt(homeNeed, 48, 24, MAX_CANDIDATE_FETCH);
 }
 
 function buildDiscoveryContextCacheKey(request) {
@@ -838,6 +859,83 @@ function getRecallEnoughThreshold(request, safeLimit) {
   return Math.min(safeLimit, Math.max(request.limit * 2, 24));
 }
 
+async function fetchDiscoveryRecallStep({
+  baseUrl,
+  request,
+  step,
+  requestHeaders,
+} = {}) {
+  const stepStartedAt = Date.now();
+  try {
+    const resp = await axios.get(`${baseUrl}/agent/v1/products/search`, {
+      params: {
+        ...(step?.query ? { query: step.query } : {}),
+        in_stock_only: false,
+        limit: step?.limit,
+        offset: step?.offset,
+      },
+      headers: requestHeaders,
+      timeout: getDiscoveryProductsSearchTimeoutMs(),
+      validateStatus: () => true,
+    });
+
+    const products = Array.isArray(resp.data?.products)
+      ? resp.data.products
+      : Array.isArray(resp.data?.results)
+        ? resp.data.results
+        : [];
+    const stepLatencyMs = Date.now() - stepStartedAt;
+    const summary = {
+      label: step?.label || 'unknown',
+      query: step?.query || null,
+      offset: Number(step?.offset || 0),
+      limit: Number(step?.limit || 0),
+      status: Number(resp.status || 0) || null,
+      returned: products.length,
+      latency_ms: stepLatencyMs,
+      cache_hit: false,
+    };
+
+    recordDiscoveryRecallStep({
+      surface: request?.surface,
+      step: step?.label,
+      status: resp.status >= 200 && resp.status < 300 ? 'success' : `http_${resp.status}`,
+      latencyMs: stepLatencyMs,
+      cacheHit: false,
+    });
+
+    return {
+      success: resp.status >= 200 && resp.status < 300,
+      products,
+      summary,
+    };
+  } catch (err) {
+    const stepLatencyMs = Date.now() - stepStartedAt;
+    recordDiscoveryRecallStep({
+      surface: request?.surface,
+      step: step?.label,
+      status: 'error',
+      latencyMs: stepLatencyMs,
+      cacheHit: false,
+    });
+    return {
+      success: false,
+      products: [],
+      summary: {
+        label: step?.label || 'unknown',
+        query: step?.query || null,
+        offset: Number(step?.offset || 0),
+        limit: Number(step?.limit || 0),
+        status: null,
+        returned: 0,
+        latency_ms: stepLatencyMs,
+        cache_hit: false,
+        error: err?.message || String(err),
+      },
+    };
+  }
+}
+
 async function loadProductsSearchCandidates({ request, profile, limit = MAX_CANDIDATE_FETCH } = {}) {
   const safeLimit = clampInt(limit, resolveDiscoveryCandidateLimit(request), 24, MAX_CANDIDATE_FETCH);
   const baseUrl = getDiscoveryProductsSearchBaseUrl();
@@ -895,88 +993,77 @@ async function loadProductsSearchCandidates({ request, profile, limit = MAX_CAND
   const enoughThreshold = getRecallEnoughThreshold(request, safeLimit);
   let truncatedByBudget = false;
 
+  const mergeProducts = (products) => {
+    for (const product of Array.isArray(products) ? products : []) {
+      const merchantId = String(product?.merchant_id || product?.merchantId || '').trim();
+      const productId = String(product?.product_id || product?.productId || product?.id || '').trim();
+      const key = buildProductKey(merchantId, productId);
+      if (!key || seenKeys.has(key)) continue;
+      seenKeys.add(key);
+      mergedProducts.push(product);
+      if (mergedProducts.length >= safeLimit) break;
+    }
+  };
+
+  if (request?.surface === 'home_hot_deals' && recallPlan.length > 1) {
+    const stepResults = await Promise.all(
+      recallPlan.map((step) =>
+        fetchDiscoveryRecallStep({
+          baseUrl,
+          request,
+          step,
+          requestHeaders,
+        }),
+      ),
+    );
+
+    for (const result of stepResults) {
+      recallSummary.push(result.summary);
+      if (!result.success) continue;
+      successCount += 1;
+      mergeProducts(result.products);
+    }
+
+    if (successCount <= 0) {
+      logger.warn(
+        {
+          base_url: baseUrl,
+          surface: request?.surface || 'unknown',
+          recall_summary: recallSummary,
+        },
+        'discovery feed products/search recall failed',
+      );
+      throw new DiscoveryCatalogUnavailableError('Failed to load discovery candidates from products/search');
+    }
+
+    return {
+      products: mergedProducts,
+      recallSummary,
+    };
+  }
+
   for (const step of recallPlan) {
     if (Date.now() - recallStartedAt >= recallBudgetMs) {
       truncatedByBudget = true;
       break;
     }
-    const stepStartedAt = Date.now();
-    try {
-      const resp = await axios.get(`${baseUrl}/agent/v1/products/search`, {
-        params: {
-          ...(step.query ? { query: step.query } : {}),
-          in_stock_only: false,
-          limit: step.limit,
-          offset: step.offset,
-        },
-        headers: requestHeaders,
-        timeout: getDiscoveryProductsSearchTimeoutMs(),
-        validateStatus: () => true,
-      });
+    const result = await fetchDiscoveryRecallStep({
+      baseUrl,
+      request,
+      step,
+      requestHeaders,
+    });
+    recallSummary.push(result.summary);
 
-      const products = Array.isArray(resp.data?.products)
-        ? resp.data.products
-        : Array.isArray(resp.data?.results)
-          ? resp.data.results
-          : [];
-      const stepLatencyMs = Date.now() - stepStartedAt;
+    if (!result.success) continue;
 
-      recallSummary.push({
-        label: step.label,
-        query: step.query || null,
-        offset: step.offset,
-        limit: step.limit,
-        status: Number(resp.status || 0) || null,
-        returned: products.length,
-        latency_ms: stepLatencyMs,
-        cache_hit: false,
-      });
-      recordDiscoveryRecallStep({
-        surface: request?.surface,
-        step: step.label,
-        status: resp.status >= 200 && resp.status < 300 ? 'success' : `http_${resp.status}`,
-        latencyMs: stepLatencyMs,
-        cacheHit: false,
-      });
-
-      if (!(resp.status >= 200 && resp.status < 300)) continue;
-
-      successCount += 1;
-      for (const product of products) {
-        const merchantId = String(product?.merchant_id || product?.merchantId || '').trim();
-        const productId = String(product?.product_id || product?.productId || product?.id || '').trim();
-        const key = buildProductKey(merchantId, productId);
-        if (!key || seenKeys.has(key)) continue;
-        seenKeys.add(key);
-        mergedProducts.push(product);
-        if (mergedProducts.length >= safeLimit) break;
-      }
-      if (mergedProducts.length >= safeLimit) break;
-      if (step.allow_early_exit !== false && mergedProducts.length >= enoughThreshold) break;
-      if (Date.now() - recallStartedAt >= recallBudgetMs) {
-        truncatedByBudget = true;
-        break;
-      }
-    } catch (err) {
-      const stepLatencyMs = Date.now() - stepStartedAt;
-      recallSummary.push({
-        label: step.label,
-        query: step.query || null,
-        offset: step.offset,
-        limit: step.limit,
-        status: null,
-        returned: 0,
-        latency_ms: stepLatencyMs,
-        cache_hit: false,
-        error: err?.message || String(err),
-      });
-      recordDiscoveryRecallStep({
-        surface: request?.surface,
-        step: step.label,
-        status: 'error',
-        latencyMs: stepLatencyMs,
-        cacheHit: false,
-      });
+    successCount += 1;
+    mergeProducts(result.products);
+    if (mergedProducts.length >= safeLimit) break;
+    if (step.allow_early_exit !== false && mergedProducts.length >= enoughThreshold) break;
+    if (Date.now() - recallStartedAt >= recallBudgetMs) {
+      truncatedByBudget = true;
+      break;
     }
   }
 
@@ -1133,6 +1220,29 @@ function compareHomeEntries(a, b) {
   return a.candidate.key.localeCompare(b.candidate.key);
 }
 
+function getColdStartHomeDomainPriority(candidate) {
+  switch (candidate?.domain) {
+    case 'beauty':
+      return 4;
+    case 'unknown':
+      return 3;
+    case 'apparel':
+      return 1;
+    case 'sleepwear':
+    case 'pet':
+      return 0;
+    default:
+      return 2;
+  }
+}
+
+function compareColdStartHomeEntries(a, b) {
+  const priorityDiff =
+    getColdStartHomeDomainPriority(b?.candidate) - getColdStartHomeDomainPriority(a?.candidate);
+  if (priorityDiff !== 0) return priorityDiff;
+  return compareHomeEntries(a, b);
+}
+
 function compareBrowseEntries(a, b) {
   if (b.scores.finalScore !== a.scores.finalScore) return b.scores.finalScore - a.scores.finalScore;
   if (b.scores.browseBase !== a.scores.browseBase) return b.scores.browseBase - a.scores.browseBase;
@@ -1143,12 +1253,16 @@ function compareBrowseEntries(a, b) {
 function selectHomeProducts(scoredCandidates, viewedKeys, limit, options = {}) {
   const collectDebug = options.collectDebug === true;
   const profile = options.profile || null;
-  const ranked = [...scoredCandidates].sort(compareHomeEntries);
+  const coldStartCuration = !profile?.hasInterestSignals;
+  const ranked = [...scoredCandidates].sort(
+    coldStartCuration ? compareColdStartHomeEntries : compareHomeEntries,
+  );
 
   const selected = [];
   const decisions = collectDebug ? new Map() : null;
   const brandCounts = new Map();
   const rankedEligible = [];
+  const coldStartDeferred = [];
   for (const entry of ranked) {
     const rejectReason = getDiscoveryRejectReason(entry, profile, 'home_hot_deals');
     if (rejectReason) {
@@ -1157,6 +1271,11 @@ function selectHomeProducts(scoredCandidates, viewedKeys, limit, options = {}) {
     }
     if (viewedKeys.has(entry.candidate.key)) {
       if (decisions) decisions.set(entry.candidate.key, 'filtered_recent_view');
+      continue;
+    }
+    if (coldStartCuration && COLD_START_DEFERRED_DOMAINS.has(entry.candidate.domain)) {
+      coldStartDeferred.push(entry);
+      if (decisions) decisions.set(entry.candidate.key, 'filtered_cold_start_domain');
       continue;
     }
     rankedEligible.push(entry);
@@ -1177,6 +1296,13 @@ function selectHomeProducts(scoredCandidates, viewedKeys, limit, options = {}) {
     if (selected.some((picked) => picked.candidate.key === entry.candidate.key)) continue;
     selected.push(entry);
     if (decisions) decisions.set(entry.candidate.key, 'selected_fill');
+  }
+
+  for (const entry of coldStartDeferred) {
+    if (selected.length >= limit) break;
+    if (selected.some((picked) => picked.candidate.key === entry.candidate.key)) continue;
+    selected.push(entry);
+    if (decisions) decisions.set(entry.candidate.key, 'selected_cold_start_backfill');
   }
 
   const selectedItems = selected.slice(0, limit);
