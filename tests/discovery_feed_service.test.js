@@ -528,6 +528,120 @@ describe('discovery feed service', () => {
     expect(response.metadata.query_text).toBe('cherry');
   });
 
+  test('brand-scoped browse exposes category facets from the full eligible pool, not only the current page slice', async () => {
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 1,
+        sort: 'popular',
+        scope: {
+          brand_names: ['Tom Ford Beauty'],
+        },
+        context: {
+          locale: 'en-US',
+        },
+      },
+      {
+        candidateProducts: [
+          makeProduct({
+            merchant_id: 'm1',
+            product_id: 'rose_prick',
+            title: 'Rose Prick Eau de Parfum',
+            brand: 'Tom Ford Beauty',
+            category: 'Fragrance',
+            product_type: 'Perfume',
+            price: 410,
+          }),
+          makeProduct({
+            merchant_id: 'm2',
+            product_id: 'soleil',
+            title: 'Soleil Summer Lip Balm',
+            brand: 'Tom Ford Beauty',
+            category: 'Makeup',
+            product_type: 'Lip Balm',
+            price: 62,
+          }),
+          makeProduct({
+            merchant_id: 'm3',
+            product_id: 'shade_illuminate',
+            title: 'Shade and Illuminate Concealer',
+            brand: 'Tom Ford Beauty',
+            category: 'Complexion',
+            product_type: 'Concealer',
+            price: 95,
+          }),
+        ],
+      },
+    );
+
+    expect(response.products).toHaveLength(1);
+    expect(response.total).toBe(3);
+    expect(response.metadata.facets.categories).toEqual([
+      expect.objectContaining({ value: 'concealer', label: 'Concealer', count: 1 }),
+      expect.objectContaining({ value: 'lip balm', label: 'Lip Balm', count: 1 }),
+      expect.objectContaining({ value: 'perfume', label: 'Perfume', count: 1 }),
+    ]);
+  });
+
+  test('brand-scoped browse applies category scope while keeping facet counts from the broader query pool', async () => {
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        sort: 'popular',
+        scope: {
+          brand_names: ['Tom Ford Beauty'],
+          categories: ['lip balm'],
+        },
+        context: {
+          locale: 'en-US',
+        },
+      },
+      {
+        candidateProducts: [
+          makeProduct({
+            merchant_id: 'm1',
+            product_id: 'rose_prick',
+            title: 'Rose Prick Eau de Parfum',
+            brand: 'Tom Ford Beauty',
+            category: 'Fragrance',
+            product_type: 'Perfume',
+            price: 410,
+          }),
+          makeProduct({
+            merchant_id: 'm2',
+            product_id: 'soleil',
+            title: 'Soleil Summer Lip Balm',
+            brand: 'Tom Ford Beauty',
+            category: 'Makeup',
+            product_type: 'Lip Balm',
+            price: 62,
+          }),
+          makeProduct({
+            merchant_id: 'm3',
+            product_id: 'brush',
+            title: 'Cream Foundation Brush',
+            brand: 'Tom Ford Beauty',
+            category: 'Tools',
+            product_type: 'Brush',
+            price: 82,
+          }),
+        ],
+      },
+    );
+
+    expect(response.products.map((product) => product.product_id)).toEqual(['soleil']);
+    expect(response.total).toBe(1);
+    expect(response.metadata.category_scope_applied).toEqual(['lip balm']);
+    expect(response.metadata.facets.categories).toEqual([
+      expect.objectContaining({ value: 'brush', count: 1 }),
+      expect.objectContaining({ value: 'lip balm', count: 1 }),
+      expect.objectContaining({ value: 'perfume', count: 1 }),
+    ]);
+  });
+
   test('home_hot_deals excludes exact recent views and caps same brand at two items', async () => {
     const response = await getDiscoveryFeed(
       {

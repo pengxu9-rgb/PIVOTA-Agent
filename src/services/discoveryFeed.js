@@ -181,6 +181,19 @@ function normalizeDiscoveryQuery(raw) {
   };
 }
 
+function normalizeDiscoveryCategories(values, limit = 12) {
+  const out = [];
+  const seen = new Set();
+  for (const value of Array.isArray(values) ? values : []) {
+    const normalized = normalizeText(value || '');
+    if (!normalized || isWeakCategoryLabel(normalized) || seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
+    if (limit && out.length >= limit) break;
+  }
+  return out;
+}
+
 function normalizeDiscoveryScope(raw) {
   const source = raw && typeof raw === 'object' ? raw : {};
   const brandNames = uniqStrings(
@@ -192,8 +205,21 @@ function normalizeDiscoveryScope(raw) {
     ],
     4,
   );
+  const categories = normalizeDiscoveryCategories(
+    [
+      ...(Array.isArray(source.categories) ? source.categories : []),
+      ...(Array.isArray(source.category_names) ? source.category_names : []),
+      ...(Array.isArray(source.product_types) ? source.product_types : []),
+      source.category,
+      source.category_name,
+      source.product_type,
+      source.productType,
+    ],
+    12,
+  );
   return {
     brand_names: brandNames,
+    categories,
   };
 }
 
@@ -1478,6 +1504,47 @@ function matchesQueryTextCandidate(candidate, queryText) {
   return tokenHits >= Math.max(1, Math.ceil(queryTokens.length * 0.6));
 }
 
+function getDiscoveryCategoryFacetKey(candidate) {
+  const normalized = normalizeText(
+    candidate?.raw?.product_type ||
+      candidate?.raw?.productType ||
+      candidate?.category ||
+      candidate?.raw?.category ||
+      candidate?.parentCategory ||
+      '',
+  );
+  return !normalized || isWeakCategoryLabel(normalized) ? '' : normalized;
+}
+
+function buildDiscoveryCategoryLabel(value) {
+  return normalizeText(value || '').replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
+function matchesCategoryScopeCandidate(candidate, categories = []) {
+  const allowed = normalizeDiscoveryCategories(categories, 12);
+  if (!allowed.length) return true;
+  const candidateCategory = getDiscoveryCategoryFacetKey(candidate);
+  return candidateCategory ? allowed.includes(candidateCategory) : false;
+}
+
+function buildDiscoveryCategoryFacets(entries = []) {
+  const counts = new Map();
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    const candidate = entry?.candidate || entry;
+    const key = getDiscoveryCategoryFacetKey(candidate);
+    if (!key) continue;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([value, count]) => ({
+      value,
+      label: buildDiscoveryCategoryLabel(value),
+      count,
+    }));
+}
+
 async function loadBrandScopedRecommendationFallback({
   request,
   limit = 24,
@@ -1965,10 +2032,11 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
   const sort = normalizeDiscoverySort(options.sort);
   const brandScoped = options.brandScoped === true;
   const queryText = String(options.queryText || '').trim();
+  const categoryScope = normalizeDiscoveryCategories(options.categories, 12);
   const ranked = [...scoredCandidates].sort(compareBrowseEntriesBySort(sort));
   const decisions = collectDebug ? new Map() : null;
 
-  const orderedPool = [];
+  const preCategoryPool = [];
   for (const entry of ranked) {
     const rejectReason = getDiscoveryRejectReason(entry, profile, 'browse_products');
     if (rejectReason) {
@@ -1983,6 +2051,15 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
       if (decisions) decisions.set(entry.candidate.key, 'filtered_query_text');
       continue;
     }
+    preCategoryPool.push(entry);
+  }
+
+  const orderedPool = [];
+  for (const entry of preCategoryPool) {
+    if (categoryScope.length > 0 && !matchesCategoryScopeCandidate(entry.candidate, categoryScope)) {
+      if (decisions) decisions.set(entry.candidate.key, 'filtered_category_scope');
+      continue;
+    }
     orderedPool.push(entry);
   }
 
@@ -1990,6 +2067,7 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
   const pageItems = orderedPool.slice(start, start + limit);
   if (!collectDebug) {
     return {
+      preCategoryPool,
       orderedPool,
       pageItems,
     };
@@ -2006,6 +2084,7 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
 
   return {
     ranked,
+    preCategoryPool,
     orderedPool,
     pageItems,
     decisions,
@@ -2278,6 +2357,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
     let eligiblePoolCount = 0;
     let ranked = [];
     let orderedPool = [];
+    let categoryFacets = [];
     let decisions = new Map();
 
     if (request.surface === 'home_hot_deals') {
@@ -2311,11 +2391,16 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
           sort: request.sort,
           brandScoped: brandScopeAliases.length > 0,
           queryText: request.query.text,
+          categories: request.scope.categories,
         },
       );
       selectedEntries = browseSelection.pageItems;
       total = browseSelection.orderedPool.length;
       eligiblePoolCount = browseSelection.orderedPool.length;
+      categoryFacets =
+        brandScopeAliases.length > 0
+          ? buildDiscoveryCategoryFacets(browseSelection.preCategoryPool)
+          : [];
       if (request.debug.enabled) {
         ranked = browseSelection.ranked;
         orderedPool = browseSelection.orderedPool;
@@ -2357,8 +2442,12 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       request_latency_ms: latencyMs,
       sort_applied: request.sort,
       brand_scope_applied: request.scope.brand_names,
+      category_scope_applied: request.scope.categories,
       query_text: request.query.text,
       has_more: hasMore,
+      facets: {
+        categories: categoryFacets,
+      },
       ...(profile.dominantDomain ? { dominant_domain: profile.dominantDomain } : {}),
     };
 
