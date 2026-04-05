@@ -2299,29 +2299,6 @@ async function recallIngredientProductsFromProfile({
     }
   };
 
-  diagnostics.kb_recall_attempted = true;
-  const kbAttachedRows = await fetchSeedRowsByIdentity({
-    seedIds: kbSeedIds,
-    urls: kbUrls,
-    market,
-    tool,
-    attachedState: 'attached',
-    limit: resolveRecallFetchLimit(profile, limit, 4, 24),
-  });
-  diagnostics.kb_recall_recovered = kbAttachedRows.length > 0 ? 1 : 0;
-  addRows(kbAttachedRows, 'kb_attached_seed', { useKbEvidence: true });
-  const kbNamedAttachedRows = await fetchSeedRowsByPatterns({
-    patterns: kbProductNamePatterns,
-    market,
-    tool,
-    attachedState: 'attached',
-    limit: resolveRecallFetchLimit(profile, limit, 4, 24),
-    inStockOnly,
-  });
-  if (kbNamedAttachedRows.length > 0) diagnostics.kb_recall_recovered = 1;
-  addRows(kbNamedAttachedRows, 'kb_named_attached_seed', { useKbEvidence: true });
-
-  diagnostics.attached_seed_recall_attempted = true;
   const targetAnchoredExplicitPatterns = buildTargetAnchoredExplicitPatterns({
     profile,
     targetStepFamily,
@@ -2331,101 +2308,139 @@ async function recallIngredientProductsFromProfile({
     ...(Array.isArray(profile.exact_phrases) ? profile.exact_phrases : []),
     ...(Array.isArray(profile.alias_phrases) ? profile.alias_phrases : []),
   ]);
-  const attachedAnchoredRows = await fetchSeedRowsByPatterns({
-    patterns: targetAnchoredExplicitPatterns,
-    market,
-    tool,
-    attachedState: 'attached',
-    limit: resolveRecallFetchLimit(profile, limit, 4, 24),
-    inStockOnly,
-  });
-  if (attachedAnchoredRows.length > 0) diagnostics.attached_seed_recall_recovered = 1;
-  addRows(attachedAnchoredRows, 'attached_seed_target_anchored');
-  const attachedSeedRows = await fetchSeedRowsByPatterns({
-    patterns: explicitPatterns,
-    market,
-    tool,
-    attachedState: 'attached',
-    limit: resolveRecallFetchLimit(profile, limit, 6, 30),
-    inStockOnly,
-  });
+  diagnostics.kb_recall_attempted = true;
+  diagnostics.attached_seed_recall_attempted = true;
+  diagnostics.products_cache_recall_attempted = true;
+  diagnostics.unattached_seed_recall_attempted = true;
+
+  const [
+    kbAttachedRows,
+    kbNamedAttachedRows,
+    attachedAnchoredRows,
+    attachedSeedRows,
+    cacheAnchoredRows,
+    cacheExplicitRows,
+    kbNamedCacheRows,
+    kbUnattachedRows,
+    unattachedAnchoredRows,
+    unattachedSeedRows,
+    kbNamedUnattachedRows,
+  ] = await Promise.all([
+    fetchSeedRowsByIdentity({
+      seedIds: kbSeedIds,
+      urls: kbUrls,
+      market,
+      tool,
+      attachedState: 'attached',
+      limit: resolveRecallFetchLimit(profile, limit, 4, 24),
+    }),
+    fetchSeedRowsByPatterns({
+      patterns: kbProductNamePatterns,
+      market,
+      tool,
+      attachedState: 'attached',
+      limit: resolveRecallFetchLimit(profile, limit, 4, 24),
+      inStockOnly,
+    }),
+    fetchSeedRowsByPatterns({
+      patterns: targetAnchoredExplicitPatterns,
+      market,
+      tool,
+      attachedState: 'attached',
+      limit: resolveRecallFetchLimit(profile, limit, 4, 24),
+      inStockOnly,
+    }),
+    fetchSeedRowsByPatterns({
+      patterns: explicitPatterns,
+      market,
+      tool,
+      attachedState: 'attached',
+      limit: resolveRecallFetchLimit(profile, limit, 6, 30),
+      inStockOnly,
+    }),
+    fetchProductsCacheRowsByPatterns({
+      patterns: targetAnchoredExplicitPatterns,
+      limit: resolveRecallFetchLimit(profile, limit, 4, 24),
+    }),
+    fetchProductsCacheRowsByPatterns({
+      patterns: explicitPatterns,
+      limit: resolveRecallFetchLimit(profile, limit, 6, 30),
+    }),
+    fetchProductsCacheRowsByPatterns({
+      patterns: kbProductNamePatterns,
+      limit: resolveRecallFetchLimit(profile, limit, 4, 24),
+    }),
+    fetchSeedRowsByIdentity({
+      seedIds: kbSeedIds,
+      urls: kbUrls,
+      market,
+      tool,
+      attachedState: 'unattached',
+      limit: resolveRecallFetchLimit(profile, limit, 4, 18),
+    }),
+    fetchSeedRowsByPatterns({
+      patterns: targetAnchoredExplicitPatterns,
+      market,
+      tool,
+      attachedState: 'unattached',
+      limit: resolveRecallFetchLimit(profile, limit, 4, 18),
+      inStockOnly,
+    }),
+    fetchSeedRowsByPatterns({
+      patterns: explicitPatterns,
+      market,
+      tool,
+      attachedState: 'unattached',
+      limit: resolveRecallFetchLimit(profile, limit, 8, 36),
+      inStockOnly,
+    }),
+    fetchSeedRowsByPatterns({
+      patterns: kbProductNamePatterns,
+      market,
+      tool,
+      attachedState: 'unattached',
+      limit: resolveRecallFetchLimit(profile, limit, 4, 18),
+      inStockOnly,
+    }),
+  ]);
+
+  diagnostics.kb_recall_recovered =
+    kbAttachedRows.length > 0 || kbNamedAttachedRows.length > 0 ? 1 : 0;
+  addRows(kbAttachedRows, 'kb_attached_seed', { useKbEvidence: true });
+  addRows(kbNamedAttachedRows, 'kb_named_attached_seed', { useKbEvidence: true });
+
   diagnostics.attached_seed_recall_recovered =
-    diagnostics.attached_seed_recall_recovered || (attachedSeedRows.length > 0 ? 1 : 0);
+    attachedAnchoredRows.length > 0 || attachedSeedRows.length > 0 ? 1 : 0;
+  addRows(attachedAnchoredRows, 'attached_seed_target_anchored');
   addRows(attachedSeedRows, 'attached_seed');
 
-  diagnostics.products_cache_recall_attempted = true;
-  const cacheAnchoredRows = await fetchProductsCacheRowsByPatterns({
-    patterns: targetAnchoredExplicitPatterns,
-    limit: resolveRecallFetchLimit(profile, limit, 4, 24),
-  });
-  if (cacheAnchoredRows.length > 0) diagnostics.products_cache_recall_recovered = 1;
+  diagnostics.products_cache_recall_recovered =
+    cacheAnchoredRows.length > 0 || cacheExplicitRows.length > 0 || kbNamedCacheRows.length > 0 ? 1 : 0;
   addRows(cacheAnchoredRows, 'products_cache_target_anchored', {
     mapper: mapProductsCacheRowToRecallProduct,
     kbResolver: (_row, product, lookup) => resolveKbEvidenceForProduct(product, lookup),
     useKbEvidence: true,
   });
-  const cacheExplicitRows = await fetchProductsCacheRowsByPatterns({
-    patterns: explicitPatterns,
-    limit: resolveRecallFetchLimit(profile, limit, 6, 30),
-  });
-  diagnostics.products_cache_recall_recovered =
-    diagnostics.products_cache_recall_recovered || (cacheExplicitRows.length > 0 ? 1 : 0);
   addRows(cacheExplicitRows, 'products_cache', {
     mapper: mapProductsCacheRowToRecallProduct,
     kbResolver: (_row, product, lookup) => resolveKbEvidenceForProduct(product, lookup),
     useKbEvidence: true,
   });
-  const kbNamedCacheRows = await fetchProductsCacheRowsByPatterns({
-    patterns: kbProductNamePatterns,
-    limit: resolveRecallFetchLimit(profile, limit, 4, 24),
-  });
-  if (kbNamedCacheRows.length > 0) diagnostics.products_cache_recall_recovered = 1;
   addRows(kbNamedCacheRows, 'kb_named_products_cache', {
     mapper: mapProductsCacheRowToRecallProduct,
     kbResolver: (_row, product, lookup) => resolveKbEvidenceForProduct(product, lookup),
     useKbEvidence: true,
   });
 
-  diagnostics.unattached_seed_recall_attempted = true;
-  const kbUnattachedRows = await fetchSeedRowsByIdentity({
-    seedIds: kbSeedIds,
-    urls: kbUrls,
-    market,
-    tool,
-    attachedState: 'unattached',
-    limit: resolveRecallFetchLimit(profile, limit, 4, 18),
-  });
-  const unattachedAnchoredRows = await fetchSeedRowsByPatterns({
-    patterns: targetAnchoredExplicitPatterns,
-    market,
-    tool,
-    attachedState: 'unattached',
-    limit: resolveRecallFetchLimit(profile, limit, 4, 18),
-    inStockOnly,
-  });
-  if (unattachedAnchoredRows.length > 0) diagnostics.unattached_seed_recall_recovered = 1;
-  addRows(unattachedAnchoredRows, 'unattached_seed_target_anchored');
-  const unattachedSeedRows = await fetchSeedRowsByPatterns({
-    patterns: explicitPatterns,
-    market,
-    tool,
-    attachedState: 'unattached',
-    limit: resolveRecallFetchLimit(profile, limit, 8, 36),
-    inStockOnly,
-  });
   diagnostics.unattached_seed_recall_recovered =
-    diagnostics.unattached_seed_recall_recovered ||
-    (kbUnattachedRows.length > 0 || unattachedSeedRows.length > 0 ? 1 : 0);
+    kbUnattachedRows.length > 0 ||
+    unattachedAnchoredRows.length > 0 ||
+    unattachedSeedRows.length > 0 ||
+    kbNamedUnattachedRows.length > 0
+      ? 1
+      : 0;
+  addRows(unattachedAnchoredRows, 'unattached_seed_target_anchored');
   addRows(kbUnattachedRows, 'kb_unattached_seed', { useKbEvidence: true });
-  const kbNamedUnattachedRows = await fetchSeedRowsByPatterns({
-    patterns: kbProductNamePatterns,
-    market,
-    tool,
-    attachedState: 'unattached',
-    limit: resolveRecallFetchLimit(profile, limit, 4, 18),
-    inStockOnly,
-  });
-  if (kbNamedUnattachedRows.length > 0) diagnostics.unattached_seed_recall_recovered = 1;
   addRows(kbNamedUnattachedRows, 'kb_named_unattached_seed', { useKbEvidence: true });
   addRows(unattachedSeedRows, 'unattached_seed');
 
@@ -2461,22 +2476,24 @@ async function recallIngredientProductsFromProfile({
     diagnostics.family_fallback_attempted = true;
     const familyPatterns = buildPhrasePatterns(profile.family_phrases);
     if (familyPatterns.length) {
-      const familyAttachedRows = await fetchSeedRowsByPatterns({
-        patterns: familyPatterns,
-        market,
-        tool,
-        attachedState: 'attached',
-        limit: Math.max(6, Number(limit) * 4 || 24),
-        inStockOnly,
-      });
-      const familyUnattachedRows = await fetchSeedRowsByPatterns({
-        patterns: familyPatterns,
-        market,
-        tool,
-        attachedState: 'unattached',
-        limit: Math.max(6, Number(limit) * 4 || 24),
-        inStockOnly,
-      });
+      const [familyAttachedRows, familyUnattachedRows] = await Promise.all([
+        fetchSeedRowsByPatterns({
+          patterns: familyPatterns,
+          market,
+          tool,
+          attachedState: 'attached',
+          limit: Math.max(6, Number(limit) * 4 || 24),
+          inStockOnly,
+        }),
+        fetchSeedRowsByPatterns({
+          patterns: familyPatterns,
+          market,
+          tool,
+          attachedState: 'unattached',
+          limit: Math.max(6, Number(limit) * 4 || 24),
+          inStockOnly,
+        }),
+      ]);
       addRows(familyAttachedRows, 'family_attached_seed', { allowFamilyOnly: true });
       addRows(familyUnattachedRows, 'family_unattached_seed', { allowFamilyOnly: true });
       const familyCandidates = explicitCandidates.filter((row) => row.evidence.family_only === 1);

@@ -2767,6 +2767,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         route_health: expect.objectContaining({
           fallback_triggered: false,
         }),
+        search_decision: expect.objectContaining({
+          query_target_step_family: 'serum',
+        }),
       }),
     );
   });

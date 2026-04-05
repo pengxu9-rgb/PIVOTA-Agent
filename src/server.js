@@ -6729,7 +6729,6 @@ function resolveIngredientIntentTargetStepFamily({
   ) {
     return 'treatment';
   }
-  if (inferred && expectedFamilies.includes(inferred)) return inferred;
 
   if (/\b(cleanser|face wash|facial wash|cleansing gel|cleansing foam|cleansing milk|wash)\b/.test(normalizedQuery)) {
     if (expectedFamilies.includes('cleanser')) return 'cleanser';
@@ -6754,6 +6753,7 @@ function resolveIngredientIntentTargetStepFamily({
     if (expectedFamilies.includes('moisturizer')) return 'moisturizer';
   }
 
+  if (inferred && expectedFamilies.includes(inferred)) return inferred;
   if (inferred) return inferred;
   if (prefersTreatmentOverMoisturizer && expectedFamilies.includes('treatment')) return 'treatment';
   return expectedFamilies[0] || '';

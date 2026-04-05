@@ -777,7 +777,8 @@ describe('find_products_multi intent + filtering', () => {
         raw_query: 'vitamin c serum under €30',
         expanded_query: 'vitamin c serum under €30',
         semantic_contract: expect.objectContaining({
-          target_step_family: 'treatment',
+          target_step_family: 'serum',
+          primary_role_id: 'brightening_serum',
         }),
       }),
     );
