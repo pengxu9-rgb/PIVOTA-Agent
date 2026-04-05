@@ -20,6 +20,9 @@ describe('run_discovery_feed_smoke helpers', () => {
       'X-Agent-API-Key': 'test-key',
       Authorization: 'Bearer test-key',
     });
+    expect(buildAuthHeaders({ authToken: 'bearer-only-token' })).toEqual({
+      Authorization: 'Bearer bearer-only-token',
+    });
   });
 
   test('picks seed product and builds recent view payload', () => {

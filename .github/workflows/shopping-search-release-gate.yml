@@ -248,6 +248,7 @@ jobs:
           BASE_URL="$PROD_SMOKE_BASE_URL" \
           ENDPOINT="$PROD_SMOKE_ENDPOINT" \
           AGENT_API_KEY="$COMMERCE_CORE_PROD_AGENT_API_KEY" \
+          AUTH_TOKEN="$COMMERCE_CORE_PROD_AUTH_TOKEN" \
           VERIFY_DEPLOY=0 \
           TIMEOUT_MS=25000 \
           bash scripts/smoke_discovery_feed_prod.sh
