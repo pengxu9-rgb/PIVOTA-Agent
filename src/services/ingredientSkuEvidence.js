@@ -1169,13 +1169,14 @@ function requiresSameFamilyExplicitGate(profile = null, targetStepFamily = '') {
   return SAME_FAMILY_EXPLICIT_REQUIRED_INGREDIENT_CLASSES.has(ingredientClass);
 }
 
-function resolveRecallFetchLimit(profile, limit, multiplier = 1, fallbackLimit = 24) {
+function resolveRecallFetchLimit(profile, limit, multiplier = 1, fallbackLimit = 24, hardCap = 120) {
   const baseLimit = Math.max(6, Number(limit) || fallbackLimit);
   const ingredientClass = normalizeIngredientRecallText(profile?.ingredient_class || '');
   const boostedMultiplier = SAME_FAMILY_EXPLICIT_REQUIRED_INGREDIENT_CLASSES.has(ingredientClass)
     ? Math.max(multiplier, 10)
     : multiplier;
-  return Math.max(8, Math.min(120, Math.floor(baseLimit * boostedMultiplier)));
+  const resolvedHardCap = Math.max(8, Number(hardCap) || 120);
+  return Math.max(8, Math.min(resolvedHardCap, Math.floor(baseLimit * boostedMultiplier)));
 }
 
 function mergeBreakdown(target, sourceTag, amount = 1) {
@@ -2120,6 +2121,45 @@ function resolveSourceRank(sourceTag) {
   return 60;
 }
 
+function rankIngredientRecallCandidates(explicitCandidates = []) {
+  let candidates = Array.isArray(explicitCandidates) ? explicitCandidates.slice() : [];
+  const explicitRows = candidates.filter((row) => Number(row?.evidence?.explicit_hits || 0) > 0);
+  if (explicitRows.length) candidates = explicitRows;
+  const sameFamilyRows = candidates.filter((row) => row?.evidence?.family_relation === 'same_family');
+  if (sameFamilyRows.length) candidates = sameFamilyRows;
+  const nonNoiseRows = candidates.filter((row) => row.obviousNoise !== true);
+  if (nonNoiseRows.length) candidates = nonNoiseRows;
+  const nonBundleRows = candidates.filter((row) => row.bundleLike !== true);
+  if (nonBundleRows.length) candidates = nonBundleRows;
+  return candidates;
+}
+
+function buildStabilizedIngredientRecallProducts(candidates, { profile = null, targetStepFamily = '', query = '', limit = 6 } = {}) {
+  const stabilizationRows = (Array.isArray(candidates) ? candidates : []).slice(
+    0,
+    Math.max(
+      Math.max(1, Number(limit) || 6),
+      Math.min(48, Math.max(12, Math.floor((Number(limit) || 6) * 4))),
+    ),
+  );
+
+  return stabilizeIngredientRecallProducts(
+    stabilizationRows.map((row) => row.product),
+    {
+      recallProfile: profile,
+      targetStepFamily,
+      queryText: query,
+      maxProducts: Math.max(1, Number(limit) || 6),
+    },
+  );
+}
+
+function hasEnoughDirectRecallProducts(products, limit) {
+  const safeLimit = Math.max(1, Number(limit) || 6);
+  const required = Math.min(safeLimit, safeLimit >= 4 ? 4 : Math.max(2, safeLimit));
+  return (Array.isArray(products) ? products.length : 0) >= required;
+}
+
 function buildDirectMissReason({ registryDiagnostics, explicitAttempted, allCandidates, scoredCandidates, stepMismatchCount, noiseFilteredCount, finalProducts }) {
   if (registryDiagnostics?.registry_unavailable === true) return 'registry_unavailable';
   if (registryDiagnostics?.registry_match !== true) return 'no_registry_match';
@@ -2206,15 +2246,7 @@ async function recallIngredientProductsFromProfile({
   const explicitCandidates = [];
   let stepMismatchCount = 0;
   let noiseFilteredCount = 0;
-
-  const kbRows = await fetchKbRowsForProfile({
-    profile,
-    limit: resolveRecallFetchLimit(profile, limit, 6, 24),
-  });
-  const kbEvidenceLookup = buildKbEvidenceLookup(profile, kbRows);
-  const kbProductNamePatterns = buildKbProductNamePatterns(kbRows, 20);
-  const kbSeedIds = uniqStrings(kbRows.map((row) => extractSeedIdFromSkuKey(row?.sku_key)).filter(Boolean), 80);
-  const kbUrls = uniqStrings(kbRows.map((row) => normalizeUrl(row?.source_ref)).filter(Boolean), 80);
+  let kbEvidenceLookup = buildKbEvidenceLookup(profile, []);
 
   const recordRejectedCandidate = (product, sourceTag, rejectReason, evidence = null, kbEvidence = null) => {
     const normalizedReason = String(rejectReason || 'all_candidates_filtered_noise').trim() || 'all_candidates_filtered_noise';
@@ -2299,28 +2331,6 @@ async function recallIngredientProductsFromProfile({
     }
   };
 
-  diagnostics.kb_recall_attempted = true;
-  const kbAttachedRows = await fetchSeedRowsByIdentity({
-    seedIds: kbSeedIds,
-    urls: kbUrls,
-    market,
-    tool,
-    attachedState: 'attached',
-    limit: resolveRecallFetchLimit(profile, limit, 4, 24),
-  });
-  diagnostics.kb_recall_recovered = kbAttachedRows.length > 0 ? 1 : 0;
-  addRows(kbAttachedRows, 'kb_attached_seed', { useKbEvidence: true });
-  const kbNamedAttachedRows = await fetchSeedRowsByPatterns({
-    patterns: kbProductNamePatterns,
-    market,
-    tool,
-    attachedState: 'attached',
-    limit: resolveRecallFetchLimit(profile, limit, 4, 24),
-    inStockOnly,
-  });
-  if (kbNamedAttachedRows.length > 0) diagnostics.kb_recall_recovered = 1;
-  addRows(kbNamedAttachedRows, 'kb_named_attached_seed', { useKbEvidence: true });
-
   diagnostics.attached_seed_recall_attempted = true;
   const targetAnchoredExplicitPatterns = buildTargetAnchoredExplicitPatterns({
     profile,
@@ -2331,42 +2341,44 @@ async function recallIngredientProductsFromProfile({
     ...(Array.isArray(profile.exact_phrases) ? profile.exact_phrases : []),
     ...(Array.isArray(profile.alias_phrases) ? profile.alias_phrases : []),
   ]);
-  const attachedAnchoredRows = await fetchSeedRowsByPatterns({
-    patterns: targetAnchoredExplicitPatterns,
-    market,
-    tool,
-    attachedState: 'attached',
-    limit: resolveRecallFetchLimit(profile, limit, 4, 24),
-    inStockOnly,
-  });
-  if (attachedAnchoredRows.length > 0) diagnostics.attached_seed_recall_recovered = 1;
+  const [attachedAnchoredRows, attachedSeedRows, cacheAnchoredRows, cacheExplicitRows] = await Promise.all([
+    fetchSeedRowsByPatterns({
+      patterns: targetAnchoredExplicitPatterns,
+      market,
+      tool,
+      attachedState: 'attached',
+      limit: resolveRecallFetchLimit(profile, limit, 2, 18, 18),
+      inStockOnly,
+    }),
+    fetchSeedRowsByPatterns({
+      patterns: explicitPatterns,
+      market,
+      tool,
+      attachedState: 'attached',
+      limit: resolveRecallFetchLimit(profile, limit, 3, 24, 24),
+      inStockOnly,
+    }),
+    fetchProductsCacheRowsByPatterns({
+      patterns: targetAnchoredExplicitPatterns,
+      limit: resolveRecallFetchLimit(profile, limit, 2, 18, 18),
+    }),
+    fetchProductsCacheRowsByPatterns({
+      patterns: explicitPatterns,
+      limit: resolveRecallFetchLimit(profile, limit, 3, 24, 24),
+    }),
+  ]);
+  diagnostics.attached_seed_recall_recovered = attachedAnchoredRows.length > 0 ? 1 : 0;
   addRows(attachedAnchoredRows, 'attached_seed_target_anchored');
-  const attachedSeedRows = await fetchSeedRowsByPatterns({
-    patterns: explicitPatterns,
-    market,
-    tool,
-    attachedState: 'attached',
-    limit: resolveRecallFetchLimit(profile, limit, 6, 30),
-    inStockOnly,
-  });
   diagnostics.attached_seed_recall_recovered =
     diagnostics.attached_seed_recall_recovered || (attachedSeedRows.length > 0 ? 1 : 0);
   addRows(attachedSeedRows, 'attached_seed');
 
   diagnostics.products_cache_recall_attempted = true;
-  const cacheAnchoredRows = await fetchProductsCacheRowsByPatterns({
-    patterns: targetAnchoredExplicitPatterns,
-    limit: resolveRecallFetchLimit(profile, limit, 4, 24),
-  });
   if (cacheAnchoredRows.length > 0) diagnostics.products_cache_recall_recovered = 1;
   addRows(cacheAnchoredRows, 'products_cache_target_anchored', {
     mapper: mapProductsCacheRowToRecallProduct,
     kbResolver: (_row, product, lookup) => resolveKbEvidenceForProduct(product, lookup),
     useKbEvidence: true,
-  });
-  const cacheExplicitRows = await fetchProductsCacheRowsByPatterns({
-    patterns: explicitPatterns,
-    limit: resolveRecallFetchLimit(profile, limit, 6, 30),
   });
   diagnostics.products_cache_recall_recovered =
     diagnostics.products_cache_recall_recovered || (cacheExplicitRows.length > 0 ? 1 : 0);
@@ -2375,69 +2387,123 @@ async function recallIngredientProductsFromProfile({
     kbResolver: (_row, product, lookup) => resolveKbEvidenceForProduct(product, lookup),
     useKbEvidence: true,
   });
-  const kbNamedCacheRows = await fetchProductsCacheRowsByPatterns({
-    patterns: kbProductNamePatterns,
-    limit: resolveRecallFetchLimit(profile, limit, 4, 24),
-  });
-  if (kbNamedCacheRows.length > 0) diagnostics.products_cache_recall_recovered = 1;
-  addRows(kbNamedCacheRows, 'kb_named_products_cache', {
-    mapper: mapProductsCacheRowToRecallProduct,
-    kbResolver: (_row, product, lookup) => resolveKbEvidenceForProduct(product, lookup),
-    useKbEvidence: true,
+  let candidates = rankIngredientRecallCandidates(explicitCandidates);
+  let stabilizedProducts = buildStabilizedIngredientRecallProducts(candidates, {
+    profile,
+    targetStepFamily,
+    query,
+    limit,
   });
 
-  diagnostics.unattached_seed_recall_attempted = true;
-  const kbUnattachedRows = await fetchSeedRowsByIdentity({
-    seedIds: kbSeedIds,
-    urls: kbUrls,
-    market,
-    tool,
-    attachedState: 'unattached',
-    limit: resolveRecallFetchLimit(profile, limit, 4, 18),
-  });
-  const unattachedAnchoredRows = await fetchSeedRowsByPatterns({
-    patterns: targetAnchoredExplicitPatterns,
-    market,
-    tool,
-    attachedState: 'unattached',
-    limit: resolveRecallFetchLimit(profile, limit, 4, 18),
-    inStockOnly,
-  });
-  if (unattachedAnchoredRows.length > 0) diagnostics.unattached_seed_recall_recovered = 1;
-  addRows(unattachedAnchoredRows, 'unattached_seed_target_anchored');
-  const unattachedSeedRows = await fetchSeedRowsByPatterns({
-    patterns: explicitPatterns,
-    market,
-    tool,
-    attachedState: 'unattached',
-    limit: resolveRecallFetchLimit(profile, limit, 8, 36),
-    inStockOnly,
-  });
-  diagnostics.unattached_seed_recall_recovered =
-    diagnostics.unattached_seed_recall_recovered ||
-    (kbUnattachedRows.length > 0 || unattachedSeedRows.length > 0 ? 1 : 0);
-  addRows(kbUnattachedRows, 'kb_unattached_seed', { useKbEvidence: true });
-  const kbNamedUnattachedRows = await fetchSeedRowsByPatterns({
-    patterns: kbProductNamePatterns,
-    market,
-    tool,
-    attachedState: 'unattached',
-    limit: resolveRecallFetchLimit(profile, limit, 4, 18),
-    inStockOnly,
-  });
-  if (kbNamedUnattachedRows.length > 0) diagnostics.unattached_seed_recall_recovered = 1;
-  addRows(kbNamedUnattachedRows, 'kb_named_unattached_seed', { useKbEvidence: true });
-  addRows(unattachedSeedRows, 'unattached_seed');
+  if (!hasEnoughDirectRecallProducts(stabilizedProducts, limit)) {
+    diagnostics.kb_recall_attempted = true;
+    diagnostics.unattached_seed_recall_attempted = true;
 
-  let candidates = explicitCandidates.slice();
-  const explicitRows = candidates.filter((row) => Number(row?.evidence?.explicit_hits || 0) > 0);
-  if (explicitRows.length) candidates = explicitRows;
-  const sameFamilyRows = candidates.filter((row) => row?.evidence?.family_relation === 'same_family');
-  if (sameFamilyRows.length) candidates = sameFamilyRows;
-  const nonNoiseRows = candidates.filter((row) => row.obviousNoise !== true);
-  if (nonNoiseRows.length) candidates = nonNoiseRows;
-  const nonBundleRows = candidates.filter((row) => row.bundleLike !== true);
-  if (nonBundleRows.length) candidates = nonBundleRows;
+    const kbRows = await fetchKbRowsForProfile({
+      profile,
+      limit: resolveRecallFetchLimit(profile, limit, 3, 18, 18),
+    });
+    kbEvidenceLookup = buildKbEvidenceLookup(profile, kbRows);
+    const kbProductNamePatterns = buildKbProductNamePatterns(kbRows, 12);
+    const kbSeedIds = uniqStrings(kbRows.map((row) => extractSeedIdFromSkuKey(row?.sku_key)).filter(Boolean), 40);
+    const kbUrls = uniqStrings(kbRows.map((row) => normalizeUrl(row?.source_ref)).filter(Boolean), 40);
+
+    const [
+      kbAttachedRows,
+      kbNamedAttachedRows,
+      kbNamedCacheRows,
+      kbUnattachedRows,
+      unattachedAnchoredRows,
+      unattachedSeedRows,
+      kbNamedUnattachedRows,
+    ] = await Promise.all([
+      fetchSeedRowsByIdentity({
+        seedIds: kbSeedIds,
+        urls: kbUrls,
+        market,
+        tool,
+        attachedState: 'attached',
+        limit: resolveRecallFetchLimit(profile, limit, 2, 12, 12),
+      }),
+      fetchSeedRowsByPatterns({
+        patterns: kbProductNamePatterns,
+        market,
+        tool,
+        attachedState: 'attached',
+        limit: resolveRecallFetchLimit(profile, limit, 2, 12, 12),
+        inStockOnly,
+      }),
+      fetchProductsCacheRowsByPatterns({
+        patterns: kbProductNamePatterns,
+        limit: resolveRecallFetchLimit(profile, limit, 2, 12, 12),
+      }),
+      fetchSeedRowsByIdentity({
+        seedIds: kbSeedIds,
+        urls: kbUrls,
+        market,
+        tool,
+        attachedState: 'unattached',
+        limit: resolveRecallFetchLimit(profile, limit, 2, 12, 12),
+      }),
+      fetchSeedRowsByPatterns({
+        patterns: targetAnchoredExplicitPatterns,
+        market,
+        tool,
+        attachedState: 'unattached',
+        limit: resolveRecallFetchLimit(profile, limit, 2, 12, 12),
+        inStockOnly,
+      }),
+      fetchSeedRowsByPatterns({
+        patterns: explicitPatterns,
+        market,
+        tool,
+        attachedState: 'unattached',
+        limit: resolveRecallFetchLimit(profile, limit, 3, 16, 16),
+        inStockOnly,
+      }),
+      fetchSeedRowsByPatterns({
+        patterns: kbProductNamePatterns,
+        market,
+        tool,
+        attachedState: 'unattached',
+        limit: resolveRecallFetchLimit(profile, limit, 2, 12, 12),
+        inStockOnly,
+      }),
+    ]);
+
+    diagnostics.kb_recall_recovered =
+      kbAttachedRows.length > 0 || kbNamedAttachedRows.length > 0 ? 1 : 0;
+    addRows(kbAttachedRows, 'kb_attached_seed', { useKbEvidence: true });
+    addRows(kbNamedAttachedRows, 'kb_named_attached_seed', { useKbEvidence: true });
+
+    if (kbNamedCacheRows.length > 0) diagnostics.products_cache_recall_recovered = 1;
+    addRows(kbNamedCacheRows, 'kb_named_products_cache', {
+      mapper: mapProductsCacheRowToRecallProduct,
+      kbResolver: (_row, product, lookup) => resolveKbEvidenceForProduct(product, lookup),
+      useKbEvidence: true,
+    });
+
+    diagnostics.unattached_seed_recall_recovered =
+      kbUnattachedRows.length > 0 ||
+      unattachedAnchoredRows.length > 0 ||
+      unattachedSeedRows.length > 0 ||
+      kbNamedUnattachedRows.length > 0
+        ? 1
+        : 0;
+    addRows(unattachedAnchoredRows, 'unattached_seed_target_anchored');
+    addRows(kbUnattachedRows, 'kb_unattached_seed', { useKbEvidence: true });
+    addRows(kbNamedUnattachedRows, 'kb_named_unattached_seed', { useKbEvidence: true });
+    addRows(unattachedSeedRows, 'unattached_seed');
+
+    candidates = rankIngredientRecallCandidates(explicitCandidates);
+    stabilizedProducts = buildStabilizedIngredientRecallProducts(candidates, {
+      profile,
+      targetStepFamily,
+      query,
+      limit,
+    });
+  }
+
   const lateRejectedRows = [];
   const lateEligibleRows = [];
   for (const row of candidates) {
@@ -2539,23 +2605,12 @@ async function recallIngredientProductsFromProfile({
       : rankedSamples.find((row) => String(row?.seed_anchor_conflict_status || '').trim() && row.seed_anchor_conflict_status !== 'none')
           ?.seed_anchor_conflict_status || 'none';
 
-  const stabilizationRows = candidates.slice(
-    0,
-    Math.max(
-      Math.max(1, Number(limit) || 6),
-      Math.min(48, Math.max(12, Math.floor((Number(limit) || 6) * 4))),
-    ),
-  );
-
-  const stabilizedProducts = stabilizeIngredientRecallProducts(
-    stabilizationRows.map((row) => row.product),
-    {
-      recallProfile: profile,
-      targetStepFamily,
-      queryText: query,
-      maxProducts: Math.max(1, Number(limit) || 6),
-    },
-  );
+  stabilizedProducts = buildStabilizedIngredientRecallProducts(candidates, {
+    profile,
+    targetStepFamily,
+    query,
+    limit,
+  });
   diagnostics.recall_source_breakdown = {};
   for (const product of stabilizedProducts) {
     const sourceTag = String(product?.__ingredient_recall_meta?.source_tag || '').trim() || 'unknown';

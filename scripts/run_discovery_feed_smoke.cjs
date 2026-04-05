@@ -73,6 +73,16 @@ function summarizeProducts(products) {
   }));
 }
 
+function matchesDisallowedTitle(title, patterns) {
+  const normalizedTitle = String(title || '').trim();
+  if (!normalizedTitle) return false;
+  return (Array.isArray(patterns) ? patterns : []).some((pattern) => {
+    if (pattern instanceof RegExp) return pattern.test(normalizedTitle);
+    const text = String(pattern || '').trim();
+    return text ? new RegExp(text, 'i').test(normalizedTitle) : false;
+  });
+}
+
 function validateDiscoveryResponse(response, expectations = {}) {
   ensure(response && typeof response === 'object', 'response must be an object');
   const products = Array.isArray(response.products) ? response.products : [];
@@ -136,6 +146,14 @@ function validateDiscoveryResponse(response, expectations = {}) {
     expectations.excludeProductKeys.forEach((key) => {
       ensure(!returnedKeys.has(key), `suppressed product returned unexpectedly: ${key}`);
     });
+  }
+
+  if (Array.isArray(expectations.disallowTitlePatterns) && expectations.disallowTitlePatterns.length > 0) {
+    const offenders = products
+      .slice(0, Math.max(1, Number(expectations.disallowTopN || 3)))
+      .filter((product) => matchesDisallowedTitle(product?.title || product?.name || '', expectations.disallowTitlePatterns))
+      .map((product) => product?.title || product?.name || '');
+    ensure(offenders.length === 0, `disallowed cold-start titles returned: ${offenders.join(' | ')}`);
   }
 
   return {
@@ -252,6 +270,17 @@ async function runSmoke(options = {}) {
     minProducts: 1,
     requireRankDebug: true,
     requiredRecallLabels: [['cold_start_curated', 'browse_pool']],
+    disallowTopN: 3,
+    disallowTitlePatterns: [
+      '\\bpet\\b',
+      '\\bdog\\b',
+      '\\bcat\\b',
+      '\\blingerie\\b',
+      '\\bsleepwear\\b',
+      '\\bbralette\\b',
+      '\\bpajama\\b',
+      '\\bnightwear\\b',
+    ],
   });
   console.log(`PASS cold_start_home ${JSON.stringify(coldStartResult)}`);
 
