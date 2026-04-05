@@ -17666,6 +17666,12 @@ async function handoffRecoToBeautyMainlineSearch({
       : semanticTargetStepFamily
         ? 'strong_goal_family'
         : '';
+  const handoffTransportPolicy = buildRecoRecallTransportPolicy({
+    mode:
+      String(semanticContract?.planner_mode || '').trim().toLowerCase() === 'step_aware'
+        ? 'step_aware'
+        : 'framework_first_turn',
+  });
   const runSearch = typeof searchFn === 'function' ? searchFn : searchPivotaBackendProducts;
   const searchResult = await runSearch({
     query,
@@ -17679,6 +17685,7 @@ async function handoffRecoToBeautyMainlineSearch({
     deadlineMs: Number.isFinite(Number(deadlineAtMs)) ? Number(deadlineAtMs) : 0,
     searchSourceOverride: 'aurora-bff',
     fastMode: undefined,
+    transportPolicy: handoffTransportPolicy,
     queryStepStrength,
     targetStepFamily: semanticTargetStepFamily,
     semanticFamily,
