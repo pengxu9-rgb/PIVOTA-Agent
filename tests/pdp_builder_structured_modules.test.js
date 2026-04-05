@@ -398,4 +398,150 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     );
     expect(payload.modules.find((module) => module.type === 'product_details')).toBeFalsy();
   });
+
+  test('structures beauty overview facts and collapses repeated pigment families for concealer PDPs', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_tf_concealer_1',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Traceless Soft Matte Concealer',
+        brand: 'Tom Ford Beauty',
+        description:
+          'Key Notes Skin Type Combination, Dry, For All Skin Types, Normal, Oily, Sensitive Skin Concern Finish Matte, Natural/Satin Coverage Buildable, Full The formula merges hydrating skincare ingredients with imperfection-blurring makeup technology. It features hyaluronic acid for instant and 12-hour hydration and vitamin E for antioxidant protection.',
+        pdp_description_raw: `
+          Key Notes
+
+          Skin Type
+
+          Combination, Dry, For All Skin Types, Normal, Oily, Sensitive
+
+          Skin Concern
+
+          Finish
+
+          Matte, Natural/Satin
+
+          Coverage
+
+          Buildable, Full
+
+          The formula merges hydrating skincare ingredients with imperfection-blurring makeup technology. It features hyaluronic acid for instant and 12-hour hydration and vitamin E for antioxidant protection. Spherical powders ensure silky-smooth, seamless application for comfortable, non-drying wear.
+
+          Benefits
+
+          - Imperfection blurring makeup technology corrects and conceals to diminish the look of imperfections, dark spots, undereye circles and hyperpigmentation
+
+          - Soft-focus powders offer a natural, soft-matte finish
+
+          - Weightless spherical powders provide comfortable, non-drying wear
+        `,
+        image_url:
+          'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tfb_sku_TC7Y09_2000x2000_0.png?v=1774387551',
+        variants: [
+          {
+            id: '53031544815829',
+            sku: 'TC7Y09',
+            title: '3C0 Tulle / 3.5 g',
+            image_url:
+              'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tfb_sku_TC7Y09_2000x2000_0_74c2dfd9-3f5f-4832-af13-85e0ec7891c9.png?v=1774387551',
+            image_urls: [
+              'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tfb_sku_TC7Y09_2000x2000_0_74c2dfd9-3f5f-4832-af13-85e0ec7891c9.png?v=1774387551',
+              'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tfb_sku_TC7Y09_2000x2000_1_dfe99888-59ba-49f2-b8ca-dc58168cbaae.jpg?v=1774387551',
+            ],
+            price: { amount: 60, currency: 'USD' },
+          },
+          {
+            id: '53031544586453',
+            sku: 'TC7Y01',
+            title: '0N0 Blanc / 3.5 g',
+            image_url:
+              'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tfb_sku_TC7Y01_2000x2000_0_61efefcf-0a72-4b47-9615-c812efa685db.png?v=1774387551',
+            image_urls: [
+              'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tfb_sku_TC7Y01_2000x2000_0_61efefcf-0a72-4b47-9615-c812efa685db.png?v=1774387551',
+              'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tfb_sku_TC7Y01_2000x2000_1.jpg?v=1774387551',
+            ],
+            price: { amount: 60, currency: 'USD' },
+          },
+        ],
+        pdp_details_sections: [
+          {
+            heading: 'PRODUCT DETAILS',
+            body: `
+              Skin Type
+
+              Combination, Dry, For All Skin Types, Normal, Oily, Sensitive
+
+              Finish
+
+              Matte, Natural/Satin
+
+              Coverage
+
+              Buildable, Full
+
+              Benefits
+
+              - Imperfection blurring makeup technology corrects and conceals to diminish the look of imperfections, dark spots, undereye circles and hyperpigmentation
+
+              - Soft-focus powders offer a natural, soft-matte finish
+
+              - Weightless spherical powders provide comfortable, non-drying wear
+            `,
+          },
+        ],
+        ingredients_inci: {
+          raw_text:
+            'Ingredients: Isostearyl Alcohol, Octyldodecyl Myristate, Synthetic Wax, [+/- Mica, Titanium Dioxide (ci 77891), Iron Oxides (ci 77491), Iron Oxides (ci 77492), Iron Oxides (ci 77499)]',
+          source_origin: 'retail_pdp',
+          source_quality_status: 'captured',
+        },
+        pdp_how_to_use_raw:
+          '- To spot-conceal, apply with Concealer Brush 03 on desired areas, blend in dabbing motion',
+        category: 'Concealer',
+      },
+      entryPoint: 'agent',
+    });
+
+    const mediaUrls = payload.modules
+      .find((module) => module.type === 'media_gallery')
+      ?.data?.items?.map((item) => item.url);
+    const detailsSections =
+      payload.modules.find((module) => module.type === 'product_details')?.data?.sections || [];
+    const ingredientsItems =
+      payload.modules.find((module) => module.type === 'ingredients_inci')?.data?.items || [];
+
+    expect(payload.product.description).toBe(
+      'The formula merges hydrating skincare ingredients with imperfection-blurring makeup technology. It features hyaluronic acid for instant and 12-hour hydration and vitamin E for antioxidant protection. Spherical powders ensure silky-smooth, seamless application for comfortable, non-drying wear.',
+    );
+    expect(detailsSections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          heading: 'Overview',
+          content: expect.stringContaining('Skin Type: Combination, Dry, For All Skin Types, Normal, Oily, Sensitive'),
+        }),
+      ]),
+    );
+    expect(detailsSections[0]?.content).toContain('Finish: Matte, Natural/Satin');
+    expect(detailsSections[0]?.content).toContain('Coverage: Buildable, Full');
+    expect(detailsSections[0]?.content).toContain('Benefits');
+    expect(detailsSections[0]?.content).toContain('Soft-focus powders offer a natural, soft-matte finish');
+    expect(ingredientsItems).toEqual(
+      expect.arrayContaining([
+        'Isostearyl Alcohol',
+        'Octyldodecyl Myristate',
+        'Synthetic Wax',
+        'Mica',
+        'Titanium Dioxide (CI 77891)',
+        'Iron Oxides (CI 77491 / 77492 / 77499)',
+      ]),
+    );
+    expect(ingredientsItems).not.toContain('Key Ingredients');
+    expect(ingredientsItems.filter((item) => /^Iron Oxides\b/i.test(item))).toHaveLength(1);
+    expect(mediaUrls).toEqual([
+      'https://sdcdn.io/tf/tfb_sku_TC7Y09_2000x2000_0.png?height=1400px&width=1400px',
+      'https://sdcdn.io/tf/tfb_sku_TC7Y09_2000x2000_1.jpg?height=1400px&width=1400px',
+      'https://sdcdn.io/tf/tfb_sku_TC7Y01_2000x2000_0.png?height=1400px&width=1400px',
+    ]);
+  });
 });
