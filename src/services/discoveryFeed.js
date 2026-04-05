@@ -42,6 +42,7 @@ const HOME_MIN_BROWSE_FILL_LIMIT = 16;
 const BROWSE_PRIMARY_RECALL_LIMIT = 24;
 const BROWSE_FILL_RECALL_LIMIT = 24;
 const COLD_START_DEFERRED_DOMAINS = new Set(['pet', 'sleepwear', 'apparel']);
+const COLD_START_DEFERRED_BEAUTY_BUCKETS = new Set(['tools']);
 const DOMAIN_KEYWORDS = {
   beauty: [
     'beauty',
@@ -85,8 +86,14 @@ const DOMAIN_KEYWORDS = {
     'vest',
     'skirt',
     'legging',
+    'lingerie',
     'bra',
+    'bralette',
     'underwear',
+    'panty',
+    'panties',
+    'shapewear',
+    'bodysuit',
     'shoe',
     'sneaker',
     'bag',
@@ -381,6 +388,9 @@ function inferApparelCategory(text) {
   if (!normalized) return null;
   if (DOMAIN_KEYWORDS.sleepwear.some((keyword) => normalized.includes(normalizeText(keyword)))) {
     return 'sleepwear';
+  }
+  if (/\b(lingerie|underwear|bralette|panty|panties|shapewear|bodysuit)\b/.test(normalized)) {
+    return 'lingerie';
   }
   if (normalized.includes('sweater')) return 'sweater';
   if (normalized.includes('dress')) return 'dress';
@@ -1358,7 +1368,18 @@ function compareHomeEntries(a, b) {
   return a.candidate.key.localeCompare(b.candidate.key);
 }
 
+function shouldDeferColdStartCandidate(candidate) {
+  if (!candidate) return false;
+  if (COLD_START_DEFERRED_DOMAINS.has(candidate.domain)) return true;
+  return (
+    candidate.domain === 'beauty' &&
+    candidate.beautyBucket &&
+    COLD_START_DEFERRED_BEAUTY_BUCKETS.has(candidate.beautyBucket)
+  );
+}
+
 function getColdStartHomeDomainPriority(candidate) {
+  if (candidate?.domain === 'beauty' && candidate?.beautyBucket === 'tools') return 1;
   switch (candidate?.domain) {
     case 'beauty':
       return 4;
@@ -1431,7 +1452,7 @@ function selectHomeProducts(scoredCandidates, viewedKeys, limit, options = {}) {
       if (decisions) decisions.set(entry.candidate.key, 'filtered_recent_view');
       continue;
     }
-    if (coldStartCuration && COLD_START_DEFERRED_DOMAINS.has(entry.candidate.domain)) {
+    if (coldStartCuration && shouldDeferColdStartCandidate(entry.candidate)) {
       coldStartDeferred.push(entry);
       if (decisions) decisions.set(entry.candidate.key, 'filtered_cold_start_domain');
       continue;

@@ -22260,14 +22260,31 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ? strictFindProductsMultiDecision
             : getStrictFindProductsMultiConstraintDecision({ search, metadata });
         strictCommerceFindProductsMulti = Boolean(strictFindProductsMultiDecision.enabled);
+        const rawFindProductsMultiQuery = String(rawUserQuery || search?.query || '').trim();
+        const explicitStrictCatalogSurfaceRequested = ['agent_api', 'acp', 'ucp'].includes(
+          String(
+            search?.catalog_surface ||
+              search?.catalogSurface ||
+              metadata?.catalog_surface ||
+              metadata?.catalogSurface ||
+              '',
+          )
+            .trim()
+            .toLowerCase(),
+        );
+        const strictAutoBeautyQueryProfile = buildBeautyQueryProfile({
+          rawQuery: rawFindProductsMultiQuery,
+          queryClass: traceQueryClass || null,
+          intent: effectiveIntent,
+        });
         const beautyExactTitleLookup =
           isShoppingSource(metadata?.source) &&
           shouldRunExternalSeedExactTitleRecall({
-            queryText: String(rawUserQuery || search?.query || '').trim(),
+            queryText: rawFindProductsMultiQuery,
             queryTokens: Array.from(
               new Set(
                 tokenizeSearchTextForMatch(
-                  normalizeSearchTextForMatch(String(rawUserQuery || search?.query || '').trim()),
+                  normalizeSearchTextForMatch(rawFindProductsMultiQuery),
                 ),
               ),
             ),
@@ -22289,11 +22306,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ['lookup', 'attribute'].includes(normalizedTraceQueryClass) ||
             beautyMainlineBypass.reason === 'beauty_mainline_contract'
           );
+        const autoStrictSearchSourceBeautyDirectSearch =
+          strictCommerceFindProductsMulti &&
+          !explicitStrictCatalogSurfaceRequested &&
+          normalizeAgentSource(metadata?.source) === 'search' &&
+          strictAutoBeautyQueryProfile?.isBeautyQuery === true;
         strictBeautyDirectSearch =
           beautyExactTitleDirectSearch ||
           (!beautyExactTitleLookup &&
             beautyMainlineBypass.bypass &&
             (!isAuroraSource(metadata?.source) || auroraBeautyDirectSearch)) ||
+          autoStrictSearchSourceBeautyDirectSearch ||
           (strictCommerceFindProductsMulti &&
             normalizeCommerceSurface(
               strictFindProductsMultiDecision.catalogSurface ||
@@ -22365,6 +22388,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         }
         if (strictBeautyDirectSearch) {
           url = `${PIVOTA_API_BASE}/agent/v1/products/search`;
+          const directSearchCommerceSurface =
+            (strictSurfaceState.explicit ? strictSurfaceState.commerceSurface : null) ||
+            (autoStrictSearchSourceBeautyDirectSearch ? 'beauty' : null);
           const directSearchRequest =
             requestBody?.payload &&
             typeof requestBody.payload === 'object' &&
@@ -22389,10 +22415,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ...(String(rawUserQuery || directSearchRequest.query || '').trim()
               ? { query: String(rawUserQuery || directSearchRequest.query || '').trim() }
               : {}),
-            ...(strictSurfaceState.commerceSurface
+            ...(directSearchCommerceSurface
               ? {
-                  catalog_surface: strictSurfaceState.commerceSurface,
-                  commerce_surface: strictSurfaceState.commerceSurface,
+                  catalog_surface: directSearchCommerceSurface,
+                  commerce_surface: directSearchCommerceSurface,
                 }
               : {}),
             ...(metadata?.source
@@ -22954,9 +22980,24 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             .filter(Boolean),
         ),
       ).slice(0, 3);
+    const preserveRawSemanticOwnerPrimaryQuery =
+      operation === 'find_products_multi' &&
+      semanticOwnerControlled &&
+      Boolean(strictFindProductsMultiDecision?.strictConstraintQuery) &&
+      normalizeAgentSource(metadata?.source) === 'search' &&
+      ['lookup', 'attribute'].includes(String(traceQueryClass || '').trim().toLowerCase());
     const semanticOwnerQueryPack =
       operation === 'find_products_multi' && semanticOwnerControlled
-        ? normalizeSemanticOwnerQueryPack(semanticRewriteResultMeta?.normalized_query_pack)
+        ? normalizeSemanticOwnerQueryPack(
+            preserveRawSemanticOwnerPrimaryQuery
+              ? [
+                  rawUserQuery,
+                  ...(Array.isArray(semanticRewriteResultMeta?.normalized_query_pack)
+                    ? semanticRewriteResultMeta.normalized_query_pack
+                    : []),
+                ]
+              : semanticRewriteResultMeta?.normalized_query_pack,
+          )
         : [];
     const semanticOwnerQueryTotal = semanticOwnerQueryPack.length;
     const semanticOwnerIngredientHypotheses = Array.isArray(semanticContractMeta?.ingredient_hypotheses)
