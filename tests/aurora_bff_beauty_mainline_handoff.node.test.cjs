@@ -112,3 +112,87 @@ test('handoffRecoToBeautyMainlineSearch passes sunscreen-aligned contract to bac
     delete require.cache[moduleId];
   }
 });
+
+test('handoffRecoToBeautyMainlineSearch builds reco rows from canonical final selection instead of raw mixed products', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const out = await __internal.handoffRecoToBeautyMainlineSearch({
+      ctx: { lang: 'EN' },
+      primaryQuery: 'best sunscreen for oily skin',
+      fallbackMessage: 'best sunscreen for oily skin',
+      targetContext: resolveRecommendationTargetContext({
+        text: 'best sunscreen for oily skin',
+        focus: '',
+        entryType: 'chat',
+      }),
+      timeoutMs: 5000,
+      minTimeoutMs: 5000,
+      searchFn: async () => ({
+        ok: true,
+        products: [
+          {
+            product_id: 'cleanser_1',
+            merchant_id: 'merchant_cleanser',
+            title: 'Ultra Gentle Cream-to-Foam Face Cleanser Jumbo',
+            category: 'Cleanser',
+            product_type: 'cleanser',
+            candidate_step: 'cleanser',
+          },
+          {
+            product_id: 'spf_1',
+            merchant_id: 'merchant_spf',
+            title: 'Ultra Light Liquid Mineral Sunscreen with Zinc Oxide SPF 30',
+            category: 'Sunscreen',
+            product_type: 'sunscreen',
+            candidate_step: 'sunscreen',
+          },
+          {
+            product_id: 'balm_1',
+            merchant_id: 'merchant_balm',
+            title: 'Color Balm 3-in-1 Stick - Mocha',
+            category: 'Makeup',
+            product_type: 'color balm',
+            candidate_step: 'other',
+          },
+        ],
+        decision_owner: 'shopping_agent_beauty_mainline',
+        semantic_owner: 'shopping_agent_beauty_mainline',
+        query_source: 'agent_products_search',
+        final_selection: {
+          selection_owner: 'shopping_agent_beauty_mainline',
+          selected_product_ids: ['spf_1'],
+          selected_titles: ['Ultra Light Liquid Mineral Sunscreen with Zinc Oxide SPF 30'],
+          selection_signature: 'sel_spf_only',
+          mainline_status: 'grounded_success',
+        },
+        search_stage_ledger: {
+          final_selection: {
+            selection_owner: 'shopping_agent_beauty_mainline',
+            selected_product_ids: ['spf_1'],
+            selected_titles: ['Ultra Light Liquid Mineral Sunscreen with Zinc Oxide SPF 30'],
+            selection_signature: 'sel_spf_only',
+            mainline_status: 'grounded_success',
+          },
+        },
+        source_breakdown: {
+          source_tier_counts: { fresh_external: 3 },
+          top_candidate_provenance: { source_owner: 'external_seed' },
+        },
+        contract_bridge: {
+          attempted_contract: 'agent_v1_search_beauty_mainline',
+          resolved_contract: 'agent_v1_search_beauty_mainline',
+        },
+      }),
+    });
+
+    assert.deepEqual(
+      out.recommendations.map((item) => item.product_id),
+      ['spf_1', 'cleanser_1', 'balm_1'],
+    );
+    assert.equal(out.recommendations[0]?.display_name, 'Ultra Light Liquid Mineral Sunscreen with Zinc Oxide SPF 30');
+    assert.equal(out.searchResult?.semantic_owner, 'shopping_agent_beauty_mainline');
+    assert.equal(out.searchResult?.contract_bridge?.resolved_contract, 'agent_v1_search_beauty_mainline');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});

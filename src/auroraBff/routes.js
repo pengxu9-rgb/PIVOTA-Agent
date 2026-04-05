@@ -4107,9 +4107,13 @@ async function searchPivotaBackendProducts({
         resolver_first_skipped_for_aurora: false,
         search_source: null,
         decision_owner: null,
+        semantic_owner: null,
         query_source: null,
         final_selection: null,
         search_stage_ledger: null,
+        source_breakdown: null,
+        search_decision: null,
+        contract_bridge: null,
       };
     }
     const metadata =
@@ -4200,12 +4204,37 @@ async function searchPivotaBackendProducts({
         metadata?.decision_owner,
         body?.decision_owner,
       ) || null,
+      semantic_owner: pickFirstTrimmed(
+        metadata?.semantic_owner,
+        body?.semantic_owner,
+      ) || null,
       query_source: pickFirstTrimmed(
         metadata?.query_source,
         body?.query_source,
       ) || null,
       final_selection: finalSelection,
       search_stage_ledger: stageLedger,
+      source_breakdown:
+        metadata &&
+        metadata.source_breakdown &&
+        typeof metadata.source_breakdown === 'object' &&
+        !Array.isArray(metadata.source_breakdown)
+          ? metadata.source_breakdown
+          : null,
+      search_decision:
+        metadata &&
+        metadata.search_decision &&
+        typeof metadata.search_decision === 'object' &&
+        !Array.isArray(metadata.search_decision)
+          ? metadata.search_decision
+          : null,
+      contract_bridge:
+        metadata &&
+        metadata.contract_bridge &&
+        typeof metadata.contract_bridge === 'object' &&
+        !Array.isArray(metadata.contract_bridge)
+          ? metadata.contract_bridge
+          : null,
     };
   };
   const mapProxySearchFallbackReason = (raw) => {
@@ -17361,8 +17390,27 @@ function buildRecoRowsFromMainlineProducts(products, {
   targetContext = null,
   language = 'EN',
   debug = false,
+  selectionContract = null,
 } = {}) {
-  const mainlineRows = Array.isArray(products) ? products.filter((row) => isPlainObject(row)) : [];
+  const allRows = Array.isArray(products) ? products.filter((row) => isPlainObject(row)) : [];
+  const selectedIds = normalizeRecoSelectionIds(
+    Array.isArray(selectionContract?.selected_product_ids) ? selectionContract.selected_product_ids : [],
+    24,
+  );
+  const selectedIdSet = new Set(selectedIds);
+  const mainlineRows = selectedIds.length > 0
+    ? [
+        ...selectedIds.map((id) =>
+          allRows.find((row) =>
+            pickFirstString(row?.product_id, row?.productId) === id
+          )
+        ).filter(Boolean),
+        ...allRows.filter((row) => {
+          const id = pickFirstString(row?.product_id, row?.productId);
+          return !selectedIdSet.has(id);
+        }),
+      ]
+    : allRows;
   const primaryFrameworkRole = Array.isArray(targetContext?.framework_roles)
     ? targetContext.framework_roles.find((role) => String(role?.role_id || '').trim() === String(targetContext?.primary_role_id || '').trim())
       || targetContext.framework_roles[0]
@@ -17620,10 +17668,12 @@ async function handoffRecoToBeautyMainlineSearch({
     traceId: pickFirstTrimmed(ctx?.trace_id, ctx?.request_id) || null,
     authHeaders: authHeaders || ctx?.backend_auth_headers || null,
   });
+  const canonicalSelection = extractRecoFinalSelectionContract(searchResult);
   const recommendations = buildRecoRowsFromMainlineProducts(searchResult?.products, {
     targetContext: effectiveTargetContext,
     language: ctx?.lang || 'EN',
     debug,
+    selectionContract: canonicalSelection,
   });
   return {
     recommendations,
@@ -46666,19 +46716,27 @@ function extractRecoCanonicalSearchResultSnapshot(searchResult) {
   const searchStageLedger =
     metadata.search_stage_ledger && isPlainObject(metadata.search_stage_ledger)
       ? metadata.search_stage_ledger
-      : null;
+      : isPlainObject(searchResult.search_stage_ledger)
+        ? searchResult.search_stage_ledger
+        : null;
   const sourceBreakdown =
     metadata.source_breakdown && isPlainObject(metadata.source_breakdown)
       ? metadata.source_breakdown
-      : null;
+      : isPlainObject(searchResult.source_breakdown)
+        ? searchResult.source_breakdown
+        : null;
   const searchDecision =
     metadata.search_decision && isPlainObject(metadata.search_decision)
       ? metadata.search_decision
-      : null;
+      : isPlainObject(searchResult.search_decision)
+        ? searchResult.search_decision
+        : null;
   const contractBridge =
     metadata.contract_bridge && isPlainObject(metadata.contract_bridge)
       ? metadata.contract_bridge
-      : null;
+      : isPlainObject(searchResult.contract_bridge)
+        ? searchResult.contract_bridge
+        : null;
   return {
     finalSelection: extractRecoFinalSelectionContract(searchResult),
     searchStageLedger,
