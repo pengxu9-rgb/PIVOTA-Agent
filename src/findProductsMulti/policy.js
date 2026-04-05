@@ -1504,7 +1504,6 @@ function inferBeautyTargetStepFamily({
 } = {}) {
   const explicitStep = normalizeSemanticStepFamily(explicitTargetStepFamily);
   if (explicitStep) {
-    if (explicitStep === 'serum') return 'treatment';
     return explicitStep;
   }
   const normalized = String(rawQuery || '').toLowerCase();
@@ -1515,10 +1514,16 @@ function inferBeautyTargetStepFamily({
   ) {
     return 'sunscreen';
   }
+  const hasSerumSignal =
+    /\b(serum|ampoule|concentrate|essence)\b/.test(normalized) ||
+    /精华|精華|美容液/.test(normalized);
   const hasTreatmentSignal =
-    /\b(serum|treatment|ampoule|niacinamide|salicylic|retinol|vitamin c|peptide|azelaic|aha|bha|acne|blemish|breakout|oily skin|oil control|shine control|mattify)\b/.test(
+    /\b(treatment|niacinamide|salicylic|retinol|vitamin c|peptide|azelaic|aha|bha|acne|blemish|breakout|oily skin|oil control|shine control|mattify)\b/.test(
       normalized,
-    ) || /精华|精華|美容液|祛痘|痘痘|控油|水杨酸|水楊酸|烟酰胺|煙酰胺/.test(normalized);
+    ) || /祛痘|痘痘|控油|水杨酸|水楊酸|烟酰胺|煙酰胺/.test(normalized);
+  if (hasSerumSignal) {
+    return 'serum';
+  }
   if (
     (
       /\b(moisturi(?:z|s)er|gel cream|barrier cream|face cream|cream|lotion)\b/.test(normalized) ||
@@ -1564,6 +1569,7 @@ function resolveBeautyPrimaryRoleId({
     }
     return 'lightweight_moisturizer';
   }
+  if (normalizedStep === 'serum') return `${normalizedFamily || 'general'}_serum`;
   if (normalizedStep === 'treatment') return `${normalizedFamily || 'general'}_treatment`;
   if (normalizedStep === 'cleanser') return 'daily_cleanser';
   if (normalizedStep === 'toner') return 'daily_toner';
@@ -1707,6 +1713,8 @@ function buildBeautyDiscoverySemanticContract({
   const allowedStepFamilies = normalizeSemanticStringList(
     targetStepFamily === 'treatment'
       ? ['treatment', 'serum']
+      : targetStepFamily === 'serum'
+        ? ['serum', 'treatment']
       : [targetStepFamily],
     6,
   ).map((value) => normalizeSemanticStepFamily(value)).filter(Boolean);
@@ -1891,6 +1899,15 @@ function buildDeterministicStrictSemanticQueryPack({
       if (allowedStepFamilies.includes('serum')) push('oil control serum');
       push(raw);
     }
+  } else if (targetStepFamily === 'serum') {
+    if (primaryRoleLabel) push(primaryRoleLabel);
+    if (semanticFamily) push(`${semanticFamily} serum`);
+    for (const hypothesis of ingredientHypotheses.slice(0, 2)) {
+      push(`${hypothesis} serum`);
+    }
+    if (concernClass === 'brightening') push('brightening serum');
+    if (concernClass === 'oil_control') push('oil control serum');
+    push(raw);
   } else if (targetStepFamily === 'moisturizer') {
     if (concernClass === 'barrier_repair') {
       push('barrier moisturizer');

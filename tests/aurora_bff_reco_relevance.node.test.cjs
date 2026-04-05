@@ -19,6 +19,7 @@ process.env.AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED = 'true';
 
 const axios = require('axios');
 const dbModule = require('../src/db');
+const diagnosisArtifactStore = require('../src/auroraBff/diagnosisArtifactStore');
 const ROUTES_MODULE_PATH = require.resolve('../src/auroraBff/routes');
 const AURORA_DECISION_CLIENT_MODULE_PATH = require.resolve('../src/auroraBff/auroraDecisionClient');
 const { saveDiagnosisArtifact } = require('../src/auroraBff/diagnosisArtifactStore');
@@ -5567,6 +5568,174 @@ test('/v1/chat: plain-text beauty reco ask uses the same beauty mainline handoff
     assert.doesNotMatch(String(response.body?.assistant_message?.content || ''), /Body Oil/i);
   } finally {
     axios.get = originalGet;
+    harness.restore();
+  }
+});
+
+test('/v1/chat: plain-text sunscreen reco short-circuits to beauty mainline before aurora planner and keeps canonical sunscreen selection', async () => {
+  const originalGet = axios.get;
+  const originalGetLatestDiagnosisArtifact = diagnosisArtifactStore.getLatestDiagnosisArtifact;
+  const observedCalls = [];
+  let auroraChatCallCount = 0;
+  let latestArtifactLookupCount = 0;
+  diagnosisArtifactStore.getLatestDiagnosisArtifact = async (...args) => {
+    latestArtifactLookupCount += 1;
+    return originalGetLatestDiagnosisArtifact(...args);
+  };
+  const harness = createAppWithPatchedAuroraChat({
+    auroraChatImpl: async () => {
+      auroraChatCallCount += 1;
+      return {
+        intent: 'recommend_products',
+        answer: '{"summary":"legacy planner should not run"}',
+        structured: {
+          recommendations: [
+            {
+              product_id: 'legacy_wrong_cleanser',
+              display_name: 'Legacy Cleanser',
+            },
+          ],
+        },
+        context: {},
+      };
+    },
+  });
+
+  axios.get = async (url, config = {}) => {
+    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    const query = String(config?.params?.query || '').trim().toLowerCase();
+    const semanticContract = (() => {
+      try {
+        return JSON.parse(String(config?.params?.semantic_contract || '{}'));
+      } catch (_err) {
+        return null;
+      }
+    })();
+    observedCalls.push({
+      query,
+      semanticContractOwner: String(semanticContract?.owner || ''),
+      semanticContractTargetStep: String(semanticContract?.target_step_family || ''),
+      semanticContractPrimaryRole: String(semanticContract?.primary_role_id || ''),
+      queryStepStrength: String(config?.params?.query_step_strength || ''),
+      targetStepFamily: String(config?.params?.target_step_family || ''),
+      semanticFamily: String(config?.params?.semantic_family || ''),
+    });
+    if (query === 'best sunscreen for oily skin') {
+      return {
+        status: 200,
+        data: {
+          products: [
+            {
+              product_id: 'wrong_cleanser_1',
+              merchant_id: 'external_seed',
+              brand: 'CleanBrand',
+              name: 'Ultra Gentle Cream-to-Foam Face Cleanser Jumbo',
+              display_name: 'Ultra Gentle Cream-to-Foam Face Cleanser Jumbo',
+              category: 'Cleanser',
+              product_type: 'cleanser',
+              source: 'external_seed',
+            },
+            {
+              product_id: 'spf_right_1',
+              merchant_id: 'external_seed',
+              brand: 'First Aid Beauty',
+              name: 'Ultra Light Liquid Mineral Sunscreen SPF 30',
+              display_name: 'Ultra Light Liquid Mineral Sunscreen SPF 30',
+              category: 'Sunscreen',
+              product_type: 'sunscreen',
+              source: 'external_seed',
+            },
+            {
+              product_id: 'wrong_balm_1',
+              merchant_id: 'external_seed',
+              brand: 'BalmBrand',
+              name: 'Color Balm 3-in-1 Stick - Mocha',
+              display_name: 'Color Balm 3-in-1 Stick - Mocha',
+              category: 'Makeup',
+              product_type: 'color balm',
+              source: 'external_seed',
+            },
+          ],
+          metadata: {
+            query_source: 'agent_products_search',
+            decision_owner: 'shopping_agent_beauty_mainline',
+            semantic_owner: 'shopping_agent_beauty_mainline',
+            final_decision: 'products_returned',
+            contract_bridge: {
+              attempted_contract: 'agent_v1_search_beauty_mainline',
+              resolved_contract: 'agent_v1_search_beauty_mainline',
+            },
+            source_breakdown: {
+              source_tier_counts: { fresh_external: 3 },
+              top_candidate_provenance: { source_owner: 'external_seed' },
+            },
+            search_stage_ledger: {
+              final_selection: {
+                selection_owner: 'shopping_agent_beauty_mainline',
+                selected_product_ids: ['spf_right_1'],
+                selected_titles: ['Ultra Light Liquid Mineral Sunscreen SPF 30'],
+                selection_signature: 'search_sel_spf_plain_text_test',
+                mainline_status: 'grounded_success',
+              },
+            },
+          },
+        },
+      };
+    }
+    return { status: 200, data: { products: [] } };
+  };
+
+  try {
+    const response = await harness.request
+      .post('/v1/chat')
+      .set({
+        'X-Aurora-UID': 'chat_plain_text_spf_uid',
+        'X-Trace-ID': 'trace_chat_plain_text_spf',
+        'X-Brief-ID': 'chat_plain_text_spf_brief',
+      })
+      .send({
+        message: 'best sunscreen for oily skin',
+        client_state: 'IDLE_CHAT',
+        session: { state: 'idle' },
+        context: {
+          locale: 'en',
+          profile: {
+            skinType: 'oily',
+            sensitivity: 'low',
+            barrierStatus: 'stable',
+            goals: ['oil control'],
+          },
+        },
+        language: 'EN',
+      });
+
+    assert.equal(response.statusCode, 200);
+    const payload = getRecommendationsPayload(response.body);
+    assert.ok(payload);
+    assert.ok(Array.isArray(payload.recommendations) && payload.recommendations.length >= 1);
+    assert.equal(payload.recommendations[0]?.product_id, 'spf_right_1');
+    assert.deepEqual(
+      payload.metadata?.search_stage_ledger?.final_selection?.selected_product_ids,
+      ['spf_right_1'],
+    );
+    assert.equal(payload.recommendation_meta?.resolved_contract, 'agent_v1_search_beauty_mainline');
+    assert.equal(payload.recommendation_meta?.semantic_owner, 'shopping_agent_beauty_mainline');
+    assert.deepEqual(payload.recommendation_meta?.source_tier_counts, { fresh_external: 3 });
+    assert.equal(auroraChatCallCount, 0);
+    assert.equal(latestArtifactLookupCount, 0);
+    assert.ok(
+      observedCalls.some((entry) =>
+        entry.query === 'best sunscreen for oily skin'
+        && entry.semanticContractOwner === 'aurora_reco_planner'
+        && entry.semanticContractTargetStep === 'sunscreen'
+        && entry.queryStepStrength === 'exact_step'
+        && entry.targetStepFamily === 'sunscreen'
+        && entry.semanticFamily === 'sunscreen'),
+      JSON.stringify(observedCalls),
+    );
+  } finally {
+    axios.get = originalGet;
+    diagnosisArtifactStore.getLatestDiagnosisArtifact = originalGetLatestDiagnosisArtifact;
     harness.restore();
   }
 });

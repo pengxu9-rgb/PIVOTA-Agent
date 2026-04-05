@@ -2331,7 +2331,6 @@ async function recallIngredientProductsFromProfile({
     }
   };
 
-  diagnostics.attached_seed_recall_attempted = true;
   const targetAnchoredExplicitPatterns = buildTargetAnchoredExplicitPatterns({
     profile,
     targetStepFamily,
@@ -2341,6 +2340,8 @@ async function recallIngredientProductsFromProfile({
     ...(Array.isArray(profile.exact_phrases) ? profile.exact_phrases : []),
     ...(Array.isArray(profile.alias_phrases) ? profile.alias_phrases : []),
   ]);
+  diagnostics.attached_seed_recall_attempted = true;
+  diagnostics.products_cache_recall_attempted = true;
   const [attachedAnchoredRows, attachedSeedRows, cacheAnchoredRows, cacheExplicitRows] = await Promise.all([
     fetchSeedRowsByPatterns({
       patterns: targetAnchoredExplicitPatterns,
@@ -2367,21 +2368,18 @@ async function recallIngredientProductsFromProfile({
       limit: resolveRecallFetchLimit(profile, limit, 3, 24, 24),
     }),
   ]);
-  diagnostics.attached_seed_recall_recovered = attachedAnchoredRows.length > 0 ? 1 : 0;
-  addRows(attachedAnchoredRows, 'attached_seed_target_anchored');
   diagnostics.attached_seed_recall_recovered =
-    diagnostics.attached_seed_recall_recovered || (attachedSeedRows.length > 0 ? 1 : 0);
+    attachedAnchoredRows.length > 0 || attachedSeedRows.length > 0 ? 1 : 0;
+  addRows(attachedAnchoredRows, 'attached_seed_target_anchored');
   addRows(attachedSeedRows, 'attached_seed');
 
-  diagnostics.products_cache_recall_attempted = true;
-  if (cacheAnchoredRows.length > 0) diagnostics.products_cache_recall_recovered = 1;
+  diagnostics.products_cache_recall_recovered =
+    cacheAnchoredRows.length > 0 || cacheExplicitRows.length > 0 ? 1 : 0;
   addRows(cacheAnchoredRows, 'products_cache_target_anchored', {
     mapper: mapProductsCacheRowToRecallProduct,
     kbResolver: (_row, product, lookup) => resolveKbEvidenceForProduct(product, lookup),
     useKbEvidence: true,
   });
-  diagnostics.products_cache_recall_recovered =
-    diagnostics.products_cache_recall_recovered || (cacheExplicitRows.length > 0 ? 1 : 0);
   addRows(cacheExplicitRows, 'products_cache', {
     mapper: mapProductsCacheRowToRecallProduct,
     kbResolver: (_row, product, lookup) => resolveKbEvidenceForProduct(product, lookup),
@@ -2527,22 +2525,24 @@ async function recallIngredientProductsFromProfile({
     diagnostics.family_fallback_attempted = true;
     const familyPatterns = buildPhrasePatterns(profile.family_phrases);
     if (familyPatterns.length) {
-      const familyAttachedRows = await fetchSeedRowsByPatterns({
-        patterns: familyPatterns,
-        market,
-        tool,
-        attachedState: 'attached',
-        limit: Math.max(6, Number(limit) * 4 || 24),
-        inStockOnly,
-      });
-      const familyUnattachedRows = await fetchSeedRowsByPatterns({
-        patterns: familyPatterns,
-        market,
-        tool,
-        attachedState: 'unattached',
-        limit: Math.max(6, Number(limit) * 4 || 24),
-        inStockOnly,
-      });
+      const [familyAttachedRows, familyUnattachedRows] = await Promise.all([
+        fetchSeedRowsByPatterns({
+          patterns: familyPatterns,
+          market,
+          tool,
+          attachedState: 'attached',
+          limit: Math.max(6, Number(limit) * 4 || 24),
+          inStockOnly,
+        }),
+        fetchSeedRowsByPatterns({
+          patterns: familyPatterns,
+          market,
+          tool,
+          attachedState: 'unattached',
+          limit: Math.max(6, Number(limit) * 4 || 24),
+          inStockOnly,
+        }),
+      ]);
       addRows(familyAttachedRows, 'family_attached_seed', { allowFamilyOnly: true });
       addRows(familyUnattachedRows, 'family_unattached_seed', { allowFamilyOnly: true });
       const familyCandidates = explicitCandidates.filter((row) => row.evidence.family_only === 1);
