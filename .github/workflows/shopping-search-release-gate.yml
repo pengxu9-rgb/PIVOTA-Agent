@@ -39,12 +39,14 @@ on:
       - "src/modules/decisioning/shopping_agent/**"
       - "src/observability/discoveryMetrics.js"
       - "src/services/discoveryFeed.js"
+      - "src/services/ingredientSkuEvidence.js"
       - "src/services/externalSeedProducts.js"
       - "src/services/externalSeedHarvesterBridge.js"
       - "tests/discovery_feed_smoke_script.test.js"
       - "tests/discovery_feed_service.test.js"
       - "tests/find_products_multi_policy.test.js"
       - "tests/shopping_agent_strict_find_products_multi.test.js"
+      - "tests/services/ingredient_product_recall.test.js"
       - "tests/integration/invoke.find_products_multi_cache_search.test.js"
       - "tests/integration/invoke.find_products_multi_strict_surface.test.js"
       - "tests/integration/invoke.get_discovery_feed.test.js"
@@ -81,12 +83,14 @@ on:
       - "src/modules/decisioning/shopping_agent/**"
       - "src/observability/discoveryMetrics.js"
       - "src/services/discoveryFeed.js"
+      - "src/services/ingredientSkuEvidence.js"
       - "src/services/externalSeedProducts.js"
       - "src/services/externalSeedHarvesterBridge.js"
       - "tests/discovery_feed_smoke_script.test.js"
       - "tests/discovery_feed_service.test.js"
       - "tests/find_products_multi_policy.test.js"
       - "tests/shopping_agent_strict_find_products_multi.test.js"
+      - "tests/services/ingredient_product_recall.test.js"
       - "tests/integration/invoke.find_products_multi_cache_search.test.js"
       - "tests/integration/invoke.find_products_multi_strict_surface.test.js"
       - "tests/integration/invoke.get_discovery_feed.test.js"
@@ -156,6 +160,9 @@ jobs:
             tests/discovery_feed_service.test.js \
             tests/discovery_feed_smoke_script.test.js \
             tests/verify_deployed_commit_matches_script.test.js
+          npx jest --runInBand \
+            tests/services/ingredient_product_recall.test.js \
+            -t "skips unattached recall when KB attached results already satisfy direct recall coverage"
 
   runtime_smoke:
     name: Shopping Search + Discovery Runtime Smoke
