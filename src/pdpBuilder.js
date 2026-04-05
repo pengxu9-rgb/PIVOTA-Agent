@@ -63,11 +63,32 @@ function normalizeInStock(value) {
   return undefined;
 }
 
+function resolveProductBrandLabel(product) {
+  if (!product || typeof product !== 'object') return null;
+  const brandObject =
+    product.brand && typeof product.brand === 'object' && !Array.isArray(product.brand)
+      ? product.brand
+      : null;
+  const candidates = [
+    brandObject?.name,
+    brandObject?.brand_name,
+    typeof product.brand === 'string' ? product.brand : null,
+    product.brand_name,
+    product.vendor,
+    product.vendor_name,
+  ];
+  for (const candidate of candidates) {
+    const value = String(candidate || '').trim();
+    if (value) return value;
+  }
+  return null;
+}
+
 function detectTemplateHint(product) {
   const category = String(product.category || product.product_type || '').toLowerCase();
   const title = String(product.title || product.name || '').toLowerCase();
   const tags = Array.isArray(product.tags) ? product.tags.join(' ').toLowerCase() : '';
-  const brand = String(product.brand?.name || product.brand || '').toLowerCase();
+  const brand = String(resolveProductBrandLabel(product) || '').toLowerCase();
   const combined = `${category} ${title} ${tags} ${brand}`;
   return BEAUTY_KEYWORDS.some((kw) => combined.includes(kw)) ? 'beauty' : 'generic';
 }
@@ -980,6 +1001,11 @@ function buildReviewsPreview(product, options = {}) {
     : Array.isArray(summary?.snippets)
       ? summary.snippets
       : [];
+  const summaryBrandCard =
+    summary?.brand_card && typeof summary.brand_card === 'object' ? summary.brand_card : null;
+  const brandCardName =
+    String(summaryBrandCard?.name || '').trim() || resolveProductBrandLabel(product);
+  const brandCardSubtitle = String(summaryBrandCard?.subtitle || '').trim() || null;
 
   const distributionRaw =
     summary?.rating_distribution ||
@@ -1060,6 +1086,14 @@ function buildReviewsPreview(product, options = {}) {
     scale,
     rating,
     review_count: reviewCount,
+    ...(brandCardName
+      ? {
+          brand_card: {
+            name: brandCardName,
+            ...(brandCardSubtitle ? { subtitle: brandCardSubtitle } : {}),
+          },
+        }
+      : {}),
     ...(ratingDistribution
       ? { star_distribution: ratingDistribution, rating_distribution: ratingDistribution }
       : {}),
@@ -1131,6 +1165,7 @@ function buildRecommendations(items, currencyFallback) {
 
 function buildPdpPayload(args) {
   const product = args.product || {};
+  const brandLabel = resolveProductBrandLabel(product);
   const currency = product.currency || 'USD';
   const variants = buildVariants(product);
   const defaultVariant = variants[0];
@@ -1264,7 +1299,7 @@ function buildPdpPayload(args) {
       merchant_id: product.merchant_id || product.merchant?.id || product.merchant_uuid,
       title: product.title || product.name,
       subtitle: product.subtitle || '',
-      brand: product.brand ? { name: product.brand.name || product.brand } : undefined,
+      brand: brandLabel ? { name: brandLabel } : undefined,
       category_path: inferCategoryPath(product),
       image_url: normalizePdpImageUrl(product.image_url || product.image) || undefined,
       tags: Array.isArray(product.tags) ? product.tags : undefined,

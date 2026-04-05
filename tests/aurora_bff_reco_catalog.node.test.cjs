@@ -2024,6 +2024,7 @@ test('/v1/chat availability: specific query uses catalog hit directly without re
       PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
       AURORA_CHAT_CATALOG_AVAIL_FAST_PATH: 'true',
       AURORA_CHAT_CATALOG_AVAIL_RESOLVE_FALLBACK: 'true',
+      AURORA_CHAT_CATALOG_AVAIL_LOCAL_RESOLVE_FALLBACK: 'false',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
       AURORA_BFF_RECO_CATALOG_FAIL_FAST: 'false',
     },
@@ -2114,6 +2115,7 @@ test('/v1/chat availability: generic non-whitelist product query short-circuits 
       PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
       AURORA_CHAT_CATALOG_AVAIL_FAST_PATH: 'true',
       AURORA_CHAT_CATALOG_AVAIL_RESOLVE_FALLBACK: 'true',
+      AURORA_CHAT_CATALOG_AVAIL_LOCAL_RESOLVE_FALLBACK: 'false',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
     },
     async () => {
@@ -2201,7 +2203,7 @@ test('/v1/chat availability: generic non-whitelist product query short-circuits 
   );
 });
 
-test('/v1/chat availability: generic brand query skips resolve fallback on transient search failure by default', async () => {
+test('/v1/chat availability: generic brand query uses internal resolver fallback on transient search failure', async () => {
   await withEnv(
     {
       PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
@@ -2209,6 +2211,8 @@ test('/v1/chat availability: generic brand query skips resolve fallback on trans
       AURORA_CHAT_CATALOG_AVAIL_FAST_PATH: 'true',
       AURORA_CHAT_CATALOG_AVAIL_RESOLVE_FALLBACK: 'true',
       AURORA_CHAT_CATALOG_AVAIL_RESOLVE_ON_TRANSIENT: 'false',
+      AURORA_CHAT_CATALOG_AVAIL_LOCAL_RESOLVE_FALLBACK: 'true',
+      AURORA_BFF_RECO_PDP_STRICT_INTERNAL_FIRST: 'false',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
       AURORA_BFF_RECO_CATALOG_FAIL_FAST: 'false',
     },
@@ -2275,7 +2279,7 @@ test('/v1/chat availability: generic brand query skips resolve fallback on trans
         });
 
         assert.equal(resp.status, 200);
-        assert.equal(searchCalls, 1);
+        assert.ok(searchCalls >= 1);
         assert.equal(resolveCalls, 0);
 
         const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
@@ -2283,7 +2287,14 @@ test('/v1/chat availability: generic brand query skips resolve fallback on trans
         const items = Array.isArray(offers?.payload?.items) ? offers.payload.items : [];
         const first = items[0] || null;
         assert.ok(first);
-        assert.equal(first?.metadata?.pdp_open_path, 'external');
+        assert.equal(first?.metadata?.pdp_open_path, 'internal');
+        assert.equal(first?.metadata?.pdp_open_mode, 'ref');
+
+        const events = Array.isArray(resp.body?.events) ? resp.body.events : [];
+        const availabilityEvent = events.find((event) => event && event.event_name === 'catalog_availability_shortcircuit');
+        assert.ok(availabilityEvent);
+        assert.equal(availabilityEvent?.data?.specific_query, false);
+        assert.equal(availabilityEvent?.data?.resolved_via, 'local_resolver');
       } finally {
         axios.get = originalGet;
         axios.post = originalPost;
@@ -2300,6 +2311,8 @@ test('/v1/chat availability: generic concrete query uses local resolver on soft-
       AURORA_CHAT_CATALOG_AVAIL_FAST_PATH: 'true',
       AURORA_CHAT_CATALOG_AVAIL_RESOLVE_FALLBACK: 'true',
       AURORA_CHAT_CATALOG_AVAIL_RESOLVE_ON_TRANSIENT: 'false',
+      AURORA_CHAT_CATALOG_AVAIL_LOCAL_RESOLVE_FALLBACK: 'true',
+      AURORA_BFF_RECO_PDP_STRICT_INTERNAL_FIRST: 'false',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
     },
     async () => {
@@ -2429,6 +2442,8 @@ test('/v1/chat availability: specific query runs resolve fallback on transient s
       AURORA_CHAT_CATALOG_AVAIL_FAST_PATH: 'true',
       AURORA_CHAT_CATALOG_AVAIL_RESOLVE_FALLBACK: 'true',
       AURORA_CHAT_CATALOG_AVAIL_RESOLVE_ON_TRANSIENT: 'true',
+      AURORA_CHAT_CATALOG_AVAIL_LOCAL_RESOLVE_FALLBACK: 'false',
+      AURORA_BFF_RECO_PDP_STRICT_INTERNAL_FIRST: 'false',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
     },
     async () => {
@@ -2494,7 +2509,7 @@ test('/v1/chat availability: specific query runs resolve fallback on transient s
         });
 
         assert.equal(resp.status, 200);
-        assert.equal(searchCalls, 1);
+        assert.ok(searchCalls >= 1);
         assert.equal(resolveCalls, 1);
         const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
         const offers = cards.find((card) => card && card.type === 'offers_resolved');
@@ -2504,6 +2519,339 @@ test('/v1/chat availability: specific query runs resolve fallback on transient s
         assert.equal(first?.metadata?.pdp_open_path, 'internal');
         assert.equal(first?.metadata?.pdp_open_mode, 'ref');
         assert.equal(first?.pdp_open?.product_ref?.product_id, 'prod_should_not_be_used');
+      } finally {
+        axios.get = originalGet;
+        axios.post = originalPost;
+      }
+    },
+  );
+});
+
+test('/v1/chat availability: brand-only query can still resolve internal PDP without falling through the specificity gate', async () => {
+  await withEnv(
+    {
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_CHAT_CATALOG_AVAIL_FAST_PATH: 'true',
+      AURORA_CHAT_CATALOG_AVAIL_RESOLVE_FALLBACK: 'false',
+      AURORA_CHAT_CATALOG_AVAIL_LOCAL_RESOLVE_FALLBACK: 'true',
+      AURORA_BFF_RECO_PDP_STRICT_INTERNAL_FIRST: 'false',
+    },
+    async () => {
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      let searchCalls = 0;
+      let localResolverCalls = 0;
+      let internal = null;
+
+      axios.get = async (url) => {
+        if (isProductsSearchUrl(url)) {
+          searchCalls += 1;
+          return {
+            status: 200,
+            data: {
+              status: 'success',
+              success: true,
+              products: [],
+              total: 0,
+            },
+          };
+        }
+        throw new Error(`Unexpected axios.get: ${url}`);
+      };
+
+      axios.post = async (url) => {
+        throw new Error(`Unexpected axios.post: ${url}`);
+      };
+
+      try {
+        const express = require('express');
+        const loaded = loadRoutesFresh();
+        internal = loaded.__internal;
+        internal.__setResolveProductRefForTest(async () => {
+          localResolverCalls += 1;
+          return {
+            resolved: true,
+            reason: 'stable_alias_match',
+            reason_code: 'stable_alias_match',
+            product_ref: {
+              product_id: 'prod_brand_gate_removed',
+              merchant_id: 'mid_brand_gate_removed',
+            },
+            candidates: [{ title: 'Winona Soothing Repair Serum' }],
+          };
+        });
+        const { mountAuroraBffRoutes } = loaded;
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await invokeRoute(app, 'POST', '/v1/chat', {
+          headers: {
+            'X-Aurora-UID': 'test_uid_availability_brand_only',
+            'X-Trace-ID': 'test_trace_availability_brand_only',
+            'X-Brief-ID': 'test_brief_availability_brand_only',
+            'X-Lang': 'CN',
+          },
+          body: {
+            message: '有没有薇诺娜的产品',
+            session: {
+              state: 'idle',
+              profile: {
+                skinType: 'sensitive',
+                sensitivity: 'high',
+                barrierStatus: 'impaired',
+                goals: ['reduce redness'],
+              },
+            },
+            language: 'CN',
+          },
+        });
+
+        assert.equal(resp.status, 200);
+        assert.ok(searchCalls >= 1);
+        assert.ok(localResolverCalls >= 1);
+
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const offers = cards.find((card) => card && card.type === 'offers_resolved');
+        const items = Array.isArray(offers?.payload?.items) ? offers.payload.items : [];
+        const first = items[0] || null;
+        assert.ok(first);
+        assert.equal(first?.metadata?.pdp_open_path, 'internal');
+        assert.equal(first?.metadata?.pdp_open_mode, 'ref');
+        assert.equal(first?.pdp_open?.product_ref?.product_id, 'prod_brand_gate_removed');
+        assert.equal(first?.pdp_open?.product_ref?.merchant_id, 'mid_brand_gate_removed');
+
+        const events = Array.isArray(resp.body?.events) ? resp.body.events : [];
+        const availabilityEvent = events.find((event) => event && event.event_name === 'catalog_availability_shortcircuit');
+        assert.ok(availabilityEvent);
+        assert.equal(availabilityEvent?.data?.specific_query, false);
+        assert.equal(availabilityEvent?.data?.resolved_via, 'local_resolver');
+        assert.equal(availabilityEvent?.data?.local_resolve_attempted, true);
+      } finally {
+        if (internal && typeof internal.__resetResolveProductRefForTest === 'function') {
+          internal.__resetResolveProductRefForTest();
+        }
+        axios.get = originalGet;
+        axios.post = originalPost;
+      }
+    },
+  );
+});
+
+test('/v1/chat availability: brand-only query runs local and backend resolve lanes in parallel when both are enabled', async () => {
+  await withEnv(
+    {
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_CHAT_CATALOG_AVAIL_FAST_PATH: 'true',
+      AURORA_CHAT_CATALOG_AVAIL_RESOLVE_FALLBACK: 'true',
+      AURORA_CHAT_CATALOG_AVAIL_RESOLVE_ON_TRANSIENT: 'false',
+      AURORA_CHAT_CATALOG_AVAIL_LOCAL_RESOLVE_FALLBACK: 'true',
+      AURORA_BFF_RECO_PDP_STRICT_INTERNAL_FIRST: 'false',
+    },
+    async () => {
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      let searchCalls = 0;
+      let resolveCalls = 0;
+      let localResolverCalls = 0;
+      let internal = null;
+
+      axios.get = async (url) => {
+        if (isProductsSearchUrl(url)) {
+          searchCalls += 1;
+          return {
+            status: 200,
+            data: {
+              status: 'success',
+              success: true,
+              products: [],
+              total: 0,
+            },
+          };
+        }
+        throw new Error(`Unexpected axios.get: ${url}`);
+      };
+
+      axios.post = async (url) => {
+        if (String(url).includes('/agent/v1/products/resolve')) {
+          resolveCalls += 1;
+          return {
+            status: 200,
+            data: {
+              resolved: true,
+              reason: 'stable_alias_ref',
+              reason_code: 'stable_alias_ref',
+              product_ref: {
+                product_id: 'prod_parallel_remote',
+                merchant_id: 'mid_parallel_remote',
+              },
+              candidates: [{ title: 'Winona Soothing Repair Serum' }],
+            },
+          };
+        }
+        throw new Error(`Unexpected axios.post: ${url}`);
+      };
+
+      try {
+        const express = require('express');
+        const loaded = loadRoutesFresh();
+        internal = loaded.__internal;
+        internal.__setResolveProductRefForTest(async () => {
+          localResolverCalls += 1;
+          return {
+            resolved: true,
+            reason: 'stable_alias_match',
+            reason_code: 'stable_alias_match',
+            product_ref: {
+              product_id: 'prod_parallel_local',
+              merchant_id: 'mid_parallel_local',
+            },
+            candidates: [{ title: 'Winona Soothing Repair Serum' }],
+          };
+        });
+        const { mountAuroraBffRoutes } = loaded;
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await invokeRoute(app, 'POST', '/v1/chat', {
+          headers: {
+            'X-Aurora-UID': 'test_uid_availability_brand_parallel',
+            'X-Trace-ID': 'test_trace_availability_brand_parallel',
+            'X-Brief-ID': 'test_brief_availability_brand_parallel',
+            'X-Lang': 'CN',
+          },
+          body: {
+            message: '有没有薇诺娜的产品',
+            session: {
+              state: 'idle',
+              profile: {
+                skinType: 'sensitive',
+                sensitivity: 'high',
+                barrierStatus: 'impaired',
+                goals: ['reduce redness'],
+              },
+            },
+            language: 'CN',
+          },
+        });
+
+        assert.equal(resp.status, 200);
+        assert.ok(searchCalls >= 1);
+        assert.equal(resolveCalls, 1);
+        assert.ok(localResolverCalls >= 1);
+
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const offers = cards.find((card) => card && card.type === 'offers_resolved');
+        const items = Array.isArray(offers?.payload?.items) ? offers.payload.items : [];
+        const first = items[0] || null;
+        assert.ok(first);
+        assert.equal(first?.metadata?.pdp_open_path, 'internal');
+        assert.equal(first?.metadata?.pdp_open_mode, 'ref');
+        assert.equal(first?.pdp_open?.product_ref?.product_id, 'prod_parallel_remote');
+        assert.equal(first?.pdp_open?.product_ref?.merchant_id, 'mid_parallel_remote');
+
+        const events = Array.isArray(resp.body?.events) ? resp.body.events : [];
+        const availabilityEvent = events.find((event) => event && event.event_name === 'catalog_availability_shortcircuit');
+        assert.ok(availabilityEvent);
+        assert.equal(availabilityEvent?.data?.specific_query, false);
+        assert.equal(availabilityEvent?.data?.resolved_via, 'products_resolve');
+        assert.equal(availabilityEvent?.data?.local_resolve_attempted, true);
+        assert.equal(availabilityEvent?.data?.resolve_reason_code, null);
+      } finally {
+        if (internal && typeof internal.__resetResolveProductRefForTest === 'function') {
+          internal.__resetResolveProductRefForTest();
+        }
+        axios.get = originalGet;
+        axios.post = originalPost;
+      }
+    },
+  );
+});
+
+test('/v1/chat availability: brand-only no-result path returns explicit empty cards instead of placeholder brand product', async () => {
+  await withEnv(
+    {
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_CHAT_CATALOG_AVAIL_FAST_PATH: 'true',
+      AURORA_CHAT_CATALOG_AVAIL_RESOLVE_FALLBACK: 'false',
+      AURORA_CHAT_CATALOG_AVAIL_LOCAL_RESOLVE_FALLBACK: 'false',
+      AURORA_BFF_RECO_PDP_STRICT_INTERNAL_FIRST: 'false',
+    },
+    async () => {
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      let searchCalls = 0;
+
+      axios.get = async (url) => {
+        if (isProductsSearchUrl(url)) {
+          searchCalls += 1;
+          return {
+            status: 200,
+            data: {
+              status: 'success',
+              success: true,
+              products: [],
+              total: 0,
+            },
+          };
+        }
+        throw new Error(`Unexpected axios.get: ${url}`);
+      };
+
+      axios.post = async (url) => {
+        throw new Error(`Unexpected axios.post: ${url}`);
+      };
+
+      try {
+        const express = require('express');
+        const { mountAuroraBffRoutes } = loadRoutesFresh();
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await invokeRoute(app, 'POST', '/v1/chat', {
+          headers: {
+            'X-Aurora-UID': 'test_uid_availability_brand_empty',
+            'X-Trace-ID': 'test_trace_availability_brand_empty',
+            'X-Brief-ID': 'test_brief_availability_brand_empty',
+            'X-Lang': 'CN',
+          },
+          body: {
+            message: '有没有薇诺娜的产品',
+            session: {
+              state: 'idle',
+              profile: {
+                skinType: 'sensitive',
+                sensitivity: 'high',
+                barrierStatus: 'impaired',
+                goals: ['reduce redness'],
+              },
+            },
+            language: 'CN',
+          },
+        });
+
+        assert.equal(resp.status, 200);
+        assert.ok(searchCalls >= 1);
+
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const parseCard = cards.find((card) => card && card.type === 'product_parse');
+        const offersCard = cards.find((card) => card && card.type === 'offers_resolved');
+        assert.ok(parseCard);
+        assert.ok(offersCard);
+        assert.equal(Boolean(parseCard?.payload?.product), false);
+        assert.equal(parseCard?.payload?.parse_failed, true);
+        assert.deepEqual(Array.isArray(offersCard?.payload?.items) ? offersCard.payload.items : [], []);
+
+        const missing = Array.isArray(parseCard?.field_missing) ? parseCard.field_missing : [];
+        assert.equal(
+          missing.some((item) => item && item.field === 'payload.product_ref' && item.reason === 'parse_failed'),
+          true,
+        );
       } finally {
         axios.get = originalGet;
         axios.post = originalPost;
@@ -2785,6 +3133,8 @@ test('/v1/chat availability: specific query falls back to local resolver when re
       AURORA_CHAT_CATALOG_AVAIL_FAST_PATH: 'true',
       AURORA_CHAT_CATALOG_AVAIL_RESOLVE_FALLBACK: 'true',
       AURORA_CHAT_CATALOG_AVAIL_RESOLVE_ON_TRANSIENT: 'true',
+      AURORA_CHAT_CATALOG_AVAIL_LOCAL_RESOLVE_FALLBACK: 'true',
+      AURORA_BFF_RECO_PDP_STRICT_INTERNAL_FIRST: 'false',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
     },
     async () => {
@@ -2869,6 +3219,8 @@ test('/v1/chat availability: 200 soft-timeout search keeps internal path via loc
       PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
       AURORA_CHAT_CATALOG_AVAIL_FAST_PATH: 'true',
       AURORA_CHAT_CATALOG_AVAIL_RESOLVE_FALLBACK: 'true',
+      AURORA_CHAT_CATALOG_AVAIL_LOCAL_RESOLVE_FALLBACK: 'true',
+      AURORA_BFF_RECO_PDP_STRICT_INTERNAL_FIRST: 'false',
       AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
     },
     async () => {

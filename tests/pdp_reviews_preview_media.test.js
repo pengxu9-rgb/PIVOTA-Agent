@@ -25,6 +25,7 @@ describe('pdpBuilder reviews preview media', () => {
         product_id: 'p_1',
         merchant_id: 'm_1',
         title: 'Test Product',
+        vendor: 'Winona',
         image_url: 'https://cdn.example.com/hero.jpg',
         price: { amount: 99, currency: 'USD' },
         review_summary: {
@@ -42,7 +43,9 @@ describe('pdpBuilder reviews preview media', () => {
       ? payload.modules.find((m) => m && m.type === 'reviews_preview')
       : null;
 
+    expect(payload.product.brand).toEqual({ name: 'Winona' });
     expect(reviewsModule).toBeTruthy();
+    expect(reviewsModule.data.brand_card).toEqual({ name: 'Winona' });
     const previewItems = reviewsModule.data.preview_items || [];
     expect(previewItems).toHaveLength(6);
     expect(previewItems[0].review_id).toBe('r_1');

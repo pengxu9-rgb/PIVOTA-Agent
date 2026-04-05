@@ -188,47 +188,6 @@ describe('aurora chatCardFactory structured sections for adapter inputs', () => 
     expect(cards[0].type).not.toBe('error');
   });
 
-  test('product_parse card preserves type and remains schema-compatible', () => {
-    const cards = mapLegacyCardToSpecCards(
-      {
-        type: 'product_parse',
-        card_id: 'legacy_product_parse',
-        payload: {
-          intent: 'availability',
-          confidence: 0.92,
-          product: { brand: 'Winona', name: '舒敏保湿特护霜' },
-        },
-      },
-      { requestId: 'req_card_factory', language: 'EN', index: 0 },
-    );
-
-    expect(cards).toHaveLength(1);
-    expect(cards[0].type).toBe('product_parse');
-    expect(cards[0].title).toBe('Product parse');
-    expect(cards[0].payload.intent).toBe('availability');
-    expect(() => ChatCardSchema.parse(cards[0])).not.toThrow();
-  });
-
-  test('offers_resolved card preserves type and remains schema-compatible', () => {
-    const cards = mapLegacyCardToSpecCards(
-      {
-        type: 'offers_resolved',
-        card_id: 'legacy_offers_resolved',
-        payload: {
-          market: 'CN',
-          items: [{ product: { brand: 'Winona' }, offer: null }],
-        },
-      },
-      { requestId: 'req_card_factory', language: 'EN', index: 0 },
-    );
-
-    expect(cards).toHaveLength(1);
-    expect(cards[0].type).toBe('offers_resolved');
-    expect(cards[0].title).toBe('Offers resolved');
-    expect(cards[0].payload.market).toBe('CN');
-    expect(() => ChatCardSchema.parse(cards[0])).not.toThrow();
-  });
-
   test('error card preserves detail from payload.detail field', () => {
     const cards = mapLegacyCardToSpecCards(
       {
@@ -271,6 +230,71 @@ describe('aurora chatCardFactory structured sections for adapter inputs', () => 
     expect(cards[0].title).toBe('Routine fit');
     expect(cards[0].payload.summary).toBe('Some strong matches, with a few gaps to adjust.');
     expect(() => ChatCardSchema.parse(cards[0])).not.toThrow();
+  });
+
+  test('offers_resolved maps to a renderable recommendations card instead of nudge', () => {
+    const cards = mapLegacyCardToSpecCards(
+      {
+        type: 'offers_resolved',
+        card_id: 'legacy_offers_resolved',
+        payload: {
+          items: [
+            {
+              product: {
+                product_id: 'prod_winona_repair',
+                merchant_id: 'mid_winona',
+                brand: 'Winona',
+                display_name: 'Winona Soothing Repair Serum',
+                image_url: 'https://example.com/winona.jpg',
+              },
+              metadata: {
+                pdp_open_path: 'internal',
+              },
+              pdp_open: {
+                path: 'ref',
+                product_ref: {
+                  product_id: 'prod_winona_repair',
+                  merchant_id: 'mid_winona',
+                },
+              },
+            },
+          ],
+          market: 'US',
+        },
+      },
+      { requestId: 'req_card_factory', language: 'EN', index: 0 },
+    );
+
+    expect(cards).toHaveLength(1);
+    expect(cards[0].type).toBe('recommendations');
+    expect(cards[0].title).toBe('Items Found');
+    const section = cards[0].sections.find((entry) => entry && entry.kind === 'product_cards');
+    expect(section).toBeTruthy();
+    expect(section.products[0]).toMatchObject({
+      name: 'Winona Soothing Repair Serum',
+      brand: 'Winona',
+      product_id: 'prod_winona_repair',
+      merchant_id: 'mid_winona',
+    });
+    expect(() => ChatCardSchema.parse(cards[0])).not.toThrow();
+  });
+
+  test('product_parse does not degrade into a fallback nudge card', () => {
+    const cards = mapLegacyCardToSpecCards(
+      {
+        type: 'product_parse',
+        card_id: 'legacy_product_parse',
+        payload: {
+          product: {
+            product_id: 'prod_winona_repair',
+            merchant_id: 'mid_winona',
+          },
+        },
+      },
+      { requestId: 'req_card_factory', language: 'EN', index: 0 },
+    );
+
+    expect(cards).toEqual([]);
   });
 
   test('returning_triage card remains schema-compatible instead of degrading to nudge', () => {
