@@ -5565,6 +5565,127 @@ test('/v1/chat: plain-text beauty reco ask uses the same beauty mainline handoff
   }
 });
 
+test('/v1/chat: typed beauty ownership bypasses legacy recommendationsAllowed gate and still short-circuits to canonical handoff', async () => {
+  const originalGet = axios.get;
+  const gatingModulePath = require.resolve('../src/auroraBff/gating');
+  delete require.cache[gatingModulePath];
+  const gating = require(gatingModulePath);
+  const originalRecommendationsAllowed = gating.recommendationsAllowed;
+  const observedCalls = [];
+  let auroraChatCallCount = 0;
+  gating.recommendationsAllowed = () => false;
+  const harness = createAppWithPatchedAuroraChat({
+    auroraChatImpl: async () => {
+      auroraChatCallCount += 1;
+      return {
+        intent: 'recommend_products',
+        answer: '{"summary":"legacy planner should not run"}',
+        structured: {
+          recommendations: [
+            {
+              product_id: 'legacy_wrong_serum',
+              display_name: 'Legacy Wrong Serum',
+            },
+          ],
+        },
+        context: {},
+      };
+    },
+  });
+
+  axios.get = async (url, config = {}) => {
+    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    const query = String(config?.params?.query || '').trim().toLowerCase();
+    observedCalls.push(query);
+    if (query === 'what products should i use for oily skin?') {
+      return {
+        status: 200,
+        data: {
+          products: [
+            {
+              product_id: 'typed_gate_bypass_1',
+              merchant_id: 'mid_internal',
+              brand: 'The Ordinary',
+              name: 'Niacinamide 10% + Zinc 1%',
+              display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+              category: 'serum',
+              product_type: 'serum',
+              source: 'internal_search',
+            },
+          ],
+          metadata: {
+            query_source: 'agent_products_search',
+            decision_owner: 'shopping_agent_beauty_mainline',
+            semantic_owner: 'shopping_agent_beauty_mainline',
+            final_decision: 'products_returned',
+            contract_bridge: {
+              attempted_contract: 'agent_v1_search_beauty_mainline',
+              resolved_contract: 'agent_v1_search_beauty_mainline',
+            },
+            source_breakdown: {
+              source_tier_counts: { fresh_internal: 1 },
+              top_candidate_provenance: { source_owner: 'internal_search' },
+            },
+            search_stage_ledger: {
+              final_selection: {
+                selection_owner: 'shopping_agent_beauty_mainline',
+                selected_product_ids: ['typed_gate_bypass_1'],
+                selected_titles: ['The Ordinary Niacinamide 10% + Zinc 1%'],
+                selection_signature: 'typed_gate_bypass_sig',
+                mainline_status: 'grounded_success',
+                source_tier_counts: { fresh_internal: 1 },
+                top_candidate_provenance: { source_owner: 'internal_search' },
+              },
+            },
+          },
+        },
+      };
+    }
+    return { status: 200, data: { products: [] } };
+  };
+
+  try {
+    const response = await harness.request
+      .post('/v1/chat')
+      .set({
+        'X-Aurora-UID': 'chat_plain_text_gate_bypass_uid',
+        'X-Trace-ID': 'trace_chat_plain_text_gate_bypass',
+        'X-Brief-ID': 'chat_plain_text_gate_bypass_brief',
+      })
+      .send({
+        message: 'what products should i use for oily skin?',
+        client_state: 'IDLE_CHAT',
+        session: { state: 'idle' },
+        context: {
+          locale: 'en',
+          profile: {
+            skinType: 'oily',
+            sensitivity: 'low',
+            barrierStatus: 'stable',
+            goals: ['oil control'],
+          },
+        },
+        language: 'EN',
+      });
+
+    assert.equal(response.statusCode, 200);
+    const payload = getRecommendationsPayload(response.body);
+    assert.ok(payload);
+    assert.deepEqual(
+      Array.isArray(payload.recommendations) ? payload.recommendations.map((row) => row?.product_id) : [],
+      ['typed_gate_bypass_1'],
+    );
+    assert.equal(payload.recommendation_meta?.resolved_contract, 'agent_v1_search_beauty_mainline');
+    assert.deepEqual(payload.recommendation_meta?.source_tier_counts, { fresh_internal: 1 });
+    assert.equal(auroraChatCallCount, 0);
+    assert.ok(observedCalls.includes('what products should i use for oily skin?'));
+  } finally {
+    axios.get = originalGet;
+    gating.recommendationsAllowed = originalRecommendationsAllowed;
+    harness.restore();
+  }
+});
+
 test('/v1/chat: plain-text sunscreen reco short-circuits to beauty mainline before aurora planner and keeps canonical sunscreen selection', async () => {
   const originalGet = axios.get;
   const originalGetLatestDiagnosisArtifact = diagnosisArtifactStore.getLatestDiagnosisArtifact;

@@ -80767,7 +80767,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         (!looksLikeIngredientScienceIntent(message, normalizedActionPayload) || ingredientRecoOptInRequested) &&
         !looksLikeRoutineRequest(message, normalizedActionPayload) &&
         !looksLikeSuitabilityRequest(message) &&
-        recoInteractionAllowed &&
+        (recoInteractionAllowed || typedRecoOwnershipKeepsV1Mainline) &&
         (
           actionId === 'chip.start.reco_products' ||
           actionId === 'chip_get_recos' ||
