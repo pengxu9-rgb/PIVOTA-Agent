@@ -164,6 +164,73 @@ describe('externalSeedProducts helper', () => {
     );
   });
 
+  test('narrows polluted variant image galleries back to the active shade family', () => {
+    const row = {
+      id: 'eps_variant_gallery_pollution_1',
+      canonical_url: 'https://example.com/p/tom-ford-lip-color',
+      destination_url: 'https://example.com/p/tom-ford-lip-color',
+      title: 'Lip Color Satin Matte',
+      seed_data: {
+        snapshot: {
+          product: {
+            options: [{ name: 'Color / Size' }],
+            variants: [
+              {
+                id: 'SKU-T1QT01',
+                sku: 'SKU-T1QT01',
+                option1: '35 Rose Topaz / 8.0 g',
+                image_url: 'https://sdcdn.io/tf/tf_sku_T1QT01_2000x2000_1.jpg?height=700&width=700',
+                image_urls: [
+                  'https://sdcdn.io/tf/tf_sku_T1QT01_2000x2000_1.jpg?height=700&width=700',
+                  'https://sdcdn.io/tf/tf_sku_T1QT01_2000x2000_2.jpg?height=700&width=700',
+                  'https://sdcdn.io/tf/tf_sku_T1QS01_2000x2000_1.jpg?height=700&width=700',
+                ],
+                price: '39.00',
+                currency: 'USD',
+                stock: 'In Stock',
+              },
+              {
+                id: 'SKU-T1QS01',
+                sku: 'SKU-T1QS01',
+                option1: '36 Tiger Eye / 8.0 g',
+                image_url: 'https://sdcdn.io/tf/tf_sku_T1QS01_2000x2000_1.jpg?height=700&width=700',
+                image_urls: [
+                  'https://sdcdn.io/tf/tf_sku_T1QS01_2000x2000_1.jpg?height=700&width=700',
+                  'https://sdcdn.io/tf/tf_sku_T1QS01_2000x2000_2.jpg?height=700&width=700',
+                  'https://sdcdn.io/tf/tf_sku_T1QT01_2000x2000_1.jpg?height=700&width=700',
+                ],
+                price: '39.00',
+                currency: 'USD',
+                stock: 'In Stock',
+              },
+            ],
+          },
+        },
+      },
+    };
+
+    const variants = normalizeSeedVariants(row.seed_data, row);
+    expect(variants).toHaveLength(2);
+    expect(variants[0].images).toEqual([
+      'https://sdcdn.io/tf/tf_sku_T1QT01_2000x2000_1.jpg?height=700&width=700',
+      'https://sdcdn.io/tf/tf_sku_T1QT01_2000x2000_2.jpg?height=700&width=700',
+    ]);
+    expect(variants[1].images).toEqual([
+      'https://sdcdn.io/tf/tf_sku_T1QS01_2000x2000_1.jpg?height=700&width=700',
+      'https://sdcdn.io/tf/tf_sku_T1QS01_2000x2000_2.jpg?height=700&width=700',
+    ]);
+
+    const product = buildExternalSeedProduct(row);
+    expect(product.variants[0].images).toEqual([
+      'https://sdcdn.io/tf/tf_sku_T1QT01_2000x2000_1.jpg?height=700&width=700',
+      'https://sdcdn.io/tf/tf_sku_T1QT01_2000x2000_2.jpg?height=700&width=700',
+    ]);
+    expect(product.variants[1].images).toEqual([
+      'https://sdcdn.io/tf/tf_sku_T1QS01_2000x2000_1.jpg?height=700&width=700',
+      'https://sdcdn.io/tf/tf_sku_T1QS01_2000x2000_2.jpg?height=700&width=700',
+    ]);
+  });
+
   test('canonicalizes legacy variant containers into snapshot variants and strips legacy copies', () => {
     const seedData = {
       variants: [

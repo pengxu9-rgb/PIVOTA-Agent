@@ -415,6 +415,69 @@ function appendImageUrls(out, value) {
   appendImageUrls(out, value.contentUrl);
 }
 
+function normalizeImageFamilyToken(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+function extractImageFamilyKey(url) {
+  const normalizedUrl = normalizePdpImageUrl(url);
+  if (!normalizedUrl) return '';
+  try {
+    const parsed = new URL(normalizedUrl);
+    const filename = String(parsed.pathname.split('/').pop() || '').trim().toLowerCase();
+    if (!filename) return '';
+
+    const tfSkuMatch = filename.match(/^(tf_sku_[a-z0-9]+(?:_us)?)_\d+x\d+_[0-9a-z]+(?:[a-z])?\.[a-z0-9]+$/i);
+    if (tfSkuMatch) return tfSkuMatch[1].toLowerCase();
+
+    const genericSizedMatch = filename.match(/^(.*?)_\d+x\d+_[0-9a-z]+(?:[a-z])?\.[a-z0-9]+$/i);
+    if (genericSizedMatch) return genericSizedMatch[1].toLowerCase();
+
+    return filename.replace(/\.[a-z0-9]+$/i, '');
+  } catch {
+    return '';
+  }
+}
+
+function narrowVariantImageUrls(imageUrls, rawVariant) {
+  const normalized = Array.isArray(imageUrls) ? imageUrls.filter(Boolean) : [];
+  if (normalized.length <= 1) return normalized;
+
+  const primaryImageUrl = normalizePdpImageUrl(rawVariant?.image_url || rawVariant?.image || '');
+  const primaryFamilyKey = extractImageFamilyKey(primaryImageUrl);
+  const variantTokens = [
+    rawVariant?.sku,
+    rawVariant?.sku_id,
+    rawVariant?.variant_id,
+    rawVariant?.id,
+  ]
+    .map(normalizeImageFamilyToken)
+    .filter((token) => token.length >= 4);
+
+  let filtered = primaryFamilyKey
+    ? normalized.filter((url) => extractImageFamilyKey(url) === primaryFamilyKey)
+    : [];
+
+  if (!filtered.length && variantTokens.length) {
+    filtered = normalized.filter((url) => {
+      const haystack = normalizeImageFamilyToken(url);
+      return variantTokens.some((token) => haystack.includes(token));
+    });
+  }
+
+  if (!filtered.length) return normalized;
+
+  const out = [];
+  for (const url of filtered) {
+    if (out.includes(url)) continue;
+    out.push(url);
+  }
+  return out;
+}
+
 function normalizeOptionText(value) {
   return String(value || '').trim().replace(/\s+/g, ' ');
 }
@@ -753,7 +816,8 @@ function normalizeSeedVariants(seedData, row) {
         },
         null,
       );
-      const normalizedImageUrls = imageUrls.length > 0 ? imageUrls : productImageUrls;
+      const narrowedImageUrls = narrowVariantImageUrls(imageUrls, rawVariant);
+      const normalizedImageUrls = narrowedImageUrls.length > 0 ? narrowedImageUrls : productImageUrls;
       const imageUrl = normalizedImageUrls[0];
       const options = normalizeOptions(rawVariant, optionName, optionValue, productOptionNames);
       const url = normalizeHttpUrl(rawVariant.url);
