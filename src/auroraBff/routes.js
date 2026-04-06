@@ -92,6 +92,9 @@ const {
   createLegacyChatRecoPreparationRuntime,
 } = require('./legacyChatRecoPreparation');
 const {
+  createLegacyChatRecoAnalysisContextRuntime,
+} = require('./legacyChatRecoAnalysisContext');
+const {
   createLegacyChatRecoTargetingRuntime,
 } = require('./legacyChatRecoTargeting');
 const {
@@ -1348,6 +1351,12 @@ const {
   extractIngredientLookupTargetFromText,
   buildTravelRecoHandoffContext,
   resolveRecommendationTargetContext,
+});
+const {
+  prepareLegacyChatRecoAnalysisContext,
+} = createLegacyChatRecoAnalysisContextRuntime({
+  hasUsableArtifactForRecommendations,
+  buildIngredientPlan,
 });
 const {
   prepareLegacyChatRecoTargeting,
@@ -80993,81 +81002,34 @@ function mountAuroraBffRoutes(app, { logger }) {
           return sendChatEnvelope(travelRecoEnvelope);
         }
 
-        const latestArtifactForGate = await ensureLatestArtifactForConversation();
-        const latestArtifact = latestArtifactForGate;
-        const artifactGate = hasUsableArtifactForRecommendations(latestArtifactForGate);
-        analysisContextSnapshotForConversation = await ensureAnalysisContextSnapshotForConversation();
-        chatAnalysisTaskContext = await ensureTaskAnalysisContextForConversation('chat');
+        const preparedLegacyRecoAnalysisContext = await prepareLegacyChatRecoAnalysisContext({
+          ctx,
+          logger,
+          message,
+          profile,
+          identity,
+          ingredientPlanEnabled: AURORA_INGREDIENT_PLAN_ENABLED,
+          productMatcherEnabled: AURORA_PRODUCT_MATCHER_ENABLED,
+          nonblockingGateEnabled: AURORA_CHAT_NONBLOCKING_GATE_V1_ENABLED,
+          ensureLatestArtifactForConversation,
+          ensureAnalysisContextSnapshotForConversation,
+          ensureTaskAnalysisContextForConversation,
+          looksLikeLowRiskSkincareTask,
+          recordAuroraSkinFlowMetric,
+          runAuroraTimedOperation,
+          getIngredientPlanByArtifactIdForRoute,
+          getAuroraStorageReadTimeoutMs,
+          saveIngredientPlanForRoute,
+          getAuroraStorageWriteTimeoutMs,
+        });
+        const latestArtifact = preparedLegacyRecoAnalysisContext.latestArtifact;
+        const artifactGate = preparedLegacyRecoAnalysisContext.artifactGate;
+        analysisContextSnapshotForConversation =
+          preparedLegacyRecoAnalysisContext.analysisContextSnapshotForConversation;
+        chatAnalysisTaskContext = preparedLegacyRecoAnalysisContext.chatAnalysisTaskContext;
         const allowLowRiskNonBlockingArtifactGate =
-          AURORA_CHAT_NONBLOCKING_GATE_V1_ENABLED && looksLikeLowRiskSkincareTask(message);
-        if (AURORA_PRODUCT_MATCHER_ENABLED && !artifactGate.ok && !allowLowRiskNonBlockingArtifactGate) {
-          logger?.info(
-            {
-              request_id: ctx.request_id,
-              trace_id: ctx.trace_id,
-              artifact_reason: artifactGate.reason || 'artifact_missing',
-            },
-            'aurora bff: artifact gate bypassed for reco mainline',
-          );
-        }
-        if (AURORA_PRODUCT_MATCHER_ENABLED && !artifactGate.ok && allowLowRiskNonBlockingArtifactGate) {
-          recordAuroraSkinFlowMetric({ stage: 'artifact_gate_nonblocking_low_risk', hit: true });
-          logger?.info(
-            {
-              request_id: ctx.request_id,
-              trace_id: ctx.trace_id,
-              reason: artifactGate.reason || 'artifact_missing',
-            },
-            'aurora bff: bypassing artifact gate for low-risk skincare request',
-          );
-        }
-
-        let mappedIngredientPlan = null;
-        if (latestArtifact && AURORA_INGREDIENT_PLAN_ENABLED) {
-          const latestArtifactId = String(latestArtifact.artifact_id || '').trim();
-          try {
-            const existingPlan = latestArtifactId
-              ? await runAuroraTimedOperation(
-                () => getIngredientPlanByArtifactIdForRoute({ artifactId: latestArtifactId }),
-                { timeoutMs: getAuroraStorageReadTimeoutMs(), timeoutCode: 'AURORA_CHAT_INGREDIENT_PLAN_LOAD_TIMEOUT' },
-              )
-              : null;
-            if (existingPlan && existingPlan.plan_json && typeof existingPlan.plan_json === 'object') {
-              mappedIngredientPlan = {
-                ...existingPlan.plan_json,
-                plan_id: existingPlan.plan_id,
-                created_at: existingPlan.created_at || existingPlan.plan_json.created_at,
-              };
-            } else {
-              const builtPlan = buildIngredientPlan({ artifact: latestArtifact, profile });
-              if (latestArtifactId) {
-                const savedPlan = await runAuroraTimedOperation(
-                  () => saveIngredientPlanForRoute({
-                    artifactId: latestArtifactId,
-                    auroraUid: identity.auroraUid,
-                    userId: identity.userId,
-                    plan: builtPlan,
-                  }),
-                  { timeoutMs: getAuroraStorageWriteTimeoutMs(), timeoutCode: 'AURORA_CHAT_INGREDIENT_PLAN_SAVE_TIMEOUT' },
-                );
-                mappedIngredientPlan = savedPlan && savedPlan.plan_json && typeof savedPlan.plan_json === 'object'
-                  ? {
-                      ...savedPlan.plan_json,
-                      plan_id: savedPlan.plan_id,
-                      created_at: savedPlan.created_at || savedPlan.plan_json.created_at,
-                    }
-                  : builtPlan;
-              } else {
-                mappedIngredientPlan = builtPlan;
-              }
-            }
-          } catch (err) {
-            logger?.warn(
-              { err: err && err.message ? err.message : String(err), request_id: ctx.request_id },
-              'aurora bff: ingredient plan lookup/build failed',
-            );
-          }
-        }
+          preparedLegacyRecoAnalysisContext.allowLowRiskNonBlockingArtifactGate;
+        let mappedIngredientPlan = preparedLegacyRecoAnalysisContext.mappedIngredientPlan;
 
         const preparedLegacyRecoTargeting = prepareLegacyChatRecoTargeting({
           profile,
