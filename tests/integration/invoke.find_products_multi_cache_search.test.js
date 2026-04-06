@@ -2428,13 +2428,16 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       expect.objectContaining({
         query: 'oil control treatment',
         search_all_merchants: 'true',
+        in_stock_only: 'true',
+        limit: '5',
+        offset: '0',
         source: 'search',
       }),
     );
     expect(JSON.parse(String(capturedQuery?.semantic_contract || '{}'))).toEqual(
       expect.objectContaining({
-          owner: 'shopping_agent_beauty_contract_builder',
-          target_step_family: 'treatment',
+        owner: 'shopping_agent_beauty_contract_builder',
+        target_step_family: 'treatment',
       }),
     );
     expect(resp.body.metadata).toEqual(

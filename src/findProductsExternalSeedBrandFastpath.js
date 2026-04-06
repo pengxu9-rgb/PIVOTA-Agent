@@ -12,6 +12,7 @@ async function runExternalSeedBrandMainlineFastpath({
     detectBrandEntities,
     normalizeSearchTextForMatch,
     buildBrandQueryVariants,
+    normalizeBrandText,
     buildExternalSeedBrandSearchProduct,
     buildSearchProductKey,
     query,
@@ -33,6 +34,13 @@ async function runExternalSeedBrandMainlineFastpath({
         .filter(Boolean),
     ),
   ).slice(0, 8);
+  const exactBrandCompactVariants = Array.from(
+    new Set(
+      buildBrandQueryVariants(relevanceQueryText, brandTerms)
+        .map((value) => normalizeBrandText(value).replace(/\s+/g, ''))
+        .filter(Boolean),
+    ),
+  ).slice(0, 8);
   const queryPatterns = Array.from(
     new Set(queryVariants.map((value) => `%${value}%`).filter(Boolean)),
   ).slice(0, 12);
@@ -44,14 +52,16 @@ async function runExternalSeedBrandMainlineFastpath({
     : '';
   const brandMatchExpr = `
     lower(
-      coalesce(
-        seed_data->>'brand',
-        seed_data->'snapshot'->>'brand',
-        seed_data->>'merchant_display_name',
-        seed_data->'snapshot'->>'merchant_display_name',
-        seed_data->>'vendor',
-        seed_data->'snapshot'->>'vendor',
-        ''
+      regexp_replace(
+        coalesce(
+          seed_data->>'brand',
+          seed_data->'snapshot'->>'brand',
+          split_part(domain, '.', 1),
+          ''
+        ),
+        '[^a-z0-9]+',
+        '',
+        'g'
       )
     )
   `;
@@ -167,7 +177,7 @@ async function runExternalSeedBrandMainlineFastpath({
     };
   };
 
-  const exactSqlParams = [market, brandToolValues, brandTerms];
+  const exactSqlParams = [market, brandToolValues, exactBrandCompactVariants];
 
   try {
     const exactPageStartedAt = Date.now();
