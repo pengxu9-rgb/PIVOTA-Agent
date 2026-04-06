@@ -9472,6 +9472,205 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
     };
   }
 
+  const safeLimit = Math.max(1, Math.min(SEARCH_LIMIT_MAX, Math.floor(Number(search.limit || 20) || 20)));
+  const safePage = Math.max(1, Math.floor(Number(search.page || 1) || 1));
+  const safeOffset = Math.max(
+    0,
+    Number.isFinite(Number(search.offset))
+      ? Math.floor(Number(search.offset))
+      : (safePage - 1) * safeLimit,
+  );
+  const inStockOnly = parseQueryBoolean(search.in_stock_only ?? search.inStockOnly) !== false;
+  const market =
+    String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
+  const tool = 'creator_agents';
+  const normalizedQuery = normalizeSearchTextForMatch(relevanceQueryText);
+  const publicBrandSearchMainline =
+    isPublicSearchSource(metadata?.source) &&
+    Boolean(detectBrandEntities(relevanceQueryText, { candidateProducts: [] })?.brand_like) &&
+    !hasExplicitCategoryHint(relevanceQueryText, null);
+
+  if (publicBrandSearchMainline) {
+    const brandDetection = detectBrandEntities(relevanceQueryText, { candidateProducts: [] });
+    const brandTerms = Array.from(
+      new Set(
+        (Array.isArray(brandDetection?.brands) ? brandDetection.brands : [])
+          .map((value) => normalizeSearchTextForMatch(value))
+          .filter(Boolean),
+      ),
+    );
+    const queryVariants = Array.from(
+      new Set(
+        buildBrandQueryVariants(relevanceQueryText, brandTerms)
+          .map((value) => normalizeSearchTextForMatch(value))
+          .filter(Boolean),
+      ),
+    ).slice(0, 8);
+    const queryPatterns = Array.from(
+      new Set(queryVariants.map((value) => `%${value}%`).filter(Boolean)),
+    ).slice(0, 12);
+    const sqlParams = [market, tool, brandTerms, queryPatterns];
+    const filters = [];
+
+    if (inStockOnly) {
+      filters.push(
+        `coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')`,
+      );
+    }
+
+    sqlParams.push(safeLimit);
+    const limitBind = `$${sqlParams.length}`;
+    sqlParams.push(safeOffset);
+    const offsetBind = `$${sqlParams.length}`;
+
+    try {
+      const res = await query(
+        `
+          WITH candidates AS (
+            SELECT
+              id,
+              external_product_id,
+              destination_url,
+              canonical_url,
+              domain,
+              title,
+              image_url,
+              price_amount,
+              price_currency,
+              availability,
+              seed_data,
+              updated_at,
+              created_at,
+              CASE
+                WHEN (
+                  lower(coalesce(seed_data->>'brand', '')) = ANY($3::text[])
+                  OR lower(coalesce(seed_data->'snapshot'->>'brand', '')) = ANY($3::text[])
+                  OR lower(coalesce(seed_data->>'merchant_display_name', '')) = ANY($3::text[])
+                  OR lower(coalesce(seed_data->'snapshot'->>'merchant_display_name', '')) = ANY($3::text[])
+                  OR lower(coalesce(seed_data->>'vendor', '')) = ANY($3::text[])
+                  OR lower(coalesce(seed_data->'snapshot'->>'vendor', '')) = ANY($3::text[])
+                ) THEN 4
+                WHEN lower(coalesce(title, '')) LIKE ANY($4::text[]) THEN 3
+                WHEN (
+                  lower(coalesce(domain, '')) LIKE ANY($4::text[])
+                  OR lower(coalesce(canonical_url, '')) LIKE ANY($4::text[])
+                  OR lower(coalesce(destination_url, '')) LIKE ANY($4::text[])
+                ) THEN 2
+                ELSE 1
+              END AS brand_match_rank
+            FROM external_product_seeds
+            WHERE status = 'active'
+              AND attached_product_key IS NULL
+              AND market = $1
+              AND (tool = '*' OR tool = $2)
+              ${filters.length > 0 ? `AND ${filters.join('\n              AND ')}` : ''}
+              AND (
+                lower(coalesce(seed_data->>'brand', '')) = ANY($3::text[])
+                OR lower(coalesce(seed_data->'snapshot'->>'brand', '')) = ANY($3::text[])
+                OR lower(coalesce(seed_data->>'merchant_display_name', '')) = ANY($3::text[])
+                OR lower(coalesce(seed_data->'snapshot'->>'merchant_display_name', '')) = ANY($3::text[])
+                OR lower(coalesce(seed_data->>'vendor', '')) = ANY($3::text[])
+                OR lower(coalesce(seed_data->'snapshot'->>'vendor', '')) = ANY($3::text[])
+                OR lower(coalesce(title, '')) LIKE ANY($4::text[])
+                OR lower(coalesce(domain, '')) LIKE ANY($4::text[])
+                OR lower(coalesce(canonical_url, '')) LIKE ANY($4::text[])
+                OR lower(coalesce(destination_url, '')) LIKE ANY($4::text[])
+              )
+          ),
+          paged AS (
+            SELECT
+              *,
+              COUNT(*) OVER() AS total_rows
+            FROM candidates
+            ORDER BY brand_match_rank DESC, updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+            LIMIT ${limitBind}
+            OFFSET ${offsetBind}
+          )
+          SELECT
+            id,
+            external_product_id,
+            destination_url,
+            canonical_url,
+            domain,
+            title,
+            image_url,
+            price_amount,
+            price_currency,
+            availability,
+            seed_data,
+            updated_at,
+            created_at,
+            total_rows
+          FROM paged
+        `,
+        sqlParams,
+      );
+
+      const rows = Array.isArray(res?.rows) ? res.rows : [];
+      const totalRows = Math.max(0, Number(rows[0]?.total_rows || rows.length) || 0);
+      const products = [];
+      const seen = new Set();
+      for (const row of rows) {
+        const product = buildExternalSeedProduct(row);
+        if (!product) continue;
+        const key = buildSearchProductKey(product);
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        products.push(product);
+      }
+
+      return {
+        status: 'success',
+        success: true,
+        products,
+        total: totalRows,
+        page: safePage,
+        page_size: products.length,
+        reply: null,
+        metadata: {
+          query_source: 'agent_products_external_seed_direct',
+          fetched_at: new Date().toISOString(),
+          source_breakdown: {
+            internal_count: 0,
+            external_seed_count: products.length,
+            stale_cache_used: false,
+            strategy_applied: 'brand_search_external_seed_mainline_fastpath',
+          },
+          external_seed_only_requested: true,
+          external_seed_rows_fetched: totalRows,
+          external_seed_rows_built: totalRows,
+          external_seed_returned_count: products.length,
+          raw_result_count: totalRows,
+          brand_search_mainline_query: true,
+          retrieval_query_variants: queryVariants,
+          retrieval_query_variant_count: queryVariants.length,
+          retrieval_query_debug: [
+            {
+              query: relevanceQueryText,
+              pattern_count: queryPatterns.length,
+              row_count: totalRows,
+              duration_ms: null,
+              brand_fastpath: true,
+            },
+          ],
+          search_decision: {
+            brand_search_mainline_query: true,
+            retrieval_query_variants: queryVariants,
+            retrieval_query_variant_count: queryVariants.length,
+            raw_result_count: totalRows,
+            products_returned_count: products.length,
+            final_decision: products.length > 0 ? 'products_returned' : 'empty',
+          },
+        },
+      };
+    } catch (err) {
+      logger.warn(
+        { err: err?.message || String(err), query: relevanceQueryText },
+        'public brand external seed mainline fastpath failed',
+      );
+    }
+  }
+
   const recallKnowledge =
     typeof resolveIngredientRecallProfileKnowledge === 'function'
       ? await resolveIngredientRecallProfileKnowledge({ query: relevanceQueryText })
@@ -9487,15 +9686,6 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
   const recallProfile = recallKnowledge?.profile || null;
   const ingredientIntentDetected =
     hasBeautyIngredientIntentSignal(relevanceQueryText) || Boolean(recallProfile);
-
-  const safeLimit = Math.max(1, Math.min(SEARCH_LIMIT_MAX, Math.floor(Number(search.limit || 20) || 20)));
-  const safePage = Math.max(1, Math.floor(Number(search.page || 1) || 1));
-  const safeOffset = Math.max(
-    0,
-    Number.isFinite(Number(search.offset))
-      ? Math.floor(Number(search.offset))
-      : (safePage - 1) * safeLimit,
-  );
   const explicitTargetStepFamily = normalizeRecoTargetStep(
     metadata?.query_target_step_family || search?.target_step_family || search?.targetStepFamily,
   );
@@ -9535,15 +9725,6 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
     : null;
   const requestedProductOnly =
     parseQueryBoolean(metadata?.product_only_requested ?? search?.product_only ?? search?.productOnly) === true;
-  const inStockOnly = parseQueryBoolean(search.in_stock_only ?? search.inStockOnly) !== false;
-  const market =
-    String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
-  const tool = 'creator_agents';
-  const normalizedQuery = normalizeSearchTextForMatch(relevanceQueryText);
-  const publicBrandSearchMainline =
-    isPublicSearchSource(metadata?.source) &&
-    Boolean(detectBrandEntities(relevanceQueryText, { candidateProducts: [] })?.brand_like) &&
-    !hasExplicitCategoryHint(relevanceQueryText, null);
   const normalizedIntent = buildGuidanceSearchNormalizedIntent({
     queryText: relevanceQueryText,
     targetStepFamily,
@@ -23889,6 +24070,50 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     const upstreamBudgetMsForSearch = shouldUseShortSearchBudget
       ? FIND_PRODUCTS_MULTI_UPSTREAM_LOOKUP_TIMEOUT_MS
       : FIND_PRODUCTS_MULTI_UPSTREAM_DEFAULT_TIMEOUT_MS;
+    const publicBrandSearchMainlinePreflight =
+      operation === 'find_products_multi' &&
+      !strictCommerceFindProductsMulti &&
+      isPublicSearchSource(metadata?.source) &&
+      Boolean(primarySearchQueryText) &&
+      Boolean(detectBrandEntities(primarySearchQueryText, { candidateProducts: [] })?.brand_like) &&
+      !hasExplicitCategoryHint(primarySearchQueryText, effectiveIntent);
+    const publicBrandSearchRequestedLimit = Math.min(
+      Math.max(1, Number(queryParams?.limit || queryParams?.page_size || 20) || 20),
+      SEARCH_LIMIT_MAX,
+    );
+    const publicBrandSearchRequestedOffset = Math.max(0, Number(queryParams?.offset || 0) || 0);
+    const publicBrandSearchRequestedPage = Number(queryParams?.page || 0) > 0
+      ? Number(queryParams.page || 0)
+      : Math.floor(publicBrandSearchRequestedOffset / Math.max(1, publicBrandSearchRequestedLimit)) + 1;
+    let publicBrandSearchMainlinePromise = null;
+    if (publicBrandSearchMainlinePreflight) {
+      publicBrandSearchMainlinePromise = searchExternalSeedOnlyProductsDirect({
+        search: {
+          query: primarySearchQueryText,
+          page: publicBrandSearchRequestedPage,
+          limit: publicBrandSearchRequestedLimit,
+          offset: publicBrandSearchRequestedOffset,
+          in_stock_only:
+            parseQueryBoolean(
+              queryParams?.in_stock_only ??
+                queryParams?.inStockOnly ??
+                effectivePayload?.search?.in_stock_only ??
+                effectivePayload?.search?.inStockOnly,
+            ) !== false,
+          source: metadata?.source || null,
+        },
+        metadata: {
+          source: metadata?.source || null,
+          relevance_query_text: primarySearchQueryText,
+        },
+      }).catch((err) => {
+        logger.warn(
+          { err: err?.message || String(err), query: primarySearchQueryText },
+          'public brand search mainline prefetch failed',
+        );
+        return null;
+      });
+    }
 
     const axiosConfig = {
       method: invokeMethod,
@@ -25455,35 +25680,45 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         response.status >= 200 &&
         response.status < 300
       ) {
-        const directMainline = await searchExternalSeedOnlyProductsDirect({
-          search: {
-            query: queryText,
-            page: requestedFindProductsMultiPage,
-            limit: requestedLimit,
-            offset: requestedOffset,
-            in_stock_only:
-              parseQueryBoolean(
-                queryParams?.in_stock_only ??
-                  queryParams?.inStockOnly ??
-                  effectivePayload?.search?.in_stock_only ??
-                  effectivePayload?.search?.inStockOnly,
-              ) !== false,
-            source: metadata?.source || null,
-          },
-          metadata: {
-            source: metadata?.source || null,
-            relevance_query_text: queryText,
-          },
-        });
-        const directMainlineProducts = Array.isArray(directMainline?.products) ? directMainline.products : [];
+        const directMainline =
+          publicBrandSearchMainlinePromise ||
+          (await searchExternalSeedOnlyProductsDirect({
+            search: {
+              query: queryText,
+              page: requestedFindProductsMultiPage,
+              limit: requestedLimit,
+              offset: requestedOffset,
+              in_stock_only:
+                parseQueryBoolean(
+                  queryParams?.in_stock_only ??
+                    queryParams?.inStockOnly ??
+                    effectivePayload?.search?.in_stock_only ??
+                    effectivePayload?.search?.inStockOnly,
+                ) !== false,
+              source: metadata?.source || null,
+            },
+            metadata: {
+              source: metadata?.source || null,
+              relevance_query_text: queryText,
+            },
+          }));
+        const resolvedDirectMainline =
+          directMainline && typeof directMainline.then === 'function'
+            ? await directMainline
+            : directMainline;
+        const directMainlineProducts = Array.isArray(resolvedDirectMainline?.products)
+          ? resolvedDirectMainline.products
+          : [];
         if (directMainlineProducts.length > 0) {
           const existingMeta =
             upstreamData?.metadata && typeof upstreamData.metadata === 'object' && !Array.isArray(upstreamData.metadata)
               ? upstreamData.metadata
               : {};
           const mainlineMeta =
-            directMainline?.metadata && typeof directMainline.metadata === 'object' && !Array.isArray(directMainline.metadata)
-              ? directMainline.metadata
+            resolvedDirectMainline?.metadata &&
+            typeof resolvedDirectMainline.metadata === 'object' &&
+            !Array.isArray(resolvedDirectMainline.metadata)
+              ? resolvedDirectMainline.metadata
               : {};
           const mainlineSourceBreakdown =
             mainlineMeta.source_breakdown && typeof mainlineMeta.source_breakdown === 'object'
@@ -25503,10 +25738,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           const internalCount = Math.max(0, mergedProducts.length - externalSeedCount);
           upstreamData = withSearchDiagnostics(
             {
-              ...directMainline,
+              ...resolvedDirectMainline,
               products: mergedProducts,
               total: Math.max(
-                Number(directMainline?.total || 0) || 0,
+                Number(resolvedDirectMainline?.total || 0) || 0,
                 Number(upstreamData?.total || 0) || 0,
                 mergedProducts.length,
               ),
