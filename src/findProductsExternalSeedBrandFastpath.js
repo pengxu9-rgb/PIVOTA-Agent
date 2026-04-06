@@ -189,32 +189,53 @@ async function runExternalSeedBrandMainlineFastpath({
         ${availabilityFilter}
         AND ${brandMatchExpr} = ANY($3::text[])
     `;
-    const [exactRes, exactCountRes] = await Promise.all([
-      query(
-        `
-          SELECT
-            ${brandFastpathSelect}
-          FROM external_product_seeds
-          WHERE ${exactWhereClause}
-          ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
-          LIMIT $4
-          OFFSET $5
-        `,
-        [...exactSqlParams, safeLimit, safeOffset],
-      ),
-      query(
+    const exactRes = await query(
+      `
+        SELECT
+          ${brandFastpathSelect},
+          COUNT(*) OVER()::int AS total_rows
+        FROM external_product_seeds
+        WHERE ${exactWhereClause}
+        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+        LIMIT $4
+        OFFSET $5
+      `,
+      [...exactSqlParams, safeLimit, safeOffset],
+    );
+    const exactDurationMs = Math.max(0, Date.now() - exactPageStartedAt);
+
+    const exactRows = Array.isArray(exactRes?.rows) ? exactRes.rows : [];
+    let exactTotalRows = Math.max(0, Number(exactRows[0]?.total_rows || 0) || 0);
+    if (exactRows.length === 0 && safeOffset > 0) {
+      const exactCountRes = await query(
         `
           SELECT COUNT(*)::int AS total
           FROM external_product_seeds
           WHERE ${exactWhereClause}
         `,
         exactSqlParams,
-      ),
-    ]);
-    const exactDurationMs = Math.max(0, Date.now() - exactPageStartedAt);
-
-    const exactRows = Array.isArray(exactRes?.rows) ? exactRes.rows : [];
-    const exactTotalRows = Math.max(0, Number(exactCountRes?.rows?.[0]?.total || 0) || 0);
+      );
+      exactTotalRows = Math.max(0, Number(exactCountRes?.rows?.[0]?.total || 0) || 0);
+      if (exactTotalRows > 0 && safeOffset >= exactTotalRows) {
+        return buildBrandFastpathResponse({
+          rows: [],
+          totalRows: exactTotalRows,
+          strategyApplied: 'brand_search_external_seed_mainline_exact',
+          broadFallbackUsed: false,
+          broadScopeRows: 0,
+          retrievalDebug: [
+            {
+              query: relevanceQueryText,
+              pattern_count: 0,
+              row_count: exactTotalRows,
+              duration_ms: Math.max(0, Date.now() - exactPageStartedAt),
+              brand_fastpath: true,
+              stage: 'brand_exact_empty_page',
+            },
+          ],
+        });
+      }
+    }
     const exactCoverageEnd = safeOffset + exactRows.length;
     const exactPageCovered = exactRows.length > 0 && exactTotalRows >= exactCoverageEnd;
     if (exactPageCovered) {
