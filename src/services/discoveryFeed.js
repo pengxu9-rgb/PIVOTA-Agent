@@ -1560,6 +1560,22 @@ function getRecallEnoughThreshold(request, safeLimit) {
   return Math.min(safeLimit, Math.max(request.limit * 2, 24));
 }
 
+function hasBrandScope(request) {
+  return Array.isArray(request?.scope?.brand_names) && request.scope.brand_names.length > 0;
+}
+
+function shouldSkipBrandScopedProviderExpansion(products = [], { request, profile, enoughThreshold, qualityThreshold } = {}) {
+  if (request?.surface !== 'browse_products' || !hasBrandScope(request)) return false;
+  return hasSufficientProviderCandidates(products, { request, profile, enoughThreshold, qualityThreshold });
+}
+
+function shouldSkipBrandDirectPool(scopedCandidates = [], { request, limit } = {}) {
+  if (request?.surface !== 'browse_products' || !hasBrandScope(request)) return false;
+  const safeLimit = clampInt(limit, resolveDiscoveryCandidateLimit(request), 24, MAX_CANDIDATE_FETCH);
+  const enoughThreshold = getRecallEnoughThreshold(request, safeLimit);
+  return Array.isArray(scopedCandidates) && scopedCandidates.length >= enoughThreshold;
+}
+
 async function fetchDiscoveryRecallStep({
   baseUrl,
   request,
@@ -2470,6 +2486,43 @@ async function loadCatalogCandidates({
     mergeProducts(productsSearchResult.products);
   } catch (err) {
     providerResults.push(buildProviderErrorResult('products_search', err));
+  }
+
+  const shouldSkipBrandScopedExpansion = shouldSkipBrandScopedProviderExpansion(mergedProducts, {
+    request,
+    profile,
+    enoughThreshold,
+    qualityThreshold,
+  });
+  if (shouldSkipBrandScopedExpansion) {
+    providerResults.push(
+      buildSkippedProviderResult('internal_catalog', {
+        label: 'internal_catalog_pool',
+        query: providerQueries.join(' | '),
+        limit: internalProviderLimit,
+        skipReason: 'sufficient_brand_primary_candidates',
+      }),
+    );
+    providerResults.push(
+      buildSkippedProviderResult('external_seeds', {
+        label: 'external_seed_pool',
+        query: externalProviderQueries.join(' | '),
+        limit: externalProviderLimit,
+        skipReason: 'sufficient_brand_primary_candidates',
+      }),
+    );
+    const recallSummary = providerResults.flatMap((result) =>
+      (Array.isArray(result?.recallSummary) ? result.recallSummary : []).map((step) => ({
+        provider: result.provider,
+        ...step,
+      })),
+    );
+    const providerBreakdown = buildProviderBreakdown(providerResults);
+    return {
+      products: mergedProducts,
+      recallSummary,
+      providerBreakdown,
+    };
   }
 
   const shouldSkipExternalSeeds = hasSufficientProviderCandidates(mergedProducts, {
@@ -3484,25 +3537,6 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       : [];
     let effectiveRawCandidates = rawCandidates;
     const brandScopeAliases = buildBrandScopeAliases(request.scope?.brand_names || []);
-    if (brandScopeAliases.length > 0) {
-      const directBrandLoadResult = await loadBrandScopedDirectCandidates({
-        request,
-        brandAliases: brandScopeAliases,
-        limit: resolveBrandDirectCandidateLimit(
-          request,
-          options.candidateLimit || resolveDiscoveryCandidateLimit(request),
-        ),
-        fetchExternalCandidatesFn: options.brandFallbackFetchExternalCandidatesFn,
-        fetchInternalCandidatesFn: options.brandFallbackFetchInternalCandidatesFn,
-      });
-      if (Array.isArray(directBrandLoadResult?.products) && directBrandLoadResult.products.length > 0) {
-        effectiveCandidateSource = `${effectiveCandidateSource}+brand_direct`;
-        effectiveRawCandidates = effectiveRawCandidates.concat(directBrandLoadResult.products);
-      }
-      if (Array.isArray(directBrandLoadResult?.recallSummary) && directBrandLoadResult.recallSummary.length > 0) {
-        recallSummary = recallSummary.concat(directBrandLoadResult.recallSummary);
-      }
-    }
     observeDiscoveryCandidateCount({
       surface: request.surface,
       stage: 'raw',
@@ -3532,6 +3566,70 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       brandScopeAliases.length > 0
         ? normalizedCandidates.filter((candidate) => matchesBrandScopeCandidate(candidate, brandScopeAliases))
         : normalizedCandidates;
+    const brandDirectLimit = resolveBrandDirectCandidateLimit(
+      request,
+      options.candidateLimit || resolveDiscoveryCandidateLimit(request),
+    );
+    const skipBrandDirectPool = shouldSkipBrandDirectPool(scopedCandidates, {
+      request,
+      limit: options.candidateLimit || resolveDiscoveryCandidateLimit(request),
+    });
+
+    if (brandScopeAliases.length > 0 && !skipBrandDirectPool) {
+      const directBrandLoadResult = await loadBrandScopedDirectCandidates({
+        request,
+        brandAliases: brandScopeAliases,
+        limit: brandDirectLimit,
+        fetchExternalCandidatesFn: options.brandFallbackFetchExternalCandidatesFn,
+        fetchInternalCandidatesFn: options.brandFallbackFetchInternalCandidatesFn,
+      });
+      if (Array.isArray(directBrandLoadResult?.products) && directBrandLoadResult.products.length > 0) {
+        effectiveCandidateSource = `${effectiveCandidateSource}+brand_direct`;
+        effectiveRawCandidates = effectiveRawCandidates.concat(directBrandLoadResult.products);
+        normalizedCandidates = [];
+        seenKeys.clear();
+        seenSemanticKeys.clear();
+        semanticDeduped = 0;
+        for (let idx = 0; idx < effectiveRawCandidates.length; idx += 1) {
+          const normalized = normalizeCandidateProduct(effectiveRawCandidates[idx], idx);
+          if (!normalized) continue;
+          const dedupKey = buildNormalizedCandidateKey(normalized, { brandScoped });
+          if (!dedupKey || seenKeys.has(dedupKey)) continue;
+          const semanticKey = buildNormalizedCandidateSemanticKey(normalized);
+          if (semanticKey && seenSemanticKeys.has(semanticKey)) {
+            semanticDeduped += 1;
+            continue;
+          }
+          seenKeys.add(dedupKey);
+          if (semanticKey) seenSemanticKeys.add(semanticKey);
+          normalizedCandidates.push(normalized);
+        }
+        scopedCandidates =
+          brandScopeAliases.length > 0
+            ? normalizedCandidates.filter((candidate) => matchesBrandScopeCandidate(candidate, brandScopeAliases))
+            : normalizedCandidates;
+      }
+      if (Array.isArray(directBrandLoadResult?.recallSummary) && directBrandLoadResult.recallSummary.length > 0) {
+        recallSummary = recallSummary.concat(directBrandLoadResult.recallSummary);
+      }
+    }
+    if (brandScopeAliases.length > 0 && skipBrandDirectPool) {
+      recallSummary = recallSummary.concat([
+        {
+          provider: null,
+          label: 'brand_direct_pool',
+          query: brandScopeAliases.join(' | '),
+          offset: 0,
+          limit: brandDirectLimit,
+          status: null,
+          returned: 0,
+          latency_ms: 0,
+          cache_hit: false,
+          skipped: true,
+          skip_reason: 'sufficient_brand_primary_candidates',
+        },
+      ]);
+    }
 
     if (brandScopeAliases.length > 0 && scopedCandidates.length === 0) {
       const fallbackProducts = await loadBrandScopedRecommendationFallback({
