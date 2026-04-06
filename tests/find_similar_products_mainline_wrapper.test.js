@@ -32,6 +32,7 @@ describe('find_similar_products mainline wrapper', () => {
     });
 
     jest.doMock('../src/services/RecommendationEngine', () => ({
+      ...jest.requireActual('../src/services/RecommendationEngine'),
       recommend: recommendMock,
       getCacheStats: jest.fn(() => ({})),
     }));
@@ -78,6 +79,7 @@ describe('find_similar_products mainline wrapper', () => {
     const recommendMock = jest.fn().mockRejectedValue(new Error('engine unavailable'));
 
     jest.doMock('../src/services/RecommendationEngine', () => ({
+      ...jest.requireActual('../src/services/RecommendationEngine'),
       recommend: recommendMock,
       getCacheStats: jest.fn(() => ({})),
     }));
