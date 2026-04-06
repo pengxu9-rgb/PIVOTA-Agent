@@ -299,6 +299,45 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     );
   });
 
+  test('suppresses duplicate description facts when richer structured ingredient modules already exist', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_fenty_bha_treatment',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: "Blemish Defeat'r BHA Spot-Targeting Gel",
+        description:
+          "Discover Fenty Skin's Salicylic Acid spot-targeting gel fights blemishes, clarifies skin and reduces surface oil. Its unique gel texture dries down quickly and works perfect canvas for makeup.",
+        category: 'Treatment',
+        price: 25,
+        currency: 'USD',
+        image_url: 'https://example.com/fenty-bha-gel.jpg',
+        variants: [
+          {
+            variant_id: 'v_1',
+            title: 'Default Title',
+            price: { amount: 25, currency: 'USD' },
+            image_url: 'https://example.com/fenty-bha-gel.jpg',
+          },
+        ],
+        active_ingredients: {
+          items: ['Salicylic acid'],
+          source_quality_status: 'captured',
+        },
+        ingredients_inci: {
+          raw_text: 'Ingredients: Salicylic Acid, Water, Glycerin',
+        },
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    expect(payload.modules.find((module) => module.type === 'active_ingredients')).toBeTruthy();
+    expect(payload.modules.find((module) => module.type === 'ingredients_inci')).toBeTruthy();
+    expect(payload.modules.find((module) => module.type === 'product_facts')).toBeFalsy();
+    expect(payload.modules.find((module) => module.type === 'product_details')).toBeFalsy();
+  });
+
   test('normalizes encoded whitespace in sdcdn Tom Ford asset names', () => {
     const payload = buildPdpPayload({
       product: {

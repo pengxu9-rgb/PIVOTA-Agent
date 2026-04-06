@@ -644,6 +644,14 @@ function classifyConfidenceLevel(base, candidate, layerId) {
   if (candidate.leafMatch && nearPriceTight) return 'high';
 
   if (base.vertical !== UNKNOWN_VERTICAL && candidate.features.vertical !== UNKNOWN_VERTICAL) {
+    if (
+      base.vertical === candidate.features.vertical &&
+      candidate.brandMatch &&
+      candidate.relDiff != null &&
+      candidate.relDiff <= 0.75
+    ) {
+      return 'medium';
+    }
     if (base.vertical === candidate.features.vertical && candidate.tokenOverlap >= 0.12) return 'medium';
     if (base.vertical !== candidate.features.vertical) return 'low';
   }

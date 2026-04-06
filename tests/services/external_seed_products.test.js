@@ -550,6 +550,43 @@ describe('externalSeedProducts helper', () => {
     expect(product.product_type).toBe('Hair Care');
   });
 
+  test('normalizes cents-style acne treatment pricing and infers treatment category', () => {
+    const row = {
+      id: 'eps_fenty_bha_treatment',
+      external_product_id: 'ext_fenty_bha_treatment',
+      canonical_url: 'https://fentybeauty.com/products/blemish-defeatr-bha-spot-targeting-gel',
+      destination_url: 'https://fentybeauty.com/products/blemish-defeatr-bha-spot-targeting-gel',
+      domain: 'fentybeauty.com',
+      title: "Blemish Defeat'r BHA Spot-Targeting Gel",
+      price_amount: 2500,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_brand: 'Fenty Beauty',
+      seed_data: {
+        brand: 'Fenty Beauty',
+        snapshot: {
+          canonical_url: 'https://fentybeauty.com/products/blemish-defeatr-bha-spot-targeting-gel',
+          description:
+            "Discover Fenty Skin's Salicylic Acid spot-targeting gel fights blemishes, clarifies skin and reduces surface oil.",
+          variants: [
+            {
+              sku: 'FKS10000020',
+              variant_id: 'FKS10000020',
+              price: '2500.00',
+              currency: 'USD',
+            },
+          ],
+        },
+      },
+    };
+
+    const product = buildExternalSeedProduct(row);
+    expect(product.price).toBe(25);
+    expect(product.variants[0].price).toBe(25);
+    expect(product.category).toBe('Treatment');
+    expect(product.product_type).toBe('Treatment');
+  });
+
   test('prefers cleanser intent over generic concentrate terms for lean recommendation candidates', () => {
     const row = {
       id: 'eps_lean_tom_ford_cleanser',

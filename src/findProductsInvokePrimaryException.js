@@ -39,6 +39,9 @@ function createFindProductsInvokePrimaryExceptionRuntime(deps = {}) {
     resolverQueryParams = null,
     checkoutToken = null,
     resolverTimeoutMs = 0,
+    publicBrandSearchMainlinePreflight = false,
+    publicBrandSearchMainlinePromise = null,
+    publicBrandSearchMainlineResolved = null,
     crossMerchantCacheProtectedResponse = null,
     resolverRejectedReason = null,
     resolverRejectedQueryUsed = null,
@@ -52,6 +55,8 @@ function createFindProductsInvokePrimaryExceptionRuntime(deps = {}) {
         response,
         resolverRejectedReason,
         resolverRejectedQueryUsed,
+        publicBrandSearchMainlineResolved,
+        publicBrandSearchMainlineShortCircuited: false,
       };
     }
 
@@ -105,7 +110,33 @@ function createFindProductsInvokePrimaryExceptionRuntime(deps = {}) {
         response: nextResponse,
         resolverRejectedReason: nextResolverRejectedReason,
         resolverRejectedQueryUsed: nextResolverRejectedQueryUsed,
+        publicBrandSearchMainlineResolved,
+        publicBrandSearchMainlineShortCircuited: false,
       };
+    }
+
+    let nextPublicBrandSearchMainlineResolved = publicBrandSearchMainlineResolved;
+    let publicBrandSearchMainlineShortCircuited = false;
+    if (
+      publicBrandSearchMainlinePreflight &&
+      publicBrandSearchMainlinePromise
+    ) {
+      nextPublicBrandSearchMainlineResolved =
+        nextPublicBrandSearchMainlineResolved ||
+        (await publicBrandSearchMainlinePromise);
+      if (nextPublicBrandSearchMainlineResolved) {
+        return {
+          response: {
+            status: 200,
+            data: nextPublicBrandSearchMainlineResolved,
+          },
+          resolverRejectedReason: nextResolverRejectedReason,
+          resolverRejectedQueryUsed: nextResolverRejectedQueryUsed,
+          publicBrandSearchMainlineResolved:
+            nextPublicBrandSearchMainlineResolved,
+          publicBrandSearchMainlineShortCircuited: true,
+        };
+      }
     }
 
     const secondarySkipBrandLike = Boolean(
@@ -300,6 +331,9 @@ function createFindProductsInvokePrimaryExceptionRuntime(deps = {}) {
       response: nextResponse,
       resolverRejectedReason: nextResolverRejectedReason,
       resolverRejectedQueryUsed: nextResolverRejectedQueryUsed,
+      publicBrandSearchMainlineResolved:
+        nextPublicBrandSearchMainlineResolved,
+      publicBrandSearchMainlineShortCircuited,
     };
   }
 

@@ -295,7 +295,10 @@ const {
   buildBrandQueryVariants,
   hasExplicitCategoryHint,
 } = require('./findProductsMulti/brandLexicon');
-const { buildExternalSeedProduct } = require('./services/externalSeedProducts');
+const {
+  buildExternalSeedProduct,
+  buildExternalSeedBrandSearchProduct,
+} = require('./services/externalSeedProducts');
 const {
   recallIngredientProducts,
   resolveIngredientRecallProfile,
@@ -8538,7 +8541,7 @@ function getSearchExternalSeedOnlyProductsDirectRuntime() {
         extractSearchAnchorTokens,
         tokenizeSearchTextForMatch,
         buildBrandQueryVariants,
-        buildExternalSeedProduct,
+        buildExternalSeedBrandSearchProduct,
         buildSearchProductKey,
         query,
         logger,
