@@ -8541,6 +8541,7 @@ function getSearchExternalSeedOnlyProductsDirectRuntime() {
         extractSearchAnchorTokens,
         tokenizeSearchTextForMatch,
         buildBrandQueryVariants,
+        normalizeBrandText,
         buildExternalSeedBrandSearchProduct,
         buildSearchProductKey,
         query,
