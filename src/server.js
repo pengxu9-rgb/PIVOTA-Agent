@@ -22900,134 +22900,98 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
       
       case 'find_similar_products': {
-        // Creator UI: prefer cache-based similarity so "Find more" stays consistent
-        // with the creator pool even when upstream has stale/partial cache.
-        const source = metadata?.source;
-        const isCreatorUi = isCreatorUiSource(source);
-        if (isCreatorUi && process.env.DATABASE_URL) {
-          try {
-            const sim = payload.similar || {};
-            const productId = sim.product_id || payload.product_id;
-            const lim = sim.limit || payload.limit || 9;
-            const cached = await findSimilarCreatorFromCache(creatorId, productId, lim);
-            if (cached && Array.isArray(cached.items) && cached.items.length > 0) {
-              const promotions = await getActivePromotions(now, creatorId);
-              const enriched = applyDealsToResponse(cached, promotions, now, creatorId);
-              return res.json(enriched);
-            }
-          } catch (err) {
-            logger.warn(
-              { err: err.message, creatorId, source },
-              'Creator UI cache similarity failed; falling back to upstream'
-            );
-          }
+        // Compatibility wrapper only. Keep the legacy operation name available,
+        // but force it onto the same mainline recommendation path as get_pdp_v2(similar).
+        // No creator-cache branch and no upstream fallback are allowed here anymore.
+        const sim = payload.similar || {};
+        const productId = String(sim.product_id || payload.product_id || '').trim();
+        const merchantId = String(sim.merchant_id || payload.merchant_id || '').trim();
+        const excludeItems = Array.isArray(sim.exclude_items)
+          ? sim.exclude_items
+          : Array.isArray(payload.exclude_items)
+            ? payload.exclude_items
+            : [];
+        const limit = Math.max(1, Math.min(Number(sim.limit || payload.limit || 6) || 6, 30));
+        const bypassCache =
+          payload?.options?.no_cache === true ||
+          payload?.options?.cache_bypass === true ||
+          payload?.options?.bypass_cache === true ||
+          sim?.options?.no_cache === true ||
+          sim?.options?.cache_bypass === true ||
+          sim?.options?.bypass_cache === true;
+        const debugEnabled =
+          payload?.options?.debug === true ||
+          sim?.options?.debug === true;
+
+        if (!productId) {
+          return res.status(400).json({
+            error: 'MISSING_PARAMETERS',
+            message: 'product_id is required',
+          });
         }
 
-        // P0: Avoid invoking upstream /agent/shop/v1/invoke for similarity.
-        // In REAL mode this can trigger TOOL_LOOP_DETECTED depending on upstream routing.
-        // Instead, use our lightweight RecommendationEngine (DB-backed + cached).
         try {
-          const sim = payload.similar || {};
-          const productId = String(sim.product_id || payload.product_id || '').trim();
-          const merchantId = String(sim.merchant_id || payload.merchant_id || '').trim();
-          const excludeItems = Array.isArray(sim.exclude_items)
-            ? sim.exclude_items
-            : Array.isArray(payload.exclude_items)
-              ? payload.exclude_items
-              : [];
-          const limit = Math.max(1, Math.min(Number(sim.limit || payload.limit || 6) || 6, 30));
-          const bypassCache =
-            payload?.options?.no_cache === true ||
-            payload?.options?.cache_bypass === true ||
-            payload?.options?.bypass_cache === true ||
-            sim?.options?.no_cache === true ||
-            sim?.options?.cache_bypass === true ||
-            sim?.options?.bypass_cache === true;
-          const debugEnabled =
-            payload?.options?.debug === true ||
-            sim?.options?.debug === true;
+          const baseProduct =
+            (merchantId
+              ? await fetchProductDetailForOffers({
+                  merchantId,
+                  productId,
+                  checkoutToken,
+                }).catch(() => null)
+              : null) || { merchant_id: merchantId || null, product_id: productId };
 
-          if (productId) {
-            const baseProduct =
-              (merchantId
-                ? await fetchProductDetailForOffers({
-                    merchantId,
-                    productId,
-                    checkoutToken,
-                  }).catch(() => null)
-                : null) || { merchant_id: merchantId || null, product_id: productId };
+          const rec = await recommendPdpProducts({
+            pdp_product: baseProduct,
+            k: limit,
+            locale: payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
+            currency: baseProduct.currency || baseProduct.price?.currency || 'USD',
+            options: {
+              debug: debugEnabled,
+              no_cache: bypassCache,
+              cache_bypass: bypassCache,
+              bypass_cache: bypassCache,
+              exclude_items: excludeItems,
+            },
+          });
 
-            const rec = await recommendPdpProducts({
-              pdp_product: baseProduct,
-              k: limit,
-              locale: payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
-              currency: baseProduct.currency || baseProduct.price?.currency || 'USD',
-              options: {
-                debug: debugEnabled,
-                no_cache: bypassCache,
-                cache_bypass: bypassCache,
-                bypass_cache: bypassCache,
-                exclude_items: excludeItems,
-              },
-            });
+          const products = Array.isArray(rec?.items) ? rec.items : [];
+          const recMetadata =
+            rec?.metadata && typeof rec.metadata === 'object' && !Array.isArray(rec.metadata)
+              ? rec.metadata
+              : null;
+          const responseMetadata = {
+            ...(recMetadata || {}),
+            route: 'find_similar_products_mainline_wrapper',
+          };
 
-            const products = Array.isArray(rec?.items) ? rec.items : [];
-            const recMetadata =
-              rec?.metadata && typeof rec.metadata === 'object' && !Array.isArray(rec.metadata)
-                ? rec.metadata
-                : null;
+          const baseResponse = {
+            status: 'success',
+            strategy: 'related_products',
+            products,
+            total: products.length,
+            page: 1,
+            page_size: products.length,
+            ...(typeof recMetadata?.has_more === 'boolean' ? { has_more: recMetadata.has_more } : {}),
+            metadata: responseMetadata,
+          };
 
-            // Keep response structure stable for existing clients.
-            const baseResponse = {
-              status: 'success',
-              strategy: 'related_products',
-              products,
-              total: products.length,
-              page: 1,
-              page_size: products.length,
-              ...(typeof recMetadata?.has_more === 'boolean' ? { has_more: recMetadata.has_more } : {}),
-              ...(recMetadata ? { metadata: recMetadata } : {}),
-            };
-
-            return debugEnabled
-              ? res.json({
-                  ...baseResponse,
-                  debug: rec?.debug || null,
-                  cache: rec?.cache || null,
-                })
-              : res.json(baseResponse);
-          }
+          return debugEnabled
+            ? res.json({
+                ...baseResponse,
+                debug: rec?.debug || null,
+                cache: rec?.cache || null,
+              })
+            : res.json(baseResponse);
         } catch (err) {
           logger.warn(
-            { err: err?.message || String(err), product_id: payload?.similar?.product_id || payload?.product_id },
-            'find_similar_products: local recommendations failed; falling back to upstream',
+            { err: err?.message || String(err), product_id: productId, merchant_id: merchantId || null },
+            'find_similar_products mainline wrapper failed',
           );
+          return res.status(503).json({
+            error: 'SIMILAR_MAINLINE_UNAVAILABLE',
+            message: 'Similar products mainline is unavailable',
+          });
         }
-
-        // Delegate to backend shopping gateway which owns the similarity logic.
-        // Accept both the legacy nested shape (payload.similar) and the
-        // flat shape (payload.product_id, payload.merchant_id, etc.).
-        const sim = payload.similar || {};
-        const normalizedPayload = {
-          product_id: sim.product_id || payload.product_id,
-          merchant_id: sim.merchant_id || payload.merchant_id,
-          limit: sim.limit || payload.limit,
-          exclude_items: sim.exclude_items || payload.exclude_items,
-          strategy: sim.strategy || payload.strategy,
-          user: sim.user || payload.user,
-          creator_id:
-            payload.creator_id ||
-            sim.creator_id ||
-            metadata.creator_id ||
-            undefined,
-          metadata,
-        };
-        requestBody = {
-          operation,
-          payload: normalizedPayload,
-          metadata,
-        };
-        break;
       }
       
       case 'get_product_detail': {
