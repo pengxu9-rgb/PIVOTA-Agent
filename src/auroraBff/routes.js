@@ -122,6 +122,9 @@ const {
   createLegacyChatRecoRouteEntryRuntime,
 } = require('./legacyChatRecoRouteEntry');
 const {
+  buildLegacyChatRecoRouteDeps,
+} = require('./legacyChatRecoDeps');
+const {
   buildExternalSeedSurfacingText,
   choosePreferredExternalSeedCandidate,
   computeExternalSeedSurfacingMatch,
@@ -78725,7 +78728,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             shouldAutoRerunRecommendationsFromProfilePatch,
             debugUpstream,
           }),
-        legacyRecoDeps: {
+        legacyRecoDeps: buildLegacyChatRecoRouteDeps({
           attachAnalysisContextUsageToSessionPatch,
           buildSafetyNoticeText,
           runAuroraTimedOperation,
@@ -78780,7 +78783,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           AURORA_PRODUCT_MATCHER_BUNDLED_SEED_FALLBACK_ENABLED,
           DIAG_PRODUCT_CATALOG_PATH,
           AURORA_BFF_CHAT_RECO_BUDGET_MS,
-        },
+        }),
       });
       if (legacyRecoRouteEntry?.handled) {
         return sendChatEnvelope(legacyRecoRouteEntry.envelope);
