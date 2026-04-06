@@ -15,6 +15,7 @@ const BEAUTY_CATEGORY_PATTERNS = [
   ['Serum', /\b(serum|essence|ampoule|concentrate)\b/i],
   ['Concealer', /\b(concealer)\b/i],
   ['Foundation', /\b(foundation|skin tint|foundation stick|cushion foundation)\b/i],
+  ['Powder', /\b(powder|setting powder|pressed powder|loose powder|blurring powder|finishing powder)\b/i],
   ['Eyeshadow', /\b(eye\s?shadow|eyeshadow|eye color|eye colour)\b/i],
   ['Mascara', /\b(mascara)\b/i],
   ['Brow Pencil', /\b(brow pencil|eyebrow pencil|brow definer|brow sculptor|brow styler)\b/i],
