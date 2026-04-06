@@ -818,6 +818,90 @@ function buildExternalSeedProduct(row) {
   };
 }
 
+function buildExternalSeedBrandSearchProduct(row) {
+  if (!row || typeof row !== 'object') return null;
+
+  const seedData = ensureJsonObject(row.seed_data);
+  const snapshot = ensureJsonObject(seedData.snapshot);
+  const destinationUrl = String(
+    snapshot.destination_url || row.destination_url || seedData.destination_url || '',
+  ).trim();
+  const canonicalUrl = String(
+    snapshot.canonical_url || row.canonical_url || seedData.canonical_url || '',
+  ).trim();
+
+  const externalProductId =
+    String(
+      row.external_product_id || seedData.external_product_id || seedData.product_id || snapshot.product_id || '',
+    ).trim() || stableExternalProductId(canonicalUrl || destinationUrl);
+
+  if (!externalProductId) return null;
+
+  const title =
+    String(snapshot.title || row.title || seedData.title || canonicalUrl || destinationUrl || externalProductId).trim() ||
+    externalProductId;
+  const description = String(snapshot.description || row.description || seedData.description || '').trim();
+  const brand = String(seedData.brand || snapshot.brand || row.brand || '').trim() || undefined;
+  const explicitCategory =
+    normalizeExplicitSkincareCategory(seedData.category) ||
+    normalizeExplicitSkincareCategory(seedData.product?.category) ||
+    normalizeExplicitSkincareCategory(snapshot.category) ||
+    normalizeExplicitSkincareCategory(seedData.product_type) ||
+    normalizeExplicitSkincareCategory(seedData.productType) ||
+    normalizeExplicitSkincareCategory(snapshot.product_type) ||
+    normalizeExplicitSkincareCategory(snapshot.productType);
+  const category =
+    explicitCategory ||
+    inferExternalSeedSkincareCategory({
+      explicitCategory,
+      title,
+      description,
+      canonicalUrl,
+      destinationUrl,
+      ingredientIds: [],
+    }) ||
+    undefined;
+  const imageUrls = normalizeSeedImageUrls(seedData, row);
+  const imageUrl = imageUrls[0] || undefined;
+  const price = normalizeAmount(row.price_amount ?? seedData.price_amount ?? snapshot.price_amount);
+  const currency = normalizeCurrency(
+    row.price_currency || seedData.price_currency || snapshot.price_currency,
+    'USD',
+  );
+  const availability = normalizeSeedAvailability(row.availability || seedData.availability || snapshot.availability);
+  const inStock = availabilityToInStock(availability);
+  const merchantName =
+    String(seedData.merchant_display_name || brand || row.domain || 'External').trim() || 'External';
+
+  return {
+    id: externalProductId,
+    product_id: externalProductId,
+    merchant_id: EXTERNAL_SEED_MERCHANT_ID,
+    merchant_name: merchantName,
+    platform: 'external',
+    platform_product_id: externalProductId,
+    title,
+    description,
+    price,
+    currency,
+    image_url: imageUrl,
+    images: imageUrls,
+    image_urls: imageUrls,
+    inventory_quantity: inStock === true ? 999 : inStock === false ? 0 : null,
+    in_stock: inStock,
+    availability: availability || undefined,
+    product_type: category || 'external',
+    source: 'external_seed',
+    url: canonicalUrl || destinationUrl || undefined,
+    canonical_url: canonicalUrl || undefined,
+    destination_url: destinationUrl || undefined,
+    external_seed_id: row.id ? String(row.id) : undefined,
+    seed_data: seedData,
+    ...(brand ? { vendor: brand, brand } : {}),
+    ...(category ? { category } : {}),
+  };
+}
+
 module.exports = {
   EXTERNAL_SEED_MERCHANT_ID,
   stableExternalProductId,
@@ -829,4 +913,5 @@ module.exports = {
   normalizeSeedImageUrls,
   normalizeSeedVariants,
   buildExternalSeedProduct,
+  buildExternalSeedBrandSearchProduct,
 };

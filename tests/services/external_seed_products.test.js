@@ -1,6 +1,7 @@
 const {
   availabilityToInStock,
   buildExternalSeedProduct,
+  buildExternalSeedBrandSearchProduct,
   normalizeSeedVariants,
 } = require('../../src/services/externalSeedProducts');
 
@@ -142,6 +143,45 @@ describe('externalSeedProducts helper', () => {
     expect(availabilityToInStock(null)).toBeNull();
     expect(availabilityToInStock('In Stock')).toBe(true);
     expect(availabilityToInStock('Out of Stock')).toBe(false);
+  });
+
+  test('builds lightweight brand-search products without deep variant expansion', () => {
+    const row = {
+      id: 'eps_fenty_1',
+      external_product_id: 'ext_fenty_1',
+      canonical_url: 'https://fentybeauty.com/products/gloss-bomb',
+      destination_url: 'https://fentybeauty.com/products/gloss-bomb',
+      domain: 'fentybeauty.com',
+      title: 'Gloss Bomb Universal Lip Luminizer',
+      image_url: 'https://example.com/fenty.jpg',
+      price_amount: '22.00',
+      price_currency: 'USD',
+      availability: 'In Stock',
+      seed_data: {
+        brand: 'Fenty Beauty',
+        snapshot: {
+          canonical_url: 'https://fentybeauty.com/products/gloss-bomb',
+          title: 'Gloss Bomb Universal Lip Luminizer',
+          image_url: 'https://example.com/fenty.jpg',
+        },
+      },
+    };
+
+    const product = buildExternalSeedBrandSearchProduct(row);
+    expect(product).toEqual(
+      expect.objectContaining({
+        id: 'ext_fenty_1',
+        merchant_id: 'external_seed',
+        brand: 'Fenty Beauty',
+        vendor: 'Fenty Beauty',
+        title: 'Gloss Bomb Universal Lip Luminizer',
+        canonical_url: 'https://fentybeauty.com/products/gloss-bomb',
+        destination_url: 'https://fentybeauty.com/products/gloss-bomb',
+        image_url: 'https://example.com/fenty.jpg',
+        in_stock: true,
+      }),
+    );
+    expect(product.variants).toBeUndefined();
   });
 
   test('falls back to configured manual image overrides when a seed has no stored images', () => {
