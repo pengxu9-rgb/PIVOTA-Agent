@@ -478,6 +478,10 @@ function resolveBrandDirectCandidateLimit(request, limit) {
   return clampInt(pageNeed, 120, 48, 360);
 }
 
+function getBrandDirectPrefetchDelayMs() {
+  return clampInt(process.env.DISCOVERY_BRAND_DIRECT_PREFETCH_DELAY_MS, 75, 0, 1000);
+}
+
 function buildCandidateBrandAliases(candidate) {
   const aliases = new Set();
   const directSignals = [
@@ -2966,6 +2970,67 @@ async function loadBrandScopedDirectCandidates({
   }
 }
 
+function scheduleBrandScopedDirectCandidatesLoad(args = {}, delayMs = getBrandDirectPrefetchDelayMs()) {
+  let timer = null;
+  let started = false;
+  let resolved = false;
+  let resolveScheduled;
+  const startLoad = () => {
+    if (started || resolved) return;
+    started = true;
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    loadBrandScopedDirectCandidates(args)
+      .then((result) => resolveScheduled(result))
+      .catch((err) =>
+        resolveScheduled({
+          products: [],
+          recallSummary: [
+            {
+              label: 'brand_direct_pool',
+              query: Array.isArray(args.brandAliases) ? args.brandAliases.join(' | ') : null,
+              offset: 0,
+              limit: Number(args.limit || 0),
+              status: null,
+              returned: 0,
+              latency_ms: 0,
+              cache_hit: false,
+              error: err?.message || String(err),
+            },
+          ],
+        }),
+      );
+  };
+
+  const promise = new Promise((resolve) => {
+    resolveScheduled = (value) => {
+      if (resolved) return;
+      resolved = true;
+      resolve(value);
+    };
+    timer = setTimeout(startLoad, Math.max(0, Number(delayMs || 0)));
+  });
+
+  return {
+    promise,
+    startNow: () => {
+      startLoad();
+      return promise;
+    },
+    cancel: () => {
+      if (started || resolved) return false;
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      resolveScheduled(null);
+      return true;
+    },
+  };
+}
+
 function scoreBeautyBucketAlignment(candidate, profile) {
   if (!profile?.preferredBeautyBucket || profile?.dominantDomain !== 'beauty') return 0;
   if (candidate.domain !== 'beauty') return -0.2;
@@ -3525,6 +3590,21 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
     strategy = profile.hasInterestSignals ? 'personalized_interest' : 'cold_start_curated';
     personalizationSource =
       strategy === 'personalized_interest' ? profile.personalizationSource : 'none';
+    const candidateLimit = options.candidateLimit || resolveDiscoveryCandidateLimit(request);
+    const brandScopeAliases = buildBrandScopeAliases(request.scope?.brand_names || []);
+    const brandDirectLimit = resolveBrandDirectCandidateLimit(request, candidateLimit);
+    const scheduledBrandDirectLoad =
+      !Array.isArray(options.candidateProducts) &&
+      brandScopeAliases.length > 0 &&
+      shouldUseBrandDirectPoolInsteadOfGenericBrandExpansion(request)
+        ? scheduleBrandScopedDirectCandidatesLoad({
+            request,
+            brandAliases: brandScopeAliases,
+            limit: brandDirectLimit,
+            fetchExternalCandidatesFn: options.brandFallbackFetchExternalCandidatesFn,
+            fetchInternalCandidatesFn: options.brandFallbackFetchInternalCandidatesFn,
+          })
+        : null;
 
     const candidateLoadResult = Array.isArray(options.candidateProducts)
       ? {
@@ -3534,7 +3614,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       : await loadCatalogCandidates({
           request,
           profile,
-          limit: options.candidateLimit || resolveDiscoveryCandidateLimit(request),
+          limit: candidateLimit,
           providerOverrides: options.providerOverrides || null,
         });
     const rawCandidates = Array.isArray(candidateLoadResult?.products)
@@ -3547,7 +3627,6 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       ? candidateLoadResult.providerBreakdown
       : [];
     let effectiveRawCandidates = rawCandidates;
-    const brandScopeAliases = buildBrandScopeAliases(request.scope?.brand_names || []);
     observeDiscoveryCandidateCount({
       surface: request.surface,
       stage: 'raw',
@@ -3577,23 +3656,22 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       brandScopeAliases.length > 0
         ? normalizedCandidates.filter((candidate) => matchesBrandScopeCandidate(candidate, brandScopeAliases))
         : normalizedCandidates;
-    const brandDirectLimit = resolveBrandDirectCandidateLimit(
-      request,
-      options.candidateLimit || resolveDiscoveryCandidateLimit(request),
-    );
     const skipBrandDirectPool = shouldSkipBrandDirectPool(scopedCandidates, {
       request,
-      limit: options.candidateLimit || resolveDiscoveryCandidateLimit(request),
+      limit: candidateLimit,
     });
 
     if (brandScopeAliases.length > 0 && !skipBrandDirectPool) {
-      const directBrandLoadResult = await loadBrandScopedDirectCandidates({
-        request,
-        brandAliases: brandScopeAliases,
-        limit: brandDirectLimit,
-        fetchExternalCandidatesFn: options.brandFallbackFetchExternalCandidatesFn,
-        fetchInternalCandidatesFn: options.brandFallbackFetchInternalCandidatesFn,
-      });
+      const directBrandLoadResult =
+        scheduledBrandDirectLoad
+          ? await scheduledBrandDirectLoad.startNow()
+          : await loadBrandScopedDirectCandidates({
+              request,
+              brandAliases: brandScopeAliases,
+              limit: brandDirectLimit,
+              fetchExternalCandidatesFn: options.brandFallbackFetchExternalCandidatesFn,
+              fetchInternalCandidatesFn: options.brandFallbackFetchInternalCandidatesFn,
+            });
       if (Array.isArray(directBrandLoadResult?.products) && directBrandLoadResult.products.length > 0) {
         effectiveCandidateSource = `${effectiveCandidateSource}+brand_direct`;
         effectiveRawCandidates = effectiveRawCandidates.concat(directBrandLoadResult.products);
@@ -3625,6 +3703,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       }
     }
     if (brandScopeAliases.length > 0 && skipBrandDirectPool) {
+      scheduledBrandDirectLoad?.cancel();
       recallSummary = recallSummary.concat([
         {
           provider: null,
