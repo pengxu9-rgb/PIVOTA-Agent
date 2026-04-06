@@ -1381,6 +1381,9 @@ function prioritizeDiscoveryRecallQueries(queries = []) {
 function resolveDiscoveryCandidateLimit(request) {
   if (request?.surface === 'browse_products') {
     const pageNeed = request.page * request.limit + Math.max(request.limit, 24);
+    if (hasBrandScope(request)) {
+      return clampInt(Math.max(pageNeed, 48), 72, 48, MAX_CANDIDATE_FETCH);
+    }
     return clampInt(pageNeed, 72, 24, MAX_CANDIDATE_FETCH);
   }
   const homeNeed = Math.max(request?.limit * 4, 48);
