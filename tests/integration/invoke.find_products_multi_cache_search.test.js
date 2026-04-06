@@ -4231,6 +4231,90 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.body.reply).not.toBe('Search is temporarily unavailable. Please retry shortly.');
   });
 
+  test('brand-like public search preserves nested payload metadata source for mainline routing', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
+        if (!text.includes('FROM external_product_seeds')) return { rows: [] };
+        const now = new Date().toISOString();
+        return {
+          rows: Array.from({ length: 40 }, (_, index) => ({
+            id: `seed_fenty_nested_${index + 1}`,
+            external_product_id: `seed_fenty_nested_${index + 1}`,
+            destination_url: `https://fentybeauty.example.com/products/fenty-nested-${index + 1}`,
+            canonical_url: `https://fentybeauty.example.com/products/fenty-nested-${index + 1}`,
+            domain: 'fentybeauty.example.com',
+            title:
+              index % 2 === 0
+                ? `Fenty Beauty Match Stix ${index + 1}`
+                : `Fenty Skin Serum ${index + 1}`,
+            image_url: `https://cdn.example.com/fenty-nested-${index + 1}.jpg`,
+            price_amount: String(28 + index),
+            price_currency: 'USD',
+            availability: 'in stock',
+            seed_data: {
+              brand: 'Fenty',
+              category: index % 2 === 0 ? 'makeup' : 'serum',
+              snapshot: {
+                title:
+                  index % 2 === 0
+                    ? `Fenty Beauty Match Stix ${index + 1}`
+                    : `Fenty Skin Serum ${index + 1}`,
+                brand: 'Fenty',
+                category: index % 2 === 0 ? 'makeup' : 'serum',
+                product_type: index % 2 === 0 ? 'makeup stick' : 'serum',
+              },
+            },
+            updated_at: now,
+            created_at: now,
+          })),
+        };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === 'fenty')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+        metadata: {
+          query_source: 'agent_products_search',
+        },
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'fenty',
+            page: 1,
+            limit: 24,
+            in_stock_only: true,
+          },
+          metadata: {
+            source: 'search',
+          },
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(upstreamSearch.isDone()).toBe(true);
+    expect(resp.body.metadata?.guard_source_normalized).toBe('search');
+    expect(resp.body.metadata?.query_source).toBe('agent_products_public_brand_search_mainline');
+    expect(resp.body.metadata?.route_trace?.primary_path_used).toBe('brand_search_multi_source');
+    expect(resp.body.metadata?.route_health?.fallback_triggered).toBe(false);
+    expect(resp.body.total).toBeGreaterThan(resp.body.page_size || 0);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products.length).toBe(24);
+  });
+
   test('primary unusable nonempty upstream results collapse to strict empty when fallback rails are disabled', async () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {

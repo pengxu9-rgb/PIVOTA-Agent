@@ -14770,6 +14770,10 @@ function normalizeMetadata(rawMetadata = {}, payload = {}) {
   let creatorId =
     rawMetadata.creator_id ||
     rawMetadata.creatorId ||
+    payload.metadata?.creator_id ||
+    payload.metadata?.creatorId ||
+    payload.context?.creator_id ||
+    payload.context?.creatorId ||
     payload.creator_id ||
     payload.creatorId ||
     payload.search?.creator_id ||
@@ -14778,6 +14782,10 @@ function normalizeMetadata(rawMetadata = {}, payload = {}) {
   const creatorName =
     rawMetadata.creator_name ||
     rawMetadata.creatorName ||
+    payload.metadata?.creator_name ||
+    payload.metadata?.creatorName ||
+    payload.context?.creator_name ||
+    payload.context?.creatorName ||
     payload.creator_name ||
     payload.creatorName ||
     null;
@@ -14785,11 +14793,21 @@ function normalizeMetadata(rawMetadata = {}, payload = {}) {
   const traceId =
     rawMetadata.trace_id ||
     rawMetadata.traceId ||
+    payload.metadata?.trace_id ||
+    payload.metadata?.traceId ||
+    payload.context?.trace_id ||
+    payload.context?.traceId ||
     payload.trace_id ||
     payload.traceId ||
     null;
 
-  const source = rawMetadata.source || payload.source || 'shopping-agent-ui';
+  const source =
+    rawMetadata.source ||
+    payload.metadata?.source ||
+    payload.context?.source ||
+    payload.source ||
+    payload.search?.source ||
+    'shopping-agent-ui';
 
   // Creator cache routes require a known creator_id. When the caller is the
   // creator UI and doesn't provide one, default to the first configured creator
