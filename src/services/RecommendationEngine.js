@@ -262,6 +262,8 @@ const CATEGORY_SEMANTIC_ALIASES = [
   },
 ];
 
+const PLACEHOLDER_CATEGORY_VALUES = new Set(['external', 'unknown', 'uncategorized', 'n/a', 'na', 'none']);
+
 function tokenize(text) {
   const s = normalizeText(text);
   if (!s) return [];
@@ -450,10 +452,19 @@ function shouldExcludeRecommendationProduct(product, exclusionState) {
 
 function getCategoryPath(product) {
   const raw = product?.category_path || product?.categoryPath;
-  if (Array.isArray(raw)) return raw.map((v) => String(v || '').trim()).filter(Boolean);
+  if (Array.isArray(raw)) {
+    return raw
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+      .filter((value) => !PLACEHOLDER_CATEGORY_VALUES.has(value.toLowerCase()));
+  }
   const category = String(product?.category || product?.product_type || product?.productType || '').trim();
-  if (!category) return [];
-  return category.split('/').map((s) => s.trim()).filter(Boolean);
+  if (!category || PLACEHOLDER_CATEGORY_VALUES.has(category.toLowerCase())) return [];
+  return category
+    .split('/')
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+    .filter((segment) => !PLACEHOLDER_CATEGORY_VALUES.has(segment.toLowerCase()));
 }
 
 function getLeafCategory(product) {

@@ -547,9 +547,71 @@ describe('externalSeedProducts helper', () => {
     };
 
     const product = buildExternalSeedProduct(row);
-    expect(product.category).toBeUndefined();
-    expect(product.product_type).toBe('external');
+    expect(product.category).toBe('Fragrance');
+    expect(product.product_type).toBe('Fragrance');
     expect(product.description).toContain('essence of debonair masculinity');
+  });
+
+  test('infers beauty makeup categories for lean recommendation candidates', () => {
+    const rows = [
+      {
+        id: 'eps_lean_concealer',
+        external_product_id: 'ext_lean_concealer',
+        canonical_url: 'https://www.tomfordbeauty.com/products/shade-and-illuminate-concealer',
+        destination_url: 'https://www.tomfordbeauty.com/products/shade-and-illuminate-concealer',
+        domain: 'www.tomfordbeauty.com',
+        title: 'Shade and Illuminate Concealer',
+        seed_brand: 'Tom Ford Beauty',
+      },
+      {
+        id: 'eps_lean_lipstick',
+        external_product_id: 'ext_lean_lipstick',
+        canonical_url: 'https://www.tomfordbeauty.com/products/liquid-lip-luxe-matte',
+        destination_url: 'https://www.tomfordbeauty.com/products/liquid-lip-luxe-matte',
+        domain: 'www.tomfordbeauty.com',
+        title: 'Liquid Lip Luxe Matte',
+        seed_brand: 'Tom Ford Beauty',
+      },
+      {
+        id: 'eps_lean_mascara',
+        external_product_id: 'ext_lean_mascara',
+        canonical_url: 'https://www.tomfordbeauty.com/products/extreme-mascara',
+        destination_url: 'https://www.tomfordbeauty.com/products/extreme-mascara',
+        domain: 'www.tomfordbeauty.com',
+        title: 'Extreme Mascara',
+        seed_brand: 'Tom Ford Beauty',
+      },
+      {
+        id: 'eps_lean_brow',
+        external_product_id: 'ext_lean_brow',
+        canonical_url: 'https://www.tomfordbeauty.com/products/architecture-brow-pencil',
+        destination_url: 'https://www.tomfordbeauty.com/products/architecture-brow-pencil',
+        domain: 'www.tomfordbeauty.com',
+        title: 'Architecture Brow Pencil',
+        seed_brand: 'Tom Ford Beauty',
+      },
+    ];
+
+    const categories = rows.map((row) => buildExternalSeedProduct(row).category);
+    expect(categories).toEqual(['Concealer', 'Lipstick', 'Mascara', 'Brow Pencil']);
+  });
+
+  test('prefers title and canonical signals over polluted description text when inferring category', () => {
+    const row = {
+      id: 'eps_lean_eyeshadow',
+      external_product_id: 'ext_lean_eyeshadow',
+      canonical_url: 'https://www.sigmabeauty.com/products/ambiance-eyeshadow-palette',
+      destination_url: 'https://www.sigmabeauty.com/products/ambiance-eyeshadow-palette',
+      domain: 'www.sigmabeauty.com',
+      title: 'Ambiance Eyeshadow Palette',
+      seed_brand: 'Sigma Beauty',
+      seed_description:
+        'Complete the look with our matching shader brush and soft bristle brush set for seamless blending.',
+    };
+
+    const product = buildExternalSeedProduct(row);
+    expect(product.category).toBe('Eyeshadow');
+    expect(product.product_type).toBe('Eyeshadow');
   });
 
   test('prefers primary variant image ordering over stale top-level seed image ordering', () => {
