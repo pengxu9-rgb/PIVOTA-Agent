@@ -561,6 +561,103 @@ describe('discovery feed service', () => {
     );
   });
 
+  test('brand-scoped browse keeps total stable across page-size budgets', async () => {
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+    delete process.env.PIVOTA_API_BASE;
+    delete process.env.PIVOTA_API_KEY;
+    process.env.PIVOTA_BACKEND_AGENT_API_KEY = 'bridge-key';
+
+    const searchProducts = Array.from({ length: 48 }, (_, index) =>
+      makeProduct({
+        merchant_id: 'products_search',
+        product_id: `fenty_search_${index + 1}`,
+        title: `Fenty Search Product ${index + 1}`,
+        brand: 'Fenty Beauty',
+        category: index % 2 === 0 ? 'Moisturizer' : 'Concealer',
+        product_type: index % 2 === 0 ? 'Moisturizer' : 'Concealer',
+        price: 20 + (index % 40),
+      }),
+    );
+    const brandDirectProducts = Array.from({ length: 144 }, (_, index) =>
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: `fenty_direct_${index + 1}`,
+        title: `Fenty Direct Product ${index + 1}`,
+        brand: 'Fenty Beauty',
+        category: index % 3 === 0 ? 'Foundation' : 'Lipstick',
+        product_type: index % 3 === 0 ? 'Foundation' : 'Lipstick',
+        price: 18 + (index % 50),
+      }),
+    );
+
+    nock('http://discovery-catalog.test')
+      .persist()
+      .matchHeader('x-agent-api-key', 'bridge-key')
+      .matchHeader('x-api-key', 'bridge-key')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, (uri) => {
+        const params = new URLSearchParams(String(uri).split('?')[1] || '');
+        const offset = Number.parseInt(params.get('offset') || '0', 10);
+        const limit = Number.parseInt(params.get('limit') || '24', 10);
+        return {
+          products: searchProducts.slice(offset, offset + limit),
+        };
+      });
+
+    const fetchFeed = (limit) =>
+      getDiscoveryFeed(
+        {
+          surface: 'browse_products',
+          page: 1,
+          limit,
+          sort: 'popular',
+          debug: true,
+          scope: {
+            brand_names: ['Fenty Beauty'],
+          },
+          context: {
+            locale: 'en-US',
+          },
+        },
+        {
+          providerOverrides: {
+            internal_catalog: jest.fn(async () => []),
+            external_seeds: jest.fn(async () => []),
+          },
+          brandFallbackFetchInternalCandidatesFn: jest.fn(async () => []),
+          brandFallbackFetchExternalCandidatesFn: jest.fn(async ({ limit: requestedLimit }) =>
+            brandDirectProducts.slice(0, requestedLimit),
+          ),
+        },
+      );
+
+    const compactPage = await fetchFeed(12);
+    _internals.resetBrowsePoolCache();
+    const standardPage = await fetchFeed(24);
+
+    expect(compactPage.total).toBe(standardPage.total);
+    expect(compactPage.total).toBe(48);
+    expect(compactPage.page_size).toBe(12);
+    expect(standardPage.page_size).toBe(24);
+    expect(compactPage.metadata.rank_debug.recall_summary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          provider: 'products_search',
+          label: 'brand_pool',
+          returned: 48,
+        }),
+      ]),
+    );
+    expect(compactPage.metadata.provider_breakdown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ provider: 'internal_catalog', skipped: true }),
+        expect.objectContaining({ provider: 'external_seeds', skipped: true }),
+      ]),
+    );
+  });
+
   test('brand-scoped discovery dedupes repeated external seed products by canonical identity', async () => {
     const response = await getDiscoveryFeed(
       {
