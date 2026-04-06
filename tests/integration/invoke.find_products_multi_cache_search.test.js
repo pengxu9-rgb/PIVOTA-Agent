@@ -4910,4 +4910,124 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.body.metadata?.matched_visible_option_labels).toEqual([]);
     expect(resp.body.products.map((item) => item.product_id || item.id)).toEqual(['prod_sweater_striped_1']);
   });
+
+  test('brand-like public search uses exact-brand mainline and stays off generic fallback', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return { rows: [] };
+        }
+        if (
+          text.includes('FROM external_product_seeds') &&
+          /seed_data->>'brand'/.test(text) &&
+          /=\s*ANY\(\$3::text\[\]\)/.test(text)
+        ) {
+          return {
+            rows: [
+              {
+                id: 'seed_fenty_1',
+                external_product_id: 'ext_fenty_1',
+                destination_url: 'https://fentybeauty.com/products/eaze-drop-blur',
+                canonical_url: 'https://fentybeauty.com/products/eaze-drop-blur',
+                domain: 'fentybeauty.com',
+                title: 'Eaze Drop Blurring Skin Tint',
+                image_url: 'https://cdn.example/fenty-1.jpg',
+                price_amount: '39',
+                price_currency: 'USD',
+                availability: 'in_stock',
+                seed_data: {
+                  brand: 'Fenty Beauty',
+                  snapshot: {
+                    brand: 'Fenty Beauty',
+                    title: 'Eaze Drop Blurring Skin Tint',
+                    description: 'Lightweight skin tint from Fenty Beauty',
+                    canonical_url: 'https://fentybeauty.com/products/eaze-drop-blur',
+                    destination_url: 'https://fentybeauty.com/products/eaze-drop-blur',
+                    image_url: 'https://cdn.example/fenty-1.jpg',
+                  },
+                },
+              },
+              {
+                id: 'seed_fenty_2',
+                external_product_id: 'ext_fenty_2',
+                destination_url: 'https://fentybeauty.com/products/gloss-bomb',
+                canonical_url: 'https://fentybeauty.com/products/gloss-bomb',
+                domain: 'fentybeauty.com',
+                title: 'Gloss Bomb Universal Lip Luminizer',
+                image_url: 'https://cdn.example/fenty-2.jpg',
+                price_amount: '22',
+                price_currency: 'USD',
+                availability: 'in_stock',
+                seed_data: {
+                  brand: 'Fenty Beauty',
+                  snapshot: {
+                    brand: 'Fenty Beauty',
+                    title: 'Gloss Bomb Universal Lip Luminizer',
+                    description: 'Lip luminizer from Fenty Beauty',
+                    canonical_url: 'https://fentybeauty.com/products/gloss-bomb',
+                    destination_url: 'https://fentybeauty.com/products/gloss-bomb',
+                    image_url: 'https://cdn.example/fenty-2.jpg',
+                  },
+                },
+              },
+            ],
+          };
+        }
+        if (text.includes('FROM external_product_seeds') && text.includes('LIKE ANY')) {
+          return { rows: [] };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'fenty',
+            page: 1,
+            limit: 2,
+            in_stock_only: true,
+          },
+          metadata: {
+            source: 'search',
+          },
+        },
+        metadata: {
+          source: 'search',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).toBe('agent_products_public_brand_search_mainline');
+    expect(resp.body.metadata?.primary_path_used).toBe('brand_search_multi_source');
+    expect(resp.body.metadata?.route_health?.primary_path_used).toBe('brand_search_multi_source');
+    expect(resp.body.metadata?.route_health?.fallback_triggered).toBe(false);
+    expect(resp.body.metadata?.external_seed_broad_fallback_used).toBe(false);
+    expect(Number(resp.body.metadata?.external_seed_rows_fetched || 0)).toBe(2);
+    expect(Number(resp.body.metadata?.external_seed_rows_built || 0)).toBe(2);
+    expect(resp.body.metadata?.guard_source_normalized).toBe('search');
+    expect(resp.body.metadata?.contract_bridge?.resolved_contract).toBe('brand_search_mainline');
+    expect(resp.body.products).toHaveLength(2);
+    expect(resp.body.products.map((item) => item.product_id || item.id)).toEqual([
+      'ext_fenty_1',
+      'ext_fenty_2',
+    ]);
+    expect(upstreamSearch.isDone()).toBe(false);
+  });
 });
