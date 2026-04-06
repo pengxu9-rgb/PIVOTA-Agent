@@ -506,15 +506,15 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     const mediaUrls = payload.modules
       .find((module) => module.type === 'media_gallery')
       ?.data?.items?.map((item) => item.url);
-    const detailsSections =
-      payload.modules.find((module) => module.type === 'product_details')?.data?.sections || [];
+    const factsSections =
+      payload.modules.find((module) => module.type === 'product_facts')?.data?.sections || [];
     const ingredientsItems =
       payload.modules.find((module) => module.type === 'ingredients_inci')?.data?.items || [];
 
     expect(payload.product.description).toBe(
       'The formula merges hydrating skincare ingredients with imperfection-blurring makeup technology. It features hyaluronic acid for instant and 12-hour hydration and vitamin E for antioxidant protection. Spherical powders ensure silky-smooth, seamless application for comfortable, non-drying wear.',
     );
-    expect(detailsSections).toEqual(
+    expect(factsSections).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           heading: 'Overview',
@@ -522,10 +522,10 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
         }),
       ]),
     );
-    expect(detailsSections[0]?.content).toContain('Finish: Matte, Natural/Satin');
-    expect(detailsSections[0]?.content).toContain('Coverage: Buildable, Full');
-    expect(detailsSections[0]?.content).toContain('Benefits');
-    expect(detailsSections[0]?.content).toContain('Soft-focus powders offer a natural, soft-matte finish');
+    expect(factsSections[0]?.content).toContain('Finish: Matte, Natural/Satin');
+    expect(factsSections[0]?.content).toContain('Coverage: Buildable, Full');
+    expect(factsSections[0]?.content).toContain('Benefits');
+    expect(factsSections[0]?.content).toContain('Soft-focus powders offer a natural, soft-matte finish');
     expect(ingredientsItems).toEqual(
       expect.arrayContaining([
         'Isostearyl Alcohol',
@@ -538,6 +538,7 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     );
     expect(ingredientsItems).not.toContain('Key Ingredients');
     expect(ingredientsItems.filter((item) => /^Iron Oxides\b/i.test(item))).toHaveLength(1);
+    expect(payload.modules.find((module) => module.type === 'product_details')).toBeFalsy();
     expect(mediaUrls).toEqual([
       'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tfb_sku_TC7Y09_2000x2000_0_74c2dfd9-3f5f-4832-af13-85e0ec7891c9.png',
       'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tfb_sku_TC7Y09_2000x2000_1_dfe99888-59ba-49f2-b8ca-dc58168cbaae.jpg',

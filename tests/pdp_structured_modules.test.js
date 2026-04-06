@@ -61,7 +61,7 @@ describe('pdpBuilder structured PDP modules', () => {
     expect(urls.some((url) => url.includes('plpbanner'))).toBe(false);
   });
 
-  test('emits additive beauty modules from structured ingredient fields and keeps product_details facts-only', () => {
+  test('emits additive beauty modules from structured ingredient fields without duplicating legacy product_details', () => {
     const payload = buildPdpPayload({
       product: {
         product_id: 'p_structured_1',
@@ -125,7 +125,7 @@ describe('pdpBuilder structured PDP modules', () => {
 
     const factHeadings = factsModule?.data?.sections?.map((section) => section.heading) || [];
     expect(factHeadings).toEqual(['Clinical Results', 'Brand Story']);
-    expect(detailsModule?.data?.sections?.map((section) => section.heading)).toEqual(factHeadings);
+    expect(detailsModule).toBeFalsy();
     expect(factHeadings).not.toContain('Ingredients');
     expect(factHeadings).not.toContain('How to Use');
   });
@@ -173,11 +173,6 @@ describe('pdpBuilder structured PDP modules', () => {
         content: 'Supports visible brightness and hydration.',
       }),
     ]);
-    expect(findModule(payload, 'product_details')?.data?.sections).toEqual([
-      expect.objectContaining({
-        heading: 'Benefits',
-        content: 'Supports visible brightness and hydration.',
-      }),
-    ]);
+    expect(findModule(payload, 'product_details')).toBeFalsy();
   });
 });
