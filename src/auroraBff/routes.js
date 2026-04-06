@@ -107,29 +107,8 @@ const {
   createLegacyChatRecoFinalizeRuntime,
 } = require('./legacyChatRecoFinalize');
 const {
-  createLegacyRecoGenerationDebugRuntime,
-} = require('./legacyRecoGenerationDebug');
-const {
-  createLegacyRecoRecommendationPostFiltersRuntime,
-} = require('./legacyRecoRecommendationPostFilters');
-const {
-  createLegacyRecoGenerationResultRuntime,
-} = require('./legacyRecoGenerationResult');
-const {
-  createLegacyRecoPdpEnrichmentRuntime,
-} = require('./legacyRecoPdpEnrichment');
-const {
-  createLegacyRecoFrameworkPassRuntime,
-} = require('./legacyRecoFrameworkPass');
-const {
-  createLegacyRecoMainlineExecutionRuntime,
-} = require('./legacyRecoMainlineExecution');
-const {
-  createLegacyRecoPostMainlineRuntime,
-} = require('./legacyRecoPostMainline');
-const {
-  createLegacyRecoGenerationContextRuntime,
-} = require('./legacyRecoGenerationContext');
+  createLegacyRecoGenerationEngineRuntime,
+} = require('./legacyRecoGenerationEngine');
 const {
   createDirectRecoGenerateHandlerRuntime,
 } = require('./directRecoGenerateHandler');
@@ -139,6 +118,9 @@ const {
 const {
   handleLegacyChatRecoRequest,
 } = require('./legacyChatRecoHandler');
+const {
+  createLegacyChatRecoRouteEntryRuntime,
+} = require('./legacyChatRecoRouteEntry');
 const {
   buildExternalSeedSurfacingText,
   choosePreferredExternalSeedCandidate,
@@ -1466,6 +1448,14 @@ const {
   extractRecoFinalSelectionContract,
   assistantTextMatchesRecoSelectionContract,
   buildLegacyChatRecoEnvelope,
+});
+const {
+  maybeHandleLegacyChatRecoRouteEntry,
+} = createLegacyChatRecoRouteEntryRuntime({
+  isBeautyOwnedChatRecoRequest,
+  buildBeautyMainlineHandoffFallbackEnvelope,
+  shouldEnterLegacyProductRecommendations,
+  handleLegacyChatRecoRequest,
 });
 const RECO_CATALOG_MAIN_PATH_SEARCH_SOURCE = (() => {
   const raw = String(process.env.AURORA_BFF_RECO_CATALOG_MAIN_PATH_SEARCH_SOURCE || 'shopping-agent')
@@ -61718,568 +61708,101 @@ async function runRecoLlmPrimary({
   };
 }
 
-async function generateProductRecommendations({
-  ctx,
-  profile,
-  recentLogs,
-  message,
-  focus = '',
-  ingredientContext,
-  analysisContextSnapshot = null,
-  requestOverride = null,
-  includeAlternatives,
-  debug,
-  logger,
-  recoTriggerSource = null,
-  recomputeFromProfileUpdate = false,
-  budgetMs = null,
-  entryType = 'chat',
-  catalogExternalSeedStrategy = '',
-}) {
-  const {
-    buildLegacyRecoUpstreamDebug,
-    applyLegacyRecoFilterDebug,
-    applyLegacyRecoOutcomeDebug,
-  } = createLegacyRecoGenerationDebugRuntime({
-    pickFirstTrimmed,
-    isPlainObject,
-    RECO_CATALOG_GROUNDED_ENABLED,
-    RECO_UPSTREAM_TIMEOUT_MS,
-    RECO_UPSTREAM_TIMEOUT_HARD_CAP_MS,
-    RECO_PDP_ENRICH_CONCURRENCY,
-    RECO_PDP_ENRICH_MAX_NETWORK_ITEMS,
-    RECO_PDP_RESOLVE_ENABLED,
-    RECO_PDP_RESOLVE_TIMEOUT_MS,
-    RECO_PDP_RESOLVE_TIMEOUT_STRICT_MIN_MS,
-    RECO_PDP_STRICT_INTERNAL_FIRST,
-    PIVOTA_BACKEND_BASE_URL,
-    RECO_PDP_CHAT_DISABLE_LOCAL_DOUBLE_HOP,
-    RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT_ENABLED,
-    RECO_PDP_LOCAL_SEARCH_FALLBACK_ON_TRANSIENT,
-    RECO_CATALOG_TRANSIENT_FALLBACK_ENABLED,
-    RECO_PDP_FAST_EXTERNAL_FALLBACK_ENABLED,
-    RECOMMENDATION_RECO_POLICY_V1,
-    RECO_TEST_SEED_MAX_PER_RESPONSE,
-    RECO_TEST_SEED_MIN_TOTAL,
-    isProductionLikeAuroraBffEnv,
-  });
-  const {
-    applyLegacyRecoRecommendationPostFilters,
-  } = createLegacyRecoRecommendationPostFiltersRuntime({
-    dedupeRecoRecommendationsStrict,
-    limitRecoKnownTestSeedRecommendations,
-    buildRecoDiversityHistoryKey,
-    getRecoRecentExposureState,
-    applyRecoRecentDiversityGuard,
-    buildRecoDiversityToken,
-    updateRecoRecentExposureTokens,
-    normalizeBudgetHint,
-    hasItineraryContextForReco,
-    RECO_DIVERSITY_ENABLED,
-    RECO_DIVERSITY_MAX_REPEAT_PER_RESPONSE,
-    RECO_DIVERSITY_MIN_TOTAL,
-  });
-  const {
-    buildLegacyRecoGenerationContext,
-  } = createLegacyRecoGenerationContextRuntime({
-    summarizeProfileForContext,
-    normalizeIngredientRecoContextValue,
-    buildAnalysisContextSnapshotForRoute,
-    buildTaskAnalysisContextForPrefix,
-    buildAnalysisContextPromptBlock,
-    buildContextPrefix,
-    pickFirstTrimmed,
-    resolveRecommendationTargetContext,
-    runConcernSemanticPlanner,
-    buildConcernTargetContextFromSemanticPlan,
-  });
-  const {
-    buildLegacyRecoGenerationResult,
-  } = createLegacyRecoGenerationResultRuntime({
-    isPlainObject,
-    pickFirstTrimmed,
-    normalizeRecoEffectiveFailureClass,
-    deriveRecoContractStatus,
-    deriveRecoMainlineStatus,
-    deriveRecoTelemetryFailureReason,
-    normalizeRecoFailureOrigin,
-    normalizeRecoViablePoolStrength,
-    normalizeRecoTargetFidelityLevel,
-    buildRecoMainlineContract,
-    applyRecoWarningVisibilityContract,
-    attachRecoContractMeta,
-  });
-  const {
-    applyLegacyRecoPdpEnrichment,
-  } = createLegacyRecoPdpEnrichmentRuntime({
-    isPlainObject,
-    isRecoUngroundedItem,
-    dedupeRecoRecommendationsStrict,
-    enrichRecommendationsWithPdpOpenContract,
-  });
-  const {
-    runLegacyRecoFrameworkPass,
-  } = createLegacyRecoFrameworkPassRuntime({
-    isPlainObject,
-    pickFirstTrimmed,
-    pickFirstString,
-    asStringArray,
-    uniqCaseInsensitiveStrings,
-    runConcernSelectorRace,
-    applyConcernSelectorRaceOrdering,
-  });
-  const {
-    runLegacyRecoMainlineExecution,
-  } = createLegacyRecoMainlineExecutionRuntime({
-    pickFirstTrimmed,
-    isPlainObject,
-    finalizeConcernFrameworkCandidatePools,
-    finalizeRecommendationCandidatePools,
-    buildRecoGenerateFromCatalog,
-    deriveRecoPdpFastFallbackReasonCode,
-    buildRecoLlmPromptState,
-    runRecoLlmPrimary,
-    resolveConcernMainlineFailure,
-    resolveRecoEffectiveFailure,
-    normalizeRecoFailureClass,
-    hasEmptyStructuredRecommendations,
-    shouldUseRecoCatalogTransientFallback,
-    buildRecoCatalogTransientFallbackStructured,
-    recordAuroraRecoLlmCall,
-  });
-  const {
-    runLegacyRecoPostMainline,
-  } = createLegacyRecoPostMainlineRuntime({
-    isPlainObject,
-    pickFirstTrimmed,
-    normalizeRecoEffectiveFailureClass,
-    normalizeRecoGroundingStatus,
-    groundRecoRecommendationsFromCatalog,
-    coerceRecoItemForUi,
-    normalizeRecoGenerate,
-    finalizeConcernFrameworkCandidatePools,
-    finalizeRecommendationCandidatePools,
-    buildConcernFrameworkDecisionTrace,
-    deriveRecoFailureFromStepAwareLlmFallback,
-    deriveStepAwareEmptyReason,
-    buildConcernFrameworkSummary,
-    applyLegacyRecoRecommendationPostFilters,
-    mergeFieldMissing,
-    applyLegacyRecoFilterDebug,
-  });
-  let concernSelectorRaceTrace = null;
-  let concernOpenWorldExpansionTrace = null;
-  let concernWinnerSource = 'deterministic';
-  let concernSupportRolesSurfaced = [];
-  let concernOpenWorldExpansionUsed = false;
-  let selectorRaceApplied = false;
-  let pdpEnrichmentApplied = false;
-  const {
-    profileSummary,
-    normalizedIngredientContext,
-    effectiveAnalysisContextSnapshot,
-    recommendationTaskContext,
-    prefix,
-    userAsk,
-    targetContext,
-    concernSemanticPlanTrace,
-    concernSemanticPlanBlockedReason,
-    concernSemanticPlanBlockedFailureClass,
-    concernSemanticPlanBlockedFailureOrigin,
-    concernSemanticPlanBlockedTelemetryReason,
-    mainlineStageTimingsMs,
-  } = await buildLegacyRecoGenerationContext({
-    ctx,
-    profile,
-    recentLogs,
-    message,
-    focus,
-    ingredientContext,
-    analysisContextSnapshot,
-    requestOverride,
-    entryType,
-    logger,
-  });
-  const normalizedRecoTriggerSource = normalizeRecoSourceDetail(
-    pickFirstTrimmed(recoTriggerSource, ctx && ctx.trigger_source, 'text'),
-  );
-  const recomputeFromProfileUpdateFlag = recomputeFromProfileUpdate === true;
-  const deadlineAtMs = Number.isFinite(Number(budgetMs)) ? Date.now() + Math.max(0, Math.trunc(Number(budgetMs))) : null;
-
-  let upstream = null;
-  let contextMeta = {};
-  let upstreamFailureCode = '';
-  let llmFailureClass = '';
-  let llmLatencyMs = null;
-  let catalogStructured = null;
-  let catalogCandidatePool = [];
-  let catalogCandidateState = null;
-  let catalogDebug = null;
-  let pdpFastFallbackReasonCode = null;
-  let pdpFastExternalFallbackReasonCode = null;
-  let catalogTransientFallbackStructured = null;
-
-  let answerJson = null;
-  let structured = null;
-  let structuredSource = null;
-  let llmStructured = null;
-  let llmStructuredSource = null;
-  let promptBundle = {
-    prompt_spec: {
-      template_id: RECO_MAIN_PROMPT_TEMPLATE_ID,
-      llm_mode: null,
-    },
-    schema_chars: 0,
-  };
-  let query = '';
-  let promptContract = { ok: true, issues: [] };
-  let llmTrace = null;
-  let llmInvoked = false;
-  let initialLlmOutcome = 'not_invoked';
-  let presentationMode = 'full_llm';
-  let nonBlockingLlmIssue = 'none';
-  let successMode = 'full_success';
-  let effectiveFailureClass = 'none';
-  let failureOrigin = 'none';
-  let preLlmSelectedCandidateCount = null;
-  let finalSelectedCandidateCount = null;
-  let postGuardrailCount = null;
-  const globalStatus = {
-    budget_known: Boolean(normalizeBudgetHint(profileSummary && profileSummary.budgetTier)),
-    itinerary_provided: hasItineraryContextForReco(profileSummary),
-    recent_logs_provided: Array.isArray(recentLogs) && recentLogs.length > 0,
-  };
-  const frameworkCatalogFirstEnabled = Boolean(
-    Array.isArray(targetContext?.framework_roles) && targetContext.framework_roles.length > 0,
-  );
-  const deterministicCatalogFirstEnabled = Boolean(
-    AURORA_BFF_RECO_STEP_AWARE_CATALOG_FIRST_ENABLED
-      && (targetContext.step_aware_intent || frameworkCatalogFirstEnabled),
-  );
-  const stepAwareFailurePolicyEnabled = Boolean(
-    deterministicCatalogFirstEnabled && targetContext.step_aware_intent && !frameworkCatalogFirstEnabled,
-  );
-  const mainlineExecution = await runLegacyRecoMainlineExecution({
-    concernSemanticPlanBlockedReason,
-    concernSemanticPlanBlockedTelemetryReason,
-    concernSemanticPlanBlockedFailureClass,
-    concernSemanticPlanBlockedFailureOrigin,
-    frameworkCatalogFirstEnabled,
-    deterministicCatalogFirstEnabled,
-    targetContext,
-    recommendationTaskContext,
-    profileSummary,
-    normalizedIngredientContext,
-    catalogExternalSeedStrategy,
-    debug,
-    logger,
-    ctx,
-    userAsk,
-    prefix,
-    recentLogs,
-    globalStatus,
-    mainlineStageTimingsMs,
-    RECO_MAIN_PROMPT_TEMPLATE_ID,
-    RECO_PDP_FAST_EXTERNAL_FALLBACK_ENABLED,
-  });
-  upstream = mainlineExecution.upstream;
-  contextMeta = mainlineExecution.contextMeta;
-  upstreamFailureCode = mainlineExecution.upstreamFailureCode;
-  llmFailureClass = mainlineExecution.llmFailureClass;
-  llmLatencyMs = mainlineExecution.llmLatencyMs;
-  catalogStructured = mainlineExecution.catalogStructured;
-  catalogCandidatePool = mainlineExecution.catalogCandidatePool;
-  catalogCandidateState = mainlineExecution.catalogCandidateState;
-  catalogDebug = mainlineExecution.catalogDebug;
-  pdpFastFallbackReasonCode = mainlineExecution.pdpFastFallbackReasonCode;
-  pdpFastExternalFallbackReasonCode = mainlineExecution.pdpFastExternalFallbackReasonCode;
-  catalogTransientFallbackStructured = mainlineExecution.catalogTransientFallbackStructured;
-  answerJson = mainlineExecution.answerJson;
-  structured = mainlineExecution.structured;
-  structuredSource = mainlineExecution.structuredSource;
-  llmStructured = mainlineExecution.llmStructured;
-  llmStructuredSource = mainlineExecution.llmStructuredSource;
-  promptBundle = mainlineExecution.promptBundle;
-  query = mainlineExecution.query;
-  promptContract = mainlineExecution.promptContract;
-  llmTrace = mainlineExecution.llmTrace;
-  llmInvoked = mainlineExecution.llmInvoked;
-  initialLlmOutcome = mainlineExecution.initialLlmOutcome;
-  presentationMode = mainlineExecution.presentationMode;
-  nonBlockingLlmIssue = mainlineExecution.nonBlockingLlmIssue;
-  successMode = mainlineExecution.successMode;
-  effectiveFailureClass = mainlineExecution.effectiveFailureClass;
-  failureOrigin = mainlineExecution.failureOrigin;
-  preLlmSelectedCandidateCount = mainlineExecution.preLlmSelectedCandidateCount;
-  finalSelectedCandidateCount = mainlineExecution.finalSelectedCandidateCount;
-  Object.assign(mainlineStageTimingsMs, mainlineExecution.mainlineStageTimingsMs || {});
-
-  const upstreamDebug = buildLegacyRecoUpstreamDebug({
-    debugEnabled: debug,
-    upstream,
-    structuredSource,
-    answerJson,
-    structured,
-    catalogStructured,
-    catalogTransientFallbackStructured,
-    catalogDebug,
-    pdpFastFallbackReasonCode,
-    normalizedIngredientContext,
-    llmStructuredSource,
-    llmFailureClass,
-    llmInvoked,
-    initialLlmOutcome,
-    presentationMode,
-    successMode,
-    nonBlockingLlmIssue,
-    llmTrace,
-    query,
-    promptBundle,
-    catalogCandidatePool,
-    targetContext,
-    catalogCandidateState,
-    effectiveFailureClass,
-    failureOrigin,
-    effectiveAnalysisContextSnapshot,
-    recommendationTaskContext,
-  });
-  let alternativesDebug = null;
-  const postMainline = await runLegacyRecoPostMainline({
-    structured,
-    structuredSource,
-    ctx,
-    logger,
-    targetContext,
-    catalogDebug,
-    catalogCandidateState,
-    recommendationTaskContext,
-    preLlmSelectedCandidateCount,
-    stepAwareFailurePolicyEnabled,
-    initialLlmOutcome,
-    llmFailureClass,
-    upstreamFailureCode,
-    promptContract,
-    concernSemanticPlanBlockedReason,
-    concernSemanticPlanBlockedTelemetryReason,
-    concernSemanticPlanBlockedFailureClass,
-    concernSelectorRaceTrace,
-    concernOpenWorldExpansionUsed,
-    effectiveFailureClass,
-    failureOrigin,
-    presentationMode,
-    successMode,
-    profileSummary,
-    includeAlternatives,
-    upstreamDebug,
-    ingredientContext,
-  });
-  let mapped = postMainline.mapped;
-  let groundingResult = postMainline.groundingResult;
-  catalogDebug = postMainline.catalogDebug;
-  const frameworkMode = postMainline.frameworkMode;
-  const viablePoolState = postMainline.viablePoolState;
-  const frameworkPartialSurface = postMainline.frameworkPartialSurface;
-  const frameworkTraceId = postMainline.frameworkTraceId;
-  const frameworkDecisionTrace = postMainline.frameworkDecisionTrace;
-  preLlmSelectedCandidateCount = postMainline.preLlmSelectedCandidateCount;
-  const stepAwareMainlineFailure = postMainline.stepAwareMainlineFailure;
-  const stepAwareMainlineFailureBlocking = postMainline.stepAwareMainlineFailureBlocking;
-  const stepAwarePoolWarningNonBlocking = postMainline.stepAwarePoolWarningNonBlocking;
-  effectiveFailureClass = postMainline.effectiveFailureClass;
-  failureOrigin = postMainline.failureOrigin;
-  presentationMode = postMainline.presentationMode;
-  successMode = postMainline.successMode;
-  const effectiveGroundingStatus = postMainline.effectiveGroundingStatus;
-  const effectiveGroundedCount = postMainline.effectiveGroundedCount;
-  const effectiveUngroundedCount = postMainline.effectiveUngroundedCount;
-  const effectiveMainlineStatus = postMainline.effectiveMainlineStatus;
-  const effectiveCatalogSkipReason = postMainline.effectiveCatalogSkipReason;
-  const effectiveTelemetryReason = postMainline.effectiveTelemetryReason;
-  let itineraryAvailable = postMainline.itineraryAvailable;
-  let norm = postMainline.norm;
-
-  const recoRowsForPdp = Array.isArray(norm.payload.recommendations) ? norm.payload.recommendations : [];
-  const shouldDelayPdpEnrichment = frameworkMode;
-  if (shouldDelayPdpEnrichment) {
-    const pdpDeferred = await applyLegacyRecoPdpEnrichment({
-      payload: norm.payload,
-      recommendations: recoRowsForPdp,
-      deadlineAtMs,
-      logger,
-      fastExternalFallbackReasonCode: pdpFastExternalFallbackReasonCode,
-      lightEnrich: RECO_PDP_LIGHT_ENRICH_ENABLED,
-      deferUntilSafeWinner: true,
-    });
-    norm.payload = pdpDeferred.payload;
-  } else {
-    const pdpEnriched = await applyLegacyRecoPdpEnrichment({
-      payload: norm.payload,
-      recommendations: recoRowsForPdp,
-      deadlineAtMs,
-      logger,
-      fastExternalFallbackReasonCode: pdpFastExternalFallbackReasonCode,
-      lightEnrich: RECO_PDP_LIGHT_ENRICH_ENABLED,
-    });
-    mainlineStageTimingsMs.pdp_enrichment = Math.max(
-      0,
-      Number(pdpEnriched.latencyMs || 0),
-    );
-    pdpEnrichmentApplied = pdpEnriched.applied === true;
-    norm.payload = pdpEnriched.payload;
-  }
-  let frameworkMainlineWarningNonBlocking = false;
-  let beautyMainlineHandoffNonBlocking = false;
-  const frameworkPass = await runLegacyRecoFrameworkPass({
-    frameworkMode,
-    targetContext,
-    concernSemanticPlanBlockedReason,
-    viablePoolState,
-    payload: norm.payload,
-    ctx,
-    logger,
-    userAsk,
-    applyLegacyRecoPdpEnrichment,
-    deadlineAtMs,
-    pdpFastExternalFallbackReasonCode,
-    RECO_PDP_LIGHT_ENRICH_ENABLED,
-  });
-  mainlineStageTimingsMs.selector_race = Math.max(
-    0,
-    Number(frameworkPass.selectorRaceLatencyMs || 0),
-  );
-  mainlineStageTimingsMs.pdp_enrichment = Math.max(
-    Number(mainlineStageTimingsMs.pdp_enrichment || 0),
-    Number(frameworkPass.pdpLatencyMs || 0),
-  );
-  selectorRaceApplied = frameworkPass.selectorRaceApplied === true;
-  concernSelectorRaceTrace = frameworkPass.selectorRaceTrace;
-  concernWinnerSource = frameworkPass.winnerSource || 'deterministic';
-  concernSupportRolesSurfaced = Array.isArray(frameworkPass.supportRolesSurfaced)
-    ? frameworkPass.supportRolesSurfaced
-    : [];
-  frameworkMainlineWarningNonBlocking =
-    frameworkPass.frameworkMainlineWarningNonBlocking === true;
-  pdpEnrichmentApplied =
-    pdpEnrichmentApplied || frameworkPass.pdpEnrichmentApplied === true;
-  norm.payload = frameworkPass.payload;
-  let finalRecommendations = Array.isArray(norm.payload?.recommendations) ? norm.payload.recommendations : [];
-  finalSelectedCandidateCount = finalRecommendations.length;
-  postGuardrailCount = finalSelectedCandidateCount;
-  if (deterministicCatalogFirstEnabled && !stepAwareMainlineFailureBlocking) {
-    const failureSignals = frameworkMode
-      ? resolveConcernMainlineFailure({
-          plannerBlocked: Boolean(concernSemanticPlanBlockedReason),
-          plannerFailureClass: concernSemanticPlanBlockedTelemetryReason === 'planner_timeout' ? 'timeout' : concernSemanticPlanBlockedFailureClass,
-          viablePoolState: {
-            ...viablePoolState,
-            final_selected_candidate_count: finalSelectedCandidateCount,
-          },
-          catalogDebug,
-          postGuardrailCount,
-        })
-      : resolveRecoEffectiveFailure({
-          targetContext,
-          viablePoolState: {
-            ...viablePoolState,
-            final_selected_candidate_count: finalSelectedCandidateCount,
-          },
-          catalogDebug,
-          postGuardrailCount,
-        });
-    const returnedProductsWarningNonBlocking =
-      finalRecommendations.length > 0
-      && (
-        frameworkMainlineWarningNonBlocking
-        || stepAwarePoolWarningNonBlocking
-        || beautyMainlineHandoffNonBlocking
-        || Boolean(stepAwareMainlineFailure && !stepAwareMainlineFailureBlocking)
-      );
-    const normalizedFailureClass = normalizeRecoEffectiveFailureClass(failureSignals.effective_failure_class || 'none');
-    if (
-      returnedProductsWarningNonBlocking
-      && (normalizedFailureClass === 'weak_viable_pool' || normalizedFailureClass === 'no_recall_from_planned_sources')
-    ) {
-      effectiveFailureClass = 'none';
-      failureOrigin = 'none';
-    } else {
-      effectiveFailureClass = failureSignals.effective_failure_class || 'none';
-      failureOrigin = failureSignals.failure_origin || 'none';
-    }
-  }
-  const terminalSuccess = finalRecommendations.length > 0
-    && normalizeRecoEffectiveFailureClass(effectiveFailureClass || 'none') === 'none';
-  const generationResult = buildLegacyRecoGenerationResult({
-    norm,
-    finalRecommendations,
-    structuredSource,
-    frameworkMode,
-    targetContext,
-    effectiveCatalogSkipReason,
-    catalogDebug,
-    promptContract,
-    llmFailureClass,
-    upstreamFailureCode,
-    effectiveMainlineStatus,
-    effectiveTelemetryReason,
-    applyLegacyRecoOutcomeDebug,
-    upstreamDebug,
-    effectiveGroundingStatus,
-    effectiveGroundedCount,
-    effectiveUngroundedCount,
-    promptBundle,
-    finalSelectedCandidateCount,
-    postGuardrailCount,
-    effectiveFailureClass,
-    failureOrigin,
-    concernSemanticPlanTrace,
-    concernSelectorRaceTrace,
-    concernOpenWorldExpansionTrace,
-    viablePoolState,
-    mainlineStageTimingsMs,
-    normalizedRecoTriggerSource,
-    recomputeFromProfileUpdateFlag,
-    recentLogs,
-    itineraryAvailable,
-    deterministicCatalogFirstEnabled,
-    AURORA_BFF_RECO_CENTRALIZED_FAILURE_MAPPING_ENABLED,
-    preLlmSelectedCandidateCount,
-    query,
-    concernWinnerSource,
-    concernOpenWorldExpansionUsed,
-    concernSupportRolesSurfaced,
-    frameworkTraceId,
-    CONCERN_SEMANTIC_PLAN_VERSION,
-    CONCERN_SELECTOR_RACE_VERSION,
-    RECOMMENDATION_STEP_QUERY_POLICY_V1,
-    RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1,
-    RECOMMENDATION_RECO_POLICY_V1,
-    CANDIDATE_POOL_SIGNATURE_VERSION,
-    GROUP_SEMANTICS_VERSION,
-    terminalSuccess,
-    entryType,
-    stepAwareMainlineFailure,
-    normalizedIngredientContext,
-    llmTrace,
-    frameworkMainlineWarningNonBlocking,
-    beautyMainlineHandoffNonBlocking,
-    stepAwarePoolWarningNonBlocking,
-    stepAwareMainlineFailureBlocking,
-    successMode,
-    presentationMode,
-    nonBlockingLlmIssue,
-    llmInvoked,
-    initialLlmOutcome,
-  });
-
-  return {
-    ...generationResult,
-    alternativesDebug,
-    candidatePoolState: viablePoolState,
-    upstreamFailureCode,
-    llmFailureClass,
-    llmTrace,
-  };
-}
+const {
+  generateProductRecommendations,
+} = createLegacyRecoGenerationEngineRuntime({
+  pickFirstTrimmed,
+  pickFirstString,
+  isPlainObject,
+  asStringArray,
+  uniqCaseInsensitiveStrings,
+  summarizeProfileForContext,
+  normalizeIngredientRecoContextValue,
+  buildAnalysisContextSnapshotForRoute,
+  buildTaskAnalysisContextForPrefix,
+  buildAnalysisContextPromptBlock,
+  buildContextPrefix,
+  resolveRecommendationTargetContext,
+  runConcernSemanticPlanner,
+  buildConcernTargetContextFromSemanticPlan,
+  normalizeRecoEffectiveFailureClass,
+  normalizeRecoFailureClass,
+  normalizeRecoFailureOrigin,
+  normalizeRecoGroundingStatus,
+  normalizeRecoViablePoolStrength,
+  normalizeRecoTargetFidelityLevel,
+  deriveRecoContractStatus,
+  deriveRecoMainlineStatus,
+  deriveRecoTelemetryFailureReason,
+  buildRecoMainlineContract,
+  applyRecoWarningVisibilityContract,
+  attachRecoContractMeta,
+  mergeFieldMissing,
+  isRecoUngroundedItem,
+  enrichRecommendationsWithPdpOpenContract,
+  dedupeRecoRecommendationsStrict,
+  limitRecoKnownTestSeedRecommendations,
+  buildRecoDiversityHistoryKey,
+  getRecoRecentExposureState,
+  applyRecoRecentDiversityGuard,
+  buildRecoDiversityToken,
+  updateRecoRecentExposureTokens,
+  normalizeBudgetHint,
+  hasItineraryContextForReco,
+  runConcernSelectorRace,
+  applyConcernSelectorRaceOrdering,
+  finalizeConcernFrameworkCandidatePools,
+  finalizeRecommendationCandidatePools,
+  buildRecoGenerateFromCatalog,
+  deriveRecoPdpFastFallbackReasonCode,
+  buildRecoLlmPromptState,
+  runRecoLlmPrimary,
+  resolveConcernMainlineFailure,
+  resolveRecoEffectiveFailure,
+  hasEmptyStructuredRecommendations,
+  shouldUseRecoCatalogTransientFallback,
+  buildRecoCatalogTransientFallbackStructured,
+  recordAuroraRecoLlmCall,
+  groundRecoRecommendationsFromCatalog,
+  coerceRecoItemForUi,
+  normalizeRecoGenerate,
+  buildConcernFrameworkDecisionTrace,
+  deriveRecoFailureFromStepAwareLlmFallback,
+  deriveStepAwareEmptyReason,
+  buildConcernFrameworkSummary,
+  RECO_CATALOG_GROUNDED_ENABLED,
+  RECO_UPSTREAM_TIMEOUT_MS,
+  RECO_UPSTREAM_TIMEOUT_HARD_CAP_MS,
+  RECO_PDP_ENRICH_CONCURRENCY,
+  RECO_PDP_ENRICH_MAX_NETWORK_ITEMS,
+  RECO_PDP_RESOLVE_ENABLED,
+  RECO_PDP_RESOLVE_TIMEOUT_MS,
+  RECO_PDP_RESOLVE_TIMEOUT_STRICT_MIN_MS,
+  RECO_PDP_STRICT_INTERNAL_FIRST,
+  PIVOTA_BACKEND_BASE_URL,
+  RECO_PDP_CHAT_DISABLE_LOCAL_DOUBLE_HOP,
+  RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT_ENABLED,
+  RECO_PDP_LOCAL_SEARCH_FALLBACK_ON_TRANSIENT,
+  RECO_CATALOG_TRANSIENT_FALLBACK_ENABLED,
+  RECO_PDP_FAST_EXTERNAL_FALLBACK_ENABLED,
+  RECOMMENDATION_RECO_POLICY_V1,
+  RECO_TEST_SEED_MAX_PER_RESPONSE,
+  RECO_TEST_SEED_MIN_TOTAL,
+  isProductionLikeAuroraBffEnv,
+  RECO_DIVERSITY_ENABLED,
+  RECO_DIVERSITY_MAX_REPEAT_PER_RESPONSE,
+  RECO_DIVERSITY_MIN_TOTAL,
+  RECO_MAIN_PROMPT_TEMPLATE_ID,
+  RECO_PDP_LIGHT_ENRICH_ENABLED,
+  AURORA_BFF_RECO_STEP_AWARE_CATALOG_FIRST_ENABLED,
+  AURORA_BFF_RECO_CENTRALIZED_FAILURE_MAPPING_ENABLED,
+  CONCERN_SEMANTIC_PLAN_VERSION,
+  CONCERN_SELECTOR_RACE_VERSION,
+  RECOMMENDATION_STEP_QUERY_POLICY_V1,
+  RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1,
+  CANDIDATE_POOL_SIGNATURE_VERSION,
+  GROUP_SEMANTICS_VERSION,
+});
 
 function parseBoolQueryValue(value, fallback = false) {
   if (value == null) return fallback;
@@ -79152,94 +78675,59 @@ function mountAuroraBffRoutes(app, { logger }) {
         return sendChatEnvelope(envelope);
       }
 
-      const beautyOwnedRecoResponse = await maybeHandleBeautyOwnedChatRecoForRoute({
-        ctx,
-        logger,
-        message: recoRequestMessage || message,
-        typedRecoOwnershipKeepsV1Mainline,
-        forceUpstreamAfterPendingAbandon,
-        ingredientDrivenRecommendationRequested,
-        recoEntrySourceDetail,
-        latestRecoContextFromSession,
-        profile,
-        recentLogs,
-        includeAlternatives,
-        actionId,
-        shouldAutoRerunRecommendationsFromProfilePatch,
-        debugUpstream,
-      });
-      if (beautyOwnedRecoResponse?.handled) {
-        return sendChatEnvelope(beautyOwnedRecoResponse.envelope);
-      }
-
-      const beautyOwnedRecoHardStop = isBeautyOwnedChatRecoRequest({
-        typedRecoOwnershipKeepsV1Mainline,
-        forceUpstreamAfterPendingAbandon,
-        ingredientDrivenRecommendationRequested,
-        recoEntrySourceDetail,
-        targetContext: beautyOwnedRecoResponse?.targetContext,
-        message,
-      });
-      if (beautyOwnedRecoHardStop) {
-        return sendChatEnvelope(
-          buildBeautyMainlineHandoffFallbackEnvelope({
-            ctx,
-            fallback: {
-              fallback_reason: 'beauty_mainline_handoff_required',
-              notice_reason: 'upstream_empty_recommendations',
-              mainline_status: 'needs_more_context',
-            },
-            suggestedChips: [],
-          }),
-        );
-      }
-
-      // If user explicitly asks for product recommendations (via chip OR explicit free text), generate them deterministically
-      // (some upstream chat flows only return clarifying chips without a recommendations card).
-      const wantsProductRecommendations = shouldEnterLegacyProductRecommendations({
-        forceUpstreamAfterPendingAbandon,
-        allowRecoCards,
-        message,
-        normalizedActionPayload,
-        ingredientRecoOptInRequested,
-        recoInteractionAllowed,
-        actionId,
-        budgetChipCanContinueReco,
-        profileClarificationAction,
-        ingredientDrivenRecommendationRequested,
-        shouldAutoRerunRecommendationsFromProfilePatch,
-      });
-
       let analysisContextSnapshotForConversation = null;
       let chatAnalysisTaskContext = null;
-
-      if (wantsProductRecommendations) {
-        const envelope = await handleLegacyChatRecoRequest({
-          ctx,
-          message,
-          profile,
-          session: parsed.data.session,
-          recentLogs,
-          logger,
-          identity,
+      const legacyRecoRouteEntry = await maybeHandleLegacyChatRecoRouteEntry({
+        ctx,
+        logger,
+        message,
+        session: parsed.data.session,
+        recentLogs,
+        identity,
+        canonicalIntent,
+        safetyDecision,
+        includeAlternatives,
+        actionId,
+        debugUpstream,
+        requestScopedProfileOverride,
+        ingredientRecoContext,
+        ingredientRecoOptInRequested,
+        ingredientActionData,
+        ingredientDrivenRecommendationRequested,
+        latestRecoContextFromSession,
+        recoEntrySourceDetail,
+        recoRequestMessage,
+        shouldAutoRerunRecommendationsFromProfilePatch,
+        travelSkillsContracts,
+        looksLikeLowRiskSkincareTask,
+        profile,
+        typedRecoOwnershipKeepsV1Mainline,
+        forceUpstreamAfterPendingAbandon,
+        allowRecoCards,
+        normalizedActionPayload,
+        recoInteractionAllowed,
+        budgetChipCanContinueReco,
+        profileClarificationAction,
+        runBeautyOwnedChatReco: () =>
+          maybeHandleBeautyOwnedChatRecoForRoute({
+            ctx,
+            logger,
+            message: recoRequestMessage || message,
+            typedRecoOwnershipKeepsV1Mainline,
+            forceUpstreamAfterPendingAbandon,
+            ingredientDrivenRecommendationRequested,
+            recoEntrySourceDetail,
+            latestRecoContextFromSession,
+            profile,
+            recentLogs,
+            includeAlternatives,
+            actionId,
+            shouldAutoRerunRecommendationsFromProfilePatch,
+            debugUpstream,
+          }),
+        legacyRecoDeps: {
           attachAnalysisContextUsageToSessionPatch,
-          canonicalIntent,
-          safetyDecision,
           buildSafetyNoticeText,
-          includeAlternatives,
-          actionId,
-          debugUpstream,
-          requestScopedProfileOverride,
-          ingredientRecoContext,
-          ingredientRecoOptInRequested,
-          ingredientActionData,
-          ingredientDrivenRecommendationRequested,
-          latestRecoContextFromSession,
-          recoEntrySourceDetail,
-          recoRequestMessage,
-          shouldAutoRerunRecommendationsFromProfilePatch,
-          travelSkillsContracts,
-          looksLikeLowRiskSkincareTask,
           runAuroraTimedOperation,
           ensureLatestArtifactForConversation,
           ensureAnalysisContextSnapshotForConversation,
@@ -79292,8 +78780,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           AURORA_PRODUCT_MATCHER_BUNDLED_SEED_FALLBACK_ENABLED,
           DIAG_PRODUCT_CATALOG_PATH,
           AURORA_BFF_CHAT_RECO_BUDGET_MS,
-        });
-        return sendChatEnvelope(envelope);
+        },
+      });
+      if (legacyRecoRouteEntry?.handled) {
+        return sendChatEnvelope(legacyRecoRouteEntry.envelope);
       }
 
       // If user just patched profile via chip/action, continue the diagnosis flow without calling upstream.
