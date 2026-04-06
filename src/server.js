@@ -8542,6 +8542,7 @@ function getSearchExternalSeedOnlyProductsDirectRuntime() {
         tokenizeSearchTextForMatch,
         buildBrandQueryVariants,
         buildExternalSeedBrandSearchProduct,
+        buildExternalSeedProduct,
         buildSearchProductKey,
         query,
         logger,
@@ -19706,9 +19707,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         }
         if (strictBeautyDirectSearch) {
           url = `${PIVOTA_API_BASE}/agent/v1/products/search`;
+          const auroraBeautyMainlineSurface =
+            isAuroraSource(metadata?.source) && beautyMainlineBypass.bypass === true ? 'beauty' : null;
           const directSearchCommerceSurface =
             (strictSurfaceState.explicit ? strictSurfaceState.commerceSurface : null) ||
-            (autoStrictSearchSourceBeautyDirectSearch ? 'beauty' : null);
+            (autoStrictSearchSourceBeautyDirectSearch ? 'beauty' : null) ||
+            auroraBeautyMainlineSurface;
           const directSearchRequest =
             requestBody?.payload &&
             typeof requestBody.payload === 'object' &&
@@ -19728,6 +19732,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             !Array.isArray(requestBody.metadata)
               ? requestBody.metadata
               : {};
+          const directSearchSemanticContract =
+            directSearchRequest.semantic_contract ||
+            directSearchRequest.semanticContract ||
+            search.semantic_contract ||
+            search.semanticContract ||
+            beautyMainlineBypass.semanticContract ||
+            null;
           queryParams = {
             ...queryParams,
             ...(String(
@@ -19768,8 +19779,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ...(directSearchRequest.product_only !== undefined
               ? { product_only: directSearchRequest.product_only }
               : {}),
-            ...(directSearchRequest.semantic_contract
-              ? { semantic_contract: JSON.stringify(directSearchRequest.semantic_contract) }
+            ...(directSearchSemanticContract
+              ? { semantic_contract: JSON.stringify(directSearchSemanticContract) }
               : {}),
           };
         } else if (strictCommerceFindProductsMulti) {
