@@ -41,6 +41,7 @@ const PRODUCTS_SEARCH_PAGE_SIZE = 60;
 const MAX_PRODUCTS_SEARCH_CALLS = 2;
 const DISCOVERY_PROVIDER_ORDER = ['products_search', 'internal_catalog', 'external_seeds'];
 const VALID_SURFACES = new Set(['home_hot_deals', 'browse_products']);
+const VALID_DISCOVERY_RESPONSE_DETAILS = new Set(['full', 'card']);
 const VALID_AUTH_STATES = new Set(['authenticated', 'anonymous']);
 const VALID_DISCOVERY_SORTS = new Set(['popular', 'price_desc', 'price_asc']);
 const HOME_INTEREST_RECALL_LIMIT = 24;
@@ -803,6 +804,12 @@ function normalizeDiscoveryDebug(raw) {
   };
 }
 
+function normalizeDiscoveryResponseDetail(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (VALID_DISCOVERY_RESPONSE_DETAILS.has(normalized)) return normalized;
+  return 'full';
+}
+
 function normalizeDiscoveryRequest(input = {}) {
   const source = input && typeof input.discovery === 'object' ? { ...input.discovery, ...input } : input;
   const surface = String(source.surface || '').trim();
@@ -842,6 +849,9 @@ function normalizeDiscoveryRequest(input = {}) {
   const authState = normalizeAuthState(context.auth_state);
   const locale = String(context.locale || 'en-US').trim() || 'en-US';
   const debug = normalizeDiscoveryDebug(source.debug);
+  const responseDetail = normalizeDiscoveryResponseDetail(
+    source.response_detail ?? source.responseDetail ?? source.detail_level ?? source.detailLevel,
+  );
   const scope = normalizeDiscoveryScope(source.scope);
   const query = normalizeDiscoveryQuery(source.query ?? source.query_text ?? source.queryText);
   const sort = normalizeDiscoverySort(source.sort);
@@ -871,6 +881,7 @@ function normalizeDiscoveryRequest(input = {}) {
     },
     source_product_ref: sourceProductRef,
     debug,
+    response_detail: responseDetail,
   };
 }
 
@@ -3195,8 +3206,56 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
   };
 }
 
-function formatDiscoveryResponseProduct(candidate) {
+function formatDiscoveryResponseProduct(candidate, request = null) {
   const { __discovery_provider, ...raw } = candidate.raw || {};
+  if (request?.response_detail === 'card') {
+    const imageUrl = String(raw.image_url || raw.imageUrl || '').trim();
+    const title = String(raw.title || raw.name || '').trim();
+    const category = raw.category || candidate.parentCategory || candidate.category || undefined;
+    const productType = raw.product_type || raw.productType || candidate.category || undefined;
+    const brand = raw.brand || candidate.brand || undefined;
+    const price =
+      raw.price != null
+        ? raw.price
+        : Number.isFinite(candidate?.priceAmount)
+          ? candidate.priceAmount
+          : undefined;
+    const inStock = isCandidateSellable(raw);
+
+    return {
+      id: raw.id || candidate.productId,
+      product_id: raw.product_id || candidate.productId,
+      merchant_id: raw.merchant_id || candidate.merchantId,
+      ...(raw.merchant_name ? { merchant_name: raw.merchant_name } : {}),
+      ...(raw.external_redirect_url ? { external_redirect_url: raw.external_redirect_url } : {}),
+      ...(raw.external_seed_id ? { external_seed_id: raw.external_seed_id } : {}),
+      ...(raw.source ? { source: raw.source } : {}),
+      ...(raw.disclosure_text ? { disclosure_text: raw.disclosure_text } : {}),
+      ...(raw.platform ? { platform: raw.platform } : {}),
+      ...(raw.platform_product_id ? { platform_product_id: raw.platform_product_id } : {}),
+      ...(raw.variant_id ? { variant_id: raw.variant_id } : {}),
+      ...(raw.sku_id ? { sku_id: raw.sku_id } : {}),
+      ...(raw.sku ? { sku: raw.sku } : {}),
+      title: title || candidate.productId,
+      price,
+      currency: raw.currency || 'USD',
+      ...(imageUrl ? { image_url: imageUrl } : {}),
+      ...(brand ? { brand } : {}),
+      ...(category ? { category } : {}),
+      ...(productType ? { product_type: productType } : {}),
+      in_stock: inStock,
+      ...(Array.isArray(raw.tags) && raw.tags.length ? { tags: raw.tags } : {}),
+      ...(raw.department ? { department: raw.department } : {}),
+      ...(raw.review_summary && typeof raw.review_summary === 'object'
+        ? { review_summary: raw.review_summary }
+        : {}),
+      ...(raw.attributes && typeof raw.attributes === 'object' ? { attributes: raw.attributes } : {}),
+      ...(raw.seller_feedback_summary && typeof raw.seller_feedback_summary === 'object'
+        ? { seller_feedback_summary: raw.seller_feedback_summary }
+        : {}),
+    };
+  }
+
   return {
     ...raw,
     id: raw.id || candidate.productId,
@@ -3634,7 +3693,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
     const response = {
       status: 'success',
       success: true,
-      products: selectedEntries.map((entry) => formatDiscoveryResponseProduct(entry.candidate)),
+      products: selectedEntries.map((entry) => formatDiscoveryResponseProduct(entry.candidate, request)),
       total,
       page: request.page,
       page_size: selectedEntries.length,
