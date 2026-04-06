@@ -26,7 +26,7 @@ describe('Celestial commerce core source contracts', () => {
     }
   });
 
-  test('public search strips external seed strategy overrides while shopping_agent keeps them', () => {
+  test('public search preserves external seed strategy overrides while shopping_agent keeps them', () => {
     const app = require('../src/server');
     const { applyFindProductsMultiSourceContract } = app._debug;
 
@@ -39,7 +39,7 @@ describe('Celestial commerce core source contracts', () => {
 
     const publicOut = applyFindProductsMultiSourceContract(payload, { source: 'search' }, 'find_products_multi');
     expect(publicOut.search.query).toBe('serum');
-    expect(publicOut.search.external_seed_strategy).toBeUndefined();
+    expect(publicOut.search.external_seed_strategy).toBe('unified_relevance');
 
     const shoppingOut = applyFindProductsMultiSourceContract(payload, { source: 'shopping_agent' }, 'find_products_multi');
     expect(shoppingOut.search.external_seed_strategy).toBe('unified_relevance');

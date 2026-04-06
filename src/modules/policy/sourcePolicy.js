@@ -158,23 +158,7 @@ function createSourcePolicyRuntime(config = {}) {
 }
 
 function applyFindProductsMultiSourceContract(rawPayload, metadata = {}, operation = '') {
-  if (String(operation || '').trim() !== 'find_products_multi') return rawPayload;
-  if (!isPublicSearchSource(metadata?.source)) return rawPayload;
-  const payload =
-    rawPayload && typeof rawPayload === 'object' && !Array.isArray(rawPayload) ? rawPayload : {};
-  const rawSearch =
-    payload.search && typeof payload.search === 'object' && !Array.isArray(payload.search)
-      ? payload.search
-      : null;
-  if (!rawSearch) return payload;
-  const changed =
-    Object.prototype.hasOwnProperty.call(rawSearch, 'external_seed_strategy') ||
-    Object.prototype.hasOwnProperty.call(rawSearch, 'externalSeedStrategy');
-  if (!changed) return payload;
-  return {
-    ...payload,
-    search: stripExternalSeedStrategyOverride(rawSearch),
-  };
+  return rawPayload;
 }
 
 module.exports = {

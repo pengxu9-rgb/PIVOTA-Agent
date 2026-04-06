@@ -25380,6 +25380,102 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         }
       }
 
+      const publicBrandExternalSeedRescueEligible =
+        operation === 'find_products_multi' &&
+        !strictCommerceFindProductsMulti &&
+        isPublicSearchSource(metadata?.source) &&
+        Boolean(queryText) &&
+        Boolean(detectBrandEntities(queryText, { candidateProducts: [] })?.brand_like) &&
+        !hasExplicitCategoryHint(queryText, effectiveIntent);
+
+      if (
+        publicBrandExternalSeedRescueEligible &&
+        response.status >= 200 &&
+        response.status < 300 &&
+        countUsableSearchProducts(upstreamData?.products) === 0
+      ) {
+        const directRescue = await searchExternalSeedOnlyProductsDirect({
+          search: {
+            query: queryText,
+            page: requestedFindProductsMultiPage,
+            limit: requestedLimit,
+            offset: requestedOffset,
+            in_stock_only:
+              parseQueryBoolean(
+                queryParams?.in_stock_only ??
+                  queryParams?.inStockOnly ??
+                  effectivePayload?.search?.in_stock_only ??
+                  effectivePayload?.search?.inStockOnly,
+              ) !== false,
+            source: metadata?.source || null,
+          },
+          metadata: {
+            source: metadata?.source || null,
+            relevance_query_text: queryText,
+          },
+        });
+        const directRescueProducts = Array.isArray(directRescue?.products) ? directRescue.products : [];
+        if (directRescueProducts.length > 0) {
+          const existingMeta =
+            upstreamData?.metadata && typeof upstreamData.metadata === 'object' && !Array.isArray(upstreamData.metadata)
+              ? upstreamData.metadata
+              : {};
+          const rescueMeta =
+            directRescue?.metadata && typeof directRescue.metadata === 'object' && !Array.isArray(directRescue.metadata)
+              ? directRescue.metadata
+              : {};
+          const rescueSourceBreakdown =
+            rescueMeta.source_breakdown && typeof rescueMeta.source_breakdown === 'object'
+              ? rescueMeta.source_breakdown
+              : {};
+          upstreamData = withSearchDiagnostics(
+            {
+              ...directRescue,
+              metadata: {
+                ...existingMeta,
+                ...rescueMeta,
+                query_source: 'agent_products_public_brand_external_seed_rescue',
+                brand_query_external_seed_rescue_applied: true,
+                brand_query_external_seed_rescue_attempted: true,
+                source_breakdown: {
+                  internal_count: 0,
+                  external_seed_count: directRescueProducts.length,
+                  ...rescueSourceBreakdown,
+                },
+              },
+            },
+            {
+              route_health: {
+                primary_path_used: 'external_seed_direct_rescue',
+                fallback_triggered: false,
+                fallback_reason: null,
+              },
+              search_trace: {
+                final_decision: 'products_returned',
+              },
+              search_decision: {
+                final_decision: 'products_returned',
+                primary_path_used: 'external_seed_direct_rescue',
+                decision_authority: 'agent_products_public_brand_external_seed_rescue',
+              },
+            },
+          );
+        } else if (
+          upstreamData?.metadata &&
+          typeof upstreamData.metadata === 'object' &&
+          !Array.isArray(upstreamData.metadata)
+        ) {
+          upstreamData = {
+            ...upstreamData,
+            metadata: {
+              ...upstreamData.metadata,
+              brand_query_external_seed_rescue_attempted: true,
+              brand_query_external_seed_rescue_applied: false,
+            },
+          };
+        }
+      }
+
       const primaryUsableCount = countUsableSearchProducts(upstreamData?.products);
       const primaryUnusable = Boolean(queryText) && shouldFallbackProxySearch(upstreamData, response.status);
       const primaryRelevant = queryText ? isProxySearchFallbackRelevant(upstreamData, queryText) : true;
@@ -27336,6 +27432,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           ? 'cache_stage'
           : querySource.includes('resolver')
           ? 'resolver_stage'
+          : querySource.includes('external_seed_direct') || querySource.includes('external_seed_rescue')
+          ? 'external_seed_direct_rescue'
           : 'upstream_stage');
       const fallbackTriggered =
         Boolean(fallbackMeta?.applied) ||
