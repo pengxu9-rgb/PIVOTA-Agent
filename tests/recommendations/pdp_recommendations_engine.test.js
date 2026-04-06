@@ -787,4 +787,56 @@ describe('RecommendationEngine (PDP)', () => {
       }),
     );
   });
+
+  test('o) placeholder external product_type must not count as same-category', () => {
+    const base = makeProduct({
+      merchant_id: 'external_seed',
+      product_id: 'ext_base_concealer',
+      title: 'Traceless Soft Matte Concealer',
+      brand: 'Tom Ford Beauty',
+      category: 'Concealer',
+      source: 'external_seed',
+      price: 64,
+    });
+
+    const external = [
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_same_category_concealer',
+        title: 'Shade and Illuminate Concealer',
+        brand: 'Tom Ford Beauty',
+        category: 'Concealer',
+        source: 'external_seed',
+        price: 62,
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_placeholder_lip',
+        title: 'Soft Matte Lip Color',
+        brand: 'Tom Ford Beauty',
+        product_type: 'external',
+        source: 'external_seed',
+        price: 62,
+      }),
+    ];
+
+    const out = pickLayeredRecommendations({
+      baseProduct: base,
+      internalCandidates: [],
+      externalCandidates: external,
+      k: 2,
+    });
+
+    expect(out.items.map((item) => item.product_id)).toEqual([
+      'ext_same_category_concealer',
+      'ext_placeholder_lip',
+    ]);
+    expect(out.metadata?.selection_mix).toEqual(
+      expect.objectContaining({
+        same_brand_same_category: 1,
+        same_brand_other_category: 1,
+        other_brand_same_category: 0,
+      }),
+    );
+  });
 });

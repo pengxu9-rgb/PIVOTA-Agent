@@ -6,11 +6,20 @@ const SHOPIFY_ASSET_HASH_SUFFIX_RE =
   /^(.*?_[0-9a-z]+(?:[a-z])?)_(?:[0-9a-f]{8,}(?:-[0-9a-f]{4,}){2,}|[0-9a-f-]{16,})(\.[a-z0-9]+)$/i;
 
 const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
-const SKINCARE_STEP_CATEGORY_PATTERNS = [
+const BEAUTY_CATEGORY_PATTERNS = [
+  ['Brush', /\b(brush|makeup brush|foundation brush|powder brush|blush brush|shader brush|kabuki)\b/i],
+  ['Fragrance', /\b(fragrance|perfume|parfum|eau de parfum|eau de toilette|cologne|scent)\b/i],
   ['Cleanser', /\b(cleanser|cleansing|face wash|facial wash|cleansing milk|cleansing foam|cleansing gel|wash)\b/i],
   ['Toner', /\b(toner|mist|pad)\b/i],
   ['Moisturizer', /\b(moisturizer|moisturiser|cream|lotion|gel cream|gel-cream|barrier cream)\b/i],
   ['Serum', /\b(serum|essence|ampoule|concentrate)\b/i],
+  ['Concealer', /\b(concealer)\b/i],
+  ['Foundation', /\b(foundation|skin tint|foundation stick|cushion foundation)\b/i],
+  ['Eyeshadow', /\b(eye\s?shadow|eyeshadow|eye color|eye colour)\b/i],
+  ['Mascara', /\b(mascara)\b/i],
+  ['Brow Pencil', /\b(brow pencil|eyebrow pencil|brow definer|brow sculptor|brow styler)\b/i],
+  ['Lip Balm', /\b(lip balm|lip treatment)\b/i],
+  ['Lipstick', /\b(lipstick|lip color|lip colour|liquid lip|lip luxe|lip lacquer|lip gloss)\b/i],
 ];
 const STRONG_ACTIVE_SOLUTION_INGREDIENT_IDS = new Set([
   'salicylic_acid',
@@ -80,11 +89,11 @@ function normalizeHttpUrl(value) {
   return url;
 }
 
-function normalizeExplicitSkincareCategory(value) {
+function normalizeExplicitBeautyCategory(value) {
   const text = String(value || '').trim();
   if (!text) return '';
   if (/^external$/i.test(text)) return '';
-  for (const [label, pattern] of SKINCARE_STEP_CATEGORY_PATTERNS) {
+  for (const [label, pattern] of BEAUTY_CATEGORY_PATTERNS) {
     if (pattern.test(text)) return label;
   }
   return text;
@@ -206,7 +215,7 @@ function collectStructuredIngredientIds(row, seedData, snapshot) {
   return out;
 }
 
-function inferExternalSeedSkincareCategory({
+function inferExternalSeedBeautyCategory({
   explicitCategory,
   title,
   description,
@@ -214,17 +223,23 @@ function inferExternalSeedSkincareCategory({
   destinationUrl,
   ingredientIds,
 } = {}) {
-  const explicit = normalizeExplicitSkincareCategory(explicitCategory);
+  const explicit = normalizeExplicitBeautyCategory(explicitCategory);
   if (explicit) return explicit;
 
-  const surfaceText = [title, description, canonicalUrl, destinationUrl]
+  const primarySurfaceText = [title, canonicalUrl, destinationUrl]
     .map((value) => String(value || '').trim())
     .filter(Boolean)
     .join(' ');
+  const descriptionText = String(description || '').trim();
+  const surfaceText = [primarySurfaceText, descriptionText].filter(Boolean).join(' ');
   if (!surfaceText) return '';
 
-  for (const [label, pattern] of SKINCARE_STEP_CATEGORY_PATTERNS) {
-    if (pattern.test(surfaceText)) return label;
+  for (const [label, pattern] of BEAUTY_CATEGORY_PATTERNS) {
+    if (pattern.test(primarySurfaceText)) return label;
+  }
+
+  for (const [label, pattern] of BEAUTY_CATEGORY_PATTERNS) {
+    if (pattern.test(descriptionText)) return label;
   }
 
   const normalizedIngredientIds = Array.isArray(ingredientIds)
@@ -1024,20 +1039,20 @@ function buildExternalSeedProduct(row) {
     row.brand,
   ) || undefined;
   const explicitCategory =
-    normalizeExplicitSkincareCategory(seedData.category) ||
-    normalizeExplicitSkincareCategory(seedData.product?.category) ||
-    normalizeExplicitSkincareCategory(snapshot.category) ||
-    normalizeExplicitSkincareCategory(seedData.product_type) ||
-    normalizeExplicitSkincareCategory(seedData.productType) ||
-    normalizeExplicitSkincareCategory(snapshot.product_type) ||
-    normalizeExplicitSkincareCategory(snapshot.productType) ||
-    normalizeExplicitSkincareCategory(row.seed_category) ||
-    normalizeExplicitSkincareCategory(row.seed_product_type) ||
-    normalizeExplicitSkincareCategory(row.category) ||
-    normalizeExplicitSkincareCategory(row.product_type);
+    normalizeExplicitBeautyCategory(seedData.category) ||
+    normalizeExplicitBeautyCategory(seedData.product?.category) ||
+    normalizeExplicitBeautyCategory(snapshot.category) ||
+    normalizeExplicitBeautyCategory(seedData.product_type) ||
+    normalizeExplicitBeautyCategory(seedData.productType) ||
+    normalizeExplicitBeautyCategory(snapshot.product_type) ||
+    normalizeExplicitBeautyCategory(snapshot.productType) ||
+    normalizeExplicitBeautyCategory(row.seed_category) ||
+    normalizeExplicitBeautyCategory(row.seed_product_type) ||
+    normalizeExplicitBeautyCategory(row.category) ||
+    normalizeExplicitBeautyCategory(row.product_type);
   const ingredientTokens = collectSeedIngredientSignalTokens(seedData, row);
   const ingredientIds = collectStructuredIngredientIds(row, seedData, snapshot);
-  const category = inferExternalSeedSkincareCategory({
+  const category = inferExternalSeedBeautyCategory({
     explicitCategory,
     title,
     description: categoryDescription,
@@ -1172,7 +1187,8 @@ module.exports = {
   ensureJsonObject,
   normalizeSeedAvailability,
   availabilityToInStock,
-  inferExternalSeedSkincareCategory,
+  inferExternalSeedBeautyCategory,
+  inferExternalSeedSkincareCategory: inferExternalSeedBeautyCategory,
   collectSeedImageUrls,
   normalizeSeedImageUrls,
   normalizeSeedVariants,
