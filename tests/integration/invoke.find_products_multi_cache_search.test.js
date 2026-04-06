@@ -354,7 +354,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       });
 
     expect(resp.status).toBe(200);
-    expect(upstreamSearch.isDone()).toBe(true);
+    expect(upstreamSearch.isDone()).toBe(false);
     expect(Array.isArray(resp.body.products)).toBe(true);
     expect(resp.body.products).toEqual(
       expect.arrayContaining([
@@ -836,7 +836,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.body.metadata?.query_source).toBe('agent_products_search');
     expect(resp.body.metadata?.strict_empty).not.toBe(true);
     expect(resp.body.metadata?.strict_empty_reason).toBeUndefined();
-    expect(upstreamSearch.isDone()).toBe(true);
+    expect(upstreamSearch.isDone()).toBe(false);
   });
 
   test('injects creator catalog guard params on upstream query', async () => {
@@ -2423,7 +2423,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       });
 
     expect(resp.status).toBe(200);
-    expect(upstreamSearch.isDone()).toBe(true);
+    expect(upstreamSearch.isDone()).toBe(false);
     expect(capturedBody).toEqual(
       expect.objectContaining({
         query: 'oil control treatment',
@@ -4201,7 +4201,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       });
 
     expect(resp.status).toBe(200);
-    expect(upstreamSearch.isDone()).toBe(true);
+    expect(upstreamSearch.isDone()).toBe(false);
     expect(Array.isArray(resp.body.products)).toBe(true);
     expect(resp.body.products.length).toBeGreaterThan(0);
     expect(resp.body.products.length).toBe(24);
@@ -4224,8 +4224,10 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     ).toBe(true);
     expect(resp.body.metadata?.query_source).toBe('agent_products_public_brand_search_mainline');
     expect(resp.body.metadata?.brand_query_mainline_applied).toBe(true);
+    expect(resp.body.metadata?.brand_query_mainline_upstream_skipped).toBe(true);
     expect(resp.body.metadata?.route_trace?.primary_path_used).toBe('brand_search_multi_source');
     expect(resp.body.metadata?.route_health?.fallback_triggered).toBe(false);
+    expect(resp.body.metadata?.route_health?.upstream_search_skipped).toBe(true);
     expect(resp.body.metadata?.search_decision?.final_decision).toBe('products_returned');
     expect(resp.body.metadata?.external_seed_rows_built).toBeGreaterThan(resp.body.products.length);
     expect(resp.body.reply).not.toBe('Search is temporarily unavailable. Please retry shortly.');
@@ -4305,11 +4307,13 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       });
 
     expect(resp.status).toBe(200);
-    expect(upstreamSearch.isDone()).toBe(true);
+    expect(upstreamSearch.isDone()).toBe(false);
     expect(resp.body.metadata?.guard_source_normalized).toBe('search');
     expect(resp.body.metadata?.query_source).toBe('agent_products_public_brand_search_mainline');
+    expect(resp.body.metadata?.brand_query_mainline_upstream_skipped).toBe(true);
     expect(resp.body.metadata?.route_trace?.primary_path_used).toBe('brand_search_multi_source');
     expect(resp.body.metadata?.route_health?.fallback_triggered).toBe(false);
+    expect(resp.body.metadata?.route_health?.upstream_search_skipped).toBe(true);
     expect(resp.body.total).toBeGreaterThan(resp.body.page_size || 0);
     expect(Array.isArray(resp.body.products)).toBe(true);
     expect(resp.body.products.length).toBe(24);
