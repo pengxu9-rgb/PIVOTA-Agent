@@ -693,6 +693,67 @@ describe('discovery feed service', () => {
     ]);
   });
 
+  test('browse_products card response detail trims heavy product payload fields', async () => {
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        response_detail: 'card',
+        scope: {
+          brand_names: ['Tom Ford Beauty'],
+        },
+        context: {
+          locale: 'en-US',
+        },
+      },
+      {
+        candidateProducts: [
+          {
+            ...makeProduct({
+              merchant_id: 'm1',
+              product_id: 'rose_prick',
+              title: 'Rose Prick Eau de Parfum',
+              brand: 'Tom Ford Beauty',
+              category: 'Fragrance',
+              product_type: 'Perfume',
+              price: 410,
+            }),
+            image_url: 'https://example.com/rose-prick.jpg',
+            image_urls: ['https://example.com/rose-prick.jpg', 'https://example.com/rose-prick-2.jpg'],
+            variants: [{ id: 'variant_1', image_urls: ['https://example.com/variant.jpg'] }],
+            raw_detail: { giant_blob: true },
+            review_summary: { rating: 4.9, review_count: 128 },
+            tags: ['editorial: top pick'],
+            attributes: { badge: 'Top Pick' },
+          },
+        ],
+      },
+    );
+
+    expect(response.products).toHaveLength(1);
+    expect(response.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'rose_prick',
+        merchant_id: 'm1',
+        title: 'Rose Prick Eau de Parfum',
+        price: 410,
+        currency: 'USD',
+        image_url: 'https://example.com/rose-prick.jpg',
+        brand: 'Tom Ford Beauty',
+        category: 'Fragrance',
+        product_type: 'Perfume',
+        in_stock: true,
+        review_summary: { rating: 4.9, review_count: 128 },
+        tags: ['editorial: top pick'],
+        attributes: { badge: 'Top Pick' },
+      }),
+    );
+    expect(response.products[0]).not.toHaveProperty('variants');
+    expect(response.products[0]).not.toHaveProperty('image_urls');
+    expect(response.products[0]).not.toHaveProperty('raw_detail');
+  });
+
   test('home_hot_deals excludes exact recent views and caps same brand at two items', async () => {
     const response = await getDiscoveryFeed(
       {
