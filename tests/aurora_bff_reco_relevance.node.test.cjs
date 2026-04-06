@@ -4563,7 +4563,7 @@ test('__internal: framework reco query collection runs per-level catalog searche
   }
 });
 
-test('/v1/chat: profile-driven generic reco without explicit focus preserves warning but still returns products', async () => {
+test('/v1/chat: profile-driven beauty-owned reco chip without explicit ask clean fail-closes before legacy planner', async () => {
   const originalGet = axios.get;
   const observedQueries = [];
   axios.get = async (url, config = {}) => {
@@ -4634,23 +4634,20 @@ test('/v1/chat: profile-driven generic reco without explicit focus preserves war
 
     assert.equal(response.status, 200);
     const payload = getRecommendationsPayload(response.body);
-    assert.ok(payload);
-    assert.ok(Array.isArray(payload?.recommendations) && payload.recommendations.length > 0);
-    assert.equal(payload?.mainline_status, 'grounded_success');
-    assert.equal(payload?.recommendation_meta?.minimum_recommendation_context_warning, true);
+    assert.equal(payload, null);
     const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
     const confidenceNotice = cards.find((card) => card && card.type === 'confidence_notice') || null;
-    assert.equal(confidenceNotice, null);
-    const recoEvent = getRecoRequestedEvent(response.body);
-    assert.ok(recoEvent);
-    assert.equal(recoEvent?.data?.mainline_status, 'grounded_success');
-    assert.ok(observedQueries.length > 0);
+    assert.ok(confidenceNotice);
+    assert.equal(
+      String(confidenceNotice?.payload?.reason || ''),
+      'upstream_empty_recommendations',
+    );
   } finally {
     axios.get = originalGet;
   }
 });
 
-test('/v1/chat: stored-profile generic reco preserves warning but still returns products', async () => {
+test('/v1/chat: stored-profile beauty-owned reco chip without explicit ask clean fail-closes before legacy planner', async () => {
   const originalGet = axios.get;
   const observedQueries = [];
 
@@ -4721,17 +4718,14 @@ test('/v1/chat: stored-profile generic reco preserves warning but still returns 
       .expect(200);
 
     const payload = getRecommendationsPayload(response.body);
-    assert.ok(payload);
-    assert.ok(Array.isArray(payload?.recommendations) && payload.recommendations.length > 0);
-    assert.equal(payload?.mainline_status, 'grounded_success');
-    assert.equal(payload?.recommendation_meta?.minimum_recommendation_context_warning, true);
+    assert.equal(payload, null);
     const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
     const confidenceNotice = cards.find((card) => card && card.type === 'confidence_notice') || null;
-    assert.equal(confidenceNotice, null);
-    const recoEvent = getRecoRequestedEvent(response.body);
-    assert.ok(recoEvent);
-    assert.equal(recoEvent?.data?.mainline_status, 'grounded_success');
-    assert.ok(observedQueries.length > 0);
+    assert.ok(confidenceNotice);
+    assert.equal(
+      String(confidenceNotice?.payload?.reason || ''),
+      'upstream_empty_recommendations',
+    );
   } finally {
     axios.get = originalGet;
     harness.restore();
@@ -5630,6 +5624,7 @@ test('/v1/chat: typed beauty ownership bypasses legacy recommendationsAllowed ga
   const originalRecommendationsAllowed = gating.recommendationsAllowed;
   const observedCalls = [];
   let auroraChatCallCount = 0;
+  let legacyRouteEntryCallCount = 0;
   gating.recommendationsAllowed = () => false;
   const harness = createAppWithPatchedAuroraChat({
     auroraChatImpl: async () => {
@@ -5764,6 +5759,10 @@ test('/v1/chat: typed beauty ownership bypasses legacy recommendationsAllowed ga
         },
       };
     },
+    maybeHandleLegacyChatRecoRouteEntry: async () => {
+      legacyRouteEntryCallCount += 1;
+      throw new Error('legacy route entry should not run on beauty-owned success path');
+    },
   });
 
   try {
@@ -5800,6 +5799,7 @@ test('/v1/chat: typed beauty ownership bypasses legacy recommendationsAllowed ga
     assert.equal(payload.recommendation_meta?.resolved_contract, 'agent_v1_search_beauty_mainline');
     assert.deepEqual(payload.recommendation_meta?.source_tier_counts, { fresh_internal: 1 });
     assert.equal(auroraChatCallCount, 0);
+    assert.equal(legacyRouteEntryCallCount, 0);
     assert.ok(observedCalls.includes('what products should i use for oily skin?'));
   } finally {
     harness.routesMod.__internal.__resetRouteDependencyOverridesForTest();
@@ -5996,6 +5996,7 @@ test('/v1/chat: beauty-owned hard path fails closed when handoff products lack c
 test('/v1/chat: beauty-owned reco helper miss still fails closed before legacy planner', { concurrency: false }, async () => {
   const originalGet = axios.get;
   let auroraChatCallCount = 0;
+  let legacyRouteEntryCallCount = 0;
   const harness = createAppWithPatchedAuroraChat({
     auroraChatImpl: async () => {
       auroraChatCallCount += 1;
@@ -6023,6 +6024,10 @@ test('/v1/chat: beauty-owned reco helper miss still fails closed before legacy p
         resolved_target_step: 'treatment',
       },
     }),
+    maybeHandleLegacyChatRecoRouteEntry: async () => {
+      legacyRouteEntryCallCount += 1;
+      throw new Error('legacy route entry should not run after beauty helper miss');
+    },
   });
 
   axios.get = async (url) => {
@@ -6056,6 +6061,7 @@ test('/v1/chat: beauty-owned reco helper miss still fails closed before legacy p
 
     assert.equal(response.statusCode, 200);
     assert.equal(auroraChatCallCount, 0);
+    assert.equal(legacyRouteEntryCallCount, 0);
     assert.equal(getRecommendationsPayload(response.body), null);
     const notice = getConfidenceNoticePayload(response.body);
     assert.ok(notice);

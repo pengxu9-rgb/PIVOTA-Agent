@@ -1455,8 +1455,6 @@ const {
 const {
   maybeHandleLegacyChatRecoRouteEntry,
 } = createLegacyChatRecoRouteEntryRuntime({
-  isBeautyOwnedChatRecoRequest,
-  buildBeautyMainlineHandoffFallbackEnvelope,
   shouldEnterLegacyProductRecommendations,
   handleLegacyChatRecoRequest,
 });
@@ -32119,6 +32117,13 @@ function maybeHandleBeautyOwnedChatRecoForRoute(args) {
   return resolveAuroraRouteDependency(
     'maybeHandleBeautyOwnedChatReco',
     maybeHandleBeautyOwnedChatReco,
+  )(args);
+}
+
+function maybeHandleLegacyChatRecoRouteEntryForRoute(args) {
+  return resolveAuroraRouteDependency(
+    'maybeHandleLegacyChatRecoRouteEntry',
+    maybeHandleLegacyChatRecoRouteEntry,
   )(args);
 }
 
@@ -78680,7 +78685,52 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       let analysisContextSnapshotForConversation = null;
       let chatAnalysisTaskContext = null;
-      const legacyRecoRouteEntry = await maybeHandleLegacyChatRecoRouteEntry({
+      // Beauty-owned reco must be resolved on the mainline hard path before
+      // we even consider the legacy compatibility entry.
+      const beautyOwnedRecoResponse =
+        await maybeHandleBeautyOwnedChatRecoForRoute({
+          ctx,
+          logger,
+          message: recoRequestMessage || message,
+          typedRecoOwnershipKeepsV1Mainline,
+          forceUpstreamAfterPendingAbandon,
+          ingredientDrivenRecommendationRequested,
+          recoEntrySourceDetail,
+          latestRecoContextFromSession,
+          profile,
+          recentLogs,
+          includeAlternatives,
+          actionId,
+          shouldAutoRerunRecommendationsFromProfilePatch,
+          debugUpstream,
+        });
+      if (beautyOwnedRecoResponse?.handled) {
+        return sendChatEnvelope(beautyOwnedRecoResponse.envelope);
+      }
+
+      const beautyOwnedRecoHardStop = isBeautyOwnedChatRecoRequest({
+        typedRecoOwnershipKeepsV1Mainline,
+        forceUpstreamAfterPendingAbandon,
+        ingredientDrivenRecommendationRequested,
+        recoEntrySourceDetail,
+        targetContext: beautyOwnedRecoResponse?.targetContext,
+        message: recoRequestMessage || message,
+      });
+      if (beautyOwnedRecoHardStop) {
+        return sendChatEnvelope(
+          buildBeautyMainlineHandoffFallbackEnvelope({
+            ctx,
+            fallback: {
+              fallback_reason: 'beauty_mainline_handoff_required',
+              notice_reason: 'upstream_empty_recommendations',
+              mainline_status: 'needs_more_context',
+            },
+            suggestedChips: [],
+          }),
+        );
+      }
+
+      const legacyRecoRouteEntry = await maybeHandleLegacyChatRecoRouteEntryForRoute({
         ctx,
         logger,
         message,
@@ -78704,30 +78754,12 @@ function mountAuroraBffRoutes(app, { logger }) {
         travelSkillsContracts,
         looksLikeLowRiskSkincareTask,
         profile,
-        typedRecoOwnershipKeepsV1Mainline,
         forceUpstreamAfterPendingAbandon,
         allowRecoCards,
         normalizedActionPayload,
         recoInteractionAllowed,
         budgetChipCanContinueReco,
         profileClarificationAction,
-        runBeautyOwnedChatReco: () =>
-          maybeHandleBeautyOwnedChatRecoForRoute({
-            ctx,
-            logger,
-            message: recoRequestMessage || message,
-            typedRecoOwnershipKeepsV1Mainline,
-            forceUpstreamAfterPendingAbandon,
-            ingredientDrivenRecommendationRequested,
-            recoEntrySourceDetail,
-            latestRecoContextFromSession,
-            profile,
-            recentLogs,
-            includeAlternatives,
-            actionId,
-            shouldAutoRerunRecommendationsFromProfilePatch,
-            debugUpstream,
-          }),
         legacyRecoDeps: buildLegacyChatRecoRouteDeps({
           attachAnalysisContextUsageToSessionPatch,
           buildSafetyNoticeText,
