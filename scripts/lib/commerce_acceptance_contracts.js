@@ -8,6 +8,28 @@ function normalizeFamily(input) {
   return String(input || '').trim();
 }
 
+function isSearchSource(testCase = {}) {
+  return String(testCase?.source || '').trim() === 'search';
+}
+
+function buildStrictContractDefaults(testCase = {}, strictConstraintReason) {
+  const searchSource = isSearchSource(testCase);
+  return {
+    ...(searchSource
+      ? {
+          allowed_contract_paths: ['shop_invoke_strict', 'agent_v1_search_beauty_mainline'],
+        }
+      : {
+          expected_contract_path: 'shop_invoke_strict',
+        }),
+    must_equal_metadata: {
+      ...(searchSource ? {} : { 'contract_bridge.resolved_contract': 'shop_invoke_strict' }),
+      strict_constraint_query: true,
+      strict_constraint_reason: strictConstraintReason,
+    },
+  };
+}
+
 function buildPrimaryReliabilityProdDefaults({ decisionAuthority = null } = {}) {
   return {
     must_have_metadata: [
@@ -49,13 +71,12 @@ function buildPrimaryReliabilityStagingDefaults({ decisionAuthority = null } = {
   };
 }
 
-function buildProdGateFamilyDefaults(family) {
+function buildProdGateFamilyDefaults(family, testCase = {}) {
   switch (normalizeFamily(family)) {
     case 'strict_ingredient':
       return {
         require_primary_path: true,
         allow_strict_empty: false,
-        expected_contract_path: 'shop_invoke_strict',
         allow_zero_results: false,
         must_have_metadata: [
           'service_version.commit',
@@ -65,10 +86,9 @@ function buildProdGateFamilyDefaults(family) {
           'matched_ingredient_ids.0',
           ...buildPrimaryReliabilityProdDefaults().must_have_metadata,
         ],
+        ...buildStrictContractDefaults(testCase, 'ingredient'),
         must_equal_metadata: {
-          'contract_bridge.resolved_contract': 'shop_invoke_strict',
-          strict_constraint_query: true,
-          strict_constraint_reason: 'ingredient',
+          ...buildStrictContractDefaults(testCase, 'ingredient').must_equal_metadata,
           ...buildPrimaryReliabilityProdDefaults().must_equal_metadata,
         },
       };
@@ -76,7 +96,6 @@ function buildProdGateFamilyDefaults(family) {
       return {
         require_primary_path: true,
         allow_strict_empty: false,
-        expected_contract_path: 'shop_invoke_strict',
         allow_zero_results: false,
         must_have_metadata: [
           'service_version.commit',
@@ -86,10 +105,9 @@ function buildProdGateFamilyDefaults(family) {
           'matched_ingredient_ids.0',
           ...buildPrimaryReliabilityProdDefaults().must_have_metadata,
         ],
+        ...buildStrictContractDefaults(testCase, 'multi_constraint'),
         must_equal_metadata: {
-          'contract_bridge.resolved_contract': 'shop_invoke_strict',
-          strict_constraint_query: true,
-          strict_constraint_reason: 'multi_constraint',
+          ...buildStrictContractDefaults(testCase, 'multi_constraint').must_equal_metadata,
           ...buildPrimaryReliabilityProdDefaults().must_equal_metadata,
         },
       };
@@ -443,7 +461,7 @@ function buildAcceptanceTargetDefaults(target, testCase = {}) {
   const family = normalizeFamily(testCase.family);
   if (!family) return null;
   if (target === 'prod_gate') {
-    return buildProdGateFamilyDefaults(family);
+    return buildProdGateFamilyDefaults(family, testCase);
   }
   if (target === 'prompt_live_smoke') {
     return buildPromptLiveSmokeFamilyDefaults(family);

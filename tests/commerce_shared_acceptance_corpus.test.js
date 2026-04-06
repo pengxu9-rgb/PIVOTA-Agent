@@ -440,7 +440,7 @@ describe('Commerce shared acceptance corpus', () => {
       expect.objectContaining({
         id: 'budget_case',
         family: 'strict_ingredient_budget',
-        expected_contract_path: 'shop_invoke_strict',
+        allowed_contract_paths: ['shop_invoke_strict', 'agent_v1_search_beauty_mainline'],
         must_have_metadata: expect.arrayContaining([
           'contract_bridge.resolved_contract',
           'matched_ingredient_ids.0',
@@ -451,7 +451,6 @@ describe('Commerce shared acceptance corpus', () => {
           'search_decision.decision_locked',
         ]),
         must_equal_metadata: expect.objectContaining({
-          'contract_bridge.resolved_contract': 'shop_invoke_strict',
           strict_constraint_query: true,
           strict_constraint_reason: 'multi_constraint',
           budget_fx_applied: true,

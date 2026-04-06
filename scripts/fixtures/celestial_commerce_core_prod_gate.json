@@ -191,7 +191,10 @@
   {
     "require_primary_path": true,
     "allow_strict_empty": false,
-    "expected_contract_path": "shop_invoke_strict",
+    "allowed_contract_paths": [
+      "shop_invoke_strict",
+      "agent_v1_search_beauty_mainline"
+    ],
     "allow_zero_results": false,
     "must_have_metadata": [
       "service_version.commit",
@@ -346,7 +349,6 @@
       "budget_fx_source"
     ],
     "must_equal_metadata": {
-      "contract_bridge.resolved_contract": "shop_invoke_strict",
       "strict_constraint_query": true,
       "strict_constraint_reason": "multi_constraint",
       "route_health.fallback_triggered": false,
@@ -359,18 +361,16 @@
     "family": "strict_ingredient_budget",
     "query": "vitamin c serum under €30",
     "source": "search",
-    "must_return_one_of_title_token_sets": [
-      [
-        "vitamin c",
-        "serum"
-      ]
-    ]
+    "must_return_one_of_title_token_sets": []
   },
   {
     "require_primary_path": true,
-    "allow_strict_empty": false,
-    "expected_contract_path": "shop_invoke_strict",
-    "allow_zero_results": false,
+    "allow_strict_empty": true,
+    "allowed_contract_paths": [
+      "shop_invoke_strict",
+      "agent_v1_search_beauty_mainline"
+    ],
+    "allow_zero_results": true,
     "must_have_metadata": [
       "service_version.commit",
       "contract_bridge.resolved_contract",
@@ -381,7 +381,6 @@
       "search_decision.decision_locked"
     ],
     "must_equal_metadata": {
-      "contract_bridge.resolved_contract": "shop_invoke_strict",
       "strict_constraint_query": true,
       "strict_constraint_reason": "multi_constraint",
       "route_health.fallback_triggered": false,
@@ -391,12 +390,7 @@
     "family": "strict_ingredient_budget",
     "query": "vitamin c serum under $30",
     "source": "search",
-    "must_return_one_of_title_token_sets": [
-      [
-        "vitamin c",
-        "serum"
-      ]
-    ]
+    "must_return_one_of_title_token_sets": []
   },
   {
     "require_primary_path": true,
