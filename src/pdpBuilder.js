@@ -1552,6 +1552,15 @@ function buildProductFactSections(product, detailSections, primaryDescription = 
   ];
 }
 
+function isRedundantDescriptionOnlyFacts(sections, primaryDescription = '') {
+  if (!Array.isArray(sections) || sections.length !== 1) return false;
+  const [section] = sections;
+  if (String(section?.heading || '').trim().toLowerCase() !== 'description') return false;
+  const sectionKey = normalizeComparisonKey(section?.content);
+  const descriptionKey = normalizeComparisonKey(primaryDescription);
+  return Boolean(sectionKey && descriptionKey && sectionKey === descriptionKey);
+}
+
 function extractBrandStory(product, factSections) {
   const explicit = normalizeTextValue(product.brand_story);
   if (explicit) return explicit;
@@ -1774,6 +1783,10 @@ function buildPdpPayload(args) {
     primaryDescription,
     beautyOverview,
   );
+  const suppressRedundantDescriptionFacts =
+    isRedundantDescriptionOnlyFacts(productFactsSections, primaryDescription) &&
+    Boolean(activeIngredientsModule || ingredientsModule || howToUseModule);
+  const resolvedProductFactsSections = suppressRedundantDescriptionFacts ? [] : productFactsSections;
   const reviews = buildReviewsPreview(product, { includeEmpty: args.includeEmptyReviews });
   const relatedProducts = Array.isArray(args.relatedProducts)
     ? { items: args.relatedProducts }
@@ -1785,7 +1798,7 @@ function buildPdpPayload(args) {
     : null;
   const brandStory = extractBrandStory(product, productFactsSections);
   const emitLegacyProductDetails = Boolean(
-    productFactsSections.length &&
+    resolvedProductFactsSections.length &&
       !activeIngredientsModule &&
       !ingredientsModule &&
       !howToUseModule,
@@ -1842,12 +1855,12 @@ function buildPdpPayload(args) {
       data: howToUseModule,
     });
   }
-  if (productFactsSections.length) {
+  if (resolvedProductFactsSections.length) {
     modules.push({
       module_id: 'm_product_facts',
       type: 'product_facts',
       priority: 71,
-      data: { sections: productFactsSections },
+      data: { sections: resolvedProductFactsSections },
     });
   }
   if (emitLegacyProductDetails) {
@@ -1855,7 +1868,7 @@ function buildPdpPayload(args) {
       module_id: 'm_details',
       type: 'product_details',
       priority: 70,
-      data: { sections: productFactsSections },
+      data: { sections: resolvedProductFactsSections },
     });
   }
   if (reviews) {
