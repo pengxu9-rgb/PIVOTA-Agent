@@ -273,6 +273,9 @@ function normalizeCase(rawCase, defaultSource, fallbackId = '') {
       typeof rawCase?.must_have_clarification === 'boolean'
         ? rawCase.must_have_clarification
         : null,
+    allowed_contract_paths: Array.isArray(rawCase?.allowed_contract_paths)
+      ? rawCase.allowed_contract_paths.map((item) => String(item || '').trim()).filter(Boolean)
+      : [],
     expected_contract_path: String(rawCase?.expected_contract_path || '').trim() || null,
     limit: Math.max(1, Number(rawCase?.limit || 10) || 10),
     in_stock_only: rawCase?.in_stock_only !== false,
@@ -454,7 +457,17 @@ function evaluateCase(row) {
     must_not_match_fallback_sources: spec.must_not_match_fallback_sources,
   });
 
-  if (spec.expected_contract_path) {
+  const allowedContractPaths = Array.isArray(spec.allowed_contract_paths)
+    ? spec.allowed_contract_paths.map((item) => String(item || '').trim()).filter(Boolean)
+    : [];
+  if (allowedContractPaths.length > 0) {
+    const actualContract = String(contractBridge.resolved_contract || '').trim();
+    if (!allowedContractPaths.includes(actualContract)) {
+      reasons.push(
+        `expected_contract_path_one_of=${allowedContractPaths.join('|')} actual=${actualContract || 'null'}`,
+      );
+    }
+  } else if (spec.expected_contract_path) {
     const actualContract = String(contractBridge.resolved_contract || '').trim();
     if (actualContract !== String(spec.expected_contract_path)) {
       reasons.push(

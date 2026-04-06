@@ -245,8 +245,8 @@ describe('Celestial commerce-core production smoke wrapper', () => {
               'search_decision.decision_locked',
               'contract_bridge.resolved_contract',
             ],
+            allowed_contract_paths: ['shop_invoke_strict', 'agent_v1_search_beauty_mainline'],
             must_equal_metadata: {
-              'contract_bridge.resolved_contract': 'shop_invoke_strict',
               strict_constraint_query: true,
               strict_constraint_reason: 'multi_constraint',
               budget_fx_applied: true,
@@ -302,7 +302,7 @@ describe('Celestial commerce-core production smoke wrapper', () => {
             budget_fx_source: 'static_usd',
             budget_fx_candidate_currency: 'USD',
             budget_fx_unresolved: false,
-            contract_bridge: { resolved_contract: 'shop_invoke_strict' },
+            contract_bridge: { resolved_contract: 'agent_v1_search_beauty_mainline' },
             route_health: { fallback_triggered: false },
             search_decision: { decision_locked: true },
             search_trace: { final_decision: 'products_returned' },

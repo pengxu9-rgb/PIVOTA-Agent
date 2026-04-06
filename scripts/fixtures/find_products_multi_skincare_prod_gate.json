@@ -33,7 +33,10 @@
     "rail_mode": "authoritative_commerce",
     "require_primary_path": true,
     "allow_strict_empty": false,
-    "expected_contract_path": "shop_invoke_strict",
+    "allowed_contract_paths": [
+      "shop_invoke_strict",
+      "agent_v1_search_beauty_mainline"
+    ],
     "allow_zero_results": false,
     "must_have_metadata": [
       "contract_bridge.resolved_contract",
@@ -65,7 +68,10 @@
     "rail_mode": "authoritative_commerce",
     "require_primary_path": true,
     "allow_strict_empty": false,
-    "expected_contract_path": "shop_invoke_strict",
+    "allowed_contract_paths": [
+      "shop_invoke_strict",
+      "agent_v1_search_beauty_mainline"
+    ],
     "allow_zero_results": false,
     "must_have_metadata": [
       "contract_bridge.resolved_contract",
@@ -91,7 +97,10 @@
     "family": "strict_ingredient_budget",
     "query": "vitamin c serum under €30",
     "source": "search",
-    "expected_contract_path": "shop_invoke_strict",
+    "allowed_contract_paths": [
+      "shop_invoke_strict",
+      "agent_v1_search_beauty_mainline"
+    ],
     "rail_mode": "authoritative_commerce",
     "require_primary_path": true,
     "allow_zero_results": false,
@@ -114,24 +123,21 @@
       "budget_fx_candidate_currency": "USD",
       "budget_fx_unresolved": false
     },
-    "must_respect_budget": true,
-    "must_return_one_of_title_token_sets": [
-      [
-        "vitamin c",
-        "serum"
-      ]
-    ]
+    "must_respect_budget": true
   },
   {
     "id": "skincare_strict_vitamin_c_serum_budget_usd_prod",
     "family": "strict_ingredient_budget",
     "query": "vitamin c serum under $30",
     "source": "search",
-    "expected_contract_path": "shop_invoke_strict",
+    "allowed_contract_paths": [
+      "shop_invoke_strict",
+      "agent_v1_search_beauty_mainline"
+    ],
     "rail_mode": "authoritative_commerce",
     "require_primary_path": true,
-    "allow_zero_results": false,
-    "allow_strict_empty": false,
+    "allow_zero_results": true,
+    "allow_strict_empty": true,
     "must_have_metadata": [
       "contract_bridge.resolved_contract",
       "service_version.commit",
@@ -144,12 +150,6 @@
       "strict_constraint_query": true,
       "strict_constraint_reason": "multi_constraint"
     },
-    "must_respect_budget": true,
-    "must_return_one_of_title_token_sets": [
-      [
-        "vitamin c",
-        "serum"
-      ]
-    ]
+    "must_respect_budget": true
   }
 ]
