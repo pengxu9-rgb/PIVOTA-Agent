@@ -36,7 +36,6 @@ function createFindProductsExternalSeedDirectRuntime(deps = {}) {
     normalizeBrandText,
     buildExternalSeedProduct,
     buildExternalSeedBrandSearchProduct,
-    buildExternalSeedProduct,
     buildSearchProductKey,
     query,
     logger,
