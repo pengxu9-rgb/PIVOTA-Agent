@@ -254,6 +254,51 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     );
   });
 
+  test('falls back to description facts when category is the only detail section signal', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_hair_bundle',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Deep Moisture Repair The Maintenance Crew Full-Size Bundle',
+        description:
+          'Unlock endless styles with The Maintenance Crew. Essentials repair and nourish hair, now with our deep conditioner for extra hydration.',
+        product_type: 'external',
+        category: 'external',
+        price: 121,
+        currency: 'USD',
+        image_url: 'https://example.com/fenty-hair.jpg',
+        variants: [
+          {
+            variant_id: 'v_1',
+            title: 'Default Title',
+            price: { amount: 121, currency: 'USD' },
+            image_url: 'https://example.com/fenty-hair.jpg',
+          },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    expect(payload.modules.find((module) => module.type === 'product_facts')?.data?.sections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          heading: 'Description',
+          content:
+            'Unlock endless styles with The Maintenance Crew. Essentials repair and nourish hair, now with our deep conditioner for extra hydration.',
+        }),
+      ]),
+    );
+    expect(payload.modules.find((module) => module.type === 'product_details')?.data?.sections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          heading: 'Description',
+        }),
+      ]),
+    );
+  });
+
   test('normalizes encoded whitespace in sdcdn Tom Ford asset names', () => {
     const payload = buildPdpPayload({
       product: {

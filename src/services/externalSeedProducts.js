@@ -8,6 +8,10 @@ const SHOPIFY_ASSET_HASH_SUFFIX_RE =
 const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
 const BEAUTY_CATEGORY_PATTERNS = [
   ['Brush', /\b(brush|makeup brush|foundation brush|powder brush|blush brush|shader brush|kabuki)\b/i],
+  ['Shampoo', /\b(shampoo|dry shampoo|clarifying shampoo)\b/i],
+  ['Conditioner', /\b(conditioner|deep conditioner|leave-in conditioner|leave in conditioner)\b/i],
+  ['Hair Styling', /\b(edge control|styling gel|hair-thickening|hair thickening|detangling spray|hair clip|hair clips|edge styling)\b/i],
+  ['Hair Care', /\b(hair care|hair repair|repair bundle|maintenance crew|detangling|leave-in|leave in|hair)\b/i],
   ['Fragrance', /\b(fragrance|perfume|parfum|eau de parfum|eau de toilette|cologne|scent)\b/i],
   ['Cleanser', /\b(cleanser|cleansing|face wash|facial wash|cleansing milk|cleansing foam|cleansing gel|wash)\b/i],
   ['Toner', /\b(toner|mist|pad)\b/i],
@@ -29,6 +33,8 @@ const STRONG_ACTIVE_SOLUTION_INGREDIENT_IDS = new Set([
   'azelaic_acid',
   'benzoyl_peroxide',
 ]);
+const PRICE_MINOR_UNIT_HINT_RE =
+  /\b(fragrance|perfume|parfum|cologne|shampoo|conditioner|cleanser|toner|moisturizer|cream|serum|concealer|foundation|powder|mascara|lip|brow|hair|beauty|bundle|treatment)\b/i;
 
 function stableExternalProductId(url) {
   const u = String(url || '').trim();
@@ -82,6 +88,36 @@ function normalizeAmount(value) {
     return normalizeAmount(value.amount ?? value.current?.amount ?? value.price_amount ?? value.value);
   }
   return 0;
+}
+
+function shouldTreatAsMinorUnitPrice(rawValue, amount, context = {}) {
+  if (!Number.isFinite(amount) || amount < 1000) return false;
+
+  const rawText = String(rawValue ?? '').trim();
+  const rawLooksMinorUnit =
+    (typeof rawValue === 'number' && Number.isInteger(rawValue)) ||
+    (/^\d+(?:\.0+)?$/.test(rawText) && !/[^\d.]/.test(rawText));
+  if (!rawLooksMinorUnit) return false;
+
+  const surfaceText = [
+    context.category,
+    context.title,
+    context.description,
+    context.canonicalUrl,
+    context.destinationUrl,
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+  if (!PRICE_MINOR_UNIT_HINT_RE.test(surfaceText)) return false;
+
+  return amount / 100 <= 1000;
+}
+
+function normalizeExternalSeedPrice(rawValue, context = {}) {
+  const amount = normalizeAmount(rawValue);
+  if (!shouldTreatAsMinorUnitPrice(rawValue, amount, context)) return amount;
+  return amount / 100;
 }
 
 function normalizeHttpUrl(value) {
@@ -1064,6 +1100,30 @@ function buildExternalSeedProduct(row) {
   const normalizedCategory = category || undefined;
 
   let variants = normalizeSeedVariants(seedData, row);
+  const priceContext = {
+    title,
+    description: categoryDescription || description,
+    category: normalizedCategory || explicitCategory || '',
+    canonicalUrl,
+    destinationUrl,
+  };
+  variants = variants.map((variant) => {
+    const normalizedPrice = normalizeExternalSeedPrice(variant.price, {
+      ...priceContext,
+      title: [title, variant.title].filter(Boolean).join(' '),
+      description: variant.description || description || categoryDescription,
+    });
+    return {
+      ...variant,
+      price: normalizedPrice,
+      pricing: {
+        current: {
+          amount: normalizedPrice,
+          currency: variant.currency || normalizeCurrency(row.price_currency || seedData.price_currency, 'USD'),
+        },
+      },
+    };
+  });
   let imageUrls = normalizeSeedImageUrls(seedData, row);
   const primaryVariantImageUrls = collectPrimaryVariantImageUrls(variants);
   if (primaryVariantImageUrls.length > 0) {
@@ -1085,7 +1145,7 @@ function buildExternalSeedProduct(row) {
   const imageUrl = imageUrls[0] || undefined;
 
   const rawAmount = row.price_amount ?? seedData.price_amount ?? snapshot.price_amount;
-  let price = normalizeAmount(rawAmount);
+  let price = normalizeExternalSeedPrice(rawAmount, priceContext);
   if (!(price > 0) && variants.length > 0) {
     const variantPrices = variants.map((variant) => normalizeAmount(variant.price)).filter((value) => value > 0);
     price = variantPrices.length ? Math.min(...variantPrices) : 0;

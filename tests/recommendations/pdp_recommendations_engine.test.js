@@ -362,6 +362,79 @@ describe('RecommendationEngine (PDP)', () => {
     expect(internalCount + externalCount).toBe(out.items.length);
   });
 
+  test('j0) haircare external base keeps same-brand repair products in the mainline mix', () => {
+    const base = makeProduct({
+      merchant_id: 'external_seed',
+      product_id: 'ext_fenty_hair_bundle',
+      title: 'Deep Moisture Repair The Maintenance Crew Full-Size Bundle',
+      brand: 'Fenty Beauty',
+      vendor: 'Fenty Beauty',
+      category: 'Hair Care',
+      product_type: 'Hair Care',
+      source: 'external_seed',
+      price: 121,
+    });
+
+    const external = [
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_fenty_shampoo',
+        title: 'The Rich One Moisture Repair Shampoo',
+        brand: 'Fenty Beauty',
+        category: 'Shampoo',
+        product_type: 'Shampoo',
+        source: 'external_seed',
+        price: 16,
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_fenty_conditioner',
+        title: 'The Rich One Moisture Repair Conditioner',
+        brand: 'Fenty Beauty',
+        category: 'Conditioner',
+        product_type: 'Conditioner',
+        source: 'external_seed',
+        price: 16,
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_fenty_deep',
+        title: 'The Richer One Moisture Repair Deep Conditioner',
+        brand: 'Fenty Beauty',
+        category: 'Conditioner',
+        product_type: 'Conditioner',
+        source: 'external_seed',
+        price: 32,
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_fenty_spray',
+        title: 'The Water Boi Reparative Leave-In Detangling Conditioner Spray',
+        brand: 'Fenty Beauty',
+        category: 'Hair Care',
+        product_type: 'Hair Care',
+        source: 'external_seed',
+        price: 18,
+      }),
+    ];
+
+    const out = pickLayeredRecommendations({
+      baseProduct: base,
+      internalCandidates: [],
+      externalCandidates: external,
+      k: 6,
+    });
+
+    expect(out.items.map((item) => item.product_id)).toEqual(
+      expect.arrayContaining([
+        'ext_fenty_shampoo',
+        'ext_fenty_conditioner',
+        'ext_fenty_deep',
+      ]),
+    );
+    expect(out.metadata?.base_semantic?.vertical).toBe('haircare');
+  });
+
   test('j1) same-brand tokens alone must not lift unrelated category items into similar results', () => {
     const base = makeProduct({
       merchant_id: 'external_seed',
