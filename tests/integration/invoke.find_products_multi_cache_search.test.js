@@ -2795,6 +2795,111 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     );
   });
 
+  test('source=search brand-like beauty queries preserve healthy upstream results instead of falling back', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) {
+          return { rows: [{ total: 0 }] };
+        }
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return { rows: [] };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    let capturedQuery = null;
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((query) => {
+        capturedQuery = query;
+        return String(query.query || '') === 'fenty';
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            id: 'fenty_1',
+            product_id: 'fenty_1',
+            merchant_id: 'external_seed',
+            title: 'Watch Ya Tone Niacinamide Dark Spot Serum',
+            description: 'Dark spot serum from Fenty Skin.',
+            category: 'serum',
+            product_type: 'serum',
+            brand: 'Fenty Beauty',
+            vendor: 'Fenty Beauty',
+            price: 22,
+            currency: 'USD',
+            canonical_url: 'https://fentybeauty.example/watch-ya-tone',
+            destination_url: 'https://fentybeauty.example/watch-ya-tone',
+            url: 'https://fentybeauty.example/watch-ya-tone',
+            image_url: 'https://cdn.example.com/fenty-watch-ya-tone.jpg',
+            source: 'external_seed',
+          },
+          {
+            id: 'fenty_2',
+            product_id: 'fenty_2',
+            merchant_id: 'external_seed',
+            title: 'Fat Water Niacinamide Pore-Refining Toner Serum',
+            description: 'Toner serum from Fenty Skin.',
+            category: 'toner',
+            product_type: 'toner',
+            brand: 'Fenty Beauty',
+            vendor: 'Fenty Beauty',
+            price: 28,
+            currency: 'USD',
+            canonical_url: 'https://fentybeauty.example/fat-water',
+            destination_url: 'https://fentybeauty.example/fat-water',
+            url: 'https://fentybeauty.example/fat-water',
+            image_url: 'https://cdn.example.com/fenty-fat-water.jpg',
+            source: 'external_seed',
+          },
+        ],
+        total: 2,
+        metadata: {
+          query_source: 'agent_products_search',
+        },
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'fenty',
+            page: 1,
+            limit: 24,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'search',
+        },
+      })
+      .expect(200);
+
+    expect(upstreamSearch.isDone()).toBe(true);
+    expect(String(capturedQuery?.catalog_surface || '')).toBe('');
+    expect(String(capturedQuery?.commerce_surface || '')).toBe('');
+    expect(String(capturedQuery?.allow_external_seed || '')).toBe('true');
+    expect(String(capturedQuery?.external_seed_strategy || '')).toBe('unified_relevance');
+    expect(resp.body.products).toHaveLength(2);
+    expect(resp.body.products.map((item) => item.product_id)).toEqual(['fenty_1', 'fenty_2']);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_search',
+        route_health: expect.objectContaining({
+          primary_path_used: 'upstream_stage',
+          fallback_triggered: false,
+        }),
+      }),
+    );
+  });
+
   test('source=search strict beauty budget queries supplement weak direct hits with stripped-query rescue', async () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
@@ -3142,6 +3247,25 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         evaluated: false,
         decision: 'keep_upstream',
         reason: 'not_generic_skincare_serum_query',
+      }),
+    );
+  });
+
+  test('implicit beauty mainline bypass is disabled for brand-like exploratory beauty queries', async () => {
+    const app = require('../../src/server');
+
+    expect(
+      app._debug.resolveLegacyBeautyCacheOwnerBypass({
+        search: { query: 'fenty beauty' },
+        metadata: { source: 'search' },
+        rawQuery: 'fenty beauty',
+        queryClass: 'exploratory',
+        strictConstraintQuery: false,
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        bypass: false,
+        reason: 'brand_like_search_first',
       }),
     );
   });

@@ -45,7 +45,7 @@ describe('Celestial commerce core source contracts', () => {
     expect(shoppingOut.search.external_seed_strategy).toBe('unified_relevance');
   });
 
-  test('public search query guards strip override params from incoming query params', () => {
+  test('public search query guards leave incoming query params unchanged', () => {
     const app = require('../src/server');
     const { applyShoppingCatalogQueryGuards } = app._debug;
 
@@ -60,7 +60,7 @@ describe('Celestial commerce core source contracts', () => {
 
     expect(guarded.query).toBe('serum');
     expect(guarded.page).toBe('1');
-    expect(guarded.external_seed_strategy).toBeUndefined();
+    expect(guarded.external_seed_strategy).toBe('supplement_internal_first');
   });
 
   test('shopping agent loop-break builds a scenario-aware retry query from short user selection', () => {

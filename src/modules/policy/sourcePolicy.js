@@ -110,7 +110,6 @@ function createSourcePolicyRuntime(config = {}) {
       queryParams && typeof queryParams === 'object' && !Array.isArray(queryParams)
         ? { ...queryParams }
         : {};
-    if (isPublicSearchSource(source)) return stripExternalSeedStrategyOverride(params);
     if (!isCatalogGuardSource(source)) return params;
     const auroraSource = isAuroraSource(source);
     const explicitAllowExternalSeed = parseQueryBoolean(

@@ -5002,6 +5002,16 @@ function resolveLegacyBeautyCacheOwnerBypass({
       semanticContract: explicitSemanticContract,
     };
   }
+  const brandLikeExploratoryQuery =
+    Boolean(detectBrandEntities(queryText, { candidateProducts: [] })?.brand_like) &&
+    !hasExplicitCategoryHint(queryText, null);
+  if (brandLikeExploratoryQuery) {
+    return {
+      bypass: false,
+      reason: 'brand_like_search_first',
+      semanticContract: null,
+    };
+  }
   const catalogSurface = String(
     normalizedSearch.catalog_surface ||
       normalizedSearch.catalogSurface ||
@@ -22673,6 +22683,19 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           offset,
         };
         queryParams = applyShoppingCatalogQueryGuards(queryParams, metadata?.source);
+        const publicBrandSearchNeedsExternalSeedMainline =
+          isPublicSearchSource(metadata?.source) &&
+          Boolean(detectBrandEntities(rawUserQuery || search?.query || '', { candidateProducts: [] })?.brand_like) &&
+          !hasExplicitCategoryHint(rawUserQuery || search?.query || '', effectiveIntent);
+        if (publicBrandSearchNeedsExternalSeedMainline) {
+          queryParams = {
+            ...queryParams,
+            allow_external_seed: true,
+            allow_stale_cache: false,
+            external_seed_strategy: 'unified_relevance',
+            fast_mode: true,
+          };
+        }
         strictFindProductsMultiDecision =
           operation === 'find_products_multi' && strictFindProductsMultiDecision?.enabled
             ? strictFindProductsMultiDecision

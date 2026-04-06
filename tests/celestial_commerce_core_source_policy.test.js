@@ -57,6 +57,7 @@ describe('Celestial commerce core source policy module', () => {
       ),
     ).toEqual({
       query: 'serum',
+      external_seed_strategy: 'unified_relevance',
     });
 
     expect(
