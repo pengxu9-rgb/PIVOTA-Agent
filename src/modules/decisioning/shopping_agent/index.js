@@ -55,6 +55,15 @@ function createShoppingAgentDecisioningRuntime(deps = {}) {
       responseMetadata && typeof responseMetadata === 'object' && !Array.isArray(responseMetadata)
         ? responseMetadata
         : {};
+    const querySource = String(metadata.query_source || '').trim().toLowerCase();
+    const sourceStrategy = String(metadata?.source_breakdown?.strategy_applied || '').trim().toLowerCase();
+    if (
+      metadata.brand_query_mainline_applied === true ||
+      querySource.includes('brand_search_mainline') ||
+      sourceStrategy === 'brand_search_multi_source'
+    ) {
+      return false;
+    }
     if (intent) return true;
     if (metadata.strict_constraint_query === true) return true;
     if (
