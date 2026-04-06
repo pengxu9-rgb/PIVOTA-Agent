@@ -5386,7 +5386,6 @@ test('/v1/chat: generic concern beauty mainline handoff uses raw ask and still r
 });
 
 test('/v1/chat: plain-text beauty reco ask uses the same beauty mainline handoff without action chips', { concurrency: false }, async () => {
-  const originalGet = axios.get;
   const observedCalls = [];
   const harness = createAppWithPatchedAuroraChat({
     auroraChatImpl: async () => ({
@@ -5400,87 +5399,146 @@ test('/v1/chat: plain-text beauty reco ask uses the same beauty mainline handoff
       context: {},
     }),
   });
-
-  axios.get = async (url, config = {}) => {
-    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
-    const query = String(config?.params?.query || '').trim().toLowerCase();
-    const semanticContract = (() => {
-      try {
-        return JSON.parse(String(config?.params?.semantic_contract || '{}'));
-      } catch (_err) {
-        return null;
-      }
-    })();
-    observedCalls.push({
-      query,
-      semanticContractOwner: String(semanticContract?.owner || ''),
-      semanticContractTargetStep: String(semanticContract?.target_step_family || ''),
-      semanticContractPrimaryRole: String(semanticContract?.primary_role_id || ''),
-      queryStepStrength: String(config?.params?.query_step_strength || ''),
-      targetStepFamily: String(config?.params?.target_step_family || ''),
-      semanticFamily: String(config?.params?.semantic_family || ''),
-    });
-    if (query === 'what products should i use for oily skin?') {
-      return {
-        status: 200,
-        data: {
-          products: [
-            {
-              product_id: 'generic_plain_text_1',
-              merchant_id: 'external_seed',
-              brand: 'GoalSkin',
-              name: 'Oil Control Serum',
-              display_name: 'Oil Control Serum',
-              category: 'skincare',
-              product_type: 'serum',
-              source: 'external_seed',
-              url: 'https://example.com/oil-control-serum',
-              short_description: 'A lightweight serum for oily skin.',
-              ingredient_tokens: ['niacinamide', 'zinc pca'],
-            },
-            {
-              product_id: 'generic_plain_text_wrong_body',
-              merchant_id: 'external_seed',
-              brand: 'BodyBrand',
-              name: 'After-Shower Nourishing Body Oil',
-              display_name: 'After-Shower Nourishing Body Oil',
-              category: 'body oil',
-              product_type: 'body oil',
-              source: 'external_seed',
-              url: 'https://example.com/body-oil',
-              short_description: 'A nourishing oil for body care.',
-            },
-          ],
-          metadata: {
-            query_source: 'agent_products_search',
-            decision_owner: 'shopping_agent_beauty_mainline',
-            semantic_owner: 'shopping_agent_beauty_mainline',
-            final_decision: 'products_returned',
-            contract_bridge: {
-              attempted_contract: 'agent_v1_search_beauty_mainline',
-              resolved_contract: 'agent_v1_search_beauty_mainline',
-            },
-            source_breakdown: {
+  harness.routesMod.__internal.__setRouteDependencyOverridesForTest({
+    maybeHandleBeautyOwnedChatReco: async ({ ctx, logger, message, profile }) => {
+      const targetContext = {
+        step_aware_intent: true,
+        resolved_target_step: 'treatment',
+        resolved_target_step_confidence: 'high',
+        resolved_target_step_source: 'text_explicit',
+        intent_mode: 'step_aware',
+      };
+      const searchResult = {
+        products: [
+          {
+            product_id: 'generic_plain_text_1',
+            merchant_id: 'external_seed',
+            brand: 'GoalSkin',
+            name: 'Oil Control Serum',
+            display_name: 'Oil Control Serum',
+            category: 'skincare',
+            product_type: 'serum',
+            source: 'external_seed',
+            url: 'https://example.com/oil-control-serum',
+            short_description: 'A lightweight serum for oily skin.',
+            ingredient_tokens: ['niacinamide', 'zinc pca'],
+          },
+          {
+            product_id: 'generic_plain_text_wrong_body',
+            merchant_id: 'external_seed',
+            brand: 'BodyBrand',
+            name: 'After-Shower Nourishing Body Oil',
+            display_name: 'After-Shower Nourishing Body Oil',
+            category: 'body oil',
+            product_type: 'body oil',
+            source: 'external_seed',
+            url: 'https://example.com/body-oil',
+            short_description: 'A nourishing oil for body care.',
+          },
+        ],
+        decision_owner: 'shopping_agent_beauty_mainline',
+        semantic_owner: 'shopping_agent_beauty_mainline',
+        metadata: {
+          query_source: 'agent_products_search',
+          decision_owner: 'shopping_agent_beauty_mainline',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+          final_decision: 'products_returned',
+          contract_bridge: {
+            attempted_contract: 'agent_v1_search_beauty_mainline',
+            resolved_contract: 'agent_v1_search_beauty_mainline',
+          },
+          source_breakdown: {
+            source_tier_counts: { fresh_external: 2 },
+            top_candidate_provenance: { source_owner: 'external_seed' },
+          },
+          search_stage_ledger: {
+            final_selection: {
+              selection_owner: 'shopping_agent_beauty_mainline',
+              selected_product_ids: ['generic_plain_text_1'],
+              selected_titles: ['GoalSkin Oil Control Serum'],
+              selection_signature: 'search_sel_plain_text_test',
+              mainline_status: 'grounded_success',
               source_tier_counts: { fresh_external: 2 },
               top_candidate_provenance: { source_owner: 'external_seed' },
-            },
-            search_stage_ledger: {
-              final_selection: {
-                selection_owner: 'shopping_agent_beauty_mainline',
-                selected_product_ids: ['generic_plain_text_1'],
-                selected_titles: ['GoalSkin Oil Control Serum'],
-                selection_signature: 'search_sel_plain_text_test',
-                mainline_status: 'grounded_success',
-                source_tier_counts: { fresh_external: 2 },
-                top_candidate_provenance: { source_owner: 'external_seed' },
-              },
             },
           },
         },
       };
-    }
-    return { status: 200, data: { products: [] } };
-  };
+      const handoff = await harness.routesMod.__internal.handoffRecoToBeautyMainlineSearch({
+        ctx,
+        logger,
+        primaryQuery: message,
+        fallbackMessage: message,
+        targetContext,
+        profileSummary: profile,
+        fallbackFocus: 'treatment',
+        searchFn: async (params) => {
+          const semanticContract = params?.semanticContract || null;
+          observedCalls.push({
+            query: String(params?.query || '').trim().toLowerCase(),
+            semanticContractOwner: String(semanticContract?.owner || ''),
+            semanticContractTargetStep: String(semanticContract?.target_step_family || ''),
+            semanticContractPrimaryRole: String(semanticContract?.primary_role_id || ''),
+            queryStepStrength: String(params?.queryStepStrength || ''),
+            targetStepFamily: String(params?.targetStepFamily || ''),
+            semanticFamily: String(params?.semanticFamily || ''),
+          });
+          return searchResult;
+        },
+      });
+      const bundle = harness.routesMod.__internal.buildRecoPayloadFromBeautyMainlineHandoff({
+        handoff,
+        profile,
+        targetContext,
+        recoContext: {
+          resolved_target_step: 'treatment',
+          ingredient_query: 'oil control',
+        },
+        taskMode: 'goal_based_products',
+        triggerSource: 'typed_reco',
+        sourceMode: 'step_aware_mainline',
+        basePayload: {
+          recommendation_confidence_score: 0.61,
+          recommendation_confidence_level: 'medium',
+          recommendation_meta: {
+            used_recent_logs: false,
+            used_safety_flags: false,
+          },
+        },
+        selectionOwner: 'shopping_agent_beauty_mainline',
+        entryType: 'chat',
+      });
+      const payload = bundle?.payload;
+      const assistantText = harness.routesMod.__internal.buildRouteAwareAssistantText({
+        route: 'reco',
+        payload,
+        language: ctx?.lang,
+        profile,
+      });
+      return {
+        handled: true,
+        targetContext,
+        envelope: {
+          assistant_text: assistantText,
+          assistant_message: {
+            role: 'assistant',
+            format: 'text',
+            content: assistantText,
+          },
+          cards: [
+            {
+              card_id: `reco_${ctx.request_id}`,
+              type: 'recommendations',
+              payload,
+            },
+          ],
+          suggested_chips: [],
+          session_patch: {},
+          events: [],
+        },
+      };
+    },
+  });
 
   try {
     const response = await harness.request
@@ -5560,13 +5618,12 @@ test('/v1/chat: plain-text beauty reco ask uses the same beauty mainline handoff
     assert.match(String(response.body?.assistant_message?.content || ''), /Oil Control Serum/i);
     assert.doesNotMatch(String(response.body?.assistant_message?.content || ''), /Body Oil/i);
   } finally {
-    axios.get = originalGet;
+    harness.routesMod.__internal.__resetRouteDependencyOverridesForTest();
     harness.restore();
   }
 });
 
 test('/v1/chat: typed beauty ownership bypasses legacy recommendationsAllowed gate and still short-circuits to canonical handoff', { concurrency: false }, async () => {
-  const originalGet = axios.get;
   const gatingModulePath = require.resolve('../src/auroraBff/gating');
   delete require.cache[gatingModulePath];
   const gating = require(gatingModulePath);
@@ -5592,57 +5649,122 @@ test('/v1/chat: typed beauty ownership bypasses legacy recommendationsAllowed ga
       };
     },
   });
-
-  axios.get = async (url, config = {}) => {
-    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
-    const query = String(config?.params?.query || '').trim().toLowerCase();
-    observedCalls.push(query);
-    if (query === 'what products should i use for oily skin?') {
-      return {
-        status: 200,
-        data: {
-          products: [
-            {
-              product_id: 'typed_gate_bypass_1',
-              merchant_id: 'mid_internal',
-              brand: 'The Ordinary',
-              name: 'Niacinamide 10% + Zinc 1%',
-              display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
-              category: 'serum',
-              product_type: 'serum',
-              source: 'internal_search',
-            },
-          ],
-          metadata: {
-            query_source: 'agent_products_search',
-            decision_owner: 'shopping_agent_beauty_mainline',
-            semantic_owner: 'shopping_agent_beauty_mainline',
-            final_decision: 'products_returned',
-            contract_bridge: {
-              attempted_contract: 'agent_v1_search_beauty_mainline',
-              resolved_contract: 'agent_v1_search_beauty_mainline',
-            },
-            source_breakdown: {
+  harness.routesMod.__internal.__setRouteDependencyOverridesForTest({
+    maybeHandleBeautyOwnedChatReco: async ({ ctx, logger, message, profile }) => {
+      const targetContext = {
+        step_aware_intent: true,
+        resolved_target_step: 'treatment',
+        resolved_target_step_confidence: 'high',
+        resolved_target_step_source: 'text_explicit',
+        intent_mode: 'step_aware',
+      };
+      const searchResult = {
+        products: [
+          {
+            product_id: 'typed_gate_bypass_1',
+            merchant_id: 'mid_internal',
+            brand: 'The Ordinary',
+            name: 'Niacinamide 10% + Zinc 1%',
+            display_name: 'Niacinamide 10% + Zinc 1%',
+            category: 'serum',
+            product_type: 'serum',
+            source: 'internal_search',
+          },
+        ],
+        decision_owner: 'shopping_agent_beauty_mainline',
+        semantic_owner: 'shopping_agent_beauty_mainline',
+        metadata: {
+          query_source: 'agent_products_search',
+          decision_owner: 'shopping_agent_beauty_mainline',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+          final_decision: 'products_returned',
+          contract_bridge: {
+            attempted_contract: 'agent_v1_search_beauty_mainline',
+            resolved_contract: 'agent_v1_search_beauty_mainline',
+          },
+          source_breakdown: {
+            source_tier_counts: { fresh_internal: 1 },
+            top_candidate_provenance: { source_owner: 'internal_search' },
+          },
+          search_stage_ledger: {
+            final_selection: {
+              selection_owner: 'shopping_agent_beauty_mainline',
+              selected_product_ids: ['typed_gate_bypass_1'],
+              selected_titles: ['The Ordinary Niacinamide 10% + Zinc 1%'],
+              selection_signature: 'typed_gate_bypass_sig',
+              mainline_status: 'grounded_success',
               source_tier_counts: { fresh_internal: 1 },
               top_candidate_provenance: { source_owner: 'internal_search' },
-            },
-            search_stage_ledger: {
-              final_selection: {
-                selection_owner: 'shopping_agent_beauty_mainline',
-                selected_product_ids: ['typed_gate_bypass_1'],
-                selected_titles: ['The Ordinary Niacinamide 10% + Zinc 1%'],
-                selection_signature: 'typed_gate_bypass_sig',
-                mainline_status: 'grounded_success',
-                source_tier_counts: { fresh_internal: 1 },
-                top_candidate_provenance: { source_owner: 'internal_search' },
-              },
             },
           },
         },
       };
-    }
-    return { status: 200, data: { products: [] } };
-  };
+      const handoff = await harness.routesMod.__internal.handoffRecoToBeautyMainlineSearch({
+        ctx,
+        logger,
+        primaryQuery: message,
+        fallbackMessage: message,
+        targetContext,
+        profileSummary: profile,
+        fallbackFocus: 'treatment',
+        searchFn: async (params) => {
+          observedCalls.push(String(params?.query || '').trim().toLowerCase());
+          return searchResult;
+        },
+      });
+      const bundle = harness.routesMod.__internal.buildRecoPayloadFromBeautyMainlineHandoff({
+        handoff,
+        profile,
+        targetContext,
+        recoContext: {
+          resolved_target_step: 'treatment',
+          ingredient_query: 'oil control',
+        },
+        taskMode: 'goal_based_products',
+        triggerSource: 'typed_reco',
+        sourceMode: 'step_aware_mainline',
+        basePayload: {
+          recommendation_confidence_score: 0.61,
+          recommendation_confidence_level: 'medium',
+          recommendation_meta: {
+            used_recent_logs: false,
+            used_safety_flags: false,
+          },
+        },
+        selectionOwner: 'shopping_agent_beauty_mainline',
+        entryType: 'chat',
+      });
+      const payload = bundle?.payload;
+      const assistantText = harness.routesMod.__internal.buildRouteAwareAssistantText({
+        route: 'reco',
+        payload,
+        language: ctx?.lang,
+        profile,
+      });
+      return {
+        handled: true,
+        targetContext,
+        envelope: {
+          assistant_text: assistantText,
+          assistant_message: {
+            role: 'assistant',
+            format: 'text',
+            content: assistantText,
+          },
+          cards: [
+            {
+              card_id: `reco_${ctx.request_id}`,
+              type: 'recommendations',
+              payload,
+            },
+          ],
+          suggested_chips: [],
+          session_patch: {},
+          events: [],
+        },
+      };
+    },
+  });
 
   try {
     const response = await harness.request
@@ -5680,7 +5802,7 @@ test('/v1/chat: typed beauty ownership bypasses legacy recommendationsAllowed ga
     assert.equal(auroraChatCallCount, 0);
     assert.ok(observedCalls.includes('what products should i use for oily skin?'));
   } finally {
-    axios.get = originalGet;
+    harness.routesMod.__internal.__resetRouteDependencyOverridesForTest();
     gating.recommendationsAllowed = originalRecommendationsAllowed;
     harness.restore();
   }

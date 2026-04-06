@@ -89,6 +89,12 @@ const {
   createLegacyChatRecoEarlyExitsRuntime,
 } = require('./legacyChatRecoEarlyExits');
 const {
+  createLegacyChatRecoPreparationRuntime,
+} = require('./legacyChatRecoPreparation');
+const {
+  createLegacyChatRecoTargetingRuntime,
+} = require('./legacyChatRecoTargeting');
+const {
   buildExternalSeedSurfacingText,
   choosePreferredExternalSeedCandidate,
   computeExternalSeedSurfacingMatch,
@@ -1333,6 +1339,30 @@ const {
   buildConfidenceNoticeCardPayload,
   summarizeProfileForContext,
   appendLatestRecoContextToSessionPatch,
+});
+const {
+  prepareLegacyChatRecoContext,
+} = createLegacyChatRecoPreparationRuntime({
+  mergeIngredientRecoContextValue,
+  normalizeIngredientCandidateList,
+  extractIngredientLookupTargetFromText,
+  buildTravelRecoHandoffContext,
+  resolveRecommendationTargetContext,
+});
+const {
+  prepareLegacyChatRecoTargeting,
+} = createLegacyChatRecoTargetingRuntime({
+  buildLatestRecoContextFromAnalysisArtifacts,
+  mergeIngredientRecoContextValue,
+  buildPrimaryIngredientRecoSearchContext,
+  buildIngredientOptInRecoRequestText,
+  buildAutoAnchoredRecoRequestText,
+  resolveRecommendationTargetContext,
+  summarizeProfileForContext,
+  normalizeRecoContextPrimaryFocus,
+  normalizeRecoConfidencePolicy,
+  normalizeRecoContextRankedTargets,
+  normalizeRecoContextTargetIds,
 });
 const RECO_CATALOG_MAIN_PATH_SEARCH_SOURCE = (() => {
   const raw = String(process.env.AURORA_BFF_RECO_CATALOG_MAIN_PATH_SEARCH_SOURCE || 'shopping-agent')
@@ -80802,143 +80832,31 @@ function mountAuroraBffRoutes(app, { logger }) {
       let chatAnalysisTaskContext = null;
 
       if (wantsProductRecommendations) {
-        let recoIngredientContext = mergeIngredientRecoContextValue(
+        const preparedLegacyRecoContext = await prepareLegacyChatRecoContext({
           ingredientRecoContext,
-          ingredientRecoOptInRequested
-            ? {
-              query: pickFirstTrimmed(
-                ingredientActionData && ingredientActionData.ingredient_query,
-                ingredientActionData && ingredientActionData.ingredientQuery,
-                ingredientActionData && ingredientActionData.inci,
-                ingredientActionData && ingredientActionData.ingredient_name,
-              ),
-              goal: pickFirstTrimmed(
-                ingredientActionData && ingredientActionData.ingredient_goal,
-                ingredientActionData && ingredientActionData.ingredientGoal,
-                ingredientActionData && ingredientActionData.goal,
-              ),
-              candidates: normalizeIngredientCandidateList(
-                (ingredientActionData &&
-                  (
-                    ingredientActionData.ingredient_candidates ||
-                    ingredientActionData.ingredientCandidates ||
-                    ingredientActionData.candidates
-                  )) || [],
-                8,
-              ),
-              product_candidates: Array.isArray(
-                ingredientActionData && (ingredientActionData.product_candidates || ingredientActionData.productCandidates),
-              ) ? (ingredientActionData.product_candidates || ingredientActionData.productCandidates).slice(0, 12) : [],
-              sensitivity: pickFirstTrimmed(
-                ingredientActionData && ingredientActionData.ingredient_sensitivity,
-                ingredientActionData && ingredientActionData.ingredientSensitivity,
-                ingredientActionData && ingredientActionData.sensitivity,
-              ),
-              source: pickFirstTrimmed(
-                ingredientActionData && ingredientActionData.entry_source,
-                ingredientActionData && ingredientActionData.trigger_source,
-                'ingredient_reco_optin',
-              ),
-              updated_at_ms: Date.now(),
-            }
-            : null,
-        );
-        if (!recoIngredientContext) {
-          const lookupTargetFromRecoText = await extractIngredientLookupTargetFromText(message, ctx.lang);
-          recoIngredientContext = mergeIngredientRecoContextValue(recoIngredientContext, {
-            query: lookupTargetFromRecoText,
-            source: lookupTargetFromRecoText ? 'text_reco' : '',
-            updated_at_ms: lookupTargetFromRecoText ? Date.now() : 0,
-          });
-        }
-        let recoContextIngredientQuery = pickFirstTrimmed(
-          recoIngredientContext && (recoIngredientContext.query || recoIngredientContext.ingredient_query),
-        );
-        let recoContextGoal = pickFirstTrimmed(
-          recoIngredientContext && (recoIngredientContext.goal || recoIngredientContext.ingredient_goal),
-        );
-        let recoContextSensitivity = pickFirstTrimmed(
-          recoIngredientContext && (recoIngredientContext.sensitivity || recoIngredientContext.ingredient_sensitivity),
-        );
-        let recoIngredientCandidates = Array.isArray(recoIngredientContext?.candidates) ? recoIngredientContext.candidates : [];
-        const recoProductCandidates = Array.isArray(
-          ingredientActionData?.product_candidates || ingredientActionData?.productCandidates,
-        ) ? (ingredientActionData.product_candidates || ingredientActionData.productCandidates) : [];
-        const travelRecoContext = buildTravelRecoHandoffContext({
-          session: parsed.data.session,
+          ingredientRecoOptInRequested,
+          ingredientActionData,
+          message,
+          language: ctx.lang,
+          recoEntrySourceDetail,
+          latestRecoContextFromSession,
           profile,
+          session: parsed.data.session,
+          recoRequestMessage,
         });
-        const travelRecoHandoff =
-          recoEntrySourceDetail === 'travel_handoff' &&
-          !ingredientRecoOptInRequested;
-        const latestRecoContextSeed =
-          latestRecoContextFromSession &&
-          String(latestRecoContextFromSession.intent || '').trim().toLowerCase() === 'reco_products'
-            ? latestRecoContextFromSession
-            : null;
-        const rawMessageRecoTargetContext = resolveRecommendationTargetContext({
-          explicitStep: pickFirstTrimmed(
-            recoIngredientContext && recoIngredientContext.target_step,
-            recoIngredientContext && recoIngredientContext.step,
-          ),
-          focus: '',
-          text: recoRequestMessage || message,
-          entryType: 'chat',
-        });
-        const hasExplicitUserRecoContext = Boolean(
-          pickFirstTrimmed(
-            recoIngredientContext && recoIngredientContext.target_step,
-            recoIngredientContext && recoIngredientContext.step,
-            recoContextIngredientQuery,
-            recoContextGoal,
-          ) || (rawMessageRecoTargetContext && rawMessageRecoTargetContext.step_aware_intent),
-        );
-        const shouldApplySessionRecoContext =
-          Boolean(latestRecoContextSeed)
-          && !ingredientRecoOptInRequested
-          && !travelRecoHandoff
-          && !hasExplicitUserRecoContext;
-        if (shouldApplySessionRecoContext) {
-          recoIngredientContext = mergeIngredientRecoContextValue(recoIngredientContext, {
-            target_step: pickFirstTrimmed(latestRecoContextSeed.resolved_target_step),
-            query: pickFirstTrimmed(latestRecoContextSeed.ingredient_query),
-            goal: pickFirstTrimmed(latestRecoContextSeed.goal),
-            primary_focus: latestRecoContextSeed.primary_focus,
-            confidence_policy: latestRecoContextSeed.confidence_policy,
-            ranked_targets: Array.isArray(latestRecoContextSeed.ranked_targets)
-              ? latestRecoContextSeed.ranked_targets
-              : [],
-            primary_target_id: pickFirstTrimmed(latestRecoContextSeed.primary_target_id),
-            selected_target_ids: Array.isArray(latestRecoContextSeed.selected_target_ids)
-              ? latestRecoContextSeed.selected_target_ids
-              : [],
-            product_candidates: Array.isArray(latestRecoContextSeed.product_candidates)
-              ? latestRecoContextSeed.product_candidates.slice(0, 12)
-              : [],
-            source: pickFirstTrimmed(latestRecoContextSeed.context_origin, 'analysis_handoff'),
-            updated_at_ms: Date.now(),
-          });
-          recoContextIngredientQuery = pickFirstTrimmed(
-            recoIngredientContext && (recoIngredientContext.query || recoIngredientContext.ingredient_query),
-          );
-          recoContextGoal = pickFirstTrimmed(
-            recoIngredientContext && (recoIngredientContext.goal || recoIngredientContext.ingredient_goal),
-          );
-          recoContextSensitivity = pickFirstTrimmed(
-            recoIngredientContext && (recoIngredientContext.sensitivity || recoIngredientContext.ingredient_sensitivity),
-          );
-          recoIngredientCandidates = Array.isArray(recoIngredientContext?.candidates) ? recoIngredientContext.candidates : [];
-        }
-        const effectiveRecoEntrySourceDetail = shouldApplySessionRecoContext ? 'analysis_handoff' : recoEntrySourceDetail;
-        const recoTaskMode = ingredientRecoOptInRequested
-          ? (recoProductCandidates.length > 0
-            ? 'ingredient_filtered_products'
-            : recoIngredientCandidates.length > 0
-              ? 'ingredient_filtered_products'
-              : 'ingredient_lookup_no_candidates')
-          : travelRecoHandoff
-            ? 'travel_readiness_products'
-          : 'goal_based_products';
+        let recoIngredientContext = preparedLegacyRecoContext.recoIngredientContext;
+        let recoContextIngredientQuery = preparedLegacyRecoContext.recoContextIngredientQuery;
+        let recoContextGoal = preparedLegacyRecoContext.recoContextGoal;
+        let recoContextSensitivity = preparedLegacyRecoContext.recoContextSensitivity;
+        let recoIngredientCandidates = preparedLegacyRecoContext.recoIngredientCandidates;
+        const recoProductCandidates = preparedLegacyRecoContext.recoProductCandidates;
+        const travelRecoContext = preparedLegacyRecoContext.travelRecoContext;
+        const travelRecoHandoff = preparedLegacyRecoContext.travelRecoHandoff;
+        const latestRecoContextSeed = preparedLegacyRecoContext.latestRecoContextSeed;
+        const rawMessageRecoTargetContext = preparedLegacyRecoContext.rawMessageRecoTargetContext;
+        const shouldApplySessionRecoContext = preparedLegacyRecoContext.shouldApplySessionRecoContext;
+        const effectiveRecoEntrySourceDetail = preparedLegacyRecoContext.effectiveRecoEntrySourceDetail;
+        const recoTaskMode = preparedLegacyRecoContext.recoTaskMode;
         recordAuroraSkinFlowMetric({ stage: 'reco_request', hit: true });
         recordAuroraRecoEntrySource({ source: effectiveRecoEntrySourceDetail });
         const recoSafetyGate = resolveSafetyGateActionV2({
@@ -81151,203 +81069,45 @@ function mountAuroraBffRoutes(app, { logger }) {
           }
         }
 
-        const profileSummaryForRecoContext = summarizeProfileForContext(profile);
-        const latestRecoContextForRecommendation =
-          latestRecoContextSeed
-          || buildLatestRecoContextFromAnalysisArtifacts({
-            ingredientPlan: mappedIngredientPlan,
-            profileSummary: profileSummaryForRecoContext,
-            artifactId: pickFirstTrimmed(latestArtifact && latestArtifact.artifact_id),
-            contextOrigin: 'latest_artifact',
-            analysisSource: pickFirstTrimmed(latestArtifact && latestArtifact.analysis_context && latestArtifact.analysis_context.analysis_source),
-            usePhoto: latestArtifact && latestArtifact.use_photo === true,
-            usedPhotos: latestArtifact && latestArtifact.analysis_context && latestArtifact.analysis_context.used_photos === true,
-            photoQualityGrade: pickFirstTrimmed(latestArtifact && latestArtifact.analysis_context && latestArtifact.analysis_context.quality_grade),
-          });
-        const shouldApplyAnalysisDerivedRecoContext =
-          Boolean(latestRecoContextForRecommendation)
-          && !ingredientDrivenRecommendationRequested
-          && !travelRecoHandoff
-          && !pickFirstTrimmed(
-            recoIngredientContext && recoIngredientContext.target_step,
-            recoIngredientContext && recoIngredientContext.step,
-            recoContextIngredientQuery,
-            recoContextGoal,
-          )
-          && !(rawMessageRecoTargetContext && rawMessageRecoTargetContext.step_aware_intent);
-        if (shouldApplyAnalysisDerivedRecoContext) {
-          recoIngredientContext = mergeIngredientRecoContextValue(recoIngredientContext, {
-            target_step: pickFirstTrimmed(latestRecoContextForRecommendation.resolved_target_step),
-            query: pickFirstTrimmed(latestRecoContextForRecommendation.ingredient_query),
-            goal: pickFirstTrimmed(latestRecoContextForRecommendation.goal),
-            primary_focus: latestRecoContextForRecommendation.primary_focus,
-            confidence_policy: latestRecoContextForRecommendation.confidence_policy,
-            ranked_targets: Array.isArray(latestRecoContextForRecommendation.ranked_targets)
-              ? latestRecoContextForRecommendation.ranked_targets
-              : [],
-            primary_target_id: pickFirstTrimmed(latestRecoContextForRecommendation.primary_target_id),
-            selected_target_ids: Array.isArray(latestRecoContextForRecommendation.selected_target_ids)
-              ? latestRecoContextForRecommendation.selected_target_ids
-              : [],
-            product_candidates: Array.isArray(latestRecoContextForRecommendation.product_candidates)
-              ? latestRecoContextForRecommendation.product_candidates.slice(0, 12)
-              : [],
-            source: pickFirstTrimmed(latestRecoContextForRecommendation.context_origin, 'analysis_handoff'),
-            updated_at_ms: Date.now(),
-          });
-          recoContextIngredientQuery = pickFirstTrimmed(
-            recoIngredientContext && (recoIngredientContext.query || recoIngredientContext.ingredient_query),
-          );
-          recoContextGoal = pickFirstTrimmed(
-            recoIngredientContext && (recoIngredientContext.goal || recoIngredientContext.ingredient_goal),
-          );
-          recoContextSensitivity = pickFirstTrimmed(
-            recoIngredientContext && (recoIngredientContext.sensitivity || recoIngredientContext.ingredient_sensitivity),
-          );
-          recoIngredientCandidates = Array.isArray(recoIngredientContext?.candidates) ? recoIngredientContext.candidates : [];
-        }
-        const recoAutoAnchoredByAnalysis = shouldApplyAnalysisDerivedRecoContext;
-        const recoIngredientContextForMainline =
-          ingredientRecoOptInRequested && !recoAutoAnchoredByAnalysis
-            ? (buildPrimaryIngredientRecoSearchContext(recoIngredientContext) || recoIngredientContext)
-            : recoIngredientContext;
-        const catalogExternalSeedStrategyForMainline =
-          ingredientRecoOptInRequested && !recoAutoAnchoredByAnalysis
-            ? 'supplement_internal_first'
-            : '';
-        const ingredientOptInRecoRequestText =
-          ingredientRecoOptInRequested && !recoRequestMessage
-            ? buildIngredientOptInRecoRequestText({
-              recoContext: recoIngredientContextForMainline,
-              language: ctx.lang,
-            })
-            : '';
-        const recoRequestMessageForMainline = recoAutoAnchoredByAnalysis
-          ? buildAutoAnchoredRecoRequestText({
-            rawMessage: recoRequestMessage,
-            recoContext: latestRecoContextForRecommendation,
-            language: ctx.lang,
-          })
-          : ingredientOptInRecoRequestText || recoRequestMessage;
-        const recoFocusForMainline = recoAutoAnchoredByAnalysis
-          ? pickFirstTrimmed(
-            latestRecoContextForRecommendation && latestRecoContextForRecommendation.resolved_target_step,
-            latestRecoContextForRecommendation && latestRecoContextForRecommendation.ingredient_query,
-            latestRecoContextForRecommendation && latestRecoContextForRecommendation.goal,
-          )
-          : pickFirstTrimmed(
-            recoIngredientContextForMainline && recoIngredientContextForMainline.resolved_target_step,
-            recoIngredientContextForMainline && recoIngredientContextForMainline.ingredient_query,
-            recoIngredientContextForMainline && recoIngredientContextForMainline.query,
-            recoIngredientContextForMainline && recoIngredientContextForMainline.goal,
-            Array.isArray(recoIngredientContextForMainline && recoIngredientContextForMainline.candidates)
-              ? recoIngredientContextForMainline.candidates[0]
-              : '',
-            Array.isArray(recoIngredientContextForMainline && recoIngredientContextForMainline.ingredient_candidates)
-              ? recoIngredientContextForMainline.ingredient_candidates[0]
-              : '',
-          );
-        const chatRecoTargetContext = resolveRecommendationTargetContext({
-          explicitStep: pickFirstTrimmed(
-            recoIngredientContext && recoIngredientContext.target_step,
-            recoIngredientContext && recoIngredientContext.step,
-            latestRecoContextForRecommendation && latestRecoContextForRecommendation.resolved_target_step,
-          ),
-          focus: recoFocusForMainline,
-          text: recoRequestMessageForMainline || message,
-          entryType: 'chat',
+        const preparedLegacyRecoTargeting = prepareLegacyChatRecoTargeting({
+          profile,
+          mappedIngredientPlan,
+          latestArtifact,
+          latestRecoContextSeed,
+          ingredientDrivenRecommendationRequested,
+          travelRecoHandoff,
+          recoIngredientContext,
+          recoContextIngredientQuery,
+          recoContextGoal,
+          recoContextSensitivity,
+          recoIngredientCandidates,
+          ingredientRecoOptInRequested,
+          recoRequestMessage,
+          message,
+          language: ctx.lang,
+          effectiveRecoEntrySourceDetail,
+          triggerSource: ctx.trigger_source,
+          actionId,
+          includeAlternatives,
+          rawMessageRecoTargetContext,
+          minimumRecommendationContextRuleVersion: MINIMUM_RECOMMENDATION_CONTEXT_RULE_VERSION,
         });
-        let latestRecoContextPatch = {
-          intent: 'reco_products',
-          source_detail: effectiveRecoEntrySourceDetail,
-          trigger_source: ctx.trigger_source,
-          action_id: actionId || '',
-          message: recoRequestMessageForMainline || recoRequestMessage || message,
-          include_alternatives: includeAlternatives === true,
-          ingredient_query: pickFirstTrimmed(
-            recoContextIngredientQuery,
-            latestRecoContextForRecommendation && latestRecoContextForRecommendation.ingredient_query,
-          ) || '',
-          goal: pickFirstTrimmed(
-            recoContextGoal,
-            latestRecoContextForRecommendation && latestRecoContextForRecommendation.goal,
-          ) || '',
-          context_origin: pickFirstTrimmed(
-            latestRecoContextForRecommendation && latestRecoContextForRecommendation.context_origin,
-            latestRecoContextSeed && latestRecoContextSeed.context_origin,
-          ) || '',
-          resolved_target_step: pickFirstTrimmed(
-            chatRecoTargetContext && chatRecoTargetContext.resolved_target_step,
-            latestRecoContextForRecommendation && latestRecoContextForRecommendation.resolved_target_step,
-          ) || '',
-          resolved_target_step_confidence: pickFirstTrimmed(
-            chatRecoTargetContext && chatRecoTargetContext.resolved_target_step_confidence,
-            latestRecoContextForRecommendation && latestRecoContextForRecommendation.resolved_target_step_confidence,
-          ) || '',
-          resolved_target_step_source: pickFirstTrimmed(
-            chatRecoTargetContext && chatRecoTargetContext.resolved_target_step_source,
-            latestRecoContextForRecommendation && latestRecoContextForRecommendation.resolved_target_step_source,
-            recoAutoAnchoredByAnalysis ? 'analysis_handoff' : '',
-          ) || '',
-          artifact_id: pickFirstTrimmed(
-            latestArtifact && latestArtifact.artifact_id,
-            latestRecoContextForRecommendation && latestRecoContextForRecommendation.artifact_id,
-          ) || '',
-          product_candidates: Array.isArray(
-            recoIngredientContext && recoIngredientContext.product_candidates,
-          )
-            ? recoIngredientContext.product_candidates.slice(0, 12)
-            : Array.isArray(
-                latestRecoContextForRecommendation && latestRecoContextForRecommendation.product_candidates,
-              )
-              ? latestRecoContextForRecommendation.product_candidates.slice(0, 12)
-              : [],
-          primary_focus:
-            normalizeRecoContextPrimaryFocus(
-              recoIngredientContext && recoIngredientContext.primary_focus,
-            )
-            || normalizeRecoContextPrimaryFocus(
-              latestRecoContextForRecommendation && latestRecoContextForRecommendation.primary_focus,
-            ),
-          confidence_policy:
-            normalizeRecoConfidencePolicy(
-              recoIngredientContext && recoIngredientContext.confidence_policy,
-            )
-            || normalizeRecoConfidencePolicy(
-              latestRecoContextForRecommendation && latestRecoContextForRecommendation.confidence_policy,
-            ),
-          ranked_targets: normalizeRecoContextRankedTargets(
-            Array.isArray(recoIngredientContext && recoIngredientContext.ranked_targets)
-              ? recoIngredientContext.ranked_targets
-              : Array.isArray(latestRecoContextForRecommendation && latestRecoContextForRecommendation.ranked_targets)
-                ? latestRecoContextForRecommendation.ranked_targets
-                : [],
-          ),
-          primary_target_id: pickFirstTrimmed(
-            recoIngredientContext && recoIngredientContext.primary_target_id,
-            latestRecoContextForRecommendation && latestRecoContextForRecommendation.primary_target_id,
-          ) || '',
-          selected_target_ids: normalizeRecoContextTargetIds(
-            Array.isArray(recoIngredientContext && recoIngredientContext.selected_target_ids)
-              ? recoIngredientContext.selected_target_ids
-              : Array.isArray(latestRecoContextForRecommendation && latestRecoContextForRecommendation.selected_target_ids)
-                ? latestRecoContextForRecommendation.selected_target_ids
-                : [],
-          ),
-        };
-        const hasDeterministicRecoTarget = Boolean(
-          pickFirstTrimmed(
-            chatRecoTargetContext && chatRecoTargetContext.resolved_target_step,
-            latestRecoContextPatch.ingredient_query,
-            latestRecoContextPatch.goal,
-          ),
-        );
-        const hasStableRecoTarget = Boolean(
-          pickFirstTrimmed(
-            chatRecoTargetContext && chatRecoTargetContext.resolved_target_step,
-            latestRecoContextPatch.ingredient_query,
-          ),
-        );
+        const profileSummaryForRecoContext = preparedLegacyRecoTargeting.profileSummaryForRecoContext;
+        const latestRecoContextForRecommendation = preparedLegacyRecoTargeting.latestRecoContextForRecommendation;
+        recoIngredientContext = preparedLegacyRecoTargeting.recoIngredientContext;
+        recoContextIngredientQuery = preparedLegacyRecoTargeting.recoContextIngredientQuery;
+        recoContextGoal = preparedLegacyRecoTargeting.recoContextGoal;
+        recoContextSensitivity = preparedLegacyRecoTargeting.recoContextSensitivity;
+        recoIngredientCandidates = preparedLegacyRecoTargeting.recoIngredientCandidates;
+        const recoAutoAnchoredByAnalysis = preparedLegacyRecoTargeting.recoAutoAnchoredByAnalysis;
+        const recoIngredientContextForMainline = preparedLegacyRecoTargeting.recoIngredientContextForMainline;
+        const catalogExternalSeedStrategyForMainline = preparedLegacyRecoTargeting.catalogExternalSeedStrategyForMainline;
+        const recoRequestMessageForMainline = preparedLegacyRecoTargeting.recoRequestMessageForMainline;
+        const recoFocusForMainline = preparedLegacyRecoTargeting.recoFocusForMainline;
+        const chatRecoTargetContext = preparedLegacyRecoTargeting.chatRecoTargetContext;
+        let latestRecoContextPatch = preparedLegacyRecoTargeting.latestRecoContextPatch;
+        const hasDeterministicRecoTarget = preparedLegacyRecoTargeting.hasDeterministicRecoTarget;
+        const hasStableRecoTarget = preparedLegacyRecoTargeting.hasStableRecoTarget;
 
         let matcherBundle = null;
         let matcherPayload = null;
@@ -81372,27 +81132,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           latestArtifact.overall_confidence.score,
         );
         const artifactConfidenceScore = Number.isFinite(artifactConfidenceScoreRaw) ? artifactConfidenceScoreRaw : null;
-        const genericConcernRecoMainline =
-          String(chatRecoTargetContext?.intent_mode || '').trim().toLowerCase() === 'generic_concern'
-          || (
-            chatRecoTargetContext
-            && Array.isArray(chatRecoTargetContext.framework_roles)
-            && chatRecoTargetContext.framework_roles.length > 0
-          );
-        const genericGoalDrivenNeedsMoreContext =
-          !genericConcernRecoMainline
-          && !hasStableRecoTarget
-          && !hasExplicitRecoTarget
-          && !ingredientDrivenRecommendationRequested
-          && !travelRecoHandoff;
-        const genericGoalDrivenNeedsMoreContextWarning = genericGoalDrivenNeedsMoreContext
-          ? {
-            minimum_recommendation_context_warning: true,
-            minimum_recommendation_context_reason: 'minimum_recommendation_context_unsatisfied',
-            minimum_recommendation_context_missing: ['minimum_recommendation_context'],
-            minimum_recommendation_context_rule_version: MINIMUM_RECOMMENDATION_CONTEXT_RULE_VERSION,
-          }
-          : null;
+        const genericConcernRecoMainline = preparedLegacyRecoTargeting.genericConcernRecoMainline;
+        const genericGoalDrivenNeedsMoreContext = preparedLegacyRecoTargeting.genericGoalDrivenNeedsMoreContext;
+        const genericGoalDrivenNeedsMoreContextWarning =
+          preparedLegacyRecoTargeting.genericGoalDrivenNeedsMoreContextWarning;
 
         const computeMatcherIfNeeded = () => {
           if (matcherComputed) {
