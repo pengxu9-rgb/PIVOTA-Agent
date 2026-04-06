@@ -4225,6 +4225,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.body.metadata?.query_source).toBe('agent_products_public_brand_search_mainline');
     expect(resp.body.metadata?.brand_query_mainline_applied).toBe(true);
     expect(resp.body.metadata?.brand_query_mainline_upstream_skipped).toBe(true);
+    expect(resp.body.metadata?.semantic_rewrite_result?.fallback_reason).toBe(
+      'semantic_rewrite_skipped_brand_search',
+    );
     expect(resp.body.metadata?.route_trace?.primary_path_used).toBe('brand_search_multi_source');
     expect(resp.body.metadata?.route_health?.fallback_triggered).toBe(false);
     expect(resp.body.metadata?.route_health?.upstream_search_skipped).toBe(true);
@@ -4311,6 +4314,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.body.metadata?.guard_source_normalized).toBe('search');
     expect(resp.body.metadata?.query_source).toBe('agent_products_public_brand_search_mainline');
     expect(resp.body.metadata?.brand_query_mainline_upstream_skipped).toBe(true);
+    expect(resp.body.metadata?.semantic_rewrite_result?.fallback_reason).toBe(
+      'semantic_rewrite_skipped_brand_search',
+    );
     expect(resp.body.metadata?.route_trace?.primary_path_used).toBe('brand_search_multi_source');
     expect(resp.body.metadata?.route_health?.fallback_triggered).toBe(false);
     expect(resp.body.metadata?.route_health?.upstream_search_skipped).toBe(true);
