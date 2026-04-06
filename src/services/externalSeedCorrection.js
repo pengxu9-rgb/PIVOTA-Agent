@@ -281,6 +281,7 @@ function buildSeedCorrectionPlan(row, auditResult = auditExternalSeedRow(row)) {
     'zero_images',
     'zero_variants',
     'price_currency_mismatch',
+    'beauty_minor_unit_price_suspected',
   ]);
   if (findings.some((finding) => rerunTriggers.has(normalizeNonEmptyString(finding?.anomaly_type)))) {
     actions.push({ correction_type: SEED_CORRECTION_TYPE.rerunCatalogExtraction, auto_applied: true });

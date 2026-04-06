@@ -133,6 +133,49 @@ describe('externalSeedContentAudit', () => {
     );
   });
 
+  test('flags implausible cents-style beauty pricing for rerun', () => {
+    const row = {
+      id: 'eps_fenty_minor_unit',
+      domain: 'fentybeauty.com',
+      market: 'US',
+      canonical_url: 'https://fentybeauty.com/products/deep-moisture-repair-the-maintenance-crew-full-size-bundle',
+      title: 'Deep Moisture Repair The Maintenance Crew Full-Size Bundle',
+      price_amount: 12100,
+      price_currency: 'USD',
+      seed_data: {
+        snapshot: {
+          canonical_url: 'https://fentybeauty.com/products/deep-moisture-repair-the-maintenance-crew-full-size-bundle',
+          description:
+            'Unlock endless styles with The Maintenance Crew. Essentials repair and nourish hair, now with our deep conditioner for extra hydration.',
+          variants: [
+            {
+              sku: 'KFH10000005',
+              variant_id: 'KFH10000005',
+              currency: 'USD',
+              price: '12100.00',
+              stock: 'In Stock',
+              image_url: 'https://cdn.example.com/fenty-hair.jpg',
+            },
+          ],
+        },
+      },
+    };
+
+    const result = auditExternalSeedRow(row);
+    expect(result.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          anomaly_type: 'beauty_minor_unit_price_suspected',
+          severity: 'blocker',
+          evidence: expect.objectContaining({
+            row_price_amount: 12100,
+            suspected_major_unit_amount: 121,
+          }),
+        }),
+      ]),
+    );
+  });
+
   test('flags synthetic summary description pollution', () => {
     const row = {
       id: 'eps_rare_summary',
