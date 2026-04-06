@@ -29,6 +29,24 @@ const VERTICAL_KEYWORDS = {
     '防晒',
     '洁面',
   ],
+  haircare: [
+    'hair',
+    'haircare',
+    'shampoo',
+    'conditioner',
+    'deep conditioner',
+    'leave in',
+    'leave-in',
+    'detangling',
+    'repair',
+    'edge control',
+    'dry shampoo',
+    'mist',
+    '头发',
+    '护发',
+    '洗发',
+    '护发素',
+  ],
   makeup: [
     'makeup',
     'lipstick',
@@ -110,12 +128,14 @@ function inferVerticalFromProduct(product) {
   const scores = {
     fragrance: 0,
     skincare: 0,
+    haircare: 0,
     makeup: 0,
     tools: 0,
   };
   const matches = {
     fragrance: [],
     skincare: [],
+    haircare: [],
     makeup: [],
     tools: [],
   };
@@ -130,7 +150,7 @@ function inferVerticalFromProduct(product) {
 
   const ordered = Object.entries(scores).sort((a, b) => {
     if (b[1] !== a[1]) return b[1] - a[1];
-    const priority = ['fragrance', 'skincare', 'makeup', 'tools'];
+    const priority = ['fragrance', 'skincare', 'haircare', 'makeup', 'tools'];
     return priority.indexOf(a[0]) - priority.indexOf(b[0]);
   });
   const [topVertical, topScore] = ordered[0] || [UNKNOWN_VERTICAL, 0];

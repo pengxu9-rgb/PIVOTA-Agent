@@ -1493,6 +1493,11 @@ function buildHowToUseModule(product, detailSections) {
 function buildProductFactSections(product, detailSections, primaryDescription = '', beautyOverview = null) {
   const normalizedPrimaryDescription = normalizeComparisonKey(primaryDescription);
   const seen = new Set();
+  const narrativeDetailSections = (Array.isArray(detailSections) ? detailSections : []).filter((section) => {
+    if (!section?.heading || !section?.content) return false;
+    if (CATEGORY_SECTION_HEADING_RE.test(String(section.heading || '').trim())) return false;
+    return true;
+  });
   const factSections = detailSections
     .filter(
       (section) =>
@@ -1529,7 +1534,7 @@ function buildProductFactSections(product, detailSections, primaryDescription = 
 
   if (combinedSections.length) return combinedSections;
 
-  if (Array.isArray(detailSections) && detailSections.length > 0 && normalizedPrimaryDescription) {
+  if (narrativeDetailSections.length > 0 && normalizedPrimaryDescription) {
     return [];
   }
 
