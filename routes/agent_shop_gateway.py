@@ -216,6 +216,30 @@ def _normalize_catalog_surface(value: Any) -> str:
     return str(value or "").strip().lower()
 
 
+def _normalize_beauty_proxy_result(response_body: Dict[str, Any]) -> Dict[str, Any]:
+    response_body = response_body if isinstance(response_body, dict) else {}
+    metadata = response_body.get("metadata") if isinstance(response_body.get("metadata"), dict) else {}
+    final_selection = metadata.get("final_selection") if isinstance(metadata.get("final_selection"), dict) else {}
+    selected_product_ids = metadata.get("selected_product_ids")
+    if not isinstance(selected_product_ids, list):
+        selected_product_ids = final_selection.get("selected_product_ids")
+    products = response_body.get("products") if isinstance(response_body.get("products"), list) else []
+
+    is_grounded_beauty_mainline = (
+        str(metadata.get("resolved_contract") or "").strip() == "agent_v1_search_beauty_mainline"
+        and str(metadata.get("decision_owner") or "").strip() == "shopping_agent_beauty_mainline"
+        and str(metadata.get("semantic_owner") or "").strip() == "shopping_agent_beauty_mainline"
+        and str(metadata.get("mainline_status") or "").strip() == "grounded_success"
+        and (bool(selected_product_ids) or bool(products))
+    )
+    if not is_grounded_beauty_mainline:
+        return response_body
+
+    normalized = dict(response_body)
+    normalized["reply"] = None
+    return normalized
+
+
 def _should_proxy_beauty_find_products_multi(
     payload: Optional[Dict[str, Any]],
     request_metadata: Optional[Dict[str, Any]],
@@ -263,7 +287,7 @@ async def _proxy_public_shop_invoke(request_body: Dict[str, Any]) -> Dict[str, A
         raise HTTPException(status_code=resp.status_code, detail=err_json)
 
     try:
-        return resp.json()
+        return _normalize_beauty_proxy_result(resp.json())
     except Exception:
         raise HTTPException(status_code=502, detail="Invalid JSON from mainline invoke")
 
@@ -1829,7 +1853,7 @@ async def invoke_shop_operation(
     if operation == "find_products_multi":
         if _should_proxy_beauty_find_products_multi(request.payload, request.metadata):
             request_body = request.model_dump() if hasattr(request, "model_dump") else request.dict()
-            return await _proxy_public_shop_invoke(request_body)
+            return _normalize_beauty_proxy_result(await _proxy_public_shop_invoke(request_body))
         payload = FindProductsMultiPayload(**request.payload)
         return await _handle_find_products_multi(payload, request.metadata, background_tasks)
 
