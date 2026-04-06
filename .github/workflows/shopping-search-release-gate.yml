@@ -203,6 +203,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          BUDGET_FX_PREFLIGHT_TIMEOUT_MS=20000 \
           BASE_URL="$PROD_SMOKE_BASE_URL" \
           ENDPOINT="$PROD_SMOKE_ENDPOINT" \
           AUTH_TOKEN="$COMMERCE_CORE_PROD_AUTH_TOKEN" \
