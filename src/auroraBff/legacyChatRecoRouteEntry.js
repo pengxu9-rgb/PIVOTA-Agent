@@ -1,7 +1,5 @@
 function createLegacyChatRecoRouteEntryRuntime(deps = {}) {
   const {
-    isBeautyOwnedChatRecoRequest,
-    buildBeautyMainlineHandoffFallbackEnvelope,
     shouldEnterLegacyProductRecommendations,
     handleLegacyChatRecoRequest,
   } = deps;
@@ -30,44 +28,16 @@ function createLegacyChatRecoRouteEntryRuntime(deps = {}) {
     travelSkillsContracts,
     looksLikeLowRiskSkincareTask,
     profile,
-    typedRecoOwnershipKeepsV1Mainline,
     forceUpstreamAfterPendingAbandon,
     allowRecoCards,
     normalizedActionPayload,
     recoInteractionAllowed,
     budgetChipCanContinueReco,
     profileClarificationAction,
-    runBeautyOwnedChatReco,
     legacyRecoDeps = {},
   } = {}) {
-    const beautyOwnedRecoResponse = await runBeautyOwnedChatReco();
-    if (beautyOwnedRecoResponse?.handled) {
-      return { handled: true, envelope: beautyOwnedRecoResponse.envelope };
-    }
-
-    const beautyOwnedRecoHardStop = isBeautyOwnedChatRecoRequest({
-      typedRecoOwnershipKeepsV1Mainline,
-      forceUpstreamAfterPendingAbandon,
-      ingredientDrivenRecommendationRequested,
-      recoEntrySourceDetail,
-      targetContext: beautyOwnedRecoResponse?.targetContext,
-      message,
-    });
-    if (beautyOwnedRecoHardStop) {
-      return {
-        handled: true,
-        envelope: buildBeautyMainlineHandoffFallbackEnvelope({
-          ctx,
-          fallback: {
-            fallback_reason: 'beauty_mainline_handoff_required',
-            notice_reason: 'upstream_empty_recommendations',
-            mainline_status: 'needs_more_context',
-          },
-          suggestedChips: [],
-        }),
-      };
-    }
-
+    // Beauty-owned requests are filtered before this entry; this remains only
+    // as the non-beauty compatibility route into legacy reco handling.
     const wantsProductRecommendations = shouldEnterLegacyProductRecommendations({
       forceUpstreamAfterPendingAbandon,
       allowRecoCards,
