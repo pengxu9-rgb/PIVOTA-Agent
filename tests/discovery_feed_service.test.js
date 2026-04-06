@@ -405,6 +405,162 @@ describe('discovery feed service', () => {
     expect(recommendCalls).toBe(0);
   });
 
+  test('brand-scoped browse prefers direct brand pool over generic internal and external expansion', async () => {
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+    delete process.env.PIVOTA_API_BASE;
+    delete process.env.PIVOTA_API_KEY;
+    process.env.PIVOTA_BACKEND_AGENT_API_KEY = 'bridge-key';
+
+    const internalSpy = jest.fn(async () => [
+      makeProduct({
+        merchant_id: 'internal_1',
+        product_id: 'internal_fenty_1',
+        title: 'Internal Fenty Candidate',
+        brand: 'Fenty Beauty',
+        category: 'Makeup',
+        product_type: 'Lip Gloss',
+      }),
+    ]);
+    const externalSpy = jest.fn(async () => [
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'external_fenty_1',
+        title: 'External Fenty Candidate',
+        brand: 'Fenty Beauty',
+        category: 'Makeup',
+        product_type: 'Lip Gloss',
+      }),
+    ]);
+    const brandDirectInternalSpy = jest.fn(async () => [
+      makeProduct({
+        merchant_id: 'brand_direct_internal',
+        product_id: 'brand_direct_internal_1',
+        title: 'Brand Direct Internal Candidate',
+        brand: 'Fenty Beauty',
+        category: 'Makeup',
+        product_type: 'Lip Gloss',
+        price: 29,
+      }),
+    ]);
+    const brandDirectExternalSpy = jest.fn(async () => [
+      makeProduct({
+        merchant_id: 'brand_direct_external',
+        product_id: 'brand_direct_external_1',
+        title: 'Brand Direct External Candidate',
+        brand: 'Fenty Beauty',
+        category: 'Concealer',
+        product_type: 'Concealer',
+        price: 30,
+      }),
+    ]);
+
+    nock('http://discovery-catalog.test')
+      .matchHeader('x-agent-api-key', 'bridge-key')
+      .matchHeader('x-api-key', 'bridge-key')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        products: [
+          makeProduct({
+            merchant_id: 'm1',
+            product_id: 'fenty_gloss_1',
+            title: 'Fenty Gloss Bomb 1',
+            brand: 'Fenty Beauty',
+            category: 'Makeup',
+            product_type: 'Lip Gloss',
+            price: 22,
+          }),
+          makeProduct({
+            merchant_id: 'm2',
+            product_id: 'fenty_gloss_2',
+            title: 'Fenty Gloss Bomb 2',
+            brand: 'Fenty Beauty',
+            category: 'Makeup',
+            product_type: 'Lip Gloss',
+            price: 24,
+          }),
+        ],
+      });
+
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        sort: 'popular',
+        debug: true,
+        scope: {
+          brand_names: ['Fenty Beauty'],
+        },
+        context: {
+          locale: 'en-US',
+        },
+      },
+      {
+        providerOverrides: {
+          internal_catalog: internalSpy,
+          external_seeds: externalSpy,
+        },
+        brandFallbackFetchInternalCandidatesFn: brandDirectInternalSpy,
+        brandFallbackFetchExternalCandidatesFn: brandDirectExternalSpy,
+      },
+    );
+
+    expect(internalSpy).not.toHaveBeenCalled();
+    expect(externalSpy).not.toHaveBeenCalled();
+    expect(brandDirectInternalSpy).toHaveBeenCalledTimes(1);
+    expect(brandDirectExternalSpy).toHaveBeenCalledTimes(1);
+    expect(response.products).toHaveLength(4);
+    expect(response.products.map((product) => product.product_id)).toEqual(
+      expect.arrayContaining([
+        'brand_direct_external_1',
+        'brand_direct_internal_1',
+        'fenty_gloss_2',
+        'fenty_gloss_1',
+      ]),
+    );
+    expect(response.metadata.candidate_source).toBe('multi_provider+brand_direct');
+    expect(response.metadata.provider_breakdown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ provider: 'products_search', successful: true, returned: 2 }),
+        expect.objectContaining({
+          provider: 'internal_catalog',
+          attempted: true,
+          successful: false,
+          returned: 0,
+          skipped: true,
+        }),
+        expect.objectContaining({
+          provider: 'external_seeds',
+          attempted: true,
+          successful: false,
+          returned: 0,
+          skipped: true,
+        }),
+      ]),
+    );
+    expect(response.metadata.rank_debug.recall_summary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          provider: 'internal_catalog',
+          skipped: true,
+          skip_reason: 'brand_direct_pool_supersedes_brand_expansion',
+        }),
+        expect.objectContaining({
+          provider: 'external_seeds',
+          skipped: true,
+          skip_reason: 'brand_direct_pool_supersedes_brand_expansion',
+        }),
+        expect.objectContaining({
+          provider: null,
+          label: 'brand_direct_pool',
+          returned: 2,
+        }),
+      ]),
+    );
+  });
+
   test('brand-scoped discovery dedupes repeated external seed products by canonical identity', async () => {
     const response = await getDiscoveryFeed(
       {

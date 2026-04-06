@@ -1569,6 +1569,10 @@ function shouldSkipBrandScopedProviderExpansion(products = [], { request, profil
   return hasSufficientProviderCandidates(products, { request, profile, enoughThreshold, qualityThreshold });
 }
 
+function shouldUseBrandDirectPoolInsteadOfGenericBrandExpansion(request) {
+  return request?.surface === 'browse_products' && hasBrandScope(request);
+}
+
 function shouldSkipBrandDirectPool(scopedCandidates = [], { request, limit } = {}) {
   if (request?.surface !== 'browse_products' || !hasBrandScope(request)) return false;
   const safeLimit = clampInt(limit, resolveDiscoveryCandidateLimit(request), 24, MAX_CANDIDATE_FETCH);
@@ -2494,13 +2498,17 @@ async function loadCatalogCandidates({
     enoughThreshold,
     qualityThreshold,
   });
-  if (shouldSkipBrandScopedExpansion) {
+  const shouldBypassGenericBrandExpansion = shouldUseBrandDirectPoolInsteadOfGenericBrandExpansion(request);
+  if (shouldSkipBrandScopedExpansion || shouldBypassGenericBrandExpansion) {
+    const skipReason = shouldSkipBrandScopedExpansion
+      ? 'sufficient_brand_primary_candidates'
+      : 'brand_direct_pool_supersedes_brand_expansion';
     providerResults.push(
       buildSkippedProviderResult('internal_catalog', {
         label: 'internal_catalog_pool',
         query: providerQueries.join(' | '),
         limit: internalProviderLimit,
-        skipReason: 'sufficient_brand_primary_candidates',
+        skipReason,
       }),
     );
     providerResults.push(
@@ -2508,7 +2516,7 @@ async function loadCatalogCandidates({
         label: 'external_seed_pool',
         query: externalProviderQueries.join(' | '),
         limit: externalProviderLimit,
-        skipReason: 'sufficient_brand_primary_candidates',
+        skipReason,
       }),
     );
     const recallSummary = providerResults.flatMap((result) =>
