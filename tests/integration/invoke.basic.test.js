@@ -670,6 +670,8 @@ describe('/agent/shop/v1/invoke gateway', () => {
         resolved_contract: 'agent_v1_search_beauty_mainline',
       }),
     );
+    expect(res.body.metadata?.resolved_contract).toBe('agent_v1_search_beauty_mainline');
+    expect(res.body.reply).toBeNull();
     expect(res.body.metadata?.semantic_contract).toEqual(
       expect.objectContaining({
         concern_class: 'sunscreen',
@@ -881,11 +883,15 @@ describe('/agent/shop/v1/invoke gateway', () => {
         resolved_contract: 'agent_v1_search_beauty_mainline',
       }),
     );
+    expect(direct.body.metadata?.resolved_contract).toBe('agent_v1_search_beauty_mainline');
+    expect(direct.body.reply).toBeNull();
     expect(invoke.body.metadata?.contract_bridge).toEqual(
       expect.objectContaining({
         resolved_contract: 'agent_v1_search_beauty_mainline',
       }),
     );
+    expect(invoke.body.metadata?.resolved_contract).toBe('agent_v1_search_beauty_mainline');
+    expect(invoke.body.reply).toBeNull();
   });
 
   it('direct public beauty search and invoke gateway keep real sunscreen formats ahead of sunscreen serums', async () => {
@@ -973,11 +979,15 @@ describe('/agent/shop/v1/invoke gateway', () => {
         resolved_contract: 'agent_v1_search_beauty_mainline',
       }),
     );
+    expect(direct.body.metadata?.resolved_contract).toBe('agent_v1_search_beauty_mainline');
+    expect(direct.body.reply).toBeNull();
     expect(invoke.body.metadata?.contract_bridge).toEqual(
       expect.objectContaining({
         resolved_contract: 'agent_v1_search_beauty_mainline',
       }),
     );
+    expect(invoke.body.metadata?.resolved_contract).toBe('agent_v1_search_beauty_mainline');
+    expect(invoke.body.reply).toBeNull();
   });
 
   it('beauty mainline keeps treatment products when ambiguity only requires non-blocking clarify', async () => {

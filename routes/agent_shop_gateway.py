@@ -219,14 +219,21 @@ def _normalize_catalog_surface(value: Any) -> str:
 def _normalize_beauty_proxy_result(response_body: Dict[str, Any]) -> Dict[str, Any]:
     response_body = response_body if isinstance(response_body, dict) else {}
     metadata = response_body.get("metadata") if isinstance(response_body.get("metadata"), dict) else {}
+    contract_bridge = metadata.get("contract_bridge") if isinstance(metadata.get("contract_bridge"), dict) else {}
     final_selection = metadata.get("final_selection") if isinstance(metadata.get("final_selection"), dict) else {}
+    resolved_contract = str(
+        metadata.get("resolved_contract") or contract_bridge.get("resolved_contract") or ""
+    ).strip()
+    attempted_contract = str(
+        metadata.get("attempted_contract") or contract_bridge.get("attempted_contract") or ""
+    ).strip()
     selected_product_ids = metadata.get("selected_product_ids")
     if not isinstance(selected_product_ids, list):
         selected_product_ids = final_selection.get("selected_product_ids")
     products = response_body.get("products") if isinstance(response_body.get("products"), list) else []
 
     is_grounded_beauty_mainline = (
-        str(metadata.get("resolved_contract") or "").strip() == "agent_v1_search_beauty_mainline"
+        resolved_contract == "agent_v1_search_beauty_mainline"
         and str(metadata.get("decision_owner") or "").strip() == "shopping_agent_beauty_mainline"
         and str(metadata.get("semantic_owner") or "").strip() == "shopping_agent_beauty_mainline"
         and str(metadata.get("mainline_status") or "").strip() == "grounded_success"
@@ -236,6 +243,11 @@ def _normalize_beauty_proxy_result(response_body: Dict[str, Any]) -> Dict[str, A
         return response_body
 
     normalized = dict(response_body)
+    normalized["metadata"] = {
+        **metadata,
+        **({"attempted_contract": attempted_contract} if attempted_contract else {}),
+        **({"resolved_contract": resolved_contract} if resolved_contract else {}),
+    }
     normalized["reply"] = None
     return normalized
 

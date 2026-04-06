@@ -13,11 +13,14 @@ async def test_invoke_shop_operation_proxies_beauty_find_products_multi(monkeypa
         return {
             "status": "success",
             "metadata": {
-                "resolved_contract": "agent_v1_search_beauty_mainline",
                 "decision_owner": "shopping_agent_beauty_mainline",
                 "semantic_owner": "shopping_agent_beauty_mainline",
                 "mainline_status": "grounded_success",
                 "selected_product_ids": ["sku-1"],
+                "contract_bridge": {
+                    "attempted_contract": "agent_v1_search_beauty_mainline",
+                    "resolved_contract": "agent_v1_search_beauty_mainline",
+                },
             },
             "products": [{"id": "sku-1", "title": "Demo Product"}],
             "reply": "To avoid off-topic recommendations, what should we prioritize?\n1) Brand lookup",
@@ -48,6 +51,7 @@ async def test_invoke_shop_operation_proxies_beauty_find_products_multi(monkeypa
     assert captured["request_body"]["operation"] == "find_products_multi"
     assert captured["request_body"]["payload"]["search"]["catalog_surface"] == "beauty"
     assert result["metadata"]["resolved_contract"] == "agent_v1_search_beauty_mainline"
+    assert result["metadata"]["attempted_contract"] == "agent_v1_search_beauty_mainline"
     assert result["reply"] is None
 
 
