@@ -27434,7 +27434,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           ? 'resolver_stage'
           : querySource.includes('external_seed_direct') || querySource.includes('external_seed_rescue')
           ? 'external_seed_direct_rescue'
-          : 'upstream_stage';
+          : 'upstream_stage');
       const fallbackTriggered =
         Boolean(fallbackMeta?.applied) ||
         isErrorSoftFallbackQuerySource(querySource) ||
