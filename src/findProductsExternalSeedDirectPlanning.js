@@ -88,6 +88,38 @@ async function prepareExternalSeedDirectSearchPlan({
     Boolean(detectBrandEntities(relevanceQueryText, { candidateProducts: [] })?.brand_like) &&
     !hasExplicitCategoryHint(relevanceQueryText, null);
 
+  if (publicBrandSearchMainline) {
+    const anchorTokens = extractSearchAnchorTokens(relevanceQueryText);
+    const queryTokens = Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
+    return {
+      queryText,
+      relevanceQueryText,
+      safeLimit,
+      safePage,
+      safeOffset,
+      inStockOnly,
+      market,
+      tool,
+      normalizedQuery,
+      publicBrandSearchMainline: true,
+      recallProfile: null,
+      targetStepFamily: null,
+      uiSurface: null,
+      decisionMode: null,
+      guidanceOnlyDiscovery: false,
+      sessionSeenProductIds: [],
+      queryStepStrength: null,
+      requestedProductOnly: false,
+      normalizedIntent: null,
+      retrievalQueries: [queryText].filter(Boolean),
+      anchorTokens,
+      queryTokens,
+      ingredientIntent: false,
+      useLeanGuidanceSql: false,
+      ingredientIntentDetected: false,
+    };
+  }
+
   const recallKnowledge =
     typeof resolveIngredientRecallProfileKnowledge === 'function'
       ? await resolveIngredientRecallProfileKnowledge({ query: relevanceQueryText })
