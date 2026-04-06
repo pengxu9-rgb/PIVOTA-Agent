@@ -24086,6 +24086,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       ? Number(queryParams.page || 0)
       : Math.floor(publicBrandSearchRequestedOffset / Math.max(1, publicBrandSearchRequestedLimit)) + 1;
     let publicBrandSearchMainlinePromise = null;
+    let publicBrandSearchMainlineResolved = null;
+    let publicBrandSearchMainlineShortCircuited = false;
     if (publicBrandSearchMainlinePreflight) {
       publicBrandSearchMainlinePromise = searchExternalSeedOnlyProductsDirect({
         search: {
@@ -24435,6 +24437,26 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         }
       } else if (operation === 'get_product_detail' && productDetailCacheKey && productDetailBypassCache) {
         PRODUCT_DETAIL_CACHE_METRICS.bypasses += 1;
+      }
+
+      if (!response) {
+        if (publicBrandSearchMainlinePromise) {
+          publicBrandSearchMainlineResolved = await publicBrandSearchMainlinePromise;
+          const prefetchedProducts = Array.isArray(publicBrandSearchMainlineResolved?.products)
+            ? publicBrandSearchMainlineResolved.products
+            : [];
+          const prefetchedTotal = Math.max(
+            0,
+            Number(publicBrandSearchMainlineResolved?.total || 0) || prefetchedProducts.length,
+          );
+          const prefetchedCoverageEnd = publicBrandSearchRequestedOffset + prefetchedProducts.length;
+          const publicBrandSearchPageCovered =
+            prefetchedProducts.length > 0 && prefetchedTotal >= prefetchedCoverageEnd;
+          if (publicBrandSearchPageCovered) {
+            response = { status: 200, data: publicBrandSearchMainlineResolved };
+            publicBrandSearchMainlineShortCircuited = true;
+          }
+        }
       }
 
       if (!response) {
@@ -25681,6 +25703,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         response.status < 300
       ) {
         const directMainline =
+          publicBrandSearchMainlineResolved ||
           publicBrandSearchMainlinePromise ||
           (await searchExternalSeedOnlyProductsDirect({
             search: {
@@ -25724,7 +25747,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             mainlineMeta.source_breakdown && typeof mainlineMeta.source_breakdown === 'object'
               ? mainlineMeta.source_breakdown
               : {};
-          const upstreamProducts = Array.isArray(upstreamData?.products) ? upstreamData.products : [];
+          const upstreamProducts = publicBrandSearchMainlineShortCircuited
+            ? []
+            : Array.isArray(upstreamData?.products)
+            ? upstreamData.products
+            : [];
           const mergedProducts = [];
           const seenProductKeys = new Set();
           for (const product of [...directMainlineProducts, ...upstreamProducts]) {
@@ -25753,7 +25780,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 query_source: 'agent_products_public_brand_search_mainline',
                 brand_query_mainline_applied: true,
                 brand_query_mainline_attempted: true,
-                brand_query_mainline_provider_order: ['external_seed', 'upstream_search'],
+                brand_query_mainline_provider_order: publicBrandSearchMainlineShortCircuited
+                  ? ['external_seed']
+                  : ['external_seed', 'upstream_search'],
+                brand_query_mainline_upstream_skipped: publicBrandSearchMainlineShortCircuited,
                 brand_query_mainline_upstream_count: upstreamProducts.length,
                 brand_query_mainline_external_count: directMainlineProducts.length,
                 source_breakdown: {
@@ -25770,6 +25800,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 primary_path_used: 'brand_search_multi_source',
                 fallback_triggered: false,
                 fallback_reason: null,
+                upstream_search_skipped: publicBrandSearchMainlineShortCircuited,
               },
               search_trace: {
                 final_decision: 'products_returned',
