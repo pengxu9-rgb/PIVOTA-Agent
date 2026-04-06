@@ -409,7 +409,7 @@ async function runSmoke(options = {}) {
     candidateSource: EXPECTED_CANDIDATE_SOURCE,
     minProducts: 6,
     requireRankDebug: true,
-    requiredRecallLabels: ['browse_pool', 'expansion_pool'],
+    requiredRecallLabels: [['browse_pool', 'expansion_pool']],
     requiredProviders: ['products_search', 'internal_catalog', 'external_seeds'],
     excludeProductKeys: [suppressedKey],
   });

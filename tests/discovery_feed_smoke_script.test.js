@@ -141,6 +141,53 @@ describe('run_discovery_feed_smoke helpers', () => {
     expect(summary.strategy).toBe('cold_start_curated');
   });
 
+  test('accepts browse recall when browse_pool satisfies page one without an expansion step', () => {
+    const summary = validateDiscoveryResponse(
+      {
+        products: [
+          {
+            merchant_id: 'm2',
+            product_id: 'p2',
+            title: 'Beta Repair Toner',
+          },
+          {
+            merchant_id: 'm3',
+            product_id: 'p3',
+            title: 'Gamma Repair Serum',
+          },
+        ],
+        metadata: {
+          candidate_source: 'multi_provider',
+          provider_breakdown: [
+            { provider: 'products_search', successful: true },
+            { provider: 'internal_catalog', successful: true },
+            { provider: 'external_seeds', successful: true },
+          ],
+          discovery_strategy: 'personalized_interest',
+          personalization_source: 'account_history',
+          rank_debug: {
+            recall_summary: [
+              { label: 'browse_pool', status: 200, returned: 24 },
+              { label: 'internal_catalog_pool', status: 200, returned: 18 },
+              { label: 'external_seed_pool', status: 200, returned: 18 },
+            ],
+          },
+        },
+      },
+      {
+        discoveryStrategy: 'personalized_interest',
+        personalizationSource: 'account_history',
+        candidateSource: 'multi_provider',
+        requireRankDebug: true,
+        requiredRecallLabels: [['browse_pool', 'expansion_pool']],
+        requiredProviders: ['products_search', 'internal_catalog', 'external_seeds'],
+        minProducts: 2,
+      },
+    );
+
+    expect(summary.productCount).toBe(2);
+  });
+
   test('rejects disallowed cold-start titles in the top rows', () => {
     expect(() =>
       validateDiscoveryResponse(
