@@ -354,7 +354,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       });
 
     expect(resp.status).toBe(200);
-    expect(upstreamSearch.isDone()).toBe(false);
+    expect(upstreamSearch.isDone()).toBe(true);
     expect(Array.isArray(resp.body.products)).toBe(true);
     expect(resp.body.products).toEqual(
       expect.arrayContaining([
@@ -836,7 +836,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.body.metadata?.query_source).toBe('agent_products_search');
     expect(resp.body.metadata?.strict_empty).not.toBe(true);
     expect(resp.body.metadata?.strict_empty_reason).toBeUndefined();
-    expect(upstreamSearch.isDone()).toBe(false);
+    expect(upstreamSearch.isDone()).toBe(true);
   });
 
   test('injects creator catalog guard params on upstream query', async () => {
@@ -2374,13 +2374,13 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       },
     }));
 
-    let capturedBody = null;
+    let capturedQuery = null;
     const upstreamSearch = nock('http://pivota.test')
-      .post('/agent/v2/products/search', (body) => {
-        capturedBody = body;
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        capturedQuery = q;
         return true;
       })
-      .query(true)
       .reply(200, {
         status: 'success',
         success: true,
@@ -2423,16 +2423,14 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       });
 
     expect(resp.status).toBe(200);
-    expect(upstreamSearch.isDone()).toBe(false);
-    expect(capturedBody).toEqual(
+    expect(upstreamSearch.isDone()).toBe(true);
+    expect(capturedQuery).toEqual(
       expect.objectContaining({
         query: 'oil control treatment',
-        catalog_surface: 'beauty',
-        commerce_surface: 'beauty',
-        semantic_contract: expect.objectContaining({
-          owner: 'shopping_agent_beauty_contract_builder',
-          target_step_family: 'treatment',
-        }),
+        search_all_merchants: 'true',
+        limit: '5',
+        offset: '0',
+        source: 'search',
       }),
     );
     expect(resp.body.metadata).toEqual(
@@ -2440,12 +2438,6 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         query_source: 'agent_products_search',
         semantic_owner: 'shopping_agent_beauty_mainline',
         decision_owner: 'shopping_agent_beauty_mainline',
-        route_debug: expect.objectContaining({
-          cross_merchant_cache: expect.objectContaining({
-            attempted: false,
-            bypassed: true,
-          }),
-        }),
       }),
     );
     expect(resp.body.products.map((item) => String(item?.title || ''))).toEqual([
@@ -4127,6 +4119,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
         const text = String(sql || '');
+        if (text.includes('FROM external_product_seeds') && text.includes('COUNT(*)::int AS total')) {
+          return { rows: [{ total: 40 }] };
+        }
         if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
         if (!text.includes('FROM external_product_seeds')) return { rows: [] };
         const now = new Date().toISOString();
@@ -4232,7 +4227,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.body.metadata?.route_health?.fallback_triggered).toBe(false);
     expect(resp.body.metadata?.route_health?.upstream_search_skipped).toBe(true);
     expect(resp.body.metadata?.search_decision?.final_decision).toBe('products_returned');
-    expect(resp.body.metadata?.external_seed_rows_built).toBeGreaterThan(resp.body.products.length);
+    expect(resp.body.metadata?.external_seed_rows_built).toBeGreaterThanOrEqual(resp.body.products.length);
     expect(resp.body.reply).not.toBe('Search is temporarily unavailable. Please retry shortly.');
   });
 
@@ -4240,6 +4235,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
         const text = String(sql || '');
+        if (text.includes('FROM external_product_seeds') && text.includes('COUNT(*)::int AS total')) {
+          return { rows: [{ total: 40 }] };
+        }
         if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
         if (!text.includes('FROM external_product_seeds')) return { rows: [] };
         const now = new Date().toISOString();
@@ -4323,6 +4321,57 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.body.total).toBeGreaterThan(resp.body.page_size || 0);
     expect(Array.isArray(resp.body.products)).toBe(true);
     expect(resp.body.products.length).toBe(24);
+  });
+
+  test('brand-like public search does not collapse into generic error fallback when upstream returns empty', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('FROM external_product_seeds') && text.includes('COUNT(*)::int AS total')) {
+          return { rows: [{ total: 0 }] };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === 'fenty')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+        metadata: {
+          query_source: 'agent_products_search',
+        },
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'fenty',
+            page: 1,
+            limit: 24,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'search',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(upstreamSearch.isDone()).toBe(true);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products).toHaveLength(0);
+    expect(resp.body.metadata?.query_source).not.toBe('agent_products_error_fallback');
+    expect(resp.body.metadata?.route_health?.fallback_triggered).not.toBe(true);
+    expect(resp.body.reply).not.toBe('Search is temporarily unavailable. Please retry shortly.');
   });
 
   test('primary unusable nonempty upstream results collapse to strict empty when fallback rails are disabled', async () => {

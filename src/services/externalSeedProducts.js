@@ -1252,6 +1252,127 @@ function buildExternalSeedProduct(row) {
   };
 }
 
+function buildExternalSeedBrandSearchProduct(row) {
+  if (!row || typeof row !== 'object') return null;
+
+  const seedData = ensureJsonObject(row.seed_data);
+  const snapshot = ensureJsonObject(seedData.snapshot);
+  const destinationUrl = String(
+    row.destination_url || snapshot.destination_url || seedData.destination_url || '',
+  ).trim();
+  const canonicalUrl = String(
+    row.canonical_url || snapshot.canonical_url || seedData.canonical_url || '',
+  ).trim();
+  const externalProductId =
+    String(
+      row.external_product_id || seedData.external_product_id || seedData.product_id || snapshot.product_id || '',
+    ).trim() || stableExternalProductId(canonicalUrl || destinationUrl);
+  if (!externalProductId) return null;
+
+  const title =
+    firstNonEmptyString(
+      row.title,
+      row.seed_title,
+      snapshot.title,
+      seedData.title,
+      canonicalUrl,
+      destinationUrl,
+      externalProductId,
+    ) || externalProductId;
+  const description = firstNonEmptyString(
+    row.seed_description,
+    row.description,
+    snapshot.description,
+    seedData.description,
+  );
+  const brand = firstNonEmptyString(
+    row.seed_brand,
+    row.seed_merchant_display_name,
+    row.seed_vendor,
+    seedData.brand,
+    snapshot.brand,
+    seedData.merchant_display_name,
+    snapshot.merchant_display_name,
+    seedData.vendor,
+    snapshot.vendor,
+    row.brand,
+    row.vendor,
+  );
+  const explicitCategory =
+    normalizeExplicitBeautyCategory(
+      row.seed_category,
+      row.seed_product_type,
+      row.snapshot_category,
+      row.snapshot_product_type,
+      seedData.category,
+      seedData.product_type,
+      snapshot.category,
+      snapshot.product_type,
+      row.category,
+      row.product_type,
+    ) || null;
+  const normalizedCategory = inferExternalSeedBeautyCategory({
+    explicitCategory,
+    title,
+    description,
+    canonicalUrl,
+    destinationUrl,
+    ingredientIds: [],
+  });
+  const imageUrl = firstNonEmptyString(
+    row.image_url,
+    snapshot.image_url,
+    seedData.image_url,
+  );
+  const imageUrls = imageUrl ? [imageUrl] : [];
+  const price = normalizeAmount(row.price_amount ?? seedData.price_amount ?? snapshot.price_amount);
+  const currency = normalizeCurrency(
+    row.price_currency || seedData.price_currency || snapshot.price_currency,
+    'USD',
+  );
+  const availability = normalizeSeedAvailability(
+    row.availability || seedData.availability || snapshot.availability,
+  );
+  const inStock = availabilityToInStock(availability);
+  const merchantName =
+    String(
+      firstNonEmptyString(
+        row.seed_merchant_display_name,
+        seedData.merchant_display_name,
+        snapshot.merchant_display_name,
+        brand,
+        row.domain,
+        'External',
+      ) || 'External',
+    ).trim() || 'External';
+
+  return {
+    id: externalProductId,
+    product_id: externalProductId,
+    merchant_id: EXTERNAL_SEED_MERCHANT_ID,
+    merchant_name: merchantName,
+    platform: 'external',
+    platform_product_id: externalProductId,
+    title,
+    ...(description ? { description } : {}),
+    price,
+    currency,
+    ...(imageUrl ? { image_url: imageUrl } : {}),
+    ...(imageUrls.length ? { images: imageUrls, image_urls: imageUrls } : {}),
+    inventory_quantity: inStock === true ? 999 : inStock === false ? 0 : null,
+    in_stock: inStock,
+    ...(availability ? { availability } : {}),
+    product_type: normalizedCategory || explicitCategory || 'external',
+    source: 'external_seed',
+    url: canonicalUrl || destinationUrl || undefined,
+    ...(canonicalUrl ? { canonical_url: canonicalUrl } : {}),
+    ...(destinationUrl ? { destination_url: destinationUrl } : {}),
+    ...(row.id ? { external_seed_id: String(row.id) } : {}),
+    ...(brand ? { vendor: brand, brand } : {}),
+    ...(normalizedCategory ? { category: normalizedCategory } : {}),
+  };
+}
+
 module.exports = {
   EXTERNAL_SEED_MERCHANT_ID,
   stableExternalProductId,
@@ -1265,4 +1386,5 @@ module.exports = {
   normalizeSeedVariants,
   canonicalizeExternalSeedSnapshot,
   buildExternalSeedProduct,
+  buildExternalSeedBrandSearchProduct,
 };
