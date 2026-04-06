@@ -426,6 +426,7 @@ function buildDiscoverySearchTerms(values = []) {
 
 function buildDiscoveryDatabaseSearchTerms(values = [], options = {}) {
   const maxPhrases = clampInt(options.maxPhrases, 4, 1, 8);
+  const maxTokens = clampInt(options.maxTokens, 24, 4, 24);
   const phrases = buildDiscoverySearchPhraseSet(values, 8);
   const specificPhrases = phrases.filter((phrase) => isSpecificDiscoveryQueryText(phrase));
   const effectivePhrases = uniqStrings(
@@ -436,7 +437,7 @@ function buildDiscoveryDatabaseSearchTerms(values = [], options = {}) {
     effectivePhrases
       .flatMap((phrase) => tokenizeDiscoverySearchText(phrase))
       .filter((token) => !GENERIC_DISCOVERY_QUERY_TOKENS.has(token)),
-    24,
+    maxTokens,
   );
   return {
     phrases: effectivePhrases,
@@ -2083,7 +2084,11 @@ async function fetchExternalSeedCandidates({
   const provider = 'external_seeds';
   const stepStartedAt = Date.now();
   const safeLimit = clampInt(limit, Math.max(limit, 24), 12, 240);
-  const searchTerms = buildDiscoveryDatabaseSearchTerms(queries, { maxPhrases: 4 });
+  const effectiveQueries = buildExternalSeedProviderQueries(request, profile, queries);
+  const searchTerms = buildDiscoveryDatabaseSearchTerms(effectiveQueries, {
+    maxPhrases: request?.surface === 'home_hot_deals' ? 2 : 3,
+    maxTokens: profile?.dominantDomain === 'beauty' ? 10 : 12,
+  });
   const phrases = searchTerms.phrases;
   const market =
     String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US')
@@ -2361,6 +2366,33 @@ function getProviderQualityThreshold(request) {
   return Math.max(1, Math.min(request?.limit || 0, 6));
 }
 
+function hasSufficientProviderCandidates(products = [], { request, profile, enoughThreshold, qualityThreshold } = {}) {
+  return (
+    Array.isArray(products) &&
+    products.length >= Number(enoughThreshold || 0) &&
+    countHighQualityProviderCandidates(products, { request, profile }) >= Number(qualityThreshold || 0)
+  );
+}
+
+function resolveExternalSeedProviderLimit(request, safeLimit) {
+  const cappedSafeLimit = clampInt(safeLimit, MAX_CANDIDATE_FETCH, 12, MAX_CANDIDATE_FETCH);
+  if (request?.surface === 'browse_products') {
+    const browseNeed = Math.max((request?.page || 1) * (request?.limit || 0) + (request?.limit || 0), 18);
+    return clampInt(browseNeed, Math.min(cappedSafeLimit, 24), 12, Math.min(cappedSafeLimit, 36));
+  }
+  const homeNeed = Math.max((request?.limit || 0) * 3, 18);
+  return clampInt(homeNeed, Math.min(cappedSafeLimit, 24), 12, Math.min(cappedSafeLimit, 30));
+}
+
+function buildExternalSeedProviderQueries(request, profile, queries = []) {
+  const prioritized = prioritizeDiscoveryRecallQueries(queries);
+  if (!prioritized.length) return [];
+  if (!profile?.hasInterestSignals) return prioritized.slice(0, 2);
+  if (profile?.dominantDomain === 'beauty') return prioritized.slice(0, 3);
+  if (request?.surface === 'browse_products') return prioritized.slice(0, 3);
+  return prioritized.slice(0, 2);
+}
+
 async function loadCatalogCandidates({
   request = null,
   profile = null,
@@ -2374,6 +2406,9 @@ async function loadCatalogCandidates({
   const providerResults = [];
   const mergedProducts = [];
   const seenKeys = new Set();
+  const internalProviderLimit = Math.min(safeLimit, 72);
+  const externalProviderLimit = resolveExternalSeedProviderLimit(request, safeLimit);
+  const externalProviderQueries = buildExternalSeedProviderQueries(request, profile, providerQueries);
 
   const mergeProducts = (products = []) => {
     for (const product of Array.isArray(products) ? products : []) {
@@ -2407,73 +2442,83 @@ async function loadCatalogCandidates({
     ],
   });
 
-  for (const provider of DISCOVERY_PROVIDER_ORDER) {
-    try {
-      let result = null;
-      if (provider === 'products_search') {
-        const searchResult = await loadProductsSearchCandidates({
-          request,
-          profile,
-          limit: safeLimit,
-        });
-        result = {
-          provider,
-          products: annotateProviderProducts(provider, searchResult?.products || []),
-          recallSummary: Array.isArray(searchResult?.recallSummary)
-            ? searchResult.recallSummary.map((step) => ({ provider, ...step }))
-            : [],
-        };
-      } else if (provider === 'internal_catalog') {
-        const internalResult = await fetchInternalCatalogCandidates({
-          request,
-          profile,
-          queries: providerQueries,
-          limit: Math.min(safeLimit, 72),
-          fetchFn: providerOverrides?.internal_catalog || null,
-        });
-        result = {
-          provider,
-          products: internalResult.products,
-          recallSummary: internalResult.recallSummary,
-        };
-      } else if (provider === 'external_seeds') {
-        const highQualityCount = countHighQualityProviderCandidates(mergedProducts, {
-          request,
-          profile,
-        });
-        if (mergedProducts.length >= enoughThreshold && highQualityCount >= qualityThreshold) {
-          result = buildSkippedProviderResult(provider, {
-            label: 'external_seed_pool',
-            query: providerQueries.join(' | '),
-            limit: Math.min(safeLimit, 72),
-            skipReason: 'sufficient_primary_candidates',
-          });
-        } else {
-          const externalResult = await fetchExternalSeedCandidates({
-            request,
-            profile,
-            queries: providerQueries,
-            limit: Math.min(safeLimit, 72),
-            fetchFn: providerOverrides?.external_seeds || null,
-          });
-          result = {
-            provider,
-            products: externalResult.products,
-            recallSummary: externalResult.recallSummary,
-          };
-        }
-      } else {
-        result = {
-          provider,
-          products: [],
-          recallSummary: [],
-        };
-      }
+  try {
+    const searchResult = await loadProductsSearchCandidates({
+      request,
+      profile,
+      limit: safeLimit,
+    });
+    const productsSearchResult = {
+      provider: 'products_search',
+      products: annotateProviderProducts('products_search', searchResult?.products || []),
+      recallSummary: Array.isArray(searchResult?.recallSummary)
+        ? searchResult.recallSummary.map((step) => ({ provider: 'products_search', ...step }))
+        : [],
+    };
+    providerResults.push(productsSearchResult);
+    mergeProducts(productsSearchResult.products);
+  } catch (err) {
+    providerResults.push(buildProviderErrorResult('products_search', err));
+  }
 
-      providerResults.push(result);
-      mergeProducts(result.products);
+  const shouldSkipExternalSeeds = hasSufficientProviderCandidates(mergedProducts, {
+    request,
+    profile,
+    enoughThreshold,
+    qualityThreshold,
+  });
+
+  const internalPromise = fetchInternalCatalogCandidates({
+    request,
+    profile,
+    queries: providerQueries,
+    limit: internalProviderLimit,
+    fetchFn: providerOverrides?.internal_catalog || null,
+  });
+  const externalPromise = shouldSkipExternalSeeds
+    ? null
+    : fetchExternalSeedCandidates({
+        request,
+        profile,
+        queries: externalProviderQueries,
+        limit: externalProviderLimit,
+        fetchFn: providerOverrides?.external_seeds || null,
+      });
+
+  try {
+    const internalResult = await internalPromise;
+    const normalizedInternalResult = {
+      provider: 'internal_catalog',
+      products: internalResult.products,
+      recallSummary: internalResult.recallSummary,
+    };
+    providerResults.push(normalizedInternalResult);
+    mergeProducts(normalizedInternalResult.products);
+  } catch (err) {
+    providerResults.push(buildProviderErrorResult('internal_catalog', err));
+  }
+
+  if (shouldSkipExternalSeeds) {
+    providerResults.push(
+      buildSkippedProviderResult('external_seeds', {
+        label: 'external_seed_pool',
+        query: externalProviderQueries.join(' | '),
+        limit: externalProviderLimit,
+        skipReason: 'sufficient_primary_candidates',
+      }),
+    );
+  } else {
+    try {
+      const externalResult = await externalPromise;
+      const normalizedExternalResult = {
+        provider: 'external_seeds',
+        products: externalResult.products,
+        recallSummary: externalResult.recallSummary,
+      };
+      providerResults.push(normalizedExternalResult);
+      mergeProducts(normalizedExternalResult.products);
     } catch (err) {
-      providerResults.push(buildProviderErrorResult(provider, err));
+      providerResults.push(buildProviderErrorResult('external_seeds', err));
     }
   }
 
