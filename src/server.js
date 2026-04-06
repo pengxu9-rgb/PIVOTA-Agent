@@ -293,6 +293,7 @@ const {
 const {
   detectBrandEntities,
   buildBrandQueryVariants,
+  normalizeBrandText,
   hasExplicitCategoryHint,
 } = require('./findProductsMulti/brandLexicon');
 const {
@@ -8542,6 +8543,7 @@ function getSearchExternalSeedOnlyProductsDirectRuntime() {
         tokenizeSearchTextForMatch,
         buildBrandQueryVariants,
         normalizeBrandText,
+        buildExternalSeedProduct,
         buildExternalSeedBrandSearchProduct,
         buildSearchProductKey,
         query,
