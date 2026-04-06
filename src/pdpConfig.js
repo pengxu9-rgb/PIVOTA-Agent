@@ -8,7 +8,6 @@ const STANDARD_PDP_INITIAL_INCLUDE = Object.freeze([
   'how_to_use',
   'product_details',
   'reviews_preview',
-  'similar',
 ]);
 
 function inferCanonicalPdpMerchantId(productId, merchantId) {
