@@ -590,10 +590,21 @@ describe('externalSeedProducts helper', () => {
         title: 'Architecture Brow Pencil',
         seed_brand: 'Tom Ford Beauty',
       },
+      {
+        id: 'eps_lean_powder',
+        external_product_id: 'ext_lean_powder',
+        canonical_url: 'https://www.tomfordbeauty.com/products/architecture-soft-matte-blurring-powder',
+        destination_url: 'https://www.tomfordbeauty.com/products/architecture-soft-matte-blurring-powder',
+        domain: 'www.tomfordbeauty.com',
+        title: 'Architecture Soft Matte Blurring Powder',
+        seed_brand: 'Tom Ford Beauty',
+        seed_description:
+          'Apply with Foundation Brush 02 for a diffused finish. This soft matte blurring powder helps control shine.',
+      },
     ];
 
     const categories = rows.map((row) => buildExternalSeedProduct(row).category);
-    expect(categories).toEqual(['Concealer', 'Lipstick', 'Mascara', 'Brow Pencil']);
+    expect(categories).toEqual(['Concealer', 'Lipstick', 'Mascara', 'Brow Pencil', 'Powder']);
   });
 
   test('prefers title and canonical signals over polluted description text when inferring category', () => {
