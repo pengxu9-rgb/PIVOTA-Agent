@@ -9509,105 +9509,17 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
     const queryPatterns = Array.from(
       new Set(queryVariants.map((value) => `%${value}%`).filter(Boolean)),
     ).slice(0, 12);
-    const sqlParams = [market, tool, brandTerms, queryPatterns];
-    const filters = [];
-
-    if (inStockOnly) {
-      filters.push(
-        `coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')`,
-      );
-    }
-
-    sqlParams.push(safeLimit);
-    const limitBind = `$${sqlParams.length}`;
-    sqlParams.push(safeOffset);
-    const offsetBind = `$${sqlParams.length}`;
-
-    try {
-      const res = await query(
-        `
-          WITH candidates AS (
-            SELECT
-              id,
-              external_product_id,
-              destination_url,
-              canonical_url,
-              domain,
-              title,
-              image_url,
-              price_amount,
-              price_currency,
-              availability,
-              seed_data,
-              updated_at,
-              created_at,
-              CASE
-                WHEN (
-                  lower(coalesce(seed_data->>'brand', '')) = ANY($3::text[])
-                  OR lower(coalesce(seed_data->'snapshot'->>'brand', '')) = ANY($3::text[])
-                  OR lower(coalesce(seed_data->>'merchant_display_name', '')) = ANY($3::text[])
-                  OR lower(coalesce(seed_data->'snapshot'->>'merchant_display_name', '')) = ANY($3::text[])
-                  OR lower(coalesce(seed_data->>'vendor', '')) = ANY($3::text[])
-                  OR lower(coalesce(seed_data->'snapshot'->>'vendor', '')) = ANY($3::text[])
-                ) THEN 4
-                WHEN lower(coalesce(title, '')) LIKE ANY($4::text[]) THEN 3
-                WHEN (
-                  lower(coalesce(domain, '')) LIKE ANY($4::text[])
-                  OR lower(coalesce(canonical_url, '')) LIKE ANY($4::text[])
-                  OR lower(coalesce(destination_url, '')) LIKE ANY($4::text[])
-                ) THEN 2
-                ELSE 1
-              END AS brand_match_rank
-            FROM external_product_seeds
-            WHERE status = 'active'
-              AND attached_product_key IS NULL
-              AND market = $1
-              AND (tool = '*' OR tool = $2)
-              ${filters.length > 0 ? `AND ${filters.join('\n              AND ')}` : ''}
-              AND (
-                lower(coalesce(seed_data->>'brand', '')) = ANY($3::text[])
-                OR lower(coalesce(seed_data->'snapshot'->>'brand', '')) = ANY($3::text[])
-                OR lower(coalesce(seed_data->>'merchant_display_name', '')) = ANY($3::text[])
-                OR lower(coalesce(seed_data->'snapshot'->>'merchant_display_name', '')) = ANY($3::text[])
-                OR lower(coalesce(seed_data->>'vendor', '')) = ANY($3::text[])
-                OR lower(coalesce(seed_data->'snapshot'->>'vendor', '')) = ANY($3::text[])
-                OR lower(coalesce(title, '')) LIKE ANY($4::text[])
-                OR lower(coalesce(domain, '')) LIKE ANY($4::text[])
-                OR lower(coalesce(canonical_url, '')) LIKE ANY($4::text[])
-                OR lower(coalesce(destination_url, '')) LIKE ANY($4::text[])
-              )
-          ),
-          paged AS (
-            SELECT
-              *,
-              COUNT(*) OVER() AS total_rows
-            FROM candidates
-            ORDER BY brand_match_rank DESC, updated_at DESC NULLS LAST, created_at DESC NULLS LAST
-            LIMIT ${limitBind}
-            OFFSET ${offsetBind}
-          )
-          SELECT
-            id,
-            external_product_id,
-            destination_url,
-            canonical_url,
-            domain,
-            title,
-            image_url,
-            price_amount,
-            price_currency,
-            availability,
-            seed_data,
-            updated_at,
-            created_at,
-            total_rows
-          FROM paged
-        `,
-        sqlParams,
-      );
-
-      const rows = Array.isArray(res?.rows) ? res.rows : [];
-      const totalRows = Math.max(0, Number(rows[0]?.total_rows || rows.length) || 0);
+    const availabilityFilter = inStockOnly
+      ? `AND coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')`
+      : '';
+    const buildBrandFastpathResponse = ({
+      rows,
+      totalRows,
+      strategyApplied,
+      broadFallbackUsed = false,
+      broadScopeRows = 0,
+      retrievalDebug = [],
+    }) => {
       const products = [];
       const seen = new Set();
       for (const row of rows) {
@@ -9634,25 +9546,27 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
             internal_count: 0,
             external_seed_count: products.length,
             stale_cache_used: false,
-            strategy_applied: 'brand_search_external_seed_mainline_fastpath',
+            strategy_applied: strategyApplied,
           },
           external_seed_only_requested: true,
           external_seed_rows_fetched: totalRows,
-          external_seed_rows_built: totalRows,
+          external_seed_rows_built: products.length,
           external_seed_returned_count: products.length,
           raw_result_count: totalRows,
           brand_search_mainline_query: true,
           retrieval_query_variants: queryVariants,
           retrieval_query_variant_count: queryVariants.length,
-          retrieval_query_debug: [
-            {
-              query: relevanceQueryText,
-              pattern_count: queryPatterns.length,
-              row_count: totalRows,
-              duration_ms: null,
-              brand_fastpath: true,
-            },
-          ],
+          retrieval_query_debug: retrievalDebug,
+          external_seed_brand_strict_rows:
+            strategyApplied === 'brand_search_external_seed_mainline_exact'
+              ? totalRows
+              : 0,
+          external_seed_brand_relevant_rows:
+            strategyApplied === 'brand_search_external_seed_mainline_exact'
+              ? totalRows
+              : 0,
+          external_seed_broad_fallback_used: broadFallbackUsed,
+          external_seed_broad_scope_rows: broadScopeRows,
           search_decision: {
             brand_search_mainline_query: true,
             retrieval_query_variants: queryVariants,
@@ -9663,6 +9577,193 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
           },
         },
       };
+    };
+    const exactSqlParams = [market, tool, brandTerms, safeLimit, safeOffset];
+
+    try {
+      const exactRes = await query(
+        `
+          WITH candidates AS (
+            SELECT
+              id,
+              external_product_id,
+              destination_url,
+              canonical_url,
+              domain,
+              title,
+              image_url,
+              price_amount,
+              price_currency,
+              availability,
+              seed_data,
+              updated_at,
+              created_at,
+              4 AS brand_match_rank
+            FROM external_product_seeds
+            WHERE status = 'active'
+              AND attached_product_key IS NULL
+              AND market = $1
+              AND (tool = '*' OR tool = $2)
+              ${availabilityFilter}
+              AND (
+                lower(coalesce(seed_data->>'brand', '')) = ANY($3::text[])
+                OR lower(coalesce(seed_data->'snapshot'->>'brand', '')) = ANY($3::text[])
+                OR lower(coalesce(seed_data->>'merchant_display_name', '')) = ANY($3::text[])
+                OR lower(coalesce(seed_data->'snapshot'->>'merchant_display_name', '')) = ANY($3::text[])
+                OR lower(coalesce(seed_data->>'vendor', '')) = ANY($3::text[])
+                OR lower(coalesce(seed_data->'snapshot'->>'vendor', '')) = ANY($3::text[])
+              )
+          ),
+          paged AS (
+            SELECT
+              *,
+              COUNT(*) OVER() AS total_rows
+            FROM candidates
+            ORDER BY brand_match_rank DESC, updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+            LIMIT $4
+            OFFSET $5
+          )
+          SELECT
+            id,
+            external_product_id,
+            destination_url,
+            canonical_url,
+            domain,
+            title,
+            image_url,
+            price_amount,
+            price_currency,
+            availability,
+            seed_data,
+            updated_at,
+            created_at,
+            total_rows
+          FROM paged
+        `,
+        exactSqlParams,
+      );
+
+      const exactRows = Array.isArray(exactRes?.rows) ? exactRes.rows : [];
+      const exactTotalRows = Math.max(0, Number(exactRows[0]?.total_rows || exactRows.length) || 0);
+      const exactCoverageEnd = safeOffset + exactRows.length;
+      const exactPageCovered = exactRows.length > 0 && exactTotalRows >= exactCoverageEnd;
+      if (exactPageCovered) {
+        return buildBrandFastpathResponse({
+          rows: exactRows,
+          totalRows: exactTotalRows,
+          strategyApplied: 'brand_search_external_seed_mainline_exact',
+          broadFallbackUsed: false,
+          broadScopeRows: 0,
+          retrievalDebug: [
+            {
+              query: relevanceQueryText,
+              pattern_count: 0,
+              row_count: exactTotalRows,
+              duration_ms: null,
+              brand_fastpath: true,
+              stage: 'brand_exact',
+            },
+          ],
+        });
+      }
+
+      const broadSqlParams = [market, tool, brandTerms, queryPatterns, safeLimit, safeOffset];
+      const broadRes = await query(
+        `
+          WITH candidates AS (
+            SELECT
+              id,
+              external_product_id,
+              destination_url,
+              canonical_url,
+              domain,
+              title,
+              image_url,
+              price_amount,
+              price_currency,
+              availability,
+              seed_data,
+              updated_at,
+              created_at,
+              CASE
+                WHEN lower(coalesce(title, '')) LIKE ANY($4::text[]) THEN 3
+                WHEN (
+                  lower(coalesce(domain, '')) LIKE ANY($4::text[])
+                  OR lower(coalesce(canonical_url, '')) LIKE ANY($4::text[])
+                  OR lower(coalesce(destination_url, '')) LIKE ANY($4::text[])
+                ) THEN 2
+                ELSE 1
+              END AS brand_match_rank
+            FROM external_product_seeds
+            WHERE status = 'active'
+              AND attached_product_key IS NULL
+              AND market = $1
+              AND (tool = '*' OR tool = $2)
+              ${availabilityFilter}
+              AND (
+                lower(coalesce(title, '')) LIKE ANY($4::text[])
+                OR lower(coalesce(domain, '')) LIKE ANY($4::text[])
+                OR lower(coalesce(canonical_url, '')) LIKE ANY($4::text[])
+                OR lower(coalesce(destination_url, '')) LIKE ANY($4::text[])
+              )
+          ),
+          paged AS (
+            SELECT
+              *,
+              COUNT(*) OVER() AS total_rows
+            FROM candidates
+            ORDER BY brand_match_rank DESC, updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+            LIMIT $5
+            OFFSET $6
+          )
+          SELECT
+            id,
+            external_product_id,
+            destination_url,
+            canonical_url,
+            domain,
+            title,
+            image_url,
+            price_amount,
+            price_currency,
+            availability,
+            seed_data,
+            updated_at,
+            created_at,
+            total_rows
+          FROM paged
+        `,
+        broadSqlParams,
+      );
+
+      const broadRows = Array.isArray(broadRes?.rows) ? broadRes.rows : [];
+      const broadTotalRows = Math.max(0, Number(broadRows[0]?.total_rows || broadRows.length) || 0);
+
+      return buildBrandFastpathResponse({
+        rows: broadRows,
+        totalRows: Math.max(exactTotalRows, broadTotalRows),
+        strategyApplied: 'brand_search_external_seed_mainline_broad',
+        broadFallbackUsed: true,
+        broadScopeRows: broadTotalRows,
+        retrievalDebug: [
+          {
+            query: relevanceQueryText,
+            pattern_count: 0,
+            row_count: exactTotalRows,
+            duration_ms: null,
+            brand_fastpath: true,
+            stage: 'brand_exact',
+          },
+          {
+            query: relevanceQueryText,
+            pattern_count: queryPatterns.length,
+            row_count: broadTotalRows,
+            duration_ms: null,
+            brand_fastpath: true,
+            stage: 'brand_broad',
+          },
+        ],
+      });
     } catch (err) {
       logger.warn(
         { err: err?.message || String(err), query: relevanceQueryText },
