@@ -140,6 +140,13 @@ function createFindProductsInvokeBeautyQualityGateRuntime(deps = {}) {
     const bypassBeautySkincareHitQualityGate =
       strictResolvedContract === 'shop_invoke_strict' ||
       observationOnlyBeautySkincareHitQualityGate;
+    const brandSearchMainlineActive =
+      nextExistingMeta?.brand_query_mainline_applied === true ||
+      String(nextExistingMeta?.query_source || '')
+        .trim()
+        .includes('brand_search_mainline') ||
+      String(nextExistingMeta?.source_breakdown?.strategy_applied || '').trim() ===
+        'brand_search_multi_source';
     const rawProductsBeforeQualityGate = Array.isArray(nextEnriched?.products)
       ? nextEnriched.products
       : [];
@@ -152,7 +159,8 @@ function createFindProductsInvokeBeautyQualityGateRuntime(deps = {}) {
         : upstreamData.products
       : rawProductsBeforeQualityGate;
     const skincareHitDecision =
-      rawProductsForQualityGate.length > 0 || !bypassBeautySkincareHitQualityGate
+      !brandSearchMainlineActive &&
+      (rawProductsForQualityGate.length > 0 || !bypassBeautySkincareHitQualityGate)
         ? buildBeautySkincareHitQualityDecision({
             queryText,
             products: rawProductsForQualityGate,

@@ -246,7 +246,6 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
           scope: { catalog: 'global', region: 'US', language: 'zh' },
         },
       });
-
     expect(resp.status).toBe(200);
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
@@ -355,7 +354,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       });
 
     expect(resp.status).toBe(200);
-    expect(upstreamSearch.isDone()).toBe(true);
+    expect(upstreamSearch.isDone()).toBe(false);
     expect(Array.isArray(resp.body.products)).toBe(true);
     expect(resp.body.products).toEqual(
       expect.arrayContaining([
@@ -837,7 +836,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.body.metadata?.query_source).toBe('agent_products_search');
     expect(resp.body.metadata?.strict_empty).not.toBe(true);
     expect(resp.body.metadata?.strict_empty_reason).toBeUndefined();
-    expect(upstreamSearch.isDone()).toBe(true);
+    expect(upstreamSearch.isDone()).toBe(false);
   });
 
   test('injects creator catalog guard params on upstream query', async () => {
@@ -2424,7 +2423,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       });
 
     expect(resp.status).toBe(200);
-    expect(upstreamSearch.isDone()).toBe(true);
+    expect(upstreamSearch.isDone()).toBe(false);
     expect(capturedBody).toEqual(
       expect.objectContaining({
         query: 'oil control treatment',
@@ -4122,6 +4121,208 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     ).toBe(true);
     expect(String(resp.body.metadata?.proxy_search_fallback?.route || '').length).toBeGreaterThan(0);
     expect(resp.body.metadata?.route_health?.fallback_triggered).toBe(true);
+  });
+
+  test('brand-like public search uses brand-search mainline with real total when upstream returns zero products', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
+        if (!text.includes('FROM external_product_seeds')) return { rows: [] };
+        const now = new Date().toISOString();
+        return {
+          rows: Array.from({ length: 40 }, (_, index) => ({
+            id: `seed_fenty_${index + 1}`,
+            external_product_id: `seed_fenty_${index + 1}`,
+            destination_url: `https://fentybeauty.example.com/products/fenty-item-${index + 1}`,
+            canonical_url: `https://fentybeauty.example.com/products/fenty-item-${index + 1}`,
+            domain: 'fentybeauty.example.com',
+            title:
+              index % 3 === 0
+                ? `Fenty Skin Serum ${index + 1}`
+                : index % 3 === 1
+                ? `Fenty Beauty Gloss Bomb ${index + 1}`
+                : `Fenty Hair Treatment ${index + 1}`,
+            image_url: `https://cdn.example.com/fenty-${index + 1}.jpg`,
+            price_amount: String(30 + index),
+            price_currency: 'USD',
+            availability: 'in stock',
+            seed_data: {
+              brand: 'Fenty',
+              category: index % 3 === 0 ? 'serum' : index % 3 === 1 ? 'makeup' : 'haircare',
+              snapshot: {
+                title:
+                  index % 3 === 0
+                    ? `Fenty Skin Serum ${index + 1}`
+                    : index % 3 === 1
+                    ? `Fenty Beauty Gloss Bomb ${index + 1}`
+                    : `Fenty Hair Treatment ${index + 1}`,
+                brand: 'Fenty',
+                category: index % 3 === 0 ? 'serum' : index % 3 === 1 ? 'makeup' : 'haircare',
+                product_type: index % 3 === 0 ? 'serum' : index % 3 === 1 ? 'lip gloss' : 'hair treatment',
+              },
+            },
+            updated_at: now,
+            created_at: now,
+          })),
+        };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === 'fenty')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+        metadata: {
+          query_source: 'agent_products_search',
+        },
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'fenty',
+            page: 1,
+            limit: 24,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'search',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(upstreamSearch.isDone()).toBe(false);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products.length).toBeGreaterThan(0);
+    expect(resp.body.products.length).toBe(24);
+    expect(resp.body.total).toBeGreaterThan(resp.body.products.length);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        merchant_id: 'external_seed',
+      }),
+    );
+    expect(
+      resp.body.products.some((product) =>
+        String(
+          product?.external_redirect_url ||
+            product?.destination_url ||
+            product?.canonical_url ||
+            product?.url ||
+            '',
+        ).includes('fentybeauty'),
+      ),
+    ).toBe(true);
+    expect(resp.body.metadata?.query_source).toBe('agent_products_public_brand_search_mainline');
+    expect(resp.body.metadata?.brand_query_mainline_applied).toBe(true);
+    expect(resp.body.metadata?.brand_query_mainline_upstream_skipped).toBe(true);
+    expect(resp.body.metadata?.semantic_rewrite_result?.fallback_reason).toBe(
+      'semantic_rewrite_skipped_brand_search',
+    );
+    expect(resp.body.metadata?.route_trace?.primary_path_used).toBe('brand_search_multi_source');
+    expect(resp.body.metadata?.route_health?.fallback_triggered).toBe(false);
+    expect(resp.body.metadata?.route_health?.upstream_search_skipped).toBe(true);
+    expect(resp.body.metadata?.search_decision?.final_decision).toBe('products_returned');
+    expect(resp.body.metadata?.external_seed_rows_built).toBeGreaterThan(resp.body.products.length);
+    expect(resp.body.reply).not.toBe('Search is temporarily unavailable. Please retry shortly.');
+  });
+
+  test('brand-like public search preserves nested payload metadata source for mainline routing', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
+        if (!text.includes('FROM external_product_seeds')) return { rows: [] };
+        const now = new Date().toISOString();
+        return {
+          rows: Array.from({ length: 40 }, (_, index) => ({
+            id: `seed_fenty_nested_${index + 1}`,
+            external_product_id: `seed_fenty_nested_${index + 1}`,
+            destination_url: `https://fentybeauty.example.com/products/fenty-nested-${index + 1}`,
+            canonical_url: `https://fentybeauty.example.com/products/fenty-nested-${index + 1}`,
+            domain: 'fentybeauty.example.com',
+            title:
+              index % 2 === 0
+                ? `Fenty Beauty Match Stix ${index + 1}`
+                : `Fenty Skin Serum ${index + 1}`,
+            image_url: `https://cdn.example.com/fenty-nested-${index + 1}.jpg`,
+            price_amount: String(28 + index),
+            price_currency: 'USD',
+            availability: 'in stock',
+            seed_data: {
+              brand: 'Fenty',
+              category: index % 2 === 0 ? 'makeup' : 'serum',
+              snapshot: {
+                title:
+                  index % 2 === 0
+                    ? `Fenty Beauty Match Stix ${index + 1}`
+                    : `Fenty Skin Serum ${index + 1}`,
+                brand: 'Fenty',
+                category: index % 2 === 0 ? 'makeup' : 'serum',
+                product_type: index % 2 === 0 ? 'makeup stick' : 'serum',
+              },
+            },
+            updated_at: now,
+            created_at: now,
+          })),
+        };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === 'fenty')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+        metadata: {
+          query_source: 'agent_products_search',
+        },
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'fenty',
+            page: 1,
+            limit: 24,
+            in_stock_only: true,
+          },
+          metadata: {
+            source: 'search',
+          },
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(upstreamSearch.isDone()).toBe(false);
+    expect(resp.body.metadata?.guard_source_normalized).toBe('search');
+    expect(resp.body.metadata?.query_source).toBe('agent_products_public_brand_search_mainline');
+    expect(resp.body.metadata?.brand_query_mainline_upstream_skipped).toBe(true);
+    expect(resp.body.metadata?.semantic_rewrite_result?.fallback_reason).toBe(
+      'semantic_rewrite_skipped_brand_search',
+    );
+    expect(resp.body.metadata?.route_trace?.primary_path_used).toBe('brand_search_multi_source');
+    expect(resp.body.metadata?.route_health?.fallback_triggered).toBe(false);
+    expect(resp.body.metadata?.route_health?.upstream_search_skipped).toBe(true);
+    expect(resp.body.total).toBeGreaterThan(resp.body.page_size || 0);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products.length).toBe(24);
   });
 
   test('primary unusable nonempty upstream results collapse to strict empty when fallback rails are disabled', async () => {

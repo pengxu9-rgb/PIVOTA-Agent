@@ -127,6 +127,11 @@ function createFindProductsInvokeDecisionContextRuntime(deps = {}) {
         ? 'cache_stage'
         : querySource.includes('resolver')
         ? 'resolver_stage'
+        : querySource.includes('brand_search_mainline')
+        ? 'brand_search_multi_source'
+        : querySource.includes('external_seed_direct') ||
+          querySource.includes('external_seed_rescue')
+        ? 'external_seed_direct_rescue'
         : 'upstream_stage');
     const fallbackTriggered =
       Boolean(fallbackMeta?.applied) ||

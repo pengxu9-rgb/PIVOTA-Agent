@@ -4211,7 +4211,14 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     String(search?.concern_class || search?.concernClass || '').trim() ||
     String(semanticContract?.concern_class || semanticContract?.concernClass || '').trim() ||
     String(buildBeautyQueryProfile({ rawQuery: latestUserQuery })?.concernClass || '').trim();
-  const semanticRewriteTimeoutMs = resolveSemanticRewriteTimeoutMs(semanticContract);
+  const preIntentBrandDetection = detectBrandEntities(latestUserQuery, { candidateProducts: [] });
+  const publicBrandSearchSemanticRewriteSkip =
+    String(metadata?.source || '').trim().toLowerCase() === 'search' &&
+    Boolean(preIntentBrandDetection?.brand_like) &&
+    !hasExplicitCategoryHint(latestUserQuery, null);
+  const semanticRewriteTimeoutMs = publicBrandSearchSemanticRewriteSkip
+    ? 0
+    : resolveSemanticRewriteTimeoutMs(semanticContract);
   const resolveIntentLlmExecutionPlan =
     typeof intentLlmDebug.resolveIntentLlmExecutionPlan === 'function'
       ? intentLlmDebug.resolveIntentLlmExecutionPlan
@@ -4241,6 +4248,19 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     single_provider_locked: Boolean(intentExecutionPlan?.singleProviderLocked),
     fallback_reason: String(fallbackReason || '').trim() || null,
   });
+  const buildSkippedSemanticRewriteIntentWithMeta = (fallbackReason) => {
+    const fallback = buildDeterministicIntentWithMeta(
+      latestUserQuery,
+      recentQueries,
+      recentMessages,
+      fallbackReason,
+    );
+    fallback.meta = {
+      ...(fallback.meta || {}),
+      ...buildSemanticRewritePlanMeta(fallbackReason),
+    };
+    return fallback;
+  };
 
   const intentStartedAt = Date.now();
   let semanticRewriteTimer = null;
@@ -4273,11 +4293,10 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
   } else {
     intentWithMeta =
       semanticRewriteTimeoutMs <= 0
-        ? buildDeterministicIntentWithMeta(
-            latestUserQuery,
-            recentQueries,
-            recentMessages,
-            'semantic_rewrite_skipped_exact_lookup',
+        ? buildSkippedSemanticRewriteIntentWithMeta(
+            publicBrandSearchSemanticRewriteSkip
+              ? 'semantic_rewrite_skipped_brand_search'
+              : 'semantic_rewrite_skipped_exact_lookup',
           )
         : await Promise.race([
             extractIntentWithMeta(latestUserQuery, recentQueries, recentMessages, {

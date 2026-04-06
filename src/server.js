@@ -8206,6 +8206,7 @@ function scoreDirectExternalSeedProduct({
   uiSurface = null,
   queryStepStrength = null,
   decisionMode = null,
+  brandSearchMainlineQuery = false,
 }) {
   const normalizedExactTitle = normalizeExactTitleLookupText(queryText);
   const compactExactTitle = compactExactTitleLookupText(queryText);
@@ -8309,6 +8310,15 @@ function scoreDirectExternalSeedProduct({
   score += titleAliasHits * 14;
   score += Math.max(0, candidateExactHits - titleExactHits) * 8;
   score += Math.max(0, candidateAliasHits - titleAliasHits) * 4;
+
+  if (brandSearchMainlineQuery) {
+    if (normalizedQuery && auxiliaryText.includes(normalizedQuery)) score += 18;
+    if (normalizedQuery && candidateText.includes(normalizedQuery)) score += 16;
+    return {
+      score,
+      coarse,
+    };
+  }
 
   if (targetStepFamily) {
     if (relation === 'exact_step') score += 14;
@@ -8443,6 +8453,205 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
     };
   }
 
+  const safeLimit = Math.max(1, Math.min(SEARCH_LIMIT_MAX, Math.floor(Number(search.limit || 20) || 20)));
+  const safePage = Math.max(1, Math.floor(Number(search.page || 1) || 1));
+  const safeOffset = Math.max(
+    0,
+    Number.isFinite(Number(search.offset))
+      ? Math.floor(Number(search.offset))
+      : (safePage - 1) * safeLimit,
+  );
+  const inStockOnly = parseQueryBoolean(search.in_stock_only ?? search.inStockOnly) !== false;
+  const market =
+    String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
+  const tool = 'creator_agents';
+  const normalizedQuery = normalizeSearchTextForMatch(relevanceQueryText);
+  const publicBrandSearchMainline =
+    isPublicSearchSource(metadata?.source) &&
+    Boolean(detectBrandEntities(relevanceQueryText, { candidateProducts: [] })?.brand_like) &&
+    !hasExplicitCategoryHint(relevanceQueryText, null);
+
+  if (publicBrandSearchMainline) {
+    const brandDetection = detectBrandEntities(relevanceQueryText, { candidateProducts: [] });
+    const brandTerms = Array.from(
+      new Set(
+        (Array.isArray(brandDetection?.brands) ? brandDetection.brands : [])
+          .map((value) => normalizeSearchTextForMatch(value))
+          .filter(Boolean),
+      ),
+    );
+    const queryVariants = Array.from(
+      new Set(
+        buildBrandQueryVariants(relevanceQueryText, brandTerms)
+          .map((value) => normalizeSearchTextForMatch(value))
+          .filter(Boolean),
+      ),
+    ).slice(0, 8);
+    const queryPatterns = Array.from(
+      new Set(queryVariants.map((value) => `%${value}%`).filter(Boolean)),
+    ).slice(0, 12);
+    const sqlParams = [market, tool, brandTerms, queryPatterns];
+    const filters = [];
+
+    if (inStockOnly) {
+      filters.push(
+        `coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')`,
+      );
+    }
+
+    sqlParams.push(safeLimit);
+    const limitBind = `$${sqlParams.length}`;
+    sqlParams.push(safeOffset);
+    const offsetBind = `$${sqlParams.length}`;
+
+    try {
+      const res = await query(
+        `
+          WITH candidates AS (
+            SELECT
+              id,
+              external_product_id,
+              destination_url,
+              canonical_url,
+              domain,
+              title,
+              image_url,
+              price_amount,
+              price_currency,
+              availability,
+              seed_data,
+              updated_at,
+              created_at,
+              CASE
+                WHEN (
+                  lower(coalesce(seed_data->>'brand', '')) = ANY($3::text[])
+                  OR lower(coalesce(seed_data->'snapshot'->>'brand', '')) = ANY($3::text[])
+                  OR lower(coalesce(seed_data->>'merchant_display_name', '')) = ANY($3::text[])
+                  OR lower(coalesce(seed_data->'snapshot'->>'merchant_display_name', '')) = ANY($3::text[])
+                  OR lower(coalesce(seed_data->>'vendor', '')) = ANY($3::text[])
+                  OR lower(coalesce(seed_data->'snapshot'->>'vendor', '')) = ANY($3::text[])
+                ) THEN 4
+                WHEN lower(coalesce(title, '')) LIKE ANY($4::text[]) THEN 3
+                WHEN (
+                  lower(coalesce(domain, '')) LIKE ANY($4::text[])
+                  OR lower(coalesce(canonical_url, '')) LIKE ANY($4::text[])
+                  OR lower(coalesce(destination_url, '')) LIKE ANY($4::text[])
+                ) THEN 2
+                ELSE 1
+              END AS brand_match_rank
+            FROM external_product_seeds
+            WHERE status = 'active'
+              AND attached_product_key IS NULL
+              AND market = $1
+              AND (tool = '*' OR tool = $2)
+              ${filters.length > 0 ? `AND ${filters.join('\n              AND ')}` : ''}
+              AND (
+                lower(coalesce(seed_data->>'brand', '')) = ANY($3::text[])
+                OR lower(coalesce(seed_data->'snapshot'->>'brand', '')) = ANY($3::text[])
+                OR lower(coalesce(seed_data->>'merchant_display_name', '')) = ANY($3::text[])
+                OR lower(coalesce(seed_data->'snapshot'->>'merchant_display_name', '')) = ANY($3::text[])
+                OR lower(coalesce(seed_data->>'vendor', '')) = ANY($3::text[])
+                OR lower(coalesce(seed_data->'snapshot'->>'vendor', '')) = ANY($3::text[])
+                OR lower(coalesce(title, '')) LIKE ANY($4::text[])
+                OR lower(coalesce(domain, '')) LIKE ANY($4::text[])
+                OR lower(coalesce(canonical_url, '')) LIKE ANY($4::text[])
+                OR lower(coalesce(destination_url, '')) LIKE ANY($4::text[])
+              )
+          ),
+          paged AS (
+            SELECT
+              *,
+              COUNT(*) OVER() AS total_rows
+            FROM candidates
+            ORDER BY brand_match_rank DESC, updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+            LIMIT ${limitBind}
+            OFFSET ${offsetBind}
+          )
+          SELECT
+            id,
+            external_product_id,
+            destination_url,
+            canonical_url,
+            domain,
+            title,
+            image_url,
+            price_amount,
+            price_currency,
+            availability,
+            seed_data,
+            updated_at,
+            created_at,
+            total_rows
+          FROM paged
+        `,
+        sqlParams,
+      );
+
+      const rows = Array.isArray(res?.rows) ? res.rows : [];
+      const totalRows = Math.max(0, Number(rows[0]?.total_rows || rows.length) || 0);
+      const products = [];
+      const seen = new Set();
+      for (const row of rows) {
+        const product = buildExternalSeedProduct(row);
+        if (!product) continue;
+        const key = buildSearchProductKey(product);
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        products.push(product);
+      }
+
+      return {
+        status: 'success',
+        success: true,
+        products,
+        total: totalRows,
+        page: safePage,
+        page_size: products.length,
+        reply: null,
+        metadata: {
+          query_source: 'agent_products_external_seed_direct',
+          fetched_at: new Date().toISOString(),
+          source_breakdown: {
+            internal_count: 0,
+            external_seed_count: products.length,
+            stale_cache_used: false,
+            strategy_applied: 'brand_search_external_seed_mainline_fastpath',
+          },
+          external_seed_only_requested: true,
+          external_seed_rows_fetched: totalRows,
+          external_seed_rows_built: totalRows,
+          external_seed_returned_count: products.length,
+          raw_result_count: totalRows,
+          brand_search_mainline_query: true,
+          retrieval_query_variants: queryVariants,
+          retrieval_query_variant_count: queryVariants.length,
+          retrieval_query_debug: [
+            {
+              query: relevanceQueryText,
+              pattern_count: queryPatterns.length,
+              row_count: totalRows,
+              duration_ms: null,
+              brand_fastpath: true,
+            },
+          ],
+          search_decision: {
+            brand_search_mainline_query: true,
+            retrieval_query_variants: queryVariants,
+            retrieval_query_variant_count: queryVariants.length,
+            raw_result_count: totalRows,
+            products_returned_count: products.length,
+            final_decision: products.length > 0 ? 'products_returned' : 'empty',
+          },
+        },
+      };
+    } catch (err) {
+      logger.warn(
+        { err: err?.message || String(err), query: relevanceQueryText },
+        'public brand external seed mainline fastpath failed',
+      );
+    }
+  }
+
   const recallKnowledge =
     typeof resolveIngredientRecallProfileKnowledge === 'function'
       ? await resolveIngredientRecallProfileKnowledge({ query: relevanceQueryText })
@@ -8458,15 +8667,6 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
   const recallProfile = recallKnowledge?.profile || null;
   const ingredientIntentDetected =
     hasBeautyIngredientIntentSignal(relevanceQueryText) || Boolean(recallProfile);
-
-  const safeLimit = Math.max(1, Math.min(SEARCH_LIMIT_MAX, Math.floor(Number(search.limit || 20) || 20)));
-  const safePage = Math.max(1, Math.floor(Number(search.page || 1) || 1));
-  const safeOffset = Math.max(
-    0,
-    Number.isFinite(Number(search.offset))
-      ? Math.floor(Number(search.offset))
-      : (safePage - 1) * safeLimit,
-  );
   const explicitTargetStepFamily = normalizeRecoTargetStep(
     metadata?.query_target_step_family || search?.target_step_family || search?.targetStepFamily,
   );
@@ -8506,11 +8706,6 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
     : null;
   const requestedProductOnly =
     parseQueryBoolean(metadata?.product_only_requested ?? search?.product_only ?? search?.productOnly) === true;
-  const inStockOnly = parseQueryBoolean(search.in_stock_only ?? search.inStockOnly) !== false;
-  const market =
-    String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
-  const tool = 'creator_agents';
-  const normalizedQuery = normalizeSearchTextForMatch(relevanceQueryText);
   const normalizedIntent = buildGuidanceSearchNormalizedIntent({
     queryText: relevanceQueryText,
     targetStepFamily,
@@ -8776,19 +8971,43 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
           uiSurface,
           queryStepStrength,
           decisionMode,
+          brandSearchMainlineQuery: publicBrandSearchMainline,
         });
         const coarse = scored?.coarse || null;
-        const relevant = isSupplementCandidateRelevant(product, relevanceQueryText, {
-          normalizedQuery,
-          anchorTokens,
-          queryTokens,
-          recallProfile,
-          ingredientIntent,
-          targetStepFamily,
-          uiSurface,
-          queryStepStrength,
-          decisionMode,
-        });
+        const relevant = publicBrandSearchMainline
+          ? Boolean(
+              normalizedQuery &&
+                (
+                  normalizeSearchTextForMatch(
+                    [
+                      product?.title,
+                      product?.name,
+                      product?.brand,
+                      product?.vendor,
+                      product?.category,
+                      product?.product_type,
+                      product?.merchant_name,
+                      product?.url,
+                      product?.canonical_url,
+                      product?.destination_url,
+                    ]
+                      .map((value) => String(value || '').trim())
+                      .filter(Boolean)
+                      .join(' '),
+                  ).includes(normalizedQuery)
+                ),
+            )
+          : isSupplementCandidateRelevant(product, relevanceQueryText, {
+              normalizedQuery,
+              anchorTokens,
+              queryTokens,
+              recallProfile,
+              ingredientIntent,
+              targetStepFamily,
+              uiSurface,
+              queryStepStrength,
+              decisionMode,
+            });
         return {
           product,
           score: Number(scored?.score || 0) || 0,
@@ -8839,15 +9058,17 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
         )
       : [];
 
-    const skincareHitDecision = buildSharedBeautySkincareHitQualityDecision({
-      queryText: relevanceQueryText,
-      products: productOnlyProducts,
-      queryTargetStepFamily: targetStepFamily,
-      guidanceOnlyDiscovery,
-      queryStepStrength,
-      mode: decisionMode,
-      sessionSeenProductIds,
-    });
+    const skincareHitDecision = publicBrandSearchMainline
+      ? null
+      : buildSharedBeautySkincareHitQualityDecision({
+          queryText: relevanceQueryText,
+          products: productOnlyProducts,
+          queryTargetStepFamily: targetStepFamily,
+          guidanceOnlyDiscovery,
+          queryStepStrength,
+          mode: decisionMode,
+          sessionSeenProductIds,
+        });
     const validKeys = new Set(
       (Array.isArray(skincareHitDecision?.valid_products) ? skincareHitDecision.valid_products : [])
         .map((product) => buildSearchDecisionProductKey(product))
@@ -8892,7 +9113,9 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
           internal_count: 0,
           external_seed_count: responseProducts.length,
           stale_cache_used: false,
-          strategy_applied: 'external_seed_only_direct',
+          strategy_applied: publicBrandSearchMainline
+            ? 'brand_search_external_seed_mainline'
+            : 'external_seed_only_direct',
         },
         external_seed_only_requested: true,
         external_seed_rows_fetched: rawProducts.length,
@@ -8905,6 +9128,7 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
           ? skincareHitDecision.raw_result_count
           : productOnlyProducts.length,
         products_returned_count: responseProducts.length,
+        brand_search_mainline_query: publicBrandSearchMainline,
         ...(guidanceOnlyDiscovery
           ? {
               product_only_applied: requestedProductOnly,
@@ -8978,6 +9202,7 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
             : queryStepStrength,
           decision_mode: decisionMode,
           normalized_intent: normalizedIntent,
+          brand_search_mainline_query: publicBrandSearchMainline,
           retrieval_query_variants: retrievalQueries,
           retrieval_query_variant_count: retrievalQueries.length,
           retrieval_query_debug: variantQueryDebug,
@@ -13707,6 +13932,10 @@ function normalizeMetadata(rawMetadata = {}, payload = {}) {
   let creatorId =
     rawMetadata.creator_id ||
     rawMetadata.creatorId ||
+    payload.metadata?.creator_id ||
+    payload.metadata?.creatorId ||
+    payload.context?.creator_id ||
+    payload.context?.creatorId ||
     payload.creator_id ||
     payload.creatorId ||
     payload.search?.creator_id ||
@@ -13715,6 +13944,10 @@ function normalizeMetadata(rawMetadata = {}, payload = {}) {
   const creatorName =
     rawMetadata.creator_name ||
     rawMetadata.creatorName ||
+    payload.metadata?.creator_name ||
+    payload.metadata?.creatorName ||
+    payload.context?.creator_name ||
+    payload.context?.creatorName ||
     payload.creator_name ||
     payload.creatorName ||
     null;
@@ -13722,11 +13955,21 @@ function normalizeMetadata(rawMetadata = {}, payload = {}) {
   const traceId =
     rawMetadata.trace_id ||
     rawMetadata.traceId ||
+    payload.metadata?.trace_id ||
+    payload.metadata?.traceId ||
+    payload.context?.trace_id ||
+    payload.context?.traceId ||
     payload.trace_id ||
     payload.traceId ||
     null;
 
-  const source = rawMetadata.source || payload.source || 'shopping-agent-ui';
+  const source =
+    rawMetadata.source ||
+    payload.metadata?.source ||
+    payload.context?.source ||
+    payload.source ||
+    payload.search?.source ||
+    'shopping-agent-ui';
 
   // Creator cache routes require a known creator_id. When the caller is the
   // creator UI and doesn't provide one, default to the first configured creator
@@ -21743,6 +21986,52 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     const upstreamBudgetMsForSearch = shouldUseShortSearchBudget
       ? FIND_PRODUCTS_MULTI_UPSTREAM_LOOKUP_TIMEOUT_MS
       : FIND_PRODUCTS_MULTI_UPSTREAM_DEFAULT_TIMEOUT_MS;
+    const publicBrandSearchMainlinePreflight =
+      operation === 'find_products_multi' &&
+      !strictCommerceFindProductsMulti &&
+      isPublicSearchSource(metadata?.source) &&
+      Boolean(primarySearchQueryText) &&
+      Boolean(detectBrandEntities(primarySearchQueryText, { candidateProducts: [] })?.brand_like) &&
+      !hasExplicitCategoryHint(primarySearchQueryText, effectiveIntent);
+    const publicBrandSearchRequestedLimit = Math.min(
+      Math.max(1, Number(queryParams?.limit || queryParams?.page_size || 20) || 20),
+      SEARCH_LIMIT_MAX,
+    );
+    const publicBrandSearchRequestedOffset = Math.max(0, Number(queryParams?.offset || 0) || 0);
+    const publicBrandSearchRequestedPage = Number(queryParams?.page || 0) > 0
+      ? Number(queryParams.page || 0)
+      : Math.floor(publicBrandSearchRequestedOffset / Math.max(1, publicBrandSearchRequestedLimit)) + 1;
+    let publicBrandSearchMainlinePromise = null;
+    let publicBrandSearchMainlineResolved = null;
+    let publicBrandSearchMainlineShortCircuited = false;
+    if (publicBrandSearchMainlinePreflight) {
+      publicBrandSearchMainlinePromise = searchExternalSeedOnlyProductsDirect({
+        search: {
+          query: primarySearchQueryText,
+          page: publicBrandSearchRequestedPage,
+          limit: publicBrandSearchRequestedLimit,
+          offset: publicBrandSearchRequestedOffset,
+          in_stock_only:
+            parseQueryBoolean(
+              queryParams?.in_stock_only ??
+                queryParams?.inStockOnly ??
+                effectivePayload?.search?.in_stock_only ??
+                effectivePayload?.search?.inStockOnly,
+            ) !== false,
+          source: metadata?.source || null,
+        },
+        metadata: {
+          source: metadata?.source || null,
+          relevance_query_text: primarySearchQueryText,
+        },
+      }).catch((err) => {
+        logger.warn(
+          { err: err?.message || String(err), query: primarySearchQueryText },
+          'public brand search mainline prefetch failed',
+        );
+        return null;
+      });
+    }
 
     let axiosConfig = {
       method: invokeMethod,
@@ -21892,6 +22181,26 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         }
       } else if (operation === 'get_product_detail' && productDetailCacheKey && productDetailBypassCache) {
         PRODUCT_DETAIL_CACHE_METRICS.bypasses += 1;
+      }
+
+      if (!response) {
+        if (publicBrandSearchMainlinePromise) {
+          publicBrandSearchMainlineResolved = await publicBrandSearchMainlinePromise;
+          const prefetchedProducts = Array.isArray(publicBrandSearchMainlineResolved?.products)
+            ? publicBrandSearchMainlineResolved.products
+            : [];
+          const prefetchedTotal = Math.max(
+            0,
+            Number(publicBrandSearchMainlineResolved?.total || 0) || prefetchedProducts.length,
+          );
+          const prefetchedCoverageEnd = publicBrandSearchRequestedOffset + prefetchedProducts.length;
+          const publicBrandSearchPageCovered =
+            prefetchedProducts.length > 0 && prefetchedTotal >= prefetchedCoverageEnd;
+          if (publicBrandSearchPageCovered) {
+            response = { status: 200, data: publicBrandSearchMainlineResolved };
+            publicBrandSearchMainlineShortCircuited = true;
+          }
+        }
       }
 
       if (!response) {
@@ -22285,6 +22594,145 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       upstreamData = supplementedSearch.upstreamData;
       shoppingExactTitleSupplementMeta =
         supplementedSearch.shoppingExactTitleSupplementMeta;
+
+      const publicBrandSearchMainlineEligible =
+        operation === 'find_products_multi' &&
+        !strictCommerceFindProductsMulti &&
+        isPublicSearchSource(metadata?.source) &&
+        Boolean(queryText) &&
+        Boolean(detectBrandEntities(queryText, { candidateProducts: [] })?.brand_like) &&
+        !hasExplicitCategoryHint(queryText, effectiveIntent);
+
+      if (
+        publicBrandSearchMainlineEligible &&
+        response.status >= 200 &&
+        response.status < 300
+      ) {
+        const directMainline =
+          publicBrandSearchMainlineResolved ||
+          publicBrandSearchMainlinePromise ||
+          (await searchExternalSeedOnlyProductsDirect({
+            search: {
+              query: queryText,
+              page: requestedFindProductsMultiPage,
+              limit: requestedLimit,
+              offset: requestedOffset,
+              in_stock_only:
+                parseQueryBoolean(
+                  queryParams?.in_stock_only ??
+                    queryParams?.inStockOnly ??
+                    effectivePayload?.search?.in_stock_only ??
+                    effectivePayload?.search?.inStockOnly,
+                ) !== false,
+              source: metadata?.source || null,
+            },
+            metadata: {
+              source: metadata?.source || null,
+              relevance_query_text: queryText,
+            },
+          }));
+        const resolvedDirectMainline =
+          directMainline && typeof directMainline.then === 'function'
+            ? await directMainline
+            : directMainline;
+        const directMainlineProducts = Array.isArray(resolvedDirectMainline?.products)
+          ? resolvedDirectMainline.products
+          : [];
+        if (directMainlineProducts.length > 0) {
+          const existingMeta =
+            upstreamData?.metadata && typeof upstreamData.metadata === 'object' && !Array.isArray(upstreamData.metadata)
+              ? upstreamData.metadata
+              : {};
+          const mainlineMeta =
+            resolvedDirectMainline?.metadata &&
+            typeof resolvedDirectMainline.metadata === 'object' &&
+            !Array.isArray(resolvedDirectMainline.metadata)
+              ? resolvedDirectMainline.metadata
+              : {};
+          const mainlineSourceBreakdown =
+            mainlineMeta.source_breakdown && typeof mainlineMeta.source_breakdown === 'object'
+              ? mainlineMeta.source_breakdown
+              : {};
+          const upstreamProducts = publicBrandSearchMainlineShortCircuited
+            ? []
+            : Array.isArray(upstreamData?.products)
+            ? upstreamData.products
+            : [];
+          const mergedProducts = [];
+          const seenProductKeys = new Set();
+          for (const product of [...directMainlineProducts, ...upstreamProducts]) {
+            const key = buildSearchProductKey(product);
+            if (!key || seenProductKeys.has(key)) continue;
+            seenProductKeys.add(key);
+            mergedProducts.push(product);
+            if (mergedProducts.length >= requestedLimit) break;
+          }
+          const externalSeedCount = mergedProducts.filter((product) => isExternalSeedProduct(product)).length;
+          const internalCount = Math.max(0, mergedProducts.length - externalSeedCount);
+          upstreamData = withSearchDiagnostics(
+            {
+              ...resolvedDirectMainline,
+              products: mergedProducts,
+              total: Math.max(
+                Number(resolvedDirectMainline?.total || 0) || 0,
+                Number(upstreamData?.total || 0) || 0,
+                mergedProducts.length,
+              ),
+              page: requestedFindProductsMultiPage,
+              page_size: mergedProducts.length,
+              metadata: {
+                ...existingMeta,
+                ...mainlineMeta,
+                query_source: 'agent_products_public_brand_search_mainline',
+                brand_query_mainline_applied: true,
+                brand_query_mainline_attempted: true,
+                brand_query_mainline_provider_order: publicBrandSearchMainlineShortCircuited
+                  ? ['external_seed']
+                  : ['external_seed', 'upstream_search'],
+                brand_query_mainline_upstream_skipped: publicBrandSearchMainlineShortCircuited,
+                brand_query_mainline_upstream_count: upstreamProducts.length,
+                brand_query_mainline_external_count: directMainlineProducts.length,
+                source_breakdown: {
+                  ...mainlineSourceBreakdown,
+                  internal_count: internalCount,
+                  external_seed_count: externalSeedCount,
+                  stale_cache_used: false,
+                  strategy_applied: 'brand_search_multi_source',
+                },
+              },
+            },
+            {
+              route_health: {
+                primary_path_used: 'brand_search_multi_source',
+                fallback_triggered: false,
+                fallback_reason: null,
+                upstream_search_skipped: publicBrandSearchMainlineShortCircuited,
+              },
+              search_trace: {
+                final_decision: 'products_returned',
+              },
+              search_decision: {
+                final_decision: 'products_returned',
+                primary_path_used: 'brand_search_multi_source',
+                decision_authority: 'agent_products_public_brand_search_mainline',
+              },
+            },
+          );
+        } else if (
+          upstreamData?.metadata &&
+          typeof upstreamData.metadata === 'object' &&
+          !Array.isArray(upstreamData.metadata)
+        ) {
+          upstreamData = {
+            ...upstreamData,
+            metadata: {
+              ...upstreamData.metadata,
+              brand_query_mainline_attempted: true,
+              brand_query_mainline_applied: false,
+            },
+          };
+        }
+      }
 
       const primaryUsableCount = countUsableSearchProducts(upstreamData?.products);
       const primaryUnusable = Boolean(queryText) && shouldFallbackProxySearch(upstreamData, response.status);
@@ -23160,16 +23608,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         fpmGateTrace,
         fpmSkippedGatesDueToBudget,
         fpmLatencyGuardApplied,
-        semanticContractMeta,
-        semanticRewriteResultMeta,
-        semanticOwnerQueryAttempts,
         semanticOwnerExternalRescueQueriesAttempted,
-        semanticOwnerCacheSourceIsolated,
         semanticOwnerCacheSourceIsolationReason,
-        semanticOwnerLastResortCacheApplied,
         semanticOwnerLastResortCacheQuery,
-        findProductsExpansionMeta,
-        primarySearchTimeoutMs: axiosConfig.timeout,
         gatewayTotalBudgetMs: FPM_GATEWAY_TOTAL_BUDGET_MS,
         resolverRejectedReason,
         resolverRejectedQueryUsed,

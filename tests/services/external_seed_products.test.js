@@ -513,6 +513,43 @@ describe('externalSeedProducts helper', () => {
     );
   });
 
+  test('normalizes cents-style Shopify bundle pricing and infers hair care category', () => {
+    const row = {
+      id: 'eps_fenty_hair_bundle',
+      external_product_id: 'ext_fenty_hair_bundle',
+      canonical_url: 'https://fentybeauty.com/products/deep-moisture-repair-the-maintenance-crew-full-size-bundle',
+      destination_url: 'https://fentybeauty.com/products/deep-moisture-repair-the-maintenance-crew-full-size-bundle',
+      domain: 'fentybeauty.com',
+      title: 'Deep Moisture Repair The Maintenance Crew Full-Size Bundle',
+      price_amount: 12100,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_brand: 'Fenty Beauty',
+      seed_data: {
+        brand: 'Fenty Beauty',
+        snapshot: {
+          canonical_url: 'https://fentybeauty.com/products/deep-moisture-repair-the-maintenance-crew-full-size-bundle',
+          description:
+            'Unlock endless styles with The Maintenance Crew. Essentials repair and nourish hair, now with our deep conditioner for extra hydration.',
+          variants: [
+            {
+              sku: 'KFH10000005',
+              variant_id: 'KFH10000005',
+              price: '12100.00',
+              currency: 'USD',
+            },
+          ],
+        },
+      },
+    };
+
+    const product = buildExternalSeedProduct(row);
+    expect(product.price).toBe(121);
+    expect(product.variants[0].price).toBe(121);
+    expect(product.category).toBe('Hair Care');
+    expect(product.product_type).toBe('Hair Care');
+  });
+
   test('prefers cleanser intent over generic concentrate terms for lean recommendation candidates', () => {
     const row = {
       id: 'eps_lean_tom_ford_cleanser',

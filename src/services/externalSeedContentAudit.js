@@ -12,6 +12,8 @@ const NON_PRODUCT_PATH_RE =
   /(?:^|\/)(?:collections?|collection|category|catalogsearch|search|cart|account|customer|blog|blogs|pages?|faq|privacy|terms|wishlist|gift(?:ing)?|store-locator|customer-service|all-products|appointments?|booking|online-booking|locations?|contact-us)(?:\/|$)/i;
 const GENERIC_TEMPLATE_RE = /^experience the ultimate luxury with\s+/i;
 const SYNTHETIC_SUMMARY_RE = /\bOFFICIAL:\b[\s\S]*\/\/\/\s*SOCIAL HIGHLIGHTS:/i;
+const BEAUTY_PRICE_HINT_RE =
+  /\b(beauty|makeup|skincare|skin care|hair|haircare|shampoo|conditioner|treatment|serum|cleanser|toner|moisturizer|cream|lotion|mist|mask|concealer|foundation|powder|mascara|lip|brow|fragrance|perfume|parfum|cologne|bundle)\b/i;
 const LANGUAGE_MARKERS = Object.freeze({
   de: [
     /\blichtschutzfaktor\b/i,
@@ -88,6 +90,12 @@ function normalizeComparableUrlKey(value) {
 
 function normalizeCurrency(value) {
   return normalizeNonEmptyString(value).toUpperCase();
+}
+
+function normalizeAmount(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  const parsed = Number.parseFloat(normalizeNonEmptyString(value).replace(/,/g, ''));
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function parseLocaleSegment(url) {
@@ -264,6 +272,33 @@ function detectPriceCurrencyMismatch(row, variants) {
   };
 }
 
+function detectBeautyMinorUnitPrice(row, title, description, canonicalUrl, variants) {
+  const rowPrice = normalizeAmount(row?.price_amount);
+  if (!(rowPrice > 1000) || !Number.isInteger(rowPrice)) return null;
+
+  const combined = [
+    title,
+    description,
+    canonicalUrl,
+    row?.domain,
+    ...variants.flatMap((variant) => [variant?.title, variant?.description, variant?.sku]),
+  ]
+    .map((value) => normalizeNonEmptyString(value))
+    .filter(Boolean)
+    .join(' ');
+  if (!BEAUTY_PRICE_HINT_RE.test(combined)) return null;
+
+  const suspectedMajorUnitAmount = rowPrice / 100;
+  if (!(suspectedMajorUnitAmount >= 1 && suspectedMajorUnitAmount <= 1000)) return null;
+
+  const variantPrices = variants.map((variant) => normalizeAmount(variant?.price)).filter((value) => value > 0);
+  return {
+    row_price_amount: rowPrice,
+    suspected_major_unit_amount: suspectedMajorUnitAmount,
+    variant_prices_sample: variantPrices.slice(0, 3),
+  };
+}
+
 function auditExternalSeedRow(row, options = {}) {
   const findings = [];
   const { seedData, snapshot } = getSnapshot(row);
@@ -366,6 +401,20 @@ function auditExternalSeedRow(row, options = {}) {
         evidence: priceCurrencyMismatch,
         recommendedAction: 'Re-extract pricing and reconcile row currency with variant currencies before downstream export.',
         autoFixable: false,
+      }),
+    );
+  }
+
+  const beautyMinorUnitPrice = detectBeautyMinorUnitPrice(row, title, description, canonicalUrl, variants);
+  if (beautyMinorUnitPrice) {
+    findings.push(
+      buildFinding(row, snapshot, {
+        anomalyType: 'beauty_minor_unit_price_suspected',
+        severity: ANOMALY_SEVERITY.blocker,
+        evidence: beautyMinorUnitPrice,
+        recommendedAction:
+          'Rerun catalog extraction and reconcile the row-level price with authoritative PDP/variant pricing before downstream use.',
+        autoFixable: true,
       }),
     );
   }
