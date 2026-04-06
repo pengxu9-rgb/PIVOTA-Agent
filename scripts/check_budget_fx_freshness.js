@@ -28,7 +28,7 @@ function parseArgs(argv) {
     agentApiKey: envAgentApiKey,
     source: process.env.SEARCH_MATRIX_SOURCE || 'search',
     query: process.env.BUDGET_FX_PREFLIGHT_QUERY || 'vitamin c serum under €30',
-    timeoutMs: Number(process.env.BUDGET_FX_PREFLIGHT_TIMEOUT_MS || 15000),
+    timeoutMs: Number(process.env.BUDGET_FX_PREFLIGHT_TIMEOUT_MS || 20000),
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -41,7 +41,7 @@ function parseArgs(argv) {
     if (token === '--agent-api-key' && next) args.agentApiKey = String(next);
     if (token === '--source' && next) args.source = String(next);
     if (token === '--query' && next) args.query = String(next);
-    if (token === '--timeout-ms' && next) args.timeoutMs = Math.max(1000, Number(next) || 15000);
+    if (token === '--timeout-ms' && next) args.timeoutMs = Math.max(1000, Number(next) || 20000);
   }
   args.baseUrl = resolveBaseUrl(args.baseUrl, args.railMode);
   args.endpoint = normalizeEndpoint(args.endpoint, args.railMode);
