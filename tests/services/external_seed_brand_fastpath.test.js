@@ -1,6 +1,9 @@
 const {
   runExternalSeedBrandMainlineFastpath,
 } = require('../../src/findProductsExternalSeedBrandFastpath');
+const {
+  prepareExternalSeedDirectSearchPlan,
+} = require('../../src/findProductsExternalSeedDirectPlanning');
 
 function buildDeps(overrides = {}) {
   return {
@@ -56,5 +59,60 @@ describe('runExternalSeedBrandMainlineFastpath', () => {
     expect(deps.query).toHaveBeenCalledTimes(1);
     expect(queries[0].sql).toContain('COUNT(*) OVER()::int AS total_rows');
     expect(queries[0].sql).not.toContain('SELECT COUNT(*)::int AS total');
+  });
+});
+
+describe('prepareExternalSeedDirectSearchPlan brand fastpath', () => {
+  test('skips ingredient recall planning for brand-like public search', async () => {
+    const resolveIngredientRecallProfileKnowledge = jest.fn(async () => {
+      throw new Error('ingredient recall should not run for brand mainline');
+    });
+
+    const plan = await prepareExternalSeedDirectSearchPlan({
+      search: {
+        query: 'fenty',
+        page: 1,
+        limit: 24,
+        in_stock_only: true,
+      },
+      metadata: {
+        source: 'search',
+      },
+      deps: {
+        extractSearchQueryText: (search) => String(search?.query || '').trim(),
+        firstQueryParamValue: (value) => value,
+        SEARCH_LIMIT_MAX: 100,
+        parseQueryBoolean: (value) => value !== false && value !== 'false',
+        normalizeSearchTextForMatch: (value) => String(value || '').trim().toLowerCase(),
+        isPublicSearchSource: (source) => source === 'search',
+        detectBrandEntities: () => ({ brand_like: true, brands: ['fenty'] }),
+        hasExplicitCategoryHint: () => false,
+        resolveIngredientRecallProfileKnowledge,
+        resolveIngredientRecallProfile: jest.fn(() => null),
+        hasBeautyIngredientIntentSignal: jest.fn(() => false),
+        normalizeRecoTargetStep: jest.fn((value) => value || null),
+        resolveRecoTargetStepIntent: jest.fn(() => null),
+        resolveIngredientIntentTargetStepFamily: jest.fn(() => null),
+        normalizeSearchUiSurface: jest.fn(() => null),
+        normalizeRecommendationDecisionMode: jest.fn(() => null),
+        resolveGuidanceSearchSessionId: jest.fn(() => null),
+        loadGuidanceSearchSessionSeenProductIds: jest.fn(async () => []),
+        shouldUseSharedTargetRelevancePipeline: jest.fn(() => false),
+        resolveGuidanceSearchStepStrength: jest.fn(() => null),
+        buildGuidanceSearchNormalizedIntent: jest.fn(() => null),
+        buildSerumCanaryBackboneQueries: jest.fn(() => []),
+        buildGuidanceRecallSupplementQueries: jest.fn(() => []),
+        buildBeautyFamilySupplementQueries: jest.fn(() => []),
+        buildIngredientRecallQueryVariants: jest.fn(() => []),
+        parseQueryStringArray: jest.fn(() => []),
+        extractSearchAnchorTokens: (value) => String(value || '').split(/\s+/).filter(Boolean),
+        tokenizeSearchTextForMatch: (value) => String(value || '').split(/\s+/).filter(Boolean),
+      },
+    });
+
+    expect(plan?.publicBrandSearchMainline).toBe(true);
+    expect(plan?.retrievalQueries).toEqual(['fenty']);
+    expect(plan?.ingredientIntent).toBe(false);
+    expect(resolveIngredientRecallProfileKnowledge).not.toHaveBeenCalled();
   });
 });
