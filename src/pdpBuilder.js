@@ -1723,6 +1723,12 @@ function buildPdpPayload(args) {
     ? buildRecommendations(relatedProducts, currency)
     : null;
   const brandStory = extractBrandStory(product, productFactsSections);
+  const emitLegacyProductDetails = Boolean(
+    productFactsSections.length &&
+      !activeIngredientsModule &&
+      !ingredientsModule &&
+      !howToUseModule,
+  );
 
   const modules = [];
   if (mediaItems.length) {
@@ -1783,7 +1789,7 @@ function buildPdpPayload(args) {
       data: { sections: productFactsSections },
     });
   }
-  if (productFactsSections.length) {
+  if (emitLegacyProductDetails) {
     modules.push({
       module_id: 'm_details',
       type: 'product_details',
