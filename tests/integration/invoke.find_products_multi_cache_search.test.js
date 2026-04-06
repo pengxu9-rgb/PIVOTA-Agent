@@ -4000,6 +4000,127 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.body.metadata?.route_health?.fallback_triggered).toBe(true);
   });
 
+  test('brand-like public search rescues from external seeds when upstream returns zero products', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
+        if (!text.includes('FROM external_product_seeds')) return { rows: [] };
+        const now = new Date().toISOString();
+        return {
+          rows: [
+            {
+              id: 'seed_fenty_1',
+              external_product_id: 'seed_fenty_1',
+              destination_url: 'https://fentybeauty.example.com/products/watch-ya-tone-serum',
+              canonical_url: 'https://fentybeauty.example.com/products/watch-ya-tone-serum',
+              domain: 'fentybeauty.example.com',
+              title: 'Watch Ya Tone Niacinamide Dark Spot Serum',
+              image_url: 'https://cdn.example.com/fenty-serum.jpg',
+              price_amount: '38',
+              price_currency: 'USD',
+              availability: 'in stock',
+              seed_data: {
+                brand: 'Fenty Skin',
+                category: 'serum',
+                snapshot: {
+                  title: 'Watch Ya Tone Niacinamide Dark Spot Serum',
+                  brand: 'Fenty Skin',
+                  category: 'serum',
+                  product_type: 'serum',
+                },
+              },
+              updated_at: now,
+              created_at: now,
+            },
+            {
+              id: 'seed_fenty_2',
+              external_product_id: 'seed_fenty_2',
+              destination_url: 'https://fentybeauty.example.com/products/hydra-vizor',
+              canonical_url: 'https://fentybeauty.example.com/products/hydra-vizor',
+              domain: 'fentybeauty.example.com',
+              title: 'Hydra Vizor Invisible Moisturizer Broad Spectrum SPF 30',
+              image_url: 'https://cdn.example.com/fenty-hydra-vizor.jpg',
+              price_amount: '42',
+              price_currency: 'USD',
+              availability: 'in stock',
+              seed_data: {
+                brand: 'Fenty Skin',
+                category: 'moisturizer',
+                snapshot: {
+                  title: 'Hydra Vizor Invisible Moisturizer Broad Spectrum SPF 30',
+                  brand: 'Fenty Skin',
+                  category: 'moisturizer',
+                  product_type: 'moisturizer',
+                },
+              },
+              updated_at: now,
+              created_at: now,
+            },
+          ],
+        };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === 'fenty')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+        metadata: {
+          query_source: 'agent_products_search',
+        },
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'fenty',
+            page: 1,
+            limit: 24,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'search',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(upstreamSearch.isDone()).toBe(true);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products.length).toBeGreaterThan(0);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        merchant_id: 'external_seed',
+      }),
+    );
+    expect(
+      resp.body.products.some((product) =>
+        String(
+          product?.external_redirect_url ||
+            product?.destination_url ||
+            product?.canonical_url ||
+            product?.url ||
+            '',
+        ).includes('fentybeauty'),
+      ),
+    ).toBe(true);
+    expect(resp.body.metadata?.query_source).toBe('agent_products_public_brand_external_seed_rescue');
+    expect(resp.body.metadata?.brand_query_external_seed_rescue_applied).toBe(true);
+    expect(resp.body.metadata?.route_trace?.primary_path_used).toBe('external_seed_direct_rescue');
+    expect(resp.body.metadata?.route_health?.fallback_triggered).toBe(false);
+    expect(resp.body.metadata?.search_decision?.final_decision).toBe('products_returned');
+    expect(resp.body.reply).not.toBe('Search is temporarily unavailable. Please retry shortly.');
+  });
+
   test('primary unusable nonempty upstream results collapse to strict empty when fallback rails are disabled', async () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {

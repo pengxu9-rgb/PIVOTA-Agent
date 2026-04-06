@@ -57,6 +57,7 @@ describe('Celestial commerce core source policy module', () => {
       ),
     ).toEqual({
       query: 'serum',
+      external_seed_strategy: 'unified_relevance',
     });
 
     expect(
@@ -91,7 +92,7 @@ describe('Celestial commerce core source policy module', () => {
     });
   });
 
-  test('find_products_multi source contract strips public override only', () => {
+  test('find_products_multi source contract preserves public search overrides', () => {
     const payload = {
       search: {
         query: 'serum',
@@ -104,6 +105,7 @@ describe('Celestial commerce core source policy module', () => {
     ).toEqual({
       search: {
         query: 'serum',
+        external_seed_strategy: 'unified_relevance',
       },
     });
 
