@@ -147,7 +147,131 @@ function resolveInvokeSearchContractBridgeMeta({
   });
 }
 
+function applyBeautySearchMetadataAuthority({
+  enriched,
+  semanticOwnerDecision = null,
+  defaultSelectionOwner = 'shopping_agent_beauty_mainline',
+  fpmGateTrace = [],
+  fpmSkippedGatesDueToBudget = [],
+  fpmLatencyGuardApplied = false,
+  lowConfidenceFlag = false,
+  normalizedLowConfidenceReasons = [],
+  semanticContractMeta = null,
+  semanticRewriteResultMeta = null,
+  semanticOwnerQueryAttempts = [],
+  semanticOwnerExternalRescueQueriesAttempted = [],
+  semanticOwnerCacheSourceIsolated = false,
+  semanticOwnerCacheSourceIsolationReason = null,
+  semanticOwnerLastResortCacheApplied = false,
+  semanticOwnerLastResortCacheQuery = null,
+  searchStageLedger = null,
+  findProductsExpansionMeta = null,
+  primarySearchTimeoutMs = null,
+  gatewayTotalBudgetMs = null,
+  blockingGateInfo = null,
+  querySource = '',
+} = {}) {
+  if (!isPlainObject(enriched)) return enriched;
+
+  const enrichedMetaForGates =
+    isPlainObject(enriched.metadata) ? enriched.metadata : {};
+  const effectiveSemanticOwner =
+    semanticOwnerDecision ||
+    String(enrichedMetaForGates.semantic_owner || '').trim() ||
+    (
+      String(enrichedMetaForGates.decision_owner || '').trim() === defaultSelectionOwner
+        ? defaultSelectionOwner
+        : null
+    );
+  const existingGateTrace = Array.isArray(enrichedMetaForGates.gate_trace)
+    ? enrichedMetaForGates.gate_trace
+    : [];
+  const combinedGateTrace = existingGateTrace.concat(fpmGateTrace);
+  const dedupSkippedGates = Array.from(
+    new Set(
+      fpmSkippedGatesDueToBudget
+        .map((gateId) => String(gateId || '').trim())
+        .filter(Boolean),
+    ),
+  );
+
+  return {
+    ...enriched,
+    metadata: {
+      ...enrichedMetaForGates,
+      gate_trace: combinedGateTrace,
+      gate_summary: {
+        applied_count: combinedGateTrace.filter((item) => item && item.applied).length,
+        blocked_count: combinedGateTrace.filter(
+          (item) =>
+            item &&
+            (String(item.decision || '') === 'strict_empty' ||
+              String(item.decision || '') === 'clarify_only_early'),
+        ).length,
+        total_cost_ms_estimate: combinedGateTrace.reduce(
+          (sum, item) => sum + Math.max(0, Number(item?.cost_ms_estimate || 0) || 0),
+          0,
+        ),
+      },
+      latency_guard_applied: Boolean(fpmLatencyGuardApplied),
+      skipped_gates_due_to_budget: dedupSkippedGates,
+      low_confidence: lowConfidenceFlag,
+      low_confidence_reasons: normalizedLowConfidenceReasons,
+      semantic_contract: semanticContractMeta,
+      semantic_rewrite_result: semanticRewriteResultMeta,
+      semantic_owner_query_attempts: semanticOwnerQueryAttempts,
+      ...(semanticOwnerExternalRescueQueriesAttempted.length > 0
+        ? {
+            semantic_owner_external_rescue_queries_attempted:
+              semanticOwnerExternalRescueQueriesAttempted,
+          }
+        : {}),
+      ...(semanticOwnerCacheSourceIsolated
+        ? {
+            semantic_owner_cache_source_isolated: true,
+            semantic_owner_cache_source_isolation_reason:
+              semanticOwnerCacheSourceIsolationReason || 'pure_cache_invalid_hit',
+          }
+        : {}),
+      ...(semanticOwnerLastResortCacheApplied
+        ? {
+            semantic_owner_last_resort_cache_applied: true,
+            semantic_owner_last_resort_cache_query:
+              semanticOwnerLastResortCacheQuery || null,
+          }
+        : {}),
+      semantic_owner: effectiveSemanticOwner,
+      decision_owner:
+        effectiveSemanticOwner ||
+        enrichedMetaForGates.decision_owner ||
+        querySource,
+      search_stage_ledger: searchStageLedger,
+      effective_timeout_ms: {
+        semantic_rewrite_timeout_ms:
+          Number.isFinite(Number(findProductsExpansionMeta?.semantic_rewrite_timeout_ms)) &&
+          Number(findProductsExpansionMeta?.semantic_rewrite_timeout_ms) >= 0
+            ? Number(findProductsExpansionMeta.semantic_rewrite_timeout_ms)
+            : null,
+        primary_search_timeout_ms: Number(primarySearchTimeoutMs || 0) || null,
+        gateway_total_budget_ms: Number(gatewayTotalBudgetMs || 0) || null,
+      },
+      ...(blockingGateInfo ? blockingGateInfo : {}),
+      ...(blockingGateInfo
+        ? {
+            search_decision: {
+              ...(isPlainObject(enrichedMetaForGates.search_decision)
+                ? enrichedMetaForGates.search_decision
+                : {}),
+              ...blockingGateInfo,
+            },
+          }
+        : {}),
+    },
+  };
+}
+
 module.exports = {
   applyBeautySearchAuthority,
+  applyBeautySearchMetadataAuthority,
   resolveInvokeSearchContractBridgeMeta,
 };
