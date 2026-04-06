@@ -58,6 +58,9 @@ const OVERVIEW_HIGHLIGHT_LABELS = [
   'What Else You Need To Know',
   'Free From',
 ];
+const INLINE_SENTENCE_BREAK_LABELS = Array.from(
+  new Set([...OVERVIEW_FACT_LABELS, ...OVERVIEW_HIGHLIGHT_LABELS]),
+).sort((left, right) => right.length - left.length);
 const INGREDIENT_DISCLAIMER_PATTERNS = [
   /\bplease be aware that ingredient lists?[\s\S]*$/i,
   /\bplease note that ingredient lists?[\s\S]*$/i,
@@ -775,7 +778,15 @@ function sanitizeNarrativeText(value) {
   const prefixStripped = prefix.consumed >= 2 ? prefix.remaining : original;
   const suffix = consumeKnownDetailLabelsFromEdge(prefixStripped, 'end');
   const cleaned = suffix.consumed >= 2 ? suffix.remaining : prefixStripped;
+  if (!cleaned && (prefix.consumed >= 2 || suffix.consumed >= 2)) return '';
   return cleaned || original;
+}
+
+function isKnownDetailLabelRun(value) {
+  const normalized = normalizeTextValue(value);
+  if (!normalized) return false;
+  const consumed = consumeKnownDetailLabelsFromEdge(normalized, 'start');
+  return consumed.consumed > 0 && !normalizeTextValue(consumed.remaining);
 }
 
 function normalizeRichTextPreserveBreaks(value) {
@@ -793,9 +804,38 @@ function normalizeRichTextPreserveBreaks(value) {
     .trim();
 }
 
+function insertStructuredSentenceBreaks(value) {
+  let text = normalizeRichTextPreserveBreaks(value);
+  if (!text) return '';
+
+  for (const label of INLINE_SENTENCE_BREAK_LABELS) {
+    const escaped = escapeRegExp(label);
+    text = text.replace(
+      new RegExp(`([.!?])\\s+(${escaped})(?=\\s+[A-Z0-9])`, 'gi'),
+      '$1\n\n$2',
+    );
+  }
+
+  return text.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function splitLeadingStructuredLabelBlock(value) {
+  const normalized = normalizeTextValue(value);
+  if (!normalized) return [];
+  const phrases = DETAIL_LABEL_PHRASES.slice().sort((left, right) => right.length - left.length);
+  for (const phrase of phrases) {
+    const escaped = escapeRegExp(phrase);
+    const matched = normalized.match(new RegExp(`^(${escaped})[:\\s-]+(.+)$`, 'i'));
+    if (!matched?.[1] || !matched?.[2]) continue;
+    return [normalizeTextValue(matched[1]), normalizeTextValue(matched[2])].filter(Boolean);
+  }
+  return [normalized];
+}
+
 function splitStructuredBlocks(value) {
-  return normalizeRichTextPreserveBreaks(value)
+  return insertStructuredSentenceBreaks(value)
     .split(/\n{2,}/)
+    .flatMap((item) => splitLeadingStructuredLabelBlock(item))
     .map((item) => item.trim())
     .filter(Boolean);
 }
@@ -833,9 +873,20 @@ function uniqueOverviewFacts(items) {
 }
 
 function splitOverviewHighlightItems(value, headingLabel = '') {
-  const normalized = normalizeRichTextPreserveBreaks(value);
-  if (!normalized) return [];
   const normalizedHeading = normalizeComparisonKey(headingLabel);
+  let normalized = normalizeRichTextPreserveBreaks(value);
+  if (!normalized) return [];
+
+  for (const label of OVERVIEW_HIGHLIGHT_LABELS) {
+    const labelKey = normalizeComparisonKey(label);
+    if (!labelKey || labelKey === normalizedHeading) continue;
+    const escaped = escapeRegExp(label);
+    normalized = normalized.replace(
+      new RegExp(`\\s+(${escaped})(?=\\s+[A-Z0-9])`, 'gi'),
+      '\n$1 ',
+    );
+  }
+
   const rawParts = normalized
     .replace(/\n[•●▪*]\s+/g, '\n- ')
     .replace(/(?:^|\s)[•●▪*]\s+/g, '\n- ')
@@ -848,11 +899,16 @@ function splitOverviewHighlightItems(value, headingLabel = '') {
   for (const part of rawParts.length ? rawParts : [normalized]) {
     const cleaned = cleanStructuredToken(part);
     if (!cleaned) continue;
-    const formatted =
+    if (isKnownDetailLabelRun(cleaned)) continue;
+    let formatted =
+      /^free from\b/i.test(cleaned)
+        ? cleaned.replace(/^free from\b/i, 'Free from')
+        : cleaned;
+    formatted =
       normalizedHeading === normalizeComparisonKey('Free From') &&
       !/^free from\b/i.test(cleaned)
         ? `Free from ${cleaned}`
-        : cleaned;
+        : formatted;
     const key = normalizeComparisonKey(formatted);
     if (!key || seen.has(key)) continue;
     seen.add(key);

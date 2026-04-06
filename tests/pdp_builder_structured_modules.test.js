@@ -545,4 +545,39 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
       'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tfb_sku_TC7Y01_2000x2000_0_61efefcf-0a72-4b47-9615-c812efa685db.png',
     ]);
   });
+
+  test('strips inline beauty template labels out of narrative text and preserves highlight items', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_tf_inline_labels_1',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Soft Matte Complexion Stick',
+        brand: 'Tom Ford Beauty',
+        category: 'Concealer',
+        pdp_description_raw:
+          'The formula merges hydrating skincare ingredients with imperfection-blurring makeup technology. Benefits Soft-focus powders offer a natural, soft-matte finish. Free From Parabens, Sulfates',
+        ingredients_inci: {
+          raw_text: 'Ingredients: Water, Glycerin, Silica',
+          source_origin: 'retail_pdp',
+          source_quality_status: 'captured',
+        },
+      },
+      entryPoint: 'agent',
+    });
+
+    const factsSections =
+      payload.modules.find((module) => module.type === 'product_facts')?.data?.sections || [];
+
+    expect(payload.product.description).toBe(
+      'The formula merges hydrating skincare ingredients with imperfection-blurring makeup technology.',
+    );
+    expect(factsSections[0]?.heading).toBe('Overview');
+    expect(factsSections[0]?.content).toContain('Benefits');
+    expect(factsSections[0]?.content).toContain(
+      'Soft-focus powders offer a natural, soft-matte finish.',
+    );
+    expect(factsSections[0]?.content).toContain('Free from Parabens, Sulfates');
+    expect(payload.modules.find((module) => module.type === 'product_details')).toBeFalsy();
+  });
 });
