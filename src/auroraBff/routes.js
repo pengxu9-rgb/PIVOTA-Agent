@@ -17838,24 +17838,36 @@ async function handoffRecoToBeautyMainlineSearch({
       : semanticTargetStepFamily
         ? 'strong_goal_family'
         : '';
+  const shouldUseExternalSeedSupplement = Boolean(semanticContract);
+  const shouldUseSunscreenRecallBudget = semanticTargetStepFamily === 'sunscreen';
   const handoffTransportPolicy = buildRecoRecallTransportPolicy({
     mode:
-      String(semanticContract?.planner_mode || '').trim().toLowerCase() === 'step_aware'
+      shouldUseSunscreenRecallBudget
+        ? 'default'
+        : String(semanticContract?.planner_mode || '').trim().toLowerCase() === 'step_aware'
         ? 'step_aware'
         : 'framework_first_turn',
   });
+  const handoffSearchTimeoutMs = shouldUseSunscreenRecallBudget
+    ? Math.max(effectiveTimeoutMs, 10000)
+    : effectiveTimeoutMs;
+  const handoffSearchMinTimeoutMs = shouldUseSunscreenRecallBudget
+    ? Math.max(effectiveMinTimeoutMs, 5000)
+    : effectiveMinTimeoutMs;
   const runSearch = typeof searchFn === 'function' ? searchFn : searchPivotaBackendProducts;
   const searchResult = await runSearch({
     query,
     limit: 6,
     logger,
-    timeoutMs: effectiveTimeoutMs,
-    minTimeoutMs: effectiveMinTimeoutMs,
+    timeoutMs: handoffSearchTimeoutMs,
+    minTimeoutMs: handoffSearchMinTimeoutMs,
     mode: 'main_path',
     searchAllMerchants: true,
     catalogSurface: 'beauty',
     deadlineMs: Number.isFinite(Number(deadlineAtMs)) ? Number(deadlineAtMs) : 0,
     searchSourceOverride: 'aurora-bff',
+    allowExternalSeed: shouldUseExternalSeedSupplement,
+    externalSeedStrategy: shouldUseExternalSeedSupplement ? 'unified_relevance' : '',
     fastMode: undefined,
     transportPolicy: handoffTransportPolicy,
     queryStepStrength,
@@ -17885,11 +17897,11 @@ async function handoffRecoToBeautyMainlineSearch({
           reason: pickFirstTrimmed(searchResult?.reason) || null,
           decision_owner: pickFirstTrimmed(searchResult?.decision_owner) || null,
           query_source: pickFirstTrimmed(searchResult?.query_source) || null,
-          timeout_ms: effectiveTimeoutMs,
+          timeout_ms: handoffSearchTimeoutMs,
         }]
       : [],
     applied_query: recommendations.length > 0 ? query : null,
-    timeout_ms: effectiveTimeoutMs,
+    timeout_ms: handoffSearchTimeoutMs,
   };
 }
 

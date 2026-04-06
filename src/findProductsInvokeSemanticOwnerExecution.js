@@ -1,3 +1,128 @@
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function firstQueryValue(value) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function parseBooleanQueryValue(value) {
+  const raw = firstQueryValue(value);
+  if (raw == null) return undefined;
+  const normalized = String(raw).trim().toLowerCase();
+  if (!normalized) return undefined;
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  return undefined;
+}
+
+function buildSemanticOwnerProductKey(product) {
+  if (!isPlainObject(product)) return '';
+  const merchantId = String(product.merchant_id || product.merchantId || '').trim().toLowerCase();
+  const productId = String(product.product_id || product.productId || product.id || '').trim().toLowerCase();
+  if (merchantId && productId) return `${merchantId}::${productId}`;
+  if (productId) return productId;
+  const url = String(
+    product.canonical_url ||
+      product.canonicalUrl ||
+      product.destination_url ||
+      product.destinationUrl ||
+      product.url ||
+      '',
+  ).trim().toLowerCase();
+  if (url) return url;
+  const title = String(product.title || product.display_name || product.displayName || product.name || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+  return title ? `${merchantId || 'unknown'}::${title}` : '';
+}
+
+function isSemanticOwnerExternalSeedProduct(product) {
+  if (!isPlainObject(product)) return false;
+  const merchantId = String(product.merchant_id || product.merchantId || '').trim().toLowerCase();
+  const source = String(product.source || product.query_source || '').trim().toLowerCase();
+  return merchantId === 'external_seed' || source === 'external_seed' || source.includes('external_seed');
+}
+
+function mergeSemanticOwnerProductPools(primaryProducts = [], externalProducts = [], {
+  preferExternalFirst = false,
+  limit = 20,
+} = {}) {
+  const out = [];
+  const seen = new Set();
+  const orderedGroups = preferExternalFirst
+    ? [externalProducts, primaryProducts]
+    : [primaryProducts, externalProducts];
+  const cap = Math.max(1, Number(limit || 20) || 20);
+  for (const group of orderedGroups) {
+    for (const product of Array.isArray(group) ? group : []) {
+      if (!isPlainObject(product)) continue;
+      const key = buildSemanticOwnerProductKey(product);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(product);
+      if (out.length >= cap) return out;
+    }
+  }
+  return out;
+}
+
+function getSemanticOwnerValidProductCount(adoption = null, products = []) {
+  const validCount = Array.isArray(adoption?.hitDecision?.valid_products)
+    ? adoption.hitDecision.valid_products.length
+    : null;
+  if (Number.isFinite(Number(validCount))) return Math.max(0, Number(validCount) || 0);
+  const returnedCount = Number(adoption?.hitDecision?.products_returned_count);
+  if (Number.isFinite(returnedCount)) return Math.max(0, returnedCount);
+  return Array.isArray(products) ? products.length : 0;
+}
+
+function shouldAttemptSemanticOwnerCoverageSupplement({
+  operation = '',
+  semanticOwnerControlled = false,
+  semanticOwnerAdoptedByValidHit = false,
+  currentAdoption = null,
+  upstreamData = null,
+  queryParams = null,
+  semanticOwnerTargetStepFamily = '',
+} = {}) {
+  if (operation !== 'find_products_multi') return false;
+  if (!semanticOwnerControlled || !semanticOwnerAdoptedByValidHit) return false;
+  if (parseBooleanQueryValue(queryParams?.allow_external_seed ?? queryParams?.allowExternalSeed) !== true) {
+    return false;
+  }
+  const targetStepFamily = String(semanticOwnerTargetStepFamily || '').trim().toLowerCase();
+  if (!['sunscreen', 'treatment', 'serum'].includes(targetStepFamily)) return false;
+  const products = Array.isArray(upstreamData?.products) ? upstreamData.products : [];
+  if (products.length <= 0 || products.length > 1) return false;
+  if (products.some((product) => isSemanticOwnerExternalSeedProduct(product))) return false;
+  if (currentAdoption?.hitDecision?.hit_quality !== 'valid_hit') return false;
+  if (currentAdoption?.last_resort_cache_candidate === true) return false;
+  return getSemanticOwnerValidProductCount(currentAdoption, products) <= 1;
+}
+
+function shouldPreferSemanticOwnerExternalCoverage({
+  primaryProducts = [],
+  externalProducts = [],
+  externalAdoption = null,
+  externalCoverageTrusted = false,
+} = {}) {
+  const primaryCount = Array.isArray(primaryProducts) ? primaryProducts.length : 0;
+  const externalValidCount = getSemanticOwnerValidProductCount(externalAdoption, externalProducts);
+  const externalCount = Array.isArray(externalProducts) ? externalProducts.length : 0;
+  const externalHitQuality = String(externalAdoption?.hitDecision?.hit_quality || '').trim();
+  return (
+    primaryCount <= 1 &&
+    (
+      externalAdoption?.adopt === true ||
+      externalCoverageTrusted ||
+      externalHitQuality !== 'invalid_hit'
+    ) &&
+    (externalValidCount >= 2 || (externalCoverageTrusted && externalCount >= 2))
+  );
+}
+
 function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
   const {
     FPM_GATE_SIMPLIFY_V1,
@@ -289,6 +414,254 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
             delete axiosConfig.data;
           }
           break;
+        }
+      }
+    }
+
+    if (
+      shouldAttemptSemanticOwnerCoverageSupplement({
+        operation,
+        semanticOwnerControlled,
+        semanticOwnerAdoptedByValidHit,
+        currentAdoption: evaluateSemanticOwnerBeautyAdoption({
+          upstreamData,
+          queryText:
+            String(queryParams?.query || '').trim() ||
+            semanticOwnerQueryPack[0] ||
+            rawUserQuery ||
+            '',
+          queryParamsValue: queryParams,
+          requestBodyValue: requestBody,
+        }),
+        upstreamData,
+        queryParams,
+        semanticOwnerTargetStepFamily,
+      }) &&
+      semanticOwnerQueryPack.length > 0
+    ) {
+      const currentQueryText =
+        String(queryParams?.query || '').trim() ||
+        semanticOwnerQueryPack.find((query) => String(query || '').trim()) ||
+        rawUserQuery ||
+        '';
+      const semanticOwnerCoverageSupplementQueries =
+        buildSemanticOwnerExternalRescueQueryPack({
+          ignoredAttempt: null,
+          queryAttempts: semanticOwnerQueryAttempts,
+          fallbackQuery: String(rawUserQuery || currentQueryText || '').trim(),
+        });
+      if (semanticOwnerCoverageSupplementQueries.length > 0) {
+        semanticOwnerExternalRescueQueriesAttempted = Array.from(
+          new Set([
+            ...semanticOwnerExternalRescueQueriesAttempted,
+            ...semanticOwnerCoverageSupplementQueries,
+          ]),
+        );
+        const coverageQueryParams = {
+          ...(queryParams && typeof queryParams === 'object' && !Array.isArray(queryParams)
+            ? queryParams
+            : {}),
+          allow_external_seed: true,
+          allow_stale_cache: false,
+          external_seed_strategy: 'unified_relevance',
+          ...(semanticOwnerTargetStepFamily
+            ? { target_step_family: semanticOwnerTargetStepFamily }
+            : {}),
+          ...(semanticOwnerSemanticFamily
+            ? { semantic_family: semanticOwnerSemanticFamily }
+            : {}),
+          ...(semanticOwnerQueryStepStrength
+            ? { query_step_strength: semanticOwnerQueryStepStrength }
+            : {}),
+        };
+        const coveragePage = Math.max(
+          1,
+          Number(queryParams?.page || effectivePayload?.search?.page || 1) || 1,
+        );
+        const coverageLimit = Math.min(
+          Math.max(Number(queryParams?.limit || queryParams?.page_size || 20) || 20, 1),
+          SEARCH_LIMIT_MAX,
+        );
+        for (const semanticOwnerCoverageSupplementQuery of semanticOwnerCoverageSupplementQueries) {
+          try {
+            const externalCoverageSupplement = await fetchExternalSeedSupplementFromBackend({
+              queryParams: {
+                ...coverageQueryParams,
+                query: semanticOwnerCoverageSupplementQuery,
+              },
+              checkoutToken,
+              neededCount: coverageLimit,
+              source: metadata?.source,
+            });
+            const coverageExternalProducts = Array.isArray(externalCoverageSupplement?.products)
+              ? externalCoverageSupplement.products
+              : [];
+            if (coverageExternalProducts.length <= 0) continue;
+            const externalCoverageTrusted =
+              externalCoverageSupplement?.metadata?.applied === true &&
+              coverageExternalProducts.length >= 2 &&
+              coverageExternalProducts.every((product) =>
+                isSemanticOwnerExternalSeedProduct(product),
+              );
+            const coverageQueryParamsApplied = {
+              ...coverageQueryParams,
+              query: semanticOwnerCoverageSupplementQuery,
+            };
+            const externalOnlyBody = normalizeAgentProductsListResponse(
+              {
+                status: 'success',
+                success: true,
+                products: coverageExternalProducts,
+                total: coverageExternalProducts.length,
+                page: coveragePage,
+                page_size: coverageExternalProducts.length,
+                reply: null,
+                metadata: {
+                  query_source: 'agent_products_search',
+                  source_breakdown: {
+                    internal_count: 0,
+                    external_seed_count: coverageExternalProducts.length,
+                    stale_cache_used: false,
+                    strategy_applied: 'semantic_owner_external_coverage_supplement',
+                  },
+                },
+              },
+              {
+                limit: coverageLimit,
+                offset: 0,
+              },
+            );
+            const externalOnlyUpstreamData = normalizeUpstreamData({
+              responseBody: externalOnlyBody,
+              queryParamsOverride: coverageQueryParamsApplied,
+              requestBodyOverride: requestBody,
+            });
+            const externalCoverageAdoption = evaluateSemanticOwnerBeautyAdoption({
+              upstreamData: externalOnlyUpstreamData,
+              queryText: semanticOwnerCoverageSupplementQuery,
+              queryParamsValue: coverageQueryParamsApplied,
+              requestBodyValue: requestBody,
+            });
+            const externalCoverageHitQuality = String(
+              externalCoverageAdoption?.hitDecision?.hit_quality || '',
+            ).trim();
+            const externalCoverageAccepted =
+              externalCoverageAdoption.adopt === true ||
+              (
+                externalCoverageTrusted &&
+                externalCoverageHitQuality !== 'invalid_hit'
+              ) ||
+              (
+                externalCoverageTrusted &&
+                externalCoverageAdoption?.hitDecision?.invalid_hit_reason ===
+                  'invalid_hit_no_same_family_candidates'
+              );
+            if (!externalCoverageAccepted) continue;
+            const primaryProducts = Array.isArray(upstreamData?.products)
+              ? upstreamData.products
+              : [];
+            const preferExternalFirst = shouldPreferSemanticOwnerExternalCoverage({
+              primaryProducts,
+              externalProducts: coverageExternalProducts,
+              externalAdoption: externalCoverageAdoption,
+              externalCoverageTrusted,
+            });
+            const mergedProducts = mergeSemanticOwnerProductPools(
+              preferExternalFirst ? [] : primaryProducts,
+              coverageExternalProducts,
+              {
+                preferExternalFirst,
+                limit: coverageLimit,
+              },
+            );
+            const existingMetadata =
+              upstreamData?.metadata &&
+              typeof upstreamData.metadata === 'object' &&
+              !Array.isArray(upstreamData.metadata)
+                ? upstreamData.metadata
+                : {};
+            const coverageBody = normalizeAgentProductsListResponse(
+              {
+                ...(upstreamData && typeof upstreamData === 'object' && !Array.isArray(upstreamData)
+                  ? upstreamData
+                  : {}),
+                status: 'success',
+                success: true,
+                products: mergedProducts,
+                total: Math.max(
+                  Number(upstreamData?.total || 0) || 0,
+                  mergedProducts.length,
+                ),
+                page: coveragePage,
+                page_size: mergedProducts.length,
+                reply: null,
+                metadata: {
+                  ...existingMetadata,
+                  query_source: 'agent_products_search_external_seed_coverage_supplemented',
+                  semantic_owner_external_coverage_supplement_applied: true,
+                  semantic_owner_external_coverage_supplement_query:
+                    semanticOwnerCoverageSupplementQuery,
+                  semantic_owner_external_coverage_supplement_queries_attempted:
+                    semanticOwnerCoverageSupplementQueries,
+                  semantic_owner_external_coverage_supplement_mode:
+                    preferExternalFirst ? 'external_replaced_sparse_internal' : 'merged',
+                  external_seed_rows_fetched: Math.max(
+                    coverageExternalProducts.length,
+                    Number(externalCoverageSupplement?.metadata?.external_seed_rows_raw || 0) || 0,
+                  ),
+                  external_seed_rows_built: coverageExternalProducts.length,
+                  external_seed_returned_count: coverageExternalProducts.length,
+                  source_breakdown: {
+                    ...(existingMetadata.source_breakdown &&
+                    typeof existingMetadata.source_breakdown === 'object' &&
+                    !Array.isArray(existingMetadata.source_breakdown)
+                      ? existingMetadata.source_breakdown
+                      : {}),
+                    internal_count: preferExternalFirst ? 0 : primaryProducts.length,
+                    external_seed_count: coverageExternalProducts.length,
+                    stale_cache_used: false,
+                    strategy_applied: 'semantic_owner_external_coverage_supplement',
+                  },
+                },
+              },
+              {
+                limit: coverageLimit,
+                offset: 0,
+              },
+            );
+            response = { status: 200, data: coverageBody };
+            upstreamData = normalizeUpstreamData({
+              responseBody: coverageBody,
+              queryParamsOverride: {
+                ...queryParams,
+                allow_external_seed: true,
+                external_seed_strategy: 'unified_relevance',
+              },
+              requestBodyOverride: requestBody,
+            });
+            const adoptedAttempt = [...semanticOwnerQueryAttempts]
+              .reverse()
+              .find((attempt) => attempt && attempt.adopted === true);
+            if (adoptedAttempt) {
+              adoptedAttempt.coverage_supplemented = true;
+              adoptedAttempt.external_seed_supplement_count = coverageExternalProducts.length;
+              adoptedAttempt.coverage_supplement_query = semanticOwnerCoverageSupplementQuery;
+              adoptedAttempt.adoption_mode = preferExternalFirst
+                ? 'external_seed_coverage_replaced_sparse_internal'
+                : 'external_seed_coverage_supplemented';
+            }
+            break;
+          } catch (semanticOwnerCoverageSupplementErr) {
+            logger?.warn(
+              {
+                err:
+                  semanticOwnerCoverageSupplementErr?.message ||
+                  String(semanticOwnerCoverageSupplementErr),
+                query: semanticOwnerCoverageSupplementQuery,
+              },
+              'semantic-owner external coverage supplement failed after sparse valid hit',
+            );
+          }
         }
       }
     }

@@ -22,8 +22,6 @@ function createFindProductsSearchSemanticsRuntime(deps = {}) {
         : null;
     if (!contract || !rewrite) return false;
     if (!isBeautyDiscoverySemanticContract(contract)) return false;
-    const normalizedQueryClass = String(queryClass || '').trim().toLowerCase();
-    if (['lookup', 'attribute'].includes(normalizedQueryClass)) return false;
     return rewrite.applied === true && String(rewrite.owner || '').trim() === beautyDiscoveryMainlineOwner;
   }
 

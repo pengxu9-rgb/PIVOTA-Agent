@@ -101,10 +101,13 @@ test('handoffRecoToBeautyMainlineSearch passes sunscreen-aligned contract to bac
     assert.equal(captured?.queryStepStrength, 'exact_step');
     assert.equal(captured?.targetStepFamily, 'sunscreen');
     assert.equal(captured?.semanticFamily, 'sunscreen');
-    assert.equal(captured?.transportPolicy?.mode, 'step_aware');
-    assert.equal(captured?.transportPolicy?.prefer_self_proxy_first, true);
-    assert.equal(captured?.transportPolicy?.max_base_urls, 1);
-    assert.equal(captured?.transportPolicy?.max_paths, 1);
+    assert.equal(captured?.allowExternalSeed, true);
+    assert.equal(captured?.externalSeedStrategy, 'unified_relevance');
+    assert.equal(captured?.transportPolicy?.mode, 'default');
+    assert.equal(captured?.transportPolicy?.prefer_self_proxy_first, false);
+    assert.equal(captured?.transportPolicy?.max_base_urls, 0);
+    assert.equal(captured?.transportPolicy?.max_paths, 0);
+    assert.equal(captured?.timeoutMs, 10000);
     assert.equal(captured?.semanticContract?.planner_mode, 'step_aware');
     assert.equal(captured?.semanticContract?.primary_role_id, 'daily_sunscreen');
     assert.deepEqual(captured?.semanticContract?.ingredient_hypotheses, ['UV filters']);
@@ -173,6 +176,8 @@ test('handoffRecoToBeautyMainlineSearch forces self-proxy-first transport for fr
     assert.equal(captured?.transportPolicy?.max_base_urls, 1);
     assert.equal(captured?.transportPolicy?.max_paths, 1);
     assert.equal(captured?.searchSourceOverride, 'aurora-bff');
+    assert.equal(captured?.allowExternalSeed, true);
+    assert.equal(captured?.externalSeedStrategy, 'unified_relevance');
   } finally {
     delete require.cache[moduleId];
   }
