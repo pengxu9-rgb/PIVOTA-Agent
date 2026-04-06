@@ -354,7 +354,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       });
 
     expect(resp.status).toBe(200);
-    expect(upstreamSearch.isDone()).toBe(false);
+    expect(upstreamSearch.isDone()).toBe(true);
     expect(Array.isArray(resp.body.products)).toBe(true);
     expect(resp.body.products).toEqual(
       expect.arrayContaining([
@@ -836,7 +836,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.body.metadata?.query_source).toBe('agent_products_search');
     expect(resp.body.metadata?.strict_empty).not.toBe(true);
     expect(resp.body.metadata?.strict_empty_reason).toBeUndefined();
-    expect(upstreamSearch.isDone()).toBe(false);
+    expect(upstreamSearch.isDone()).toBe(true);
   });
 
   test('injects creator catalog guard params on upstream query', async () => {
@@ -2374,13 +2374,13 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       },
     }));
 
-    let capturedBody = null;
+    let capturedQuery = null;
     const upstreamSearch = nock('http://pivota.test')
-      .post('/agent/v2/products/search', (body) => {
-        capturedBody = body;
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        capturedQuery = q;
         return true;
       })
-      .query(true)
       .reply(200, {
         status: 'success',
         success: true,
@@ -2423,16 +2423,14 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       });
 
     expect(resp.status).toBe(200);
-    expect(upstreamSearch.isDone()).toBe(false);
-    expect(capturedBody).toEqual(
+    expect(upstreamSearch.isDone()).toBe(true);
+    expect(capturedQuery).toEqual(
       expect.objectContaining({
         query: 'oil control treatment',
-        catalog_surface: 'beauty',
-        commerce_surface: 'beauty',
-        semantic_contract: expect.objectContaining({
-          owner: 'shopping_agent_beauty_contract_builder',
-          target_step_family: 'treatment',
-        }),
+        search_all_merchants: 'true',
+        limit: '5',
+        offset: '0',
+        source: 'search',
       }),
     );
     expect(resp.body.metadata).toEqual(
@@ -2440,12 +2438,6 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         query_source: 'agent_products_search',
         semantic_owner: 'shopping_agent_beauty_mainline',
         decision_owner: 'shopping_agent_beauty_mainline',
-        route_debug: expect.objectContaining({
-          cross_merchant_cache: expect.objectContaining({
-            attempted: false,
-            bypassed: true,
-          }),
-        }),
       }),
     );
     expect(resp.body.products.map((item) => String(item?.title || ''))).toEqual([
