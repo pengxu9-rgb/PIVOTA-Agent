@@ -225,6 +225,11 @@ function applyBeautySearchContractAuthority({
         selectionReasonCodes: [mergedSourceBreakdown?.strategy_applied, querySource],
       })
     : null;
+  const shouldClearReplyForGroundedMainline =
+    shouldStampBeautyMainlineContract &&
+    finalSelection &&
+    String(finalSelection.mainline_status || '').trim() === 'grounded_success' &&
+    Number(finalSelection.selected_products_count || 0) > 0;
 
   if (
     searchStageLedger &&
@@ -237,6 +242,7 @@ function applyBeautySearchContractAuthority({
   return {
     enriched: {
       ...enriched,
+      ...(shouldClearReplyForGroundedMainline ? { reply: null } : {}),
       metadata: {
         ...(existingMeta && isPlainObject(existingMeta) ? existingMeta : {}),
         ...(shouldStampBeautyMainlineContract
@@ -247,6 +253,8 @@ function applyBeautySearchContractAuthority({
           : {}),
         ...(resolvedContractForMetadata
           ? {
+              attempted_contract: attemptedContractForMetadata,
+              resolved_contract: resolvedContractForMetadata,
               contract_bridge: {
                 ...normalizedExistingContractBridge,
                 attempted_contract: attemptedContractForMetadata,
