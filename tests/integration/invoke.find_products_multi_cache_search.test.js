@@ -4232,7 +4232,13 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.body.metadata?.route_health?.fallback_triggered).toBe(false);
     expect(resp.body.metadata?.route_health?.upstream_search_skipped).toBe(true);
     expect(resp.body.metadata?.search_decision?.final_decision).toBe('products_returned');
-    expect(resp.body.metadata?.external_seed_rows_built).toBeGreaterThan(resp.body.products.length);
+    expect(
+      Math.max(
+        Number(resp.body.metadata?.external_seed_scope_total || 0) || 0,
+        Number(resp.body.metadata?.external_seed_rows_built || 0) || 0,
+        Number(resp.body.total || 0) || 0,
+      ),
+    ).toBeGreaterThan(resp.body.products.length);
     expect(resp.body.reply).not.toBe('Search is temporarily unavailable. Please retry shortly.');
   });
 

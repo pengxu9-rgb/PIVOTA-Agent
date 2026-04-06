@@ -98,6 +98,33 @@ const {
   createLegacyChatRecoTargetingRuntime,
 } = require('./legacyChatRecoTargeting');
 const {
+  createLegacyChatRecoPostProcessingRuntime,
+} = require('./legacyChatRecoPostProcessing');
+const {
+  createLegacyChatRecoNormalizationRuntime,
+} = require('./legacyChatRecoNormalization');
+const {
+  createLegacyChatRecoFinalizeRuntime,
+} = require('./legacyChatRecoFinalize');
+const {
+  createLegacyRecoGenerationEngineRuntime,
+} = require('./legacyRecoGenerationEngine');
+const {
+  createDirectRecoGenerateHandlerRuntime,
+} = require('./directRecoGenerateHandler');
+const {
+  createRecoAlternativesRouteHandlerRuntime,
+} = require('./recoAlternativesRouteHandler');
+const {
+  handleLegacyChatRecoRequest,
+} = require('./legacyChatRecoHandler');
+const {
+  createLegacyChatRecoRouteEntryRuntime,
+} = require('./legacyChatRecoRouteEntry');
+const {
+  buildLegacyChatRecoRouteDeps,
+} = require('./legacyChatRecoDeps');
+const {
   buildExternalSeedSurfacingText,
   choosePreferredExternalSeedCandidate,
   computeExternalSeedSurfacingMatch,
@@ -1372,6 +1399,66 @@ const {
   normalizeRecoConfidencePolicy,
   normalizeRecoContextRankedTargets,
   normalizeRecoContextTargetIds,
+});
+const {
+  postProcessLegacyChatRecoResult,
+} = createLegacyChatRecoPostProcessingRuntime({
+  buildRecoMainlineContract,
+  extractRecoOutcomeContractArgsFromPayload,
+  applyIngredientRecoConstraint,
+  mergeFieldMissing,
+  restoreRecoRecommendationsFromVerifiedContextCandidates,
+  applyVerifiedCandidateRestoreToRecoPayload,
+  normalizeRecoProductsEmptyReason,
+  ingredient_query_normalize,
+  inferRecoSourceMode,
+  sanitizeRecoClientVisibleToken,
+  applyRecoWarningVisibilityContract,
+  isTransientRecoUpstreamFailureCode,
+  recordAuroraSkinFlowMetric,
+});
+const {
+  normalizeLegacyChatRecoPayload,
+} = createLegacyChatRecoNormalizationRuntime({
+  stripInternalRefsDeep,
+  buildRecoLlmTraceRef,
+  extractRecoOutcomeContractArgsFromPayload,
+  buildRecoMainlineContract,
+  normalizeRecoGroundingStatus,
+  attachRecoContractMeta,
+  restorePlanOnlyRecommendations,
+  applyRecoContentSpineToPayload,
+  shouldApplyRecoFinalSelectionContract,
+  buildRecoFinalSelectionContract,
+  applyRecoFinalSelectionContractToPayload,
+  applyRecoAssistantSelectionSignature,
+  extractRecoContextProductCandidatesFromRecommendations,
+  mergeIngredientRecoContextValue,
+  normalizeRecoCatalogProduct,
+  joinBrandAndName,
+  BEAUTY_DISCOVERY_MAINLINE_OWNER,
+  RECO_MAIN_PROMPT_TEMPLATE_ID,
+});
+const {
+  finalizeLegacyChatRecoEnvelope,
+} = createLegacyChatRecoFinalizeRuntime({
+  recordAuroraSkinFlowMetric,
+  stateChangeAllowed,
+  buildRouteAwareAssistantText,
+  humanizeRecoProductType,
+  shouldSurfaceRecoWarnSafetyText,
+  maybeRewriteRecoAssistantTextWithLlm,
+  extractRecoFinalSelectionContract,
+  assistantTextMatchesRecoSelectionContract,
+  buildLegacyChatRecoEnvelope,
+});
+const {
+  maybeHandleLegacyChatRecoRouteEntry,
+} = createLegacyChatRecoRouteEntryRuntime({
+  isBeautyOwnedChatRecoRequest,
+  buildBeautyMainlineHandoffFallbackEnvelope,
+  shouldEnterLegacyProductRecommendations,
+  handleLegacyChatRecoRequest,
 });
 const RECO_CATALOG_MAIN_PATH_SEARCH_SOURCE = (() => {
   const raw = String(process.env.AURORA_BFF_RECO_CATALOG_MAIN_PATH_SEARCH_SOURCE || 'shopping-agent')
@@ -61624,1601 +61711,101 @@ async function runRecoLlmPrimary({
   };
 }
 
-async function generateProductRecommendations({
-  ctx,
-  profile,
-  recentLogs,
-  message,
-  focus = '',
-  ingredientContext,
-  analysisContextSnapshot = null,
-  requestOverride = null,
-  includeAlternatives,
-  debug,
-  logger,
-  recoTriggerSource = null,
-  recomputeFromProfileUpdate = false,
-  budgetMs = null,
-  entryType = 'chat',
-  catalogExternalSeedStrategy = '',
-}) {
-  const profileSummary = summarizeProfileForContext(profile);
-  const normalizedIngredientContext = normalizeIngredientRecoContextValue(ingredientContext);
-  const analysisSummary =
-    profile && profile.lastAnalysis ? profile.lastAnalysis : null;
-  const analysisSummaryAt = profile && profile.lastAnalysisAt ? profile.lastAnalysisAt : null;
-  const effectiveAnalysisContextSnapshot =
-    analysisContextSnapshot || buildAnalysisContextSnapshotForRoute({ profile, recentLogs });
-  const recommendationTaskContext = buildTaskAnalysisContextForPrefix({
-    task: 'recommendation',
-    snapshot: effectiveAnalysisContextSnapshot,
-    profile,
-    requestOverride,
-    recentLogs,
-  });
-  const analysisContextBlock = buildAnalysisContextPromptBlock({
-    taskLabel: 'recommendation',
-    taskContext: recommendationTaskContext,
-  });
-  const prefix = buildContextPrefix({
-    profile: profileSummary || null,
-    recentLogs: Array.isArray(recentLogs) ? recentLogs : [],
-    lang: ctx.lang,
-    state: ctx.state,
-    trigger_source: ctx.trigger_source,
-    action_id: 'chip.start.reco_products',
-    intent: 'reco_products',
-    ...(ingredientContext && typeof ingredientContext === 'object' ? { ingredient_context: ingredientContext } : {}),
-    ...(analysisSummary ? { analysis_summary: analysisSummary } : {}),
-    ...(analysisSummaryAt ? { analysis_summary_at: analysisSummaryAt } : {}),
-    ...(analysisContextBlock ? { skin_analysis_context: analysisContextBlock } : {}),
-  });
-  const userAsk =
-    String(message || '').trim() ||
-    (ctx.lang === 'CN' ? '给我推荐几款护肤产品（按我的肤况与目标）' : 'Recommend a few skincare products for my profile and goals.');
-  let targetContext = resolveRecommendationTargetContext({
-    explicitStep: pickFirstTrimmed(
-      normalizedIngredientContext && normalizedIngredientContext.target_step,
-      normalizedIngredientContext && normalizedIngredientContext.step,
-    ),
-    focus,
-    text: userAsk,
-    entryType,
-  });
-  let concernSemanticPlanTrace = null;
-  let concernSelectorRaceTrace = null;
-  let concernOpenWorldExpansionTrace = null;
-  let concernWinnerSource = 'deterministic';
-  let concernSupportRolesSurfaced = [];
-  let concernOpenWorldExpansionUsed = false;
-  let selectorRaceApplied = false;
-  let pdpEnrichmentApplied = false;
-  const mainlineStageTimingsMs = {};
-  let concernSemanticPlanBlockedReason = '';
-  let concernSemanticPlanBlockedFailureClass = '';
-  let concernSemanticPlanBlockedFailureOrigin = 'none';
-  let concernSemanticPlanBlockedTelemetryReason = '';
-  if (
-    targetContext
-    && Array.isArray(targetContext.framework_roles)
-    && targetContext.framework_roles.length > 0
-    && String(targetContext.intent_mode || '').trim() === 'generic_concern'
-  ) {
-    const plannerStartedAt = Date.now();
-    const concernPlanOut = await runConcernSemanticPlanner({
-      ctx,
-      logger,
-      requestText: userAsk,
-      focus,
-      profileSummary,
-      recommendationTaskContext,
-    });
-    mainlineStageTimingsMs.semantic_planner = Math.max(0, Date.now() - plannerStartedAt);
-    concernSemanticPlanTrace = concernPlanOut.trace || null;
-    targetContext = buildConcernTargetContextFromSemanticPlan(concernPlanOut.semanticPlan, {
-      text: userAsk,
-      focus,
-      entryType,
-    });
-    if (String(targetContext?.selection_owner_state || targetContext?.framework_owner_state || '').trim().toLowerCase() !== 'trusted') {
-      const plannerFailureClass = String(concernSemanticPlanTrace?.planner_failure_class || '').trim().toLowerCase();
-      concernSemanticPlanBlockedReason = 'planner_untrusted';
-      concernSemanticPlanBlockedFailureClass = 'planner_untrusted';
-      concernSemanticPlanBlockedFailureOrigin =
-        plannerFailureClass === 'timeout' ? 'upstream_dependency' : 'internal_contract';
-      concernSemanticPlanBlockedTelemetryReason =
-        plannerFailureClass === 'timeout'
-          ? 'planner_timeout'
-          : 'planner_untrusted';
-    }
-  }
-  const normalizedRecoTriggerSource = normalizeRecoSourceDetail(
-    pickFirstTrimmed(recoTriggerSource, ctx && ctx.trigger_source, 'text'),
-  );
-  const recomputeFromProfileUpdateFlag = recomputeFromProfileUpdate === true;
-  const deadlineAtMs = Number.isFinite(Number(budgetMs)) ? Date.now() + Math.max(0, Math.trunc(Number(budgetMs))) : null;
-
-  let upstream = null;
-  let contextMeta = {};
-  let upstreamFailureCode = '';
-  let llmFailureClass = '';
-  let llmLatencyMs = null;
-  let catalogStructured = null;
-  let catalogCandidatePool = [];
-  let catalogCandidateState = null;
-  let catalogDebug = null;
-  let pdpFastFallbackReasonCode = null;
-  let pdpFastExternalFallbackReasonCode = null;
-  let catalogTransientFallbackStructured = null;
-
-  let answerJson = null;
-  let structured = null;
-  let structuredSource = null;
-  let llmStructured = null;
-  let llmStructuredSource = null;
-  let promptBundle = {
-    prompt_spec: {
-      template_id: RECO_MAIN_PROMPT_TEMPLATE_ID,
-      llm_mode: null,
-    },
-    schema_chars: 0,
-  };
-  let query = '';
-  let promptContract = { ok: true, issues: [] };
-  let llmTrace = null;
-  let llmInvoked = false;
-  let initialLlmOutcome = 'not_invoked';
-  let presentationMode = 'full_llm';
-  let nonBlockingLlmIssue = 'none';
-  let successMode = 'full_success';
-  let effectiveFailureClass = 'none';
-  let failureOrigin = 'none';
-  let preLlmSelectedCandidateCount = null;
-  let finalSelectedCandidateCount = null;
-  let postGuardrailCount = null;
-  const globalStatus = {
-    budget_known: Boolean(normalizeBudgetHint(profileSummary && profileSummary.budgetTier)),
-    itinerary_provided: hasItineraryContextForReco(profileSummary),
-    recent_logs_provided: Array.isArray(recentLogs) && recentLogs.length > 0,
-  };
-  const frameworkCatalogFirstEnabled = Boolean(
-    Array.isArray(targetContext?.framework_roles) && targetContext.framework_roles.length > 0,
-  );
-  const deterministicCatalogFirstEnabled = Boolean(
-    AURORA_BFF_RECO_STEP_AWARE_CATALOG_FIRST_ENABLED
-      && (targetContext.step_aware_intent || frameworkCatalogFirstEnabled),
-  );
-  const stepAwareFailurePolicyEnabled = Boolean(
-    deterministicCatalogFirstEnabled && targetContext.step_aware_intent && !frameworkCatalogFirstEnabled,
-  );
-
-  if (concernSemanticPlanBlockedReason) {
-    structured = {
-      recommendations: [],
-      products_empty_reason: concernSemanticPlanBlockedReason,
-      telemetry_reason: concernSemanticPlanBlockedTelemetryReason || null,
-      mainline_status: 'severe_parse_or_prompt_failure',
-    };
-    structuredSource = null;
-    llmFailureClass = 'planner_untrusted';
-    initialLlmOutcome = concernSemanticPlanBlockedReason;
-    presentationMode = '';
-    successMode = '';
-    effectiveFailureClass = concernSemanticPlanBlockedFailureClass || 'planner_untrusted';
-    failureOrigin = concernSemanticPlanBlockedFailureOrigin || 'internal_contract';
-    catalogCandidateState = frameworkCatalogFirstEnabled
-      ? finalizeConcernFrameworkCandidatePools([], { targetContext })
-      : finalizeRecommendationCandidatePools([], { targetContext, recoContext: recommendationTaskContext });
-    catalogDebug = {
-      recall_plan_version: pickFirstTrimmed(targetContext?.semantic_plan_version, CONCERN_SEMANTIC_PLAN_VERSION) || CONCERN_SEMANTIC_PLAN_VERSION,
-      executed_query_count: 0,
-      executed_upstream_attempt_count: 0,
-      actual_http_attempt_count: 0,
-      stage_timeout_counts: {},
-      primary_stage_timeout_class: concernSemanticPlanBlockedTelemetryReason === 'planner_timeout' ? 'planner_timeout' : 'planner_untrusted',
-      transport_policy_mode: null,
-      candidate_drop_stage: concernSemanticPlanBlockedReason,
-      selected_source_counts: {},
-      external_seed_used_count: 0,
-    };
-  } else if (deterministicCatalogFirstEnabled) {
-    const catalogRecallStartedAt = Date.now();
-    const catalogOut = await buildRecoGenerateFromCatalog({
-      ctx,
-      profileSummary,
-      ingredientContext: normalizedIngredientContext,
-      recommendationTaskContext,
-      targetContext,
-      externalSeedStrategyOverride: catalogExternalSeedStrategy,
-      debug,
-      logger,
-    });
-    mainlineStageTimingsMs.catalog_recall = Math.max(0, Date.now() - catalogRecallStartedAt);
-    catalogStructured =
-      catalogOut && typeof catalogOut === 'object' && catalogOut.structured && typeof catalogOut.structured === 'object'
-        ? catalogOut.structured
-        : null;
-    catalogCandidatePool =
-      catalogOut && typeof catalogOut === 'object' && Array.isArray(catalogOut.candidate_pool)
-        ? catalogOut.candidate_pool
-        : [];
-    catalogCandidateState =
-      catalogOut && typeof catalogOut === 'object' && catalogOut.candidate_pool_state && typeof catalogOut.candidate_pool_state === 'object'
-        ? catalogOut.candidate_pool_state
-        : finalizeRecommendationCandidatePools([], { targetContext, recoContext: recommendationTaskContext });
-    catalogDebug =
-      catalogOut && typeof catalogOut === 'object' && catalogOut.debug && typeof catalogOut.debug === 'object'
-        ? catalogOut.debug
-        : null;
-    pdpFastFallbackReasonCode = deriveRecoPdpFastFallbackReasonCode(catalogDebug);
-    pdpFastExternalFallbackReasonCode = RECO_PDP_FAST_EXTERNAL_FALLBACK_ENABLED ? pdpFastFallbackReasonCode : null;
-
-    const promptState = buildRecoLlmPromptState({
-      prefix,
-      profileSummary,
-      recentLogs,
-      requestText: userAsk,
-      lang: ctx.lang,
-      globalStatus,
-      ingredientContext: normalizedIngredientContext,
-      candidates: catalogCandidatePool,
-    });
-    promptBundle = promptState.promptBundle;
-    query = promptState.query;
-    promptContract = promptState.promptContract;
-    llmTrace = {
-      ...promptState.llmTraceSeed,
-      latency_ms: null,
-      cache_hit: false,
-      prompt_contract_ok: promptState.promptContract.ok,
-      ...(promptState.promptContract.ok ? {} : { prompt_contract_issues: promptState.promptContract.issues.slice(0, 6) }),
-    };
-
-    preLlmSelectedCandidateCount = Number.isFinite(Number(catalogCandidateState?.pre_llm_selected_candidate_count))
-      ? Math.max(0, Math.trunc(Number(catalogCandidateState.pre_llm_selected_candidate_count)))
-      : Number.isFinite(Number(catalogCandidateState?.selected_candidate_count))
-        ? Math.max(0, Math.trunc(Number(catalogCandidateState.selected_candidate_count)))
-        : 0;
-    finalSelectedCandidateCount = preLlmSelectedCandidateCount;
-    structured = catalogStructured;
-    structuredSource = catalogStructured ? 'catalog_grounded' : null;
-
-    if (preLlmSelectedCandidateCount > 0 && catalogCandidateState?.terminal_success === true && !frameworkCatalogFirstEnabled) {
-      const llmPrimary = await runRecoLlmPrimary({
-        ctx,
-        logger,
-        promptState,
-        profileSummary,
-      });
-      upstream = llmPrimary.upstream;
-      contextMeta = llmPrimary.contextMeta;
-      upstreamFailureCode = llmPrimary.upstreamFailureCode;
-      llmFailureClass = llmPrimary.llmFailureClass;
-      llmLatencyMs = llmPrimary.llmLatencyMs;
-      answerJson = llmPrimary.answerJson;
-      llmStructured = llmPrimary.llmStructured;
-      llmStructuredSource = llmPrimary.llmStructuredSource;
-      llmTrace = llmPrimary.llmTrace;
-      llmInvoked = llmPrimary.llmInvoked;
-      initialLlmOutcome = llmPrimary.initialLlmOutcome;
-      if (initialLlmOutcome === 'success') {
-        presentationMode = 'full_llm';
-        successMode = 'full_success';
-      } else {
-        presentationMode = 'deterministic_degraded';
-        successMode = 'degraded_success';
-        nonBlockingLlmIssue = String(initialLlmOutcome || '').trim().toLowerCase() || 'empty_structured';
-        llmFailureClass = '';
-      }
-    } else {
-      presentationMode = '';
-      successMode = '';
-    }
-    const failureSignals = frameworkCatalogFirstEnabled
-      ? resolveConcernMainlineFailure({
-          plannerBlocked: false,
-          viablePoolState: catalogCandidateState,
-          catalogDebug,
-        })
-      : resolveRecoEffectiveFailure({
-          targetContext,
-          viablePoolState: catalogCandidateState,
-          catalogDebug,
-        });
-    effectiveFailureClass = failureSignals.effective_failure_class || 'none';
-    failureOrigin = failureSignals.failure_origin || 'none';
-  } else {
-    const promptState = buildRecoLlmPromptState({
-      prefix,
-      profileSummary,
-      recentLogs,
-      requestText: userAsk,
-      lang: ctx.lang,
-      globalStatus,
-      ingredientContext: normalizedIngredientContext,
-      candidates: catalogCandidatePool,
-    });
-    promptBundle = promptState.promptBundle;
-    query = promptState.query;
-    promptContract = promptState.promptContract;
-    const llmPrimary = await runRecoLlmPrimary({
-      ctx,
-      logger,
-      promptState,
-      profileSummary,
-    });
-    upstream = llmPrimary.upstream;
-    contextMeta = llmPrimary.contextMeta;
-    upstreamFailureCode = llmPrimary.upstreamFailureCode;
-    llmFailureClass = llmPrimary.llmFailureClass;
-    llmLatencyMs = llmPrimary.llmLatencyMs;
-    answerJson = llmPrimary.answerJson;
-    llmStructured = llmPrimary.llmStructured;
-    llmStructuredSource = llmPrimary.llmStructuredSource;
-    llmTrace = llmPrimary.llmTrace;
-    llmInvoked = llmPrimary.llmInvoked;
-    initialLlmOutcome = llmPrimary.initialLlmOutcome;
-    const normalizedNonStepAwareLlmFailure = normalizeRecoFailureClass(llmFailureClass || '');
-    const llmStructuredRecoEmpty = hasEmptyStructuredRecommendations(llmStructured);
-    const shouldAttemptCatalogRecovery =
-      !llmStructured ||
-      normalizedNonStepAwareLlmFailure === 'schema_invalid' ||
-      llmStructuredRecoEmpty;
-    const shouldAllowCatalogTransientFallback = !llmStructured || llmStructuredRecoEmpty;
-    if (shouldAttemptCatalogRecovery) {
-      const catalogRecoveryStartedAt = Date.now();
-      const catalogOut = await buildRecoGenerateFromCatalog({
-        ctx,
-        profileSummary,
-        ingredientContext: normalizedIngredientContext,
-        recommendationTaskContext,
-        targetContext,
-        externalSeedStrategyOverride: catalogExternalSeedStrategy,
-        debug,
-        logger,
-      });
-      mainlineStageTimingsMs.catalog_recall = Math.max(
-        Number(mainlineStageTimingsMs.catalog_recall || 0),
-        Math.max(0, Date.now() - catalogRecoveryStartedAt),
-      );
-      catalogStructured =
-        catalogOut && typeof catalogOut === 'object' && catalogOut.structured && typeof catalogOut.structured === 'object'
-          ? catalogOut.structured
-          : null;
-      catalogCandidatePool =
-        catalogOut && typeof catalogOut === 'object' && Array.isArray(catalogOut.candidate_pool)
-          ? catalogOut.candidate_pool
-          : [];
-      catalogCandidateState =
-        catalogOut && typeof catalogOut === 'object' && catalogOut.candidate_pool_state && typeof catalogOut.candidate_pool_state === 'object'
-          ? catalogOut.candidate_pool_state
-          : null;
-      catalogDebug =
-        catalogOut && typeof catalogOut === 'object' && catalogOut.debug && typeof catalogOut.debug === 'object'
-          ? catalogOut.debug
-          : null;
-      pdpFastFallbackReasonCode = deriveRecoPdpFastFallbackReasonCode(catalogDebug);
-      pdpFastExternalFallbackReasonCode = RECO_PDP_FAST_EXTERNAL_FALLBACK_ENABLED ? pdpFastFallbackReasonCode : null;
-      const useCatalogTransientFallback = shouldAllowCatalogTransientFallback && shouldUseRecoCatalogTransientFallback(catalogDebug);
-      catalogTransientFallbackStructured = useCatalogTransientFallback && !(targetContext && targetContext.step_aware_intent)
-        ? buildRecoCatalogTransientFallbackStructured({ ctx })
-        : null;
-    }
-    const catalogRecoveredFromLlmGap =
-      (normalizedNonStepAwareLlmFailure === 'schema_invalid' || llmStructuredRecoEmpty)
-      && catalogStructured
-      && Array.isArray(catalogStructured.recommendations)
-      && catalogStructured.recommendations.length > 0;
-    structured = catalogRecoveredFromLlmGap
-      ? catalogStructured
-      : llmStructuredRecoEmpty
-        ? (catalogStructured || catalogTransientFallbackStructured || llmStructured)
-        : llmStructured || catalogStructured || catalogTransientFallbackStructured;
-    structuredSource = catalogRecoveredFromLlmGap
-      ? 'catalog_grounded'
-      : llmStructuredRecoEmpty
-        ? (catalogStructured
-          ? 'catalog_grounded'
-          : catalogTransientFallbackStructured
-            ? 'catalog_transient_fallback'
-            : llmStructured
-              ? 'llm_primary'
-              : null)
-        : llmStructured
-          ? 'llm_primary'
-          : catalogStructured
-            ? 'catalog_grounded'
-            : catalogTransientFallbackStructured
-              ? 'catalog_transient_fallback'
-              : null;
-  if (
-    !deterministicCatalogFirstEnabled
-    && promptContract.ok
-    && catalogStructured
-    && Array.isArray(catalogStructured.recommendations)
-    && catalogStructured.recommendations.length > 0
-    && (!llmStructured || normalizedNonStepAwareLlmFailure === 'schema_invalid' || llmStructuredRecoEmpty)
-  ) {
-    if ((llmFailureClass === 'empty_structured' || llmFailureClass === 'schema_invalid') && isPlainObject(llmTrace)) {
-      const { error_class: _ignoredErrorClass, ...nextTrace } = llmTrace;
-      llmTrace = nextTrace;
-    }
-    if (normalizedNonStepAwareLlmFailure === 'schema_invalid') {
-      initialLlmOutcome = 'catalog_recovered_schema_invalid';
-    } else if (llmStructuredRecoEmpty) {
-      initialLlmOutcome = 'catalog_recovered_empty_structured';
-    }
-    llmFailureClass = '';
-    recordAuroraRecoLlmCall({ stage: 'main', outcome: 'catalog_grounded_primary' });
-  }
-  }
-
-  const upstreamDebug = debug
-    ? {
-      intent: upstream && typeof upstream.intent === 'string' ? upstream.intent : null,
-      has_structured: Boolean(upstream && upstream.structured),
-      structured_keys:
-        upstream && upstream.structured && typeof upstream.structured === 'object' && !Array.isArray(upstream.structured)
-          ? Object.keys(upstream.structured).slice(0, 24)
-          : [],
-      answer_preview:
-        upstream && typeof upstream.answer === 'string' ? upstream.answer.slice(0, 800) : null,
-      cards_types: Array.isArray(upstream && upstream.cards)
-        ? upstream.cards
-          .map((c) => (c && typeof c === 'object' && typeof c.type === 'string' ? c.type : null))
-          .filter(Boolean)
-          .slice(0, 12)
-        : [],
-      clarification:
-        upstream && upstream.clarification && typeof upstream.clarification === 'object' ? upstream.clarification : null,
-      context_keys:
-        upstream && upstream.context && typeof upstream.context === 'object' && !Array.isArray(upstream.context)
-          ? Object.keys(upstream.context).slice(0, 24)
-          : [],
-      structured_source: structuredSource,
-      extracted_answer_json_keys:
-        answerJson && typeof answerJson === 'object' && !Array.isArray(answerJson) ? Object.keys(answerJson).slice(0, 24) : [],
-      extracted_structured_keys:
-        structured && typeof structured === 'object' && !Array.isArray(structured) ? Object.keys(structured).slice(0, 24) : [],
-      reco_catalog_grounded_enabled: RECO_CATALOG_GROUNDED_ENABLED,
-      reco_catalog_grounded_available: Boolean(catalogStructured && Array.isArray(catalogStructured.recommendations) && catalogStructured.recommendations.length),
-      reco_upstream_timeout_ms: RECO_UPSTREAM_TIMEOUT_MS,
-      reco_upstream_timeout_hard_cap_ms: RECO_UPSTREAM_TIMEOUT_HARD_CAP_MS,
-      reco_pdp_enrich_concurrency: RECO_PDP_ENRICH_CONCURRENCY,
-      reco_pdp_enrich_max_network_items: RECO_PDP_ENRICH_MAX_NETWORK_ITEMS,
-      reco_pdp_resolve_enabled: RECO_PDP_RESOLVE_ENABLED,
-      reco_pdp_resolve_timeout_ms: RECO_PDP_RESOLVE_TIMEOUT_MS,
-      reco_pdp_resolve_timeout_strict_min_ms: RECO_PDP_RESOLVE_TIMEOUT_STRICT_MIN_MS,
-      reco_pdp_strict_internal_first: RECO_PDP_STRICT_INTERNAL_FIRST,
-      pivota_backend_base_configured: Boolean(PIVOTA_BACKEND_BASE_URL),
-      reco_pdp_chat_disable_local_double_hop: RECO_PDP_CHAT_DISABLE_LOCAL_DOUBLE_HOP,
-      reco_local_fallback_chat_enabled: RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT_ENABLED,
-      reco_local_search_fallback_on_transient: RECO_PDP_LOCAL_SEARCH_FALLBACK_ON_TRANSIENT,
-      reco_catalog_transient_fallback_enabled: RECO_CATALOG_TRANSIENT_FALLBACK_ENABLED,
-      reco_catalog_transient_fallback_applied: Boolean(catalogTransientFallbackStructured),
-      reco_pdp_fast_external_fallback_enabled: RECO_PDP_FAST_EXTERNAL_FALLBACK_ENABLED,
-      reco_catalog_debug: catalogDebug,
-      reco_pdp_fast_fallback_reason: pdpFastFallbackReasonCode,
-      ingredient_context: normalizedIngredientContext || null,
-      llm_structured_source: llmStructuredSource,
-      llm_failure_class: llmFailureClass || null,
-      llm_invoked: llmInvoked,
-      initial_llm_outcome: initialLlmOutcome,
-      presentation_mode: presentationMode,
-      success_mode: successMode,
-      non_blocking_llm_issue: nonBlockingLlmIssue !== 'none' ? nonBlockingLlmIssue : null,
-      llm_prompt_trace: llmTrace,
-      llm_prompt_query_chars: typeof query === 'string' ? query.length : 0,
-      llm_prompt_template_id: promptBundle.prompt_spec.template_id,
-      llm_prompt_schema_chars: Number(promptBundle.schema_chars || 0),
-      llm_prompt_mode: promptBundle.prompt_spec.llm_mode,
-      llm_skipped_reason:
-        !llmInvoked && catalogStructured && Array.isArray(catalogStructured.recommendations) && catalogStructured.recommendations.length > 0
-          ? 'catalog_grounded_primary'
-          : null,
-      llm_candidate_count: Array.isArray(catalogCandidatePool) ? catalogCandidatePool.length : 0,
-      resolved_target_step: targetContext.resolved_target_step || null,
-      resolved_target_step_confidence: targetContext.resolved_target_step_confidence || 'none',
-      resolved_target_step_source: targetContext.resolved_target_step_source || 'none',
-      step_resolution_version: targetContext.step_resolution_version || null,
-      candidate_pool_signature: pickFirstTrimmed(catalogDebug?.candidate_pool_signature) || null,
-      raw_candidate_count: Number(catalogDebug?.raw_candidate_count || 0),
-      viable_candidate_count: Number(catalogDebug?.viable_candidate_count || 0),
-      exact_step_viable_count: Number(catalogDebug?.exact_step_viable_count || 0),
-      same_family_viable_count: Number(catalogDebug?.same_family_viable_count || 0),
-      soft_mismatch_count: Number(catalogDebug?.soft_mismatch_count || 0),
-      hard_reject_count: Number(catalogDebug?.hard_reject_count || 0),
-      raw_source_counts:
-        isPlainObject(catalogCandidateState?.raw_source_counts)
-          ? catalogCandidateState.raw_source_counts
-          : {},
-      viable_source_counts:
-        isPlainObject(catalogCandidateState?.viable_source_counts)
-          ? catalogCandidateState.viable_source_counts
-          : {},
-      selected_source_counts:
-        isPlainObject(catalogDebug?.selected_source_counts)
-          ? catalogDebug.selected_source_counts
-          : {},
-      external_seed_used_count: Number.isFinite(Number(catalogDebug?.external_seed_used_count))
-        ? Number(catalogDebug.external_seed_used_count)
-        : 0,
-      recall_plan_version: pickFirstTrimmed(catalogDebug?.recall_plan_version) || null,
-      executed_query_count: Number.isFinite(Number(catalogDebug?.executed_query_count))
-        ? Number(catalogDebug.executed_query_count)
-        : Number.isFinite(Number(catalogDebug?.query_count))
-          ? Number(catalogDebug.query_count)
-          : 0,
-      executed_upstream_attempt_count: Number.isFinite(Number(catalogDebug?.executed_upstream_attempt_count))
-        ? Number(catalogDebug.executed_upstream_attempt_count)
-        : 0,
-      actual_http_attempt_count: Number.isFinite(Number(catalogDebug?.actual_http_attempt_count))
-        ? Number(catalogDebug.actual_http_attempt_count)
-        : 0,
-      stage_timeout_counts:
-        isPlainObject(catalogDebug?.stage_timeout_counts)
-          ? catalogDebug.stage_timeout_counts
-          : {},
-      primary_stage_timeout_class: pickFirstTrimmed(catalogDebug?.primary_stage_timeout_class) || null,
-      transport_policy_mode: pickFirstTrimmed(catalogDebug?.transport_policy_mode) || null,
-      candidate_drop_stage: pickFirstTrimmed(catalogDebug?.candidate_drop_stage) || null,
-      hard_reject_preview:
-        Array.isArray(catalogCandidateState?.hard_reject_preview)
-          ? catalogCandidateState.hard_reject_preview
-          : [],
-      pre_llm_selected_candidate_count: Number(catalogCandidateState?.pre_llm_selected_candidate_count || 0),
-      weak_viable_pool: Boolean(catalogDebug?.weak_viable_pool),
-      viable_pool_strength: pickFirstTrimmed(catalogCandidateState?.viable_pool_strength) || null,
-      target_fidelity_level: pickFirstTrimmed(catalogCandidateState?.target_fidelity_level) || null,
-      reco_policy_version: pickFirstTrimmed(catalogCandidateState?.reco_policy_version, RECOMMENDATION_RECO_POLICY_V1) || null,
-      same_family_success_threshold_met: Boolean(catalogCandidateState?.same_family_success_threshold_met),
-      overall_target_fidelity_satisfied: Boolean(catalogDebug?.overall_target_fidelity_satisfied),
-      effective_failure_class: effectiveFailureClass || null,
-      failure_origin: failureOrigin || null,
-      analysis_context_usage: {
-        snapshot_present: Boolean(effectiveAnalysisContextSnapshot),
-        snapshot_fields_used: Array.isArray(recommendationTaskContext.snapshot_fields_used) ? recommendationTaskContext.snapshot_fields_used : [],
-        hard_context_fields_used: Array.isArray(recommendationTaskContext.hard_context_fields_used) ? recommendationTaskContext.hard_context_fields_used : [],
-        soft_context_fields_used: Array.isArray(recommendationTaskContext.soft_context_fields_used) ? recommendationTaskContext.soft_context_fields_used : [],
-        explicit_override_applied: Boolean(recommendationTaskContext.explicit_override_applied),
-        context_mode: String(recommendationTaskContext.context_mode || '').trim() || 'no_context',
-        adapter_version: String(recommendationTaskContext.adapter_version || '').trim() || null,
-      },
-    }
-    : null;
-  let mapped = structured && typeof structured === 'object' && !Array.isArray(structured) ? { ...structured } : null;
-  let groundingResult = null;
-  if (mapped && Array.isArray(mapped.recommendations) && mapped.recommendations.length && structuredSource === 'llm_primary') {
-    groundingResult = await groundRecoRecommendationsFromCatalog({
-      recommendations: mapped.recommendations,
-      ctx,
-      logger,
-      defaultTargetContext: targetContext,
-    });
-    mapped = {
-      ...mapped,
-      recommendations: groundingResult.recommendations,
-      grounding_status: groundingResult.grounding_status,
-      grounded_count: groundingResult.grounded_count,
-      ungrounded_count: groundingResult.ungrounded_count,
-    };
-    if (!catalogDebug && isPlainObject(groundingResult.debug)) {
-      catalogDebug = groundingResult.debug;
-    }
-  }
-  if (mapped && Array.isArray(mapped.recommendations)) {
-    mapped.recommendations = mapped.recommendations.map((r) => coerceRecoItemForUi(r, { lang: ctx.lang }));
-  }
-
-  const frameworkMode = Boolean(targetContext && Array.isArray(targetContext.framework_roles) && targetContext.framework_roles.length > 0);
-  const norm = normalizeRecoGenerate(mapped);
-  let viablePoolState = isPlainObject(catalogCandidateState)
-    ? catalogCandidateState
-    : frameworkMode
-      ? finalizeConcernFrameworkCandidatePools(
-          Array.isArray(norm.payload?.recommendations) ? norm.payload.recommendations : [],
-          { targetContext },
-        )
-      : finalizeRecommendationCandidatePools(
-          Array.isArray(norm.payload?.recommendations) ? norm.payload.recommendations : [],
-          { targetContext, recoContext: recommendationTaskContext },
-        );
-  const frameworkPartialSurface = frameworkMode
-    && Array.isArray(norm.payload?.recommendations)
-    && norm.payload.recommendations.length > 0
-    && !viablePoolState.terminal_success;
-  const frameworkTraceId = frameworkMode ? `recofw_trace_${String(targetContext.framework_id || '').slice(0, 12)}` : null;
-  const frameworkDecisionTrace = frameworkMode
-    ? (
-      Array.isArray(catalogDebug?.reco_framework_decision_trace)
-        ? catalogDebug.reco_framework_decision_trace
-        : buildConcernFrameworkDecisionTrace({
-          targetContext,
-          queryLevels: [],
-          candidateState: viablePoolState,
-        })
-    )
-    : null;
-  if (!Number.isFinite(Number(preLlmSelectedCandidateCount))) {
-    preLlmSelectedCandidateCount = Number.isFinite(Number(viablePoolState.pre_llm_selected_candidate_count))
-      ? Math.max(0, Math.trunc(Number(viablePoolState.pre_llm_selected_candidate_count)))
-      : Number.isFinite(Number(viablePoolState.selected_candidate_count))
-        ? Math.max(0, Math.trunc(Number(viablePoolState.selected_candidate_count)))
-        : 0;
-  }
-  const stepAwareDeterministicSuccess = Boolean(
-    targetContext.step_aware_intent
-      && viablePoolState?.terminal_success
-      && Array.isArray(norm.payload?.recommendations)
-      && norm.payload.recommendations.length > 0,
-  );
-  const stepAwareMainlineFailure = stepAwareFailurePolicyEnabled && !stepAwareDeterministicSuccess
-    ? deriveRecoFailureFromStepAwareLlmFallback({
-        initialLlmOutcome,
-        llmFailureClass,
-        upstreamFailureCode,
-        promptContractOk: promptContract.ok,
-      })
-    : null;
-  const stepAwareHasRecommendations =
-    Array.isArray(norm.payload?.recommendations) && norm.payload.recommendations.length > 0;
-  const stepAwareMainlineFailureBlocking = Boolean(stepAwareMainlineFailure && !stepAwareHasRecommendations);
-  let stepAwarePoolWarningNonBlocking = false;
-  if (stepAwareMainlineFailureBlocking) {
-    effectiveFailureClass = stepAwareMainlineFailure.effectiveFailureClass || effectiveFailureClass;
-    failureOrigin = stepAwareMainlineFailure.failureOrigin || failureOrigin;
-    presentationMode = '';
-    successMode = '';
-  } else if (stepAwareMainlineFailure && stepAwareHasRecommendations) {
-    norm.payload = {
-      ...norm.payload,
-      mainline_status: pickFirstTrimmed(norm.payload?.mainline_status, 'grounded_success') || 'grounded_success',
-      recommendation_meta: {
-        ...(isPlainObject(norm.payload?.recommendation_meta) ? norm.payload.recommendation_meta : {}),
-        step_aware_mainline_warning_reason:
-          stepAwareMainlineFailure.productsEmptyReason || stepAwareMainlineFailure.effectiveFailureClass || 'step_aware_non_terminal',
-        step_aware_mainline_warning_non_blocking: true,
-      },
-      metadata: {
-        ...(isPlainObject(norm.payload?.metadata) ? norm.payload.metadata : {}),
-        step_aware_mainline_warning_reason:
-          stepAwareMainlineFailure.productsEmptyReason || stepAwareMainlineFailure.effectiveFailureClass || 'step_aware_non_terminal',
-        step_aware_mainline_warning_non_blocking: true,
-      },
-    };
-    effectiveFailureClass = 'none';
-    failureOrigin = 'none';
-    presentationMode = presentationMode || 'deterministic_degraded';
-    successMode = successMode || 'degraded_success';
-  }
-  if (concernSemanticPlanBlockedReason) {
-    norm.payload.recommendations = [];
-    norm.payload.products_empty_reason = concernSemanticPlanBlockedReason;
-    norm.payload.telemetry_reason = concernSemanticPlanBlockedTelemetryReason || null;
-    norm.payload.mainline_status = concernSemanticPlanBlockedFailureClass === 'upstream_timeout'
-      ? 'upstream_timeout'
-      : 'severe_parse_or_prompt_failure';
-  } else if (stepAwareMainlineFailureBlocking) {
-    norm.payload.recommendations = [];
-    norm.payload.products_empty_reason = stepAwareMainlineFailure.productsEmptyReason;
-    norm.payload.telemetry_reason = stepAwareMainlineFailure.telemetryReason || null;
-    norm.payload.mainline_status = stepAwareMainlineFailure.mainlineStatus;
-  } else if (frameworkMode && !viablePoolState.terminal_success && (!Array.isArray(norm.payload.recommendations) || norm.payload.recommendations.length === 0)) {
-    norm.payload.recommendations = [];
-    norm.payload.products_empty_reason = pickFirstTrimmed(
-      viablePoolState?.candidate_drop_stage,
-      concernSelectorRaceTrace?.result?.open_world_candidate_expansion_needed && concernOpenWorldExpansionUsed ? 'selector_disagreement_no_safe_winner' : '',
-      'no_mainline_match_for_framework',
-    );
-    if (normalizeRecoEffectiveFailureClass(effectiveFailureClass || 'none') === 'none') {
-      effectiveFailureClass = pickFirstTrimmed(
-        norm.payload.products_empty_reason === 'weak_viable_pool' ? 'weak_viable_pool' : '',
-        norm.payload.products_empty_reason === 'filtered_after_recall' ? 'weak_viable_pool' : '',
-        norm.payload.products_empty_reason === 'selector_disagreement_no_safe_winner' ? 'selector_disagreement_no_safe_winner' : '',
-        norm.payload.products_empty_reason === 'no_mainline_match_for_framework' ? 'no_recall_from_planned_sources' : '',
-      ) || effectiveFailureClass;
-      failureOrigin = norm.payload.products_empty_reason === 'filtered_after_recall' ? 'user_input' : 'user_input';
-    }
-  } else if (promptContract.ok === false && (!Array.isArray(norm.payload.recommendations) || norm.payload.recommendations.length === 0)) {
-    norm.payload.products_empty_reason = 'prompt_contract_mismatch';
-  } else if (targetContext.step_aware_intent && !viablePoolState.terminal_success) {
-    const stepAwareWarningReason = deriveStepAwareEmptyReason(targetContext, viablePoolState);
-    if (stepAwareHasRecommendations) {
-      stepAwarePoolWarningNonBlocking = true;
-      const nextPayload = {
-        ...norm.payload,
-        mainline_status: pickFirstTrimmed(norm.payload?.mainline_status, 'grounded_success') || 'grounded_success',
-        recommendation_meta: {
-          ...(isPlainObject(norm.payload?.recommendation_meta) ? norm.payload.recommendation_meta : {}),
-          step_aware_pool_warning_reason: stepAwareWarningReason,
-          step_aware_pool_warning_non_blocking: true,
-        },
-        metadata: {
-          ...(isPlainObject(norm.payload?.metadata) ? norm.payload.metadata : {}),
-          step_aware_pool_warning_reason: stepAwareWarningReason,
-          step_aware_pool_warning_non_blocking: true,
-        },
-      };
-      if (Object.prototype.hasOwnProperty.call(nextPayload, 'products_empty_reason')) {
-        delete nextPayload.products_empty_reason;
-      }
-      norm.payload = nextPayload;
-    } else {
-      norm.payload.recommendations = [];
-      norm.payload.products_empty_reason = stepAwareWarningReason;
-    }
-  }
-  const effectiveGroundingStatus =
-    stepAwareMainlineFailureBlocking
-      ? ''
-      : frameworkPartialSurface
-        ? 'partially_grounded'
-      : normalizeRecoGroundingStatus(mapped && mapped.grounding_status)
-        || (structuredSource === 'catalog_grounded'
-          ? 'grounded'
-          : structuredSource === 'catalog_transient_fallback'
-            ? 'partially_grounded'
-            : '');
-  const effectiveGroundedCount =
-    stepAwareMainlineFailureBlocking
-      ? 0
-      : Number.isFinite(Number(mapped?.grounded_count))
-        ? Math.max(0, Math.trunc(Number(mapped?.grounded_count)))
-        : (structuredSource === 'catalog_grounded' ? (Array.isArray(norm.payload.recommendations) ? norm.payload.recommendations.length : 0) : 0);
-  const effectiveUngroundedCount =
-    stepAwareMainlineFailureBlocking
-      ? 0
-      : Number.isFinite(Number(mapped?.ungrounded_count))
-        ? Math.max(0, Math.trunc(Number(mapped?.ungrounded_count)))
-        : 0;
-  const effectiveMainlineStatus = pickFirstTrimmed(
-    groundingResult && groundingResult.mainline_status,
-    mapped && mapped.mainline_status,
-    stepAwareMainlineFailureBlocking ? stepAwareMainlineFailure.mainlineStatus : '',
-    frameworkPartialSurface ? 'partially_grounded' : '',
-    frameworkMode && !viablePoolState.terminal_success ? 'needs_more_context' : '',
-    promptContract.ok === false ? 'severe_parse_or_prompt_failure' : '',
-    targetContext.step_aware_intent && !viablePoolState.terminal_success && !stepAwareHasRecommendations ? 'needs_more_context' : '',
-    structuredSource === 'catalog_grounded'
-      ? 'grounded_success'
-      : structuredSource === 'catalog_transient_fallback'
-        ? 'partially_grounded'
-        : Array.isArray(norm.payload.recommendations) && norm.payload.recommendations.length
-          ? effectiveGroundingStatus === 'grounded'
-            ? 'grounded_success'
-            : effectiveGroundingStatus === 'partially_grounded'
-              ? 'partially_grounded'
-              : 'ungrounded_success'
-          : 'empty_structured',
-  );
-  const effectiveCatalogSkipReason = pickFirstTrimmed(
-    groundingResult && groundingResult.catalog_skip_reason,
-    mapped && mapped.catalog_skip_reason,
-  ) || null;
-  const effectiveTelemetryReason = pickFirstTrimmed(
-    groundingResult && groundingResult.telemetry_reason,
-    mapped && mapped.telemetry_reason,
-    stepAwareMainlineFailureBlocking ? stepAwareMainlineFailure.telemetryReason : '',
-    promptContract.ok === false ? 'prompt_contract_mismatch' : '',
-    llmFailureClass === 'timeout' || upstreamFailureCode === 'UPSTREAM_TIMEOUT' ? 'timeout_degraded' : '',
-  ) || null;
-  norm.payload = {
-    ...norm.payload,
-    intent: 'reco_products',
-    profile: profileSummary || null,
-    ...(frameworkMode
-      ? {
-          semantic_plan: isPlainObject(targetContext?.semantic_plan) ? targetContext.semantic_plan : null,
-          core_roles: Array.isArray(targetContext?.semantic_plan?.core_roles) ? targetContext.semantic_plan.core_roles : [],
-          support_roles: Array.isArray(targetContext?.semantic_plan?.support_roles) ? targetContext.semantic_plan.support_roles : [],
-          ingredient_hypotheses: Array.isArray(targetContext?.semantic_plan?.ingredient_hypotheses) ? targetContext.semantic_plan.ingredient_hypotheses : [],
-          routine_shell: isPlainObject(targetContext?.routine_shell) ? targetContext.routine_shell : (isPlainObject(targetContext?.semantic_plan?.routine_shell) ? targetContext.semantic_plan.routine_shell : null),
-          selection_owner_source: pickFirstTrimmed(targetContext?.selection_owner_source, targetContext?.framework_owner_source) || null,
-          selection_owner_state: pickFirstTrimmed(targetContext?.selection_owner_state, targetContext?.framework_owner_state) || null,
-          selector_race: isPlainObject(concernSelectorRaceTrace?.result) ? concernSelectorRaceTrace.result : null,
-          winner_source: concernWinnerSource || 'deterministic',
-          open_world_expansion_used: concernOpenWorldExpansionUsed,
-          framework_summary: mapped && mapped.framework_summary ? mapped.framework_summary : buildConcernFrameworkSummary({
-            targetContext,
-            recommendations: Array.isArray(norm.payload?.recommendations) ? norm.payload.recommendations : [],
-            language: ctx.lang,
-          }),
-          roles: Array.isArray(mapped?.roles) ? mapped.roles : Array.isArray(targetContext?.framework_roles) ? targetContext.framework_roles.map((role) => ({
-            role_id: String(role?.role_id || '').trim() || null,
-            label: String(role?.label || '').trim() || null,
-            why_this_role: String(role?.why_this_role || '').trim() || null,
-            rank: Number.isFinite(Number(role?.rank)) ? Number(role.rank) : null,
-            preferred_step: String(role?.preferred_step || '').trim() || null,
-          })) : [],
-          primary_role_id: targetContext.primary_role_id || null,
-          primary_recommendation_id: viablePoolState.primary_role_matched ? (viablePoolState.primary_recommendation_id || null) : null,
-          primary_role_matched: Boolean(viablePoolState.primary_role_matched),
-          best_available_role_id: viablePoolState.best_available_role_id || null,
-          late_conflict_without_override: Boolean(viablePoolState.late_conflict_without_override),
-        }
-      : {}),
-    metadata: {
-      ...(isPlainObject(norm.payload?.metadata) ? norm.payload.metadata : {}),
-      ...(frameworkMode
-        ? {
-            reco_framework_trace_id: frameworkTraceId,
-            reco_framework_decision_trace: frameworkDecisionTrace,
-          }
-        : {}),
-    },
-    grounding_status: effectiveGroundingStatus,
-    grounded_count: effectiveGroundedCount,
-    ungrounded_count: effectiveUngroundedCount,
-    mainline_status: effectiveMainlineStatus,
-    ...(effectiveCatalogSkipReason ? { catalog_skip_reason: effectiveCatalogSkipReason } : {}),
-    ...(effectiveTelemetryReason ? { telemetry_reason: effectiveTelemetryReason } : {}),
-    ...(ingredientContext && typeof ingredientContext === 'object'
-      ? { ingredient_context: ingredientContext }
-      : {}),
-  };
-  let recoSeedFilterInfo = {
-    applied: false,
-    seed_count_before: 0,
-    seed_count_after: 0,
-    filtered_count: 0,
-  };
-  let recoDiversityInfo = {
-    enabled: RECO_DIVERSITY_ENABLED,
-    applied: false,
-    repeated_before: 0,
-    repeated_after: 0,
-    filtered_count: 0,
-    history_size_before: 0,
-    history_size_after: 0,
-  };
-  if (Array.isArray(norm.payload.recommendations) && norm.payload.recommendations.length) {
-    const prePdpDeduped = dedupeRecoRecommendationsStrict(norm.payload.recommendations, { maxItems: 8 });
-    const deduped = prePdpDeduped.recommendations.map((row) => ({ ...row, slot: 'other' }));
-    const limited = limitRecoKnownTestSeedRecommendations(deduped);
-    recoSeedFilterInfo = {
-      applied: Boolean(limited.applied),
-      seed_count_before: Number(limited.seed_count_before || 0),
-      seed_count_after: Number(limited.seed_count_after || 0),
-      filtered_count: Number(limited.filtered_count || 0),
-    };
-    let nextRecommendations = limited.recommendations;
-    if (RECO_DIVERSITY_ENABLED && Array.isArray(nextRecommendations) && nextRecommendations.length) {
-      const diversityHistoryKey = buildRecoDiversityHistoryKey(ctx);
-      const historyState = getRecoRecentExposureState(diversityHistoryKey);
-      const historyTokens = historyState.tokens;
-      const diversityLimited = applyRecoRecentDiversityGuard(nextRecommendations, {
-        historyTokens,
-        maxRepeatPerResponse: RECO_DIVERSITY_MAX_REPEAT_PER_RESPONSE,
-        minTotal: RECO_DIVERSITY_MIN_TOTAL,
-        rotationRound: historyState.round + 1,
-      });
-      nextRecommendations = diversityLimited.recommendations;
-      recoDiversityInfo = {
-        enabled: true,
-        applied: Boolean(diversityLimited.applied),
-        repeated_before: Number(diversityLimited.repeated_before || 0),
-        repeated_after: Number(diversityLimited.repeated_after || 0),
-        filtered_count: Number(diversityLimited.filtered_count || 0),
-        history_size_before: historyTokens.length,
-        history_size_after: historyTokens.length,
-      };
-
-      const exposureTokens = (Array.isArray(nextRecommendations) ? nextRecommendations : [])
-        .map((item) => buildRecoDiversityToken(item))
-        .filter(Boolean)
-        .slice(0, 8);
-      updateRecoRecentExposureTokens(diversityHistoryKey, exposureTokens);
-      const historyAfter = getRecoRecentExposureState(diversityHistoryKey);
-      recoDiversityInfo.history_size_after = historyAfter.tokens.length;
-    }
-    norm.payload = { ...norm.payload, recommendations: nextRecommendations };
-  }
-  let alternativesDebug = null;
-  if (upstreamDebug) {
-    upstreamDebug.reco_test_seed_max_per_response = RECO_TEST_SEED_MAX_PER_RESPONSE;
-    upstreamDebug.reco_test_seed_min_total = RECO_TEST_SEED_MIN_TOTAL;
-    upstreamDebug.reco_seed_filter_applied = recoSeedFilterInfo.applied;
-    upstreamDebug.reco_seed_count_before = recoSeedFilterInfo.seed_count_before;
-    upstreamDebug.reco_seed_count_after = recoSeedFilterInfo.seed_count_after;
-    upstreamDebug.reco_seed_filtered_count = recoSeedFilterInfo.filtered_count;
-    upstreamDebug.reco_diversity_enabled = recoDiversityInfo.enabled;
-    upstreamDebug.reco_diversity_applied = recoDiversityInfo.applied;
-    upstreamDebug.reco_diversity_repeated_before = recoDiversityInfo.repeated_before;
-    upstreamDebug.reco_diversity_repeated_after = recoDiversityInfo.repeated_after;
-    upstreamDebug.reco_diversity_filtered_count = recoDiversityInfo.filtered_count;
-    upstreamDebug.reco_diversity_history_size_before = recoDiversityInfo.history_size_before;
-    upstreamDebug.reco_diversity_history_size_after = recoDiversityInfo.history_size_after;
-  }
-
-  if (includeAlternatives) {
-    norm.field_missing = mergeFieldMissing(norm.field_missing, [
-      { field: 'recommendations[].alternatives', reason: 'lazy_alternatives_deferred' },
-    ]);
-  }
-
-  const budgetKnown = normalizeBudgetHint(profileSummary && profileSummary.budgetTier);
-  if (budgetKnown && Array.isArray(norm.payload?.missing_info)) {
-    norm.payload.missing_info = norm.payload.missing_info.filter((code) => String(code) !== 'budget_unknown');
-  }
-
-  const uniqStrings = (items, max = null) => {
-    const out = [];
-    const seen = new Set();
-    for (const raw of Array.isArray(items) ? items : []) {
-      const s = typeof raw === 'string' ? raw.trim() : raw == null ? '' : String(raw).trim();
-      if (!s) continue;
-      const key = s.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push(s);
-      if (typeof max === 'number' && max > 0 && out.length >= max) break;
-    }
-    return out;
-  };
-
-  const itineraryAvailable = hasItineraryContextForReco(profileSummary);
-  const itineraryText = profileSummary && typeof profileSummary.itinerary === 'string' ? profileSummary.itinerary.trim() : '';
-  const itinerary = itineraryText ? itineraryText.slice(0, 160) : '';
-  if (itinerary && Array.isArray(norm.payload?.recommendations)) {
-    const itineraryReason = ctx.lang === 'CN' ? `接下来计划：${itinerary}` : `Upcoming plan: ${itinerary}`;
-    const itineraryRegex =
-      ctx.lang === 'CN'
-        ? /(行程|计划|旅行|出差|户外|飞行|滑雪|天气|气候)/
-        : /\b(upcoming plan|itinerary|travel|trip|flight|outdoor|cold|dry|uv|ski)\b/i;
-
-    const pickReasons = (reasonsRaw) => {
-      const base = uniqStrings(reasonsRaw, 12);
-      const alreadyHasItinerary = base.some((r) => itineraryRegex.test(String(r || '')));
-      const reasons = alreadyHasItinerary ? base : [...base, itineraryReason];
-
-      const activeRegex =
-        ctx.lang === 'CN'
-          ? /(最有效成分|关键成分|核心成分|主打成分)/
-          : /\b(most effective active|hero ingredient|key actives?|key ingredients?)\b/i;
-      const goalRegex = ctx.lang === 'CN' ? /(目标|匹配|针对)/ : /\b(goal fit|targets?:|goals?:)\b/i;
-      const barrierRegex =
-        ctx.lang === 'CN'
-          ? /(屏障|敏感|刺激|低刺激|耐受|刺痛|泛红)/
-          : /\b(barrier|sensitivity|irritat|low[- ]irritation|patch test|tolerance)\b/i;
-      const logsRegex =
-        ctx.lang === 'CN'
-          ? /(近7天|最近7天|打卡|记录|泛红|痘|补水|保湿)/
-          : /\b(last 7d|check-?in|redness|hydration)\b/i;
-      const analysisRegex =
-        ctx.lang === 'CN'
-          ? /(皮肤分析|诊断|分析结果|上次分析)/
-          : /\b(last skin analysis|skin analysis)\b/i;
-
-      const picked = [];
-      const usedIdx = new Set();
-      const takeFirstMatch = (re) => {
-        const idx = reasons.findIndex((r, i) => !usedIdx.has(i) && re.test(String(r || '')));
-        if (idx === -1) return;
-        usedIdx.add(idx);
-        picked.push(reasons[idx]);
-      };
-
-      for (const re of [activeRegex, goalRegex, barrierRegex, logsRegex, analysisRegex, itineraryRegex]) {
-        if (picked.length >= 6) break;
-        takeFirstMatch(re);
-      }
-
-      for (let i = 0; i < reasons.length && picked.length < 6; i += 1) {
-        if (usedIdx.has(i)) continue;
-        picked.push(reasons[i]);
-        usedIdx.add(i);
-      }
-
-      if (!picked.some((r) => itineraryRegex.test(String(r || '')))) {
-        if (picked.length < 6) picked.push(itineraryReason);
-        else picked[picked.length - 1] = itineraryReason;
-      }
-
-      return uniqStrings(picked, 6);
-    };
-
-    norm.payload.recommendations = norm.payload.recommendations.map((item) => {
-      const base = item && typeof item === 'object' && !Array.isArray(item) ? item : null;
-      if (!base) return item;
-      const reasonsRaw = Array.isArray(base.reasons) ? base.reasons : [];
-      return { ...base, reasons: pickReasons(reasonsRaw) };
-    });
-  }
-
-  const recoRowsForPdp = Array.isArray(norm.payload.recommendations) ? norm.payload.recommendations : [];
-  const shouldDelayPdpEnrichment = frameworkMode;
-  if (shouldDelayPdpEnrichment) {
-    const prePdpDeduped = dedupeRecoRecommendationsStrict(recoRowsForPdp, { maxItems: 8 });
-    norm.payload = {
-      ...norm.payload,
-      recommendations: prePdpDeduped.recommendations,
-      metadata: {
-        ...(isPlainObject(norm.payload?.metadata) ? norm.payload.metadata : {}),
-        pdp_open_path_stats: { deferred_until_safe_winner: true },
-        resolve_fail_reason_counts: {},
-        time_to_pdp_ms_stats: {},
-        reco_post_pdp_dedupe_dropped: Number(prePdpDeduped.dropped_count || 0),
-      },
-    };
-  } else {
-    const groundedRecoRows = [];
-    const ungroundedRecoRows = [];
-    recoRowsForPdp.forEach((row, index) => {
-      if (isRecoUngroundedItem(row)) {
-        ungroundedRecoRows.push({ index, row });
-      } else {
-        groundedRecoRows.push({ index, row });
-      }
-    });
-    const skipPdpOpenEnrichByBudget = Number.isFinite(deadlineAtMs) && Date.now() >= (deadlineAtMs - 250);
-    const pdpStartedAt = Date.now();
-    const pdpOpenOut = !groundedRecoRows.length
-      ? {
-        recommendations: [],
-        path_stats: { internal: 0, external: 0, none: 0, unknown: 0 },
-        fail_reason_counts: {},
-        time_to_pdp_ms_stats: { count: 0, mean: 0, p50: 0, p90: 0, max: 0 },
-      }
-      : skipPdpOpenEnrichByBudget
-        ? {
-          recommendations: groundedRecoRows.map((entry) => entry.row),
-          path_stats: { skipped_due_budget: true },
-          fail_reason_counts: {},
-          time_to_pdp_ms_stats: {},
-        }
-        : await enrichRecommendationsWithPdpOpenContract({
-          recommendations: groundedRecoRows.map((entry) => entry.row),
-          logger,
-          fastExternalFallbackReasonCode: pdpFastExternalFallbackReasonCode,
-          lightEnrich: RECO_PDP_LIGHT_ENRICH_ENABLED,
-        });
-    mainlineStageTimingsMs.pdp_enrichment = Math.max(0, Date.now() - pdpStartedAt);
-    pdpEnrichmentApplied = groundedRecoRows.length > 0;
-    const recombinedRecommendations = [];
-    let groundedCursor = 0;
-    let ungroundedCursor = 0;
-    for (let index = 0; index < recoRowsForPdp.length; index += 1) {
-      const ungroundedEntry = ungroundedRecoRows[ungroundedCursor];
-      if (ungroundedEntry && ungroundedEntry.index === index) {
-        recombinedRecommendations.push(ungroundedEntry.row);
-        ungroundedCursor += 1;
-        continue;
-      }
-      const groundedEntry = groundedRecoRows[groundedCursor];
-      if (groundedEntry && groundedEntry.index === index) {
-        recombinedRecommendations.push(pdpOpenOut.recommendations[groundedCursor] || groundedEntry.row);
-        groundedCursor += 1;
-      }
-    }
-    const pdpDeduped = dedupeRecoRecommendationsStrict(recombinedRecommendations, { maxItems: 8 });
-    norm.payload = {
-      ...norm.payload,
-      recommendations: pdpDeduped.recommendations,
-      metadata: {
-        ...(isPlainObject(norm.payload?.metadata) ? norm.payload.metadata : {}),
-        pdp_open_path_stats: pdpOpenOut.path_stats,
-        resolve_fail_reason_counts: pdpOpenOut.fail_reason_counts,
-        time_to_pdp_ms_stats: pdpOpenOut.time_to_pdp_ms_stats,
-        reco_post_pdp_dedupe_dropped: Number(pdpDeduped.dropped_count || 0),
-      },
-    };
-  }
-  if (
-    frameworkMode
-    && isPlainObject(targetContext?.semantic_plan)
-    && !concernSemanticPlanBlockedReason
-    && viablePoolState?.primary_role_matched === true
-  ) {
-    const baseRecommendations = Array.isArray(norm.payload?.recommendations) ? norm.payload.recommendations : [];
-    const selectorStartedAt = Date.now();
-    const selectorOut = await runConcernSelectorRace({
-      ctx,
-      logger,
-      requestText: userAsk,
-      semanticPlan: targetContext.semantic_plan,
-      recommendations: baseRecommendations,
-    });
-    mainlineStageTimingsMs.selector_race = Math.max(0, Date.now() - selectorStartedAt);
-    selectorRaceApplied = true;
-    concernSelectorRaceTrace = {
-      ...(selectorOut.trace || {}),
-      result: selectorOut.result || null,
-    };
-    let selectorApplied = applyConcernSelectorRaceOrdering(baseRecommendations, selectorOut.result);
-    concernWinnerSource = selectorApplied.winner_source || 'deterministic';
-    concernSupportRolesSurfaced = selectorApplied.support_roles_surfaced || [];
-    if (Array.isArray(selectorApplied.recommendations) && selectorApplied.recommendations.length) {
-      const selectionNotesByProductId = isPlainObject(selectorApplied.selection_notes_by_product_id)
-        ? selectorApplied.selection_notes_by_product_id
-        : {};
-      norm.payload.recommendations = selectorApplied.recommendations.map((row) => {
-        const productId = pickFirstString(row?.product_id, row?.productId);
-        const selectionNotes = productId ? asStringArray(selectionNotesByProductId[productId], 3) : [];
-        if (!selectionNotes.length) return row;
-        return {
-          ...row,
-          notes: uniqCaseInsensitiveStrings([
-            ...selectionNotes,
-            ...asStringArray(row?.notes, 4),
-          ], 5),
-        };
-      });
-      norm.payload.primary_recommendation_id = selectorApplied.primary_recommendation_id || norm.payload.primary_recommendation_id || null;
-    }
-  }
-  let frameworkMainlineWarningNonBlocking = false;
-  if (frameworkMode && !concernSemanticPlanBlockedReason && viablePoolState?.primary_role_matched !== true) {
-    const frameworkWarningReason = pickFirstTrimmed(
-      norm.payload?.products_empty_reason,
-      viablePoolState?.candidate_drop_stage,
-      viablePoolState?.weak_viable_pool ? 'weak_viable_pool' : '',
-      'weak_viable_pool',
-    ) || 'weak_viable_pool';
-    if (Array.isArray(norm.payload?.recommendations) && norm.payload.recommendations.length > 0) {
-      frameworkMainlineWarningNonBlocking = true;
-      norm.payload = {
-        ...norm.payload,
-        mainline_status: pickFirstTrimmed(norm.payload?.mainline_status, 'grounded_success') || 'grounded_success',
-        recommendation_meta: {
-          ...(isPlainObject(norm.payload?.recommendation_meta) ? norm.payload.recommendation_meta : {}),
-          framework_mainline_warning_reason: frameworkWarningReason,
-          framework_mainline_warning_non_blocking: true,
-        },
-        metadata: {
-          ...(isPlainObject(norm.payload?.metadata) ? norm.payload.metadata : {}),
-          framework_mainline_warning_reason: frameworkWarningReason,
-          framework_mainline_warning_non_blocking: true,
-        },
-      };
-    } else {
-      // Support-role rows are useful for diagnostics, but without any candidate we still need a bounded empty response.
-      norm.payload.recommendations = [];
-      norm.payload.primary_recommendation_id = null;
-      norm.payload.products_empty_reason = frameworkWarningReason;
-    }
-    concernWinnerSource = 'deterministic';
-    concernSupportRolesSurfaced = [];
-  }
-  if (frameworkMode && Array.isArray(norm.payload?.recommendations) && norm.payload.recommendations.length > 0) {
-    const finalRecoRowsForPdp = Array.isArray(norm.payload.recommendations) ? norm.payload.recommendations : [];
-    const groundedRecoRows = [];
-    const ungroundedRecoRows = [];
-    finalRecoRowsForPdp.forEach((row, index) => {
-      if (isRecoUngroundedItem(row)) {
-        ungroundedRecoRows.push({ index, row });
-      } else {
-        groundedRecoRows.push({ index, row });
-      }
-    });
-    const skipPdpOpenEnrichByBudget = Number.isFinite(deadlineAtMs) && Date.now() >= (deadlineAtMs - 250);
-    const pdpStartedAt = Date.now();
-    const pdpOpenOut = !groundedRecoRows.length
-      ? {
-        recommendations: [],
-        path_stats: { internal: 0, external: 0, none: 0, unknown: 0 },
-        fail_reason_counts: {},
-        time_to_pdp_ms_stats: { count: 0, mean: 0, p50: 0, p90: 0, max: 0 },
-      }
-      : skipPdpOpenEnrichByBudget
-        ? {
-          recommendations: groundedRecoRows.map((entry) => entry.row),
-          path_stats: { skipped_due_budget: true },
-          fail_reason_counts: {},
-          time_to_pdp_ms_stats: {},
-        }
-        : await enrichRecommendationsWithPdpOpenContract({
-          recommendations: groundedRecoRows.map((entry) => entry.row),
-          logger,
-          fastExternalFallbackReasonCode: pdpFastExternalFallbackReasonCode,
-          lightEnrich: RECO_PDP_LIGHT_ENRICH_ENABLED,
-        });
-    mainlineStageTimingsMs.pdp_enrichment = Math.max(0, Date.now() - pdpStartedAt);
-    pdpEnrichmentApplied = groundedRecoRows.length > 0;
-    const recombinedRecommendations = [];
-    let groundedCursor = 0;
-    let ungroundedCursor = 0;
-    for (let index = 0; index < finalRecoRowsForPdp.length; index += 1) {
-      const ungroundedEntry = ungroundedRecoRows[ungroundedCursor];
-      if (ungroundedEntry && ungroundedEntry.index === index) {
-        recombinedRecommendations.push(ungroundedEntry.row);
-        ungroundedCursor += 1;
-        continue;
-      }
-      const groundedEntry = groundedRecoRows[groundedCursor];
-      if (groundedEntry && groundedEntry.index === index) {
-        recombinedRecommendations.push(pdpOpenOut.recommendations[groundedCursor] || groundedEntry.row);
-        groundedCursor += 1;
-      }
-    }
-    const pdpDeduped = dedupeRecoRecommendationsStrict(recombinedRecommendations, { maxItems: 8 });
-    norm.payload = {
-      ...norm.payload,
-      recommendations: pdpDeduped.recommendations,
-      metadata: {
-        ...(isPlainObject(norm.payload?.metadata) ? norm.payload.metadata : {}),
-        pdp_open_path_stats: pdpOpenOut.path_stats,
-        resolve_fail_reason_counts: pdpOpenOut.fail_reason_counts,
-        time_to_pdp_ms_stats: pdpOpenOut.time_to_pdp_ms_stats,
-        reco_post_pdp_dedupe_dropped: Number(pdpDeduped.dropped_count || 0),
-      },
-    };
-  }
-  let finalRecommendations = Array.isArray(norm.payload?.recommendations) ? norm.payload.recommendations : [];
-  finalSelectedCandidateCount = finalRecommendations.length;
-  postGuardrailCount = finalSelectedCandidateCount;
-  if (deterministicCatalogFirstEnabled && !stepAwareMainlineFailureBlocking) {
-    const failureSignals = frameworkMode
-      ? resolveConcernMainlineFailure({
-          plannerBlocked: Boolean(concernSemanticPlanBlockedReason),
-          plannerFailureClass: concernSemanticPlanBlockedTelemetryReason === 'planner_timeout' ? 'timeout' : concernSemanticPlanBlockedFailureClass,
-          viablePoolState: {
-            ...viablePoolState,
-            final_selected_candidate_count: finalSelectedCandidateCount,
-          },
-          catalogDebug,
-          postGuardrailCount,
-        })
-      : resolveRecoEffectiveFailure({
-          targetContext,
-          viablePoolState: {
-            ...viablePoolState,
-            final_selected_candidate_count: finalSelectedCandidateCount,
-          },
-          catalogDebug,
-          postGuardrailCount,
-        });
-    const returnedProductsWarningNonBlocking =
-      finalRecommendations.length > 0
-      && (
-        frameworkMainlineWarningNonBlocking
-        || stepAwarePoolWarningNonBlocking
-        || beautyMainlineHandoffNonBlocking
-        || Boolean(stepAwareMainlineFailure && !stepAwareMainlineFailureBlocking)
-      );
-    const normalizedFailureClass = normalizeRecoEffectiveFailureClass(failureSignals.effective_failure_class || 'none');
-    if (
-      returnedProductsWarningNonBlocking
-      && (normalizedFailureClass === 'weak_viable_pool' || normalizedFailureClass === 'no_recall_from_planned_sources')
-    ) {
-      effectiveFailureClass = 'none';
-      failureOrigin = 'none';
-    } else {
-      effectiveFailureClass = failureSignals.effective_failure_class || 'none';
-      failureOrigin = failureSignals.failure_origin || 'none';
-    }
-  }
-  const sourceMode = finalRecommendations.length > 0
-    ? structuredSource === 'llm_primary'
-      ? 'llm_primary'
-      : structuredSource === 'catalog_grounded'
-        ? 'catalog_grounded'
-        : structuredSource === 'catalog_transient_fallback'
-          ? 'catalog_transient_fallback'
-          : frameworkMode
-            ? 'framework_mainline'
-            : targetContext.step_aware_intent
-              ? 'step_aware_mainline'
-              : 'llm_primary'
-    : frameworkMode
-      ? structuredSource === 'catalog_transient_fallback'
-        ? 'catalog_transient_fallback'
-        : structuredSource === 'catalog_grounded'
-          ? 'catalog_grounded'
-          : 'framework_mainline'
-      : targetContext.step_aware_intent
-        ? structuredSource === 'catalog_grounded'
-          ? 'catalog_grounded'
-          : structuredSource === 'catalog_transient_fallback'
-            ? 'catalog_transient_fallback'
-            : 'step_aware_mainline'
-        : 'legacy_notice';
-  const catalogSkipReason = effectiveCatalogSkipReason || pickFirstTrimmed(catalogDebug && catalogDebug.skipped_reason) || null;
-  const contractStatus = deriveRecoContractStatus({
-    promptContractOk: promptContract.ok,
-    recommendations: finalRecommendations,
-    llmFailureClass,
-    fieldMissing: norm.field_missing,
-    productsEmptyReason: norm.payload?.products_empty_reason,
-  });
-  const mainlineStatus = effectiveMainlineStatus || deriveRecoMainlineStatus({
-    recommendations: finalRecommendations,
-    structuredSource,
-    catalogSkipReason,
-    llmFailureClass,
-    upstreamFailureCode,
-    contractStatus,
-    productsEmptyReason: norm.payload?.products_empty_reason,
-  });
-  const telemetryFailureReason = effectiveTelemetryReason || deriveRecoTelemetryFailureReason({
-    llmFailureClass,
-    upstreamFailureCode,
-    contractStatus,
-  });
-  const primaryFailureReason = finalRecommendations.length > 0
-    ? ''
-    : (pickFirstTrimmed(
-      norm.payload?.products_empty_reason,
-      effectiveFailureClass,
-    ) || 'no_recall_from_planned_sources');
-  if (upstreamDebug) {
-    upstreamDebug.contract_status = contractStatus;
-    upstreamDebug.mainline_status = mainlineStatus;
-    upstreamDebug.primary_failure_reason = primaryFailureReason || null;
-    upstreamDebug.telemetry_failure_reason = telemetryFailureReason || null;
-    upstreamDebug.catalog_skip_reason = catalogSkipReason;
-    upstreamDebug.upstream_failure_code = upstreamFailureCode || null;
-    upstreamDebug.grounding_status = effectiveGroundingStatus || null;
-    upstreamDebug.grounded_count = effectiveGroundedCount;
-    upstreamDebug.ungrounded_count = effectiveUngroundedCount;
-    upstreamDebug.prompt_template_id = promptBundle.prompt_spec.template_id;
-    upstreamDebug.final_selected_candidate_count = finalSelectedCandidateCount;
-    upstreamDebug.post_guardrail_count = postGuardrailCount;
-    upstreamDebug.effective_failure_class = effectiveFailureClass || null;
-    upstreamDebug.failure_origin = failureOrigin || null;
-    upstreamDebug.semantic_plan_trace = concernSemanticPlanTrace;
-    upstreamDebug.selector_race_trace = concernSelectorRaceTrace;
-    upstreamDebug.open_world_expansion_trace = concernOpenWorldExpansionTrace;
-    upstreamDebug.scope_classification_stats = isPlainObject(viablePoolState?.scope_classification_stats) ? viablePoolState.scope_classification_stats : null;
-    upstreamDebug.role_pool_stats = isPlainObject(viablePoolState?.role_pool_stats) ? viablePoolState.role_pool_stats : null;
-    upstreamDebug.model_policy_trace = Array.isArray(concernSemanticPlanTrace?.model_policy_trace) ? concernSemanticPlanTrace.model_policy_trace : [];
-    upstreamDebug.mainline_stage_timings_ms = { ...mainlineStageTimingsMs };
-    upstreamDebug.mock_block_trace = {
-      requested_use_mock: String(process.env.AURORA_BFF_USE_MOCK || '').trim().toLowerCase() === 'true',
-      production_like: isProductionLikeAuroraBffEnv(),
-      effective_use_mock: false,
-    };
-  }
-  const terminalSuccess = finalRecommendations.length > 0
-    && normalizeRecoEffectiveFailureClass(effectiveFailureClass || 'none') === 'none';
-  const normalizedViablePoolStrength =
-    normalizeRecoViablePoolStrength(viablePoolState?.viable_pool_strength)
-    || (terminalSuccess ? 'strong' : finalRecommendations.length > 0 ? 'weak' : 'empty');
-  const normalizedTargetFidelityLevel =
-    normalizeRecoTargetFidelityLevel(viablePoolState?.target_fidelity_level)
-    || (Boolean(viablePoolState?.overall_target_fidelity_satisfied) ? 'satisfied' : finalRecommendations.length > 0 ? 'partial' : 'failed');
-  let nextPayload = {
-    ...norm.payload,
-    source: sourceMode === 'llm_primary'
-      ? (effectiveGroundingStatus === 'ungrounded' ? 'llm_editorial_v1' : 'llm_primary_v1')
-      : sourceMode === 'catalog_grounded'
-        ? 'catalog_grounded_v1'
-        : sourceMode === 'catalog_transient_fallback'
-          ? 'catalog_transient_fallback'
-          : sourceMode === 'framework_mainline'
-            ? 'framework_mainline_v1'
-            : sourceMode === 'step_aware_mainline'
-              ? 'step_aware_mainline_v1'
-            : 'legacy_notice',
-    recommendation_meta: {
-      ...(isPlainObject(norm.payload?.recommendation_meta) ? norm.payload.recommendation_meta : {}),
-      source_mode: sourceMode,
-      trigger_source: normalizedRecoTriggerSource,
-      recompute_from_profile_update: recomputeFromProfileUpdateFlag,
-      used_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
-      used_itinerary: itineraryAvailable,
-      used_safety_flags: false,
-      prompt_contract_ok: promptContract.ok,
-      primary_failure_reason: primaryFailureReason || null,
-      telemetry_failure_reason: telemetryFailureReason || null,
-      failure_class:
-        AURORA_BFF_RECO_CENTRALIZED_FAILURE_MAPPING_ENABLED && normalizeRecoEffectiveFailureClass(effectiveFailureClass || 'none') !== 'none'
-          ? effectiveFailureClass
-          : llmFailureClass || null,
-      ...(deterministicCatalogFirstEnabled
-        ? {
-          effective_failure_class: normalizeRecoEffectiveFailureClass(effectiveFailureClass || 'none') || 'none',
-          failure_origin: normalizeRecoFailureOrigin(failureOrigin || 'none'),
-        }
-        : {}),
-      contract_status: contractStatus,
-      catalog_skip_reason: catalogSkipReason,
-      upstream_failure_code: upstreamFailureCode || null,
-      mainline_status: mainlineStatus,
-      ...(!finalRecommendations.length && pickFirstTrimmed(norm.payload?.products_empty_reason)
-        ? { products_empty_reason: pickFirstTrimmed(norm.payload?.products_empty_reason) }
-        : {}),
-      ...(!finalRecommendations.length && stepAwareMainlineFailure?.productsEmptyReason
-        ? { step_aware_mainline_blocked_reason: stepAwareMainlineFailure.productsEmptyReason }
-        : {}),
-      grounding_status: effectiveGroundingStatus || null,
-      grounded_count: effectiveGroundedCount,
-      ungrounded_count: effectiveUngroundedCount,
-      prompt_template_id: promptBundle.prompt_spec.template_id,
-      llm_prompt_chars: typeof query === 'string' ? query.length : 0,
-      llm_schema_chars: Number(promptBundle.schema_chars || 0),
-      llm_mode: promptBundle.prompt_spec.llm_mode,
-      catalog_query_count: Number.isFinite(Number(catalogDebug?.query_count))
-        ? Number(catalogDebug?.query_count)
-        : 0,
-      llm_trace: llmTrace,
-      resolved_target_step: targetContext.resolved_target_step || null,
-      resolved_target_step_confidence: targetContext.resolved_target_step_confidence || 'none',
-      resolved_target_step_source: targetContext.resolved_target_step_source || 'none',
-      selected_source_counts:
-        isPlainObject(catalogDebug?.selected_source_counts)
-          ? catalogDebug.selected_source_counts
-          : {},
-      raw_source_counts:
-        isPlainObject(catalogCandidateState?.raw_source_counts)
-          ? catalogCandidateState.raw_source_counts
-          : {},
-      viable_source_counts:
-        isPlainObject(catalogCandidateState?.viable_source_counts)
-          ? catalogCandidateState.viable_source_counts
-          : {},
-      external_seed_used_count: Number.isFinite(Number(catalogDebug?.external_seed_used_count))
-        ? Number(catalogDebug.external_seed_used_count)
-        : 0,
-      recall_plan_version: pickFirstTrimmed(catalogDebug?.recall_plan_version) || null,
-      executed_query_count: Number.isFinite(Number(catalogDebug?.executed_query_count))
-        ? Number(catalogDebug.executed_query_count)
-        : Number.isFinite(Number(catalogDebug?.query_count))
-          ? Number(catalogDebug.query_count)
-          : 0,
-      executed_upstream_attempt_count: Number.isFinite(Number(catalogDebug?.executed_upstream_attempt_count))
-        ? Number(catalogDebug.executed_upstream_attempt_count)
-        : 0,
-      actual_http_attempt_count: Number.isFinite(Number(catalogDebug?.actual_http_attempt_count))
-        ? Number(catalogDebug.actual_http_attempt_count)
-        : 0,
-      stage_timeout_counts:
-        isPlainObject(catalogDebug?.stage_timeout_counts)
-          ? catalogDebug.stage_timeout_counts
-          : {},
-      primary_stage_timeout_class: pickFirstTrimmed(catalogDebug?.primary_stage_timeout_class) || null,
-      transport_policy_mode: pickFirstTrimmed(catalogDebug?.transport_policy_mode) || null,
-      candidate_drop_stage: pickFirstTrimmed(catalogDebug?.candidate_drop_stage) || null,
-      hard_reject_preview:
-        Array.isArray(catalogCandidateState?.hard_reject_preview)
-          ? catalogCandidateState.hard_reject_preview
-          : [],
-      semantic_plan_version: frameworkMode ? pickFirstTrimmed(targetContext?.semantic_plan_version, CONCERN_SEMANTIC_PLAN_VERSION) || CONCERN_SEMANTIC_PLAN_VERSION : null,
-      selection_contract_version: frameworkMode ? CONCERN_SELECTOR_RACE_VERSION : null,
-      winner_source: frameworkMode ? (concernWinnerSource || 'deterministic') : null,
-      open_world_expansion_used: frameworkMode ? concernOpenWorldExpansionUsed : false,
-      support_roles_surfaced: frameworkMode ? concernSupportRolesSurfaced : [],
-      framework_id: frameworkMode ? targetContext.framework_id || null : null,
-      framework_owner_source: frameworkMode ? targetContext.framework_owner_source || null : null,
-      framework_owner_state: frameworkMode ? targetContext.framework_owner_state || null : null,
-      semantic_planner_requested_provider: frameworkMode ? pickFirstTrimmed(concernSemanticPlanTrace?.planner_requested_provider) || null : null,
-      semantic_planner_requested_model: frameworkMode ? pickFirstTrimmed(concernSemanticPlanTrace?.planner_requested_model) || null : null,
-      semantic_planner_effective_provider: frameworkMode ? pickFirstTrimmed(concernSemanticPlanTrace?.planner_effective_provider) || null : null,
-      semantic_planner_effective_model: frameworkMode ? pickFirstTrimmed(concernSemanticPlanTrace?.planner_effective_model) || null : null,
-      semantic_planner_selection_source: frameworkMode ? pickFirstTrimmed(concernSemanticPlanTrace?.planner_selection_source) || null : null,
-      selector_requested_model: frameworkMode ? pickFirstTrimmed(concernSelectorRaceTrace?.selector_requested_model) || null : null,
-      selector_effective_model: frameworkMode ? pickFirstTrimmed(concernSelectorRaceTrace?.selector_effective_model) || null : null,
-      selector_selection_source: frameworkMode ? pickFirstTrimmed(concernSelectorRaceTrace?.selector_selection_source) || null : null,
-      semantic_planner_owner_state: frameworkMode ? pickFirstTrimmed(targetContext?.selection_owner_state, targetContext?.framework_owner_state) || null : null,
-      primary_role_id: frameworkMode ? targetContext.primary_role_id || null : null,
-      primary_recommendation_id: frameworkMode
-        ? (
-          viablePoolState.primary_role_matched === true
-            ? (pickFirstTrimmed(norm.payload?.primary_recommendation_id, viablePoolState.primary_recommendation_id) || null)
-            : null
-        )
-        : null,
-      primary_role_matched: frameworkMode ? Boolean(viablePoolState.primary_role_matched) : false,
-      best_available_role_id: frameworkMode ? viablePoolState.best_available_role_id || null : null,
-      role_conflict_present: frameworkMode ? Boolean(viablePoolState.role_conflict_present) : false,
-      late_conflict_without_override: frameworkMode ? Boolean(viablePoolState.late_conflict_without_override) : false,
-      reco_framework_trace_id: frameworkTraceId,
-      step_resolution_version: targetContext.step_resolution_version || null,
-      ...(frameworkMode ? { concern_framework_policy_version: targetContext.concern_framework_policy_version || null } : {}),
-      step_query_policy_version: RECOMMENDATION_STEP_QUERY_POLICY_V1,
-      viability_policy_version: RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1,
-      candidate_pool_signature_version: CANDIDATE_POOL_SIGNATURE_VERSION,
-      group_semantics_version: GROUP_SEMANTICS_VERSION,
-      ...(deterministicCatalogFirstEnabled
-        ? { reco_policy_version: pickFirstTrimmed(viablePoolState.reco_policy_version, RECOMMENDATION_RECO_POLICY_V1) || null }
-        : {}),
-      raw_candidate_count: Number(viablePoolState.raw_candidate_count || 0),
-      viable_candidate_count: Number(viablePoolState.viable_candidate_count || 0),
-      exact_step_viable_count: Number(viablePoolState.exact_step_viable_count || 0),
-      same_family_viable_count: Number(viablePoolState.same_family_viable_count || 0),
-      soft_mismatch_count: Number(viablePoolState.soft_mismatch_count || 0),
-      hard_reject_count: Number(viablePoolState.hard_reject_count || 0),
-      ...(deterministicCatalogFirstEnabled
-        ? {
-          pre_llm_selected_candidate_count: Number(preLlmSelectedCandidateCount || 0),
-          final_selected_candidate_count: Number(finalSelectedCandidateCount || 0),
-          post_guardrail_count: Number(postGuardrailCount || 0),
-        }
-        : {}),
-      selected_candidate_count: Number(viablePoolState.selected_candidate_count || 0),
-      ...(deterministicCatalogFirstEnabled
-        ? {
-          llm_invoked: llmInvoked,
-          initial_llm_outcome: initialLlmOutcome,
-          ...(presentationMode ? { presentation_mode: presentationMode } : {}),
-          ...(successMode ? { success_mode: successMode } : {}),
-          ...(nonBlockingLlmIssue !== 'none' ? { non_blocking_llm_issue: nonBlockingLlmIssue } : {}),
-          terminal_success: terminalSuccess,
-          viable_pool_strength: normalizedViablePoolStrength,
-          target_fidelity_level: normalizedTargetFidelityLevel,
-          same_family_success_threshold_met: Boolean(viablePoolState.same_family_success_threshold_met),
-        }
-        : {}),
-      overall_target_fidelity_satisfied: Boolean(viablePoolState.overall_target_fidelity_satisfied),
-      weak_viable_pool: Boolean(viablePoolState.weak_viable_pool),
-      candidate_pool_signature: viablePoolState.candidate_pool_signature,
-      candidate_drop_stage: frameworkMode ? pickFirstTrimmed(viablePoolState.candidate_drop_stage) || null : null,
-      effective_failure_class: frameworkMode
-        ? (normalizeRecoEffectiveFailureClass(effectiveFailureClass || '') || (finalRecommendations.length > 0 ? 'none' : null))
-        : (deterministicCatalogFirstEnabled ? (normalizeRecoEffectiveFailureClass(effectiveFailureClass || '') || 'none') : undefined),
-    },
-  };
-  if (finalRecommendations.length > 0) {
-    delete nextPayload.products_empty_reason;
-    delete nextPayload.telemetry_reason;
-  }
-  const recoContract = buildRecoMainlineContract({
-    recommendations: nextPayload.recommendations,
-    sourceMode,
-    source: nextPayload.source,
-    llmFailureClass:
-      AURORA_BFF_RECO_CENTRALIZED_FAILURE_MAPPING_ENABLED && normalizeRecoEffectiveFailureClass(effectiveFailureClass || 'none') !== 'none'
-        ? effectiveFailureClass
-        : llmFailureClass,
-    upstreamFailureCode,
-    promptContractOk: promptContract.ok,
-    fieldMissing: norm.field_missing,
-    structuredSource,
-    catalogSkipReason,
-    productsEmptyReason: nextPayload.products_empty_reason,
-    groundingStatus: effectiveGroundingStatus,
-    groundedCount: effectiveGroundedCount,
-    ungroundedCount: effectiveUngroundedCount,
-    mainlineStatusOverride: mainlineStatus,
-    promptTemplateId: promptBundle.prompt_spec.template_id,
-    entryType,
-    effectiveFailureClass,
-    failureOrigin,
-    terminalSuccess,
-    viablePoolStrength: normalizedViablePoolStrength,
-    targetFidelityLevel: normalizedTargetFidelityLevel,
-    presentationMode,
-    successMode,
-    preLlmSelectedCandidateCount,
-    finalSelectedCandidateCount,
-    postGuardrailCount,
-  });
-  const warningContract = applyRecoWarningVisibilityContract(nextPayload);
-  nextPayload = {
-    ...warningContract.payload,
-    prompt_contract_ok: promptContract.ok,
-    ...(promptContract.ok ? {} : { prompt_contract_issues: promptContract.issues.slice(0, 6) }),
-  };
-  nextPayload = attachRecoContractMeta(nextPayload, recoContract);
-  if (normalizedIngredientContext) {
-    const recoCount = Array.isArray(nextPayload.recommendations) ? nextPayload.recommendations.length : 0;
-    nextPayload.constraint_match_summary = {
-      total: recoCount,
-      matched: null,
-      dropped: null,
-    };
-  }
-  norm.payload = nextPayload;
-  norm.contract = recoContract;
-
-  return {
-    norm,
-    upstreamDebug,
-    alternativesDebug,
-    candidatePoolState: viablePoolState,
-    upstreamFailureCode,
-    llmFailureClass,
-    llmTrace,
-    contract: recoContract,
-    contractStatus,
-    mainlineStatus,
-    primaryFailureReason,
-    telemetryFailureReason,
-    catalogSkipReason,
-    llmPromptChars: typeof query === 'string' ? query.length : 0,
-    llmSchemaChars: Number(promptBundle.schema_chars || 0),
-    llmMode: promptBundle.prompt_spec.llm_mode,
-  };
-}
+const {
+  generateProductRecommendations,
+} = createLegacyRecoGenerationEngineRuntime({
+  pickFirstTrimmed,
+  pickFirstString,
+  isPlainObject,
+  asStringArray,
+  uniqCaseInsensitiveStrings,
+  summarizeProfileForContext,
+  normalizeIngredientRecoContextValue,
+  buildAnalysisContextSnapshotForRoute,
+  buildTaskAnalysisContextForPrefix,
+  buildAnalysisContextPromptBlock,
+  buildContextPrefix,
+  resolveRecommendationTargetContext,
+  runConcernSemanticPlanner,
+  buildConcernTargetContextFromSemanticPlan,
+  normalizeRecoEffectiveFailureClass,
+  normalizeRecoFailureClass,
+  normalizeRecoFailureOrigin,
+  normalizeRecoGroundingStatus,
+  normalizeRecoViablePoolStrength,
+  normalizeRecoTargetFidelityLevel,
+  deriveRecoContractStatus,
+  deriveRecoMainlineStatus,
+  deriveRecoTelemetryFailureReason,
+  buildRecoMainlineContract,
+  applyRecoWarningVisibilityContract,
+  attachRecoContractMeta,
+  mergeFieldMissing,
+  isRecoUngroundedItem,
+  enrichRecommendationsWithPdpOpenContract,
+  dedupeRecoRecommendationsStrict,
+  limitRecoKnownTestSeedRecommendations,
+  buildRecoDiversityHistoryKey,
+  getRecoRecentExposureState,
+  applyRecoRecentDiversityGuard,
+  buildRecoDiversityToken,
+  updateRecoRecentExposureTokens,
+  normalizeBudgetHint,
+  hasItineraryContextForReco,
+  runConcernSelectorRace,
+  applyConcernSelectorRaceOrdering,
+  finalizeConcernFrameworkCandidatePools,
+  finalizeRecommendationCandidatePools,
+  buildRecoGenerateFromCatalog,
+  deriveRecoPdpFastFallbackReasonCode,
+  buildRecoLlmPromptState,
+  runRecoLlmPrimary,
+  resolveConcernMainlineFailure,
+  resolveRecoEffectiveFailure,
+  hasEmptyStructuredRecommendations,
+  shouldUseRecoCatalogTransientFallback,
+  buildRecoCatalogTransientFallbackStructured,
+  recordAuroraRecoLlmCall,
+  groundRecoRecommendationsFromCatalog,
+  coerceRecoItemForUi,
+  normalizeRecoGenerate,
+  buildConcernFrameworkDecisionTrace,
+  deriveRecoFailureFromStepAwareLlmFallback,
+  deriveStepAwareEmptyReason,
+  buildConcernFrameworkSummary,
+  RECO_CATALOG_GROUNDED_ENABLED,
+  RECO_UPSTREAM_TIMEOUT_MS,
+  RECO_UPSTREAM_TIMEOUT_HARD_CAP_MS,
+  RECO_PDP_ENRICH_CONCURRENCY,
+  RECO_PDP_ENRICH_MAX_NETWORK_ITEMS,
+  RECO_PDP_RESOLVE_ENABLED,
+  RECO_PDP_RESOLVE_TIMEOUT_MS,
+  RECO_PDP_RESOLVE_TIMEOUT_STRICT_MIN_MS,
+  RECO_PDP_STRICT_INTERNAL_FIRST,
+  PIVOTA_BACKEND_BASE_URL,
+  RECO_PDP_CHAT_DISABLE_LOCAL_DOUBLE_HOP,
+  RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT_ENABLED,
+  RECO_PDP_LOCAL_SEARCH_FALLBACK_ON_TRANSIENT,
+  RECO_CATALOG_TRANSIENT_FALLBACK_ENABLED,
+  RECO_PDP_FAST_EXTERNAL_FALLBACK_ENABLED,
+  RECOMMENDATION_RECO_POLICY_V1,
+  RECO_TEST_SEED_MAX_PER_RESPONSE,
+  RECO_TEST_SEED_MIN_TOTAL,
+  isProductionLikeAuroraBffEnv,
+  RECO_DIVERSITY_ENABLED,
+  RECO_DIVERSITY_MAX_REPEAT_PER_RESPONSE,
+  RECO_DIVERSITY_MIN_TOTAL,
+  RECO_MAIN_PROMPT_TEMPLATE_ID,
+  RECO_PDP_LIGHT_ENRICH_ENABLED,
+  AURORA_BFF_RECO_STEP_AWARE_CATALOG_FIRST_ENABLED,
+  AURORA_BFF_RECO_CENTRALIZED_FAILURE_MAPPING_ENABLED,
+  CONCERN_SEMANTIC_PLAN_VERSION,
+  CONCERN_SELECTOR_RACE_VERSION,
+  RECOMMENDATION_STEP_QUERY_POLICY_V1,
+  RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1,
+  CANDIDATE_POOL_SIGNATURE_VERSION,
+  GROUP_SEMANTICS_VERSION,
+});
 
 function parseBoolQueryValue(value, fallback = false) {
   if (value == null) return fallback;
@@ -69043,777 +67630,89 @@ function mountAuroraBffRoutes(app, { logger }) {
 
   }
 
-  app.post('/v1/reco/generate', async (req, res) => {
-    const ctx = buildRequestContext(req, {});
-    try {
-      requireAuroraUid(ctx);
-      const parsed = RecoGenerateRequestSchema.safeParse(req.body || {});
-      if (!parsed.success) {
-        const envelope = buildEnvelope(ctx, {
-          assistant_message: makeAssistantMessage('Invalid request.'),
-          suggested_chips: [],
-          cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: 'BAD_REQUEST', details: parsed.error.format() } }],
-          session_patch: {},
-          events: [makeEvent(ctx, 'error', { code: 'BAD_REQUEST' })],
-        });
-        return res.status(400).json(envelope);
-      }
-
-	      const identity = await resolveIdentity(req, ctx);
-	      const storedProfile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }).catch(() => null);
-	      const recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7).catch(() => []);
-        const requestProfileOverlay = extractAnalysisProfileContextOverlay(
-          extractProfilePatchFromSession(parsed.data.session),
-          extractProfilePatchFromRequestContextPayload(req.body || {}),
-        );
-        const requestProfileOverlayKeys =
-          requestProfileOverlay && typeof requestProfileOverlay === 'object'
-            ? Object.keys(requestProfileOverlay).sort()
-            : [];
-        const requestProfileContextSource = requestProfileOverlayKeys.length ? 'request_overlay_applied' : 'db_only_profile';
-	      const latestArtifact = await loadLatestDiagnosisArtifactForRoute({
-	        identity,
-	        session:
-	          parsed.data.session && typeof parsed.data.session === 'object' && !Array.isArray(parsed.data.session)
-	            ? parsed.data.session
-	            : null,
-	        ctx,
-	        logger,
-	      });
-	      const analysisContextSnapshot = buildAnalysisContextSnapshotForRoute({
-	        latestArtifact,
-	        profile: storedProfile,
-	        recentLogs,
-	      });
-        const recommendationAnalysisTaskContext = buildTaskAnalysisContextForPrefix({
-          task: 'recommendation',
-          snapshot: analysisContextSnapshot,
-          profile: storedProfile,
-          requestOverride: requestProfileOverlay,
-          recentLogs,
-        });
-        const profile =
-          requestProfileOverlay && typeof requestProfileOverlay === 'object'
-            ? { ...(storedProfile && typeof storedProfile === 'object' && !Array.isArray(storedProfile) ? storedProfile : {}), ...requestProfileOverlay }
-            : storedProfile;
-	      const profileSummary = summarizeProfileForContext(profile);
-      const latestRecoContextFromSession = extractLatestRecoContextFromSession(parsed.data.session);
-      const derivedDirectRecoContext = latestRecoContextFromSession || null;
-      const effectiveDirectFocus = pickFirstTrimmed(
-        parsed.data.focus,
-        derivedDirectRecoContext && derivedDirectRecoContext.resolved_target_step,
-      );
-      const requestText = !pickFirstTrimmed(parsed.data.focus) && derivedDirectRecoContext
-        ? buildAutoAnchoredRecoRequestText({
-          rawMessage: '',
-          recoContext: derivedDirectRecoContext,
-          language: ctx.lang,
-        })
-        : buildRecoGenerateUserAsk({
-          focus: effectiveDirectFocus,
-          constraints: parsed.data.constraints || {},
-          lang: ctx.lang,
-        });
-      const directRecoTargetContext = resolveRecommendationTargetContext({
-        explicitStep: effectiveDirectFocus,
-        focus: pickFirstTrimmed(
-          effectiveDirectFocus,
-          derivedDirectRecoContext && derivedDirectRecoContext.ingredient_query,
-          derivedDirectRecoContext && derivedDirectRecoContext.goal,
-        ),
-        text: requestText,
-        entryType: 'direct',
-      });
-      const directRecoSpineContext = mergeIngredientRecoContextValue(derivedDirectRecoContext, {
-        query: pickFirstTrimmed(
-          derivedDirectRecoContext && derivedDirectRecoContext.ingredient_query,
-          derivedDirectRecoContext && derivedDirectRecoContext.query,
-          effectiveDirectFocus,
-        ),
-        goal: pickFirstTrimmed(derivedDirectRecoContext && derivedDirectRecoContext.goal),
-        target_step: pickFirstTrimmed(
-          directRecoTargetContext && directRecoTargetContext.resolved_target_step,
-          derivedDirectRecoContext && derivedDirectRecoContext.resolved_target_step,
-        ),
-        resolved_target_step: pickFirstTrimmed(
-          directRecoTargetContext && directRecoTargetContext.resolved_target_step,
-          derivedDirectRecoContext && derivedDirectRecoContext.resolved_target_step,
-        ),
-        resolved_target_step_confidence: pickFirstTrimmed(
-          directRecoTargetContext && directRecoTargetContext.resolved_target_step_confidence,
-          derivedDirectRecoContext && derivedDirectRecoContext.resolved_target_step_confidence,
-        ),
-        resolved_target_step_source: pickFirstTrimmed(
-          directRecoTargetContext && directRecoTargetContext.resolved_target_step_source,
-          derivedDirectRecoContext && derivedDirectRecoContext.resolved_target_step_source,
-          'direct_request',
-        ),
-        primary_focus: derivedDirectRecoContext && derivedDirectRecoContext.primary_focus,
-        confidence_policy: derivedDirectRecoContext && derivedDirectRecoContext.confidence_policy,
-        ranked_targets: Array.isArray(derivedDirectRecoContext && derivedDirectRecoContext.ranked_targets)
-          ? derivedDirectRecoContext.ranked_targets
-          : [],
-        primary_target_id: pickFirstTrimmed(derivedDirectRecoContext && derivedDirectRecoContext.primary_target_id),
-        selected_target_ids: Array.isArray(derivedDirectRecoContext && derivedDirectRecoContext.selected_target_ids)
-          ? derivedDirectRecoContext.selected_target_ids
-          : [],
-        product_candidates: Array.isArray(derivedDirectRecoContext && derivedDirectRecoContext.product_candidates)
-          ? derivedDirectRecoContext.product_candidates
-          : [],
-        source: pickFirstTrimmed(
-          derivedDirectRecoContext && derivedDirectRecoContext.context_origin,
-          derivedDirectRecoContext && derivedDirectRecoContext.source,
-          'direct_request',
-        ),
-        updated_at_ms: Date.now(),
-      });
-      const hasDirectRecoTarget = Boolean(
-        pickFirstTrimmed(
-          directRecoTargetContext && directRecoTargetContext.resolved_target_step,
-          derivedDirectRecoContext && derivedDirectRecoContext.ingredient_query,
-          derivedDirectRecoContext && derivedDirectRecoContext.goal,
-        ),
-      );
-
-      const gate = shouldDiagnosisGate({ message: 'recommend', triggerSource: 'action', profile });
-      let gateAdvisoryCard = null;
-      let gateAdvisoryChips = [];
-      if (gate.gated) {
-        const prompt = buildDiagnosisPrompt(ctx.lang, gate.missing);
-        const chips = buildDiagnosisChips(ctx.lang, gate.missing);
-        gateAdvisoryCard = {
-          card_id: `diag_advisory_${ctx.request_id}`,
-          type: 'confidence_notice',
-          payload: buildConfidenceNoticeCardPayload({
-            language: ctx.lang,
-            reason: 'diagnosis_first',
-            confidence: { score: 0.45, level: 'low', rationale: ['profile_incomplete_assumptions_used'] },
-            non_blocking: true,
-            details: [
-              ...(Array.isArray(gate.missing) ? gate.missing.map((field) => `missing_${field}`) : []),
-              prompt,
-            ].slice(0, 6),
-            actions: ['refine_profile'],
-          }),
-        };
-        gateAdvisoryChips = chips;
-      }
-
-	      const upstreamReco = await generateProductRecommendations({
-	        ctx,
-	        profile,
-	        recentLogs,
-	        message: requestText,
-	        focus: effectiveDirectFocus,
-	        analysisContextSnapshot,
-        requestOverride: requestProfileOverlay,
-        includeAlternatives: false,
-        logger,
-        recoTriggerSource: 'typed_reco',
-        entryType: 'direct',
-      });
-      const norm = upstreamReco && upstreamReco.norm && typeof upstreamReco.norm === 'object'
-        ? upstreamReco.norm
-        : normalizeRecoGenerate(null);
-      const baseContract =
-        upstreamReco && upstreamReco.contract && typeof upstreamReco.contract === 'object'
-          ? upstreamReco.contract
-          : buildRecoMainlineContract({
-            recommendations: norm?.payload?.recommendations,
-            sourceMode: norm?.payload?.recommendation_meta?.source_mode,
-            source: norm?.payload?.source,
-            llmFailureClass: upstreamReco?.llmFailureClass,
-            upstreamFailureCode: upstreamReco?.upstreamFailureCode,
-            promptContractOk: norm?.payload?.prompt_contract_ok !== false,
-            fieldMissing: norm?.field_missing,
-            structuredSource: norm?.payload?.recommendation_meta?.source_mode,
-            catalogSkipReason: norm?.payload?.recommendation_meta?.catalog_skip_reason,
-            productsEmptyReason: norm?.payload?.products_empty_reason,
-            groundingStatus: norm?.payload?.grounding_status || norm?.payload?.recommendation_meta?.grounding_status,
-            groundedCount: norm?.payload?.grounded_count || norm?.payload?.recommendation_meta?.grounded_count,
-            ungroundedCount: norm?.payload?.ungrounded_count || norm?.payload?.recommendation_meta?.ungrounded_count,
-            mainlineStatusOverride: norm?.payload?.mainline_status || norm?.payload?.recommendation_meta?.mainline_status,
-            promptTemplateId: norm?.payload?.recommendation_meta?.prompt_template_id,
-            entryType: 'direct',
-            ...extractRecoOutcomeContractArgsFromPayload(norm?.payload, upstreamReco?.contract),
-          });
-      if (parsed.data.include_alternatives) {
-        try {
-          const alt = await enrichRecommendationsWithAlternatives({
-            ctx,
-            profileSummary,
-            recentLogs,
-            recommendations: norm.payload.recommendations,
-            logger,
-          });
-          norm.payload = { ...norm.payload, recommendations: alt.recommendations };
-          norm.field_missing = mergeFieldMissing(norm.field_missing, alt.field_missing);
-        } catch (altErr) {
-          logger?.warn({ err: altErr?.message, code: altErr?.code }, 'aurora bff: generic-reco enrichRecommendationsWithAlternatives failed, continuing without alternatives');
-        }
-      }
-      let directMatcherPayload = null;
-      let directMatcherRecommendationCount = 0;
-      const shouldAttemptDirectMatcherFallback =
-        AURORA_PRODUCT_MATCHER_ENABLED &&
-        (
-          Boolean(latestArtifact && typeof latestArtifact === 'object' && !Array.isArray(latestArtifact))
-          || AURORA_PRODUCT_MATCHER_BUNDLED_SEED_FALLBACK_ENABLED
-        );
-      const hasUpstreamRecommendations = Array.isArray(norm?.payload?.recommendations) && norm.payload.recommendations.length > 0;
-      if (!hasUpstreamRecommendations && shouldAttemptDirectMatcherFallback) {
-        try {
-          const matcherPlan = buildIngredientPlan({
-            artifact: latestArtifact || null,
-            profile: profile || {},
-          });
-          const allowBundledSeedCatalog =
-            AURORA_PRODUCT_MATCHER_BUNDLED_SEED_FALLBACK_ENABLED
-            && !DIAG_PRODUCT_CATALOG_PATH;
-          const directMatcherBundle = buildProductRecommendationsBundle({
-            ingredientPlan: matcherPlan,
-            artifact: latestArtifact || null,
-            profile,
-            language: ctx.lang,
-            disallowTreatment: false,
-            catalogPath: DIAG_PRODUCT_CATALOG_PATH,
-            allowDefaultSeedCatalog: allowBundledSeedCatalog,
-          });
-          directMatcherPayload = toLegacyRecommendationsPayload(directMatcherBundle, { language: ctx.lang });
-          directMatcherRecommendationCount = Array.isArray(directMatcherPayload?.recommendations)
-            ? directMatcherPayload.recommendations.length
-            : 0;
-        } catch (matcherErr) {
-          logger?.warn(
-            { err: matcherErr?.message, code: matcherErr?.code, request_id: ctx.request_id },
-            'aurora bff: direct reco matcher fallback failed',
-          );
-        }
-      }
-      const payload = norm.payload;
-      const llmTraceRef = buildRecoLlmTraceRef(upstreamReco && upstreamReco.llmTrace);
-      const recoMeta = isPlainObject(payload?.recommendation_meta) ? payload.recommendation_meta : {};
-      const hasPayloadRecommendations = Array.isArray(payload?.recommendations) && payload.recommendations.length > 0;
-
-      const suggestedChips = hasPayloadRecommendations
-        ? buildRecoSuccessFollowupChips(ctx.lang)
-        : buildRecoEntryChips(ctx.lang);
-      if (gateAdvisoryChips.length > 0) {
-        const existing = new Set(suggestedChips.map((chip) => String(chip && chip.chip_id ? chip.chip_id : '').trim()).filter(Boolean));
-        for (const chip of gateAdvisoryChips) {
-          const chipId = String(chip && chip.chip_id ? chip.chip_id : '').trim();
-          if (!chipId || existing.has(chipId)) continue;
-          existing.add(chipId);
-          suggestedChips.push(chip);
-          if (suggestedChips.length >= 12) break;
-        }
-      }
-
-      const finalDirectContract = buildRecoMainlineContract({
-        recommendations: payload?.recommendations,
-        sourceMode: payload?.recommendation_meta?.source_mode || baseContract.source_mode,
-        source: payload?.source || baseContract.source,
-        llmFailureClass: upstreamReco?.llmFailureClass || baseContract.failure_class,
-        upstreamFailureCode: upstreamReco?.upstreamFailureCode,
-        promptContractOk: payload?.prompt_contract_ok !== false,
-        fieldMissing: norm?.field_missing,
-        structuredSource: payload?.recommendation_meta?.source_mode,
-        catalogSkipReason: payload?.recommendation_meta?.catalog_skip_reason,
-        productsEmptyReason: payload?.products_empty_reason,
-        groundingStatus: payload?.grounding_status || payload?.recommendation_meta?.grounding_status,
-        groundedCount: payload?.grounded_count || payload?.recommendation_meta?.grounded_count,
-        ungroundedCount: payload?.ungrounded_count || payload?.recommendation_meta?.ungrounded_count,
-        mainlineStatusOverride: payload?.mainline_status || payload?.recommendation_meta?.mainline_status,
-        promptTemplateId: payload?.recommendation_meta?.prompt_template_id,
-        entryType: 'direct',
-        ...extractRecoOutcomeContractArgsFromPayload(payload, baseContract),
-      });
-      finalDirectContract.mainline_status = pickFirstTrimmed(
-        payload?.mainline_status,
-        payload?.recommendation_meta?.mainline_status,
-        finalDirectContract.mainline_status,
-      ) || finalDirectContract.mainline_status;
-      finalDirectContract.grounding_status = normalizeRecoGroundingStatus(
-        payload?.grounding_status || payload?.recommendation_meta?.grounding_status,
-      ) || finalDirectContract.grounding_status || null;
-      finalDirectContract.grounded_count = Number.isFinite(Number(payload?.grounded_count))
-        ? Number(payload.grounded_count)
-        : Number.isFinite(Number(payload?.recommendation_meta?.grounded_count))
-          ? Number(payload.recommendation_meta.grounded_count)
-          : finalDirectContract.grounded_count;
-      finalDirectContract.ungrounded_count = Number.isFinite(Number(payload?.ungrounded_count))
-        ? Number(payload.ungrounded_count)
-        : Number.isFinite(Number(payload?.recommendation_meta?.ungrounded_count))
-          ? Number(payload.recommendation_meta.ungrounded_count)
-          : finalDirectContract.ungrounded_count;
-      finalDirectContract.prompt_template_id = pickFirstTrimmed(
-        payload?.recommendation_meta?.prompt_template_id,
-        finalDirectContract.prompt_template_id,
-      ) || finalDirectContract.prompt_template_id;
-      if (isPlainObject(payload)) {
-        const nextPayload = attachRecoContractMeta(
-          restorePlanOnlyRecommendations(payload, {
-            sourceMode: finalDirectContract.source_mode,
-          }),
-          finalDirectContract,
-        );
-        Object.assign(payload, nextPayload);
-      }
-      if (Array.isArray(payload?.recommendations) && payload.recommendations.length > 0) {
-        Object.assign(
-          finalDirectContract,
-          buildRecoMainlineContract({
-            recommendations: payload.recommendations,
-            sourceMode: payload?.recommendation_meta?.source_mode || finalDirectContract.source_mode,
-            source: payload?.source || finalDirectContract.source,
-            llmFailureClass: upstreamReco?.llmFailureClass,
-            upstreamFailureCode: upstreamReco?.upstreamFailureCode,
-            promptContractOk: payload?.prompt_contract_ok !== false,
-            fieldMissing: norm.field_missing,
-            structuredSource: payload?.recommendation_meta?.source_mode,
-            catalogSkipReason: payload?.recommendation_meta?.catalog_skip_reason,
-            productsEmptyReason: payload?.products_empty_reason,
-            groundingStatus: payload?.grounding_status || payload?.recommendation_meta?.grounding_status,
-            groundedCount: payload?.grounded_count || payload?.recommendation_meta?.grounded_count,
-            ungroundedCount: payload?.ungrounded_count || payload?.recommendation_meta?.ungrounded_count,
-            mainlineStatusOverride: payload?.mainline_status || payload?.recommendation_meta?.mainline_status,
-            promptTemplateId: payload?.prompt_template_id || payload?.recommendation_meta?.prompt_template_id,
-            entryType: 'direct',
-            ...extractRecoOutcomeContractArgsFromPayload(payload, finalDirectContract),
-          }),
-        );
-      }
-      const recommendationContextState = deriveRecommendationContextState(recommendationAnalysisTaskContext);
-      const explicitOnlyNeedsMoreContextWarning =
-        !(Array.isArray(payload?.recommendations) && payload.recommendations.length > 0)
-        && String(recommendationAnalysisTaskContext?.context_source_mode || '').trim() === 'explicit_only'
-        && recommendationContextState.satisfied === false;
-      const recommendationAnalysisContextMeta = buildTaskAnalysisContextUsageMeta(
-        recommendationAnalysisTaskContext,
-        {
-          requestContextSignature: payload?.recommendation_meta?.request_context_signature,
-          requestContextSignatureVersion:
-            payload?.recommendation_meta?.request_context_signature_version || REQUEST_CONTEXT_SIGNATURE_VERSION,
-          candidatePoolSignature: payload?.recommendation_meta?.candidate_pool_signature,
-          candidatePoolSignatureVersion: DIRECT_RECO_CANDIDATE_POOL_SIGNATURE_VERSION,
-          strictnessSource: 'entry_default',
-          minimumRecommendationContextSatisfied: recommendationContextState.satisfied,
-          minContextRuleVersion: recommendationContextState.min_context_rule_version,
-        },
-      );
-      if (isPlainObject(payload)) {
-        const payloadMeta = isPlainObject(payload.recommendation_meta) ? payload.recommendation_meta : {};
-        payload.recommendation_meta = {
-          ...payloadMeta,
-          analysis_context_usage: recommendationAnalysisContextMeta,
-          request_context_signature_version:
-            pickFirstTrimmed(payloadMeta.request_context_signature_version, REQUEST_CONTEXT_SIGNATURE_VERSION)
-            || REQUEST_CONTEXT_SIGNATURE_VERSION,
-          candidate_pool_signature_version: DIRECT_RECO_CANDIDATE_POOL_SIGNATURE_VERSION,
-          ...(explicitOnlyNeedsMoreContextWarning
-            ? {
-              minimum_recommendation_context_warning: true,
-              minimum_recommendation_context_reason: 'minimum_recommendation_context_unsatisfied',
-            }
-            : {}),
-          ...(directRecoTargetContext?.resolved_target_step ? { resolved_target_step: directRecoTargetContext.resolved_target_step } : {}),
-          ...(directRecoTargetContext?.resolved_target_step_confidence ? { resolved_target_step_confidence: directRecoTargetContext.resolved_target_step_confidence } : {}),
-          ...(directRecoTargetContext?.resolved_target_step_source ? { resolved_target_step_source: directRecoTargetContext.resolved_target_step_source } : {}),
-        };
-        Object.assign(payload, applyRecoContentSpineToPayload(payload, directRecoSpineContext));
-        payload.metadata = {
-          ...(isPlainObject(payload.metadata) ? payload.metadata : {}),
-          ...(explicitOnlyNeedsMoreContextWarning
-            ? {
-              minimum_recommendation_context_warning: true,
-              minimum_recommendation_context_reason: 'minimum_recommendation_context_unsatisfied',
-            }
-            : {}),
-          matcher_check_result: {
-            source: 'artifact_matcher_v1',
-            available: directMatcherRecommendationCount > 0,
-            recommendation_count: directMatcherRecommendationCount,
-          },
-        };
-      }
-      const directSessionPatchMeta = {
-        profile_context_source: requestProfileContextSource,
-        request_profile_overlay_applied: requestProfileOverlayKeys.length > 0,
-        ...(requestProfileOverlayKeys.length ? { request_profile_overlay_keys: requestProfileOverlayKeys } : {}),
-        analysis_context_usage: recommendationAnalysisContextMeta,
-        ...(explicitOnlyNeedsMoreContextWarning
-          ? {
-            recommendation_warning: {
-              minimum_recommendation_context_warning: true,
-              missing_context: recommendationContextState.missing_context,
-              request_context_signature_version: recommendationContextState.request_context_signature_version,
-              candidate_pool_signature_version: recommendationContextState.candidate_pool_signature_version,
-              strictness_source: recommendationContextState.strictness_source,
-            },
-          }
-          : {}),
-      };
-      const directNoRecoReason = pickFirstTrimmed(
-        finalDirectContract.surface_reason,
-        payload?.recommendation_meta?.surface_reason,
-        finalDirectContract.products_empty_reason,
-        payload?.products_empty_reason,
-        deriveRecoEmptyReason(payload, finalDirectContract),
-      );
-      const hasPlanOrGroundedRecommendations = Array.isArray(payload?.recommendations) && payload.recommendations.length > 0;
-
-      const envelope = buildEnvelope(ctx, {
-        assistant_message: null,
-        suggested_chips: suggestedChips,
-        cards: [
-          {
-            card_id: `reco_${ctx.request_id}`,
-            type: 'recommendations',
-            payload,
-            ...(norm.field_missing?.length ? { field_missing: norm.field_missing.slice(0, 8) } : {}),
-          },
-          ...(gateAdvisoryCard ? [gateAdvisoryCard] : []),
-        ],
-        session_patch: {
-          ...(payload.recommendations && payload.recommendations.length ? { next_state: 'S7_PRODUCT_RECO' } : {}),
-          meta: directSessionPatchMeta,
-        },
-        events: applyRecoContractToRecoRequestedEvents([], finalDirectContract, {
-          ctx: { ...ctx, trigger_source: 'action' },
-          emitIfMissing: true,
-          eventData: buildRecoRequestedEventData({
-            explicit: true,
-            payload,
-            source: String(payload?.source || recoMeta.source_mode || 'catalog_grounded_v1'),
-            llmTraceRef,
-            failureClass: upstreamReco && upstreamReco.llmFailureClass ? upstreamReco.llmFailureClass : '',
-            upstreamFailureCode: upstreamReco?.upstreamFailureCode,
-            ...(!hasPlanOrGroundedRecommendations && directNoRecoReason ? { reason: directNoRecoReason } : {}),
-          }),
-        }).events,
-      });
-      if (!AURORA_RECO_GENERATE_GUARDRAIL_V1) {
-        const envelopeRecommendations = Array.isArray(payload?.recommendations) ? payload.recommendations : [];
-        if (!envelopeRecommendations.length) {
-          const noRecoEnvelope = {
-            ...envelope,
-            cards: [
-              {
-                card_id: `conf_${ctx.request_id}_reco_missing`,
-                type: 'confidence_notice',
-                payload: buildConfidenceNoticeCardPayload({
-                  language: ctx.lang,
-                  reason: directNoRecoReason || 'artifact_missing',
-                  confidence: { score: 0.35, level: 'low', rationale: [finalDirectContract.telemetry_failure_reason || directNoRecoReason || 'artifact_missing'] },
-                  actions: ['retry_recommendations', 'refine_profile'],
-                }),
-              },
-              ...(gateAdvisoryCard ? [gateAdvisoryCard] : []),
-            ],
-            suggested_chips: suggestedChips.length ? suggestedChips : buildRecoEntryChips(ctx.lang),
-            session_patch: {
-              ...(isPlainObject(envelope.session_patch) ? envelope.session_patch : {}),
-            },
-          };
-          return res.json(applyBeautyCanonicalOwnershipToEnvelope({
-            envelope: noRecoEnvelope,
-            route: 'reco_generate',
-            assistantText:
-              isPlainObject(noRecoEnvelope.assistant_message) && typeof noRecoEnvelope.assistant_message.content === 'string'
-                ? noRecoEnvelope.assistant_message.content
-                : '',
-            policyMeta: { intent_canonical: 'reco_products' },
-            profile,
-          }));
-        }
-        return res.json(applyBeautyCanonicalOwnershipToEnvelope({
-          envelope,
-          route: 'reco_generate',
-          assistantText:
-            isPlainObject(envelope.assistant_message) && typeof envelope.assistant_message.content === 'string'
-              ? envelope.assistant_message.content
-              : '',
-          policyMeta: { intent_canonical: 'reco_products' },
-          profile,
-        }));
-      }
-      const guardrailResult = await applyRecommendationOutputGuardrailsForRoute({
-        envelope,
-        ctx,
-        ctx,
-        logger,
-      });
-      if (Array.isArray(guardrailResult.rejected) && guardrailResult.rejected.length > 0) {
-        persistRejectedCatalogCandidates(ctx, guardrailResult.rejected);
-      }
-      const guardedEnvelope = isPlainObject(guardrailResult.envelope) ? guardrailResult.envelope : envelope;
-      const guardedCards = Array.isArray(guardedEnvelope.cards) ? guardedEnvelope.cards : [];
-      const guardedRecoCard = guardedCards.find(
-        (card) => isPlainObject(card) && String(card.type || '').trim().toLowerCase() === 'recommendations',
-      );
-      const guardedRecommendations = Array.isArray(guardedRecoCard && guardedRecoCard.payload && guardedRecoCard.payload.recommendations)
-        ? guardedRecoCard.payload.recommendations
-        : [];
-      if (isPlainObject(guardedRecoCard?.payload)) {
-        const guardedMeta = isPlainObject(guardedRecoCard.payload.recommendation_meta) ? guardedRecoCard.payload.recommendation_meta : {};
-        guardedRecoCard.payload.recommendation_meta = {
-          ...guardedMeta,
-          analysis_context_usage: recommendationAnalysisContextMeta,
-          request_context_signature_version:
-            pickFirstTrimmed(guardedMeta.request_context_signature_version, REQUEST_CONTEXT_SIGNATURE_VERSION)
-            || REQUEST_CONTEXT_SIGNATURE_VERSION,
-          candidate_pool_signature_version: DIRECT_RECO_CANDIDATE_POOL_SIGNATURE_VERSION,
-          final_selected_candidate_count: guardedRecommendations.length,
-          post_guardrail_count: guardedRecommendations.length,
-        };
-        guardedRecoCard.payload = applyRecoContentSpineToPayload(guardedRecoCard.payload, directRecoSpineContext);
-      }
-      const hasGuardedRecommendations = guardedRecommendations.length > 0;
-      const finalContract = buildRecoMainlineContract({
-        recommendations: guardedRecommendations,
-        sourceMode: guardedRecoCard?.payload?.recommendation_meta?.source_mode || baseContract.source_mode,
-        source: guardedRecoCard?.payload?.source || baseContract.source,
-        llmFailureClass: baseContract.failure_class || upstreamReco?.llmFailureClass,
-        upstreamFailureCode: upstreamReco?.upstreamFailureCode,
-        promptContractOk: guardedRecoCard?.payload?.prompt_contract_ok !== false,
-        fieldMissing: guardedRecoCard?.field_missing,
-        structuredSource: guardedRecoCard?.payload?.recommendation_meta?.source_mode,
-        catalogSkipReason: guardedRecoCard?.payload?.recommendation_meta?.catalog_skip_reason,
-        productsEmptyReason: guardedRecoCard?.payload?.products_empty_reason,
-        groundingStatus: guardedRecoCard?.payload?.grounding_status || guardedRecoCard?.payload?.recommendation_meta?.grounding_status,
-        groundedCount: guardedRecoCard?.payload?.grounded_count || guardedRecoCard?.payload?.recommendation_meta?.grounded_count,
-        ungroundedCount: guardedRecoCard?.payload?.ungrounded_count || guardedRecoCard?.payload?.recommendation_meta?.ungrounded_count,
-        mainlineStatusOverride: guardedRecoCard?.payload?.mainline_status || guardedRecoCard?.payload?.recommendation_meta?.mainline_status,
-        promptTemplateId: guardedRecoCard?.payload?.prompt_template_id || guardedRecoCard?.payload?.recommendation_meta?.prompt_template_id,
-        entryType: 'direct',
-        ...extractRecoOutcomeContractArgsFromPayload(guardedRecoCard?.payload, baseContract),
-      });
-      finalContract.mainline_status = pickFirstTrimmed(
-        guardedRecoCard?.payload?.mainline_status,
-        guardedRecoCard?.payload?.recommendation_meta?.mainline_status,
-        finalContract.mainline_status,
-      ) || finalContract.mainline_status;
-      finalContract.grounding_status = normalizeRecoGroundingStatus(
-        guardedRecoCard?.payload?.grounding_status || guardedRecoCard?.payload?.recommendation_meta?.grounding_status,
-      ) || finalContract.grounding_status || null;
-      finalContract.grounded_count = Number.isFinite(Number(guardedRecoCard?.payload?.grounded_count))
-        ? Number(guardedRecoCard.payload.grounded_count)
-        : Number.isFinite(Number(guardedRecoCard?.payload?.recommendation_meta?.grounded_count))
-          ? Number(guardedRecoCard.payload.recommendation_meta.grounded_count)
-          : finalContract.grounded_count;
-      finalContract.ungrounded_count = Number.isFinite(Number(guardedRecoCard?.payload?.ungrounded_count))
-        ? Number(guardedRecoCard.payload.ungrounded_count)
-        : Number.isFinite(Number(guardedRecoCard?.payload?.recommendation_meta?.ungrounded_count))
-          ? Number(guardedRecoCard.payload.recommendation_meta.ungrounded_count)
-          : finalContract.ungrounded_count;
-      finalContract.prompt_template_id = pickFirstTrimmed(
-        guardedRecoCard?.payload?.prompt_template_id,
-        guardedRecoCard?.payload?.recommendation_meta?.prompt_template_id,
-        finalContract.prompt_template_id,
-      ) || finalContract.prompt_template_id;
-      if (isPlainObject(guardedRecoCard?.payload)) {
-        guardedRecoCard.payload = attachRecoContractMeta(
-          restorePlanOnlyRecommendations(guardedRecoCard.payload, {
-            sourceMode: finalContract.source_mode,
-          }),
-          finalContract,
-        );
-      }
-      if (Array.isArray(guardedRecoCard?.payload?.recommendations) && guardedRecoCard.payload.recommendations.length > 0) {
-        Object.assign(
-          finalContract,
-          buildRecoMainlineContract({
-            recommendations: guardedRecoCard.payload.recommendations,
-            sourceMode: guardedRecoCard.payload?.recommendation_meta?.source_mode || finalContract.source_mode,
-            source: guardedRecoCard.payload?.source || finalContract.source,
-            llmFailureClass: finalContract.failure_class,
-            upstreamFailureCode: upstreamReco?.upstreamFailureCode,
-            promptContractOk: guardedRecoCard.payload?.prompt_contract_ok !== false,
-            fieldMissing: guardedRecoCard?.field_missing,
-            structuredSource: guardedRecoCard.payload?.recommendation_meta?.source_mode,
-            catalogSkipReason: guardedRecoCard.payload?.recommendation_meta?.catalog_skip_reason,
-            productsEmptyReason: guardedRecoCard.payload?.products_empty_reason,
-            groundingStatus: guardedRecoCard.payload?.grounding_status || guardedRecoCard.payload?.recommendation_meta?.grounding_status,
-            groundedCount: guardedRecoCard.payload?.grounded_count || guardedRecoCard.payload?.recommendation_meta?.grounded_count,
-            ungroundedCount: guardedRecoCard.payload?.ungrounded_count || guardedRecoCard.payload?.recommendation_meta?.ungrounded_count,
-            mainlineStatusOverride: guardedRecoCard.payload?.mainline_status || guardedRecoCard.payload?.recommendation_meta?.mainline_status,
-            promptTemplateId: guardedRecoCard.payload?.prompt_template_id || guardedRecoCard.payload?.recommendation_meta?.prompt_template_id,
-            entryType: 'direct',
-            ...extractRecoOutcomeContractArgsFromPayload(guardedRecoCard.payload, finalContract),
-          }),
-        );
-      }
-      const finalNoRecoReason = deriveRecoEmptyReason(guardedRecoCard?.payload, finalContract);
-      const nextSessionPatch = isPlainObject(guardedEnvelope.session_patch) ? { ...guardedEnvelope.session_patch } : {};
-      nextSessionPatch.meta = {
-        ...(isPlainObject(nextSessionPatch.meta) ? nextSessionPatch.meta : {}),
-        ...directSessionPatchMeta,
-      };
-      const hasFinalRecommendations = Array.isArray(guardedRecoCard?.payload?.recommendations)
-        ? guardedRecoCard.payload.recommendations.length > 0
-        : hasGuardedRecommendations;
-      if (hasFinalRecommendations) {
-        nextSessionPatch.next_state = 'S7_PRODUCT_RECO';
-        if (!Array.isArray(guardedEnvelope.suggested_chips) || guardedEnvelope.suggested_chips.length === 0) {
-          guardedEnvelope.suggested_chips = buildRecoSuccessFollowupChips(ctx.lang);
-        }
-      } else {
-        delete nextSessionPatch.next_state;
-        if (!Array.isArray(guardedEnvelope.suggested_chips) || guardedEnvelope.suggested_chips.length === 0) {
-          guardedEnvelope.suggested_chips = buildRecoEntryChips(ctx.lang);
-        }
-        guardedEnvelope.cards = [
-              {
-                card_id: `conf_${ctx.request_id}_reco_missing`,
-                type: 'confidence_notice',
-                payload: buildConfidenceNoticeCardPayload({
-                  language: ctx.lang,
-                  reason: finalNoRecoReason || 'artifact_missing',
-                  confidence: { score: 0.35, level: 'low', rationale: [finalContract.telemetry_failure_reason || finalNoRecoReason || 'artifact_missing'] },
-                  actions: ['retry_recommendations', 'refine_profile'],
-                }),
-              },
-          ...(gateAdvisoryCard ? [gateAdvisoryCard] : []),
-        ];
-      }
-      guardedEnvelope.events = applyRecoContractToRecoRequestedEvents(guardedEnvelope.events, finalContract, {
-        ctx: { ...ctx, trigger_source: 'action' },
-        emitIfMissing: true,
-        eventData: buildRecoRequestedEventData({
-          explicit: true,
-          payload: guardedRecoCard?.payload,
-          source: String(
-            guardedRecoCard?.payload?.source
-            || guardedRecoCard?.payload?.recommendation_meta?.source_mode
-            || baseContract.source
-            || 'legacy_notice',
-          ),
-          llmTraceRef,
-          failureClass: finalContract.failure_class,
-          upstreamFailureCode: upstreamReco?.upstreamFailureCode,
-          ...(!hasFinalRecommendations && finalNoRecoReason ? { reason: finalNoRecoReason } : {}),
-        }),
-      }).events;
-      guardedEnvelope.session_patch = nextSessionPatch;
-      return res.json(applyBeautyCanonicalOwnershipToEnvelope({
-        envelope: guardedEnvelope,
-        route: 'reco_generate',
-        assistantText:
-          isPlainObject(guardedEnvelope.assistant_message) && typeof guardedEnvelope.assistant_message.content === 'string'
-            ? guardedEnvelope.assistant_message.content
-            : '',
-        policyMeta: { intent_canonical: 'reco_products' },
-        profile,
-      }));
-    } catch (err) {
-      const status = err.status || 500;
-      const envelope = buildEnvelope(ctx, {
-        assistant_message: makeAssistantMessage('Failed to generate recommendations.'),
-        suggested_chips: [],
-        cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: err.code || 'RECO_GENERATE_FAILED' } }],
-        session_patch: {},
-        events: [makeEvent(ctx, 'error', { code: err.code || 'RECO_GENERATE_FAILED' })],
-      });
-      return res.status(status).json(envelope);
-    }
+  const {
+    handleDirectRecoGenerateRoute,
+  } = createDirectRecoGenerateHandlerRuntime({
+    buildRequestContext,
+    requireAuroraUid,
+    RecoGenerateRequestSchema,
+    buildEnvelope,
+    makeAssistantMessage,
+    makeEvent,
+    resolveIdentity,
+    getProfileForIdentity,
+    getRecentSkinLogsForIdentity,
+    extractAnalysisProfileContextOverlay,
+    extractProfilePatchFromSession,
+    extractProfilePatchFromRequestContextPayload,
+    loadLatestDiagnosisArtifactForRoute,
+    buildAnalysisContextSnapshotForRoute,
+    buildTaskAnalysisContextForPrefix,
+    summarizeProfileForContext,
+    extractLatestRecoContextFromSession,
+    buildAutoAnchoredRecoRequestText,
+    buildRecoGenerateUserAsk,
+    resolveRecommendationTargetContext,
+    mergeIngredientRecoContextValue,
+    shouldDiagnosisGate,
+    buildDiagnosisPrompt,
+    buildDiagnosisChips,
+    buildConfidenceNoticeCardPayload,
+    generateProductRecommendations,
+    normalizeRecoGenerate,
+    buildRecoMainlineContract,
+    extractRecoOutcomeContractArgsFromPayload,
+    enrichRecommendationsWithAlternatives,
+    mergeFieldMissing,
+    AURORA_PRODUCT_MATCHER_ENABLED,
+    AURORA_PRODUCT_MATCHER_BUNDLED_SEED_FALLBACK_ENABLED,
+    buildIngredientPlan,
+    DIAG_PRODUCT_CATALOG_PATH,
+    buildProductRecommendationsBundle,
+    toLegacyRecommendationsPayload,
+    buildRecoLlmTraceRef,
+    buildRecoSuccessFollowupChips,
+    buildRecoEntryChips,
+    deriveRecommendationContextState,
+    buildTaskAnalysisContextUsageMeta,
+    REQUEST_CONTEXT_SIGNATURE_VERSION,
+    DIRECT_RECO_CANDIDATE_POOL_SIGNATURE_VERSION,
+    applyRecoContentSpineToPayload,
+    applyRecoContractToRecoRequestedEvents,
+    buildRecoRequestedEventData,
+    deriveRecoEmptyReason,
+    AURORA_RECO_GENERATE_GUARDRAIL_V1,
+    applyBeautyCanonicalOwnershipToEnvelope,
+    applyRecommendationOutputGuardrailsForRoute,
+    persistRejectedCatalogCandidates,
+    normalizeRecoGroundingStatus,
+    attachRecoContractMeta,
+    restorePlanOnlyRecommendations,
+    logger,
   });
 
-  app.post('/v1/reco/alternatives', async (req, res) => {
-    const ctx = buildRequestContext(req, {});
-    try {
-      requireAuroraUid(ctx);
-      const parsed = RecoAlternativesRequestSchema.safeParse(req.body || {});
-      if (!parsed.success) {
-        return res.status(400).json({
-          request_id: ctx.request_id,
-          trace_id: ctx.trace_id,
-          ok: false,
-          error: 'BAD_REQUEST',
-          details: parsed.error.format(),
-        });
-      }
+  app.post('/v1/reco/generate', handleDirectRecoGenerateRoute);
 
-      const identity = await resolveIdentity(req, ctx);
-      const profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }).catch(() => null);
-      const recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7).catch(() => []);
-      const productObj =
-        parsed.data.product && typeof parsed.data.product === 'object' && !Array.isArray(parsed.data.product)
-          ? parsed.data.product
-          : null;
-      const productInput = String(parsed.data.product_input || '').trim() || buildProductInputText(productObj, null);
-      const anchorId = String(parsed.data.anchor_product_id || '').trim() || extractAnchorIdFromProductLike(productObj);
-      const debugHeaderRaw = req.get('X-Debug') ?? req.get('X-Aurora-Debug');
-      const includeDebugFromHeader = debugHeaderRaw == null || debugHeaderRaw === '' ? null : coerceBoolean(debugHeaderRaw);
-      const includeDebug = includeDebugFromHeader == null ? Boolean(parsed.data.include_debug) : includeDebugFromHeader;
-      const maxTotal = Number.isFinite(Number(parsed.data.max_total))
-        ? Math.max(1, Math.min(8, Math.trunc(Number(parsed.data.max_total))))
-        : 6;
-      const isExternalSeedCompare = isExternalRecoAlternativesSeedProduct(productObj);
-
-      if (!productInput && !anchorId) {
-        return res.status(400).json({
-          request_id: ctx.request_id,
-          trace_id: ctx.trace_id,
-          ok: false,
-          error: 'PRODUCT_IDENTITY_MISSING',
-          field_missing: [{ field: 'product_input', reason: 'product_identity_missing' }],
-        });
-      }
-
-      const out = isExternalSeedCompare
-        ? await fetchRecoAlternativesForExternalSeedProduct({
-            ctx,
-            productInput,
-            productObj,
-            anchorId,
-            maxTotal,
-            logger,
-          })
-        : await fetchRecoAlternativesForProduct({
-            ctx,
-            profileSummary: summarizeProfileForContext(profile),
-            recentLogs,
-            productInput,
-            productObj,
-            anchorId,
-            maxTotal,
-            debug: includeDebug,
-            logger,
-          });
-
-      return res.json({
-        request_id: ctx.request_id,
-        trace_id: ctx.trace_id,
-        ok: out && out.ok !== false,
-        alternatives: Array.isArray(out && out.alternatives) ? out.alternatives : [],
-        field_missing: Array.isArray(out && out.field_missing) ? out.field_missing : [],
-        source_mode: out && typeof out.source_mode === 'string' ? out.source_mode : 'llm',
-        fallback_source: out && typeof out.fallback_source === 'string' ? out.fallback_source : null,
-        refresh_pending: Boolean(out && out.refresh_pending === true),
-        refresh_after_ms: Number.isFinite(Number(out?.refresh_after_ms)) ? Number(out?.refresh_after_ms) : 0,
-        failure_class: out && typeof out.failure_class === 'string' ? out.failure_class : null,
-        attempt_count: Number.isFinite(Number(out?.attempt_count)) ? Math.max(0, Math.trunc(Number(out?.attempt_count))) : 0,
-        prompt_contract_ok: out && out.prompt_contract_ok !== false,
-        prompt_contract_issues: Array.isArray(out && out.prompt_contract_issues) ? out.prompt_contract_issues : [],
-        no_result_reason: out && out.no_result_reason ? String(out.no_result_reason) : null,
-        timeout_root_cause: out && out.timeout_root_cause ? String(out.timeout_root_cause) : null,
-        llm_trace: out && out.llm_trace && typeof out.llm_trace === 'object' ? out.llm_trace : null,
-        ...(out && out.compare_meta && typeof out.compare_meta === 'object' ? { compare_meta: out.compare_meta } : {}),
-        ...(includeDebug && out && out.debug && typeof out.debug === 'object' ? { debug: out.debug } : {}),
-      });
-    } catch (err) {
-      logger?.warn(
-        { err: err && err.message ? err.message : String(err), request_id: ctx.request_id, trace_id: ctx.trace_id },
-        'aurora bff: reco alternatives endpoint failed',
-      );
-      return res.status(500).json({
-        request_id: ctx.request_id,
-        trace_id: ctx.trace_id,
-        ok: false,
-        error: err && err.code ? err.code : 'RECO_ALTERNATIVES_FAILED',
-      });
-    }
+  const {
+    handleRecoAlternativesRoute,
+  } = createRecoAlternativesRouteHandlerRuntime({
+    buildRequestContext,
+    requireAuroraUid,
+    RecoAlternativesRequestSchema,
+    resolveIdentity,
+    getProfileForIdentity,
+    getRecentSkinLogsForIdentity,
+    buildProductInputText,
+    extractAnchorIdFromProductLike,
+    coerceBoolean,
+    isExternalRecoAlternativesSeedProduct,
+    fetchRecoAlternativesForExternalSeedProduct,
+    fetchRecoAlternativesForProduct,
+    summarizeProfileForContext,
+    logger,
   });
+
+  app.post('/v1/reco/alternatives', handleRecoAlternativesRoute);
 
   app.post('/v1/photos/presign', async (req, res) => {
     const ctx = buildRequestContext(req, {});
@@ -80779,1238 +78678,115 @@ function mountAuroraBffRoutes(app, { logger }) {
         return sendChatEnvelope(envelope);
       }
 
-      const beautyOwnedRecoResponse = await maybeHandleBeautyOwnedChatRecoForRoute({
-        ctx,
-        logger,
-        message: recoRequestMessage || message,
-        typedRecoOwnershipKeepsV1Mainline,
-        forceUpstreamAfterPendingAbandon,
-        ingredientDrivenRecommendationRequested,
-        recoEntrySourceDetail,
-        latestRecoContextFromSession,
-        profile,
-        recentLogs,
-        includeAlternatives,
-        actionId,
-        shouldAutoRerunRecommendationsFromProfilePatch,
-        debugUpstream,
-      });
-      if (beautyOwnedRecoResponse?.handled) {
-        return sendChatEnvelope(beautyOwnedRecoResponse.envelope);
-      }
-
-      const beautyOwnedRecoHardStop = isBeautyOwnedChatRecoRequest({
-        typedRecoOwnershipKeepsV1Mainline,
-        forceUpstreamAfterPendingAbandon,
-        ingredientDrivenRecommendationRequested,
-        recoEntrySourceDetail,
-        targetContext: beautyOwnedRecoResponse?.targetContext,
-        message,
-      });
-      if (beautyOwnedRecoHardStop) {
-        return sendChatEnvelope(
-          buildBeautyMainlineHandoffFallbackEnvelope({
-            ctx,
-            fallback: {
-              fallback_reason: 'beauty_mainline_handoff_required',
-              notice_reason: 'upstream_empty_recommendations',
-              mainline_status: 'needs_more_context',
-            },
-            suggestedChips: [],
-          }),
-        );
-      }
-
-      // If user explicitly asks for product recommendations (via chip OR explicit free text), generate them deterministically
-      // (some upstream chat flows only return clarifying chips without a recommendations card).
-      const wantsProductRecommendations = shouldEnterLegacyProductRecommendations({
-        forceUpstreamAfterPendingAbandon,
-        allowRecoCards,
-        message,
-        normalizedActionPayload,
-        ingredientRecoOptInRequested,
-        recoInteractionAllowed,
-        actionId,
-        budgetChipCanContinueReco,
-        profileClarificationAction,
-        ingredientDrivenRecommendationRequested,
-        shouldAutoRerunRecommendationsFromProfilePatch,
-      });
-
       let analysisContextSnapshotForConversation = null;
       let chatAnalysisTaskContext = null;
-
-      if (wantsProductRecommendations) {
-        const preparedLegacyRecoContext = await prepareLegacyChatRecoContext({
-          ingredientRecoContext,
-          ingredientRecoOptInRequested,
-          ingredientActionData,
-          message,
-          language: ctx.lang,
-          recoEntrySourceDetail,
-          latestRecoContextFromSession,
-          profile,
-          session: parsed.data.session,
-          recoRequestMessage,
-        });
-        let recoIngredientContext = preparedLegacyRecoContext.recoIngredientContext;
-        let recoContextIngredientQuery = preparedLegacyRecoContext.recoContextIngredientQuery;
-        let recoContextGoal = preparedLegacyRecoContext.recoContextGoal;
-        let recoContextSensitivity = preparedLegacyRecoContext.recoContextSensitivity;
-        let recoIngredientCandidates = preparedLegacyRecoContext.recoIngredientCandidates;
-        const recoProductCandidates = preparedLegacyRecoContext.recoProductCandidates;
-        const travelRecoContext = preparedLegacyRecoContext.travelRecoContext;
-        const travelRecoHandoff = preparedLegacyRecoContext.travelRecoHandoff;
-        const latestRecoContextSeed = preparedLegacyRecoContext.latestRecoContextSeed;
-        const rawMessageRecoTargetContext = preparedLegacyRecoContext.rawMessageRecoTargetContext;
-        const shouldApplySessionRecoContext = preparedLegacyRecoContext.shouldApplySessionRecoContext;
-        const effectiveRecoEntrySourceDetail = preparedLegacyRecoContext.effectiveRecoEntrySourceDetail;
-        const recoTaskMode = preparedLegacyRecoContext.recoTaskMode;
-        recordAuroraSkinFlowMetric({ stage: 'reco_request', hit: true });
-        recordAuroraRecoEntrySource({ source: effectiveRecoEntrySourceDetail });
-        const recoSafetyGate = resolveSafetyGateActionV2({
-          safety: safetyDecision,
-          profileValue: profile,
-          conflictIntent: false,
-        });
-        if (recoSafetyGate.mode === 'inline' && recoSafetyGate.advisory) {
-          mergePendingSafetyAdvisory(recoSafetyGate.advisory);
-          await persistSafetyPromptAskedOnce(recoSafetyGate.ask_once_fields);
-        }
-        if (recoSafetyGate.mode === 'block') {
-          const safetyText = buildSafetyNoticeText(safetyDecision);
-          const envelope = buildLegacyRecoSafetyGateEnvelope({
+      const legacyRecoRouteEntry = await maybeHandleLegacyChatRecoRouteEntry({
+        ctx,
+        logger,
+        message,
+        session: parsed.data.session,
+        recentLogs,
+        identity,
+        canonicalIntent,
+        safetyDecision,
+        includeAlternatives,
+        actionId,
+        debugUpstream,
+        requestScopedProfileOverride,
+        ingredientRecoContext,
+        ingredientRecoOptInRequested,
+        ingredientActionData,
+        ingredientDrivenRecommendationRequested,
+        latestRecoContextFromSession,
+        recoEntrySourceDetail,
+        recoRequestMessage,
+        shouldAutoRerunRecommendationsFromProfilePatch,
+        travelSkillsContracts,
+        looksLikeLowRiskSkincareTask,
+        profile,
+        typedRecoOwnershipKeepsV1Mainline,
+        forceUpstreamAfterPendingAbandon,
+        allowRecoCards,
+        normalizedActionPayload,
+        recoInteractionAllowed,
+        budgetChipCanContinueReco,
+        profileClarificationAction,
+        runBeautyOwnedChatReco: () =>
+          maybeHandleBeautyOwnedChatRecoForRoute({
             ctx,
-            assistantText:
-              safetyText ||
-              (ctx.lang === 'CN'
-                ? '当前存在安全风险，先不输出激进推荐。'
-                : 'Current safety risk detected, so I will not output aggressive recommendations.'),
-            cardId: `safety_${ctx.request_id}`,
-            payload: {
-              severity: 'block',
-              message:
-                ctx.lang === 'CN'
-                  ? '检测到安全风险，已切换保守路径。'
-                  : 'Safety risk detected; switched to conservative path.',
-              details: [
-                ...(Array.isArray(safetyDecision.reasons) ? safetyDecision.reasons.slice(0, 3) : []),
-                ...(Array.isArray(safetyDecision.safe_alternatives)
-                  ? safetyDecision.safe_alternatives.slice(0, 3)
-                  : []),
-              ],
-              actions: ['safe_alternatives', 'profile_update'],
-            },
-            eventName: 'safety_gate_block',
-            eventData: { intent: canonicalIntent.intent, block_level: safetyDecision.block_level },
-            suggestedChips: [
-              {
-                chip_id: 'chip.start.ingredients',
-                label: ctx.lang === 'CN' ? '成分科学（更安全替代）' : 'Ingredient science (safe alternatives)',
-                kind: 'quick_reply',
-                data: {
-                  reply_text:
-                    ctx.lang === 'CN'
-                      ? '我想看更安全替代方案（成分机制）'
-                      : 'Show me safer alternatives with ingredient mechanism',
-                },
-              },
-              {
-                chip_id: 'chip.start.routine',
-                label: ctx.lang === 'CN' ? '先做温和routine' : 'Build gentle routine first',
-                kind: 'quick_reply',
-                data: {
-                  reply_text:
-                    ctx.lang === 'CN'
-                      ? '先给我一套温和修护routine'
-                      : 'Build a gentle barrier-first routine for me',
-                },
-              },
-            ],
-          });
-          return sendChatEnvelope(envelope);
-        }
-        const { score: profileScore, missing: profileMissing } = profileCompleteness(profile);
-        const hardRequiredFields = ['skinType', 'sensitivity', 'barrierStatus', 'goals'];
-        const hardRequiredMissing = hardRequiredFields.filter((field) =>
-          Array.isArray(profileMissing) ? profileMissing.includes(field) : false,
-        );
-
-        // Diagnosis-first gate: if profile is incomplete, do NOT generate recommendations yet.
-        // This applies regardless of the current state; otherwise users see weakly-related recos before core profile.
-        if (hardRequiredMissing.length > 0 && AURORA_CHAT_CLARIFICATION_FLOW_V2_ENABLED) {
-          const pendingFromGate = buildPendingClarificationForGate({
-            language: ctx.lang,
-            missing: hardRequiredMissing,
-            message,
-            wants: 'recommendation',
-          });
-          if (pendingFromGate) {
-            const sessionPatch = {};
-            emitPendingClarificationPatch(sessionPatch, pendingFromGate);
-            pendingClarificationPatchOverride = sessionPatch.pending_clarification || pendingClarificationPatchOverride;
-          }
-        }
-
-        const refinementMissing = (Array.isArray(profileMissing) ? profileMissing : []).filter(
-          (f) => f === 'skinType' || f === 'sensitivity',
-        );
-        const refinementChips = refinementMissing.length ? buildDiagnosisChips(ctx.lang, refinementMissing) : [];
-
-        const safety = evaluateSafetyBoundary({
-          message,
-          profile,
-          language: ctx.lang,
-        });
-        if (safety.block) {
-          logger?.info({ kind: 'metric', name: 'aurora.skin.safety_block_rate', value: 1 }, 'metric');
-          recordAuroraSkinFlowMetric({ stage: 'reco_safety_block', hit: true });
-          const envelope = buildLegacyRecoSafetyGateEnvelope({
-            ctx,
-            assistantText: safety.assistant_message,
-            cardId: `conf_${ctx.request_id}`,
-            payload: buildConfidenceNoticeCardPayload({
-              language: ctx.lang,
-              reason: 'safety_block',
-              confidence: { score: 0, level: 'low', rationale: ['medical_boundary'] },
-              severity: 'block',
-              actions: ['seek_medical_care', 'pause_strong_actives', 'return_after_stabilization'],
-              details: safety.notice_bullets,
-            }),
-            eventName: 'recos_requested',
-            eventData: { explicit: true, blocked: true, reason: 'safety_boundary' },
-            suggestedChips: [],
-          });
-          return sendChatEnvelope(envelope);
-        }
-
-        const travelRecoEnvelope = maybeBuildLegacyTravelRecoEnvelope({
-          ctx,
-          travelRecoHandoff,
-          travelSkillsContracts,
-          travelRecoContext,
-          profile,
-          recoTaskMode,
-          recentLogs,
-          recoEntrySourceDetail,
-          actionId,
-          recoRequestMessage,
-          includeAlternatives,
-          refinementChips,
-        });
-        if (travelRecoEnvelope) {
-          return sendChatEnvelope(travelRecoEnvelope);
-        }
-
-        const preparedLegacyRecoAnalysisContext = await prepareLegacyChatRecoAnalysisContext({
-          ctx,
-          logger,
-          message,
-          profile,
-          identity,
-          ingredientPlanEnabled: AURORA_INGREDIENT_PLAN_ENABLED,
-          productMatcherEnabled: AURORA_PRODUCT_MATCHER_ENABLED,
-          nonblockingGateEnabled: AURORA_CHAT_NONBLOCKING_GATE_V1_ENABLED,
+            logger,
+            message: recoRequestMessage || message,
+            typedRecoOwnershipKeepsV1Mainline,
+            forceUpstreamAfterPendingAbandon,
+            ingredientDrivenRecommendationRequested,
+            recoEntrySourceDetail,
+            latestRecoContextFromSession,
+            profile,
+            recentLogs,
+            includeAlternatives,
+            actionId,
+            shouldAutoRerunRecommendationsFromProfilePatch,
+            debugUpstream,
+          }),
+        legacyRecoDeps: buildLegacyChatRecoRouteDeps({
+          attachAnalysisContextUsageToSessionPatch,
+          buildSafetyNoticeText,
+          runAuroraTimedOperation,
           ensureLatestArtifactForConversation,
           ensureAnalysisContextSnapshotForConversation,
           ensureTaskAnalysisContextForConversation,
-          looksLikeLowRiskSkincareTask,
-          recordAuroraSkinFlowMetric,
-          runAuroraTimedOperation,
           getIngredientPlanByArtifactIdForRoute,
           getAuroraStorageReadTimeoutMs,
           saveIngredientPlanForRoute,
           getAuroraStorageWriteTimeoutMs,
-        });
-        const latestArtifact = preparedLegacyRecoAnalysisContext.latestArtifact;
-        const artifactGate = preparedLegacyRecoAnalysisContext.artifactGate;
-        analysisContextSnapshotForConversation =
-          preparedLegacyRecoAnalysisContext.analysisContextSnapshotForConversation;
-        chatAnalysisTaskContext = preparedLegacyRecoAnalysisContext.chatAnalysisTaskContext;
-        const allowLowRiskNonBlockingArtifactGate =
-          preparedLegacyRecoAnalysisContext.allowLowRiskNonBlockingArtifactGate;
-        let mappedIngredientPlan = preparedLegacyRecoAnalysisContext.mappedIngredientPlan;
-
-        const preparedLegacyRecoTargeting = prepareLegacyChatRecoTargeting({
-          profile,
-          mappedIngredientPlan,
-          latestArtifact,
-          latestRecoContextSeed,
-          ingredientDrivenRecommendationRequested,
-          travelRecoHandoff,
-          recoIngredientContext,
-          recoContextIngredientQuery,
-          recoContextGoal,
-          recoContextSensitivity,
-          recoIngredientCandidates,
-          ingredientRecoOptInRequested,
-          recoRequestMessage,
-          message,
-          language: ctx.lang,
-          effectiveRecoEntrySourceDetail,
-          triggerSource: ctx.trigger_source,
-          actionId,
-          includeAlternatives,
-          rawMessageRecoTargetContext,
-          minimumRecommendationContextRuleVersion: MINIMUM_RECOMMENDATION_CONTEXT_RULE_VERSION,
-        });
-        const profileSummaryForRecoContext = preparedLegacyRecoTargeting.profileSummaryForRecoContext;
-        const latestRecoContextForRecommendation = preparedLegacyRecoTargeting.latestRecoContextForRecommendation;
-        recoIngredientContext = preparedLegacyRecoTargeting.recoIngredientContext;
-        recoContextIngredientQuery = preparedLegacyRecoTargeting.recoContextIngredientQuery;
-        recoContextGoal = preparedLegacyRecoTargeting.recoContextGoal;
-        recoContextSensitivity = preparedLegacyRecoTargeting.recoContextSensitivity;
-        recoIngredientCandidates = preparedLegacyRecoTargeting.recoIngredientCandidates;
-        const recoAutoAnchoredByAnalysis = preparedLegacyRecoTargeting.recoAutoAnchoredByAnalysis;
-        const recoIngredientContextForMainline = preparedLegacyRecoTargeting.recoIngredientContextForMainline;
-        const catalogExternalSeedStrategyForMainline = preparedLegacyRecoTargeting.catalogExternalSeedStrategyForMainline;
-        const recoRequestMessageForMainline = preparedLegacyRecoTargeting.recoRequestMessageForMainline;
-        const recoFocusForMainline = preparedLegacyRecoTargeting.recoFocusForMainline;
-        const chatRecoTargetContext = preparedLegacyRecoTargeting.chatRecoTargetContext;
-        let latestRecoContextPatch = preparedLegacyRecoTargeting.latestRecoContextPatch;
-        const hasDeterministicRecoTarget = preparedLegacyRecoTargeting.hasDeterministicRecoTarget;
-        const hasStableRecoTarget = preparedLegacyRecoTargeting.hasStableRecoTarget;
-
-        let matcherBundle = null;
-        let matcherPayload = null;
-        let matcherComputed = false;
-        let verifiedCandidateRestoreApplied = false;
-        let verifiedCandidateRestoreCount = 0;
-        const hasRecoArtifact = Boolean(latestArtifact && typeof latestArtifact === 'object' && !Array.isArray(latestArtifact));
-        const hasExplicitRecoTarget = Boolean(
-          chatRecoTargetContext
-          && chatRecoTargetContext.step_aware_intent
-          && chatRecoTargetContext.resolved_target_step,
-        );
-        const chatRecoContextSourceMode = String(chatAnalysisTaskContext?.context_source_mode || '').trim().toLowerCase();
-        const artifactConfidenceLevel =
-          hasRecoArtifact && artifactGate && artifactGate.confidence_level
-            ? artifactGate.confidence_level
-            : 'unknown';
-        const lowConfidenceArtifact = hasRecoArtifact && artifactConfidenceLevel === 'low';
-        const artifactConfidenceScoreRaw = Number(
-          latestArtifact &&
-          latestArtifact.overall_confidence &&
-          latestArtifact.overall_confidence.score,
-        );
-        const artifactConfidenceScore = Number.isFinite(artifactConfidenceScoreRaw) ? artifactConfidenceScoreRaw : null;
-        const genericConcernRecoMainline = preparedLegacyRecoTargeting.genericConcernRecoMainline;
-        const genericGoalDrivenNeedsMoreContext = preparedLegacyRecoTargeting.genericGoalDrivenNeedsMoreContext;
-        const genericGoalDrivenNeedsMoreContextWarning =
-          preparedLegacyRecoTargeting.genericGoalDrivenNeedsMoreContextWarning;
-
-        const computeMatcherIfNeeded = () => {
-          if (matcherComputed) {
-            return { matcherBundle, matcherPayload };
-          }
-          matcherComputed = true;
-          if (!(AURORA_PRODUCT_MATCHER_ENABLED && latestArtifact)) {
-            return { matcherBundle, matcherPayload };
-          }
-          try {
-            const artifactPayload = latestArtifact;
-            const planForMatcher =
-              mappedIngredientPlan ||
-              buildIngredientPlan({ artifact: artifactPayload, profile: profile || {} });
-            const allowBundledSeedCatalog =
-              AURORA_PRODUCT_MATCHER_BUNDLED_SEED_FALLBACK_ENABLED
-              && !DIAG_PRODUCT_CATALOG_PATH;
-            if (!mappedIngredientPlan) mappedIngredientPlan = planForMatcher;
-
-            matcherBundle = buildProductRecommendationsBundle({
-              ingredientPlan: planForMatcher,
-              artifact: artifactPayload,
-              profile,
-              language: ctx.lang,
-              disallowTreatment: false,
-              catalogPath: DIAG_PRODUCT_CATALOG_PATH,
-              allowDefaultSeedCatalog: allowBundledSeedCatalog,
-            });
-            matcherPayload = toLegacyRecommendationsPayload(matcherBundle, { language: ctx.lang });
-          } catch (err) {
-            logger?.warn(
-              { err: err && err.message ? err.message : String(err), request_id: ctx.request_id },
-              'aurora bff: product matcher failed',
-            );
-          }
-          return { matcherBundle, matcherPayload };
-        };
-
-        let norm = null;
-        let upstreamDebug = null;
-        let alternativesDebug = null;
-        let matcherFallbackUsed = false;
-        let recoTimeoutDegraded = false;
-        let recoTimeoutDegradedWarning = null;
-        let upstreamFailureCode = '';
-        let llmFailureClass = '';
-        let recoLlmTrace = null;
-        let recoContract = null;
-        let recoMainlineStatus = '';
-        let recoCatalogSkipReason = '';
-        let recoTelemetryFailureReason = '';
-        let recoMetaPromptTemplateId = '';
-        let upstreamReco = null;
-        const shouldShortCircuitVerifiedContextRestore = shouldUseLegacyVerifiedContextRestore({
-          ingredientRecoOptInRequested,
-          travelRecoHandoff,
-          shouldApplySessionRecoContext,
-          recoAutoAnchoredByAnalysis,
-          effectiveRecoEntrySourceDetail,
-          hasStableRecoTarget,
-          recoContext: recoIngredientContext || latestRecoContextPatch,
-        });
-        if (shouldShortCircuitVerifiedContextRestore) {
-          const restoredFromVerifiedCandidates = restoreRecoRecommendationsFromVerifiedContextCandidates({
-            recoContext: recoIngredientContext || latestRecoContextPatch,
-            targetContext: chatRecoTargetContext,
-            language: ctx.lang,
-          });
-          const restoredRecommendations = Array.isArray(restoredFromVerifiedCandidates?.recommendations)
-            ? restoredFromVerifiedCandidates.recommendations
-            : [];
-          if (restoredRecommendations.length > 0) {
-            verifiedCandidateRestoreApplied = true;
-            verifiedCandidateRestoreCount = restoredRecommendations.length;
-            const restoredPayload = applyVerifiedCandidateRestoreToRecoPayload({
-              intent: 'reco_products',
-              profile: summarizeProfileForContext(profile),
-              recommendations: [],
-              source: 'catalog_grounded_v1',
-              task_mode: recoTaskMode,
-              recommendation_confidence_score: artifactConfidenceScore != null ? artifactConfidenceScore : 0.61,
-              recommendation_confidence_level:
-                artifactConfidenceLevel && artifactConfidenceLevel !== 'unknown'
-                  ? artifactConfidenceLevel
-                  : 'medium',
-              recommendation_meta: {
-                task_mode: recoTaskMode,
-                trigger_source: normalizeRecoSourceDetail(effectiveRecoEntrySourceDetail),
-                used_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
-                used_itinerary: Boolean(profile && (profile.itinerary || profile.travel_plan || profile.travel_plans)),
-                used_safety_flags: lowConfidenceArtifact,
-              },
-            }, restoredRecommendations);
-            norm = {
-              payload: restoredPayload.payload,
-              field_missing: [],
-            };
-            recoSource = 'catalog_grounded_v1';
-            recoMainlineStatus = 'grounded_success';
-            recoTelemetryFailureReason = '';
-          }
-        }
-        const normHasRecommendations = Array.isArray(norm?.payload?.recommendations) && norm.payload.recommendations.length > 0;
-        const shouldAttemptIngredientOptInCatalogRecovery =
-          ingredientRecoOptInRequested
-          && !travelRecoHandoff
-          && Boolean(pickFirstTrimmed(recoContextIngredientQuery, recoContextGoal) || recoIngredientCandidates.length > 0)
-          && !normHasRecommendations;
-        if (
-          (!norm || shouldAttemptIngredientOptInCatalogRecovery)
-          && (!matcherPayload || !Array.isArray(matcherPayload.recommendations) || matcherPayload.recommendations.length === 0)
-        ) {
-          try {
-            upstreamReco = await generateProductRecommendations({
-              ctx,
-              profile,
-              recentLogs,
-              message: recoRequestMessageForMainline || message,
-              focus: recoFocusForMainline,
-              ingredientContext: recoIngredientContextForMainline,
-              analysisContextSnapshot: analysisContextSnapshotForConversation,
-              requestOverride: requestScopedProfileOverride,
-              includeAlternatives,
-              debug: debugUpstream,
-              logger,
-              budgetMs: AURORA_BFF_CHAT_RECO_BUDGET_MS,
-              entryType: 'chat',
-              catalogExternalSeedStrategy: catalogExternalSeedStrategyForMainline,
-            });
-            norm = upstreamReco.norm;
-            upstreamDebug = upstreamReco.upstreamDebug;
-            alternativesDebug = upstreamReco.alternativesDebug;
-            upstreamFailureCode = String(upstreamReco.upstreamFailureCode || '').trim().toUpperCase();
-            llmFailureClass = normalizeRecoFailureClass(upstreamReco.llmFailureClass || '');
-            recoLlmTrace = isPlainObject(upstreamReco.llmTrace) ? upstreamReco.llmTrace : null;
-            recoContract = isPlainObject(upstreamReco.contract) ? upstreamReco.contract : null;
-            recoMainlineStatus = String(upstreamReco.mainlineStatus || '').trim();
-            recoCatalogSkipReason = String(upstreamReco.catalogSkipReason || '').trim();
-            recoTelemetryFailureReason = String(upstreamReco.telemetryFailureReason || '').trim();
-            const selectedIngredientCandidates =
-              ingredientRecoOptInRequested
-                ? extractRecoContextProductCandidatesFromCandidatePoolState(upstreamReco.candidatePoolState, { max: 12 })
-                : [];
-            if (
-              ingredientRecoOptInRequested
-              && selectedIngredientCandidates.length > 0
-              && (!Array.isArray(recoIngredientContext?.product_candidates) || recoIngredientContext.product_candidates.length === 0)
-            ) {
-              const ingredientContextOrigin = pickFirstTrimmed(
-                recoIngredientContext && recoIngredientContext.context_origin,
-                latestRecoContextPatch && latestRecoContextPatch.context_origin,
-                effectiveRecoEntrySourceDetail,
-                'ingredient_goal_match',
-              ) || 'ingredient_goal_match';
-              const inferredIngredientStep = normalizeRecoTargetStep(
-                pickFirstTrimmed(
-                  chatRecoTargetContext && chatRecoTargetContext.resolved_target_step,
-                  recoIngredientContext && recoIngredientContext.resolved_target_step,
-                  recoIngredientContext && recoIngredientContext.target_step,
-                  recoIngredientContext && recoIngredientContext.step,
-                  selectedIngredientCandidates[0] && (selectedIngredientCandidates[0].product_type || selectedIngredientCandidates[0].category),
-                ),
-              ) || '';
-              const inferredTargetBundle = buildIngredientRecoContextTargetBundle({
-                ingredientQuery: recoContextIngredientQuery,
-                candidates: recoIngredientCandidates,
-                goal: recoContextGoal,
-                resolvedTargetStep: inferredIngredientStep,
-                source: ingredientContextOrigin,
-              });
-              const effectiveStepConfidence = (() => {
-                const raw = String(pickFirstTrimmed(
-                  recoIngredientContext && recoIngredientContext.resolved_target_step_confidence,
-                  latestRecoContextPatch && latestRecoContextPatch.resolved_target_step_confidence,
-                ) || '').trim().toLowerCase();
-                return raw && raw !== 'none' ? raw : 'medium';
-              })();
-              const effectiveStepSource = (() => {
-                const raw = String(pickFirstTrimmed(
-                  recoIngredientContext && recoIngredientContext.resolved_target_step_source,
-                  latestRecoContextPatch && latestRecoContextPatch.resolved_target_step_source,
-                ) || '').trim().toLowerCase();
-                return raw && raw !== 'none' ? raw : 'catalog_candidate_state';
-              })();
-              recoIngredientContext = mergeIngredientRecoContextValue(recoIngredientContext, {
-                product_candidates: selectedIngredientCandidates,
-                context_origin: ingredientContextOrigin,
-                ...inferredTargetBundle,
-                ...(inferredIngredientStep
-                  ? {
-                      resolved_target_step: inferredIngredientStep,
-                      target_step: inferredIngredientStep,
-                      step: inferredIngredientStep,
-                      resolved_target_step_confidence: effectiveStepConfidence,
-                      resolved_target_step_source: effectiveStepSource,
-                    }
-                  : {}),
-                updated_at_ms: Date.now(),
-              });
-              latestRecoContextPatch = mergeIngredientRecoContextValue(latestRecoContextPatch, {
-                product_candidates: selectedIngredientCandidates,
-                context_origin: ingredientContextOrigin,
-                ...inferredTargetBundle,
-                ...(inferredIngredientStep
-                  ? {
-                      resolved_target_step: inferredIngredientStep,
-                      target_step: inferredIngredientStep,
-                      step: inferredIngredientStep,
-                      resolved_target_step_confidence: effectiveStepConfidence,
-                      resolved_target_step_source: effectiveStepSource,
-                    }
-                  : {}),
-                updated_at_ms: Date.now(),
-              });
-            }
-          } catch (err) {
-            const transientCode = classifyRecoUpstreamFailureCode(err);
-            if (!isTransientRecoUpstreamFailureCode(transientCode)) {
-              throw err;
-            }
-            recoTimeoutDegraded = true;
-            llmFailureClass = 'timeout';
-            upstreamFailureCode = transientCode || '';
-            upstreamFailureCode = transientCode || '';
-            recoMainlineStatus = 'upstream_timeout';
-            recoTelemetryFailureReason = 'timeout_degraded';
-            recordAuroraRecoLlmCall({ stage: 'main', outcome: 'timeout' });
-            logger?.warn(
-              {
-                request_id: ctx.request_id,
-                trace_id: ctx.trace_id,
-                budget_ms: AURORA_BFF_CHAT_RECO_BUDGET_MS,
-                transient_code: transientCode || null,
-              },
-              'aurora bff: reco upstream timeout/transient failure, degraded to confidence_notice',
-            );
-          }
-        }
-        if (!recoLlmTrace && isPlainObject(norm?.payload?.recommendation_meta?.llm_trace)) {
-          recoLlmTrace = norm.payload.recommendation_meta.llm_trace;
-        }
-        if (!recoContract) {
-          recoContract = buildRecoMainlineContract({
-            recommendations: norm?.payload?.recommendations,
-            sourceMode: norm?.payload?.recommendation_meta?.source_mode,
-            source: norm?.payload?.source,
-            llmFailureClass,
-            upstreamFailureCode,
-            promptContractOk: norm?.payload?.prompt_contract_ok !== false,
-            fieldMissing: norm?.field_missing,
-            structuredSource: norm?.payload?.recommendation_meta?.source_mode,
-            catalogSkipReason: pickFirstTrimmed(norm?.payload?.recommendation_meta?.catalog_skip_reason, recoCatalogSkipReason),
-            productsEmptyReason: norm?.payload?.products_empty_reason,
-            groundingStatus: norm?.payload?.grounding_status || norm?.payload?.recommendation_meta?.grounding_status,
-            groundedCount: norm?.payload?.grounded_count || norm?.payload?.recommendation_meta?.grounded_count,
-            ungroundedCount: norm?.payload?.ungrounded_count || norm?.payload?.recommendation_meta?.ungrounded_count,
-            mainlineStatusOverride: norm?.payload?.mainline_status || norm?.payload?.recommendation_meta?.mainline_status,
-            promptTemplateId: norm?.payload?.recommendation_meta?.prompt_template_id,
-            entryType: 'chat',
-            ...extractRecoOutcomeContractArgsFromPayload(norm?.payload, upstreamReco?.contract),
-          });
-        }
-        if (!recoMainlineStatus && isPlainObject(norm?.payload?.recommendation_meta)) {
-          recoMainlineStatus = String(norm.payload.recommendation_meta.mainline_status || '').trim();
-          recoCatalogSkipReason = String(norm.payload.recommendation_meta.catalog_skip_reason || '').trim();
-          recoTelemetryFailureReason = String(norm.payload.recommendation_meta.telemetry_failure_reason || '').trim();
-          recoMetaPromptTemplateId = String(norm.payload.recommendation_meta.prompt_template_id || '').trim();
-        }
-        if (!recoMainlineStatus && recoContract && recoContract.mainline_status) {
-          recoMainlineStatus = String(recoContract.mainline_status || '').trim();
-        }
-        if (!recoCatalogSkipReason && recoContract && recoContract.catalog_skip_reason) {
-          recoCatalogSkipReason = String(recoContract.catalog_skip_reason || '').trim();
-        }
-        if (!recoTelemetryFailureReason && recoContract && recoContract.telemetry_failure_reason) {
-          recoTelemetryFailureReason = String(recoContract.telemetry_failure_reason || '').trim();
-        }
-        if (!recoMetaPromptTemplateId && recoContract && recoContract.prompt_template_id) {
-          recoMetaPromptTemplateId = String(recoContract.prompt_template_id || '').trim();
-        }
-        const generatedRecoCount = Array.isArray(norm?.payload?.recommendations) ? norm.payload.recommendations.length : 0;
-        const generatedPayloadSource = String(norm?.payload?.source || '').trim().toLowerCase();
-        const generatedSourceMode = String(norm?.payload?.recommendation_meta?.source_mode || '').trim().toLowerCase();
-        const generatedPrimaryUsed =
-          generatedRecoCount > 0 &&
-          ['llm_primary', 'catalog_grounded', 'catalog_transient_fallback'].includes(generatedSourceMode);
-        llmPrimaryUsed =
-          generatedPrimaryUsed &&
-          (generatedSourceMode === 'llm_primary' || generatedPayloadSource.includes('llm_primary'));
-        if (llmPrimaryUsed) {
-          recoSource = 'llm_primary_v1';
-        } else if (generatedPrimaryUsed) {
-          recoSource = generatedPayloadSource || generatedSourceMode || 'catalog_grounded_v1';
-        } else if (generatedRecoCount > 0) {
-          recoSource = generatedPayloadSource
-            || generatedSourceMode
-            || (
-              genericConcernRecoMainline
-                ? 'framework_mainline_v1'
-                : hasDeterministicRecoTarget
-                  ? 'step_aware_mainline_v1'
-                  : 'legacy_notice'
-            );
-        }
-        if (!generatedRecoCount && String(recoContract?.telemetry_failure_reason || '').trim().toLowerCase() === 'timeout_degraded') {
-          recoTimeoutDegraded = true;
-        }
-
-        let matcherRecoCount = 0;
-        if (!generatedPrimaryUsed && !ingredientRecoOptInRequested) {
-          ({ matcherBundle, matcherPayload } = computeMatcherIfNeeded());
-          matcherRecoCount = Array.isArray(matcherPayload?.recommendations) ? matcherPayload.recommendations.length : 0;
-        }
-        const shouldApplyPhotoIngredientConstraint =
-          !ingredientRecoOptInRequested
-          && !travelRecoHandoff
-          && isPlainObject(norm?.payload)
-          && String(latestRecoContextPatch.context_origin || '').trim().toLowerCase() === 'photo_modules_v1'
-          && Boolean(pickFirstTrimmed(recoContextIngredientQuery));
-        if ((ingredientRecoOptInRequested || shouldApplyPhotoIngredientConstraint) && isPlainObject(norm?.payload)) {
-          const constrained = applyIngredientRecoConstraint(norm.payload, recoIngredientContext);
-          if (constrained.constrained) {
-            norm.payload = constrained.payload;
-          }
-          norm.payload = {
-            ...norm.payload,
-            constraint_match_summary: {
-              total: Number(constrained.totalCount || 0),
-              matched: Number(constrained.keptCount || 0),
-              dropped: Number(constrained.droppedCount || 0),
-            },
-          };
-          if (constrained.droppedCount > 0) {
-            norm.field_missing = mergeFieldMissing(norm.field_missing, [
-              { field: 'payload.recommendations', reason: 'ingredient_constraint_filtered' },
-            ]);
-          }
-          if (constrained.keptCount === 0) {
-            const restoredFromVerifiedCandidates = restoreRecoRecommendationsFromVerifiedContextCandidates({
-              recoContext: recoIngredientContext || latestRecoContextPatch,
-              targetContext: chatRecoTargetContext,
-              language: ctx.lang,
-            });
-            const restoredRecommendations = Array.isArray(restoredFromVerifiedCandidates?.recommendations)
-              ? restoredFromVerifiedCandidates.recommendations
-              : [];
-            if (restoredRecommendations.length > 0) {
-              verifiedCandidateRestoreApplied = true;
-              verifiedCandidateRestoreCount = restoredRecommendations.length;
-              const restoredPayload = applyVerifiedCandidateRestoreToRecoPayload(norm.payload, restoredRecommendations);
-              norm.payload = restoredPayload.payload;
-              norm.field_missing = (Array.isArray(norm.field_missing) ? norm.field_missing : []).filter((row) => {
-                const reason = String(row && row.reason ? row.reason : '').trim().toLowerCase();
-                return reason !== 'ingredient_constraint_filtered' && reason !== 'ingredient_constraint_no_match';
-              });
-              recoSource = 'catalog_grounded_v1';
-              recoMainlineStatus = 'grounded_success';
-              recoTelemetryFailureReason = '';
-            } else {
-              norm.payload = {
-                ...norm.payload,
-                failure_reason: 'ingredient_constraint_no_match',
-                products_empty_reason: 'ingredient_constraint_no_match',
-              };
-              norm.field_missing = mergeFieldMissing(norm.field_missing, [
-                { field: 'payload.recommendations', reason: 'ingredient_constraint_no_match' },
-              ]);
-              recoMainlineStatus = 'needs_more_context';
-              recoTelemetryFailureReason = '';
-            }
-          }
-        }
-        const genericVerifiedRestoreReason = normalizeRecoProductsEmptyReason(
-          pickFirstTrimmed(
-            norm?.payload?.products_empty_reason,
-            norm?.payload?.failure_reason,
-            recoContract?.primary_failure_reason,
-            recoContract?.surface_reason,
-            recoContract?.effective_failure_class,
-          ),
-        );
-        const shouldAttemptGenericVerifiedRestore =
-          !verifiedCandidateRestoreApplied
-          && !travelRecoHandoff
-          && isPlainObject(norm?.payload)
-          && (!Array.isArray(norm.payload.recommendations) || norm.payload.recommendations.length === 0)
-          && Array.isArray((recoIngredientContext || latestRecoContextPatch)?.product_candidates)
-          && (recoIngredientContext || latestRecoContextPatch).product_candidates.length > 0
-          && (
-            !genericVerifiedRestoreReason
-            || genericVerifiedRestoreReason === 'no_viable_candidates_for_target'
-            || genericVerifiedRestoreReason === 'weak_viable_pool'
-            || genericVerifiedRestoreReason === 'reco_mainline_empty'
-            || genericVerifiedRestoreReason === 'post_processing_eliminated_candidates'
-            || genericVerifiedRestoreReason === 'ingredient_constraint_no_match'
-          );
-        if (shouldAttemptGenericVerifiedRestore) {
-          const restoredFromVerifiedCandidates = restoreRecoRecommendationsFromVerifiedContextCandidates({
-            recoContext: recoIngredientContext || latestRecoContextPatch,
-            targetContext: chatRecoTargetContext,
-            language: ctx.lang,
-          });
-          const restoredRecommendations = Array.isArray(restoredFromVerifiedCandidates?.recommendations)
-            ? restoredFromVerifiedCandidates.recommendations
-            : [];
-          if (restoredRecommendations.length > 0) {
-            verifiedCandidateRestoreApplied = true;
-            verifiedCandidateRestoreCount = restoredRecommendations.length;
-            const restoredPayload = applyVerifiedCandidateRestoreToRecoPayload(norm.payload, restoredRecommendations);
-            norm.payload = restoredPayload.payload;
-            norm.field_missing = (Array.isArray(norm.field_missing) ? norm.field_missing : []).filter((row) => {
-              const reason = String(row && row.reason ? row.reason : '').trim().toLowerCase();
-              return reason !== 'ingredient_constraint_filtered' && reason !== 'ingredient_constraint_no_match';
-            });
-            recoSource = 'catalog_grounded_v1';
-            recoMainlineStatus = 'grounded_success';
-            recoTelemetryFailureReason = '';
-          }
-        }
-        if (recoTaskMode === 'ingredient_lookup_no_candidates' && isPlainObject(norm?.payload)) {
-          norm.payload = {
-            ...norm.payload,
-            recommendations: [],
-            products_empty_reason: norm.payload.products_empty_reason || 'ingredient_no_verified_candidates',
-            recommendation_confidence_score: 0,
-            recommendation_confidence_level: 'low',
-            task_mode: recoTaskMode,
-            empty_match_actions: [
-              {
-                action_id: 'broaden_to_goal',
-                label: ctx.lang === 'CN' ? '扩展到目标推荐' : 'Broaden to goal-based products',
-              },
-              {
-                action_id: 'check_product_inci',
-                label: ctx.lang === 'CN' ? '查看某产品INCI表' : 'Check a product INCI',
-              },
-              {
-                action_id: 'search_category',
-                label: ctx.lang === 'CN' ? '按品类搜索' : 'Search within a category',
-              },
-            ],
-          };
-          norm.field_missing = mergeFieldMissing(norm.field_missing, [
-            { field: 'payload.recommendations', reason: 'ingredient_no_verified_candidates' },
-          ]);
-        }
-        if (recoTaskMode.startsWith('ingredient_') && isPlainObject(norm?.payload)) {
-          const ingredientQueryForFilter = ingredient_query_normalize(recoContextIngredientQuery || '');
-          if (ingredientQueryForFilter && isPlainObject(norm.payload.evidence) && isPlainObject(norm.payload.evidence.science)) {
-            const rawKeyIngredients = Array.isArray(norm.payload.evidence.science.key_ingredients)
-              ? norm.payload.evidence.science.key_ingredients
-              : [];
-            const filteredKeyIngredients = rawKeyIngredients.filter((item) => {
-              const lower = String(item || '').trim().toLowerCase();
-              return lower.includes(ingredientQueryForFilter) || ingredientQueryForFilter.includes(lower);
-            });
-            norm.payload.evidence.science.key_ingredients = filteredKeyIngredients;
-          }
-          norm.payload.ingredient_evidence = {
-            query: recoContextIngredientQuery || '',
-            task_mode: recoTaskMode,
-            ingredient_candidates: recoIngredientCandidates,
-            product_candidates_count: Array.isArray((recoIngredientContext || latestRecoContextPatch)?.product_candidates)
-              ? (recoIngredientContext || latestRecoContextPatch).product_candidates.length
-              : recoProductCandidates.length,
-          };
-        }
-        if (llmPrimaryUsed && isPlainObject(norm?.payload)) {
-          norm.payload = {
-            ...norm.payload,
-            metadata: {
-              ...(isPlainObject(norm.payload.metadata) ? norm.payload.metadata : {}),
-              matcher_check_result: {
-                source: 'artifact_matcher_v1',
-                pending: true,
-                available: false,
-                recommendation_count: 0,
-                confidence: null,
-              },
-            },
-          };
-          if (AURORA_PRODUCT_MATCHER_ENABLED && latestArtifact) {
-            const matcherHandle = setImmediate(() => {
-              const { matcherBundle: asyncMatcherBundle, matcherPayload: asyncMatcherPayload } = computeMatcherIfNeeded();
-              const asyncRecoCount = Array.isArray(asyncMatcherPayload?.recommendations)
-                ? asyncMatcherPayload.recommendations.length
-                : 0;
-              const asyncMatcherConfidence =
-                asyncMatcherBundle &&
-                asyncMatcherBundle.confidence &&
-                Number.isFinite(Number(asyncMatcherBundle.confidence.score))
-                  ? Number(asyncMatcherBundle.confidence.score)
-                  : null;
-              logger?.info(
-                {
-                  request_id: ctx.request_id,
-                  trace_id: ctx.trace_id,
-                  recommendation_count: asyncRecoCount,
-                  confidence: asyncMatcherConfidence,
-                },
-                'aurora bff: matcher check finished asynchronously',
-              );
-            });
-            if (matcherHandle && typeof matcherHandle.unref === 'function') matcherHandle.unref();
-          }
-        }
-        const initialHasRecs = Array.isArray(norm && norm.payload && norm.payload.recommendations)
-          ? norm.payload.recommendations.length > 0
-          : false;
-        if (!initialHasRecs && isTransientRecoUpstreamFailureCode(upstreamFailureCode)) {
-          recoTimeoutDegraded = true;
-        }
-        if (recoTimeoutDegraded) {
-          logger?.info({ kind: 'metric', name: 'aurora.skin.reco.timeout_degraded_rate', value: 1 }, 'metric');
-          recordAuroraSkinFlowMetric({ stage: 'reco_timeout_degraded', hit: true });
-          const timeoutDegradedSourceMode = inferRecoSourceMode(
-            recoContract?.source_mode,
-            recoContract?.source,
-            {
-              defaultValue:
-                genericConcernRecoMainline
-                  ? 'framework_mainline'
-                  : hasDeterministicRecoTarget
-                    ? 'step_aware_mainline'
-                    : 'legacy_notice',
-            },
-          );
-          const timeoutDegradedReason = sanitizeRecoClientVisibleToken(
-            pickFirstTrimmed(
-              recoContract?.products_empty_reason,
-              recoContract?.surface_reason,
-              recoContract?.primary_failure_reason,
-            ),
-          ) || (
-            genericConcernRecoMainline || hasDeterministicRecoTarget
-                ? 'upstream_timeout_primary_role'
-                : 'needs_more_context'
-          );
-          recoTimeoutDegradedWarning = {
-            reco_timeout_degraded_warning: true,
-            reco_timeout_degraded_reason: timeoutDegradedReason,
-            reco_timeout_degraded_source_mode: timeoutDegradedSourceMode,
-            ...(upstreamFailureCode ? { reco_timeout_degraded_upstream_failure_code: upstreamFailureCode } : {}),
-          };
-        }
-        const promptContractOkFromTrace =
-          isPlainObject(upstreamDebug && upstreamDebug.llm_prompt_trace)
-            ? upstreamDebug.llm_prompt_trace.prompt_contract_ok !== false
-            : true;
-        if (isPlainObject(norm?.payload)) {
-          const warningContract = applyRecoWarningVisibilityContract(norm.payload);
-          norm.payload = {
-            ...warningContract.payload,
-            prompt_contract_ok:
-              norm.payload.prompt_contract_ok === false
-                ? false
-                : promptContractOkFromTrace,
-          };
-        }
-        const payload = !debugUpstream ? stripInternalRefsDeep(norm.payload) : norm.payload;
-        const llmTraceRef = buildRecoLlmTraceRef(recoLlmTrace);
-        if (isPlainObject(payload)) {
-          const noCandidatesMode =
-            recoTaskMode === 'ingredient_lookup_no_candidates'
-            || String(payload.products_empty_reason || '').trim() === 'ingredient_no_verified_candidates';
-          let payloadHasRecs = Array.isArray(payload.recommendations) && payload.recommendations.length > 0;
-          payload.recommendation_confidence_level = noCandidatesMode ? 'low' : artifactConfidenceLevel;
-          if (noCandidatesMode) {
-            payload.recommendation_confidence_score = 0;
-          } else if (artifactConfidenceScore != null) {
-            payload.recommendation_confidence_score = artifactConfidenceScore;
-          }
-          if (!payloadHasRecs && !noCandidatesMode) {
-            if (lowConfidenceArtifact) {
-              payload.failure_reason = String(payload.failure_reason || '').trim() || 'low_confidence';
-            }
-          }
-          payload.source = String(payload.source || '').trim() || recoSource;
-          const metaExisting = isPlainObject(payload.recommendation_meta) ? payload.recommendation_meta : {};
-          const derivedSourceMode = pickFirstTrimmed(
-            metaExisting.source_mode,
-            recoContract?.source_mode,
-            matcherFallbackUsed
-              ? 'artifact_matcher'
-              : generatedPrimaryUsed
-                ? (generatedSourceMode || 'catalog_grounded')
-                : llmPrimaryUsed
-                  ? 'llm_primary'
-                  : genericConcernRecoMainline
-                    ? 'framework_mainline'
-                    : hasDeterministicRecoTarget
-                      ? 'step_aware_mainline'
-                      : 'legacy_notice',
-          );
-          const payloadOutcomeArgs = extractRecoOutcomeContractArgsFromPayload(payload, recoContract);
-          payload.recommendation_meta = {
-            ...metaExisting,
-            task_mode: recoTaskMode,
-            source_mode: derivedSourceMode,
-            trigger_source: normalizeRecoSourceDetail(effectiveRecoEntrySourceDetail),
-            recompute_from_profile_update: shouldAutoRerunRecommendationsFromProfilePatch === true,
-            used_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
-            used_itinerary: Boolean(profile && (profile.itinerary || profile.travel_plan || profile.travel_plans)),
-            used_safety_flags: lowConfidenceArtifact,
-            primary_failure_reason: payloadHasRecs
-              ? null
-              : pickFirstTrimmed(
-                recoContract?.primary_failure_reason,
-                payload.failure_reason,
-                payload.products_empty_reason,
-                genericConcernRecoMainline || hasDeterministicRecoTarget
-                  ? 'no_recall_from_planned_sources'
-                  : 'needs_more_context',
-              ),
-            telemetry_failure_reason: recoTelemetryFailureReason || null,
-            failure_class: llmFailureClass || metaExisting.failure_class || recoContract?.failure_class || null,
-            effective_failure_class: payloadOutcomeArgs.effectiveFailureClass || metaExisting.effective_failure_class || 'none',
-            failure_origin: payloadOutcomeArgs.failureOrigin || metaExisting.failure_origin || 'none',
-            catalog_skip_reason: recoCatalogSkipReason || null,
-            upstream_failure_code: upstreamFailureCode || null,
-            mainline_status: recoMainlineStatus || (initialHasRecs ? 'grounded_success' : 'empty_structured'),
-            grounding_status: pickFirstTrimmed(payload.grounding_status, metaExisting.grounding_status) || null,
-            grounded_count: Number.isFinite(Number(payload.grounded_count)) ? Number(payload.grounded_count) : Number(metaExisting.grounded_count || 0) || 0,
-            ungrounded_count: Number.isFinite(Number(payload.ungrounded_count)) ? Number(payload.ungrounded_count) : Number(metaExisting.ungrounded_count || 0) || 0,
-            ...(latestRecoContextPatch.resolved_target_step ? { resolved_target_step: latestRecoContextPatch.resolved_target_step } : {}),
-            ...(latestRecoContextPatch.resolved_target_step_confidence ? { resolved_target_step_confidence: latestRecoContextPatch.resolved_target_step_confidence } : {}),
-            ...(latestRecoContextPatch.resolved_target_step_source ? { resolved_target_step_source: latestRecoContextPatch.resolved_target_step_source } : {}),
-            ...(verifiedCandidateRestoreApplied ? { verified_candidate_restore_applied: true, verified_candidate_restore_count: verifiedCandidateRestoreCount } : {}),
-            ...(payloadOutcomeArgs.viablePoolStrength ? { viable_pool_strength: payloadOutcomeArgs.viablePoolStrength } : {}),
-            ...(payloadOutcomeArgs.targetFidelityLevel ? { target_fidelity_level: payloadOutcomeArgs.targetFidelityLevel } : {}),
-            ...(typeof payloadOutcomeArgs.terminalSuccess === 'boolean' ? { terminal_success: payloadOutcomeArgs.terminalSuccess } : {}),
-            ...(payloadOutcomeArgs.presentationMode ? { presentation_mode: payloadOutcomeArgs.presentationMode } : {}),
-            ...(payloadOutcomeArgs.successMode ? { success_mode: payloadOutcomeArgs.successMode } : {}),
-            ...(Number.isFinite(Number(payloadOutcomeArgs.preLlmSelectedCandidateCount)) ? { pre_llm_selected_candidate_count: Number(payloadOutcomeArgs.preLlmSelectedCandidateCount) } : {}),
-            ...(Number.isFinite(Number(payloadOutcomeArgs.finalSelectedCandidateCount)) ? { final_selected_candidate_count: Number(payloadOutcomeArgs.finalSelectedCandidateCount) } : {}),
-            ...(Number.isFinite(Number(payloadOutcomeArgs.postGuardrailCount)) ? { post_guardrail_count: Number(payloadOutcomeArgs.postGuardrailCount) } : {}),
-            prompt_template_id: pickFirstTrimmed(
-              payload.prompt_template_id,
-              recoMetaPromptTemplateId,
-              RECO_MAIN_PROMPT_TEMPLATE_ID,
-            ),
-            ...(recoLlmTrace ? { llm_trace: recoLlmTrace } : {}),
-            ...(genericGoalDrivenNeedsMoreContextWarning || {}),
-            ...(recoTimeoutDegradedWarning || {}),
-          };
-          payload.metadata = {
-            ...(isPlainObject(payload.metadata) ? payload.metadata : {}),
-            llm_trace_ref: llmTraceRef,
-            llm_failure_class: llmFailureClass || null,
-            mainline_status: recoMainlineStatus || (initialHasRecs ? 'grounded_success' : 'empty_structured'),
-            catalog_skip_reason: recoCatalogSkipReason || null,
-            ...(genericGoalDrivenNeedsMoreContextWarning || {}),
-            ...(recoTimeoutDegradedWarning || {}),
-            ...(verifiedCandidateRestoreApplied ? { verified_candidate_restore_applied: true, verified_candidate_restore_count: verifiedCandidateRestoreCount } : {}),
-          };
-          const finalRecoContract = buildRecoMainlineContract({
-            recommendations: payload.recommendations,
-            sourceMode: payload.recommendation_meta && payload.recommendation_meta.source_mode,
-            source: payload.source,
-            llmFailureClass: llmFailureClass || recoContract?.failure_class,
-            upstreamFailureCode,
-            promptContractOk: payload.prompt_contract_ok !== false,
-            fieldMissing: norm?.field_missing,
-            structuredSource: payload.recommendation_meta && payload.recommendation_meta.source_mode,
-            catalogSkipReason: payload.recommendation_meta && payload.recommendation_meta.catalog_skip_reason,
-            productsEmptyReason: payload.products_empty_reason,
-            groundingStatus: payload.recommendation_meta && payload.recommendation_meta.grounding_status,
-            groundedCount: payload.recommendation_meta && payload.recommendation_meta.grounded_count,
-            ungroundedCount: payload.recommendation_meta && payload.recommendation_meta.ungrounded_count,
-            mainlineStatusOverride: payload.recommendation_meta && payload.recommendation_meta.mainline_status,
-            promptTemplateId: payload.recommendation_meta && payload.recommendation_meta.prompt_template_id,
-            entryType: 'chat',
-            ...extractRecoOutcomeContractArgsFromPayload(payload, recoContract),
-          });
-          finalRecoContract.mainline_status = pickFirstTrimmed(
-            payload.mainline_status,
-            payload.recommendation_meta && payload.recommendation_meta.mainline_status,
-            finalRecoContract.mainline_status,
-          ) || finalRecoContract.mainline_status;
-          finalRecoContract.grounding_status = normalizeRecoGroundingStatus(
-            payload.grounding_status || (payload.recommendation_meta && payload.recommendation_meta.grounding_status),
-          ) || finalRecoContract.grounding_status || null;
-          finalRecoContract.grounded_count = Number.isFinite(Number(payload.grounded_count))
-            ? Number(payload.grounded_count)
-            : Number.isFinite(Number(payload.recommendation_meta?.grounded_count))
-              ? Number(payload.recommendation_meta.grounded_count)
-              : finalRecoContract.grounded_count;
-          finalRecoContract.ungrounded_count = Number.isFinite(Number(payload.ungrounded_count))
-            ? Number(payload.ungrounded_count)
-            : Number.isFinite(Number(payload.recommendation_meta?.ungrounded_count))
-              ? Number(payload.recommendation_meta.ungrounded_count)
-              : finalRecoContract.ungrounded_count;
-          finalRecoContract.prompt_template_id = pickFirstTrimmed(
-            payload.recommendation_meta && payload.recommendation_meta.prompt_template_id,
-            finalRecoContract.prompt_template_id,
-          ) || finalRecoContract.prompt_template_id;
-          recoContract = finalRecoContract;
-          const nextPayload = attachRecoContractMeta(
-            restorePlanOnlyRecommendations(payload, {
-              sourceMode: finalRecoContract.source_mode,
-            }),
-            finalRecoContract,
-          );
-          Object.assign(payload, nextPayload);
-          recoContract = buildRecoMainlineContract({
-            recommendations: payload.recommendations,
-            sourceMode: payload.recommendation_meta && payload.recommendation_meta.source_mode,
-            source: payload.source,
-            llmFailureClass: llmFailureClass || recoContract?.failure_class,
-            upstreamFailureCode,
-            promptContractOk: payload.prompt_contract_ok !== false,
-            fieldMissing: norm?.field_missing,
-            structuredSource: payload.recommendation_meta && payload.recommendation_meta.source_mode,
-            catalogSkipReason: payload.recommendation_meta && payload.recommendation_meta.catalog_skip_reason,
-            productsEmptyReason: payload.products_empty_reason,
-            groundingStatus: payload.recommendation_meta && payload.recommendation_meta.grounding_status,
-            groundedCount: payload.recommendation_meta && payload.recommendation_meta.grounded_count,
-            ungroundedCount: payload.recommendation_meta && payload.recommendation_meta.ungrounded_count,
-            mainlineStatusOverride: payload.recommendation_meta && payload.recommendation_meta.mainline_status,
-            promptTemplateId: payload.recommendation_meta && payload.recommendation_meta.prompt_template_id,
-            entryType: 'chat',
-            ...extractRecoOutcomeContractArgsFromPayload(payload, recoContract),
-          });
-          Object.assign(payload, attachRecoContractMeta(payload, recoContract));
-          Object.assign(
-            payload,
-            applyRecoContentSpineToPayload(payload, recoIngredientContext || latestRecoContextPatch),
-          );
-          if (shouldApplyRecoFinalSelectionContract(payload, null)) {
-            const finalSelectionContract = buildRecoFinalSelectionContract({
-              payload,
-              fallbackSelection: null,
-              selectionOwner: BEAUTY_DISCOVERY_MAINLINE_OWNER,
-            });
-            Object.assign(payload, applyRecoFinalSelectionContractToPayload(payload, finalSelectionContract));
-            Object.assign(payload, applyRecoAssistantSelectionSignature(payload));
-            recoMainlineStatus = pickFirstTrimmed(
-              finalSelectionContract.mainline_status,
-              recoMainlineStatus,
-            ) || recoMainlineStatus;
-            if (isPlainObject(recoContract)) {
-              recoContract.mainline_status = pickFirstTrimmed(
-                finalSelectionContract.mainline_status,
-                recoContract.mainline_status,
-              ) || recoContract.mainline_status;
-            }
-          }
-          if (genericGoalDrivenNeedsMoreContextWarning || recoTimeoutDegradedWarning) {
-            payload.metadata = {
-              ...(isPlainObject(payload.metadata) ? payload.metadata : {}),
-              ...(genericGoalDrivenNeedsMoreContextWarning || {}),
-              ...(recoTimeoutDegradedWarning || {}),
-            };
-          }
-          const finalSelectedProductCandidates = extractRecoContextProductCandidatesFromRecommendations(
-            Array.isArray(payload?.recommendations) ? payload.recommendations : [],
-            {
-              max: 12,
-              normalizeRecoCatalogProduct,
-              pickFirstTrimmed,
-              joinBrandAndName,
-              isPlainObject,
-            },
-          );
-          latestRecoContextPatch = mergeIngredientRecoContextValue(latestRecoContextPatch, {
-            primary_focus: payload?.recommendation_meta?.primary_focus,
-            confidence_policy: payload?.recommendation_meta?.confidence_policy,
-            ranked_targets: Array.isArray(payload?.recommendation_meta?.ranked_targets)
-              ? payload.recommendation_meta.ranked_targets
-              : [],
-            primary_target_id: pickFirstTrimmed(payload?.recommendation_meta?.primary_target_id),
-            selected_target_ids: Array.isArray(payload?.recommendation_meta?.selected_target_ids)
-              ? payload.recommendation_meta.selected_target_ids
-              : [],
-            ...(finalSelectedProductCandidates.length ? { product_candidates: finalSelectedProductCandidates } : {}),
-          });
-        }
-
-        const finalHasRecs = Array.isArray(payload && payload.recommendations)
-          ? payload.recommendations.length > 0
-          : false;
-        recordAuroraSkinFlowMetric({ stage: 'reco_generated', hit: Boolean(finalHasRecs) });
-        if (finalHasRecs) {
-          logger?.info({ kind: 'metric', name: 'aurora.skin.reco_generated_rate', value: 1 }, 'metric');
-        }
-        const nextState = stateChangeAllowed(ctx.trigger_source) && (finalHasRecs || wantsProductRecommendations)
-          ? 'S7_PRODUCT_RECO'
-          : undefined;
-
-        const recoAssistantBase = buildRouteAwareAssistantText({
-          route: 'reco',
-          payload,
-          language: ctx.lang,
-          profile,
-        });
-        const stepAwareNeedsMoreContext =
-          !finalHasRecs
-          && pickFirstTrimmed(payload?.recommendation_meta?.resolved_target_step)
-          && pickFirstTrimmed(payload?.mainline_status, payload?.recommendation_meta?.mainline_status) === 'needs_more_context';
-        const requestedStepLabel = humanizeRecoProductType(
-          pickFirstTrimmed(payload?.recommendation_meta?.resolved_target_step),
-          ctx.lang,
-        );
-        const recoUnavailableLead = ctx.lang === 'CN'
-          ? '我还没能从上游拿到完整的可购清单，先给你一版稳妥可执行方案。'
-          : "I couldn't fetch a complete purchasable shortlist from upstream, so here's a safe and actionable plan first.";
-
-        const assistantTextRaw = finalHasRecs
-          ? (recoAssistantBase ||
-            (ctx.lang === 'CN'
-              ? profileScore >= 3
-                ? '我已经把核心结果整理成结构化卡片（见下方）。'
-                : '我先按“温和/低刺激”给你整理了几款通用选择（见下方卡片）。如果你愿意点选一下肤质/敏感程度，我可以更精准。'
-              : 'I summarized the key results into structured cards below.'))
-          : stepAwareNeedsMoreContext
-            ? (ctx.lang === 'CN'
-              ? `我还不能稳定地锁定适合你的${requestedStepLabel || '这一步'}候选。告诉我你更偏向轻薄、屏障修护、无香，或你想避开的成分，我再继续缩窄。`
-              : `I can't confidently lock a ${requestedStepLabel || 'step-specific'} shortlist yet. Tell me whether you want lightweight texture, barrier support, fragrance-free options, or ingredients to avoid, and I'll narrow it down.`)
-          : (recoAssistantBase
-            ? `${recoUnavailableLead}\n\n${recoAssistantBase}`
-            : (ctx.lang === 'CN'
-              ? '我还没能从上游拿到可结构化的产品推荐结果。你可以先告诉我你想要的品类（例如：洁面/精华/面霜/防晒），我再继续。'
-              : "I couldn't get a structured product recommendation from upstream yet. Tell me what category you want (cleanser / serum / moisturizer / sunscreen), and I’ll continue."));
-        const safetyWarnText = shouldSurfaceRecoWarnSafetyText({
-          safetyDecision,
-          recoEntrySourceDetail: effectiveRecoEntrySourceDetail,
-          message: recoRequestMessage || message,
-        })
-          ? buildSafetyNoticeText(safetyDecision)
-          : '';
-        const recoAssistantRewrite = finalHasRecs
-          ? await maybeRewriteRecoAssistantTextWithLlm({
-            payload,
-            language: ctx.lang,
-            profile,
-            baseText: assistantTextRaw,
-          })
-          : { text: assistantTextRaw, llm_used: false, reason: 'no_recommendations' };
-        const recoSelectionContract = extractRecoFinalSelectionContract(payload);
-        const assistantText = finalHasRecs
-          ? String(
-            assistantTextMatchesRecoSelectionContract(
-              recoAssistantRewrite && recoAssistantRewrite.text,
-              recoSelectionContract,
-            )
-              ? (recoAssistantRewrite && recoAssistantRewrite.text || assistantTextRaw)
-              : recoAssistantBase,
-          ).trim()
-          : String(assistantTextRaw || '').trim();
-        const finalAssistantText = [safetyWarnText, assistantText].filter(Boolean).join('\n\n');
-
-        if (recoTaskMode.startsWith('ingredient_')) {
-          logger?.info(
-            {
-              kind: 'metric',
-              name: 'aurora.ingredient_reco.flow_summary',
-              request_id: ctx.request_id,
-              trace_id: ctx.trace_id,
-              task_mode: recoTaskMode,
-              ingredient_query: recoContextIngredientQuery || null,
-              ingredient_candidates_count: recoIngredientCandidates.length,
-              product_candidates_count: Array.isArray((recoIngredientContext || latestRecoContextPatch)?.product_candidates)
-                ? (recoIngredientContext || latestRecoContextPatch).product_candidates.length
-                : recoProductCandidates.length,
-              constraint_match_summary: isPlainObject(payload) ? payload.constraint_match_summary : null,
-              products_empty_reason: isPlainObject(payload) ? payload.products_empty_reason : null,
-              recommendations_count: isPlainObject(payload) && Array.isArray(payload.recommendations) ? payload.recommendations.length : 0,
-              matcher_pending: isPlainObject(payload) && isPlainObject(payload.metadata) ? payload.metadata.matcher_check_result?.pending : null,
-              confidence_score: isPlainObject(payload) ? payload.recommendation_confidence_score : null,
-              confidence_level: isPlainObject(payload) ? payload.recommendation_confidence_level : null,
-            },
-            'aurora bff: ingredient reco flow summary',
-          );
-        }
-
-        const envelope = buildLegacyChatRecoEnvelope({
-          ctx,
-          payload,
-          normFieldMissing: norm.field_missing,
-          mappedIngredientPlan,
-          debugUpstream,
-          upstreamDebug,
-          alternativesDebug,
-          nextState,
-          recoIngredientContext,
-          latestArtifact,
-          latestRecoContextPatch,
-          chatAnalysisTaskContext,
-          attachAnalysisContextUsageToSessionPatch,
-          lowConfidenceArtifact,
-          identity,
-          llmPrimaryUsed,
-          matcherFallbackUsed,
-          generatedPrimaryUsed,
-          generatedSourceMode,
-          genericConcernRecoMainline,
-          hasDeterministicRecoTarget,
-          productMatcherEnabled: AURORA_PRODUCT_MATCHER_ENABLED,
-          matcherBundle,
-          finalHasRecs,
-          finalAssistantText,
-          refinementChips,
-          recoContract,
-          recoSource,
-          effectiveRecoEntrySourceDetail,
-          shouldAutoRerunRecommendationsFromProfilePatch,
-          artifactConfidenceLevel,
-          artifactConfidenceScore,
-          llmTraceRef,
-          llmFailureClass,
-          logger,
-        });
-        return sendChatEnvelope(envelope);
+          prepareLegacyChatRecoContext,
+          buildLegacyRecoSafetyGateEnvelope,
+          maybeBuildLegacyTravelRecoEnvelope,
+          prepareLegacyChatRecoAnalysisContext,
+          prepareLegacyChatRecoTargeting,
+          postProcessLegacyChatRecoResult,
+          normalizeLegacyChatRecoPayload,
+          finalizeLegacyChatRecoEnvelope,
+          resolveSafetyGateActionV2,
+          mergePendingSafetyAdvisory,
+          persistSafetyPromptAskedOnce,
+          profileCompleteness,
+          buildPendingClarificationForGate,
+          emitPendingClarificationPatch,
+          buildDiagnosisChips,
+          evaluateSafetyBoundary,
+          buildConfidenceNoticeCardPayload,
+          buildIngredientPlan,
+          buildProductRecommendationsBundle,
+          toLegacyRecommendationsPayload,
+          shouldUseLegacyVerifiedContextRestore,
+          restoreRecoRecommendationsFromVerifiedContextCandidates,
+          applyVerifiedCandidateRestoreToRecoPayload,
+          summarizeProfileForContext,
+          normalizeRecoSourceDetail,
+          generateProductRecommendations,
+          extractRecoContextProductCandidatesFromCandidatePoolState,
+          buildIngredientRecoContextTargetBundle,
+          normalizeRecoTargetStep,
+          mergeIngredientRecoContextValue,
+          classifyRecoUpstreamFailureCode,
+          isTransientRecoUpstreamFailureCode,
+          recordAuroraRecoLlmCall,
+          normalizeRecoFailureClass,
+          recordAuroraSkinFlowMetric,
+          recordAuroraRecoEntrySource,
+          AURORA_CHAT_CLARIFICATION_FLOW_V2_ENABLED,
+          AURORA_INGREDIENT_PLAN_ENABLED,
+          AURORA_PRODUCT_MATCHER_ENABLED,
+          AURORA_CHAT_NONBLOCKING_GATE_V1_ENABLED,
+          MINIMUM_RECOMMENDATION_CONTEXT_RULE_VERSION,
+          AURORA_PRODUCT_MATCHER_BUNDLED_SEED_FALLBACK_ENABLED,
+          DIAG_PRODUCT_CATALOG_PATH,
+          AURORA_BFF_CHAT_RECO_BUDGET_MS,
+        }),
+      });
+      if (legacyRecoRouteEntry?.handled) {
+        return sendChatEnvelope(legacyRecoRouteEntry.envelope);
       }
 
       // If user just patched profile via chip/action, continue the diagnosis flow without calling upstream.
