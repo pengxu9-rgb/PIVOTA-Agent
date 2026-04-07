@@ -2398,6 +2398,201 @@ describe('discovery feed service', () => {
     expect(decisions.get('lingerie_1')).toBe('not_selected_cold_start_deferred');
   });
 
+  test('cold start home_hot_deals prefers external seed skincare over equally generic internal catalog items', async () => {
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'home_hot_deals',
+        limit: 4,
+        debug: true,
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      },
+      {
+        candidateProducts: [
+          {
+            ...makeProduct({
+              merchant_id: 'merch_internal',
+              product_id: 'internal_1',
+              title: 'The Ordinary Niacinamide 10% + Zinc 1%',
+              brand: 'The Ordinary',
+              category: 'Skincare',
+              product_type: 'Serum',
+            }),
+            __discovery_provider: 'products_search',
+          },
+          {
+            ...makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'external_1',
+              title: 'Ceramide Barrier Serum',
+              brand: 'cocokind',
+              category: 'Skincare',
+              product_type: 'Serum',
+            }),
+            __discovery_provider: 'products_search',
+          },
+          {
+            ...makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'external_2',
+              title: 'Hydrating Milky Serum',
+              brand: 'PIXI BEAUTY',
+              category: 'Skincare',
+              product_type: 'Serum',
+            }),
+            __discovery_provider: 'products_search',
+          },
+          {
+            ...makeProduct({
+              merchant_id: 'merch_internal',
+              product_id: 'internal_2',
+              title: 'Winona Soothing Repair Serum',
+              brand: 'Winona',
+              category: 'Skincare',
+              product_type: 'Serum',
+            }),
+            __discovery_provider: 'products_search',
+          },
+        ],
+      },
+    );
+
+    expect(response.products[0].merchant_id).toBe('external_seed');
+    expect(response.products.slice(0, 2).map((product) => product.merchant_id)).toEqual([
+      'external_seed',
+      'external_seed',
+    ]);
+    expect(
+      response.metadata.rank_debug.top_candidates.find((candidate) => candidate.product_id === 'external_1')?.scores
+        ?.cold_start_source_score,
+    ).toBeGreaterThan(
+      response.metadata.rank_debug.top_candidates.find((candidate) => candidate.product_id === 'internal_1')?.scores
+        ?.cold_start_source_score,
+    );
+  });
+
+  test('cold start browse_products defers beauty tools when non-tool beauty candidates exist across providers', async () => {
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 6,
+        debug: true,
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      },
+      {
+        candidateProducts: [
+          {
+            ...makeProduct({
+              merchant_id: 'merch_internal',
+              product_id: 'internal_1',
+              title: 'Winona Soothing Repair Serum',
+              brand: 'Winona',
+              category: 'Skincare',
+              product_type: 'Serum',
+            }),
+            __discovery_provider: 'products_search',
+          },
+          {
+            ...makeProduct({
+              merchant_id: 'merch_internal',
+              product_id: 'internal_2',
+              title: 'The Ordinary Niacinamide 10% + Zinc 1%',
+              brand: 'The Ordinary',
+              category: 'Skincare',
+              product_type: 'Serum',
+            }),
+            __discovery_provider: 'products_search',
+          },
+          {
+            ...makeProduct({
+              merchant_id: 'merch_internal',
+              product_id: 'tool_1',
+              title: 'Small Foundation Brush',
+              brand: 'moyu',
+              category: 'Beauty Tools',
+              product_type: 'Brush',
+            }),
+            __discovery_provider: 'products_search',
+          },
+          {
+            ...makeProduct({
+              merchant_id: 'merch_internal',
+              product_id: 'tool_2',
+              title: 'Small Eyeshadow Brush',
+              brand: 'moyu',
+              category: 'Beauty Tools',
+              product_type: 'Brush',
+            }),
+            __discovery_provider: 'products_search',
+          },
+          {
+            ...makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'external_1',
+              title: 'Ceramide Barrier Serum',
+              brand: 'cocokind',
+              category: 'Skincare',
+              product_type: 'Serum',
+            }),
+            __discovery_provider: 'external_seeds',
+          },
+          {
+            ...makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'external_2',
+              title: 'Hydrating Milky Serum',
+              brand: 'PIXI BEAUTY',
+              category: 'Skincare',
+              product_type: 'Serum',
+            }),
+            __discovery_provider: 'external_seeds',
+          },
+          {
+            ...makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'external_3',
+              title: 'Barrier Repair Cream',
+              brand: 'Beta',
+              category: 'Skincare',
+              product_type: 'Cream',
+            }),
+            __discovery_provider: 'external_seeds',
+          },
+          {
+            ...makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'external_4',
+              title: 'Calming Recovery Toner',
+              brand: 'Gamma',
+              category: 'Skincare',
+              product_type: 'Toner',
+            }),
+            __discovery_provider: 'external_seeds',
+          },
+        ],
+      },
+    );
+
+    const ids = response.products.map((product) => product.product_id);
+    expect(ids).toEqual(expect.arrayContaining(['external_1', 'external_2', 'external_3', 'external_4']));
+    expect(ids).not.toContain('tool_1');
+    expect(ids).not.toContain('tool_2');
+    expect(response.products[0].merchant_id).toBe('external_seed');
+    expect(response.metadata.rank_debug.top_candidates.find((candidate) => candidate.product_id === 'tool_1')?.decision).toBe(
+      'page_window_excluded_cold_start_domain',
+    );
+  });
+
   test('generic discovery can succeed via external seeds even when products/search is unavailable', async () => {
     delete process.env.PIVOTA_BACKEND_BASE_URL;
     delete process.env.PIVOTA_API_BASE;
