@@ -1499,9 +1499,17 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
         'external_brand_exact',
       )
     : [];
-  if (brandExactMatches.length >= Math.min(8, safeLimit)) {
+  const focusedBrandExactMatches = brandExactMatches.filter((product) =>
+    matchesFocusedCategoryRecall(product, {
+      leafCategory,
+      parentCategory,
+      semanticPatterns,
+      vertical,
+    }),
+  );
+  if (focusedBrandExactMatches.length >= Math.min(8, safeLimit)) {
     return uniqueByKey(
-      brandExactMatches,
+      [...focusedBrandExactMatches, ...brandExactMatches],
       (p) => `${getMerchantId(p)}::${getProductId(p)}`,
     ).slice(0, safeLimit * 3);
   }

@@ -241,6 +241,76 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(queryMock.mock.calls.filter(([, params]) => Array.isArray(params) && params.length === 3)).toHaveLength(0);
   });
 
+  test('continues into category lanes when same-brand recent rows are not focused enough', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const buildRow = (id, title, category) => ({
+      id: `eps_${id}`,
+      external_product_id: `ext_${id}`,
+      canonical_url: `https://www.tomfordbeauty.com/product/${id}`,
+      destination_url: `https://www.tomfordbeauty.com/product/${id}`,
+      domain: 'www.tomfordbeauty.com',
+      title,
+      image_url: `https://example.com/${id}.jpg`,
+      price_amount: 100,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_brand: 'Tom Ford Beauty',
+      seed_category: category,
+      seed_product_type: category,
+      seed_description: `${title} ${category}`,
+    });
+
+    const queryMock = jest.fn(async (sql, params) => {
+      const predicate = params?.[3];
+      if (String(predicate || '') === 'tom ford beauty') {
+        return {
+          rows: [
+            buildRow('vanilla_sex', 'Vanilla Sex Eau de Parfum', 'Fragrance'),
+            buildRow('fabulous', 'Fucking Fabulous Eau de Parfum', 'Fragrance'),
+            ...Array.from({ length: 16 }).map((_, index) =>
+              buildRow(`concealer_${index + 1}`, `Traceless Soft Matte Concealer ${index + 1}`, 'Concealer'),
+            ),
+          ],
+        };
+      }
+      if (Array.isArray(predicate) && String(sql).includes('= ANY($4::text[])') && !String(sql).includes('LIKE ANY')) {
+        return {
+          rows: [
+            buildRow('oud_minerale', 'Oud Minérale Eau de Parfum', 'Fragrance'),
+            buildRow('bois_marocain', 'Bois Marocain Eau de Parfum', 'Fragrance'),
+            buildRow('costa_azzurra', 'Costa Azzurra Eau de Parfum', 'Fragrance'),
+            buildRow('soleil_blanc', 'Soleil Blanc Eau de Parfum', 'Fragrance'),
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchExternalCandidates({
+      brandHint: 'Tom Ford Beauty',
+      categoryHint: 'Fragrance',
+      limit: 120,
+      baseProduct: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_vanilla_sex',
+        title: 'Vanilla Sex Eau de Parfum',
+        brand: 'Tom Ford Beauty',
+        category: 'Fragrance',
+        source: 'external_seed',
+      },
+    });
+
+    expect(products.map((product) => product.product_id)).toEqual(
+      expect.arrayContaining(['ext_oud_minerale', 'ext_bois_marocain', 'ext_costa_azzurra']),
+    );
+    expect(queryMock.mock.calls.some(([sql]) => String(sql).includes('= ANY($4::text[])'))).toBe(true);
+  });
+
   test('returns fast same-brand rows even when semantic surface query times out', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
     process.env.PDP_RECS_EXTERNAL_QUERY_TIMEOUT_MS = '25ms';
