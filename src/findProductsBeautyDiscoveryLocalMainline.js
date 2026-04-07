@@ -454,12 +454,13 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
     search = null,
     metadata = null,
     requestContract = null,
+    rawUserQuery = '',
   } = {}) {
     const searchObj = normalizeSearchObject(search);
     const metadataObj = normalizeSearchObject(metadata);
     const contract = isPlainObject(requestContract) ? requestContract : {};
     if (String(contract.primary_lane || '').trim() !== 'beauty_discovery_mainline') return false;
-    const queryText = firstNonEmptyString(searchObj.query, searchObj.q);
+    const queryText = firstNonEmptyString(rawUserQuery, searchObj.query, searchObj.q);
     if (String(searchObj.merchant_id || searchObj.merchantId || '').trim()) return false;
     if (searchObj.external_seed_only === true) return false;
     const uiSurface = String(
@@ -494,9 +495,17 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
       if (String(process.env.NODE_ENV || '').trim().toLowerCase() === 'test') return false;
       return targetStepFamily === 'sunscreen' && requestClass === 'sunscreen';
     }
+    const metadataSource = String(metadataObj.source || metadataObj.source_surface || '')
+      .trim()
+      .toLowerCase();
+    const searchSource = String(searchObj.source || searchObj.source_surface || '')
+      .trim()
+      .toLowerCase();
+    const sourceForFrameworkLocal = metadataSource || searchSource;
     return (
       plannerMode === 'framework_generic' &&
       requestClass === 'generic_concern' &&
+      sourceForFrameworkLocal === 'aurora-bff' &&
       looksLikeBroadBeautyDiscoveryQuery(queryText)
     );
   }

@@ -20452,6 +20452,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         search: findProductsMultiSearchPayload,
         metadata,
         requestContract: findProductsSearchRequestContract,
+        rawUserQuery,
       })
     ) {
       const localBeautyMainlineResult = await runLocalBeautyDiscoveryMainline({
