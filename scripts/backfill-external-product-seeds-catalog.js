@@ -720,7 +720,12 @@ async function fetchRows(options) {
     return `$${idx}`;
   };
 
+  let seedIdsBind = null;
   if (options.seedId) where.push(`id::text = ${addParam(options.seedId)}`);
+  if (Array.isArray(options.seedIds) && options.seedIds.length > 0) {
+    seedIdsBind = addParam(options.seedIds.map((value) => normalizeNonEmptyString(value)).filter(Boolean));
+    where.push(`id::text = ANY(${seedIdsBind}::text[])`);
+  }
   if (options.externalProductId) where.push(`external_product_id = ${addParam(options.externalProductId)}`);
   if (options.domain) where.push(`domain = ${addParam(options.domain)}`);
   if (options.brand) where.push(`lower(coalesce(seed_data->>'brand', '')) = lower(${addParam(options.brand)})`);
@@ -751,7 +756,11 @@ async function fetchRows(options) {
       updated_at
     FROM external_product_seeds
     WHERE ${where.join('\n      AND ')}
-    ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+    ORDER BY ${
+      seedIdsBind
+        ? `array_position(${seedIdsBind}::text[], id::text) ASC NULLS LAST, updated_at DESC NULLS LAST, created_at DESC NULLS LAST`
+        : 'updated_at DESC NULLS LAST, created_at DESC NULLS LAST'
+    }
     LIMIT ${limitBind}
     OFFSET ${offsetBind}
   `;
