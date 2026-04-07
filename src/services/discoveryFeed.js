@@ -39,7 +39,12 @@ const MAX_CANDIDATE_FETCH = 120;
 const DEFAULT_DEBUG_TOP_CANDIDATES = 10;
 const PRODUCTS_SEARCH_PAGE_SIZE = 60;
 const MAX_PRODUCTS_SEARCH_CALLS = 2;
-const DISCOVERY_PROVIDER_ORDER = ['products_search', 'internal_catalog', 'external_seeds'];
+const DISCOVERY_PROVIDER_ORDER = [
+  'beauty_interest_mainline',
+  'products_search',
+  'internal_catalog',
+  'external_seeds',
+];
 const VALID_SURFACES = new Set(['home_hot_deals', 'browse_products']);
 const VALID_DISCOVERY_RESPONSE_DETAILS = new Set(['full', 'card']);
 const VALID_AUTH_STATES = new Set(['authenticated', 'anonymous']);
@@ -922,8 +927,9 @@ function mapScore(map, key) {
   return (map.get(key) || 0) / max;
 }
 
-function inferPersonalizationSource(recentViews, authState) {
-  if (!Array.isArray(recentViews) || recentViews.length === 0) return 'none';
+function inferPersonalizationSource(recentViews, recentQueries, authState) {
+  const queryCount = Array.isArray(recentQueries) ? recentQueries.length : 0;
+  if ((!Array.isArray(recentViews) || recentViews.length === 0) && queryCount <= 0) return 'none';
   const sources = new Set(
     recentViews
       .map((view) => String(view.history_source || '').trim().toLowerCase())
@@ -934,6 +940,7 @@ function inferPersonalizationSource(recentViews, authState) {
   }
   if (sources.has('session') || sources.has('local')) return 'session_history';
   if (sources.has('account')) return 'account_history';
+  if (queryCount > 0) return authState === 'authenticated' ? 'account_history' : 'session_history';
   return authState === 'authenticated' ? 'account_history' : 'session_history';
 }
 
@@ -1132,10 +1139,7 @@ function buildDiscoveryProfile(context = {}) {
 
   const historyItemsUsed = recentViews.length;
   const queryHistoryItemsUsed = recentQueries.length;
-  let personalizationSource = inferPersonalizationSource(recentViews, context.auth_state);
-  if (personalizationSource === 'none' && queryHistoryItemsUsed > 0) {
-    personalizationSource = context.auth_state === 'authenticated' ? 'account_history' : 'session_history';
-  }
+  const personalizationSource = inferPersonalizationSource(recentViews, recentQueries, context.auth_state);
   const hasViewInterestSignals =
     historyItemsUsed > 0 && (brandAffinity.size > 0 || categoryAffinity.size > 0 || anchors.length > 0);
   const hasQueryInterestSignals =
@@ -1156,10 +1160,19 @@ function buildDiscoveryProfile(context = {}) {
     anchors,
     historyItemsUsed,
     queryHistoryItemsUsed,
+    queryItemsUsed: queryHistoryItemsUsed,
     personalizationSource,
     queryTokens,
     hasInterestSignals,
   };
+}
+
+function shouldUseBeautyInterestMainline(request, profile) {
+  return (
+    profile?.hasInterestSignals === true &&
+    profile?.dominantDomain === 'beauty' &&
+    (!Array.isArray(request?.scope?.brand_names) || request.scope.brand_names.length === 0)
+  );
 }
 
 function isCandidateSellable(product) {
@@ -2473,19 +2486,60 @@ async function fetchExternalSeedCandidates({
   }
 }
 
+async function fetchBeautyInterestMainlineCandidates({
+  request,
+  profile,
+  queries = [],
+  limit = MAX_CANDIDATE_FETCH,
+  fetchFn = null,
+} = {}) {
+  const result = await fetchExternalSeedCandidates({
+    request,
+    profile,
+    queries,
+    limit,
+    fetchFn,
+  });
+  return {
+    products: annotateProviderProducts('beauty_interest_mainline', result?.products || []),
+    recallSummary: (Array.isArray(result?.recallSummary) ? result.recallSummary : []).map((step) => ({
+      ...step,
+      label: 'beauty_interest_mainline',
+    })),
+  };
+}
+
 function buildProviderBreakdown(results = []) {
   return DISCOVERY_PROVIDER_ORDER.map((provider) => {
     const result = (Array.isArray(results) ? results : []).find((entry) => entry?.provider === provider) || null;
     const recallSummary = Array.isArray(result?.recallSummary) ? result.recallSummary : [];
     const attempted = recallSummary.length > 0;
     const successfulSteps = recallSummary.filter((step) => Number(step?.status || 0) >= 200 && Number(step?.status || 0) < 300);
+    const skipped = attempted && recallSummary.every((step) => step?.skipped === true);
+    const latencyMs = recallSummary.reduce((sum, step) => sum + Math.max(0, Number(step?.latency_ms || 0)), 0);
+    const skipReason = recallSummary.find((step) => typeof step?.skip_reason === 'string')?.skip_reason || null;
+    let zeroRecallReason = null;
+    if (attempted && !skipped && (Array.isArray(result?.products) ? result.products.length : 0) === 0) {
+      if (recallSummary.some((step) => step?.truncated_by_budget === true)) {
+        zeroRecallReason = 'budget_truncated';
+      } else if (recallSummary.some((step) => step?.error)) {
+        zeroRecallReason = 'provider_error';
+      } else if (successfulSteps.length > 0) {
+        zeroRecallReason = 'zero_products';
+      } else {
+        zeroRecallReason = 'unavailable';
+      }
+    }
     return {
       provider,
       attempted,
       successful: successfulSteps.length > 0,
       returned: Array.isArray(result?.products) ? result.products.length : 0,
       steps: recallSummary.length,
-      skipped: recallSummary.every((step) => step?.skipped === true),
+      skipped,
+      latency_ms: latencyMs,
+      ...(skipReason ? { skip_reason: skipReason } : {}),
+      ...(zeroRecallReason ? { zero_recall_reason: zeroRecallReason } : {}),
     };
   });
 }
@@ -2529,6 +2583,15 @@ function getProviderQualityThreshold(request) {
   return Math.max(1, Math.min(request?.limit || 0, 6));
 }
 
+function getPrimaryPathEnoughThreshold(request) {
+  const limit = Math.max(1, Number(request?.limit || 0) || 0);
+  if (request?.surface === 'browse_products') {
+    const page = Math.max(1, Number(request?.page || 0) || 1);
+    return Math.max(limit, page * limit);
+  }
+  return limit;
+}
+
 function hasSufficientProviderCandidates(products = [], { request, profile, enoughThreshold, qualityThreshold } = {}) {
   return (
     Array.isArray(products) &&
@@ -2556,6 +2619,14 @@ function buildExternalSeedProviderQueries(request, profile, queries = []) {
   return prioritized.slice(0, 2);
 }
 
+function shouldDeferInternalCatalogCandidate(candidate, profile) {
+  return (
+    profile?.hasInterestSignals === true &&
+    profile?.dominantDomain === 'beauty' &&
+    String(candidate?.provider || '').trim() === 'internal_catalog'
+  );
+}
+
 async function loadCatalogCandidates({
   request = null,
   profile = null,
@@ -2566,12 +2637,18 @@ async function loadCatalogCandidates({
   const providerQueries = buildDiscoveryProviderQueries(request, profile);
   const enoughThreshold = getRecallEnoughThreshold(request, safeLimit);
   const qualityThreshold = getProviderQualityThreshold(request);
+  const primaryPathEnoughThreshold = getPrimaryPathEnoughThreshold(request);
   const providerResults = [];
   const mergedProducts = [];
   const seenKeys = new Set();
+  const useBeautyInterestMainline = shouldUseBeautyInterestMainline(request, profile);
   const internalProviderLimit = Math.min(safeLimit, 72);
   const externalProviderLimit = resolveExternalSeedProviderLimit(request, safeLimit);
   const externalProviderQueries = buildExternalSeedProviderQueries(request, profile, providerQueries);
+  let candidateSource = useBeautyInterestMainline ? 'beauty_interest_mainline' : 'multi_provider';
+  let primaryPathUsed = useBeautyInterestMainline ? 'beauty_interest_mainline' : 'multi_provider';
+  let fallbackTriggered = false;
+  let fallbackReason = null;
 
   const mergeProducts = (products = []) => {
     for (const product of Array.isArray(products) ? products : []) {
@@ -2583,18 +2660,20 @@ async function loadCatalogCandidates({
     }
   };
 
+  const getProviderLabel = (provider) => {
+    if (provider === 'beauty_interest_mainline') return 'beauty_interest_mainline';
+    if (provider === 'products_search') return 'products_search_pool';
+    if (provider === 'internal_catalog') return 'internal_catalog_pool';
+    return 'external_seed_pool';
+  };
+
   const buildProviderErrorResult = (provider, err) => ({
     provider,
     products: [],
     recallSummary: [
       buildDiscoveryProviderStepSummary({
         provider,
-        label:
-          provider === 'products_search'
-            ? 'products_search_pool'
-            : provider === 'internal_catalog'
-              ? 'internal_catalog_pool'
-              : 'external_seed_pool',
+        label: getProviderLabel(provider),
         query: providerQueries.join(' | '),
         limit: safeLimit,
         returned: 0,
@@ -2604,6 +2683,92 @@ async function loadCatalogCandidates({
       }),
     ],
   });
+
+  const finalizeProviderResult = () => {
+    const recallSummary = providerResults.flatMap((result) =>
+      (Array.isArray(result?.recallSummary) ? result.recallSummary : []).map((step) => ({
+        provider: result.provider,
+        ...step,
+      })),
+    );
+    const providerBreakdown = buildProviderBreakdown(providerResults);
+    const successfulProviders = providerBreakdown.filter((entry) => entry.successful);
+
+    if (successfulProviders.length <= 0) {
+      throw new DiscoveryCatalogUnavailableError('Failed to load discovery candidates from discovery providers');
+    }
+
+    return {
+      products: mergedProducts,
+      recallSummary,
+      providerBreakdown,
+      candidateSource,
+      primaryPathUsed,
+      fallbackTriggered,
+      fallbackReason,
+    };
+  };
+
+  if (useBeautyInterestMainline) {
+    try {
+      const beautyMainlineResult = await fetchBeautyInterestMainlineCandidates({
+        request,
+        profile,
+        queries: externalProviderQueries,
+        limit: externalProviderLimit,
+        fetchFn: providerOverrides?.beauty_interest_mainline || providerOverrides?.external_seeds || null,
+      });
+      const normalizedBeautyMainlineResult = {
+        provider: 'beauty_interest_mainline',
+        products: beautyMainlineResult.products,
+        recallSummary: beautyMainlineResult.recallSummary,
+      };
+      providerResults.push(normalizedBeautyMainlineResult);
+      mergeProducts(normalizedBeautyMainlineResult.products);
+    } catch (err) {
+      providerResults.push(buildProviderErrorResult('beauty_interest_mainline', err));
+    }
+
+    const beautyMainlineEnough = hasSufficientProviderCandidates(mergedProducts, {
+      request,
+      profile,
+      enoughThreshold: primaryPathEnoughThreshold,
+      qualityThreshold,
+    });
+    if (beautyMainlineEnough) {
+      providerResults.push(
+        buildSkippedProviderResult('products_search', {
+          label: getProviderLabel('products_search'),
+          query: providerQueries.join(' | '),
+          limit: safeLimit,
+          skipReason: 'beauty_interest_mainline_sufficient',
+        }),
+      );
+      providerResults.push(
+        buildSkippedProviderResult('internal_catalog', {
+          label: getProviderLabel('internal_catalog'),
+          query: providerQueries.join(' | '),
+          limit: internalProviderLimit,
+          skipReason: 'beauty_interest_mainline_sufficient',
+        }),
+      );
+      providerResults.push(
+        buildSkippedProviderResult('external_seeds', {
+          label: getProviderLabel('external_seeds'),
+          query: externalProviderQueries.join(' | '),
+          limit: externalProviderLimit,
+          skipReason: 'beauty_interest_mainline_primary_used',
+        }),
+      );
+      return finalizeProviderResult();
+    }
+    candidateSource = 'beauty_interest_mainline+multi_provider';
+    fallbackTriggered = true;
+    fallbackReason =
+      mergedProducts.length > 0
+        ? 'beauty_interest_mainline_insufficient'
+        : 'beauty_interest_mainline_zero_recall';
+  }
 
   try {
     const searchResult = await loadProductsSearchCandidates({
@@ -2651,18 +2816,7 @@ async function loadCatalogCandidates({
         skipReason,
       }),
     );
-    const recallSummary = providerResults.flatMap((result) =>
-      (Array.isArray(result?.recallSummary) ? result.recallSummary : []).map((step) => ({
-        provider: result.provider,
-        ...step,
-      })),
-    );
-    const providerBreakdown = buildProviderBreakdown(providerResults);
-    return {
-      products: mergedProducts,
-      recallSummary,
-      providerBreakdown,
-    };
+    return finalizeProviderResult();
   }
 
   const shouldSkipAnonymousExpansion = shouldSkipNoSignalProviderExpansion(mergedProducts, {
@@ -2686,18 +2840,7 @@ async function loadCatalogCandidates({
         skipReason: 'sufficient_no_signal_primary_candidates',
       }),
     );
-    const recallSummary = providerResults.flatMap((result) =>
-      (Array.isArray(result?.recallSummary) ? result.recallSummary : []).map((step) => ({
-        provider: result.provider,
-        ...step,
-      })),
-    );
-    const providerBreakdown = buildProviderBreakdown(providerResults);
-    return {
-      products: mergedProducts,
-      recallSummary,
-      providerBreakdown,
-    };
+    return finalizeProviderResult();
   }
 
   const shouldSkipPersonalizedExpansion = shouldSkipPersonalizedProviderExpansion(mergedProducts, {
@@ -2721,69 +2864,76 @@ async function loadCatalogCandidates({
         skipReason: 'sufficient_personalized_primary_candidates',
       }),
     );
-    const recallSummary = providerResults.flatMap((result) =>
-      (Array.isArray(result?.recallSummary) ? result.recallSummary : []).map((step) => ({
-        provider: result.provider,
-        ...step,
-      })),
-    );
-    const providerBreakdown = buildProviderBreakdown(providerResults);
-    return {
-      products: mergedProducts,
-      recallSummary,
-      providerBreakdown,
-    };
+    return finalizeProviderResult();
   }
 
-  const shouldSkipExternalSeeds = hasSufficientProviderCandidates(mergedProducts, {
-    request,
-    profile,
-    enoughThreshold,
-    qualityThreshold,
-  });
+  const shouldSkipInternal =
+    useBeautyInterestMainline &&
+    hasSufficientProviderCandidates(mergedProducts, {
+      request,
+      profile,
+      enoughThreshold,
+      qualityThreshold,
+    });
+  const shouldSkipExternalSeeds =
+    useBeautyInterestMainline ||
+    hasSufficientProviderCandidates(mergedProducts, {
+      request,
+      profile,
+      enoughThreshold,
+      qualityThreshold,
+    });
 
-  const internalPromise = fetchInternalCatalogCandidates({
-    request,
-    profile,
-    queries: providerQueries,
-    limit: internalProviderLimit,
-    fetchFn: providerOverrides?.internal_catalog || null,
-  });
-  const externalPromise = shouldSkipExternalSeeds
-    ? null
-    : fetchExternalSeedCandidates({
+  if (shouldSkipInternal) {
+    providerResults.push(
+      buildSkippedProviderResult('internal_catalog', {
+        label: getProviderLabel('internal_catalog'),
+        query: providerQueries.join(' | '),
+        limit: internalProviderLimit,
+        skipReason: 'sufficient_primary_candidates',
+      }),
+    );
+  } else {
+    try {
+      const internalResult = await fetchInternalCatalogCandidates({
+        request,
+        profile,
+        queries: providerQueries,
+        limit: internalProviderLimit,
+        fetchFn: providerOverrides?.internal_catalog || null,
+      });
+      const normalizedInternalResult = {
+        provider: 'internal_catalog',
+        products: internalResult.products,
+        recallSummary: internalResult.recallSummary,
+      };
+      providerResults.push(normalizedInternalResult);
+      mergeProducts(normalizedInternalResult.products);
+    } catch (err) {
+      providerResults.push(buildProviderErrorResult('internal_catalog', err));
+    }
+  }
+
+  if (shouldSkipExternalSeeds) {
+    providerResults.push(
+      buildSkippedProviderResult('external_seeds', {
+        label: getProviderLabel('external_seeds'),
+        query: externalProviderQueries.join(' | '),
+        limit: externalProviderLimit,
+        skipReason: useBeautyInterestMainline
+          ? 'beauty_interest_mainline_primary_used'
+          : 'sufficient_primary_candidates',
+      }),
+    );
+  } else {
+    try {
+      const externalResult = await fetchExternalSeedCandidates({
         request,
         profile,
         queries: externalProviderQueries,
         limit: externalProviderLimit,
         fetchFn: providerOverrides?.external_seeds || null,
       });
-
-  try {
-    const internalResult = await internalPromise;
-    const normalizedInternalResult = {
-      provider: 'internal_catalog',
-      products: internalResult.products,
-      recallSummary: internalResult.recallSummary,
-    };
-    providerResults.push(normalizedInternalResult);
-    mergeProducts(normalizedInternalResult.products);
-  } catch (err) {
-    providerResults.push(buildProviderErrorResult('internal_catalog', err));
-  }
-
-  if (shouldSkipExternalSeeds) {
-    providerResults.push(
-      buildSkippedProviderResult('external_seeds', {
-        label: 'external_seed_pool',
-        query: externalProviderQueries.join(' | '),
-        limit: externalProviderLimit,
-        skipReason: 'sufficient_primary_candidates',
-      }),
-    );
-  } else {
-    try {
-      const externalResult = await externalPromise;
       const normalizedExternalResult = {
         provider: 'external_seeds',
         products: externalResult.products,
@@ -2796,24 +2946,7 @@ async function loadCatalogCandidates({
     }
   }
 
-  const recallSummary = providerResults.flatMap((result) =>
-    (Array.isArray(result?.recallSummary) ? result.recallSummary : []).map((step) => ({
-      provider: result.provider,
-      ...step,
-    })),
-  );
-  const providerBreakdown = buildProviderBreakdown(providerResults);
-  const successfulProviders = providerBreakdown.filter((entry) => entry.successful);
-
-  if (successfulProviders.length <= 0) {
-    throw new DiscoveryCatalogUnavailableError('Failed to load discovery candidates from discovery providers');
-  }
-
-  return {
-    products: mergedProducts,
-    recallSummary,
-    providerBreakdown,
-  };
+  return finalizeProviderResult();
 }
 
 function scoreAnchorSimilarity(candidate, anchors) {
@@ -3452,6 +3585,7 @@ function selectHomeProducts(scoredCandidates, viewedKeys, limit, options = {}) {
   const decisions = collectDebug ? new Map() : null;
   const brandCounts = new Map();
   const rankedEligible = [];
+  const internalDeferred = [];
   const coldStartDeferred = [];
   const recentViewDeferred = [];
   for (const entry of ranked) {
@@ -3473,6 +3607,11 @@ function selectHomeProducts(scoredCandidates, viewedKeys, limit, options = {}) {
     if (hasExternalSeedBeautyCandidate && shouldDeferColdStartInternalSourceCandidate(entry.candidate)) {
       coldStartDeferred.push(entry);
       if (decisions) decisions.set(entry.candidate.key, 'filtered_cold_start_internal_source');
+      continue;
+    }
+    if (shouldDeferInternalCatalogCandidate(entry.candidate, profile)) {
+      internalDeferred.push(entry);
+      if (decisions) decisions.set(entry.candidate.key, 'deferred_internal_catalog');
       continue;
     }
     rankedEligible.push(entry);
@@ -3522,6 +3661,13 @@ function selectHomeProducts(scoredCandidates, viewedKeys, limit, options = {}) {
     if (decisions) decisions.set(entry.candidate.key, 'selected_recent_view_backfill');
   }
 
+  for (const entry of internalDeferred) {
+    if (selected.length >= limit) break;
+    if (selected.some((picked) => picked.candidate.key === entry.candidate.key)) continue;
+    selected.push(entry);
+    if (decisions) decisions.set(entry.candidate.key, 'selected_internal_catalog_backfill');
+  }
+
   const selectedItems = selected.slice(0, limit);
   if (!collectDebug) return selectedItems;
 
@@ -3534,7 +3680,7 @@ function selectHomeProducts(scoredCandidates, viewedKeys, limit, options = {}) {
   return {
     ranked,
     selected: selectedItems,
-    eligiblePool: rankedEligible,
+    eligiblePool: rankedEligible.concat(internalDeferred),
     decisions,
   };
 }
@@ -3556,6 +3702,7 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
   const decisions = collectDebug ? new Map() : null;
 
   const preCategoryPool = [];
+  const internalDeferred = [];
   const recentViewDeferred = [];
   for (const entry of ranked) {
     const rejectReason = getDiscoveryRejectReason(entry, profile, 'browse_products');
@@ -3572,6 +3719,11 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
       if (decisions) decisions.set(entry.candidate.key, 'filtered_query_text');
       continue;
     }
+    if (shouldDeferInternalCatalogCandidate(entry.candidate, profile)) {
+      internalDeferred.push(entry);
+      if (decisions) decisions.set(entry.candidate.key, 'deferred_internal_catalog');
+      continue;
+    }
     preCategoryPool.push(entry);
   }
 
@@ -3586,6 +3738,7 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
         entry.candidate?.domain === 'beauty' &&
         entry.candidate?.beautyBucket !== 'tools',
     );
+  const orderedInternalDeferred = [];
   for (const entry of preCategoryPool) {
     if (categoryScope.length > 0 && !matchesCategoryScopeCandidate(entry.candidate, categoryScope)) {
       if (decisions) decisions.set(entry.candidate.key, 'filtered_category_scope');
@@ -3620,9 +3773,17 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
       );
     }
   }
+  for (const entry of internalDeferred) {
+    if (categoryScope.length > 0 && !matchesCategoryScopeCandidate(entry.candidate, categoryScope)) {
+      if (decisions) decisions.set(entry.candidate.key, 'filtered_category_scope');
+      continue;
+    }
+    orderedInternalDeferred.push(entry);
+  }
+  const rankedOrderedPool = orderedPool.concat(orderedInternalDeferred);
 
   const start = (page - 1) * limit;
-  const pageItems = orderedPool.slice(start, start + limit);
+  const pageItems = rankedOrderedPool.slice(start, start + limit);
   if (page <= 1 && pageItems.length < limit) {
     for (const entry of recentViewDeferred) {
       if (pageItems.length >= limit) break;
@@ -3640,7 +3801,7 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
   }
 
   const selectedKeys = new Set(pageItems.map((entry) => entry.candidate.key));
-  for (const entry of orderedPool) {
+  for (const entry of rankedOrderedPool) {
     if (decisions.has(entry.candidate.key)) continue;
     decisions.set(
       entry.candidate.key,
@@ -3655,7 +3816,7 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
   return {
     ranked,
     preCategoryPool,
-    orderedPool,
+    orderedPool: rankedOrderedPool,
     pageItems,
     decisions,
   };
@@ -3954,6 +4115,18 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
     providerBreakdown = Array.isArray(candidateLoadResult?.providerBreakdown)
       ? candidateLoadResult.providerBreakdown
       : [];
+    if (typeof candidateLoadResult?.candidateSource === 'string' && candidateLoadResult.candidateSource.trim()) {
+      effectiveCandidateSource = candidateLoadResult.candidateSource.trim();
+    }
+    const primaryPathUsed =
+      typeof candidateLoadResult?.primaryPathUsed === 'string' && candidateLoadResult.primaryPathUsed.trim()
+        ? candidateLoadResult.primaryPathUsed.trim()
+        : 'multi_provider';
+    const fallbackTriggered = candidateLoadResult?.fallbackTriggered === true;
+    const fallbackReason =
+      typeof candidateLoadResult?.fallbackReason === 'string' && candidateLoadResult.fallbackReason.trim()
+        ? candidateLoadResult.fallbackReason.trim()
+        : null;
     let effectiveRawCandidates = rawCandidates;
     observeDiscoveryCandidateCount({
       surface: request.surface,
@@ -4173,17 +4346,30 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
 
     const latencyMs = Date.now() - startedAt;
     const hasMore = total > request.page * request.limit;
+    const selectedSourceBreakdown = selectedEntries.reduce(
+      (acc, entry) => {
+        const provider = String(entry?.candidate?.provider || '').trim() || 'unknown';
+        acc[provider] = Number(acc[provider] || 0) + 1;
+        return acc;
+      },
+      {},
+    );
     const metadata = {
       discovery_strategy: strategy,
       personalization_source: personalizationSource,
       history_items_used: profile.historyItemsUsed,
+      query_items_used: Number(profile.queryItemsUsed || 0),
       anchor_count: profile.anchors.length,
       scoring_version: SCORING_VERSION,
       surface: request.surface,
       locale: request.context.locale,
       candidate_source: effectiveCandidateSource,
+      primary_path_used: primaryPathUsed,
+      fallback_triggered: fallbackTriggered,
+      ...(fallbackReason ? { fallback_reason: fallbackReason } : {}),
       provider_breakdown: providerBreakdown,
       candidate_counts: candidateCounts,
+      selected_source_breakdown: selectedSourceBreakdown,
       request_latency_ms: latencyMs,
       sort_applied: request.sort,
       brand_scope_applied: request.scope.brand_names,
@@ -4194,6 +4380,16 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
         categories: categoryFacets,
       },
       filter_counts: filterCounts,
+      route_health: {
+        primary_path_used: primaryPathUsed,
+        fallback_triggered: fallbackTriggered,
+        fallback_reason: fallbackReason,
+      },
+      search_decision: {
+        primary_path_used: primaryPathUsed,
+        fallback_triggered: fallbackTriggered,
+        final_decision: selectedEntries.length > 0 ? 'products_returned' : 'empty',
+      },
       ...(profile.dominantDomain ? { dominant_domain: profile.dominantDomain } : {}),
     };
 

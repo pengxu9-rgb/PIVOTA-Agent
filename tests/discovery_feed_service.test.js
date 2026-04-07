@@ -225,6 +225,24 @@ describe('discovery feed service', () => {
     expect(profile.preferredBeautyBucketScore).toBeGreaterThan(0);
   });
 
+  test('buildDiscoveryProfile treats query-only authenticated context as personalized interest', () => {
+    const request = _internals.normalizeDiscoveryRequest({
+      surface: 'home_hot_deals',
+      context: {
+        auth_state: 'authenticated',
+        recent_views: [],
+        recent_queries: ['niacinamide serum'],
+      },
+    });
+
+    const profile = buildDiscoveryProfile(request.context);
+
+    expect(profile.hasInterestSignals).toBe(true);
+    expect(profile.personalizationSource).toBe('account_history');
+    expect(profile.queryItemsUsed).toBe(1);
+    expect(profile.dominantDomain).toBe('beauty');
+  });
+
   test('buildDiscoveryRecallPlan keeps a home fill step and seeds browse recall for skincare history', () => {
     const homeRequest = _internals.normalizeDiscoveryRequest({
       surface: 'home_hot_deals',
@@ -1535,7 +1553,9 @@ describe('discovery feed service', () => {
 
     expect(response.metadata).toEqual(
       expect.objectContaining({
-        candidate_source: 'multi_provider',
+        candidate_source: 'beauty_interest_mainline+multi_provider',
+        primary_path_used: 'beauty_interest_mainline',
+        fallback_triggered: true,
         provider_breakdown: expect.any(Array),
         rank_debug: expect.any(Object),
       }),
@@ -2693,7 +2713,7 @@ describe('discovery feed service', () => {
         limit: 10,
         debug: true,
         context: {
-          auth_state: 'authenticated',
+          auth_state: 'anonymous',
           locale: 'en-US',
           recent_views: [],
           recent_queries: [],
@@ -3024,7 +3044,7 @@ describe('discovery feed service', () => {
     expect(decisions.get('tool_1')).toBe('filtered_cold_start_domain');
   });
 
-  test('generic discovery can succeed via external seeds even when products/search is unavailable', async () => {
+  test('beauty interest mainline can succeed via external seeds even when products/search is unavailable', async () => {
     delete process.env.PIVOTA_BACKEND_BASE_URL;
     delete process.env.PIVOTA_API_BASE;
 
@@ -3096,21 +3116,106 @@ describe('discovery feed service', () => {
     );
 
     expect(response.products).toHaveLength(4);
-    expect(response.metadata.candidate_source).toBe('multi_provider');
+    expect(response.metadata.candidate_source).toBe('beauty_interest_mainline');
+    expect(response.metadata.primary_path_used).toBe('beauty_interest_mainline');
+    expect(response.metadata.fallback_triggered).toBe(false);
     expect(response.metadata.provider_breakdown).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ provider: 'products_search', successful: false }),
-        expect.objectContaining({ provider: 'external_seeds', successful: true, returned: 4 }),
+        expect.objectContaining({ provider: 'beauty_interest_mainline', successful: true, returned: 4 }),
+        expect.objectContaining({ provider: 'products_search', skipped: true }),
+        expect.objectContaining({ provider: 'external_seeds', skipped: true }),
       ]),
     );
     expect(response.metadata.rank_debug.recall_summary).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ provider: 'external_seeds', label: 'external_seed_pool', status: 200 }),
+        expect.objectContaining({ provider: 'external_seeds', label: 'beauty_interest_mainline', status: 200 }),
       ]),
     );
   });
 
-  test('generic discovery prefers discovery-specific products/search base and skips external seeds once primary pools are sufficient', async () => {
+  test('beauty interest mainline short-circuits multi-provider expansion when external beauty candidates are sufficient', async () => {
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+    delete process.env.PIVOTA_API_BASE;
+
+    const internalSpy = jest.fn(async () => [
+      makeProduct({
+        merchant_id: 'm_internal',
+        product_id: 'internal_1',
+        title: 'Winona Soothing Repair Serum',
+        brand: 'Winona',
+        category: 'Skincare',
+        product_type: 'Serum',
+      }),
+    ]);
+
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'home_hot_deals',
+        limit: 4,
+        debug: true,
+        context: {
+          auth_state: 'authenticated',
+          recent_views: [],
+          recent_queries: ['niacinamide serum', 'vitamin c serum'],
+        },
+      },
+      {
+        providerOverrides: {
+          beauty_interest_mainline: async () => [
+            makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'seed_1',
+              title: 'Niacinamide Recovery Serum',
+              brand: 'Seeded',
+              category: 'Skincare',
+              product_type: 'Serum',
+            }),
+            makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'seed_2',
+              title: 'Vitamin C Brightening Serum',
+              brand: 'Seeded',
+              category: 'Skincare',
+              product_type: 'Serum',
+            }),
+            makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'seed_3',
+              title: 'Barrier Repair Cream',
+              brand: 'Seeded',
+              category: 'Skincare',
+              product_type: 'Cream',
+            }),
+            makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'seed_4',
+              title: 'Calming Hydration Toner',
+              brand: 'Seeded',
+              category: 'Skincare',
+              product_type: 'Toner',
+            }),
+          ],
+          internal_catalog: internalSpy,
+        },
+      },
+    );
+
+    expect(response.metadata.discovery_strategy).toBe('personalized_interest');
+    expect(response.metadata.candidate_source).toBe('beauty_interest_mainline');
+    expect(response.metadata.primary_path_used).toBe('beauty_interest_mainline');
+    expect(response.metadata.fallback_triggered).toBe(false);
+    expect(internalSpy).not.toHaveBeenCalled();
+    expect(response.metadata.provider_breakdown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ provider: 'beauty_interest_mainline', successful: true, returned: 4 }),
+        expect.objectContaining({ provider: 'products_search', skipped: true }),
+        expect.objectContaining({ provider: 'internal_catalog', skipped: true }),
+        expect.objectContaining({ provider: 'external_seeds', skipped: true }),
+      ]),
+    );
+  });
+
+  test('cold start discovery prefers discovery-specific products/search base and skips external seeds once primary pools are sufficient', async () => {
     process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://wrong-backend.test';
     delete process.env.PIVOTA_API_BASE;
@@ -3152,20 +3257,10 @@ describe('discovery feed service', () => {
         limit: 4,
         debug: true,
         context: {
-          auth_state: 'authenticated',
+          auth_state: 'anonymous',
           locale: 'en-US',
-          recent_views: [
-            {
-              merchant_id: 'm0',
-              product_id: 'view_1',
-              title: 'Niacinamide Repair Serum',
-              brand: 'Viewed',
-              category: 'Skincare',
-              product_type: 'Serum',
-              viewed_at: '2026-04-05T10:00:00Z',
-            },
-          ],
-          recent_queries: ['niacinamide serum'],
+          recent_views: [],
+          recent_queries: [],
         },
       },
       {
@@ -3181,13 +3276,21 @@ describe('discovery feed service', () => {
     expect(response.metadata.provider_breakdown).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ provider: 'products_search', successful: true }),
-        expect.objectContaining({ provider: 'internal_catalog', successful: true }),
+        expect.objectContaining({
+          provider: 'internal_catalog',
+          skipped: true,
+          skip_reason: 'sufficient_no_signal_primary_candidates',
+        }),
         expect.objectContaining({ provider: 'external_seeds', skipped: true }),
       ]),
     );
     expect(response.metadata.rank_debug.recall_summary).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ provider: 'external_seeds', skipped: true, skip_reason: 'sufficient_primary_candidates' }),
+        expect.objectContaining({
+          provider: 'external_seeds',
+          skipped: true,
+          skip_reason: 'sufficient_no_signal_primary_candidates',
+        }),
       ]),
     );
   });
@@ -3260,12 +3363,16 @@ describe('discovery feed service', () => {
 
     expect(response.products).toHaveLength(12);
     expect(internalSpy).not.toHaveBeenCalled();
-    expect(externalSpy).not.toHaveBeenCalled();
+    expect(externalSpy).toHaveBeenCalledTimes(1);
     expect(nock.isDone()).toBe(true);
     expect(response.metadata.discovery_strategy).toBe('personalized_interest');
     expect(response.metadata.personalization_source).toBe('account_history');
+    expect(response.metadata.candidate_source).toBe('beauty_interest_mainline+multi_provider');
+    expect(response.metadata.primary_path_used).toBe('beauty_interest_mainline');
+    expect(response.metadata.fallback_triggered).toBe(true);
     expect(response.metadata.provider_breakdown).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({ provider: 'beauty_interest_mainline', successful: true, returned: 1 }),
         expect.objectContaining({ provider: 'products_search', successful: true }),
         expect.objectContaining({ provider: 'internal_catalog', skipped: true }),
         expect.objectContaining({ provider: 'external_seeds', skipped: true }),
@@ -3273,6 +3380,12 @@ describe('discovery feed service', () => {
     );
     expect(response.metadata.rank_debug.recall_summary).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({
+          provider: 'external_seeds',
+          label: 'beauty_interest_mainline',
+          returned: 1,
+          status: 200,
+        }),
         expect.objectContaining({
           provider: 'products_search',
           label: 'browse_pool',
@@ -3572,7 +3685,7 @@ describe('discovery feed service', () => {
     );
   });
 
-  test('generic discovery still loads external seeds when primary pools are numerically sufficient but tool-heavy', async () => {
+  test('cold start discovery still loads external seeds when primary pools are numerically sufficient but tool-heavy', async () => {
     process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://wrong-backend.test';
     delete process.env.PIVOTA_API_BASE;
@@ -3638,20 +3751,10 @@ describe('discovery feed service', () => {
         limit: 4,
         debug: true,
         context: {
-          auth_state: 'authenticated',
+          auth_state: 'anonymous',
           locale: 'en-US',
-          recent_views: [
-            {
-              merchant_id: 'm0',
-              product_id: 'view_1',
-              title: 'Niacinamide Repair Serum',
-              brand: 'Viewed',
-              category: 'Skincare',
-              product_type: 'Serum',
-              viewed_at: '2026-04-05T10:00:00Z',
-            },
-          ],
-          recent_queries: ['niacinamide serum'],
+          recent_views: [],
+          recent_queries: [],
         },
       },
       {

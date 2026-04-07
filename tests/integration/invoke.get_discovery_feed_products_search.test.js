@@ -89,7 +89,10 @@ describe('/agent/shop/v1/invoke get_discovery_feed via products/search', () => {
     expect(res.body.products).toHaveLength(3);
     expect(res.body.metadata).toEqual(
       expect.objectContaining({
-        candidate_source: 'multi_provider',
+        candidate_source: 'beauty_interest_mainline+multi_provider',
+        primary_path_used: 'beauty_interest_mainline',
+        fallback_triggered: true,
+        fallback_reason: 'beauty_interest_mainline_zero_recall',
         provider_breakdown: expect.any(Array),
         discovery_strategy: 'personalized_interest',
         personalization_source: 'account_history',
