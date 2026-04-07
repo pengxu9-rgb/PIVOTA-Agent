@@ -59,6 +59,12 @@ const VERTICAL_KEYWORDS = {
   ],
   makeup: [
     'makeup',
+    'lip stain',
+    'lip tint',
+    'lip gloss',
+    'lip oil',
+    'lip luminizer',
+    'lip plumper',
     'lipstick',
     'foundation',
     'concealer',
