@@ -60,7 +60,7 @@ const PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS = Math.max(
 );
 const PDP_RECS_EXTERNAL_QUERY_TIMEOUT_MS = Math.max(
   500,
-  parseTimeoutMs(process.env.PDP_RECS_EXTERNAL_QUERY_TIMEOUT_MS, 1600),
+  parseTimeoutMs(process.env.PDP_RECS_EXTERNAL_QUERY_TIMEOUT_MS, 2400),
 );
 const PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_MULTIPLIER = Math.max(
   1,
@@ -1296,6 +1296,7 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
   const tool = 'creator_agents';
 
   const brand = normalizeText(brandHint);
+  const brandAliases = brand ? [brand] : [];
   const leafCategory = normalizeText(categoryHint);
   const parentCategory = normalizeText(getParentCategory(baseProduct));
   const vertical = inferVerticalFromProduct(baseProduct || {}).vertical || UNKNOWN_VERTICAL;
@@ -1414,12 +1415,30 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
       )
     ))
   `;
+  const brandSurfaceSql = `
+    (
+      ${EXTERNAL_SEED_RECALL_SQL_FIELDS.brand} = ANY($4::text[])
+      OR lower(coalesce(seed_data->>'brand', '')) = ANY($4::text[])
+      OR lower(coalesce(seed_data->>'brand_name', '')) = ANY($4::text[])
+      OR lower(coalesce(seed_data->>'vendor', '')) = ANY($4::text[])
+      OR lower(coalesce(seed_data->>'vendor_name', '')) = ANY($4::text[])
+      OR lower(coalesce(seed_data->'snapshot'->>'brand', '')) = ANY($4::text[])
+      OR lower(coalesce(seed_data->'snapshot'->>'brand_name', '')) = ANY($4::text[])
+      OR lower(coalesce(seed_data->'snapshot'->>'vendor', '')) = ANY($4::text[])
+      OR lower(coalesce(seed_data->'snapshot'->>'vendor_name', '')) = ANY($4::text[])
+      OR EXISTS (
+        SELECT 1
+        FROM unnest($4::text[]) AS alias
+        WHERE lower(coalesce(seed_data->'snapshot'->>'title', seed_data->>'title', title, '')) LIKE alias || ' %'
+      )
+    )
+  `;
 
   const [brandMatches, categoryExactMatches, categorySemanticMatches, verticalMatches] = await Promise.all([
-    brand
+    brandAliases.length
       ? runQueryWithBudget(
-          `AND ${EXTERNAL_SEED_RECALL_SQL_FIELDS.brand} = $4`,
-          [brand],
+          `AND ${brandSurfaceSql}`,
+          [brandAliases],
           Math.min(120, safeLimit),
           'external_brand',
         )
@@ -1687,7 +1706,7 @@ async function recommend({
     Boolean(baseRecallExclusionFlags.donation_bundle) ||
     Boolean(baseRecallExclusionFlags.non_merchandise);
   const effectiveExternalFetchTimeoutMs = baseProductIsExternal
-    ? Math.max(PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS, 2600)
+    ? Math.max(PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS, 4200)
     : PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS;
 
   const providedInternal = Array.isArray(options?.internal_candidates) ? options.internal_candidates : null;
