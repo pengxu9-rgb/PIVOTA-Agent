@@ -821,6 +821,7 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
       },
     });
     let initialSearch;
+    let initialSearchErrorAttempt = null;
     try {
       initialSearch = await runLocalBeautySearchAttempt({
         queryParams,
@@ -834,6 +835,48 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
       });
     } catch (initialSearchErr) {
       const errMessage = String(initialSearchErr?.message || initialSearchErr || '').trim();
+      const isInitialTimeout = /timeout|ECONNABORTED/i.test(
+        `${initialSearchErr?.code || ''} ${errMessage}`,
+      );
+      const canRetryAfterInitialTimeout =
+        isInitialTimeout &&
+        semanticRewriteResultMeta.normalized_query_pack.length > 1 &&
+        getLocalStepAwareRemainingBudgetMs() >= 120;
+      if (canRetryAfterInitialTimeout) {
+        const emptyBodyInput = {
+          status: 'success',
+          success: true,
+          products: [],
+          total: 0,
+          page: 1,
+          page_size: 0,
+          reply: null,
+          metadata: {
+            query_source: 'beauty_discovery_local_mainline',
+            primary_failure_stage: 'primary_upstream_timeout',
+            initial_query_error: errMessage,
+          },
+        };
+        const emptyBody =
+          typeof normalizeAgentProductsListResponse === 'function'
+            ? normalizeAgentProductsListResponse(emptyBodyInput, {
+                limit: Number(queryParams.limit || normalizedLimit) || normalizedLimit,
+                offset: Number(queryParams.offset || 0) || 0,
+              })
+            : emptyBodyInput;
+        initialSearch = {
+          response: {
+            status: 200,
+            data: emptyBody,
+          },
+          upstreamData: emptyBody,
+          searchOut: null,
+        };
+        initialSearchErrorAttempt = {
+          error: errMessage,
+          timeout_error: true,
+        };
+      } else {
       return {
         handled: true,
         response: buildLocalBeautyDiscoveryMainlineResponse({
@@ -875,6 +918,7 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
           },
         }),
       };
+      }
     }
     let response = initialSearch.response;
     let upstreamData = initialSearch.upstreamData;
@@ -961,9 +1005,29 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
     const selectedProducts = Array.isArray(upstreamData?.products)
       ? upstreamData.products.slice(0, normalizedLimit)
       : [];
-    const queryAttempts = Array.isArray(semanticOwnerExecution.semanticOwnerQueryAttempts)
+    let queryAttempts = Array.isArray(semanticOwnerExecution.semanticOwnerQueryAttempts)
       ? semanticOwnerExecution.semanticOwnerQueryAttempts
       : [];
+    if (initialSearchErrorAttempt) {
+      queryAttempts = queryAttempts.length > 0
+        ? [
+            {
+              ...queryAttempts[0],
+              ...initialSearchErrorAttempt,
+            },
+            ...queryAttempts.slice(1),
+          ]
+        : [
+            {
+              query: String(queryParams.query || '').trim(),
+              query_index: 0,
+              query_total: semanticRewriteResultMeta.normalized_query_pack.length,
+              result_count: 0,
+              adopted: false,
+              ...initialSearchErrorAttempt,
+            },
+          ];
+    }
     const supplementTraces = Array.isArray(semanticOwnerExecution.semanticOwnerSupplementTraces)
       ? semanticOwnerExecution.semanticOwnerSupplementTraces
       : [];

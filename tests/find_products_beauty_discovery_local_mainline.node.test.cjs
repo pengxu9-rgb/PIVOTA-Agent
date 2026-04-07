@@ -970,6 +970,176 @@ test('step-aware local beauty mainline trims sunscreen primary query pack to cri
   assert.equal(out.response.products?.[0]?.product_id, 'spf_critical_1');
 });
 
+test('step-aware local beauty mainline retries after initial query timeout', async () => {
+  const attemptedQueries = [];
+  const runtime = createRuntime({
+    buildBeautyDiscoverySemanticContract: () => ({
+      planner_mode: 'step_aware',
+      request_class: 'sunscreen',
+      target_step_family: 'sunscreen',
+      semantic_family: 'oil_control',
+      primary_role_id: 'daily_sunscreen',
+    }),
+    buildBeautyDiscoveryQueryPackFromContract: () => [
+      'lightweight sunscreen oily skin',
+      'oil control sunscreen',
+    ],
+    searchPivotaBackendProducts: async ({ query }) => {
+      attemptedQueries.push(String(query || ''));
+      if (query === 'lightweight sunscreen oily skin') {
+        return {
+          ok: false,
+          reason: 'upstream_timeout',
+          actual_http_attempt_count: 1,
+          products: [],
+        };
+      }
+      return {
+        ok: true,
+        reason: 'ok',
+        actual_http_attempt_count: 1,
+        products: [
+          {
+            product_id: 'spf_after_timeout_1',
+            merchant_id: 'merchant_internal',
+            title: 'Oil Control Sunscreen',
+          },
+        ],
+      };
+    },
+    prepareInvokeSemanticOwnerContext: ({ semanticRewriteResultMeta }) => ({
+      semanticOwnerQueryPack: semanticRewriteResultMeta.normalized_query_pack,
+      semanticOwnerQueryTotal: semanticRewriteResultMeta.normalized_query_pack.length,
+      semanticOwnerSupportRoleQueryPack: [],
+      semanticOwnerTargetStepFamily: 'sunscreen',
+      semanticOwnerSemanticFamily: 'oil_control',
+      semanticOwnerQueryStepStrength: 'exact_step',
+      semanticOwnerMinQueriesBeforeBudgetGuard: 2,
+      buildVariantRequestBody: (_body, queryValue, queryIndex) => ({
+        search: {
+          query: queryValue,
+          query_index: queryIndex,
+          query_total: semanticRewriteResultMeta.normalized_query_pack.length,
+        },
+      }),
+      evaluateSemanticOwnerBeautyAdoption: ({ upstreamData }) => ({
+        adopt: Array.isArray(upstreamData?.products) && upstreamData.products.length > 0,
+        hitDecision: {
+          hit_quality:
+            Array.isArray(upstreamData?.products) && upstreamData.products.length > 0
+              ? 'valid_hit'
+              : 'empty',
+          valid_products: Array.isArray(upstreamData?.products) ? upstreamData.products : [],
+        },
+      }),
+      describeSemanticOwnerObservationFallback: () => ({
+        ignore: false,
+        score: 0,
+        last_resort_cache_candidate: false,
+      }),
+      buildSemanticOwnerExternalRescueQueryPack: () => [],
+    }),
+    runInvokeSemanticOwnerExecution: async ({
+      semanticOwnerQueryPack,
+      queryParams,
+      upstreamData,
+      callTrackedUpstream,
+      url,
+      buildQueryString,
+    }) => {
+      const nextQueryParams = {
+        ...queryParams,
+        query: semanticOwnerQueryPack[1],
+        query_index: 1,
+      };
+      const nextResponse = await callTrackedUpstream('find_products_multi', {
+        url: `${url}${buildQueryString(nextQueryParams)}`,
+        timeout: 15000,
+      });
+      return {
+        response: nextResponse,
+        upstreamData: nextResponse.data,
+        queryParams: nextQueryParams,
+        requestBody: { search: nextQueryParams },
+        axiosConfig: { url: `${url}${buildQueryString(nextQueryParams)}` },
+        semanticOwnerQueryAttempts: [
+          {
+            query: semanticOwnerQueryPack[0],
+            query_index: 0,
+            query_total: semanticOwnerQueryPack.length,
+            result_count: Array.isArray(upstreamData?.products) ? upstreamData.products.length : 0,
+            adopted: false,
+          },
+          {
+            query: semanticOwnerQueryPack[1],
+            query_index: 1,
+            query_total: semanticOwnerQueryPack.length,
+            result_count: Array.isArray(nextResponse?.data?.products)
+              ? nextResponse.data.products.length
+              : 0,
+            adopted: true,
+          },
+        ],
+        semanticOwnerSupplementTraces: [],
+        semanticOwnerExternalRescueQueriesAttempted: [],
+        semanticOwnerCacheSourceIsolated: false,
+        semanticOwnerCacheSourceIsolationReason: null,
+        semanticOwnerLastResortCacheApplied: false,
+        semanticOwnerLastResortCacheQuery: null,
+      };
+    },
+    normalizeAgentProductsListResponse: (body) => body,
+  });
+
+  const out = await runtime.runLocalBeautyDiscoveryMainline({
+    search: {
+      query: 'best sunscreen for oily skin',
+      target_step_family: 'sunscreen',
+    },
+    metadata: {
+      source: 'public',
+      catalog_surface: 'beauty',
+    },
+    requestContract: {
+      surface: 'direct',
+      primary_lane: 'beauty_discovery_mainline',
+      primary_retrieval_contract: 'agent_v1_search_beauty_mainline',
+      semantic_contract: {
+        planner_mode: 'step_aware',
+        request_class: 'sunscreen',
+        target_step_family: 'sunscreen',
+        semantic_family: 'oil_control',
+        primary_role_id: 'daily_sunscreen',
+      },
+    },
+    executionPlan: {
+      primary_lane: 'beauty_discovery_mainline',
+      primary_retrieval_contract: 'agent_v1_search_beauty_mainline',
+      owner_switch_count: 0,
+    },
+    rawUserQuery: 'best sunscreen for oily skin',
+    gatewayRequestId: 'trace-step-aware-timeout-retry',
+    traceQueryClass: 'query',
+    timeoutMs: 6500,
+    invokeStartedAtMs: Date.now(),
+    logger: { warn() {} },
+    authHeaders: { authorization: 'Bearer test' },
+    operation: 'find_products_multi',
+  });
+
+  assert.equal(out.handled, true);
+  assert.deepEqual(attemptedQueries, [
+    'lightweight sunscreen oily skin',
+    'oil control sunscreen',
+  ]);
+  assert.equal(out.response.products?.[0]?.product_id, 'spf_after_timeout_1');
+  assert.equal(
+    out.response.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts?.[0]
+      ?.timeout_error,
+    true,
+  );
+});
+
 test('step-aware local beauty mainline caps retry attempts to the shared primary budget', async () => {
   const attemptedTimeouts = [];
   const runtime = createRuntime({
