@@ -129,6 +129,9 @@ function createFindProductsInvokeFallbackRuntime(deps = {}) {
     upstreamCode = null,
     upstreamMessage = null,
     reason = '',
+    authoritativeHardCut = false,
+    hardCutAuthorityQuerySource = null,
+    hardCutAuthorityPrimaryPath = null,
     invokeStartedAtMs = 0,
     traceAmbiguityScorePre = null,
     gatewayRequestId = null,
@@ -151,19 +154,28 @@ function createFindProductsInvokeFallbackRuntime(deps = {}) {
       upstreamCode,
       upstreamMessage,
       route: 'invoke_outer_catch',
+      querySource:
+        authoritativeHardCut && hardCutAuthorityQuerySource
+          ? hardCutAuthorityQuerySource
+          : null,
       intent: effectiveIntent,
       queryClass: traceQueryClass,
       queryText,
     });
     const strictEmptyHasClarification = Boolean(strictEmpty?.clarification?.question);
+    const normalizedAuthorityQuerySource =
+      String(hardCutAuthorityQuerySource || strictEmpty?.metadata?.query_source || 'agent_products_search').trim() ||
+      'agent_products_search';
+    const normalizedAuthorityPrimaryPath =
+      String(hardCutAuthorityPrimaryPath || 'upstream_stage').trim() || 'upstream_stage';
     return {
       statusCode: 200,
       body: withSearchDiagnostics(strictEmpty, {
         route_health: buildSearchRouteHealth({
-          primaryPathUsed: 'invoke_outer_catch',
+          primaryPathUsed: authoritativeHardCut ? normalizedAuthorityPrimaryPath : 'invoke_outer_catch',
           primaryLatencyMs: Math.max(0, Date.now() - invokeStartedAtMs),
-          fallbackTriggered: true,
-          fallbackReason: reason,
+          fallbackTriggered: authoritativeHardCut ? false : true,
+          fallbackReason: authoritativeHardCut ? null : reason,
           ambiguityScorePre: traceAmbiguityScorePre,
           clarifyTriggered: strictEmptyHasClarification,
         }),
@@ -200,15 +212,32 @@ function createFindProductsInvokeFallbackRuntime(deps = {}) {
           finalDecision: strictEmptyHasClarification ? 'clarify' : 'strict_empty',
         }),
         search_decision: buildDecisionAuthorityPatch({
-          body: strictEmpty,
+          body:
+            authoritativeHardCut
+              ? {
+                  ...strictEmpty,
+                  metadata: {
+                    ...(strictEmpty?.metadata && typeof strictEmpty.metadata === 'object'
+                      ? strictEmpty.metadata
+                      : {}),
+                    query_source: normalizedAuthorityQuerySource,
+                  },
+                }
+              : strictEmpty,
           finalDecision: strictEmptyHasClarification ? 'clarify' : 'strict_empty',
-          primaryPathUsed: 'invoke_outer_catch',
+          primaryPathUsed:
+            authoritativeHardCut ? normalizedAuthorityPrimaryPath : 'invoke_outer_catch',
           decisionAuthority:
-            strictEmpty?.metadata?.query_source || 'agent_products_error_fallback',
+            authoritativeHardCut
+              ? normalizedAuthorityQuerySource
+              : strictEmpty?.metadata?.query_source || 'agent_products_error_fallback',
           decisionLocked: true,
-          decisionLockReason: strictEmptyHasClarification
-            ? 'clarify_contract'
-            : 'strict_empty_contract',
+          decisionLockReason:
+            authoritativeHardCut
+              ? 'authoritative_no_fallback'
+              : strictEmptyHasClarification
+                ? 'clarify_contract'
+                : 'strict_empty_contract',
         }),
         strict_empty: !strictEmptyHasClarification,
         ...(strictEmptyHasClarification ? {} : { strict_empty_reason: reason }),

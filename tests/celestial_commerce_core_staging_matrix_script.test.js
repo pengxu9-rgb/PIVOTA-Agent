@@ -37,7 +37,7 @@ describe('Celestial commerce-core staging matrix script', () => {
           rail_mode: 'authoritative_commerce',
           require_primary_path: true,
           allow_strict_empty: false,
-          allowed_query_sources: ['cache_cross_merchant_search'],
+          allowed_query_sources: ['agent_products_search'],
           endpoint: '/agent/shop/v1/invoke',
           request: {
             operation: 'find_products_multi',
@@ -52,7 +52,7 @@ describe('Celestial commerce-core staging matrix script', () => {
           },
           ownership: {
             must_equal_paths: {
-              'metadata.query_source': 'cache_cross_merchant_search',
+              'metadata.query_source': 'agent_products_search',
             },
           },
           observability: {
@@ -141,16 +141,20 @@ describe('Celestial commerce-core staging matrix script', () => {
             JSON.stringify({
               products: [{ title: 'Test Serum' }],
               metadata: {
-                query_source: 'cache_cross_merchant_search',
+                query_source: 'agent_products_search',
                 service_version: {
                   commit: 'abc123',
                 },
                 route_health: {
                   fallback_triggered: false,
-                  primary_path_used: 'cache_stage',
+                  primary_path_used: 'upstream_stage',
                 },
                 search_trace: {
-                  final_decision: 'cache_returned',
+                  final_decision: 'products_returned',
+                },
+                search_decision: {
+                  decision_authority: 'agent_products_search',
+                  decision_locked: true,
                 },
               },
             }),
@@ -408,8 +412,8 @@ describe('Celestial commerce-core staging matrix script', () => {
           ownership: {
             must_equal_paths: {
               'metadata.search_trace.query_class': 'lookup',
-              'metadata.search_trace.final_decision': 'cache_returned',
-              'metadata.search_decision.decision_authority': 'cache_cross_merchant_search',
+              'metadata.search_trace.final_decision': 'products_returned',
+              'metadata.search_decision.decision_authority': 'agent_products_search',
               'metadata.search_decision.decision_locked': true,
               'metadata.route_health.fallback_triggered': false,
             },
@@ -441,20 +445,20 @@ describe('Celestial commerce-core staging matrix script', () => {
         JSON.stringify({
           products: [{ title: 'IPSA Time Reset Aqua' }],
           metadata: {
-            query_source: 'cache_cross_merchant_search',
+            query_source: 'agent_products_search',
             service_version: {
               commit: 'abc123',
             },
             route_health: {
               fallback_triggered: false,
-              primary_path_used: 'cache_stage',
+              primary_path_used: 'upstream_stage',
             },
             search_trace: {
               query_class: 'lookup',
-              final_decision: 'cache_returned',
+              final_decision: 'products_returned',
             },
             search_decision: {
-              decision_authority: 'cache_cross_merchant_search',
+              decision_authority: 'agent_products_search',
               decision_locked: true,
             },
           },

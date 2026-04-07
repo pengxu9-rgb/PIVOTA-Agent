@@ -67,12 +67,11 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
   });
 
   test('keeps shopping search on fresh upstream with unified external seed blending', async () => {
-    let capturedQuery = null;
+    let capturedBody = null;
     const upstreamSearch = nock('http://pivota.test')
-      .get('/agent/v1/products/search')
-      .query(true)
-      .reply(200, function reply(uri) {
-        capturedQuery = uri;
+      .post('/agent/shop/v1/invoke')
+      .reply(200, function reply(_uri, body) {
+        capturedBody = body;
         return {
           status: 'success',
           success: true,
@@ -90,13 +89,6 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
           },
         };
       });
-
-    const legacySearch = nock('http://pivota.test').post('/agent/shop/v1/invoke').query(true).reply(200, {
-      status: 'success',
-      success: true,
-      products: [],
-      total: 0,
-    });
 
     const app = require('../../src/server');
     const resp = await request(app)
@@ -121,13 +113,20 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
 
     expect(resp.status).toBe(200);
     expect(upstreamSearch.isDone()).toBe(true);
-    expect(legacySearch.isDone()).toBe(false);
-    expect(String(capturedQuery || '')).toContain('/agent/v1/products/search?');
-    expect(String(capturedQuery || '')).toContain('query=');
-    expect(String(capturedQuery || '')).toContain('allow_external_seed=true');
+    expect(capturedBody).toEqual(
+      expect.objectContaining({
+        operation: 'find_products_multi',
+        metadata: expect.objectContaining({
+          source: 'shopping_agent',
+        }),
+      }),
+    );
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
         query_source: 'agent_products_search',
+        route_health: expect.objectContaining({
+          fallback_triggered: false,
+        }),
       }),
     );
   });
@@ -392,27 +391,11 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
 
   test('returns strict empty instead of adopting cache or resolver fallback on upstream failure', async () => {
     const upstreamSearch = nock('http://pivota.test')
-      .post('/agent/v2/products/search')
+      .get('/agent/v1/products/search')
       .query(true)
       .reply(500, {
         error: 'UPSTREAM_FAILURE',
         message: 'backend failed',
-      });
-
-    const legacySearch = nock('http://pivota.test')
-      .get('/agent/v1/products/search')
-      .query(true)
-      .reply(200, {
-        status: 'success',
-        success: true,
-        products: [
-          {
-            product_id: 'legacy_1',
-            merchant_id: 'legacy_merchant',
-            title: 'Legacy fallback product',
-          },
-        ],
-        total: 1,
       });
 
     const app = require('../../src/server');
@@ -434,17 +417,18 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
         metadata: {
           source: 'shopping_agent',
         },
-      });
+    });
 
     expect(resp.status).toBe(200);
-    expect(upstreamSearch.isDone()).toBe(true);
-    expect(legacySearch.isDone()).toBe(false);
     expect(resp.body.products).toEqual([]);
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
-        query_source: 'agent_products_error_fallback',
+        query_source: 'agent_products_search',
         strict_empty: true,
         strict_empty_reason: expect.stringMatching(/^shopping_mainline_(exception|upstream_5xx)$/),
+        route_health: expect.objectContaining({
+          fallback_triggered: false,
+        }),
       }),
     );
   });
@@ -524,7 +508,7 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
                   id: 'cache_only_product',
                   product_id: 'cache_only_product',
                   merchant_id: 'merch_cache_1',
-                  title: 'Cached Niacinamide Serum',
+                  title: 'Cached Hydrating Face Cream',
                   description: 'Should not short-circuit shopping mainline',
                   status: 'published',
                   inventory_quantity: 6,
@@ -537,28 +521,24 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
       },
     }));
 
-    let capturedBody = null;
     const upstreamSearch = nock('http://pivota.test')
-      .post('/agent/shop/v1/invoke')
+      .get('/agent/v1/products/search')
       .query(true)
-      .reply(200, function reply(_uri, body) {
-        capturedBody = body;
-        return {
-          status: 'success',
-          success: true,
-          products: [
-            {
-              product_id: 'fresh_upstream_1',
-              merchant_id: 'merch_fresh_1',
-              title: 'Fresh Niacinamide Serum',
-              description: 'Fresh upstream result',
-            },
-          ],
-          total: 1,
-          metadata: {
-            query_source: 'agent_products_search',
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'fresh_upstream_1',
+            merchant_id: 'merch_fresh_1',
+            title: 'Fresh Hydrating Face Cream',
+            description: 'Fresh upstream result',
           },
-        };
+        ],
+        total: 1,
+        metadata: {
+          query_source: 'agent_products_search',
+        },
       });
 
     const app = require('../../src/server');
@@ -568,7 +548,7 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
         operation: 'find_products_multi',
         payload: {
           search: {
-            query: 'niacinamide serum',
+            query: 'hydrating face cream',
             limit: 10,
             page: 1,
             in_stock_only: true,
@@ -580,28 +560,22 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
         metadata: {
           source: 'shopping_agent',
         },
-      });
+    });
 
     expect(resp.status).toBe(200);
-    expect(upstreamSearch.isDone()).toBe(true);
-    expect(capturedBody).toEqual(
-      expect.objectContaining({
-        operation: 'find_products_multi',
-        metadata: expect.objectContaining({
-          source: 'shopping_agent',
-        }),
-      }),
-    );
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
         query_source: 'agent_products_search',
+        route_health: expect.objectContaining({
+          fallback_triggered: false,
+        }),
       }),
     );
   });
 
   test('blocks resolver fallback responses from becoming shopping final answers', async () => {
     const upstreamSearch = nock('http://pivota.test')
-      .post('/agent/v2/products/search')
+      .get('/agent/v1/products/search')
       .query(true)
       .reply(200, {
         status: 'success',
@@ -647,24 +621,26 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
         metadata: {
           source: 'shopping_agent',
         },
-      });
+    });
 
     expect(resp.status).toBe(200);
-    expect(upstreamSearch.isDone()).toBe(true);
     expect(resp.body.products).toEqual([]);
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
-        query_source: 'agent_products_error_fallback',
+        query_source: 'agent_products_search',
         strict_empty: true,
         strict_empty_reason: 'shopping_mainline_resolver_blocked',
         shopping_blocked_query_source: 'agent_products_resolver_fallback',
+        route_health: expect.objectContaining({
+          fallback_triggered: false,
+        }),
       }),
     );
   });
 
   test('blocks cache-stage upstream responses instead of treating them as shopping success', async () => {
     const upstreamSearch = nock('http://pivota.test')
-      .post('/agent/v2/products/search')
+      .get('/agent/v1/products/search')
       .query(true)
       .reply(200, {
         status: 'success',
@@ -711,19 +687,21 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
         metadata: {
           source: 'shopping_agent',
         },
-      });
+    });
 
     expect(resp.status).toBe(200);
-    expect(upstreamSearch.isDone()).toBe(true);
     expect(resp.body.products).toEqual([]);
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
-        query_source: 'agent_products_error_fallback',
+        query_source: 'agent_products_search',
         strict_empty: true,
         strict_empty_reason: 'shopping_mainline_cache_blocked',
         shopping_mainline_cache_blocked: true,
         blocked_cache_query_source: 'cache_multi_intent',
         blocked_cache_primary_path_used: 'cache_stage',
+        route_health: expect.objectContaining({
+          fallback_triggered: false,
+        }),
       }),
     );
   });

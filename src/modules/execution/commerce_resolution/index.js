@@ -1046,6 +1046,10 @@ function createCommerceResolutionRuntime(deps = {}) {
     }
 
     const source = normalizeAgentSourceImpl(metadata?.source);
+    const searchRail = String(metadata?.invoke_search_rail || '').trim().toLowerCase();
+    if (searchRail === 'authoritative_shopping' || searchRail === 'public_observability') {
+      return false;
+    }
     const auroraSource = isAuroraSourceImpl(source);
     const isCatalogSource = isResolverFirstCatalogSourceImpl(source);
     const strongResolverQuery = isStrongResolverFirstQuery(queryText);
@@ -2135,6 +2139,9 @@ function createCommerceResolutionRuntime(deps = {}) {
     decisionLocked = false,
     decisionAuthority = null,
     decisionLockReason = null,
+    authoritativeHardCut = false,
+    hardCutAuthorityQuerySource = null,
+    hardCutDecisionAuthority = null,
     primaryUsableCount = 0,
     primaryUnusable = false,
     primaryIrrelevant = false,
@@ -2148,7 +2155,22 @@ function createCommerceResolutionRuntime(deps = {}) {
     const semanticRetryExhausted = Boolean(semanticRetryApplied);
     const fallbackQuerySource =
       secondaryFallbackOutcome?.querySource || AGENT_PRODUCTS_ERROR_FALLBACK_QUERY_SOURCE;
-    const irrelevantReason = skipSecondaryFallback
+    const normalizeHardCutReason = (reason, fallback = 'fallback_not_better') => {
+      const normalized = String(reason || '').trim().toLowerCase();
+      if (!normalized) return fallback;
+      return normalized.replace(/_skip_secondary\b/g, '_no_fallback');
+    };
+    const hardCutQuerySource =
+      String(hardCutAuthorityQuerySource || decisionAuthority || '').trim() ||
+      AGENT_PRODUCTS_SEARCH_QUERY_SOURCE;
+    const hardCutAuthority =
+      String(hardCutDecisionAuthority || hardCutAuthorityQuerySource || decisionAuthority || '').trim() ||
+      hardCutQuerySource;
+    const irrelevantReason = authoritativeHardCut
+      ? primaryMonoculture
+        ? 'primary_monoculture_no_fallback'
+        : 'primary_irrelevant_no_fallback'
+      : skipSecondaryFallback
       ? primaryMonoculture
         ? 'primary_monoculture_skip_secondary'
         : 'primary_irrelevant_skip_secondary'
@@ -2157,16 +2179,21 @@ function createCommerceResolutionRuntime(deps = {}) {
       : 'primary_irrelevant_no_fallback';
     const lowQualityReason = semanticRetryExhausted
       ? 'low_quality_semantic_retry_exhausted'
+      : authoritativeHardCut
+      ? 'primary_low_quality_no_fallback'
       : skipSecondaryFallback
       ? 'primary_low_quality_skip_secondary'
       : 'primary_low_quality_no_fallback';
     const unusableReason = semanticRetryExhausted
       ? 'primary_unusable_semantic_retry_exhausted'
+      : authoritativeHardCut
+      ? 'primary_unusable_no_fallback'
       : skipSecondaryFallback
       ? 'primary_unusable_skip_secondary'
       : 'primary_unusable_no_fallback';
-    const exhaustedReason =
-      String(fallbackNotBetterReason || '').trim() ||
+    const exhaustedReason = authoritativeHardCut
+      ? normalizeHardCutReason(fallbackNotBetterReason, 'fallback_not_better')
+      : String(fallbackNotBetterReason || '').trim() ||
       (semanticRetryExhausted
         ? 'semantic_retry_exhausted'
         : skipSecondaryFallback
@@ -2201,8 +2228,14 @@ function createCommerceResolutionRuntime(deps = {}) {
       return {
         decision: 'authority_locked',
         reason: String(decisionLockReason || '').trim() || 'decision_locked',
-        querySource: String(decisionAuthority || '').trim() || fallbackQuerySource,
-        resolution_authority: String(decisionAuthority || '').trim() || fallbackQuerySource,
+        querySource:
+          authoritativeHardCut
+            ? hardCutQuerySource
+            : String(decisionAuthority || '').trim() || fallbackQuerySource,
+        resolution_authority:
+          authoritativeHardCut
+            ? hardCutAuthority
+            : String(decisionAuthority || '').trim() || fallbackQuerySource,
         fallback_applied: false,
         fallback_reason_codes: [String(decisionLockReason || '').trim() || 'decision_locked'],
       };
@@ -2212,9 +2245,9 @@ function createCommerceResolutionRuntime(deps = {}) {
       return {
         decision: 'clarify',
         reason: irrelevantReason,
-        querySource: clarifyQuerySource,
-        resolution_authority: clarifyQuerySource,
-        fallback_applied: Boolean(shouldFallback),
+        querySource: authoritativeHardCut ? hardCutQuerySource : clarifyQuerySource,
+        resolution_authority: authoritativeHardCut ? hardCutAuthority : clarifyQuerySource,
+        fallback_applied: authoritativeHardCut ? false : Boolean(shouldFallback),
         fallback_reason_codes: [irrelevantReason],
       };
     }
@@ -2223,9 +2256,9 @@ function createCommerceResolutionRuntime(deps = {}) {
       return {
         decision: 'clarify',
         reason: lowQualityReason,
-        querySource: clarifyQuerySource,
-        resolution_authority: clarifyQuerySource,
-        fallback_applied: true,
+        querySource: authoritativeHardCut ? hardCutQuerySource : clarifyQuerySource,
+        resolution_authority: authoritativeHardCut ? hardCutAuthority : clarifyQuerySource,
+        fallback_applied: authoritativeHardCut ? false : true,
         fallback_reason_codes: [lowQualityReason],
       };
     }
@@ -2234,9 +2267,9 @@ function createCommerceResolutionRuntime(deps = {}) {
       return {
         decision: 'strict_empty',
         reason: unusableReason,
-        querySource: fallbackQuerySource,
-        resolution_authority: fallbackQuerySource,
-        fallback_applied: true,
+        querySource: authoritativeHardCut ? hardCutQuerySource : fallbackQuerySource,
+        resolution_authority: authoritativeHardCut ? hardCutAuthority : fallbackQuerySource,
+        fallback_applied: authoritativeHardCut ? false : true,
         fallback_reason_codes: [unusableReason],
       };
     }
@@ -2245,8 +2278,8 @@ function createCommerceResolutionRuntime(deps = {}) {
       return {
         decision: 'upstream_returned',
         reason: shouldFallback ? exhaustedReason : 'not_needed',
-        querySource: AGENT_PRODUCTS_SEARCH_QUERY_SOURCE,
-        resolution_authority: 'primary_upstream',
+        querySource: authoritativeHardCut ? hardCutQuerySource : AGENT_PRODUCTS_SEARCH_QUERY_SOURCE,
+        resolution_authority: authoritativeHardCut ? hardCutAuthority : 'primary_upstream',
         fallback_applied: false,
         fallback_reason_codes: [],
       };
@@ -2256,9 +2289,9 @@ function createCommerceResolutionRuntime(deps = {}) {
       return {
         decision: 'clarify',
         reason: exhaustedReason,
-        querySource: clarifyQuerySource,
-        resolution_authority: clarifyQuerySource,
-        fallback_applied: true,
+        querySource: authoritativeHardCut ? hardCutQuerySource : clarifyQuerySource,
+        resolution_authority: authoritativeHardCut ? hardCutAuthority : clarifyQuerySource,
+        fallback_applied: authoritativeHardCut ? false : true,
         fallback_reason_codes: [exhaustedReason],
       };
     }
@@ -2267,9 +2300,9 @@ function createCommerceResolutionRuntime(deps = {}) {
       return {
         decision: 'strict_empty',
         reason: exhaustedReason,
-        querySource: fallbackQuerySource,
-        resolution_authority: fallbackQuerySource,
-        fallback_applied: true,
+        querySource: authoritativeHardCut ? hardCutQuerySource : fallbackQuerySource,
+        resolution_authority: authoritativeHardCut ? hardCutAuthority : fallbackQuerySource,
+        fallback_applied: authoritativeHardCut ? false : true,
         fallback_reason_codes: [exhaustedReason],
       };
     }
@@ -2277,9 +2310,14 @@ function createCommerceResolutionRuntime(deps = {}) {
     return {
       decision: 'strict_empty',
       reason: shouldFallback ? exhaustedReason : 'no_candidates',
-      querySource: fallbackQuerySource,
-      resolution_authority: shouldFallback ? fallbackQuerySource : 'primary_upstream',
-      fallback_applied: Boolean(shouldFallback),
+      querySource: authoritativeHardCut ? hardCutQuerySource : fallbackQuerySource,
+      resolution_authority:
+        authoritativeHardCut
+          ? hardCutAuthority
+          : shouldFallback
+            ? fallbackQuerySource
+            : 'primary_upstream',
+      fallback_applied: authoritativeHardCut ? false : Boolean(shouldFallback),
       fallback_reason_codes: [shouldFallback ? exhaustedReason : 'no_candidates'],
     };
   }
