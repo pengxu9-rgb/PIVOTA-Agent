@@ -230,6 +230,25 @@ test('broad beauty generic query uses local beauty discovery mainline', () => {
   assert.equal(out, true);
 });
 
+test('product-only direct beauty search still uses local beauty discovery mainline', () => {
+  const runtime = createRuntime();
+  const out = runtime.shouldUseLocalBeautyDiscoveryMainline({
+    search: {
+      query: 'im oily skin, what products should i use?',
+      product_only: true,
+    },
+    metadata: {
+      source: 'shopping',
+    },
+    requestContract: {
+      surface: 'direct',
+      primary_lane: 'beauty_discovery_mainline',
+    },
+  });
+
+  assert.equal(out, true);
+});
+
 test('explicit single-step sunscreen query stays off local beauty discovery mainline', () => {
   const runtime = createRuntime();
   const out = runtime.shouldUseLocalBeautyDiscoveryMainline({
