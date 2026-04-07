@@ -3191,6 +3191,13 @@ function shouldDeferColdStartCandidate(candidate) {
   );
 }
 
+function isGenericAnonymousBrowseColdStart(profile, options = {}) {
+  const brandScoped = options.brandScoped === true;
+  const queryText = String(options.queryText || '').trim();
+  const categoryScope = Array.isArray(options.categoryScope) ? options.categoryScope : [];
+  return !profile?.hasInterestSignals && !brandScoped && !queryText && categoryScope.length === 0;
+}
+
 function getColdStartHomeDomainPriority(candidate) {
   if (candidate?.domain === 'beauty' && candidate?.beautyBucket === 'tools') return 1;
   switch (candidate?.domain) {
@@ -3338,6 +3345,11 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
   const brandScoped = options.brandScoped === true;
   const queryText = String(options.queryText || '').trim();
   const categoryScope = normalizeDiscoveryCategories(options.categories, 12);
+  const coldStartCuration = isGenericAnonymousBrowseColdStart(profile, {
+    brandScoped,
+    queryText,
+    categoryScope,
+  });
   const ranked = [...scoredCandidates].sort(compareBrowseEntriesBySort(sort));
   const decisions = collectDebug ? new Map() : null;
   const coldStartCuration =
@@ -3384,8 +3396,29 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
     ? preferredPool.concat(coldStartDeferredPool)
     : preferredPool;
 
+  let effectiveOrderedPool = orderedPool;
+  if (coldStartCuration) {
+    const nonDeferredPool = [];
+    const deferredPool = [];
+    for (const entry of orderedPool) {
+      if (shouldDeferColdStartCandidate(entry.candidate)) {
+        deferredPool.push(entry);
+        continue;
+      }
+      nonDeferredPool.push(entry);
+    }
+    if (nonDeferredPool.length > 0) {
+      effectiveOrderedPool = nonDeferredPool;
+      if (decisions) {
+        for (const entry of deferredPool) {
+          decisions.set(entry.candidate.key, 'filtered_cold_start_domain');
+        }
+      }
+    }
+  }
+
   const start = (page - 1) * limit;
-  const pageItems = orderedPool.slice(start, start + limit);
+  const pageItems = effectiveOrderedPool.slice(start, start + limit);
   if (page <= 1 && pageItems.length < limit) {
     for (const entry of recentViewDeferred) {
       if (pageItems.length >= limit) break;
@@ -3403,7 +3436,7 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
   }
 
   const selectedKeys = new Set(pageItems.map((entry) => entry.candidate.key));
-  for (const entry of orderedPool) {
+  for (const entry of effectiveOrderedPool) {
     if (decisions.has(entry.candidate.key)) continue;
     decisions.set(
       entry.candidate.key,
@@ -3418,7 +3451,7 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
   return {
     ranked,
     preCategoryPool,
-    orderedPool,
+    orderedPool: effectiveOrderedPool,
     pageItems,
     decisions,
   };
