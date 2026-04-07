@@ -128,6 +128,7 @@ const {
 const {
   BEAUTY_DISCOVERY_MAINLINE_OWNER,
   buildBeautyDiscoverySemanticContract,
+  buildBeautyDiscoveryQueryPackFromContract,
   isBeautyDiscoverySemanticContract,
   hasFashionConstraintQuerySignal,
   getProductPriceCurrency,
@@ -225,6 +226,9 @@ const {
   createFindProductsSearchRouteEntryRuntime,
 } = require('./findProductsSearchRouteEntry');
 const {
+  createFindProductsBeautyDiscoveryLocalMainlineRuntime,
+} = require('./findProductsBeautyDiscoveryLocalMainline');
+const {
   buildFindProductsSearchRequestContract,
   resolveFindProductsSearchExecutionPlan,
   buildFindProductsSearchExecutionTrace,
@@ -282,6 +286,21 @@ const {
   normalizeRecoTargetStep,
   getRecoTargetFamilyRelation,
 } = require('./auroraBff/recoTargetStep');
+const {
+  buildConcernSemanticPlanFallback,
+  buildConcernTargetContextFromSemanticPlan,
+} = require('./auroraBff/recommendationSharedStack');
+const {
+  buildRecoRecallPlan,
+  buildRecoSearchSemanticContract,
+} = require('./auroraBff/recoRecallPlanner');
+const {
+  shouldRunRecoRecallStage,
+} = require('./auroraBff/recoRecallStagePolicy');
+const {
+  buildRecoRecallTransportPolicy,
+  resolveRecoRecallTransportModeForPlannerMode,
+} = require('./auroraBff/recoRecallTransportPolicy');
 const {
   BEAUTY_SEARCH_DECISION_CONTRACT_VERSION,
   buildBeautyCandidateText: buildSharedBeautyCandidateText,
@@ -15165,6 +15184,45 @@ const {
   SEARCH_LIMIT_MAX,
 });
 const {
+  shouldUseLocalBeautyDiscoveryMainline,
+  runLocalBeautyDiscoveryMainline,
+} = createFindProductsBeautyDiscoveryLocalMainlineRuntime({
+  buildBeautyDiscoverySemanticContract,
+  buildBeautyDiscoveryQueryPackFromContract,
+  buildConcernSemanticPlanFallback,
+  buildConcernTargetContextFromSemanticPlan,
+  buildRecoRecallPlan,
+  buildRecoSearchSemanticContract,
+  shouldRunRecoRecallStage,
+  buildRecoRecallTransportPolicy,
+  resolveRecoRecallTransportModeForPlannerMode,
+  searchPivotaBackendProducts:
+    typeof auroraBffInternal?.searchPivotaBackendProducts === 'function'
+      ? auroraBffInternal.searchPivotaBackendProducts
+      : null,
+  normalizeRecoCatalogProduct:
+    typeof auroraBffInternal?.normalizeRecoCatalogProduct === 'function'
+      ? auroraBffInternal.normalizeRecoCatalogProduct
+      : null,
+  normalizeAgentProductsListResponse,
+  prepareInvokeSemanticOwnerContext,
+  runInvokeSemanticOwnerExecution,
+  fetchExternalSeedSupplementFromBackend,
+  finalizeConcernFrameworkCandidatePools:
+    typeof auroraBffInternal?.finalizeConcernFrameworkCandidatePools === 'function'
+      ? auroraBffInternal.finalizeConcernFrameworkCandidatePools
+      : null,
+  countCandidateOriginBreakdown,
+  withSearchDiagnostics,
+  buildSearchRouteHealth,
+  buildSearchTrace,
+  buildDecisionAuthorityPatch,
+  applyInvokeBeautyAuthority,
+  applyBeautySearchMetadataAuthority,
+  buildFindProductsSearchExecutionTrace,
+  BEAUTY_DISCOVERY_MAINLINE_OWNER,
+});
+const {
   handleInvokePrimarySearchException,
 } = createFindProductsInvokePrimaryExceptionRuntime({
   detectBrandEntities,
@@ -20383,6 +20441,33 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               FIND_PRODUCTS_MULTI_UPSTREAM_BEAUTY_MAINLINE_TIMEOUT_MS,
           })
         : getUpstreamTimeoutMs(operation);
+    if (
+      operation === 'find_products_multi' &&
+      !strictCommerceFindProductsMulti &&
+      shouldUseLocalBeautyDiscoveryMainline({
+        search: findProductsMultiSearchPayload,
+        metadata,
+        requestContract: findProductsSearchRequestContract,
+      })
+    ) {
+      const localBeautyMainlineResult = await runLocalBeautyDiscoveryMainline({
+        search: findProductsMultiSearchPayload,
+        metadata,
+        requestContract: findProductsSearchRequestContract,
+        executionPlan: findProductsExecutionPlan,
+        rawUserQuery,
+        gatewayRequestId,
+        traceQueryClass,
+        timeoutMs: upstreamBudgetMsForSearch,
+        invokeStartedAtMs,
+        logger,
+        authHeaders: buildInvokeUpstreamAuthHeaders({ checkoutToken }),
+        operation,
+      });
+      if (localBeautyMainlineResult?.handled === true && localBeautyMainlineResult.response) {
+        return res.status(200).json(localBeautyMainlineResult.response);
+      }
+    }
     const publicBrandSearchMainlinePreflight =
       operation === 'find_products_multi' &&
       !strictCommerceFindProductsMulti &&
@@ -20805,6 +20890,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             strictCommerceFindProductsMulti,
             semanticOwnerControlled:
               semanticOwnerControlled || strictBeautyDirectSearch,
+            requestContract: findProductsSearchRequestContract,
+            executionPlan: findProductsExecutionPlan,
             resolverFirstResult,
             auroraFallbackOverrides,
             forceCreatorHumanApparelFallback,

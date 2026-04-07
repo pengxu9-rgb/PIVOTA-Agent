@@ -32,6 +32,8 @@ function createFindProductsInvokePrimaryExceptionRuntime(deps = {}) {
     shoppingFreshMainlineSearch = false,
     strictCommerceFindProductsMulti = false,
     semanticOwnerControlled = false,
+    requestContract = null,
+    executionPlan = null,
     resolverFirstResult = null,
     auroraFallbackOverrides = null,
     forceCreatorHumanApparelFallback = false,
@@ -67,6 +69,15 @@ function createFindProductsInvokePrimaryExceptionRuntime(deps = {}) {
     let nextResponse = response;
     let nextResolverRejectedReason = resolverRejectedReason;
     let nextResolverRejectedQueryUsed = resolverRejectedQueryUsed;
+    const primaryLane = String(
+      executionPlan?.primary_lane || requestContract?.primary_lane || '',
+    )
+      .trim()
+      .toLowerCase();
+    const beautyDiscoveryMainlineContract =
+      operation === 'find_products_multi' &&
+      !strictCommerceFindProductsMulti &&
+      primaryLane === 'beauty_discovery_mainline';
 
     if (shoppingFreshMainlineSearch) {
       nextResponse = {
@@ -102,6 +113,26 @@ function createFindProductsInvokePrimaryExceptionRuntime(deps = {}) {
           queryClass: traceQueryClass,
           queryText,
           querySource: 'agent_products_error_fallback',
+        }),
+      };
+    }
+    if (beautyDiscoveryMainlineContract) {
+      nextResponse = {
+        status: 200,
+        data: buildStrictEmptyFallbackResponse({
+          body: null,
+          queryParams,
+          reason:
+            err?.code === 'ECONNABORTED'
+              ? 'beauty_discovery_mainline_timeout'
+              : 'beauty_discovery_mainline_exception',
+          upstreamStatus,
+          upstreamCode: upstreamCode || err?.code || null,
+          upstreamMessage: upstreamMessage || err?.message || null,
+          route: 'beauty_discovery_mainline_primary_exception',
+          intent: effectiveIntent,
+          queryClass: traceQueryClass,
+          queryText,
         }),
       };
     }
