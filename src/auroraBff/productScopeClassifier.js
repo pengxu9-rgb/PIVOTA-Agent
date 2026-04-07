@@ -41,6 +41,32 @@ function normalizeConcernQueryToken(value) {
     .trim();
 }
 
+function isConcernExternalSeedCandidate(row) {
+  const candidate = isPlainObject(row) ? row : {};
+  const merchantId = pickFirstTrimmed(candidate.merchant_id, candidate.merchantId).toLowerCase();
+  const source = pickFirstTrimmed(
+    candidate.source,
+    candidate.retrieval_source,
+    candidate.retrievalSource,
+    candidate.query_source,
+  ).toLowerCase();
+  return merchantId === 'external_seed' || source === 'external_seed' || source.includes('external_seed');
+}
+
+function buildConcernCandidateAnchorText(row) {
+  const candidate = isPlainObject(row) ? row : {};
+  return [
+    pickFirstTrimmed(candidate.brand),
+    pickFirstTrimmed(candidate.display_name, candidate.displayName, candidate.name, candidate.title),
+    pickFirstTrimmed(candidate.category, candidate.category_name, candidate.categoryName, candidate.product_type, candidate.productType),
+    ...(Array.isArray(candidate.search_aliases) ? candidate.search_aliases : []),
+    ...(Array.isArray(candidate.category_path) ? candidate.category_path : []),
+  ]
+    .map((item) => normalizeConcernQueryToken(item).toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+}
+
 function normalizeRecoTargetStep(value) {
   const token = String(value || '').trim().toLowerCase();
   if (!token) return '';
@@ -55,21 +81,22 @@ function normalizeRecoTargetStep(value) {
 
 function buildConcernCandidateText(row) {
   const candidate = isPlainObject(row) ? row : {};
-  return [
-    pickFirstTrimmed(candidate.brand),
-    pickFirstTrimmed(candidate.display_name, candidate.displayName, candidate.name, candidate.title),
-    pickFirstTrimmed(candidate.category, candidate.category_name, candidate.categoryName, candidate.product_type, candidate.productType),
-    pickFirstTrimmed(candidate.short_description, candidate.shortDescription, candidate.description),
-    ...(Array.isArray(candidate.search_aliases) ? candidate.search_aliases : []),
-    ...(Array.isArray(candidate.benefit_tags) ? candidate.benefit_tags : []),
-    ...(Array.isArray(candidate.benefit_tokens) ? candidate.benefit_tokens : []),
-    ...(Array.isArray(candidate.description_tokens) ? candidate.description_tokens : []),
+  const textParts = [
+    buildConcernCandidateAnchorText(candidate),
     ...(Array.isArray(candidate.ingredient_tokens) ? candidate.ingredient_tokens : []),
     ...(Array.isArray(candidate.skin_type_tags) ? candidate.skin_type_tags : []),
-    ...(Array.isArray(candidate.tags) ? candidate.tags : []),
-    ...(Array.isArray(candidate.tag_tokens) ? candidate.tag_tokens : []),
-    ...(Array.isArray(candidate.category_path) ? candidate.category_path : []),
-  ]
+  ];
+  if (!isConcernExternalSeedCandidate(candidate)) {
+    textParts.push(
+      pickFirstTrimmed(candidate.short_description, candidate.shortDescription, candidate.description),
+      ...(Array.isArray(candidate.benefit_tags) ? candidate.benefit_tags : []),
+      ...(Array.isArray(candidate.benefit_tokens) ? candidate.benefit_tokens : []),
+      ...(Array.isArray(candidate.description_tokens) ? candidate.description_tokens : []),
+      ...(Array.isArray(candidate.tags) ? candidate.tags : []),
+      ...(Array.isArray(candidate.tag_tokens) ? candidate.tag_tokens : []),
+    );
+  }
+  return textParts
     .map((item) => normalizeConcernQueryToken(item).toLowerCase())
     .filter(Boolean)
     .join(' ');
@@ -78,7 +105,9 @@ function buildConcernCandidateText(row) {
 function buildConcernFrameworkCandidateText(row) {
   const candidate = isPlainObject(row) ? row : {};
   return [
-    buildExternalSeedSurfacingText(candidate),
+    isConcernExternalSeedCandidate(candidate)
+      ? buildExternalSeedSurfacingText(candidate, { anchorOnly: true })
+      : buildConcernCandidateAnchorText(candidate),
   ]
     .map((item) => String(item || '').trim().toLowerCase())
     .filter(Boolean)

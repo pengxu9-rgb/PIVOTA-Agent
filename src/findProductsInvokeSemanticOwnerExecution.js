@@ -45,6 +45,61 @@ function isSemanticOwnerExternalSeedProduct(product) {
   return merchantId === 'external_seed' || source === 'external_seed' || source.includes('external_seed');
 }
 
+function buildSemanticOwnerProductAnchorText(product) {
+  if (!isPlainObject(product)) return '';
+  return [
+    product.display_name,
+    product.displayName,
+    product.name,
+    product.title,
+    product.category,
+    product.category_name,
+    product.categoryName,
+    product.product_type,
+    product.productType,
+    product.type,
+    product.brand,
+  ]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+}
+
+function isSemanticOwnerBundleLikeProduct(product) {
+  return /\b(set|kit|duo|trio|sampler|bundle|discovery|collection|vault)\b/.test(
+    buildSemanticOwnerProductAnchorText(product),
+  );
+}
+
+function getSemanticOwnerProductStepSignals(product) {
+  const text = buildSemanticOwnerProductAnchorText(product);
+  return {
+    text,
+    treatment: /\b(serum|treatment|spot treatment|retinol|retinoid|acid|niacinamide|salicylic|zinc pca|azelaic|benzoyl)\b/.test(text),
+    moisturizer: /\b(moisturi[sz]er|cream|gel cream|lotion|emulsion|water cream)\b/.test(text),
+    sunscreen: /\b(spf(?:\s*\d{1,3}\+?)?|sunscreen|broad spectrum|uv|sun fluid|sun cream|sun lotion)\b/.test(text),
+  };
+}
+
+function isSemanticOwnerEligiblePrimaryExternalProduct(product, { targetStepFamily = '' } = {}) {
+  if (!isPlainObject(product)) return false;
+  if (!isSemanticOwnerExternalSeedProduct(product)) return false;
+  if (isSemanticOwnerBundleLikeProduct(product)) return false;
+  const normalizedTargetStepFamily = String(targetStepFamily || '').trim().toLowerCase();
+  const signals = getSemanticOwnerProductStepSignals(product);
+  if (!normalizedTargetStepFamily) return signals.treatment || signals.moisturizer || signals.sunscreen;
+  if (normalizedTargetStepFamily === 'treatment' || normalizedTargetStepFamily === 'serum') {
+    return signals.treatment && !signals.sunscreen;
+  }
+  if (normalizedTargetStepFamily === 'moisturizer') {
+    return signals.moisturizer && !signals.sunscreen;
+  }
+  if (normalizedTargetStepFamily === 'sunscreen') {
+    return signals.sunscreen;
+  }
+  return false;
+}
+
 function mergeSemanticOwnerProductPools(primaryProducts = [], externalProducts = [], {
   preferExternalFirst = false,
   limit = 20,
@@ -107,13 +162,23 @@ function shouldPreferSemanticOwnerExternalCoverage({
   externalProducts = [],
   externalAdoption = null,
   externalCoverageTrusted = false,
+  targetStepFamily = '',
 } = {}) {
   const primaryCount = Array.isArray(primaryProducts) ? primaryProducts.length : 0;
   const externalValidCount = getSemanticOwnerValidProductCount(externalAdoption, externalProducts);
   const externalCount = Array.isArray(externalProducts) ? externalProducts.length : 0;
   const externalHitQuality = String(externalAdoption?.hitDecision?.hit_quality || '').trim();
+  const eligiblePrimaryExternalCount = (Array.isArray(externalProducts) ? externalProducts : []).filter((product) =>
+    isSemanticOwnerEligiblePrimaryExternalProduct(product, { targetStepFamily }),
+  ).length;
+  const normalizedTargetStepFamily = String(targetStepFamily || '').trim().toLowerCase();
+  const minimumEligibleExternalCount =
+    normalizedTargetStepFamily === 'treatment' || normalizedTargetStepFamily === 'serum'
+      ? 2
+      : 1;
   return (
     primaryCount <= 1 &&
+    eligiblePrimaryExternalCount >= minimumEligibleExternalCount &&
     (
       externalAdoption?.adopt === true ||
       externalCoverageTrusted ||
@@ -565,6 +630,7 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
               externalProducts: coverageExternalProducts,
               externalAdoption: externalCoverageAdoption,
               externalCoverageTrusted,
+              targetStepFamily: semanticOwnerTargetStepFamily,
             });
             const mergedProducts = mergeSemanticOwnerProductPools(
               preferExternalFirst ? [] : primaryProducts,
@@ -953,4 +1019,9 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
 
 module.exports = {
   createFindProductsInvokeSemanticOwnerExecutionRuntime,
+  __internal: {
+    isSemanticOwnerBundleLikeProduct,
+    isSemanticOwnerEligiblePrimaryExternalProduct,
+    shouldPreferSemanticOwnerExternalCoverage,
+  },
 };
