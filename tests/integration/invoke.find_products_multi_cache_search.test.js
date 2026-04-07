@@ -2785,19 +2785,26 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         budget_fx_applied: true,
         budget_fx_candidate_currency: 'USD',
         budget_fx_unresolved: false,
-        contract_bridge: expect.objectContaining({
-          resolved_contract: expect.stringMatching(
-            /^(shop_invoke_strict|agent_v1_search_beauty_mainline)$/,
-          ),
-        }),
-        route_health: expect.objectContaining({
-          fallback_triggered: false,
-        }),
-        search_decision: expect.objectContaining({
-          query_target_step_family: 'serum',
-        }),
       }),
     );
+    expect(resp.body.metadata.contract_bridge).toEqual(
+      expect.objectContaining({
+        resolved_contract: expect.stringMatching(
+          /^(shop_invoke_strict|agent_v1_search_beauty_mainline)$/,
+        ),
+      }),
+    );
+    expect(resp.body.metadata.search_trace).toEqual(
+      expect.objectContaining({
+        primary_path_used: 'ingredient_recall_direct',
+      }),
+    );
+    expect(resp.body.metadata.semantic_contract).toEqual(
+      expect.objectContaining({
+        target_step_family: 'serum',
+      }),
+    );
+    expect(resp.body.metadata.fallback_attempt_count).toBe(0);
   });
 
   test('source=search brand-like beauty queries preserve healthy upstream results instead of falling back', async () => {
@@ -4229,6 +4236,14 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       ),
     ).toBe(true);
     expect(resp.body.metadata?.query_source).toBe('agent_products_public_brand_search_mainline');
+    expect(resp.body.metadata?.cache_stage_attempted).toBe(false);
+    expect(resp.body.metadata?.route_debug?.cross_merchant_cache).toEqual(
+      expect.objectContaining({
+        attempted: false,
+        bypassed: true,
+        bypass_reason: 'public_brand_search_mainline',
+      }),
+    );
     expect(resp.body.metadata?.brand_query_mainline_applied).toBe(true);
     expect(resp.body.metadata?.brand_query_mainline_upstream_skipped).toBe(true);
     expect(resp.body.metadata?.semantic_rewrite_result?.fallback_reason).toBe(
@@ -4325,6 +4340,14 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(upstreamSearch.isDone()).toBe(false);
     expect(resp.body.metadata?.guard_source_normalized).toBe('search');
     expect(resp.body.metadata?.query_source).toBe('agent_products_public_brand_search_mainline');
+    expect(resp.body.metadata?.cache_stage_attempted).toBe(false);
+    expect(resp.body.metadata?.route_debug?.cross_merchant_cache).toEqual(
+      expect.objectContaining({
+        attempted: false,
+        bypassed: true,
+        bypass_reason: 'public_brand_search_mainline',
+      }),
+    );
     expect(resp.body.metadata?.brand_query_mainline_upstream_skipped).toBe(true);
     expect(resp.body.metadata?.semantic_rewrite_result?.fallback_reason).toBe(
       'semantic_rewrite_skipped_brand_search',
