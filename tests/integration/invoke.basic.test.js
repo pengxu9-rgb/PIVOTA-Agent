@@ -804,7 +804,7 @@ describe('/agent/shop/v1/invoke gateway', () => {
   it('direct public beauty search and invoke gateway surface the same adopted oil-control ranking when upstream candidates match', async () => {
     nock(process.env.PIVOTA_API_BASE)
       .get('/agent/v1/products/search')
-      .query(true)
+      .query((query) => query?.query === 'oil control treatment')
       .times(2)
       .reply(200, {
         status: 'success',
@@ -840,6 +840,18 @@ describe('/agent/shop/v1/invoke gateway', () => {
             active_ingredients: ['Vitamin C', 'Niacinamide', 'Tranexamic acid'],
           },
         ],
+        metadata: {
+          query_source: 'agent_products_search',
+        },
+      });
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/products/search')
+      .query((query) => query?.query !== 'oil control treatment')
+      .times(4)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
         metadata: {
           query_source: 'agent_products_search',
         },
@@ -885,6 +897,20 @@ describe('/agent/shop/v1/invoke gateway', () => {
     );
     expect(direct.body.metadata?.resolved_contract).toBe('agent_v1_search_beauty_mainline');
     expect(direct.body.reply).toBeNull();
+    expect(direct.body.metadata?.supplements_attempted).toEqual(
+      expect.arrayContaining(['semantic_owner_framework_support']),
+    );
+    expect(direct.body.metadata?.search_execution_trace?.supplement_traces).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          supplement_type: 'semantic_owner_framework_support',
+          supplement_reason: 'role_coverage_repair',
+          status: 'miss',
+          added_products: [],
+          did_change_primary_slot: false,
+        }),
+      ]),
+    );
     expect(invoke.body.metadata?.contract_bridge).toEqual(
       expect.objectContaining({
         resolved_contract: 'agent_v1_search_beauty_mainline',

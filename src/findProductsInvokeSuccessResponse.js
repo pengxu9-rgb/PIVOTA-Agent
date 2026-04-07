@@ -90,7 +90,15 @@ function createFindProductsInvokeSuccessRuntime(deps = {}) {
     semanticOwnerLastResortCacheQuery = null,
     findProductsExpansionMeta = null,
     primarySearchTimeoutMs = null,
+    primarySearchInitialTimeoutMs = null,
+    primarySearchFinalTimeoutMs = null,
+    primarySearchRetryCount = 0,
+    primarySearchRetryReasons = [],
+    primaryFailureStage = null,
+    findProductsSearchRequestContract = null,
+    findProductsExecutionPlan = null,
     gatewayTotalBudgetMs = null,
+    supplementsAttempted = [],
     blockingGateInfo = null,
     querySource = '',
     resolverRejectedReason = null,
@@ -106,9 +114,19 @@ function createFindProductsInvokeSuccessRuntime(deps = {}) {
     let nextEnriched = withSearchDiagnostics(enriched, {
       route_health: buildSearchRouteHealth({
         primaryPathUsed,
+        primaryLane:
+          findProductsExecutionPlan?.primary_lane ||
+          findProductsSearchRequestContract?.primary_lane ||
+          null,
+        primaryRetrievalContract:
+          findProductsExecutionPlan?.primary_retrieval_contract ||
+          findProductsSearchRequestContract?.primary_retrieval_contract ||
+          null,
         primaryLatencyMs: Math.max(0, Date.now() - invokeStartedAtMs),
         fallbackTriggered,
         fallbackReason,
+        ownerSwitchCount:
+          Number(findProductsExecutionPlan?.owner_switch_count || 0) || 0,
         observerNodes: normalizedDecisionObserverNodes,
         ambiguityScorePre:
           Number.isFinite(Number(searchDecision?.ambiguity_score_pre))
@@ -175,7 +193,15 @@ function createFindProductsInvokeSuccessRuntime(deps = {}) {
       searchStageLedger,
       findProductsExpansionMeta,
       primarySearchTimeoutMs,
+      primarySearchInitialTimeoutMs,
+      primarySearchFinalTimeoutMs,
+      primarySearchRetryCount,
+      primarySearchRetryReasons,
+      primaryFailureStage,
+      findProductsSearchRequestContract,
+      findProductsExecutionPlan,
       gatewayTotalBudgetMs,
+      supplementsAttempted,
       blockingGateInfo,
       querySource,
     });

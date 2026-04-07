@@ -1658,7 +1658,7 @@ async function shouldKeepV1ChatOnLegacyIngredientPath(payload) {
   return looksLikeIngredientSignalPhrase(trimmedMessage);
 }
 
-async function shouldDelegateV1ChatToV2(body) {
+async function buildChatIntentContract(body) {
   const payload = isPlainObject(body) ? body : {};
   const action = normalizeIncomingChatAction(payload.action);
   const actionData = isPlainObject(action && action.data) ? action.data : {};
@@ -1704,18 +1704,52 @@ async function shouldDelegateV1ChatToV2(body) {
     payload.clarification_id != null ||
     payload.requested_transition != null
   ) {
-    return false;
+    return {
+      contract_version: 'chat_intent_v1',
+      surface: 'chat',
+      ownership_domain: 'legacy_quarantine',
+      request_class: 'legacy_compat',
+      delegate_target: 'legacy_quarantine',
+      should_search: false,
+      reply_mode: 'followup',
+    };
   }
 
   if (implicitAnalysisFollowupActionId) {
-    return false;
+    return {
+      contract_version: 'chat_intent_v1',
+      surface: 'chat',
+      ownership_domain: 'legacy_quarantine',
+      request_class: 'legacy_compat',
+      delegate_target: 'legacy_quarantine',
+      should_search: false,
+      reply_mode: 'followup',
+    };
   }
 
   if ((payload.action != null || payload.action_id != null) && !canDelegateActionToV2) {
-    return false;
+    return {
+      contract_version: 'chat_intent_v1',
+      surface: 'chat',
+      ownership_domain: 'legacy_quarantine',
+      request_class: 'legacy_compat',
+      delegate_target: 'legacy_quarantine',
+      should_search: false,
+      reply_mode: 'action',
+    };
   }
 
-  if (canDelegateActionToV2) return true;
+  if (canDelegateActionToV2) {
+    return {
+      contract_version: 'chat_intent_v1',
+      surface: 'chat',
+      ownership_domain: 'legacy_quarantine',
+      request_class: 'action_delegate',
+      delegate_target: 'v2',
+      should_search: false,
+      reply_mode: 'action',
+    };
+  }
 
   const hasMessage = Boolean(pickFirstTrimmed(payload.message, payload.text));
   const message = pickFirstTrimmed(
@@ -1756,8 +1790,28 @@ async function shouldDelegateV1ChatToV2(body) {
       anchorProductId,
       anchorProductUrl,
     });
-  if (shouldKeepFitCheckOnLegacy) return false;
-  if (hasMessage && looksLikeCompatibilityOrConflictQuestion(message)) return false;
+  if (shouldKeepFitCheckOnLegacy) {
+    return {
+      contract_version: 'chat_intent_v1',
+      surface: 'chat',
+      ownership_domain: 'legacy_quarantine',
+      request_class: 'legacy_compat',
+      delegate_target: 'legacy_quarantine',
+      should_search: false,
+      reply_mode: 'fit_check',
+    };
+  }
+  if (hasMessage && looksLikeCompatibilityOrConflictQuestion(message)) {
+    return {
+      contract_version: 'chat_intent_v1',
+      surface: 'chat',
+      ownership_domain: 'legacy_quarantine',
+      request_class: 'legacy_compat',
+      delegate_target: 'legacy_quarantine',
+      should_search: false,
+      reply_mode: 'compatibility',
+    };
+  }
   if (hasMessage && AURORA_CHAT_CATALOG_AVAIL_FAST_PATH_ENABLED) {
     const requestLang = pickFirstTrimmed(
       payload.language,
@@ -1769,10 +1823,28 @@ async function shouldDelegateV1ChatToV2(body) {
     const allowCatalogShortCircuit = AURORA_CATALOG_DOMAIN_GUARD_V1_ENABLED
       ? shouldAllowCatalogAvailabilityShortCircuit(message)
       : true;
-    if (availabilityIntent && allowCatalogShortCircuit) return false;
+    if (availabilityIntent && allowCatalogShortCircuit) {
+      return {
+        contract_version: 'chat_intent_v1',
+        surface: 'chat',
+        ownership_domain: 'legacy_quarantine',
+        request_class: 'legacy_compat',
+        delegate_target: 'legacy_quarantine',
+        should_search: false,
+        reply_mode: 'availability',
+      };
+    }
   }
   if (hasMessage && await shouldKeepV1ChatOnLegacyIngredientPath(payload)) {
-    return false;
+    return {
+      contract_version: 'chat_intent_v1',
+      surface: 'chat',
+      ownership_domain: 'legacy_quarantine',
+      request_class: 'legacy_compat',
+      delegate_target: 'legacy_quarantine',
+      should_search: false,
+      reply_mode: 'ingredient_advice',
+    };
   }
   if (hasMessage) {
     const localMessage = pickFirstTrimmed(payload.message, payload.text) || '';
@@ -1811,24 +1883,106 @@ async function shouldDelegateV1ChatToV2(body) {
         message: '',
       })
     ) {
-      return false;
+      return {
+        contract_version: 'chat_intent_v1',
+        surface: 'chat',
+        ownership_domain: 'beauty_mainline',
+        request_class: 'beauty_discovery',
+        delegate_target: 'beauty_mainline',
+        should_search: true,
+        reply_mode:
+          beautyRecoTargetContext?.step_aware_intent &&
+          beautyRecoTargetContext?.resolved_target_step
+            ? 'reco_step_aware'
+            : 'reco_framework',
+        primary_lane: 'beauty_discovery_mainline',
+        target_context: beautyRecoTargetContext,
+      };
     }
-    if (looksLikeDiagnosisStart(localMessage)) return false;
-    if (looksLikeProgressCheckRequest(localMessage, actionId)) return false;
-    if (typedRecoOwnershipKeepsV1Mainline) return false;
+    if (looksLikeDiagnosisStart(localMessage)) {
+      return {
+        contract_version: 'chat_intent_v1',
+        surface: 'chat',
+        ownership_domain: 'legacy_quarantine',
+        request_class: 'legacy_compat',
+        delegate_target: 'legacy_quarantine',
+        should_search: false,
+        reply_mode: 'diagnosis',
+      };
+    }
+    if (looksLikeProgressCheckRequest(localMessage, actionId)) {
+      return {
+        contract_version: 'chat_intent_v1',
+        surface: 'chat',
+        ownership_domain: 'legacy_quarantine',
+        request_class: 'legacy_compat',
+        delegate_target: 'legacy_quarantine',
+        should_search: false,
+        reply_mode: 'progress_check',
+      };
+    }
+    if (typedRecoOwnershipKeepsV1Mainline) {
+      return {
+        contract_version: 'chat_intent_v1',
+        surface: 'chat',
+        ownership_domain: 'beauty_mainline',
+        request_class: 'beauty_discovery',
+        delegate_target: 'beauty_mainline',
+        should_search: true,
+        reply_mode: 'reco_step_aware',
+        primary_lane: 'beauty_discovery_mainline',
+        target_context: beautyRecoTargetContext,
+      };
+    }
   }
-  if (hasMessage) return true;
+  if (hasMessage) {
+    return {
+      contract_version: 'chat_intent_v1',
+      surface: 'chat',
+      ownership_domain: 'legacy_quarantine',
+      request_class: 'legacy_compat',
+      delegate_target: 'v2',
+      should_search: false,
+      reply_mode: 'assistant',
+    };
+  }
 
   const hasV2Context = isPlainObject(payload.context);
-  if (hasV2Context) return true;
+  if (hasV2Context) {
+    return {
+      contract_version: 'chat_intent_v1',
+      surface: 'chat',
+      ownership_domain: 'legacy_quarantine',
+      request_class: 'legacy_compat',
+      delegate_target: 'v2',
+      should_search: false,
+      reply_mode: 'assistant',
+    };
+  }
 
-  return Boolean(
-    pickFirstTrimmed(
-      payload.skill_id,
-      payload.intent,
-      payload.canonical_intent,
-    ),
-  ) || isPlainObject(payload.params);
+  return {
+    contract_version: 'chat_intent_v1',
+    surface: 'chat',
+    ownership_domain: 'legacy_quarantine',
+    request_class: 'legacy_compat',
+    delegate_target:
+      Boolean(
+        pickFirstTrimmed(
+          payload.skill_id,
+          payload.intent,
+          payload.canonical_intent,
+        ),
+      ) || isPlainObject(payload.params)
+        ? 'v2'
+        : 'legacy_quarantine',
+    should_search: false,
+    reply_mode: 'assistant',
+  };
+}
+
+async function shouldDelegateV1ChatToV2(body) {
+  const chatIntentContract = await buildChatIntentContract(body);
+  return chatIntentContract?.delegate_target === 'v2';
 }
 
 function extractLastUserMessageFromChatRequestMessages(messages) {
@@ -74346,7 +74500,11 @@ function mountAuroraBffRoutes(app, { logger }) {
 
     try {
       requireAuroraUid(ctx);
-      if (effectiveChatFlags.skill_router_v2 && await shouldDelegateV1ChatToV2(req.body || {})) {
+      const ingressChatIntentContract = await buildChatIntentContract(req.body || {});
+      if (
+        effectiveChatFlags.skill_router_v2 &&
+        ingressChatIntentContract?.delegate_target === 'v2'
+      ) {
         const { handleChat: handleChatV2 } = require('./routes/chat');
         return handleChatV2(req, res);
       }
@@ -80762,6 +80920,7 @@ const __internal = {
   looksLikeProductEvaluationIntentV2,
   isMeaningfulFitCheckProductInput,
   hasMeaningfulFitCheckAnchor,
+  buildChatIntentContract,
   FIT_CHECK_ANCHOR_PROMPT_VERSION,
   buildFitCheckAnchorPrompt,
   shouldDelegateV1ChatToV2,

@@ -38,6 +38,68 @@ function buildSemanticOwnerProductKey(product) {
   return title ? `${merchantId || 'unknown'}::${title}` : '';
 }
 
+function listSemanticOwnerTraceProductIds(products = []) {
+  if (!Array.isArray(products)) return [];
+  return products
+    .map((product) => {
+      if (!isPlainObject(product)) return '';
+      return String(product.product_id || product.productId || product.id || '').trim();
+    })
+    .filter(Boolean);
+}
+
+function buildSemanticOwnerSupplementTrace({
+  supplementType = '',
+  supplementReason = '',
+  attemptedQueries = [],
+  appliedQueries = [],
+  addedProducts = [],
+  filteredProducts = 0,
+  didChangePrimarySlot = false,
+  status = '',
+} = {}) {
+  const normalizedSupplementType = String(supplementType || '').trim();
+  if (!normalizedSupplementType) return null;
+  const normalizedAttemptedQueries = Array.from(
+    new Set(
+      (Array.isArray(attemptedQueries) ? attemptedQueries : [])
+        .map((query) => String(query || '').trim())
+        .filter(Boolean),
+    ),
+  );
+  const normalizedAppliedQueries = Array.from(
+    new Set(
+      (Array.isArray(appliedQueries) ? appliedQueries : [])
+        .map((query) => String(query || '').trim())
+        .filter(Boolean),
+    ),
+  );
+  const normalizedAddedProducts = Array.from(
+    new Set(
+      listSemanticOwnerTraceProductIds(addedProducts),
+    ),
+  );
+  const normalizedStatus =
+    String(status || '').trim() ||
+    (normalizedAddedProducts.length > 0 ? 'applied' : 'miss');
+  return {
+    supplement_type: normalizedSupplementType,
+    supplement_reason: String(supplementReason || '').trim() || null,
+    status: normalizedStatus,
+    attempted_queries: normalizedAttemptedQueries,
+    applied_queries: normalizedAppliedQueries,
+    added_products: normalizedAddedProducts,
+    filtered_products: Math.max(0, Number(filteredProducts || 0) || 0),
+    did_change_primary_slot: didChangePrimarySlot === true,
+  };
+}
+
+function pushSemanticOwnerSupplementTrace(traces, traceInput) {
+  if (!Array.isArray(traces)) return;
+  const trace = buildSemanticOwnerSupplementTrace(traceInput);
+  if (trace) traces.push(trace);
+}
+
 function isSemanticOwnerExternalSeedProduct(product) {
   if (!isPlainObject(product)) return false;
   const merchantId = String(product.merchant_id || product.merchantId || '').trim().toLowerCase();
@@ -360,6 +422,7 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
     semanticOwnerControlled = false,
     semanticOwnerQueryPack = [],
     semanticOwnerQueryTotal = 0,
+    semanticOwnerSupportRoleQueryPack = [],
     semanticOwnerTargetStepFamily = '',
     semanticOwnerSemanticFamily = '',
     semanticOwnerQueryStepStrength = '',
@@ -411,6 +474,7 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
     let semanticOwnerCacheSourceIsolated = false;
     let semanticOwnerCacheSourceIsolationReason = null;
     let semanticOwnerExternalRescueQueriesAttempted = [];
+    const semanticOwnerSupplementTraces = [];
     let semanticOwnerObservationFallback =
       semanticOwnerControlled &&
       primarySemanticOwnerAdoption.adopt !== true &&
@@ -685,6 +749,16 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
             ...semanticOwnerCoverageSupplementQueries,
           ]),
         );
+        const externalCoverageTrace = {
+          supplementType: 'semantic_owner_external_coverage',
+          supplementReason: 'sparse_primary_valid_hit',
+          attemptedQueries: semanticOwnerCoverageSupplementQueries,
+          appliedQueries: [],
+          addedProducts: [],
+          filteredProducts: 0,
+          didChangePrimarySlot: false,
+          status: 'attempted',
+        };
         const coverageQueryParams = {
           ...(queryParams && typeof queryParams === 'object' && !Array.isArray(queryParams)
             ? queryParams
@@ -891,6 +965,14 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
               adoptedAttempt.external_seed_supplement_filtered_count =
                 Math.max(0, coverageExternalProducts.length - coveragePrimaryExternalProducts.length);
             }
+            externalCoverageTrace.appliedQueries = [semanticOwnerCoverageSupplementQuery];
+            externalCoverageTrace.addedProducts = coveragePrimaryExternalProducts;
+            externalCoverageTrace.filteredProducts = Math.max(
+              0,
+              coverageExternalProducts.length - coveragePrimaryExternalProducts.length,
+            );
+            externalCoverageTrace.didChangePrimarySlot = preferExternalFirst;
+            externalCoverageTrace.status = 'applied';
             break;
           } catch (semanticOwnerCoverageSupplementErr) {
             logger?.warn(
@@ -904,6 +986,7 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
             );
           }
         }
+        pushSemanticOwnerSupplementTrace(semanticOwnerSupplementTraces, externalCoverageTrace);
       }
     }
 
@@ -911,11 +994,11 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
       operation === 'find_products_multi' &&
       semanticOwnerControlled &&
       semanticOwnerAdoptedByValidHit &&
-      semanticOwnerQueryPack.length > 1
+      semanticOwnerSupportRoleQueryPack.length > 0
     ) {
       const supportQueryContexts = [];
       const supportSeen = new Set();
-      for (const supportQuery of semanticOwnerQueryPack.slice(1)) {
+      for (const supportQuery of semanticOwnerSupportRoleQueryPack) {
         const context = resolveSemanticOwnerFrameworkSupportQuery(supportQuery);
         if (!context) continue;
         const key = `${context.targetStepFamily}::${context.query.toLowerCase()}`;
@@ -924,6 +1007,16 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
         supportQueryContexts.push(context);
       }
       if (supportQueryContexts.length > 0) {
+        const frameworkSupportTrace = {
+          supplementType: 'semantic_owner_framework_support',
+          supplementReason: 'role_coverage_repair',
+          attemptedQueries: [],
+          appliedQueries: [],
+          addedProducts: [],
+          filteredProducts: 0,
+          didChangePrimarySlot: false,
+          status: 'attempted',
+        };
         const supportLimit = Math.min(
           Math.max(Number(queryParams?.limit || queryParams?.page_size || 20) || 20, 1),
           SEARCH_LIMIT_MAX,
@@ -1134,6 +1227,12 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
             }
           }
         }
+        frameworkSupportTrace.attemptedQueries = supportQueriesAttempted;
+        frameworkSupportTrace.appliedQueries = supportQueriesApplied;
+        frameworkSupportTrace.addedProducts = supportProductsAll;
+        frameworkSupportTrace.filteredProducts = Math.max(0, supportRowsFetched - supportRowsBuilt);
+        frameworkSupportTrace.status = supportProductsAll.length > 0 ? 'applied' : 'miss';
+        pushSemanticOwnerSupplementTrace(semanticOwnerSupplementTraces, frameworkSupportTrace);
       }
     }
 
@@ -1179,6 +1278,16 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
         });
       if (semanticOwnerExternalRescueQueries.length > 0) {
         semanticOwnerExternalRescueQueriesAttempted = semanticOwnerExternalRescueQueries;
+        const externalRescueTrace = {
+          supplementType: 'semantic_owner_external_rescue',
+          supplementReason: 'pure_cache_invalid_hit',
+          attemptedQueries: semanticOwnerExternalRescueQueries,
+          appliedQueries: [],
+          addedProducts: [],
+          filteredProducts: 0,
+          didChangePrimarySlot: false,
+          status: 'attempted',
+        };
         const rescueQueryParams = {
           ...(queryParams && typeof queryParams === 'object' && !Array.isArray(queryParams)
             ? queryParams
@@ -1205,6 +1314,8 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
           SEARCH_LIMIT_MAX,
         );
         let semanticOwnerExternalRescueApplied = false;
+        let semanticOwnerExternalRescueRowsFetched = 0;
+        let semanticOwnerExternalRescueRowsBuilt = 0;
         for (const semanticOwnerExternalRescueQuery of semanticOwnerExternalRescueQueries) {
           try {
             const externalRescue = await fetchExternalSeedSupplementFromBackend({
@@ -1219,7 +1330,12 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
             const rescueProducts = Array.isArray(externalRescue?.products)
               ? externalRescue.products
               : [];
+            semanticOwnerExternalRescueRowsFetched += Math.max(
+              rescueProducts.length,
+              Number(externalRescue?.metadata?.external_seed_rows_raw || 0) || 0,
+            );
             if (rescueProducts.length > 0) {
+              semanticOwnerExternalRescueRowsBuilt += rescueProducts.length;
               const rescueBody = normalizeAgentProductsListResponse(
                 {
                   status: 'success',
@@ -1318,6 +1434,10 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
               semanticOwnerAdoptedByValidHit = true;
               semanticOwnerObservationFallback = null;
               semanticOwnerExternalRescueApplied = true;
+              externalRescueTrace.appliedQueries = [semanticOwnerExternalRescueQuery];
+              externalRescueTrace.addedProducts = rescueProducts;
+              externalRescueTrace.didChangePrimarySlot = true;
+              externalRescueTrace.status = 'applied';
               break;
             }
           } catch (semanticOwnerExternalRescueErr) {
@@ -1371,6 +1491,14 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
           });
           queryParams = rescueQueryParams;
         }
+        externalRescueTrace.filteredProducts = Math.max(
+          0,
+          semanticOwnerExternalRescueRowsFetched - semanticOwnerExternalRescueRowsBuilt,
+        );
+        if (externalRescueTrace.status !== 'applied') {
+          externalRescueTrace.status = semanticOwnerCacheSourceIsolated ? 'failed_closed' : 'miss';
+        }
+        pushSemanticOwnerSupplementTrace(semanticOwnerSupplementTraces, externalRescueTrace);
       }
     }
 
@@ -1410,6 +1538,7 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
       axiosConfig,
       semanticOwnerQueryAttempts,
       semanticOwnerExternalRescueQueriesAttempted,
+      semanticOwnerSupplementTraces,
       semanticOwnerCacheSourceIsolated,
       semanticOwnerCacheSourceIsolationReason,
       semanticOwnerLastResortCacheApplied,

@@ -1790,44 +1790,6 @@ function buildBeautyDiscoveryQueryPackFromContract({
   });
 }
 
-function buildFrameworkSupportRoleQuery(
-  roleId,
-  { concernClass = '', semanticFamily = '', rawQuery = '' } = {},
-) {
-  const normalizedRoleId = normalizeSemanticContractIdentifier(roleId, '');
-  if (!normalizedRoleId) return '';
-  const signalText = normalizeSemanticQueryLabel(
-    `${rawQuery} ${semanticFamily} ${concernClass}`.trim(),
-  );
-  const oilySignal =
-    normalizeSemanticContractIdentifier(concernClass, '') === 'oil_control' ||
-    /\b(oily|oil control|sebum|shine control|mattify|mattifying|non-greasy|non greasy)\b/.test(
-      signalText,
-    );
-  const sensitiveSignal =
-    normalizeSemanticContractIdentifier(concernClass, '') === 'barrier_repair' ||
-    /\b(sensitive|barrier|redness|soothing|calming|fragrance free|fragrance-free)\b/.test(
-      signalText,
-    );
-
-  if (normalizedRoleId === 'lightweight_moisturizer') {
-    if (oilySignal) return 'lightweight moisturizer oily skin';
-    return 'lightweight moisturizer';
-  }
-  if (normalizedRoleId === 'barrier_moisturizer') {
-    return sensitiveSignal ? 'barrier moisturizer' : 'ceramide moisturizer';
-  }
-  if (normalizedRoleId === 'daily_sunscreen') {
-    if (oilySignal) return 'oil control sunscreen';
-    if (sensitiveSignal) return 'sensitive skin sunscreen';
-    return 'daily sunscreen';
-  }
-  if (normalizedRoleId === 'hydrating_mask_support') {
-    return 'hydrating mask';
-  }
-  return normalizedRoleId.replace(/_/g, ' ');
-}
-
 function buildDeterministicStrictSemanticQueryPack({
   rawQuery = '',
   semanticContract = null,
@@ -1901,20 +1863,16 @@ function buildDeterministicStrictSemanticQueryPack({
             push(primaryRoleLabel);
           }
 
-          for (const roleId of supportRoleIds.slice(0, 2)) {
-            pushExactUnique(
-              buildFrameworkSupportRoleQuery(roleId, {
-                concernClass,
-                semanticFamily,
-                rawQuery: raw,
-              }),
-            );
-          }
-
-          if (out.length < 3 && raw) push(raw);
           if (out.length < 3 && ingredientHypotheses[0] && targetStepFamily === 'treatment') {
             push(`${ingredientHypotheses[0]} treatment`);
           }
+          if (out.length < 3 && ingredientHypotheses[1] && targetStepFamily === 'treatment') {
+            push(`${ingredientHypotheses[1]} treatment`);
+          }
+          if (out.length < 3 && concernClass === 'oil_control' && targetStepFamily === 'treatment') {
+            push('oil control serum');
+          }
+          if (out.length < 3 && raw) push(raw);
           return out.slice(0, 3);
         })()
       : [];

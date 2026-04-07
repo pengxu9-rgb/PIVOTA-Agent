@@ -167,7 +167,15 @@ function applyBeautySearchMetadataAuthority({
   searchStageLedger = null,
   findProductsExpansionMeta = null,
   primarySearchTimeoutMs = null,
+  primarySearchInitialTimeoutMs = null,
+  primarySearchFinalTimeoutMs = null,
+  primarySearchRetryCount = 0,
+  primarySearchRetryReasons = [],
+  primaryFailureStage = null,
+  findProductsSearchRequestContract = null,
+  findProductsExecutionPlan = null,
   gatewayTotalBudgetMs = null,
+  supplementsAttempted = [],
   blockingGateInfo = null,
   querySource = '',
 } = {}) {
@@ -193,6 +201,33 @@ function applyBeautySearchMetadataAuthority({
         .map((gateId) => String(gateId || '').trim())
         .filter(Boolean),
     ),
+  );
+  const primaryLane =
+    String(
+      findProductsExecutionPlan?.primary_lane ||
+      findProductsSearchRequestContract?.primary_lane ||
+      '',
+    ).trim() || null;
+  const primaryRetrievalContract =
+    String(
+      findProductsExecutionPlan?.primary_retrieval_contract ||
+      findProductsSearchRequestContract?.primary_retrieval_contract ||
+      '',
+    ).trim() || null;
+  const normalizedSupplementsAttempted = Array.isArray(supplementsAttempted)
+    ? Array.from(
+        new Set(
+          supplementsAttempted
+            .map((value) => String(value || '').trim())
+            .filter(Boolean),
+        ),
+      )
+    : [];
+  const ownerSwitchCount = Math.max(
+    0,
+    Number.isFinite(Number(findProductsExecutionPlan?.owner_switch_count))
+      ? Number(findProductsExecutionPlan.owner_switch_count)
+      : 0,
   );
 
   return {
@@ -245,6 +280,28 @@ function applyBeautySearchMetadataAuthority({
         effectiveSemanticOwner ||
         enrichedMetaForGates.decision_owner ||
         querySource,
+      primary_lane: primaryLane,
+      primary_retrieval_contract: primaryRetrievalContract,
+      primary_timeout_initial_ms:
+        Number.isFinite(Number(primarySearchInitialTimeoutMs)) &&
+        Number(primarySearchInitialTimeoutMs) >= 0
+          ? Number(primarySearchInitialTimeoutMs)
+          : null,
+      primary_timeout_final_ms:
+        Number.isFinite(Number(primarySearchFinalTimeoutMs)) &&
+        Number(primarySearchFinalTimeoutMs) >= 0
+          ? Number(primarySearchFinalTimeoutMs)
+          : null,
+      primary_retry_count: Math.max(
+        0,
+        Number.isFinite(Number(primarySearchRetryCount))
+          ? Number(primarySearchRetryCount)
+          : 0,
+      ),
+      primary_retry_reasons: primarySearchRetryReasons,
+      primary_failure_stage: String(primaryFailureStage || '').trim() || null,
+      owner_switch_count: ownerSwitchCount,
+      supplements_attempted: normalizedSupplementsAttempted,
       search_stage_ledger: searchStageLedger,
       effective_timeout_ms: {
         semantic_rewrite_timeout_ms:
@@ -253,6 +310,14 @@ function applyBeautySearchMetadataAuthority({
             ? Number(findProductsExpansionMeta.semantic_rewrite_timeout_ms)
             : null,
         primary_search_timeout_ms: Number(primarySearchTimeoutMs || 0) || null,
+        primary_search_initial_timeout_ms:
+          Number(primarySearchInitialTimeoutMs || 0) || null,
+        primary_search_final_timeout_ms:
+          Number(primarySearchFinalTimeoutMs || 0) || null,
+        primary_search_retry_count: Math.max(
+          0,
+          Number(primarySearchRetryCount || 0) || 0,
+        ),
         gateway_total_budget_ms: Number(gatewayTotalBudgetMs || 0) || null,
       },
       ...(blockingGateInfo ? blockingGateInfo : {}),
