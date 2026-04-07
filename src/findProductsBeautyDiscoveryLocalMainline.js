@@ -159,6 +159,36 @@ function buildStepAwareCriticalQueryPack(queryPack = [], semanticContract = null
   return ranked.slice(0, 2);
 }
 
+function clampLocalBeautyRecallAttemptTimeoutMs({
+  primaryTimeoutMs = 0,
+  remainingBudgetMs = 0,
+  queryTotal = 1,
+  sourceScope = '',
+  plannerMode = '',
+} = {}) {
+  const remaining =
+    Number.isFinite(Number(remainingBudgetMs)) && Number(remainingBudgetMs) > 0
+      ? Number(remainingBudgetMs)
+      : 0;
+  if (remaining <= 0) return 0;
+  const primary =
+    Number.isFinite(Number(primaryTimeoutMs)) && Number(primaryTimeoutMs) > 0
+      ? Number(primaryTimeoutMs)
+      : remaining;
+  const normalizedPlannerMode = String(plannerMode || '').trim().toLowerCase();
+  if (normalizedPlannerMode === 'step_aware') {
+    return Math.min(remaining, Math.max(120, Math.min(primary, 3000)));
+  }
+  const normalizedQueryTotal =
+    Number.isFinite(Number(queryTotal)) && Number(queryTotal) > 0
+      ? Number(queryTotal)
+      : 1;
+  const normalizedSourceScope = String(sourceScope || '').trim().toLowerCase();
+  const capByFanout = normalizedQueryTotal > 6 ? 1800 : 2400;
+  const capBySource = normalizedSourceScope === 'external_seed' ? 2400 : capByFanout;
+  return Math.min(remaining, Math.max(120, Math.min(primary, capBySource)));
+}
+
 function buildLocalQueryString(params = {}) {
   const search = new URLSearchParams();
   Object.entries(isPlainObject(params) ? params : {}).forEach(([key, value]) => {
@@ -765,7 +795,15 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
         Number.isFinite(Number(requestedTimeoutMs)) && Number(requestedTimeoutMs) > 0
           ? Number(requestedTimeoutMs)
           : primaryTimeoutMs;
-      return Math.max(0, Math.min(requested, getLocalStepAwareRemainingBudgetMs()));
+      return Math.min(
+        requested,
+        clampLocalBeautyRecallAttemptTimeoutMs({
+          primaryTimeoutMs,
+          remainingBudgetMs: getLocalStepAwareRemainingBudgetMs(),
+          queryTotal: semanticRewriteResultMeta.normalized_query_pack.length,
+          plannerMode: 'step_aware',
+        }),
+      );
     };
     const semanticOwnerContext = prepareInvokeSemanticOwnerContext({
       operation,
@@ -1193,6 +1231,8 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
 
       let timeoutCount = 0;
       let actualHttpAttemptCount = 0;
+      let executedQueryCount = 0;
+      let stageBudgetExhausted = false;
       for (const entry of stageEntries) {
         const sourceScope = String(entry?.source_scope || 'internal')
           .trim()
@@ -1200,10 +1240,17 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
         const preferredStep =
           String(entry?.preferred_step || normalizeRoleStep(entry?.role_id)).trim() ||
           null;
-        const effectiveTimeoutMs = Math.min(primaryTimeoutMs, getLocalFrameworkRemainingBudgetMs());
+        const effectiveTimeoutMs = clampLocalBeautyRecallAttemptTimeoutMs({
+          primaryTimeoutMs,
+          remainingBudgetMs: getLocalFrameworkRemainingBudgetMs(),
+          queryTotal: recallEntries.length,
+          sourceScope,
+          plannerMode: 'framework_generic',
+        });
         if (effectiveTimeoutMs < 120) {
           timeoutCount += 1;
           frameworkBudgetExhausted = true;
+          stageBudgetExhausted = true;
           searchResults.push({
             stage_id: stageId,
             planner_mode: 'framework_generic',
@@ -1216,12 +1263,14 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
             ok: false,
             reason: 'upstream_timeout',
             products: [],
+            attempt_timeout_ms: effectiveTimeoutMs,
             skipped_reason: 'budget_guard',
             error: 'local beauty discovery timeout budget exhausted',
           });
           queryCursor += 1;
           break;
         }
+        const attemptStartedAtMs = Date.now();
         const out = await searchPivotaBackendProducts({
           query: entry?.query,
           limit: normalizedLimit,
@@ -1255,10 +1304,13 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
           queryTotal: recallEntries.length,
           authHeaders,
         });
+        const attemptElapsedMs = Math.max(0, Date.now() - attemptStartedAtMs);
         queryCursor += 1;
+        executedQueryCount += 1;
         actualHttpAttemptCount += Number(out?.actual_http_attempt_count || 0) || 0;
         if (String(out?.reason || '').trim().toLowerCase() === 'upstream_timeout') {
           timeoutCount += 1;
+          stageBudgetExhausted = true;
         }
         searchResults.push({
           stage_id: stageId,
@@ -1269,6 +1321,8 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
           role_rank:
             Number.isFinite(Number(entry?.role_rank)) ? Number(entry.role_rank) : null,
           source_scope: sourceScope,
+          attempt_timeout_ms: effectiveTimeoutMs,
+          attempt_elapsed_ms: attemptElapsedMs,
           ...out,
         });
         for (const product of Array.isArray(out?.products) ? out.products : []) {
@@ -1283,10 +1337,11 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
             retrieval_role_id: String(entry?.role_id || '').trim() || null,
             retrieval_role_rank:
               Number.isFinite(Number(entry?.role_rank))
-                ? Number(entry.role_rank)
-                : null,
+              ? Number(entry.role_rank)
+              : null,
           });
         }
+        if (stageBudgetExhausted) break;
       }
 
       candidateState = finalizeConcernFrameworkCandidatePools(rawCandidates, {
@@ -1305,7 +1360,7 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
           String(stage?.source_scope || 'internal').trim().toLowerCase() || 'internal',
         skipped: false,
         skip_reason: null,
-        executed_query_count: stageEntries.length,
+        executed_query_count: executedQueryCount,
         actual_http_attempt_count: actualHttpAttemptCount,
         timeout_count: timeoutCount,
         selected_count: selectedProductIdsAfter.length,
@@ -1351,6 +1406,12 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
             preferred_step: String(row?.preferred_step || '').trim() || null,
             result_count: products.length,
             adopted,
+            ...(Number.isFinite(Number(row?.attempt_timeout_ms))
+              ? { attempt_timeout_ms: Number(row.attempt_timeout_ms) }
+              : {}),
+            ...(Number.isFinite(Number(row?.attempt_elapsed_ms))
+              ? { attempt_elapsed_ms: Number(row.attempt_elapsed_ms) }
+              : {}),
             ...(row?.error ? { error: String(row.error) } : {}),
             ...(row?.skipped_reason ? { skipped_reason: String(row.skipped_reason) } : {}),
           };

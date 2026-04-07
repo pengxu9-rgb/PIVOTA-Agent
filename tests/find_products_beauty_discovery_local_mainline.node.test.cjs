@@ -441,6 +441,155 @@ test('local beauty discovery mainline fail-closes when recall plan is empty', as
   assert.equal(out.response.metadata?.search_execution_trace?.owner_switch_count, 0);
 });
 
+test('framework local recall advances to next stage after stage timeout', async () => {
+  const attemptedQueries = [];
+  const attemptedTimeouts = [];
+  const runtime = createRuntime({
+    buildRecoRecallPlan: () => ({
+      mode: 'framework_generic',
+      entries: [
+        {
+          stage_id: 'framework_stage_a_primary_internal',
+          query: 'oil control serum',
+          role_id: 'oil_control_treatment',
+          role_rank: 1,
+          preferred_step: 'treatment',
+          source_scope: 'internal',
+          query_index: 0,
+        },
+        {
+          stage_id: 'framework_stage_a_primary_internal',
+          query: 'shine control serum',
+          role_id: 'oil_control_treatment',
+          role_rank: 1,
+          preferred_step: 'treatment',
+          source_scope: 'internal',
+          query_index: 1,
+        },
+        {
+          stage_id: 'framework_stage_c_support_lightweight_moisturizer',
+          query: 'lightweight moisturizer oily skin',
+          role_id: 'lightweight_moisturizer',
+          role_rank: 2,
+          preferred_step: 'moisturizer',
+          source_scope: 'internal',
+          query_index: 2,
+        },
+      ],
+      stages: [
+        {
+          stage_id: 'framework_stage_a_primary_internal',
+          role_id: 'oil_control_treatment',
+          role_rank: 1,
+          source_scope: 'internal',
+          entries: [
+            {
+              query: 'oil control serum',
+              role_id: 'oil_control_treatment',
+              role_rank: 1,
+              preferred_step: 'treatment',
+              source_scope: 'internal',
+              query_index: 0,
+            },
+            {
+              query: 'shine control serum',
+              role_id: 'oil_control_treatment',
+              role_rank: 1,
+              preferred_step: 'treatment',
+              source_scope: 'internal',
+              query_index: 1,
+            },
+          ],
+        },
+        {
+          stage_id: 'framework_stage_c_support_lightweight_moisturizer',
+          role_id: 'lightweight_moisturizer',
+          role_rank: 2,
+          source_scope: 'internal',
+          entries: [
+            {
+              query: 'lightweight moisturizer oily skin',
+              role_id: 'lightweight_moisturizer',
+              role_rank: 2,
+              preferred_step: 'moisturizer',
+              source_scope: 'internal',
+              query_index: 2,
+            },
+          ],
+        },
+      ],
+    }),
+    searchPivotaBackendProducts: async ({ query, timeoutMs }) => {
+      attemptedQueries.push(String(query || ''));
+      attemptedTimeouts.push(Number(timeoutMs || 0));
+      if (query === 'oil control serum') {
+        return {
+          ok: false,
+          reason: 'upstream_timeout',
+          actual_http_attempt_count: 1,
+          products: [],
+        };
+      }
+      return {
+        ok: true,
+        reason: 'ok',
+        actual_http_attempt_count: 1,
+        products: [
+          {
+            product_id: 'moisturizer_1',
+            merchant_id: 'merchant_internal',
+            title: 'Lightweight Gel Moisturizer',
+            retrieval_source: 'internal_search',
+            source_tier: 'fresh_internal',
+            source_quality_class: 'trusted',
+          },
+        ],
+      };
+    },
+  });
+  const out = await runtime.runLocalBeautyDiscoveryMainline({
+    search: {
+      query: 'im oily skin, what products should i use?',
+      limit: 6,
+    },
+    metadata: {
+      source: 'shopping',
+      catalog_surface: 'beauty',
+    },
+    requestContract: {
+      surface: 'direct',
+      primary_lane: 'beauty_discovery_mainline',
+      primary_retrieval_contract: 'agent_v1_search_beauty_mainline',
+    },
+    executionPlan: {
+      primary_lane: 'beauty_discovery_mainline',
+      primary_retrieval_contract: 'agent_v1_search_beauty_mainline',
+      owner_switch_count: 0,
+    },
+    rawUserQuery: 'im oily skin, what products should i use?',
+    gatewayRequestId: 'trace_framework_timeout_stage',
+    timeoutMs: 6500,
+    invokeStartedAtMs: Date.now(),
+  });
+
+  assert.equal(out.handled, true);
+  assert.deepEqual(attemptedQueries, [
+    'oil control serum',
+    'lightweight moisturizer oily skin',
+  ]);
+  assert.ok(attemptedTimeouts.every((timeout) => timeout <= 2400));
+  assert.equal(
+    out.response.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts?.[0]
+      ?.attempt_timeout_ms <= 2400,
+    true,
+  );
+  assert.equal(
+    out.response.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts?.[1]
+      ?.query,
+    'lightweight moisturizer oily skin',
+  );
+});
+
 test('step-aware sunscreen query can use local beauty discovery mainline', () => {
   const runtime = createRuntime({
     buildBeautyDiscoverySemanticContract: () => ({
