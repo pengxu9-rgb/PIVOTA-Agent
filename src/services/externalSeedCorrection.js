@@ -14,6 +14,7 @@ const SEED_CORRECTION_TYPE = Object.freeze({
   normalizeLocaleByMarket: 'normalize_locale_by_market',
   recoverDirectPdpTarget: 'recover_direct_pdp_target',
   rerunCatalogExtraction: 'rerun_catalog_extraction',
+  normalizeBeautyMinorUnitPrice: 'normalize_beauty_minor_unit_price',
   applyManualImageOverride: 'apply_manual_image_override',
   clearGenericTemplateDescription: 'clear_generic_template_description',
   markBlockedNoProductUrls: 'mark_blocked_no_product_urls',
@@ -32,6 +33,23 @@ function cloneJson(value) {
   return JSON.parse(JSON.stringify(value || null));
 }
 
+function mergePreviewRow(row, nextRow) {
+  if (!nextRow || typeof nextRow !== 'object') return row;
+  return {
+    ...row,
+    ...nextRow,
+    id: row?.id,
+    external_product_id: row?.external_product_id,
+    market: row?.market,
+    tool: row?.tool,
+    status: row?.status,
+    attached_product_key: row?.attached_product_key,
+    created_at: row?.created_at,
+    updated_at: row?.updated_at,
+    seed_data: ensureJsonObject(nextRow.seed_data),
+  };
+}
+
 function uniqueStrings(values) {
   const out = [];
   for (const value of values || []) {
@@ -40,6 +58,22 @@ function uniqueStrings(values) {
     out.push(normalized);
   }
   return out;
+}
+
+function normalizeAmount(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  const normalized = normalizeNonEmptyString(value).replace(/,/g, '');
+  if (!normalized) return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function looksLikeMinorUnitAmount(value) {
+  return typeof value === 'number' && Number.isInteger(value) && value > 1000 && value / 100 >= 1 && value / 100 <= 1000;
+}
+
+function formatMajorUnitPrice(value) {
+  return Number(value).toFixed(2);
 }
 
 function loadSnapshot(row) {
@@ -250,6 +284,53 @@ function applyBlockedNoProductUrls(row) {
   return { changed: true, row: nextRow };
 }
 
+function applyBeautyMinorUnitPriceNormalization(row) {
+  const audit = auditExternalSeedRow(row);
+  const blocker = (audit.findings || []).find(
+    (finding) => normalizeNonEmptyString(finding?.anomaly_type) === 'beauty_minor_unit_price_suspected',
+  );
+  if (!blocker) return { changed: false, row };
+
+  const suspectedMajorUnitAmount = normalizeAmount(blocker?.evidence?.suspected_major_unit_amount);
+  const nextRow = cloneJson(row);
+  const { seedData, snapshot } = loadSnapshot(nextRow);
+  let changed = false;
+
+  if (typeof suspectedMajorUnitAmount === 'number' && Number.isFinite(suspectedMajorUnitAmount)) {
+    nextRow.price_amount = suspectedMajorUnitAmount;
+    if (looksLikeMinorUnitAmount(normalizeAmount(seedData.price_amount))) {
+      seedData.price_amount = suspectedMajorUnitAmount;
+      changed = true;
+    }
+    if (looksLikeMinorUnitAmount(normalizeAmount(snapshot.price_amount))) {
+      snapshot.price_amount = suspectedMajorUnitAmount;
+      changed = true;
+    }
+    changed = true;
+  }
+
+  const normalizeVariantList = (variants) => {
+    if (!Array.isArray(variants)) return variants;
+    return variants.map((variant) => {
+      if (!variant || typeof variant !== 'object') return variant;
+      const price = normalizeAmount(variant.price);
+      if (!looksLikeMinorUnitAmount(price)) return variant;
+      changed = true;
+      return {
+        ...variant,
+        price: formatMajorUnitPrice(price / 100),
+      };
+    });
+  };
+
+  if (Array.isArray(snapshot.variants)) snapshot.variants = normalizeVariantList(snapshot.variants);
+  if (Array.isArray(seedData.variants)) seedData.variants = normalizeVariantList(seedData.variants);
+
+  seedData.snapshot = snapshot;
+  nextRow.seed_data = seedData;
+  return { changed, row: nextRow };
+}
+
 function buildSeedCorrectionPlan(row, auditResult = auditExternalSeedRow(row)) {
   const findings = Array.isArray(auditResult?.findings) ? auditResult.findings : [];
   const anomalyTypes = new Set(findings.map((finding) => normalizeNonEmptyString(finding?.anomaly_type)));
@@ -286,6 +367,9 @@ function buildSeedCorrectionPlan(row, auditResult = auditExternalSeedRow(row)) {
   if (findings.some((finding) => rerunTriggers.has(normalizeNonEmptyString(finding?.anomaly_type)))) {
     actions.push({ correction_type: SEED_CORRECTION_TYPE.rerunCatalogExtraction, auto_applied: true });
   }
+  if (anomalyTypes.has('beauty_minor_unit_price_suspected')) {
+    actions.push({ correction_type: SEED_CORRECTION_TYPE.normalizeBeautyMinorUnitPrice, auto_applied: true });
+  }
 
   return {
     findings,
@@ -298,23 +382,31 @@ function buildSeedCorrectionPlan(row, auditResult = auditExternalSeedRow(row)) {
 async function applySeedCorrectionAction(row, action, options = {}) {
   const correctionType = normalizeNonEmptyString(action?.correction_type);
   if (!correctionType) return { changed: false, row, correction_type: correctionType };
+  const beforeRow = cloneJson(row);
+  const dryRun = Boolean(options.dryRun);
 
   if (correctionType === SEED_CORRECTION_TYPE.rerunCatalogExtraction) {
     const result = await processRow(row, {
       baseUrl: options.baseUrl,
-      dryRun: false,
+      dryRun,
     });
-    const nextRow =
-      result?.row?.id ? await loadExternalSeedRowById(result.row.id) : await loadExternalSeedRowById(row.id);
+    const previewRow = dryRun ? mergePreviewRow(row, result?.payload?.nextRow) : null;
+    const nextRow = dryRun
+      ? previewRow
+      : result?.row?.id
+        ? await loadExternalSeedRowById(result.row.id)
+        : await loadExternalSeedRowById(row.id);
     return {
-      changed: result?.status === 'updated',
+      changed: result?.status === 'updated' || result?.status === 'dry_run',
       row: nextRow || row,
       correction_type: correctionType,
       process_result: result,
+      dry_run: dryRun,
+      before: beforeRow,
+      after: cloneJson(nextRow || row),
     };
   }
 
-  const beforeRow = cloneJson(row);
   let applied = { changed: false, row };
 
   if (correctionType === SEED_CORRECTION_TYPE.normalizeLocaleByMarket) {
@@ -323,6 +415,8 @@ async function applySeedCorrectionAction(row, action, options = {}) {
     applied = applyRecoveredTarget(row);
   } else if (correctionType === SEED_CORRECTION_TYPE.clearGenericTemplateDescription) {
     applied = applyGenericTemplateClear(row);
+  } else if (correctionType === SEED_CORRECTION_TYPE.normalizeBeautyMinorUnitPrice) {
+    applied = applyBeautyMinorUnitPriceNormalization(row);
   } else if (correctionType === SEED_CORRECTION_TYPE.applyManualImageOverride) {
     applied = applyManualImageOverride(row);
   } else if (correctionType === SEED_CORRECTION_TYPE.markBlockedNoProductUrls) {
@@ -331,6 +425,17 @@ async function applySeedCorrectionAction(row, action, options = {}) {
 
   if (!applied.changed) {
     return { changed: false, row, correction_type: correctionType, before: beforeRow, after: beforeRow };
+  }
+
+  if (dryRun) {
+    return {
+      changed: true,
+      row: applied.row,
+      correction_type: correctionType,
+      before: beforeRow,
+      after: cloneJson(applied.row),
+      dry_run: true,
+    };
   }
 
   const persistedRow = await persistExternalSeedRow(applied.row);
@@ -380,6 +485,8 @@ module.exports = {
   loadExternalSeedRowById,
   persistExternalSeedRow,
   buildSeedCorrectionPlan,
+  mergePreviewRow,
+  applyBeautyMinorUnitPriceNormalization,
   applySeedCorrectionAction,
   runSeedCorrectionCycle,
 };
