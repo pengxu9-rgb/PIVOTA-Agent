@@ -335,6 +335,19 @@ function filterSemanticOwnerSupportRoleProducts(products = [], {
     }));
 }
 
+function getSemanticOwnerSupportSupplementTimeoutMs({
+  remainingBudgetMs = 0,
+  latencyGuardMs = 0,
+} = {}) {
+  const remaining = Number(remainingBudgetMs);
+  const guard = Math.max(300, Number(latencyGuardMs || 0) || 300);
+  if (Number.isFinite(remaining) && remaining > 0) {
+    const usable = Math.max(0, remaining - guard);
+    return usable >= 500 ? Math.min(1800, usable) : 0;
+  }
+  return 1200;
+}
+
 function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
   const {
     FPM_GATE_SIMPLIFY_V1,
@@ -926,6 +939,22 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
         let supportRowsBuilt = 0;
         for (const supportContext of supportQueryContexts) {
           supportQueriesAttempted.push(supportContext.query);
+          const supportRemainingBudgetMs =
+            typeof getFpmRemainingBudgetMs === 'function' ? getFpmRemainingBudgetMs() : 0;
+          const supportTimeoutMs = getSemanticOwnerSupportSupplementTimeoutMs({
+            remainingBudgetMs: supportRemainingBudgetMs,
+            latencyGuardMs: FPM_LATENCY_GUARD_SECOND_STAGE_MIN_REMAINING_MS,
+          });
+          if (!supportTimeoutMs) {
+            logger?.warn(
+              {
+                query: supportContext.query,
+                remaining_budget_ms: supportRemainingBudgetMs,
+              },
+              'semantic-owner framework support supplement skipped by budget guard',
+            );
+            break;
+          }
           try {
             const supportQueryParams = {
               ...(queryParams && typeof queryParams === 'object' && !Array.isArray(queryParams)
@@ -965,12 +994,16 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
             const supportAxiosConfig = {
               ...axiosConfig,
               url: `${url}${supportQueryString}`,
+              timeout: supportTimeoutMs,
               ...((strictBeautyDirectSearch ? 'GET' : routeMethod) !== 'GET' &&
               Object.keys(supportRequestBody || {}).length > 0
                 ? { data: supportRequestBody }
                 : {}),
             };
-            const supportResponse = await callTrackedUpstream(operation, supportAxiosConfig);
+            const supportResponse = await callTrackedUpstream(
+              `${operation}_support_supplement`,
+              supportAxiosConfig,
+            );
             const supportUpstreamData = normalizeUpstreamData({
               responseBody: supportResponse.data,
               queryParamsOverride: supportQueryParams,
@@ -1399,6 +1432,7 @@ module.exports = {
     filterSemanticOwnerCoverageSupplementQueries,
     filterSemanticOwnerSupportRoleProducts,
     buildSemanticOwnerSupportSemanticContractParam,
+    getSemanticOwnerSupportSupplementTimeoutMs,
     resolveSemanticOwnerFrameworkSupportQuery,
     shouldPreferSemanticOwnerExternalCoverage,
   },

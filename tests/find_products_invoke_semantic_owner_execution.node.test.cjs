@@ -10,6 +10,7 @@ const {
     filterSemanticOwnerCoverageSupplementQueries,
     filterSemanticOwnerSupportRoleProducts,
     buildSemanticOwnerSupportSemanticContractParam,
+    getSemanticOwnerSupportSupplementTimeoutMs,
     resolveSemanticOwnerFrameworkSupportQuery,
     shouldPreferSemanticOwnerExternalCoverage,
   },
@@ -317,5 +318,29 @@ test('semantic-owner support role filter keeps only step-aligned singleton face 
       { targetStepFamily: 'moisturizer' },
     ),
     false,
+  );
+});
+
+test('semantic-owner support supplement keeps a small non-blocking timeout budget', () => {
+  assert.equal(
+    getSemanticOwnerSupportSupplementTimeoutMs({
+      remainingBudgetMs: 9000,
+      latencyGuardMs: 2000,
+    }),
+    1800,
+  );
+  assert.equal(
+    getSemanticOwnerSupportSupplementTimeoutMs({
+      remainingBudgetMs: 2300,
+      latencyGuardMs: 2000,
+    }),
+    0,
+  );
+  assert.equal(
+    getSemanticOwnerSupportSupplementTimeoutMs({
+      remainingBudgetMs: 0,
+      latencyGuardMs: 2000,
+    }),
+    1200,
   );
 });
