@@ -6,6 +6,7 @@ const {
     isSemanticOwnerBundleLikeProduct,
     isSemanticOwnerEligiblePrimaryExternalProduct,
     filterSemanticOwnerCoverageExternalProducts,
+    filterSemanticOwnerCoverageSupplementQueries,
     shouldPreferSemanticOwnerExternalCoverage,
   },
 } = require('../src/findProductsInvokeSemanticOwnerExecution');
@@ -161,5 +162,45 @@ test('semantic-owner coverage supplement keeps only step-aligned singleton exter
   assert.deepEqual(
     filtered.map((product) => product.product_id),
     ['ext_treatment'],
+  );
+});
+
+test('semantic-owner oil-control treatment coverage requires oil-control aligned singleton products', () => {
+  const filtered = filterSemanticOwnerCoverageExternalProducts(
+    [
+      {
+        merchant_id: 'external_seed',
+        product_id: 'ext_retinol_oil',
+        display_name: 'Overnight Retinol Oil',
+        category: 'treatment',
+      },
+      {
+        merchant_id: 'external_seed',
+        product_id: 'ext_oil_control',
+        display_name: 'Niacinamide Oil Control Serum',
+        category: 'serum',
+      },
+    ],
+    { targetStepFamily: 'treatment', semanticFamily: 'oil_control' },
+  );
+
+  assert.deepEqual(
+    filtered.map((product) => product.product_id),
+    ['ext_oil_control'],
+  );
+});
+
+test('semantic-owner treatment coverage does not spend budget on support-step queries', () => {
+  assert.deepEqual(
+    filterSemanticOwnerCoverageSupplementQueries(
+      [
+        'lightweight moisturizer oily skin',
+        'oil control sunscreen',
+        'salicylic acid treatment',
+        'oil control serum',
+      ],
+      { targetStepFamily: 'treatment' },
+    ),
+    ['salicylic acid treatment', 'oil control serum'],
   );
 });

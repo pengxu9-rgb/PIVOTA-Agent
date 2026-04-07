@@ -81,15 +81,23 @@ function getSemanticOwnerProductStepSignals(product) {
   };
 }
 
-function isSemanticOwnerEligiblePrimaryExternalProduct(product, { targetStepFamily = '' } = {}) {
+function isSemanticOwnerEligiblePrimaryExternalProduct(product, {
+  targetStepFamily = '',
+  semanticFamily = '',
+} = {}) {
   if (!isPlainObject(product)) return false;
   if (!isSemanticOwnerExternalSeedProduct(product)) return false;
   if (isSemanticOwnerBundleLikeProduct(product)) return false;
   const normalizedTargetStepFamily = String(targetStepFamily || '').trim().toLowerCase();
+  const normalizedSemanticFamily = String(semanticFamily || '').trim().toLowerCase();
   const signals = getSemanticOwnerProductStepSignals(product);
+  const oilControlAligned =
+    /\b(oil control|oily skin|shine control|mattif(?:y|ying)|sebum|anti shine|anti-shine|salicylic|niacinamide|zinc pca|blemish|acne)\b/.test(signals.text);
   if (!normalizedTargetStepFamily) return signals.treatment || signals.moisturizer || signals.sunscreen;
   if (normalizedTargetStepFamily === 'treatment' || normalizedTargetStepFamily === 'serum') {
-    return signals.treatment && !signals.sunscreen;
+    if (!(signals.treatment && !signals.sunscreen)) return false;
+    if (normalizedSemanticFamily === 'oil_control') return oilControlAligned;
+    return true;
   }
   if (normalizedTargetStepFamily === 'moisturizer') {
     return signals.moisturizer && !signals.sunscreen;
@@ -163,13 +171,14 @@ function shouldPreferSemanticOwnerExternalCoverage({
   externalAdoption = null,
   externalCoverageTrusted = false,
   targetStepFamily = '',
+  semanticFamily = '',
 } = {}) {
   const primaryCount = Array.isArray(primaryProducts) ? primaryProducts.length : 0;
   const externalValidCount = getSemanticOwnerValidProductCount(externalAdoption, externalProducts);
   const externalCount = Array.isArray(externalProducts) ? externalProducts.length : 0;
   const externalHitQuality = String(externalAdoption?.hitDecision?.hit_quality || '').trim();
   const eligiblePrimaryExternalCount = (Array.isArray(externalProducts) ? externalProducts : []).filter((product) =>
-    isSemanticOwnerEligiblePrimaryExternalProduct(product, { targetStepFamily }),
+    isSemanticOwnerEligiblePrimaryExternalProduct(product, { targetStepFamily, semanticFamily }),
   ).length;
   const normalizedTargetStepFamily = String(targetStepFamily || '').trim().toLowerCase();
   const minimumEligibleExternalCount =
@@ -190,10 +199,28 @@ function shouldPreferSemanticOwnerExternalCoverage({
 
 function filterSemanticOwnerCoverageExternalProducts(externalProducts = [], {
   targetStepFamily = '',
+  semanticFamily = '',
 } = {}) {
   return (Array.isArray(externalProducts) ? externalProducts : []).filter((product) =>
-    isSemanticOwnerEligiblePrimaryExternalProduct(product, { targetStepFamily }),
+    isSemanticOwnerEligiblePrimaryExternalProduct(product, { targetStepFamily, semanticFamily }),
   );
+}
+
+function filterSemanticOwnerCoverageSupplementQueries(queries = [], {
+  targetStepFamily = '',
+} = {}) {
+  const normalizedTargetStepFamily = String(targetStepFamily || '').trim().toLowerCase();
+  return (Array.isArray(queries) ? queries : []).filter((query) => {
+    const normalizedQuery = String(query || '').trim().toLowerCase();
+    if (!normalizedQuery) return false;
+    if (normalizedTargetStepFamily === 'treatment' || normalizedTargetStepFamily === 'serum') {
+      return !/\b(moisturi[sz]er|cream|gel cream|lotion|sunscreen|spf|broad spectrum|sun fluid|sun cream|sun lotion)\b/.test(normalizedQuery);
+    }
+    if (normalizedTargetStepFamily === 'sunscreen') {
+      return /\b(sunscreen|spf|broad spectrum|sun fluid|sun cream|sun lotion)\b/.test(normalizedQuery);
+    }
+    return true;
+  });
 }
 
 function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
@@ -518,11 +545,14 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
         rawUserQuery ||
         '';
       const semanticOwnerCoverageSupplementQueries =
-        buildSemanticOwnerExternalRescueQueryPack({
-          ignoredAttempt: null,
-          queryAttempts: semanticOwnerQueryAttempts,
-          fallbackQuery: String(rawUserQuery || currentQueryText || '').trim(),
-        });
+        filterSemanticOwnerCoverageSupplementQueries(
+          buildSemanticOwnerExternalRescueQueryPack({
+            ignoredAttempt: null,
+            queryAttempts: semanticOwnerQueryAttempts,
+            fallbackQuery: String(rawUserQuery || currentQueryText || '').trim(),
+          }),
+          { targetStepFamily: semanticOwnerTargetStepFamily },
+        );
       if (semanticOwnerCoverageSupplementQueries.length > 0) {
         semanticOwnerExternalRescueQueriesAttempted = Array.from(
           new Set([
@@ -571,7 +601,10 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
               : [];
             const coveragePrimaryExternalProducts = filterSemanticOwnerCoverageExternalProducts(
               coverageExternalProducts,
-              { targetStepFamily: semanticOwnerTargetStepFamily },
+              {
+                targetStepFamily: semanticOwnerTargetStepFamily,
+                semanticFamily: semanticOwnerSemanticFamily,
+              },
             );
             if (coveragePrimaryExternalProducts.length <= 0) continue;
             const externalCoverageTrusted =
@@ -643,6 +676,7 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
               externalAdoption: externalCoverageAdoption,
               externalCoverageTrusted,
               targetStepFamily: semanticOwnerTargetStepFamily,
+              semanticFamily: semanticOwnerSemanticFamily,
             });
             const mergedProducts = mergeSemanticOwnerProductPools(
               preferExternalFirst ? [] : primaryProducts,
@@ -1039,6 +1073,7 @@ module.exports = {
     isSemanticOwnerBundleLikeProduct,
     isSemanticOwnerEligiblePrimaryExternalProduct,
     filterSemanticOwnerCoverageExternalProducts,
+    filterSemanticOwnerCoverageSupplementQueries,
     shouldPreferSemanticOwnerExternalCoverage,
   },
 };
