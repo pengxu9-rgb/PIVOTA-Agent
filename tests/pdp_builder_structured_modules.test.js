@@ -709,12 +709,12 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
           },
           {
             heading: 'Details',
-            body: 'Details THE UNDERCOVER BLEMISH FIGHTER THE BLEMISH FIX SO STEALTH, YOU\'LL NEVER SEE IT UNDER MAKEUP STRAIGHT UP: Shield and combat blemishes without sacrificing your makeup look. This Salicylic Acid-backed, spot-targeting gel fights blemishes, clarifies, reduces surface oil and guards against environmental assailants. Its unique jelly texture dries down quickly, so you can wear it anytime you want, especially under makeup. AVOID CONTACT WITH EYES. KEEP OUT OF REACH OF CHILDREN. CUSTOMERSERVICE@FENTYBEAUTY.COM FENTYBEAUTY.COM',
+            body: 'Details Details THE UNDERCOVER BLEMISH FIGHTER THE BLEMISH FIX SO STEALTH, YOU\'LL NEVER SEE IT UNDER MAKEUP STRAIGHT UP: Shield and combat blemishes without sacrificing your makeup look. This Salicylic Acid-backed, spot-targeting gel fights blemishes, clarifies, reduces surface oil and guards against environmental assailants. Its unique jelly texture dries down quickly, so you can wear it anytime you want, especially under makeup. Learn more Close BHA-GEL GEGEN AKNE. AVOID CONTACT WITH EYES. KEEP OUT OF REACH OF CHILDREN. CUSTOMERSERVICE@FENTYBEAUTY.COM FENTYBEAUTY.COM',
           },
         ],
         ingredients_inci: {
           raw_text:
-            'We got you covered fam! Your health and safety are hella important to us. Although the hype is real about our high-quality ingredients, we always recommend consulting your physician about the use of our products during pregnancy or while nursing. Peep the tab on each product’s description page and hit up your physician before you glow. Ingredients: AQUA/WATER/EAU, PROPANEDIOL, GLYCERIN, SALICYLIC ACID, PANTHENOL, PHENOXYETHANOL.',
+            'We got you covered fam! Your health and safety are hella important to us. Although the hype is real about our high-quality ingredients, we always recommend consulting your physician about the use of our products during pregnancy or while nursing. Peep the tab on each product&rsquo;s description page and hit up your physician before you glow. &rsquo; tab on each product&rsquo; Ingredients: AQUA/WATER/EAU, PROPANEDIOL, GLYCERIN, SALICYLIC ACID, PANTHENOL, PHENOXYETHANOL.',
           source_origin: 'retail_pdp',
           source_quality_status: 'captured',
         },
@@ -738,13 +738,13 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
         content: expect.stringContaining('Shield and combat blemishes without sacrificing your makeup look.'),
       }),
     ]);
-    expect(detailsSections[0]?.content).not.toMatch(/AVOID CONTACT WITH EYES|CUSTOMERSERVICE@|Details\b/i);
+    expect(detailsSections[0]?.content).not.toMatch(/AVOID CONTACT WITH EYES|CUSTOMERSERVICE@|Details\b|learn more|BHA-GEL/i);
     expect(factsSections).toEqual([]);
     const ingredientsItems =
       payload.modules.find((module) => module.type === 'ingredients_inci')?.data?.items || [];
     expect(ingredientsItems).toEqual(
       expect.arrayContaining(['AQUA/WATER/EAU', 'PROPANEDIOL', 'GLYCERIN', 'SALICYLIC ACID', 'PANTHENOL', 'PHENOXYETHANOL.']),
     );
-    expect(ingredientsItems.join(' ')).not.toMatch(/we got you covered|physician|pregnancy|description page/i);
+    expect(ingredientsItems.join(' ')).not.toMatch(/we got you covered|health and safety|physician|pregnancy|description page|tab on each product|&rsquo/i);
   });
 });
