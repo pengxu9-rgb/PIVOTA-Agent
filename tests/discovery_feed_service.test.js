@@ -2654,8 +2654,109 @@ describe('discovery feed service', () => {
     expect(ids).not.toContain('tool_2');
     expect(response.products[0].merchant_id).toBe('external_seed');
     expect(response.metadata.rank_debug.top_candidates.find((candidate) => candidate.product_id === 'tool_1')?.decision).toBe(
-      'page_window_excluded_cold_start_domain',
+      'filtered_cold_start_domain',
     );
+  });
+
+  test('cold start browse does not backfill deferred domains onto later pages when non-deferred results exist', async () => {
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 2,
+        limit: 4,
+        debug: true,
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      },
+      {
+        candidateProducts: [
+          makeProduct({
+            merchant_id: 'm1',
+            product_id: 'beauty_1',
+            title: 'Barrier Repair Serum',
+            category: 'Skincare',
+            product_type: 'Serum',
+          }),
+          makeProduct({
+            merchant_id: 'm2',
+            product_id: 'beauty_2',
+            title: 'Vitamin C Glow Serum',
+            category: 'Skincare',
+            product_type: 'Serum',
+          }),
+          makeProduct({
+            merchant_id: 'm3',
+            product_id: 'beauty_3',
+            title: 'Ceramide Recovery Cream',
+            category: 'Skincare',
+            product_type: 'Cream',
+          }),
+          makeProduct({
+            merchant_id: 'm4',
+            product_id: 'beauty_4',
+            title: 'Niacinamide Refining Treatment',
+            category: 'Skincare',
+            product_type: 'Treatment',
+          }),
+          makeProduct({
+            merchant_id: 'm5',
+            product_id: 'pet_1',
+            title: 'Dog Rain Jacket',
+            category: 'Pet',
+            product_type: 'Apparel',
+          }),
+          makeProduct({
+            merchant_id: 'm6',
+            product_id: 'sleep_1',
+            title: 'Cloud Sleepwear Set',
+            category: 'Sleepwear',
+            product_type: 'Pajama',
+          }),
+          makeProduct({
+            merchant_id: 'm7',
+            product_id: 'lingerie_1',
+            title: 'Lace Bodysuit Set',
+            category: 'Lingerie',
+            product_type: 'Bodysuit',
+          }),
+          makeProduct({
+            merchant_id: 'm8',
+            product_id: 'tool_1',
+            title: 'Precision Blending Brush',
+            category: 'Beauty Tools',
+            product_type: 'Brush',
+          }),
+          makeProduct({
+            merchant_id: 'm9',
+            product_id: 'beauty_5',
+            title: 'Peptide Firming Serum',
+            category: 'Skincare',
+            product_type: 'Serum',
+          }),
+          makeProduct({
+            merchant_id: 'm10',
+            product_id: 'beauty_6',
+            title: 'Gentle Barrier Cleanser',
+            category: 'Skincare',
+            product_type: 'Cleanser',
+          }),
+        ],
+      },
+    );
+
+    expect(response.products.map((product) => product.product_id)).toEqual(['beauty_5', 'beauty_6']);
+    expect(response.total).toBe(6);
+    const decisions = new Map(
+      response.metadata.rank_debug.top_candidates.map((candidate) => [candidate.product_id, candidate.decision]),
+    );
+    expect(decisions.get('pet_1')).toBe('filtered_cold_start_domain');
+    expect(decisions.get('sleep_1')).toBe('filtered_cold_start_domain');
+    expect(decisions.get('lingerie_1')).toBe('filtered_cold_start_domain');
+    expect(decisions.get('tool_1')).toBe('filtered_cold_start_domain');
   });
 
   test('generic discovery can succeed via external seeds even when products/search is unavailable', async () => {

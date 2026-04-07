@@ -3191,6 +3191,14 @@ function shouldDeferColdStartCandidate(candidate) {
   );
 }
 
+function isGenericAnonymousBrowseColdStart(profile, options = {}) {
+  const brandScoped = options.brandScoped === true;
+  const sort = normalizeDiscoverySort(options.sort);
+  const queryText = String(options.queryText || '').trim();
+  const categoryScope = Array.isArray(options.categoryScope) ? options.categoryScope : [];
+  return !profile?.hasInterestSignals && sort === 'popular' && !brandScoped && !queryText && categoryScope.length === 0;
+}
+
 function getColdStartHomeDomainPriority(candidate) {
   if (candidate?.domain === 'beauty' && candidate?.beautyBucket === 'tools') return 1;
   switch (candidate?.domain) {
@@ -3338,14 +3346,14 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
   const brandScoped = options.brandScoped === true;
   const queryText = String(options.queryText || '').trim();
   const categoryScope = normalizeDiscoveryCategories(options.categories, 12);
+  const coldStartCuration = isGenericAnonymousBrowseColdStart(profile, {
+    sort,
+    brandScoped,
+    queryText,
+    categoryScope,
+  });
   const ranked = [...scoredCandidates].sort(compareBrowseEntriesBySort(sort));
   const decisions = collectDebug ? new Map() : null;
-  const coldStartCuration =
-    !profile?.hasInterestSignals &&
-    sort === 'popular' &&
-    !brandScoped &&
-    !queryText &&
-    categoryScope.length === 0;
 
   const preCategoryPool = [];
   const recentViewDeferred = [];
@@ -3380,9 +3388,16 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
     }
     preferredPool.push(entry);
   }
-  const orderedPool = coldStartCuration
-    ? preferredPool.concat(coldStartDeferredPool)
-    : preferredPool;
+  const orderedPool =
+    coldStartCuration && preferredPool.length > 0
+      ? preferredPool
+      : preferredPool.concat(coldStartDeferredPool);
+
+  if (coldStartCuration && preferredPool.length > 0 && decisions) {
+    for (const entry of coldStartDeferredPool) {
+      decisions.set(entry.candidate.key, 'filtered_cold_start_domain');
+    }
+  }
 
   const start = (page - 1) * limit;
   const pageItems = orderedPool.slice(start, start + limit);
