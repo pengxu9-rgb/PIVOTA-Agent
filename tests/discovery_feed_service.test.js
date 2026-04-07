@@ -2654,7 +2654,7 @@ describe('discovery feed service', () => {
     expect(ids).not.toContain('tool_2');
     expect(response.products[0].merchant_id).toBe('external_seed');
     expect(response.metadata.rank_debug.top_candidates.find((candidate) => candidate.product_id === 'tool_1')?.decision).toBe(
-      'page_window_excluded_cold_start_domain',
+      'filtered_cold_start_domain',
     );
   });
 

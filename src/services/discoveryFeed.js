@@ -3193,9 +3193,10 @@ function shouldDeferColdStartCandidate(candidate) {
 
 function isGenericAnonymousBrowseColdStart(profile, options = {}) {
   const brandScoped = options.brandScoped === true;
+  const sort = normalizeDiscoverySort(options.sort);
   const queryText = String(options.queryText || '').trim();
   const categoryScope = Array.isArray(options.categoryScope) ? options.categoryScope : [];
-  return !profile?.hasInterestSignals && !brandScoped && !queryText && categoryScope.length === 0;
+  return !profile?.hasInterestSignals && sort === 'popular' && !brandScoped && !queryText && categoryScope.length === 0;
 }
 
 function getColdStartHomeDomainPriority(candidate) {
@@ -3346,18 +3347,13 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
   const queryText = String(options.queryText || '').trim();
   const categoryScope = normalizeDiscoveryCategories(options.categories, 12);
   const coldStartCuration = isGenericAnonymousBrowseColdStart(profile, {
+    sort,
     brandScoped,
     queryText,
     categoryScope,
   });
   const ranked = [...scoredCandidates].sort(compareBrowseEntriesBySort(sort));
   const decisions = collectDebug ? new Map() : null;
-  const coldStartCuration =
-    !profile?.hasInterestSignals &&
-    sort === 'popular' &&
-    !brandScoped &&
-    !queryText &&
-    categoryScope.length === 0;
 
   const preCategoryPool = [];
   const recentViewDeferred = [];
@@ -3392,33 +3388,19 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
     }
     preferredPool.push(entry);
   }
-  const orderedPool = coldStartCuration
-    ? preferredPool.concat(coldStartDeferredPool)
-    : preferredPool;
+  const orderedPool =
+    coldStartCuration && preferredPool.length > 0
+      ? preferredPool
+      : preferredPool.concat(coldStartDeferredPool);
 
-  let effectiveOrderedPool = orderedPool;
-  if (coldStartCuration) {
-    const nonDeferredPool = [];
-    const deferredPool = [];
-    for (const entry of orderedPool) {
-      if (shouldDeferColdStartCandidate(entry.candidate)) {
-        deferredPool.push(entry);
-        continue;
-      }
-      nonDeferredPool.push(entry);
-    }
-    if (nonDeferredPool.length > 0) {
-      effectiveOrderedPool = nonDeferredPool;
-      if (decisions) {
-        for (const entry of deferredPool) {
-          decisions.set(entry.candidate.key, 'filtered_cold_start_domain');
-        }
-      }
+  if (coldStartCuration && preferredPool.length > 0 && decisions) {
+    for (const entry of coldStartDeferredPool) {
+      decisions.set(entry.candidate.key, 'filtered_cold_start_domain');
     }
   }
 
   const start = (page - 1) * limit;
-  const pageItems = effectiveOrderedPool.slice(start, start + limit);
+  const pageItems = orderedPool.slice(start, start + limit);
   if (page <= 1 && pageItems.length < limit) {
     for (const entry of recentViewDeferred) {
       if (pageItems.length >= limit) break;
@@ -3436,7 +3418,7 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
   }
 
   const selectedKeys = new Set(pageItems.map((entry) => entry.candidate.key));
-  for (const entry of effectiveOrderedPool) {
+  for (const entry of orderedPool) {
     if (decisions.has(entry.candidate.key)) continue;
     decisions.set(
       entry.candidate.key,
@@ -3451,7 +3433,7 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
   return {
     ranked,
     preCategoryPool,
-    orderedPool: effectiveOrderedPool,
+    orderedPool,
     pageItems,
     decisions,
   };
