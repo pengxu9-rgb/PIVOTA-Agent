@@ -835,6 +835,23 @@ function sanitizeNarrativeText(value) {
       .replace(/\s*\/\/\/\s*SOCIAL HIGHLIGHTS:\s*[\s\S]*$/i, '')
       .trim();
   }
+  const leadingColonIndex = cleaned.indexOf(':');
+  if (leadingColonIndex > 0 && leadingColonIndex <= 160) {
+    const leadingPrefix = cleaned.slice(0, leadingColonIndex).trim();
+    const leadingBody = cleaned.slice(leadingColonIndex + 1).trim();
+    const uppercaseMatches = leadingPrefix.match(/[A-Z]/g) || [];
+    const lowercaseMatches = leadingPrefix.match(/[a-z]/g) || [];
+    const uppercaseDominant =
+      leadingPrefix.length >= 24 &&
+      uppercaseMatches.length >= 10 &&
+      uppercaseMatches.length >= Math.max(3, lowercaseMatches.length * 3);
+    const marketingPrefix =
+      /\b(straight up|the lowdown|what else|the #s don't lie)\b/i.test(leadingPrefix) ||
+      uppercaseDominant;
+    if (marketingPrefix && /^[A-Z0-9][\s\S]{12,}$/.test(leadingBody)) {
+      cleaned = leadingBody;
+    }
+  }
   const narrativeCutPatterns = [
     /\bthe lowdown\b/i,
     /\bthe #s don't lie\b/i,
@@ -945,6 +962,41 @@ function uniqueOverviewFacts(items) {
     if (!key || seen.has(key)) continue;
     seen.add(key);
     out.push({ label, value });
+  }
+  return out;
+}
+
+function uniqueNarrativeBlocks(items, maxItems = 8) {
+  const out = [];
+  for (const item of Array.isArray(items) ? items : []) {
+    const normalized = normalizeTextValue(item);
+    if (!normalized) continue;
+    const key = normalizeComparisonKey(normalized);
+    if (!key) continue;
+
+    let shouldSkip = false;
+    for (let index = 0; index < out.length; index += 1) {
+      const existing = out[index];
+      const existingKey = normalizeComparisonKey(existing);
+      if (!existingKey) continue;
+      if (key === existingKey) {
+        shouldSkip = true;
+        break;
+      }
+      if (key.includes(existingKey)) {
+        shouldSkip = true;
+        break;
+      }
+      if (existingKey.includes(key)) {
+        out[index] = normalized;
+        shouldSkip = true;
+        break;
+      }
+    }
+
+    if (shouldSkip) continue;
+    out.push(normalized);
+    if (out.length >= Math.max(1, Number(maxItems) || 8)) break;
   }
   return out;
 }
@@ -1092,7 +1144,7 @@ function buildBeautyOverviewModel(product) {
 
   const uniqueFacts = uniqueOverviewFacts(facts);
   const uniqueHighlights = normalizeStringList(highlightItems, 8);
-  const description = normalizeStringList(narrativeBlocks, 3)
+  const description = uniqueNarrativeBlocks(narrativeBlocks, 3)
     .filter((item) => item.length >= 24)
     .slice(0, 2)
     .join(' ');

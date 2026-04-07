@@ -732,6 +732,9 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     const factsSections =
       payload.modules.find((module) => module.type === 'product_facts')?.data?.sections || [];
 
+    expect(payload.product.description).toBe(
+      "Shield and combat blemishes without sacrificing your makeup look. This Salicylic Acid-backed, spot-targeting gel fights blemishes, clarifies, reduces surface oil and guards against environmental assailants. Its unique jelly texture dries down quickly, so you can wear it anytime you want, especially under makeup.",
+    );
     expect(detailsSections).toEqual([
       expect.objectContaining({
         heading: 'Overview',
@@ -739,7 +742,7 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
       }),
     ]);
     expect(detailsSections[0]?.content).not.toMatch(
-      /AVOID CONTACT WITH EYES|CUSTOMERSERVICE@|Details\b|learn more|BHA-GEL|THE LOWDOWN|The #s don't lie|Fill weight/i,
+      /AVOID CONTACT WITH EYES|CUSTOMERSERVICE@|Details\b|learn more|BHA-GEL|THE LOWDOWN|The #s don't lie|Fill weight|THE UNDERCOVER|STRAIGHT UP:/i,
     );
     expect(factsSections).toEqual([]);
     const ingredientsItems =
