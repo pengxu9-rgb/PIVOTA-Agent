@@ -1893,6 +1893,71 @@ describe('discovery feed service', () => {
     expect(response.products).toHaveLength(3);
   });
 
+  test('cold start browse recalls specific skincare queries before generic beauty umbrella queries', async () => {
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+    process.env.PIVOTA_API_KEY = 'test-key';
+
+    const capturedQueries = [];
+    nock('http://catalog.test')
+      .get('/agent/v1/products/search')
+      .query((params) => {
+        capturedQueries.push(String(params.query || '').trim());
+        return true;
+      })
+      .times(2)
+      .reply(200, () => ({
+        products: [
+          makeProduct({
+            merchant_id: 'm1',
+            product_id: `serum_${capturedQueries.length}_1`,
+            title: 'Niacinamide Recovery Serum',
+            brand: 'Alpha',
+            category: 'Skincare',
+            product_type: 'Serum',
+          }),
+          makeProduct({
+            merchant_id: 'm2',
+            product_id: `serum_${capturedQueries.length}_2`,
+            title: 'Vitamin C Brightening Serum',
+            brand: 'Beta',
+            category: 'Skincare',
+            product_type: 'Serum',
+          }),
+          makeProduct({
+            merchant_id: 'm3',
+            product_id: `cream_${capturedQueries.length}_1`,
+            title: 'Barrier Repair Cream',
+            brand: 'Gamma',
+            category: 'Skincare',
+            product_type: 'Cream',
+          }),
+        ],
+      }));
+
+    const response = await getDiscoveryFeed({
+      surface: 'browse_products',
+      page: 1,
+      limit: 10,
+      debug: true,
+      context: {
+        auth_state: 'anonymous',
+        locale: 'en-US',
+        recent_views: [],
+        recent_queries: [],
+      },
+    });
+
+    expect(capturedQueries).toHaveLength(2);
+    expect(capturedQueries.some((queryText) => /beauty skincare serum/i.test(queryText))).toBe(false);
+    expect(capturedQueries).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/niacinamide serum/i),
+        expect.stringMatching(/vitamin c serum|barrier moisturizer|gentle cleanser sunscreen/i),
+      ]),
+    );
+    expect(response.products).toHaveLength(3);
+  });
+
   test('home_hot_deals still runs browse fill when a large interest pool is mostly filtered out', async () => {
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
     process.env.PIVOTA_API_KEY = 'test-key';
