@@ -3276,7 +3276,7 @@ function shouldDeferColdStartCandidate(candidate) {
   );
 }
 
-function shouldDeferColdStartBrowseSourceCandidate(candidate) {
+function shouldDeferColdStartInternalSourceCandidate(candidate) {
   if (!candidate || candidate.domain !== 'beauty') return false;
   if (candidate.beautyBucket === 'tools') return false;
   return !isExternalSeedMerchantCandidate(candidate);
@@ -3352,6 +3352,17 @@ function selectHomeProducts(scoredCandidates, viewedKeys, limit, options = {}) {
   const ranked = [...scoredCandidates].sort(
     coldStartCuration ? compareColdStartHomeEntries : compareHomeEntries,
   );
+  const externalSeedBeautyCandidateCount = coldStartCuration
+    ? ranked.filter(
+        (entry) =>
+          isExternalSeedMerchantCandidate(entry.candidate) &&
+          entry.candidate?.domain === 'beauty' &&
+          entry.candidate?.beautyBucket !== 'tools',
+      ).length
+    : 0;
+  const hasExternalSeedBeautyCandidate =
+    coldStartCuration &&
+    externalSeedBeautyCandidateCount >= Math.max(MIN_COLD_START_NON_DEFERRED_RESULTS, limit - 1);
 
   const selected = [];
   const decisions = collectDebug ? new Map() : null;
@@ -3373,6 +3384,11 @@ function selectHomeProducts(scoredCandidates, viewedKeys, limit, options = {}) {
     if (coldStartCuration && shouldDeferColdStartCandidate(entry.candidate)) {
       coldStartDeferred.push(entry);
       if (decisions) decisions.set(entry.candidate.key, 'filtered_cold_start_domain');
+      continue;
+    }
+    if (hasExternalSeedBeautyCandidate && shouldDeferColdStartInternalSourceCandidate(entry.candidate)) {
+      coldStartDeferred.push(entry);
+      if (decisions) decisions.set(entry.candidate.key, 'filtered_cold_start_internal_source');
       continue;
     }
     rankedEligible.push(entry);
@@ -3399,6 +3415,10 @@ function selectHomeProducts(scoredCandidates, viewedKeys, limit, options = {}) {
   for (const entry of coldStartDeferred) {
     if (selected.length >= limit) break;
     if (selected.some((picked) => picked.candidate.key === entry.candidate.key)) continue;
+    if (hasExternalSeedBeautyCandidate && shouldDeferColdStartInternalSourceCandidate(entry.candidate)) {
+      if (decisions) decisions.set(entry.candidate.key, 'not_selected_cold_start_internal_source');
+      continue;
+    }
     if (entry.candidate.domain !== 'beauty') {
       if (decisions) decisions.set(entry.candidate.key, 'not_selected_cold_start_deferred');
       continue;
@@ -3494,7 +3514,7 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
       }
       continue;
     }
-    if (hasExternalSeedBeautyCandidate && shouldDeferColdStartBrowseSourceCandidate(entry.candidate)) {
+    if (hasExternalSeedBeautyCandidate && shouldDeferColdStartInternalSourceCandidate(entry.candidate)) {
       coldStartDeferredPool.push(entry);
       if (coldStartDeferredReasons) {
         coldStartDeferredReasons.set(entry.candidate.key, 'filtered_cold_start_internal_source');
