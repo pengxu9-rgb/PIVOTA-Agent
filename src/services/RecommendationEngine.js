@@ -1289,6 +1289,19 @@ function matchesFocusedCategoryRecall(
   });
 }
 
+function buildExternalBrandSearchPatterns(brandHint) {
+  const normalized = normalizeText(brandHint);
+  if (!normalized) return [];
+  const compact = normalized.replace(/\s+/g, '');
+  const core = normalized
+    .replace(/\b(?:beauty|hair|skin\s+care|skincare|cosmetics|official)\b/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  return Array.from(new Set([normalized, compact, core].filter((value) => value && value.length >= 3))).map(
+    (value) => `%${value}%`,
+  );
+}
+
 async function fetchExternalCandidates({ brandHint, categoryHint, limit, baseProduct = null }) {
   if (!process.env.DATABASE_URL) return [];
   const safeLimit = Math.min(Math.max(1, Number(limit || 180)), 500);
@@ -1296,6 +1309,7 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
   const tool = 'creator_agents';
 
   const brand = normalizeText(brandHint);
+  const brandPatterns = buildExternalBrandSearchPatterns(brand);
   const leafCategory = normalizeText(categoryHint);
   const parentCategory = normalizeText(getParentCategory(baseProduct));
   const vertical = inferVerticalFromProduct(baseProduct || {}).vertical || UNKNOWN_VERTICAL;
@@ -1426,14 +1440,31 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
       OR lower(coalesce(seed_data->'snapshot'->>'vendor', '')) = $4
       OR lower(coalesce(seed_data->'snapshot'->>'vendor_name', '')) = $4
       OR lower(coalesce(seed_data->'snapshot'->>'title', seed_data->>'title', title, '')) LIKE $4 || ' %'
+      OR lower(concat_ws(' ',
+        coalesce(domain, ''),
+        coalesce(destination_url, ''),
+        coalesce(canonical_url, ''),
+        coalesce(title, ''),
+        coalesce(seed_data->>'brand', ''),
+        coalesce(seed_data->>'brand_name', ''),
+        coalesce(seed_data->>'vendor', ''),
+        coalesce(seed_data->>'vendor_name', ''),
+        coalesce(seed_data->>'merchant_display_name', ''),
+        coalesce(seed_data->'snapshot'->>'brand', ''),
+        coalesce(seed_data->'snapshot'->>'brand_name', ''),
+        coalesce(seed_data->'snapshot'->>'vendor', ''),
+        coalesce(seed_data->'snapshot'->>'vendor_name', ''),
+        coalesce(seed_data->'snapshot'->>'merchant_display_name', ''),
+        coalesce(seed_data->'derived'->'recall'->>'brand', '')
+      )) LIKE ANY($5::text[])
     )
   `;
 
   const [brandMatches, categoryExactMatches, categorySemanticMatches, verticalMatches] = await Promise.all([
-    brand
+    brand && brandPatterns.length
       ? runQueryWithBudget(
           `AND ${brandSurfaceSql}`,
-          [brand],
+          [brand, brandPatterns],
           Math.min(120, safeLimit),
           'external_brand',
         )
