@@ -629,6 +629,7 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
           : failureReason || 'local beauty discovery upstream failed',
       );
       err.code = failureReason === 'upstream_timeout' ? 'ECONNABORTED' : 'ELOCALSEARCH';
+      err.searchOut = searchOut;
       throw err;
     }
     const products = (Array.isArray(searchOut?.products) ? searchOut.products : [])
@@ -886,49 +887,73 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
         initialSearchErrorAttempt = {
           error: errMessage,
           timeout_error: true,
+          ...(Array.isArray(initialSearchErr?.searchOut?.attempted_endpoints)
+            ? { attempted_endpoints: initialSearchErr.searchOut.attempted_endpoints }
+            : {}),
+          ...(Array.isArray(initialSearchErr?.searchOut?.attempted_base_urls)
+            ? { attempted_base_urls: initialSearchErr.searchOut.attempted_base_urls }
+            : {}),
+          ...(Array.isArray(initialSearchErr?.searchOut?.attempted_paths)
+            ? { attempted_paths: initialSearchErr.searchOut.attempted_paths }
+            : {}),
+          ...(initialSearchErr?.searchOut?.source_endpoint
+            ? { source_endpoint: String(initialSearchErr.searchOut.source_endpoint) }
+            : {}),
+          ...(initialSearchErr?.searchOut?.source_base_url
+            ? { source_base_url: String(initialSearchErr.searchOut.source_base_url) }
+            : {}),
+          ...(initialSearchErr?.searchOut?.source_path
+            ? { source_path: String(initialSearchErr.searchOut.source_path) }
+            : {}),
+          ...(Number.isFinite(Number(initialSearchErr?.searchOut?.actual_http_attempt_count))
+            ? {
+                actual_http_attempt_count:
+                  Number(initialSearchErr.searchOut.actual_http_attempt_count),
+              }
+            : {}),
         };
       } else {
-      return {
-        handled: true,
-        response: buildLocalBeautyDiscoveryMainlineResponse({
-          queryText,
-          contract,
-          plan,
-          traceQueryClass,
-          gatewayRequestId,
-          invokeStartedAtMs,
-          primaryTimeoutMs,
-          semanticContract,
-          semanticRewriteResultMeta,
-          primaryQueryPackAttempts: [
-            {
-              query: String(queryParams.query || '').trim(),
-              query_index: 0,
-              query_total: semanticRewriteResultMeta.normalized_query_pack.length,
-              result_count: 0,
-              adopted: false,
-              error: errMessage,
+        return {
+          handled: true,
+          response: buildLocalBeautyDiscoveryMainlineResponse({
+            queryText,
+            contract,
+            plan,
+            traceQueryClass,
+            gatewayRequestId,
+            invokeStartedAtMs,
+            primaryTimeoutMs,
+            semanticContract,
+            semanticRewriteResultMeta,
+            primaryQueryPackAttempts: [
+              {
+                query: String(queryParams.query || '').trim(),
+                query_index: 0,
+                query_total: semanticRewriteResultMeta.normalized_query_pack.length,
+                result_count: 0,
+                adopted: false,
+                error: errMessage,
+              },
+            ],
+            selectedProducts: [],
+            rawCandidates: [],
+            supplementTraces: [],
+            primaryFailureStage: /timeout|ECONNABORTED/i.test(
+              `${initialSearchErr?.code || ''} ${errMessage}`,
+            )
+              ? 'primary_upstream_timeout'
+              : 'primary_upstream_error',
+            finalDecision: 'strict_empty',
+            operation,
+            upstreamMetadata: {
+              query_source: 'beauty_discovery_local_mainline',
+              local_step_aware_query_pack_full: fullQueryPack,
+              local_step_aware_query_pack_critical: criticalQueryPack,
+              local_step_aware_query_pack_truncated:
+                criticalQueryPack.length < fullQueryPack.length,
             },
-          ],
-          selectedProducts: [],
-          rawCandidates: [],
-          supplementTraces: [],
-          primaryFailureStage: /timeout|ECONNABORTED/i.test(
-            `${initialSearchErr?.code || ''} ${errMessage}`,
-          )
-            ? 'primary_upstream_timeout'
-            : 'primary_upstream_error',
-          finalDecision: 'strict_empty',
-          operation,
-          upstreamMetadata: {
-            query_source: 'beauty_discovery_local_mainline',
-            local_step_aware_query_pack_full: fullQueryPack,
-            local_step_aware_query_pack_critical: criticalQueryPack,
-            local_step_aware_query_pack_truncated:
-              criticalQueryPack.length < fullQueryPack.length,
-          },
-        }),
-      };
+          }),
+        };
       }
     }
     let response = initialSearch.response;
@@ -1487,6 +1512,21 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
               : {}),
             ...(Number.isFinite(Number(row?.attempt_elapsed_ms))
               ? { attempt_elapsed_ms: Number(row.attempt_elapsed_ms) }
+              : {}),
+            ...(Array.isArray(row?.attempted_endpoints)
+              ? { attempted_endpoints: row.attempted_endpoints }
+              : {}),
+            ...(Array.isArray(row?.attempted_base_urls)
+              ? { attempted_base_urls: row.attempted_base_urls }
+              : {}),
+            ...(Array.isArray(row?.attempted_paths)
+              ? { attempted_paths: row.attempted_paths }
+              : {}),
+            ...(row?.source_endpoint ? { source_endpoint: String(row.source_endpoint) } : {}),
+            ...(row?.source_base_url ? { source_base_url: String(row.source_base_url) } : {}),
+            ...(row?.source_path ? { source_path: String(row.source_path) } : {}),
+            ...(Number.isFinite(Number(row?.actual_http_attempt_count))
+              ? { actual_http_attempt_count: Number(row.actual_http_attempt_count) }
               : {}),
             ...(row?.error ? { error: String(row.error) } : {}),
             ...(row?.skipped_reason ? { skipped_reason: String(row.skipped_reason) } : {}),
