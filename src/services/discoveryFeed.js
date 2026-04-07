@@ -3040,7 +3040,35 @@ function scoreBeautyBucketAlignment(candidate, profile) {
   return -0.65;
 }
 
-function scoreCandidate(candidate, profile, surface) {
+function isExternalSeedMerchantCandidate(candidate) {
+  return String(candidate?.merchantId || '').trim() === EXTERNAL_SEED_MERCHANT_ID;
+}
+
+function scoreColdStartCandidateQuality(candidate, surface) {
+  if (!candidate) return 0;
+  if (candidate.domain === 'beauty') {
+    if (candidate.beautyBucket === 'tools') {
+      return surface === 'browse_products' ? -1.7 : -1.35;
+    }
+    return candidate.beautyBucket === 'skincare' ? 1.15 : 0.92;
+  }
+  if (candidate.domain === 'unknown') {
+    return surface === 'home_hot_deals' ? 0.18 : 0.04;
+  }
+  if (candidate.domain === 'apparel') return -0.85;
+  if (candidate.domain === 'sleepwear' || candidate.domain === 'pet') return -1.4;
+  return -0.2;
+}
+
+function scoreColdStartSourceBias(candidate) {
+  if (!candidate) return 0;
+  if (isExternalSeedMerchantCandidate(candidate)) return 0.42;
+  if (candidate.provider === 'internal_catalog') return -0.16;
+  if (candidate.provider === 'products_search') return -0.08;
+  return 0;
+}
+
+function scoreCandidate(candidate, profile, surface, options = {}) {
   const brandScore = mapScore(profile.brandAffinity, candidate.brand);
   const categoryScore = Math.max(
     mapScore(profile.categoryAffinity, candidate.category),
@@ -3063,10 +3091,25 @@ function scoreCandidate(candidate, profile, surface) {
           ? 0.2
           : 0
       : 0;
+  const coldStartGenericSurface =
+    !profile?.hasInterestSignals &&
+    options?.brandScoped !== true &&
+    !String(options?.queryText || '').trim() &&
+    normalizeDiscoveryCategories(options?.categories, 12).length === 0;
+  const coldStartQualityScore = coldStartGenericSurface
+    ? scoreColdStartCandidateQuality(candidate, surface)
+    : 0;
+  const coldStartSourceScore = coldStartGenericSurface
+    ? scoreColdStartSourceBias(candidate)
+    : 0;
   const finalScore =
-    surface === 'home_hot_deals'
-      ? interestScore * 0.84 + browseBase * 0.08 + domainScore * 0.16 + bucketScore * 0.2
-      : browseBase * 0.68 + interestScore * 0.34 + domainScore * 0.12 + bucketScore * 0.22;
+    coldStartGenericSurface
+      ? surface === 'home_hot_deals'
+        ? browseBase * 0.14 + coldStartQualityScore * 0.76 + coldStartSourceScore * 0.42
+        : browseBase * 0.32 + coldStartQualityScore * 0.86 + coldStartSourceScore * 0.46
+      : surface === 'home_hot_deals'
+        ? interestScore * 0.84 + browseBase * 0.08 + domainScore * 0.16 + bucketScore * 0.2
+        : browseBase * 0.68 + interestScore * 0.34 + domainScore * 0.12 + bucketScore * 0.22;
   return {
     brandScore,
     categoryScore,
@@ -3076,6 +3119,8 @@ function scoreCandidate(candidate, profile, surface) {
     interestScore,
     browseBase,
     domainScore,
+    coldStartQualityScore,
+    coldStartSourceScore,
     finalScore,
   };
 }
@@ -3269,6 +3314,12 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
   const categoryScope = normalizeDiscoveryCategories(options.categories, 12);
   const ranked = [...scoredCandidates].sort(compareBrowseEntriesBySort(sort));
   const decisions = collectDebug ? new Map() : null;
+  const coldStartCuration =
+    !profile?.hasInterestSignals &&
+    sort === 'popular' &&
+    !brandScoped &&
+    !queryText &&
+    categoryScope.length === 0;
 
   const preCategoryPool = [];
   const recentViewDeferred = [];
@@ -3290,14 +3341,22 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
     preCategoryPool.push(entry);
   }
 
-  const orderedPool = [];
+  const preferredPool = [];
+  const coldStartDeferredPool = [];
   for (const entry of preCategoryPool) {
     if (categoryScope.length > 0 && !matchesCategoryScopeCandidate(entry.candidate, categoryScope)) {
       if (decisions) decisions.set(entry.candidate.key, 'filtered_category_scope');
       continue;
     }
-    orderedPool.push(entry);
+    if (coldStartCuration && shouldDeferColdStartCandidate(entry.candidate)) {
+      coldStartDeferredPool.push(entry);
+      continue;
+    }
+    preferredPool.push(entry);
   }
+  const orderedPool = coldStartCuration
+    ? preferredPool.concat(coldStartDeferredPool)
+    : preferredPool;
 
   const start = (page - 1) * limit;
   const pageItems = orderedPool.slice(start, start + limit);
@@ -3322,7 +3381,11 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
     if (decisions.has(entry.candidate.key)) continue;
     decisions.set(
       entry.candidate.key,
-      selectedKeys.has(entry.candidate.key) ? 'selected' : 'page_window_excluded',
+      selectedKeys.has(entry.candidate.key)
+        ? 'selected'
+        : coldStartCuration && shouldDeferColdStartCandidate(entry.candidate)
+          ? 'page_window_excluded_cold_start_domain'
+          : 'page_window_excluded',
     );
   }
 
@@ -3532,6 +3595,8 @@ function buildRankDebug({
         recent_query_score: roundMetric(entry.scores.recentQueryScore),
         domain_score: roundMetric(entry.scores.domainScore),
         bucket_score: roundMetric(entry.scores.bucketScore),
+        cold_start_quality_score: roundMetric(entry.scores.coldStartQualityScore),
+        cold_start_source_score: roundMetric(entry.scores.coldStartSourceScore),
       },
     })),
     profile_summary: {
@@ -3759,7 +3824,11 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
 
     const scoredCandidates = scopedCandidates.map((candidate) => ({
       candidate,
-      scores: scoreCandidate(candidate, profile, request.surface),
+      scores: scoreCandidate(candidate, profile, request.surface, {
+        brandScoped: brandScopeAliases.length > 0,
+        queryText: request.query.text,
+        categories: request.scope.categories,
+      }),
     }));
     observeDiscoveryCandidateCount({
       surface: request.surface,
