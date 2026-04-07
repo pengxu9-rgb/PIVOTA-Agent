@@ -9,9 +9,12 @@ function createFindProductsSearchTelemetryRuntime(deps = {}) {
 
   function buildSearchRouteHealth({
     primaryPathUsed,
+    primaryLane = null,
+    primaryRetrievalContract = null,
     primaryLatencyMs,
     fallbackTriggered,
     fallbackReason,
+    ownerSwitchCount = 0,
     ambiguityScorePre = null,
     ambiguityScorePost = null,
     clarifyTriggered = false,
@@ -61,6 +64,9 @@ function createFindProductsSearchTelemetryRuntime(deps = {}) {
       orchestrator_path: orchestratorPath ? String(orchestratorPath) : 'external_invoke_route',
       decision_node: decisionNode ? String(decisionNode) : String(primaryPathUsed || 'unknown'),
       primary_path_used: String(primaryPathUsed || 'unknown'),
+      primary_lane: String(primaryLane || '').trim() || null,
+      primary_retrieval_contract:
+        String(primaryRetrievalContract || '').trim() || null,
       primary_latency_ms: Math.max(0, Number(primaryLatencyMs || 0) || 0),
       fallback_triggered: Boolean(fallbackTriggered),
       fallback_reason: fallbackReason ? String(fallbackReason) : null,
@@ -142,6 +148,10 @@ function createFindProductsSearchTelemetryRuntime(deps = {}) {
         0,
         Number.isFinite(Number(selectedFallbackAttempt)) ? Number(selectedFallbackAttempt) : 0,
       ),
+      owner_switch_count: Math.max(
+        0,
+        Number.isFinite(Number(ownerSwitchCount)) ? Number(ownerSwitchCount) : 0,
+      ),
       observer_nodes: normalizeDecisionObserverNodes(observerNodes),
       final_returned_count: Math.max(
         0,
@@ -221,6 +231,14 @@ function createFindProductsSearchTelemetryRuntime(deps = {}) {
     semanticRewriteTimeoutMs = null,
     semanticOwnerLocked = false,
     primarySearchTimeoutMs = null,
+    primarySearchInitialTimeoutMs = null,
+    primarySearchFinalTimeoutMs = null,
+    primarySearchRetryCount = 0,
+    primarySearchRetryReasons = [],
+    primaryFailureStage = null,
+    primaryLane = null,
+    primaryRetrievalContract = null,
+    ownerSwitchCount = 0,
     primaryPathUsed = null,
     primaryQueryPackAttempts = null,
     primarySourceTierCounts = null,
@@ -325,6 +343,9 @@ function createFindProductsSearchTelemetryRuntime(deps = {}) {
       primary_search: {
         owner: 'shopping_agent_primary_search',
         applied: true,
+        primary_lane: String(primaryLane || '').trim() || null,
+        primary_retrieval_contract:
+          String(primaryRetrievalContract || '').trim() || null,
         primary_path_used: String(primaryPathUsed || '').trim() || null,
         query_pack_attempts: Array.isArray(primaryQueryPackAttempts)
           ? primaryQueryPackAttempts
@@ -352,6 +373,30 @@ function createFindProductsSearchTelemetryRuntime(deps = {}) {
           Number.isFinite(Number(primarySearchTimeoutMs)) && Number(primarySearchTimeoutMs) >= 0
             ? Number(primarySearchTimeoutMs)
             : null,
+        timeout_initial_ms:
+          Number.isFinite(Number(primarySearchInitialTimeoutMs)) &&
+          Number(primarySearchInitialTimeoutMs) >= 0
+            ? Number(primarySearchInitialTimeoutMs)
+            : null,
+        timeout_final_ms:
+          Number.isFinite(Number(primarySearchFinalTimeoutMs)) &&
+          Number(primarySearchFinalTimeoutMs) >= 0
+            ? Number(primarySearchFinalTimeoutMs)
+            : null,
+        retry_count: Math.max(
+          0,
+          Number.isFinite(Number(primarySearchRetryCount))
+            ? Number(primarySearchRetryCount)
+            : 0,
+        ),
+        retry_reasons: Array.isArray(primarySearchRetryReasons)
+          ? primarySearchRetryReasons
+          : [],
+        failure_stage: String(primaryFailureStage || '').trim() || null,
+        owner_switch_count: Math.max(
+          0,
+          Number.isFinite(Number(ownerSwitchCount)) ? Number(ownerSwitchCount) : 0,
+        ),
       },
       quality_gate: {
         owner: 'shopping_agent_quality_gate',

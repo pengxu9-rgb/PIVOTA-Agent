@@ -225,6 +225,11 @@ const {
   createFindProductsSearchRouteEntryRuntime,
 } = require('./findProductsSearchRouteEntry');
 const {
+  buildFindProductsSearchRequestContract,
+  resolveFindProductsSearchExecutionPlan,
+  buildFindProductsSearchExecutionTrace,
+} = require('./findProductsSearchContracts');
+const {
   createFindProductsIngredientIntentDirectPreparationRuntime,
 } = require('./findProductsIngredientIntentDirectPreparation');
 const {
@@ -1707,6 +1712,7 @@ const {
   resolveGuidanceSearchSessionId,
   firstQueryParamValue,
   buildFindProductsMultiPayloadFromQuery,
+  buildFindProductsSearchRequestContract,
   resolveLegacyBeautyCacheOwnerBypass,
   isShoppingSource,
   isAuroraSource,
@@ -9058,6 +9064,7 @@ function getUiChatLlmClient() {
 // This keeps the gateway responsive while being more tolerant of
 // occasional slow product/search slowness.
 async function callUpstreamWithOptionalRetry(operation, axiosConfig, options = {}) {
+  const disableTimeoutRetry = options?.disableTimeoutRetry === true;
   const timeoutRetryableOps = ['find_products', 'find_similar_products'];
   if (UPSTREAM_RETRY_FIND_PRODUCTS_MULTI_ON_TIMEOUT) {
     timeoutRetryableOps.push('find_products_multi');
@@ -9169,6 +9176,7 @@ async function callUpstreamWithOptionalRetry(operation, axiosConfig, options = {
 
       // Timeout retry (legacy behavior): one retry for read-heavy search operations.
       if (
+        !disableTimeoutRetry &&
         err.code === 'ECONNABORTED' &&
         timeoutRetryableOps.includes(operation) &&
         attempt === 1
@@ -9194,6 +9202,8 @@ async function callUpstreamWithOptionalRetry(operation, axiosConfig, options = {
             attempt,
             max_attempts: 2,
             delay_ms: 0,
+            previous_timeout_ms: prevTimeoutMs,
+            retry_timeout_ms: axiosConfig?.timeout || null,
           });
         }
         continue;
@@ -16364,6 +16374,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   let gatewayGovernanceAudit = null;
   let upstreamElapsedMs = 0;
   let gatewayRetryCount = 0;
+  let primarySearchInitialTimeoutMs = null;
+  let primarySearchFinalTimeoutMs = null;
+  let primarySearchRetryCount = 0;
+  let primarySearchRetryReasons = [];
   const setInvokePerfHeaders = (operationOverride = null) => {
     const op = String(operationOverride || debugRuntime.operation || '').trim().toLowerCase();
     if (!CHECKOUT_TIMING_OPS.has(op)) return;
@@ -18172,6 +18186,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   let strictCommerceFindProductsMulti = false;
   let strictBeautyDirectSearch = false;
   let useStableCrossMerchantAgentSearch = false;
+  let findProductsSearchRequestContract = null;
+  let findProductsExecutionPlan = null;
   let findProductsMultiSearchPayload = null;
   let rawFindProductsMultiQueryText = '';
   let autoStrictSearchSourceBeautyDirectSearch = false;
@@ -18188,6 +18204,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   let creatorHumanApparelDirectRouteDebug = null;
   let crossMerchantCacheRouteDebug = null;
   let creatorCacheSearchResponse = null;
+  let primaryFailureStage = null;
+  let supplementsAttempted = [];
   try {
     let resolvedOfferId = null;
     let resolvedMerchantId = null;
@@ -19683,37 +19701,31 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           queryClass: traceQueryClass || null,
           strictConstraintQuery: Boolean(strictCommerceFindProductsMulti),
         });
-        const normalizedTraceQueryClass = String(traceQueryClass || '').trim().toLowerCase();
-        const auroraBeautyDirectSearch =
-          isAuroraSource(metadata?.source) &&
-          (
-            ['lookup', 'attribute'].includes(normalizedTraceQueryClass) ||
-            beautyMainlineBypass.reason === 'beauty_mainline_contract'
-          );
-        autoStrictSearchSourceBeautyDirectSearch =
-          strictCommerceFindProductsMulti &&
-          !explicitStrictCatalogSurfaceRequested &&
-          normalizeAgentSource(metadata?.source) === 'search' &&
-          strictFindProductsMultiDecision?.strictConstraintQuery === true;
+        const requestSurface =
+          isAuroraSource(metadata?.source)
+            ? 'chat'
+            : routeContext?.client_channel === 'shop'
+              ? 'direct'
+              : 'gateway';
+        findProductsSearchRequestContract = buildFindProductsSearchRequestContract({
+          surface: requestSurface,
+          operation,
+          search,
+          metadata,
+          queryClass: traceQueryClass || null,
+          strictConstraintQuery: Boolean(strictCommerceFindProductsMulti),
+          beautyMainlineBypass,
+        });
+        findProductsExecutionPlan = resolveFindProductsSearchExecutionPlan({
+          requestContract: findProductsSearchRequestContract,
+          pivotaApiBase: PIVOTA_API_BASE,
+          searchInvokeBase,
+        });
+        autoStrictSearchSourceBeautyDirectSearch = false;
         strictBeautyDirectSearch =
-          beautyExactTitleDirectSearch ||
-          (!beautyExactTitleLookup &&
-            beautyMainlineBypass.bypass &&
-            (!isAuroraSource(metadata?.source) || auroraBeautyDirectSearch)) ||
-          autoStrictSearchSourceBeautyDirectSearch ||
-          (strictCommerceFindProductsMulti &&
-            normalizeCommerceSurface(
-              strictFindProductsMultiDecision.catalogSurface ||
-                strictSurfaceState.commerceSurface ||
-                search.catalog_surface ||
-                search.catalogSurface ||
-                search.commerce_surface ||
-                search.commerceSurface,
-              '',
-            ) === 'beauty');
-        if (isAuroraSource(metadata?.source) && !auroraBeautyDirectSearch) {
-          strictBeautyDirectSearch = false;
-        }
+          String(findProductsExecutionPlan?.primary_lane || '').trim() ===
+          'beauty_discovery_mainline';
+        useStableCrossMerchantAgentSearch = false;
         if (strictCommerceFindProductsMulti) {
           requestBody = await buildFindProductsMultiInvokeBody({
             payload,
@@ -19737,41 +19749,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               !merchantId && merchantIds.length === 0 && !shouldScopeToCreatorCatalog,
           });
         }
-        if (
-          !strictCommerceFindProductsMulti &&
-          !strictBeautyDirectSearch &&
-          isAuroraSource(metadata?.source) &&
-          beautyMainlineBypass.bypass === true
-        ) {
-          const mainlineBeautySurface = 'beauty';
-          requestBody = {
-            ...requestBody,
-            ...(String(search.query || rawUserQuery || '').trim()
-              ? { query: String(search.query || rawUserQuery || '').trim() }
-              : {}),
-            ...(mainlineBeautySurface
-              ? {
-                  catalog_surface: mainlineBeautySurface,
-                  commerce_surface: mainlineBeautySurface,
-                }
-              : {}),
-            ...((search.semantic_contract || beautyMainlineBypass.semanticContract)
-              ? {
-                  semantic_contract:
-                    search.semantic_contract || beautyMainlineBypass.semanticContract,
-                }
-              : {}),
-          };
-        }
-        useStableCrossMerchantAgentSearch =
-          !strictCommerceFindProductsMulti &&
-          !isAuroraSource(metadata?.source) &&
-          !shoppingFreshMainlineSearch;
-        if (useStableCrossMerchantAgentSearch) {
-          url = `${searchInvokeBase}/agent/v1/products/search`;
+        if (findProductsExecutionPlan?.upstream_url) {
+          url = findProductsExecutionPlan.upstream_url;
         }
         if (strictBeautyDirectSearch) {
-          url = `${PIVOTA_API_BASE}/agent/v1/products/search`;
           const auroraBeautyMainlineSurface =
             isAuroraSource(metadata?.source) && beautyMainlineBypass.bypass === true ? 'beauty' : null;
           const directSearchCommerceSurface =
@@ -20336,8 +20317,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
     const invokeMethod =
       operation === 'find_products_multi' &&
-      (strictBeautyDirectSearch || useStableCrossMerchantAgentSearch)
-        ? 'GET'
+      String(findProductsExecutionPlan?.upstream_method || '').trim()
+        ? findProductsExecutionPlan.upstream_method
         : route.method;
 
     logger.info({ operation, method: invokeMethod, url, hasQuery: Object.keys(queryParams).length > 0 }, 'Forwarding invoke request');
@@ -20345,6 +20326,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     const {
       semanticOwnerQueryPack,
       semanticOwnerQueryTotal,
+      semanticOwnerSupportRoleQueryPack,
       semanticOwnerTargetStepFamily,
       semanticOwnerSemanticFamily,
       semanticOwnerQueryStepStrength,
@@ -20465,14 +20447,50 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       ...(invokeMethod !== 'GET' &&
         Object.keys(requestBody).length > 0 && { data: requestBody })
     };
-    const callTrackedUpstream = async (op, config) => {
+    if (operation === 'find_products_multi') {
+      primarySearchInitialTimeoutMs = Number(axiosConfig?.timeout || 0) || null;
+      primarySearchFinalTimeoutMs = primarySearchInitialTimeoutMs;
+    }
+    const disableBeautyMainlineTimeoutRetry =
+      operation === 'find_products_multi' &&
+      (strictBeautyDirectSearch || semanticOwnerControlled);
+    const callTrackedUpstream = async (op, config, runtimeOptions = {}) => {
       const normalizedOp = String(op || '').trim().toLowerCase();
       const measureCheckout = CHECKOUT_TIMING_OPS.has(normalizedOp);
+      const trackPrimarySearchRetry =
+        normalizedOp === 'find_products_multi' &&
+        operation === 'find_products_multi';
       const startedAt = measureCheckout ? Date.now() : 0;
       try {
         return await callUpstreamWithOptionalRetry(op, config, {
-          onRetry: () => {
-            if (measureCheckout) gatewayRetryCount += 1;
+          ...runtimeOptions,
+          disableTimeoutRetry:
+            runtimeOptions?.disableTimeoutRetry === true ||
+            (trackPrimarySearchRetry && disableBeautyMainlineTimeoutRetry),
+          onRetry: (retryInfo = {}) => {
+            gatewayRetryCount += 1;
+            if (trackPrimarySearchRetry) {
+              primarySearchRetryCount += 1;
+              const retryReason = String(retryInfo?.reason || '').trim();
+              if (retryReason) {
+                primarySearchRetryReasons = Array.from(
+                  new Set(primarySearchRetryReasons.concat(retryReason)),
+                );
+              }
+              const retryTimeoutMs =
+                Number.isFinite(Number(retryInfo?.retry_timeout_ms)) &&
+                Number(retryInfo.retry_timeout_ms) > 0
+                  ? Number(retryInfo.retry_timeout_ms)
+                  : null;
+              if (retryTimeoutMs) {
+                primarySearchFinalTimeoutMs = retryTimeoutMs;
+              } else if (Number(config?.timeout || 0) > 0) {
+                primarySearchFinalTimeoutMs = Number(config.timeout);
+              }
+            }
+            if (typeof runtimeOptions?.onRetry === 'function') {
+              runtimeOptions.onRetry(retryInfo);
+            }
           },
         });
       } finally {
@@ -20516,9 +20534,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       publicBrandSearchMainlineShortCircuitStage = stage;
       return true;
     };
-    await maybeAdoptPublicBrandSearchMainlineResponse({
-      stage: 'pre_shared_path',
-    });
     if (!response) {
       const strictIngredientDirectResult =
         await maybeApplyInvokeStrictIngredientDirect({
@@ -20639,12 +20654,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
 
       if (!response) {
-        await maybeAdoptPublicBrandSearchMainlineResponse({
-          stage: 'pre_primary_upstream',
-        });
-      }
-
-      if (!response) {
+        if (operation === 'find_products_multi') {
+          primarySearchInitialTimeoutMs = Number(axiosConfig?.timeout || 0) || null;
+          primarySearchFinalTimeoutMs = primarySearchInitialTimeoutMs;
+        }
         const primaryUpstreamResult = await callInvokePrimaryUpstream({
           response,
           operation,
@@ -20770,6 +20783,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
 
       if (!response && (operation === 'find_products' || operation === 'find_products_multi')) {
+        if (operation === 'find_products_multi' && !primaryFailureStage) {
+          primaryFailureStage =
+            err?.code === 'ECONNABORTED'
+              ? 'primary_upstream_timeout'
+              : 'primary_upstream_exception';
+        }
         const primarySearchExceptionResult =
           await handleInvokePrimarySearchException({
             response,
@@ -20784,7 +20803,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             searchQueryText,
             shoppingFreshMainlineSearch,
             strictCommerceFindProductsMulti,
-            semanticOwnerControlled,
+            semanticOwnerControlled:
+              semanticOwnerControlled || strictBeautyDirectSearch,
             resolverFirstResult,
             auroraFallbackOverrides,
             forceCreatorHumanApparelFallback,
@@ -20856,12 +20876,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     let semanticOwnerCacheSourceIsolated = false;
     let semanticOwnerCacheSourceIsolationReason = null;
     let semanticOwnerExternalRescueQueriesAttempted = [];
+    let semanticOwnerSupplementTraces = [];
     let semanticOwnerQueryAttempts = [];
     const semanticOwnerExecution = await runInvokeSemanticOwnerExecution({
       operation,
       semanticOwnerControlled,
       semanticOwnerQueryPack,
       semanticOwnerQueryTotal,
+      semanticOwnerSupportRoleQueryPack,
       semanticOwnerTargetStepFamily,
       semanticOwnerSemanticFamily,
       semanticOwnerQueryStepStrength,
@@ -20920,6 +20942,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     semanticOwnerQueryAttempts = semanticOwnerExecution.semanticOwnerQueryAttempts;
     semanticOwnerExternalRescueQueriesAttempted =
       semanticOwnerExecution.semanticOwnerExternalRescueQueriesAttempted;
+    semanticOwnerSupplementTraces = Array.isArray(semanticOwnerExecution.semanticOwnerSupplementTraces)
+      ? semanticOwnerExecution.semanticOwnerSupplementTraces
+      : [];
     semanticOwnerCacheSourceIsolated =
       semanticOwnerExecution.semanticOwnerCacheSourceIsolated;
     semanticOwnerCacheSourceIsolationReason =
@@ -21303,6 +21328,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       );
       normalizedSecondaryFallbackSkipReason = semanticOwnerControlled
         ? 'semantic_owner_primary'
+        : strictBeautyDirectSearch
+          ? 'mainline_contract_locked'
         : secondaryFallbackSkipReason;
       skipSecondaryFallback = Boolean(normalizedSecondaryFallbackSkipReason);
       addFpmGateTrace({
@@ -21331,14 +21358,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         queryText,
         queryClass: traceQueryClass,
       });
-      const allowResolverFallbackEffective = semanticOwnerControlled ? false : allowResolverFallback;
-      const allowSecondaryFallback = semanticOwnerControlled
+      const allowResolverFallbackEffective =
+        semanticOwnerControlled || strictBeautyDirectSearch ? false : allowResolverFallback;
+      const allowSecondaryFallback = semanticOwnerControlled || strictBeautyDirectSearch
         ? false
         : shouldAllowSecondaryFallback(operation, {
             forceSecondaryFallback:
               auroraFallbackOverrides.forceSecondaryFallback || forceCreatorHumanApparelFallback,
           });
-      const allowInvokeFallback = semanticOwnerControlled
+      const allowInvokeFallback = semanticOwnerControlled || strictBeautyDirectSearch
         ? false
         : shouldAllowInvokeFallback(operation, {
             forceInvokeFallback:
@@ -21454,6 +21482,53 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         fpmGateTrace,
         metadata,
       });
+
+      supplementsAttempted = Array.from(
+        new Set(
+          [
+            shoppingExactTitleSupplementMeta?.attempted === true
+              ? 'exact_title_rescue'
+              : null,
+            secondarySupplementMeta?.attempted === true
+              ? 'second_stage_expansion'
+              : null,
+            semanticOwnerExternalRescueQueriesAttempted.length > 0
+              ? 'semantic_owner_external_rescue'
+              : null,
+            upstreamData?.metadata?.semantic_owner_external_coverage_supplement_applied === true
+              ? 'semantic_owner_external_coverage'
+              : null,
+            upstreamData?.metadata?.semantic_owner_framework_support_supplement_applied === true
+              ? 'semantic_owner_framework_support'
+              : null,
+            upstreamData?.metadata?.guidance_direct_external_seed_applied === true
+              ? 'guidance_direct_external_seed'
+              : null,
+            upstreamData?.metadata?.brand_query_mainline_attempted === true
+              ? 'brand_query_external_seed_merge'
+              : null,
+            ...semanticOwnerSupplementTraces.map((trace) => trace?.supplement_type),
+          ]
+            .map((value) => String(value || '').trim())
+            .filter(Boolean),
+        ),
+      );
+      if (!primaryFailureStage) {
+        if (semanticOwnerCacheSourceIsolated) {
+          primaryFailureStage = 'semantic_owner_cache_source_isolated';
+        } else if (semanticOwnerLastResortCacheApplied) {
+          primaryFailureStage = 'semantic_owner_last_resort_cache';
+        } else if (upstreamData?.metadata?.query_source === 'agent_products_error_fallback') {
+          primaryFailureStage =
+            String(upstreamData?.metadata?.upstream_error_code || '').trim() === 'ECONNABORTED'
+              ? 'primary_upstream_timeout'
+              : 'primary_upstream_exception';
+        } else if (
+          upstreamData?.metadata?.query_source === 'agent_products_recall_clarify'
+        ) {
+          primaryFailureStage = 'semantic_owner_cache_source_isolated';
+        }
+      }
     }
 
     if (operation === 'offers.resolve') {
@@ -22097,6 +22172,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         semanticOwnerQueryAttempts,
         semanticOwnerDecision,
         primarySearchTimeoutMs: axiosConfig.timeout,
+        primarySearchInitialTimeoutMs,
+        primarySearchFinalTimeoutMs,
+        primarySearchRetryCount,
+        primarySearchRetryReasons,
+        primaryFailureStage,
         primaryQualityGatePassed,
         guidanceDirectSupplementValidHit,
         primaryIrrelevant,
@@ -22108,6 +22188,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         skipSecondaryFallback,
         normalizedSecondaryFallbackSkipReason,
         strictBeautyDirectSearch,
+        findProductsSearchRequestContract,
+        findProductsExecutionPlan,
         beautyDecisionOwner,
         beautySemanticOwner,
         semanticOwnerCacheSourceIsolated,
@@ -22120,6 +22202,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         semanticOwnerCacheSourceIsolationReason,
         semanticOwnerLastResortCacheQuery,
         gatewayTotalBudgetMs: FPM_GATEWAY_TOTAL_BUDGET_MS,
+        supplementsAttempted,
         resolverRejectedReason,
         resolverRejectedQueryUsed,
         metadata,
@@ -22132,6 +22215,44 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       });
       enriched = finalizedSearchFlow.enriched;
       existingMeta = finalizedSearchFlow.existingMeta;
+      if (
+        operation === 'find_products_multi' &&
+        enriched &&
+        typeof enriched === 'object' &&
+        !Array.isArray(enriched)
+      ) {
+        const searchExecutionTrace = buildFindProductsSearchExecutionTrace({
+          requestContract: findProductsSearchRequestContract,
+          executionPlan: findProductsExecutionPlan,
+          primarySearchInitialTimeoutMs,
+          primarySearchFinalTimeoutMs,
+          primarySearchRetryCount,
+          primarySearchRetryReasons,
+          primaryFailureStage,
+          supplementsAttempted,
+        });
+        const normalizedSupplementTraces = semanticOwnerSupplementTraces.filter(
+          (trace) => trace && typeof trace === 'object' && !Array.isArray(trace),
+        );
+        enriched = {
+          ...enriched,
+          metadata: {
+            ...(enriched.metadata && typeof enriched.metadata === 'object'
+              ? enriched.metadata
+              : {}),
+            ...(normalizedSupplementTraces.length > 0
+              ? { supplement_traces: normalizedSupplementTraces }
+              : {}),
+            search_execution_trace:
+              normalizedSupplementTraces.length > 0
+                ? {
+                    ...searchExecutionTrace,
+                    supplement_traces: normalizedSupplementTraces,
+                  }
+                : searchExecutionTrace,
+          },
+        };
+      }
     }
 
     return res.status(response.status).json(enriched);

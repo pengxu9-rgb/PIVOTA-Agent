@@ -36,9 +36,8 @@ function createFindProductsSearchRouteEntryRuntime(deps = {}) {
     resolveGuidanceSearchSessionId,
     firstQueryParamValue,
     buildFindProductsMultiPayloadFromQuery,
+    buildFindProductsSearchRequestContract,
     resolveLegacyBeautyCacheOwnerBypass,
-    isShoppingSource,
-    isAuroraSource,
     normalizeAgentSource,
     runGuidanceServerOwnedLadderSearch,
     persistGuidanceSearchSeenProducts,
@@ -93,13 +92,38 @@ function createFindProductsSearchRouteEntryRuntime(deps = {}) {
     const explicitShoppingExternalSeedOnly =
       rawSearch?.external_seed_only === true &&
       String(rawSearch?.merchant_id || '').trim() === 'external_seed';
+    const explicitStrictCatalogSurfaceRequested = ['agent_api', 'acp', 'ucp'].includes(
+      String(
+        rawSearch?.catalog_surface ||
+          rawSearch?.catalogSurface ||
+          routeMetadata?.catalog_surface ||
+          routeMetadata?.catalogSurface ||
+          '',
+      ).trim().toLowerCase(),
+    );
+    const searchRequestContract =
+      typeof buildFindProductsSearchRequestContract === 'function'
+        ? buildFindProductsSearchRequestContract({
+            surface: 'direct',
+            operation: 'find_products_multi',
+            search: rawSearch,
+            metadata: routeMetadata,
+            strictConstraintQuery: explicitStrictCatalogSurfaceRequested,
+            beautyMainlineBypass: publicBeautyMainlineBypass,
+          })
+        : null;
+    const forceBeautyMainlineInvokePath =
+      String(searchRequestContract?.primary_lane || '').trim() === 'beauty_discovery_mainline' &&
+      normalizeSearchUiSurface(
+        routeMetadata?.ui_surface ||
+          rawSearch?.ui_surface ||
+          rawSearch?.uiSurface,
+      ) !== 'ingredient_plan_guidance_only' &&
+      !explicitShoppingExternalSeedOnly;
     const forceStrictShoppingMainPath =
-      isShoppingSource(publicSearchSource) && !explicitShoppingExternalSeedOnly;
-    const forceAuroraInvokeMainPath = isAuroraSource(publicSearchSource);
-    const forceBeautyMainlineInvokePath = publicBeautyMainlineBypass.bypass === true;
+      String(searchRequestContract?.primary_lane || '').trim() === 'shop_invoke_strict';
     const forceDirectInvokeMainPath =
       forceStrictShoppingMainPath ||
-      forceAuroraInvokeMainPath ||
       forceBeautyMainlineInvokePath;
 
     if (forceStrictShoppingMainPath) {
@@ -123,6 +147,10 @@ function createFindProductsSearchRouteEntryRuntime(deps = {}) {
       const existingAllowExternalSeed = payload?.search?.allow_external_seed ?? payload?.search?.allowExternalSeed;
       const existingExternalSeedStrategy =
         payload?.search?.external_seed_strategy || payload?.search?.externalSeedStrategy;
+      const nextMetadata =
+        payload?.metadata && typeof payload.metadata === 'object' && !Array.isArray(payload.metadata)
+          ? payload.metadata
+          : routeMetadata;
       const shouldDefaultAllowExternalSeed =
         existingAllowExternalSeed === undefined &&
         shouldDefaultBeautyMainlineExternalSeed(
@@ -156,6 +184,64 @@ function createFindProductsSearchRouteEntryRuntime(deps = {}) {
           'beauty',
         ...(shouldDefaultAllowExternalSeed ? { allow_external_seed: true } : {}),
         ...(shouldSetExternalSeedStrategy ? { external_seed_strategy: 'unified_relevance' } : {}),
+      };
+      payload.metadata = {
+        ...nextMetadata,
+        search_request_contract: searchRequestContract,
+        primary_lane: searchRequestContract?.primary_lane || 'beauty_discovery_mainline',
+        primary_retrieval_contract:
+          searchRequestContract?.primary_retrieval_contract ||
+          'agent_v1_search_beauty_mainline',
+        supplement_lanes: Array.isArray(searchRequestContract?.supplement_lanes)
+          ? searchRequestContract.supplement_lanes
+          : [],
+      };
+    } else if (searchRequestContract) {
+      const nextMetadata =
+        payload?.metadata && typeof payload.metadata === 'object' && !Array.isArray(payload.metadata)
+          ? payload.metadata
+          : routeMetadata;
+      payload.metadata = {
+        ...nextMetadata,
+        search_request_contract: searchRequestContract,
+        primary_lane: searchRequestContract.primary_lane || null,
+        primary_retrieval_contract:
+          searchRequestContract.primary_retrieval_contract || null,
+        supplement_lanes: Array.isArray(searchRequestContract.supplement_lanes)
+          ? searchRequestContract.supplement_lanes
+          : [],
+      };
+    }
+
+    const finalSearchRequestContract =
+      typeof buildFindProductsSearchRequestContract === 'function'
+        ? buildFindProductsSearchRequestContract({
+            surface: 'direct',
+            operation: 'find_products_multi',
+            search:
+              payload?.search && typeof payload.search === 'object' && !Array.isArray(payload.search)
+                ? payload.search
+                : rawSearch,
+            metadata:
+              payload?.metadata && typeof payload.metadata === 'object' && !Array.isArray(payload.metadata)
+                ? payload.metadata
+                : routeMetadata,
+            strictConstraintQuery: explicitStrictCatalogSurfaceRequested,
+            beautyMainlineBypass: publicBeautyMainlineBypass,
+          })
+        : searchRequestContract;
+    if (finalSearchRequestContract) {
+      payload.metadata = {
+        ...(payload?.metadata && typeof payload.metadata === 'object' && !Array.isArray(payload.metadata)
+          ? payload.metadata
+          : routeMetadata),
+        search_request_contract: finalSearchRequestContract,
+        primary_lane: finalSearchRequestContract.primary_lane || null,
+        primary_retrieval_contract:
+          finalSearchRequestContract.primary_retrieval_contract || null,
+        supplement_lanes: Array.isArray(finalSearchRequestContract.supplement_lanes)
+          ? finalSearchRequestContract.supplement_lanes
+          : [],
       };
     }
 

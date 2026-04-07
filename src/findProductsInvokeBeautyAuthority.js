@@ -33,6 +33,11 @@ function createFindProductsInvokeBeautyAuthorityRuntime(deps = {}) {
     semanticOwnerQueryAttempts = [],
     semanticOwnerDecision = null,
     primarySearchTimeoutMs = null,
+    primarySearchInitialTimeoutMs = null,
+    primarySearchFinalTimeoutMs = null,
+    primarySearchRetryCount = 0,
+    primarySearchRetryReasons = [],
+    primaryFailureStage = null,
     primaryQualityGatePassed = false,
     guidanceDirectSupplementValidHit = false,
     primaryIrrelevant = false,
@@ -44,6 +49,8 @@ function createFindProductsInvokeBeautyAuthorityRuntime(deps = {}) {
     skipSecondaryFallback = false,
     normalizedSecondaryFallbackSkipReason = null,
     strictBeautyDirectSearch = false,
+    findProductsSearchRequestContract = null,
+    findProductsExecutionPlan = null,
     beautyDecisionOwner = null,
     beautySemanticOwner = null,
     semanticOwnerCacheSourceIsolated = false,
@@ -99,6 +106,21 @@ function createFindProductsInvokeBeautyAuthorityRuntime(deps = {}) {
             semanticRewriteTimeoutMs: findProductsExpansionMeta?.semantic_rewrite_timeout_ms,
             semanticOwnerLocked: semanticOwnerControlled,
             primarySearchTimeoutMs,
+            primarySearchInitialTimeoutMs,
+            primarySearchFinalTimeoutMs,
+            primarySearchRetryCount,
+            primarySearchRetryReasons,
+            primaryFailureStage,
+            primaryLane:
+              findProductsExecutionPlan?.primary_lane ||
+              findProductsSearchRequestContract?.primary_lane ||
+              null,
+            primaryRetrievalContract:
+              findProductsExecutionPlan?.primary_retrieval_contract ||
+              findProductsSearchRequestContract?.primary_retrieval_contract ||
+              null,
+            ownerSwitchCount:
+              Number(findProductsExecutionPlan?.owner_switch_count || 0) || 0,
             primaryPathUsed,
             primaryQueryPackAttempts: semanticOwnerQueryAttempts,
             primarySourceTierCounts: sourceObservability.source_tier_counts,

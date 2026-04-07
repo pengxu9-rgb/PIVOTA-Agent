@@ -777,6 +777,30 @@ test('shouldDelegateV1ChatToV2 keeps beauty reco free-text on the beauty mainlin
   assert.equal(delegated, false);
 });
 
+test('buildChatIntentContract locks beauty reco free-text before v2 delegation', async () => {
+  resetAuroraModules();
+  const { __internal } = require('../src/auroraBff/routes');
+
+  const contract = await __internal.buildChatIntentContract({
+    message: 'im oily skin, what products should i use?',
+    language: 'EN',
+    session: {
+      state: 'idle',
+      profile: {
+        skin_type: 'oily',
+      },
+    },
+  });
+
+  assert.equal(contract.contract_version, 'chat_intent_v1');
+  assert.equal(contract.ownership_domain, 'beauty_mainline');
+  assert.equal(contract.request_class, 'beauty_discovery');
+  assert.equal(contract.delegate_target, 'beauty_mainline');
+  assert.equal(contract.primary_lane, 'beauty_discovery_mainline');
+  assert.equal(contract.reply_mode, 'reco_framework');
+  assert.equal(contract.should_search, true);
+});
+
 test('shouldDelegateV1ChatToV2 keeps reviewed signal terms on the legacy ingredient path', async () => {
   resetAuroraModules();
   const { __internal } = require('../src/auroraBff/routes');

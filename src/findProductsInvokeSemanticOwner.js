@@ -158,6 +158,10 @@ function createFindProductsInvokeSemanticOwnerRuntime(deps = {}) {
       }
       return normalizedRoleId.replace(/_/g, ' ');
     };
+    const semanticOwnerSupportRoleQueryPack = normalizeSemanticOwnerQueryPack(
+      semanticOwnerSupportRoleIds.map((roleId) => buildSemanticOwnerSupportRoleQuery(roleId)),
+      4,
+    );
 
     const buildSemanticOwnerExternalRescueQueryPack = ({
       ignoredAttempt = null,
@@ -165,15 +169,6 @@ function createFindProductsInvokeSemanticOwnerRuntime(deps = {}) {
       fallbackQuery = '',
     } = {}) => {
       const rescueQueries = [];
-      if (
-        String(semanticContractMeta?.planner_mode || '').trim().toLowerCase() ===
-          'framework_generic' &&
-        semanticOwnerSupportRoleIds.length > 0
-      ) {
-        for (const roleId of semanticOwnerSupportRoleIds.slice(0, 2)) {
-          rescueQueries.push(buildSemanticOwnerSupportRoleQuery(roleId));
-        }
-      }
       if (semanticOwnerTargetStepFamily === 'sunscreen') {
         const rescueBaseQuery = String(rawUserQuery || fallbackQuery || '').trim();
         rescueQueries.push(
@@ -196,6 +191,13 @@ function createFindProductsInvokeSemanticOwnerRuntime(deps = {}) {
         if (semanticOwnerSemanticFamily === 'oil_control') {
           rescueQueries.push('oil control treatment', 'oil control serum');
         }
+      }
+      if (
+        String(semanticContractMeta?.planner_mode || '').trim().toLowerCase() ===
+          'framework_generic' &&
+        semanticOwnerSupportRoleQueryPack.length > 0
+      ) {
+        rescueQueries.push(...semanticOwnerSupportRoleQueryPack);
       }
       if (ignoredAttempt?.query) rescueQueries.push(ignoredAttempt.query);
       for (const attempt of Array.isArray(queryAttempts) ? [...queryAttempts].reverse() : []) {
@@ -471,6 +473,7 @@ function createFindProductsInvokeSemanticOwnerRuntime(deps = {}) {
     return {
       semanticOwnerQueryPack,
       semanticOwnerQueryTotal,
+      semanticOwnerSupportRoleQueryPack,
       semanticOwnerTargetStepFamily,
       semanticOwnerSemanticFamily,
       semanticOwnerQueryStepStrength,
