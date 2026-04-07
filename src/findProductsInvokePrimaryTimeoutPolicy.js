@@ -27,15 +27,19 @@ function resolveFindProductsMultiPrimaryUpstreamTimeoutMs({
       ? Number(beautyMainlineTimeoutMs)
       : safeDefaultTimeoutMs,
   );
+  const beautyMainlineOwned = strictBeautyDirectSearch || semanticOwnerControlled;
+  const shortLookupClass =
+    ['lookup', 'attribute'].includes(normalizedQueryClass) ||
+    (normalizedQueryClass === 'category' && !beautyMainlineOwned);
 
   if (
     isLookupPolicyQuery ||
-    ['lookup', 'category', 'attribute'].includes(normalizedQueryClass)
+    shortLookupClass
   ) {
     return Math.min(safeUpstreamDefaultTimeoutMs, safeLookupTimeoutMs);
   }
 
-  if (strictBeautyDirectSearch || semanticOwnerControlled) {
+  if (beautyMainlineOwned) {
     return safeBeautyMainlineTimeoutMs;
   }
 

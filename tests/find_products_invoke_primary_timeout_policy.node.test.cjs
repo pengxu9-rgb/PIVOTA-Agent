@@ -18,6 +18,19 @@ test('lookup-style find_products_multi queries keep the short timeout budget', (
   assert.equal(timeoutMs, 3500);
 });
 
+test('lookup-style beauty mainline queries still keep the short timeout budget', () => {
+  const timeoutMs = resolveFindProductsMultiPrimaryUpstreamTimeoutMs({
+    queryClass: 'lookup',
+    upstreamDefaultTimeoutMs: 10000,
+    lookupTimeoutMs: 3500,
+    defaultTimeoutMs: 5500,
+    beautyMainlineTimeoutMs: 15000,
+    semanticOwnerControlled: true,
+  });
+
+  assert.equal(timeoutMs, 3500);
+});
+
 test('beauty mainline direct search gets the extended timeout budget', () => {
   const timeoutMs = resolveFindProductsMultiPrimaryUpstreamTimeoutMs({
     queryClass: 'exploratory',
@@ -26,6 +39,19 @@ test('beauty mainline direct search gets the extended timeout budget', () => {
     defaultTimeoutMs: 5500,
     beautyMainlineTimeoutMs: 15000,
     strictBeautyDirectSearch: true,
+  });
+
+  assert.equal(timeoutMs, 15000);
+});
+
+test('beauty mainline category search gets the extended timeout budget', () => {
+  const timeoutMs = resolveFindProductsMultiPrimaryUpstreamTimeoutMs({
+    queryClass: 'category',
+    upstreamDefaultTimeoutMs: 10000,
+    lookupTimeoutMs: 3500,
+    defaultTimeoutMs: 5500,
+    beautyMainlineTimeoutMs: 15000,
+    semanticOwnerControlled: true,
   });
 
   assert.equal(timeoutMs, 15000);
