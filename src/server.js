@@ -20365,6 +20365,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     let publicBrandSearchMainlinePromise = null;
     let publicBrandSearchMainlineResolved = null;
     let publicBrandSearchMainlineShortCircuited = false;
+    let publicBrandSearchMainlineShortCircuitStage = null;
     if (publicBrandSearchMainlinePreflight) {
       publicBrandSearchMainlinePromise = searchExternalSeedOnlyProductsDirect({
         search: {
@@ -20429,68 +20430,107 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
     let response;
     let searchContractBridgeMeta;
-    const strictIngredientDirectResult =
-      await maybeApplyInvokeStrictIngredientDirect({
-        response,
-        operation,
-        autoStrictSearchSourceBeautyDirectSearch,
-        strictFindProductsMultiDecision,
-        findProductsMultiSearchPayload,
-        rawFindProductsMultiQueryText,
-        rawUserQuery,
-        queryParams,
-        metadata,
-        strictCommerceFindProductsMulti,
-        strictBeautyDirectSearch,
-        semanticOwnerControlled,
-        logger,
-      });
-    response = strictIngredientDirectResult.response;
-    searchContractBridgeMeta =
-      strictIngredientDirectResult.searchContractBridgeMeta;
+    const maybeAdoptPublicBrandSearchMainlineResponse = async ({
+      stage = 'pre_primary_upstream',
+    } = {}) => {
+      if (response || !publicBrandSearchMainlinePromise) return false;
+      publicBrandSearchMainlineResolved = await publicBrandSearchMainlinePromise;
+      const prefetchedProducts = Array.isArray(publicBrandSearchMainlineResolved?.products)
+        ? publicBrandSearchMainlineResolved.products
+        : [];
+      const prefetchedTotal = Math.max(
+        0,
+        Number(publicBrandSearchMainlineResolved?.total || 0) || prefetchedProducts.length,
+      );
+      const prefetchedCoverageEnd = publicBrandSearchRequestedOffset + prefetchedProducts.length;
+      const publicBrandSearchPageCovered =
+        prefetchedProducts.length > 0 && prefetchedTotal >= prefetchedCoverageEnd;
+      if (!publicBrandSearchPageCovered) return false;
+      const existingMainlineMeta = isPlainRecord(publicBrandSearchMainlineResolved?.metadata)
+        ? publicBrandSearchMainlineResolved.metadata
+        : {};
+      publicBrandSearchMainlineResolved = {
+        ...publicBrandSearchMainlineResolved,
+        metadata: {
+          ...existingMainlineMeta,
+          brand_query_mainline_prefetch_short_circuit: true,
+          brand_query_mainline_prefetch_stage: stage,
+        },
+      };
+      response = { status: 200, data: publicBrandSearchMainlineResolved };
+      publicBrandSearchMainlineShortCircuited = true;
+      publicBrandSearchMainlineShortCircuitStage = stage;
+      return true;
+    };
+    await maybeAdoptPublicBrandSearchMainlineResponse({
+      stage: 'pre_shared_path',
+    });
+    if (!response) {
+      const strictIngredientDirectResult =
+        await maybeApplyInvokeStrictIngredientDirect({
+          response,
+          operation,
+          autoStrictSearchSourceBeautyDirectSearch,
+          strictFindProductsMultiDecision,
+          findProductsMultiSearchPayload,
+          rawFindProductsMultiQueryText,
+          rawUserQuery,
+          queryParams,
+          metadata,
+          strictCommerceFindProductsMulti,
+          strictBeautyDirectSearch,
+          semanticOwnerControlled,
+          logger,
+        });
+      response = strictIngredientDirectResult.response;
+      searchContractBridgeMeta =
+        strictIngredientDirectResult.searchContractBridgeMeta;
+    }
     let resolverRejectedReason = null;
     let resolverRejectedQueryUsed = null;
     const searchQueryText = String(extractSearchQueryText(queryParams) || rawUserQuery || '').trim();
     const resolverQueryText = String(rawUserQuery || searchQueryText || '').trim();
     const resolverQueryParams = resolverQueryText ? { ...queryParams, query: resolverQueryText } : queryParams;
-    const resolverRemainingBudgetMs = getFpmRemainingBudgetMs();
+    const resolverRemainingBudgetMs = response ? null : getFpmRemainingBudgetMs();
     const resolverBrandLike = Boolean(
       detectBrandEntities(resolverQueryText, { candidateProducts: [] })?.brand_like,
     );
     let resolverFirstResult = null;
     let resolverFirstAttempted = false;
-    const resolverFirstRuntimeResult = await maybeApplyInvokeResolverFirst({
-      response,
-      operation,
-      metadata,
-      resolverQueryText,
-      resolverRemainingBudgetMs,
-      traceQueryClass,
-      resolverBrandLike,
-      strictCommerceFindProductsMulti,
-      semanticOwnerControlled,
-      fpmLatencyGuardApplied,
-      fpmSkippedGatesDueToBudget,
-      addFpmGateTrace,
-      resolverQueryParams,
-      checkoutToken,
-      resolverTimeoutMs,
-      resolverRejectedReason,
-      resolverRejectedQueryUsed,
-      logger,
-      axiosConfig,
-    });
-    response = resolverFirstRuntimeResult.response;
-    resolverFirstResult = resolverFirstRuntimeResult.resolverFirstResult;
-    resolverRejectedReason = resolverFirstRuntimeResult.resolverRejectedReason;
-    resolverRejectedQueryUsed =
-      resolverFirstRuntimeResult.resolverRejectedQueryUsed;
-    axiosConfig = resolverFirstRuntimeResult.axiosConfig;
-    fpmLatencyGuardApplied = resolverFirstRuntimeResult.fpmLatencyGuardApplied;
-    fpmSkippedGatesDueToBudget =
-      resolverFirstRuntimeResult.fpmSkippedGatesDueToBudget;
-    resolverFirstAttempted =
-      resolverFirstRuntimeResult.resolverFirstAttempted === true;
+    if (!response) {
+      const resolverFirstRuntimeResult = await maybeApplyInvokeResolverFirst({
+        response,
+        operation,
+        metadata,
+        resolverQueryText,
+        resolverRemainingBudgetMs,
+        traceQueryClass,
+        resolverBrandLike,
+        strictCommerceFindProductsMulti,
+        semanticOwnerControlled,
+        fpmLatencyGuardApplied,
+        fpmSkippedGatesDueToBudget,
+        addFpmGateTrace,
+        resolverQueryParams,
+        checkoutToken,
+        resolverTimeoutMs,
+        resolverRejectedReason,
+        resolverRejectedQueryUsed,
+        logger,
+        axiosConfig,
+      });
+      response = resolverFirstRuntimeResult.response;
+      resolverFirstResult = resolverFirstRuntimeResult.resolverFirstResult;
+      resolverRejectedReason = resolverFirstRuntimeResult.resolverRejectedReason;
+      resolverRejectedQueryUsed =
+        resolverFirstRuntimeResult.resolverRejectedQueryUsed;
+      axiosConfig = resolverFirstRuntimeResult.axiosConfig;
+      fpmLatencyGuardApplied = resolverFirstRuntimeResult.fpmLatencyGuardApplied;
+      fpmSkippedGatesDueToBudget =
+        resolverFirstRuntimeResult.fpmSkippedGatesDueToBudget;
+      resolverFirstAttempted =
+        resolverFirstRuntimeResult.resolverFirstAttempted === true;
+    }
     try {
       if (
         operation === 'get_product_detail' &&
@@ -20545,23 +20585,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
 
       if (!response) {
-        if (publicBrandSearchMainlinePromise) {
-          publicBrandSearchMainlineResolved = await publicBrandSearchMainlinePromise;
-          const prefetchedProducts = Array.isArray(publicBrandSearchMainlineResolved?.products)
-            ? publicBrandSearchMainlineResolved.products
-            : [];
-          const prefetchedTotal = Math.max(
-            0,
-            Number(publicBrandSearchMainlineResolved?.total || 0) || prefetchedProducts.length,
-          );
-          const prefetchedCoverageEnd = publicBrandSearchRequestedOffset + prefetchedProducts.length;
-          const publicBrandSearchPageCovered =
-            prefetchedProducts.length > 0 && prefetchedTotal >= prefetchedCoverageEnd;
-          if (publicBrandSearchPageCovered) {
-            response = { status: 200, data: publicBrandSearchMainlineResolved };
-            publicBrandSearchMainlineShortCircuited = true;
-          }
-        }
+        await maybeAdoptPublicBrandSearchMainlineResponse({
+          stage: 'pre_primary_upstream',
+        });
       }
 
       if (!response) {
@@ -21064,6 +21090,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 query_source: 'agent_products_public_brand_search_mainline',
                 brand_query_mainline_applied: true,
                 brand_query_mainline_attempted: true,
+                brand_query_mainline_prefetch_short_circuit:
+                  publicBrandSearchMainlineShortCircuited,
+                ...(publicBrandSearchMainlineShortCircuitStage
+                  ? {
+                      brand_query_mainline_prefetch_stage:
+                        publicBrandSearchMainlineShortCircuitStage,
+                    }
+                  : {}),
                 brand_query_mainline_provider_order: publicBrandSearchMainlineShortCircuited
                   ? ['external_seed']
                   : ['external_seed', 'upstream_search'],
