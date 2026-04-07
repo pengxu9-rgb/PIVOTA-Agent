@@ -131,6 +131,12 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
       ? hardPathHandoff.recommendations
       : [];
     if (hardPathRecommendations.length > 0) {
+      const effectiveHandoffTargetContext =
+        hardPathHandoff?.targetContext &&
+        typeof hardPathHandoff.targetContext === 'object' &&
+        !Array.isArray(hardPathHandoff.targetContext)
+          ? hardPathHandoff.targetContext
+          : hardPathRecoTargetContext;
       const hardPathSelectionContract = extractRecoFinalSelectionContract(
         hardPathHandoff.searchResult,
       );
@@ -143,14 +149,16 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
       const hardPathRecoContext = mergeIngredientRecoContextValue(
         latestRecoContextFromSession,
         {
-          target_step: pickFirstTrimmed(hardPathRecoTargetContext?.resolved_target_step),
-          step: pickFirstTrimmed(hardPathRecoTargetContext?.resolved_target_step),
-          resolved_target_step: pickFirstTrimmed(hardPathRecoTargetContext?.resolved_target_step),
+          target_step: pickFirstTrimmed(effectiveHandoffTargetContext?.resolved_target_step),
+          step: pickFirstTrimmed(effectiveHandoffTargetContext?.resolved_target_step),
+          resolved_target_step: pickFirstTrimmed(
+            effectiveHandoffTargetContext?.resolved_target_step,
+          ),
           resolved_target_step_confidence: pickFirstTrimmed(
-            hardPathRecoTargetContext?.resolved_target_step_confidence,
+            effectiveHandoffTargetContext?.resolved_target_step_confidence,
           ),
           resolved_target_step_source: pickFirstTrimmed(
-            hardPathRecoTargetContext?.resolved_target_step_source,
+            effectiveHandoffTargetContext?.resolved_target_step_source,
           ),
           query: pickFirstTrimmed(
             latestRecoContextFromSession?.ingredient_query,
@@ -163,12 +171,12 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
       const hardPathPayloadBundle = buildRecoPayloadFromBeautyMainlineHandoff({
         handoff: hardPathHandoff,
         profile,
-        targetContext: hardPathRecoTargetContext,
+        targetContext: effectiveHandoffTargetContext,
         recoContext: hardPathRecoContext,
         taskMode: 'goal_based_products',
         triggerSource: recoEntrySourceDetail,
         sourceMode:
-          String(hardPathRecoTargetContext?.intent_mode || '').trim().toLowerCase() ===
+          String(effectiveHandoffTargetContext?.intent_mode || '').trim().toLowerCase() ===
           'generic_concern'
             ? 'framework_mainline'
             : 'step_aware_mainline',
@@ -253,7 +261,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
         });
         return {
           handled: true,
-          targetContext: hardPathRecoTargetContext,
+          targetContext: effectiveHandoffTargetContext,
           envelope,
         };
       }

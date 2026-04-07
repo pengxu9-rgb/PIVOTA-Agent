@@ -98,6 +98,15 @@ function createFindProductsInvokeSemanticOwnerRuntime(deps = {}) {
           ),
         )
       : [];
+    const semanticOwnerSupportRoleIds = Array.isArray(semanticContractMeta?.support_role_ids)
+      ? Array.from(
+          new Set(
+            semanticContractMeta.support_role_ids
+              .map((value) => String(value || '').trim().toLowerCase())
+              .filter(Boolean),
+          ),
+        )
+      : [];
     const semanticOwnerTargetStepFamily = normalizeRecoTargetStep(
       semanticContractMeta?.target_step_family ||
         semanticContractMeta?.primary_step_family ||
@@ -132,6 +141,23 @@ function createFindProductsInvokeSemanticOwnerRuntime(deps = {}) {
         : semanticOwnerTargetStepFamily === 'sunscreen'
           ? 2
           : 1;
+    const buildSemanticOwnerSupportRoleQuery = (roleId = '') => {
+      const normalizedRoleId = String(roleId || '').trim().toLowerCase();
+      if (!normalizedRoleId) return '';
+      const oilySignal =
+        semanticOwnerSemanticFamily === 'oil_control' ||
+        /\b(oily|oil control|sebum|shine control|mattify|mattifying|non-greasy|non greasy)\b/.test(
+          `${String(rawUserQuery || '').trim().toLowerCase()} ${semanticOwnerSemanticFamily}`,
+        );
+      if (normalizedRoleId === 'lightweight_moisturizer') {
+        return oilySignal ? 'lightweight moisturizer oily skin' : 'lightweight moisturizer';
+      }
+      if (normalizedRoleId === 'barrier_moisturizer') return 'barrier moisturizer';
+      if (normalizedRoleId === 'daily_sunscreen') {
+        return oilySignal ? 'oil control sunscreen' : 'daily sunscreen';
+      }
+      return normalizedRoleId.replace(/_/g, ' ');
+    };
 
     const buildSemanticOwnerExternalRescueQueryPack = ({
       ignoredAttempt = null,
@@ -139,6 +165,15 @@ function createFindProductsInvokeSemanticOwnerRuntime(deps = {}) {
       fallbackQuery = '',
     } = {}) => {
       const rescueQueries = [];
+      if (
+        String(semanticContractMeta?.planner_mode || '').trim().toLowerCase() ===
+          'framework_generic' &&
+        semanticOwnerSupportRoleIds.length > 0
+      ) {
+        for (const roleId of semanticOwnerSupportRoleIds.slice(0, 2)) {
+          rescueQueries.push(buildSemanticOwnerSupportRoleQuery(roleId));
+        }
+      }
       if (semanticOwnerTargetStepFamily === 'sunscreen') {
         const rescueBaseQuery = String(rawUserQuery || fallbackQuery || '').trim();
         rescueQueries.push(

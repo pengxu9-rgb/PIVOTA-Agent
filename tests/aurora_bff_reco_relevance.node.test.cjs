@@ -20,6 +20,9 @@ process.env.AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED = 'true';
 const axios = require('axios');
 const dbModule = require('../src/db');
 const diagnosisArtifactStore = require('../src/auroraBff/diagnosisArtifactStore');
+const {
+  createBeautyChatMainlineEntryRuntime,
+} = require('../src/auroraBff/beautyChatMainlineEntry');
 const ROUTES_MODULE_PATH = require.resolve('../src/auroraBff/routes');
 const AURORA_DECISION_CLIENT_MODULE_PATH = require.resolve('../src/auroraBff/auroraDecisionClient');
 const { saveDiagnosisArtifact } = require('../src/auroraBff/diagnosisArtifactStore');
@@ -3170,8 +3173,8 @@ test('__internal: framework recall planner emits primary stages first, then supp
   );
   assert.deepEqual(plan.entries.map((entry) => entry?.query), [
     'oil control treatment',
-    'oil control serum',
-    'im oily skin, what product should i use?',
+    'lightweight moisturizer oily skin',
+    'oil control sunscreen',
   ]);
 });
 
@@ -3201,6 +3204,151 @@ test('__internal: framework recall planner prefers ingredient-led treatment quer
     'oil control serum',
     'salicylic acid treatment',
   ]);
+});
+
+test('__internal: beauty chat handoff uses effective framework target context for broad concern payload metadata', async () => {
+  const observed = {
+    payloadTargetContext: null,
+    payloadSourceMode: null,
+  };
+  const runtime = createBeautyChatMainlineEntryRuntime({
+    RECO_CATALOG_GROUNDED_ENABLED: true,
+    RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS: 1000,
+    resolveRecommendationTargetContext: () => ({
+      entry_type: 'chat',
+      intent_mode: 'generic',
+      step_aware_intent: false,
+      resolved_target_step: null,
+      framework_roles: [],
+    }),
+    summarizeProfileForContext: (profile) => profile,
+    mergeIngredientRecoContextValue: (left, right) => ({ ...(left || {}), ...(right || {}) }),
+    appendLatestRecoContextToSessionPatch: (sessionPatch, recoContext) => {
+      sessionPatch.latest_reco_context = recoContext;
+    },
+    extractRecoFinalSelectionContract: () => ({
+      selection_owner: 'shopping_agent_beauty_mainline',
+    }),
+    buildRouteAwareAssistantText: () => 'framework handoff response',
+    makeAssistantMessage: (content) => ({ role: 'assistant', format: 'text', content }),
+    buildEnvelope: (_ctx, envelope) => envelope,
+    makeEvent: (_ctx, kind, data) => ({ kind, data }),
+    applyRecoContractToRecoRequestedEvents: (events) => ({ events }),
+    buildRecoRequestedEventData: ({ payload, source }) => ({
+      payload,
+      source,
+    }),
+    normalizeRecoSourceDetail: (value) => value,
+    stateChangeAllowed: () => false,
+    handoffRecoToBeautyMainlineSearch: async () => ({
+      targetContext: {
+        entry_type: 'chat',
+        intent_mode: 'generic_concern',
+        step_aware_intent: false,
+        resolved_target_step: null,
+        primary_role_id: 'oil_control_treatment',
+        framework_roles: [
+          {
+            role_id: 'oil_control_treatment',
+            rank: 1,
+            preferred_step: 'treatment',
+          },
+          {
+            role_id: 'lightweight_moisturizer',
+            rank: 2,
+            preferred_step: 'moisturizer',
+          },
+          {
+            role_id: 'daily_sunscreen',
+            rank: 3,
+            preferred_step: 'sunscreen',
+          },
+        ],
+      },
+      recommendations: [
+        {
+          product_id: 'broad_oily_primary',
+          display_name: 'Oil Control Serum',
+        },
+      ],
+      searchResult: {
+        decision_owner: 'shopping_agent_beauty_mainline',
+        semantic_owner: 'shopping_agent_beauty_mainline',
+        metadata: {
+          contract_bridge: {
+            resolved_contract: 'agent_v1_search_beauty_mainline',
+          },
+          source_breakdown: {
+            source_tier_counts: { fresh_external: 1 },
+          },
+          search_stage_ledger: {
+            final_selection: {
+              selection_owner: 'shopping_agent_beauty_mainline',
+              selected_product_ids: ['broad_oily_primary'],
+              selected_titles: ['Oil Control Serum'],
+              selection_signature: 'search_sel_broad_oily',
+              mainline_status: 'grounded_success',
+              source_tier_counts: { fresh_external: 1 },
+            },
+          },
+        },
+      },
+    }),
+    buildRecoPayloadFromBeautyMainlineHandoff: ({
+      targetContext,
+      sourceMode,
+    }) => {
+      observed.payloadTargetContext = targetContext;
+      observed.payloadSourceMode = sourceMode;
+      return {
+        payload: {
+          source: 'catalog_grounded_v1',
+          mainline_status: 'grounded_success',
+          recommendation_meta: {
+            source_mode: sourceMode,
+          },
+        },
+        contract: {
+          version: 'test_contract',
+        },
+      };
+    },
+    classifyBeautyMainlineHandoffFallback: () => ({
+      reason: 'unreachable',
+    }),
+    buildBeautyMainlineHandoffFallbackEnvelope: () => ({
+      cards: [],
+    }),
+    looksLikeRecommendationRequest: () => true,
+    sendChatEnvelope: async () => null,
+  });
+
+  const result = await runtime.maybeHandleBeautyOwnedChatReco({
+    ctx: {
+      request_id: 'req_broad_oily',
+      trace_id: 'trace_broad_oily',
+      lang: 'EN',
+      trigger_source: 'chat',
+    },
+    logger: null,
+    message: 'im oily skin, what products should i use?',
+    recoEntrySourceDetail: 'typed_reco',
+    profile: {
+      skinType: 'oily',
+    },
+  });
+
+  assert.equal(result?.handled, true);
+  assert.equal(observed.payloadSourceMode, 'framework_mainline');
+  assert.equal(observed.payloadTargetContext?.intent_mode, 'generic_concern');
+  assert.equal(
+    result?.targetContext?.primary_role_id,
+    'oil_control_treatment',
+  );
+  assert.equal(
+    result?.envelope?.cards?.[0]?.payload?.recommendation_meta?.source_mode,
+    'framework_mainline',
+  );
 });
 
 test('__internal: framework recall planner injects canonical shine-control serum ladder when live planner only emits oil-balance phrasing', () => {

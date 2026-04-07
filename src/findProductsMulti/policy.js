@@ -1790,6 +1790,44 @@ function buildBeautyDiscoveryQueryPackFromContract({
   });
 }
 
+function buildFrameworkSupportRoleQuery(
+  roleId,
+  { concernClass = '', semanticFamily = '', rawQuery = '' } = {},
+) {
+  const normalizedRoleId = normalizeSemanticContractIdentifier(roleId, '');
+  if (!normalizedRoleId) return '';
+  const signalText = normalizeSemanticQueryLabel(
+    `${rawQuery} ${semanticFamily} ${concernClass}`.trim(),
+  );
+  const oilySignal =
+    normalizeSemanticContractIdentifier(concernClass, '') === 'oil_control' ||
+    /\b(oily|oil control|sebum|shine control|mattify|mattifying|non-greasy|non greasy)\b/.test(
+      signalText,
+    );
+  const sensitiveSignal =
+    normalizeSemanticContractIdentifier(concernClass, '') === 'barrier_repair' ||
+    /\b(sensitive|barrier|redness|soothing|calming|fragrance free|fragrance-free)\b/.test(
+      signalText,
+    );
+
+  if (normalizedRoleId === 'lightweight_moisturizer') {
+    if (oilySignal) return 'lightweight moisturizer oily skin';
+    return 'lightweight moisturizer';
+  }
+  if (normalizedRoleId === 'barrier_moisturizer') {
+    return sensitiveSignal ? 'barrier moisturizer' : 'ceramide moisturizer';
+  }
+  if (normalizedRoleId === 'daily_sunscreen') {
+    if (oilySignal) return 'oil control sunscreen';
+    if (sensitiveSignal) return 'sensitive skin sunscreen';
+    return 'daily sunscreen';
+  }
+  if (normalizedRoleId === 'hydrating_mask_support') {
+    return 'hydrating mask';
+  }
+  return normalizedRoleId.replace(/_/g, ' ');
+}
+
 function buildDeterministicStrictSemanticQueryPack({
   rawQuery = '',
   semanticContract = null,
@@ -1829,12 +1867,67 @@ function buildDeterministicStrictSemanticQueryPack({
   const ingredientHypotheses = normalizeSemanticStringList(contract?.ingredient_hypotheses, 8)
     .map((value) => normalizeSemanticQueryLabel(value))
     .filter(Boolean);
+  const supportRoleIds = normalizeSemanticStringList(contract?.support_role_ids, 4)
+    .map((value) => normalizeSemanticContractIdentifier(value, ''))
+    .filter(Boolean);
   const allowedStepFamilies = normalizeSemanticStringList(contract?.allowed_step_families, 6)
     .map((value) => normalizeSemanticStepFamily(value))
     .filter(Boolean);
 
   if (preserveLiteralConstraintQuery && raw) {
     pushExactUnique(raw);
+  }
+
+  const frameworkGenericCoverageQueryPack =
+    contract?.planner_mode === 'framework_generic' &&
+    contract?.request_class === 'generic_concern' &&
+    supportRoleIds.length > 0
+      ? (() => {
+          if (targetStepFamily === 'treatment') {
+            if (concernClass === 'oil_control') {
+              push(primaryRoleLabel || `${semanticFamily || 'oil control'} treatment`);
+            } else if (primaryRoleLabel) {
+              push(primaryRoleLabel);
+            } else if (semanticFamily) {
+              push(`${semanticFamily} treatment`);
+            } else {
+              push('treatment');
+            }
+          } else if (targetStepFamily === 'moisturizer') {
+            push(primaryRoleLabel || 'lightweight moisturizer');
+          } else if (targetStepFamily === 'sunscreen') {
+            push(primaryRoleLabel || 'daily sunscreen');
+          } else if (primaryRoleLabel) {
+            push(primaryRoleLabel);
+          }
+
+          for (const roleId of supportRoleIds.slice(0, 2)) {
+            pushExactUnique(
+              buildFrameworkSupportRoleQuery(roleId, {
+                concernClass,
+                semanticFamily,
+                rawQuery: raw,
+              }),
+            );
+          }
+
+          if (out.length < 3 && raw) push(raw);
+          if (out.length < 3 && ingredientHypotheses[0] && targetStepFamily === 'treatment') {
+            push(`${ingredientHypotheses[0]} treatment`);
+          }
+          return out.slice(0, 3);
+        })()
+      : [];
+  if (frameworkGenericCoverageQueryPack.length > 0) {
+    if (
+      contract?.request_class === 'generic_concern' &&
+      Number.isFinite(Number(ambiguityScorePre)) &&
+      Number(ambiguityScorePre) >= 0.7 &&
+      targetStepFamily
+    ) {
+      push(targetStepFamily);
+    }
+    return out.slice(0, 3);
   }
 
   const shouldAutoSeedPrimaryRole =
