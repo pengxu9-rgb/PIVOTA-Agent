@@ -91,6 +91,22 @@ const EXTERNAL_SEED_FACT_NOISE_RE =
   /\b(contact us|customer service|privacy policy|terms(?: and conditions)?|shipping policy|return policy|about us|blog|blogs|impact|foundation transparency|transparency|give 20%|donation|donate|store locator|support|avoid contact with eyes|keep out of reach of children|customerservice@|clearorg\.eu|clear \d+\s+rue)\b/i;
 const EXTERNAL_SEED_SYNTHETIC_SUMMARY_RE =
   /^\s*OFFICIAL:\s*([\s\S]*?)(?:\s*\/\/\/\s*SOCIAL HIGHLIGHTS:\s*[\s\S]*)$/i;
+const EXTERNAL_SEED_OVERVIEW_TAG_PHRASES = [
+  'cruelty free',
+  'paraben free',
+  'vegan',
+  'gluten free',
+  'fragrance free',
+  'dermatologist tested',
+  'sulfate free',
+  'silicone free',
+  'oil free',
+  'noncomedogenic',
+  'non-comedogenic',
+  'clean at sephora',
+];
+const EXTERNAL_SEED_OVERVIEW_MEASUREMENT_RE =
+  /\b\d+(?:\.\d+)?\s*(?:fl\.?\s*oz|oz|ml|mL|g|kg)\b/i;
 const UI_CHROME_IMAGE_FILENAME_RE =
   /^(?:menu|close|search|cart|account|icon[-_](?:search|cart|account)|tf_logo|logo)\.(?:svg|ico|gif)$/i;
 
@@ -196,6 +212,25 @@ function looksLikeExternalSeedFactNoise(value) {
   const text = normalizeTextValue(value);
   if (!text) return false;
   return EXTERNAL_SEED_FACT_NOISE_RE.test(text);
+}
+
+function looksLikeExternalSeedOverviewTagSoup(value) {
+  const text = normalizeTextValue(value);
+  if (!text) return false;
+  const segments = text
+    .split(/\n+|[•|]+/)
+    .map((item) => normalizeTextValue(item))
+    .filter(Boolean);
+  const normalizedText = text.toLowerCase();
+  const tagHits = EXTERNAL_SEED_OVERVIEW_TAG_PHRASES.reduce(
+    (count, phrase) => count + (normalizedText.includes(phrase) ? 1 : 0),
+    0,
+  );
+  const measurementHits = (segments.length ? segments : [text]).reduce(
+    (count, item) => count + (EXTERNAL_SEED_OVERVIEW_MEASUREMENT_RE.test(item) ? 1 : 0),
+    0,
+  );
+  return (measurementHits >= 1 && tagHits >= 2) || tagHits >= 4;
 }
 
 const MODULE_REQUIREMENTS = {
@@ -1124,18 +1159,39 @@ function buildBeautyOverviewModel(product) {
     if (activeHighlightHeading) {
       const items = splitOverviewHighlightItems(block, activeHighlightHeading);
       if (items.length) {
-        highlightItems.push(...items.filter((item) => !looksLikeExternalSeedFactNoise(item)));
+        highlightItems.push(
+          ...items.filter(
+            (item) =>
+              !looksLikeExternalSeedFactNoise(item) &&
+              !looksLikeExternalSeedOverviewTagSoup(item),
+          ),
+        );
         continue;
       }
     }
 
-    if (/^[\s\-•*]/.test(block) || /\n[\s\-•*]/.test(block)) {
+    if (
+      normalizeComparisonKey(currentHeading) === normalizeComparisonKey('Details') &&
+      looksLikeExternalSeedOverviewTagSoup(block)
+    ) {
+      currentHeading = '';
+      continue;
+    }
+
+    if (
+      (/^[\s\-•*]/.test(block) || /\n[\s\-•*]/.test(block)) &&
+      !looksLikeExternalSeedOverviewTagSoup(block)
+    ) {
       highlightItems.push(...splitOverviewHighlightItems(block, currentHeading));
       continue;
     }
 
     const sanitized = sanitizeNarrativeText(block);
-    if (sanitized && !looksLikeExternalSeedFactNoise(sanitized)) {
+    if (
+      sanitized &&
+      !looksLikeExternalSeedFactNoise(sanitized) &&
+      !looksLikeExternalSeedOverviewTagSoup(sanitized)
+    ) {
       narrativeBlocks.push(sanitized);
     }
     currentHeading = '';
@@ -1656,6 +1712,9 @@ function buildProductFactSections(product, detailSections, primaryDescription = 
       if (isExternalSeedProduct(product) && looksLikeExternalSeedFactNoise(`${section.heading} ${section.content}`)) {
         return false;
       }
+      if (isExternalSeedProduct(product) && looksLikeExternalSeedOverviewTagSoup(section.content)) {
+        return false;
+      }
       if (CATEGORY_SECTION_HEADING_RE.test(String(section.heading || '').trim())) return false;
       const contentKey = normalizeComparisonKey(section.content);
       if (!contentKey) return false;
@@ -1706,7 +1765,11 @@ function isRedundantDescriptionOnlyFacts(sections, primaryDescription = '') {
 }
 
 function buildProductDetailsSections(product, detailSections, primaryDescription = '', beautyOverview = null) {
-  if (beautyOverview?.overviewSection && !looksLikeExternalSeedFactNoise(beautyOverview.overviewSection?.content)) {
+  if (
+    beautyOverview?.overviewSection &&
+    !looksLikeExternalSeedFactNoise(beautyOverview.overviewSection?.content) &&
+    !looksLikeExternalSeedOverviewTagSoup(beautyOverview.overviewSection?.content)
+  ) {
     return [beautyOverview.overviewSection];
   }
 
@@ -1718,7 +1781,12 @@ function buildProductDetailsSections(product, detailSections, primaryDescription
       content: sanitizeNarrativeText(section?.content),
       collapsed_by_default: false,
     }))
-    .filter((section) => section.content && !looksLikeExternalSeedFactNoise(section.content));
+    .filter(
+      (section) =>
+        section.content &&
+        !looksLikeExternalSeedFactNoise(section.content) &&
+        !looksLikeExternalSeedOverviewTagSoup(section.content),
+    );
   if (genericSections.length) return genericSections.slice(0, 1);
 
   if (!isExternalSeedProduct(product)) return [];

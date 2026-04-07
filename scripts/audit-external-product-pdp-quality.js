@@ -91,6 +91,7 @@ function buildAuthoritativePayload(operation, payload = {}) {
         options: {
           ...ensureJsonObject(payload.options),
           debug: true,
+          no_cache: true,
         },
       },
     };
