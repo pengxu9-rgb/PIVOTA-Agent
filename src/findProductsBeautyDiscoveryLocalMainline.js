@@ -129,6 +129,36 @@ function normalizeSearchObject(value) {
   return isPlainObject(value) ? value : {};
 }
 
+function buildStepAwareCriticalQueryPack(queryPack = [], semanticContract = null) {
+  const normalized = Array.from(
+    new Set(
+      (Array.isArray(queryPack) ? queryPack : [])
+        .map((value) => String(value || '').trim())
+        .filter(Boolean),
+    ),
+  );
+  const targetStepFamily = String(semanticContract?.target_step_family || '')
+    .trim()
+    .toLowerCase();
+  if (targetStepFamily !== 'sunscreen') return normalized;
+
+  const ranked = [];
+  const pushMatch = (pattern) => {
+    const hit = normalized.find((query) => pattern.test(query));
+    if (hit && !ranked.includes(hit)) ranked.push(hit);
+  };
+
+  pushMatch(/\blightweight\b.*\bsunscreen\b|\bsunscreen\b.*\blightweight\b/i);
+  pushMatch(/\boil control\b.*\bsunscreen\b|\bsunscreen\b.*\boil control\b/i);
+  pushMatch(/\bface\b.*\bsunscreen\b|\bsunscreen\b.*\bface\b/i);
+
+  for (const query of normalized) {
+    if (ranked.length >= 2) break;
+    if (!ranked.includes(query)) ranked.push(query);
+  }
+  return ranked.slice(0, 2);
+}
+
 function buildLocalQueryString(params = {}) {
   const search = new URLSearchParams();
   Object.entries(isPlainObject(params) ? params : {}).forEach(([key, value]) => {
@@ -637,15 +667,20 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
       1,
       Math.min(12, Number(searchObj.limit || searchObj.page_size || 6) || 6),
     );
+    const fullQueryPack = buildBeautyDiscoveryQueryPackFromContract({
+      rawQuery: queryText,
+      semanticContract,
+    });
+    const criticalQueryPack = buildStepAwareCriticalQueryPack(fullQueryPack, semanticContract);
     const semanticRewriteResultMeta = {
       owner: BEAUTY_DISCOVERY_MAINLINE_OWNER,
       applied: true,
       mode: 'deterministic_contract',
       llm_enrichment_attempted: false,
-      normalized_query_pack: buildBeautyDiscoveryQueryPackFromContract({
-        rawQuery: queryText,
-        semanticContract,
-      }),
+      normalized_query_pack: criticalQueryPack,
+      full_query_pack: fullQueryPack,
+      critical_query_pack: criticalQueryPack,
+      critical_query_pack_truncated: criticalQueryPack.length < fullQueryPack.length,
     };
     if (!Array.isArray(semanticRewriteResultMeta.normalized_query_pack) ||
         semanticRewriteResultMeta.normalized_query_pack.length <= 0) {
@@ -711,6 +746,20 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
       },
       metadata: metadataObj,
     };
+    const localStepAwareStartedAtMs = Date.now();
+    const getLocalStepAwareRemainingBudgetMs = () =>
+      Math.max(
+        0,
+        Number(primaryTimeoutMs || 0) -
+          Math.max(0, Date.now() - localStepAwareStartedAtMs),
+      );
+    const clampLocalStepAwareAttemptTimeoutMs = (requestedTimeoutMs) => {
+      const requested =
+        Number.isFinite(Number(requestedTimeoutMs)) && Number(requestedTimeoutMs) > 0
+          ? Number(requestedTimeoutMs)
+          : primaryTimeoutMs;
+      return Math.max(0, Math.min(requested, getLocalStepAwareRemainingBudgetMs()));
+    };
     const semanticOwnerContext = prepareInvokeSemanticOwnerContext({
       operation,
       semanticOwnerControlled: true,
@@ -726,16 +775,62 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
         metadata: metadataObj,
       },
     });
-    const initialSearch = await runLocalBeautySearchAttempt({
-      queryParams,
-      searchObj,
-      metadataObj,
-      semanticContract,
-      gatewayRequestId,
-      timeoutMs: primaryTimeoutMs,
-      logger,
-      authHeaders,
-    });
+    let initialSearch;
+    try {
+      initialSearch = await runLocalBeautySearchAttempt({
+        queryParams,
+        searchObj,
+        metadataObj,
+        semanticContract,
+        gatewayRequestId,
+        timeoutMs: clampLocalStepAwareAttemptTimeoutMs(primaryTimeoutMs),
+        logger,
+        authHeaders,
+      });
+    } catch (initialSearchErr) {
+      const errMessage = String(initialSearchErr?.message || initialSearchErr || '').trim();
+      return {
+        handled: true,
+        response: buildLocalBeautyDiscoveryMainlineResponse({
+          queryText,
+          contract,
+          plan,
+          traceQueryClass,
+          gatewayRequestId,
+          invokeStartedAtMs,
+          primaryTimeoutMs,
+          semanticContract,
+          semanticRewriteResultMeta,
+          primaryQueryPackAttempts: [
+            {
+              query: String(queryParams.query || '').trim(),
+              query_index: 0,
+              query_total: semanticRewriteResultMeta.normalized_query_pack.length,
+              result_count: 0,
+              adopted: false,
+              error: errMessage,
+            },
+          ],
+          selectedProducts: [],
+          rawCandidates: [],
+          supplementTraces: [],
+          primaryFailureStage: /timeout|ECONNABORTED/i.test(
+            `${initialSearchErr?.code || ''} ${errMessage}`,
+          )
+            ? 'primary_upstream_timeout'
+            : 'primary_upstream_error',
+          finalDecision: 'strict_empty',
+          operation,
+          upstreamMetadata: {
+            query_source: 'beauty_discovery_local_mainline',
+            local_step_aware_query_pack_full: fullQueryPack,
+            local_step_aware_query_pack_critical: criticalQueryPack,
+            local_step_aware_query_pack_truncated:
+              criticalQueryPack.length < fullQueryPack.length,
+          },
+        }),
+      };
+    }
     let response = initialSearch.response;
     let upstreamData = initialSearch.upstreamData;
     const localBaseUrl = 'http://local-beauty-mainline.test/agent/v1/products/search';
@@ -745,16 +840,19 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
         ...parsedQuery,
         ...(isPlainObject(config?.data?.search) ? config.data.search : {}),
       };
+      const effectiveTimeoutMs = clampLocalStepAwareAttemptTimeoutMs(config?.timeout);
+      if (effectiveTimeoutMs < 120) {
+        const err = new Error('local beauty discovery timeout budget exhausted');
+        err.code = 'ECONNABORTED';
+        throw err;
+      }
       const searchAttempt = await runLocalBeautySearchAttempt({
         queryParams: localQueryParams,
         searchObj,
         metadataObj,
         semanticContract,
         gatewayRequestId,
-        timeoutMs:
-          Number.isFinite(Number(config?.timeout)) && Number(config.timeout) > 0
-            ? Number(config.timeout)
-            : primaryTimeoutMs,
+        timeoutMs: effectiveTimeoutMs,
         logger,
         authHeaders,
       });
@@ -807,7 +905,7 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
         metadata: metadataObj,
       },
       getFpmRemainingBudgetMs: () =>
-        Math.max(0, primaryTimeoutMs - Math.max(0, Date.now() - Number(invokeStartedAtMs || Date.now()))),
+        getLocalStepAwareRemainingBudgetMs(),
       logger,
       rawUserQuery: queryText,
     });
