@@ -1925,9 +1925,10 @@ function buildPdpPayload(args) {
   const mediaItems = buildMediaItems(product, variants);
   const detailSections = readDetailSections(product);
   const beautyOverview = buildBeautyOverviewModel(product);
-  const primaryDescription =
+  const primaryDescription = sanitizeNarrativeText(
     beautyOverview?.description ||
-    sanitizeNarrativeText(product.pdp_description_raw || product.description);
+      sanitizeNarrativeText(product.pdp_description_raw || product.description),
+  );
   const ingredientsModule = buildIngredientsModule(product, detailSections);
   const activeIngredientsModule = buildActiveIngredientsModule(
     product,
