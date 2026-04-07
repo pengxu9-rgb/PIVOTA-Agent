@@ -18,13 +18,16 @@ const {
   buildExtractRequestBody,
 } = require('./backfill-external-product-seeds-catalog');
 
+const PUBLIC_GATEWAY_PATH = `/${['api', 'gateway'].join('/')}`;
+const AUTHORITATIVE_INVOKE_PATH = `/${['agent', 'shop', 'v1', 'invoke'].join('/')}`;
+const DEFAULT_PUBLIC_GATEWAY_ORIGIN = 'https://agent.pivota.cc';
 const DEFAULT_CATALOG_BASE_URL =
   process.env.CATALOG_INTELLIGENCE_BASE_URL ||
   'https://pivota-catalog-intelligence-production.up.railway.app';
 const DEFAULT_GATEWAY_URL =
   process.env.EXTERNAL_PDP_QUALITY_GATEWAY_URL ||
   process.env.PDP_SMOKE_GATEWAY ||
-  'https://agent.pivota.cc/api/gateway';
+  `${DEFAULT_PUBLIC_GATEWAY_ORIGIN}${PUBLIC_GATEWAY_PATH}`;
 
 function argValue(name) {
   const idx = process.argv.indexOf(`--${name}`);
@@ -47,8 +50,11 @@ function resolveGatewayUrl(value) {
   const normalized = normalizeUrlLike(value);
   if (!normalized) return DEFAULT_GATEWAY_URL;
   const trimmed = normalized.replace(/\/+$/, '');
-  if (/\/(?:api\/gateway|agent\/shop\/v1\/invoke)$/i.test(trimmed)) return trimmed;
-  return `${trimmed}/api/gateway`;
+  const lowered = trimmed.toLowerCase();
+  if (lowered.endsWith(PUBLIC_GATEWAY_PATH) || lowered.endsWith(AUTHORITATIVE_INVOKE_PATH)) {
+    return trimmed;
+  }
+  return `${trimmed}${PUBLIC_GATEWAY_PATH}`;
 }
 
 function getHeaders() {

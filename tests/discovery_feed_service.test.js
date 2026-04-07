@@ -3192,6 +3192,107 @@ describe('discovery feed service', () => {
     );
   });
 
+  test('query-only personalized browse stops after current page coverage and skips slow supplemental providers', async () => {
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://wrong-backend.test';
+    delete process.env.PIVOTA_API_BASE;
+    delete process.env.PIVOTA_API_KEY;
+    process.env.PIVOTA_BACKEND_AGENT_API_KEY = 'bridge-key';
+
+    const primaryProducts = Array.from({ length: 13 }, (_, idx) =>
+      makeProduct({
+        merchant_id: `m${idx + 1}`,
+        product_id: `personalized_serum_${idx + 1}`,
+        title: `Niacinamide Serum ${idx + 1}`,
+        brand: `Beauty Brand ${idx + 1}`,
+        category: 'Skincare',
+        product_type: 'Serum',
+      }),
+    );
+    const internalSpy = jest.fn(async () => [
+      makeProduct({
+        merchant_id: 'merch_internal',
+        product_id: 'internal_personalized_1',
+        title: 'Winona Soothing Repair Serum',
+        brand: 'Winona',
+        category: 'Skincare',
+        product_type: 'Serum',
+      }),
+    ]);
+    const externalSpy = jest.fn(async () => [
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'external_personalized_1',
+        title: 'External Barrier Serum',
+        brand: 'Seeded',
+        category: 'Skincare',
+        product_type: 'Serum',
+      }),
+    ]);
+
+    nock('http://discovery-catalog.test')
+      .matchHeader('x-agent-api-key', 'bridge-key')
+      .matchHeader('x-api-key', 'bridge-key')
+      .get('/agent/v1/products/search')
+      .query((query) => String(query.query || '') === 'niacinamide serum')
+      .reply(200, { products: primaryProducts });
+
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        debug: true,
+        context: {
+          auth_state: 'authenticated',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: ['niacinamide serum', 'vitamin c serum'],
+        },
+      },
+      {
+        providerOverrides: {
+          internal_catalog: internalSpy,
+          external_seeds: externalSpy,
+        },
+      },
+    );
+
+    expect(response.products).toHaveLength(12);
+    expect(internalSpy).not.toHaveBeenCalled();
+    expect(externalSpy).not.toHaveBeenCalled();
+    expect(nock.isDone()).toBe(true);
+    expect(response.metadata.discovery_strategy).toBe('personalized_interest');
+    expect(response.metadata.personalization_source).toBe('account_history');
+    expect(response.metadata.provider_breakdown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ provider: 'products_search', successful: true }),
+        expect.objectContaining({ provider: 'internal_catalog', skipped: true }),
+        expect.objectContaining({ provider: 'external_seeds', skipped: true }),
+      ]),
+    );
+    expect(response.metadata.rank_debug.recall_summary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          provider: 'products_search',
+          label: 'browse_pool',
+          query: 'niacinamide serum',
+          returned: 13,
+        }),
+        expect.objectContaining({
+          provider: 'internal_catalog',
+          skipped: true,
+          skip_reason: 'sufficient_personalized_primary_candidates',
+        }),
+        expect.objectContaining({
+          provider: 'external_seeds',
+          skipped: true,
+          skip_reason: 'sufficient_personalized_primary_candidates',
+        }),
+      ]),
+    );
+  });
+
   test('generic no-signal browse short-circuits provider expansion when primary beauty candidates are already sufficient', async () => {
     process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://wrong-backend.test';

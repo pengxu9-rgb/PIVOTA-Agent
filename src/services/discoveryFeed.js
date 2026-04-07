@@ -1682,6 +1682,31 @@ function shouldSkipNoSignalProviderExpansion(products = [], { request, profile }
   return highQualityCount >= threshold;
 }
 
+function isQueryOnlyPersonalizedDiscoveryRequest(request, profile) {
+  if (!profile?.hasInterestSignals) return false;
+  if (Number(profile?.historyItemsUsed || 0) > 0) return false;
+  if (Number(profile?.queryHistoryItemsUsed || 0) <= 0) return false;
+  if (hasBrandScope(request) || hasDiscoveryQueryText(request) || hasDiscoveryCategoryScope(request)) {
+    return false;
+  }
+  return request?.surface === 'browse_products' || request?.surface === 'home_hot_deals';
+}
+
+function getPersonalizedPrimaryProviderThreshold(request) {
+  const requestedLimit = clampInt(request?.limit, 12, 1, 48);
+  if (request?.surface === 'browse_products') {
+    const page = Math.max(1, Number(request?.page || 1));
+    return page * requestedLimit;
+  }
+  return requestedLimit;
+}
+
+function shouldSkipPersonalizedProviderExpansion(products = [], { request, profile } = {}) {
+  if (!isQueryOnlyPersonalizedDiscoveryRequest(request, profile)) return false;
+  const highQualityCount = countHighQualityProviderCandidates(products, { request, profile });
+  return highQualityCount >= getPersonalizedPrimaryProviderThreshold(request);
+}
+
 async function fetchDiscoveryRecallStep({
   baseUrl,
   request,
@@ -1845,7 +1870,11 @@ async function loadProductsSearchCandidates({ request, profile, limit = MAX_CAND
     }
   };
 
-  if (request?.surface === 'home_hot_deals' && recallPlan.length > 1) {
+  if (
+    request?.surface === 'home_hot_deals' &&
+    recallPlan.length > 1 &&
+    !isQueryOnlyPersonalizedDiscoveryRequest(request, profile)
+  ) {
     const stepResults = await Promise.all(
       recallPlan.map((step) =>
         fetchDiscoveryRecallStep({
@@ -1898,6 +1927,7 @@ async function loadProductsSearchCandidates({ request, profile, limit = MAX_CAND
 
     successCount += 1;
     mergeProducts(result.products);
+    if (shouldSkipPersonalizedProviderExpansion(mergedProducts, { request, profile })) break;
     if (mergedProducts.length >= safeLimit) break;
     if (step.allow_early_exit !== false && mergedProducts.length >= enoughThreshold) break;
     if (Date.now() - recallStartedAt >= recallBudgetMs) {
@@ -2654,6 +2684,41 @@ async function loadCatalogCandidates({
         query: externalProviderQueries.join(' | '),
         limit: externalProviderLimit,
         skipReason: 'sufficient_no_signal_primary_candidates',
+      }),
+    );
+    const recallSummary = providerResults.flatMap((result) =>
+      (Array.isArray(result?.recallSummary) ? result.recallSummary : []).map((step) => ({
+        provider: result.provider,
+        ...step,
+      })),
+    );
+    const providerBreakdown = buildProviderBreakdown(providerResults);
+    return {
+      products: mergedProducts,
+      recallSummary,
+      providerBreakdown,
+    };
+  }
+
+  const shouldSkipPersonalizedExpansion = shouldSkipPersonalizedProviderExpansion(mergedProducts, {
+    request,
+    profile,
+  });
+  if (shouldSkipPersonalizedExpansion) {
+    providerResults.push(
+      buildSkippedProviderResult('internal_catalog', {
+        label: 'internal_catalog_pool',
+        query: providerQueries.join(' | '),
+        limit: internalProviderLimit,
+        skipReason: 'sufficient_personalized_primary_candidates',
+      }),
+    );
+    providerResults.push(
+      buildSkippedProviderResult('external_seeds', {
+        label: 'external_seed_pool',
+        query: externalProviderQueries.join(' | '),
+        limit: externalProviderLimit,
+        skipReason: 'sufficient_personalized_primary_candidates',
       }),
     );
     const recallSummary = providerResults.flatMap((result) =>
