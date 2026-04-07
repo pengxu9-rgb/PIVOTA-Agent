@@ -1296,7 +1296,6 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
   const tool = 'creator_agents';
 
   const brand = normalizeText(brandHint);
-  const brandAliases = brand ? [brand] : [];
   const leafCategory = normalizeText(categoryHint);
   const parentCategory = normalizeText(getParentCategory(baseProduct));
   const vertical = inferVerticalFromProduct(baseProduct || {}).vertical || UNKNOWN_VERTICAL;
@@ -1417,28 +1416,24 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
   `;
   const brandSurfaceSql = `
     (
-      ${EXTERNAL_SEED_RECALL_SQL_FIELDS.brand} = ANY($4::text[])
-      OR lower(coalesce(seed_data->>'brand', '')) = ANY($4::text[])
-      OR lower(coalesce(seed_data->>'brand_name', '')) = ANY($4::text[])
-      OR lower(coalesce(seed_data->>'vendor', '')) = ANY($4::text[])
-      OR lower(coalesce(seed_data->>'vendor_name', '')) = ANY($4::text[])
-      OR lower(coalesce(seed_data->'snapshot'->>'brand', '')) = ANY($4::text[])
-      OR lower(coalesce(seed_data->'snapshot'->>'brand_name', '')) = ANY($4::text[])
-      OR lower(coalesce(seed_data->'snapshot'->>'vendor', '')) = ANY($4::text[])
-      OR lower(coalesce(seed_data->'snapshot'->>'vendor_name', '')) = ANY($4::text[])
-      OR EXISTS (
-        SELECT 1
-        FROM unnest($4::text[]) AS alias
-        WHERE lower(coalesce(seed_data->'snapshot'->>'title', seed_data->>'title', title, '')) LIKE alias || ' %'
-      )
+      ${EXTERNAL_SEED_RECALL_SQL_FIELDS.brand} = $4
+      OR lower(coalesce(seed_data->>'brand', '')) = $4
+      OR lower(coalesce(seed_data->>'brand_name', '')) = $4
+      OR lower(coalesce(seed_data->>'vendor', '')) = $4
+      OR lower(coalesce(seed_data->>'vendor_name', '')) = $4
+      OR lower(coalesce(seed_data->'snapshot'->>'brand', '')) = $4
+      OR lower(coalesce(seed_data->'snapshot'->>'brand_name', '')) = $4
+      OR lower(coalesce(seed_data->'snapshot'->>'vendor', '')) = $4
+      OR lower(coalesce(seed_data->'snapshot'->>'vendor_name', '')) = $4
+      OR lower(coalesce(seed_data->'snapshot'->>'title', seed_data->>'title', title, '')) LIKE $4 || ' %'
     )
   `;
 
   const [brandMatches, categoryExactMatches, categorySemanticMatches, verticalMatches] = await Promise.all([
-    brandAliases.length
+    brand
       ? runQueryWithBudget(
           `AND ${brandSurfaceSql}`,
-          [brandAliases],
+          [brand],
           Math.min(120, safeLimit),
           'external_brand',
         )
