@@ -18,6 +18,72 @@ function createFindProductsInvokePrimaryExceptionRuntime(deps = {}) {
     buildStrictEmptyFallbackResponse,
   } = deps;
 
+  function isPlainRecord(value) {
+    return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+  }
+
+  function normalizeAuthoritativeNoFallbackResponseBody(
+    body,
+    {
+      querySource = 'agent_products_search',
+      primaryPath = 'upstream_stage',
+      reason = 'primary_exception_no_fallback',
+      decisionLockReason = 'authoritative_no_fallback',
+    } = {},
+  ) {
+    if (!isPlainRecord(body)) return body;
+
+    const metadata = isPlainRecord(body.metadata) ? body.metadata : {};
+    const routeHealth = isPlainRecord(metadata.route_health) ? metadata.route_health : {};
+    const searchTrace = isPlainRecord(metadata.search_trace) ? metadata.search_trace : {};
+    const searchDecision = isPlainRecord(metadata.search_decision)
+      ? metadata.search_decision
+      : {};
+    const proxySearchFallback = isPlainRecord(metadata.proxy_search_fallback)
+      ? metadata.proxy_search_fallback
+      : {};
+    const contractBridge = isPlainRecord(metadata.contract_bridge)
+      ? metadata.contract_bridge
+      : {};
+
+    return {
+      ...body,
+      metadata: {
+        ...metadata,
+        query_source: querySource,
+        legacy_contract: false,
+        contract_bridge: {
+          ...contractBridge,
+          legacy_fallback: false,
+        },
+        proxy_search_fallback: {
+          ...proxySearchFallback,
+          applied: false,
+          reason: proxySearchFallback.reason || reason,
+        },
+        route_health: {
+          ...routeHealth,
+          fallback_triggered: false,
+          fallback_reason: null,
+          primary_path_used: primaryPath,
+        },
+        search_trace: {
+          ...searchTrace,
+          fallback_reason: null,
+          primary_path_used: primaryPath,
+        },
+        search_decision: {
+          ...searchDecision,
+          fallback_reason: null,
+          primary_path_used: primaryPath,
+          decision_authority: querySource,
+          decision_locked: true,
+          decision_lock_reason: decisionLockReason,
+        },
+      },
+    };
+  }
+
   async function handleInvokePrimarySearchException({
     response = null,
     operation = '',
@@ -31,6 +97,9 @@ function createFindProductsInvokePrimaryExceptionRuntime(deps = {}) {
     searchQueryText = '',
     shoppingFreshMainlineSearch = false,
     strictCommerceFindProductsMulti = false,
+    authoritativeHardCut = false,
+    hardCutAuthorityQuerySource = null,
+    hardCutAuthorityPrimaryPath = null,
     semanticOwnerControlled = false,
     requestContract = null,
     executionPlan = null,
@@ -66,6 +135,12 @@ function createFindProductsInvokePrimaryExceptionRuntime(deps = {}) {
     const upstreamStatus = err?.response?.status || null;
     const { code: upstreamCode, message: upstreamMessage } =
       extractUpstreamErrorCode(err);
+    const normalizedAuthorityQuerySource =
+      String(hardCutAuthorityQuerySource || 'agent_products_search').trim() ||
+      'agent_products_search';
+    const normalizedAuthorityPrimaryPath =
+      String(hardCutAuthorityPrimaryPath || 'upstream_stage').trim() ||
+      'upstream_stage';
     let nextResponse = response;
     let nextResolverRejectedReason = resolverRejectedReason;
     let nextResolverRejectedQueryUsed = resolverRejectedQueryUsed;
@@ -80,40 +155,60 @@ function createFindProductsInvokePrimaryExceptionRuntime(deps = {}) {
       primaryLane === 'beauty_discovery_mainline';
 
     if (shoppingFreshMainlineSearch) {
+      const shoppingMainlineReason =
+        err?.code === 'ECONNABORTED'
+          ? 'shopping_mainline_timeout'
+          : 'shopping_mainline_exception';
+      const body = buildStrictEmptyFallbackResponse({
+        body: null,
+        queryParams,
+        reason: shoppingMainlineReason,
+        upstreamStatus,
+        upstreamCode: upstreamCode || err?.code || null,
+        upstreamMessage: upstreamMessage || err?.message || null,
+        route: 'shopping_mainline_primary_exception',
+        intent: effectiveIntent,
+        queryClass: traceQueryClass,
+        queryText,
+        ...(authoritativeHardCut
+          ? { querySource: normalizedAuthorityQuerySource }
+          : {}),
+      });
       nextResponse = {
         status: 200,
-        data: buildStrictEmptyFallbackResponse({
-          body: null,
-          queryParams,
-          reason:
-            err?.code === 'ECONNABORTED'
-              ? 'shopping_mainline_timeout'
-              : 'shopping_mainline_exception',
-          upstreamStatus,
-          upstreamCode: upstreamCode || err?.code || null,
-          upstreamMessage: upstreamMessage || err?.message || null,
-          route: 'shopping_mainline_primary_exception',
-          intent: effectiveIntent,
-          queryClass: traceQueryClass,
-          queryText,
-        }),
+        data: authoritativeHardCut
+          ? normalizeAuthoritativeNoFallbackResponseBody(body, {
+              querySource: normalizedAuthorityQuerySource,
+              primaryPath: normalizedAuthorityPrimaryPath,
+              reason: shoppingMainlineReason,
+            })
+          : body,
       };
     }
     if (operation === 'find_products_multi' && strictCommerceFindProductsMulti) {
+      const body = buildProxySearchSoftFallbackResponse({
+        queryParams,
+        reason: 'strict_surface_exception',
+        upstreamStatus,
+        upstreamCode: upstreamCode || err?.code || null,
+        upstreamMessage: upstreamMessage || err?.message || null,
+        route: 'strict_invoke_exception',
+        intent: effectiveIntent,
+        queryClass: traceQueryClass,
+        queryText,
+        querySource: authoritativeHardCut
+          ? normalizedAuthorityQuerySource
+          : 'agent_products_error_fallback',
+      });
       nextResponse = {
         status: 200,
-        data: buildProxySearchSoftFallbackResponse({
-          queryParams,
-          reason: 'strict_surface_exception',
-          upstreamStatus,
-          upstreamCode: upstreamCode || err?.code || null,
-          upstreamMessage: upstreamMessage || err?.message || null,
-          route: 'strict_invoke_exception',
-          intent: effectiveIntent,
-          queryClass: traceQueryClass,
-          queryText,
-          querySource: 'agent_products_error_fallback',
-        }),
+        data: authoritativeHardCut
+          ? normalizeAuthoritativeNoFallbackResponseBody(body, {
+              querySource: normalizedAuthorityQuerySource,
+              primaryPath: normalizedAuthorityPrimaryPath,
+              reason: 'strict_surface_exception',
+            })
+          : body,
       };
     }
     if (beautyDiscoveryMainlineContract) {
@@ -168,6 +263,99 @@ function createFindProductsInvokePrimaryExceptionRuntime(deps = {}) {
           publicBrandSearchMainlineShortCircuited: true,
         };
       }
+    }
+
+    if (authoritativeHardCut) {
+      const strictEmpty = buildStrictEmptyFallbackResponse({
+        body: null,
+        queryParams,
+        reason:
+          err?.code === 'ECONNABORTED'
+            ? 'primary_exception_no_fallback_timeout'
+            : 'primary_exception_no_fallback',
+        upstreamStatus,
+        upstreamCode: upstreamCode || err?.code || null,
+        upstreamMessage: upstreamMessage || err?.message || null,
+        route: 'invoke_exception_authoritative_no_fallback',
+        intent: effectiveIntent,
+        queryClass: traceQueryClass,
+        queryText,
+        querySource: normalizedAuthorityQuerySource,
+      });
+      const strictMetadata =
+        strictEmpty?.metadata && typeof strictEmpty.metadata === 'object' && !Array.isArray(strictEmpty.metadata)
+          ? strictEmpty.metadata
+          : {};
+      const proxySearchFallback =
+        strictMetadata.proxy_search_fallback &&
+        typeof strictMetadata.proxy_search_fallback === 'object' &&
+        !Array.isArray(strictMetadata.proxy_search_fallback)
+          ? strictMetadata.proxy_search_fallback
+          : {};
+      nextResponse = {
+        status: 200,
+        data: {
+          ...strictEmpty,
+          metadata: {
+            ...strictMetadata,
+            query_source: normalizedAuthorityQuerySource,
+            legacy_contract: false,
+            proxy_search_fallback: {
+              ...proxySearchFallback,
+              applied: false,
+              reason:
+                proxySearchFallback.reason ||
+                (err?.code === 'ECONNABORTED'
+                  ? 'primary_exception_no_fallback_timeout'
+                  : 'primary_exception_no_fallback'),
+            },
+            route_health: {
+              ...(
+                strictMetadata.route_health &&
+                typeof strictMetadata.route_health === 'object' &&
+                !Array.isArray(strictMetadata.route_health)
+                  ? strictMetadata.route_health
+                  : {}
+              ),
+              fallback_triggered: false,
+              fallback_reason: null,
+              primary_path_used: normalizedAuthorityPrimaryPath,
+            },
+            search_trace: {
+              ...(
+                strictMetadata.search_trace &&
+                typeof strictMetadata.search_trace === 'object' &&
+                !Array.isArray(strictMetadata.search_trace)
+                  ? strictMetadata.search_trace
+                  : {}
+              ),
+              fallback_reason: null,
+              primary_path_used: normalizedAuthorityPrimaryPath,
+            },
+            search_decision: {
+              ...(
+                strictMetadata.search_decision &&
+                typeof strictMetadata.search_decision === 'object' &&
+                !Array.isArray(strictMetadata.search_decision)
+                  ? strictMetadata.search_decision
+                  : {}
+              ),
+              primary_path_used: normalizedAuthorityPrimaryPath,
+              decision_authority: normalizedAuthorityQuerySource,
+              decision_locked: true,
+              decision_lock_reason: 'primary_exception_authority',
+            },
+          },
+        },
+      };
+      return {
+        response: nextResponse,
+        resolverRejectedReason: nextResolverRejectedReason,
+        resolverRejectedQueryUsed: nextResolverRejectedQueryUsed,
+        publicBrandSearchMainlineResolved:
+          nextPublicBrandSearchMainlineResolved,
+        publicBrandSearchMainlineShortCircuited,
+      };
     }
 
     const secondarySkipBrandLike = Boolean(

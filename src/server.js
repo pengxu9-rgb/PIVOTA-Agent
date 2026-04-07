@@ -1590,6 +1590,7 @@ const {
   isCreatorUiSource,
   isCatalogGuardSource,
   isResolverFirstCatalogSource,
+  classifyInvokeSearchRail,
   isAuroraSource,
   getProxySearchApiBase,
   getAuroraFallbackOverrides,
@@ -5173,11 +5174,12 @@ function applyTravelLookupContinuationFromQuery({ query, search, metadata }) {
   return Object.keys(context).length > 0 ? context : null;
 }
 
-function applyShoppingCatalogQueryGuards(queryParams, source) {
+function applyShoppingCatalogQueryGuards(queryParams, source, options = {}) {
   const params =
     queryParams && typeof queryParams === 'object' && !Array.isArray(queryParams)
       ? { ...queryParams }
       : {};
+  if (options?.explicitLegacy === true) return params;
   if (isPublicSearchSource(source)) return applyBaseShoppingCatalogQueryGuards(params, source);
   if (!isCatalogGuardSource(source)) return params;
   const guardedBase = applyBaseShoppingCatalogQueryGuards(params, source);
@@ -16507,6 +16509,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     return originalJson(finalBody);
   };
   res.setHeader('X-Gateway-Request-Id', gatewayRequestId);
+  let authoritativeHardCutQuerySource = 'agent_products_search';
+  let authoritativeHardCutPrimaryPath = 'upstream_stage';
 
   try {
     const parsed = InvokeRequestSchema.safeParse(req.body);
@@ -18259,6 +18263,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     strictConstraintQuery: false,
     strictConstraintReason: null,
   };
+  let invokeSearchRail = 'legacy_internal';
+  let authoritativeShoppingSearchRail = false;
+  let publicObservabilitySearchRail = false;
+  let authoritativeOrPublicSearchRail = false;
+  let explicitLegacySearchContracts = false;
   const shoppingFreshMainlineSearch =
     (operation === 'find_products' || operation === 'find_products_multi') &&
     shouldUseShoppingFreshMainlineSearch(metadata?.source);
@@ -18287,8 +18296,38 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           search,
           metadata,
         });
+        if (explicitLegacySearchContracts) {
+          strictFindProductsMultiDecision = {
+            ...(strictFindProductsMultiDecision || {}),
+            enabled: false,
+            disabled_reason: 'explicit_legacy_contract',
+          };
+        }
         strictCommerceFindProductsMulti = Boolean(strictFindProductsMultiDecision.enabled);
 	      const queryText = String(search.query || '').trim();
+	      explicitLegacySearchContracts =
+          parseQueryBoolean(
+            req?.query?.legacy_contracts ??
+              req?.query?.legacyContracts ??
+              metadata?.legacy_contracts ??
+              metadata?.legacyContracts ??
+              effectivePayload?.metadata?.legacy_contracts ??
+              effectivePayload?.metadata?.legacyContracts ??
+              effectivePayload?.search?.legacy_contracts ??
+              effectivePayload?.search?.legacyContracts,
+          ) === true;
+	      invokeSearchRail = classifyInvokeSearchRail(source, {
+          explicitLegacy: explicitLegacySearchContracts,
+        });
+	      authoritativeShoppingSearchRail = invokeSearchRail === 'authoritative_shopping';
+	      publicObservabilitySearchRail = invokeSearchRail === 'public_observability';
+	      authoritativeOrPublicSearchRail =
+          authoritativeShoppingSearchRail || publicObservabilitySearchRail;
+	      metadata = {
+          ...(metadata || {}),
+          invoke_search_rail: invokeSearchRail,
+          legacy_contract: invokeSearchRail === 'legacy_internal',
+        };
 	      const isCreatorUiColdStart = isCreatorUiSource(source) && queryText.length === 0;
       const inStockOnly = search.in_stock_only !== false;
 
@@ -18652,10 +18691,23 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       // browse feed directly from products_cache.
       const isCrossMerchantBrowseColdStart =
         !isCreatorUi && queryText.length === 0 && !hasMerchantScope;
+      if (isCrossMerchantBrowseColdStart && authoritativeOrPublicSearchRail) {
+        crossMerchantCacheRouteDebug = {
+          attempted: false,
+          bypassed: true,
+          bypass_reason: 'authoritative_discovery_only',
+          mode: 'browse',
+          page: search.page || 1,
+          limit: search.limit || search.page_size || 20,
+          in_stock_only: inStockOnly,
+          search_rail: invokeSearchRail,
+        };
+      }
       if (
         !shoppingFreshMainlineSearch &&
         !strictCommerceFindProductsMulti &&
         isCrossMerchantBrowseColdStart &&
+        !authoritativeOrPublicSearchRail &&
         process.env.DATABASE_URL
       ) {
         try {
@@ -18776,6 +18828,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         Boolean(cacheQueryText) &&
         Boolean(detectBrandEntities(cacheQueryText, { candidateProducts: [] })?.brand_like) &&
         !hasExplicitCategoryHint(cacheQueryText, effectiveIntent);
+      const authoritativeCacheStageBypass =
+        isCrossMerchantQuerySearch && authoritativeOrPublicSearchRail;
       if (legacyBeautyCacheBypass.bypass) {
         crossMerchantCacheRouteDebug = {
           attempted: false,
@@ -18794,12 +18848,23 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           query: cacheQueryText,
           beauty_query_bucket: cacheBeautyQueryProfile?.bucket || null,
         };
+      } else if (authoritativeCacheStageBypass) {
+        crossMerchantCacheRouteDebug = {
+          attempted: false,
+          bypassed: true,
+          bypass_reason: 'authoritative_mainline_only',
+          mode: 'query_search',
+          query: cacheQueryText,
+          beauty_query_bucket: cacheBeautyQueryProfile?.bucket || null,
+          search_rail: invokeSearchRail,
+        };
       }
       if (
         !shoppingFreshMainlineSearch &&
         !strictCommerceFindProductsMulti &&
         isCrossMerchantQuerySearch &&
         process.env.DATABASE_URL &&
+        !authoritativeCacheStageBypass &&
         !legacyBeautyCacheBypass.bypass &&
         !publicBrandSearchCacheBypass
       ) {
@@ -19612,7 +19677,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           limit,
           offset,
         };
-        queryParams = applyShoppingCatalogQueryGuards(queryParams, metadata?.source);
+        queryParams = applyShoppingCatalogQueryGuards(queryParams, metadata?.source, {
+          explicitLegacy: explicitLegacySearchContracts,
+        });
         requestBody = buildSearchProductsV2Body({
           payload,
           search,
@@ -19703,7 +19770,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           limit,
           offset,
         };
-        queryParams = applyShoppingCatalogQueryGuards(queryParams, metadata?.source);
+        queryParams = applyShoppingCatalogQueryGuards(queryParams, metadata?.source, {
+          explicitLegacy: explicitLegacySearchContracts,
+        });
         const publicBrandSearchNeedsExternalSeedMainline =
           isPublicSearchSource(metadata?.source) &&
           Boolean(detectBrandEntities(rawUserQuery || search?.query || '', { candidateProducts: [] })?.brand_like) &&
@@ -19721,6 +19790,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           operation === 'find_products_multi' && strictFindProductsMultiDecision?.enabled
             ? strictFindProductsMultiDecision
             : getStrictFindProductsMultiConstraintDecision({ search, metadata });
+        if (explicitLegacySearchContracts) {
+          strictFindProductsMultiDecision = {
+            ...(strictFindProductsMultiDecision || {}),
+            enabled: false,
+            disabled_reason: 'explicit_legacy_contract',
+          };
+        }
         strictCommerceFindProductsMulti = Boolean(strictFindProductsMultiDecision.enabled);
         findProductsMultiSearchPayload =
           search && typeof search === 'object' && !Array.isArray(search) ? { ...search } : {};
@@ -19783,8 +19859,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           pivotaApiBase: PIVOTA_API_BASE,
           searchInvokeBase,
         });
-        autoStrictSearchSourceBeautyDirectSearch = false;
+        autoStrictSearchSourceBeautyDirectSearch =
+          strictCommerceFindProductsMulti && authoritativeOrPublicSearchRail;
         strictBeautyDirectSearch =
+          authoritativeOrPublicSearchRail &&
           String(findProductsExecutionPlan?.primary_lane || '').trim() ===
           'beauty_discovery_mainline';
         useStableCrossMerchantAgentSearch = false;
@@ -20488,6 +20566,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     const publicBrandSearchRequestedPage = Number(queryParams?.page || 0) > 0
       ? Number(queryParams.page || 0)
       : Math.floor(publicBrandSearchRequestedOffset / Math.max(1, publicBrandSearchRequestedLimit)) + 1;
+    authoritativeHardCutQuerySource =
+      operation === 'find_products_multi' && strictCommerceFindProductsMulti
+        ? 'agent_products_ingredient_recall_direct'
+        : publicBrandSearchMainlinePreflight
+          ? 'agent_products_public_brand_search_mainline'
+          : 'agent_products_search';
+    authoritativeHardCutPrimaryPath =
+      operation === 'find_products_multi' && strictCommerceFindProductsMulti
+        ? 'ingredient_recall_direct'
+        : publicBrandSearchMainlinePreflight
+          ? 'brand_search_multi_source'
+          : 'upstream_stage';
     let publicBrandSearchMainlinePromise = null;
     let publicBrandSearchMainlineResolved = null;
     let publicBrandSearchMainlineShortCircuited = false;
@@ -20605,8 +20695,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         Number(publicBrandSearchMainlineResolved?.total || 0) || prefetchedProducts.length,
       );
       const prefetchedCoverageEnd = publicBrandSearchRequestedOffset + prefetchedProducts.length;
+      const prefetchedPageFilled =
+        prefetchedProducts.length >= publicBrandSearchRequestedLimit;
       const publicBrandSearchPageCovered =
-        prefetchedProducts.length > 0 && prefetchedTotal >= prefetchedCoverageEnd;
+        prefetchedProducts.length > 0 &&
+        (prefetchedPageFilled || prefetchedTotal >= prefetchedCoverageEnd);
       if (!publicBrandSearchPageCovered) return false;
       const existingMainlineMeta = isPlainRecord(publicBrandSearchMainlineResolved?.metadata)
         ? publicBrandSearchMainlineResolved.metadata
@@ -20689,6 +20782,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         resolverFirstRuntimeResult.fpmSkippedGatesDueToBudget;
       resolverFirstAttempted =
         resolverFirstRuntimeResult.resolverFirstAttempted === true;
+    }
+    if (!response && publicBrandSearchMainlinePreflight) {
+      await maybeAdoptPublicBrandSearchMainlineResponse({
+        stage: 'pre_shared_path',
+      });
     }
     try {
       if (
@@ -20893,6 +20991,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             searchQueryText,
             shoppingFreshMainlineSearch,
             strictCommerceFindProductsMulti,
+            authoritativeHardCut: authoritativeOrPublicSearchRail,
+            hardCutAuthorityQuerySource: authoritativeHardCutQuerySource,
+            hardCutAuthorityPrimaryPath: authoritativeHardCutPrimaryPath,
             semanticOwnerControlled:
               semanticOwnerControlled || strictBeautyDirectSearch,
             requestContract: findProductsSearchRequestContract,
@@ -20912,7 +21013,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             resolverQueryParams,
             checkoutToken,
             resolverTimeoutMs,
-            crossMerchantCacheProtectedResponse,
+            crossMerchantCacheProtectedResponse:
+              authoritativeOrPublicSearchRail ? null : crossMerchantCacheProtectedResponse,
             resolverRejectedReason,
             resolverRejectedQueryUsed,
             logger,
@@ -21451,14 +21553,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         queryClass: traceQueryClass,
       });
       const allowResolverFallbackEffective =
-        semanticOwnerControlled || strictBeautyDirectSearch ? false : allowResolverFallback;
-      const allowSecondaryFallback = semanticOwnerControlled || strictBeautyDirectSearch
+        semanticOwnerControlled || strictBeautyDirectSearch || authoritativeOrPublicSearchRail
+          ? false
+          : allowResolverFallback;
+      const allowSecondaryFallback =
+        semanticOwnerControlled || strictBeautyDirectSearch || authoritativeOrPublicSearchRail
         ? false
         : shouldAllowSecondaryFallback(operation, {
             forceSecondaryFallback:
               auroraFallbackOverrides.forceSecondaryFallback || forceCreatorHumanApparelFallback,
           });
-      const allowInvokeFallback = semanticOwnerControlled || strictBeautyDirectSearch
+      const allowInvokeFallback =
+        semanticOwnerControlled || strictBeautyDirectSearch || authoritativeOrPublicSearchRail
         ? false
         : shouldAllowInvokeFallback(operation, {
             forceInvokeFallback:
@@ -21507,6 +21613,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         shouldFallback,
         shoppingFreshMainlineSearch,
         strictCommerceFindProductsMulti,
+        authoritativeHardCut: authoritativeOrPublicSearchRail,
+        hardCutAuthorityQuerySource: authoritativeHardCutQuerySource,
+        hardCutAuthorityPrimaryPath: authoritativeHardCutPrimaryPath,
         skipSecondaryFallback,
         normalizedSecondaryFallbackSkipReason,
         allowResolverFallbackEffective,
@@ -21926,6 +22035,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     if (
       operation === 'find_products_multi' &&
       !shoppingFreshMainlineSearch &&
+      !authoritativeOrPublicSearchRail &&
       crossMerchantCacheProtectedResponse &&
       Array.isArray(crossMerchantCacheProtectedResponse.products) &&
       crossMerchantCacheProtectedResponse.products.length > 0
@@ -22347,13 +22457,32 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
     }
 
+    if (
+      operation === 'find_products_multi' &&
+      enriched &&
+      typeof enriched === 'object' &&
+      !Array.isArray(enriched)
+    ) {
+      enriched = {
+        ...enriched,
+        metadata: {
+          ...(enriched.metadata && typeof enriched.metadata === 'object'
+            ? enriched.metadata
+            : {}),
+          invoke_search_rail: invokeSearchRail,
+          legacy_contract: invokeSearchRail === 'legacy_internal',
+        },
+      };
+    }
+
     return res.status(response.status).json(enriched);
 
 	  } catch (err) {
-	    const outerCatchResponse = maybeBuildInvokeOuterSearchFailureResponse({
+      const outerCatchResponse = maybeBuildInvokeOuterSearchFailureResponse({
         operation,
         shoppingFreshMainlineSearch,
-        crossMerchantCacheProtectedResponse,
+        crossMerchantCacheProtectedResponse:
+          authoritativeOrPublicSearchRail ? null : crossMerchantCacheProtectedResponse,
         queryParams,
         metadata,
         effectivePayload,
@@ -22368,6 +22497,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         traceAssociationPlan,
         traceFlagsSnapshot,
         effectiveIntent,
+        authoritativeHardCut: authoritativeOrPublicSearchRail,
+        hardCutAuthorityQuerySource: authoritativeHardCutQuerySource,
+        hardCutAuthorityPrimaryPath: authoritativeHardCutPrimaryPath,
         crossMerchantCacheRouteDebug,
         FIND_PRODUCTS_MULTI_EXPANSION_MODE,
         logger,

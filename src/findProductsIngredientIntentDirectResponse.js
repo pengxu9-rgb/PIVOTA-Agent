@@ -1,3 +1,5 @@
+const INGREDIENT_DIRECT_QUERY_SOURCE = 'agent_products_ingredient_recall_direct';
+
 function buildIngredientIntentDirectBaseMetadata({
   diagnostics = {},
   recallProfileDiagnostics = {},
@@ -199,7 +201,8 @@ function buildIngredientIntentExternalSeedRescueResponse({
     metadata: {
       ...baseMetadata,
       ingredient_direct_main_path_status: 'direct_hit',
-      query_source: 'agent_products_ingredient_external_seed_rescue',
+      query_source: INGREDIENT_DIRECT_QUERY_SOURCE,
+      ingredient_direct_resolution_variant: 'external_seed_rescue',
       strict_empty_reason: null,
       ...(ingredientIntentIds.length > 0 ? { matched_ingredient_ids: ingredientIntentIds } : {}),
       ingredient_external_seed_rescue_attempted: true,
@@ -220,7 +223,7 @@ function buildIngredientIntentExternalSeedRescueResponse({
             ? baseMetadata.route_health
             : {}
         ),
-        primary_path_used: 'ingredient_external_seed_rescue',
+        primary_path_used: 'ingredient_recall_direct',
         fallback_triggered: false,
         fallback_reason: null,
         final_returned_count: returnedCount,
@@ -234,12 +237,12 @@ function buildIngredientIntentExternalSeedRescueResponse({
             : {}
         ),
         final_decision: 'products_returned',
-        primary_path_used: 'ingredient_external_seed_rescue',
+        primary_path_used: 'ingredient_recall_direct',
       },
       search_decision: {
         final_decision: 'products_returned',
-        primary_path_used: 'ingredient_external_seed_rescue',
-        decision_authority: 'agent_products_ingredient_external_seed_rescue',
+        primary_path_used: 'ingredient_recall_direct',
+        decision_authority: INGREDIENT_DIRECT_QUERY_SOURCE,
         decision_locked: true,
         decision_lock_reason: 'primary_authority',
         hit_quality: 'valid_hit',
@@ -284,7 +287,9 @@ function buildIngredientIntentDirectEmptyResponse({
     metadata: {
       ...baseMetadata,
       ingredient_direct_main_path_status: 'direct_empty_unrecovered',
-      query_source: 'agent_products_ingredient_recall_direct_empty',
+      query_source: INGREDIENT_DIRECT_QUERY_SOURCE,
+      ingredient_direct_resolution_variant: 'direct_empty',
+      strict_empty: true,
       matched_ingredient_ids: ingredientIntentIds,
       ingredient_external_seed_rescue_attempted: true,
       ingredient_external_seed_rescue_recovered: false,
@@ -296,7 +301,7 @@ function buildIngredientIntentDirectEmptyResponse({
             ? baseMetadata.route_health
             : {}
         ),
-        primary_path_used: 'ingredient_recall_direct_empty',
+        primary_path_used: 'ingredient_recall_direct',
         fallback_triggered: false,
         fallback_reason: null,
         final_returned_count: 0,
@@ -310,12 +315,12 @@ function buildIngredientIntentDirectEmptyResponse({
             : {}
         ),
         final_decision: 'strict_empty',
-        primary_path_used: 'ingredient_recall_direct_empty',
+        primary_path_used: 'ingredient_recall_direct',
       },
       search_decision: {
         final_decision: 'strict_empty',
-        primary_path_used: 'ingredient_recall_direct_empty',
-        decision_authority: 'agent_products_ingredient_recall_direct_empty',
+        primary_path_used: 'ingredient_recall_direct',
+        decision_authority: INGREDIENT_DIRECT_QUERY_SOURCE,
         decision_locked: true,
         decision_lock_reason: 'strict_empty_contract',
         hit_quality: 'strict_empty',
@@ -363,7 +368,8 @@ function buildIngredientIntentDirectHitResponse({
     metadata: {
       ...baseMetadata,
       ingredient_direct_main_path_status: 'direct_hit',
-      query_source: 'agent_products_ingredient_recall_direct',
+      query_source: INGREDIENT_DIRECT_QUERY_SOURCE,
+      ingredient_direct_resolution_variant: 'direct_hit',
       strict_empty_reason: null,
       ...(ingredientIntentIds.length > 0 ? { matched_ingredient_ids: ingredientIntentIds } : {}),
       products_returned_count: responseProducts.length,
@@ -395,7 +401,7 @@ function buildIngredientIntentDirectHitResponse({
       search_decision: {
         final_decision: 'products_returned',
         primary_path_used: 'ingredient_recall_direct',
-        decision_authority: 'agent_products_ingredient_recall_direct',
+        decision_authority: INGREDIENT_DIRECT_QUERY_SOURCE,
         decision_locked: true,
         decision_lock_reason: 'primary_authority',
         hit_quality: responseProducts.length > 0 ? 'valid_hit' : 'strict_empty',

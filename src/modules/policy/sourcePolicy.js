@@ -89,6 +89,26 @@ function createSourcePolicyRuntime(config = {}) {
     return isShoppingSource(source) || normalizeAgentSource(source) === 'creator-agent';
   }
 
+  function classifyInvokeSearchRail(source, options = {}) {
+    const explicitLegacy = options?.explicitLegacy === true;
+    const normalized = normalizeAgentSource(source);
+    if (
+      explicitLegacy ||
+      normalized === 'creator-agent' ||
+      normalized === 'creator-agent-ui' ||
+      isAuroraSource(source)
+    ) {
+      return 'legacy_internal';
+    }
+    if (isShoppingSource(source)) {
+      return 'authoritative_shopping';
+    }
+    if (isPublicSearchSource(source)) {
+      return 'public_observability';
+    }
+    return 'legacy_internal';
+  }
+
   function getProxySearchApiBase(source) {
     if (isAuroraSource(source) && auroraApiBase) return auroraApiBase;
     return pivotaApiBase;
@@ -149,6 +169,7 @@ function createSourcePolicyRuntime(config = {}) {
     isCreatorUiSource,
     isCatalogGuardSource,
     isResolverFirstCatalogSource,
+    classifyInvokeSearchRail,
     isAuroraSource,
     isPublicSearchSource,
     getProxySearchApiBase,

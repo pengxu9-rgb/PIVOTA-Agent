@@ -96,10 +96,10 @@ describe('Commerce shared acceptance corpus', () => {
           'route_health.fallback_triggered',
           'search_decision.decision_locked',
         ]),
-        allowed_query_sources: ['cache_cross_merchant_search'],
+        allowed_query_sources: ['agent_products_search'],
         must_equal_metadata: expect.objectContaining({
-          'search_trace.final_decision': 'cache_returned',
-          'search_decision.decision_authority': 'cache_cross_merchant_search',
+          'search_trace.final_decision': 'products_returned',
+          'search_decision.decision_authority': 'agent_products_search',
           'search_decision.decision_locked': true,
           'route_health.fallback_triggered': false,
         }),
@@ -116,8 +116,8 @@ describe('Commerce shared acceptance corpus', () => {
           ownership: {
             must_equal_paths: expect.objectContaining({
               'metadata.search_trace.query_class': 'lookup',
-              'metadata.search_trace.final_decision': 'cache_returned',
-              'metadata.search_decision.decision_authority': 'cache_cross_merchant_search',
+              'metadata.search_trace.final_decision': 'products_returned',
+              'metadata.search_decision.decision_authority': 'agent_products_search',
               'metadata.search_decision.decision_locked': true,
               'metadata.route_health.fallback_triggered': false,
             }),
