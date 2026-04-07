@@ -4245,6 +4245,8 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       }),
     );
     expect(resp.body.metadata?.brand_query_mainline_applied).toBe(true);
+    expect(resp.body.metadata?.brand_query_mainline_prefetch_short_circuit).toBe(true);
+    expect(resp.body.metadata?.brand_query_mainline_prefetch_stage).toBe('pre_shared_path');
     expect(resp.body.metadata?.brand_query_mainline_upstream_skipped).toBe(true);
     expect(resp.body.metadata?.semantic_rewrite_result?.fallback_reason).toBe(
       'semantic_rewrite_skipped_brand_search',
@@ -4341,6 +4343,8 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.body.metadata?.guard_source_normalized).toBe('search');
     expect(resp.body.metadata?.query_source).toBe('agent_products_public_brand_search_mainline');
     expect(resp.body.metadata?.cache_stage_attempted).toBe(false);
+    expect(resp.body.metadata?.brand_query_mainline_prefetch_short_circuit).toBe(true);
+    expect(resp.body.metadata?.brand_query_mainline_prefetch_stage).toBe('pre_shared_path');
     expect(resp.body.metadata?.route_debug?.cross_merchant_cache).toEqual(
       expect.objectContaining({
         attempted: false,
