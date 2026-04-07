@@ -3,6 +3,7 @@ describe('RecommendationEngine external candidate fetch', () => {
     jest.resetModules();
     jest.clearAllMocks();
     delete process.env.DATABASE_URL;
+    delete process.env.PDP_RECS_EXTERNAL_QUERY_TIMEOUT_MS;
   });
 
   test('uses focused brand/category candidates without dropping into recent fallback when pool is already sufficient', async () => {
@@ -238,5 +239,61 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(products[0]?.brand).toBe('Tom Ford Beauty');
     expect(products[0]?.title).toBe('Tom Ford Cleansing Concentrate');
     expect(queryMock.mock.calls.filter(([, params]) => Array.isArray(params) && params.length === 3)).toHaveLength(0);
+  });
+
+  test('returns fast same-brand rows even when semantic surface query times out', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+    process.env.PDP_RECS_EXTERNAL_QUERY_TIMEOUT_MS = '25ms';
+
+    const queryMock = jest.fn((sql, params) => {
+      const predicate = params?.[3];
+      if (String(sql).includes('LIKE ANY')) {
+        return new Promise((resolve) => {
+          setTimeout(() => resolve({ rows: [] }), 100);
+        });
+      }
+      if (String(predicate || '') === 'fenty beauty') {
+        return Promise.resolve({
+          rows: [
+            {
+              id: 'eps_fenty_cleanser',
+              external_product_id: 'ext_fenty_cleanser',
+              title: "Total Cleans'r Remove-It-All Cleanser",
+              canonical_url: 'https://fentybeauty.com/products/total-cleansr',
+              destination_url: 'https://fentybeauty.com/products/total-cleansr',
+              domain: 'fentybeauty.com',
+              price_amount: 29,
+              price_currency: 'USD',
+              availability: 'in_stock',
+              seed_brand: 'Fenty Beauty',
+              seed_category: 'Cleanser',
+              seed_product_type: 'Cleanser',
+              seed_description: 'A daily gel cleanser for fresh skin.',
+            },
+          ],
+        });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchExternalCandidates({
+      brandHint: 'Fenty Beauty',
+      categoryHint: 'Treatment',
+      baseProduct: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_fenty_bha',
+        title: "Blemish Defeat'r BHA Spot-Targeting Gel",
+        brand: 'Fenty Beauty',
+        category: 'Treatment',
+        source: 'external_seed',
+      },
+      limit: 12,
+    });
+
+    expect(products.map((product) => product.product_id)).toContain('ext_fenty_cleanser');
   });
 });
