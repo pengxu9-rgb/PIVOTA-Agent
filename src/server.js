@@ -561,6 +561,16 @@ const AGENT_AUTH_EMERGENCY_API_KEYS = parseSecretList(
 const AGENT_AUTH_EMERGENCY_AGENT_ID = String(
   process.env.AGENT_AUTH_EMERGENCY_AGENT_ID || '',
 ).trim() || null;
+const AGENT_AUTH_CONFIGURED_KEY_FALLBACK_ENABLED = parseBooleanEnv(
+  process.env.AGENT_AUTH_CONFIGURED_KEY_FALLBACK_ENABLED,
+  true,
+);
+const AGENT_AUTH_CONFIGURED_KEY_FALLBACK_API_KEYS = parseSecretList(
+  process.env.PIVOTA_API_KEY,
+  process.env.AGENT_API_KEY,
+  process.env.PIVOTA_AGENT_API_KEY,
+  process.env.SHOP_GATEWAY_AGENT_API_KEY,
+);
 const INVOKE_AUTH_CONTEXT = new AsyncLocalStorage();
 
 // Agent budgeting & loop protection (per /ui/chat turn)
@@ -9970,7 +9980,29 @@ async function introspectInvokeApiKey(apiKey) {
   return result;
 }
 
-function resolveInvokeEmergencyAuthFallback(apiKey) {
+function resolveConfiguredInvokeAuthFallback(apiKey, errorCode = null) {
+  if (!AGENT_AUTH_CONFIGURED_KEY_FALLBACK_ENABLED) return null;
+  if (!['AUTH_INTROSPECT_UNAVAILABLE', 'AUTH_INTROSPECT_NOT_CONFIGURED'].includes(String(errorCode || '').trim())) {
+    return null;
+  }
+  if (!AGENT_AUTH_CONFIGURED_KEY_FALLBACK_API_KEYS.length) return null;
+  if (!AGENT_AUTH_CONFIGURED_KEY_FALLBACK_API_KEYS.includes(String(apiKey || '').trim())) return null;
+
+  const result = {
+    valid: true,
+    agent_id: AGENT_AUTH_EMERGENCY_AGENT_ID,
+    is_active: true,
+    auth_source: 'configured_key_fallback',
+    cache_hit: false,
+  };
+  putCachedInvokeAuthResult(apiKey, result);
+  return result;
+}
+
+function resolveInvokeEmergencyAuthFallback(apiKey, { errorCode = null } = {}) {
+  const configuredFallback = resolveConfiguredInvokeAuthFallback(apiKey, errorCode);
+  if (configuredFallback) return configuredFallback;
+
   if (!AGENT_AUTH_EMERGENCY_FALLBACK_ENABLED) return null;
   if (!AGENT_AUTH_EMERGENCY_API_KEYS.length) return null;
   if (!AGENT_AUTH_EMERGENCY_API_KEYS.includes(String(apiKey || '').trim())) return null;
@@ -10042,7 +10074,7 @@ async function requireExternalInvokeAuth(req, res, next) {
   try {
     introspection = await introspectInvokeApiKey(provided);
   } catch (err) {
-    const fallback = resolveInvokeEmergencyAuthFallback(provided);
+    const fallback = resolveInvokeEmergencyAuthFallback(provided, { errorCode: err?.code || null });
     if (fallback) {
       logger.warn(
         {
