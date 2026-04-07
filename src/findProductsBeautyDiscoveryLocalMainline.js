@@ -461,7 +461,6 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
     if (String(contract.surface || '').trim().toLowerCase() === 'chat') return false;
     if (String(contract.primary_lane || '').trim() !== 'beauty_discovery_mainline') return false;
     const queryText = firstNonEmptyString(searchObj.query, searchObj.q);
-    if (parseBooleanLike(searchObj.product_only ?? searchObj.productOnly) === true) return false;
     if (String(searchObj.merchant_id || searchObj.merchantId || '').trim()) return false;
     if (searchObj.external_seed_only === true) return false;
     const uiSurface = String(
