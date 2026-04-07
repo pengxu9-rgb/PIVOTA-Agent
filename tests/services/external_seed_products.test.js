@@ -809,4 +809,55 @@ describe('externalSeedProducts helper', () => {
       'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_TC4N11_2000x2000_1G_72d7b843-7875-4c79-992d-2c4b900e2751.jpg',
     );
   });
+
+  test('prefers stored recall title and summary when hydrating external seed products', () => {
+    const row = {
+      id: 'eps_recall_runtime_1',
+      external_product_id: 'ext_recall_runtime_1',
+      canonical_url: 'https://fentybeauty.com/products/butta-drop',
+      destination_url: 'https://fentybeauty.com/products/butta-drop',
+      title: 'OFFICIAL: Butta Drop /// SOCIAL HIGHLIGHTS',
+      seed_data: {
+        brand: 'Fenty Beauty',
+        snapshot: {
+          title: 'OFFICIAL: Butta Drop /// SOCIAL HIGHLIGHTS',
+        },
+        derived: {
+          recall: {
+            retrieval_title: 'Butta Drop Whipped Oil Body Cream',
+            retrieval_summary: 'A rich body cream with tropical oils for soft, radiant skin.',
+            retrieval_body: 'A rich body cream with tropical oils for soft, radiant skin.',
+            brand: 'Fenty Beauty',
+            category: 'Moisturizer',
+            vertical: 'beauty',
+            ingredient_tokens: ['glycerin'],
+            alias_tokens: ['butta', 'drop', 'body', 'cream'],
+            exclusion_flags: {
+              gift_card: false,
+              donation_bundle: false,
+              non_merchandise: false,
+            },
+            quality_signals: {
+              template_polluted: true,
+              synthetic_summary: true,
+              extractor_description_present: true,
+            },
+            version: 'v1',
+          },
+        },
+      },
+    };
+
+    const product = buildExternalSeedProduct(row, { matchSource: 'recall_title' });
+    expect(product.title).toBe('Butta Drop Whipped Oil Body Cream');
+    expect(product.description).toBe('A rich body cream with tropical oils for soft, radiant skin.');
+    expect(product.external_seed_recall).toEqual(
+      expect.objectContaining({
+        retrieval_title: 'Butta Drop Whipped Oil Body Cream',
+        version: 'v1',
+      }),
+    );
+    expect(product.external_seed_match_source).toBe('recall_title');
+    expect(product.brand).toBe('Fenty Beauty');
+  });
 });

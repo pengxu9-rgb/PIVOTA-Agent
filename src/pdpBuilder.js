@@ -76,6 +76,8 @@ const INGREDIENT_ITEM_NOISE_PATTERNS = [
   /\bhighly prized japanese tea\b/i,
   /\btom ford research\b/i,
 ];
+const EXTERNAL_SEED_FACT_NOISE_RE =
+  /\b(contact us|customer service|privacy policy|terms(?: and conditions)?|shipping policy|return policy|about us|blog|blogs|impact|foundation transparency|transparency|give 20%|donation|donate|store locator|support)\b/i;
 const UI_CHROME_IMAGE_FILENAME_RE =
   /^(?:menu|close|search|cart|account|icon[-_](?:search|cart|account)|tf_logo|logo)\.(?:svg|ico|gif)$/i;
 
@@ -148,6 +150,16 @@ function detectTemplateHint(product) {
   const brand = String(resolveProductBrandLabel(product) || '').toLowerCase();
   const combined = `${category} ${title} ${tags} ${brand}`;
   return BEAUTY_KEYWORDS.some((kw) => combined.includes(kw)) ? 'beauty' : 'generic';
+}
+
+function isExternalSeedProduct(product) {
+  return String(product?.source || '').trim().toLowerCase() === 'external_seed';
+}
+
+function looksLikeExternalSeedFactNoise(value) {
+  const text = normalizeTextValue(value);
+  if (!text) return false;
+  return EXTERNAL_SEED_FACT_NOISE_RE.test(text);
 }
 
 const MODULE_REQUIREMENTS = {
@@ -971,6 +983,10 @@ function buildBeautyOverviewModel(product) {
   let currentHeading = '';
 
   for (const block of blocks) {
+    if (looksLikeExternalSeedFactNoise(block)) {
+      currentHeading = '';
+      continue;
+    }
     const factHeading = resolveOverviewFactLabel(block);
     const highlightHeading = resolveOverviewHighlightLabel(block);
     if (factHeading || highlightHeading || isStructuredHeadingBlock(block)) {
@@ -981,7 +997,7 @@ function buildBeautyOverviewModel(product) {
     const activeFactHeading = resolveOverviewFactLabel(currentHeading);
     if (activeFactHeading) {
       const value = normalizeTextValue(block);
-      if (value && value.length <= 180) {
+      if (value && value.length <= 180 && !looksLikeExternalSeedFactNoise(value)) {
         facts.push({ label: activeFactHeading, value });
         currentHeading = '';
         continue;
@@ -992,7 +1008,7 @@ function buildBeautyOverviewModel(product) {
     if (activeHighlightHeading) {
       const items = splitOverviewHighlightItems(block, activeHighlightHeading);
       if (items.length) {
-        highlightItems.push(...items);
+        highlightItems.push(...items.filter((item) => !looksLikeExternalSeedFactNoise(item)));
         continue;
       }
     }
@@ -1002,7 +1018,10 @@ function buildBeautyOverviewModel(product) {
       continue;
     }
 
-    narrativeBlocks.push(sanitizeNarrativeText(block));
+    const sanitized = sanitizeNarrativeText(block);
+    if (sanitized && !looksLikeExternalSeedFactNoise(sanitized)) {
+      narrativeBlocks.push(sanitized);
+    }
     currentHeading = '';
   }
 
@@ -1512,6 +1531,9 @@ function buildProductFactSections(product, detailSections, primaryDescription = 
     }))
     .filter((section) => {
       if (!section?.heading || !section?.content) return false;
+      if (isExternalSeedProduct(product) && looksLikeExternalSeedFactNoise(`${section.heading} ${section.content}`)) {
+        return false;
+      }
       if (CATEGORY_SECTION_HEADING_RE.test(String(section.heading || '').trim())) return false;
       const contentKey = normalizeComparisonKey(section.content);
       if (!contentKey) return false;
@@ -1528,11 +1550,7 @@ function buildProductFactSections(product, detailSections, primaryDescription = 
       return true;
     });
 
-  const combinedSections = beautyOverview?.overviewSection
-    ? [beautyOverview.overviewSection, ...factSections]
-    : factSections;
-
-  if (combinedSections.length) return combinedSections;
+  if (factSections.length) return factSections;
 
   if (narrativeDetailSections.length > 0 && normalizedPrimaryDescription) {
     return [];
@@ -1541,7 +1559,7 @@ function buildProductFactSections(product, detailSections, primaryDescription = 
   const fallbackDescription = sanitizeNarrativeText(
     primaryDescription || product.pdp_description_raw || product.description,
   );
-  if (!fallbackDescription) return [];
+  if (!fallbackDescription || looksLikeExternalSeedFactNoise(fallbackDescription)) return [];
   return [
     {
       heading: 'Description',
@@ -1559,6 +1577,38 @@ function isRedundantDescriptionOnlyFacts(sections, primaryDescription = '') {
   const sectionKey = normalizeComparisonKey(section?.content);
   const descriptionKey = normalizeComparisonKey(primaryDescription);
   return Boolean(sectionKey && descriptionKey && sectionKey === descriptionKey);
+}
+
+function buildProductDetailsSections(product, detailSections, primaryDescription = '', beautyOverview = null) {
+  if (beautyOverview?.overviewSection && !looksLikeExternalSeedFactNoise(beautyOverview.overviewSection?.content)) {
+    return [beautyOverview.overviewSection];
+  }
+
+  const genericSections = (Array.isArray(detailSections) ? detailSections : [])
+    .filter((section) => matchesSectionHeading(section, GENERIC_DETAIL_SECTION_HEADING_RE))
+    .map((section) => ({
+      heading: 'Overview',
+      content_type: 'text',
+      content: sanitizeNarrativeText(section?.content),
+      collapsed_by_default: false,
+    }))
+    .filter((section) => section.content && !looksLikeExternalSeedFactNoise(section.content));
+  if (genericSections.length) return genericSections.slice(0, 1);
+
+  if (!isExternalSeedProduct(product)) return [];
+
+  const fallbackDescription = sanitizeNarrativeText(
+    primaryDescription || product.pdp_description_raw || product.description,
+  );
+  if (!fallbackDescription || looksLikeExternalSeedFactNoise(fallbackDescription)) return [];
+  return [
+    {
+      heading: 'Overview',
+      content_type: 'text',
+      content: fallbackDescription,
+      collapsed_by_default: false,
+    },
+  ];
 }
 
 function extractBrandStory(product, factSections) {
@@ -1783,6 +1833,12 @@ function buildPdpPayload(args) {
     primaryDescription,
     beautyOverview,
   );
+  const productDetailsSections = buildProductDetailsSections(
+    product,
+    detailSections,
+    primaryDescription,
+    beautyOverview,
+  );
   const suppressRedundantDescriptionFacts =
     isRedundantDescriptionOnlyFacts(productFactsSections, primaryDescription) &&
     Boolean(activeIngredientsModule || ingredientsModule || howToUseModule);
@@ -1798,10 +1854,13 @@ function buildPdpPayload(args) {
     : null;
   const brandStory = extractBrandStory(product, productFactsSections);
   const emitLegacyProductDetails = Boolean(
-    resolvedProductFactsSections.length &&
-      !activeIngredientsModule &&
-      !ingredientsModule &&
-      !howToUseModule,
+    productDetailsSections.length ||
+      (
+        resolvedProductFactsSections.length &&
+        !activeIngredientsModule &&
+        !ingredientsModule &&
+        !howToUseModule
+      ),
   );
 
   const modules = [];
@@ -1868,7 +1927,7 @@ function buildPdpPayload(args) {
       module_id: 'm_details',
       type: 'product_details',
       priority: 70,
-      data: { sections: resolvedProductFactsSections },
+      data: { sections: productDetailsSections.length ? productDetailsSections : resolvedProductFactsSections },
     });
   }
   if (reviews) {

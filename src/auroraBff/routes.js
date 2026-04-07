@@ -12,6 +12,7 @@ const {
   buildExternalSeedProduct,
   ensureJsonObject,
 } = require('../services/externalSeedProducts');
+const { buildExternalSeedRecallLikePredicate } = require('../services/externalSeedRecall');
 const {
   deduplicateCandidates: dedupeDupeCandidatesV2,
   filterSelfReferences: filterDupeSelfReferencesV2,
@@ -7229,10 +7230,7 @@ async function searchLocalExternalSeedProducts({
           AND attached_product_key IS NULL
           AND market = $1
           AND (tool = '*' OR tool = $2)
-          AND (
-            lower(coalesce(title, '')) LIKE ANY($3::text[])
-            OR lower(coalesce(seed_data::text, '')) LIKE ANY($3::text[])
-          )
+          AND ${buildExternalSeedRecallLikePredicate('$3', { includeLegacyFallback: true })}
         ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
         LIMIT $4
       `,

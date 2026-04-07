@@ -3,6 +3,7 @@ const { auditExternalSeedRow, detectGenericTemplateDescription } = require('./ex
 const { lookupExternalSeedImageOverride } = require('./externalSeedImageOverrides');
 const { ensureJsonObject, collectSeedImageUrls, normalizeSeedVariants } = require('./externalSeedProducts');
 const { enrichExternalSeedRowIngredients } = require('./externalSeedIngredientEnrichment');
+const { buildExternalSeedRecallDoc } = require('./externalSeedRecall');
 const {
   pickSeedTargetUrl,
   normalizeTargetUrlForMarket,
@@ -33,9 +34,25 @@ function cloneJson(value) {
   return JSON.parse(JSON.stringify(value || null));
 }
 
+function refreshDerivedRecall(nextRow) {
+  const row = nextRow && typeof nextRow === 'object' ? nextRow : {};
+  const seedData = ensureJsonObject(row.seed_data);
+  const snapshot = ensureJsonObject(seedData.snapshot);
+  return {
+    ...row,
+    seed_data: {
+      ...seedData,
+      derived: {
+        ...ensureJsonObject(seedData.derived),
+        recall: buildExternalSeedRecallDoc({ row, seedData, snapshot }),
+      },
+    },
+  };
+}
+
 function mergePreviewRow(row, nextRow) {
   if (!nextRow || typeof nextRow !== 'object') return row;
-  return {
+  return refreshDerivedRecall({
     ...row,
     ...nextRow,
     id: row?.id,
@@ -47,7 +64,7 @@ function mergePreviewRow(row, nextRow) {
     created_at: row?.created_at,
     updated_at: row?.updated_at,
     seed_data: ensureJsonObject(nextRow.seed_data),
-  };
+  });
 }
 
 function uniqueStrings(values) {
@@ -113,16 +130,18 @@ async function loadExternalSeedRowById(seedId) {
 }
 
 async function persistExternalSeedRow(row) {
+  const recallRefreshedRow = refreshDerivedRecall(row);
   const enrichment = await enrichExternalSeedRowIngredients({
-    row,
+    row: recallRefreshedRow,
     ingredientId:
-      normalizeNonEmptyString(row?.ingredient_id) ||
-      normalizeNonEmptyString(ensureJsonObject(row?.seed_data).ingredient_id),
+      normalizeNonEmptyString(recallRefreshedRow?.ingredient_id) ||
+      normalizeNonEmptyString(ensureJsonObject(recallRefreshedRow?.seed_data).ingredient_id),
     ingredientName:
-      normalizeNonEmptyString(row?.ingredient_name) ||
-      normalizeNonEmptyString(ensureJsonObject(row?.seed_data).ingredient_name),
+      normalizeNonEmptyString(recallRefreshedRow?.ingredient_name) ||
+      normalizeNonEmptyString(ensureJsonObject(recallRefreshedRow?.seed_data).ingredient_name),
   });
-  const persistedRow = enrichment?.row && typeof enrichment.row === 'object' ? enrichment.row : row;
+  const persistedRow =
+    enrichment?.row && typeof enrichment.row === 'object' ? refreshDerivedRecall(enrichment.row) : recallRefreshedRow;
   await query(
     `
       UPDATE external_product_seeds
@@ -486,6 +505,7 @@ module.exports = {
   persistExternalSeedRow,
   buildSeedCorrectionPlan,
   mergePreviewRow,
+  refreshDerivedRecall,
   applyBeautyMinorUnitPriceNormalization,
   applySeedCorrectionAction,
   runSeedCorrectionCycle,

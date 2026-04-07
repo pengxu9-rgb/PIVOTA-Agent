@@ -1,3 +1,8 @@
+const {
+  buildExternalSeedRecallLikePredicate,
+  classifyExternalSeedRecallMatchSource,
+} = require('./services/externalSeedRecall');
+
 async function retrieveExternalSeedDirectCandidates({
   retrievalQueries = [],
   relevanceQueryText = '',
@@ -61,9 +66,10 @@ async function retrieveExternalSeedDirectCandidates({
         duration_ms: Date.now() - exactTitleStartedAt,
         exact_title_recall: true,
         lean_sql_applied: false,
+        match_source_hint: 'exact_title',
       });
       for (const row of exactTitleRows) {
-        const product = buildExternalSeedProduct(row);
+        const product = buildExternalSeedProduct(row, { matchSource: 'exact_title' });
         if (!product) continue;
         const key = buildSearchProductKey(product);
         if (!key || seen.has(key)) continue;
@@ -105,13 +111,9 @@ async function retrieveExternalSeedDirectCandidates({
           sqlParams.push(variantSearchPatterns);
           const bind = `$${sqlParams.length}`;
           filters.push(
-            `(
-              lower(coalesce(title, '')) LIKE ANY(${bind}::text[])
-              OR lower(coalesce(domain, '')) LIKE ANY(${bind}::text[])
-              OR lower(coalesce(canonical_url, '')) LIKE ANY(${bind}::text[])
-              OR lower(coalesce(destination_url, '')) LIKE ANY(${bind}::text[])
-              ${useLeanGuidanceSql ? '' : `OR lower(coalesce(seed_data::text, '')) LIKE ANY(${bind}::text[])`}
-            )`,
+            buildExternalSeedRecallLikePredicate(bind, {
+              includeLegacyFallback: useLeanGuidanceSql !== true,
+            }),
           );
         }
 
@@ -180,10 +182,15 @@ async function retrieveExternalSeedDirectCandidates({
       row_count: variantResult.row_count,
       duration_ms: variantResult.duration_ms,
       lean_sql_applied: variantResult.lean_sql_applied === true,
+      match_source_hint:
+        Array.isArray(variantResult.rows) && variantResult.rows[0]
+          ? classifyExternalSeedRecallMatchSource(variantResult.rows[0], [variantResult.query])
+          : 'none',
       ...(variantResult.error ? { error: variantResult.error } : {}),
     });
     for (const row of variantResult.rows || []) {
-      const product = buildExternalSeedProduct(row);
+      const matchSource = classifyExternalSeedRecallMatchSource(row, [variantResult.query]);
+      const product = buildExternalSeedProduct(row, { matchSource });
       if (!product) continue;
       const key = buildSearchProductKey(product);
       if (!key || seen.has(key)) continue;
