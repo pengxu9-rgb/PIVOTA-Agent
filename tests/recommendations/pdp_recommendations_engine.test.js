@@ -719,6 +719,49 @@ describe('RecommendationEngine (PDP)', () => {
     expect(result?.debug?.fetch_strategy?.external_skipped).toBe(false);
   });
 
+  test('k2) external base can surface same-brand external fallbacks even when confidence is weak', () => {
+    const base = makeProduct({
+      merchant_id: 'external_seed',
+      product_id: 'ext_followup_base',
+      title: 'Blemish Gel',
+      brand: 'Fenty Beauty',
+      category: 'Treatment',
+      source: 'external_seed',
+      price: 25,
+    });
+
+    const out = pickLayeredRecommendations({
+      baseProduct: base,
+      internalCandidates: [],
+      externalCandidates: [
+        makeProduct({
+          merchant_id: 'external_seed',
+          product_id: 'ext_followup_1',
+          title: 'Fenty Beauty Clarifying Gel',
+          brand: 'Fenty Beauty',
+          category: 'Treatment',
+          source: 'external_seed',
+          price: 41,
+          inventory_quantity: 2,
+        }),
+        makeProduct({
+          merchant_id: 'external_seed',
+          product_id: 'ext_followup_2',
+          title: 'Fenty Beauty Fast-Acting Spot Care',
+          brand: 'Fenty Beauty',
+          category: 'Treatment',
+          source: 'external_seed',
+          price: 44,
+          inventory_quantity: 2,
+        }),
+      ],
+      k: 4,
+    });
+
+    expect(out.items.length).toBeGreaterThanOrEqual(2);
+    expect(out.items.every((item) => _internals.isExternalProduct(item))).toBe(true);
+  });
+
   test('l) internal fallback uses products/search when DB is unavailable', async () => {
     delete process.env.DATABASE_URL;
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';

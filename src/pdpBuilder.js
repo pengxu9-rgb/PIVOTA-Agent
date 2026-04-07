@@ -71,13 +71,18 @@ const INGREDIENT_ITEM_NOISE_PATTERNS = [
   /\bplease be aware\b/i,
   /\bplease refer to\b/i,
   /\bfor the most up-to-date information\b/i,
+  /\bwe got you covered\b/i,
+  /\bconsult(?:ing)? your physician\b/i,
+  /\bwhile nursing\b/i,
+  /\bhit up your physician\b/i,
+  /\bdescription page\b/i,
   /\bhelp create a soothing lather\b/i,
   /\bcaffeine-containing ingredients\b/i,
   /\bhighly prized japanese tea\b/i,
   /\btom ford research\b/i,
 ];
 const EXTERNAL_SEED_FACT_NOISE_RE =
-  /\b(contact us|customer service|privacy policy|terms(?: and conditions)?|shipping policy|return policy|about us|blog|blogs|impact|foundation transparency|transparency|give 20%|donation|donate|store locator|support)\b/i;
+  /\b(contact us|customer service|privacy policy|terms(?: and conditions)?|shipping policy|return policy|about us|blog|blogs|impact|foundation transparency|transparency|give 20%|donation|donate|store locator|support|avoid contact with eyes|keep out of reach of children|customerservice@|clearorg\.eu|clear \d+\s+rue)\b/i;
 const UI_CHROME_IMAGE_FILENAME_RE =
   /^(?:menu|close|search|cart|account|icon[-_](?:search|cart|account)|tf_logo|logo)\.(?:svg|ico|gif)$/i;
 
@@ -789,7 +794,23 @@ function sanitizeNarrativeText(value) {
   const prefix = consumeKnownDetailLabelsFromEdge(original, 'start');
   const prefixStripped = prefix.consumed >= 2 ? prefix.remaining : original;
   const suffix = consumeKnownDetailLabelsFromEdge(prefixStripped, 'end');
-  const cleaned = suffix.consumed >= 2 ? suffix.remaining : prefixStripped;
+  let cleaned = suffix.consumed >= 2 ? suffix.remaining : prefixStripped;
+  const narrativeCutPatterns = [
+    /\bavoid contact with eyes\b/i,
+    /\bkeep out of reach of children\b/i,
+    /\bcustomerservice@/i,
+    /\bclear\s+\d+\s+rue\b/i,
+    /\bclose\b(?=\s+bha\b)/i,
+    /\bdetails\b(?=\s+[A-Z])/i,
+  ];
+  for (const pattern of narrativeCutPatterns) {
+    const matched = cleaned.match(pattern);
+    const cutIndex = matched?.index ?? -1;
+    if (cutIndex >= 80) {
+      cleaned = cleaned.slice(0, cutIndex).trim();
+      break;
+    }
+  }
   if (!cleaned && (prefix.consumed >= 2 || suffix.consumed >= 2)) return '';
   return cleaned || original;
 }
@@ -1062,6 +1083,11 @@ function buildBeautyOverviewModel(product) {
 function sanitizeIngredientRawText(value) {
   let text = normalizeTextValue(value);
   if (!text) return '';
+  text = text
+    .replace(/\bwe got you covered\b[\s\S]*?(?=AQUA\/WATER\/EAU\b|ingredients?:)/i, '')
+    .replace(/\bconsult(?:ing)? your physician\b[\s\S]*?(?=AQUA\/WATER\/EAU\b|ingredients?:)/i, '')
+    .replace(/\bhit up your physician before you glow\b[\s\S]*?(?=AQUA\/WATER\/EAU\b|ingredients?:)/i, '')
+    .trim();
   const matches = Array.from(text.matchAll(/\bingredients(?:\s*\(inci\))?\s*:/gi));
   if (matches.length) {
     const lastMatch = matches[matches.length - 1];
@@ -1523,6 +1549,7 @@ function buildProductFactSections(product, detailSections, primaryDescription = 
         !matchesSectionHeading(section, INGREDIENT_SECTION_HEADING_RE) &&
         !matchesSectionHeading(section, ACTIVE_INGREDIENT_SECTION_HEADING_RE) &&
         !matchesSectionHeading(section, HOW_TO_USE_SECTION_HEADING_RE) &&
+        !(isExternalSeedProduct(product) && GENERIC_DETAIL_SECTION_HEADING_RE.test(String(section?.heading || '').trim())) &&
         !(beautyOverview?.overviewSection && GENERIC_DETAIL_SECTION_HEADING_RE.test(String(section?.heading || '').trim())),
     )
     .map((section) => ({
