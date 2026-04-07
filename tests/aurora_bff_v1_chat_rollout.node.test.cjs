@@ -759,6 +759,24 @@ test('shouldDelegateV1ChatToV2 keeps compatibility conflict prompts on the legac
   assert.equal(delegated, false);
 });
 
+test('shouldDelegateV1ChatToV2 keeps beauty reco free-text on the beauty mainline path', async () => {
+  resetAuroraModules();
+  const { __internal } = require('../src/auroraBff/routes');
+
+  const delegated = await __internal.shouldDelegateV1ChatToV2({
+    message: 'im oily skin, what products should i use?',
+    language: 'EN',
+    session: {
+      state: 'idle',
+      profile: {
+        skin_type: 'oily',
+      },
+    },
+  });
+
+  assert.equal(delegated, false);
+});
+
 test('shouldDelegateV1ChatToV2 keeps reviewed signal terms on the legacy ingredient path', async () => {
   resetAuroraModules();
   const { __internal } = require('../src/auroraBff/routes');

@@ -171,6 +171,9 @@ const {
   createFindProductsInvokePrimaryUpstreamRuntime,
 } = require('./findProductsInvokePrimaryUpstream');
 const {
+  resolveFindProductsMultiPrimaryUpstreamTimeoutMs,
+} = require('./findProductsInvokePrimaryTimeoutPolicy');
+const {
   createFindProductsInvokeResolverFirstRuntime,
 } = require('./findProductsInvokeResolverFirst');
 const {
@@ -2141,6 +2144,16 @@ const FIND_PRODUCTS_MULTI_UPSTREAM_LOOKUP_TIMEOUT_MS = Math.max(
 const FIND_PRODUCTS_MULTI_UPSTREAM_DEFAULT_TIMEOUT_MS = Math.max(
   1800,
   parseTimeoutMs(process.env.FIND_PRODUCTS_MULTI_UPSTREAM_DEFAULT_TIMEOUT_MS, 5500),
+);
+const FIND_PRODUCTS_MULTI_UPSTREAM_BEAUTY_MAINLINE_TIMEOUT_MS = Math.max(
+  FIND_PRODUCTS_MULTI_UPSTREAM_DEFAULT_TIMEOUT_MS,
+  Math.min(
+    parseTimeoutMs(
+      process.env.FIND_PRODUCTS_MULTI_UPSTREAM_BEAUTY_MAINLINE_TIMEOUT_MS,
+      15000,
+    ),
+    20000,
+  ),
 );
 const FPM_GATE_SIMPLIFY_V1 =
   String(process.env.FPM_GATE_SIMPLIFY_V1 || 'true').toLowerCase() !== 'false';
@@ -20374,12 +20387,20 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     const primarySearchAnchorTokens = extractSearchAnchorTokens(primarySearchQueryText);
     const isLookupPolicyQuery = isLookupStyleSearchQuery(primarySearchQueryText, primarySearchAnchorTokens);
     const queryClassForBudget = String(traceQueryClass || '').toLowerCase();
-    const shouldUseShortSearchBudget =
-      isLookupPolicyQuery ||
-      ['lookup', 'category', 'attribute'].includes(queryClassForBudget);
-    const upstreamBudgetMsForSearch = shouldUseShortSearchBudget
-      ? FIND_PRODUCTS_MULTI_UPSTREAM_LOOKUP_TIMEOUT_MS
-      : FIND_PRODUCTS_MULTI_UPSTREAM_DEFAULT_TIMEOUT_MS;
+    const upstreamBudgetMsForSearch =
+      operation === 'find_products_multi'
+        ? resolveFindProductsMultiPrimaryUpstreamTimeoutMs({
+            queryClass: queryClassForBudget,
+            isLookupPolicyQuery,
+            strictBeautyDirectSearch,
+            semanticOwnerControlled,
+            upstreamDefaultTimeoutMs: getUpstreamTimeoutMs(operation),
+            lookupTimeoutMs: FIND_PRODUCTS_MULTI_UPSTREAM_LOOKUP_TIMEOUT_MS,
+            defaultTimeoutMs: FIND_PRODUCTS_MULTI_UPSTREAM_DEFAULT_TIMEOUT_MS,
+            beautyMainlineTimeoutMs:
+              FIND_PRODUCTS_MULTI_UPSTREAM_BEAUTY_MAINLINE_TIMEOUT_MS,
+          })
+        : getUpstreamTimeoutMs(operation);
     const publicBrandSearchMainlinePreflight =
       operation === 'find_products_multi' &&
       !strictCommerceFindProductsMulti &&
@@ -20439,7 +20460,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       // Use a longer timeout for quote/order/payment operations (Shopify pricing can be slow).
       timeout:
         operation === 'find_products_multi'
-          ? Math.min(getUpstreamTimeoutMs(operation), upstreamBudgetMsForSearch)
+          ? upstreamBudgetMsForSearch
           : getUpstreamTimeoutMs(operation),
       ...(invokeMethod !== 'GET' &&
         Object.keys(requestBody).length > 0 && { data: requestBody })

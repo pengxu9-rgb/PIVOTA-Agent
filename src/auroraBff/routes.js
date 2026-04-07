@@ -1683,6 +1683,14 @@ async function shouldDelegateV1ChatToV2(body) {
   const session = isPlainObject(payload.session) ? payload.session : {};
   const sessionMeta = isPlainObject(session.meta) ? session.meta : {};
   const sessionProfile = isPlainObject(session.profile) ? session.profile : {};
+  const extractedSessionProfilePatch = extractProfilePatchFromSession(session);
+  const sessionProfilePatch = isPlainObject(extractedSessionProfilePatch)
+    ? extractedSessionProfilePatch
+    : {};
+  const parsedActionProfilePatch = parseProfilePatchFromAction(action);
+  const actionProfilePatch = isPlainObject(parsedActionProfilePatch)
+    ? parsedActionProfilePatch
+    : {};
   const implicitAnalysisFollowupActionId = resolveImplicitAnalysisFollowupActionId({
     actionId,
     message: pickFirstTrimmed(payload.message, extractLastUserMessageFromChatRequestMessages(payload.messages)),
@@ -1768,9 +1776,46 @@ async function shouldDelegateV1ChatToV2(body) {
   }
   if (hasMessage) {
     const localMessage = pickFirstTrimmed(payload.message, payload.text) || '';
+    const typedRecoOwnershipKeepsV1Mainline = shouldKeepTypedRecoRequestOnV1MainlinePolicy(payload);
+    const beautyRecoTargetContext = resolveRecommendationTargetContext({
+      explicitStep: pickFirstTrimmed(
+        payload.target_step,
+        payload.targetStep,
+        bodyParams.target_step,
+        bodyParams.targetStep,
+        actionData.target_step,
+        actionData.targetStep,
+      ),
+      focus: pickFirstTrimmed(
+        payload.focus,
+        payload.goal,
+        bodyParams.focus,
+        bodyParams.goal,
+        actionData.focus,
+        actionData.goal,
+      ),
+      text: localMessage,
+      entryType: 'chat',
+      profileSummary: {
+        ...(sessionProfile && typeof sessionProfile === 'object' && !Array.isArray(sessionProfile)
+          ? sessionProfile
+          : {}),
+        ...sessionProfilePatch,
+        ...actionProfilePatch,
+      },
+    });
+    if (
+      isBeautyOwnedChatRecoRequest({
+        typedRecoOwnershipKeepsV1Mainline,
+        targetContext: beautyRecoTargetContext,
+        message: '',
+      })
+    ) {
+      return false;
+    }
     if (looksLikeDiagnosisStart(localMessage)) return false;
     if (looksLikeProgressCheckRequest(localMessage, actionId)) return false;
-    if (shouldKeepTypedRecoRequestOnV1MainlinePolicy(payload)) return false;
+    if (typedRecoOwnershipKeepsV1Mainline) return false;
   }
   if (hasMessage) return true;
 
