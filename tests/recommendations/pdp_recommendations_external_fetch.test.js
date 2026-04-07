@@ -247,7 +247,7 @@ describe('RecommendationEngine external candidate fetch', () => {
 
     const queryMock = jest.fn((sql, params) => {
       const predicate = params?.[3];
-      if (String(sql).includes('LIKE ANY')) {
+      if (String(sql).includes('LIKE ANY') && Array.isArray(predicate)) {
         return new Promise((resolve) => {
           setTimeout(() => resolve({ rows: [] }), 100);
         });
