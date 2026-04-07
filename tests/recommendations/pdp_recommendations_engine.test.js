@@ -1127,4 +1127,79 @@ describe('RecommendationEngine (PDP)', () => {
       }),
     );
   });
+
+  test('p) external lip seeds with placeholder categories use lip vertical fallback', () => {
+    const base = makeProduct({
+      merchant_id: 'external_seed',
+      product_id: 'ext_base_poutsicle',
+      title: 'Poutsicle Hydrating Lip Stain — Strawberry Sangria',
+      brand: 'Fenty Beauty',
+      category: 'external',
+      description: 'A glossy lip stain and lip tint with all-day hydration.',
+      source: 'external_seed',
+      price: 28,
+    });
+
+    const external = [
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_lip_stain_mai_type',
+        title: 'Poutsicle Hydrating Lip Stain — Mai Type',
+        brand: 'Fenty Beauty',
+        category: 'external',
+        source: 'external_seed',
+        price: 28,
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_lip_gloss_fenty_glow',
+        title: 'Gloss Bomb Universal Lip Luminizer — Fenty Glow',
+        brand: 'Fenty Beauty',
+        category: 'external',
+        source: 'external_seed',
+        price: 22,
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_lip_oil_coconut',
+        title: 'Fenty Treatz Hydrating Strengthening Lip Oil — Coconut',
+        brand: 'Fenty Beauty',
+        category: 'external',
+        source: 'external_seed',
+        price: 24,
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_lip_luminizer_set',
+        title: 'Glossy Posse 3-Piece Lip Luminizer Set',
+        brand: 'Fenty Beauty',
+        category: 'external',
+        source: 'external_seed',
+        price: 42,
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_foundation_480',
+        title: "Soft'lit Naturally Luminous Longwear Foundation — 480",
+        brand: 'Fenty Beauty',
+        category: 'external',
+        source: 'external_seed',
+        price: 40,
+      }),
+    ];
+
+    const out = pickLayeredRecommendations({
+      baseProduct: base,
+      internalCandidates: [],
+      externalCandidates: external,
+      k: 4,
+    });
+
+    expect(out.items.map((item) => item.product_id)).toEqual(
+      expect.arrayContaining(['ext_lip_stain_mai_type', 'ext_lip_gloss_fenty_glow', 'ext_lip_oil_coconut']),
+    );
+    expect(out.items.map((item) => item.product_id)).not.toContain('ext_foundation_480');
+    expect(out.metadata?.base_semantic?.vertical).toBe('makeup');
+    expect(out.metadata?.underfill).toBe(0);
+  });
 });
