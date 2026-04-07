@@ -847,7 +847,29 @@ function pickLayeredRecommendations({
       }
 
       const confidence = classifyConfidenceLevel(base, { ...scoreDetail, features }, matchedLayer.id);
+      const allowLowConfidenceExternalFallback =
+        base.isExternal &&
+        source === 'external' &&
+        (scoreDetail.leafMatch ||
+          scoreDetail.parentMatch ||
+          (base.vertical !== UNKNOWN_VERTICAL &&
+            features.vertical === base.vertical &&
+            (scoreDetail.brandMatch || scoreDetail.tokenOverlap >= 0.08)));
       if (confidence === 'low') {
+        if (allowLowConfidenceExternalFallback) {
+          return {
+            product: p,
+            features,
+            semanticKey: getRecommendationSemanticKey(p, features.brand),
+            source,
+            layerId: matchedLayer.id,
+            layerName: matchedLayer.name,
+            layerPriority: matchedLayer.priority,
+            confidence,
+            semanticFamily: classifySemanticFamily(base, { ...scoreDetail, features }),
+            ...scoreDetail,
+          };
+        }
         filteredByConfidence += 1;
         return null;
       }
