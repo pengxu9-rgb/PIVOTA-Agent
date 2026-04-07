@@ -738,7 +738,9 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
         content: expect.stringContaining('Shield and combat blemishes without sacrificing your makeup look.'),
       }),
     ]);
-    expect(detailsSections[0]?.content).not.toMatch(/AVOID CONTACT WITH EYES|CUSTOMERSERVICE@|Details\b|learn more|BHA-GEL/i);
+    expect(detailsSections[0]?.content).not.toMatch(
+      /AVOID CONTACT WITH EYES|CUSTOMERSERVICE@|Details\b|learn more|BHA-GEL|THE LOWDOWN|The #s don't lie|Fill weight/i,
+    );
     expect(factsSections).toEqual([]);
     const ingredientsItems =
       payload.modules.find((module) => module.type === 'ingredients_inci')?.data?.items || [];

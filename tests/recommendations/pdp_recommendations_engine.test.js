@@ -501,6 +501,111 @@ describe('RecommendationEngine (PDP)', () => {
     expect(out.metadata?.base_semantic?.vertical).toBe('skincare');
   });
 
+  test('j0c) skincare acne-treatment base filters unrelated same-brand makeup, body, and hair fallbacks', () => {
+    const base = makeProduct({
+      merchant_id: 'external_seed',
+      product_id: 'ext_fenty_bha_treatment',
+      title: "Blemish Defeat'r BHA Spot-Targeting Gel",
+      brand: 'Fenty Beauty',
+      vendor: 'Fenty Beauty',
+      category: 'Treatment',
+      product_type: 'Treatment',
+      source: 'external_seed',
+      price: 25,
+    });
+
+    const external = [
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_fenty_cleanser',
+        title: "Total Cleans'r Remove-It-All Cleanser",
+        brand: 'Fenty Beauty',
+        vendor: 'Fenty Beauty',
+        category: 'Cleanser',
+        product_type: 'Cleanser',
+        source: 'external_seed',
+        price: 29,
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_fenty_moisturizer',
+        title: 'Hydra Vizor Invisible Moisturizer Broad Spectrum SPF 30 Sunscreen',
+        brand: 'Fenty Beauty',
+        vendor: 'Fenty Beauty',
+        category: 'Moisturizer',
+        product_type: 'Moisturizer',
+        source: 'external_seed',
+        price: 38,
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_fenty_mask',
+        title: "Cookies N Clean Whipped Clay Detox Face Mask",
+        brand: 'Fenty Beauty',
+        vendor: 'Fenty Beauty',
+        category: 'Treatment',
+        product_type: 'Treatment',
+        source: 'external_seed',
+        price: 34,
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_fenty_body',
+        title: 'Butta Drop Whipped Oil Body Cream',
+        brand: 'Fenty Beauty',
+        vendor: 'Fenty Beauty',
+        category: 'Body Cream',
+        product_type: 'Body Cream',
+        source: 'external_seed',
+        price: 45,
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_fenty_blush',
+        title: 'Fenty Cheeks Suede Powder Blush',
+        brand: 'Fenty Beauty',
+        vendor: 'Fenty Beauty',
+        category: 'Blush',
+        product_type: 'Blush',
+        source: 'external_seed',
+        price: 28,
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_fenty_hair_mist',
+        title: 'Fenty Parfum Hair + Body Mist',
+        brand: 'Fenty Beauty',
+        vendor: 'Fenty Beauty',
+        category: 'Hair Mist',
+        product_type: 'Hair Mist',
+        source: 'external_seed',
+        price: 35,
+      }),
+    ];
+
+    const out = pickLayeredRecommendations({
+      baseProduct: base,
+      internalCandidates: [],
+      externalCandidates: external,
+      k: 6,
+    });
+
+    expect(out.items.map((item) => item.product_id)).toEqual(
+      expect.arrayContaining([
+        'ext_fenty_cleanser',
+        'ext_fenty_moisturizer',
+        'ext_fenty_mask',
+      ]),
+    );
+    expect(out.items.map((item) => item.product_id)).not.toEqual(
+      expect.arrayContaining([
+        'ext_fenty_body',
+        'ext_fenty_blush',
+        'ext_fenty_hair_mist',
+      ]),
+    );
+  });
+
   test('j1) same-brand tokens alone must not lift unrelated category items into similar results', () => {
     const base = makeProduct({
       merchant_id: 'external_seed',
@@ -1016,8 +1121,9 @@ describe('RecommendationEngine (PDP)', () => {
     expect(out.metadata?.selection_mix).toEqual(
       expect.objectContaining({
         same_brand_same_category: 1,
-        same_brand_other_category: 1,
+        same_brand_other_category: 0,
         other_brand_same_category: 0,
+        semantic_peer: 1,
       }),
     );
   });
