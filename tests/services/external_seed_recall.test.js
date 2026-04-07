@@ -109,6 +109,8 @@ describe('externalSeedRecall', () => {
     const predicate = buildExternalSeedRecallLikePredicate('$3', { includeLegacyFallback: true });
     expect(predicate).toMatch(/retrieval_title/);
     expect(predicate).toMatch(/retrieval_summary/);
+    expect(predicate).toMatch(/brand_name/);
+    expect(predicate).toMatch(/vendor/);
     expect(predicate).toMatch(/ingredient_tokens/);
     expect(predicate).toMatch(/alias_tokens/);
     expect(predicate).toMatch(/seed_data::text/);

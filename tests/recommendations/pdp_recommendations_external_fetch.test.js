@@ -295,5 +295,9 @@ describe('RecommendationEngine external candidate fetch', () => {
     });
 
     expect(products.map((product) => product.product_id)).toContain('ext_fenty_cleanser');
+    const sqlSurface = queryMock.mock.calls.map(([sql]) => String(sql)).join('\n');
+    expect(sqlSurface).toContain("seed_data->>'brand_name'");
+    expect(sqlSurface).toContain("seed_data->>'vendor'");
+    expect(sqlSurface).not.toMatch(/attached_product_key\s+IS\s+NULL/i);
   });
 });

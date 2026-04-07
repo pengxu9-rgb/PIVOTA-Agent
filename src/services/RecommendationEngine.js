@@ -1320,7 +1320,17 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
             price_currency,
             availability,
             seed_data,
-            coalesce(seed_data->>'brand', seed_data->'snapshot'->>'brand', '') as seed_brand,
+            coalesce(
+              seed_data->>'brand',
+              seed_data->>'brand_name',
+              seed_data->>'vendor',
+              seed_data->>'vendor_name',
+              seed_data->'snapshot'->>'brand',
+              seed_data->'snapshot'->>'brand_name',
+              seed_data->'snapshot'->>'vendor',
+              seed_data->'snapshot'->>'vendor_name',
+              ''
+            ) as seed_brand,
             coalesce(
               seed_data->>'category',
               seed_data->'product'->>'category',
@@ -1338,7 +1348,6 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
             created_at
           FROM external_product_seeds
           WHERE status = 'active'
-            AND attached_product_key IS NULL
             AND market = $1
             AND (tool = '*' OR tool = $2)
             ${whereSql}
