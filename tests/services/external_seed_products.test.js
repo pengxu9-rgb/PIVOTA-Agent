@@ -825,8 +825,10 @@ describe('externalSeedProducts helper', () => {
         derived: {
           recall: {
             retrieval_title: 'Butta Drop Whipped Oil Body Cream',
-            retrieval_summary: 'A rich body cream with tropical oils for soft, radiant skin.',
-            retrieval_body: 'A rich body cream with tropical oils for soft, radiant skin.',
+            retrieval_summary:
+              "THE UNDERCOVER BLEMISH FIGHTER THE BLEMISH FIX SO STEALTH, YOU'LL NEVER SEE IT UNDER MAKEUP A rich body cream with tropical oils for soft, radiant skin.",
+            retrieval_body:
+              "THE UNDERCOVER BLEMISH FIGHTER THE BLEMISH FIX SO STEALTH, YOU'LL NEVER SEE IT UNDER MAKEUP A rich body cream with tropical oils for soft, radiant skin.",
             brand: 'Fenty Beauty',
             category: 'Moisturizer',
             vertical: 'beauty',

@@ -3,6 +3,7 @@ const {
   normalizePdpImageUrl,
   normalizePdpImageUrls,
 } = require('./utils/pdpImageUrls');
+const { stripExternalSeedMarketingBannerPrefix } = require('./services/externalSeedMarketingText');
 
 const SHOPIFY_FILE_HASH_SUFFIX_RE =
   /^(.*?_[0-9]+)_(?:[0-9a-f]{8,}(?:-[0-9a-f]{4,}){2,}|[0-9a-f-]{16,})\.(avif|gif|jpe?g|png|webp)$/i;
@@ -835,23 +836,7 @@ function sanitizeNarrativeText(value) {
       .replace(/\s*\/\/\/\s*SOCIAL HIGHLIGHTS:\s*[\s\S]*$/i, '')
       .trim();
   }
-  const leadingColonIndex = cleaned.indexOf(':');
-  if (leadingColonIndex > 0 && leadingColonIndex <= 160) {
-    const leadingPrefix = cleaned.slice(0, leadingColonIndex).trim();
-    const leadingBody = cleaned.slice(leadingColonIndex + 1).trim();
-    const uppercaseMatches = leadingPrefix.match(/[A-Z]/g) || [];
-    const lowercaseMatches = leadingPrefix.match(/[a-z]/g) || [];
-    const uppercaseDominant =
-      leadingPrefix.length >= 24 &&
-      uppercaseMatches.length >= 10 &&
-      uppercaseMatches.length >= Math.max(3, lowercaseMatches.length * 3);
-    const marketingPrefix =
-      /\b(straight up|the lowdown|what else|the #s don't lie)\b/i.test(leadingPrefix) ||
-      uppercaseDominant;
-    if (marketingPrefix && /^[A-Z0-9][\s\S]{12,}$/.test(leadingBody)) {
-      cleaned = leadingBody;
-    }
-  }
+  cleaned = stripExternalSeedMarketingBannerPrefix(cleaned);
   const narrativeCutPatterns = [
     /\bthe lowdown\b/i,
     /\bthe #s don't lie\b/i,

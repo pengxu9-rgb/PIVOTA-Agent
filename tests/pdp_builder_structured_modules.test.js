@@ -753,6 +753,38 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(ingredientsItems.join(' ')).not.toMatch(/we got you covered|health and safety|physician|pregnancy|description page|tab on each product|&rsquo/i);
   });
 
+  test('strips uppercase marketing banner preambles without explicit labels from external seed descriptions', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_a2e27f4a7a558c58c2a6a669',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Fenty Beauty Blemish Defeat’r BHA Spot-Targeting Gel',
+        brand: 'Fenty Beauty',
+        category: 'Treatment',
+        pdp_description_raw:
+          "THE UNDERCOVER BLEMISH FIGHTER THE BLEMISH FIX SO STEALTH, YOU'LL NEVER SEE IT UNDER MAKEUP Shield and combat blemishes without sacrificing your makeup look. This Salicylic Acid-backed, spot-targeting gel fights blemishes, clarifies, reduces surface oil and guards against environmental assailants. Its unique jelly texture dries down quickly, so you can wear it anytime you want-especially under makeup.",
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const detailsSections =
+      payload.modules.find((module) => module.type === 'product_details')?.data?.sections || [];
+
+    expect(payload.product.description).toBe(
+      "Shield and combat blemishes without sacrificing your makeup look. This Salicylic Acid-backed, spot-targeting gel fights blemishes, clarifies, reduces surface oil and guards against environmental assailants. Its unique jelly texture dries down quickly, so you can wear it anytime you want-especially under makeup.",
+    );
+    expect(detailsSections).toEqual([
+      expect.objectContaining({
+        heading: 'Overview',
+        content:
+          "Shield and combat blemishes without sacrificing your makeup look. This Salicylic Acid-backed, spot-targeting gel fights blemishes, clarifies, reduces surface oil and guards against environmental assailants. Its unique jelly texture dries down quickly, so you can wear it anytime you want-especially under makeup.",
+      }),
+    ]);
+    expect(payload.product.description).not.toMatch(/THE UNDERCOVER|BLEMISH FIX SO STEALTH|YOU'LL NEVER SEE IT UNDER MAKEUP/i);
+  });
+
   test('strips synthetic social-summary wrappers from external seed narrative modules', () => {
     const payload = buildPdpPayload({
       product: {

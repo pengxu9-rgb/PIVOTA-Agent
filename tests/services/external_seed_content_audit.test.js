@@ -291,6 +291,46 @@ describe('externalSeedContentAudit', () => {
     );
   });
 
+  test('flags uppercase promo preambles even when the seed banner has no explicit label colon', () => {
+    const row = {
+      id: 'eps_fenty_banner_no_colon',
+      domain: 'fentybeauty.com',
+      market: 'US',
+      canonical_url: 'https://fentybeauty.com/products/blemish-defeatr-bha-spot-targeting-gel',
+      title: "Blemish Defeat'r BHA Spot-Targeting Gel",
+      seed_data: {
+        snapshot: {
+          canonical_url: 'https://fentybeauty.com/products/blemish-defeatr-bha-spot-targeting-gel',
+          description:
+            "THE UNDERCOVER BLEMISH FIGHTER THE BLEMISH FIX SO STEALTH, YOU'LL NEVER SEE IT UNDER MAKEUP Shield and combat blemishes without sacrificing your makeup look.",
+          variants: [
+            {
+              sku: 'FENTY-BHA-2',
+              variant_id: 'FENTY-BHA-2',
+              currency: 'USD',
+              price: '25.00',
+              stock: 'In Stock',
+              image_url: 'https://cdn.example.com/fenty-bha-2.jpg',
+            },
+          ],
+        },
+      },
+    };
+
+    const result = auditExternalSeedRow(row);
+    expect(result.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          anomaly_type: 'seed_description_marketing_banner_prefix',
+          severity: 'review',
+          evidence: expect.objectContaining({
+            description_excerpt: expect.stringContaining("THE UNDERCOVER BLEMISH FIGHTER"),
+          }),
+        }),
+      ]),
+    );
+  });
+
   test('does not flag intentional gift card shared SKU variants', () => {
     const row = {
       id: 'eps_gift_card_shared_sku',

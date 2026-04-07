@@ -1,4 +1,5 @@
 const { collectSeedImageUrls, ensureJsonObject, normalizeSeedVariants } = require('./externalSeedProducts');
+const { hasExternalSeedMarketingBannerPrefix } = require('./externalSeedMarketingText');
 
 const MARKET_LOCALE_SEGMENT = Object.freeze({
   US: 'en-us',
@@ -13,8 +14,6 @@ const NON_PRODUCT_PATH_RE =
 const PRODUCT_PDP_PATH_RE = /^\/products\/[^/]+\/?$/i;
 const GENERIC_TEMPLATE_RE = /^experience the ultimate luxury with\s+/i;
 const SYNTHETIC_SUMMARY_RE = /\bOFFICIAL:\b[\s\S]*\/\/\/\s*SOCIAL HIGHLIGHTS:/i;
-const MARKETING_BANNER_PREFIX_RE =
-  /^(?:[A-Z0-9][A-Z0-9'’",!?.\-()\s]{24,}\s+)?(?:STRAIGHT UP|THE LOWDOWN|WHAT ELSE!?|THE #S DON'T LIE)\s*:/i;
 const BEAUTY_PRICE_HINT_RE =
   /\b(beauty|makeup|skincare|skin care|hair|haircare|shampoo|conditioner|treatment|serum|cleanser|toner|moisturizer|cream|lotion|mist|mask|concealer|foundation|powder|mascara|lip|brow|fragrance|perfume|parfum|cologne|bundle)\b/i;
 const WEAK_FALLBACK_COPY_RE =
@@ -264,7 +263,7 @@ function detectSyntheticSummaryDescription(description) {
 function detectMarketingBannerPrefix(description) {
   const normalized = normalizeNonEmptyString(description);
   if (!normalized) return false;
-  return MARKETING_BANNER_PREFIX_RE.test(normalized);
+  return hasExternalSeedMarketingBannerPrefix(normalized);
 }
 
 function detectDuplicateVariantSkus(variants) {
@@ -434,7 +433,7 @@ function auditExternalSeedRow(row, options = {}) {
           description_excerpt: description.slice(0, 280),
         },
         recommendedAction:
-          'Strip marketing banner prefixes like STRAIGHT UP/THE LOWDOWN from seed narrative text before PDP shaping and downstream recall.',
+          'Strip marketing banner prefixes and uppercase promo preambles from seed narrative text before PDP shaping and downstream recall.',
         autoFixable: false,
       }),
     );
