@@ -219,7 +219,7 @@ test('broad beauty generic query uses local beauty discovery mainline', () => {
       query: 'im oily skin, what products should i use?',
     },
     metadata: {
-      source: 'shopping',
+      source: 'aurora-bff',
     },
     requestContract: {
       surface: 'direct',
@@ -238,7 +238,7 @@ test('product-only direct beauty search still uses local beauty discovery mainli
       product_only: true,
     },
     metadata: {
-      source: 'shopping',
+      source: 'aurora-bff',
     },
     requestContract: {
       surface: 'direct',
@@ -268,11 +268,51 @@ test('aurora-bff search calls still use local beauty discovery mainline', () => 
   assert.equal(out, true);
 });
 
-test('explicit single-step sunscreen query stays off local beauty discovery mainline', () => {
+test('aurora-bff broad search uses raw user query before semantic query rewrite', () => {
+  const runtime = createRuntime();
+  const out = runtime.shouldUseLocalBeautyDiscoveryMainline({
+    search: {
+      query: 'oil control treatment',
+      product_only: true,
+    },
+    metadata: {
+      source: 'aurora-bff',
+    },
+    requestContract: {
+      surface: 'chat',
+      primary_lane: 'beauty_discovery_mainline',
+    },
+    rawUserQuery: 'im oily skin, what products should i use?',
+  });
+
+  assert.equal(out, true);
+});
+
+test('aurora-bff non-broad framework search stays on semantic-owner path', () => {
+  const runtime = createRuntime();
+  const out = runtime.shouldUseLocalBeautyDiscoveryMainline({
+    search: {
+      query: 'oil control serum',
+      product_only: true,
+    },
+    metadata: {
+      source: 'aurora-bff',
+    },
+    requestContract: {
+      surface: 'chat',
+      primary_lane: 'beauty_discovery_mainline',
+    },
+  });
+
+  assert.equal(out, false);
+});
+
+test('explicit step-aware sunscreen query uses local beauty discovery mainline', () => {
   const runtime = createRuntime();
   const out = runtime.shouldUseLocalBeautyDiscoveryMainline({
     search: {
       query: 'best sunscreen for oily skin',
+      target_step_family: 'sunscreen',
     },
     metadata: {
       source: 'shopping',
@@ -280,10 +320,17 @@ test('explicit single-step sunscreen query stays off local beauty discovery main
     requestContract: {
       surface: 'direct',
       primary_lane: 'beauty_discovery_mainline',
+      semantic_contract: {
+        planner_mode: 'step_aware',
+        request_class: 'sunscreen',
+        target_step_family: 'sunscreen',
+        semantic_family: 'sunscreen',
+        primary_role_id: 'daily_sunscreen',
+      },
     },
   });
 
-  assert.equal(out, false);
+  assert.equal(out, true);
 });
 
 test('local beauty discovery mainline returns authoritative search metadata and supplement traces', async () => {
