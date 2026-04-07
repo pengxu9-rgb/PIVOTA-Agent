@@ -1138,6 +1138,13 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
     const stageResults = [];
     const supplementTraces = [];
     let queryCursor = 0;
+    let frameworkBudgetExhausted = false;
+    const localFrameworkStartedAtMs = Date.now();
+    const getLocalFrameworkRemainingBudgetMs = () =>
+      Math.max(
+        0,
+        primaryTimeoutMs - Math.max(0, Date.now() - localFrameworkStartedAtMs),
+      );
     for (const stage of Array.isArray(recallPlan?.stages) ? recallPlan.stages : []) {
       const selectedProductIdsBefore = getSelectedProductIds(
         candidateState?.selected_recommendations,
@@ -1193,11 +1200,33 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
         const preferredStep =
           String(entry?.preferred_step || normalizeRoleStep(entry?.role_id)).trim() ||
           null;
+        const effectiveTimeoutMs = Math.min(primaryTimeoutMs, getLocalFrameworkRemainingBudgetMs());
+        if (effectiveTimeoutMs < 120) {
+          timeoutCount += 1;
+          frameworkBudgetExhausted = true;
+          searchResults.push({
+            stage_id: stageId,
+            planner_mode: 'framework_generic',
+            query: String(entry?.query || '').trim(),
+            preferred_step: preferredStep || null,
+            role_id: String(entry?.role_id || '').trim() || null,
+            role_rank:
+              Number.isFinite(Number(entry?.role_rank)) ? Number(entry.role_rank) : null,
+            source_scope: sourceScope,
+            ok: false,
+            reason: 'upstream_timeout',
+            products: [],
+            skipped_reason: 'budget_guard',
+            error: 'local beauty discovery timeout budget exhausted',
+          });
+          queryCursor += 1;
+          break;
+        }
         const out = await searchPivotaBackendProducts({
           query: entry?.query,
           limit: normalizedLimit,
           logger,
-          timeoutMs: primaryTimeoutMs,
+          timeoutMs: effectiveTimeoutMs,
           searchSourceOverride: metadataObj?.source || null,
           catalogSurface:
             searchObj.catalog_surface ||
@@ -1292,16 +1321,48 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
         timeoutCount,
       });
       if (stageTrace) supplementTraces.push(stageTrace);
+      if (frameworkBudgetExhausted) break;
     }
 
     const selectedProducts = Array.isArray(candidateState?.selected_recommendations)
       ? candidateState.selected_recommendations.slice(0, normalizedLimit)
       : [];
+    const selectedProductIdSet = new Set(
+      selectedProducts
+        .map((product) => String(product?.product_id || product?.id || '').trim())
+        .filter(Boolean),
+    );
+    const executedPrimaryQueryPackAttempts = searchResults.length > 0
+      ? searchResults.map((row, index) => {
+          const products = Array.isArray(row?.products) ? row.products : [];
+          const adopted = products.some((product) =>
+            selectedProductIdSet.has(String(product?.product_id || product?.id || '').trim()),
+          );
+          return {
+            query: String(row?.query || '').trim(),
+            query_index:
+              Number.isFinite(Number(row?.query_index)) ? Number(row.query_index) : index,
+            query_total: recallEntries.length,
+            ladder_level: String(row?.stage_id || '').trim() || null,
+            role_id: String(row?.role_id || '').trim() || null,
+            role_rank:
+              Number.isFinite(Number(row?.role_rank)) ? Number(row.role_rank) : null,
+            source_scope: String(row?.source_scope || '').trim() || null,
+            preferred_step: String(row?.preferred_step || '').trim() || null,
+            result_count: products.length,
+            adopted,
+            ...(row?.error ? { error: String(row.error) } : {}),
+            ...(row?.skipped_reason ? { skipped_reason: String(row.skipped_reason) } : {}),
+          };
+        })
+      : primaryQueryPackAttempts;
     const sourceObservability = countCandidateOriginBreakdown(
       selectedProducts.length > 0 ? selectedProducts : rawCandidates,
     );
     const anyTimeout = searchResults.some(
-      (row) => String(row?.reason || '').trim().toLowerCase() === 'upstream_timeout',
+      (row) =>
+        String(row?.reason || '').trim().toLowerCase() === 'upstream_timeout' ||
+        String(row?.skipped_reason || '').trim().toLowerCase() === 'budget_guard',
     );
     const primaryFailureStage =
       selectedProducts.length > 0
@@ -1323,7 +1384,7 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
         primaryTimeoutMs,
         semanticContract,
         semanticRewriteResultMeta,
-        primaryQueryPackAttempts,
+        primaryQueryPackAttempts: executedPrimaryQueryPackAttempts,
         selectedProducts,
         rawCandidates,
         supplementTraces,
