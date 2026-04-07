@@ -1537,6 +1537,17 @@ function buildDiscoveryRecallPlan(request, profile, limit) {
   if (!profile?.hasInterestSignals) {
     const coldStartQueries = prioritizeDiscoveryRecallQueries(providerQueries).slice(0, 2);
     const firstLimit = Math.min(COLD_START_PRIMARY_RECALL_LIMIT, safeLimit);
+    if (request?.surface === 'home_hot_deals') {
+      return [
+        {
+          label: 'cold_start_curated',
+          query: coldStartQueries[0] || getDiscoveryColdStartQuery(),
+          offset: 0,
+          limit: firstLimit,
+          allow_early_exit: true,
+        },
+      ];
+    }
     const remaining = Math.max(0, safeLimit - firstLimit);
     return [
       {

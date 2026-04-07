@@ -246,6 +246,31 @@ describe('discovery feed service', () => {
     expect(browsePlan[0].query).toMatch(/skincare|serum/i);
   });
 
+  test('buildDiscoveryRecallPlan skips cold-start home fill for no-signal discovery', () => {
+    const homeRequest = _internals.normalizeDiscoveryRequest({
+      surface: 'home_hot_deals',
+      page: 1,
+      limit: 10,
+      context: {
+        auth_state: 'authenticated',
+        recent_views: [],
+        recent_queries: [],
+      },
+    });
+    const profile = buildDiscoveryProfile(homeRequest.context);
+
+    const homePlan = _internals.buildDiscoveryRecallPlan(homeRequest, profile, 48);
+
+    expect(homePlan).toHaveLength(1);
+    expect(homePlan[0]).toEqual(
+      expect.objectContaining({
+        label: 'cold_start_curated',
+        allow_early_exit: true,
+      }),
+    );
+    expect(homePlan.map((step) => step.label)).not.toContain('cold_start_fill');
+  });
+
   test('brand-scoped browse recall switches to brand_pool queries', () => {
     const request = _internals.normalizeDiscoveryRequest({
       surface: 'browse_products',
@@ -1882,12 +1907,11 @@ describe('discovery feed service', () => {
       },
     });
 
-    expect(capturedQueries).toHaveLength(2);
+    expect(capturedQueries).toHaveLength(1);
     expect(capturedQueries.some((queryText) => /beauty skincare serum/i.test(queryText))).toBe(false);
     expect(capturedQueries).toEqual(
       expect.arrayContaining([
         expect.stringMatching(/niacinamide serum/i),
-        expect.stringMatching(/vitamin c serum|barrier moisturizer|gentle cleanser sunscreen/i),
       ]),
     );
     expect(response.products).toHaveLength(3);
