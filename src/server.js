@@ -18644,11 +18644,26 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         !isCreatorUi &&
         (cacheQueryText.length > 0 || expandedCacheSearchQueryText.length > 0) &&
         !hasMerchantScope;
+      const publicBrandSearchCacheBypass =
+        isCrossMerchantQuerySearch &&
+        isPublicSearchSource(metadata?.source) &&
+        Boolean(cacheQueryText) &&
+        Boolean(detectBrandEntities(cacheQueryText, { candidateProducts: [] })?.brand_like) &&
+        !hasExplicitCategoryHint(cacheQueryText, effectiveIntent);
       if (legacyBeautyCacheBypass.bypass) {
         crossMerchantCacheRouteDebug = {
           attempted: false,
           bypassed: true,
           bypass_reason: legacyBeautyCacheBypass.reason,
+          mode: 'query_search',
+          query: cacheQueryText,
+          beauty_query_bucket: cacheBeautyQueryProfile?.bucket || null,
+        };
+      } else if (publicBrandSearchCacheBypass) {
+        crossMerchantCacheRouteDebug = {
+          attempted: false,
+          bypassed: true,
+          bypass_reason: 'public_brand_search_mainline',
           mode: 'query_search',
           query: cacheQueryText,
           beauty_query_bucket: cacheBeautyQueryProfile?.bucket || null,
@@ -18659,7 +18674,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         !strictCommerceFindProductsMulti &&
         isCrossMerchantQuerySearch &&
         process.env.DATABASE_URL &&
-        !legacyBeautyCacheBypass.bypass
+        !legacyBeautyCacheBypass.bypass &&
+        !publicBrandSearchCacheBypass
       ) {
         let cacheStageBudgetMs = 0;
         try {
@@ -20998,6 +21014,21 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             mainlineMeta.source_breakdown && typeof mainlineMeta.source_breakdown === 'object'
               ? mainlineMeta.source_breakdown
               : {};
+          const cacheStageDiagnostics =
+            buildCacheStageDiagnosticBundle(null, crossMerchantCacheRouteDebug) || {};
+          const existingRouteDebug = isPlainRecord(existingMeta.route_debug) ? existingMeta.route_debug : {};
+          const mainlineRouteDebug = isPlainRecord(mainlineMeta.route_debug) ? mainlineMeta.route_debug : {};
+          const routeDebug =
+            crossMerchantCacheRouteDebug && typeof crossMerchantCacheRouteDebug === 'object'
+              ? {
+                  ...existingRouteDebug,
+                  ...mainlineRouteDebug,
+                  cross_merchant_cache: crossMerchantCacheRouteDebug,
+                }
+              : {
+                  ...existingRouteDebug,
+                  ...mainlineRouteDebug,
+                };
           const upstreamProducts = publicBrandSearchMainlineShortCircuited
             ? []
             : Array.isArray(upstreamData?.products)
@@ -21028,6 +21059,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               metadata: {
                 ...existingMeta,
                 ...mainlineMeta,
+                ...cacheStageDiagnostics,
+                ...(Object.keys(routeDebug).length > 0 ? { route_debug: routeDebug } : {}),
                 query_source: 'agent_products_public_brand_search_mainline',
                 brand_query_mainline_applied: true,
                 brand_query_mainline_attempted: true,
