@@ -46,6 +46,7 @@ describe('audit-external-product-pdp-quality helpers', () => {
         },
         options: {
           debug: true,
+          no_cache: true,
         },
       },
     });

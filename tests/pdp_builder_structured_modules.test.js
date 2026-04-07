@@ -872,4 +872,55 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(payload.product.description).not.toMatch(/DESCRIPTION|HOW TO USE|INGREDIENTS|Net Wt/i);
     expect(payload.modules.find((module) => module.type === 'product_facts')).toBeFalsy();
   });
+
+  test('falls back to narrative overview when generic DETAILS only contains tag soup', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_naturium_jumbo',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Dew-Glow Moisturizer SPF 50 - Jumbo',
+        brand: 'Naturium',
+        category: 'Moisturizer',
+        pdp_description_raw:
+          'Double up & save with this jumbo size of our daily moisturizing sunscreen, formulated with organic/chemical sunscreen filters that apply invisibly on all skin tones to provide broad spectrum SPF 50 PA++++ protection while leaving a dewy, radiant finish.',
+        pdp_details_sections: [
+          {
+            heading: 'BENEFITS',
+            body: 'Sunscreen moisturizer with SPF 50 protection\n\nProvides a dewy glow\n\nWorks well under makeup',
+          },
+          {
+            heading: 'DETAILS',
+            body: '3.4 FL OZ / 100 ML\nCruelty Free\n\nParaben Free\n\nVegan\n\nGluten Free\n\nFragrance Free\n\nDermatologist Tested',
+          },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const detailsSections =
+      payload.modules.find((module) => module.type === 'product_details')?.data?.sections || [];
+    const factsSections =
+      payload.modules.find((module) => module.type === 'product_facts')?.data?.sections || [];
+
+    expect(payload.product.description).toBe(
+      'Double up & save with this jumbo size of our daily moisturizing sunscreen, formulated with organic/chemical sunscreen filters that apply invisibly on all skin tones to provide broad spectrum SPF 50 PA++++ protection while leaving a dewy, radiant finish.',
+    );
+    expect(detailsSections).toEqual([
+      expect.objectContaining({
+        heading: 'Overview',
+        content: payload.product.description,
+      }),
+    ]);
+    expect(detailsSections[0]?.content).not.toMatch(
+      /3\.4 FL OZ|Cruelty Free|Paraben Free|Vegan|Gluten Free|Fragrance Free|Dermatologist Tested/i,
+    );
+    expect(factsSections).toEqual([
+      expect.objectContaining({
+        heading: 'BENEFITS',
+        content: expect.stringContaining('Sunscreen moisturizer with SPF 50 protection'),
+      }),
+    ]);
+  });
 });
