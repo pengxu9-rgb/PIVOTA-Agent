@@ -836,6 +836,9 @@ function sanitizeNarrativeText(value) {
       .trim();
   }
   const narrativeCutPatterns = [
+    /\bthe lowdown\b/i,
+    /\bthe #s don't lie\b/i,
+    /\bfill weight:\b/i,
     /\blearn more\s+close\b/i,
     /\bavoid contact with eyes\b/i,
     /\bkeep out of reach of children\b/i,

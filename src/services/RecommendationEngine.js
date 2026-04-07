@@ -674,12 +674,34 @@ function classifySemanticFamily(base, candidate) {
     base.vertical === candidate.features.vertical;
 
   if (candidate.brandMatch && candidate.leafMatch) return 'same_brand_same_category';
-  if (candidate.brandMatch && !candidate.leafMatch && (candidate.parentMatch || sameVertical || candidate.tokenOverlap >= 0.18)) {
+  if (
+    candidate.brandMatch &&
+    !candidate.leafMatch &&
+    (
+      candidate.parentMatch ||
+      sameVertical ||
+      (base.vertical === UNKNOWN_VERTICAL && candidate.tokenOverlap >= 0.18)
+    )
+  ) {
     return 'same_brand_other_category';
   }
   if (!candidate.brandMatch && (candidate.leafMatch || candidate.parentMatch)) return 'other_brand_same_category';
   if (!candidate.brandMatch && sameVertical) return 'other_brand_same_vertical';
   return 'semantic_peer';
+}
+
+function shouldFilterKnownVerticalMismatch(base, candidate) {
+  const candidateVertical = candidate?.features?.vertical || UNKNOWN_VERTICAL;
+  if (base.vertical === 'fragrance') {
+    const allowByVertical = candidateVertical === 'fragrance';
+    const allowByToken = candidate.tokenOverlap >= 0.18 && candidateVertical !== 'tools';
+    return !allowByVertical && !allowByToken;
+  }
+  if (!['skincare', 'makeup', 'haircare'].includes(base.vertical)) return false;
+  if (candidate.leafMatch || candidate.parentMatch) return false;
+  if (candidateVertical === base.vertical) return false;
+  if (candidateVertical === UNKNOWN_VERTICAL && candidate.tokenOverlap >= 0.18) return false;
+  return true;
 }
 
 function pickBalancedCandidates(candidates, k, baseIsExternal) {
@@ -841,14 +863,9 @@ function pickLayeredRecommendations({
       const scoreDetail = scoreCandidate(base, features);
       const matchedLayer = layers.find((layer) => layer.predicate(scoreDetail)) || layers[layers.length - 1];
 
-      if (base.vertical === 'fragrance') {
-        const candidateVertical = features.vertical;
-        const allowByVertical = candidateVertical === 'fragrance';
-        const allowByToken = scoreDetail.tokenOverlap >= 0.18 && candidateVertical !== 'tools';
-        if (!allowByVertical && !allowByToken) {
-          filteredByVertical += 1;
-          return null;
-        }
+      if (shouldFilterKnownVerticalMismatch(base, { ...scoreDetail, features })) {
+        filteredByVertical += 1;
+        return null;
       }
 
       const confidence = classifyConfidenceLevel(base, { ...scoreDetail, features }, matchedLayer.id);
@@ -862,10 +879,18 @@ function pickLayeredRecommendations({
         Boolean(candidateRecallExclusionFlags.gift_card) ||
         Boolean(candidateRecallExclusionFlags.donation_bundle) ||
         Boolean(candidateRecallExclusionFlags.non_merchandise);
+      const verticalCompatibleBrandFallback =
+        scoreDetail.leafMatch ||
+        scoreDetail.parentMatch ||
+        (base.vertical !== UNKNOWN_VERTICAL && features.vertical === base.vertical) ||
+        (base.vertical === UNKNOWN_VERTICAL && scoreDetail.tokenOverlap >= 0.18);
       const allowLowConfidenceExternalFallback =
         base.isExternal &&
         source === 'external' &&
-        ((scoreDetail.brandMatch && candidateHasSpecificCategory && !candidateExternalSimilarSloExempt) ||
+        ((scoreDetail.brandMatch &&
+          candidateHasSpecificCategory &&
+          !candidateExternalSimilarSloExempt &&
+          verticalCompatibleBrandFallback) ||
           (scoreDetail.brandMatch && candidateHasSpecificCategory && features.vertical === base.vertical) ||
           scoreDetail.leafMatch ||
           scoreDetail.parentMatch ||
