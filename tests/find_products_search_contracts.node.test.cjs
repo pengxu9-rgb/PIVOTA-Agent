@@ -75,6 +75,27 @@ test('framework generic contracts expose support recall and external supplement 
   );
 });
 
+test('beauty discovery primary transport uses search upstream base without changing owner', () => {
+  const requestContract = buildFindProductsSearchRequestContract({
+    surface: 'direct',
+    operation: 'find_products_multi',
+    search: { query: 'im oily skin, what products should i use?' },
+    metadata: { source: 'aurora-bff' },
+  });
+  const executionPlan = resolveFindProductsSearchExecutionPlan({
+    requestContract,
+    pivotaApiBase: 'https://agent-bff.example/',
+    searchInvokeBase: 'https://agent-search.example/',
+  });
+
+  assert.equal(executionPlan.primary_lane, 'beauty_discovery_mainline');
+  assert.equal(executionPlan.primary_retrieval_contract, 'agent_v1_search_beauty_mainline');
+  assert.equal(executionPlan.upstream_method, 'GET');
+  assert.equal(executionPlan.upstream_url, 'https://agent-search.example/agent/v1/products/search');
+  assert.equal(executionPlan.owner_switch_count, 0);
+  assert.equal(executionPlan.policy_only_source, true);
+});
+
 test('execution trace preserves primary timeout and failure stage without owner switches', () => {
   const requestContract = buildFindProductsSearchRequestContract({
     surface: 'direct',

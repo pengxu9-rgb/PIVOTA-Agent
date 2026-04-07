@@ -251,14 +251,20 @@ function resolveFindProductsSearchExecutionPlan({
       policy_only_source: true,
     };
   }
+  const normalizedPivotaApiBase = String(pivotaApiBase || '').replace(/\/$/, '');
+  const normalizedSearchInvokeBase = String(searchInvokeBase || '').replace(/\/$/, '');
+  const beautyDiscoverySearchBase = normalizedSearchInvokeBase || normalizedPivotaApiBase;
   return {
     primary_lane: 'beauty_discovery_mainline',
     primary_retrieval_contract:
       primaryRetrievalContract || 'agent_v1_search_beauty_mainline',
     upstream_method: 'GET',
-    upstream_url: `${String(pivotaApiBase || '').replace(/\/$/, '')}/agent/v1/products/search`,
-    fallback_upstream_url: searchInvokeBase
-      ? `${String(searchInvokeBase || '').replace(/\/$/, '')}/agent/v1/products/search`
+    upstream_url: `${beautyDiscoverySearchBase}/agent/v1/products/search`,
+    fallback_upstream_url:
+      normalizedPivotaApiBase &&
+      normalizedSearchInvokeBase &&
+      normalizedPivotaApiBase !== normalizedSearchInvokeBase
+      ? `${normalizedPivotaApiBase}/agent/v1/products/search`
       : null,
     transport_owner: 'pivota_agent_v1_search',
     owner_switch_count: 0,
