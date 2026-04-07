@@ -2639,6 +2639,53 @@ describe('discovery feed service', () => {
     );
   });
 
+  test('cold start home_hot_deals does not backfill internal beauty when external beauty candidates exist', async () => {
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'home_hot_deals',
+        limit: 10,
+        debug: true,
+        context: {
+          auth_state: 'authenticated',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      },
+      {
+        candidateProducts: [
+          ...Array.from({ length: 9 }, (_, idx) => ({
+            ...makeProduct({
+              merchant_id: 'external_seed',
+              product_id: `external_home_${idx + 1}`,
+              title: `External Serum ${idx + 1}`,
+              brand: idx < 7 ? 'PIXI BEAUTY' : `External Brand ${idx + 1}`,
+              category: 'Skincare',
+              product_type: 'Serum',
+            }),
+            __discovery_provider: 'products_search',
+          })),
+          {
+            ...makeProduct({
+              merchant_id: 'merch_internal',
+              product_id: 'internal_ipsa',
+              title: 'IPSA Time Reset Aqua',
+              brand: 'IPSA',
+              category: 'Skincare',
+              product_type: 'Lotion',
+            }),
+            __discovery_provider: 'products_search',
+          },
+        ],
+      },
+    );
+
+    expect(response.products).toHaveLength(9);
+    expect(response.products.every((product) => product.merchant_id === 'external_seed')).toBe(true);
+    expect(response.products.map((product) => product.product_id)).not.toContain('internal_ipsa');
+    expect(response.metadata.filter_counts.not_selected_cold_start_internal_source).toBeGreaterThanOrEqual(1);
+  });
+
   test('cold start browse_products defers beauty tools when non-tool beauty candidates exist across providers', async () => {
     const response = await getDiscoveryFeed(
       {
