@@ -11,6 +11,7 @@ const {
 const {
   EXTERNAL_SEED_MERCHANT_ID,
   buildExternalSeedProduct,
+  buildExternalSeedBrandSearchProduct,
   ensureJsonObject,
 } = require('./externalSeedProducts');
 const { EXTERNAL_SEED_RECALL_SQL_FIELDS } = require('./externalSeedRecall');
@@ -60,7 +61,7 @@ const PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS = Math.max(
 );
 const PDP_RECS_EXTERNAL_QUERY_TIMEOUT_MS = Math.max(
   500,
-  parseTimeoutMs(process.env.PDP_RECS_EXTERNAL_QUERY_TIMEOUT_MS, 2400),
+  parseTimeoutMs(process.env.PDP_RECS_EXTERNAL_QUERY_TIMEOUT_MS, 4200),
 );
 const PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_MULTIPLIER = Math.max(
   1,
@@ -854,15 +855,23 @@ function pickLayeredRecommendations({
       const candidateHasSpecificCategory = Boolean(
         features.leafCategory && !['external', 'beauty'].includes(features.leafCategory),
       );
+      const candidateRecall = ensureJsonObject(p.external_seed_recall);
+      const candidateRecallExclusionFlags = ensureJsonObject(candidateRecall.exclusion_flags);
+      const candidateExternalSimilarSloExempt =
+        features.vertical === 'gift_card' ||
+        Boolean(candidateRecallExclusionFlags.gift_card) ||
+        Boolean(candidateRecallExclusionFlags.donation_bundle) ||
+        Boolean(candidateRecallExclusionFlags.non_merchandise);
       const allowLowConfidenceExternalFallback =
         base.isExternal &&
         source === 'external' &&
-        ((scoreDetail.brandMatch && candidateHasSpecificCategory && features.vertical === base.vertical) ||
+        ((scoreDetail.brandMatch && candidateHasSpecificCategory && !candidateExternalSimilarSloExempt) ||
+          (scoreDetail.brandMatch && candidateHasSpecificCategory && features.vertical === base.vertical) ||
           scoreDetail.leafMatch ||
           scoreDetail.parentMatch ||
           (base.vertical !== UNKNOWN_VERTICAL &&
             features.vertical === base.vertical &&
-            (scoreDetail.brandMatch || scoreDetail.tokenOverlap >= 0.08)));
+            (candidateHasSpecificCategory || scoreDetail.brandMatch || scoreDetail.tokenOverlap >= 0.08)));
       if (confidence === 'low') {
         if (allowLowConfidenceExternalFallback) {
           return {
@@ -1333,7 +1342,10 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
             price_amount,
             price_currency,
             availability,
-            seed_data,
+            jsonb_strip_nulls(jsonb_build_object(
+              'derived',
+              jsonb_strip_nulls(jsonb_build_object('recall', seed_data->'derived'->'recall'))
+            )) AS seed_data,
             coalesce(
               seed_data->>'brand',
               seed_data->>'brand_name',
@@ -1346,6 +1358,16 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
               ''
             ) as seed_brand,
             coalesce(
+              seed_data->>'merchant_display_name',
+              seed_data->'snapshot'->>'merchant_display_name',
+              ''
+            ) as seed_merchant_display_name,
+            coalesce(
+              seed_data->>'vendor',
+              seed_data->'snapshot'->>'vendor',
+              ''
+            ) as seed_vendor,
+            coalesce(
               seed_data->>'category',
               seed_data->'product'->>'category',
               seed_data->'snapshot'->>'category',
@@ -1357,6 +1379,14 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
               seed_data->'snapshot'->>'product_type',
               ''
             ) as seed_product_type,
+            coalesce(
+              seed_data->'snapshot'->>'category',
+              ''
+            ) as snapshot_category,
+            coalesce(
+              seed_data->'snapshot'->>'product_type',
+              ''
+            ) as snapshot_product_type,
             left(coalesce(seed_data->>'description', seed_data->'snapshot'->>'description', ''), 1200) as seed_description,
             updated_at,
             created_at
@@ -1372,7 +1402,7 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
       );
       const products = [];
       for (const row of res.rows || []) {
-        const p = buildExternalSeedProduct(row);
+        const p = buildExternalSeedBrandSearchProduct(row) || buildExternalSeedProduct(row);
         if (p) products.push(p);
       }
       return products;
@@ -1409,9 +1439,6 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
       coalesce(destination_url, ''),
       coalesce(canonical_url, ''),
       coalesce(seed_data->'derived'->'recall'->>'retrieval_title', ''),
-      coalesce(seed_data->'derived'->'recall'->>'retrieval_summary', ''),
-      coalesce(seed_data->'derived'->'recall'->>'retrieval_body', ''),
-      coalesce(seed_data->>'description', seed_data->'snapshot'->>'description', ''),
       coalesce(seed_data->'derived'->'recall'->>'brand', ''),
       coalesce(
         seed_data->'derived'->'recall'->>'category',
@@ -1425,10 +1452,12 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
         seed_data->'product'->>'product_type',
         seed_data->'snapshot'->>'product_type',
         ''
-      )
+      ),
+      coalesce(seed_data#>>'{derived,recall,ingredient_tokens}', ''),
+      coalesce(seed_data#>>'{derived,recall,alias_tokens}', '')
     ))
   `;
-  const brandSurfaceSql = `
+  const brandExactSurfaceSql = `
     (
       ${EXTERNAL_SEED_RECALL_SQL_FIELDS.brand} = $4
       OR lower(coalesce(seed_data->>'brand', '')) = $4
@@ -1440,7 +1469,10 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
       OR lower(coalesce(seed_data->'snapshot'->>'vendor', '')) = $4
       OR lower(coalesce(seed_data->'snapshot'->>'vendor_name', '')) = $4
       OR lower(coalesce(seed_data->'snapshot'->>'title', seed_data->>'title', title, '')) LIKE $4 || ' %'
-      OR lower(concat_ws(' ',
+    )
+  `;
+  const brandPatternSurfaceSql = `
+    lower(concat_ws(' ',
         coalesce(domain, ''),
         coalesce(destination_url, ''),
         coalesce(canonical_url, ''),
@@ -1456,44 +1488,68 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
         coalesce(seed_data->'snapshot'->>'vendor_name', ''),
         coalesce(seed_data->'snapshot'->>'merchant_display_name', ''),
         coalesce(seed_data->'derived'->'recall'->>'brand', '')
-      )) LIKE ANY($5::text[])
-    )
+      )) LIKE ANY($4::text[])
   `;
 
-  const [brandMatches, categoryExactMatches, categorySemanticMatches, verticalMatches] = await Promise.all([
-    brand && brandPatterns.length
-      ? runQueryWithBudget(
-          `AND ${brandSurfaceSql}`,
-          [brand, brandPatterns],
-          Math.min(120, safeLimit),
-          'external_brand',
-        )
-      : Promise.resolve([]),
-    exactCategoryTerms.length
-      ? runQueryWithBudget(
-          `AND ${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} = ANY($4::text[])`,
-          [exactCategoryTerms],
-          Math.min(120, safeLimit),
-          'external_category_exact',
-        )
-      : Promise.resolve([]),
-    semanticPatterns.length
-      ? runQueryWithBudget(
-          `AND ${categorySurfaceSql} LIKE ANY($4::text[])`,
-          [semanticPatterns],
-          Math.min(160, safeLimit),
-          'external_category_semantic',
-        )
-      : Promise.resolve([]),
-    vertical && vertical !== UNKNOWN_VERTICAL
-      ? runQueryWithBudget(
-          `AND ${EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical} = $4`,
-          [vertical],
-          Math.min(180, safeLimit),
-          'external_same_vertical',
-        )
-      : Promise.resolve([]),
+  const brandExactMatches = brand
+      ? await runQueryWithBudget(
+        `AND ${brandExactSurfaceSql}`,
+        [brand],
+        Math.min(40, safeLimit),
+        'external_brand_exact',
+      )
+    : [];
+  if (brandExactMatches.length >= Math.min(8, safeLimit)) {
+    return uniqueByKey(
+      brandExactMatches,
+      (p) => `${getMerchantId(p)}::${getProductId(p)}`,
+    ).slice(0, safeLimit * 3);
+  }
+
+  const needsBrandPatternFallback = brandPatterns.length > 0;
+  const brandPatternMatchesPromise = needsBrandPatternFallback
+    ? runQueryWithBudget(
+        `AND ${brandPatternSurfaceSql}`,
+        [brandPatterns],
+        Math.min(40, safeLimit),
+        'external_brand_pattern',
+      )
+    : Promise.resolve([]);
+  const categoryExactMatchesPromise = exactCategoryTerms.length
+    ? runQueryWithBudget(
+        `AND ${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} = ANY($4::text[])`,
+        [exactCategoryTerms],
+        Math.min(120, safeLimit),
+        'external_category_exact',
+      )
+    : Promise.resolve([]);
+  const categorySemanticMatchesPromise = semanticPatterns.length
+    ? runQueryWithBudget(
+        `AND ${categorySurfaceSql} LIKE ANY($4::text[])`,
+        [semanticPatterns],
+        Math.min(160, safeLimit),
+        'external_category_semantic',
+      )
+    : Promise.resolve([]);
+  const verticalMatchesPromise = vertical && vertical !== UNKNOWN_VERTICAL
+    ? runQueryWithBudget(
+        `AND ${EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical} = $4`,
+        [vertical],
+        Math.min(180, safeLimit),
+        'external_same_vertical',
+      )
+    : Promise.resolve([]);
+
+  const [brandPatternMatches, categoryExactMatches, categorySemanticMatches, verticalMatches] = await Promise.all([
+    brandPatternMatchesPromise,
+    categoryExactMatchesPromise,
+    categorySemanticMatchesPromise,
+    verticalMatchesPromise,
   ]);
+  const brandMatches = uniqueByKey(
+    [...brandExactMatches, ...brandPatternMatches],
+    (p) => `${getMerchantId(p)}::${getProductId(p)}`,
+  );
 
   const focusedCategoryMatches = uniqueByKey(
     [...categoryExactMatches, ...categorySemanticMatches],
@@ -1732,7 +1788,7 @@ async function recommend({
     Boolean(baseRecallExclusionFlags.donation_bundle) ||
     Boolean(baseRecallExclusionFlags.non_merchandise);
   const effectiveExternalFetchTimeoutMs = baseProductIsExternal
-    ? Math.max(PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS, 4200)
+    ? Math.max(PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS, 6500)
     : PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS;
 
   const providedInternal = Array.isArray(options?.internal_candidates) ? options.internal_candidates : null;
