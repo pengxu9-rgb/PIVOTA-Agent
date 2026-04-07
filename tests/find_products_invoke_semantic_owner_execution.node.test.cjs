@@ -5,6 +5,7 @@ const {
   __internal: {
     isSemanticOwnerBundleLikeProduct,
     isSemanticOwnerEligiblePrimaryExternalProduct,
+    filterSemanticOwnerCoverageExternalProducts,
     shouldPreferSemanticOwnerExternalCoverage,
   },
 } = require('../src/findProductsInvokeSemanticOwnerExecution');
@@ -122,5 +123,43 @@ test('semantic-owner external coverage only prefers external-first when enough s
       targetStepFamily: 'treatment',
     }),
     true,
+  );
+});
+
+test('semantic-owner coverage supplement keeps only step-aligned singleton external products for treatment mainline', () => {
+  const filtered = filterSemanticOwnerCoverageExternalProducts(
+    [
+      {
+        merchant_id: 'external_seed',
+        product_id: 'ext_bundle',
+        display_name: 'Glow Strong Mini Moisturizer + Eye Cream Duo',
+        category: 'external',
+      },
+      {
+        merchant_id: 'external_seed',
+        product_id: 'ext_spf',
+        display_name:
+          'Hydra Vizor Refill Invisible Moisturizer Broad Spectrum Spf 30 Sunscreen with Niacinamide + Kalahari Melon',
+        category: 'external',
+      },
+      {
+        merchant_id: 'external_seed',
+        product_id: 'ext_set',
+        display_name: 'Ultimate Skincare Set',
+        category: 'external',
+      },
+      {
+        merchant_id: 'external_seed',
+        product_id: 'ext_treatment',
+        display_name: 'Salicylic Acid Oil Control Treatment',
+        category: 'treatment',
+      },
+    ],
+    { targetStepFamily: 'treatment' },
+  );
+
+  assert.deepEqual(
+    filtered.map((product) => product.product_id),
+    ['ext_treatment'],
   );
 });

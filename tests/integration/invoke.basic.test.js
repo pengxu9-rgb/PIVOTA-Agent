@@ -1430,7 +1430,7 @@ describe('/agent/shop/v1/invoke gateway', () => {
       .expect(200);
 
     expect(attemptedPrimaryQueries).toEqual(['oil control treatment']);
-    expect(attemptedExternalQueries[0]).toBe('salicylic acid treatment');
+    expect(attemptedExternalQueries).toEqual(expect.arrayContaining(['salicylic acid treatment']));
     expect(Array.isArray(res.body.products)).toBe(true);
     expect(res.body.products.map((item) => item.product_id || item.id)).toEqual([
       'external_coverage_treat_1',

@@ -188,6 +188,14 @@ function shouldPreferSemanticOwnerExternalCoverage({
   );
 }
 
+function filterSemanticOwnerCoverageExternalProducts(externalProducts = [], {
+  targetStepFamily = '',
+} = {}) {
+  return (Array.isArray(externalProducts) ? externalProducts : []).filter((product) =>
+    isSemanticOwnerEligiblePrimaryExternalProduct(product, { targetStepFamily }),
+  );
+}
+
 function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
   const {
     FPM_GATE_SIMPLIFY_V1,
@@ -561,11 +569,15 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
             const coverageExternalProducts = Array.isArray(externalCoverageSupplement?.products)
               ? externalCoverageSupplement.products
               : [];
-            if (coverageExternalProducts.length <= 0) continue;
+            const coveragePrimaryExternalProducts = filterSemanticOwnerCoverageExternalProducts(
+              coverageExternalProducts,
+              { targetStepFamily: semanticOwnerTargetStepFamily },
+            );
+            if (coveragePrimaryExternalProducts.length <= 0) continue;
             const externalCoverageTrusted =
               externalCoverageSupplement?.metadata?.applied === true &&
-              coverageExternalProducts.length >= 2 &&
-              coverageExternalProducts.every((product) =>
+              coveragePrimaryExternalProducts.length >= 2 &&
+              coveragePrimaryExternalProducts.every((product) =>
                 isSemanticOwnerExternalSeedProduct(product),
               );
             const coverageQueryParamsApplied = {
@@ -576,16 +588,16 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
               {
                 status: 'success',
                 success: true,
-                products: coverageExternalProducts,
-                total: coverageExternalProducts.length,
+                products: coveragePrimaryExternalProducts,
+                total: coveragePrimaryExternalProducts.length,
                 page: coveragePage,
-                page_size: coverageExternalProducts.length,
+                page_size: coveragePrimaryExternalProducts.length,
                 reply: null,
                 metadata: {
                   query_source: 'agent_products_search',
                   source_breakdown: {
                     internal_count: 0,
-                    external_seed_count: coverageExternalProducts.length,
+                    external_seed_count: coveragePrimaryExternalProducts.length,
                     stale_cache_used: false,
                     strategy_applied: 'semantic_owner_external_coverage_supplement',
                   },
@@ -627,14 +639,14 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
               : [];
             const preferExternalFirst = shouldPreferSemanticOwnerExternalCoverage({
               primaryProducts,
-              externalProducts: coverageExternalProducts,
+              externalProducts: coveragePrimaryExternalProducts,
               externalAdoption: externalCoverageAdoption,
               externalCoverageTrusted,
               targetStepFamily: semanticOwnerTargetStepFamily,
             });
             const mergedProducts = mergeSemanticOwnerProductPools(
               preferExternalFirst ? [] : primaryProducts,
-              coverageExternalProducts,
+              coveragePrimaryExternalProducts,
               {
                 preferExternalFirst,
                 limit: coverageLimit,
@@ -671,12 +683,14 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
                     semanticOwnerCoverageSupplementQueries,
                   semantic_owner_external_coverage_supplement_mode:
                     preferExternalFirst ? 'external_replaced_sparse_internal' : 'merged',
+                  semantic_owner_external_coverage_supplement_filtered_count:
+                    Math.max(0, coverageExternalProducts.length - coveragePrimaryExternalProducts.length),
                   external_seed_rows_fetched: Math.max(
                     coverageExternalProducts.length,
                     Number(externalCoverageSupplement?.metadata?.external_seed_rows_raw || 0) || 0,
                   ),
-                  external_seed_rows_built: coverageExternalProducts.length,
-                  external_seed_returned_count: coverageExternalProducts.length,
+                  external_seed_rows_built: coveragePrimaryExternalProducts.length,
+                  external_seed_returned_count: coveragePrimaryExternalProducts.length,
                   source_breakdown: {
                     ...(existingMetadata.source_breakdown &&
                     typeof existingMetadata.source_breakdown === 'object' &&
@@ -684,7 +698,7 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
                       ? existingMetadata.source_breakdown
                       : {}),
                     internal_count: preferExternalFirst ? 0 : primaryProducts.length,
-                    external_seed_count: coverageExternalProducts.length,
+                    external_seed_count: coveragePrimaryExternalProducts.length,
                     stale_cache_used: false,
                     strategy_applied: 'semantic_owner_external_coverage_supplement',
                   },
@@ -710,11 +724,13 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
               .find((attempt) => attempt && attempt.adopted === true);
             if (adoptedAttempt) {
               adoptedAttempt.coverage_supplemented = true;
-              adoptedAttempt.external_seed_supplement_count = coverageExternalProducts.length;
+              adoptedAttempt.external_seed_supplement_count = coveragePrimaryExternalProducts.length;
               adoptedAttempt.coverage_supplement_query = semanticOwnerCoverageSupplementQuery;
               adoptedAttempt.adoption_mode = preferExternalFirst
                 ? 'external_seed_coverage_replaced_sparse_internal'
                 : 'external_seed_coverage_supplemented';
+              adoptedAttempt.external_seed_supplement_filtered_count =
+                Math.max(0, coverageExternalProducts.length - coveragePrimaryExternalProducts.length);
             }
             break;
           } catch (semanticOwnerCoverageSupplementErr) {
@@ -1022,6 +1038,7 @@ module.exports = {
   __internal: {
     isSemanticOwnerBundleLikeProduct,
     isSemanticOwnerEligiblePrimaryExternalProduct,
+    filterSemanticOwnerCoverageExternalProducts,
     shouldPreferSemanticOwnerExternalCoverage,
   },
 };
