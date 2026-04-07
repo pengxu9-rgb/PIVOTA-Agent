@@ -458,7 +458,6 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
     const searchObj = normalizeSearchObject(search);
     const metadataObj = normalizeSearchObject(metadata);
     const contract = isPlainObject(requestContract) ? requestContract : {};
-    if (String(contract.surface || '').trim().toLowerCase() === 'chat') return false;
     if (String(contract.primary_lane || '').trim() !== 'beauty_discovery_mainline') return false;
     const queryText = firstNonEmptyString(searchObj.query, searchObj.q);
     if (String(searchObj.merchant_id || searchObj.merchantId || '').trim()) return false;

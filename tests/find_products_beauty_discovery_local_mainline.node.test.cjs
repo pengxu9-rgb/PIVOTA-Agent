@@ -249,6 +249,25 @@ test('product-only direct beauty search still uses local beauty discovery mainli
   assert.equal(out, true);
 });
 
+test('aurora-bff search calls still use local beauty discovery mainline', () => {
+  const runtime = createRuntime();
+  const out = runtime.shouldUseLocalBeautyDiscoveryMainline({
+    search: {
+      query: 'im oily skin, what products should i use?',
+      product_only: true,
+    },
+    metadata: {
+      source: 'aurora-bff',
+    },
+    requestContract: {
+      surface: 'chat',
+      primary_lane: 'beauty_discovery_mainline',
+    },
+  });
+
+  assert.equal(out, true);
+});
+
 test('explicit single-step sunscreen query stays off local beauty discovery mainline', () => {
   const runtime = createRuntime();
   const out = runtime.shouldUseLocalBeautyDiscoveryMainline({
