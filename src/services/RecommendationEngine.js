@@ -259,6 +259,18 @@ const CATEGORY_SEMANTIC_ALIASES = [
     terms: ['lip balm', 'lip treatment'],
   },
   {
+    key: 'lip stain',
+    terms: ['lip stain', 'lip tint', 'hydrating lip stain'],
+  },
+  {
+    key: 'lip gloss',
+    terms: ['lip gloss', 'lip luminizer', 'gloss bomb', 'lip plumper'],
+  },
+  {
+    key: 'lip oil',
+    terms: ['lip oil'],
+  },
+  {
     key: 'lipstick',
     terms: ['lipstick', 'lip color', 'lip colour', 'lip stick'],
   },
@@ -400,6 +412,26 @@ function getRecommendationTitleKey(product) {
   return normalizeText(getDisplayTitle(product));
 }
 
+function isLipFocusedProduct(product) {
+  const recall = ensureJsonObject(product?.external_seed_recall || product?.seed_data?.derived?.recall);
+  const text = normalizeText(
+    [
+      product?.title,
+      product?.name,
+      product?.category,
+      product?.product_type,
+      product?.productType,
+      product?.description,
+      recall.retrieval_title,
+      recall.retrieval_summary,
+      ...(Array.isArray(recall.alias_tokens) ? recall.alias_tokens : []),
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+  return /\blip(?:stick)?\b|\blip\s+(?:stain|tint|gloss|oil|luminizer|plumper|balm|treatment|colou?r|stick)\b/.test(text);
+}
+
 function buildRecommendationExclusionState(items) {
   const productKeys = new Set();
   const productIdsWithoutMerchant = new Set();
@@ -471,6 +503,34 @@ function getCategoryPath(product) {
     .map((segment) => segment.trim())
     .filter(Boolean)
     .filter((segment) => !PLACEHOLDER_CATEGORY_VALUES.has(segment.toLowerCase()));
+}
+
+function normalizeSpecificCategory(value) {
+  const normalized = String(value || '').trim();
+  if (!normalized || PLACEHOLDER_CATEGORY_VALUES.has(normalized.toLowerCase())) return '';
+  return normalized;
+}
+
+function inferRecallCategory(recall) {
+  const recallObj = ensureJsonObject(recall);
+  const explicitCategory = normalizeSpecificCategory(recallObj.category);
+  if (explicitCategory) return explicitCategory;
+  const text = normalizeText(
+    [
+      recallObj.retrieval_title,
+      recallObj.retrieval_summary,
+      ...(Array.isArray(recallObj.alias_tokens) ? recallObj.alias_tokens : []),
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+  if (!text) return '';
+  if (/\blip\s+(?:stain|tint)\b/.test(text)) return 'lip stain';
+  if (/\blip\s+(?:gloss|luminizer|plumper)\b|\bgloss\s+bomb\b/.test(text)) return 'lip gloss';
+  if (/\blip\s+oil\b/.test(text)) return 'lip oil';
+  if (/\blip\s+(?:balm|treatment)\b/.test(text)) return 'lip balm';
+  if (/\blipstick\b|\blip\s+colou?r\b|\blip\s+stick\b/.test(text)) return 'lipstick';
+  return '';
 }
 
 function getLeafCategory(product) {
@@ -609,6 +669,7 @@ function buildBaseFeatures(baseProduct) {
     vertical: verticalSignal.vertical || UNKNOWN_VERTICAL,
     verticalInferred: Boolean(verticalSignal.inferred),
     verticalKeywords: verticalSignal.matched_keywords || [],
+    lipFocused: isLipFocusedProduct(baseProduct),
   };
 }
 
@@ -634,6 +695,7 @@ function buildCandidateFeatures(candidateProduct, baseCurrency) {
     isExternal: isExternalProduct(candidateProduct),
     vertical: verticalSignal.vertical || UNKNOWN_VERTICAL,
     verticalInferred: Boolean(verticalSignal.inferred),
+    lipFocused: isLipFocusedProduct(candidateProduct),
   };
 }
 
@@ -692,6 +754,7 @@ function classifySemanticFamily(base, candidate) {
 
 function shouldFilterKnownVerticalMismatch(base, candidate) {
   const candidateVertical = candidate?.features?.vertical || UNKNOWN_VERTICAL;
+  if (base.lipFocused && !candidate?.features?.lipFocused) return true;
   if (base.vertical === 'fragrance') {
     const allowByVertical = candidateVertical === 'fragrance';
     const allowByToken = candidate.tokenOverlap >= 0.18 && candidateVertical !== 'tools';
@@ -1694,10 +1757,12 @@ async function enrichExternalBaseProduct(baseProduct) {
   const seedRecord = await loadExternalSeedSemanticRecord(baseProduct);
   const seedData = ensureJsonObject(seedRecord?.seed_data);
   const seedCanonicalProduct = seedRecord ? buildExternalSeedProduct(seedRecord) : null;
+  const seedRecall = ensureJsonObject(seedCanonicalProduct?.external_seed_recall || seedData?.derived?.recall);
 
   const seedBrand = String(
     seedCanonicalProduct?.brand ||
     seedCanonicalProduct?.vendor ||
+    seedRecall?.brand ||
     seedData?.brand ||
     seedData?.snapshot?.brand ||
     '',
@@ -1709,11 +1774,12 @@ async function enrichExternalBaseProduct(baseProduct) {
   }
 
   const seedCategory = String(
-    seedCanonicalProduct?.category ||
-    seedCanonicalProduct?.product_type ||
-    seedData?.category ||
-    seedData?.product?.category ||
-    seedData?.snapshot?.category ||
+    normalizeSpecificCategory(seedCanonicalProduct?.category) ||
+    normalizeSpecificCategory(seedCanonicalProduct?.product_type) ||
+    inferRecallCategory(seedRecall) ||
+    normalizeSpecificCategory(seedData?.category) ||
+    normalizeSpecificCategory(seedData?.product?.category) ||
+    normalizeSpecificCategory(seedData?.snapshot?.category) ||
     '',
   ).trim();
   if (!getLeafCategory(enriched) && seedCategory) {
@@ -1745,21 +1811,29 @@ async function enrichExternalBaseProduct(baseProduct) {
   if (!String(enriched.external_product_id || '').trim() && seedRecord?.external_product_id) {
     enriched.external_product_id = String(seedRecord.external_product_id);
   }
+  if (!enriched.external_seed_recall && Object.keys(seedRecall).length > 0) {
+    enriched.external_seed_recall = seedRecall;
+  }
 
   const inferred = inferVerticalFromProduct(enriched);
+  const recallVertical = String(seedRecall?.vertical || '').trim();
+  const vertical =
+    inferred.vertical && inferred.vertical !== UNKNOWN_VERTICAL
+      ? inferred.vertical
+      : recallVertical || inferred.vertical;
   return {
     product: enriched,
     semantic: {
-      vertical: inferred.vertical,
-      vertical_inferred: inferred.inferred,
+      vertical,
+      vertical_inferred: inferred.inferred || Boolean(recallVertical),
       signal_strength: computeSemanticSignalStrength({
         brand: getBrandName(enriched),
         leafCategory: getLeafCategory(enriched),
-        vertical: inferred.vertical,
+        vertical,
       }),
       rescue_applied: rescueFields.length > 0,
       rescue_fields: rescueFields,
-      external_seed_recall: seedCanonicalProduct?.external_seed_recall || null,
+      external_seed_recall: seedRecall,
     },
   };
 }
