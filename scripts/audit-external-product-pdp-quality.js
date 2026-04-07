@@ -21,10 +21,10 @@ const {
 const DEFAULT_CATALOG_BASE_URL =
   process.env.CATALOG_INTELLIGENCE_BASE_URL ||
   'https://pivota-catalog-intelligence-production.up.railway.app';
-const DEFAULT_GATEWAY_BASE_URL =
-  process.env.PIVOTA_BACKEND_BASE_URL ||
-  process.env.PIVOTA_API_BASE ||
-  'https://agent.pivota.cc';
+const DEFAULT_GATEWAY_URL =
+  process.env.EXTERNAL_PDP_QUALITY_GATEWAY_URL ||
+  process.env.PDP_SMOKE_GATEWAY ||
+  'https://agent.pivota.cc/api/gateway';
 
 function argValue(name) {
   const idx = process.argv.indexOf(`--${name}`);
@@ -41,6 +41,14 @@ function normalizeNonEmptyString(value) {
 function normalizeUrlLike(value) {
   const normalized = normalizeNonEmptyString(value);
   return /^https?:\/\//i.test(normalized) ? normalized : '';
+}
+
+function resolveGatewayUrl(value) {
+  const normalized = normalizeUrlLike(value);
+  if (!normalized) return DEFAULT_GATEWAY_URL;
+  const trimmed = normalized.replace(/\/+$/, '');
+  if (/\/(?:api\/gateway|agent\/shop\/v1\/invoke)$/i.test(trimmed)) return trimmed;
+  return `${trimmed}/api/gateway`;
 }
 
 function getHeaders() {
@@ -128,9 +136,9 @@ async function fetchExtractorTruth(row, baseUrl) {
   };
 }
 
-async function invokeGateway(baseUrl, operation, payload) {
+async function invokeGateway(gatewayUrl, operation, payload) {
   const response = await axios.post(
-    `${baseUrl.replace(/\/$/, '')}/agent/shop/v1/invoke`,
+    resolveGatewayUrl(gatewayUrl),
     { operation, payload },
     {
       timeout: Number(process.env.EXTERNAL_PDP_QUALITY_GATE_TIMEOUT_MS || 45000),
@@ -141,7 +149,19 @@ async function invokeGateway(baseUrl, operation, payload) {
   return response.data || {};
 }
 
-async function auditRow(row, { catalogBaseUrl, gatewayBaseUrl }) {
+function unwrapLivePdpPayload(response = {}) {
+  const directPayload = ensureJsonObject(response?.pdp_payload || response?.payload);
+  if (Array.isArray(directPayload?.modules)) return directPayload;
+
+  const modules = Array.isArray(response?.modules) ? response.modules : [];
+  const canonical = modules.find((module) => module?.type === 'canonical');
+  const canonicalPayload = ensureJsonObject(canonical?.data?.pdp_payload || canonical?.data?.payload);
+  if (Array.isArray(canonicalPayload?.modules)) return canonicalPayload;
+
+  return ensureJsonObject(response);
+}
+
+async function auditRow(row, { catalogBaseUrl, gatewayUrl }) {
   const seedData = ensureJsonObject(row.seed_data);
   const snapshot = ensureJsonObject(seedData.snapshot);
   const recall = resolveExternalSeedRecallDoc({ row, seedData, snapshot });
@@ -152,10 +172,14 @@ async function auditRow(row, { catalogBaseUrl, gatewayBaseUrl }) {
     normalizeNonEmptyString(seedData.product_id);
   const [livePdp, similar] = await Promise.all([
     productId
-      ? invokeGateway(gatewayBaseUrl, 'get_pdp_v2', { product_id: productId })
+      ? invokeGateway(gatewayUrl, 'get_pdp_v2', { product_id: productId })
       : Promise.resolve({ error: 'missing_product_id' }),
     productId
-      ? invokeGateway(gatewayBaseUrl, 'find_similar_products', { product_id: productId, limit: 6 })
+      ? invokeGateway(gatewayUrl, 'find_similar_products', {
+          product_id: productId,
+          limit: 6,
+          options: { debug: true, no_cache: true },
+        })
       : Promise.resolve({ error: 'missing_product_id' }),
   ]);
   const audit = auditExternalSeedRow(row);
@@ -166,7 +190,7 @@ async function auditRow(row, { catalogBaseUrl, gatewayBaseUrl }) {
   });
   const livePdpGate = buildLivePdpGate({
     extractorProduct: extractor.product || {},
-    livePayload: ensureJsonObject(livePdp?.pdp_payload || livePdp?.payload || livePdp),
+    livePayload: unwrapLivePdpPayload(livePdp),
   });
   const similarGate = buildSimilarGate({
     similarResponse: ensureJsonObject(similar),
@@ -188,6 +212,7 @@ async function main() {
   const format = normalizeNonEmptyString(argValue('format') || 'summary').toLowerCase();
   const limit = Math.max(1, Math.min(200, Number(argValue('limit') || 20) || 20));
   const offset = Math.max(0, Number(argValue('offset') || 0) || 0);
+  const gatewayUrl = resolveGatewayUrl(argValue('gateway-url') || argValue('gateway') || argValue('gateway-base-url'));
   const rows = await fetchRows({
     market,
     seedId: argValue('seed-id'),
@@ -203,7 +228,7 @@ async function main() {
     results.push(
       await auditRow(row, {
         catalogBaseUrl: DEFAULT_CATALOG_BASE_URL,
-        gatewayBaseUrl: DEFAULT_GATEWAY_BASE_URL,
+        gatewayUrl,
       }),
     );
   }
@@ -227,7 +252,18 @@ async function main() {
   process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
 }
 
-main().catch((error) => {
-  process.stderr.write(`${error?.stack || error?.message || String(error)}\n`);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    process.stderr.write(`${error?.stack || error?.message || String(error)}\n`);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  fetchRows,
+  fetchExtractorTruth,
+  invokeGateway,
+  resolveGatewayUrl,
+  unwrapLivePdpPayload,
+  auditRow,
+};
