@@ -1637,7 +1637,7 @@ function isGenericNoSignalDiscoveryRequest(request, profile) {
   return request?.surface === 'home_hot_deals';
 }
 
-function getAnonymousPrimaryProviderThreshold(request) {
+function getNoSignalPrimaryProviderThreshold(request) {
   const requestedLimit = clampInt(request?.limit, 12, 1, 48);
   if (request?.surface === 'browse_products') {
     const page = Math.max(1, Number(request?.page || 1));
@@ -1646,10 +1646,21 @@ function getAnonymousPrimaryProviderThreshold(request) {
   return Math.max(Math.min(requestedLimit, 6), 4);
 }
 
+function hasNoSignalRequestedPageCoverage(highQualityCount, request) {
+  if (request?.surface !== 'browse_products') return false;
+  const page = Math.max(1, Number(request?.page || 1));
+  if (page <= 1) return false;
+  const requestedLimit = clampInt(request?.limit, 12, 1, 48);
+  const pageOffset = (page - 1) * requestedLimit;
+  return Number(highQualityCount || 0) > pageOffset;
+}
+
 function shouldSkipNoSignalProviderExpansion(products = [], { request, profile } = {}) {
   if (!isGenericNoSignalDiscoveryRequest(request, profile)) return false;
-  const threshold = getAnonymousPrimaryProviderThreshold(request);
-  return countHighQualityProviderCandidates(products, { request, profile }) >= threshold;
+  const highQualityCount = countHighQualityProviderCandidates(products, { request, profile });
+  if (hasNoSignalRequestedPageCoverage(highQualityCount, request)) return true;
+  const threshold = getNoSignalPrimaryProviderThreshold(request);
+  return highQualityCount >= threshold;
 }
 
 async function fetchDiscoveryRecallStep({
@@ -3298,7 +3309,7 @@ function compareColdStartHomeEntries(a, b) {
 }
 
 function getColdStartHomeBrandCap(candidate) {
-  return isExternalSeedMerchantCandidate(candidate) ? 4 : 2;
+  return isExternalSeedMerchantCandidate(candidate) && candidate?.domain === 'beauty' ? 8 : 2;
 }
 
 function compareBrowseEntries(a, b) {

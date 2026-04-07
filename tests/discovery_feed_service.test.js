@@ -2569,6 +2569,76 @@ describe('discovery feed service', () => {
     );
   });
 
+  test('cold start home_hot_deals keeps external beauty fill ahead of internal products when same-brand seed results remain', async () => {
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'home_hot_deals',
+        limit: 8,
+        debug: true,
+        context: {
+          auth_state: 'authenticated',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      },
+      {
+        candidateProducts: [
+          {
+            ...makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'external_1',
+              title: 'ceramide barrier serum',
+              brand: 'cocokind',
+              category: 'Skincare',
+              product_type: 'Serum',
+            }),
+            __discovery_provider: 'products_search',
+          },
+          ...Array.from({ length: 7 }, (_, idx) => ({
+            ...makeProduct({
+              merchant_id: 'external_seed',
+              product_id: `external_pixi_${idx + 1}`,
+              title: `PIXI Serum ${idx + 1}`,
+              brand: 'PIXI BEAUTY',
+              category: 'Skincare',
+              product_type: 'Serum',
+            }),
+            __discovery_provider: 'products_search',
+          })),
+          {
+            ...makeProduct({
+              merchant_id: 'merch_internal',
+              product_id: 'internal_1',
+              title: 'The Ordinary Niacinamide 10% + Zinc 1%',
+              brand: 'The Ordinary',
+              category: 'Skincare',
+              product_type: 'Serum',
+            }),
+            __discovery_provider: 'products_search',
+          },
+          {
+            ...makeProduct({
+              merchant_id: 'merch_internal',
+              product_id: 'internal_2',
+              title: 'Winona Soothing Repair Serum',
+              brand: 'Winona',
+              category: 'Skincare',
+              product_type: 'Serum',
+            }),
+            __discovery_provider: 'products_search',
+          },
+        ],
+      },
+    );
+
+    expect(response.products).toHaveLength(8);
+    expect(response.products.every((product) => product.merchant_id === 'external_seed')).toBe(true);
+    expect(response.products.map((product) => product.product_id)).not.toEqual(
+      expect.arrayContaining(['internal_1', 'internal_2']),
+    );
+  });
+
   test('cold start browse_products defers beauty tools when non-tool beauty candidates exist across providers', async () => {
     const response = await getDiscoveryFeed(
       {
@@ -3116,6 +3186,99 @@ describe('discovery feed service', () => {
     );
 
     expect(response.products).toHaveLength(12);
+    expect(response.products.every((product) => product.merchant_id === 'external_seed')).toBe(true);
+    expect(internalSpy).not.toHaveBeenCalled();
+    expect(externalSpy).not.toHaveBeenCalled();
+    expect(response.metadata.provider_breakdown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ provider: 'products_search', successful: true }),
+        expect.objectContaining({ provider: 'internal_catalog', skipped: true }),
+        expect.objectContaining({ provider: 'external_seeds', skipped: true }),
+      ]),
+    );
+    expect(response.metadata.rank_debug.recall_summary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          provider: 'internal_catalog',
+          skipped: true,
+          skip_reason: 'sufficient_no_signal_primary_candidates',
+        }),
+        expect.objectContaining({
+          provider: 'external_seeds',
+          skipped: true,
+          skip_reason: 'sufficient_no_signal_primary_candidates',
+        }),
+      ]),
+    );
+  });
+
+  test('logged-in browse short-circuits provider expansion when primary pool already covers the requested tail page', async () => {
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://wrong-backend.test';
+    delete process.env.PIVOTA_API_BASE;
+    delete process.env.PIVOTA_API_KEY;
+    process.env.PIVOTA_BACKEND_AGENT_API_KEY = 'bridge-key';
+
+    const primaryProducts = Array.from({ length: 19 }, (_, idx) =>
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: `external_tail_${idx + 1}`,
+        title: `Glow Serum ${idx + 1}`,
+        brand: idx < 8 ? 'PIXI BEAUTY' : `Brand ${idx + 1}`,
+        category: 'Skincare',
+        product_type: 'Serum',
+      }),
+    );
+    const internalSpy = jest.fn(async () => [
+      makeProduct({
+        merchant_id: 'merch_internal',
+        product_id: 'internal_tail_1',
+        title: 'The Ordinary Niacinamide 10% + Zinc 1%',
+        brand: 'The Ordinary',
+        category: 'Skincare',
+        product_type: 'Serum',
+      }),
+    ]);
+    const externalSpy = jest.fn(async () => [
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'external_tail_fallback_1',
+        title: 'Fallback Serum',
+        brand: 'Seeded',
+        category: 'Skincare',
+        product_type: 'Serum',
+      }),
+    ]);
+
+    nock('http://discovery-catalog.test')
+      .matchHeader('x-agent-api-key', 'bridge-key')
+      .matchHeader('x-api-key', 'bridge-key')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, { products: primaryProducts });
+
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 2,
+        limit: 12,
+        debug: true,
+        context: {
+          auth_state: 'authenticated',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      },
+      {
+        providerOverrides: {
+          internal_catalog: internalSpy,
+          external_seeds: externalSpy,
+        },
+      },
+    );
+
+    expect(response.products).toHaveLength(7);
     expect(response.products.every((product) => product.merchant_id === 'external_seed')).toBe(true);
     expect(internalSpy).not.toHaveBeenCalled();
     expect(externalSpy).not.toHaveBeenCalled();
