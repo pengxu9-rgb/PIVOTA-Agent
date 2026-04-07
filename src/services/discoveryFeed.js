@@ -1621,9 +1621,7 @@ function hasDiscoveryCategoryScope(request) {
   return normalizeDiscoveryCategories(request?.scope?.categories, 12).length > 0;
 }
 
-function isGenericAnonymousDiscoveryRequest(request, profile) {
-  const authState = normalizeAuthState(request?.context?.auth_state);
-  if (authState !== 'anonymous') return false;
+function isGenericNoSignalDiscoveryRequest(request, profile) {
   if (profile?.hasInterestSignals) return false;
   if (hasBrandScope(request) || hasDiscoveryQueryText(request) || hasDiscoveryCategoryScope(request)) {
     return false;
@@ -1642,14 +1640,14 @@ function isGenericAnonymousDiscoveryRequest(request, profile) {
 function getAnonymousPrimaryProviderThreshold(request) {
   const requestedLimit = clampInt(request?.limit, 12, 1, 48);
   if (request?.surface === 'browse_products') {
-    return Math.max(Math.min(requestedLimit, 12), 8);
+    const page = Math.max(1, Number(request?.page || 1));
+    return Math.max(Math.min(page * requestedLimit, 24), 8);
   }
   return Math.max(Math.min(requestedLimit, 6), 4);
 }
 
-function shouldSkipAnonymousColdStartProviderExpansion(products = [], { request, profile } = {}) {
-  if (!isGenericAnonymousDiscoveryRequest(request, profile)) return false;
-  if (request?.surface === 'browse_products' && Number(request?.page || 1) > 1) return false;
+function shouldSkipNoSignalProviderExpansion(products = [], { request, profile } = {}) {
+  if (!isGenericNoSignalDiscoveryRequest(request, profile)) return false;
   const threshold = getAnonymousPrimaryProviderThreshold(request);
   return countHighQualityProviderCandidates(products, { request, profile }) >= threshold;
 }
@@ -2607,7 +2605,7 @@ async function loadCatalogCandidates({
     };
   }
 
-  const shouldSkipAnonymousExpansion = shouldSkipAnonymousColdStartProviderExpansion(mergedProducts, {
+  const shouldSkipAnonymousExpansion = shouldSkipNoSignalProviderExpansion(mergedProducts, {
     request,
     profile,
   });
@@ -2617,7 +2615,7 @@ async function loadCatalogCandidates({
         label: 'internal_catalog_pool',
         query: providerQueries.join(' | '),
         limit: internalProviderLimit,
-        skipReason: 'sufficient_anonymous_primary_candidates',
+        skipReason: 'sufficient_no_signal_primary_candidates',
       }),
     );
     providerResults.push(
@@ -2625,7 +2623,7 @@ async function loadCatalogCandidates({
         label: 'external_seed_pool',
         query: externalProviderQueries.join(' | '),
         limit: externalProviderLimit,
-        skipReason: 'sufficient_anonymous_primary_candidates',
+        skipReason: 'sufficient_no_signal_primary_candidates',
       }),
     );
     const recallSummary = providerResults.flatMap((result) =>
