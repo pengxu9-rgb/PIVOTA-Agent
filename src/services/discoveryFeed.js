@@ -2685,6 +2685,71 @@ function buildBeautyInterestSeedSelect() {
   `;
 }
 
+function buildBeautyInterestRawSurfaceSql() {
+  return `
+    lower(
+      concat_ws(
+        ' ',
+        coalesce(title, ''),
+        coalesce(domain, ''),
+        coalesce(canonical_url, ''),
+        coalesce(destination_url, ''),
+        coalesce(seed_data->>'title', ''),
+        coalesce(seed_data->'snapshot'->>'title', ''),
+        coalesce(seed_data->>'brand', ''),
+        coalesce(seed_data->>'brand_name', ''),
+        coalesce(seed_data->>'vendor', ''),
+        coalesce(seed_data->>'vendor_name', ''),
+        coalesce(seed_data->>'merchant_display_name', ''),
+        coalesce(seed_data->'snapshot'->>'brand', ''),
+        coalesce(seed_data->'snapshot'->>'brand_name', ''),
+        coalesce(seed_data->'snapshot'->>'vendor', ''),
+        coalesce(seed_data->'snapshot'->>'vendor_name', ''),
+        coalesce(seed_data->'snapshot'->>'merchant_display_name', ''),
+        coalesce(seed_data->>'category', ''),
+        coalesce(seed_data->>'product_type', ''),
+        coalesce(seed_data->'snapshot'->>'category', ''),
+        coalesce(seed_data->'snapshot'->>'product_type', '')
+      )
+    )
+  `;
+}
+
+function buildBeautyInterestRawPatterns(recallTerms, profile) {
+  const terms = uniqStrings(
+    [
+      ...(Array.isArray(recallTerms?.phrases) ? recallTerms.phrases : []),
+      ...(Array.isArray(recallTerms?.tokens) ? recallTerms.tokens : []),
+      ...(Array.isArray(recallTerms?.categoryTerms) ? recallTerms.categoryTerms : []),
+      ...(Array.isArray(recallTerms?.verticalTerms) ? recallTerms.verticalTerms : []),
+      ...(profile?.dominantDomain === 'beauty'
+        ? [
+            'skincare',
+            'skin care',
+            'serum',
+            'moisturizer',
+            'moisturiser',
+            'cream',
+            'toner',
+            'cleanser',
+            'sunscreen',
+            'essence',
+            'ampoule',
+            'treatment',
+            'barrier',
+            'ceramide',
+            'niacinamide',
+            'vitamin',
+          ]
+        : []),
+    ]
+      .map((value) => normalizeText(value || ''))
+      .filter((value) => value.length >= 3),
+    24,
+  );
+  return terms.map((value) => `%${value}%`);
+}
+
 async function fetchBeautyInterestExternalSeedFastpathCandidates({
   request,
   profile,
@@ -2733,6 +2798,7 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
     return `$${params.length}`;
   };
   const selectSql = buildBeautyInterestSeedSelect();
+  const rawSurfaceSql = buildBeautyInterestRawSurfaceSql();
   const baseWhereSql = `
     status = 'active'
       AND attached_product_key IS NULL
@@ -2771,6 +2837,24 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
       stage: 'recall_summary',
       cap: Math.min(safeLimit, 72),
     });
+    addStage({
+      whereSql: `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalBody} LIKE ANY(${patternBind}::text[])`,
+      score: 24,
+      stage: 'recall_body',
+      cap: Math.min(safeLimit, 72),
+    });
+    addStage({
+      whereSql: `${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY(${patternBind}::text[])`,
+      score: 22,
+      stage: 'recall_alias_tokens',
+      cap: Math.min(safeLimit, 72),
+    });
+    addStage({
+      whereSql: `${EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokens} LIKE ANY(${patternBind}::text[])`,
+      score: 20,
+      stage: 'recall_ingredient_tokens',
+      cap: Math.min(safeLimit, 72),
+    });
   }
 
   if (recallTerms.categoryTerms.length > 0) {
@@ -2780,6 +2864,17 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
       score: 36,
       stage: 'recall_category',
       cap: Math.min(safeLimit, 96),
+    });
+  }
+
+  const rawPatterns = buildBeautyInterestRawPatterns(recallTerms, profile);
+  if (rawPatterns.length > 0) {
+    const rawPatternBind = bind(rawPatterns);
+    addStage({
+      whereSql: `${rawSurfaceSql} LIKE ANY(${rawPatternBind}::text[])`,
+      score: 26,
+      stage: 'raw_surface_text',
+      cap: safeLimit,
     });
   }
 
@@ -4925,6 +5020,8 @@ module.exports = {
   getDiscoveryFeed,
   _internals: {
     buildBrandScopeAliases,
+    buildBeautyInterestRawPatterns,
+    buildBeautyInterestRecallTerms,
     buildBeautyPersonalizedQueries,
     buildDiscoveryContextCacheKey,
     buildDiscoveryDatabaseSearchTerms,

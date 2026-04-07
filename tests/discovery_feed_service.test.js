@@ -153,6 +153,53 @@ describe('discovery feed service', () => {
     expect(recallPlan[0]?.query).toMatch(/niacinamide|vitamin c|serum/i);
   });
 
+  test('beauty interest recall terms preserve broad skincare raw-pattern coverage', () => {
+    const request = _internals.normalizeDiscoveryRequest({
+      surface: 'browse_products',
+      page: 2,
+      limit: 24,
+      context: {
+        auth_state: 'authenticated',
+        recent_views: [
+          {
+            merchant_id: 'm1',
+            product_id: 'p1',
+            title: 'Ceramide Barrier Repair Moisturizer',
+            brand: 'Cocokind',
+            category: 'Skincare',
+            product_type: 'Moisturizer',
+            viewed_at: '2026-04-07T10:00:00Z',
+            history_source: 'account',
+          },
+        ],
+        recent_queries: ['niacinamide serum', 'barrier repair skincare', 'vitamin c serum'],
+      },
+    });
+
+    const profile = buildDiscoveryProfile(request.context);
+    const recallTerms = _internals.buildBeautyInterestRecallTerms(
+      request,
+      profile,
+      _internals.buildBeautyPersonalizedQueries(request, profile).providerQueries,
+    );
+    const rawPatterns = _internals.buildBeautyInterestRawPatterns(recallTerms, profile);
+
+    expect(recallTerms.categoryTerms).toEqual(
+      expect.arrayContaining(['serum', 'skincare', 'treatment', 'cream', 'moisturizer']),
+    );
+    expect(recallTerms.verticalTerms).toEqual(expect.arrayContaining(['skincare']));
+    expect(rawPatterns).toEqual(
+      expect.arrayContaining([
+        '%niacinamide%',
+        '%barrier%',
+        '%serum%',
+        '%ceramide%',
+        '%moisturizer%',
+        '%skincare%',
+      ]),
+    );
+  });
+
   test('beauty personalized query builder uses anchor descriptors instead of generic beauty umbrella queries', () => {
     const request = _internals.normalizeDiscoveryRequest({
       surface: 'home_hot_deals',
