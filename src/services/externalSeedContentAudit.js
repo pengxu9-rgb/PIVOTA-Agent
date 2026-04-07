@@ -10,10 +10,15 @@ const MARKET_LOCALE_SEGMENT = Object.freeze({
 const LOCALE_PATH_SEGMENT_RE = /^[a-z]{2}(?:-|_)[a-z]{2}$/i;
 const NON_PRODUCT_PATH_RE =
   /(?:^|\/)(?:collections?|collection|category|catalogsearch|search|cart|account|customer|blog|blogs|pages?|faq|privacy|terms|wishlist|gift(?:ing)?|store-locator|customer-service|all-products|appointments?|booking|online-booking|locations?|contact-us)(?:\/|$)/i;
+const PRODUCT_PDP_PATH_RE = /^\/products\/[^/]+\/?$/i;
 const GENERIC_TEMPLATE_RE = /^experience the ultimate luxury with\s+/i;
 const SYNTHETIC_SUMMARY_RE = /\bOFFICIAL:\b[\s\S]*\/\/\/\s*SOCIAL HIGHLIGHTS:/i;
 const BEAUTY_PRICE_HINT_RE =
   /\b(beauty|makeup|skincare|skin care|hair|haircare|shampoo|conditioner|treatment|serum|cleanser|toner|moisturizer|cream|lotion|mist|mask|concealer|foundation|powder|mascara|lip|brow|fragrance|perfume|parfum|cologne|bundle)\b/i;
+const WEAK_FALLBACK_COPY_RE =
+  /\b(contact us|customer service|privacy policy|terms and conditions|promotional terms)\b/i;
+const STRONG_FALLBACK_COPY_RE =
+  /\b(this product is used for the app|bogos(?:\.io)?|free gift bogo bundle|buy x get y|secomapp)\b/i;
 const LANGUAGE_MARKERS = Object.freeze({
   de: [
     /\blichtschutzfaktor\b/i,
@@ -41,6 +46,25 @@ const LANGUAGE_MARKERS = Object.freeze({
     /\bmanchas\b/i,
   ],
 });
+const ENGLISH_DOMINANT_COPY_MARKERS = Object.freeze([
+  /\bdetails\b/i,
+  /\bstraight up\b/i,
+  /\bthe lowdown\b/i,
+  /\bwhat else\b/i,
+  /\bingredients?\b/i,
+  /\bskin\b/i,
+  /\bhair\b/i,
+  /\blips?\b/i,
+  /\bmoisture\b/i,
+  /\bformula\b/i,
+  /\bshades?\b/i,
+  /\bapplication\b/i,
+  /\bbenefits?\b/i,
+  /\bvegan\b/i,
+  /\bcruelty-free\b/i,
+]);
+const INTENTIONAL_SHARED_SKU_PRODUCT_RE =
+  /\b(?:e-?gift\s*cards?|gift\s*cards?|digital\s+gift\s+card|donate|donation)\b/i;
 
 const ANOMALY_SEVERITY = Object.freeze({
   blocker: 'blocker',
@@ -209,6 +233,10 @@ function detectLanguage(description) {
     if (onlyMatch && String(onlyMatch.source || '').includes('cr(?:è|e)me')) return null;
   }
 
+  const englishMarkerMatches = ENGLISH_DOMINANT_COPY_MARKERS.filter((pattern) => pattern.test(text)).length;
+  if (englishMarkerMatches >= 3 && winner.matches <= 1) return null;
+  if (englishMarkerMatches >= 4 && winner.matches <= 2) return null;
+
   return winner.language;
 }
 
@@ -243,6 +271,19 @@ function detectDuplicateVariantSkus(variants) {
     .map(([sku, count]) => ({ sku, count }));
 }
 
+function isIntentionalSharedSkuProduct(row, title, canonicalUrl) {
+  const combined = [
+    title,
+    canonicalUrl,
+    row?.canonical_url,
+    row?.destination_url,
+  ]
+    .map((value) => normalizeNonEmptyString(value))
+    .filter(Boolean)
+    .join(' ');
+  return INTENTIONAL_SHARED_SKU_PRODUCT_RE.test(combined);
+}
+
 function detectNonProductFallback(row, title, description, canonicalUrl) {
   const path = (() => {
     try {
@@ -251,12 +292,12 @@ function detectNonProductFallback(row, title, description, canonicalUrl) {
       return '';
     }
   })();
-  if (path && NON_PRODUCT_PATH_RE.test(path)) return true;
+  const isProductPdpPath = Boolean(path && PRODUCT_PDP_PATH_RE.test(path));
+  if (path && NON_PRODUCT_PATH_RE.test(path) && !isProductPdpPath) return true;
   const combined = `${normalizeNonEmptyString(title)} ${normalizeNonEmptyString(description)}`.toLowerCase();
-  return (
-    /\b(contact us|customer service|privacy policy|terms and conditions|promotional terms)\b/i.test(combined) ||
-    /\b(this product is used for the app|bogos(?:\.io)?|free gift bogo bundle|buy x get y|secomapp)\b/i.test(combined)
-  );
+  if (STRONG_FALLBACK_COPY_RE.test(combined)) return true;
+  if (isProductPdpPath) return false;
+  return WEAK_FALLBACK_COPY_RE.test(combined);
 }
 
 function detectPriceCurrencyMismatch(row, variants) {
@@ -462,7 +503,7 @@ function auditExternalSeedRow(row, options = {}) {
   }
 
   const duplicateSkus = detectDuplicateVariantSkus(variants);
-  if (duplicateSkus.length > 0) {
+  if (duplicateSkus.length > 0 && !isIntentionalSharedSkuProduct(row, title, canonicalUrl)) {
     findings.push(
       buildFinding(row, snapshot, {
         anomalyType: 'gift_card_duplicate_sku',
