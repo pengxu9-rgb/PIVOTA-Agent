@@ -333,6 +333,34 @@ test('explicit step-aware sunscreen query uses local beauty discovery mainline',
   assert.equal(out, true);
 });
 
+test('local beauty child requests cannot re-enter local discovery mainline', () => {
+  const runtime = createRuntime();
+  const out = runtime.shouldUseLocalBeautyDiscoveryMainline({
+    search: {
+      query: 'best sunscreen for oily skin',
+      target_step_family: 'sunscreen',
+      local_mainline_child: true,
+    },
+    metadata: {
+      source: 'aurora-bff',
+      catalog_surface: 'beauty',
+    },
+    requestContract: {
+      surface: 'direct',
+      primary_lane: 'beauty_discovery_mainline',
+      semantic_contract: {
+        planner_mode: 'step_aware',
+        request_class: 'sunscreen',
+        target_step_family: 'sunscreen',
+        semantic_family: 'sunscreen',
+        primary_role_id: 'daily_sunscreen',
+      },
+    },
+  });
+
+  assert.equal(out, false);
+});
+
 test('local beauty discovery mainline returns authoritative search metadata and supplement traces', async () => {
   const runtime = createRuntime();
   const out = await runtime.runLocalBeautyDiscoveryMainline({

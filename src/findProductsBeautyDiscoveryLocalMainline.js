@@ -491,6 +491,16 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
     const contract = isPlainObject(requestContract) ? requestContract : {};
     if (String(contract.primary_lane || '').trim() !== 'beauty_discovery_mainline') return false;
     const queryText = firstNonEmptyString(rawUserQuery, searchObj.query, searchObj.q);
+    if (
+      parseBooleanLike(
+        searchObj.local_mainline_child ??
+          searchObj.localMainlineChild ??
+          metadataObj.local_mainline_child ??
+          metadataObj.localMainlineChild,
+      ) === true
+    ) {
+      return false;
+    }
     if (String(searchObj.merchant_id || searchObj.merchantId || '').trim()) return false;
     if (searchObj.external_seed_only === true) return false;
     const uiSurface = String(
@@ -609,6 +619,7 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
       queryTotal:
         Number.isFinite(Number(query.query_total)) ? Number(query.query_total) : null,
       authHeaders,
+      localMainlineChild: true,
     });
     const failureReason = String(searchOut?.reason || '').trim().toLowerCase();
     if (searchOut?.ok !== true && ['upstream_timeout', 'upstream_error', 'rate_limited'].includes(failureReason)) {
@@ -1367,6 +1378,7 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
           queryIndex: queryCursor,
           queryTotal: recallEntries.length,
           authHeaders,
+          localMainlineChild: true,
         });
         const attemptElapsedMs = Math.max(0, Date.now() - attemptStartedAtMs);
         queryCursor += 1;
