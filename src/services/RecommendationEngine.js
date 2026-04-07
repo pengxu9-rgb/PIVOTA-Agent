@@ -58,6 +58,10 @@ const PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS = Math.max(
   300,
   parseTimeoutMs(process.env.PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS, 1200),
 );
+const PDP_RECS_EXTERNAL_QUERY_TIMEOUT_MS = Math.max(
+  500,
+  parseTimeoutMs(process.env.PDP_RECS_EXTERNAL_QUERY_TIMEOUT_MS, 1600),
+);
 const PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_MULTIPLIER = Math.max(
   1,
   Math.min(
@@ -1358,6 +1362,24 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
     }
   }
 
+  function runQueryWithBudget(whereSql, params, cap, queryName) {
+    return withSoftTimeout(
+      runQuery(whereSql, params, cap, queryName),
+      PDP_RECS_EXTERNAL_QUERY_TIMEOUT_MS,
+      [],
+      () => {
+        logger.warn(
+          {
+            query: queryName || 'external_recent',
+            timeout_ms: PDP_RECS_EXTERNAL_QUERY_TIMEOUT_MS,
+            product_id: getProductId(baseProduct),
+          },
+          'recommendations external subquery timed out',
+        );
+      },
+    );
+  }
+
   const categorySurfaceSql = `
     lower(concat_ws(' ',
       coalesce(title, ''),
@@ -1384,9 +1406,9 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
     ))
   `;
 
-  const [brandMatches, categoryExactMatches, categorySemanticMatches] = await Promise.all([
+  const [brandMatches, categoryExactMatches, categorySemanticMatches, verticalMatches] = await Promise.all([
     brand
-      ? runQuery(
+      ? runQueryWithBudget(
           `AND ${EXTERNAL_SEED_RECALL_SQL_FIELDS.brand} = $4`,
           [brand],
           Math.min(120, safeLimit),
@@ -1394,7 +1416,7 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
         )
       : Promise.resolve([]),
     exactCategoryTerms.length
-      ? runQuery(
+      ? runQueryWithBudget(
           `AND ${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} = ANY($4::text[])`,
           [exactCategoryTerms],
           Math.min(120, safeLimit),
@@ -1402,24 +1424,22 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
         )
       : Promise.resolve([]),
     semanticPatterns.length
-      ? runQuery(
+      ? runQueryWithBudget(
           `AND ${categorySurfaceSql} LIKE ANY($4::text[])`,
           [semanticPatterns],
           Math.min(160, safeLimit),
           'external_category_semantic',
         )
       : Promise.resolve([]),
-  ]);
-
-  const verticalMatches =
     vertical && vertical !== UNKNOWN_VERTICAL
-      ? await runQuery(
+      ? runQueryWithBudget(
           `AND ${EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical} = $4`,
           [vertical],
           Math.min(180, safeLimit),
           'external_same_vertical',
         )
-      : [];
+      : Promise.resolve([]),
+  ]);
 
   const focusedCategoryMatches = uniqueByKey(
     [...categoryExactMatches, ...categorySemanticMatches],

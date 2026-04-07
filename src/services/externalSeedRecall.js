@@ -19,6 +19,29 @@ function normalizeNonEmptyString(value) {
   return String(value || '').trim();
 }
 
+function decodeHtmlEntities(input) {
+  return String(input || '')
+    .replace(/&#(\d+);?/g, (_match, code) => {
+      const numeric = Number(code);
+      return Number.isFinite(numeric) ? String.fromCodePoint(numeric) : _match;
+    })
+    .replace(/&#x([0-9a-f]+);?/gi, (_match, code) => {
+      const numeric = Number.parseInt(code, 16);
+      return Number.isFinite(numeric) ? String.fromCodePoint(numeric) : _match;
+    })
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&apos;/gi, "'")
+    .replace(/&rsquo;/gi, "'")
+    .replace(/&lsquo;/gi, "'")
+    .replace(/&rdquo;/gi, '"')
+    .replace(/&ldquo;/gi, '"')
+    .replace(/&mdash;/gi, '-')
+    .replace(/&ndash;/gi, '-')
+    .replace(/&hellip;/gi, '...');
+}
+
 function ensureJsonObject(value) {
   if (!value) return {};
   if (typeof value === 'object') return value;
@@ -37,11 +60,10 @@ function normalizeUrlLike(value) {
 }
 
 function normalizeWhitespace(value) {
-  return String(value || '')
+  return decodeHtmlEntities(value)
     .replace(/<\s*br\s*\/?>/gi, '\n')
     .replace(/<\/?\s*(?:p|div|section|article|header|footer|blockquote|h[1-6]|ul|ol|li)\b[^>]*>/gi, '\n')
     .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
     .replace(/\r/g, '')
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n[ \t]+/g, '\n')
@@ -99,8 +121,31 @@ function looksLikeRecallNoise(value) {
   return SYNTHETIC_SUMMARY_RE.test(normalized) || RECALL_NOISE_RE.test(normalized);
 }
 
-function cleanRecallTitle(value, { brand = '' } = {}) {
+function stripRecallNarrativeNoise(value) {
   let text = normalizeWhitespace(value);
+  if (!text) return '';
+  text = text.replace(/^(?:details?\b[\s:.-]*){1,}/i, '').trim();
+  const cutPatterns = [
+    /\blearn more\s+close\b/i,
+    /\bavoid contact with eyes\b/i,
+    /\bkeep out of reach of children\b/i,
+    /\bcustomerservice@/i,
+    /\bgive\s+20%/i,
+  ];
+  for (const pattern of cutPatterns) {
+    const match = text.match(pattern);
+    const cutIndex = match?.index ?? -1;
+    if (cutIndex >= 0 && cutIndex < 24) return '';
+    if (cutIndex >= 24) {
+      text = text.slice(0, cutIndex).trim();
+      break;
+    }
+  }
+  return text;
+}
+
+function cleanRecallTitle(value, { brand = '' } = {}) {
+  let text = stripRecallNarrativeNoise(value);
   if (!text) return '';
   text = text.replace(SYNTHETIC_SUMMARY_RE, ' ').replace(TEMPLATE_PREFIX_RE, '').trim();
   text = text.split(/\s*\/\/\/\s*/)[0].trim();
@@ -121,7 +166,7 @@ function cleanRecallBlocks(items, { maxItems = 24 } = {}) {
   const out = [];
   const seen = new Set();
   for (const rawItem of Array.isArray(items) ? items : []) {
-    const normalized = normalizeWhitespace(rawItem);
+    const normalized = stripRecallNarrativeNoise(rawItem);
     const key = normalizeKey(normalized);
     if (!normalized || !key || seen.has(key)) continue;
     if (looksLikeRecallNoise(normalized)) continue;
@@ -134,7 +179,9 @@ function cleanRecallBlocks(items, { maxItems = 24 } = {}) {
 }
 
 function cleanRecallSummary(value, { maxSentences = 2, maxChars = 320 } = {}) {
-  const sentences = cleanRecallBlocks(splitSentences(value), { maxItems: Math.max(2, maxSentences * 2) });
+  const sentences = cleanRecallBlocks(splitSentences(stripRecallNarrativeNoise(value)), {
+    maxItems: Math.max(2, maxSentences * 2),
+  });
   if (!sentences.length) return '';
   let summary = sentences.slice(0, maxSentences).join(' ');
   if (summary.length > maxChars) {
@@ -145,7 +192,10 @@ function cleanRecallSummary(value, { maxSentences = 2, maxChars = 320 } = {}) {
 
 function cleanRecallBody(values, { maxChars = 1800 } = {}) {
   const blocks = cleanRecallBlocks(
-    (Array.isArray(values) ? values : [values]).flatMap((value) => splitBlocks(value)),
+    (Array.isArray(values) ? values : [values])
+      .map((value) => stripRecallNarrativeNoise(value))
+      .filter(Boolean)
+      .flatMap((value) => splitBlocks(value)),
     { maxItems: 24 },
   );
   if (!blocks.length) return '';
@@ -246,7 +296,10 @@ function detectExclusionFlags({ title = '', canonicalUrl = '', destinationUrl = 
 
 function inferVertical({ title = '', category = '', summary = '', body = '', exclusionFlags = null } = {}) {
   if (exclusionFlags?.gift_card) return 'gift_card';
-  const combined = [title, category, summary, body].filter(Boolean).join(' ');
+  const combined = [title, category, summary, body]
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\bfragrance[-\s]?free\b/gi, ' ');
   for (const [label, pattern] of BEAUTY_VERTICAL_PATTERNS) {
     if (pattern.test(combined)) return label;
   }
@@ -346,14 +399,41 @@ function resolveExternalSeedRecallDoc({ row = {}, seedData = {}, snapshot = {} }
     normalizeNonEmptyString(stored.retrieval_summary) ||
     normalizeNonEmptyString(stored.retrieval_body)
   ) {
+    const fallback = buildExternalSeedRecallDoc({ row, seedData, snapshot });
+    const brand = firstNonEmptyString(stored.brand, fallback.brand);
+    const category = firstNonEmptyString(stored.category, fallback.category);
+    const retrievalTitle =
+      cleanRecallTitle(firstNonEmptyString(stored.retrieval_title, fallback.retrieval_title), { brand }) ||
+      fallback.retrieval_title;
+    const retrievalSummary =
+      cleanRecallSummary(firstNonEmptyString(stored.retrieval_summary, fallback.retrieval_summary, stored.retrieval_body)) ||
+      fallback.retrieval_summary;
+    const retrievalBody = cleanRecallBody([stored.retrieval_body, fallback.retrieval_body, stored.retrieval_summary]);
+    const exclusionFlags = detectExclusionFlags({
+      title: retrievalTitle,
+      canonicalUrl: normalizeUrlLike(snapshot.canonical_url || row.canonical_url || seedData.canonical_url),
+      destinationUrl: normalizeUrlLike(snapshot.destination_url || row.destination_url || seedData.destination_url),
+      summary: retrievalSummary,
+      body: retrievalBody,
+    });
+    const vertical = inferVertical({
+      title: retrievalTitle,
+      category,
+      summary: retrievalSummary,
+      body: retrievalBody,
+      exclusionFlags,
+    });
+
     return {
       ...buildExternalSeedRecallDoc({ row, seedData, snapshot }),
       ...stored,
-      exclusion_flags: {
-        gift_card: Boolean(stored?.exclusion_flags?.gift_card),
-        donation_bundle: Boolean(stored?.exclusion_flags?.donation_bundle),
-        non_merchandise: Boolean(stored?.exclusion_flags?.non_merchandise),
-      },
+      retrieval_title: retrievalTitle,
+      retrieval_summary: retrievalSummary,
+      retrieval_body: retrievalBody,
+      brand: brand || null,
+      category: category || null,
+      vertical: vertical || null,
+      exclusion_flags: exclusionFlags,
       quality_signals: {
         template_polluted: Boolean(stored?.quality_signals?.template_polluted),
         synthetic_summary: Boolean(stored?.quality_signals?.synthetic_summary),

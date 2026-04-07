@@ -98,9 +98,32 @@ function createPageRequestId() {
 function stripHtml(input) {
   return String(input || '')
     .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function decodeHtmlEntities(input) {
+  return String(input || '')
+    .replace(/&#(\d+);?/g, (_match, code) => {
+      const numeric = Number(code);
+      return Number.isFinite(numeric) ? String.fromCodePoint(numeric) : _match;
+    })
+    .replace(/&#x([0-9a-f]+);?/gi, (_match, code) => {
+      const numeric = Number.parseInt(code, 16);
+      return Number.isFinite(numeric) ? String.fromCodePoint(numeric) : _match;
+    })
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&apos;/gi, "'")
+    .replace(/&rsquo;/gi, "'")
+    .replace(/&lsquo;/gi, "'")
+    .replace(/&rdquo;/gi, '"')
+    .replace(/&ldquo;/gi, '"')
+    .replace(/&mdash;/gi, '-')
+    .replace(/&ndash;/gi, '-')
+    .replace(/&hellip;/gi, '...');
 }
 
 function escapeRegExp(value) {
@@ -686,7 +709,7 @@ function buildMediaItems(product, variants) {
 }
 
 function normalizeTextValue(value) {
-  return stripHtml(value || '');
+  return decodeHtmlEntities(stripHtml(value || ''));
 }
 
 function normalizeComparisonKey(value) {

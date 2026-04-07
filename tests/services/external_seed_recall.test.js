@@ -1,6 +1,7 @@
 const {
   buildExternalSeedRecallDoc,
   buildExternalSeedRecallLikePredicate,
+  resolveExternalSeedRecallDoc,
 } = require('../../src/services/externalSeedRecall');
 
 describe('externalSeedRecall', () => {
@@ -56,6 +57,52 @@ describe('externalSeedRecall', () => {
     expect(doc.exclusion_flags.gift_card).toBe(true);
     expect(doc.exclusion_flags.donation_bundle).toBe(true);
     expect(doc.vertical).toBe('gift_card');
+  });
+
+  test('re-cleans stored recall docs before using them for PDP recall', () => {
+    const doc = resolveExternalSeedRecallDoc({
+      row: {
+        id: 'eps_fenty_bha',
+        title: "Blemish Defeat'r BHA Spot-Targeting Gel",
+        canonical_url: 'https://fentybeauty.com/products/blemish-defeatr-bha-spot-targeting-gel',
+      },
+      seedData: {
+        brand: 'Fenty Beauty',
+        pdp_description_raw:
+          "THE UNDERCOVER BLEMISH FIGHTER. Fragrance-free spot care with salicylic acid.",
+        derived: {
+          recall: {
+            retrieval_title: "Blemish Defeat&#39;r BHA Spot-Targeting Gel",
+            retrieval_summary:
+              "Details\n\nDetails\n\nTHE UNDERCOVER BLEMISH FIGHTER. Learn more Close BHA-GEL GEGEN AKNE",
+            retrieval_body:
+              "THE UNDERCOVER BLEMISH FIGHTER. Fragrance-free spot care with salicylic acid.\n\nLearn more\n\nClose\n\nBHA-GEL GEGEN AKNE",
+            brand: 'Fenty Beauty',
+            category: 'Treatment',
+            vertical: 'fragrance',
+            ingredient_tokens: ['salicylic', 'acid'],
+            alias_tokens: ['blemish', 'bha'],
+            exclusion_flags: {
+              gift_card: false,
+              donation_bundle: false,
+              non_merchandise: false,
+            },
+            quality_signals: {
+              template_polluted: false,
+              synthetic_summary: false,
+              extractor_description_present: true,
+            },
+            version: 'v1',
+          },
+        },
+      },
+      snapshot: {},
+    });
+
+    expect(doc.retrieval_title).toBe("Blemish Defeat'r BHA Spot-Targeting Gel");
+    expect(doc.retrieval_summary).not.toMatch(/details|learn more|bha-gel/i);
+    expect(doc.retrieval_body).not.toMatch(/learn more|bha-gel/i);
+    expect(doc.vertical).toBe('skincare');
   });
 
   test('builds recall-first SQL with raw seed fallback only at the end', () => {
