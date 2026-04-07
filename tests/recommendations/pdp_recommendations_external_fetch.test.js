@@ -11,7 +11,7 @@ describe('RecommendationEngine external candidate fetch', () => {
 
     const queryMock = jest.fn(async (sql, params) => {
       const predicate = params?.[3];
-      if (String(predicate || '') === 'tom ford beauty') {
+      if (predicate === 'tom ford beauty') {
         return {
           rows: Array.from({ length: 18 }).map((_, index) => ({
             id: `eps_brand_${index + 1}`,
@@ -61,7 +61,7 @@ describe('RecommendationEngine external candidate fetch', () => {
 
     const queryMock = jest.fn(async (sql, params) => {
       const predicate = params?.[3];
-      if (String(predicate || '') === 'tom ford beauty') {
+      if (predicate === 'tom ford beauty') {
         return {
           rows: [
             {
