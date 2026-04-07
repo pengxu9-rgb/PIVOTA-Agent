@@ -1284,9 +1284,9 @@ const RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS = (() => {
   return Math.max(300, Math.min(8000, v));
 })();
 const RECO_CATALOG_SUNSCREEN_HANDOFF_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SUNSCREEN_HANDOFF_TIMEOUT_MS || 35000);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 35000;
-  return Math.max(12000, Math.min(45000, v));
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SUNSCREEN_HANDOFF_TIMEOUT_MS || 65000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 65000;
+  return Math.max(12000, Math.min(75000, v));
 })();
 const {
   classifyBeautyMainlineHandoffFallback,
