@@ -7,6 +7,61 @@ function getRecoRecallSelectedCount(candidateState) {
     : 0;
 }
 
+function normalizeRecoRecallRoleId(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function getRecoRecallSelectedRecommendations(candidateState) {
+  return Array.isArray(candidateState?.selected_recommendations)
+    ? candidateState.selected_recommendations.filter((item) => item && typeof item === 'object' && !Array.isArray(item))
+    : [];
+}
+
+function getRecoRecallFilledRoleIds(candidateState, { requireAlignedRetrieval = false } = {}) {
+  const out = [];
+  const seen = new Set();
+  for (const item of getRecoRecallSelectedRecommendations(candidateState)) {
+    const matchedRoleId = normalizeRecoRecallRoleId(item?.matched_role_id || item?.matchedRoleId);
+    if (!matchedRoleId || seen.has(matchedRoleId)) continue;
+    const retrievalRoleId = normalizeRecoRecallRoleId(item?.retrieval_role_id || item?.retrievalRoleId);
+    if (requireAlignedRetrieval && retrievalRoleId && retrievalRoleId !== matchedRoleId) continue;
+    seen.add(matchedRoleId);
+    out.push(matchedRoleId);
+  }
+  return out;
+}
+
+function getRecoRecallRequiredRoleIds(targetContext, { maxRoles = 3 } = {}) {
+  const roles = Array.isArray(targetContext?.framework_roles)
+    ? targetContext.framework_roles
+        .filter((role) => role && typeof role === 'object' && !Array.isArray(role))
+        .slice()
+        .sort((left, right) => Number(left?.rank || 99) - Number(right?.rank || 99))
+    : [];
+  const out = [];
+  const seen = new Set();
+  for (const role of roles) {
+    const roleId = normalizeRecoRecallRoleId(role?.role_id);
+    if (!roleId || seen.has(roleId)) continue;
+    seen.add(roleId);
+    out.push(roleId);
+    if (out.length >= Math.max(1, Number(maxRoles) || 1)) break;
+  }
+  return out;
+}
+
+function isRecoRecallFrameworkCoverageSatisfied(candidateState, { targetContext = null, maxRoles = 3 } = {}) {
+  const requiredRoleIds = getRecoRecallRequiredRoleIds(targetContext, { maxRoles });
+  if (!requiredRoleIds.length) {
+    return getRecoRecallSelectedCount(candidateState) >= Math.max(1, Math.min(3, Number(maxRoles) || 3));
+  }
+  if (candidateState?.primary_role_matched !== true) return false;
+  const filledRoleIds = new Set(
+    getRecoRecallFilledRoleIds(candidateState, { requireAlignedRetrieval: true }),
+  );
+  return requiredRoleIds.every((roleId) => filledRoleIds.has(roleId));
+}
+
 function shouldRunRecoRecallStage(stage, { stageResults = [], candidateState = null } = {}) {
   const stageObj = stage && typeof stage === 'object' && !Array.isArray(stage) ? stage : null;
   if (!stageObj) return { run: false, reason: 'stage_invalid' };
@@ -40,10 +95,26 @@ function shouldRunRecoRecallStage(stage, { stageResults = [], candidateState = n
     }
     return { run: false, reason: 'previous_stage_satisfied' };
   }
+  if (runIf === 'if_role_unfilled_after_primary') {
+    if (candidateState?.primary_role_matched !== true) {
+      return { run: false, reason: 'primary_role_unmatched' };
+    }
+    const stageRoleId = normalizeRecoRecallRoleId(stageObj.role_id);
+    if (!stageRoleId) return { run: false, reason: 'stage_role_missing' };
+    const filledRoleIds = new Set(
+      getRecoRecallFilledRoleIds(candidateState, { requireAlignedRetrieval: true }),
+    );
+    return filledRoleIds.has(stageRoleId)
+      ? { run: false, reason: 'role_already_filled' }
+      : { run: true, reason: 'role_unfilled' };
+  }
   return { run: true, reason: 'default' };
 }
 
 module.exports = {
   getRecoRecallSelectedCount,
+  getRecoRecallFilledRoleIds,
+  getRecoRecallRequiredRoleIds,
+  isRecoRecallFrameworkCoverageSatisfied,
   shouldRunRecoRecallStage,
 };

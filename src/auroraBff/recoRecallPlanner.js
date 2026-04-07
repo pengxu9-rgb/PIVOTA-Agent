@@ -49,6 +49,44 @@ function buildSemanticStepFamilyList(values, { includeSerumForTreatment = false 
   return out.slice(0, 6);
 }
 
+function normalizeFrameworkSemanticRole(role = null) {
+  const roleObj = role && typeof role === 'object' && !Array.isArray(role) ? role : null;
+  if (!roleObj) return null;
+  const roleId = normalizeConcernQueryToken(roleObj.role_id);
+  if (!roleId) return null;
+  const preferredStep = normalizeSemanticStepFamily(roleObj.preferred_step || roleObj.step);
+  return {
+    role_id: roleId,
+    rank: Number.isFinite(Number(roleObj.rank)) ? Number(roleObj.rank) : 99,
+    preferred_step: preferredStep,
+    label: normalizeConcernQueryToken(roleObj.label || roleObj.role_id),
+    query_terms: uniqueCaseInsensitiveStrings(
+      Array.isArray(roleObj.query_terms) ? roleObj.query_terms : [],
+      6,
+    ),
+    fit_keywords: uniqueCaseInsensitiveStrings(
+      Array.isArray(roleObj.fit_keywords) ? roleObj.fit_keywords : [],
+      10,
+    ),
+    ingredient_hypotheses: uniqueCaseInsensitiveStrings(
+      Array.isArray(roleObj.ingredient_hypotheses) ? roleObj.ingredient_hypotheses : [],
+      8,
+    ),
+    product_type_hypotheses: buildSemanticStepFamilyList(
+      [
+        preferredStep,
+        ...(Array.isArray(roleObj.product_type_hypotheses) ? roleObj.product_type_hypotheses : []),
+      ],
+      { includeSerumForTreatment: preferredStep === 'treatment' },
+    ),
+    alternate_steps: buildSemanticStepFamilyList(
+      Array.isArray(roleObj.alternate_steps) ? roleObj.alternate_steps : [],
+      { includeSerumForTreatment: preferredStep === 'treatment' },
+    ),
+    semantic_family: deriveSemanticFamilyFromRole(roleObj),
+  };
+}
+
 function deriveSemanticFamilyFromRole(role = null) {
   const roleObj = role && typeof role === 'object' && !Array.isArray(role) ? role : null;
   if (!roleObj) return null;
@@ -131,6 +169,8 @@ function buildFrameworkSemanticContract({ targetContext } = {}) {
     ? [...targetContext.framework_roles]
         .filter((role) => role && typeof role === 'object' && !Array.isArray(role))
         .sort((left, right) => Number(left?.rank || 99) - Number(right?.rank || 99))
+        .map((role) => normalizeFrameworkSemanticRole(role))
+        .filter(Boolean)
     : [];
   const primaryRole = roles[0] || null;
   if (!primaryRole) return null;
@@ -164,6 +204,7 @@ function buildFrameworkSemanticContract({ targetContext } = {}) {
     blocked_step_families: [],
     ingredient_hypotheses: ingredientHypotheses,
     source_surface: 'aurora_beauty_strict',
+    framework_roles: roles,
   };
 }
 
@@ -251,28 +292,117 @@ function buildBeautyMainlineRecallPlan({ mode, semanticContract = null, rawQuery
       semantic_owner: BEAUTY_DISCOVERY_MAINLINE_OWNER,
     };
   }
-  const queries = buildBeautyDiscoveryQueryPackFromContract({
-    rawQuery,
-    semanticContract: contract,
-  });
-  const preferredStep = normalizeSemanticStepFamily(contract.target_step_family);
-  const slot = inferBeautyMainlineSlot(preferredStep);
-  const stages = queries
-    .map((query, index) => buildStage({
-      stageId: `beauty_mainline_query_${index + 1}`,
-      roleId: index === 0 ? contract.primary_role_id || null : null,
-      roleRank: index + 1,
-      sourceScope: 'hybrid',
-      queries: [query],
-      concurrency: 1,
-      maxAttemptsForStage: 1,
-      stopOnViableMatch: true,
-      reasonForInclusion: index === 0 ? 'beauty_mainline_primary' : 'beauty_mainline_rescue',
-      runIf: index === 0 ? 'always' : 'if_no_primary_viable_or_transient_only',
-      preferredStep,
-      slot,
-    }))
-    .filter(Boolean);
+  const frameworkRoles = Array.isArray(contract.framework_roles)
+    ? contract.framework_roles.filter((role) => role && typeof role === 'object' && !Array.isArray(role))
+    : [];
+  let stages = [];
+  if (String(mode || '').trim().toLowerCase() === 'framework_generic' && frameworkRoles.length > 0) {
+    const primaryRole = frameworkRoles[0] || null;
+    const supportRoles = frameworkRoles.slice(1, 3);
+    const buildRoleStageQueries = (role, { allowConcernFallback = false } = {}) => {
+      const queries = buildFrameworkRoleQueries(
+        role,
+        rawQuery,
+        allowConcernFallback ? 3 : 2,
+        { allowConcernFallback },
+      );
+      return queries.length > 0
+        ? queries
+        : buildBeautyDiscoveryQueryPackFromContract({
+            rawQuery,
+            semanticContract: contract,
+          }).slice(0, allowConcernFallback ? 3 : 2);
+    };
+    const primaryQueries = buildRoleStageQueries(primaryRole, { allowConcernFallback: true });
+    const primaryPreferredStep = normalizeSemanticStepFamily(primaryRole?.preferred_step || contract.target_step_family);
+    stages = [
+      buildStage({
+        stageId: 'framework_stage_a_primary_internal',
+        roleId: primaryRole?.role_id || contract.primary_role_id || null,
+        roleRank: Number.isFinite(Number(primaryRole?.rank)) ? Number(primaryRole.rank) : 1,
+        sourceScope: 'internal',
+        queries: primaryQueries,
+        concurrency: 1,
+        maxAttemptsForStage: Math.min(primaryQueries.length || 1, 3),
+        stopOnViableMatch: true,
+        reasonForInclusion: 'framework_primary_internal',
+        runIf: 'always',
+        preferredStep: primaryPreferredStep,
+        slot: inferBeautyMainlineSlot(primaryPreferredStep),
+      }),
+      buildStage({
+        stageId: 'framework_stage_b_primary_external_seed',
+        roleId: primaryRole?.role_id || contract.primary_role_id || null,
+        roleRank: Number.isFinite(Number(primaryRole?.rank)) ? Number(primaryRole.rank) : 1,
+        sourceScope: 'external_seed',
+        queries: primaryQueries,
+        concurrency: 1,
+        maxAttemptsForStage: Math.min(primaryQueries.length || 1, 3),
+        stopOnViableMatch: true,
+        reasonForInclusion: 'framework_primary_external_seed',
+        runIf: 'if_no_primary_viable_or_transient_only',
+        preferredStep: primaryPreferredStep,
+        slot: inferBeautyMainlineSlot(primaryPreferredStep),
+      }),
+      ...supportRoles.flatMap((role) => {
+        const supportQueries = buildRoleStageQueries(role, { allowConcernFallback: false });
+        const supportPreferredStep = normalizeSemanticStepFamily(role?.preferred_step);
+        return [
+          buildStage({
+            stageId: buildFrameworkSupportStageId(role?.role_id, 'internal'),
+            roleId: role?.role_id || null,
+            roleRank: Number.isFinite(Number(role?.rank)) ? Number(role.rank) : null,
+            sourceScope: 'internal',
+            queries: supportQueries,
+            concurrency: 1,
+            maxAttemptsForStage: Math.min(supportQueries.length || 1, 2),
+            stopOnViableMatch: true,
+            reasonForInclusion: 'framework_support_internal',
+            runIf: 'if_role_unfilled_after_primary',
+            preferredStep: supportPreferredStep,
+            slot: inferBeautyMainlineSlot(supportPreferredStep),
+          }),
+          buildStage({
+            stageId: buildFrameworkSupportStageId(role?.role_id, 'external_seed'),
+            roleId: role?.role_id || null,
+            roleRank: Number.isFinite(Number(role?.rank)) ? Number(role.rank) : null,
+            sourceScope: 'external_seed',
+            queries: supportQueries,
+            concurrency: 1,
+            maxAttemptsForStage: Math.min(supportQueries.length || 1, 2),
+            stopOnViableMatch: true,
+            reasonForInclusion: 'framework_support_external_seed',
+            runIf: 'if_role_unfilled_after_primary',
+            preferredStep: supportPreferredStep,
+            slot: inferBeautyMainlineSlot(supportPreferredStep),
+          }),
+        ];
+      }),
+    ].filter(Boolean);
+  } else {
+    const queries = buildBeautyDiscoveryQueryPackFromContract({
+      rawQuery,
+      semanticContract: contract,
+    });
+    const preferredStep = normalizeSemanticStepFamily(contract.target_step_family);
+    const slot = inferBeautyMainlineSlot(preferredStep);
+    stages = queries
+      .map((query, index) => buildStage({
+        stageId: `beauty_mainline_query_${index + 1}`,
+        roleId: index === 0 ? contract.primary_role_id || null : null,
+        roleRank: index + 1,
+        sourceScope: 'hybrid',
+        queries: [query],
+        concurrency: 1,
+        maxAttemptsForStage: 1,
+        stopOnViableMatch: true,
+        reasonForInclusion: index === 0 ? 'beauty_mainline_primary' : 'beauty_mainline_rescue',
+        runIf: index === 0 ? 'always' : 'if_no_primary_viable_or_transient_only',
+        preferredStep,
+        slot,
+      }))
+      .filter(Boolean);
+  }
   const entries = flattenPlanEntries(stages);
   return {
     version: RECO_RECALL_PLAN_VERSION,

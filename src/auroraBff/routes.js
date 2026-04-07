@@ -137,6 +137,7 @@ const {
 } = require('./recoRecallPlanner');
 const {
   getRecoRecallSelectedCount,
+  isRecoRecallFrameworkCoverageSatisfied,
   shouldRunRecoRecallStage,
 } = require('./recoRecallStagePolicy');
 const {
@@ -17257,7 +17258,7 @@ async function collectRecoCandidatesFromRecallPlan({
         plannerStopReason = 'primary_transient_timeout';
         break;
       }
-      if (stageSelectedCount >= 3) {
+      if (isRecoRecallFrameworkCoverageSatisfied(candidateState, { targetContext })) {
         stopLevel = stage.stage_id || null;
         plannerStopReason = 'supporting_surface_satisfied';
         break;
@@ -18158,6 +18159,9 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
 
   for (const bucket of roleBuckets.values()) {
     bucket.sort((left, right) => {
+      const leftRoleAligned = String(left?.retrieval_role_id || '').trim() === String(left?.matched_role_id || '').trim();
+      const rightRoleAligned = String(right?.retrieval_role_id || '').trim() === String(right?.matched_role_id || '').trim();
+      if (leftRoleAligned !== rightRoleAligned) return rightRoleAligned ? 1 : -1;
       const scoreDiff = Number(right.framework_score || 0) - Number(left.framework_score || 0);
       if (scoreDiff !== 0) return scoreDiff;
       const tieBreakDiff = Number(right.framework_tiebreak_score || 0) - Number(left.framework_tiebreak_score || 0);

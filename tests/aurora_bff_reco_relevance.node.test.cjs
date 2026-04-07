@@ -3126,7 +3126,7 @@ test('/v1/chat: framework retrieval supplements missing support-role searches wi
   }
 });
 
-test('__internal: framework recall planner emits primary stages first, then support-role internal and external-seed stages', () => {
+test('__internal: framework recall planner emits role-aware primary and support stages before declaring framework coverage satisfied', () => {
   const { __internal } = loadRoutesFresh();
   const plan = __internal.buildRecoRecallPlan({
     mode: 'framework_generic',
@@ -3160,21 +3160,32 @@ test('__internal: framework recall planner emits primary stages first, then supp
   assert.equal(plan.mode, 'framework_generic');
   assert.equal(plan.version, 'aurora_reco_recall_plan_v1');
   assert.ok(Array.isArray(plan.stages));
-  assert.equal(plan.stages.length, 3);
+  assert.equal(plan.stages.length, 6);
   assert.ok(Array.isArray(plan.entries));
-  assert.equal(plan.entries.length, 3);
+  assert.equal(plan.entries.length, 14);
   assert.deepEqual(
-    plan.stages.map((stage) => [stage.stage_id, stage.source_scope, stage.entries.length]),
+    plan.stages.map((stage) => [stage.stage_id, stage.source_scope, stage.role_id, stage.entries.length]),
     [
-      ['beauty_mainline_query_1', 'hybrid', 1],
-      ['beauty_mainline_query_2', 'hybrid', 1],
-      ['beauty_mainline_query_3', 'hybrid', 1],
+      ['framework_stage_a_primary_internal', 'internal', 'oil_control_treatment', 3],
+      ['framework_stage_b_primary_external_seed', 'external_seed', 'oil_control_treatment', 3],
+      ['framework_stage_c_support_lightweight_moisturizer', 'internal', 'lightweight_moisturizer', 2],
+      ['framework_stage_c_support_lightweight_moisturizer_external_seed', 'external_seed', 'lightweight_moisturizer', 2],
+      ['framework_stage_c_support_daily_sunscreen', 'internal', 'daily_sunscreen', 2],
+      ['framework_stage_c_support_daily_sunscreen_external_seed', 'external_seed', 'daily_sunscreen', 2],
     ],
   );
-  assert.deepEqual(plan.entries.map((entry) => entry?.query), [
-    'oil control treatment',
-    'lightweight moisturizer oily skin',
-    'oil control sunscreen',
+  assert.deepEqual(plan.stages[0]?.entries?.map((entry) => entry?.query), [
+    'oil control serum',
+    'shine control serum',
+    'mattifying serum',
+  ]);
+  assert.deepEqual(plan.stages[2]?.entries?.map((entry) => entry?.query), [
+    'lightweight moisturizer',
+    'gel cream',
+  ]);
+  assert.deepEqual(plan.stages[4]?.entries?.map((entry) => entry?.query), [
+    'daily sunscreen',
+    'lightweight sunscreen',
   ]);
 });
 
@@ -3199,10 +3210,10 @@ test('__internal: framework recall planner prefers ingredient-led treatment quer
     },
   });
 
-  assert.deepEqual(plan.entries.map((entry) => entry?.query), [
-    'oil control treatment',
+  assert.deepEqual(plan.stages[0]?.entries?.map((entry) => entry?.query), [
     'oil control serum',
-    'salicylic acid treatment',
+    'Salicylic acid treatment',
+    'shine control serum',
   ]);
 });
 
@@ -3373,10 +3384,10 @@ test('__internal: framework recall planner injects canonical shine-control serum
     },
   });
 
-  assert.deepEqual(plan.entries.map((entry) => entry?.query), [
-    'oil control treatment',
+  assert.deepEqual(plan.stages[0]?.entries?.map((entry) => entry?.query), [
     'oil control serum',
-    'salicylic acid treatment',
+    'Salicylic acid treatment',
+    'shine control serum',
   ]);
 });
 
@@ -3400,10 +3411,10 @@ test('__internal: framework recall planner falls back to role label query when t
     },
   });
 
-  assert.deepEqual(plan.entries.map((entry) => entry?.query), [
-    'oil control treatment',
+  assert.deepEqual(plan.stages[0]?.entries?.map((entry) => entry?.query), [
     'oil control serum',
-    'im oily skin, what product should i use?',
+    'oil control treatment',
+    'im oily skin, what product should i use? treatment',
   ]);
 });
 
