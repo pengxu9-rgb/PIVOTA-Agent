@@ -88,6 +88,8 @@ const INGREDIENT_ITEM_NOISE_PATTERNS = [
 ];
 const EXTERNAL_SEED_FACT_NOISE_RE =
   /\b(contact us|customer service|privacy policy|terms(?: and conditions)?|shipping policy|return policy|about us|blog|blogs|impact|foundation transparency|transparency|give 20%|donation|donate|store locator|support|avoid contact with eyes|keep out of reach of children|customerservice@|clearorg\.eu|clear \d+\s+rue)\b/i;
+const EXTERNAL_SEED_SYNTHETIC_SUMMARY_RE =
+  /^\s*OFFICIAL:\s*([\s\S]*?)(?:\s*\/\/\/\s*SOCIAL HIGHLIGHTS:\s*[\s\S]*)$/i;
 const UI_CHROME_IMAGE_FILENAME_RE =
   /^(?:menu|close|search|cart|account|icon[-_](?:search|cart|account)|tf_logo|logo)\.(?:svg|ico|gif)$/i;
 
@@ -824,6 +826,15 @@ function sanitizeNarrativeText(value) {
   const suffix = consumeKnownDetailLabelsFromEdge(prefixStripped, 'end');
   let cleaned = suffix.consumed >= 2 ? suffix.remaining : prefixStripped;
   cleaned = cleaned.replace(/^(?:details\b[\s:.-]*){1,}/i, '').trim();
+  const syntheticSummaryMatch = cleaned.match(EXTERNAL_SEED_SYNTHETIC_SUMMARY_RE);
+  if (syntheticSummaryMatch?.[1]) {
+    cleaned = normalizeTextValue(syntheticSummaryMatch[1]);
+  } else {
+    cleaned = cleaned
+      .replace(/^\s*OFFICIAL:\s*/i, '')
+      .replace(/\s*\/\/\/\s*SOCIAL HIGHLIGHTS:\s*[\s\S]*$/i, '')
+      .trim();
+  }
   const narrativeCutPatterns = [
     /\blearn more\s+close\b/i,
     /\bavoid contact with eyes\b/i,
