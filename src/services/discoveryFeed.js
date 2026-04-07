@@ -23,7 +23,9 @@ const {
 const {
   EXTERNAL_SEED_MERCHANT_ID,
   buildExternalSeedProduct,
+  buildExternalSeedBrandSearchProduct,
 } = require('./externalSeedProducts');
+const { EXTERNAL_SEED_RECALL_SQL_FIELDS } = require('./externalSeedRecall');
 const { classifyBeautyBucketFromText } = require('../findProductsMulti/beautyQueryProfile');
 const {
   buildBrandQueryVariants,
@@ -66,6 +68,79 @@ const DEFAULT_COLD_START_QUERY_BASKET = [
   'barrier moisturizer',
   'gentle cleanser sunscreen',
 ];
+const BEAUTY_INTEREST_SKINCARE_HINT_TOKENS = new Set([
+  'skincare',
+  'skin',
+  'serum',
+  'toner',
+  'cleanser',
+  'moisturizer',
+  'moisturiser',
+  'cream',
+  'lotion',
+  'essence',
+  'ampoule',
+  'treatment',
+  'sunscreen',
+  'spf',
+  'niacinamide',
+  'vitamin',
+  'barrier',
+  'repair',
+  'retinol',
+  'peptide',
+  'peptides',
+  'ceramide',
+  'ceramides',
+  'salicylic',
+  'hyaluronic',
+  'hydrating',
+  'hydration',
+  'brightening',
+]);
+const BEAUTY_INTEREST_CATEGORY_BY_TOKEN = Object.freeze({
+  serum: ['serum', 'skincare'],
+  essence: ['essence', 'serum', 'skincare'],
+  ampoule: ['ampoule', 'serum', 'skincare'],
+  toner: ['toner', 'skincare'],
+  mist: ['toner', 'skincare'],
+  cleanser: ['cleanser', 'skincare'],
+  cleansing: ['cleanser', 'skincare'],
+  wash: ['cleanser', 'skincare'],
+  moisturizer: ['moisturizer', 'cream', 'skincare'],
+  moisturiser: ['moisturizer', 'cream', 'skincare'],
+  cream: ['cream', 'moisturizer', 'skincare'],
+  lotion: ['lotion', 'moisturizer', 'skincare'],
+  treatment: ['treatment', 'skincare'],
+  sunscreen: ['sunscreen', 'skincare'],
+  spf: ['sunscreen', 'skincare'],
+  niacinamide: ['serum', 'treatment', 'skincare'],
+  retinol: ['serum', 'treatment', 'skincare'],
+  peptide: ['serum', 'treatment', 'skincare'],
+  peptides: ['serum', 'treatment', 'skincare'],
+  ceramide: ['cream', 'moisturizer', 'skincare'],
+  ceramides: ['cream', 'moisturizer', 'skincare'],
+  barrier: ['cream', 'moisturizer', 'treatment', 'skincare'],
+  repair: ['treatment', 'serum', 'skincare'],
+  salicylic: ['treatment', 'serum', 'skincare'],
+  hyaluronic: ['serum', 'skincare'],
+  vitamin: ['serum', 'treatment', 'skincare'],
+  brightening: ['serum', 'treatment', 'skincare'],
+  hydrating: ['serum', 'moisturizer', 'skincare'],
+  hydration: ['serum', 'moisturizer', 'skincare'],
+  lip: ['lip balm', 'lipstick', 'makeup'],
+  lipstick: ['lipstick', 'makeup'],
+  gloss: ['lipstick', 'makeup'],
+  mascara: ['mascara', 'makeup'],
+  concealer: ['concealer', 'makeup'],
+  foundation: ['foundation', 'makeup'],
+  powder: ['powder', 'makeup'],
+  fragrance: ['fragrance'],
+  perfume: ['fragrance'],
+  shampoo: ['shampoo', 'hair care'],
+  conditioner: ['conditioner', 'hair care'],
+  hair: ['hair care'],
+});
 const GENERIC_DISCOVERY_QUERY_TOKENS = new Set([
   'beauty',
   'skincare',
@@ -2486,6 +2561,337 @@ async function fetchExternalSeedCandidates({
   }
 }
 
+function buildBeautyInterestRecallTerms(request, profile, queries = []) {
+  const effectiveQueries = buildExternalSeedProviderQueries(request, profile, queries);
+  const searchTerms = buildDiscoveryDatabaseSearchTerms(effectiveQueries, {
+    maxPhrases: request?.surface === 'home_hot_deals' ? 2 : 3,
+    maxTokens: 10,
+  });
+  const tokens = uniqStrings(
+    [
+      ...searchTerms.tokens,
+      ...searchTerms.phrases.flatMap((phrase) => tokenizeDiscoverySearchText(phrase)),
+      normalizeBeautyBucket(profile?.preferredBeautyBucket),
+    ],
+    24,
+  ).map((token) => String(token || '').trim().toLowerCase()).filter(Boolean);
+  const tokenSet = new Set(tokens);
+  const categoryTerms = new Set();
+  const verticalTerms = new Set();
+
+  const addCategoryTerms = (items = []) => {
+    for (const item of Array.isArray(items) ? items : []) {
+      const normalized = normalizeText(item || '');
+      if (normalized) categoryTerms.add(normalized);
+    }
+  };
+
+  for (const token of tokenSet) {
+    addCategoryTerms(BEAUTY_INTEREST_CATEGORY_BY_TOKEN[token] || []);
+  }
+
+  if (tokens.some((token) => BEAUTY_INTEREST_SKINCARE_HINT_TOKENS.has(token))) {
+    verticalTerms.add('skincare');
+    categoryTerms.add('skincare');
+  }
+
+  const preferredBucket = normalizeBeautyBucket(profile?.preferredBeautyBucket);
+  if (preferredBucket && preferredBucket !== 'general' && preferredBucket !== 'other') {
+    if (preferredBucket === 'makeup') verticalTerms.add('makeup');
+    else if (preferredBucket === 'fragrance') verticalTerms.add('fragrance');
+    else if (preferredBucket === 'haircare' || preferredBucket === 'hair') verticalTerms.add('haircare');
+    else if (preferredBucket !== 'tools') verticalTerms.add(preferredBucket);
+  }
+
+  if (verticalTerms.size === 0 && profile?.dominantDomain === 'beauty') {
+    verticalTerms.add('skincare');
+  }
+  if (categoryTerms.size === 0 && verticalTerms.has('skincare')) {
+    categoryTerms.add('skincare');
+    categoryTerms.add('serum');
+  }
+
+  const patternTerms = uniqStrings(
+    [...searchTerms.phrases, ...searchTerms.tokens]
+      .map((value) => normalizeText(value || ''))
+      .filter((value) => value.length >= 3),
+    12,
+  );
+
+  return {
+    queries: effectiveQueries,
+    phrases: searchTerms.phrases,
+    tokens: searchTerms.tokens,
+    patterns: patternTerms.map((value) => `%${value}%`),
+    categoryTerms: Array.from(categoryTerms).slice(0, 12),
+    verticalTerms: Array.from(verticalTerms).slice(0, 6),
+  };
+}
+
+function buildBeautyInterestSeedSelect() {
+  return `
+    id,
+    external_product_id,
+    destination_url,
+    canonical_url,
+    domain,
+    title,
+    image_url,
+    price_amount,
+    price_currency,
+    availability,
+    updated_at,
+    created_at,
+    coalesce(
+      seed_data->'derived'->'recall'->>'brand',
+      seed_data->>'brand',
+      seed_data->'snapshot'->>'brand',
+      seed_data->>'merchant_display_name',
+      seed_data->'snapshot'->>'merchant_display_name',
+      seed_data->>'vendor',
+      seed_data->'snapshot'->>'vendor',
+      ''
+    ) AS seed_brand,
+    coalesce(
+      seed_data->>'merchant_display_name',
+      seed_data->'snapshot'->>'merchant_display_name',
+      ''
+    ) AS seed_merchant_display_name,
+    coalesce(
+      seed_data->>'vendor',
+      seed_data->'snapshot'->>'vendor',
+      ''
+    ) AS seed_vendor,
+    coalesce(
+      seed_data->'derived'->'recall'->>'category',
+      seed_data->>'category',
+      seed_data->'snapshot'->>'category',
+      seed_data->>'product_type',
+      seed_data->'snapshot'->>'product_type',
+      ''
+    ) AS seed_category,
+    coalesce(
+      seed_data->>'product_type',
+      seed_data->'snapshot'->>'product_type',
+      seed_data->'derived'->'recall'->>'category',
+      ''
+    ) AS seed_product_type,
+    left(coalesce(
+      seed_data->'derived'->'recall'->>'retrieval_summary',
+      seed_data->>'description',
+      seed_data->'snapshot'->>'description',
+      ''
+    ), 1200) AS seed_description
+  `;
+}
+
+async function fetchBeautyInterestExternalSeedFastpathCandidates({
+  request,
+  profile,
+  queries = [],
+  limit = MAX_CANDIDATE_FETCH,
+} = {}) {
+  const provider = 'external_seeds';
+  const stepStartedAt = Date.now();
+  const safeLimit = clampInt(limit, Math.max(limit, 24), 12, MAX_CANDIDATE_FETCH);
+  const recallTerms = buildBeautyInterestRecallTerms(request, profile, queries);
+  const market =
+    String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US')
+      .trim()
+      .toUpperCase() || 'US';
+  const tool = 'creator_agents';
+
+  if (!process.env.DATABASE_URL) {
+    recordDiscoveryRecallStep({
+      surface: request?.surface,
+      step: 'beauty_interest_mainline',
+      status: 'skipped',
+      latencyMs: Date.now() - stepStartedAt,
+      cacheHit: false,
+    });
+    return {
+      products: [],
+      recallSummary: [
+        buildDiscoveryProviderStepSummary({
+          provider,
+          label: 'beauty_interest_mainline',
+          query: recallTerms.phrases.join(' | '),
+          limit: safeLimit,
+          returned: 0,
+          status: null,
+          latencyMs: Date.now() - stepStartedAt,
+          skipped: true,
+          skipReason: 'missing_database',
+        }),
+      ],
+    };
+  }
+
+  const params = [market, tool];
+  const bind = (value) => {
+    params.push(value);
+    return `$${params.length}`;
+  };
+  const selectSql = buildBeautyInterestSeedSelect();
+  const baseWhereSql = `
+    status = 'active'
+      AND attached_product_key IS NULL
+      AND market = $1
+      AND (tool = '*' OR tool = $2)
+  `;
+  const stageSql = [];
+  const addStage = ({ whereSql, score, stage, cap }) => {
+    const limitBind = bind(clampInt(cap, safeLimit, 12, safeLimit));
+    stageSql.push(`
+      (
+        SELECT
+          ${selectSql},
+          ${Number(score || 0)}::int AS match_score,
+          '${stage}'::text AS match_stage
+        FROM external_product_seeds
+        WHERE ${baseWhereSql}
+          AND ${whereSql}
+        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
+        LIMIT ${limitBind}
+      )
+    `);
+  };
+
+  if (recallTerms.patterns.length > 0) {
+    const patternBind = bind(recallTerms.patterns);
+    addStage({
+      whereSql: `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${patternBind}::text[])`,
+      score: 48,
+      stage: 'recall_title',
+      cap: Math.min(safeLimit, 72),
+    });
+    addStage({
+      whereSql: `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${patternBind}::text[])`,
+      score: 30,
+      stage: 'recall_summary',
+      cap: Math.min(safeLimit, 72),
+    });
+  }
+
+  if (recallTerms.categoryTerms.length > 0) {
+    const categoryBind = bind(recallTerms.categoryTerms);
+    addStage({
+      whereSql: `${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} = ANY(${categoryBind}::text[])`,
+      score: 36,
+      stage: 'recall_category',
+      cap: Math.min(safeLimit, 96),
+    });
+  }
+
+  if (recallTerms.verticalTerms.length > 0) {
+    const verticalBind = bind(recallTerms.verticalTerms);
+    addStage({
+      whereSql: `${EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical} = ANY(${verticalBind}::text[])`,
+      score: 18,
+      stage: 'recall_vertical',
+      cap: safeLimit,
+    });
+  }
+
+  if (stageSql.length === 0) {
+    recordDiscoveryRecallStep({
+      surface: request?.surface,
+      step: 'beauty_interest_mainline',
+      status: 'skipped',
+      latencyMs: Date.now() - stepStartedAt,
+      cacheHit: false,
+    });
+    return {
+      products: [],
+      recallSummary: [
+        buildDiscoveryProviderStepSummary({
+          provider,
+          label: 'beauty_interest_mainline',
+          query: recallTerms.phrases.join(' | '),
+          limit: safeLimit,
+          returned: 0,
+          status: null,
+          latencyMs: Date.now() - stepStartedAt,
+          skipped: true,
+          skipReason: 'empty_recall_terms',
+        }),
+      ],
+    };
+  }
+
+  const finalLimitBind = bind(safeLimit);
+
+  try {
+    const res = await query(
+      `
+        WITH fastpath_rows AS (
+          ${stageSql.join('\n          UNION ALL\n')}
+        ),
+        deduped AS (
+          SELECT DISTINCT ON (id)
+            *
+          FROM fastpath_rows
+          ORDER BY id, match_score DESC, updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+        )
+        SELECT *
+        FROM deduped
+        ORDER BY match_score DESC, updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
+        LIMIT ${finalLimitBind}
+      `,
+      params,
+    );
+    const rows = Array.isArray(res?.rows) ? res.rows : [];
+    const products = annotateProviderProducts(
+      'beauty_interest_mainline',
+      rows.map((row) => buildExternalSeedBrandSearchProduct(row)).filter(Boolean),
+    );
+    recordDiscoveryRecallStep({
+      surface: request?.surface,
+      step: 'beauty_interest_mainline',
+      status: 'success',
+      latencyMs: Date.now() - stepStartedAt,
+      cacheHit: false,
+    });
+    return {
+      products,
+      recallSummary: [
+        buildDiscoveryProviderStepSummary({
+          provider,
+          label: 'beauty_interest_mainline',
+          query: recallTerms.phrases.join(' | '),
+          limit: safeLimit,
+          returned: products.length,
+          status: 200,
+          latencyMs: Date.now() - stepStartedAt,
+        }),
+      ],
+    };
+  } catch (err) {
+    recordDiscoveryRecallStep({
+      surface: request?.surface,
+      step: 'beauty_interest_mainline',
+      status: 'error',
+      latencyMs: Date.now() - stepStartedAt,
+      cacheHit: false,
+    });
+    return {
+      products: [],
+      recallSummary: [
+        buildDiscoveryProviderStepSummary({
+          provider,
+          label: 'beauty_interest_mainline',
+          query: recallTerms.phrases.join(' | '),
+          limit: safeLimit,
+          returned: 0,
+          status: null,
+          latencyMs: Date.now() - stepStartedAt,
+          error: err?.message || String(err),
+        }),
+      ],
+    };
+  }
+}
+
 async function fetchBeautyInterestMainlineCandidates({
   request,
   profile,
@@ -2493,6 +2899,15 @@ async function fetchBeautyInterestMainlineCandidates({
   limit = MAX_CANDIDATE_FETCH,
   fetchFn = null,
 } = {}) {
+  if (typeof fetchFn !== 'function') {
+    return fetchBeautyInterestExternalSeedFastpathCandidates({
+      request,
+      profile,
+      queries,
+      limit,
+    });
+  }
+
   const result = await fetchExternalSeedCandidates({
     request,
     profile,
@@ -2604,7 +3019,7 @@ function resolveExternalSeedProviderLimit(request, safeLimit) {
   const cappedSafeLimit = clampInt(safeLimit, MAX_CANDIDATE_FETCH, 12, MAX_CANDIDATE_FETCH);
   if (request?.surface === 'browse_products') {
     const browseNeed = Math.max((request?.page || 1) * (request?.limit || 0) + (request?.limit || 0), 18);
-    return clampInt(browseNeed, Math.min(cappedSafeLimit, 24), 12, Math.min(cappedSafeLimit, 36));
+    return clampInt(browseNeed, Math.min(cappedSafeLimit, 48), 12, cappedSafeLimit);
   }
   const homeNeed = Math.max((request?.limit || 0) * 3, 18);
   return clampInt(homeNeed, Math.min(cappedSafeLimit, 24), 12, Math.min(cappedSafeLimit, 30));

@@ -3215,6 +3215,74 @@ describe('discovery feed service', () => {
     );
   });
 
+  test('beauty interest mainline covers personalized browse page 2 before falling back', async () => {
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+    delete process.env.PIVOTA_API_BASE;
+
+    const beautyMainlineSpy = jest.fn(async ({ limit }) =>
+      Array.from({ length: limit }, (_, idx) =>
+        makeProduct({
+          merchant_id: 'external_seed',
+          product_id: `seed_page_2_${idx + 1}`,
+          title: `Niacinamide Serum ${idx + 1}`,
+          brand: `Seeded ${idx + 1}`,
+          category: 'Skincare',
+          product_type: 'Serum',
+          canonical_url: `https://example.com/niacinamide-serum-${idx + 1}`,
+        }),
+      ),
+    );
+    const internalSpy = jest.fn(async () => [
+      makeProduct({
+        merchant_id: 'm_internal',
+        product_id: 'internal_1',
+        title: 'Winona Soothing Repair Serum',
+        brand: 'Winona',
+        category: 'Skincare',
+        product_type: 'Serum',
+      }),
+    ]);
+
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 2,
+        limit: 24,
+        debug: true,
+        context: {
+          auth_state: 'authenticated',
+          recent_views: [],
+          recent_queries: ['niacinamide serum', 'vitamin c serum'],
+        },
+      },
+      {
+        providerOverrides: {
+          beauty_interest_mainline: beautyMainlineSpy,
+          internal_catalog: internalSpy,
+        },
+      },
+    );
+
+    expect(beautyMainlineSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: expect.any(Number) }),
+    );
+    expect(beautyMainlineSpy.mock.calls[0][0].limit).toBeGreaterThanOrEqual(48);
+    expect(response.products).toHaveLength(24);
+    expect(response.products.every((product) => product.merchant_id === 'external_seed')).toBe(true);
+    expect(response.metadata.candidate_source).toBe('beauty_interest_mainline');
+    expect(response.metadata.primary_path_used).toBe('beauty_interest_mainline');
+    expect(response.metadata.fallback_triggered).toBe(false);
+    expect(internalSpy).not.toHaveBeenCalled();
+    expect(response.metadata.provider_breakdown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ provider: 'beauty_interest_mainline', successful: true }),
+        expect.objectContaining({ provider: 'products_search', skipped: true }),
+        expect.objectContaining({ provider: 'internal_catalog', skipped: true }),
+        expect.objectContaining({ provider: 'external_seeds', skipped: true }),
+      ]),
+    );
+  });
+
   test('cold start discovery prefers discovery-specific products/search base and skips external seeds once primary pools are sufficient', async () => {
     process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://wrong-backend.test';
