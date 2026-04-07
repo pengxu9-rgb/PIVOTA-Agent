@@ -826,7 +826,10 @@ function sanitizeNarrativeText(value) {
   const prefixStripped = prefix.consumed >= 2 ? prefix.remaining : original;
   const suffix = consumeKnownDetailLabelsFromEdge(prefixStripped, 'end');
   let cleaned = suffix.consumed >= 2 ? suffix.remaining : prefixStripped;
-  cleaned = cleaned.replace(/^(?:details\b[\s:.-]*){1,}/i, '').trim();
+  cleaned = cleaned
+    .replace(/^(?:details\b[\s:.-]*){1,}/i, '')
+    .replace(/^(?:description|about the product|what it is)\b[\s:.-]*/i, '')
+    .trim();
   const syntheticSummaryMatch = cleaned.match(EXTERNAL_SEED_SYNTHETIC_SUMMARY_RE);
   if (syntheticSummaryMatch?.[1]) {
     cleaned = normalizeTextValue(syntheticSummaryMatch[1]);
@@ -840,8 +843,14 @@ function sanitizeNarrativeText(value) {
   const narrativeCutPatterns = [
     /\bthe lowdown\b/i,
     /\bthe #s don't lie\b/i,
-    /\bfill weight:\b/i,
+    /\bfill weight\s*:/i,
     /\blearn more\s+close\b/i,
+    /\bhow to use\b/i,
+    /(?:^|\s)INGREDIENTS\b/,
+    /(?:^|\s)Ingredients\s*:/,
+    /\bnet wt\.?\b/i,
+    /\bproduct dimensions?\b/i,
+    /\bpackage dimensions?\b/i,
     /\bavoid contact with eyes\b/i,
     /\bkeep out of reach of children\b/i,
     /\bcustomerservice@/i,
@@ -904,9 +913,14 @@ function splitLeadingStructuredLabelBlock(value) {
   const phrases = DETAIL_LABEL_PHRASES.slice().sort((left, right) => right.length - left.length);
   for (const phrase of phrases) {
     const escaped = escapeRegExp(phrase);
-    const matched = normalized.match(new RegExp(`^(${escaped})[:\\s-]+(.+)$`, 'i'));
-    if (!matched?.[1] || !matched?.[2]) continue;
-    return [normalizeTextValue(matched[1]), normalizeTextValue(matched[2])].filter(Boolean);
+    const matched = normalized.match(new RegExp(`^(${escaped})([:\\s-]+)(.+)$`, 'i'));
+    if (!matched?.[1] || !matched?.[2] || !matched?.[3]) continue;
+    const separator = String(matched[2] || '');
+    const body = normalizeTextValue(matched[3]);
+    if (!body) continue;
+    const isLooseWhitespaceSeparator = !/[:\-]/.test(separator);
+    if (isLooseWhitespaceSeparator && /^[a-z]/.test(body)) continue;
+    return [normalizeTextValue(matched[1]), body].filter(Boolean);
   }
   return [normalized];
 }
@@ -1661,6 +1675,10 @@ function buildProductFactSections(product, detailSections, primaryDescription = 
   if (factSections.length) return factSections;
 
   if (narrativeDetailSections.length > 0 && normalizedPrimaryDescription) {
+    return [];
+  }
+
+  if (isExternalSeedProduct(product)) {
     return [];
   }
 

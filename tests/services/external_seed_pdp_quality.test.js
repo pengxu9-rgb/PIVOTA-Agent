@@ -22,6 +22,9 @@ describe('externalSeedPdpQuality', () => {
         variants: [{ price: '25.00' }],
       },
       livePayload: {
+        product: {
+          description: 'Hydrating serum for barrier support.',
+        },
         modules: [
           {
             type: 'price_promo',
@@ -32,6 +35,7 @@ describe('externalSeedPdpQuality', () => {
             data: {
               sections: [
                 { heading: 'Support', content: 'About us blog impact foundation transparency.' },
+                { heading: 'Description', content: 'Hydrating serum for barrier support.' },
               ],
             },
           },
@@ -56,8 +60,42 @@ describe('externalSeedPdpQuality', () => {
       expect.arrayContaining([
         'missing_overview_from_available_description',
         'polluted_product_facts',
+        'duplicated_description_facts',
         'similar_underfill',
       ]),
+    );
+  });
+
+  test('flags polluted live description and details independently from facts', () => {
+    const livePdpGate = buildLivePdpGate({
+      extractorProduct: {
+        description_raw: 'Clean description.',
+        variants: [{ price: '25.00' }],
+      },
+      livePayload: {
+        product: {
+          description:
+            'OFFICIAL: Clean description. /// SOCIAL HIGHLIGHTS: Community copy should not appear.',
+        },
+        modules: [
+          {
+            type: 'price_promo',
+            data: { price: { amount: 25, currency: 'USD' } },
+          },
+          {
+            type: 'product_details',
+            data: {
+              sections: [
+                { heading: 'Overview', content: 'THE LOWDOWN: Clean description.' },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    expect(livePdpGate.failure_reasons).toEqual(
+      expect.arrayContaining(['polluted_product_description', 'polluted_product_details']),
     );
   });
 
