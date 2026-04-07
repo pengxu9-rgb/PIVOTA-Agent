@@ -4415,6 +4415,7 @@ async function searchPivotaBackendProducts({
   queryIndex = null,
   queryTotal = null,
   authHeaders = null,
+  localMainlineChild = false,
 } = {}) {
   const startedAt = Date.now();
   const q = String(query || '').trim();
@@ -4500,6 +4501,7 @@ async function searchPivotaBackendProducts({
   const normalizedSemanticFamily = String(semanticFamily || '').trim().toLowerCase();
   if (normalizedSemanticFamily) params.semantic_family = normalizedSemanticFamily;
   if (productOnly !== undefined) params.product_only = productOnly === true;
+  if (localMainlineChild === true) params.local_mainline_child = true;
   if (Number.isFinite(Number(queryIndex))) params.query_index = Math.max(0, Math.trunc(Number(queryIndex)));
   if (Number.isFinite(Number(queryTotal))) params.query_total = Math.max(1, Math.trunc(Number(queryTotal)));
   if (traceId) params.trace_id = String(traceId).trim();
