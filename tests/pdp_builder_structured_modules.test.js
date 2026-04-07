@@ -747,4 +747,43 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     );
     expect(ingredientsItems.join(' ')).not.toMatch(/we got you covered|health and safety|physician|pregnancy|description page|tab on each product|&rsquo/i);
   });
+
+  test('strips synthetic social-summary wrappers from external seed narrative modules', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_a65b2ac9f4206fd7c5edff32',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Vanilla Sex Eau de Parfum',
+        brand: 'Tom Ford Beauty',
+        category: 'Fragrance',
+        pdp_description_raw:
+          'OFFICIAL: An enveloping amber scent of vanilla notes, white florals and sandalwood. /// SOCIAL HIGHLIGHTS: Community top pick: 4.8/5 stars on social platforms. Fans love how it feels weightless yet powerful.',
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const detailsSections =
+      payload.modules.find((module) => module.type === 'product_details')?.data?.sections || [];
+    const factsSections =
+      payload.modules.find((module) => module.type === 'product_facts')?.data?.sections || [];
+
+    expect(payload.product.description).toBe(
+      'An enveloping amber scent of vanilla notes, white florals and sandalwood.',
+    );
+    expect(detailsSections).toEqual([
+      expect.objectContaining({
+        heading: 'Overview',
+        content: 'An enveloping amber scent of vanilla notes, white florals and sandalwood.',
+      }),
+    ]);
+    expect(factsSections).toEqual([
+      expect.objectContaining({
+        heading: 'Description',
+        content: 'An enveloping amber scent of vanilla notes, white florals and sandalwood.',
+      }),
+    ]);
+    expect(JSON.stringify(payload)).not.toMatch(/OFFICIAL:|SOCIAL HIGHLIGHTS/i);
+  });
 });
