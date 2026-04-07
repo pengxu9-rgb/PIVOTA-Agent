@@ -3276,6 +3276,12 @@ function shouldDeferColdStartCandidate(candidate) {
   );
 }
 
+function shouldDeferColdStartBrowseSourceCandidate(candidate) {
+  if (!candidate || candidate.domain !== 'beauty') return false;
+  if (candidate.beautyBucket === 'tools') return false;
+  return !isExternalSeedMerchantCandidate(candidate);
+}
+
 function isGenericAnonymousBrowseColdStart(profile, options = {}) {
   const brandScoped = options.brandScoped === true;
   const sort = normalizeDiscoverySort(options.sort);
@@ -3467,6 +3473,15 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
 
   const preferredPool = [];
   const coldStartDeferredPool = [];
+  const coldStartDeferredReasons = collectDebug ? new Map() : null;
+  const hasExternalSeedBeautyCandidate =
+    coldStartCuration &&
+    preCategoryPool.some(
+      (entry) =>
+        isExternalSeedMerchantCandidate(entry.candidate) &&
+        entry.candidate?.domain === 'beauty' &&
+        entry.candidate?.beautyBucket !== 'tools',
+    );
   for (const entry of preCategoryPool) {
     if (categoryScope.length > 0 && !matchesCategoryScopeCandidate(entry.candidate, categoryScope)) {
       if (decisions) decisions.set(entry.candidate.key, 'filtered_category_scope');
@@ -3474,6 +3489,16 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
     }
     if (coldStartCuration && shouldDeferColdStartCandidate(entry.candidate)) {
       coldStartDeferredPool.push(entry);
+      if (coldStartDeferredReasons) {
+        coldStartDeferredReasons.set(entry.candidate.key, 'filtered_cold_start_domain');
+      }
+      continue;
+    }
+    if (hasExternalSeedBeautyCandidate && shouldDeferColdStartBrowseSourceCandidate(entry.candidate)) {
+      coldStartDeferredPool.push(entry);
+      if (coldStartDeferredReasons) {
+        coldStartDeferredReasons.set(entry.candidate.key, 'filtered_cold_start_internal_source');
+      }
       continue;
     }
     preferredPool.push(entry);
@@ -3485,7 +3510,10 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
 
   if (coldStartCuration && preferredPool.length > 0 && decisions) {
     for (const entry of coldStartDeferredPool) {
-      decisions.set(entry.candidate.key, 'filtered_cold_start_domain');
+      decisions.set(
+        entry.candidate.key,
+        coldStartDeferredReasons?.get(entry.candidate.key) || 'filtered_cold_start_domain',
+      );
     }
   }
 
