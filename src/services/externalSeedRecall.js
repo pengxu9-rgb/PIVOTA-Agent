@@ -1,3 +1,5 @@
+const { stripExternalSeedMarketingBannerPrefix } = require('./externalSeedMarketingText');
+
 const SYNTHETIC_SUMMARY_RE = /\bOFFICIAL:[\s\S]*\/\/\/\s*SOCIAL HIGHLIGHTS:/i;
 const TEMPLATE_PREFIX_RE = /^experience the ultimate luxury with\s+/i;
 const RECALL_NOISE_RE =
@@ -125,6 +127,7 @@ function stripRecallNarrativeNoise(value) {
   let text = normalizeWhitespace(value);
   if (!text) return '';
   text = text.replace(/^(?:details?\b[\s:.-]*){1,}/i, '').trim();
+  text = stripExternalSeedMarketingBannerPrefix(text);
   const cutPatterns = [
     /\blearn more\s+close\b/i,
     /\bavoid contact with eyes\b/i,

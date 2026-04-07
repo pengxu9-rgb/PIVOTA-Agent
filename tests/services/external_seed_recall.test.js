@@ -69,14 +69,14 @@ describe('externalSeedRecall', () => {
       seedData: {
         brand: 'Fenty Beauty',
         pdp_description_raw:
-          "THE UNDERCOVER BLEMISH FIGHTER. Fragrance-free spot care with salicylic acid.",
+          "THE UNDERCOVER BLEMISH FIGHTER THE BLEMISH FIX SO STEALTH, YOU'LL NEVER SEE IT UNDER MAKEUP Fragrance-free spot care with salicylic acid.",
         derived: {
           recall: {
             retrieval_title: "Blemish Defeat&#39;r BHA Spot-Targeting Gel",
             retrieval_summary:
-              "Details\n\nDetails\n\nTHE UNDERCOVER BLEMISH FIGHTER. Learn more Close BHA-GEL GEGEN AKNE",
+              "Details\n\nDetails\n\nTHE UNDERCOVER BLEMISH FIGHTER THE BLEMISH FIX SO STEALTH, YOU'LL NEVER SEE IT UNDER MAKEUP Fragrance-free spot care with salicylic acid. Learn more Close BHA-GEL GEGEN AKNE",
             retrieval_body:
-              "THE UNDERCOVER BLEMISH FIGHTER. Fragrance-free spot care with salicylic acid.\n\nLearn more\n\nClose\n\nBHA-GEL GEGEN AKNE",
+              "THE UNDERCOVER BLEMISH FIGHTER THE BLEMISH FIX SO STEALTH, YOU'LL NEVER SEE IT UNDER MAKEUP Fragrance-free spot care with salicylic acid.\n\nLearn more\n\nClose\n\nBHA-GEL GEGEN AKNE",
             brand: 'Fenty Beauty',
             category: 'Treatment',
             vertical: 'fragrance',
@@ -101,7 +101,9 @@ describe('externalSeedRecall', () => {
 
     expect(doc.retrieval_title).toBe("Blemish Defeat'r BHA Spot-Targeting Gel");
     expect(doc.retrieval_summary).not.toMatch(/details|learn more|bha-gel/i);
+    expect(doc.retrieval_summary).not.toMatch(/THE UNDERCOVER|BLEMISH FIX SO STEALTH|YOU'LL NEVER SEE IT UNDER MAKEUP/i);
     expect(doc.retrieval_body).not.toMatch(/learn more|bha-gel/i);
+    expect(doc.retrieval_body).not.toMatch(/THE UNDERCOVER|BLEMISH FIX SO STEALTH|YOU'LL NEVER SEE IT UNDER MAKEUP/i);
     expect(doc.vertical).toBe('skincare');
   });
 
