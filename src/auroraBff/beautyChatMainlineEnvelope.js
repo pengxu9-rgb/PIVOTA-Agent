@@ -72,6 +72,11 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
     suggestedChips = [],
   } = {}) {
     const fallbackMeta = isPlainObject(fallback) ? fallback : {};
+    const recommendationMeta = {
+      ...(pickFirstTrimmed(fallbackMeta.source_mode) ? { source_mode: pickFirstTrimmed(fallbackMeta.source_mode) } : {}),
+      ...(pickFirstTrimmed(fallbackMeta.products_empty_reason) ? { products_empty_reason: pickFirstTrimmed(fallbackMeta.products_empty_reason) } : {}),
+      ...(pickFirstTrimmed(fallbackMeta.telemetry_failure_reason) ? { telemetry_failure_reason: pickFirstTrimmed(fallbackMeta.telemetry_failure_reason) } : {}),
+    };
     const noticePayload = buildConfidenceNoticeCardPayload({
       language: ctx?.lang,
       reason:
@@ -113,11 +118,13 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
           explicit: true,
           source: 'beauty_mainline_handoff',
           source_detail: 'beauty_mainline_handoff',
+          ...(pickFirstTrimmed(fallbackMeta.source_mode) ? { source_mode: pickFirstTrimmed(fallbackMeta.source_mode) } : {}),
           fallback_reason:
             pickFirstTrimmed(
               fallbackMeta.fallback_reason,
               'beauty_mainline_handoff_unavailable',
             ) || 'beauty_mainline_handoff_unavailable',
+          ...(hasOwnKeys(recommendationMeta) ? { recommendation_meta: recommendationMeta } : {}),
         }),
       ],
     });

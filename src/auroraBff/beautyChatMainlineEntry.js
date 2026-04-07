@@ -10,6 +10,59 @@ function pickFirstTrimmed(...values) {
   return '';
 }
 
+function shouldUseBeautyChatMainlinePlanner(targetContext = null) {
+  const intentMode = String(targetContext?.intent_mode || '').trim().toLowerCase();
+  if (intentMode !== 'generic_concern') return false;
+  if (targetContext?.step_aware_intent && targetContext?.resolved_target_step) return false;
+  return Array.isArray(targetContext?.framework_roles) && targetContext.framework_roles.length > 0;
+}
+
+function normalizeBeautyChatPlannerTargetContext(baseTargetContext = null, plannerTargetContext = null) {
+  if (
+    plannerTargetContext &&
+    typeof plannerTargetContext === 'object' &&
+    !Array.isArray(plannerTargetContext) &&
+    Array.isArray(plannerTargetContext.framework_roles) &&
+    plannerTargetContext.framework_roles.length > 0
+  ) {
+    return plannerTargetContext;
+  }
+  return baseTargetContext;
+}
+
+function buildBeautyChatPlannerMeta(trace = null) {
+  const plannerTrace =
+    trace && typeof trace === 'object' && !Array.isArray(trace)
+      ? trace
+      : null;
+  if (!plannerTrace) return {};
+  return {
+    chat_planner_used: plannerTrace.planner_used === true,
+    ...(pickFirstTrimmed(plannerTrace.planner_source) ? { chat_planner_source: pickFirstTrimmed(plannerTrace.planner_source) } : {}),
+    ...(pickFirstTrimmed(plannerTrace.planner_failure_class) ? { chat_planner_failure_class: pickFirstTrimmed(plannerTrace.planner_failure_class) } : {}),
+    ...(pickFirstTrimmed(plannerTrace.planner_route) ? { chat_planner_route: pickFirstTrimmed(plannerTrace.planner_route) } : {}),
+    ...(pickFirstTrimmed(plannerTrace.planner_selection_source) ? { chat_planner_selection_source: pickFirstTrimmed(plannerTrace.planner_selection_source) } : {}),
+  };
+}
+
+function classifyBeautyChatPlannerBlock(trace = null, semanticPlan = null) {
+  const plannerTrace =
+    trace && typeof trace === 'object' && !Array.isArray(trace)
+      ? trace
+      : null;
+  const plannerFailureClass = pickFirstTrimmed(plannerTrace?.planner_failure_class).toLowerCase();
+  const selectionOwnerState = pickFirstTrimmed(semanticPlan?.selection_owner_state).toLowerCase();
+  if (!plannerFailureClass && selectionOwnerState !== 'fallback') return null;
+  return {
+    fallback_reason: 'beauty_mainline_planner_blocked',
+    notice_reason: 'planner_untrusted',
+    mainline_status: 'needs_more_context',
+    source_mode: 'framework_mainline',
+    products_empty_reason: 'planner_untrusted',
+    telemetry_failure_reason: plannerFailureClass === 'timeout' ? 'planner_timeout' : 'planner_untrusted',
+  };
+}
+
 function createBeautyChatMainlineEntryRuntime(deps = {}) {
   const {
     RECO_CATALOG_GROUNDED_ENABLED = false,
@@ -33,6 +86,8 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
     classifyBeautyMainlineHandoffFallback,
     buildBeautyMainlineHandoffFallbackEnvelope,
     looksLikeRecommendationRequest,
+    runConcernSemanticPlanner,
+    buildConcernTargetContextFromSemanticPlan,
     sendChatEnvelope,
   } = deps;
 
@@ -73,6 +128,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
     debugUpstream = false,
   } = {}) {
     const recoRequestMessage = String(message || '').trim();
+    const profileSummary = summarizeProfileForContext(profile);
     const hardPathRecoFocusForMainline = pickFirstTrimmed(
       latestRecoContextFromSession?.resolved_target_step,
       latestRecoContextFromSession?.ingredient_query,
@@ -93,11 +149,90 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
       forceUpstreamAfterPendingAbandon,
       ingredientDrivenRecommendationRequested,
       recoEntrySourceDetail,
-      targetContext: hardPathRecoTargetContext,
-      message,
+        targetContext: hardPathRecoTargetContext,
+        message,
     });
     if (!hardPathBeautyRecoOwnership) {
       return { handled: false, targetContext: hardPathRecoTargetContext };
+    }
+
+    let hardPathPlannerTrace = null;
+    let hardPathPlannerSemanticPlan = null;
+    let effectivePlannerTargetContext = hardPathRecoTargetContext;
+    if (
+      shouldUseBeautyChatMainlinePlanner(hardPathRecoTargetContext) &&
+      typeof runConcernSemanticPlanner === 'function' &&
+      typeof buildConcernTargetContextFromSemanticPlan === 'function'
+    ) {
+      try {
+        const concernPlanOut = await runConcernSemanticPlanner({
+          ctx,
+          logger,
+          requestText: pickFirstTrimmed(recoRequestMessage, message),
+          focus: hardPathRecoFocusForMainline,
+          profileSummary,
+          recommendationTaskContext: latestRecoContextFromSession,
+        });
+        hardPathPlannerTrace =
+          concernPlanOut?.trace && typeof concernPlanOut.trace === 'object' && !Array.isArray(concernPlanOut.trace)
+            ? concernPlanOut.trace
+            : null;
+        const plannerSemanticPlan =
+          concernPlanOut?.semanticPlan && typeof concernPlanOut.semanticPlan === 'object' && !Array.isArray(concernPlanOut.semanticPlan)
+            ? concernPlanOut.semanticPlan
+            : null;
+        hardPathPlannerSemanticPlan = plannerSemanticPlan;
+        if (plannerSemanticPlan) {
+          effectivePlannerTargetContext = normalizeBeautyChatPlannerTargetContext(
+            hardPathRecoTargetContext,
+            buildConcernTargetContextFromSemanticPlan(plannerSemanticPlan, {
+              text: pickFirstTrimmed(recoRequestMessage, message),
+              focus: hardPathRecoFocusForMainline,
+              entryType: 'chat',
+            }),
+          );
+        }
+      } catch (err) {
+        const errMessage = String(err?.message || err || '').trim();
+        const failureClass =
+          /timeout/i.test(errMessage) || String(err?.code || '').trim().toUpperCase() === 'ECONNABORTED'
+            ? 'timeout'
+            : 'planner_untrusted';
+        hardPathPlannerTrace = {
+          ...(hardPathPlannerTrace && typeof hardPathPlannerTrace === 'object' ? hardPathPlannerTrace : {}),
+          planner_used: hardPathPlannerTrace?.planner_used === true,
+          planner_failure_class: failureClass,
+        };
+        hardPathPlannerSemanticPlan = {
+          selection_owner_state: 'fallback',
+        };
+        logger?.warn(
+          {
+            request_id: ctx?.request_id,
+            trace_id: ctx?.trace_id,
+            err: err?.message || String(err),
+          },
+          'aurora bff: beauty chat mainline planner failed; fallback target context used',
+        );
+      }
+    }
+
+    if (shouldUseBeautyChatMainlinePlanner(hardPathRecoTargetContext)) {
+      const plannerBlock = classifyBeautyChatPlannerBlock(
+        hardPathPlannerTrace,
+        hardPathPlannerSemanticPlan,
+      );
+      if (plannerBlock) {
+        return {
+          handled: true,
+          targetContext: hardPathRecoTargetContext,
+          envelope: buildBeautyMainlineHandoffFallbackEnvelope({
+            ctx,
+            fallback: plannerBlock,
+            suggestedChips: [],
+          }),
+        };
+      }
     }
 
     let hardPathHandoff = null;
@@ -108,9 +243,9 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
         logger,
         primaryQuery: pickFirstTrimmed(recoRequestMessage, message),
         fallbackMessage: message,
-        targetContext: hardPathRecoTargetContext,
+        targetContext: effectivePlannerTargetContext,
         fallbackFocus: hardPathRecoFocusForMainline,
-        profileSummary: summarizeProfileForContext(profile),
+        profileSummary,
         debug: debugUpstream,
         timeoutMs: RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
         minTimeoutMs: RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
@@ -184,6 +319,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
           recommendation_confidence_score: 0.61,
           recommendation_confidence_level: 'medium',
           recommendation_meta: {
+            ...buildBeautyChatPlannerMeta(hardPathPlannerTrace),
             recompute_from_profile_update:
               shouldAutoRerunRecommendationsFromProfilePatch === true,
             used_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
