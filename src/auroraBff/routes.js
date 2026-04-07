@@ -1288,6 +1288,11 @@ const RECO_CATALOG_SUNSCREEN_HANDOFF_TIMEOUT_MS = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 65000;
   return Math.max(12000, Math.min(75000, v));
 })();
+const RECO_CATALOG_EXTERNAL_SEED_HANDOFF_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_EXTERNAL_SEED_HANDOFF_TIMEOUT_MS || 30000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 30000;
+  return Math.max(12000, Math.min(45000, v));
+})();
 const {
   classifyBeautyMainlineHandoffFallback,
   buildBeautyMainlineHandoffFallbackEnvelope,
@@ -4232,8 +4237,12 @@ async function searchPivotaBackendProducts({
     maxConfiguredPaths === 1;
   const normalizedLimit = Math.max(1, Math.min(12, Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 6));
   const normalizedTargetStepFamily = normalizeRecoTargetStep(targetStepFamily);
+  const hasSemanticContract =
+    semanticContract && typeof semanticContract === 'object' && !Array.isArray(semanticContract);
   const sunscreenExternalSeedSearch =
     normalizedTargetStepFamily === 'sunscreen' && allowExternalSeed === true;
+  const semanticExternalSeedSearch =
+    allowExternalSeed === true && hasSemanticContract;
   const timeoutFloorForMode = strictSingleOwnerSelfProxyMainPath
     ? RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS
     : isMainPathMode
@@ -4248,6 +4257,8 @@ async function searchPivotaBackendProducts({
   );
   const normalizedTimeoutCap = sunscreenExternalSeedSearch
     ? RECO_CATALOG_SUNSCREEN_HANDOFF_TIMEOUT_MS
+    : semanticExternalSeedSearch
+      ? RECO_CATALOG_EXTERNAL_SEED_HANDOFF_TIMEOUT_MS
     : 12000;
   const normalizedTimeout = Math.max(
     normalizedMinTimeout,
@@ -4285,7 +4296,7 @@ async function searchPivotaBackendProducts({
   if (Number.isFinite(Number(queryIndex))) params.query_index = Math.max(0, Math.trunc(Number(queryIndex)));
   if (Number.isFinite(Number(queryTotal))) params.query_total = Math.max(1, Math.trunc(Number(queryTotal)));
   if (traceId) params.trace_id = String(traceId).trim();
-  if (semanticContract && typeof semanticContract === 'object' && !Array.isArray(semanticContract)) {
+  if (hasSemanticContract) {
     try {
       params.semantic_contract = JSON.stringify(semanticContract);
     } catch (_err) {
@@ -17861,6 +17872,8 @@ async function handoffRecoToBeautyMainlineSearch({
   });
   const handoffSearchTimeoutMs = shouldUseSunscreenRecallBudget
     ? Math.max(effectiveTimeoutMs, RECO_CATALOG_SUNSCREEN_HANDOFF_TIMEOUT_MS)
+    : shouldUseExternalSeedSupplement
+      ? Math.max(effectiveTimeoutMs, RECO_CATALOG_EXTERNAL_SEED_HANDOFF_TIMEOUT_MS)
     : effectiveTimeoutMs;
   const handoffSearchMinTimeoutMs = shouldUseSunscreenRecallBudget
     ? Math.max(effectiveMinTimeoutMs, 5000)

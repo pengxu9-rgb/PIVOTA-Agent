@@ -178,6 +178,7 @@ test('handoffRecoToBeautyMainlineSearch forces self-proxy-first transport for fr
     assert.equal(captured?.searchSourceOverride, 'aurora-bff');
     assert.equal(captured?.allowExternalSeed, true);
     assert.equal(captured?.externalSeedStrategy, 'unified_relevance');
+    assert.equal(captured?.timeoutMs, 30000);
   } finally {
     delete require.cache[moduleId];
   }
