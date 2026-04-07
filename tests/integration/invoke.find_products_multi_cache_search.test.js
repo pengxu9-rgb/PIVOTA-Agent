@@ -4360,6 +4360,91 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.body.products.length).toBe(24);
   });
 
+  test('brand-like public search skips generic llm rerank once mainline owns the response', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
+        if (!text.includes('FROM external_product_seeds')) return { rows: [] };
+        const now = new Date().toISOString();
+        return {
+          rows: Array.from({ length: 32 }, (_, index) => ({
+            id: `seed_fenty_rerank_${index + 1}`,
+            external_product_id: `seed_fenty_rerank_${index + 1}`,
+            destination_url: `https://fentybeauty.example.com/products/fenty-rerank-${index + 1}`,
+            canonical_url: `https://fentybeauty.example.com/products/fenty-rerank-${index + 1}`,
+            domain: 'fentybeauty.example.com',
+            title: `Fenty Beauty Product ${index + 1}`,
+            image_url: `https://cdn.example.com/fenty-rerank-${index + 1}.jpg`,
+            price_amount: String(30 + index),
+            price_currency: 'USD',
+            availability: 'in stock',
+            seed_data: {
+              brand: 'Fenty',
+              category: 'makeup',
+              snapshot: {
+                title: `Fenty Beauty Product ${index + 1}`,
+                brand: 'Fenty',
+                category: 'makeup',
+                product_type: 'makeup',
+              },
+            },
+            updated_at: now,
+            created_at: now,
+          })),
+        };
+      },
+    }));
+    const rerankMock = jest.fn(async () => {
+      throw new Error('brand mainline rerank should be skipped');
+    });
+    jest.doMock('../../src/findProductsMulti/rerankLlm', () => ({
+      maybeRerankFindProductsMultiResponse: rerankMock,
+    }));
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === 'fenty')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+        metadata: {
+          query_source: 'agent_products_search',
+        },
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'fenty',
+            page: 1,
+            limit: 24,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'search',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).toBe('agent_products_public_brand_search_mainline');
+    expect(resp.body.metadata?.route_debug?.llm_rerank).toEqual(
+      expect.objectContaining({
+        applied: false,
+        skipped: true,
+        skip_reason: 'brand_search_mainline',
+      }),
+    );
+    expect(rerankMock).not.toHaveBeenCalled();
+  });
+
   test('primary unusable nonempty upstream results collapse to strict empty when fallback rails are disabled', async () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {

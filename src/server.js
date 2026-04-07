@@ -4769,18 +4769,24 @@ function shouldSkipFindProductsMultiRerank(response) {
     response.metadata && typeof response.metadata === 'object' && !Array.isArray(response.metadata)
       ? response.metadata
       : {};
+  if (
+    String(metadata.query_source || '').trim() === 'agent_products_public_brand_search_mainline' ||
+    metadata.brand_query_mainline_applied === true
+  ) {
+    return 'brand_search_mainline';
+  }
   if (metadata.shopping_exact_title_external_seed_applied === true) return true;
   if (String(metadata.query_source || '').trim() === 'agent_products_search_exact_title_supplemented') {
-    return true;
+    return 'exact_title_supplemented';
   }
-  if (metadata.external_seed_exact_title_recall_hit === true) return true;
+  if (metadata.external_seed_exact_title_recall_hit === true) return 'external_seed_exact_title_recall_hit';
   const searchStageExactTitle =
     metadata.search_stage_exact_title &&
     typeof metadata.search_stage_exact_title === 'object' &&
-    !Array.isArray(metadata.search_stage_exact_title)
+      !Array.isArray(metadata.search_stage_exact_title)
       ? metadata.search_stage_exact_title
       : null;
-  return searchStageExactTitle?.applied === true;
+  return searchStageExactTitle?.applied === true ? 'search_stage_exact_title' : false;
 }
 
 function firstQueryParamValue(value) {
@@ -21889,7 +21895,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       try {
         const search = effectivePayload.search || effectivePayload || {};
         const limit = Math.min(Math.max(1, Number(search.limit || search.page_size || 20) || 20), SEARCH_LIMIT_MAX);
-        if (!shouldSkipFindProductsMultiRerank(maybePolicy)) {
+        const rerankSkipReason = shouldSkipFindProductsMultiRerank(maybePolicy);
+        if (!rerankSkipReason) {
           const reranked = await maybeRerankFindProductsMultiResponse({
             response: maybePolicy,
             userQuery: rawUserQuery,
@@ -21915,6 +21922,21 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               };
             }
           }
+        } else if (ROUTE_DEBUG_ENABLED) {
+          maybePolicy = {
+            ...maybePolicy,
+            metadata: {
+              ...(maybePolicy.metadata && typeof maybePolicy.metadata === 'object' ? maybePolicy.metadata : {}),
+              route_debug: {
+                ...((maybePolicy.metadata && maybePolicy.metadata.route_debug) || {}),
+                llm_rerank: {
+                  applied: false,
+                  skipped: true,
+                  skip_reason: rerankSkipReason,
+                },
+              },
+            },
+          };
         }
       } catch (err) {
         logger.warn({ err: err?.message || String(err) }, 'find_products_multi llm rerank failed; keeping ordering');
