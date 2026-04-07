@@ -1283,6 +1283,11 @@ const RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 5000;
   return Math.max(300, Math.min(8000, v));
 })();
+const RECO_CATALOG_SUNSCREEN_HANDOFF_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SUNSCREEN_HANDOFF_TIMEOUT_MS || 35000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 35000;
+  return Math.max(12000, Math.min(45000, v));
+})();
 const {
   classifyBeautyMainlineHandoffFallback,
   buildBeautyMainlineHandoffFallbackEnvelope,
@@ -4226,6 +4231,9 @@ async function searchPivotaBackendProducts({
     maxConfiguredBaseUrls === 1 &&
     maxConfiguredPaths === 1;
   const normalizedLimit = Math.max(1, Math.min(12, Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 6));
+  const normalizedTargetStepFamily = normalizeRecoTargetStep(targetStepFamily);
+  const sunscreenExternalSeedSearch =
+    normalizedTargetStepFamily === 'sunscreen' && allowExternalSeed === true;
   const timeoutFloorForMode = strictSingleOwnerSelfProxyMainPath
     ? RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS
     : isMainPathMode
@@ -4238,9 +4246,15 @@ async function searchPivotaBackendProducts({
     timeoutFloorForMode,
     Math.min(4000, Number.isFinite(Number(minTimeoutMs)) ? Math.trunc(Number(minTimeoutMs)) : 300),
   );
+  const normalizedTimeoutCap = sunscreenExternalSeedSearch
+    ? RECO_CATALOG_SUNSCREEN_HANDOFF_TIMEOUT_MS
+    : 12000;
   const normalizedTimeout = Math.max(
     normalizedMinTimeout,
-    Math.min(12000, Number.isFinite(Number(timeoutMs)) ? Math.trunc(Number(timeoutMs)) : RECO_CATALOG_SEARCH_TIMEOUT_MS),
+    Math.min(
+      normalizedTimeoutCap,
+      Number.isFinite(Number(timeoutMs)) ? Math.trunc(Number(timeoutMs)) : RECO_CATALOG_SEARCH_TIMEOUT_MS,
+    ),
   );
   const normalizedDeadlineMs = Number.isFinite(Number(deadlineMs)) ? Math.trunc(Number(deadlineMs)) : 0;
   const deadlineReserveMs = normalizedDeadlineMs > 0 ? 20 : 0;
@@ -4264,7 +4278,6 @@ async function searchPivotaBackendProducts({
   if (fastMode !== undefined) params.fast_mode = fastMode === true;
   const normalizedQueryStepStrength = String(queryStepStrength || '').trim().toLowerCase();
   if (normalizedQueryStepStrength) params.query_step_strength = normalizedQueryStepStrength;
-  const normalizedTargetStepFamily = normalizeRecoTargetStep(targetStepFamily);
   if (normalizedTargetStepFamily) params.target_step_family = normalizedTargetStepFamily;
   const normalizedSemanticFamily = String(semanticFamily || '').trim().toLowerCase();
   if (normalizedSemanticFamily) params.semantic_family = normalizedSemanticFamily;
@@ -17847,7 +17860,7 @@ async function handoffRecoToBeautyMainlineSearch({
         : 'framework_first_turn',
   });
   const handoffSearchTimeoutMs = shouldUseSunscreenRecallBudget
-    ? Math.max(effectiveTimeoutMs, 10000)
+    ? Math.max(effectiveTimeoutMs, RECO_CATALOG_SUNSCREEN_HANDOFF_TIMEOUT_MS)
     : effectiveTimeoutMs;
   const handoffSearchMinTimeoutMs = shouldUseSunscreenRecallBudget
     ? Math.max(effectiveMinTimeoutMs, 5000)

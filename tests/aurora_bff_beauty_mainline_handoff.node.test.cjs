@@ -107,7 +107,7 @@ test('handoffRecoToBeautyMainlineSearch passes sunscreen-aligned contract to bac
     assert.equal(captured?.transportPolicy?.prefer_self_proxy_first, true);
     assert.equal(captured?.transportPolicy?.max_base_urls, 1);
     assert.equal(captured?.transportPolicy?.max_paths, 1);
-    assert.equal(captured?.timeoutMs, 10000);
+    assert.equal(captured?.timeoutMs, 35000);
     assert.equal(captured?.semanticContract?.planner_mode, 'step_aware');
     assert.equal(captured?.semanticContract?.primary_role_id, 'daily_sunscreen');
     assert.deepEqual(captured?.semanticContract?.ingredient_hypotheses, ['UV filters']);
