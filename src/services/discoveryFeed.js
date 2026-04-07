@@ -1481,6 +1481,32 @@ function buildDiscoveryRecallPlan(request, profile, limit) {
     ];
   }
   const providerQueries = buildDiscoveryProviderQueries(request, profile);
+  if (request?.surface === 'browse_products' && !profile?.hasInterestSignals) {
+    const coldStartQueries = prioritizeDiscoveryRecallQueries(providerQueries).slice(0, 2);
+    const firstLimit = Math.min(BROWSE_PRIMARY_RECALL_LIMIT, safeLimit);
+    const remaining = Math.max(0, safeLimit - firstLimit);
+    return [
+      {
+        label: 'browse_pool',
+        query: coldStartQueries[0] || getDiscoveryColdStartQuery(),
+        offset: 0,
+        limit: firstLimit,
+        allow_early_exit: remaining <= 0,
+      },
+      ...(remaining > 0 && coldStartQueries[1]
+        ? [
+            {
+              label: 'expansion_pool',
+              query: coldStartQueries[1],
+              offset: 0,
+              limit: Math.min(BROWSE_FILL_RECALL_LIMIT, remaining),
+              allow_early_exit: true,
+            },
+          ]
+        : []),
+    ].slice(0, clampInt(process.env.DISCOVERY_PRODUCTS_SEARCH_MAX_CALLS, MAX_PRODUCTS_SEARCH_CALLS, 1, 4));
+  }
+
   if (request?.surface === 'browse_products') {
     const seededBrowseQuery = providerQueries[0] || buildDiscoverySeededBrowseQuery(request, profile);
     const expansionQuery = providerQueries[1] || buildDiscoveryExpansionQuery(request, profile);
