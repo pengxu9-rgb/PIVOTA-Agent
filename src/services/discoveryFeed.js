@@ -1613,6 +1613,47 @@ function shouldSkipBrandDirectPool(scopedCandidates = [], { request, limit } = {
   return Array.isArray(scopedCandidates) && scopedCandidates.length >= enoughThreshold;
 }
 
+function hasDiscoveryQueryText(request) {
+  return Boolean(String(request?.query?.text || '').trim());
+}
+
+function hasDiscoveryCategoryScope(request) {
+  return normalizeDiscoveryCategories(request?.scope?.categories, 12).length > 0;
+}
+
+function isGenericAnonymousDiscoveryRequest(request, profile) {
+  const authState = normalizeAuthState(request?.context?.auth_state);
+  if (authState !== 'anonymous') return false;
+  if (profile?.hasInterestSignals) return false;
+  if (hasBrandScope(request) || hasDiscoveryQueryText(request) || hasDiscoveryCategoryScope(request)) {
+    return false;
+  }
+  if (request?.surface === 'browse_products') {
+    return isGenericAnonymousBrowseColdStart(profile, {
+      sort: request?.sort,
+      brandScoped: false,
+      queryText: request?.query?.text,
+      categoryScope: request?.scope?.categories,
+    });
+  }
+  return request?.surface === 'home_hot_deals';
+}
+
+function getAnonymousPrimaryProviderThreshold(request) {
+  const requestedLimit = clampInt(request?.limit, 12, 1, 48);
+  if (request?.surface === 'browse_products') {
+    return Math.max(Math.min(requestedLimit, 12), 8);
+  }
+  return Math.max(Math.min(requestedLimit, 6), 4);
+}
+
+function shouldSkipAnonymousColdStartProviderExpansion(products = [], { request, profile } = {}) {
+  if (!isGenericAnonymousDiscoveryRequest(request, profile)) return false;
+  if (request?.surface === 'browse_products' && Number(request?.page || 1) > 1) return false;
+  const threshold = getAnonymousPrimaryProviderThreshold(request);
+  return countHighQualityProviderCandidates(products, { request, profile }) >= threshold;
+}
+
 async function fetchDiscoveryRecallStep({
   baseUrl,
   request,
@@ -2566,6 +2607,41 @@ async function loadCatalogCandidates({
     };
   }
 
+  const shouldSkipAnonymousExpansion = shouldSkipAnonymousColdStartProviderExpansion(mergedProducts, {
+    request,
+    profile,
+  });
+  if (shouldSkipAnonymousExpansion) {
+    providerResults.push(
+      buildSkippedProviderResult('internal_catalog', {
+        label: 'internal_catalog_pool',
+        query: providerQueries.join(' | '),
+        limit: internalProviderLimit,
+        skipReason: 'sufficient_anonymous_primary_candidates',
+      }),
+    );
+    providerResults.push(
+      buildSkippedProviderResult('external_seeds', {
+        label: 'external_seed_pool',
+        query: externalProviderQueries.join(' | '),
+        limit: externalProviderLimit,
+        skipReason: 'sufficient_anonymous_primary_candidates',
+      }),
+    );
+    const recallSummary = providerResults.flatMap((result) =>
+      (Array.isArray(result?.recallSummary) ? result.recallSummary : []).map((step) => ({
+        provider: result.provider,
+        ...step,
+      })),
+    );
+    const providerBreakdown = buildProviderBreakdown(providerResults);
+    return {
+      products: mergedProducts,
+      recallSummary,
+      providerBreakdown,
+    };
+  }
+
   const shouldSkipExternalSeeds = hasSufficientProviderCandidates(mergedProducts, {
     request,
     profile,
@@ -3223,6 +3299,10 @@ function compareColdStartHomeEntries(a, b) {
   return compareHomeEntries(a, b);
 }
 
+function getColdStartHomeBrandCap(candidate) {
+  return isExternalSeedMerchantCandidate(candidate) ? 4 : 2;
+}
+
 function compareBrowseEntries(a, b) {
   if (b.scores.finalScore !== a.scores.finalScore) return b.scores.finalScore - a.scores.finalScore;
   if (b.scores.browseBase !== a.scores.browseBase) return b.scores.browseBase - a.scores.browseBase;
@@ -3284,7 +3364,8 @@ function selectHomeProducts(scoredCandidates, viewedKeys, limit, options = {}) {
     if (selected.length >= limit) continue;
     const brandKey = entry.candidate.brand;
     const nextBrandCount = brandKey ? (brandCounts.get(brandKey) || 0) + 1 : 0;
-    if (brandKey && nextBrandCount > 2) {
+    const brandCap = coldStartCuration ? getColdStartHomeBrandCap(entry.candidate) : 2;
+    if (brandKey && nextBrandCount > brandCap) {
       if (decisions) decisions.set(entry.candidate.key, 'filtered_brand_cap');
       continue;
     }
