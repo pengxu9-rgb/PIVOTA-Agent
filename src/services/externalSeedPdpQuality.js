@@ -43,6 +43,28 @@ function collectProductFactsText(livePayload = {}) {
     .filter(Boolean);
 }
 
+function extractProbeError(response = {}) {
+  const topLevelError = response?.error;
+  if (typeof topLevelError === 'string' && topLevelError.trim()) {
+    return normalizeNonEmptyString(response?.message || response?.detail || topLevelError);
+  }
+  if (topLevelError && typeof topLevelError === 'object') {
+    return normalizeNonEmptyString(
+      topLevelError?.message || topLevelError?.code || response?.message || response?.detail,
+    );
+  }
+  const status = normalizeNonEmptyString(response?.status);
+  if (
+    status &&
+    status.toLowerCase() !== 'success' &&
+    !Array.isArray(response?.modules) &&
+    !Array.isArray(response?.products)
+  ) {
+    return normalizeNonEmptyString(response?.detail || response?.message || status);
+  }
+  return '';
+}
+
 function buildSeedGate(audit = {}) {
   const findings = Array.isArray(audit?.findings) ? audit.findings : [];
   const blocked = findings.filter((finding) => String(finding?.severity || '').trim().toLowerCase() === 'blocker');
@@ -71,7 +93,7 @@ function buildExtractorGate({ extractorResponse = {}, extractorProduct = {} } = 
   };
 }
 
-function buildLivePdpGate({ extractorProduct = {}, livePayload = {} } = {}) {
+function buildLivePdpGate({ extractorProduct = {}, livePayload = {}, liveResponse = {} } = {}) {
   const extractorPrice = pickExtractorPrice(extractorProduct);
   const livePrice = pickLivePdpPrice(livePayload);
   const detailsText = collectProductDetailsText(livePayload);
@@ -79,7 +101,18 @@ function buildLivePdpGate({ extractorProduct = {}, livePayload = {} } = {}) {
   const extractorHasDescription = Boolean(
     normalizeNonEmptyString(extractorProduct?.description_raw || extractorProduct?.description),
   );
+  const probeError = extractProbeError(liveResponse);
   const failureReasons = [];
+
+  if (probeError) {
+    return {
+      status: 'failed',
+      price_amount: null,
+      has_overview: false,
+      probe_error: probeError,
+      failure_reasons: ['live_pdp_probe_failed'],
+    };
+  }
 
   if (extractorPrice > 0 && livePrice > 0 && Math.abs(extractorPrice - livePrice) > 0.01) {
     failureReasons.push('price_mismatch');
@@ -105,7 +138,17 @@ function buildSimilarGate({ similarResponse = {}, exclusionFlags = {} } = {}) {
     Boolean(exclusionFlags?.gift_card) ||
     Boolean(exclusionFlags?.donation_bundle) ||
     Boolean(exclusionFlags?.non_merchandise);
+  const probeError = extractProbeError(similarResponse);
   const failureReasons = [];
+  if (probeError) {
+    return {
+      status: 'failed',
+      similar_count: 0,
+      exempt,
+      probe_error: probeError,
+      failure_reasons: ['similar_probe_failed'],
+    };
+  }
   if (!exempt && products.length < 4) {
     failureReasons.push('similar_underfill');
   }
@@ -149,6 +192,7 @@ module.exports = {
   pickLivePdpPrice,
   collectProductDetailsText,
   collectProductFactsText,
+  extractProbeError,
   buildSeedGate,
   buildExtractorGate,
   buildLivePdpGate,
