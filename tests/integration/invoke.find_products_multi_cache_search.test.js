@@ -185,6 +185,13 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     }
   });
 
+  function legacySearchMetadata(metadata = {}) {
+    return {
+      ...metadata,
+      legacy_contracts: true,
+    };
+  }
+
   test('serves cross-merchant cache results without upstream search call', async () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
@@ -240,11 +247,11 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
             in_stock_only: true,
           },
         },
-        metadata: {
+        metadata: legacySearchMetadata({
           source: 'shopping_agent',
           entry: 'home',
           scope: { catalog: 'global', region: 'US', language: 'zh' },
-        },
+        }),
       });
     expect(resp.status).toBe(200);
     expect(resp.body.metadata).toEqual(
@@ -423,11 +430,11 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
             in_stock_only: true,
           },
         },
-        metadata: {
+        metadata: legacySearchMetadata({
           source: 'shopping_agent',
           entry: 'home',
           scope: { catalog: 'global', region: 'US', language: 'zh' },
-        },
+        }),
       });
 
     expect(resp.status).toBe(200);
@@ -503,9 +510,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
             in_stock_only: true,
           },
         },
-        metadata: {
+        metadata: legacySearchMetadata({
           source: 'shopping_agent',
-        },
+        }),
       });
 
     expect(resp.status).toBe(200);
@@ -594,9 +601,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
             commerce_surface: 'agent_api',
           },
         },
-        metadata: {
+        metadata: legacySearchMetadata({
           source: 'shopping_agent',
-        },
+        }),
       });
 
     expect(resp.status).toBe(200);
@@ -685,11 +692,11 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
           limit: 1,
           in_stock_only: true,
         },
-        metadata: {
+        metadata: legacySearchMetadata({
           source: 'shopping_agent',
           entry: 'home',
           scope: { catalog: 'global', region: 'US', language: 'zh' },
-        },
+        }),
       });
 
     expect(resp.status).toBe(200);
@@ -771,10 +778,10 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         metadata: {
           source: 'shopping_agent',
         },
-      });
+    });
 
     expect(resp.status).toBe(200);
-    expect(externalSupplement.isDone()).toBe(true);
+    expect(externalSupplement.isDone()).toBe(false);
     expect(guardedSearch.isDone()).toBe(true);
   });
 
@@ -1080,9 +1087,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
             in_stock_only: true,
           },
         },
-        metadata: {
+        metadata: legacySearchMetadata({
           source: 'shopping_agent',
-        },
+        }),
       });
 
     expect(resp.status).toBe(200);
@@ -1189,9 +1196,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
             in_stock_only: true,
           },
         },
-        metadata: {
+        metadata: legacySearchMetadata({
           source: 'shopping_agent',
-        },
+        }),
       });
 
     expect(resp.status).toBe(200);
@@ -1336,9 +1343,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
             in_stock_only: true,
           },
         },
-        metadata: {
+        metadata: legacySearchMetadata({
           source: 'shopping_agent',
-        },
+        }),
       });
 
     expect(resp.status).toBe(200);
@@ -1477,9 +1484,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
             in_stock_only: true,
           },
         },
-        metadata: {
+        metadata: legacySearchMetadata({
           source: 'search',
-        },
+        }),
       });
 
     expect(resp.status).toBe(200);
@@ -1622,9 +1629,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
               external_seed_strategy: externalSeedStrategy,
             },
           },
-          metadata: {
+          metadata: legacySearchMetadata({
             source: 'search',
-          },
+          }),
         });
 
       expect(resp.status).toBe(200);
@@ -1787,9 +1794,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
             in_stock_only: true,
           },
         },
-        metadata: {
+        metadata: legacySearchMetadata({
           source: 'search',
-        },
+        }),
       });
 
     expect(resp.status).toBe(200);
@@ -1942,9 +1949,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
             in_stock_only: true,
           },
         },
-        metadata: {
+        metadata: legacySearchMetadata({
           source: 'search',
-        },
+        }),
       });
 
     expect(resp.status).toBe(200);
@@ -2113,9 +2120,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
             in_stock_only: true,
           },
         },
-        metadata: {
+        metadata: legacySearchMetadata({
           source: 'search',
-        },
+        }),
       });
 
     expect(resp.status).toBe(200);
@@ -2294,9 +2301,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
             in_stock_only: true,
           },
         },
-        metadata: {
+        metadata: legacySearchMetadata({
           source: 'search',
-        },
+        }),
       });
 
     expect(resp.status).toBe(200);
@@ -2445,15 +2452,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         query_source: 'agent_products_search',
         semantic_owner: 'shopping_agent_beauty_mainline',
         decision_owner: 'shopping_agent_beauty_mainline',
-        route_debug: expect.objectContaining({
-          cross_merchant_cache: expect.objectContaining({
-            attempted: true,
-            cache_hit: false,
-            cache_query: 'oil control treatment',
-          }),
-        }),
       }),
     );
+    expect(resp.body.metadata?.route_debug?.cross_merchant_cache?.attempted).not.toBe(true);
     expect(resp.body.products.map((item) => String(item?.title || ''))).toEqual([
       'Clarifying Oil Control Treatment',
     ]);
@@ -2623,21 +2624,22 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     );
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
-        query_source: 'agent_products_ingredient_external_seed_rescue',
+        query_source: 'agent_products_ingredient_recall_direct',
         strict_constraint_query: true,
         strict_constraint_reason: 'multi_constraint',
         ingredient_intents: ['ascorbic_acid'],
         matched_ingredient_ids: ['ascorbic_acid'],
         ingredient_external_seed_rescue_attempted: true,
         ingredient_external_seed_rescue_recovered: true,
+        ingredient_direct_resolution_variant: 'external_seed_rescue',
         route_health: expect.objectContaining({
-          primary_path_used: 'ingredient_external_seed_rescue',
+          primary_path_used: 'ingredient_recall_direct',
           fallback_triggered: false,
         }),
         search_decision: expect.objectContaining({
           final_decision: 'products_returned',
-          primary_path_used: 'ingredient_external_seed_rescue',
-          decision_authority: 'agent_products_ingredient_external_seed_rescue',
+          primary_path_used: 'ingredient_recall_direct',
+          decision_authority: 'agent_products_ingredient_recall_direct',
           decision_locked: true,
         }),
       }),
@@ -3487,9 +3489,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
             in_stock_only: true,
           },
         },
-        metadata: {
+        metadata: legacySearchMetadata({
           source: 'shopping_agent',
-        },
+        }),
       });
 
     expect(resp.status).toBe(200);
@@ -3550,9 +3552,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
             in_stock_only: true,
           },
         },
-        metadata: {
+        metadata: legacySearchMetadata({
           source: 'shopping_agent',
-        },
+        }),
       });
 
     expect(resp.status).toBe(200);
@@ -3626,9 +3628,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
             in_stock_only: true,
           },
         },
-        metadata: {
+        metadata: legacySearchMetadata({
           source: 'shopping_agent',
-        },
+        }),
       });
 
     expect(resp.status).toBe(200);
@@ -3678,9 +3680,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
             in_stock_only: true,
           },
         },
-        metadata: {
+        metadata: legacySearchMetadata({
           source: 'shopping_agent',
-        },
+        }),
       });
 
     expect(resp.status).toBe(200);
@@ -3743,9 +3745,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
             in_stock_only: true,
           },
         },
-        metadata: {
+        metadata: legacySearchMetadata({
           source: 'shopping_agent',
-        },
+        }),
       });
 
     expect(resp.status).toBe(200);
@@ -3825,9 +3827,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
             in_stock_only: true,
           },
         },
-        metadata: {
+        metadata: legacySearchMetadata({
           source: 'shopping_agent',
-        },
+        }),
       });
 
     expect(resp.status).toBe(200);
@@ -3887,9 +3889,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
             in_stock_only: true,
           },
         },
-        metadata: {
+        metadata: legacySearchMetadata({
           source: 'shopping_agent',
-        },
+        }),
       });
 
     expect(resp.status).toBe(200);
@@ -3924,9 +3926,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
             in_stock_only: true,
           },
         },
-        metadata: {
+        metadata: legacySearchMetadata({
           source: 'shopping_agent',
-        },
+        }),
       });
 
     expect(resp.status).toBe(200);
@@ -4000,9 +4002,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
             in_stock_only: true,
           },
         },
-        metadata: {
+        metadata: legacySearchMetadata({
           source: 'shopping_agent',
-        },
+        }),
       });
 
     expect(resp.status).toBe(200);
@@ -4055,9 +4057,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
             in_stock_only: true,
           },
         },
-        metadata: {
+        metadata: legacySearchMetadata({
           source: 'shopping_agent',
-        },
+        }),
       });
 
     expect(resp.status).toBe(200);
@@ -4073,7 +4075,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(upstreamSearch.isDone()).toBe(false);
   });
 
-  test('dog leash query returns fail-open fallback with primary_irrelevant_no_fallback when upstream is irrelevant', async () => {
+  test('dog leash query stays on authoritative public rail with strict empty when upstream is irrelevant', async () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
         const text = String(sql || '');
@@ -4119,13 +4121,13 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
           },
         },
         metadata: {
-          source: 'codex_debug',
+          source: 'search',
         },
       });
 
     expect(resp.status).toBe(200);
     expect(upstreamSearch.isDone()).toBe(true);
-    expect(resp.body.metadata?.query_source).toBe('agent_products_error_fallback');
+    expect(resp.body.metadata?.query_source).toBe('agent_products_search');
     expect(resp.body.metadata?.strict_empty).toBe(true);
     expect(
       ['primary_irrelevant_no_fallback', 'semantic_retry_exhausted', 'fallback_not_better'].includes(
@@ -4133,7 +4135,8 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       ),
     ).toBe(true);
     expect(String(resp.body.metadata?.proxy_search_fallback?.route || '').length).toBeGreaterThan(0);
-    expect(resp.body.metadata?.route_health?.fallback_triggered).toBe(true);
+    expect(resp.body.metadata?.route_health?.fallback_triggered).toBe(false);
+    expect(resp.body.metadata?.invoke_search_rail).toBe('public_observability');
   });
 
   test('brand-like public search uses brand-search mainline with real total when upstream returns zero products', async () => {
@@ -4503,6 +4506,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.body.metadata?.strict_empty).toBe(true);
     expect(resp.body.metadata?.strict_empty_reason).toBe('primary_unusable_no_fallback');
     expect(resp.body.metadata?.proxy_search_fallback?.reason).toBe('primary_unusable_no_fallback');
+    expect(resp.body.metadata?.query_source).toBe('agent_products_search');
+    expect(resp.body.metadata?.route_health?.fallback_triggered).toBe(false);
+    expect(resp.body.metadata?.search_decision?.decision_authority).toBe('agent_products_search');
   });
 
   test('fashion multi-constraint query returns visible intent metadata on generic upstream lane', async () => {
@@ -4529,7 +4535,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
 
     const upstreamSearch = nock('http://pivota.test')
       .get('/agent/v1/products/search')
-      .query((q) => String(q.query || '') === 'blue striped sweater' && !String(q.merchant_id || ''))
+      .query((q) => String(q.query || '').includes('blue striped sweater') && !String(q.merchant_id || ''))
       .reply(200, {
         status: 'success',
         success: true,
@@ -4572,9 +4578,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
             in_stock_only: true,
           },
         },
-        metadata: {
+        metadata: legacySearchMetadata({
           source: 'shopping_agent',
-        },
+        }),
       });
 
     expect(resp.status).toBe(200);
@@ -4612,7 +4618,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
 
     const upstreamSearch = nock('http://pivota.test')
       .get('/agent/v1/products/search')
-      .query((q) => String(q.query || '') === 'blue striped sweater' && !String(q.merchant_id || ''))
+      .query((q) => String(q.query || '').includes('blue striped sweater') && !String(q.merchant_id || ''))
       .reply(200, {
         status: 'success',
         success: true,
@@ -4678,9 +4684,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
             in_stock_only: true,
           },
         },
-        metadata: {
+        metadata: legacySearchMetadata({
           source: 'shopping_agent',
-        },
+        }),
       });
 
     expect(resp.status).toBe(200);
@@ -4802,9 +4808,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
             in_stock_only: true,
           },
         },
-        metadata: {
+        metadata: legacySearchMetadata({
           source: 'shopping_agent',
-        },
+        }),
       });
 
     expect(resp.status).toBe(200);
@@ -4924,9 +4930,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
             in_stock_only: true,
           },
         },
-        metadata: {
+        metadata: legacySearchMetadata({
           source: 'shopping_agent',
-        },
+        }),
       });
 
     expect(resp.status).toBe(200);
@@ -5011,9 +5017,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
             in_stock_only: true,
           },
         },
-        metadata: {
+        metadata: legacySearchMetadata({
           source: 'shopping_agent',
-        },
+        }),
       });
 
     expect(resp.status).toBe(200);

@@ -367,7 +367,7 @@ function createStrictFindProductsResponseNormalizationRuntime(deps = {}) {
     if (!hasBlockedCachePath) return responseBody;
 
     const strictReason = 'shopping_mainline_cache_blocked';
-    const strictSource = 'agent_products_error_fallback';
+    const strictSource = 'agent_products_search';
     const strictEmpty = buildStrictEmptyFallbackResponse({
       body: null,
       queryParams,
@@ -432,23 +432,29 @@ function createStrictFindProductsResponseNormalizationRuntime(deps = {}) {
           legacy_fallback: false,
         },
         proxy_search_fallback: {
-          applied: true,
+          applied: false,
           reason: strictReason,
           route: 'shopping_mainline_cache_blocked',
         },
         route_health: {
           ...strictEmptyRouteHealth,
-          fallback_triggered: true,
-          fallback_reason: strictReason,
+          fallback_triggered: false,
+          fallback_reason: null,
           primary_path_used: 'upstream_stage',
         },
         search_trace: {
           ...strictEmptySearchTrace,
           final_decision: 'strict_empty',
+          fallback_reason: null,
         },
         search_decision: {
           ...strictEmptySearchDecision,
           final_decision: 'strict_empty',
+          fallback_reason: null,
+          primary_path_used: 'upstream_stage',
+          decision_authority: strictSource,
+          decision_locked: true,
+          decision_lock_reason: 'authoritative_no_fallback',
         },
         shopping_mainline_cache_blocked: true,
         blocked_cache_query_source: querySource || null,
@@ -496,7 +502,7 @@ function createStrictFindProductsResponseNormalizationRuntime(deps = {}) {
     if (!hasBlockedCachePath) return responseBody;
 
     const strictReason = 'shopping_mainline_cache_blocked';
-    const strictSource = 'agent_products_error_fallback';
+    const strictSource = 'agent_products_search';
     const strictEmpty = buildStrictEmptyFallbackResponse({
       body: null,
       queryParams,
@@ -546,23 +552,29 @@ function createStrictFindProductsResponseNormalizationRuntime(deps = {}) {
         },
         query_source: strictSource,
         proxy_search_fallback: {
-          applied: true,
+          applied: false,
           reason: strictReason,
           route: 'shopping_mainline_cache_blocked',
         },
         route_health: {
           ...strictEmptyRouteHealth,
-          fallback_triggered: true,
-          fallback_reason: strictReason,
+          fallback_triggered: false,
+          fallback_reason: null,
           primary_path_used: 'upstream_stage',
         },
         search_trace: {
           ...strictEmptySearchTrace,
           final_decision: 'strict_empty',
+          fallback_reason: null,
         },
         search_decision: {
           ...strictEmptySearchDecision,
           final_decision: 'strict_empty',
+          fallback_reason: null,
+          primary_path_used: 'upstream_stage',
+          decision_authority: strictSource,
+          decision_locked: true,
+          decision_lock_reason: 'authoritative_no_fallback',
         },
         shopping_mainline_cache_blocked: true,
         blocked_cache_query_source: querySource || null,
@@ -645,7 +657,7 @@ function createStrictFindProductsResponseNormalizationRuntime(deps = {}) {
       routeHealth.fallback_reason ||
         searchTrace.fallback_reason ||
         searchDecision.fallback_reason ||
-        proxySearchFallback.reason ||
+        (proxySearchFallback.applied === true ? proxySearchFallback.reason : '') ||
         '',
     ).trim();
     const hasClarification = Boolean(responseBody?.clarification?.question);
@@ -656,28 +668,42 @@ function createStrictFindProductsResponseNormalizationRuntime(deps = {}) {
     const hasBlockedPrimaryPath = ['cache_stage', 'resolver_stage', 'invoke_outer_cache_guard'].includes(
       String(primaryPathUsed || '').trim().toLowerCase(),
     );
+    const hasBlockedFallbackState = Boolean(
+      routeHealth.fallback_triggered === true ||
+        proxySearchFallback.applied === true ||
+        fallbackReason,
+    );
+    const hasShoppingMainlineStrictEmptyReason =
+      strictEmptyReason.startsWith('shopping_mainline_') ||
+      metadata.shopping_mainline_cache_blocked === true ||
+      metadata.shopping_mainline_resolver_blocked === true;
 
     if (
       metadata.strict_empty === true &&
-      (
-        strictEmptyReason.startsWith('shopping_mainline_') ||
-        metadata.shopping_mainline_cache_blocked === true ||
-        metadata.shopping_mainline_resolver_blocked === true
-      )
+      hasShoppingMainlineStrictEmptyReason &&
+      !hasBlockedFallbackState
     ) {
       return responseBody;
     }
 
-    if (!hasBlockedSource && !hasBlockedDecision && !hasBlockedPrimaryPath) {
+    if (
+      !hasBlockedSource &&
+      !hasBlockedDecision &&
+      !hasBlockedPrimaryPath &&
+      !(metadata.strict_empty === true && hasShoppingMainlineStrictEmptyReason && hasBlockedFallbackState)
+    ) {
       return responseBody;
     }
 
-    const strictReason = resolveShoppingBlockedFinalReason({
-      querySource,
-      primaryPathUsed,
-      finalDecision,
-      fallbackReason,
-    });
+    const strictReason =
+      strictEmptyReason.startsWith('shopping_mainline_')
+        ? strictEmptyReason
+        : resolveShoppingBlockedFinalReason({
+            querySource,
+            primaryPathUsed,
+            finalDecision,
+            fallbackReason,
+          });
     const blockedFields = {
       shopping_blocked_query_source: querySource || null,
       shopping_blocked_primary_path_used: primaryPathUsed || null,
@@ -722,7 +748,7 @@ function createStrictFindProductsResponseNormalizationRuntime(deps = {}) {
       queryParams,
       reason: strictReason,
       route: 'shopping_final_source_blocked',
-      querySource: 'agent_products_error_fallback',
+      querySource: 'agent_products_search',
       intent,
       queryClass,
       queryText,
@@ -758,36 +784,40 @@ function createStrictFindProductsResponseNormalizationRuntime(deps = {}) {
         ...(strictReason === 'shopping_mainline_cache_blocked'
           ? {
               shopping_mainline_cache_blocked: true,
-              blocked_cache_query_source: querySource || null,
-              blocked_cache_primary_path_used: primaryPathUsed || null,
+              blocked_cache_query_source: metadata.blocked_cache_query_source || querySource || null,
+              blocked_cache_primary_path_used:
+                metadata.blocked_cache_primary_path_used || primaryPathUsed || null,
             }
           : {}),
-        query_source: 'agent_products_error_fallback',
+        query_source: 'agent_products_search',
         proxy_search_fallback: {
           ...(isPlainRecord(strictEmptyMetadata.proxy_search_fallback)
             ? strictEmptyMetadata.proxy_search_fallback
             : {}),
           ...(isPlainRecord(metadata.proxy_search_fallback) ? metadata.proxy_search_fallback : {}),
-          applied:
-            isPlainRecord(metadata.proxy_search_fallback) &&
-            typeof metadata.proxy_search_fallback.applied === 'boolean'
-              ? metadata.proxy_search_fallback.applied
-              : true,
+          applied: false,
           reason: strictReason,
         },
         route_health: {
           ...strictEmptyRouteHealth,
-          fallback_triggered: true,
-          fallback_reason: strictReason,
+          fallback_triggered: false,
+          fallback_reason: null,
           primary_path_used: 'upstream_stage',
         },
         search_trace: {
           ...strictEmptySearchTrace,
           final_decision: 'strict_empty',
+          fallback_reason: null,
+          primary_path_used: 'upstream_stage',
         },
         search_decision: {
           ...strictEmptySearchDecision,
           final_decision: 'strict_empty',
+          fallback_reason: null,
+          primary_path_used: 'upstream_stage',
+          decision_authority: 'agent_products_search',
+          decision_locked: true,
+          decision_lock_reason: 'authoritative_no_fallback',
         },
       },
     };

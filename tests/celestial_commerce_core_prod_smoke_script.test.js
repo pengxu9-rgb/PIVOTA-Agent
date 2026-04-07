@@ -39,7 +39,7 @@ describe('Celestial commerce-core production smoke wrapper', () => {
             allow_zero_results: false,
             must_have_metadata: ['service_version.commit', 'query_source'],
             must_equal_metadata: {
-              query_source: 'cache_cross_merchant_search',
+              query_source: 'agent_products_search',
             },
             must_return_one_of_titles: ['Auth Smoke Serum'],
           },
@@ -72,8 +72,13 @@ describe('Celestial commerce-core production smoke wrapper', () => {
           products: [{ title: 'Auth Smoke Serum' }],
           metadata: {
             service_version: { commit: 'smoke123' },
-            query_source: 'cache_cross_merchant_search',
-            search_trace: { final_decision: 'cache_returned' },
+            query_source: 'agent_products_search',
+            route_health: { fallback_triggered: false },
+            search_decision: {
+              decision_authority: 'agent_products_search',
+              decision_locked: true,
+            },
+            search_trace: { final_decision: 'products_returned' },
           },
         }),
       );
@@ -304,7 +309,10 @@ describe('Celestial commerce-core production smoke wrapper', () => {
             budget_fx_unresolved: false,
             contract_bridge: { resolved_contract: 'agent_v1_search_beauty_mainline' },
             route_health: { fallback_triggered: false },
-            search_decision: { decision_locked: true },
+            search_decision: {
+              decision_authority: 'agent_products_ingredient_recall_direct',
+              decision_locked: true,
+            },
             search_trace: { final_decision: 'products_returned' },
           },
         }),

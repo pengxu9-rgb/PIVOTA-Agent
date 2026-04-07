@@ -31,7 +31,7 @@ describe('commerce primary path contract helper', () => {
     const evaluated = evaluatePrimaryPathContract(
       {
         metadata: {
-          query_source: 'cache_cross_merchant_search',
+          query_source: 'agent_products_search',
           strict_empty: true,
           search_trace: {
             final_decision: 'strict_empty',
@@ -41,7 +41,7 @@ describe('commerce primary path contract helper', () => {
       {
         require_primary_path: true,
         allow_strict_empty: false,
-        allowed_query_sources: ['cache_cross_merchant_search'],
+        allowed_query_sources: ['agent_products_search'],
       },
     );
 
@@ -49,24 +49,24 @@ describe('commerce primary path contract helper', () => {
     expect(evaluated.reasons).toContain('strict_empty_not_allowed:strict_empty');
   });
 
-  test('passes healthy cache-stage hit when it stays on the allowed primary source', () => {
+  test('passes healthy authoritative hit when it stays on the allowed primary source', () => {
     const evaluated = evaluatePrimaryPathContract(
       {
         metadata: {
-          query_source: 'cache_cross_merchant_search',
+          query_source: 'agent_products_search',
           route_health: {
             fallback_triggered: false,
-            primary_path_used: 'cache_stage',
+            primary_path_used: 'upstream_stage',
           },
           search_trace: {
-            final_decision: 'cache_returned',
+            final_decision: 'products_returned',
           },
         },
       },
       {
         require_primary_path: true,
         allow_strict_empty: false,
-        allowed_query_sources: ['cache_cross_merchant_search'],
+        allowed_query_sources: ['agent_products_search'],
       },
     );
 
@@ -77,7 +77,7 @@ describe('commerce primary path contract helper', () => {
   test('ignores observer-only fallback traces once a non-fallback authority is locked', () => {
     const assessment = assessPrimaryPath({
       metadata: {
-        query_source: 'cache_cross_merchant_search',
+        query_source: 'agent_products_search',
         proxy_search_fallback: {
           applied: true,
           reason: 'resolver_after_primary',
@@ -85,20 +85,20 @@ describe('commerce primary path contract helper', () => {
         route_health: {
           fallback_triggered: true,
           fallback_reason: 'resolver_after_primary',
-          primary_path_used: 'cache_stage',
+          primary_path_used: 'upstream_stage',
           observer_nodes: ['governance_shadow_block_observed'],
         },
         search_decision: {
-          final_decision: 'cache_returned',
-          decision_authority: 'cache_cross_merchant_search',
+          final_decision: 'products_returned',
+          decision_authority: 'agent_products_search',
           decision_locked: true,
-          decision_lock_reason: 'cache_main_path',
+          decision_lock_reason: 'authoritative_main_path',
         },
       },
     });
 
     expect(assessment.degraded).toBe(false);
-    expect(assessment.querySource).toBe('cache_cross_merchant_search');
+    expect(assessment.querySource).toBe('agent_products_search');
     expect(assessment.decisionLocked).toBe(true);
     expect(assessment.observerNodes).toContain('governance_shadow_block_observed');
   });

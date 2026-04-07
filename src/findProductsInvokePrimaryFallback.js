@@ -17,6 +17,9 @@ function createFindProductsInvokePrimaryFallbackRuntime(deps = {}) {
     shouldFallback = false,
     shoppingFreshMainlineSearch = false,
     strictCommerceFindProductsMulti = false,
+    authoritativeHardCut = false,
+    hardCutAuthorityQuerySource = null,
+    hardCutAuthorityPrimaryPath = null,
     skipSecondaryFallback = false,
     normalizedSecondaryFallbackSkipReason = null,
     allowResolverFallbackEffective = false,
@@ -199,6 +202,9 @@ function createFindProductsInvokePrimaryFallbackRuntime(deps = {}) {
             : 'fallback_not_better');
       const primaryOutcomeDecision = getPrimaryFallbackOutcomeDecision({
         shouldFallback,
+        authoritativeHardCut,
+        hardCutAuthorityQuerySource,
+        hardCutDecisionAuthority: hardCutAuthorityQuerySource,
         primaryUsableCount,
         primaryUnusable,
         primaryIrrelevant,
@@ -369,11 +375,11 @@ function createFindProductsInvokePrimaryFallbackRuntime(deps = {}) {
             },
           };
         }
-      } else {
-        nextUpstreamData = applyProxySearchFallbackMetadata(nextUpstreamData, {
-          applied: false,
-          reason: effectivePrimaryOutcomeDecision.reason,
-          ...(nextSecondaryFallbackMeta?.semantic_retry_applied
+        } else {
+          nextUpstreamData = applyProxySearchFallbackMetadata(nextUpstreamData, {
+            applied: false,
+            reason: effectivePrimaryOutcomeDecision.reason,
+            ...(nextSecondaryFallbackMeta?.semantic_retry_applied
             ? { query_variant: 'semantic_retry' }
             : {}),
         });
@@ -409,6 +415,72 @@ function createFindProductsInvokePrimaryFallbackRuntime(deps = {}) {
           ...nextUpstreamData,
           metadata: upstreamMeta,
         };
+        if (authoritativeHardCut) {
+          const normalizedPrimaryPath =
+            String(hardCutAuthorityPrimaryPath || '').trim() || 'upstream_stage';
+          const normalizedAuthorityQuerySource =
+            String(
+              hardCutAuthorityQuerySource ||
+                upstreamMeta.search_decision?.decision_authority ||
+                upstreamMeta.query_source ||
+                'agent_products_search',
+            ).trim() || 'agent_products_search';
+          const routeHealth =
+            upstreamMeta.route_health &&
+            typeof upstreamMeta.route_health === 'object' &&
+            !Array.isArray(upstreamMeta.route_health)
+              ? { ...upstreamMeta.route_health }
+              : {};
+          const searchTrace =
+            upstreamMeta.search_trace &&
+            typeof upstreamMeta.search_trace === 'object' &&
+            !Array.isArray(upstreamMeta.search_trace)
+              ? { ...upstreamMeta.search_trace }
+              : {};
+          const searchDecision =
+            upstreamMeta.search_decision &&
+            typeof upstreamMeta.search_decision === 'object' &&
+            !Array.isArray(upstreamMeta.search_decision)
+              ? { ...upstreamMeta.search_decision }
+              : {};
+          const proxySearchFallback =
+            upstreamMeta.proxy_search_fallback &&
+            typeof upstreamMeta.proxy_search_fallback === 'object' &&
+            !Array.isArray(upstreamMeta.proxy_search_fallback)
+              ? { ...upstreamMeta.proxy_search_fallback }
+              : {};
+          nextUpstreamData = {
+            ...nextUpstreamData,
+            metadata: {
+              ...upstreamMeta,
+              query_source: normalizedAuthorityQuerySource,
+              legacy_contract: false,
+              proxy_search_fallback: {
+                ...proxySearchFallback,
+                applied: false,
+                reason: effectivePrimaryOutcomeDecision.reason,
+              },
+              route_health: {
+                ...routeHealth,
+                fallback_triggered: false,
+                fallback_reason: null,
+                primary_path_used: normalizedPrimaryPath,
+              },
+              search_trace: {
+                ...searchTrace,
+                fallback_reason: null,
+                primary_path_used: normalizedPrimaryPath,
+              },
+              search_decision: {
+                ...searchDecision,
+                primary_path_used: normalizedPrimaryPath,
+                decision_authority: normalizedAuthorityQuerySource,
+                decision_locked: true,
+                decision_lock_reason: 'authoritative_no_fallback',
+              },
+            },
+          };
+        }
       }
     }
 
