@@ -53,9 +53,12 @@ function setLastKnownPromotions(promos) {
   lastKnownPromotionsFetchedAtMs = Date.now();
 }
 
+function hasRemotePromotionsCacheSnapshot() {
+  return Array.isArray(lastKnownPromotions) && lastKnownPromotionsFetchedAtMs > 0;
+}
+
 function isRemotePromotionsCacheFresh() {
-  if (!Array.isArray(lastKnownPromotions) || lastKnownPromotions.length === 0) return false;
-  if (!lastKnownPromotionsFetchedAtMs) return false;
+  if (!hasRemotePromotionsCacheSnapshot()) return false;
   return Date.now() - lastKnownPromotionsFetchedAtMs < PROMO_REMOTE_CACHE_TTL_MS;
 }
 
@@ -232,7 +235,7 @@ async function getAllPromotions() {
     })();
   }
 
-  if (PROMO_REMOTE_STALE_WHILE_REVALIDATE && lastKnownPromotions.length > 0) {
+  if (PROMO_REMOTE_STALE_WHILE_REVALIDATE && hasRemotePromotionsCacheSnapshot()) {
     return lastKnownPromotions;
   }
 
