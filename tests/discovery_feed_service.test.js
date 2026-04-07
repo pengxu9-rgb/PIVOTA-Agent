@@ -130,6 +130,29 @@ describe('discovery feed service', () => {
     expect(profile.queryTokens.has('repair')).toBe(true);
   });
 
+  test('buildDiscoveryProfile treats recent queries as user behavior signals', () => {
+    const request = _internals.normalizeDiscoveryRequest({
+      surface: 'browse_products',
+      limit: 12,
+      context: {
+        auth_state: 'authenticated',
+        recent_views: [],
+        recent_queries: ['niacinamide serum', 'vitamin c serum'],
+      },
+    });
+
+    const profile = buildDiscoveryProfile(request.context);
+    const recallPlan = _internals.buildDiscoveryRecallPlan(request, profile, 12);
+
+    expect(profile.historyItemsUsed).toBe(0);
+    expect(profile.queryHistoryItemsUsed).toBe(2);
+    expect(profile.hasInterestSignals).toBe(true);
+    expect(profile.personalizationSource).toBe('account_history');
+    expect(profile.dominantDomain).toBe('beauty');
+    expect(profile.preferredBeautyBucket).toBe('skincare');
+    expect(recallPlan[0]?.query).toMatch(/niacinamide|vitamin c|serum/i);
+  });
+
   test('beauty personalized query builder uses anchor descriptors instead of generic beauty umbrella queries', () => {
     const request = _internals.normalizeDiscoveryRequest({
       surface: 'home_hot_deals',

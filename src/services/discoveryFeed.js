@@ -1131,9 +1131,16 @@ function buildDiscoveryProfile(context = {}) {
   }
 
   const historyItemsUsed = recentViews.length;
-  const personalizationSource = inferPersonalizationSource(recentViews, context.auth_state);
-  const hasInterestSignals =
+  const queryHistoryItemsUsed = recentQueries.length;
+  let personalizationSource = inferPersonalizationSource(recentViews, context.auth_state);
+  if (personalizationSource === 'none' && queryHistoryItemsUsed > 0) {
+    personalizationSource = context.auth_state === 'authenticated' ? 'account_history' : 'session_history';
+  }
+  const hasViewInterestSignals =
     historyItemsUsed > 0 && (brandAffinity.size > 0 || categoryAffinity.size > 0 || anchors.length > 0);
+  const hasQueryInterestSignals =
+    queryHistoryItemsUsed > 0 && (queryTokens.size > 0 || domainScores.size > 0 || beautyBucketScores.size > 0);
+  const hasInterestSignals = hasViewInterestSignals || hasQueryInterestSignals;
   const dominantDomain = inferDominantDomain(domainScores);
   const preferredBeautyBucket = inferPreferredBeautyBucket(beautyBucketScores);
 
@@ -1148,6 +1155,7 @@ function buildDiscoveryProfile(context = {}) {
     preferredBeautyBucketScore: preferredBeautyBucket.score,
     anchors,
     historyItemsUsed,
+    queryHistoryItemsUsed,
     personalizationSource,
     queryTokens,
     hasInterestSignals,
