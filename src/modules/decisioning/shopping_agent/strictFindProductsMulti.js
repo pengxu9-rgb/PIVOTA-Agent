@@ -1,4 +1,5 @@
 const { extractIntentRuleBased } = require('../../../findProductsMulti/intent');
+const { buildExternalSeedRecallLikePredicate } = require('../../../services/externalSeedRecall');
 
 const STRICT_FIND_PRODUCTS_MULTI_INGREDIENT_PROFILES = Object.freeze({
   ascorbic_acid: Object.freeze({
@@ -650,13 +651,9 @@ function createStrictFindProductsMultiRuntime(deps = {}) {
       paramIndex,
     );
     paramIndex = urlLike.nextIndex;
-    const seedDataLike = buildSqlLikeClauses(
-      'LOWER(CAST(COALESCE(seed_data, \'{}\'::jsonb) AS TEXT))',
-      textTerms,
-      params,
-      paramIndex,
-    );
-    paramIndex = seedDataLike.nextIndex;
+    params.push(textTerms.map((value) => `%${String(value || '').trim().toLowerCase()}%`).filter(Boolean));
+    const recallBind = `$${params.length}`;
+    paramIndex = params.length + 1;
     params.push(Math.max(STRICT_FIND_PRODUCTS_MULTI_EXTERNAL_PREFETCH_LIMIT * 3, 24));
 
     const structuredIngredientEvidenceClauses = [
@@ -693,7 +690,8 @@ function createStrictFindProductsMultiRuntime(deps = {}) {
           ${structuredIngredientEvidenceClauses.join(' OR ')}
         )
         AND (
-          ${[...titleLike.clauses, ...urlLike.clauses, ...seedDataLike.clauses].join(' OR ')}
+          ${[...titleLike.clauses, ...urlLike.clauses].join(' OR ')}
+          OR ${buildExternalSeedRecallLikePredicate(recallBind, { includeLegacyFallback: true })}
         )
       ORDER BY updated_at DESC, created_at DESC
       LIMIT $${paramIndex}

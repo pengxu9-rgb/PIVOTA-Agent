@@ -1,5 +1,6 @@
 const crypto = require('node:crypto');
 const { lookupExternalSeedImageOverride } = require('./externalSeedImageOverrides');
+const { resolveExternalSeedRecallDoc, normalizeNonEmptyString } = require('./externalSeedRecall');
 const { normalizePdpImageUrl } = require('../utils/pdpImageUrls');
 
 const SHOPIFY_ASSET_HASH_SUFFIX_RE =
@@ -960,7 +961,7 @@ function canonicalizeExternalSeedSnapshot(seedData, row, options = {}) {
   return nextSeedData;
 }
 
-function buildExternalSeedProduct(row) {
+function buildExternalSeedProduct(row, options = {}) {
   if (!row || typeof row !== 'object') return null;
 
   const seedData = canonicalizeExternalSeedSnapshot(row.seed_data, row, { stripLegacy: false });
@@ -982,15 +983,24 @@ function buildExternalSeedProduct(row) {
     ).trim() || stableExternalProductId(canonicalUrl || destinationUrl);
 
   if (!externalProductId) return null;
+  const recall = resolveExternalSeedRecallDoc({ row, seedData, snapshot });
+  const storedRecall = ensureJsonObject(seedData?.derived?.recall);
+  const prefersStoredRecallSummary =
+    normalizeNonEmptyString(storedRecall.retrieval_summary) ||
+    normalizeNonEmptyString(storedRecall.retrieval_body);
 
   const title =
-    String(snapshot.title || row.title || seedData.title || canonicalUrl || destinationUrl || externalProductId).trim() ||
+    String(
+      recall.retrieval_title || snapshot.title || row.title || seedData.title || canonicalUrl || destinationUrl || externalProductId,
+    ).trim() ||
     externalProductId;
   const description = firstNonEmptyString(
+    prefersStoredRecallSummary ? recall.retrieval_summary : '',
     snapshot.description,
     row.description,
     row.seed_description,
     seedData.description,
+    !prefersStoredRecallSummary ? recall.retrieval_summary : '',
   );
   const categoryDescription = firstNonEmptyString(
     snapshot.description,
@@ -1080,12 +1090,14 @@ function buildExternalSeedProduct(row) {
     destinationUrl,
   );
   const brand = firstNonEmptyString(
+    recall.brand,
     seedData.brand,
     snapshot.brand,
     row.seed_brand,
     row.brand,
   ) || undefined;
   const explicitCategory =
+    normalizeExplicitBeautyCategory(recall.category) ||
     normalizeExplicitBeautyCategory(seedData.category) ||
     normalizeExplicitBeautyCategory(seedData.product?.category) ||
     normalizeExplicitBeautyCategory(snapshot.category) ||
@@ -1230,6 +1242,9 @@ function buildExternalSeedProduct(row) {
     destination_url: destinationUrl || undefined,
     external_seed_id: row.id ? String(row.id) : undefined,
     seed_data: seedData,
+    external_seed_recall: recall,
+    external_seed_quality_signals: recall.quality_signals || undefined,
+    ...(options.matchSource ? { external_seed_match_source: String(options.matchSource).trim() } : {}),
     variants,
     ...(rawIngredientTextClean ? { raw_ingredient_text_clean: rawIngredientTextClean } : {}),
     ...(inciList.length ? { inci_list: inciList } : {}),
@@ -1257,6 +1272,7 @@ function buildExternalSeedBrandSearchProduct(row) {
 
   const seedData = ensureJsonObject(row.seed_data);
   const snapshot = ensureJsonObject(seedData.snapshot);
+  const recall = resolveExternalSeedRecallDoc({ row, seedData, snapshot });
   const destinationUrl = String(
     row.destination_url || snapshot.destination_url || seedData.destination_url || '',
   ).trim();
@@ -1271,6 +1287,7 @@ function buildExternalSeedBrandSearchProduct(row) {
 
   const title =
     firstNonEmptyString(
+      recall.retrieval_title,
       row.title,
       row.seed_title,
       snapshot.title,
@@ -1280,12 +1297,14 @@ function buildExternalSeedBrandSearchProduct(row) {
       externalProductId,
     ) || externalProductId;
   const description = firstNonEmptyString(
+    recall.retrieval_summary,
     row.seed_description,
     row.description,
     snapshot.description,
     seedData.description,
   );
   const brand = firstNonEmptyString(
+    recall.brand,
     row.seed_brand,
     row.seed_merchant_display_name,
     row.seed_vendor,
@@ -1300,6 +1319,7 @@ function buildExternalSeedBrandSearchProduct(row) {
   );
   const explicitCategory =
     normalizeExplicitBeautyCategory(
+      recall.category,
       row.seed_category,
       row.seed_product_type,
       row.snapshot_category,
@@ -1368,6 +1388,7 @@ function buildExternalSeedBrandSearchProduct(row) {
     ...(canonicalUrl ? { canonical_url: canonicalUrl } : {}),
     ...(destinationUrl ? { destination_url: destinationUrl } : {}),
     ...(row.id ? { external_seed_id: String(row.id) } : {}),
+    external_seed_recall: recall,
     ...(brand ? { vendor: brand, brand } : {}),
     ...(normalizedCategory ? { category: normalizedCategory } : {}),
   };

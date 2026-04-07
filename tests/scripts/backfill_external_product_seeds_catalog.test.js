@@ -741,15 +741,77 @@ describe('backfill-external-product-seeds-catalog', () => {
     );
 
     expect(payload.nextRow.image_url).toBe(
-      'https://sdcdn.io/tf/tf_sku_T93Y01_2000x2000_0.png?height=1400px&width=1400px',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T93Y01_2000x2000_0.png',
     );
     expect(payload.nextRow.seed_data.image_urls).toEqual([
-      'https://sdcdn.io/tf/tf_sku_T93Y01_2000x2000_0.png?height=1400px&width=1400px',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T93Y01_2000x2000_0.png',
     ]);
     expect(payload.nextRow.seed_data.snapshot.image_urls).toEqual([
-      'https://sdcdn.io/tf/tf_sku_T93Y01_2000x2000_0.png?height=1400px&width=1400px',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T93Y01_2000x2000_0.png',
     ]);
     expect(payload.nextRow.seed_data.active_ingredients).toBeUndefined();
     expect(payload.nextRow.seed_data.snapshot.active_ingredients).toBeUndefined();
+  });
+
+  test('writes a cleaned derived recall document during catalog backfill', () => {
+    const row = {
+      id: 'eps_recall_doc_1',
+      title: 'Fenty Beauty - Instant Reset Overnight Recovery Gel-Cream',
+      canonical_url: 'https://fentyskin.com/products/instant-reset-overnight-recovery-gel-cream',
+      destination_url: 'https://fentyskin.com/products/instant-reset-overnight-recovery-gel-cream',
+      price_amount: 42,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        brand: 'Fenty Skin',
+        description:
+          'OFFICIAL: A night moisturizer for skin recovery. /// SOCIAL HIGHLIGHTS: customer service.',
+        snapshot: {
+          canonical_url: 'https://fentyskin.com/products/instant-reset-overnight-recovery-gel-cream',
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: 'Instant Reset Overnight Recovery Gel-Cream',
+            url: 'https://fentyskin.com/products/instant-reset-overnight-recovery-gel-cream',
+            description_raw:
+              'A plush overnight gel-cream that helps recharge skin with hydration and barrier support.',
+            details_sections: [
+              { heading: 'Overview', body: 'A plush overnight gel-cream for hydrated, rested-looking skin.' },
+              { heading: 'Support', body: 'Customer service, privacy policy and donation terms.' },
+            ],
+            variants: [
+              {
+                id: 'SKU-OVN-1',
+                sku: 'SKU-OVN-1',
+                description:
+                  'A plush overnight gel-cream that helps recharge skin with hydration and barrier support.',
+                price: '42.00',
+                currency: 'USD',
+              },
+            ],
+          },
+        ],
+        variants: [],
+        diagnostics: {},
+      },
+      'https://fentyskin.com/products/instant-reset-overnight-recovery-gel-cream',
+    );
+
+    expect(payload.nextRow.seed_data.derived.recall).toEqual(
+      expect.objectContaining({
+        retrieval_title: 'Instant Reset Overnight Recovery Gel-Cream',
+        retrieval_summary: expect.stringContaining('A plush overnight gel-cream'),
+        brand: 'Fenty Skin',
+      }),
+    );
+    expect(payload.nextRow.seed_data.derived.recall.retrieval_body).not.toMatch(
+      /customer service|privacy policy|donation/i,
+    );
   });
 });

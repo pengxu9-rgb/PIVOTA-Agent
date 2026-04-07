@@ -54,6 +54,7 @@ const {
   dispatchCommerceLayer,
   prepareGatewayGovernanceEnvelope,
 } = require('./api/gateway/layerDispatcher');
+const { buildExternalSeedRecallLikePredicate } = require('./services/externalSeedRecall');
 const {
   buildInvokeIngressGatewayInput,
 } = require('./api/gateway/invocation/buildInvokeIngressGatewayInput');
@@ -7026,13 +7027,7 @@ async function queryCreatorHumanApparelExternalSeedRows({
 
       const sqlParams = [market];
       const filters = [
-        `(
-          lower(coalesce(title, '')) LIKE ANY($2::text[])
-          OR lower(coalesce(domain, '')) LIKE ANY($2::text[])
-          OR lower(coalesce(canonical_url, '')) LIKE ANY($2::text[])
-          OR lower(coalesce(destination_url, '')) LIKE ANY($2::text[])
-          OR lower(coalesce(seed_data::text, '')) LIKE ANY($2::text[])
-        )`,
+        buildExternalSeedRecallLikePredicate('$2', { includeLegacyFallback: true }),
       ];
       sqlParams.push(queryPatterns);
 

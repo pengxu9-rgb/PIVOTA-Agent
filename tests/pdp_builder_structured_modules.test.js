@@ -293,7 +293,7 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(payload.modules.find((module) => module.type === 'product_details')?.data?.sections).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          heading: 'Description',
+          heading: 'Overview',
         }),
       ]),
     );
@@ -335,7 +335,18 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(payload.modules.find((module) => module.type === 'active_ingredients')).toBeTruthy();
     expect(payload.modules.find((module) => module.type === 'ingredients_inci')).toBeTruthy();
     expect(payload.modules.find((module) => module.type === 'product_facts')).toBeFalsy();
-    expect(payload.modules.find((module) => module.type === 'product_details')).toBeFalsy();
+    expect(payload.modules.find((module) => module.type === 'product_details')).toEqual(
+      expect.objectContaining({
+        data: {
+          sections: expect.arrayContaining([
+            expect.objectContaining({
+              heading: 'Overview',
+              content: expect.stringContaining("Salicylic Acid spot-targeting gel fights blemishes"),
+            }),
+          ]),
+        },
+      }),
+    );
   });
 
   test('normalizes encoded whitespace in sdcdn Tom Ford asset names', () => {
@@ -480,7 +491,18 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(ingredientsModule?.data?.items).not.toContain(
       'and Algae Extract help create a soothing lather. Tom Ford Research’s caffeine-containing ingredients:',
     );
-    expect(payload.modules.find((module) => module.type === 'product_details')).toBeFalsy();
+    expect(payload.modules.find((module) => module.type === 'product_details')).toEqual(
+      expect.objectContaining({
+        data: {
+          sections: expect.arrayContaining([
+            expect.objectContaining({
+              heading: 'Overview',
+              content: expect.stringContaining('This cleanser transforms from a tiny pearl to a luscious foam'),
+            }),
+          ]),
+        },
+      }),
+    );
   });
 
   test('structures beauty overview facts and collapses repeated pigment families for concealer PDPs', () => {
@@ -598,7 +620,10 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(payload.product.description).toBe(
       'The formula merges hydrating skincare ingredients with imperfection-blurring makeup technology. It features hyaluronic acid for instant and 12-hour hydration and vitamin E for antioxidant protection. Spherical powders ensure silky-smooth, seamless application for comfortable, non-drying wear.',
     );
-    expect(factsSections).toEqual(
+    const detailSections =
+      payload.modules.find((module) => module.type === 'product_details')?.data?.sections || [];
+    expect(factsSections).toEqual([]);
+    expect(detailSections).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           heading: 'Overview',
@@ -606,10 +631,10 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
         }),
       ]),
     );
-    expect(factsSections[0]?.content).toContain('Finish: Matte, Natural/Satin');
-    expect(factsSections[0]?.content).toContain('Coverage: Buildable, Full');
-    expect(factsSections[0]?.content).toContain('Benefits');
-    expect(factsSections[0]?.content).toContain('Soft-focus powders offer a natural, soft-matte finish');
+    expect(detailSections[0]?.content).toContain('Finish: Matte, Natural/Satin');
+    expect(detailSections[0]?.content).toContain('Coverage: Buildable, Full');
+    expect(detailSections[0]?.content).toContain('Benefits');
+    expect(detailSections[0]?.content).toContain('Soft-focus powders offer a natural, soft-matte finish');
     expect(ingredientsItems).toEqual(
       expect.arrayContaining([
         'Isostearyl Alcohol',
@@ -622,7 +647,6 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     );
     expect(ingredientsItems).not.toContain('Key Ingredients');
     expect(ingredientsItems.filter((item) => /^Iron Oxides\b/i.test(item))).toHaveLength(1);
-    expect(payload.modules.find((module) => module.type === 'product_details')).toBeFalsy();
     expect(mediaUrls).toEqual([
       'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tfb_sku_TC7Y09_2000x2000_0_74c2dfd9-3f5f-4832-af13-85e0ec7891c9.png',
       'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tfb_sku_TC7Y09_2000x2000_1_dfe99888-59ba-49f2-b8ca-dc58168cbaae.jpg',
@@ -656,12 +680,54 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(payload.product.description).toBe(
       'The formula merges hydrating skincare ingredients with imperfection-blurring makeup technology.',
     );
-    expect(factsSections[0]?.heading).toBe('Overview');
-    expect(factsSections[0]?.content).toContain('Benefits');
-    expect(factsSections[0]?.content).toContain(
+    const detailSections =
+      payload.modules.find((module) => module.type === 'product_details')?.data?.sections || [];
+    expect(factsSections).toEqual([]);
+    expect(detailSections[0]?.heading).toBe('Overview');
+    expect(detailSections[0]?.content).toContain('Benefits');
+    expect(detailSections[0]?.content).toContain(
       'Soft-focus powders offer a natural, soft-matte finish.',
     );
-    expect(factsSections[0]?.content).toContain('Free from Parabens, Sulfates');
-    expect(payload.modules.find((module) => module.type === 'product_details')).toBeFalsy();
+    expect(detailSections[0]?.content).toContain('Free from Parabens, Sulfates');
+  });
+
+  test('builds a clean overview for external seeds and filters polluted product facts', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_a2e27f4a7a558c58c2a6a669',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'PrettiZia Mini Lip Gloss Trio',
+        brand: 'Fenty Beauty',
+        category: 'Lipstick',
+        pdp_description_raw:
+          'A mini lip gloss trio with creamy shine and comfortable wear for everyday looks.',
+        pdp_details_sections: [
+          {
+            heading: 'Support',
+            body: 'About us blog impact foundation transparency customer service and privacy policy.',
+          },
+        ],
+      },
+      relatedProducts: {
+        items: [
+          { product_id: 'sim_1', merchant_id: 'external_seed', title: 'Similar 1', price: 18, currency: 'USD' },
+        ],
+      },
+      entryPoint: 'agent',
+    });
+
+    const detailsSections =
+      payload.modules.find((module) => module.type === 'product_details')?.data?.sections || [];
+    const factsSections =
+      payload.modules.find((module) => module.type === 'product_facts')?.data?.sections || [];
+
+    expect(detailsSections).toEqual([
+      expect.objectContaining({
+        heading: 'Overview',
+        content: 'A mini lip gloss trio with creamy shine and comfortable wear for everyday looks.',
+      }),
+    ]);
+    expect(factsSections).toEqual([]);
   });
 });

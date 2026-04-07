@@ -13,6 +13,7 @@ const {
   buildExternalSeedProduct,
   ensureJsonObject,
 } = require('./externalSeedProducts');
+const { EXTERNAL_SEED_RECALL_SQL_FIELDS } = require('./externalSeedRecall');
 
 function normalizeBaseUrl(raw) {
   return String(raw || '').trim().replace(/\/+$/, '');
@@ -1265,6 +1266,7 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
             price_amount,
             price_currency,
             availability,
+            seed_data,
             coalesce(seed_data->>'brand', seed_data->'snapshot'->>'brand', '') as seed_brand,
             coalesce(
               seed_data->>'category',
@@ -1312,8 +1314,13 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
       coalesce(title, ''),
       coalesce(destination_url, ''),
       coalesce(canonical_url, ''),
+      coalesce(seed_data->'derived'->'recall'->>'retrieval_title', ''),
+      coalesce(seed_data->'derived'->'recall'->>'retrieval_summary', ''),
+      coalesce(seed_data->'derived'->'recall'->>'retrieval_body', ''),
       coalesce(seed_data->>'description', seed_data->'snapshot'->>'description', ''),
+      coalesce(seed_data->'derived'->'recall'->>'brand', ''),
       coalesce(
+        seed_data->'derived'->'recall'->>'category',
         seed_data->>'category',
         seed_data->'product'->>'category',
         seed_data->'snapshot'->>'category',
@@ -1331,7 +1338,7 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
   const [brandMatches, categoryExactMatches, categorySemanticMatches] = await Promise.all([
     brand
       ? runQuery(
-          `AND lower(coalesce(seed_data->>'brand','')) = $4`,
+          `AND ${EXTERNAL_SEED_RECALL_SQL_FIELDS.brand} = $4`,
           [brand],
           Math.min(120, safeLimit),
           'external_brand',
@@ -1339,15 +1346,7 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
       : Promise.resolve([]),
     exactCategoryTerms.length
       ? runQuery(
-          `AND lower(coalesce(
-              seed_data->>'category',
-              seed_data->'product'->>'category',
-              seed_data->'snapshot'->>'category',
-              seed_data->>'product_type',
-              seed_data->'product'->>'product_type',
-              seed_data->'snapshot'->>'product_type',
-              ''
-            )) = ANY($4::text[])`,
+          `AND ${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} = ANY($4::text[])`,
           [exactCategoryTerms],
           Math.min(120, safeLimit),
           'external_category_exact',
@@ -1363,6 +1362,16 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
       : Promise.resolve([]),
   ]);
 
+  const verticalMatches =
+    vertical && vertical !== UNKNOWN_VERTICAL
+      ? await runQuery(
+          `AND ${EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical} = $4`,
+          [vertical],
+          Math.min(180, safeLimit),
+          'external_same_vertical',
+        )
+      : [];
+
   const focusedCategoryMatches = uniqueByKey(
     [...categoryExactMatches, ...categorySemanticMatches],
     (p) => `${getMerchantId(p)}::${getProductId(p)}`,
@@ -1375,7 +1384,10 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
     }),
   );
 
-  return uniqueByKey([...brandMatches, ...focusedCategoryMatches], (p) => `${getMerchantId(p)}::${getProductId(p)}`).slice(0, safeLimit * 3);
+  return uniqueByKey(
+    [...brandMatches, ...focusedCategoryMatches, ...verticalMatches],
+    (p) => `${getMerchantId(p)}::${getProductId(p)}`,
+  ).slice(0, safeLimit * 3);
 }
 
 function collectExternalLookupKeys(baseProduct) {
@@ -1535,6 +1547,7 @@ async function enrichExternalBaseProduct(baseProduct) {
       }),
       rescue_applied: rescueFields.length > 0,
       rescue_fields: rescueFields,
+      external_seed_recall: seedCanonicalProduct?.external_seed_recall || null,
     },
   };
 }
@@ -1589,6 +1602,12 @@ async function recommend({
   const baseLeaf = getLeafCategory(baseProduct);
   const baseSemanticStrong = Number(baseSemantic?.signal_strength || 0) >= 2;
   const baseProductIsExternal = isExternalProduct(baseProduct);
+  const baseRecall = ensureJsonObject(baseProduct?.external_seed_recall);
+  const baseRecallExclusionFlags = ensureJsonObject(baseRecall?.exclusion_flags);
+  const baseExternalSimilarSloExempt =
+    Boolean(baseRecallExclusionFlags.gift_card) ||
+    Boolean(baseRecallExclusionFlags.donation_bundle) ||
+    Boolean(baseRecallExclusionFlags.non_merchandise);
   const effectiveExternalFetchTimeoutMs = baseProductIsExternal
     ? Math.max(PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS, 2600)
     : PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS;
@@ -1717,6 +1736,22 @@ async function recommend({
     metadata: {
       ...(picked.metadata || {}),
       low_confidence: Boolean(picked?.metadata?.low_confidence),
+      ...(baseProductIsExternal
+        ? {
+            external_seed_recall_doc_version: String(baseRecall.version || 'v1'),
+            external_seed_quality_status: baseExternalSimilarSloExempt ? 'similar_slo_exempt' : 'eligible',
+          }
+        : {}),
+      ...(baseProductIsExternal &&
+      !baseExternalSimilarSloExempt &&
+      (picked.items?.length || 0) < Math.min(Math.max(4, safeK), safeK)
+        ? {
+            underfill_reason:
+              (picked.items?.length || 0) === 0
+                ? 'external_seed_similar_underfill'
+                : 'external_seed_similar_partial_underfill',
+          }
+        : {}),
     },
     debug: {
       ...picked.debug,

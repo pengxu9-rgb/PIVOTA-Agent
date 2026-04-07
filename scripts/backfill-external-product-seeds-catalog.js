@@ -9,6 +9,7 @@ const {
   normalizeSeedVariants,
   normalizeSeedAvailability,
 } = require('../src/services/externalSeedProducts');
+const { buildExternalSeedRecallDoc } = require('../src/services/externalSeedRecall');
 const { enrichExternalSeedRowIngredients } = require('../src/services/externalSeedIngredientEnrichment');
 const { normalizePdpImageUrl } = require('../src/utils/pdpImageUrls');
 
@@ -617,6 +618,15 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     ...(effectiveSnapshotVariants.length > 0 ? { variants: effectiveSnapshotVariants } : {}),
     snapshot: nextSnapshot,
   };
+  const nextDerived = ensureJsonObject(nextSeedData.derived);
+  nextSeedData.derived = {
+    ...nextDerived,
+    recall: buildExternalSeedRecallDoc({
+      row: { ...row, ...row, title, description, canonical_url: representativeProductUrl || row?.canonical_url, destination_url: destinationUrl || row?.destination_url },
+      seedData: nextSeedData,
+      snapshot: nextSnapshot,
+    }),
+  };
   if (shouldClearStaleSeedActiveIngredients(nextSeedData, nextPdpActiveIngredientsRaw)) {
     delete nextSeedData.active_ingredients;
     delete nextSeedData.activeIngredients;
@@ -675,7 +685,7 @@ function buildFailureSeedData(row, targetUrl, error) {
   ]);
   const manualImageOverrideApplied = existingImageUrls.length === 0 && overrideImageUrls.length > 0;
   const currentImageUrls = existingImageUrls.length > 0 ? existingImageUrls : overrideImageUrls;
-  return {
+  const nextSeedData = {
     ...seedData,
     snapshot: {
       ...snapshot,
@@ -702,6 +712,19 @@ function buildFailureSeedData(row, targetUrl, error) {
       variants: normalizeSeedVariants(seedData, row),
     },
   };
+  nextSeedData.derived = {
+    ...ensureJsonObject(nextSeedData.derived),
+    recall: buildExternalSeedRecallDoc({
+      row: {
+        ...row,
+        canonical_url: normalizeUrlLike(snapshot.canonical_url) || normalizeUrlLike(targetUrl) || row?.canonical_url,
+        destination_url: normalizeUrlLike(targetUrl) || row?.destination_url,
+      },
+      seedData: nextSeedData,
+      snapshot: ensureJsonObject(nextSeedData.snapshot),
+    }),
+  };
+  return nextSeedData;
 }
 
 async function fetchRows(options) {
