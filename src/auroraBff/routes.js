@@ -1341,6 +1341,8 @@ const {
   classifyBeautyMainlineHandoffFallback,
   buildBeautyMainlineHandoffFallbackEnvelope,
   looksLikeRecommendationRequest,
+  runConcernSemanticPlanner,
+  buildConcernTargetContextFromSemanticPlan,
 });
 const {
   shouldEnterLegacyProductRecommendations,
@@ -17911,6 +17913,7 @@ async function handoffRecoToBeautyMainlineSearch({
   return {
     recommendations,
     semanticContract,
+    targetContext: effectiveTargetContext,
     searchResult,
     attempted_query: String(query || '').trim(),
     attempted: query.length > 0,
