@@ -17842,9 +17842,7 @@ async function handoffRecoToBeautyMainlineSearch({
   const shouldUseSunscreenRecallBudget = semanticTargetStepFamily === 'sunscreen';
   const handoffTransportPolicy = buildRecoRecallTransportPolicy({
     mode:
-      shouldUseSunscreenRecallBudget
-        ? 'default'
-        : String(semanticContract?.planner_mode || '').trim().toLowerCase() === 'step_aware'
+      String(semanticContract?.planner_mode || '').trim().toLowerCase() === 'step_aware'
         ? 'step_aware'
         : 'framework_first_turn',
   });
