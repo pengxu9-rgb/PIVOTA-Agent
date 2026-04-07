@@ -1,3 +1,36 @@
+function firstRouteQueryValue(value) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function parseRouteBoolean(value) {
+  const raw = firstRouteQueryValue(value);
+  if (raw == null) return undefined;
+  const normalized = String(raw).trim().toLowerCase();
+  if (!normalized) return undefined;
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  return undefined;
+}
+
+function shouldDefaultBeautyMainlineExternalSeed(search = {}, semanticContract = null) {
+  const queryText = String(search?.query || search?.q || '').trim().toLowerCase();
+  if (!queryText) return false;
+  const uiSurface = String(search?.ui_surface || search?.uiSurface || '').trim().toLowerCase();
+  if (uiSurface === 'ingredient_plan_guidance_only') return false;
+  if (parseRouteBoolean(search?.product_only ?? search?.productOnly) === true) return false;
+  const targetStepFamily = String(
+    semanticContract?.target_step_family ||
+      semanticContract?.targetStepFamily ||
+      search?.target_step_family ||
+      search?.targetStepFamily ||
+      '',
+  ).trim().toLowerCase();
+  if (targetStepFamily === 'sunscreen') return false;
+  return /\b(oily|oil control|sebum|shine control|mattify|mattifying|non-greasy|non greasy)\b/i.test(
+    queryText,
+  );
+}
+
 function createFindProductsSearchRouteEntryRuntime(deps = {}) {
   const {
     resolveGuidanceSearchSessionId,
@@ -87,6 +120,23 @@ function createFindProductsSearchRouteEntryRuntime(deps = {}) {
     }
 
     if (forceBeautyMainlineInvokePath) {
+      const existingAllowExternalSeed = payload?.search?.allow_external_seed ?? payload?.search?.allowExternalSeed;
+      const existingExternalSeedStrategy =
+        payload?.search?.external_seed_strategy || payload?.search?.externalSeedStrategy;
+      const shouldDefaultAllowExternalSeed =
+        existingAllowExternalSeed === undefined &&
+        shouldDefaultBeautyMainlineExternalSeed(
+          payload?.search && typeof payload.search === 'object' && !Array.isArray(payload.search)
+            ? payload.search
+            : {},
+          publicBeautyMainlineBypass.semanticContract,
+        );
+      const shouldSetExternalSeedStrategy =
+        !existingExternalSeedStrategy &&
+        (
+          shouldDefaultAllowExternalSeed ||
+          parseRouteBoolean(existingAllowExternalSeed) === true
+        );
       payload.search = {
         ...(payload?.search && typeof payload.search === 'object' && !Array.isArray(payload.search)
           ? payload.search
@@ -104,6 +154,8 @@ function createFindProductsSearchRouteEntryRuntime(deps = {}) {
           payload?.search?.catalog_surface ||
           payload?.search?.catalogSurface ||
           'beauty',
+        ...(shouldDefaultAllowExternalSeed ? { allow_external_seed: true } : {}),
+        ...(shouldSetExternalSeedStrategy ? { external_seed_strategy: 'unified_relevance' } : {}),
       };
     }
 
