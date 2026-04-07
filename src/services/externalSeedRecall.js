@@ -126,10 +126,20 @@ function looksLikeRecallNoise(value) {
 function stripRecallNarrativeNoise(value) {
   let text = normalizeWhitespace(value);
   if (!text) return '';
-  text = text.replace(/^(?:details?\b[\s:.-]*){1,}/i, '').trim();
+  text = text
+    .replace(/^(?:details?\b[\s:.-]*){1,}/i, '')
+    .replace(/^(?:description|about the product|what it is)\b[\s:.-]*/i, '')
+    .trim();
   text = stripExternalSeedMarketingBannerPrefix(text);
   const cutPatterns = [
+    /\bfill weight\s*:/i,
     /\blearn more\s+close\b/i,
+    /\bhow to use\b/i,
+    /(?:^|\s)INGREDIENTS\b/,
+    /(?:^|\s)Ingredients\s*:/,
+    /\bnet wt\.?\b/i,
+    /\bproduct dimensions?\b/i,
+    /\bpackage dimensions?\b/i,
     /\bavoid contact with eyes\b/i,
     /\bkeep out of reach of children\b/i,
     /\bcustomerservice@/i,

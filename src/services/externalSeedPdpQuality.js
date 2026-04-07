@@ -1,7 +1,7 @@
 const { ensureJsonObject, normalizeNonEmptyString } = require('./externalSeedRecall');
 
 const POLLUTED_FACTS_RE =
-  /\b(contact us|customer service|privacy policy|terms(?: and conditions)?|shipping policy|return policy|about us|blog|blogs|impact|foundation transparency|transparency|give 20%|donation|donate|store locator|support)\b/i;
+  /\b(contact us|customer service|privacy policy|terms(?: and conditions)?|shipping policy|return policy|about us|blog|blogs|impact|foundation transparency|transparency|give 20%|donation|donate|store locator|support|OFFICIAL|SOCIAL HIGHLIGHTS|THE UNDERCOVER|STRAIGHT UP|THE LOWDOWN|fill weight|avoid contact with eyes|keep out of reach|customerservice@)\b/i;
 
 function normalizeAmount(value) {
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
@@ -41,6 +41,23 @@ function collectProductFactsText(livePayload = {}) {
     .map((section) => [section?.heading, section?.content].filter(Boolean).join(' '))
     .map((value) => normalizeNonEmptyString(value))
     .filter(Boolean);
+}
+
+function normalizeComparisonKey(value) {
+  return normalizeNonEmptyString(value).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function collectProductDescriptionText(livePayload = {}) {
+  return normalizeNonEmptyString(livePayload?.product?.description);
+}
+
+function hasDuplicateDescriptionFacts({ factsText = [], description = '' } = {}) {
+  const descriptionKey = normalizeComparisonKey(description);
+  if (!descriptionKey) return false;
+  return (Array.isArray(factsText) ? factsText : []).some((value) => {
+    const factKey = normalizeComparisonKey(value).replace(/^description\s+/, '').trim();
+    return Boolean(factKey && factKey === descriptionKey);
+  });
 }
 
 function extractProbeError(response = {}) {
@@ -96,6 +113,7 @@ function buildExtractorGate({ extractorResponse = {}, extractorProduct = {} } = 
 function buildLivePdpGate({ extractorProduct = {}, livePayload = {}, liveResponse = {} } = {}) {
   const extractorPrice = pickExtractorPrice(extractorProduct);
   const livePrice = pickLivePdpPrice(livePayload);
+  const descriptionText = collectProductDescriptionText(livePayload);
   const detailsText = collectProductDetailsText(livePayload);
   const factsText = collectProductFactsText(livePayload);
   const extractorHasDescription = Boolean(
@@ -120,8 +138,17 @@ function buildLivePdpGate({ extractorProduct = {}, livePayload = {}, liveRespons
   if (extractorHasDescription && detailsText.length === 0) {
     failureReasons.push('missing_overview_from_available_description');
   }
+  if (POLLUTED_FACTS_RE.test(descriptionText)) {
+    failureReasons.push('polluted_product_description');
+  }
+  if (detailsText.some((value) => POLLUTED_FACTS_RE.test(value))) {
+    failureReasons.push('polluted_product_details');
+  }
   if (factsText.some((value) => POLLUTED_FACTS_RE.test(value))) {
     failureReasons.push('polluted_product_facts');
+  }
+  if (hasDuplicateDescriptionFacts({ factsText, description: descriptionText })) {
+    failureReasons.push('duplicated_description_facts');
   }
 
   return {
@@ -192,6 +219,7 @@ module.exports = {
   pickLivePdpPrice,
   collectProductDetailsText,
   collectProductFactsText,
+  collectProductDescriptionText,
   extractProbeError,
   buildSeedGate,
   buildExtractorGate,

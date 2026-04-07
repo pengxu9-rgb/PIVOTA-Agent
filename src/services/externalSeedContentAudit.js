@@ -266,6 +266,19 @@ function detectMarketingBannerPrefix(description) {
   return hasExternalSeedMarketingBannerPrefix(normalized);
 }
 
+function detectSectionSoupDescription(description) {
+  const normalized = normalizeNonEmptyString(description);
+  if (!normalized) return false;
+  const startsWithNarrativeLabel = /^(?:description|about the product|what it is)\b/i.test(normalized);
+  const hasDownstreamPdpSections =
+    /\bHOW TO USE\b/.test(normalized) ||
+    /\bINGREDIENTS\b/.test(normalized) ||
+    /\bnet wt\.?\b/i.test(normalized) ||
+    /\bproduct dimensions?\b/i.test(normalized) ||
+    /\bpackage dimensions?\b/i.test(normalized);
+  return startsWithNarrativeLabel && hasDownstreamPdpSections;
+}
+
 function detectDuplicateVariantSkus(variants) {
   const counts = new Map();
   for (const variant of variants) {
@@ -434,6 +447,21 @@ function auditExternalSeedRow(row, options = {}) {
         },
         recommendedAction:
           'Strip marketing banner prefixes and uppercase promo preambles from seed narrative text before PDP shaping and downstream recall.',
+        autoFixable: false,
+      }),
+    );
+  }
+
+  if (detectSectionSoupDescription(description)) {
+    findings.push(
+      buildFinding(row, snapshot, {
+        anomalyType: 'seed_description_section_soup',
+        severity: ANOMALY_SEVERITY.review,
+        evidence: {
+          description_excerpt: description.slice(0, 280),
+        },
+        recommendedAction:
+          'Split PDP description, how-to, ingredient, and measurement sections before shaping external-seed PDP copy.',
         autoFixable: false,
       }),
     );

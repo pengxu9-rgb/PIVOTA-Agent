@@ -254,7 +254,7 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     );
   });
 
-  test('falls back to description facts when category is the only detail section signal', () => {
+  test('uses description overview without duplicating external seed facts', () => {
     const payload = buildPdpPayload({
       product: {
         product_id: 'ext_hair_bundle',
@@ -281,19 +281,13 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
       entryPoint: 'agent',
     });
 
-    expect(payload.modules.find((module) => module.type === 'product_facts')?.data?.sections).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          heading: 'Description',
-          content:
-            'Unlock endless styles with The Maintenance Crew. Essentials repair and nourish hair, now with our deep conditioner for extra hydration.',
-        }),
-      ]),
-    );
+    expect(payload.modules.find((module) => module.type === 'product_facts')).toBeFalsy();
     expect(payload.modules.find((module) => module.type === 'product_details')?.data?.sections).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           heading: 'Overview',
+          content:
+            'Unlock endless styles with The Maintenance Crew. Essentials repair and nourish hair, now with our deep conditioner for extra hydration.',
         }),
       ]),
     );
@@ -815,12 +809,67 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
         content: 'An enveloping amber scent of vanilla notes, white florals and sandalwood.',
       }),
     ]);
-    expect(factsSections).toEqual([
+    expect(factsSections).toEqual([]);
+    expect(JSON.stringify(payload)).not.toMatch(/OFFICIAL:|SOCIAL HIGHLIGHTS/i);
+  });
+
+  test('does not split lower-case Finish off copy into a fake finish fact', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_fenty_clf_bundle',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'CLF Bundle',
+        brand: 'Fenty Beauty',
+        category: 'Moisturizer',
+        description:
+          "As part of our ongoing partnership with Rihanna's Clara Lionel Foundation, we're launching this limited-edition bundle featuring some Fenty faves. Start with Rich Dip for a spa-worthy soak, then use Butta Drop for nourishing moisture. Finish off any look with Gloss Bomb for a kiss of color + shine. Fill weight: Rich Dip Bubble Bath: 350 mL | Butta Drop Body Cream: 200 mL | Gloss Bomb Universal Lip Luminizer: 9 mL Learn more about CLF and the Rebuild & Reimagine Fund at ClaraLionelFoundation.org",
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const detailsSections =
+      payload.modules.find((module) => module.type === 'product_details')?.data?.sections || [];
+
+    expect(payload.product.description).toBe(
+      "As part of our ongoing partnership with Rihanna's Clara Lionel Foundation, we're launching this limited-edition bundle featuring some Fenty faves. Start with Rich Dip for a spa-worthy soak, then use Butta Drop for nourishing moisture. Finish off any look with Gloss Bomb for a kiss of color + shine.",
+    );
+    expect(detailsSections).toEqual([
       expect.objectContaining({
-        heading: 'Description',
-        content: 'An enveloping amber scent of vanilla notes, white florals and sandalwood.',
+        heading: 'Overview',
+        content: payload.product.description,
       }),
     ]);
-    expect(JSON.stringify(payload)).not.toMatch(/OFFICIAL:|SOCIAL HIGHLIGHTS/i);
+    expect(detailsSections[0]?.content).not.toMatch(/^Finish:/);
+    expect(detailsSections[0]?.content).not.toMatch(/Fill weight|Learn more about CLF/i);
+    expect(payload.modules.find((module) => module.type === 'product_facts')).toBeFalsy();
+  });
+
+  test('cuts section soup descriptions before how-to and ingredients copy', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_sigma_ambiance',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Ambiance Eyeshadow Palette',
+        brand: 'sigma beauty',
+        category: 'Eyeshadow',
+        pdp_description_raw:
+          'DESCRIPTION Get the ultimate golden-hour glow with this landscape of warm matte eyeshadows, shimmer eyeshadows and metallic eyeshadows. Inspired by the sun’s peaceful, ever-changing light, Ambiance sets the mood for any occasion. With neutral-to-bold eye shadows and a beautiful dual-ended makeup brush, this brilliant eyeshadow palette will help you look radiant from sunrise to sunset. HOW TO USE Using the dual-ended beauty brush, apply and blend the eyeshadow shade(s) of your choice onto your eyelids. Net Wt. 0.49oz./14g INGREDIENTS Daze, Daylily, Oasis, Sunspot: Mica, Magnesium Stearate, Silica.',
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const detailsSections =
+      payload.modules.find((module) => module.type === 'product_details')?.data?.sections || [];
+
+    expect(payload.product.description).toBe(
+      'Get the ultimate golden-hour glow with this landscape of warm matte eyeshadows, shimmer eyeshadows and metallic eyeshadows. Inspired by the sun’s peaceful, ever-changing light, Ambiance sets the mood for any occasion. With neutral-to-bold eye shadows and a beautiful dual-ended makeup brush, this brilliant eyeshadow palette will help you look radiant from sunrise to sunset.',
+    );
+    expect(detailsSections[0]?.content).toBe(payload.product.description);
+    expect(payload.product.description).not.toMatch(/DESCRIPTION|HOW TO USE|INGREDIENTS|Net Wt/i);
+    expect(payload.modules.find((module) => module.type === 'product_facts')).toBeFalsy();
   });
 });

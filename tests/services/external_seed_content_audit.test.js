@@ -331,6 +331,46 @@ describe('externalSeedContentAudit', () => {
     );
   });
 
+  test('flags section soup descriptions that will pollute PDP overview copy', () => {
+    const row = {
+      id: 'eps_sigma_section_soup',
+      domain: 'sigmabeauty.com',
+      market: 'US',
+      canonical_url: 'https://sigmabeauty.com/products/ambiance-eyeshadow-palette',
+      title: 'Ambiance Eyeshadow Palette',
+      seed_data: {
+        snapshot: {
+          canonical_url: 'https://sigmabeauty.com/products/ambiance-eyeshadow-palette',
+          description:
+            'DESCRIPTION Get the ultimate golden-hour glow with warm matte eyeshadows and shimmer eyeshadows. HOW TO USE Apply and blend the eyeshadow shade(s) of your choice onto your eyelids. Net Wt. 0.49oz./14g INGREDIENTS Mica, Magnesium Stearate, Silica.',
+          variants: [
+            {
+              sku: 'SIGMA-AMB-1',
+              variant_id: 'SIGMA-AMB-1',
+              currency: 'USD',
+              price: '65.00',
+              stock: 'In Stock',
+              image_url: 'https://cdn.example.com/sigma-ambiance.jpg',
+            },
+          ],
+        },
+      },
+    };
+
+    const result = auditExternalSeedRow(row);
+    expect(result.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          anomaly_type: 'seed_description_section_soup',
+          severity: 'review',
+          evidence: expect.objectContaining({
+            description_excerpt: expect.stringContaining('HOW TO USE'),
+          }),
+        }),
+      ]),
+    );
+  });
+
   test('does not flag intentional gift card shared SKU variants', () => {
     const row = {
       id: 'eps_gift_card_shared_sku',

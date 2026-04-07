@@ -107,6 +107,27 @@ describe('externalSeedRecall', () => {
     expect(doc.vertical).toBe('skincare');
   });
 
+  test('cuts section soup before it reaches recall summary and body', () => {
+    const doc = buildExternalSeedRecallDoc({
+      row: {
+        id: 'eps_sigma_ambiance',
+        title: 'Ambiance Eyeshadow Palette',
+        canonical_url: 'https://sigmabeauty.com/products/ambiance-eyeshadow-palette',
+      },
+      seedData: {
+        brand: 'sigma beauty',
+        category: 'Eyeshadow',
+        pdp_description_raw:
+          'DESCRIPTION Get the ultimate golden-hour glow with warm matte eyeshadows and shimmer eyeshadows. Inspired by the sun’s peaceful light. HOW TO USE Apply and blend the eyeshadow shade(s) of your choice. Net Wt. 0.49oz./14g INGREDIENTS Mica, Magnesium Stearate, Silica.',
+      },
+      snapshot: {},
+    });
+
+    expect(doc.retrieval_summary).toContain('Get the ultimate golden-hour glow');
+    expect(doc.retrieval_summary).not.toMatch(/DESCRIPTION|HOW TO USE|INGREDIENTS|Net Wt/i);
+    expect(doc.retrieval_body).not.toMatch(/DESCRIPTION|HOW TO USE|INGREDIENTS|Net Wt/i);
+  });
+
   test('builds recall-first SQL with raw seed fallback only at the end', () => {
     const predicate = buildExternalSeedRecallLikePredicate('$3', { includeLegacyFallback: true });
     expect(predicate).toMatch(/retrieval_title/);
