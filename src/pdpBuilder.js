@@ -72,10 +72,15 @@ const INGREDIENT_ITEM_NOISE_PATTERNS = [
   /\bplease refer to\b/i,
   /\bfor the most up-to-date information\b/i,
   /\bwe got you covered\b/i,
+  /\bhealth and safety\b/i,
+  /\bhigh-quality ingredients\b/i,
+  /\btab on each product\b/i,
   /\bconsult(?:ing)? your physician\b/i,
   /\bwhile nursing\b/i,
   /\bhit up your physician\b/i,
   /\bdescription page\b/i,
+  /^&(?:[a-z]+|#\d+);?$/i,
+  /^[’'`]+$/i,
   /\bhelp create a soothing lather\b/i,
   /\bcaffeine-containing ingredients\b/i,
   /\bhighly prized japanese tea\b/i,
@@ -795,7 +800,9 @@ function sanitizeNarrativeText(value) {
   const prefixStripped = prefix.consumed >= 2 ? prefix.remaining : original;
   const suffix = consumeKnownDetailLabelsFromEdge(prefixStripped, 'end');
   let cleaned = suffix.consumed >= 2 ? suffix.remaining : prefixStripped;
+  cleaned = cleaned.replace(/^(?:details\b[\s:.-]*){1,}/i, '').trim();
   const narrativeCutPatterns = [
+    /\blearn more\s+close\b/i,
     /\bavoid contact with eyes\b/i,
     /\bkeep out of reach of children\b/i,
     /\bcustomerservice@/i,
@@ -806,7 +813,7 @@ function sanitizeNarrativeText(value) {
   for (const pattern of narrativeCutPatterns) {
     const matched = cleaned.match(pattern);
     const cutIndex = matched?.index ?? -1;
-    if (cutIndex >= 80) {
+    if (cutIndex >= 40) {
       cleaned = cleaned.slice(0, cutIndex).trim();
       break;
     }

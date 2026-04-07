@@ -847,10 +847,14 @@ function pickLayeredRecommendations({
       }
 
       const confidence = classifyConfidenceLevel(base, { ...scoreDetail, features }, matchedLayer.id);
+      const candidateHasSpecificCategory = Boolean(
+        features.leafCategory && !['external', 'beauty'].includes(features.leafCategory),
+      );
       const allowLowConfidenceExternalFallback =
         base.isExternal &&
         source === 'external' &&
-        (scoreDetail.leafMatch ||
+        ((scoreDetail.brandMatch && candidateHasSpecificCategory && features.vertical === base.vertical) ||
+          scoreDetail.leafMatch ||
           scoreDetail.parentMatch ||
           (base.vertical !== UNKNOWN_VERTICAL &&
             features.vertical === base.vertical &&
@@ -922,7 +926,30 @@ function pickLayeredRecommendations({
     layerCounts[candidate.layerId] = (layerCounts[candidate.layerId] || 0) + 1;
   }
 
-  const chosenCandidates = pickBalancedCandidates(semanticallyDedupedCandidates, K, base.isExternal);
+  let chosenCandidates = pickBalancedCandidates(semanticallyDedupedCandidates, K, base.isExternal);
+  const externalSeedMin = Math.min(4, K);
+  if (base.isExternal && chosenCandidates.length < externalSeedMin) {
+    const chosenKeys = new Set(
+      chosenCandidates.map((candidate) => `${candidate.features.merchantId}::${candidate.features.productId}`),
+    );
+    const supplemental = semanticallyDedupedCandidates
+      .filter((candidate) => {
+        const key = `${candidate.features.merchantId}::${candidate.features.productId}`;
+        if (chosenKeys.has(key)) return false;
+        if (candidate.source !== 'external') return false;
+        return (
+          (candidate.brandMatch &&
+            candidate.features.leafCategory &&
+            !['external', 'beauty'].includes(candidate.features.leafCategory) &&
+            candidate.features.vertical === base.vertical) ||
+          candidate.leafMatch ||
+          candidate.parentMatch ||
+          (base.vertical !== UNKNOWN_VERTICAL && candidate.features.vertical === base.vertical)
+        );
+      })
+      .slice(0, externalSeedMin - chosenCandidates.length);
+    chosenCandidates = [...chosenCandidates, ...supplemental].slice(0, K);
+  }
   const selected = chosenCandidates.map((candidate) =>
     toCandidate(candidate.product, {
       source: candidate.source,
