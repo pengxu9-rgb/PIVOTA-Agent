@@ -20447,7 +20447,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         : getUpstreamTimeoutMs(operation);
     if (
       operation === 'find_products_multi' &&
-      !strictCommerceFindProductsMulti &&
+      (!strictCommerceFindProductsMulti || strictBeautyDirectSearch) &&
       shouldUseLocalBeautyDiscoveryMainline({
         search: findProductsMultiSearchPayload,
         metadata,
