@@ -600,6 +600,8 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
             requestBodyOverride: variantRequestBody,
           });
         } catch (semanticOwnerRetryErr) {
+          const retrySearchOut =
+            semanticOwnerRetryErr?.searchOut || semanticOwnerRetryErr?.search_out || null;
           semanticOwnerQueryAttempts.push({
             query: semanticOwnerQueryPack[queryIndex],
             query_index: queryIndex,
@@ -607,6 +609,30 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
             result_count: 0,
             adopted: false,
             error: String(semanticOwnerRetryErr?.message || semanticOwnerRetryErr),
+            ...(Array.isArray(retrySearchOut?.attempted_endpoints)
+              ? { attempted_endpoints: retrySearchOut.attempted_endpoints }
+              : {}),
+            ...(Array.isArray(retrySearchOut?.attempted_base_urls)
+              ? { attempted_base_urls: retrySearchOut.attempted_base_urls }
+              : {}),
+            ...(Array.isArray(retrySearchOut?.attempted_paths)
+              ? { attempted_paths: retrySearchOut.attempted_paths }
+              : {}),
+            ...(retrySearchOut?.source_endpoint
+              ? { source_endpoint: String(retrySearchOut.source_endpoint) }
+              : {}),
+            ...(retrySearchOut?.source_base_url
+              ? { source_base_url: String(retrySearchOut.source_base_url) }
+              : {}),
+            ...(retrySearchOut?.source_path
+              ? { source_path: String(retrySearchOut.source_path) }
+              : {}),
+            ...(Number.isFinite(Number(retrySearchOut?.actual_http_attempt_count))
+              ? {
+                  actual_http_attempt_count:
+                    Number(retrySearchOut.actual_http_attempt_count),
+                }
+              : {}),
           });
           continue;
         }
