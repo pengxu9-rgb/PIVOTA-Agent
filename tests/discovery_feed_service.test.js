@@ -2757,6 +2757,78 @@ describe('discovery feed service', () => {
     );
   });
 
+  test('cold start browse_products keeps products_search internal beauty behind external seed beauty fill', async () => {
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        debug: true,
+        context: {
+          auth_state: 'authenticated',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      },
+      {
+        candidateProducts: [
+          ...Array.from({ length: 11 }, (_, idx) => ({
+            ...makeProduct({
+              merchant_id: 'external_seed',
+              product_id: `external_front_${idx + 1}`,
+              title: `PIXI Serum ${idx + 1}`,
+              brand: 'PIXI BEAUTY',
+              category: 'Skincare',
+              product_type: 'Serum',
+            }),
+            __discovery_provider: 'products_search',
+          })),
+          {
+            ...makeProduct({
+              merchant_id: 'merch_internal',
+              product_id: 'internal_1',
+              title: 'The Ordinary Niacinamide 10% + Zinc 1%',
+              brand: 'The Ordinary',
+              category: 'Skincare',
+              product_type: 'Serum',
+            }),
+            __discovery_provider: 'products_search',
+          },
+          ...Array.from({ length: 2 }, (_, idx) => ({
+            ...makeProduct({
+              merchant_id: 'external_seed',
+              product_id: `external_tail_${idx + 1}`,
+              title: `Vitamin-C Serum ${idx + 1}`,
+              brand: `External Brand ${idx + 1}`,
+              category: 'Skincare',
+              product_type: 'Serum',
+            }),
+            __discovery_provider: 'products_search',
+          })),
+          {
+            ...makeProduct({
+              merchant_id: 'merch_internal',
+              product_id: 'internal_2',
+              title: 'Winona Soothing Repair Serum',
+              brand: 'Winona',
+              category: 'Skincare',
+              product_type: 'Serum',
+            }),
+            __discovery_provider: 'products_search',
+          },
+        ],
+      },
+    );
+
+    expect(response.products).toHaveLength(12);
+    expect(response.products.every((product) => product.merchant_id === 'external_seed')).toBe(true);
+    expect(response.products.map((product) => product.product_id)).not.toEqual(
+      expect.arrayContaining(['internal_1', 'internal_2']),
+    );
+    expect(response.metadata.filter_counts.filtered_cold_start_internal_source).toBeGreaterThanOrEqual(1);
+  });
+
   test('cold start browse does not backfill deferred domains onto later pages when non-deferred results exist', async () => {
     const response = await getDiscoveryFeed(
       {
