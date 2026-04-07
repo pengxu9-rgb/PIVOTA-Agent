@@ -70,4 +70,30 @@ describe('externalSeedPdpQuality', () => {
     expect(similarGate.status).toBe('exempt');
     expect(similarGate.failure_reasons).toEqual([]);
   });
+
+  test('reports probe failures instead of misclassifying them as product-quality regressions', () => {
+    const livePdpGate = buildLivePdpGate({
+      extractorProduct: {
+        description_raw: 'Warm vanilla fragrance with deep amber notes.',
+        variants: [{ price: '405.00' }],
+      },
+      livePayload: {},
+      liveResponse: {
+        error: 'AUTH_INTROSPECT_UNAVAILABLE',
+        message: 'Authentication service unavailable',
+      },
+    });
+    const similarGate = buildSimilarGate({
+      similarResponse: {
+        error: 'AUTH_INTROSPECT_UNAVAILABLE',
+        message: 'Authentication service unavailable',
+      },
+      exclusionFlags: { gift_card: false, donation_bundle: false, non_merchandise: false },
+    });
+
+    expect(livePdpGate.failure_reasons).toEqual(['live_pdp_probe_failed']);
+    expect(livePdpGate.probe_error).toBe('Authentication service unavailable');
+    expect(similarGate.failure_reasons).toEqual(['similar_probe_failed']);
+    expect(similarGate.probe_error).toBe('Authentication service unavailable');
+  });
 });

@@ -1,5 +1,6 @@
 const {
   resolveGatewayUrl,
+  buildAuthoritativePayload,
   unwrapLivePdpPayload,
 } = require('../../scripts/audit-external-product-pdp-quality');
 
@@ -33,5 +34,46 @@ describe('audit-external-product-pdp-quality helpers', () => {
     };
 
     expect(unwrapLivePdpPayload(envelope)).toBe(payload);
+  });
+
+  test('builds authoritative get_pdp_v2 payloads for invoke endpoint probes', () => {
+    expect(buildAuthoritativePayload('get_pdp_v2', { product_id: 'ext_123' })).toEqual({
+      operation: 'get_pdp_v2',
+      payload: {
+        product_ref: {
+          merchant_id: 'external_seed',
+          product_id: 'ext_123',
+        },
+        options: {
+          debug: true,
+        },
+      },
+    });
+  });
+
+  test('builds authoritative find_similar_products payloads for invoke endpoint probes', () => {
+    expect(
+      buildAuthoritativePayload('find_similar_products', {
+        product_id: 'ext_123',
+        limit: 4,
+        exclude_items: ['a', 'b'],
+        options: { trace: true },
+      }),
+    ).toEqual({
+      operation: 'find_similar_products',
+      payload: {
+        similar: {
+          merchant_id: 'external_seed',
+          product_id: 'ext_123',
+          limit: 4,
+          exclude_items: ['a', 'b'],
+        },
+        options: {
+          trace: true,
+          debug: true,
+          no_cache: true,
+        },
+      },
+    });
   });
 });

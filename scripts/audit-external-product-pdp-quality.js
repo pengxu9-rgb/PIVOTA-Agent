@@ -25,6 +25,7 @@ const DEFAULT_CATALOG_BASE_URL =
   process.env.CATALOG_INTELLIGENCE_BASE_URL ||
   'https://pivota-catalog-intelligence-production.up.railway.app';
 const DEFAULT_GATEWAY_URL =
+  process.env.PIVOTA_GATEWAY_URL ||
   process.env.EXTERNAL_PDP_QUALITY_GATEWAY_URL ||
   process.env.PDP_SMOKE_GATEWAY ||
   `${DEFAULT_PUBLIC_GATEWAY_ORIGIN}${PUBLIC_GATEWAY_PATH}`;
@@ -58,13 +59,63 @@ function resolveGatewayUrl(value) {
 }
 
 function getHeaders() {
-  const apiKey = normalizeNonEmptyString(process.env.PIVOTA_API_KEY);
+  const apiKey = normalizeNonEmptyString(
+    process.env.PIVOTA_BACKEND_AGENT_API_KEY ||
+      process.env.SHOP_GATEWAY_AGENT_API_KEY ||
+      process.env.PIVOTA_AGENT_API_KEY ||
+      process.env.AGENT_API_KEY ||
+      process.env.PIVOTA_API_KEY,
+  );
   const headers = { 'Content-Type': 'application/json' };
   if (apiKey) {
+    headers['X-Agent-API-Key'] = apiKey;
     headers['X-API-Key'] = apiKey;
     headers.Authorization = `Bearer ${apiKey}`;
   }
   return headers;
+}
+
+function isAuthoritativeInvokeUrl(gatewayUrl) {
+  return resolveGatewayUrl(gatewayUrl).toLowerCase().endsWith(AUTHORITATIVE_INVOKE_PATH);
+}
+
+function buildAuthoritativePayload(operation, payload = {}) {
+  if (operation === 'get_pdp_v2') {
+    return {
+      operation,
+      payload: {
+        product_ref: {
+          merchant_id: 'external_seed',
+          product_id: normalizeNonEmptyString(payload.product_id),
+        },
+        options: {
+          ...ensureJsonObject(payload.options),
+          debug: true,
+        },
+      },
+    };
+  }
+  if (operation === 'find_similar_products') {
+    return {
+      operation,
+      payload: {
+        similar: {
+          merchant_id: 'external_seed',
+          product_id: normalizeNonEmptyString(payload.product_id),
+          limit: Number(payload.limit) > 0 ? Number(payload.limit) : 6,
+          ...(Array.isArray(payload.exclude_items) && payload.exclude_items.length > 0
+            ? { exclude_items: payload.exclude_items }
+            : {}),
+        },
+        options: {
+          ...ensureJsonObject(payload.options),
+          debug: true,
+          no_cache: true,
+        },
+      },
+    };
+  }
+  return { operation, payload };
 }
 
 async function fetchRows({ market, seedId, externalProductId, domain, brand, limit, offset }) {
@@ -143,9 +194,13 @@ async function fetchExtractorTruth(row, baseUrl) {
 }
 
 async function invokeGateway(gatewayUrl, operation, payload) {
+  const resolvedGatewayUrl = resolveGatewayUrl(gatewayUrl);
+  const requestBody = isAuthoritativeInvokeUrl(resolvedGatewayUrl)
+    ? buildAuthoritativePayload(operation, ensureJsonObject(payload))
+    : { operation, payload };
   const response = await axios.post(
-    resolveGatewayUrl(gatewayUrl),
-    { operation, payload },
+    resolvedGatewayUrl,
+    requestBody,
     {
       timeout: Number(process.env.EXTERNAL_PDP_QUALITY_GATE_TIMEOUT_MS || 45000),
       headers: getHeaders(),
@@ -197,6 +252,7 @@ async function auditRow(row, { catalogBaseUrl, gatewayUrl }) {
   const livePdpGate = buildLivePdpGate({
     extractorProduct: extractor.product || {},
     livePayload: unwrapLivePdpPayload(livePdp),
+    liveResponse: ensureJsonObject(livePdp),
   });
   const similarGate = buildSimilarGate({
     similarResponse: ensureJsonObject(similar),
@@ -270,6 +326,9 @@ module.exports = {
   fetchExtractorTruth,
   invokeGateway,
   resolveGatewayUrl,
+  getHeaders,
+  buildAuthoritativePayload,
+  isAuthoritativeInvokeUrl,
   unwrapLivePdpPayload,
   auditRow,
 };
