@@ -585,3 +585,175 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
     'aurora_concern_semantic_plan_plain_text',
   );
 });
+
+test('beauty chat mainline entry lets llm selector rerank only grounded primary-role candidates', async () => {
+  const observed = {
+    selectorCalls: 0,
+    handoffSelectedIds: null,
+  };
+  const semanticPlan = {
+    selection_owner_state: 'trusted',
+    core_roles: [
+      {
+        role_id: 'oil_control_treatment',
+        rank: 1,
+        preferred_step: 'treatment',
+        label: 'Oil-control treatment',
+      },
+    ],
+  };
+  const runtime = createBeautyChatMainlineEntryRuntime({
+    RECO_CATALOG_GROUNDED_ENABLED: true,
+    RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS: 1000,
+    resolveRecommendationTargetContext: () => ({
+      entry_type: 'chat',
+      intent_mode: 'generic_concern',
+      step_aware_intent: false,
+      resolved_target_step: null,
+      primary_role_id: 'oil_control_treatment',
+      framework_roles: [
+        {
+          role_id: 'oil_control_treatment',
+          rank: 1,
+          preferred_step: 'treatment',
+          label: 'Oil-control treatment',
+        },
+      ],
+      semantic_plan: semanticPlan,
+    }),
+    summarizeProfileForContext: (profile) => profile,
+    mergeIngredientRecoContextValue: (left, right) => ({ ...(left || {}), ...(right || {}) }),
+    appendLatestRecoContextToSessionPatch: (sessionPatch, recoContext) => {
+      sessionPatch.latest_reco_context = recoContext;
+    },
+    extractRecoFinalSelectionContract: (value) =>
+      value?.metadata?.final_selection ||
+      value?.metadata?.search_stage_ledger?.final_selection ||
+      value?.final_selection ||
+      null,
+    buildRouteAwareAssistantText: () => 'selector framework response',
+    makeAssistantMessage: (content) => ({ role: 'assistant', format: 'text', content }),
+    buildEnvelope: (_ctx, envelope) => envelope,
+    makeEvent: (_ctx, kind, data) => ({ kind, data }),
+    applyRecoContractToRecoRequestedEvents: (events) => ({ events }),
+    buildRecoRequestedEventData: ({ payload, source }) => ({ payload, source }),
+    normalizeRecoSourceDetail: (value) => value,
+    stateChangeAllowed: () => false,
+    handoffRecoToBeautyMainlineSearch: async (args) => ({
+      targetContext: args.targetContext,
+      recommendations: [
+        {
+          product_id: 'primary_1',
+          display_name: 'Oil Control Serum A',
+          matched_role_id: 'oil_control_treatment',
+        },
+        {
+          product_id: 'primary_2',
+          display_name: 'Oil Control Serum B',
+          matched_role_id: 'oil_control_treatment',
+        },
+      ],
+      searchResult: {
+        decision_owner: 'shopping_agent_beauty_mainline',
+        semantic_owner: 'shopping_agent_beauty_mainline',
+        metadata: {
+          contract_bridge: {
+            resolved_contract: 'agent_v1_search_beauty_mainline',
+          },
+          source_breakdown: {
+            source_tier_counts: { fresh_external: 2 },
+          },
+          search_stage_ledger: {
+            final_selection: {
+              selection_owner: 'shopping_agent_beauty_mainline',
+              selected_product_ids: ['primary_1', 'primary_2'],
+              selected_titles: ['Oil Control Serum A', 'Oil Control Serum B'],
+              selection_signature: 'search_sel_original_order',
+              mainline_status: 'grounded_success',
+              source_tier_counts: { fresh_external: 2 },
+            },
+          },
+        },
+      },
+    }),
+    runConcernSelectorRace: async () => {
+      observed.selectorCalls += 1;
+      return {
+        result: {
+          top_pick_product_id: 'primary_2',
+          ordered_product_ids: ['primary_2', 'primary_1'],
+          selection_notes: ['stronger role fit'],
+        },
+        trace: {
+          llm_selector_used: true,
+          winner_source: 'llm_selector',
+        },
+      };
+    },
+    applyConcernSelectorRaceOrdering: (recommendations, selectorRace) => {
+      const byId = new Map(recommendations.map((item) => [item.product_id, item]));
+      return {
+        recommendations: selectorRace.ordered_product_ids.map((id) => byId.get(id)).filter(Boolean),
+        primary_recommendation_id: selectorRace.top_pick_product_id,
+        support_roles_surfaced: [],
+        winner_source: 'llm_selector',
+        selection_notes_by_product_id: {
+          primary_2: selectorRace.selection_notes,
+        },
+      };
+    },
+    buildRecoPayloadFromBeautyMainlineHandoff: ({ handoff }) => {
+      observed.handoffSelectedIds =
+        handoff?.searchResult?.metadata?.final_selection?.selected_product_ids || null;
+      return {
+        payload: {
+          source: 'catalog_grounded_v1',
+          mainline_status: 'grounded_success',
+          recommendations: handoff.recommendations,
+          recommendation_meta: {},
+          metadata: {},
+        },
+        contract: {
+          version: 'test_contract',
+        },
+      };
+    },
+    classifyBeautyMainlineHandoffFallback: () => ({
+      reason: 'unreachable',
+    }),
+    buildBeautyMainlineHandoffFallbackEnvelope: () => ({
+      cards: [],
+    }),
+    looksLikeRecommendationRequest: () => true,
+    sendChatEnvelope: async () => null,
+  });
+
+  const result = await runtime.maybeHandleBeautyOwnedChatReco({
+    ctx: {
+      request_id: 'req_llm_selector_oily',
+      trace_id: 'trace_llm_selector_oily',
+      lang: 'EN',
+      trigger_source: 'chat',
+    },
+    logger: null,
+    message: 'im oily skin, what products should i use?',
+    recoEntrySourceDetail: 'typed_reco',
+    profile: {
+      skinType: 'oily',
+      sensitivity: 'low',
+      barrierStatus: 'stable',
+      goals: ['oil control'],
+    },
+  });
+
+  const payload = result?.envelope?.cards?.[0]?.payload;
+  assert.equal(result?.handled, true);
+  assert.equal(observed.selectorCalls, 1);
+  assert.deepEqual(observed.handoffSelectedIds, ['primary_2', 'primary_1']);
+  assert.deepEqual(
+    payload?.recommendations?.map((item) => item.product_id),
+    ['primary_2', 'primary_1'],
+  );
+  assert.equal(payload?.recommendation_meta?.llm_selector_used, true);
+  assert.equal(payload?.recommendation_meta?.selector_winner_source, 'llm_selector');
+});

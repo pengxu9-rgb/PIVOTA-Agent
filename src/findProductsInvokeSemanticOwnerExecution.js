@@ -81,6 +81,12 @@ function getSemanticOwnerProductStepSignals(product) {
   };
 }
 
+function isSemanticOwnerOutOfScopeFaceProduct(product) {
+  const text = buildSemanticOwnerProductAnchorText(product);
+  if (!/\b(body|hand|foot|hair|scalp|deodorant|shampoo|conditioner)\b/.test(text)) return false;
+  return !/\b(face|facial|cheek|forehead|chin|t-zone)\b/.test(text);
+}
+
 function isSemanticOwnerEligiblePrimaryExternalProduct(product, {
   targetStepFamily = '',
   semanticFamily = '',
@@ -88,6 +94,7 @@ function isSemanticOwnerEligiblePrimaryExternalProduct(product, {
   if (!isPlainObject(product)) return false;
   if (!isSemanticOwnerExternalSeedProduct(product)) return false;
   if (isSemanticOwnerBundleLikeProduct(product)) return false;
+  if (isSemanticOwnerOutOfScopeFaceProduct(product)) return false;
   const normalizedTargetStepFamily = String(targetStepFamily || '').trim().toLowerCase();
   const normalizedSemanticFamily = String(semanticFamily || '').trim().toLowerCase();
   const signals = getSemanticOwnerProductStepSignals(product);
@@ -106,6 +113,90 @@ function isSemanticOwnerEligiblePrimaryExternalProduct(product, {
     return signals.sunscreen;
   }
   return false;
+}
+
+function isSemanticOwnerEligibleSupportRoleProduct(product, {
+  targetStepFamily = '',
+  semanticFamily = '',
+} = {}) {
+  if (!isPlainObject(product)) return false;
+  if (isSemanticOwnerBundleLikeProduct(product)) return false;
+  if (isSemanticOwnerOutOfScopeFaceProduct(product)) return false;
+  const normalizedTargetStepFamily = String(targetStepFamily || '').trim().toLowerCase();
+  if (!normalizedTargetStepFamily) return true;
+  if (isSemanticOwnerExternalSeedProduct(product)) {
+    return isSemanticOwnerEligiblePrimaryExternalProduct(product, {
+      targetStepFamily: normalizedTargetStepFamily,
+      semanticFamily,
+    });
+  }
+  const signals = getSemanticOwnerProductStepSignals(product);
+  if (normalizedTargetStepFamily === 'treatment' || normalizedTargetStepFamily === 'serum') {
+    return signals.treatment && !signals.sunscreen;
+  }
+  if (normalizedTargetStepFamily === 'moisturizer') return signals.moisturizer && !signals.sunscreen;
+  if (normalizedTargetStepFamily === 'sunscreen') return signals.sunscreen;
+  return true;
+}
+
+function resolveSemanticOwnerFrameworkSupportQuery(query = '') {
+  const normalizedQuery = String(query || '').trim().toLowerCase();
+  if (!normalizedQuery) return null;
+  if (/\b(moisturi[sz]er|cream|gel cream|lotion|emulsion|water cream)\b/.test(normalizedQuery)) {
+    return {
+      query: String(query || '').trim(),
+      targetStepFamily: 'moisturizer',
+      roleId: 'lightweight_moisturizer',
+      queryStepStrength: 'supportive_family',
+    };
+  }
+  if (/\b(sunscreen|spf|broad spectrum|sun fluid|sun cream|sun lotion|uv)\b/.test(normalizedQuery)) {
+    return {
+      query: String(query || '').trim(),
+      targetStepFamily: 'sunscreen',
+      roleId: 'daily_sunscreen',
+      queryStepStrength: 'exact_step',
+    };
+  }
+  return null;
+}
+
+function normalizeSemanticOwnerContractParam(value) {
+  if (isPlainObject(value)) return value;
+  if (typeof value !== 'string') return {};
+  const trimmed = value.trim();
+  if (!trimmed) return {};
+  try {
+    const parsed = JSON.parse(trimmed);
+    return isPlainObject(parsed) ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function buildSemanticOwnerSupportSemanticContractParam(baseValue, {
+  supportContext = null,
+  semanticFamily = '',
+} = {}) {
+  const context = isPlainObject(supportContext) ? supportContext : {};
+  const targetStepFamily = String(context.targetStepFamily || '').trim();
+  const roleId = String(context.roleId || '').trim();
+  if (!targetStepFamily || !roleId) return baseValue;
+  const base = normalizeSemanticOwnerContractParam(baseValue);
+  return JSON.stringify({
+    ...base,
+    planner_mode: 'step_aware',
+    request_class: 'support_role',
+    target_step_family: targetStepFamily,
+    primary_role_id: roleId,
+    support_role_ids: [],
+    allowed_step_families: [targetStepFamily],
+    blocked_step_families: [],
+    ingredient_hypotheses: [],
+    product_type_hypotheses: [targetStepFamily],
+    query_terms: [context.query].filter(Boolean),
+    ...(semanticFamily ? { semantic_family: semanticFamily } : {}),
+  });
 }
 
 function mergeSemanticOwnerProductPools(primaryProducts = [], externalProducts = [], {
@@ -221,6 +312,27 @@ function filterSemanticOwnerCoverageSupplementQueries(queries = [], {
     }
     return true;
   });
+}
+
+function filterSemanticOwnerSupportRoleProducts(products = [], {
+  targetStepFamily = '',
+  semanticFamily = '',
+  roleId = '',
+} = {}) {
+  const normalizedRoleId = String(roleId || '').trim();
+  const normalizedTargetStepFamily = String(targetStepFamily || '').trim();
+  return (Array.isArray(products) ? products : [])
+    .filter((product) =>
+      isSemanticOwnerEligibleSupportRoleProduct(product, {
+        targetStepFamily: normalizedTargetStepFamily,
+        semanticFamily,
+      }),
+    )
+    .map((product) => ({
+      ...product,
+      ...(normalizedRoleId ? { retrieval_role_id: normalizedRoleId } : {}),
+      ...(normalizedTargetStepFamily ? { retrieval_step: normalizedTargetStepFamily } : {}),
+    }));
 }
 
 function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
@@ -785,6 +897,216 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
     if (
       operation === 'find_products_multi' &&
       semanticOwnerControlled &&
+      semanticOwnerAdoptedByValidHit &&
+      semanticOwnerQueryPack.length > 1
+    ) {
+      const supportQueryContexts = [];
+      const supportSeen = new Set();
+      for (const supportQuery of semanticOwnerQueryPack.slice(1)) {
+        const context = resolveSemanticOwnerFrameworkSupportQuery(supportQuery);
+        if (!context) continue;
+        const key = `${context.targetStepFamily}::${context.query.toLowerCase()}`;
+        if (supportSeen.has(key)) continue;
+        supportSeen.add(key);
+        supportQueryContexts.push(context);
+      }
+      if (supportQueryContexts.length > 0) {
+        const supportLimit = Math.min(
+          Math.max(Number(queryParams?.limit || queryParams?.page_size || 20) || 20, 1),
+          SEARCH_LIMIT_MAX,
+        );
+        const supportPage = Math.max(
+          1,
+          Number(queryParams?.page || effectivePayload?.search?.page || 1) || 1,
+        );
+        const supportProductsAll = [];
+        const supportQueriesApplied = [];
+        const supportQueriesAttempted = [];
+        let supportRowsFetched = 0;
+        let supportRowsBuilt = 0;
+        for (const supportContext of supportQueryContexts) {
+          supportQueriesAttempted.push(supportContext.query);
+          try {
+            const supportQueryParams = {
+              ...(queryParams && typeof queryParams === 'object' && !Array.isArray(queryParams)
+                ? queryParams
+                : {}),
+              query: supportContext.query,
+              query_index: semanticOwnerQueryTotal + supportQueriesAttempted.length - 1,
+              query_total: semanticOwnerQueryTotal + supportQueryContexts.length,
+              target_step_family: supportContext.targetStepFamily,
+              query_step_strength: supportContext.queryStepStrength,
+              allow_external_seed: true,
+              allow_stale_cache: false,
+              external_seed_strategy: 'unified_relevance',
+              semantic_contract: buildSemanticOwnerSupportSemanticContractParam(
+                queryParams?.semantic_contract || queryParams?.semanticContract,
+                {
+                  supportContext,
+                  semanticFamily: semanticOwnerSemanticFamily,
+                },
+              ),
+              ...(semanticOwnerSemanticFamily
+                ? { semantic_family: semanticOwnerSemanticFamily }
+                : {}),
+            };
+            delete supportQueryParams.semanticContract;
+            const supportRequestBody = buildVariantRequestBody(
+              requestBody,
+              supportContext.query,
+              supportQueryParams.query_index,
+            );
+            const supportQueryString =
+              strictCommerceFindProductsMulti &&
+              operation === 'find_products_multi' &&
+              !strictBeautyDirectSearch
+                ? ''
+                : buildQueryString(supportQueryParams);
+            const supportAxiosConfig = {
+              ...axiosConfig,
+              url: `${url}${supportQueryString}`,
+              ...((strictBeautyDirectSearch ? 'GET' : routeMethod) !== 'GET' &&
+              Object.keys(supportRequestBody || {}).length > 0
+                ? { data: supportRequestBody }
+                : {}),
+            };
+            const supportResponse = await callTrackedUpstream(operation, supportAxiosConfig);
+            const supportUpstreamData = normalizeUpstreamData({
+              responseBody: supportResponse.data,
+              queryParamsOverride: supportQueryParams,
+              requestBodyOverride: supportRequestBody,
+            });
+            const supportRawProducts = Array.isArray(supportUpstreamData?.products)
+              ? supportUpstreamData.products
+              : [];
+            supportRowsFetched += supportRawProducts.length;
+            const supportProducts = filterSemanticOwnerSupportRoleProducts(
+              supportRawProducts,
+              {
+                targetStepFamily: supportContext.targetStepFamily,
+                semanticFamily: semanticOwnerSemanticFamily,
+                roleId: supportContext.roleId,
+              },
+            );
+            supportRowsBuilt += supportProducts.length;
+            if (supportProducts.length <= 0) continue;
+            supportQueriesApplied.push(supportContext.query);
+            supportProductsAll.push(...supportProducts);
+          } catch (semanticOwnerSupportErr) {
+            logger?.warn(
+              {
+                err: semanticOwnerSupportErr?.message || String(semanticOwnerSupportErr),
+                query: supportContext.query,
+              },
+              'semantic-owner framework support supplement failed after primary valid hit',
+            );
+          }
+        }
+        if (supportProductsAll.length > 0) {
+          const primaryProducts = Array.isArray(upstreamData?.products)
+            ? upstreamData.products
+            : [];
+          const mergedProducts = mergeSemanticOwnerProductPools(
+            primaryProducts,
+            supportProductsAll,
+            {
+              preferExternalFirst: false,
+              limit: supportLimit,
+            },
+          );
+          if (mergedProducts.length > primaryProducts.length) {
+            const existingMetadata =
+              upstreamData?.metadata &&
+              typeof upstreamData.metadata === 'object' &&
+              !Array.isArray(upstreamData.metadata)
+                ? upstreamData.metadata
+                : {};
+            const supportExternalCount = supportProductsAll.filter((product) =>
+              isSemanticOwnerExternalSeedProduct(product),
+            ).length;
+            const existingSourceBreakdown =
+              existingMetadata.source_breakdown &&
+              typeof existingMetadata.source_breakdown === 'object' &&
+              !Array.isArray(existingMetadata.source_breakdown)
+                ? existingMetadata.source_breakdown
+                : {};
+            const primaryExternalCount = primaryProducts.filter((product) =>
+              isSemanticOwnerExternalSeedProduct(product),
+            ).length;
+            const existingInternalCount = Number.isFinite(Number(existingSourceBreakdown.internal_count))
+              ? Math.max(0, Number(existingSourceBreakdown.internal_count) || 0)
+              : Math.max(0, primaryProducts.length - primaryExternalCount);
+            const existingExternalCount = Number.isFinite(Number(existingSourceBreakdown.external_seed_count))
+              ? Math.max(0, Number(existingSourceBreakdown.external_seed_count) || 0)
+              : primaryExternalCount;
+            const supportBody = normalizeAgentProductsListResponse(
+              {
+                ...(upstreamData && typeof upstreamData === 'object' && !Array.isArray(upstreamData)
+                  ? upstreamData
+                  : {}),
+                status: 'success',
+                success: true,
+                products: mergedProducts,
+                total: Math.max(
+                  Number(upstreamData?.total || 0) || 0,
+                  mergedProducts.length,
+                ),
+                page: supportPage,
+                page_size: mergedProducts.length,
+                reply: null,
+                metadata: {
+                  ...existingMetadata,
+                  query_source: 'agent_products_search_framework_support_supplemented',
+                  semantic_owner_framework_support_supplement_applied: true,
+                  semantic_owner_framework_support_supplement_queries_attempted:
+                    supportQueriesAttempted,
+                  semantic_owner_framework_support_supplement_queries_applied:
+                    supportQueriesApplied,
+                  semantic_owner_framework_support_supplement_filtered_count:
+                    Math.max(0, supportRowsFetched - supportRowsBuilt),
+                  source_breakdown: {
+                    ...existingSourceBreakdown,
+                    internal_count: existingInternalCount + Math.max(0, supportProductsAll.length - supportExternalCount),
+                    external_seed_count:
+                      existingExternalCount + supportExternalCount,
+                    stale_cache_used: false,
+                    strategy_applied: 'semantic_owner_framework_support_supplement',
+                  },
+                },
+              },
+              {
+                limit: supportLimit,
+                offset: 0,
+              },
+            );
+            response = { status: 200, data: supportBody };
+            upstreamData = normalizeUpstreamData({
+              responseBody: supportBody,
+              queryParamsOverride: {
+                ...queryParams,
+                allow_external_seed: true,
+                external_seed_strategy: 'unified_relevance',
+              },
+              requestBodyOverride: requestBody,
+            });
+            const adoptedAttempt = [...semanticOwnerQueryAttempts]
+              .reverse()
+              .find((attempt) => attempt && attempt.adopted === true);
+            if (adoptedAttempt) {
+              adoptedAttempt.framework_support_supplemented = true;
+              adoptedAttempt.framework_support_supplement_count = supportProductsAll.length;
+              adoptedAttempt.framework_support_supplement_queries = supportQueriesApplied;
+              adoptedAttempt.framework_support_supplement_filtered_count =
+                Math.max(0, supportRowsFetched - supportRowsBuilt);
+            }
+          }
+        }
+      }
+    }
+
+    if (
+      operation === 'find_products_multi' &&
+      semanticOwnerControlled &&
       !semanticOwnerAdoptedByValidHit &&
       (
         semanticOwnerIgnoredObservationCandidate ||
@@ -1072,8 +1394,12 @@ module.exports = {
   __internal: {
     isSemanticOwnerBundleLikeProduct,
     isSemanticOwnerEligiblePrimaryExternalProduct,
+    isSemanticOwnerEligibleSupportRoleProduct,
     filterSemanticOwnerCoverageExternalProducts,
     filterSemanticOwnerCoverageSupplementQueries,
+    filterSemanticOwnerSupportRoleProducts,
+    buildSemanticOwnerSupportSemanticContractParam,
+    resolveSemanticOwnerFrameworkSupportQuery,
     shouldPreferSemanticOwnerExternalCoverage,
   },
 };

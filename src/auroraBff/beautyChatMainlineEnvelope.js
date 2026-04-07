@@ -32,6 +32,7 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
     applyRecoAssistantSelectionSignature,
     extractRecoFinalSelectionContract,
     orderRecoRecommendationsBySelection,
+    buildConcernFrameworkSummary,
   } = deps;
 
   function classifyBeautyMainlineHandoffFallback({ handoff = null, err = null } = {}) {
@@ -141,6 +142,7 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
     basePayload = null,
     selectionOwner = null,
     entryType = 'chat',
+    language = 'EN',
   } = {}) {
     if (!isPlainObject(handoff?.searchResult)) return null;
     const searchResult = handoff.searchResult;
@@ -249,6 +251,53 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
       selectionOwner: effectiveSelectionOwner,
     });
     nextPayload = applyRecoContentSpineToPayload(nextPayload, recoContext);
+    if (Array.isArray(targetContext?.framework_roles) && targetContext.framework_roles.length > 0) {
+      const frameworkSummary =
+        typeof buildConcernFrameworkSummary === 'function'
+          ? buildConcernFrameworkSummary({
+              targetContext,
+              recommendations: nextPayload.recommendations,
+              language,
+            })
+          : null;
+      nextPayload = {
+        ...nextPayload,
+        ...(isPlainObject(frameworkSummary) ? { framework_summary: frameworkSummary } : {}),
+        roles: targetContext.framework_roles.map((role) => ({
+          role_id: pickFirstTrimmed(role?.role_id) || null,
+          label: pickFirstTrimmed(role?.label) || null,
+          why_this_role: pickFirstTrimmed(role?.why_this_role) || null,
+          rank: Number.isFinite(Number(role?.rank)) ? Number(role.rank) : null,
+          preferred_step: pickFirstTrimmed(role?.preferred_step) || null,
+        })),
+        primary_role_id: pickFirstTrimmed(targetContext?.primary_role_id) || null,
+        primary_recommendation_id:
+          pickFirstTrimmed(
+            nextPayload.recommendations.find((item) =>
+              pickFirstTrimmed(item?.matched_role_id, item?.matchedRoleId) ===
+              pickFirstTrimmed(targetContext?.primary_role_id)
+            )?.product_id,
+            nextPayload.recommendations.find((item) =>
+              pickFirstTrimmed(item?.matched_role_id, item?.matchedRoleId) ===
+              pickFirstTrimmed(targetContext?.primary_role_id)
+            )?.productId,
+          ) || null,
+        primary_role_matched: nextPayload.recommendations.some((item) =>
+          pickFirstTrimmed(item?.matched_role_id, item?.matchedRoleId) ===
+          pickFirstTrimmed(targetContext?.primary_role_id)
+        ),
+        semantic_plan: isPlainObject(targetContext?.semantic_plan) ? targetContext.semantic_plan : null,
+        core_roles: Array.isArray(targetContext?.semantic_plan?.core_roles)
+          ? targetContext.semantic_plan.core_roles
+          : [],
+        support_roles: Array.isArray(targetContext?.semantic_plan?.support_roles)
+          ? targetContext.semantic_plan.support_roles
+          : [],
+        ingredient_hypotheses: Array.isArray(targetContext?.semantic_plan?.ingredient_hypotheses)
+          ? targetContext.semantic_plan.ingredient_hypotheses
+          : [],
+      };
+    }
 
     const recoContract = buildRecoMainlineContract({
       recommendations: nextPayload.recommendations,

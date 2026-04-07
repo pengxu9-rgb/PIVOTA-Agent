@@ -111,7 +111,7 @@ test('beauty canonical ownership recomputes final selection from surfaced recomm
   }
 });
 
-test('canonical search result mirror keeps payload-bound assistant text ahead of framework summary text', () => {
+test('canonical search result mirror can use framework summary assistant text after selection is locked', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     const payload = {
@@ -191,8 +191,10 @@ test('canonical search result mirror keeps payload-bound assistant text ahead of
     assert.deepEqual(mirrored.metadata?.search_stage_ledger?.final_selection?.selected_product_ids, ['generic_plain_text_1']);
     assert.equal(mirrored.recommendation_meta?.assistant_text_selection_signature, undefined);
     assert.match(String(assistantText || ''), /Products actually selected this time: GoalSkin Oil Control Serum\./i);
-    assert.equal(routeAwareText, assistantText);
-    assert.doesNotMatch(String(routeAwareText || ''), /Top pick for that first role|Priority order:|care framework/i);
+    assert.notEqual(routeAwareText, assistantText);
+    assert.match(String(routeAwareText || ''), /care framework/i);
+    assert.match(String(routeAwareText || ''), /Priority order: Oil-control treatment\./i);
+    assert.match(String(routeAwareText || ''), /Top pick for that first role: GoalSkin Oil Control Serum\./i);
   } finally {
     delete require.cache[moduleId];
   }

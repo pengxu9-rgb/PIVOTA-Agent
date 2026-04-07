@@ -1317,6 +1317,7 @@ const {
   extractRecoFinalSelectionContract,
   orderRecoRecommendationsBySelection,
   normalizeRecoSourceDetail,
+  buildConcernFrameworkSummary,
 });
 const {
   isBeautyOwnedChatRecoRequest,
@@ -1331,6 +1332,7 @@ const {
   appendLatestRecoContextToSessionPatch,
   extractRecoFinalSelectionContract,
   buildRouteAwareAssistantText,
+  maybeRewriteRecoAssistantTextWithLlm,
   makeAssistantMessage,
   buildEnvelope,
   makeEvent,
@@ -1345,6 +1347,8 @@ const {
   looksLikeRecommendationRequest,
   runConcernSemanticPlanner,
   buildConcernTargetContextFromSemanticPlan,
+  runConcernSelectorRace,
+  applyConcernSelectorRaceOrdering,
 });
 const {
   shouldEnterLegacyProductRecommendations,
@@ -47148,6 +47152,50 @@ function assistantTextMatchesRecoSelectionContract(text, selectionContract) {
 function pickRecoMetaTargets(payload) {
   const meta = isPlainObject(payload && payload.recommendation_meta) ? payload.recommendation_meta : {};
   const rankedTargets = normalizeRecoContextRankedTargets(meta.ranked_targets);
+  const frameworkSummary = isPlainObject(payload?.framework_summary) ? payload.framework_summary : null;
+  const frameworkRoles = Array.isArray(payload?.roles)
+    ? payload.roles.filter((item) => isPlainObject(item))
+    : [];
+  const fallbackFrameworkPrimaryTarget =
+    frameworkSummary && !rankedTargets.length
+      ? {
+          target_id: pickFirstTrimmed(
+            frameworkSummary.primary_role_id,
+            payload?.primary_role_id,
+            frameworkRoles[0]?.role_id,
+          ),
+          target_role: 'primary',
+          ingredient_query: pickFirstTrimmed(
+            frameworkSummary.primary_role_label,
+            frameworkRoles.find((role) =>
+              pickFirstTrimmed(role?.role_id) ===
+              pickFirstTrimmed(frameworkSummary.primary_role_id, payload?.primary_role_id)
+            )?.label,
+          ),
+          resolved_target_step: pickFirstTrimmed(
+            frameworkRoles.find((role) =>
+              pickFirstTrimmed(role?.role_id) ===
+              pickFirstTrimmed(frameworkSummary.primary_role_id, payload?.primary_role_id)
+            )?.preferred_step,
+          ),
+        }
+      : null;
+  const fallbackFrameworkSecondaryTargets =
+    frameworkSummary && !rankedTargets.length
+      ? frameworkRoles
+          .filter((role) =>
+            pickFirstTrimmed(role?.role_id) &&
+            pickFirstTrimmed(role?.role_id) !==
+              pickFirstTrimmed(frameworkSummary.primary_role_id, payload?.primary_role_id)
+          )
+          .slice(0, 2)
+          .map((role) => ({
+            target_id: pickFirstTrimmed(role?.role_id),
+            target_role: 'secondary',
+            ingredient_query: pickFirstTrimmed(role?.label),
+            resolved_target_step: pickFirstTrimmed(role?.preferred_step),
+          }))
+      : [];
   const primaryTargetId = pickFirstTrimmed(
     meta.primary_target_id,
     rankedTargets.find((item) => item.target_role === 'primary')?.target_id,
@@ -47164,8 +47212,13 @@ function pickRecoMetaTargets(payload) {
     || rankedTargets.find((item) => item.target_id === primaryTargetId)
     || displayedTargets[0]
     || rankedTargets[0]
+    || fallbackFrameworkPrimaryTarget
     || null;
-  const secondaryTargets = displayedTargets.filter((item) => item && item.target_id !== (primaryTarget && primaryTarget.target_id)).slice(0, 2);
+  const secondaryTargets = (
+    displayedTargets.length
+      ? displayedTargets.filter((item) => item && item.target_id !== (primaryTarget && primaryTarget.target_id)).slice(0, 2)
+      : fallbackFrameworkSecondaryTargets
+  );
   return {
     meta,
     rankedTargets,
@@ -47274,6 +47327,13 @@ function buildRecoAssistantRewritePrompt({ payload, language, profile, baseText 
   const lang = language === 'CN' ? 'CN' : 'EN';
   const names = pickRecoNames(payload, 3);
   const { primaryTarget, secondaryTargets, selectionShiftReason } = pickRecoMetaTargets(payload);
+  const frameworkSummary = isPlainObject(payload?.framework_summary) ? payload.framework_summary : null;
+  const frameworkRoles = Array.isArray(payload?.roles)
+    ? payload.roles.filter((role) => isPlainObject(role)).slice(0, 4)
+    : [];
+  const recommendations = Array.isArray(payload?.recommendations)
+    ? payload.recommendations.filter((item) => isPlainObject(item)).slice(0, 4)
+    : [];
   const primaryTargetLabel = pickFirstTrimmed(
     primaryTarget && primaryTarget.ingredient_query,
     primaryTarget && primaryTarget.ingredient_id,
@@ -47298,6 +47358,27 @@ function buildRecoAssistantRewritePrompt({ payload, language, profile, baseText 
       resolved_target_step: pickFirstTrimmed(target && target.resolved_target_step),
     })),
     selected_products: names,
+    selected_product_details: recommendations.map((item) => ({
+      name: pickFirstTrimmed(item.display_name, item.displayName, item.name, item.title, item.sku?.display_name, item.sku?.name),
+      brand: pickFirstTrimmed(item.brand, item.sku?.brand),
+      category: pickFirstTrimmed(item.category, item.step, item.sku?.category, item.sku?.product_type),
+      matched_role_label: pickFirstTrimmed(item.matched_role_label, item.matchedRoleLabel),
+      matched_role_id: pickFirstTrimmed(item.matched_role_id, item.matchedRoleId),
+    })),
+    framework_summary: frameworkSummary
+      ? {
+          headline: pickFirstTrimmed(frameworkSummary.headline),
+          primary_role_label: pickFirstTrimmed(frameworkSummary.primary_role_label),
+          concern_text: pickFirstTrimmed(frameworkSummary.concern_text),
+          primary_role_matched: frameworkSummary.primary_role_matched === true,
+        }
+      : null,
+    framework_roles: frameworkRoles.map((role) => ({
+      role_id: pickFirstTrimmed(role.role_id),
+      label: pickFirstTrimmed(role.label),
+      why_this_role: pickFirstTrimmed(role.why_this_role),
+      preferred_step: pickFirstTrimmed(role.preferred_step),
+    })),
     selection_shift_reason: selectionShiftReason || null,
     confidence_level: String(
       pickFirstTrimmed(
@@ -47324,10 +47405,16 @@ function buildRecoAssistantRewritePrompt({ payload, language, profile, baseText 
   ].join('\n');
 }
 
-async function maybeRewriteRecoAssistantTextWithLlm({ payload, language, profile, baseText } = {}) {
+async function maybeRewriteRecoAssistantTextWithLlm({
+  payload,
+  language,
+  profile,
+  baseText,
+  allowLockedSelectionRewrite = false,
+} = {}) {
   const fallbackText = String(baseText || '').trim();
   if (!fallbackText) return { text: '', llm_used: false, reason: 'empty_base_text' };
-  if (extractRecoFinalSelectionContract(payload)?.selection_signature) {
+  if (extractRecoFinalSelectionContract(payload)?.selection_signature && allowLockedSelectionRewrite !== true) {
     return { text: fallbackText, llm_used: false, reason: 'selection_contract_locked' };
   }
   if (!AURORA_RECO_ASSISTANT_REWRITE_ENABLED || USE_AURORA_BFF_MOCK) {
@@ -48453,16 +48540,17 @@ function buildRouteAwareAssistantText({ route, payload, language, profile }) {
       language: lang,
       profile,
     });
+    const frameworkSummary = isPlainObject(p.framework_summary) ? p.framework_summary : null;
+    const frameworkRoles = Array.isArray(p.roles) ? p.roles.filter((item) => isPlainObject(item)) : [];
     const recoSelectionContract = extractRecoFinalSelectionContract(p);
     const hasCanonicalRecoSelection = Boolean(
       recoSelectionContract?.selection_signature &&
       Array.isArray(recoSelectionContract.selected_product_ids) &&
       recoSelectionContract.selected_product_ids.length > 0
     );
-    if (hasCanonicalRecoSelection && payloadBound) return payloadBound;
-
-    const frameworkSummary = isPlainObject(p.framework_summary) ? p.framework_summary : null;
-    const frameworkRoles = Array.isArray(p.roles) ? p.roles.filter((item) => isPlainObject(item)) : [];
+    if (hasCanonicalRecoSelection && payloadBound && !(frameworkSummary && frameworkRoles.length)) {
+      return payloadBound;
+    }
     if (frameworkSummary && frameworkRoles.length) {
       const recommendationMeta = isPlainObject(p.recommendation_meta) ? p.recommendation_meta : {};
       const recommendations = Array.isArray(p.recommendations) ? p.recommendations : [];

@@ -5,8 +5,12 @@ const {
   __internal: {
     isSemanticOwnerBundleLikeProduct,
     isSemanticOwnerEligiblePrimaryExternalProduct,
+    isSemanticOwnerEligibleSupportRoleProduct,
     filterSemanticOwnerCoverageExternalProducts,
     filterSemanticOwnerCoverageSupplementQueries,
+    filterSemanticOwnerSupportRoleProducts,
+    buildSemanticOwnerSupportSemanticContractParam,
+    resolveSemanticOwnerFrameworkSupportQuery,
     shouldPreferSemanticOwnerExternalCoverage,
   },
 } = require('../src/findProductsInvokeSemanticOwnerExecution');
@@ -202,5 +206,116 @@ test('semantic-owner treatment coverage does not spend budget on support-step qu
       { targetStepFamily: 'treatment' },
     ),
     ['salicylic acid treatment', 'oil control serum'],
+  );
+});
+
+test('semantic-owner framework support query resolver maps support roles to per-step contracts', () => {
+  assert.deepEqual(
+    resolveSemanticOwnerFrameworkSupportQuery('lightweight moisturizer oily skin'),
+    {
+      query: 'lightweight moisturizer oily skin',
+      targetStepFamily: 'moisturizer',
+      roleId: 'lightweight_moisturizer',
+      queryStepStrength: 'supportive_family',
+    },
+  );
+  assert.deepEqual(
+    resolveSemanticOwnerFrameworkSupportQuery('oil control sunscreen'),
+    {
+      query: 'oil control sunscreen',
+      targetStepFamily: 'sunscreen',
+      roleId: 'daily_sunscreen',
+      queryStepStrength: 'exact_step',
+    },
+  );
+  assert.equal(resolveSemanticOwnerFrameworkSupportQuery('niacinamide serum'), null);
+});
+
+test('semantic-owner framework support query rewrites inherited semantic contract to support step', () => {
+  const contract = JSON.parse(
+    buildSemanticOwnerSupportSemanticContractParam(
+      JSON.stringify({
+        version: 'beauty_semantic_contract_v1',
+        planner_mode: 'framework_generic',
+        target_step_family: 'treatment',
+        primary_role_id: 'oil_control_treatment',
+        support_role_ids: ['lightweight_moisturizer'],
+        allowed_step_families: ['treatment', 'serum', 'moisturizer'],
+      }),
+      {
+        supportContext: resolveSemanticOwnerFrameworkSupportQuery('lightweight moisturizer oily skin'),
+        semanticFamily: 'oil_control',
+      },
+    ),
+  );
+
+  assert.equal(contract.planner_mode, 'step_aware');
+  assert.equal(contract.request_class, 'support_role');
+  assert.equal(contract.target_step_family, 'moisturizer');
+  assert.equal(contract.primary_role_id, 'lightweight_moisturizer');
+  assert.deepEqual(contract.support_role_ids, []);
+  assert.deepEqual(contract.allowed_step_families, ['moisturizer']);
+  assert.deepEqual(contract.ingredient_hypotheses, []);
+  assert.deepEqual(contract.product_type_hypotheses, ['moisturizer']);
+  assert.deepEqual(contract.query_terms, ['lightweight moisturizer oily skin']);
+  assert.equal(contract.semantic_family, 'oil_control');
+});
+
+test('semantic-owner support role filter keeps only step-aligned singleton face products', () => {
+  const filtered = filterSemanticOwnerSupportRoleProducts(
+    [
+      {
+        merchant_id: 'external_seed',
+        product_id: 'ext_trio',
+        display_name: 'On-the-Glow SHIELD SPF 50 Sunscreen Trio (Set of 3)',
+        category: 'external',
+      },
+      {
+        merchant_id: 'external_seed',
+        product_id: 'ext_oil',
+        display_name: '+C Vit Priming Oil',
+        category: 'external',
+      },
+      {
+        merchant_id: 'external_seed',
+        product_id: 'ext_body',
+        display_name: 'Jumbo Butta Drop Whipped Oil Body Cream',
+        category: 'Cream',
+      },
+      {
+        merchant_id: 'external_seed',
+        product_id: 'ext_sunscreen',
+        display_name: 'Invisible Face Sunscreen SPF 50',
+        category: 'Sunscreen',
+      },
+    ],
+    { targetStepFamily: 'sunscreen', roleId: 'daily_sunscreen' },
+  );
+
+  assert.deepEqual(
+    filtered.map((product) => ({
+      product_id: product.product_id,
+      retrieval_role_id: product.retrieval_role_id,
+      retrieval_step: product.retrieval_step,
+    })),
+    [
+      {
+        product_id: 'ext_sunscreen',
+        retrieval_role_id: 'daily_sunscreen',
+        retrieval_step: 'sunscreen',
+      },
+    ],
+  );
+  assert.equal(
+    isSemanticOwnerEligibleSupportRoleProduct(
+      {
+        merchant_id: 'external_seed',
+        product_id: 'ext_body_moisturizer',
+        display_name: 'Body Cream',
+        category: 'Cream',
+      },
+      { targetStepFamily: 'moisturizer' },
+    ),
+    false,
   );
 });

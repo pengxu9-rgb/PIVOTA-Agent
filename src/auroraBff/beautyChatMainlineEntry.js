@@ -45,6 +45,99 @@ function buildBeautyChatPlannerMeta(trace = null) {
   };
 }
 
+function pickBeautyRecoProductId(row) {
+  return pickFirstTrimmed(row?.product_id, row?.productId, row?.sku?.product_id, row?.sku?.productId);
+}
+
+function pickBeautyRecoProductTitle(row) {
+  return pickFirstTrimmed(
+    row?.display_name,
+    row?.displayName,
+    row?.name,
+    row?.title,
+    row?.sku?.display_name,
+    row?.sku?.displayName,
+    row?.sku?.name,
+    row?.sku?.title,
+  );
+}
+
+function buildBeautyChatSelectorSelectionContract({
+  existingSelection = null,
+  orderedRecommendations = [],
+  selectionOwner = '',
+} = {}) {
+  const selectedProductIds = [];
+  const selectedTitles = [];
+  const seenIds = new Set();
+  for (const row of Array.isArray(orderedRecommendations) ? orderedRecommendations : []) {
+    const productId = pickBeautyRecoProductId(row);
+    if (!productId || seenIds.has(productId)) continue;
+    seenIds.add(productId);
+    selectedProductIds.push(productId);
+    const title = pickBeautyRecoProductTitle(row);
+    if (title) selectedTitles.push(title);
+  }
+  if (!selectedProductIds.length) return null;
+  const existing =
+    existingSelection && typeof existingSelection === 'object' && !Array.isArray(existingSelection)
+      ? existingSelection
+      : {};
+  return {
+    ...existing,
+    selection_owner: pickFirstTrimmed(selectionOwner, existing.selection_owner) || null,
+    selected_product_ids: selectedProductIds,
+    selected_titles: selectedTitles,
+    selection_signature: null,
+    mainline_status: pickFirstTrimmed(existing.mainline_status, 'grounded_success') || 'grounded_success',
+  };
+}
+
+function patchBeautyChatHandoffSelection({
+  handoff = null,
+  orderedRecommendations = [],
+  selectionContract = null,
+  selectionOwner = '',
+} = {}) {
+  if (!handoff || typeof handoff !== 'object' || Array.isArray(handoff)) return handoff;
+  const nextSelection = buildBeautyChatSelectorSelectionContract({
+    existingSelection: selectionContract,
+    orderedRecommendations,
+    selectionOwner,
+  });
+  if (!nextSelection) return handoff;
+  const searchResult =
+    handoff.searchResult && typeof handoff.searchResult === 'object' && !Array.isArray(handoff.searchResult)
+      ? handoff.searchResult
+      : {};
+  const metadata =
+    searchResult.metadata && typeof searchResult.metadata === 'object' && !Array.isArray(searchResult.metadata)
+      ? searchResult.metadata
+      : {};
+  const searchStageLedger =
+    metadata.search_stage_ledger &&
+    typeof metadata.search_stage_ledger === 'object' &&
+    !Array.isArray(metadata.search_stage_ledger)
+      ? metadata.search_stage_ledger
+      : {};
+  return {
+    ...handoff,
+    recommendations: orderedRecommendations,
+    searchResult: {
+      ...searchResult,
+      final_selection: nextSelection,
+      metadata: {
+        ...metadata,
+        final_selection: nextSelection,
+        search_stage_ledger: {
+          ...searchStageLedger,
+          final_selection: nextSelection,
+        },
+      },
+    },
+  };
+}
+
 function classifyBeautyChatPlannerBlock(trace = null, semanticPlan = null) {
   const plannerTrace =
     trace && typeof trace === 'object' && !Array.isArray(trace)
@@ -74,6 +167,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
     appendLatestRecoContextToSessionPatch,
     extractRecoFinalSelectionContract,
     buildRouteAwareAssistantText,
+    maybeRewriteRecoAssistantTextWithLlm,
     makeAssistantMessage,
     buildEnvelope,
     makeEvent,
@@ -88,6 +182,8 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
     looksLikeRecommendationRequest,
     runConcernSemanticPlanner,
     buildConcernTargetContextFromSemanticPlan,
+    runConcernSelectorRace,
+    applyConcernSelectorRaceOrdering,
     sendChatEnvelope,
   } = deps;
 
@@ -281,6 +377,52 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
           hardPathSelectionContract?.selection_owner,
           BEAUTY_DISCOVERY_MAINLINE_OWNER,
         ) || BEAUTY_DISCOVERY_MAINLINE_OWNER;
+      let effectiveHardPathHandoff = hardPathHandoff;
+      let hardPathSelectorTrace = null;
+      let hardPathSelectorApplied = null;
+      const hardPathSelectorSemanticPlan =
+        effectiveHandoffTargetContext?.semantic_plan &&
+        typeof effectiveHandoffTargetContext.semantic_plan === 'object' &&
+        !Array.isArray(effectiveHandoffTargetContext.semantic_plan)
+          ? effectiveHandoffTargetContext.semantic_plan
+          : hardPathPlannerSemanticPlan;
+      if (
+        shouldUseBeautyChatMainlinePlanner(effectiveHandoffTargetContext) &&
+        typeof runConcernSelectorRace === 'function' &&
+        typeof applyConcernSelectorRaceOrdering === 'function' &&
+        hardPathSelectorSemanticPlan &&
+        typeof hardPathSelectorSemanticPlan === 'object' &&
+        !Array.isArray(hardPathSelectorSemanticPlan) &&
+        hardPathRecommendations.length > 1
+      ) {
+        const selectorOut = await runConcernSelectorRace({
+          ctx,
+          logger,
+          requestText: pickFirstTrimmed(recoRequestMessage, message),
+          semanticPlan: hardPathSelectorSemanticPlan,
+          recommendations: hardPathRecommendations,
+        });
+        hardPathSelectorTrace = {
+          ...(selectorOut?.trace && typeof selectorOut.trace === 'object' ? selectorOut.trace : {}),
+          result: selectorOut?.result || null,
+        };
+        hardPathSelectorApplied = applyConcernSelectorRaceOrdering(
+          hardPathRecommendations,
+          selectorOut?.result,
+        );
+        if (
+          hardPathSelectorApplied?.winner_source === 'llm_selector' &&
+          Array.isArray(hardPathSelectorApplied.recommendations) &&
+          hardPathSelectorApplied.recommendations.length > 0
+        ) {
+          effectiveHardPathHandoff = patchBeautyChatHandoffSelection({
+            handoff: hardPathHandoff,
+            orderedRecommendations: hardPathSelectorApplied.recommendations,
+            selectionContract: hardPathSelectionContract,
+            selectionOwner: hardPathSelectionOwner,
+          });
+        }
+      }
       const hardPathRecoContext = mergeIngredientRecoContextValue(
         latestRecoContextFromSession,
         {
@@ -304,7 +446,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
         },
       );
       const hardPathPayloadBundle = buildRecoPayloadFromBeautyMainlineHandoff({
-        handoff: hardPathHandoff,
+        handoff: effectiveHardPathHandoff,
         profile,
         targetContext: effectiveHandoffTargetContext,
         recoContext: hardPathRecoContext,
@@ -328,8 +470,30 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
         },
         selectionOwner: hardPathSelectionOwner,
         entryType: 'chat',
+        language: ctx?.lang || 'EN',
       });
       if (isPlainObject(hardPathPayloadBundle?.payload) && isPlainObject(hardPathPayloadBundle?.contract)) {
+        if (isPlainObject(hardPathPayloadBundle.payload?.recommendation_meta)) {
+          hardPathPayloadBundle.payload.recommendation_meta.selector_race_applied =
+            Boolean(hardPathSelectorTrace);
+          hardPathPayloadBundle.payload.recommendation_meta.selector_race_trace =
+            hardPathSelectorTrace;
+          hardPathPayloadBundle.payload.recommendation_meta.llm_selector_used =
+            hardPathSelectorTrace?.llm_selector_used === true;
+          hardPathPayloadBundle.payload.recommendation_meta.selector_winner_source =
+            pickFirstTrimmed(
+              hardPathSelectorApplied?.winner_source,
+              hardPathSelectorTrace?.winner_source,
+              'deterministic',
+            ) || 'deterministic';
+          if (Array.isArray(hardPathSelectorApplied?.support_roles_surfaced)) {
+            hardPathPayloadBundle.payload.recommendation_meta.selector_support_roles_surfaced =
+              hardPathSelectorApplied.support_roles_surfaced;
+          }
+          if (isPlainObject(hardPathPayloadBundle.payload?.metadata)) {
+            hardPathPayloadBundle.payload.metadata.selector_race_trace = hardPathSelectorTrace;
+          }
+        }
         const nextState =
           typeof stateChangeAllowed === 'function' && stateChangeAllowed(ctx?.trigger_source)
             ? 'S7_PRODUCT_RECO'
@@ -348,7 +512,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
             updated_at_ms: Date.now(),
           }),
         );
-        const assistantText =
+        const baseAssistantText =
           buildRouteAwareAssistantText({
             route: 'reco',
             payload: hardPathPayloadBundle.payload,
@@ -358,6 +522,29 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
           (ctx?.lang === 'CN'
             ? '我已经把这轮候选收成结构化推荐卡片。'
             : 'I summarized this pass into structured recommendation cards.');
+        const assistantRewrite =
+          typeof maybeRewriteRecoAssistantTextWithLlm === 'function'
+            ? await maybeRewriteRecoAssistantTextWithLlm({
+                payload: hardPathPayloadBundle.payload,
+                language: ctx?.lang,
+                profile,
+                baseText: baseAssistantText,
+                allowLockedSelectionRewrite: true,
+              })
+            : { text: baseAssistantText, llm_used: false, reason: 'rewrite_unavailable' };
+        const assistantText = pickFirstTrimmed(assistantRewrite?.text, baseAssistantText);
+        if (isPlainObject(hardPathPayloadBundle.payload?.recommendation_meta)) {
+          hardPathPayloadBundle.payload.recommendation_meta.assistant_rewrite_llm_used =
+            assistantRewrite?.llm_used === true;
+          hardPathPayloadBundle.payload.recommendation_meta.assistant_rewrite_reason =
+            pickFirstTrimmed(assistantRewrite?.reason) || null;
+          if (assistantRewrite?.llm_used === true) {
+            hardPathPayloadBundle.payload.recommendation_meta.assistant_rewrite_provider =
+              pickFirstTrimmed(assistantRewrite?.provider) || null;
+            hardPathPayloadBundle.payload.recommendation_meta.assistant_rewrite_model =
+              pickFirstTrimmed(assistantRewrite?.model) || null;
+          }
+        }
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeAssistantMessage(assistantText),
           suggested_chips: [],
