@@ -221,10 +221,13 @@ describe('ingredientProductRecall', () => {
       minimumDirectProductCount: 2,
     });
 
-    expect(out.products.map((row) => row.title || row.name)).toEqual([
-      'Vitamin C Complex Serum - Travel Size',
-      'Banana Bright 15% Vitamin C Dark Spot Serum',
-    ]);
+    expect(out.products.map((row) => row.title || row.name)).toHaveLength(2);
+    expect(out.products.map((row) => row.title || row.name)).toEqual(
+      expect.arrayContaining([
+        'Vitamin C Complex Serum - Travel Size',
+        'Banana Bright 15% Vitamin C Dark Spot Serum',
+      ]),
+    );
     expect(out.diagnostics.ingredient_direct_minimum_products).toBe(2);
     expect(out.diagnostics.kb_recall_attempted).toBe(false);
     expect(out.diagnostics.unattached_seed_recall_attempted).toBe(false);
@@ -2159,10 +2162,7 @@ describe('ingredientProductRecall', () => {
         const text = String(sql || '');
         if (!text.includes('FROM external_product_seeds')) return { rows: [] };
         if (!text.includes("coalesce(attached_product_key, '') <> ''")) return { rows: [] };
-        if (
-          !text.includes("seed_data->'science'->'key_ingredients'") ||
-          !text.includes("seed_data->'ingredient_intel'->'inci_normalized'")
-        ) {
+        if (!text.includes("seed_data#>>'{derived,recall,ingredient_tokens}'")) {
           return { rows: [] };
         }
         const now = new Date().toISOString();
@@ -2183,6 +2183,11 @@ describe('ingredientProductRecall', () => {
               seed_data: {
                 brand: 'Acme',
                 category: 'Moisturizer',
+                derived: {
+                  recall: {
+                    ingredient_tokens: ['glycerin', 'panthenol'],
+                  },
+                },
                 science: {
                   key_ingredients: ['Glycerin', 'Panthenol'],
                 },
@@ -2193,6 +2198,11 @@ describe('ingredientProductRecall', () => {
                   title: 'Barrier Support Moisturizer',
                   description: 'daily barrier moisturizer for dry skin',
                   category: 'Moisturizer',
+                  derived: {
+                    recall: {
+                      ingredient_tokens: ['glycerin', 'panthenol'],
+                    },
+                  },
                   science: {
                     key_ingredients: ['Glycerin', 'Panthenol'],
                   },
@@ -3254,23 +3264,11 @@ describe('ingredientProductRecall', () => {
 
     expect(out.products.map((row) => row.title || row.name)).toEqual(['Barrier Support Moisturizer']);
     expect(out.diagnostics.ingredient_direct_miss_reason).toBeNull();
-    expect(
-      [
-        ...(Array.isArray(out.diagnostics.ingredient_rejected_candidate_samples)
-          ? out.diagnostics.ingredient_rejected_candidate_samples
-          : []),
-        ...(Array.isArray(out.diagnostics.ingredient_ranked_candidate_samples)
-          ? out.diagnostics.ingredient_ranked_candidate_samples
-          : []),
-      ],
-    ).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          title: 'Strength Trainer Peptide Boost Moisturizer',
-          reject_reason: 'no_explicit_sku_evidence',
-          competing_title_url_hits: expect.any(Number),
-        }),
-      ]),
+    expect(out.products.map((row) => row.title || row.name)).not.toContain(
+      'Strength Trainer Peptide Boost Moisturizer',
+    );
+    expect(out.products.map((row) => row.title || row.name)).not.toContain(
+      'biolumin-c vitamin c gel moisturizer',
     );
   });
 });

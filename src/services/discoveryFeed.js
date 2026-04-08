@@ -2705,6 +2705,23 @@ function buildBeautyInterestSeedSelect() {
   `;
 }
 
+function buildDiscoverySeedStageRowKey(row) {
+  const id = String(row?.id ?? '').trim();
+  if (id) return `id:${id}`;
+  const externalProductId = String(row?.external_product_id || '').trim();
+  if (externalProductId) return `external:${externalProductId}`;
+  const canonicalUrl = String(row?.canonical_url || row?.destination_url || '').trim().toLowerCase();
+  if (canonicalUrl) return `url:${canonicalUrl}`;
+  const title = normalizeText(row?.title || row?.seed_title || row?.seed_data?.title || row?.seed_data?.snapshot?.title || '');
+  if (title) return `title:${title}`;
+  return '';
+}
+
+function buildDiscoverySeedStageSqlId(row) {
+  const id = String(row?.id ?? '').trim();
+  return /^\d+$/.test(id) ? id : null;
+}
+
 async function fetchBeautyInterestExternalSeedFastpathCandidates({
   request,
   profile,
@@ -2885,13 +2902,16 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
 
   try {
     const stagedRows = [];
-    const seenIds = new Set();
+    const seenRowKeys = new Set();
+    const seenSqlIds = new Set();
     const summaryThreshold = Math.min(safeLimit, Math.max(4, getPrimaryPathEnoughThreshold(request)));
     const appendRows = (rows = []) => {
       for (const row of Array.isArray(rows) ? rows : []) {
-        const rowId = Number(row?.id || 0);
-        if (!Number.isFinite(rowId) || rowId <= 0 || seenIds.has(rowId)) continue;
-        seenIds.add(rowId);
+        const rowKey = buildDiscoverySeedStageRowKey(row);
+        if (!rowKey || seenRowKeys.has(rowKey)) continue;
+        seenRowKeys.add(rowKey);
+        const sqlId = buildDiscoverySeedStageSqlId(row);
+        if (sqlId) seenSqlIds.add(sqlId);
         stagedRows.push(row);
         if (stagedRows.length >= safeLimit) break;
       }
@@ -2914,8 +2934,8 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
         WHERE ${baseWhereSql}
           AND ${stageWhereSql}
       `;
-      if (seenIds.size > 0) {
-        const excludedIdsBind = stageBind(Array.from(seenIds));
+      if (seenSqlIds.size > 0) {
+        const excludedIdsBind = stageBind(Array.from(seenSqlIds));
         sql += `
           AND id <> ALL(${excludedIdsBind}::bigint[])
         `;
