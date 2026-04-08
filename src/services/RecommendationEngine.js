@@ -768,7 +768,7 @@ function shouldFilterKnownVerticalMismatch(base, candidate) {
     const allowByToken = candidate.tokenOverlap >= 0.18 && candidateVertical !== 'tools';
     return !allowByVertical && !allowByToken;
   }
-  if (!['skincare', 'makeup', 'haircare'].includes(base.vertical)) return false;
+  if (!['skincare', 'makeup', 'haircare', 'bodycare'].includes(base.vertical)) return false;
   if (candidateVertical !== UNKNOWN_VERTICAL && candidateVertical !== base.vertical) {
     if ((candidate.leafMatch || candidate.parentMatch) && candidate.tokenOverlap >= 0.24) return false;
     return true;
