@@ -24,13 +24,26 @@ const {
   extractMerchantIdFromOfferId,
   parseOfferId,
 } = require('./offers/offerIds');
-const { prioritizeOffersResolveResponse } = require('./offers/offersPriority');
+const {
+  annotateOffersWithCommerceMetadata,
+  prioritizeOffersResolveResponse,
+  summarizeOfferCommerceMetadata,
+} = require('./offers/offersPriority');
 const { buildPdpPayload } = require('./pdpBuilder');
 const {
   EXTERNAL_SEED_MERCHANT_ID,
   buildPdpCorePrewarmRequestBody,
   inferCanonicalPdpMerchantId,
 } = require('./pdpConfig');
+const {
+  PRODUCT_INTEL_CONTRACT_VERSION,
+  buildNormalizedPdpMetadata,
+  buildProductFeedbackResponse,
+  buildProductIntelBundle,
+  buildProductRecommendationIntentsResponse,
+  hydrateProductWithPublishedIntel,
+} = require('./pdpProductIntel');
+const { buildStructuredPdpIngredientModules } = require('./services/pdpIngredientAuthority');
 const {
   getAllPromotions,
   getPromotionById,
@@ -14755,6 +14768,293 @@ function shouldSkipOffersResolveCacheSearch(subjectResult, normalizedInput) {
   return false;
 }
 
+function normalizeCanonicalProductRefInput(value) {
+  const ref = value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+  if (!ref) return null;
+  const merchantId = String(ref.merchant_id || ref.merchantId || '').trim();
+  const productId = String(ref.product_id || ref.productId || '').trim();
+  const platform = String(ref.platform || '').trim();
+  if (!merchantId || !productId) return null;
+  return {
+    merchant_id: merchantId,
+    product_id: productId,
+    ...(platform ? { platform } : {}),
+  };
+}
+
+async function buildProductIntelTopLevelModuleData({
+  product,
+  relatedProducts = [],
+  offersData = null,
+  canonicalProductRef = null,
+  productGroupId = null,
+}) {
+  const productWithIntel = await hydrateProductWithPublishedIntel({
+    product,
+    canonicalProductRef,
+  });
+  return buildProductIntelBundle({
+    product: productWithIntel,
+    relatedProducts,
+    offersData,
+    canonicalProductRef,
+    productGroupId,
+  });
+}
+
+async function resolveProductIntelInvokeContext({
+  payload,
+  checkoutToken,
+  includeReviews = false,
+  includeRecommendations = false,
+}) {
+  const productRef = payload.product_ref || payload.productRef || payload.product || {};
+  let canonicalProductRef = normalizeCanonicalProductRefInput(
+    productRef.canonical_product_ref ||
+      productRef.canonicalProductRef ||
+      payload.canonical_product_ref ||
+      payload.canonicalProductRef,
+  );
+  let productId = String(
+    productRef.product_id || productRef.productId || payload.product_id || payload.productId || '',
+  ).trim();
+  let requestedMerchantId = String(
+    productRef.merchant_id || productRef.merchantId || payload.merchant_id || payload.merchantId || '',
+  ).trim();
+  const variantId = String(
+    productRef.variant_id ||
+      productRef.variantId ||
+      productRef.sku_id ||
+      productRef.skuId ||
+      payload.variant_id ||
+      payload.variantId ||
+      payload.sku_id ||
+      payload.skuId ||
+      '',
+  ).trim();
+  const offerId = String(
+    productRef.offer_id || productRef.offerId || payload.offer_id || payload.offerId || '',
+  ).trim();
+  const platform = String(productRef.platform || payload.platform || '').trim() || null;
+  const options = payload.options || {};
+  const bypassCache =
+    options.no_cache === true ||
+    options.cache_bypass === true ||
+    options.bypass_cache === true ||
+    String(options.no_cache || '').trim().toLowerCase() === 'true' ||
+    String(options.cache_bypass || options.bypass_cache || '')
+      .trim()
+      .toLowerCase() === 'true';
+
+  if (!requestedMerchantId && canonicalProductRef?.merchant_id) {
+    requestedMerchantId = String(canonicalProductRef.merchant_id || '').trim();
+  }
+  if (!productId && canonicalProductRef?.product_id) {
+    productId = String(canonicalProductRef.product_id || '').trim();
+  }
+
+  const parsedOffer = offerId ? parseOfferId(offerId) : null;
+  if (!requestedMerchantId && parsedOffer?.merchant_id) {
+    requestedMerchantId = String(parsedOffer.merchant_id || '').trim();
+  }
+
+  const shouldResolveVariantToProduct =
+    Boolean(variantId) &&
+    Boolean(requestedMerchantId) &&
+    (!productId || productId === variantId);
+  if (shouldResolveVariantToProduct) {
+    try {
+      const rawVariant = await fetchVariantDetailFromUpstream({
+        merchantId: requestedMerchantId,
+        variantId,
+        checkoutToken,
+      }).catch(() => null);
+      const normalizedVariant = normalizeAgentProductDetailResponse(rawVariant);
+      const variantProduct =
+        normalizedVariant && typeof normalizedVariant === 'object' ? normalizedVariant.product : null;
+      const resolvedProductId = variantProduct
+        ? String(variantProduct.id || variantProduct.product_id || variantProduct.productId || '').trim()
+        : '';
+      if (resolvedProductId) productId = resolvedProductId;
+    } catch {
+      // Ignore and fall back to remaining identifiers.
+    }
+  }
+
+  let productGroupId = null;
+  let groupMembers = [];
+
+  const subject = payload.subject && typeof payload.subject === 'object' ? payload.subject : null;
+  const subjectType = subject ? String(subject.type || '').trim().toLowerCase() : '';
+  const subjectId = subject ? String(subject.id || '').trim() : '';
+  if (!canonicalProductRef && subjectType === 'product_group' && subjectId) {
+    try {
+      const fetchedGroup = await fetchProductGroupMembersFromUpstream({
+        productGroupId: subjectId,
+        checkoutToken,
+      }).catch(() => null);
+      const membersRaw = Array.isArray(fetchedGroup?.members)
+        ? fetchedGroup.members
+        : Array.isArray(fetchedGroup?.items)
+          ? fetchedGroup.items
+          : [];
+      groupMembers = membersRaw
+        .map((m) => ({
+          merchant_id: String(m?.merchant_id || m?.merchantId || '').trim(),
+          merchant_name: m?.merchant_name || m?.merchantName || undefined,
+          product_id: String(m?.product_id || m?.productId || '').trim(),
+          platform: m?.platform ? String(m.platform).trim() : undefined,
+          is_primary: Boolean(m?.is_primary || m?.isPrimary),
+        }))
+        .filter((m) => Boolean(m.merchant_id) && Boolean(m.product_id));
+      const canonicalMember = groupMembers.find((m) => m.is_primary) || groupMembers[0] || null;
+      if (canonicalMember) {
+        productGroupId = subjectId;
+        canonicalProductRef = {
+          merchant_id: canonicalMember.merchant_id,
+          product_id: canonicalMember.product_id,
+          ...(canonicalMember.platform ? { platform: canonicalMember.platform } : {}),
+        };
+      }
+    } catch {
+      // Ignore and continue.
+    }
+  }
+
+  if (!canonicalProductRef && parsedOffer?.product_group_id) {
+    try {
+      const fetchedGroup = await fetchProductGroupMembersFromUpstream({
+        productGroupId: String(parsedOffer.product_group_id || '').trim(),
+        checkoutToken,
+      }).catch(() => null);
+      const membersRaw = Array.isArray(fetchedGroup?.members)
+        ? fetchedGroup.members
+        : Array.isArray(fetchedGroup?.items)
+          ? fetchedGroup.items
+          : [];
+      groupMembers = membersRaw
+        .map((m) => ({
+          merchant_id: String(m?.merchant_id || m?.merchantId || '').trim(),
+          merchant_name: m?.merchant_name || m?.merchantName || undefined,
+          product_id: String(m?.product_id || m?.productId || '').trim(),
+          platform: m?.platform ? String(m.platform).trim() : undefined,
+          is_primary: Boolean(m?.is_primary || m?.isPrimary),
+        }))
+        .filter((m) => Boolean(m.merchant_id) && Boolean(m.product_id));
+      const canonicalMember = groupMembers.find((m) => m.is_primary) || groupMembers[0] || null;
+      if (canonicalMember) {
+        productGroupId = String(parsedOffer.product_group_id || '').trim();
+        canonicalProductRef = {
+          merchant_id: canonicalMember.merchant_id,
+          product_id: canonicalMember.product_id,
+          ...(canonicalMember.platform ? { platform: canonicalMember.platform } : {}),
+        };
+      }
+    } catch {
+      // Ignore and continue.
+    }
+  }
+
+  if (!canonicalProductRef && productId) {
+    try {
+      const resolvedGroup = await resolveProductGroupCached({
+        productId,
+        merchantId: requestedMerchantId || null,
+        platform,
+        checkoutToken,
+        bypassCache,
+        debug: false,
+      }).catch(() => null);
+      if (resolvedGroup?.product_group_id) productGroupId = String(resolvedGroup.product_group_id).trim();
+      if (Array.isArray(resolvedGroup?.members)) groupMembers = resolvedGroup.members;
+      if (resolvedGroup?.canonical_product_ref) {
+        canonicalProductRef = resolvedGroup.canonical_product_ref;
+      }
+    } catch {
+      // Ignore and continue.
+    }
+  }
+
+  if (!canonicalProductRef && requestedMerchantId && productId) {
+    canonicalProductRef = {
+      merchant_id: requestedMerchantId,
+      product_id: productId,
+      ...(platform ? { platform } : {}),
+    };
+  }
+
+  if (!canonicalProductRef?.merchant_id || !canonicalProductRef?.product_id) {
+    const err = new Error(
+      'product_ref.product_id + merchant_id, canonical_product_ref, subject=product_group, or offer_id is required',
+    );
+    err.status = 400;
+    err.code = 'MISSING_PARAMETERS';
+    throw err;
+  }
+
+  let product = await fetchProductDetailForOffers({
+    merchantId: canonicalProductRef.merchant_id,
+    productId: canonicalProductRef.product_id,
+    checkoutToken,
+  });
+  if (!product) {
+    const err = new Error('Product not found');
+    err.status = 404;
+    err.code = 'PRODUCT_NOT_FOUND';
+    throw err;
+  }
+
+  if (includeReviews) {
+    const reviewPlatform = String(product.platform || canonicalProductRef.platform || '').trim();
+    const reviewPlatformProductId = String(
+      product.platform_product_id ||
+        product.platformProductId ||
+        product.shopify_id ||
+        product.product_id ||
+        product.id ||
+        canonicalProductRef.product_id ||
+        '',
+    ).trim();
+    if (reviewPlatform && reviewPlatformProductId) {
+      const reviewSummary = await fetchReviewSummaryCached({
+        merchantId: canonicalProductRef.merchant_id,
+        platform: reviewPlatform,
+        platformProductId: reviewPlatformProductId,
+        checkoutToken,
+        bypassCache,
+      }).catch(() => null);
+      if (reviewSummary && typeof reviewSummary === 'object') {
+        product = {
+          ...product,
+          review_summary: reviewSummary,
+        };
+      }
+    }
+  }
+
+  const relatedProducts = includeRecommendations
+    ? await fetchSimilarProductsDeduped({
+        pdp_product: product,
+        k: payload?.similar?.limit || payload?.recommendations?.limit || 6,
+        locale: payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
+        currency: product.currency || 'USD',
+        options: {
+          no_cache: bypassCache,
+          cache_bypass: bypassCache,
+          bypass_cache: bypassCache,
+        },
+      }).catch(() => null)
+    : [];
+
+  return {
+    canonicalProductRef,
+    productGroupId,
+    groupMembers,
+    product,
+    relatedProducts: Array.isArray(relatedProducts?.items) ? relatedProducts.items : [],
+  };
+}
+
 function buildOffersResolveResponse({
   upstreamBody,
   reasonCode,
@@ -14772,11 +15072,13 @@ function buildOffersResolveResponse({
 }) {
   const base = offersResolveIsRecord(upstreamBody) ? { ...upstreamBody } : {};
   const nestedData = offersResolveIsRecord(base.data) ? base.data : {};
-  const offers = Array.isArray(base.offers)
+  const offersRaw = Array.isArray(base.offers)
     ? base.offers
     : Array.isArray(nestedData.offers)
       ? nestedData.offers
       : [];
+  const offerSummary = summarizeOfferCommerceMetadata(offersRaw);
+  const offers = offerSummary.offers;
   const mappingBase = offersResolveIsRecord(base.mapping) ? { ...base.mapping } : {};
   const metadataBase = offersResolveIsRecord(base.metadata) ? { ...base.metadata } : {};
   const normalizedReasonCode = normalizeOffersResolveReasonCode(
@@ -14831,6 +15133,11 @@ function buildOffersResolveResponse({
             resolve_reason_code: normalizedFailReason,
           }
         : {}),
+      commerce_modes: offerSummary.commerce_modes,
+      seller_of_record: offerSummary.seller_of_record,
+      payment_processor_owner: offerSummary.payment_processor_owner,
+      order_system_of_record: offerSummary.order_system_of_record,
+      order_writeback_mode: offerSummary.order_writeback_mode,
     },
   };
 
@@ -16924,6 +17231,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       });
     }
   }
+  
+  // Use mock API if configured or in hybrid mode for certain operations
+  const shouldUseMock =
+    operation !== 'find_similar_products' &&
+    (USE_MOCK || (USE_HYBRID && ['submit_payment', 'request_after_sales'].includes(operation)));
 
   // Discovery / chitchat routing: when the user hasn't expressed a shopping goal yet,
   // do NOT query the catalog. Return a guided, creator-styled prompt instead.
@@ -16957,6 +17269,865 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     return res.json(enriched);
   }
   
+  if (shouldUseMock) {
+    logger.info({ operation, mock: true }, 'Using internal mock data with rich product catalog');
+    
+    try {
+      let mockResponse;
+      
+      switch (operation) {
+        case 'find_products': {
+          const search = effectivePayload.search || effectivePayload || {};
+          const products = searchProducts(
+            search.merchant_id || DEFAULT_MERCHANT_ID,
+            search.query,
+            search.price_max,
+            search.price_min,
+            search.category
+          );
+          
+          mockResponse = {
+            status: 'success',
+            success: true,
+            products: products,
+            results: products, // Alternative field name
+            data: { products: products }, // Alternative structure
+            total: products.length,
+            count: products.length, // Alternative count field
+            page: 1,
+            page_size: products.length
+          };
+          break;
+        }
+
+        case 'find_products_multi': {
+          const search = effectivePayload.search || effectivePayload || {};
+          const merchantId = String(search.merchant_id || search.merchantId || '').trim();
+          const merchantIdsRaw = search.merchant_ids || search.merchantIds;
+          const merchantIds = Array.isArray(merchantIdsRaw)
+            ? merchantIdsRaw.map((v) => String(v || '').trim()).filter(Boolean)
+            : [];
+          const searchAllMerchants =
+            search.search_all_merchants === true || search.searchAllMerchants === true;
+          const resolvedMerchantIds = merchantId
+            ? [merchantId]
+            : merchantIds.length
+              ? merchantIds
+              : searchAllMerchants
+                ? Object.keys(mockProducts)
+                : Object.keys(mockProducts);
+
+          const products = resolvedMerchantIds.flatMap((mid) =>
+            searchProducts(mid, search.query, search.price_max, search.price_min, search.category),
+          );
+
+          mockResponse = {
+            status: 'success',
+            success: true,
+            products,
+            results: products,
+            data: { products },
+            total: products.length,
+            count: products.length,
+            page: 1,
+            page_size: products.length,
+            metadata: {
+              query_source: 'mock_multi',
+              merchants_searched: resolvedMerchantIds.length
+            }
+          };
+          break;
+        }
+
+	        case 'resolve_product_candidates': {
+	          const productRef = payload.product_ref || payload.productRef || payload.product || {};
+	          const productId = String(
+	            productRef.product_id || productRef.productId || payload.product_id || payload.productId || '',
+	          ).trim();
+          const requestedMerchantId = String(
+            productRef.merchant_id || productRef.merchantId || payload.merchant_id || payload.merchantId || '',
+          ).trim();
+	          const options = payload.options || {};
+	          const limit = Math.min(Math.max(1, Number(options.limit || payload.limit || 10) || 10), 50);
+	          const includeOffers = options.include_offers !== false;
+	          const debug = options.debug === true || String(options.debug || '').trim().toLowerCase() === 'true';
+
+	          if (!productId) {
+	            return res.status(400).json({
+	              error: 'MISSING_PARAMETERS',
+	              message: 'product_ref.product_id is required',
+            });
+          }
+
+	          const currency = 'USD';
+	          const productGroupId =
+	            (productId === 'BOTTLE_001'
+	              ? buildProductGroupId({ platform: 'mock', platform_product_id: productId })
+	              : buildProductGroupId({
+	                  merchant_id: requestedMerchantId || DEFAULT_MERCHANT_ID,
+	                  product_id: productId,
+	                })) ||
+	            (productId === 'BOTTLE_001'
+	              ? `pg:mock:${productId}`
+	              : `pg:${requestedMerchantId || DEFAULT_MERCHANT_ID}:${productId}`);
+
+	          const toMoney = (amount, cur) => ({ amount: Number(amount) || 0, currency: cur || currency });
+
+	          const buildBottleOffers = () => {
+	            const offers = [
+              {
+                tier: 'cheap_slow',
+                risk_tier: 'standard',
+                merchant_id: 'merch_demo_cheap_slow',
+                merchant_name: 'Budget Seller',
+                fulfillment_type: 'merchant',
+                inventory: { in_stock: true },
+                price: toMoney(19.99, currency),
+                shipping: { method_label: 'Standard', eta_days_range: [7, 10], cost: toMoney(1.99, currency) },
+                returns: { return_window_days: 30, free_returns: true },
+              },
+              {
+                tier: 'fast_premium',
+                risk_tier: 'preferred',
+                merchant_id: 'merch_demo_fast_premium',
+                merchant_name: 'FastShip Plus',
+                fulfillment_type: 'merchant',
+                inventory: { in_stock: true },
+                price: toMoney(25.99, currency),
+                shipping: { method_label: 'Express', eta_days_range: [1, 2], cost: toMoney(8.99, currency) },
+                returns: { return_window_days: 30, free_returns: true },
+              },
+              {
+                tier: 'bad_returns',
+                risk_tier: 'high_risk',
+                merchant_id: 'merch_demo_bad_returns',
+                merchant_name: 'Strict Returns Co.',
+                fulfillment_type: 'merchant',
+                inventory: { in_stock: true },
+                price: toMoney(23.49, currency),
+                shipping: { method_label: 'Standard', eta_days_range: [3, 5], cost: toMoney(4.49, currency) },
+                returns: { return_window_days: 7, free_returns: false },
+              },
+	            ]
+	              .slice(0, limit)
+	              .map((o) => ({
+	                offer_id:
+	                  buildOfferId({
+	                    merchant_id: o.merchant_id,
+	                    product_group_id: productGroupId,
+	                    fulfillment_type: o.fulfillment_type,
+	                    tier: o.tier,
+	                  }) ||
+	                  `of:v1:${o.merchant_id}:${productGroupId}:${o.fulfillment_type || 'merchant'}:${o.tier || 'default'}`,
+	                product_group_id: productGroupId,
+	                ...o,
+	              }));
+
+            const bestPriceOfferId =
+              offers.find((o) => o.tier === 'cheap_slow')?.offer_id || offers[0]?.offer_id || null;
+            const defaultOfferId =
+              offers.find((o) => o.tier === 'fast_premium')?.offer_id || bestPriceOfferId;
+
+            return {
+              offers,
+              bestPriceOfferId,
+              defaultOfferId,
+            };
+          };
+
+          let offers = [];
+          let bestPriceOfferId = null;
+          let defaultOfferId = null;
+
+          if (productId === 'BOTTLE_001') {
+            const bundle = buildBottleOffers();
+            offers = bundle.offers;
+            bestPriceOfferId = bundle.bestPriceOfferId;
+            defaultOfferId = bundle.defaultOfferId;
+          } else {
+            const mid = requestedMerchantId || DEFAULT_MERCHANT_ID;
+            const product = getProductById(mid, productId);
+            if (!product) {
+              return res.status(404).json({ error: 'PRODUCT_NOT_FOUND', message: 'Product not found' });
+	            }
+	            const single = {
+	              offer_id:
+	                buildOfferId({
+	                  merchant_id: mid,
+	                  product_group_id: productGroupId,
+	                  fulfillment_type: 'merchant',
+	                  tier: 'single',
+	                }) || `of:v1:${mid}:${productGroupId}:merchant:single`,
+	              product_group_id: productGroupId,
+	              tier: 'single',
+	              risk_tier: 'standard',
+	              merchant_id: mid,
+              merchant_name: product.merchant_name || product.store_name || null,
+              fulfillment_type: 'merchant',
+              inventory: { in_stock: Boolean(product.in_stock) },
+              price: toMoney(product.price, product.currency || currency),
+              shipping: product.shipping || undefined,
+              returns: product.returns || undefined,
+            };
+            offers = [single];
+            bestPriceOfferId = single.offer_id;
+            defaultOfferId = single.offer_id;
+          }
+
+	          mockResponse = {
+	            status: 'success',
+	            success: true,
+	            product_group_id: productGroupId,
+	            offers_count: offers.length,
+	            ...(includeOffers ? { offers } : {}),
+	            default_offer_id: defaultOfferId,
+	            best_price_offer_id: bestPriceOfferId,
+	            ...(debug ? { cache: { hit: false, age_ms: 0, ttl_ms: RESOLVE_PRODUCT_CANDIDATES_TTL_MS } } : {}),
+	          };
+	          break;
+	        }
+        
+        case 'get_product_detail': {
+          const product = getProductById(
+            payload.product?.merchant_id || 'merch_208139f7600dbf42',
+            payload.product?.product_id
+          );
+          
+          if (product) {
+            const merchantId =
+              product.merchant_id || payload.product?.merchant_id || DEFAULT_MERCHANT_ID;
+            const productId = product.product_id || payload.product?.product_id;
+
+	            const platform = String(product.platform || '').trim();
+	            const platformProductId = String(product.platform_product_id || '').trim();
+	            const productGroupId =
+	              (platform && platformProductId
+	                ? buildProductGroupId({ platform, platform_product_id: platformProductId })
+	                : productId === 'BOTTLE_001'
+	                  ? buildProductGroupId({ platform: 'mock', platform_product_id: productId })
+	                  : buildProductGroupId({ merchant_id: merchantId, product_id: productId })) ||
+	              (platform && platformProductId
+	                ? `pg:${platform}:${platformProductId}`
+	                : productId === 'BOTTLE_001'
+	                  ? `pg:mock:${productId}`
+	                  : `pg:${merchantId}:${productId}`);
+
+            function toMoney(amount, currency) {
+              return { amount: Number(amount) || 0, currency: currency || 'USD' };
+            }
+
+            function buildBottleOffers() {
+              const currency = product.currency || 'USD';
+              const offers = [
+                {
+                  tier: 'cheap_slow',
+                  merchant_id: 'merch_demo_cheap_slow',
+                  merchant_name: 'Budget Seller',
+                  fulfillment_type: 'merchant',
+                  inventory: { in_stock: true },
+                  price: toMoney(19.99, currency),
+                  shipping: {
+                    method_label: 'Standard',
+                    eta_days_range: [7, 10],
+                    cost: toMoney(1.99, currency),
+                  },
+                  returns: { return_window_days: 30, free_returns: true },
+                },
+                {
+                  tier: 'fast_premium',
+                  merchant_id: 'merch_demo_fast_premium',
+                  merchant_name: 'FastShip Plus',
+                  fulfillment_type: 'merchant',
+                  inventory: { in_stock: true },
+                  price: toMoney(25.99, currency),
+                  shipping: {
+                    method_label: 'Express',
+                    eta_days_range: [1, 2],
+                    cost: toMoney(8.99, currency),
+                  },
+                  returns: { return_window_days: 30, free_returns: true },
+                },
+                {
+                  tier: 'bad_returns',
+                  merchant_id: 'merch_demo_bad_returns',
+                  merchant_name: 'Strict Returns Co.',
+                  fulfillment_type: 'merchant',
+                  inventory: { in_stock: true },
+                  price: toMoney(23.49, currency),
+                  shipping: {
+                    method_label: 'Standard',
+                    eta_days_range: [3, 5],
+                    cost: toMoney(4.49, currency),
+                  },
+                  returns: { return_window_days: 7, free_returns: false },
+                },
+	              ].map((o) => ({
+	                offer_id:
+	                  buildOfferId({
+	                    merchant_id: o.merchant_id,
+	                    product_group_id: productGroupId,
+	                    fulfillment_type: o.fulfillment_type,
+	                    tier: o.tier,
+	                  }) ||
+	                  `of:v1:${o.merchant_id}:${productGroupId}:${o.fulfillment_type || 'merchant'}:${o.tier || 'default'}`,
+	                product_group_id: productGroupId,
+	                ...o,
+	              }));
+
+              const bestPriceOfferId = offers.find((o) => o.tier === 'cheap_slow')?.offer_id || offers[0].offer_id;
+              const defaultOfferId = offers.find((o) => o.tier === 'fast_premium')?.offer_id || bestPriceOfferId;
+
+              return { offers, defaultOfferId, bestPriceOfferId };
+            }
+
+            const offerBundle =
+              productId === 'BOTTLE_001'
+                ? buildBottleOffers()
+	                : (() => {
+	                    const currency = product.currency || 'USD';
+	                    const single = {
+	                      offer_id:
+	                        buildOfferId({
+	                          merchant_id: merchantId,
+	                          product_group_id: productGroupId,
+	                          fulfillment_type: 'merchant',
+	                          tier: 'single',
+	                        }) || `of:v1:${merchantId}:${productGroupId}:merchant:single`,
+	                      product_group_id: productGroupId,
+	                      tier: 'single',
+	                      merchant_id: merchantId,
+                      merchant_name: product.merchant_name || product.store_name || null,
+                      fulfillment_type: 'merchant',
+                      inventory: { in_stock: Boolean(product.in_stock) },
+                      price: toMoney(product.price, currency),
+                      shipping: product.shipping || undefined,
+                      returns: product.returns || undefined,
+                    };
+                    return { offers: [single], defaultOfferId: single.offer_id, bestPriceOfferId: single.offer_id };
+                  })();
+
+            const pdpOptions = getPdpOptions(payload);
+            const includePdp = shouldIncludePdp(payload);
+            let relatedProducts = [];
+            if (pdpOptions.includeRecommendations) {
+              const bypassCache =
+                payload?.options?.no_cache === true ||
+                payload?.options?.cache_bypass === true ||
+                payload?.options?.bypass_cache === true;
+              try {
+                const rec = await recommendPdpProducts({
+                  pdp_product: product,
+                  k: payload.recommendations?.limit || 6,
+                  locale: payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
+                  currency: product.currency || 'USD',
+                  options: {
+                    debug: pdpOptions.debug,
+                    no_cache: bypassCache,
+                    cache_bypass: bypassCache,
+                    bypass_cache: bypassCache,
+                  },
+                });
+                relatedProducts = Array.isArray(rec?.items) ? rec.items : [];
+              } catch {
+                // non-blocking
+                relatedProducts = [];
+              }
+            }
+
+            mockResponse = {
+              status: 'success',
+              product: product,
+              product_group_id: productGroupId,
+              offers: offerBundle.offers,
+              offers_count: offerBundle.offers.length,
+              default_offer_id: offerBundle.defaultOfferId,
+              best_price_offer_id: offerBundle.bestPriceOfferId,
+              ...(includePdp
+                ? {
+                    pdp_payload: buildPdpPayload({
+                      product,
+                      relatedProducts,
+                      entryPoint: pdpOptions.entryPoint,
+                      experiment: pdpOptions.experiment,
+                      templateHint: pdpOptions.templateHint,
+                      includeEmptyReviews: pdpOptions.includeEmptyReviews,
+                      debug: pdpOptions.debug,
+                    }),
+                  }
+                : {}),
+            };
+          } else {
+            return res.status(404).json({
+              error: 'PRODUCT_NOT_FOUND',
+              message: 'Product not found'
+            });
+          }
+          break;
+        }
+
+	        case 'get_pdp': {
+	          const product = getProductById(
+	            payload.product?.merchant_id || 'merch_208139f7600dbf42',
+	            payload.product?.product_id
+	          );
+
+          if (!product) {
+            return res.status(404).json({
+              error: 'PRODUCT_NOT_FOUND',
+              message: 'Product not found',
+            });
+          }
+
+          const pdpOptions = getPdpOptions(payload);
+          let relatedProducts = [];
+          if (pdpOptions.includeRecommendations) {
+            const bypassCache =
+              payload?.options?.no_cache === true ||
+              payload?.options?.cache_bypass === true ||
+              payload?.options?.bypass_cache === true;
+            try {
+              const rec = await recommendPdpProducts({
+                pdp_product: product,
+                k: payload.recommendations?.limit || 6,
+                locale: payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
+                currency: product.currency || 'USD',
+                options: {
+                  debug: pdpOptions.debug,
+                  no_cache: bypassCache,
+                  cache_bypass: bypassCache,
+                  bypass_cache: bypassCache,
+                },
+              });
+              relatedProducts = Array.isArray(rec?.items) ? rec.items : [];
+            } catch {
+              // non-blocking
+              relatedProducts = [];
+            }
+          }
+
+	          mockResponse = {
+	            status: 'success',
+	            product,
+	            pdp_payload: buildPdpPayload({
+	              product,
+	              relatedProducts,
+	              entryPoint: pdpOptions.entryPoint,
+	              experiment: pdpOptions.experiment,
+	              templateHint: pdpOptions.templateHint,
+	              includeEmptyReviews: pdpOptions.includeEmptyReviews,
+	              debug: pdpOptions.debug,
+	            }),
+	          };
+	          break;
+	        }
+
+	        case 'get_pdp_v2': {
+	          const product = getProductById(
+	            payload.product?.merchant_id || DEFAULT_MERCHANT_ID,
+	            payload.product?.product_id,
+	          );
+
+	          if (!product) {
+	            return res.status(404).json({
+	              error: 'PRODUCT_NOT_FOUND',
+	              message: 'Product not found',
+	            });
+	          }
+
+	          const includeList = Array.isArray(payload.include)
+	            ? payload.include.map((v) => String(v || '').trim().toLowerCase()).filter(Boolean)
+	            : [];
+	          const includeAll = includeList.includes('all');
+	          const wantsSimilar = includeAll || includeList.includes('similar') || includeList.includes('recommendations');
+	          const wantsOffers = includeAll || includeList.includes('offers');
+	          const wantsReviews = includeAll || includeList.includes('reviews_preview');
+
+	          const pdpOptions = getPdpOptions(payload);
+	          let relatedProducts = [];
+            let similarResult = null;
+	          if (wantsSimilar) {
+	            const bypassCache =
+	              payload?.options?.no_cache === true ||
+	              payload?.options?.cache_bypass === true ||
+	              payload?.options?.bypass_cache === true;
+	            try {
+	              const rec = await recommendPdpProducts({
+	                pdp_product: product,
+	                k: payload.recommendations?.limit || 6,
+	                locale: payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
+	                currency: product.currency || 'USD',
+	                options: {
+	                  debug: pdpOptions.debug,
+	                  no_cache: bypassCache,
+	                  cache_bypass: bypassCache,
+	                  bypass_cache: bypassCache,
+	                },
+	              });
+                similarResult = rec && typeof rec === 'object' ? rec : null;
+	              relatedProducts = Array.isArray(rec?.items) ? rec.items : [];
+	            } catch {
+	              // non-blocking
+                similarResult = null;
+	              relatedProducts = [];
+	            }
+	          }
+
+	          const pdpPayload = buildPdpPayload({
+	            product,
+	            relatedProducts,
+	            entryPoint: pdpOptions.entryPoint,
+	            experiment: pdpOptions.experiment,
+	            templateHint: pdpOptions.templateHint,
+	            includeEmptyReviews: wantsReviews || pdpOptions.includeEmptyReviews,
+	            debug: pdpOptions.debug,
+	          });
+
+	          const reviewsModule = Array.isArray(pdpPayload.modules)
+	            ? pdpPayload.modules.find((m) => m?.type === 'reviews_preview')
+	            : null;
+            const ingredientModules = buildStructuredPdpIngredientModules(product);
+            const mockOffersData = {
+              offers_count: 1,
+              offers: annotateOffersWithCommerceMetadata([
+                {
+                  offer_id: `of:mock:${product.merchant_id || DEFAULT_MERCHANT_ID}:${product.id || product.product_id}`,
+                  merchant_id: product.merchant_id || DEFAULT_MERCHANT_ID,
+                  merchant_name: product.merchant_name || product.store_name || undefined,
+                  price: normalizeOfferMoney(product.price, product.currency || 'USD'),
+                  purchase_route: 'internal_checkout',
+                },
+              ]),
+              default_offer_id: `of:mock:${product.merchant_id || DEFAULT_MERCHANT_ID}:${product.id || product.product_id}`,
+              best_price_offer_id: `of:mock:${product.merchant_id || DEFAULT_MERCHANT_ID}:${product.id || product.product_id}`,
+            };
+            const productIntel = await buildProductIntelTopLevelModuleData({
+              product,
+              relatedProducts,
+              offersData: mockOffersData,
+              canonicalProductRef: {
+                merchant_id: product.merchant_id || DEFAULT_MERCHANT_ID,
+                product_id: product.product_id || product.id,
+              },
+            });
+            const normalizedPdpMeta = buildNormalizedPdpMetadata({
+              productIntel,
+              offersData: mockOffersData,
+            });
+
+	          const modules = [
+	            {
+	              type: 'canonical',
+	              required: true,
+	              data: { pdp_payload: pdpPayload },
+	            },
+	          ];
+            if (productIntel) {
+              modules.push({
+                type: 'product_intel',
+                required: false,
+                data: productIntel,
+              });
+            }
+
+	          if (wantsOffers) {
+	            modules.push({
+	              type: 'offers',
+	              required: false,
+	              data: mockOffersData,
+	            });
+	          }
+
+          if (ingredientModules.activeIngredientsData) {
+            modules.push({
+              type: 'active_ingredients',
+              required: false,
+              data: ingredientModules.activeIngredientsData,
+            });
+          }
+
+          if (ingredientModules.ingredientsInciData) {
+            modules.push({
+              type: 'ingredients_inci',
+              required: false,
+              data: ingredientModules.ingredientsInciData,
+            });
+          }
+
+	          if (wantsReviews) {
+	            modules.push({
+	              type: 'reviews_preview',
+	              required: false,
+	              data: reviewsModule?.data || null,
+	              ...(reviewsModule?.data ? {} : { reason: 'unavailable' }),
+	            });
+	          }
+
+	          if (wantsSimilar) {
+            const similarData =
+              similarResult && similarResult.metadata?.similar_status !== 'unavailable'
+                ? {
+                    strategy: similarResult.strategy || 'related_products',
+                    status: similarResult.metadata?.similar_status || (relatedProducts.length ? 'ready' : 'empty'),
+                    items: relatedProducts,
+                    metadata: similarResult.metadata || undefined,
+                  }
+                : null;
+	            modules.push({
+	              type: 'similar',
+	              required: false,
+	              data: similarData,
+	              ...(similarData ? {} : { reason: 'unavailable' }),
+	            });
+	          }
+
+	          const missing = [];
+	          if (wantsReviews && !reviewsModule?.data) missing.push({ type: 'reviews_preview', reason: 'unavailable' });
+	          if (wantsSimilar && similarResult?.metadata?.similar_status === 'unavailable') {
+              missing.push({ type: 'similar', reason: 'unavailable' });
+            }
+
+	          mockResponse = {
+	            status: 'success',
+	            pdp_version: '2.0',
+	            request_id: `mock_${Date.now()}`,
+	            build_id: SERVICE_GIT_SHA ? SERVICE_GIT_SHA.slice(0, 12) : null,
+	            generated_at: new Date().toISOString(),
+	            subject: { type: 'product', id: String(product.id || product.product_id || '') },
+	            capabilities: { client: metadata?.source || 'mock' },
+	            modules,
+	            warnings: [],
+	            missing,
+              metadata: {
+                detail_source: 'mock',
+                normalized_pdp: normalizedPdpMeta,
+                ...(similarResult?.metadata || {}),
+                module_degrade: {
+                  applied: missing.length > 0,
+                  modules: missing.map((item) => ({
+                    type: item?.type || 'unknown',
+                    reason: item?.reason || 'unavailable',
+                  })),
+                },
+              },
+	          };
+	          break;
+	        }
+
+          case 'get_product_intel_v1':
+          case 'get_product_feedback_v1':
+          case 'get_product_recommendation_intents_v1': {
+            const merchantId =
+              payload.product_ref?.merchant_id ||
+              payload.product?.merchant_id ||
+              payload.merchant_id ||
+              DEFAULT_MERCHANT_ID;
+            const productId =
+              payload.product_ref?.product_id ||
+              payload.product?.product_id ||
+              payload.product_id;
+            const product = getProductById(merchantId, productId);
+
+            if (!product) {
+              return res.status(404).json({
+                error: 'PRODUCT_NOT_FOUND',
+                message: 'Product not found',
+              });
+            }
+
+            const relatedProducts = searchProducts(merchantId, '', null, null, product.category)
+              .filter((item) => String(item.product_id || '') !== String(product.product_id || ''))
+              .slice(0, 6);
+            const offersData = {
+              offers_count: 1,
+              offers: annotateOffersWithCommerceMetadata([
+                {
+                  offer_id: `of:mock:${merchantId}:${product.product_id}`,
+                  merchant_id: merchantId,
+                  merchant_name: product.merchant_name || product.store_name || undefined,
+                  price: normalizeOfferMoney(product.price, product.currency || 'USD'),
+                  purchase_route: 'internal_checkout',
+                },
+              ]),
+              default_offer_id: `of:mock:${merchantId}:${product.product_id}`,
+              best_price_offer_id: `of:mock:${merchantId}:${product.product_id}`,
+            };
+            const productIntel = await buildProductIntelTopLevelModuleData({
+              product,
+              relatedProducts,
+              offersData,
+              canonicalProductRef: {
+                merchant_id: merchantId,
+                product_id: product.product_id,
+              },
+            });
+
+            if (operation === 'get_product_feedback_v1') {
+              mockResponse = productIntel
+                ? buildProductFeedbackResponse({
+                    productIntel,
+                    canonicalProductRef: productIntel.canonical_product_ref,
+                  })
+                : {
+                    status: 'success',
+                    contract_version: 'pivota.product_feedback.v1',
+                    available: false,
+                    reason: 'product_intel_unavailable',
+                  };
+              break;
+            }
+
+            if (operation === 'get_product_recommendation_intents_v1') {
+              mockResponse = buildProductRecommendationIntentsResponse({
+                productIntel,
+                canonicalProductRef: productIntel.canonical_product_ref,
+              });
+              break;
+            }
+
+            mockResponse = productIntel
+              ? {
+                  status: 'success',
+                  contract_version: PRODUCT_INTEL_CONTRACT_VERSION,
+                  ...productIntel,
+                }
+              : {
+                  status: 'success',
+                  contract_version: PRODUCT_INTEL_CONTRACT_VERSION,
+                  available: false,
+                  reason: 'product_intel_unavailable',
+                };
+            break;
+          }
+	        
+	        case 'create_order': {
+	          // Mock order creation
+	          const order = payload.order || {};
+          const offerIdRaw =
+            order.offer_id || order.offerId || payload.offer_id || payload.offerId || null;
+          const offerId = String(offerIdRaw || '').trim() || null;
+          const merchantFromOffer = offerId ? extractMerchantIdFromOfferId(offerId) : null;
+          const items = Array.isArray(order.items) ? order.items : [];
+          const merchantId =
+            merchantFromOffer ||
+            items[0]?.merchant_id ||
+            order.merchant_id ||
+            payload.merchant_id ||
+            null;
+
+          mockResponse = {
+            status: 'success',
+            order_id: `ORD_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`.toUpperCase(),
+            total: items.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0) || 0,
+            currency: 'USD',
+            status: 'pending',
+            ...(offerId ? { resolved_offer_id: offerId } : {}),
+            ...(merchantId ? { resolved_merchant_id: merchantId } : {}),
+          };
+          const orderLines = buildOrderLineSnapshots(order, {
+            orderId: mockResponse.order_id,
+            resolvedOfferId: offerId,
+            resolvedMerchantId: merchantId,
+          });
+          if (orderLines.length) {
+            mockResponse.order_lines = orderLines;
+          }
+          break;
+        }
+
+        case 'preview_quote': {
+          const quote = payload.quote || {};
+          const offerIdRaw =
+            quote.offer_id || quote.offerId || payload.offer_id || payload.offerId || null;
+          const offerId = String(offerIdRaw || '').trim() || null;
+          const merchantFromOffer = offerId ? extractMerchantIdFromOfferId(offerId) : null;
+          const resolvedMerchantId =
+            merchantFromOffer || quote.merchant_id || payload.merchant_id || null;
+
+          const items = quote.items || [];
+          const subtotal = items.reduce(
+            (sum, item) => sum + (Number(item.unit_price || item.price || 0) * Number(item.quantity || 0)),
+            0
+          );
+          mockResponse = {
+            quote_id: `q_${Date.now().toString(36)}`,
+            expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+            engine: 'mock',
+            currency: 'USD',
+            pricing: {
+              subtotal,
+              discount_total: 0,
+              shipping_fee: 0,
+              tax: 0,
+              total: subtotal,
+            },
+            promotion_lines: [],
+            line_items: items.map((it) => ({
+              variant_id: it.variant_id || it.sku_id || it.sku || it.product_id,
+              quantity: it.quantity,
+              unit_price_original: it.unit_price || it.price || 0,
+              unit_price_effective: it.unit_price || it.price || 0,
+              line_discount_total: 0,
+              compare_at_savings: 0,
+            })),
+            ...(offerId ? { resolved_offer_id: offerId } : {}),
+            ...(resolvedMerchantId ? { resolved_merchant_id: resolvedMerchantId } : {}),
+          };
+          break;
+        }
+        
+        case 'submit_payment': {
+          // Mock payment submission
+          mockResponse = {
+            status: 'success',
+            payment_id: `PAY_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`.toUpperCase(),
+            status: 'processing',
+            message: 'Payment is being processed'
+          };
+          break;
+        }
+        
+        case 'get_order_status': {
+          // Mock order status
+          mockResponse = {
+            status: 'success',
+            order: {
+              order_id: payload.order?.order_id,
+              status: 'processing',
+              created_at: new Date().toISOString(),
+              total: 50.00,
+              currency: 'USD'
+            }
+          };
+          break;
+        }
+        
+        default:
+          return res.status(400).json({
+            error: 'UNSUPPORTED_OPERATION',
+            message: `Operation ${operation} not implemented in mock mode`
+          });
+      }
+      
+      let maybePolicy = mockResponse;
+      if (operation === 'find_products_multi' && effectiveIntent) {
+        maybePolicy = applyFindProductsMultiPolicyIfNeeded({
+          response: mockResponse,
+          intent: effectiveIntent,
+          requestPayload: effectivePayload,
+          metadata: policyMetadata,
+          rawUserQuery,
+          responseMetadata: mockResponse?.metadata,
+        });
+      }
+
+      const promotions = await getActivePromotions(now, creatorId);
+      const enriched = applyDealsToResponse(maybePolicy, promotions, now, creatorId);
+      return res.json(enriched);
+    } catch (err) {
+      logger.error({ err: err.message }, 'Mock handler error');
+      return res.status(503).json({ error: 'SERVICE_UNAVAILABLE' });
+    }
+  }
 	  if (operation === 'get_pdp_v2') {
 	    const pdpV2StartedAt = Date.now();
 	    const pdpV2PhaseTimings = {};
@@ -17384,16 +18555,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        };
 	      }
 
-	      let relatedProducts = { items: [] };
+	      let relatedProducts = [];
+        let similarResult = null;
 	      if (relatedProductsResult.status === 'fulfilled') {
-	        relatedProducts = relatedProductsResult.value && typeof relatedProductsResult.value === 'object'
-	          ? {
-	              ...relatedProductsResult.value,
-	              items: Array.isArray(relatedProductsResult.value.items)
-	                ? relatedProductsResult.value.items
-	                : [],
-	            }
-	          : { items: [] };
+          similarResult =
+            relatedProductsResult.value && typeof relatedProductsResult.value === 'object'
+              ? relatedProductsResult.value
+              : null;
+	        relatedProducts = Array.isArray(similarResult?.items)
+	          ? similarResult.items
+	          : [];
 	      } else if (wantsSimilar) {
 	        logger.warn(
 	          {
@@ -17406,8 +18577,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        );
 	      }
 
-      const pdpPayload = buildPdpPayload({
+      const productWithIntel = await hydrateProductWithPublishedIntel({
         product: canonicalProductForPdp,
+        canonicalProductRef,
+      });
+      const ingredientModules = buildStructuredPdpIngredientModules(productWithIntel);
+
+      const pdpPayload = buildPdpPayload({
+        product: productWithIntel,
         relatedProducts,
         entryPoint: pdpOptions.entryPoint,
         experiment: pdpOptions.experiment,
@@ -17418,9 +18595,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
       const reviewsModule = Array.isArray(pdpPayload.modules)
         ? pdpPayload.modules.find((m) => m?.type === 'reviews_preview')
-        : null;
-      const recModule = Array.isArray(pdpPayload.modules)
-        ? pdpPayload.modules.find((m) => m?.type === 'recommendations')
         : null;
 
       const canonicalPayload = {
@@ -17447,10 +18621,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       ];
 
       const missing = [];
+      let offersData = null;
 
 	      if (wantsOffers) {
 	        const offersModuleStartedAt = Date.now();
-	        let offersData = null;
 	        try {
           const fallbackProductGroupId =
             productGroupId ||
@@ -17513,28 +18687,67 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         }
 
         if (offersData) {
-          const offers = Array.isArray(offersData.offers) ? offersData.offers : [];
+          const offers = annotateOffersWithCommerceMetadata(
+            Array.isArray(offersData.offers) ? offersData.offers : [],
+          );
+          offersData = {
+            ...offersData,
+            offers,
+          };
           const fallbackOfferId = offers[0]?.offer_id || null;
           if (fallbackOfferId) {
             if (!offersData.default_offer_id) offersData.default_offer_id = fallbackOfferId;
             if (!offersData.best_price_offer_id) offersData.best_price_offer_id = fallbackOfferId;
           }
-          modules.push({
-            type: 'offers',
-            required: false,
-            data: offersData,
-          });
 	        } else {
-	          modules.push({
-            type: 'offers',
-            required: false,
-            data: null,
-            reason: 'unavailable',
-          });
 	          missing.push({ type: 'offers', reason: 'unavailable' });
 	        }
 	        markPdpV2Module('offers', offersModuleStartedAt);
 	      }
+
+      const productIntel = await buildProductIntelTopLevelModuleData({
+        product: productWithIntel,
+        relatedProducts,
+        offersData,
+        canonicalProductRef,
+        productGroupId,
+      });
+      const normalizedPdpMeta = buildNormalizedPdpMetadata({
+        productIntel,
+        offersData,
+      });
+      if (productIntel) {
+        modules.push({
+          type: 'product_intel',
+          required: false,
+          data: productIntel,
+        });
+      }
+
+      if (ingredientModules.activeIngredientsData) {
+        modules.push({
+          type: 'active_ingredients',
+          required: false,
+          data: ingredientModules.activeIngredientsData,
+        });
+      }
+
+      if (ingredientModules.ingredientsInciData) {
+        modules.push({
+          type: 'ingredients_inci',
+          required: false,
+          data: ingredientModules.ingredientsInciData,
+        });
+      }
+
+      if (wantsOffers) {
+        modules.push({
+          type: 'offers',
+          required: false,
+          data: offersData,
+          ...(offersData ? {} : { reason: 'unavailable' }),
+        });
+      }
 
       if (wantsReviewsPreview) {
         const data = reviewsModule?.data || null;
@@ -17548,14 +18761,26 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
 
       if (wantsSimilar) {
-        const data = recModule?.data || null;
+        const data =
+          similarResult && similarResult.metadata?.similar_status !== 'unavailable'
+            ? {
+                strategy: similarResult.strategy || 'related_products',
+                status:
+                  similarResult.metadata?.similar_status ||
+                  (relatedProducts.length ? 'ready' : 'empty'),
+                items: relatedProducts,
+                metadata: similarResult.metadata || undefined,
+              }
+            : null;
         modules.push({
           type: 'similar',
           required: false,
           data,
           ...(data ? {} : { reason: 'unavailable' }),
         });
-        if (!data) missing.push({ type: 'similar', reason: 'unavailable' });
+        if (similarResult?.metadata?.similar_status === 'unavailable') {
+          missing.push({ type: 'similar', reason: 'unavailable' });
+        }
       }
 
 	      const buildId = SERVICE_GIT_SHA ? SERVICE_GIT_SHA.slice(0, 12) : null;
@@ -17586,6 +18811,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        missing,
           metadata: {
             detail_source: getProductDetailSource(canonicalProduct) || null,
+            normalized_pdp: normalizedPdpMeta,
+            ...(similarResult?.metadata || {}),
             module_degrade: {
               applied: missing.length > 0,
               modules: missing.map((item) => ({
@@ -17635,6 +18862,165 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      return res.status(statusCode).json({
 	        error: code || 'GET_PDP_V2_FAILED',
         message: message || 'Failed to build pdp payload',
+        details: data || null,
+      });
+    }
+  }
+
+  if (
+    operation === 'get_product_intel_v1' ||
+    operation === 'get_product_feedback_v1' ||
+    operation === 'get_product_recommendation_intents_v1'
+  ) {
+    try {
+      const context = await resolveProductIntelInvokeContext({
+        payload,
+        checkoutToken,
+        includeReviews:
+          operation === 'get_product_intel_v1' || operation === 'get_product_feedback_v1',
+        includeRecommendations:
+          operation === 'get_product_intel_v1' ||
+          operation === 'get_product_recommendation_intents_v1',
+      });
+
+      const fallbackProductGroupId =
+        context.productGroupId ||
+        (context.product.platform && context.product.platform_product_id
+          ? buildProductGroupId({
+              platform: String(context.product.platform || '').trim(),
+              platform_product_id: String(context.product.platform_product_id || '').trim(),
+            })
+          : null) ||
+        `pg:pid:${String(context.canonicalProductRef.product_id || '').trim()}`;
+
+      let offersData =
+        context.groupMembers.length > 0
+          ? await buildOffersFromGroupMembers({
+              productGroupId: fallbackProductGroupId,
+              members: context.groupMembers,
+              checkoutToken,
+              limit: payload?.offers?.limit || 10,
+              preferredMerchantId: context.canonicalProductRef.merchant_id || null,
+            }).catch(() => null)
+          : null;
+
+      if (!offersData) {
+        const fallbackOfferId =
+          buildOfferId({
+            merchant_id: context.canonicalProductRef.merchant_id,
+            product_group_id: fallbackProductGroupId,
+            fulfillment_type: context.product.fulfillment_type || 'merchant',
+            tier: 'default',
+          }) ||
+          `of:v1:${context.canonicalProductRef.merchant_id}:${fallbackProductGroupId}:${context.product.fulfillment_type || 'merchant'}:default`;
+        offersData = {
+          status: 'success',
+          product_group_id: fallbackProductGroupId,
+          canonical_product_ref: context.canonicalProductRef,
+          offers_count: 1,
+          offers: [
+            {
+              offer_id: fallbackOfferId,
+              product_group_id: fallbackProductGroupId,
+              product_id: context.canonicalProductRef.product_id,
+              merchant_id: context.canonicalProductRef.merchant_id,
+              merchant_name:
+                context.product.merchant_name || context.product.store_name || undefined,
+              price: normalizeOfferMoney(
+                context.product.price,
+                context.product.currency || 'USD',
+              ),
+              shipping: context.product.shipping || undefined,
+              returns: context.product.returns || undefined,
+              inventory: {
+                in_stock:
+                  typeof context.product.in_stock === 'boolean'
+                    ? context.product.in_stock
+                    : undefined,
+              },
+              fulfillment_type: context.product.fulfillment_type || undefined,
+              purchase_route: 'internal_checkout',
+              risk_tier: 'standard',
+            },
+          ],
+          default_offer_id: fallbackOfferId,
+          best_price_offer_id: fallbackOfferId,
+        };
+      }
+
+      offersData = {
+        ...offersData,
+        offers: annotateOffersWithCommerceMetadata(
+          Array.isArray(offersData.offers) ? offersData.offers : [],
+        ),
+      };
+
+      const productIntel = await buildProductIntelTopLevelModuleData({
+        product: context.product,
+        relatedProducts: context.relatedProducts,
+        offersData,
+        canonicalProductRef: context.canonicalProductRef,
+        productGroupId: fallbackProductGroupId,
+      });
+      const normalizedPdp = buildNormalizedPdpMetadata({
+        productIntel,
+        offersData,
+      });
+
+      if (operation === 'get_product_feedback_v1') {
+        if (!productIntel) {
+          return res.json({
+            status: 'success',
+            contract_version: 'pivota.product_feedback.v1',
+            available: false,
+            reason: 'product_intel_unavailable',
+            canonical_product_ref: context.canonicalProductRef,
+            product_group_id: fallbackProductGroupId,
+          });
+        }
+        return res.json(
+          buildProductFeedbackResponse({
+            productIntel,
+            canonicalProductRef: context.canonicalProductRef,
+            productGroupId: fallbackProductGroupId,
+          }),
+        );
+      }
+
+      if (operation === 'get_product_recommendation_intents_v1') {
+        return res.json(
+          buildProductRecommendationIntentsResponse({
+            productIntel,
+            canonicalProductRef: context.canonicalProductRef,
+            productGroupId: fallbackProductGroupId,
+          }),
+        );
+      }
+
+      if (!productIntel) {
+        return res.json({
+          status: 'success',
+          contract_version: PRODUCT_INTEL_CONTRACT_VERSION,
+          available: false,
+          reason: 'product_intel_unavailable',
+          canonical_product_ref: context.canonicalProductRef,
+          product_group_id: fallbackProductGroupId,
+          normalized_pdp: normalizedPdp,
+        });
+      }
+
+      return res.json({
+        status: 'success',
+        contract_version: PRODUCT_INTEL_CONTRACT_VERSION,
+        ...productIntel,
+        normalized_pdp: normalizedPdp,
+      });
+    } catch (err) {
+      const { code, message, data } = extractUpstreamErrorCode(err);
+      const statusCode = err?.status || err?.response?.status || 502;
+      return res.status(statusCode).json({
+        error: code || err?.code || 'GET_PRODUCT_INTEL_FAILED',
+        message: message || err?.message || 'Failed to build product intel payload',
         details: data || null,
       });
     }
