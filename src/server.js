@@ -7595,7 +7595,7 @@ function buildFindProductsMultiPayloadFromQuery(rawQuery, options = {}) {
     }
   }
 
-  if (!search.semantic_contract && textQuery) {
+  if (!search.semantic_contract && textQuery && localMainlineChild !== true) {
     const derivedBeautySemanticContract = buildBeautyDiscoverySemanticContract({
       rawQuery: textQuery,
       search,
