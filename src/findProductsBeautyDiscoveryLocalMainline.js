@@ -770,7 +770,6 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
         false,
       transportPolicy: {
         mode: 'local_beauty_mainline',
-        force_generic_only: true,
         include_self_proxy: false,
         prefer_self_proxy_first: false,
         allow_secondary_base_failover: false,
@@ -787,8 +786,14 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
       productOnly:
         parseBooleanLike(query.product_only ?? query.productOnly ?? searchState.product_only ?? searchState.productOnly) ===
         true,
+      semanticContract,
       traceId: gatewayRequestId,
+      queryIndex:
+        Number.isFinite(Number(query.query_index)) ? Number(query.query_index) : null,
+      queryTotal:
+        Number.isFinite(Number(query.query_total)) ? Number(query.query_total) : null,
       authHeaders,
+      localMainlineChild: true,
     });
     const failureReason = String(searchOut?.reason || '').trim().toLowerCase();
     if (searchOut?.ok !== true && ['upstream_timeout', 'upstream_error', 'rate_limited'].includes(failureReason)) {
@@ -1724,7 +1729,6 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
       ...buildRecoRecallTransportPolicy({
         mode: resolveRecoRecallTransportModeForPlannerMode(recallPlan?.mode),
       }),
-      force_generic_only: true,
       include_self_proxy: false,
       prefer_self_proxy_first: false,
     };
@@ -1919,8 +1923,12 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
               String(semanticContract.semantic_family || entry?.role_id || '').trim() ||
               undefined,
             productOnly: true,
+            semanticContract: stagedSemanticContract,
             traceId: gatewayRequestId,
+            queryIndex: queryCursor,
+            queryTotal: recallEntries.length,
             authHeaders,
+            localMainlineChild: true,
           });
         }
         const attemptElapsedMs = Math.max(0, Date.now() - attemptStartedAtMs);
