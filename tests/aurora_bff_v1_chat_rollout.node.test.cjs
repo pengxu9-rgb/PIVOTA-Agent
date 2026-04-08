@@ -801,6 +801,74 @@ test('buildChatIntentContract locks beauty reco free-text before v2 delegation',
   assert.equal(contract.should_search, true);
 });
 
+test('shouldEarlyLockBeautyOwnedChatReco locks current frontend beauty reco freeform payloads onto the bounded mainline path', async () => {
+  resetAuroraModules();
+  const { __internal } = require('../src/auroraBff/routes');
+
+  const contract = await __internal.buildChatIntentContract({
+    message: 'im oily skin, what products should i use?',
+    language: 'EN',
+    session: {
+      state: 'IDLE_CHAT',
+      profile: {
+        skinType: 'oily',
+        goals: ['oil control'],
+      },
+    },
+    client_state: { state: 'IDLE_CHAT' },
+    messages: [{ role: 'user', content: 'im oily skin, what products should i use?' }],
+  });
+
+  assert.equal(
+    __internal.shouldEarlyLockBeautyOwnedChatReco({
+      ingressChatIntentContract: contract,
+      normalizedActionPayload: null,
+      actionId: '',
+      actionLabel: '',
+      message: 'im oily skin, what products should i use?',
+    }),
+    true,
+  );
+});
+
+test('shouldEarlyLockBeautyOwnedChatReco does not steal action-driven reco payloads from the chip path', async () => {
+  resetAuroraModules();
+  const { __internal } = require('../src/auroraBff/routes');
+
+  const contract = await __internal.buildChatIntentContract({
+    message: 'im oily skin, what products should i use?',
+    language: 'EN',
+    action: {
+      id: 'chip.start.reco_products',
+      type: 'chip.start.reco_products',
+      data: {
+        reply_text: 'im oily skin, what products should i use?',
+        profile_patch: {
+          skin_type: 'oily',
+        },
+      },
+    },
+    client_state: { state: 'IDLE_CHAT' },
+  });
+
+  assert.equal(
+    __internal.shouldEarlyLockBeautyOwnedChatReco({
+      ingressChatIntentContract: contract,
+      normalizedActionPayload: {
+        action_id: 'chip.start.reco_products',
+        kind: 'action',
+        data: {
+          reply_text: 'im oily skin, what products should i use?',
+        },
+      },
+      actionId: 'chip.start.reco_products',
+      actionLabel: '',
+      message: 'im oily skin, what products should i use?',
+    }),
+    false,
+  );
+});
+
 test('shouldDelegateV1ChatToV2 keeps reviewed signal terms on the legacy ingredient path', async () => {
   resetAuroraModules();
   const { __internal } = require('../src/auroraBff/routes');
