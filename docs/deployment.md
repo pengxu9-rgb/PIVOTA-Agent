@@ -24,6 +24,14 @@ npm run deploy:verify:production
 
 This verifies the deployed commit via `/version.commit`, with `/healthz.version.commit` as fallback.
 
+External-seed PDP latency verification command:
+
+```bash
+npm run smoke:pdp:external-latency:prod
+```
+
+This runs a fixed gold-set smoke against the public gateway and fails if cold/warm PDP or similar latency crosses the release thresholds, or if similar count drops below the configured floor.
+
 Detailed policy: `docs/runbooks/deploy_via_github_push_only.md`
 
 ## Environment Variables

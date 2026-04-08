@@ -23,7 +23,11 @@ TARGET_COMMIT="$(git rev-parse --short=12 HEAD)" \
 bash scripts/verify_deployed_commit_matches.sh
 ```
 
-6. Run runtime smoke gate (already covered by `.github/workflows/aurora-bff-release-gate.yml` on `push main`).
+6. Run runtime smoke gate.
+   Shopping search releases are covered by `.github/workflows/shopping-search-release-gate.yml` on `push main`, including:
+   - skincare search production smoke
+   - discovery production smoke
+   - external-seed PDP latency smoke (`npm run smoke:pdp:external-latency:prod`)
 7. Keep the production drift guard enabled:
 
 ```bash

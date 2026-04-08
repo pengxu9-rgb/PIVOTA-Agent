@@ -25,11 +25,13 @@ on:
       - "scripts/check_budget_fx_freshness.js"
       - "scripts/search_stability_matrix.js"
       - "scripts/smoke_discovery_feed_prod.sh"
+      - "scripts/smoke_external_seed_pdp_latency_prod.js"
       - "scripts/smoke_find_products_multi_skincare_prod.sh"
       - "scripts/run_discovery_feed_smoke.cjs"
       - "scripts/verify_deployed_commit_matches.sh"
       - "scripts/verify_commerce_invoke_rails.js"
       - "scripts/lib/**"
+      - "scripts/fixtures/external_seed_pdp_latency_gate.json"
       - "scripts/warm_find_products_multi_runtime.js"
       - "scripts/fixtures/commerce_invoke_rail_inventory.json"
       - "scripts/fixtures/find_products_multi_skincare_prod_gate.json"
@@ -46,6 +48,7 @@ on:
       - "src/services/externalSeedProducts.js"
       - "src/services/externalSeedHarvesterBridge.js"
       - "tests/discovery_feed_smoke_script.test.js"
+      - "tests/smoke_external_seed_pdp_latency_prod_script.test.js"
       - "tests/discovery_feed_service.test.js"
       - "tests/find_products_multi_policy.test.js"
       - "tests/shopping_agent_strict_find_products_multi.test.js"
@@ -73,11 +76,13 @@ on:
       - "scripts/check_budget_fx_freshness.js"
       - "scripts/search_stability_matrix.js"
       - "scripts/smoke_discovery_feed_prod.sh"
+      - "scripts/smoke_external_seed_pdp_latency_prod.js"
       - "scripts/smoke_find_products_multi_skincare_prod.sh"
       - "scripts/run_discovery_feed_smoke.cjs"
       - "scripts/verify_deployed_commit_matches.sh"
       - "scripts/verify_commerce_invoke_rails.js"
       - "scripts/lib/**"
+      - "scripts/fixtures/external_seed_pdp_latency_gate.json"
       - "scripts/warm_find_products_multi_runtime.js"
       - "scripts/fixtures/commerce_invoke_rail_inventory.json"
       - "scripts/fixtures/find_products_multi_skincare_prod_gate.json"
@@ -94,6 +99,7 @@ on:
       - "src/services/externalSeedProducts.js"
       - "src/services/externalSeedHarvesterBridge.js"
       - "tests/discovery_feed_smoke_script.test.js"
+      - "tests/smoke_external_seed_pdp_latency_prod_script.test.js"
       - "tests/discovery_feed_service.test.js"
       - "tests/find_products_multi_policy.test.js"
       - "tests/shopping_agent_strict_find_products_multi.test.js"
@@ -145,6 +151,7 @@ jobs:
           node --check src/server.js
           node --check scripts/check_budget_fx_freshness.js
           node --check scripts/run_discovery_feed_smoke.cjs
+          node --check scripts/smoke_external_seed_pdp_latency_prod.js
           node --check scripts/warm_find_products_multi_runtime.js
           node --check scripts/search_stability_matrix.js
           node scripts/verify_commerce_invoke_rails.js
@@ -167,6 +174,7 @@ jobs:
             tests/find_products_multi_policy.test.js \
             tests/discovery_feed_service.test.js \
             tests/discovery_feed_smoke_script.test.js \
+            tests/smoke_external_seed_pdp_latency_prod_script.test.js \
             tests/verify_deployed_commit_matches_script.test.js
           npx jest --runInBand \
             tests/services/ingredient_product_recall.test.js \
@@ -249,6 +257,15 @@ jobs:
           ROUNDS=1 \
           OUT_DIR="reports/search-prod-skincare-release-gate" \
           bash scripts/smoke_find_products_multi_skincare_prod.sh
+
+      - name: Production external PDP latency smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/search-prod-skincare-release-gate
+          PDP_EXTERNAL_LATENCY_GATEWAY="$BASE_URL/api/gateway" \
+          PDP_EXTERNAL_LATENCY_REPORT_FILE="reports/search-prod-skincare-release-gate/external-seed-pdp-latency.json" \
+          node scripts/smoke_external_seed_pdp_latency_prod.js
 
       - name: Production discovery smoke
         shell: bash
