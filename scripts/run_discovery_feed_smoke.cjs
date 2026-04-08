@@ -120,10 +120,18 @@ function validateDiscoveryResponse(response, expectations = {}) {
         : [],
     })}`,
   );
-  ensure(
-    String(metadata.candidate_source || '') === String(expectations.candidateSource || EXPECTED_CANDIDATE_SOURCE),
-    `unexpected candidate_source: ${metadata.candidate_source || 'missing'}`,
-  );
+  if (Array.isArray(expectations.candidateSource)) {
+    const allowed = new Set(expectations.candidateSource.map((value) => String(value || '').trim()).filter(Boolean));
+    ensure(
+      allowed.has(String(metadata.candidate_source || '').trim()),
+      `unexpected candidate_source: ${metadata.candidate_source || 'missing'}`,
+    );
+  } else {
+    ensure(
+      String(metadata.candidate_source || '') === String(expectations.candidateSource || EXPECTED_CANDIDATE_SOURCE),
+      `unexpected candidate_source: ${metadata.candidate_source || 'missing'}`,
+    );
+  }
 
   if (expectations.discoveryStrategy) {
     ensure(
@@ -319,11 +327,11 @@ async function runSmoke(options = {}) {
   const coldStartResult = validateDiscoveryResponse(coldStart, {
     discoveryStrategy: 'cold_start_curated',
     personalizationSource: 'none',
-    candidateSource: EXPECTED_CANDIDATE_SOURCE,
+    candidateSource: [EXPECTED_CANDIDATE_SOURCE, 'products_search+external_seed_fastpath'],
     minProducts: 3,
     requireRankDebug: true,
     requiredRecallLabels: [['cold_start_curated', 'cold_start_fill']],
-    requiredProviders: ['products_search', 'internal_catalog', 'external_seeds'],
+    requiredProviders: ['products_search', 'external_seeds'],
     disallowTopN: 3,
     disallowTitlePatterns: [
       '\\bpet\\b',
@@ -370,11 +378,10 @@ async function runSmoke(options = {}) {
   const personalizedHomeResult = validateDiscoveryResponse(personalizedHome, {
     discoveryStrategy: 'personalized_interest',
     personalizationSource: 'account_history',
-    candidateSource: EXPECTED_CANDIDATE_SOURCE,
+    candidateSource: [EXPECTED_CANDIDATE_SOURCE, 'beauty_interest_mainline', 'beauty_interest_mainline+multi_provider'],
     minProducts: 4,
     requireRankDebug: true,
     requiredRecallLabels: ['interest_pool', 'expansion_pool'],
-    requiredProviders: ['products_search', 'internal_catalog', 'external_seeds'],
     excludeProductKeys: [suppressedKey],
   });
   console.log(`PASS personalized_home ${JSON.stringify(personalizedHomeResult)}`);
@@ -406,11 +413,10 @@ async function runSmoke(options = {}) {
   const browsePageOneResult = validateDiscoveryResponse(browsePageOne, {
     discoveryStrategy: 'personalized_interest',
     personalizationSource: 'account_history',
-    candidateSource: EXPECTED_CANDIDATE_SOURCE,
+    candidateSource: [EXPECTED_CANDIDATE_SOURCE, 'beauty_interest_mainline', 'beauty_interest_mainline+multi_provider'],
     minProducts: 6,
     requireRankDebug: true,
-    requiredRecallLabels: [['browse_pool', 'expansion_pool']],
-    requiredProviders: ['products_search', 'internal_catalog', 'external_seeds'],
+    requiredRecallLabels: [['browse_pool', 'expansion_pool', 'beauty_interest_mainline']],
     excludeProductKeys: [suppressedKey],
   });
   console.log(`PASS browse_page_one ${JSON.stringify(browsePageOneResult)}`);

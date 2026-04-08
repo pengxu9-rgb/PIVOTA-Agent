@@ -1780,6 +1780,14 @@ function isQueryOnlyPersonalizedDiscoveryRequest(request, profile) {
   return request?.surface === 'browse_products' || request?.surface === 'home_hot_deals';
 }
 
+function isGenericPersonalizedDiscoveryRequest(request, profile) {
+  if (!profile?.hasInterestSignals) return false;
+  if (hasBrandScope(request) || hasDiscoveryQueryText(request) || hasDiscoveryCategoryScope(request)) {
+    return false;
+  }
+  return request?.surface === 'browse_products' || request?.surface === 'home_hot_deals';
+}
+
 function getPersonalizedPrimaryProviderThreshold(request) {
   const requestedLimit = clampInt(request?.limit, 12, 1, 48);
   if (request?.surface === 'browse_products') {
@@ -1790,9 +1798,21 @@ function getPersonalizedPrimaryProviderThreshold(request) {
 }
 
 function shouldSkipPersonalizedProviderExpansion(products = [], { request, profile } = {}) {
-  if (!isQueryOnlyPersonalizedDiscoveryRequest(request, profile)) return false;
+  if (!isGenericPersonalizedDiscoveryRequest(request, profile)) return false;
   const highQualityCount = countHighQualityProviderCandidates(products, { request, profile });
-  return highQualityCount >= getPersonalizedPrimaryProviderThreshold(request);
+  if (
+    profile?.dominantDomain === 'beauty' &&
+    request?.surface === 'home_hot_deals' &&
+    highQualityCount >= Math.max(4, Math.min(Number(request?.limit || 0) || 0, 6))
+  ) {
+    return true;
+  }
+  if (isQueryOnlyPersonalizedDiscoveryRequest(request, profile)) {
+    return highQualityCount >= getPersonalizedPrimaryProviderThreshold(request);
+  }
+  return request?.surface === 'browse_products'
+    ? highQualityCount >= Math.max(Number(request?.limit || 0) || 0, 6)
+    : false;
 }
 
 async function fetchDiscoveryRecallStep({
@@ -2690,8 +2710,13 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
   profile,
   queries = [],
   limit = MAX_CANDIDATE_FETCH,
+  fetchFn = null,
+  providerName = 'external_seeds',
+  productProvider = 'beauty_interest_mainline',
+  stepName = 'beauty_interest_mainline',
+  label = 'beauty_interest_mainline',
 } = {}) {
-  const provider = 'external_seeds';
+  const provider = String(providerName || 'external_seeds').trim() || 'external_seeds';
   const stepStartedAt = Date.now();
   const safeLimit = clampInt(limit, Math.max(limit, 24), 12, MAX_CANDIDATE_FETCH);
   const recallTerms = buildBeautyInterestRecallTerms(request, profile, queries);
@@ -2701,10 +2726,63 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
       .toUpperCase() || 'US';
   const tool = 'creator_agents';
 
+  if (typeof fetchFn === 'function') {
+    try {
+      const products = annotateProviderProducts(
+        productProvider,
+        await fetchFn({ request, profile, queries: recallTerms.phrases, limit: safeLimit }),
+      );
+      recordDiscoveryRecallStep({
+        surface: request?.surface,
+        step: stepName,
+        status: 'success',
+        latencyMs: Date.now() - stepStartedAt,
+        cacheHit: false,
+      });
+      return {
+        products,
+        recallSummary: [
+          buildDiscoveryProviderStepSummary({
+            provider,
+            label,
+            query: recallTerms.phrases.join(' | '),
+            limit: safeLimit,
+            returned: products.length,
+            status: 200,
+            latencyMs: Date.now() - stepStartedAt,
+          }),
+        ],
+      };
+    } catch (err) {
+      recordDiscoveryRecallStep({
+        surface: request?.surface,
+        step: stepName,
+        status: 'error',
+        latencyMs: Date.now() - stepStartedAt,
+        cacheHit: false,
+      });
+      return {
+        products: [],
+        recallSummary: [
+          buildDiscoveryProviderStepSummary({
+            provider,
+            label,
+            query: recallTerms.phrases.join(' | '),
+            limit: safeLimit,
+            returned: 0,
+            status: null,
+            latencyMs: Date.now() - stepStartedAt,
+            error: err?.message || String(err),
+          }),
+        ],
+      };
+    }
+  }
+
   if (!process.env.DATABASE_URL) {
     recordDiscoveryRecallStep({
       surface: request?.surface,
-      step: 'beauty_interest_mainline',
+      step: stepName,
       status: 'skipped',
       latencyMs: Date.now() - stepStartedAt,
       cacheHit: false,
@@ -2714,7 +2792,7 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
       recallSummary: [
         buildDiscoveryProviderStepSummary({
           provider,
-          label: 'beauty_interest_mainline',
+          label,
           query: recallTerms.phrases.join(' | '),
           limit: safeLimit,
           returned: 0,
@@ -2796,7 +2874,7 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
   if (stageSql.length === 0) {
     recordDiscoveryRecallStep({
       surface: request?.surface,
-      step: 'beauty_interest_mainline',
+      step: stepName,
       status: 'skipped',
       latencyMs: Date.now() - stepStartedAt,
       cacheHit: false,
@@ -2806,7 +2884,7 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
       recallSummary: [
         buildDiscoveryProviderStepSummary({
           provider,
-          label: 'beauty_interest_mainline',
+          label,
           query: recallTerms.phrases.join(' | '),
           limit: safeLimit,
           returned: 0,
@@ -2842,12 +2920,12 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
     );
     const rows = Array.isArray(res?.rows) ? res.rows : [];
     const products = annotateProviderProducts(
-      'beauty_interest_mainline',
+      productProvider,
       rows.map((row) => buildExternalSeedBrandSearchProduct(row)).filter(Boolean),
     );
     recordDiscoveryRecallStep({
       surface: request?.surface,
-      step: 'beauty_interest_mainline',
+      step: stepName,
       status: 'success',
       latencyMs: Date.now() - stepStartedAt,
       cacheHit: false,
@@ -2857,7 +2935,7 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
       recallSummary: [
         buildDiscoveryProviderStepSummary({
           provider,
-          label: 'beauty_interest_mainline',
+          label,
           query: recallTerms.phrases.join(' | '),
           limit: safeLimit,
           returned: products.length,
@@ -2869,7 +2947,7 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
   } catch (err) {
     recordDiscoveryRecallStep({
       surface: request?.surface,
-      step: 'beauty_interest_mainline',
+      step: stepName,
       status: 'error',
       latencyMs: Date.now() - stepStartedAt,
       cacheHit: false,
@@ -2879,7 +2957,7 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
       recallSummary: [
         buildDiscoveryProviderStepSummary({
           provider,
-          label: 'beauty_interest_mainline',
+          label,
           query: recallTerms.phrases.join(' | '),
           limit: safeLimit,
           returned: 0,
@@ -3279,6 +3357,42 @@ async function loadCatalogCandidates({
         skipReason: 'sufficient_personalized_primary_candidates',
       }),
     );
+    return finalizeProviderResult();
+  }
+
+  const shouldUseNoSignalExternalSeedFastpath = isGenericNoSignalDiscoveryRequest(request, profile);
+  if (shouldUseNoSignalExternalSeedFastpath) {
+    providerResults.push(
+      buildSkippedProviderResult('internal_catalog', {
+        label: getProviderLabel('internal_catalog'),
+        query: providerQueries.join(' | '),
+        limit: internalProviderLimit,
+        skipReason: 'anonymous_cold_start_internal_disabled',
+      }),
+    );
+
+    try {
+      const externalResult = await fetchBeautyInterestExternalSeedFastpathCandidates({
+        request,
+        profile,
+        queries: externalProviderQueries,
+        limit: externalProviderLimit,
+        fetchFn: providerOverrides?.external_seeds || null,
+        providerName: 'external_seeds',
+        productProvider: 'external_seeds',
+        stepName: 'external_seed_pool_fastpath',
+        label: 'external_seed_pool_fastpath',
+      });
+      providerResults.push({
+        provider: 'external_seeds',
+        products: externalResult.products,
+        recallSummary: externalResult.recallSummary,
+      });
+      mergeProducts(externalResult.products);
+    } catch (err) {
+      providerResults.push(buildProviderErrorResult('external_seeds', err));
+    }
+
     return finalizeProviderResult();
   }
 

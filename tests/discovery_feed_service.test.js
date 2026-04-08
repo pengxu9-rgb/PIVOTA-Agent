@@ -1686,7 +1686,7 @@ describe('discovery feed service', () => {
       page: 2,
     });
 
-    expect(callCount).toBe(2);
+    expect(callCount).toBe(1);
     expect(pageOne.products).toHaveLength(2);
     expect(pageTwo.products).toHaveLength(2);
     expect(pageTwo.metadata?.rank_debug?.recall_summary).toEqual(
@@ -2751,6 +2751,108 @@ describe('discovery feed service', () => {
     expect(response.products.every((product) => product.merchant_id === 'external_seed')).toBe(true);
     expect(response.products.map((product) => product.product_id)).not.toContain('internal_ipsa');
     expect(response.metadata.filter_counts.not_selected_cold_start_internal_source).toBeGreaterThanOrEqual(1);
+  });
+
+  test('cold start home_hot_deals uses external seed fastpath before internal catalog when primary underfills', async () => {
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://wrong-backend.test';
+    delete process.env.PIVOTA_API_BASE;
+    delete process.env.PIVOTA_API_KEY;
+    process.env.PIVOTA_BACKEND_AGENT_API_KEY = 'bridge-key';
+
+    const internalSpy = jest.fn(async () => [
+      makeProduct({
+        merchant_id: 'merch_internal',
+        product_id: 'internal_1',
+        title: 'Winona Repair Serum',
+        brand: 'Winona',
+        category: 'Skincare',
+        product_type: 'Serum',
+      }),
+    ]);
+    const externalSpy = jest.fn(async ({ limit }) =>
+      Array.from({ length: limit }, (_, idx) =>
+        makeProduct({
+          merchant_id: 'external_seed',
+          product_id: `external_fast_${idx + 1}`,
+          title: `External Fastpath Serum ${idx + 1}`,
+          brand: `Seeded ${idx + 1}`,
+          category: 'Skincare',
+          product_type: 'Serum',
+        }),
+      ),
+    );
+
+    nock('http://discovery-catalog.test')
+      .matchHeader('x-agent-api-key', 'bridge-key')
+      .matchHeader('x-api-key', 'bridge-key')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        products: [
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'primary_1',
+            title: 'Primary Serum 1',
+            brand: 'Primary',
+            category: 'Skincare',
+            product_type: 'Serum',
+          }),
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'primary_2',
+            title: 'Primary Serum 2',
+            brand: 'Primary',
+            category: 'Skincare',
+            product_type: 'Serum',
+          }),
+        ],
+      });
+
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'home_hot_deals',
+        limit: 6,
+        debug: true,
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      },
+      {
+        providerOverrides: {
+          internal_catalog: internalSpy,
+          external_seeds: externalSpy,
+        },
+      },
+    );
+
+    expect(response.products).toHaveLength(6);
+    expect(internalSpy).not.toHaveBeenCalled();
+    expect(externalSpy).toHaveBeenCalledTimes(1);
+    expect(response.products.some((product) => product.product_id === 'internal_1')).toBe(false);
+    expect(response.metadata.provider_breakdown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ provider: 'products_search', successful: true }),
+        expect.objectContaining({
+          provider: 'internal_catalog',
+          skipped: true,
+          skip_reason: 'anonymous_cold_start_internal_disabled',
+        }),
+        expect.objectContaining({ provider: 'external_seeds', successful: true }),
+      ]),
+    );
+    expect(response.metadata.rank_debug.recall_summary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          provider: 'external_seeds',
+          label: 'external_seed_pool_fastpath',
+          status: 200,
+        }),
+      ]),
+    );
   });
 
   test('cold start browse_products defers beauty tools when non-tool beauty candidates exist across providers', async () => {
@@ -3845,7 +3947,7 @@ describe('discovery feed service', () => {
     );
     expect(response.metadata.rank_debug.recall_summary).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ provider: 'external_seeds', label: 'external_seed_pool', status: 200 }),
+        expect.objectContaining({ provider: 'external_seeds', label: 'external_seed_pool_fastpath', status: 200 }),
       ]),
     );
   });
@@ -3868,32 +3970,6 @@ describe('discovery feed service', () => {
       },
       {
         providerOverrides: {
-          internal_catalog: async () => [
-            makeProduct({
-              merchant_id: 'm1',
-              product_id: 'tool_internal_1',
-              title: 'Makeup Brush Everyday Essential',
-              brand: 'BrushLab',
-              category: 'Beauty Tools',
-              product_type: 'Brush',
-            }),
-            makeProduct({
-              merchant_id: 'm2',
-              product_id: 'serum_internal_1',
-              title: 'Barrier Repair Serum',
-              brand: 'Alpha',
-              category: 'Skincare',
-              product_type: 'Serum',
-            }),
-            makeProduct({
-              merchant_id: 'm3',
-              product_id: 'cream_internal_1',
-              title: 'Calming Recovery Cream',
-              brand: 'Beta',
-              category: 'Skincare',
-              product_type: 'Cream',
-            }),
-          ],
           external_seeds: async () => [
             makeProduct({
               merchant_id: 'external_seed',
@@ -3902,6 +3978,24 @@ describe('discovery feed service', () => {
               brand: 'BrushLab',
               category: 'Beauty Tools',
               product_type: 'Brush',
+            }),
+            makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'serum_external_1',
+              title: 'Barrier Repair Serum',
+              brand: 'Alpha',
+              category: 'Skincare',
+              product_type: 'Serum',
+              canonical_url: 'https://example.com/barrier-repair-serum',
+            }),
+            makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'cream_external_1',
+              title: 'Calming Recovery Cream',
+              brand: 'Beta',
+              category: 'Skincare',
+              product_type: 'Cream',
+              canonical_url: 'https://example.com/calming-recovery-cream',
             }),
             makeProduct({
               merchant_id: 'external_seed',
