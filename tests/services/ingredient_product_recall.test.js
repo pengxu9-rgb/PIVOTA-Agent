@@ -1840,6 +1840,67 @@ describe('ingredientProductRecall', () => {
     expect(dbQueryMock.mock.calls.filter((call) => String(call?.[0] || '').includes('FROM products_cache pc'))).toHaveLength(0);
   });
 
+  test('strict budget fast-exit caps initial attached-seed pattern fan-out before probing recall docs', async () => {
+    const dbQueryMock = jest.fn(async () => ({ rows: [] }));
+
+    jest.doMock('../../src/db', () => ({
+      query: dbQueryMock,
+    }));
+
+    const { recallIngredientProductsFromProfile } = require('../../src/services/ingredientSkuEvidence');
+    const out = await recallIngredientProductsFromProfile({
+      profile: {
+        ingredient_id: 'ascorbic_acid',
+        exact_phrases: [
+          'vitamin c',
+          'ascorbic acid',
+          'l-ascorbic acid',
+          'pure vitamin c',
+          'ethylated vitamin c',
+        ],
+        alias_phrases: [
+          'vit c',
+          'vc',
+          'tetrahexyldecyl ascorbate',
+          'thd ascorbate',
+          'sodium ascorbyl phosphate',
+          'sap',
+          'magnesium ascorbyl phosphate',
+          'map',
+        ],
+        family_phrases: ['brightening', 'dark spot', 'tone-evening'],
+        expected_step_families: ['serum', 'treatment'],
+      },
+      registryDiagnostics: {
+        registry_match: true,
+        registry_source: 'local',
+        profile_source: 'local',
+      },
+      query: 'best vitamin c serum under $30 for dark spots',
+      targetStepFamily: 'serum',
+      limit: 5,
+      minimumDirectProductCount: 2,
+      fastExitOnInitialMiss: true,
+    });
+
+    const externalSeedCalls = dbQueryMock.mock.calls.filter((call) =>
+      String(call?.[0] || '').includes('FROM external_product_seeds'),
+    );
+    const productsCacheCalls = dbQueryMock.mock.calls.filter((call) =>
+      String(call?.[0] || '').includes('FROM products_cache pc'),
+    );
+
+    expect(out.products).toEqual([]);
+    expect(out.diagnostics.ingredient_direct_fast_exit_applied).toBe(true);
+    expect(externalSeedCalls).toHaveLength(8);
+    expect(productsCacheCalls).toHaveLength(0);
+    const patternLengths = externalSeedCalls.map((call) =>
+      Array.isArray(call?.[1]?.[2]) ? call[1][2].length : null,
+    );
+    expect(patternLengths.filter((value) => value === 4)).toHaveLength(4);
+    expect(patternLengths.filter((value) => value === 6)).toHaveLength(4);
+  });
+
   test('buildTargetAnchoredExplicitPatterns combines ingredient phrases with target-step anchors', async () => {
     const { _internals } = require('../../src/services/ingredientSkuEvidence');
     const glycerinPatterns = _internals.buildTargetAnchoredExplicitPatterns({
