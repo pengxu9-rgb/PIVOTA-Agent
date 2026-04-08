@@ -58,6 +58,12 @@ const PDP_RECS_CACHE_METRICS = {
   bypasses: 0,
   evictions: 0,
 };
+const ALLOW_MOCK_RECOMMENDATION_CATALOG =
+  String(process.env.API_MODE || '')
+    .trim()
+    .toUpperCase() === 'MOCK' ||
+  process.env.NODE_ENV === 'test' ||
+  Boolean(process.env.JEST_WORKER_ID);
 
 function getCacheStats() {
   return {
@@ -593,12 +599,15 @@ async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId })
   const mid = String(merchantId || '').trim();
   const safeLimit = Math.min(Math.max(1, Number(limit || 120)), 400);
 
-  // In MOCK mode we may not have DATABASE_URL configured; use in-memory mock catalog
-  // so PDP recommendations are still non-empty and fast locally.
   if (!process.env.DATABASE_URL) {
+    if (!ALLOW_MOCK_RECOMMENDATION_CATALOG) {
+      logger.warn(
+        { merchantId: mid || null },
+        'recommendations internal candidates skipped: DATABASE_URL missing outside mock/test mode',
+      );
+      return [];
+    }
     try {
-      // Lazy require to avoid impacting production paths.
-      // eslint-disable-next-line global-require
       const { mockProducts } = require('../mockProducts');
       const out = [];
 
