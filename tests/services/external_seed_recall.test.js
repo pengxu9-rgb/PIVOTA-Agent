@@ -128,6 +128,27 @@ describe('externalSeedRecall', () => {
     expect(doc.retrieval_body).not.toMatch(/DESCRIPTION|HOW TO USE|INGREDIENTS|Net Wt/i);
   });
 
+  test('prefers title and category over stray scent words when inferring recall vertical', () => {
+    const doc = buildExternalSeedRecallDoc({
+      row: {
+        id: 'eps_fenty_instant_reset',
+        title:
+          'Instant Reset Brightening Overnight Recovery Gel-Cream with Niacinamide + Kalahari Melon Oil',
+        canonical_url:
+          'https://fentybeauty.com/products/instant-reset-brightening-overnight-recovery-gel-cream',
+      },
+      seedData: {
+        brand: 'Fenty Beauty',
+        category: 'Moisturizer',
+        pdp_description_raw:
+          'Take it to bed-wake up transformed. Helps improve the look of pores in just 1 week and deeply hydrates skin overnight. Refreshes with a lush, tropical fruit and floral scent.',
+      },
+      snapshot: {},
+    });
+
+    expect(doc.vertical).toBe('skincare');
+  });
+
   test('builds recall-first SQL with raw seed fallback only at the end', () => {
     const predicate = buildExternalSeedRecallLikePredicate('$3', { includeLegacyFallback: true });
     expect(predicate).toMatch(/retrieval_title/);

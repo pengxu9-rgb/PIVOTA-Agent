@@ -3,7 +3,7 @@ const { stripExternalSeedMarketingBannerPrefix } = require('./externalSeedMarket
 const SYNTHETIC_SUMMARY_RE = /\bOFFICIAL:[\s\S]*\/\/\/\s*SOCIAL HIGHLIGHTS:/i;
 const TEMPLATE_PREFIX_RE = /^experience the ultimate luxury with\s+/i;
 const RECALL_NOISE_RE =
-  /\b(contact us|customer service|customer support|support center|support centre|support team|support policy|privacy policy|terms(?: and conditions)?|shipping policy|return policy|about us|our story|blog|blogs|impact|foundation transparency|transparency|give 20%|give back|charity|donation|store locator|faq)\b/i;
+  /\b(contact us|customer service|customer support|support center|support centre|support team|support policy|privacy policy|terms(?: and conditions)?|shipping policy|return policy|about us|about the brands?|our story|blog|blogs|impact|foundation transparency|transparency|give 20%|give back|charity|donation|store locator|faq|student discounts|careers)\b/i;
 const GIFT_CARD_RE = /\b(e-?gift\s*card|gift\s*card|digital\s+gift\s+card)\b/i;
 const DONATION_RE = /\b(donation|donate|charity)\b/i;
 const NON_MERCH_PAGE_RE =
@@ -309,13 +309,24 @@ function detectExclusionFlags({ title = '', canonicalUrl = '', destinationUrl = 
 
 function inferVertical({ title = '', category = '', summary = '', body = '', exclusionFlags = null } = {}) {
   if (exclusionFlags?.gift_card) return 'gift_card';
-  const combined = [title, category, summary, body]
-    .filter(Boolean)
-    .join(' ')
-    .replace(/\bfragrance[-\s]?free\b/gi, ' ');
-  for (const [label, pattern] of BEAUTY_VERTICAL_PATTERNS) {
-    if (pattern.test(combined)) return label;
+  const normalizeSurface = (value) =>
+    String(value || '')
+      .replace(/\bfragrance[-\s]?free\b/gi, ' ')
+      .trim();
+  const primarySurface = normalizeSurface([title, category].filter(Boolean).join(' '));
+  const secondarySurface = normalizeSurface([summary, body].filter(Boolean).join(' '));
+  const fragrancePattern = BEAUTY_VERTICAL_PATTERNS.find(([label]) => label === 'fragrance')?.[1] || null;
+  const nonFragrancePatterns = BEAUTY_VERTICAL_PATTERNS.filter(([label]) => label !== 'fragrance');
+
+  for (const [label, pattern] of nonFragrancePatterns) {
+    if (pattern.test(primarySurface)) return label;
   }
+  if (fragrancePattern && fragrancePattern.test(primarySurface)) return 'fragrance';
+
+  for (const [label, pattern] of nonFragrancePatterns) {
+    if (pattern.test(secondarySurface)) return label;
+  }
+  if (fragrancePattern && fragrancePattern.test(secondarySurface)) return 'fragrance';
   return 'beauty';
 }
 

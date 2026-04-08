@@ -88,7 +88,7 @@ const INGREDIENT_ITEM_NOISE_PATTERNS = [
   /\btom ford research\b/i,
 ];
 const EXTERNAL_SEED_FACT_NOISE_RE =
-  /\b(contact us|customer service|privacy policy|terms(?: and conditions)?|shipping policy|return policy|about us|blog|blogs|impact|foundation transparency|transparency|give 20%|donation|donate|store locator|support|avoid contact with eyes|keep out of reach of children|customerservice@|clearorg\.eu|clear \d+\s+rue)\b/i;
+  /\b(contact us|customer service|privacy policy|terms(?: and conditions)?|shipping policy|return policy|about us|about the brands?|blog|blogs|impact|foundation transparency|transparency|give 20%|donation|donate|store locator|support|avoid contact with eyes|keep out of reach of children|customerservice@|clearorg\.eu|clear \d+\s+rue|student discounts|careers)\b/i;
 const EXTERNAL_SEED_SYNTHETIC_SUMMARY_RE =
   /^\s*OFFICIAL:\s*([\s\S]*?)(?:\s*\/\/\/\s*SOCIAL HIGHLIGHTS:\s*[\s\S]*)$/i;
 const EXTERNAL_SEED_OVERVIEW_TAG_PHRASES = [
@@ -1251,6 +1251,22 @@ function sanitizeIngredientRawText(value) {
   return text;
 }
 
+function looksLikeStructuredIngredientList(value) {
+  const text = sanitizeIngredientRawText(value);
+  if (!text) return false;
+  if (/\b(aqua\/water\/eau|ingredients(?:\s*\(inci\))?\s*:|ci\s*\d{3,5})\b/i.test(text)) return true;
+  const commaCount = (text.match(/,(?![^()]*\))/g) || []).length;
+  return commaCount >= 3;
+}
+
+function hasNarrativeIngredientSignals(value) {
+  const text = normalizeTextValue(value);
+  if (!text) return false;
+  return /\b(vitamin|antioxidant|locks in hydration|hydrates?|hydration|fights shine|reduces the look|helps hydrate|soothe|condition|nutrient-rich|superfruit|detoxif|commonly used|reduces oil|refines pores)\b/i.test(
+    text,
+  );
+}
+
 function cleanIngredientItem(value) {
   return normalizeTextValue(value)
     .replace(/^full ingredients[:\s-]*/i, '')
@@ -1544,8 +1560,29 @@ function shouldSuppressLowConfidenceActiveIngredients(product, items, ingredient
     : [];
   const subsetOfIngredients =
     activeKeys.length > 0 && activeKeys.every((item) => ingredientKeys.has(item));
+  const activeRawKey = normalizeComparisonKey(rawText);
+  const ingredientRawKey = normalizeComparisonKey(ingredientsModule?.raw_text);
   if (activeCount <= 1 && ingredientsCount >= 4) return true;
   if (subsetOfIngredients && activeCount <= 3 && ingredientsCount >= 8) return true;
+  if (
+    qualityStatus !== 'reviewed' &&
+    qualityStatus !== 'high' &&
+    subsetOfIngredients &&
+    activeRawKey &&
+    ingredientRawKey &&
+    activeRawKey === ingredientRawKey
+  ) {
+    return true;
+  }
+  if (
+    qualityStatus !== 'reviewed' &&
+    qualityStatus !== 'high' &&
+    !looksLikeStructuredIngredientList(rawText) &&
+    hasNarrativeIngredientSignals(rawText) &&
+    (subsetOfIngredients || activeCount <= 4)
+  ) {
+    return true;
+  }
   if (qualityStatus === 'captured') return false;
   return (
     !normalizeTextValue(rawText) &&
@@ -1553,6 +1590,21 @@ function shouldSuppressLowConfidenceActiveIngredients(product, items, ingredient
     ingredientsCount >= 8 &&
     subsetOfIngredients
   );
+}
+
+function shouldSuppressLowConfidenceIngredients(product, items, sourceMeta, rawText) {
+  if (String(product?.source || '').trim().toLowerCase() !== 'external_seed') return false;
+  if (detectTemplateHint(product) !== 'beauty') return false;
+  const qualityStatus = String(sourceMeta?.source_quality_status || '').trim().toLowerCase();
+  if (qualityStatus === 'reviewed' || qualityStatus === 'high') return false;
+  if (looksLikeStructuredIngredientList(rawText)) return false;
+  const normalizedItems = Array.isArray(items) ? items : [];
+  if (!normalizedItems.length) return false;
+  const verboseItemCount = normalizedItems.filter((item) => String(item || '').trim().split(/\s+/).length >= 4).length;
+  const likelyNarrative =
+    hasNarrativeIngredientSignals(rawText) ||
+    verboseItemCount >= Math.max(2, Math.ceil(normalizedItems.length * 0.35));
+  return likelyNarrative;
 }
 
 function buildIngredientsModule(product, detailSections) {
@@ -1589,13 +1641,17 @@ function buildIngredientsModule(product, detailSections) {
       : parsedRawItems;
   if (!rawText && !normalizedItems.length) return null;
   const sourceMeta = extractStructuredSourceMeta(directIngredientsPayload);
+  const resolvedSourceMeta = Object.keys(sourceMeta).length
+    ? sourceMeta
+    : resolveIngredientSourceMeta(product, Boolean(product.pdp_ingredients_raw));
+  if (shouldSuppressLowConfidenceIngredients(product, normalizedItems, resolvedSourceMeta, rawText)) {
+    return null;
+  }
   return {
     title: 'Ingredients',
     raw_text: rawText || undefined,
     items: normalizedItems,
-    ...(Object.keys(sourceMeta).length
-      ? sourceMeta
-      : resolveIngredientSourceMeta(product, Boolean(product.pdp_ingredients_raw))),
+    ...resolvedSourceMeta,
   };
 }
 
