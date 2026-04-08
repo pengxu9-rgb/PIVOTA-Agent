@@ -1212,6 +1212,7 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
         getLocalStepAwareRemainingBudgetMs(),
       logger,
       rawUserQuery: queryText,
+      strictFailCloseOnPrimaryTimeout: true,
     });
     response = semanticOwnerExecution.response;
     upstreamData = semanticOwnerExecution.upstreamData;
