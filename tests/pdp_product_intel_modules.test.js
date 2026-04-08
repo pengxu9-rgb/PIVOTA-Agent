@@ -1,9 +1,12 @@
-const { buildPdpPayload } = require('../src/pdpBuilder');
-const { buildProductIntelBundle, buildProductIntelDraftBundle } = require('../src/pdpProductIntel');
+const {
+  buildProductIntelBundle,
+  buildProductIntelDraftBundle,
+  normalizePublishedProductIntelBundle,
+} = require('../src/pdpProductIntel');
 
-describe('pdpBuilder product intel modules', () => {
-  test('adds Pivota Insights and texture modules ahead of legacy details', () => {
-    const payload = buildPdpPayload({
+describe('pdp product intel bundle shaping', () => {
+  test('buildProductIntelBundle returns structured insights with texture and community signals', () => {
+    const bundle = buildProductIntelBundle({
       product: {
         product_id: 'p_intel_1',
         merchant_id: 'm_intel_1',
@@ -51,26 +54,18 @@ describe('pdpBuilder product intel modules', () => {
           price: { amount: 28, currency: 'USD' },
         },
       ],
-      entryPoint: 'agent',
     });
 
-    const moduleTypes = payload.modules.map((module) => module.type);
-    expect(moduleTypes).toEqual(
-      expect.arrayContaining(['product_intel', 'texture_finish', 'product_details']),
-    );
-
-    const productIntelModule = payload.modules.find((module) => module.type === 'product_intel');
-    const textureModule = payload.modules.find((module) => module.type === 'texture_finish');
-    const detailsModule = payload.modules.find((module) => module.type === 'product_details');
-
-    expect(productIntelModule.data.display_name).toBe('Pivota Insights');
-    expect(productIntelModule.data.evidence_profile).toBe('community_supported');
-    expect(productIntelModule.priority).toBeGreaterThan(detailsModule.priority);
-    expect(textureModule.data.texture).toBe('gel-cream');
+    expect(bundle).toBeTruthy();
+    expect(bundle.display_name).toBe('Pivota Insights');
+    expect(bundle.evidence_profile).toBe('community_supported');
+    expect(bundle.product_intel_core.what_it_is.body).toMatch(/daily gel-cream moisturizer/i);
+    expect(bundle.texture_finish.texture).toBe('gel-cream');
+    expect(bundle.community_signals.status).toBe('available');
   });
 
-  test('seller-only products suppress community signals module', () => {
-    const payload = buildPdpPayload({
+  test('seller-only bundles keep community signals unavailable', () => {
+    const bundle = buildProductIntelBundle({
       product: {
         product_id: 'p_seller_only_1',
         merchant_id: 'm_seller_only_1',
@@ -97,14 +92,12 @@ describe('pdpBuilder product intel modules', () => {
         },
       },
       relatedProducts: [],
-      entryPoint: 'agent',
     });
 
-    const productIntelModule = payload.modules.find((module) => module.type === 'product_intel');
-    expect(productIntelModule).toBeTruthy();
-    expect(productIntelModule.data.evidence_profile).toBe('seller_only');
-    expect(productIntelModule.data.confidence.overall).toBe('moderate');
-    expect(payload.modules.some((module) => module.type === 'community_signals')).toBe(false);
+    expect(bundle).toBeTruthy();
+    expect(bundle.evidence_profile).toBe('seller_only');
+    expect(bundle.product_intel_core.confidence.overall).toBe('moderate');
+    expect(bundle.community_signals.status).toBe('unavailable');
   });
 
   test('draft intel bundle stays offline-only and does not unlock runtime modules by itself', () => {
@@ -128,5 +121,54 @@ describe('pdpBuilder product intel modules', () => {
     expect(draft.product_intel_core.what_it_is.body).toMatch(/sunscreen/i);
     expect(draft.evidence_profile).toBe('seller_plus_formula');
     expect(draft.community_signals.status).toBe('unavailable');
+  });
+
+  test('seller-only drafts compact overlong what_it_is narrative', () => {
+    const draft = buildProductIntelDraftBundle({
+      product: {
+        product_id: 'pilot_long_1',
+        merchant_id: 'pilot_merchant_1',
+        title: 'Vitamin C Super Serum Plus - Jumbo',
+        category: 'Serum',
+        description:
+          'Double up and save with this jumbo size of our supercharged, multi-benefit serum formulated with vitamin c, retinol, hyaluronic acid, niacinamide and salicylic acid to help improve the look of fine lines and wrinkles, smooth and brighten the appearance of skin, while also helping protect skin from environmental stressors. Our Vitamin C Super Serum Plus is clinically proven to brighten skin appearance and improve the look of fine lines and wrinkles plus skin tone and texture in just 8 weeks. In an 8-week clinical study on subjects, representation across all skin types and self-perceived sensitive skin.',
+      },
+    });
+
+    expect(draft.product_intel_core.what_it_is.body.length).toBeLessThanOrEqual(320);
+    expect(draft.product_intel_core.what_it_is.body).not.toMatch(/in an 8-week clinical study/i);
+  });
+
+  test('published bundles compact overlong what_it_is narrative at read time', () => {
+    const bundle = normalizePublishedProductIntelBundle({
+      contract_version: 'pivota.product_intel.v1',
+      product_intel_core: {
+        what_it_is: {
+          headline: 'Treatment serum',
+          body:
+            'Double up and save with this jumbo size of our supercharged, multi-benefit serum formulated with vitamin c, retinol, hyaluronic acid, niacinamide and salicylic acid to help improve the look of fine lines and wrinkles, smooth and brighten the appearance of skin, while also helping protect skin from environmental stressors. Our Vitamin C Super Serum Plus is clinically proven to brighten skin appearance and improve the look of fine lines and wrinkles plus skin tone and texture in just 8 weeks. In an 8-week clinical study on subjects, representation across all skin types and self-perceived sensitive skin.',
+        },
+        best_for: [{ tag: 'tone', label: 'Uneven tone concerns', confidence: 'moderate' }],
+        why_it_stands_out: [],
+        routine_fit: { step: 'serum', am_pm: ['am', 'pm'], pairing_notes: [] },
+        watchouts: [],
+        confidence: { overall: 'moderate' },
+        freshness: { generated_at: '2026-04-08T12:00:00.000Z', source_version: 'pilot_selected:test' },
+        quality_state: 'limited',
+        evidence_profile: 'seller_only',
+      },
+      community_signals: {
+        status: 'unavailable',
+        unavailable_reason: 'insufficient_feedback',
+        confidence: 'low',
+        evidence_profile: 'seller_only',
+      },
+      quality_state: 'limited',
+      evidence_profile: 'seller_only',
+    });
+
+    expect(bundle.product_intel_core.what_it_is.body.length).toBeLessThanOrEqual(320);
+    expect(bundle.product_intel_core.what_it_is.body).not.toMatch(/^Double up and save with/i);
+    expect(bundle.product_intel_core.what_it_is.body).not.toMatch(/in an 8-week clinical study/i);
   });
 });
