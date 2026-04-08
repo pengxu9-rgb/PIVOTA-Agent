@@ -1,0 +1,37 @@
+{
+  "rounds": 2,
+  "timeout_ms": 12000,
+  "thresholds": {
+    "cold_pdp_max_ms": 4500,
+    "warm_pdp_max_ms": 1500,
+    "cold_similar_max_ms": 4500,
+    "warm_similar_max_ms": 3500,
+    "min_similar_count": 4
+  },
+  "cases": [
+    {
+      "key": "fenty_instant_reset",
+      "merchant_id": "external_seed",
+      "product_id": "ext_07c58c61909cb0ed6d722435",
+      "title": "Instant Reset Brightening Overnight Recovery Gel-Cream with Niacinamide + Kalahari Melon Oil"
+    },
+    {
+      "key": "tom_ford_noir_de_noir",
+      "merchant_id": "external_seed",
+      "product_id": "ext_a65b2ac9f4206fd7c5edff32",
+      "title": "Noir de Noir Eau de Parfum"
+    },
+    {
+      "key": "naturium_dew_glow_jumbo",
+      "merchant_id": "external_seed",
+      "product_id": "ext_cdcb6dd807957b998ea79623",
+      "title": "Dew-Glow Moisturizer SPF 50 - Jumbo"
+    },
+    {
+      "key": "murad_superactive_spf50",
+      "merchant_id": "external_seed",
+      "product_id": "ext_fc26386f850350182168d8d1",
+      "title": "Superactive Moisturizer SPF 50: Mattifying Oil + Pore Control"
+    }
+  ]
+}
