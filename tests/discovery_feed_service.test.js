@@ -1,4 +1,5 @@
 const nock = require('nock');
+const axios = require('axios');
 const {
   DiscoveryCatalogUnavailableError,
   buildDiscoveryProfile,
@@ -73,6 +74,7 @@ describe('discovery feed service', () => {
 
   afterEach(() => {
     nock.cleanAll();
+    jest.restoreAllMocks();
     Object.entries(previousEnv).forEach(([key, value]) => {
       if (value == null) {
         delete process.env[key];
@@ -916,6 +918,85 @@ describe('discovery feed service', () => {
       }),
     );
     expect(capturedRecommendArgs.options).toBeUndefined();
+  });
+
+  test('brand-scoped discovery continues to recommendation fallback when brand pool times out', async () => {
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+    delete process.env.PIVOTA_API_BASE;
+    delete process.env.PIVOTA_API_KEY;
+    process.env.PIVOTA_BACKEND_AGENT_API_KEY = 'bridge-key';
+    process.env.DISCOVERY_PRODUCTS_SEARCH_TIMEOUT_MS = '50';
+    const axiosGetSpy = jest
+      .spyOn(axios, 'get')
+      .mockRejectedValue(new Error('timeout of 50ms exceeded'));
+
+    let recommendCalls = 0;
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        sort: 'popular',
+        debug: true,
+        scope: {
+          brand_names: ['KraveBeauty'],
+        },
+        source_product_ref: {
+          product_id: 'ext_670fd3f47ecd319d143f8c65',
+          merchant_id: 'external_seed',
+        },
+        context: {
+          locale: 'en-US',
+        },
+      },
+      {
+        brandFallbackFetchInternalCandidatesFn: async () => [],
+        brandFallbackFetchExternalCandidatesFn: async () => [],
+        brandFallbackRecommendFn: async () => {
+          recommendCalls += 1;
+          return {
+            items: [
+              makeProduct({
+                merchant_id: 'external_seed',
+                product_id: 'krave_matcha',
+                title: 'Matcha Hemp Hydrating Cleanser',
+                brand: 'KraveBeauty',
+                category: 'Skincare',
+                product_type: 'Cleanser',
+              }),
+            ],
+          };
+        },
+      },
+    );
+
+    expect(response.products.map((product) => product.product_id)).toEqual(['krave_matcha']);
+    expect(response.metadata.candidate_source).toBe('multi_provider+brand_recommendation_fallback');
+    expect(recommendCalls).toBe(1);
+    expect(axiosGetSpy).toHaveBeenCalled();
+    expect(response.metadata.provider_breakdown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          provider: 'products_search',
+          attempted: true,
+          successful: false,
+          returned: 0,
+          failure_reason: 'timeout',
+          zero_recall_reason: 'timeout',
+        }),
+      ]),
+    );
+    expect(response.metadata.rank_debug.recall_summary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          provider: 'products_search',
+          label: 'brand_pool',
+          returned: 0,
+          error: expect.stringMatching(/timeout/i),
+        }),
+      ]),
+    );
   });
 
   test('browse selection applies explicit query text filtering within a brand scope', async () => {

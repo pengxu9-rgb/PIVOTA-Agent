@@ -3784,19 +3784,32 @@ async function loadCatalogCandidates({
     );
     const providerBreakdown = buildProviderBreakdown(providerResults);
     const successfulProviders = providerBreakdown.filter((entry) => entry.successful);
+    const unavailableError = new DiscoveryCatalogUnavailableError(
+      'Failed to load discovery candidates from discovery providers',
+      {
+        providerBreakdown,
+        recallSummary,
+        candidateSource,
+        primaryPathUsed,
+        fallbackTriggered,
+        fallbackReason,
+      },
+    );
 
     if (successfulProviders.length <= 0) {
-      throw new DiscoveryCatalogUnavailableError(
-        'Failed to load discovery candidates from discovery providers',
-        {
-          providerBreakdown,
+      if (shouldUseBrandDirectPoolInsteadOfGenericBrandExpansion(request)) {
+        return {
+          products: mergedProducts,
           recallSummary,
+          providerBreakdown,
           candidateSource,
           primaryPathUsed,
           fallbackTriggered,
           fallbackReason,
-        },
-      );
+          catalogUnavailableError: unavailableError,
+        };
+      }
+      throw unavailableError;
     }
 
     return {
@@ -3807,6 +3820,7 @@ async function loadCatalogCandidates({
       primaryPathUsed,
       fallbackTriggered,
       fallbackReason,
+      catalogUnavailableError: null,
     };
   };
 
@@ -5289,6 +5303,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       ? {
           products: options.candidateProducts,
           recallSummary: [],
+          catalogUnavailableError: null,
         }
       : await loadCatalogCandidates({
           request,
@@ -5316,6 +5331,10 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
     const fallbackReason =
       typeof candidateLoadResult?.fallbackReason === 'string' && candidateLoadResult.fallbackReason.trim()
         ? candidateLoadResult.fallbackReason.trim()
+        : null;
+    const catalogUnavailableError =
+      candidateLoadResult?.catalogUnavailableError instanceof DiscoveryCatalogUnavailableError
+        ? candidateLoadResult.catalogUnavailableError
         : null;
     let effectiveRawCandidates = rawCandidates;
     observeDiscoveryCandidateCount({
@@ -5435,6 +5454,9 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
           matchesBrandScopeCandidate(candidate, brandScopeAliases),
         );
       }
+    }
+    if (brandScopeAliases.length > 0 && scopedCandidates.length === 0 && catalogUnavailableError) {
+      throw catalogUnavailableError;
     }
     observeDiscoveryCandidateCount({
       surface: request.surface,
