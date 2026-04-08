@@ -3969,6 +3969,55 @@ describe('discovery feed service', () => {
     );
   });
 
+  test('anonymous cold-start fastpath skips summary-stage DB recall when generic recall terms miss', async () => {
+    jest.resetModules();
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = 'postgres://discovery-fastpath-test';
+    const dbQueryMock = jest.fn(async () => ({ rows: [] }));
+    jest.doMock('../src/db', () => ({
+      query: dbQueryMock,
+    }));
+
+    try {
+      const { _internals: freshInternals } = require('../src/services/discoveryFeed');
+      const request = freshInternals.normalizeDiscoveryRequest({
+        surface: 'home_hot_deals',
+        limit: 4,
+        page: 1,
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      });
+
+      const result = await freshInternals.fetchBeautyInterestExternalSeedFastpathCandidates({
+        request,
+        profile: {
+          hasInterestSignals: false,
+        },
+        queries: ['niacinamide serum'],
+        limit: 4,
+        providerName: 'external_seeds',
+        productProvider: 'beauty_interest_mainline',
+        stepName: 'beauty_interest_mainline',
+        label: 'external_seed_pool_fastpath',
+      });
+
+      expect(result.products).toEqual([]);
+      expect(dbQueryMock).toHaveBeenCalledTimes(4);
+      expect(
+        dbQueryMock.mock.calls.every(
+          (call) => !String(call?.[0] || '').includes("'recall_summary'::text AS match_stage"),
+        ),
+      ).toBe(true);
+    } finally {
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+    }
+  });
+
   test('generic discovery semantically dedupes duplicate tool titles across providers', async () => {
     delete process.env.PIVOTA_BACKEND_BASE_URL;
     delete process.env.PIVOTA_API_BASE;

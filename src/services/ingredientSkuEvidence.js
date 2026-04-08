@@ -2363,6 +2363,10 @@ async function recallIngredientProductsFromProfile({
     ...(Array.isArray(profile.exact_phrases) ? profile.exact_phrases : []),
     ...(Array.isArray(profile.alias_phrases) ? profile.alias_phrases : []),
   ]);
+  const fastExitAnchoredPatterns =
+    fastExitOnInitialMiss === true ? uniqStrings(targetAnchoredExplicitPatterns, 4) : targetAnchoredExplicitPatterns;
+  const fastExitExplicitPatterns =
+    fastExitOnInitialMiss === true ? uniqStrings(explicitPatterns, 6) : explicitPatterns;
   const fastExitInitialAnchoredLimit = Math.max(6, Math.min(Math.max(Number(limit || 0) * 2, 6), 8));
   const fastExitInitialExplicitLimit = Math.max(8, Math.min(Math.max(Number(limit || 0) * 2, 8), 12));
   const shouldProbeInitialProductsCache = fastExitOnInitialMiss !== true;
@@ -2370,7 +2374,7 @@ async function recallIngredientProductsFromProfile({
   diagnostics.products_cache_recall_attempted = shouldProbeInitialProductsCache;
   const initialDirectFetches = [
     fetchSeedRowsByPatterns({
-      patterns: targetAnchoredExplicitPatterns,
+      patterns: fastExitAnchoredPatterns,
       market,
       tool,
       attachedState: 'attached',
@@ -2380,7 +2384,7 @@ async function recallIngredientProductsFromProfile({
       inStockOnly,
     }),
     fetchSeedRowsByPatterns({
-      patterns: explicitPatterns,
+      patterns: fastExitExplicitPatterns,
       market,
       tool,
       attachedState: 'attached',
@@ -2393,11 +2397,11 @@ async function recallIngredientProductsFromProfile({
   if (shouldProbeInitialProductsCache) {
     initialDirectFetches.push(
       fetchProductsCacheRowsByPatterns({
-        patterns: targetAnchoredExplicitPatterns,
+        patterns: fastExitAnchoredPatterns,
         limit: resolveRecallFetchLimit(profile, limit, 2, 18, 18),
       }),
       fetchProductsCacheRowsByPatterns({
-        patterns: explicitPatterns,
+        patterns: fastExitExplicitPatterns,
         limit: resolveRecallFetchLimit(profile, limit, 3, 24, 24),
       }),
     );

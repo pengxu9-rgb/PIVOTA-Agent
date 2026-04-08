@@ -2855,7 +2855,8 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
     });
   }
 
-  const shouldRunSummaryFallback = recallTerms.patterns.length > 0;
+  const shouldRunSummaryFallback =
+    recallTerms.patterns.length > 0 && !isGenericNoSignalDiscoveryRequest(request, profile);
   if (stageDefinitions.length === 0 && !shouldRunSummaryFallback) {
     recordDiscoveryRecallStep({
       surface: request?.surface,
@@ -5114,6 +5115,7 @@ module.exports = {
   _internals: {
     buildBrandScopeAliases,
     buildBeautyPersonalizedQueries,
+    fetchBeautyInterestExternalSeedFastpathCandidates,
     buildDiscoveryContextCacheKey,
     buildDiscoveryDatabaseSearchTerms,
     buildDiscoveryInterestQuery,
