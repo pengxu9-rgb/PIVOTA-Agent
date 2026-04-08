@@ -82,3 +82,46 @@ test('internal products search primitive uses local cache retrieval instead of u
   assert.equal(responseBody.total, 2);
   assert.equal(responseBody.products.length, 2);
 });
+
+test('internal products search primitive surfaces local cache failure details', async () => {
+  const runtime = createFindProductsInternalSearchPrimitiveRuntime({
+    normalizeAgentProductsListResponse: (body) => body,
+    searchCrossMerchantFromCache: async () => {
+      const err = new Error('cache query failed');
+      err.code = 'CACHE_QUERY_FAILED';
+      throw err;
+    },
+    getDefaultTimeoutMs: () => 4800,
+  });
+
+  const req = {
+    body: {
+      query: 'oil control serum',
+      limit: 6,
+      catalog_surface: 'beauty',
+    },
+    header() {
+      return null;
+    },
+  };
+  let statusCode = 200;
+  let responseBody = null;
+  const res = {
+    status(code) {
+      statusCode = code;
+      return this;
+    },
+    json(body) {
+      responseBody = body;
+      return body;
+    },
+  };
+
+  await runtime.handleInternalProductsSearch(req, res);
+
+  assert.equal(statusCode, 502);
+  assert.equal(responseBody.error, 'INTERNAL_PRODUCTS_SEARCH_UPSTREAM_ERROR');
+  assert.equal(responseBody.message, 'cache query failed');
+  assert.equal(responseBody.failure_stage, 'local_cache_retrieval');
+  assert.equal(responseBody.internal_error_code, 'CACHE_QUERY_FAILED');
+});

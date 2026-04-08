@@ -4521,6 +4521,10 @@ async function searchInternalProductsPrimitive({
     products = [],
     statusCode = null,
     errCode = null,
+    upstreamErrorCode = null,
+    upstreamErrorMessage = null,
+    upstreamFailureStage = null,
+    upstreamInternalErrorCode = null,
   } = {}) => {
     const transportHop = {
       caller_lane: String(callerLane || '').trim() || null,
@@ -4540,6 +4544,11 @@ async function searchInternalProductsPrimitive({
           ? Math.trunc(Number(statusCode))
           : null,
       error_code: errCode ? String(errCode).trim() : null,
+      upstream_error_code: upstreamErrorCode ? String(upstreamErrorCode).trim() : null,
+      upstream_error_message: upstreamErrorMessage ? String(upstreamErrorMessage).trim() : null,
+      upstream_failure_stage: upstreamFailureStage ? String(upstreamFailureStage).trim() : null,
+      upstream_internal_error_code:
+        upstreamInternalErrorCode ? String(upstreamInternalErrorCode).trim() : null,
       source_base_url: normalizedBase || null,
       source_endpoint: endpoint || null,
       source_path: normalizedPath,
@@ -4593,10 +4602,31 @@ async function searchInternalProductsPrimitive({
       ? Math.trunc(Number(resp.status))
       : null;
     const body = resp && resp.data ? resp.data : null;
-    const products = normalizeProductsFromSearchData(body);
+    const bodyErrorCode = String(body?.error || '').trim();
+    const bodyErrorMessage = String(body?.message || '').trim();
+    const bodyFailureStage = String(body?.failure_stage || '').trim();
+    const bodyInternalErrorCode = String(body?.internal_error_code || '').trim();
+    const products = extractAgentProductsFromSearchResponse(body)
+      .map((product) => normalizeRecoCatalogProduct(product))
+      .filter(Boolean);
+    const inferInternalPrimitiveFailureReason = () => {
+      const normalizedErrorCode = bodyErrorCode.toUpperCase();
+      if (
+        normalizedErrorCode === 'INTERNAL_PRODUCTS_SEARCH_TIMEOUT' ||
+        statusCode === 408 ||
+        statusCode === 504 ||
+        /timeout/i.test(bodyErrorMessage)
+      ) {
+        return 'upstream_timeout';
+      }
+      if (statusCode === 429) return 'rate_limited';
+      if (statusCode === 404) return 'not_found';
+      if (statusCode && statusCode >= 500) return 'upstream_error';
+      return null;
+    };
     const bodyReason = products.length
       ? null
-      : inferSearchFailureReasonFromBody({ data: body, statusCode });
+      : inferInternalPrimitiveFailureReason();
     if (!statusCode || statusCode < 200 || statusCode >= 300) {
       const reason =
         statusCode === 404
@@ -4611,6 +4641,10 @@ async function searchInternalProductsPrimitive({
         reason,
         products: [],
         statusCode,
+        upstreamErrorCode: bodyErrorCode || null,
+        upstreamErrorMessage: bodyErrorMessage || null,
+        upstreamFailureStage: bodyFailureStage || null,
+        upstreamInternalErrorCode: bodyInternalErrorCode || null,
       });
     }
     if (bodyReason && bodyReason !== 'not_found') {
@@ -4619,6 +4653,10 @@ async function searchInternalProductsPrimitive({
         reason: bodyReason,
         products: [],
         statusCode,
+        upstreamErrorCode: bodyErrorCode || null,
+        upstreamErrorMessage: bodyErrorMessage || null,
+        upstreamFailureStage: bodyFailureStage || null,
+        upstreamInternalErrorCode: bodyInternalErrorCode || null,
       });
     }
     return {
@@ -4639,6 +4677,12 @@ async function searchInternalProductsPrimitive({
       : null;
     const errCode = typeof err?.code === 'string' ? err.code.trim().toUpperCase() : '';
     const errMessage = err && err.message ? err.message : String(err);
+    const responseData =
+      err?.response?.data && typeof err.response.data === 'object' ? err.response.data : null;
+    const responseErrorCode = String(responseData?.error || '').trim();
+    const responseErrorMessage = String(responseData?.message || errMessage || '').trim();
+    const responseFailureStage = String(responseData?.failure_stage || '').trim();
+    const responseInternalErrorCode = String(responseData?.internal_error_code || '').trim();
     const reason =
       errCode === 'ECONNABORTED' || /timeout/i.test(errMessage)
         ? 'upstream_timeout'
@@ -4654,6 +4698,8 @@ async function searchInternalProductsPrimitive({
         status_code: statusCode || null,
         code: errCode || null,
         err: errMessage,
+        upstream_error_code: responseErrorCode || null,
+        upstream_failure_stage: responseFailureStage || null,
       },
       'aurora bff: internal products search primitive failed',
     );
@@ -4664,6 +4710,10 @@ async function searchInternalProductsPrimitive({
         products: [],
         statusCode,
         errCode,
+        upstreamErrorCode: responseErrorCode || null,
+        upstreamErrorMessage: responseErrorMessage || null,
+        upstreamFailureStage: responseFailureStage || null,
+        upstreamInternalErrorCode: responseInternalErrorCode || null,
       }),
       err: errMessage,
       resolver_first_applied: false,

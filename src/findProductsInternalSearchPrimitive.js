@@ -343,6 +343,8 @@ function createFindProductsInternalSearchPrimitiveRuntime(deps = {}) {
             ? 'INTERNAL_PRODUCTS_SEARCH_TIMEOUT'
             : 'INTERNAL_PRODUCTS_SEARCH_UPSTREAM_ERROR',
         message: err?.message || String(err),
+        failure_stage: 'local_cache_retrieval',
+        internal_error_code: err?.code || null,
       });
     }
 

@@ -3598,6 +3598,41 @@ test('__internal: framework-first transport policy constrains each planned query
   }
 });
 
+test('__internal: internal primitive client surfaces backend error details', async () => {
+  const { __internal } = loadRoutesFresh();
+  const originalPost = axios.post;
+  axios.post = async () => ({
+    status: 502,
+    data: {
+      error: 'INTERNAL_PRODUCTS_SEARCH_UPSTREAM_ERROR',
+      message: 'cache query failed',
+      failure_stage: 'local_cache_retrieval',
+      internal_error_code: 'CACHE_QUERY_FAILED',
+    },
+  });
+
+  try {
+    const out = await __internal.searchInternalProductsPrimitive({
+      query: 'oil control serum',
+      limit: 6,
+      timeoutMs: 4800,
+      catalogSurface: 'beauty',
+      callerLane: 'beauty_discovery_mainline',
+    });
+
+    assert.equal(out.ok, false);
+    assert.equal(out.reason, 'upstream_error');
+    assert.equal(out.status_code, 502);
+    assert.equal(out.upstream_error_code, 'INTERNAL_PRODUCTS_SEARCH_UPSTREAM_ERROR');
+    assert.equal(out.upstream_error_message, 'cache query failed');
+    assert.equal(out.upstream_failure_stage, 'local_cache_retrieval');
+    assert.equal(out.upstream_internal_error_code, 'CACHE_QUERY_FAILED');
+    assert.deepEqual(out.attempted_internal_paths, ['/agent/internal/products/search']);
+  } finally {
+    axios.post = originalPost;
+  }
+});
+
 test('__internal: local external seed search patterns do not fall back to singleton token noise for multi-token queries', async () => {
   const { __internal } = loadRoutesFresh();
   const patterns = __internal.buildLocalExternalSeedSearchPatterns('oil control serum');
