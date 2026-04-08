@@ -63,14 +63,6 @@ const PDP_RECS_EXTERNAL_QUERY_TIMEOUT_MS = Math.max(
   500,
   parseTimeoutMs(process.env.PDP_RECS_EXTERNAL_QUERY_TIMEOUT_MS, 4200),
 );
-const PDP_RECS_EXTERNAL_BASE_QUERY_TIMEOUT_MS = Math.max(
-  PDP_RECS_EXTERNAL_QUERY_TIMEOUT_MS,
-  parseTimeoutMs(process.env.PDP_RECS_EXTERNAL_BASE_QUERY_TIMEOUT_MS, 9000),
-);
-const PDP_RECS_EXTERNAL_BASE_FETCH_TIMEOUT_MS = Math.max(
-  PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS,
-  parseTimeoutMs(process.env.PDP_RECS_EXTERNAL_BASE_FETCH_TIMEOUT_MS, 11000),
-);
 const PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_MULTIPLIER = Math.max(
   1,
   Math.min(
@@ -1447,13 +1439,10 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
   const market = String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
   const tool = 'creator_agents';
   const baseProductIsExternal = isExternalProduct(baseProduct);
-  const externalQueryTimeoutMs = baseProductIsExternal
-    ? PDP_RECS_EXTERNAL_BASE_QUERY_TIMEOUT_MS
-    : PDP_RECS_EXTERNAL_QUERY_TIMEOUT_MS;
 
   const brand = normalizeText(brandHint);
   const brandPatterns = buildExternalBrandSearchPatterns(brand);
-  const domainHints = getExternalSeedDomainHints(baseProduct);
+  const domainHints = baseProductIsExternal ? getExternalSeedDomainHints(baseProduct) : [];
   const leafCategory = normalizeText(categoryHint);
   const parentCategory = normalizeText(getParentCategory(baseProduct));
   const vertical = inferVerticalFromProduct(baseProduct || {}).vertical || UNKNOWN_VERTICAL;
@@ -1553,13 +1542,13 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
   function runQueryWithBudget(whereSql, params, cap, queryName) {
     return withSoftTimeout(
       runQuery(whereSql, params, cap, queryName),
-      externalQueryTimeoutMs,
+      PDP_RECS_EXTERNAL_QUERY_TIMEOUT_MS,
       [],
       () => {
         logger.warn(
           {
             query: queryName || 'external_recent',
-            timeout_ms: externalQueryTimeoutMs,
+            timeout_ms: PDP_RECS_EXTERNAL_QUERY_TIMEOUT_MS,
             product_id: getProductId(baseProduct),
           },
           'recommendations external subquery timed out',
@@ -1625,11 +1614,13 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
         coalesce(seed_data->'derived'->'recall'->>'brand', '')
       )) LIKE ANY($4::text[])
   `;
+  const sameDomainCap = Math.min(120, Math.max(48, safeLimit * 4));
+  const sameDomainEnoughThreshold = Math.min(sameDomainCap, Math.max(18, safeLimit * 3));
   const sameDomainMatches = domainHints.length
     ? await runQueryWithBudget(
         `AND lower(coalesce(domain, '')) = ANY($4::text[])`,
         [domainHints],
-        Math.min(240, Math.max(60, safeLimit)),
+        sameDomainCap,
         'external_same_domain',
       )
     : [];
@@ -1641,7 +1632,10 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
       vertical,
     }),
   );
-  if (focusedSameDomainMatches.length >= Math.min(8, safeLimit)) {
+  if (
+    focusedSameDomainMatches.length >= Math.min(8, safeLimit) ||
+    sameDomainMatches.length >= sameDomainEnoughThreshold
+  ) {
     return uniqueByKey(
       [...focusedSameDomainMatches, ...sameDomainMatches],
       (p) => `${getMerchantId(p)}::${getProductId(p)}`,
@@ -1964,7 +1958,7 @@ async function recommend({
     Boolean(baseRecallExclusionFlags.donation_bundle) ||
     Boolean(baseRecallExclusionFlags.non_merchandise);
   const effectiveExternalFetchTimeoutMs = baseProductIsExternal
-    ? PDP_RECS_EXTERNAL_BASE_FETCH_TIMEOUT_MS
+    ? Math.max(PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS, 6500)
     : PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS;
 
   const providedInternal = Array.isArray(options?.internal_candidates) ? options.internal_candidates : null;
