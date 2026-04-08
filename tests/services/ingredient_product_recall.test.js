@@ -1788,19 +1788,14 @@ describe('ingredientProductRecall', () => {
       limit: 6,
     });
 
-    const sqlText = String(queryMock.mock.calls[0]?.[0] || '');
-    const whereSql = sqlText.split('ORDER BY')[0] || sqlText;
-    expect(sqlText).toContain("seed_data->'science'->'key_ingredients'");
-    expect(sqlText).toContain("seed_data->'ingredient_intel'->'inci_normalized'");
-    expect(sqlText).toContain("seed_data->'snapshot'->'ingredient_intel'->'inci_normalized'");
-    expect(sqlText).toContain("seed_data->>'category'");
-    expect(sqlText).toContain("seed_data->'snapshot'->>'category'");
-    expect(sqlText).toContain("concat_ws(");
-    expect(whereSql).toContain("seed_data->'science'->'key_ingredients'");
-    expect(whereSql).toContain("seed_data->'ingredient_intel'->'inci_normalized'");
-    expect(whereSql).toContain("seed_data->'snapshot'->'ingredient_intel'->'inci_normalized'");
-    expect(whereSql).toContain("seed_data->>'category'");
-    expect(whereSql).toContain("seed_data->'snapshot'->>'category'");
+    const sqlText = queryMock.mock.calls.map((call) => String(call?.[0] || '')).join('\n---\n');
+    expect(sqlText).toContain("seed_data->'derived'->'recall'->>'retrieval_title'");
+    expect(sqlText).toContain("seed_data->'derived'->'recall'->>'retrieval_summary'");
+    expect(sqlText).toContain("seed_data#>>'{derived,recall,ingredient_tokens}'");
+    expect(sqlText).toContain("seed_data#>>'{derived,recall,alias_tokens}'");
+    expect(sqlText).not.toContain("seed_data->'science'->'key_ingredients'");
+    expect(sqlText).not.toContain("seed_data->'ingredient_intel'->'inci_normalized'");
+    expect(sqlText).not.toContain("seed_data->'snapshot'->'ingredient_intel'->'inci_normalized'");
   });
 
   test('strict budget fast-exit skips kb, unattached seed, and family fallback after initial direct miss', async () => {
@@ -1841,7 +1836,7 @@ describe('ingredientProductRecall', () => {
       }),
     );
     expect(kbQueryMock).not.toHaveBeenCalled();
-    expect(dbQueryMock.mock.calls.filter((call) => String(call?.[0] || '').includes('FROM external_product_seeds'))).toHaveLength(2);
+    expect(dbQueryMock.mock.calls.filter((call) => String(call?.[0] || '').includes('FROM external_product_seeds'))).toHaveLength(8);
     expect(dbQueryMock.mock.calls.filter((call) => String(call?.[0] || '').includes('FROM products_cache pc'))).toHaveLength(0);
   });
 
