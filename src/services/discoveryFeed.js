@@ -41,6 +41,28 @@ const MAX_CANDIDATE_FETCH = 120;
 const DEFAULT_DEBUG_TOP_CANDIDATES = 10;
 const PRODUCTS_SEARCH_PAGE_SIZE = 60;
 const MAX_PRODUCTS_SEARCH_CALLS = 2;
+const DISCOVERY_PRODUCTS_SEARCH_PRIMARY_BASE_URL_ENV = 'DISCOVERY_PRODUCTS_SEARCH_BASE_URL';
+const DISCOVERY_PRODUCTS_SEARCH_PRIMARY_API_KEY_ENV = 'DISCOVERY_PRODUCTS_SEARCH_API_KEY';
+const DISCOVERY_PRODUCTS_SEARCH_FALLBACK_BASE_URL_ENVS = ['PIVOTA_BACKEND_BASE_URL', 'PIVOTA_API_BASE'];
+const DISCOVERY_PRODUCTS_SEARCH_FALLBACK_API_KEY_ENVS = [
+  'PIVOTA_BACKEND_AGENT_API_KEY',
+  'PIVOTA_API_KEY',
+  'SHOP_GATEWAY_AGENT_API_KEY',
+  'PIVOTA_AGENT_API_KEY',
+  'AGENT_API_KEY',
+];
+const DEFAULT_DISCOVERY_EXTERNAL_SEED_MARKET = 'US';
+const DISCOVERY_STEP_TIMEOUT_RESERVE_MS = 150;
+const DISCOVERY_STEP_TIMEOUT_MIN_MS = 250;
+const DISCOVERY_SCHEMA_PROBE_TTL_MS = 30000;
+const DISCOVERY_EXTERNAL_SEED_REQUIRED_INDEXES = [
+  'idx_external_product_seeds_recall_title_trgm',
+  'idx_external_product_seeds_recall_summary_trgm',
+  'idx_external_product_seeds_recall_category_vertical_recency',
+  'idx_external_product_seeds_recall_vertical_recency',
+  'idx_external_product_seeds_recall_ingredient_tokens_trgm',
+  'idx_external_product_seeds_recall_alias_tokens_trgm',
+];
 const DISCOVERY_PROVIDER_ORDER = [
   'beauty_interest_mainline',
   'products_search',
@@ -237,6 +259,11 @@ const DOMAIN_KEYWORDS = {
 };
 const WEAK_CATEGORY_LABELS = new Set(['', 'all', 'catalog', 'external', 'misc', 'other', 'product', 'products', 'unknown']);
 const browsePoolCache = new Map();
+const discoveryDbDependencyProbeCache = {
+  value: null,
+  expiresAt: 0,
+  pending: null,
+};
 
 class DiscoveryValidationError extends Error {
   constructor(message) {
@@ -359,24 +386,56 @@ function normalizeBaseUrl(raw) {
   return String(raw || '').trim().replace(/\/+$/, '');
 }
 
+function pickConfiguredEnvValue(primaryEnv, fallbackEnvs = [], normalize = (value) => String(value || '').trim()) {
+  const primaryValue = normalize(process.env[primaryEnv]);
+  if (primaryValue) {
+    return {
+      value: primaryValue,
+      source: primaryEnv,
+      usesLegacyFallback: false,
+      configured: true,
+    };
+  }
+  for (const envName of Array.isArray(fallbackEnvs) ? fallbackEnvs : []) {
+    const fallbackValue = normalize(process.env[envName]);
+    if (!fallbackValue) continue;
+    return {
+      value: fallbackValue,
+      source: envName,
+      usesLegacyFallback: true,
+      configured: true,
+    };
+  }
+  return {
+    value: normalize(''),
+    source: null,
+    usesLegacyFallback: false,
+    configured: false,
+  };
+}
+
+function resolveDiscoveryProductsSearchBaseUrlConfig() {
+  return pickConfiguredEnvValue(
+    DISCOVERY_PRODUCTS_SEARCH_PRIMARY_BASE_URL_ENV,
+    DISCOVERY_PRODUCTS_SEARCH_FALLBACK_BASE_URL_ENVS,
+    normalizeBaseUrl,
+  );
+}
+
 function getDiscoveryProductsSearchBaseUrl() {
-  return normalizeBaseUrl(
-    process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL ||
-      process.env.PIVOTA_BACKEND_BASE_URL ||
-      process.env.PIVOTA_API_BASE,
+  return resolveDiscoveryProductsSearchBaseUrlConfig().value;
+}
+
+function resolveDiscoveryProductsSearchApiKeyConfig() {
+  return pickConfiguredEnvValue(
+    DISCOVERY_PRODUCTS_SEARCH_PRIMARY_API_KEY_ENV,
+    DISCOVERY_PRODUCTS_SEARCH_FALLBACK_API_KEY_ENVS,
+    (value) => String(value || '').trim(),
   );
 }
 
 function getDiscoveryProductsSearchApiKey() {
-  return String(
-    process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY ||
-      process.env.PIVOTA_BACKEND_AGENT_API_KEY ||
-      process.env.PIVOTA_API_KEY ||
-      process.env.SHOP_GATEWAY_AGENT_API_KEY ||
-      process.env.PIVOTA_AGENT_API_KEY ||
-      process.env.AGENT_API_KEY ||
-      '',
-  ).trim();
+  return resolveDiscoveryProductsSearchApiKeyConfig().value;
 }
 
 function getDiscoveryProductsSearchTimeoutMs() {
@@ -385,6 +444,289 @@ function getDiscoveryProductsSearchTimeoutMs() {
 
 function getDiscoveryRecallBudgetMs() {
   return clampInt(process.env.DISCOVERY_RECALL_BUDGET_MS, 1800, 500, 10000);
+}
+
+function resolveDiscoveryExternalSeedMarketConfig() {
+  const configured = String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || '')
+    .trim()
+    .toUpperCase();
+  if (configured) {
+    return {
+      market: configured,
+      source: 'CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET',
+      isDefault: false,
+    };
+  }
+  return {
+    market: DEFAULT_DISCOVERY_EXTERNAL_SEED_MARKET,
+    source: 'default',
+    isDefault: true,
+  };
+}
+
+function computeDiscoveryStepTimeoutMs(remainingBudgetMs, providerTimeoutMs = getDiscoveryProductsSearchTimeoutMs()) {
+  const configuredTimeout = clampInt(providerTimeoutMs, getDiscoveryProductsSearchTimeoutMs(), 250, 20000);
+  const numericRemaining = Number(remainingBudgetMs);
+  if (!Number.isFinite(numericRemaining)) return configuredTimeout;
+  const cappedBudget = Math.max(0, Math.floor(numericRemaining) - DISCOVERY_STEP_TIMEOUT_RESERVE_MS);
+  if (cappedBudget <= 0) return 0;
+  return Math.min(configuredTimeout, Math.max(DISCOVERY_STEP_TIMEOUT_MIN_MS, cappedBudget));
+}
+
+function classifyDiscoveryHttpFailure(status) {
+  const numericStatus = Number(status || 0);
+  if (numericStatus === 401) return 'http_401';
+  if (numericStatus === 403) return 'http_403';
+  if (numericStatus >= 500) return 'http_5xx';
+  if (numericStatus >= 400) return 'http_4xx';
+  return 'provider_error';
+}
+
+function classifyDiscoveryQueryError(err) {
+  const code = String(err?.code || '').trim().toUpperCase();
+  if (code === 'NO_DATABASE') return 'missing_database';
+  if (code === '42P01' || code === '42703') return 'schema_missing';
+  return 'query_error';
+}
+
+function hasRequiredColumns(columnsMap, tableName, requiredColumns = []) {
+  const present = columnsMap.get(String(tableName || '').trim()) || new Set();
+  const missingColumns = requiredColumns.filter((column) => !present.has(String(column || '').trim()));
+  return {
+    ready: missingColumns.length === 0,
+    missingColumns,
+  };
+}
+
+async function probeDiscoveryDatabaseDependencies({ force = false, queryFn = query } = {}) {
+  const now = Date.now();
+  if (!force && discoveryDbDependencyProbeCache.value && discoveryDbDependencyProbeCache.expiresAt > now) {
+    return discoveryDbDependencyProbeCache.value;
+  }
+  if (!force && discoveryDbDependencyProbeCache.pending) {
+    return discoveryDbDependencyProbeCache.pending;
+  }
+
+  const databaseConfigured = Boolean(process.env.DATABASE_URL);
+  if (!databaseConfigured) {
+    const snapshot = {
+      database_configured: false,
+      ok: false,
+      code: 'missing_database',
+      internal_catalog: {
+        ready: false,
+        code: 'missing_database',
+        missing_tables: ['products_cache'],
+        missing_columns: [],
+      },
+      external_seeds: {
+        ready: false,
+        code: 'missing_database',
+        missing_tables: ['external_product_seeds'],
+        missing_columns: [],
+        missing_indexes: [],
+        warnings: [],
+      },
+      beauty_interest_mainline: {
+        ready: false,
+        code: 'missing_database',
+        missing_tables: ['external_product_seeds'],
+        missing_columns: [],
+        missing_indexes: [],
+        warnings: [],
+      },
+    };
+    discoveryDbDependencyProbeCache.value = snapshot;
+    discoveryDbDependencyProbeCache.expiresAt = now + DISCOVERY_SCHEMA_PROBE_TTL_MS;
+    return snapshot;
+  }
+
+  discoveryDbDependencyProbeCache.pending = (async () => {
+    try {
+      const [columnsResult, indexesResult] = await Promise.all([
+        queryFn(
+          `
+            SELECT table_name, column_name
+            FROM information_schema.columns
+            WHERE table_schema = ANY(current_schemas(false))
+              AND table_name = ANY($1::text[])
+          `,
+          [['products_cache', 'external_product_seeds']],
+        ),
+        queryFn(
+          `
+            SELECT tablename, indexname
+            FROM pg_indexes
+            WHERE schemaname = ANY(current_schemas(false))
+              AND tablename = ANY($1::text[])
+          `,
+          [['external_product_seeds']],
+        ),
+      ]);
+
+      const columnsMap = new Map();
+      for (const row of Array.isArray(columnsResult?.rows) ? columnsResult.rows : []) {
+        const tableName = String(row?.table_name || '').trim();
+        const columnName = String(row?.column_name || '').trim();
+        if (!tableName || !columnName) continue;
+        if (!columnsMap.has(tableName)) columnsMap.set(tableName, new Set());
+        columnsMap.get(tableName).add(columnName);
+      }
+
+      const indexNames = new Set(
+        (Array.isArray(indexesResult?.rows) ? indexesResult.rows : [])
+          .map((row) => String(row?.indexname || '').trim())
+          .filter(Boolean),
+      );
+
+      const internalColumns = hasRequiredColumns(columnsMap, 'products_cache', [
+        'id',
+        'merchant_id',
+        'product_data',
+        'expires_at',
+        'cached_at',
+      ]);
+      const externalColumns = hasRequiredColumns(columnsMap, 'external_product_seeds', [
+        'id',
+        'external_product_id',
+        'destination_url',
+        'canonical_url',
+        'title',
+        'seed_data',
+        'market',
+        'tool',
+        'status',
+        'attached_product_key',
+        'updated_at',
+        'created_at',
+      ]);
+      const missingIndexes = DISCOVERY_EXTERNAL_SEED_REQUIRED_INDEXES.filter(
+        (indexName) => !indexNames.has(indexName),
+      );
+      const externalWarnings = missingIndexes.length > 0 ? ['missing_recall_indexes'] : [];
+
+      const snapshot = {
+        database_configured: true,
+        ok: internalColumns.ready && externalColumns.ready,
+        code: internalColumns.ready && externalColumns.ready ? null : 'schema_missing',
+        internal_catalog: {
+          ready: internalColumns.ready,
+          code: internalColumns.ready ? null : 'schema_missing',
+          missing_tables: columnsMap.has('products_cache') ? [] : ['products_cache'],
+          missing_columns: internalColumns.missingColumns,
+        },
+        external_seeds: {
+          ready: externalColumns.ready,
+          code: externalColumns.ready ? null : 'schema_missing',
+          missing_tables: columnsMap.has('external_product_seeds') ? [] : ['external_product_seeds'],
+          missing_columns: externalColumns.missingColumns,
+          missing_indexes: missingIndexes,
+          warnings: externalWarnings,
+        },
+        beauty_interest_mainline: {
+          ready: externalColumns.ready,
+          code: externalColumns.ready ? null : 'schema_missing',
+          missing_tables: columnsMap.has('external_product_seeds') ? [] : ['external_product_seeds'],
+          missing_columns: externalColumns.missingColumns,
+          missing_indexes: missingIndexes,
+          warnings: externalWarnings,
+        },
+      };
+      discoveryDbDependencyProbeCache.value = snapshot;
+      discoveryDbDependencyProbeCache.expiresAt = Date.now() + DISCOVERY_SCHEMA_PROBE_TTL_MS;
+      return snapshot;
+    } catch (err) {
+      const code = classifyDiscoveryQueryError(err);
+      const snapshot = {
+        database_configured: true,
+        ok: false,
+        code,
+        internal_catalog: {
+          ready: false,
+          code,
+          missing_tables: [],
+          missing_columns: [],
+          error: err?.message || String(err),
+        },
+        external_seeds: {
+          ready: false,
+          code,
+          missing_tables: [],
+          missing_columns: [],
+          missing_indexes: [],
+          warnings: [],
+          error: err?.message || String(err),
+        },
+        beauty_interest_mainline: {
+          ready: false,
+          code,
+          missing_tables: [],
+          missing_columns: [],
+          missing_indexes: [],
+          warnings: [],
+          error: err?.message || String(err),
+        },
+      };
+      discoveryDbDependencyProbeCache.value = snapshot;
+      discoveryDbDependencyProbeCache.expiresAt = Date.now() + DISCOVERY_SCHEMA_PROBE_TTL_MS;
+      return snapshot;
+    } finally {
+      discoveryDbDependencyProbeCache.pending = null;
+    }
+  })();
+
+  return discoveryDbDependencyProbeCache.pending;
+}
+
+async function getDiscoveryProviderDatabaseState(providerName, options = {}) {
+  const snapshot = await probeDiscoveryDatabaseDependencies(options);
+  const provider = String(providerName || '').trim();
+  if (provider === 'internal_catalog') return snapshot.internal_catalog;
+  if (provider === 'external_seeds') return snapshot.external_seeds;
+  if (provider === 'beauty_interest_mainline') return snapshot.beauty_interest_mainline;
+  return null;
+}
+
+async function getDiscoveryHealthSnapshot(options = {}) {
+  const baseUrlConfig = resolveDiscoveryProductsSearchBaseUrlConfig();
+  const apiKeyConfig = resolveDiscoveryProductsSearchApiKeyConfig();
+  const marketConfig = resolveDiscoveryExternalSeedMarketConfig();
+  const databaseSnapshot = await probeDiscoveryDatabaseDependencies(options);
+  const productsSearchReady = Boolean(baseUrlConfig.configured && apiKeyConfig.configured);
+  const dbBackedProvidersReady = Boolean(
+    databaseSnapshot?.internal_catalog?.ready && databaseSnapshot?.external_seeds?.ready,
+  );
+  const singleProviderMode = productsSearchReady && !dbBackedProvidersReady;
+
+  return {
+    products_search_ready: productsSearchReady,
+    db_backed_providers_ready: dbBackedProvidersReady,
+    single_provider_mode: singleProviderMode,
+    discovery_ready: productsSearchReady && dbBackedProvidersReady,
+    products_search: {
+      base_url_configured: baseUrlConfig.configured,
+      api_key_configured: apiKeyConfig.configured,
+      base_url_source: baseUrlConfig.source,
+      api_key_source: apiKeyConfig.source,
+      legacy_base_url_fallback: baseUrlConfig.usesLegacyFallback,
+      legacy_api_key_fallback: apiKeyConfig.usesLegacyFallback,
+      timeout_ms: getDiscoveryProductsSearchTimeoutMs(),
+      recall_budget_ms: getDiscoveryRecallBudgetMs(),
+      degraded: baseUrlConfig.usesLegacyFallback || apiKeyConfig.usesLegacyFallback,
+    },
+    db_backed_providers: {
+      database_configured: Boolean(databaseSnapshot?.database_configured),
+      code: databaseSnapshot?.code || null,
+      internal_catalog: databaseSnapshot?.internal_catalog || null,
+      external_seeds: databaseSnapshot?.external_seeds || null,
+      beauty_interest_mainline: databaseSnapshot?.beauty_interest_mainline || null,
+    },
+    market: {
+      value: marketConfig.market,
+      source: marketConfig.source,
+      is_default: marketConfig.isDefault,
+    },
+  };
 }
 
 function getDiscoveryColdStartQuery() {
@@ -1826,6 +2168,7 @@ async function fetchDiscoveryRecallStep({
   step,
   requestHeaders,
   provider = 'products_search',
+  timeoutMs = getDiscoveryProductsSearchTimeoutMs(),
 } = {}) {
   const stepStartedAt = Date.now();
   try {
@@ -1837,7 +2180,7 @@ async function fetchDiscoveryRecallStep({
         offset: step?.offset,
       },
       headers: requestHeaders,
-      timeout: getDiscoveryProductsSearchTimeoutMs(),
+      timeout: timeoutMs,
       validateStatus: () => true,
     });
 
@@ -1857,6 +2200,7 @@ async function fetchDiscoveryRecallStep({
       returned: products.length,
       latency_ms: stepLatencyMs,
       cache_hit: false,
+      ...(resp.status >= 200 && resp.status < 300 ? {} : { failure_reason: classifyDiscoveryHttpFailure(resp.status) }),
     };
 
     recordDiscoveryRecallStep({
@@ -1894,6 +2238,10 @@ async function fetchDiscoveryRecallStep({
         returned: 0,
         latency_ms: stepLatencyMs,
         cache_hit: false,
+        failure_reason:
+          err?.code === 'ECONNABORTED' || /timeout/i.test(String(err?.message || ''))
+            ? 'timeout'
+            : 'request_error',
         error: err?.message || String(err),
       },
     };
@@ -1902,27 +2250,7 @@ async function fetchDiscoveryRecallStep({
 
 async function loadProductsSearchCandidates({ request, profile, limit = MAX_CANDIDATE_FETCH } = {}) {
   const safeLimit = clampInt(limit, resolveDiscoveryCandidateLimit(request), 24, MAX_CANDIDATE_FETCH);
-  const baseUrl = getDiscoveryProductsSearchBaseUrl();
   const provider = 'products_search';
-  if (!baseUrl) {
-    return {
-      products: [],
-      recallSummary: [
-        buildDiscoveryProviderStepSummary({
-          provider,
-          label: 'products_search_pool',
-          query: null,
-          limit: safeLimit,
-          returned: 0,
-          status: null,
-          latencyMs: 0,
-          error:
-            'DISCOVERY_PRODUCTS_SEARCH_BASE_URL, PIVOTA_BACKEND_BASE_URL, or PIVOTA_API_BASE is not configured for discovery feed',
-        }),
-      ],
-    };
-  }
-
   if (request?.surface === 'browse_products') {
     const cacheEntry = getBrowsePoolCache(request, safeLimit);
     if (cacheEntry) {
@@ -1938,6 +2266,7 @@ async function loadProductsSearchCandidates({ request, profile, limit = MAX_CAND
         products: cacheEntry.products,
         recallSummary: [
           {
+            provider,
             label: 'browse_pool_cache',
             query: null,
             offset: 0,
@@ -1954,13 +2283,56 @@ async function loadProductsSearchCandidates({ request, profile, limit = MAX_CAND
     }
   }
 
-  const requestHeaders = {};
-  const apiKey = getDiscoveryProductsSearchApiKey();
-  if (apiKey) {
-    requestHeaders['X-Agent-API-Key'] = apiKey;
-    requestHeaders['X-API-Key'] = apiKey;
-    requestHeaders.Authorization = `Bearer ${apiKey}`;
+  const baseUrlConfig = resolveDiscoveryProductsSearchBaseUrlConfig();
+  const apiKeyConfig = resolveDiscoveryProductsSearchApiKeyConfig();
+  const baseUrl = baseUrlConfig.value;
+  if (!baseUrl) {
+    return {
+      products: [],
+      recallSummary: [
+        buildDiscoveryProviderStepSummary({
+          provider,
+          label: 'products_search_pool',
+          query: null,
+          limit: safeLimit,
+          returned: 0,
+          status: null,
+          latencyMs: 0,
+          failureReason: 'missing_base_url',
+          configSource: baseUrlConfig.source,
+          legacyConfigFallback: baseUrlConfig.usesLegacyFallback,
+          error:
+            'DISCOVERY_PRODUCTS_SEARCH_BASE_URL is not configured for discovery feed',
+        }),
+      ],
+    };
   }
+  if (!apiKeyConfig.value) {
+    return {
+      products: [],
+      recallSummary: [
+        buildDiscoveryProviderStepSummary({
+          provider,
+          label: 'products_search_pool',
+          query: null,
+          limit: safeLimit,
+          returned: 0,
+          status: null,
+          latencyMs: 0,
+          failureReason: 'missing_api_key',
+          configSource: apiKeyConfig.source,
+          legacyConfigFallback: apiKeyConfig.usesLegacyFallback,
+          error: 'DISCOVERY_PRODUCTS_SEARCH_API_KEY is not configured for discovery feed',
+        }),
+      ],
+    };
+  }
+
+  const requestHeaders = {};
+  const apiKey = apiKeyConfig.value;
+  requestHeaders['X-Agent-API-Key'] = apiKey;
+  requestHeaders['X-API-Key'] = apiKey;
+  requestHeaders.Authorization = `Bearer ${apiKey}`;
 
   const recallPlan = buildDiscoveryRecallPlan(request, profile, safeLimit);
   const mergedProducts = [];
@@ -1988,6 +2360,25 @@ async function loadProductsSearchCandidates({ request, profile, limit = MAX_CAND
     recallPlan.length > 1 &&
     !isQueryOnlyPersonalizedDiscoveryRequest(request, profile)
   ) {
+    const parallelTimeoutMs = computeDiscoveryStepTimeoutMs(recallBudgetMs, getDiscoveryProductsSearchTimeoutMs());
+    if (!(parallelTimeoutMs > 0)) {
+      return {
+        products: [],
+        recallSummary: [
+          buildDiscoveryProviderStepSummary({
+            provider,
+            label: 'products_search_pool',
+            query: provider,
+            limit: safeLimit,
+            returned: 0,
+            status: null,
+            latencyMs: 0,
+            failureReason: 'budget_truncated',
+            error: 'discovery recall budget exhausted before products_search execution',
+          }),
+        ],
+      };
+    }
     const stepResults = await Promise.all(
       recallPlan.map((step) =>
         fetchDiscoveryRecallStep({
@@ -1995,6 +2386,7 @@ async function loadProductsSearchCandidates({ request, profile, limit = MAX_CAND
           request,
           step,
           requestHeaders,
+          timeoutMs: parallelTimeoutMs,
         }),
       ),
     );
@@ -2024,7 +2416,16 @@ async function loadProductsSearchCandidates({ request, profile, limit = MAX_CAND
   }
 
   for (const step of recallPlan) {
-    if (Date.now() - recallStartedAt >= recallBudgetMs) {
+    const remainingBudgetMs = recallBudgetMs - (Date.now() - recallStartedAt);
+    if (remainingBudgetMs <= 0) {
+      truncatedByBudget = true;
+      break;
+    }
+    const stepTimeoutMs = computeDiscoveryStepTimeoutMs(
+      remainingBudgetMs,
+      getDiscoveryProductsSearchTimeoutMs(),
+    );
+    if (!(stepTimeoutMs > 0)) {
       truncatedByBudget = true;
       break;
     }
@@ -2033,6 +2434,7 @@ async function loadProductsSearchCandidates({ request, profile, limit = MAX_CAND
       request,
       step,
       requestHeaders,
+      timeoutMs: stepTimeoutMs,
     });
     recallSummary.push(result.summary);
 
@@ -2088,6 +2490,12 @@ function buildDiscoveryProviderStepSummary({
   error,
   skipped,
   skipReason,
+  failureReason,
+  configSource,
+  legacyConfigFallback,
+  market,
+  marketSource,
+  warningCodes,
 } = {}) {
   return {
     provider,
@@ -2101,6 +2509,14 @@ function buildDiscoveryProviderStepSummary({
     cache_hit: false,
     ...(skipped ? { skipped: true } : {}),
     ...(skipReason ? { skip_reason: skipReason } : {}),
+    ...(failureReason ? { failure_reason: String(failureReason) } : {}),
+    ...(configSource ? { config_source: String(configSource) } : {}),
+    ...(legacyConfigFallback ? { legacy_config_fallback: true } : {}),
+    ...(market ? { market: String(market) } : {}),
+    ...(marketSource ? { market_source: String(marketSource) } : {}),
+    ...(Array.isArray(warningCodes) && warningCodes.length > 0
+      ? { warning_codes: uniqStrings(warningCodes, 12) }
+      : {}),
     ...(error ? { error: String(error) } : {}),
   };
 }
@@ -2235,6 +2651,37 @@ async function fetchInternalCatalogCandidates({
     };
   }
 
+  const providerDatabaseState = await getDiscoveryProviderDatabaseState(provider);
+  if (providerDatabaseState && providerDatabaseState.ready !== true) {
+    const failureReason = providerDatabaseState.code || 'schema_missing';
+    recordDiscoveryRecallStep({
+      surface: request?.surface,
+      step: 'internal_catalog_pool',
+      status: failureReason === 'schema_missing' ? 'schema_missing' : 'error',
+      latencyMs: Date.now() - stepStartedAt,
+      cacheHit: false,
+    });
+    return {
+      products: [],
+      recallSummary: [
+        buildDiscoveryProviderStepSummary({
+          provider,
+          label: 'internal_catalog_pool',
+          query: phrases.join(' | '),
+          limit: safeLimit,
+          returned: 0,
+          status: null,
+          latencyMs: Date.now() - stepStartedAt,
+          skipped: failureReason === 'schema_missing',
+          skipReason: failureReason === 'schema_missing' ? 'schema_missing' : undefined,
+          failureReason,
+          warningCodes: providerDatabaseState?.warnings,
+          error: providerDatabaseState?.error,
+        }),
+      ],
+    };
+  }
+
   try {
     const res = await query(
       `
@@ -2325,10 +2772,11 @@ async function fetchInternalCatalogCandidates({
       ],
     };
   } catch (err) {
+    const failureReason = classifyDiscoveryQueryError(err);
     recordDiscoveryRecallStep({
       surface: request?.surface,
       step: 'internal_catalog_pool',
-      status: 'error',
+      status: failureReason,
       latencyMs: Date.now() - stepStartedAt,
       cacheHit: false,
     });
@@ -2343,6 +2791,7 @@ async function fetchInternalCatalogCandidates({
           returned: 0,
           status: null,
           latencyMs: Date.now() - stepStartedAt,
+          failureReason,
           error: err?.message || String(err),
         }),
       ],
@@ -2366,10 +2815,8 @@ async function fetchExternalSeedCandidates({
     maxTokens: profile?.dominantDomain === 'beauty' ? 10 : 12,
   });
   const phrases = searchTerms.phrases;
-  const market =
-    String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US')
-      .trim()
-      .toUpperCase() || 'US';
+  const marketConfig = resolveDiscoveryExternalSeedMarketConfig();
+  const market = marketConfig.market;
   const tool = 'creator_agents';
 
   if (typeof fetchFn === 'function') {
@@ -2396,14 +2843,17 @@ async function fetchExternalSeedCandidates({
             returned: products.length,
             status: 200,
             latencyMs: Date.now() - stepStartedAt,
+            market,
+            marketSource: marketConfig.source,
           }),
         ],
       };
     } catch (err) {
+      const failureReason = classifyDiscoveryQueryError(err);
       recordDiscoveryRecallStep({
         surface: request?.surface,
         step: 'external_seed_pool',
-        status: 'error',
+        status: failureReason,
         latencyMs: Date.now() - stepStartedAt,
         cacheHit: false,
       });
@@ -2418,6 +2868,9 @@ async function fetchExternalSeedCandidates({
             returned: 0,
             status: null,
             latencyMs: Date.now() - stepStartedAt,
+            failureReason,
+            market,
+            marketSource: marketConfig.source,
             error: err?.message || String(err),
           }),
         ],
@@ -2444,8 +2897,43 @@ async function fetchExternalSeedCandidates({
           returned: 0,
           status: null,
           latencyMs: Date.now() - stepStartedAt,
+          market,
+          marketSource: marketConfig.source,
           skipped: true,
           skipReason: 'missing_database',
+        }),
+      ],
+    };
+  }
+
+  const providerDatabaseState = await getDiscoveryProviderDatabaseState(provider);
+  if (providerDatabaseState && providerDatabaseState.ready !== true) {
+    const failureReason = providerDatabaseState.code || 'schema_missing';
+    recordDiscoveryRecallStep({
+      surface: request?.surface,
+      step: 'external_seed_pool',
+      status: failureReason === 'schema_missing' ? 'schema_missing' : 'error',
+      latencyMs: Date.now() - stepStartedAt,
+      cacheHit: false,
+    });
+    return {
+      products: [],
+      recallSummary: [
+        buildDiscoveryProviderStepSummary({
+          provider,
+          label: 'external_seed_pool',
+          query: phrases.join(' | '),
+          limit: safeLimit,
+          returned: 0,
+          status: null,
+          latencyMs: Date.now() - stepStartedAt,
+          skipped: failureReason === 'schema_missing',
+          skipReason: failureReason === 'schema_missing' ? 'schema_missing' : undefined,
+          failureReason,
+          market,
+          marketSource: marketConfig.source,
+          warningCodes: providerDatabaseState?.warnings,
+          error: providerDatabaseState?.error,
         }),
       ],
     };
@@ -2557,6 +3045,8 @@ async function fetchExternalSeedCandidates({
           returned: products.length,
           status: 200,
           latencyMs: Date.now() - stepStartedAt,
+          market,
+          marketSource: marketConfig.source,
         }),
       ],
     };
@@ -2579,6 +3069,8 @@ async function fetchExternalSeedCandidates({
           returned: 0,
           status: null,
           latencyMs: Date.now() - stepStartedAt,
+          market,
+          marketSource: marketConfig.source,
           error: err?.message || String(err),
         }),
       ],
@@ -2742,10 +3234,8 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
   const stepStartedAt = Date.now();
   const safeLimit = clampInt(limit, Math.max(limit, 24), 12, MAX_CANDIDATE_FETCH);
   const recallTerms = buildBeautyInterestRecallTerms(request, profile, queries);
-  const market =
-    String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US')
-      .trim()
-      .toUpperCase() || 'US';
+  const marketConfig = resolveDiscoveryExternalSeedMarketConfig();
+  const market = marketConfig.market;
   const tool = 'creator_agents';
 
   if (typeof fetchFn === 'function') {
@@ -2772,14 +3262,17 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
             returned: products.length,
             status: 200,
             latencyMs: Date.now() - stepStartedAt,
+            market,
+            marketSource: marketConfig.source,
           }),
         ],
       };
     } catch (err) {
+      const failureReason = classifyDiscoveryQueryError(err);
       recordDiscoveryRecallStep({
         surface: request?.surface,
         step: stepName,
-        status: 'error',
+        status: failureReason,
         latencyMs: Date.now() - stepStartedAt,
         cacheHit: false,
       });
@@ -2794,6 +3287,9 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
             returned: 0,
             status: null,
             latencyMs: Date.now() - stepStartedAt,
+            failureReason,
+            market,
+            marketSource: marketConfig.source,
             error: err?.message || String(err),
           }),
         ],
@@ -2820,8 +3316,43 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
           returned: 0,
           status: null,
           latencyMs: Date.now() - stepStartedAt,
+          market,
+          marketSource: marketConfig.source,
           skipped: true,
           skipReason: 'missing_database',
+        }),
+      ],
+    };
+  }
+
+  const providerDatabaseState = await getDiscoveryProviderDatabaseState(productProvider);
+  if (providerDatabaseState && providerDatabaseState.ready !== true) {
+    const failureReason = providerDatabaseState.code || 'schema_missing';
+    recordDiscoveryRecallStep({
+      surface: request?.surface,
+      step: stepName,
+      status: failureReason === 'schema_missing' ? 'schema_missing' : 'error',
+      latencyMs: Date.now() - stepStartedAt,
+      cacheHit: false,
+    });
+    return {
+      products: [],
+      recallSummary: [
+        buildDiscoveryProviderStepSummary({
+          provider,
+          label,
+          query: recallTerms.phrases.join(' | '),
+          limit: safeLimit,
+          returned: 0,
+          status: null,
+          latencyMs: Date.now() - stepStartedAt,
+          skipped: failureReason === 'schema_missing',
+          skipReason: failureReason === 'schema_missing' ? 'schema_missing' : undefined,
+          failureReason,
+          market,
+          marketSource: marketConfig.source,
+          warningCodes: providerDatabaseState?.warnings,
+          error: providerDatabaseState?.error,
         }),
       ],
     };
@@ -2898,6 +3429,9 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
           returned: 0,
           status: null,
           latencyMs: Date.now() - stepStartedAt,
+          failureReason: 'empty_recall_terms',
+          market,
+          marketSource: marketConfig.source,
           skipped: true,
           skipReason: 'empty_recall_terms',
         }),
@@ -2992,6 +3526,8 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
           returned: products.length,
           status: 200,
           latencyMs: Date.now() - stepStartedAt,
+          market,
+          marketSource: marketConfig.source,
         }),
       ],
     };
@@ -3014,6 +3550,8 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
           returned: 0,
           status: null,
           latencyMs: Date.now() - stepStartedAt,
+          market,
+          marketSource: marketConfig.source,
           error: err?.message || String(err),
         }),
       ],
@@ -3062,10 +3600,17 @@ function buildProviderBreakdown(results = []) {
     const skipped = attempted && recallSummary.every((step) => step?.skipped === true);
     const latencyMs = recallSummary.reduce((sum, step) => sum + Math.max(0, Number(step?.latency_ms || 0)), 0);
     const skipReason = recallSummary.find((step) => typeof step?.skip_reason === 'string')?.skip_reason || null;
+    const failureReason =
+      recallSummary.find((step) => typeof step?.failure_reason === 'string')?.failure_reason ||
+      (['missing_database', 'schema_missing', 'query_error', 'budget_truncated'].includes(skipReason)
+        ? skipReason
+        : null);
     let zeroRecallReason = null;
     if (attempted && !skipped && (Array.isArray(result?.products) ? result.products.length : 0) === 0) {
       if (recallSummary.some((step) => step?.truncated_by_budget === true)) {
         zeroRecallReason = 'budget_truncated';
+      } else if (failureReason) {
+        zeroRecallReason = failureReason;
       } else if (recallSummary.some((step) => step?.error)) {
         zeroRecallReason = 'provider_error';
       } else if (successfulSteps.length > 0) {
@@ -3083,6 +3628,7 @@ function buildProviderBreakdown(results = []) {
       skipped,
       latency_ms: latencyMs,
       ...(skipReason ? { skip_reason: skipReason } : {}),
+      ...(failureReason ? { failure_reason: failureReason } : {}),
       ...(zeroRecallReason ? { zero_recall_reason: zeroRecallReason } : {}),
     };
   });
@@ -3223,6 +3769,7 @@ async function loadCatalogCandidates({
         returned: 0,
         status: null,
         latencyMs: 0,
+        failureReason: classifyDiscoveryQueryError(err),
         error: err?.message || String(err),
       }),
     ],
@@ -4689,6 +5236,14 @@ function buildRankDebug({
       ...(step?.truncated_by_budget ? { truncated_by_budget: true } : {}),
       ...(step?.skipped ? { skipped: true } : {}),
       ...(step?.skip_reason ? { skip_reason: String(step.skip_reason) } : {}),
+      ...(step?.failure_reason ? { failure_reason: String(step.failure_reason) } : {}),
+      ...(step?.config_source ? { config_source: String(step.config_source) } : {}),
+      ...(step?.legacy_config_fallback ? { legacy_config_fallback: true } : {}),
+      ...(step?.market ? { market: String(step.market) } : {}),
+      ...(step?.market_source ? { market_source: String(step.market_source) } : {}),
+      ...(Array.isArray(step?.warning_codes) && step.warning_codes.length > 0
+        ? { warning_codes: uniqStrings(step.warning_codes, 12) }
+        : {}),
       ...(step?.error ? { error: String(step.error) } : {}),
     })),
     provider_breakdown: Array.isArray(providerBreakdown) ? providerBreakdown : [],
@@ -5142,10 +5697,12 @@ module.exports = {
   DiscoveryCatalogUnavailableError,
   DiscoveryValidationError,
   buildDiscoveryProfile,
+  getDiscoveryHealthSnapshot,
   getDiscoveryFeed,
   _internals: {
     buildBrandScopeAliases,
     buildBeautyPersonalizedQueries,
+    computeDiscoveryStepTimeoutMs,
     fetchBeautyInterestExternalSeedFastpathCandidates,
     buildDiscoveryContextCacheKey,
     buildDiscoveryDatabaseSearchTerms,
@@ -5154,9 +5711,14 @@ module.exports = {
     buildDiscoveryProviderMergeKey,
     buildDiscoverySeededBrowseQuery,
     buildDiscoveryExpansionQuery,
+    getDiscoveryHealthSnapshot,
     getDiscoveryProductsSearchApiKey,
     getDiscoveryProductsSearchBaseUrl,
     getDiscoveryPoolCacheTtlMs,
+    probeDiscoveryDatabaseDependencies,
+    resolveDiscoveryExternalSeedMarketConfig,
+    resolveDiscoveryProductsSearchApiKeyConfig,
+    resolveDiscoveryProductsSearchBaseUrlConfig,
     loadBrandScopedRecommendationFallback,
     matchesQueryTextCandidate,
     matchesBrandScopeCandidate,
@@ -5167,6 +5729,11 @@ module.exports = {
     selectBrowseProducts,
     selectHomeProducts,
     buildProductKey,
+    resetDiscoveryDependencyProbeCache: () => {
+      discoveryDbDependencyProbeCache.value = null;
+      discoveryDbDependencyProbeCache.expiresAt = 0;
+      discoveryDbDependencyProbeCache.pending = null;
+    },
     resetBrowsePoolCache: () => browsePoolCache.clear(),
   },
 };

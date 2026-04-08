@@ -62,9 +62,12 @@ describe('discovery feed service', () => {
       DISCOVERY_PRODUCTS_SEARCH_TIMEOUT_MS: process.env.DISCOVERY_PRODUCTS_SEARCH_TIMEOUT_MS,
       DISCOVERY_RECALL_BUDGET_MS: process.env.DISCOVERY_RECALL_BUDGET_MS,
       DISCOVERY_POOL_CACHE_TTL_MS: process.env.DISCOVERY_POOL_CACHE_TTL_MS,
+      CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET: process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET,
+      DATABASE_URL: process.env.DATABASE_URL,
     };
     resetDiscoveryMetricsForTest();
     _internals.resetBrowsePoolCache();
+    _internals.resetDiscoveryDependencyProbeCache();
     nock.cleanAll();
   });
 
@@ -241,6 +244,53 @@ describe('discovery feed service', () => {
     expect(profile.personalizationSource).toBe('account_history');
     expect(profile.queryItemsUsed).toBe(1);
     expect(profile.dominantDomain).toBe('beauty');
+  });
+
+  test('discovery step timeout clamps to remaining recall budget', () => {
+    expect(_internals.computeDiscoveryStepTimeoutMs(1800, 6500)).toBe(1650);
+    expect(_internals.computeDiscoveryStepTimeoutMs(900, 1200)).toBe(750);
+    expect(_internals.computeDiscoveryStepTimeoutMs(120, 6500)).toBe(0);
+  });
+
+  test('discovery database probe reports schema_missing when required tables are absent', async () => {
+    process.env.DATABASE_URL = 'postgres://catalog.test/discovery';
+
+    const queryFn = async (sql) => {
+      if (/information_schema\.columns/i.test(sql)) {
+        return { rows: [] };
+      }
+      if (/pg_indexes/i.test(sql)) {
+        return { rows: [] };
+      }
+      throw new Error(`unexpected sql: ${sql}`);
+    };
+
+    const snapshot = await _internals.probeDiscoveryDatabaseDependencies({
+      force: true,
+      queryFn,
+    });
+    const health = await _internals.getDiscoveryHealthSnapshot({
+      force: true,
+      queryFn,
+    });
+
+    expect(snapshot.code).toBe('schema_missing');
+    expect(snapshot.internal_catalog).toEqual(
+      expect.objectContaining({
+        ready: false,
+        code: 'schema_missing',
+        missing_tables: ['products_cache'],
+      }),
+    );
+    expect(snapshot.external_seeds).toEqual(
+      expect.objectContaining({
+        ready: false,
+        code: 'schema_missing',
+        missing_tables: ['external_product_seeds'],
+      }),
+    );
+    expect(health.db_backed_providers_ready).toBe(false);
+    expect(health.discovery_ready).toBe(false);
   });
 
   test('buildDiscoveryRecallPlan keeps a home fill step and seeds browse recall for skincare history', () => {
@@ -1707,6 +1757,161 @@ describe('discovery feed service', () => {
     expect(pageTwo.metadata?.rank_debug?.recall_summary).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ label: 'browse_pool_cache', cache_hit: true }),
+      ]),
+    );
+  });
+
+  test('browse_products serves warm browse cache even when discovery base URL is missing', async () => {
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
+    process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY = 'test-key';
+
+    let callCount = 0;
+    nock('http://discovery-catalog.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .once()
+      .reply(() => {
+        callCount += 1;
+        return [
+          200,
+          {
+            products: Array.from({ length: 6 }, (_, idx) =>
+              makeProduct({
+                merchant_id: `m${idx + 1}`,
+                product_id: `warm_${idx + 1}`,
+                title: `Warm ${idx + 1}`,
+                category: 'Skincare',
+                product_type: 'Serum',
+              }),
+            ),
+          },
+        ];
+      });
+
+    const basePayload = {
+      surface: 'browse_products',
+      limit: 2,
+      debug: true,
+      context: {
+        auth_state: 'anonymous',
+        locale: 'en-US',
+        recent_views: [],
+        recent_queries: [],
+      },
+    };
+
+    const pageOne = await getDiscoveryFeed(basePayload);
+    delete process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL;
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+    delete process.env.PIVOTA_API_BASE;
+    const pageTwo = await getDiscoveryFeed({
+      ...basePayload,
+      page: 2,
+    });
+
+    expect(callCount).toBe(1);
+    expect(pageOne.products).toHaveLength(2);
+    expect(pageTwo.products).toHaveLength(2);
+    expect(pageTwo.metadata?.rank_debug?.recall_summary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: 'browse_pool_cache', cache_hit: true }),
+      ]),
+    );
+    expect(pageTwo.metadata?.provider_breakdown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          provider: 'products_search',
+          successful: true,
+        }),
+      ]),
+    );
+  });
+
+  test('products_search exposes http_401 provider failure diagnostics', async () => {
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
+    process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY = 'bad-key';
+    delete process.env.DATABASE_URL;
+
+    nock('http://discovery-catalog.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(401, { error: 'unauthorized' });
+
+    await expect(
+      getDiscoveryFeed({
+        surface: 'home_hot_deals',
+        limit: 6,
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: 'DISCOVERY_CATALOG_UNAVAILABLE',
+      details: expect.objectContaining({
+        providerBreakdown: expect.arrayContaining([
+          expect.objectContaining({
+            provider: 'products_search',
+            successful: false,
+            failure_reason: 'http_401',
+          }),
+        ]),
+      }),
+    });
+  });
+
+  test('working products_search prevents catalog_unavailable even when db-backed providers are missing', async () => {
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
+    process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY = 'test-key';
+    delete process.env.DATABASE_URL;
+
+    nock('http://discovery-catalog.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        products: [
+          makeProduct({
+            merchant_id: 'm1',
+            product_id: 'serum_1',
+            title: 'Niacinamide Repair Serum',
+            category: 'Skincare',
+            product_type: 'Serum',
+          }),
+          makeProduct({
+            merchant_id: 'm2',
+            product_id: 'serum_2',
+            title: 'Barrier Support Serum',
+            category: 'Skincare',
+            product_type: 'Serum',
+          }),
+        ],
+      });
+
+    const response = await getDiscoveryFeed({
+      surface: 'home_hot_deals',
+      limit: 2,
+      debug: true,
+      context: {
+        auth_state: 'anonymous',
+        locale: 'en-US',
+        recent_views: [],
+        recent_queries: [],
+      },
+    });
+
+    expect(response.products).toHaveLength(2);
+    expect(response.metadata.provider_breakdown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          provider: 'products_search',
+          successful: true,
+        }),
+        expect.objectContaining({
+          successful: false,
+          failure_reason: 'missing_database',
+        }),
       ]),
     );
   });
@@ -4021,7 +4226,7 @@ describe('discovery feed service', () => {
       });
 
       expect(result.products).toEqual([]);
-      expect(dbQueryMock).toHaveBeenCalledTimes(4);
+      expect(dbQueryMock).toHaveBeenCalledTimes(2);
       expect(
         dbQueryMock.mock.calls.every(
           (call) => !String(call?.[0] || '').includes("'recall_summary'::text AS match_stage"),

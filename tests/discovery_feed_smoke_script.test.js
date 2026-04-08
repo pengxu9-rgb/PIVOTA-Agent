@@ -203,6 +203,7 @@ describe('run_discovery_feed_smoke helpers', () => {
             candidate_source: 'multi_provider',
             discovery_strategy: 'cold_start_curated',
             personalization_source: 'none',
+            provider_breakdown: [{ provider: 'products_search', successful: true, returned: 6 }],
             rank_debug: {
               recall_summary: [{ label: 'cold_start_curated', status: 200, returned: 6 }],
             },
@@ -251,5 +252,70 @@ describe('run_discovery_feed_smoke helpers', () => {
         },
       ),
     ).toThrow(/returned.*1.*required.*3/i);
+  });
+
+  test('rejects unavailable catalog responses', () => {
+    expect(() =>
+      validateDiscoveryResponse(
+        {
+          products: [],
+          metadata: {
+            catalog_status: 'unavailable',
+            provider_breakdown: [
+              { provider: 'products_search', successful: false, failure_reason: 'missing_base_url' },
+            ],
+          },
+        },
+        { minProducts: 0, candidateSource: 'multi_provider' },
+      ),
+    ).toThrow(/unavailable discovery catalog/i);
+  });
+
+  test('rejects responses with no successful providers', () => {
+    expect(() =>
+      validateDiscoveryResponse(
+        {
+          products: [
+            {
+              merchant_id: 'm1',
+              product_id: 'p1',
+              title: 'Fallback Product',
+            },
+          ],
+          metadata: {
+            candidate_source: 'multi_provider',
+            provider_breakdown: [
+              { provider: 'products_search', successful: false, failure_reason: 'timeout' },
+              { provider: 'internal_catalog', successful: false, failure_reason: 'missing_database' },
+            ],
+          },
+        },
+        { minProducts: 1, candidateSource: 'multi_provider' },
+      ),
+    ).toThrow(/no successful discovery providers/i);
+  });
+
+  test('rejects responses with disallowed products_search provider failures', () => {
+    expect(() =>
+      validateDiscoveryResponse(
+        {
+          products: [
+            {
+              merchant_id: 'm1',
+              product_id: 'p1',
+              title: 'Fallback Product',
+            },
+          ],
+          metadata: {
+            candidate_source: 'multi_provider',
+            provider_breakdown: [
+              { provider: 'products_search', successful: false, failure_reason: 'missing_base_url' },
+              { provider: 'external_seeds', successful: true, returned: 1 },
+            ],
+          },
+        },
+        { minProducts: 1, candidateSource: 'multi_provider' },
+      ),
+    ).toThrow(/products_search provider degraded unexpectedly/i);
   });
 });

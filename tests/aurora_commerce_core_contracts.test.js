@@ -83,4 +83,45 @@ describe('Aurora commerce core search contracts', () => {
     expect(out.search_source).toBe('shopping_agent');
     expect(seen[0].source).toBe('shopping_agent');
   });
+
+  test('aurora child transport preserves local mainline child metadata', async () => {
+    const seen = [];
+    const semanticContract = {
+      planner_mode: 'step_aware',
+      target_step_family: 'serum',
+      semantic_family: 'serum',
+    };
+
+    nock('http://catalog.test')
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        seen.push({ ...q });
+        return (
+          String(q.query || '') === 'niacinamide serum under 30' &&
+          String(q.source || '') === 'shopping-agent' &&
+          String(q.local_mainline_child || '') === 'true' &&
+          String(q.query_index || '') === '2' &&
+          String(q.query_total || '') === '5' &&
+          JSON.parse(String(q.semantic_contract || '{}')).target_step_family === 'serum'
+        );
+      })
+      .reply(200, {
+        ok: true,
+        products: [{ product_id: 'serum_child_1', title: 'Serum Child Result' }],
+      });
+
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = await __internal.searchPivotaBackendProducts({
+      query: 'niacinamide serum under 30',
+      semanticContract,
+      queryIndex: 2,
+      queryTotal: 5,
+      localMainlineChild: true,
+      logger: { warn: jest.fn(), info: jest.fn() },
+      timeoutMs: 1200,
+    });
+
+    expect(out.ok).toBe(true);
+    expect(seen).toHaveLength(1);
+  });
 });

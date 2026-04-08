@@ -47,6 +47,8 @@ on:
       - "src/services/externalSeedHarvesterBridge.js"
       - "tests/discovery_feed_smoke_script.test.js"
       - "tests/discovery_feed_service.test.js"
+      - "tests/server.health.test.js"
+      - "tests/aurora_commerce_core_contracts.test.js"
       - "tests/find_products_multi_policy.test.js"
       - "tests/shopping_agent_strict_find_products_multi.test.js"
       - "tests/services/ingredient_product_recall.test.js"
@@ -95,6 +97,8 @@ on:
       - "src/services/externalSeedHarvesterBridge.js"
       - "tests/discovery_feed_smoke_script.test.js"
       - "tests/discovery_feed_service.test.js"
+      - "tests/server.health.test.js"
+      - "tests/aurora_commerce_core_contracts.test.js"
       - "tests/find_products_multi_policy.test.js"
       - "tests/shopping_agent_strict_find_products_multi.test.js"
       - "tests/services/ingredient_product_recall.test.js"
@@ -167,6 +171,8 @@ jobs:
             tests/find_products_multi_policy.test.js \
             tests/discovery_feed_service.test.js \
             tests/discovery_feed_smoke_script.test.js \
+            tests/server.health.test.js \
+            tests/aurora_commerce_core_contracts.test.js \
             tests/verify_deployed_commit_matches_script.test.js
           npx jest --runInBand \
             tests/services/ingredient_product_recall.test.js \
