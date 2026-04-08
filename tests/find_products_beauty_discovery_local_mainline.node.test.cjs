@@ -978,6 +978,191 @@ test('step-aware local beauty mainline uses direct external seed child recall', 
   );
 });
 
+test('step-aware local beauty mainline uses direct-only supplement fetch for semantic owner coverage', async () => {
+  let backendCalled = 0;
+  const supplementCalls = [];
+  const runtime = createRuntime({
+    buildBeautyDiscoverySemanticContract: () => ({
+      planner_mode: 'step_aware',
+      request_class: 'sunscreen',
+      target_step_family: 'sunscreen',
+      semantic_family: 'oil_control',
+      primary_role_id: 'daily_sunscreen',
+    }),
+    buildBeautyDiscoveryQueryPackFromContract: () => [
+      'lightweight sunscreen oily skin',
+    ],
+    fetchExternalSeedSupplementFromBackend: async (args) => {
+      supplementCalls.push(args);
+      if (String(args?.queryParams?.query || '').trim() === 'lightweight sunscreen oily skin') {
+        return {
+          products: [],
+          metadata: {
+            attempted: true,
+            applied: false,
+            reason: 'external_seed_direct_local_empty',
+          },
+        };
+      }
+      return {
+        products: [
+          {
+            product_id: 'external_seed_spf_coverage_1',
+            merchant_id: 'external_seed',
+            title: 'Coverage Oil Control Sunscreen',
+            source: 'external_seed',
+          },
+        ],
+        metadata: {
+          attempted: true,
+          applied: true,
+          reason: 'external_seed_direct_local_hit',
+        },
+      };
+    },
+    searchPivotaBackendProducts: async () => {
+      backendCalled += 1;
+      return {
+        ok: true,
+        reason: 'empty',
+        actual_http_attempt_count: 1,
+        products: [],
+      };
+    },
+    prepareInvokeSemanticOwnerContext: ({ semanticRewriteResultMeta }) => ({
+      semanticOwnerQueryPack: semanticRewriteResultMeta.normalized_query_pack,
+      semanticOwnerQueryTotal: semanticRewriteResultMeta.normalized_query_pack.length,
+      semanticOwnerSupportRoleQueryPack: [],
+      semanticOwnerTargetStepFamily: 'sunscreen',
+      semanticOwnerSemanticFamily: 'oil_control',
+      semanticOwnerQueryStepStrength: 'exact_step',
+      semanticOwnerMinQueriesBeforeBudgetGuard: 1,
+      buildVariantRequestBody: (_body, queryValue, queryIndex) => ({
+        search: {
+          query: queryValue,
+          query_index: queryIndex,
+          query_total: semanticRewriteResultMeta.normalized_query_pack.length,
+        },
+      }),
+      evaluateSemanticOwnerBeautyAdoption: ({ upstreamData }) => ({
+        adopt: Array.isArray(upstreamData?.products) && upstreamData.products.length > 0,
+        hitDecision: {
+          hit_quality:
+            Array.isArray(upstreamData?.products) && upstreamData.products.length > 0
+              ? 'valid_hit'
+              : 'empty',
+          valid_products: Array.isArray(upstreamData?.products) ? upstreamData.products : [],
+        },
+      }),
+      describeSemanticOwnerObservationFallback: () => ({
+        ignore: false,
+        score: 0,
+        last_resort_cache_candidate: false,
+      }),
+      buildSemanticOwnerExternalRescueQueryPack: () => ['oil control sunscreen'],
+    }),
+    runInvokeSemanticOwnerExecution: async ({
+      fetchExternalSeedSupplementFromBackend,
+      semanticOwnerQueryPack,
+    }) => {
+      const supplement = await fetchExternalSeedSupplementFromBackend({
+        queryParams: {
+          query: 'oil control sunscreen',
+          allow_external_seed: true,
+        },
+        checkoutToken: null,
+        neededCount: 2,
+        source: 'aurora-bff',
+      });
+      const body = {
+        status: 'success',
+        success: true,
+        products: supplement.products,
+        total: supplement.products.length,
+        page: 1,
+        page_size: supplement.products.length,
+        reply: null,
+        metadata: {},
+      };
+      return {
+        response: { status: 200, data: body },
+        upstreamData: body,
+        queryParams: {
+          query: semanticOwnerQueryPack[0],
+          query_index: 0,
+          query_total: semanticOwnerQueryPack.length,
+        },
+        requestBody: { search: { query: semanticOwnerQueryPack[0] } },
+        axiosConfig: {},
+        semanticOwnerQueryAttempts: [
+          {
+            query: semanticOwnerQueryPack[0],
+            query_index: 0,
+            query_total: semanticOwnerQueryPack.length,
+            result_count: supplement.products.length,
+            adopted: true,
+          },
+        ],
+        semanticOwnerSupplementTraces: [
+          {
+            supplement_type: 'semantic_owner_external_coverage',
+            status: 'applied',
+          },
+        ],
+        semanticOwnerExternalRescueQueriesAttempted: ['oil control sunscreen'],
+        semanticOwnerCacheSourceIsolated: false,
+        semanticOwnerCacheSourceIsolationReason: null,
+        semanticOwnerLastResortCacheApplied: false,
+        semanticOwnerLastResortCacheQuery: null,
+      };
+    },
+    normalizeAgentProductsListResponse: (body) => body,
+  });
+
+  const out = await runtime.runLocalBeautyDiscoveryMainline({
+    search: {
+      query: 'best sunscreen for oily skin',
+      target_step_family: 'sunscreen',
+    },
+    metadata: {
+      source: 'public',
+      catalog_surface: 'beauty',
+    },
+    requestContract: {
+      surface: 'direct',
+      primary_lane: 'beauty_discovery_mainline',
+      primary_retrieval_contract: 'agent_v1_search_beauty_mainline',
+      semantic_contract: {
+        planner_mode: 'step_aware',
+        request_class: 'sunscreen',
+        target_step_family: 'sunscreen',
+        semantic_family: 'oil_control',
+        primary_role_id: 'daily_sunscreen',
+      },
+    },
+    executionPlan: {
+      primary_lane: 'beauty_discovery_mainline',
+      primary_retrieval_contract: 'agent_v1_search_beauty_mainline',
+      owner_switch_count: 0,
+    },
+    rawUserQuery: 'best sunscreen for oily skin',
+    gatewayRequestId: 'trace-step-aware-supplement-direct',
+    traceQueryClass: 'query',
+    timeoutMs: 6500,
+    invokeStartedAtMs: Date.now(),
+    logger: { warn() {} },
+    authHeaders: { authorization: 'Bearer test' },
+    operation: 'find_products_multi',
+  });
+
+  assert.equal(out.handled, true);
+  assert.equal(backendCalled, 0);
+  assert.equal(supplementCalls.length, 2);
+  assert.equal(supplementCalls[0].directOnly, true);
+  assert.equal(supplementCalls[1].directOnly, true);
+  assert.equal(out.response.products?.[0]?.product_id, 'external_seed_spf_coverage_1');
+});
+
 test('step-aware local external seed child recall times out without backend child fallback', async () => {
   let backendCalled = 0;
   const runtime = createRuntime({
@@ -1110,6 +1295,132 @@ test('step-aware local external seed child recall times out without backend chil
       ?.error,
     'external_seed_direct_local_timeout',
   );
+});
+
+test('framework local beauty mainline uses direct-only recall for external seed stages', async () => {
+  const backendQueries = [];
+  const supplementCalls = [];
+  const runtime = createRuntime({
+    buildRecoRecallPlan: () => ({
+      mode: 'framework_generic',
+      entries: [
+        {
+          stage_id: 'framework_stage_a_primary_internal',
+          query: 'oil control treatment',
+          role_id: 'oil_control_treatment',
+          role_rank: 1,
+          preferred_step: 'treatment',
+          source_scope: 'internal',
+          query_index: 0,
+        },
+        {
+          stage_id: 'framework_stage_b_primary_external_seed',
+          query: 'oil control treatment',
+          role_id: 'oil_control_treatment',
+          role_rank: 1,
+          preferred_step: 'treatment',
+          source_scope: 'external_seed',
+          query_index: 1,
+        },
+      ],
+      stages: [
+        {
+          stage_id: 'framework_stage_a_primary_internal',
+          role_id: 'oil_control_treatment',
+          role_rank: 1,
+          source_scope: 'internal',
+          entries: [
+            {
+              query: 'oil control treatment',
+              role_id: 'oil_control_treatment',
+              role_rank: 1,
+              preferred_step: 'treatment',
+              source_scope: 'internal',
+              query_index: 0,
+            },
+          ],
+        },
+        {
+          stage_id: 'framework_stage_b_primary_external_seed',
+          role_id: 'oil_control_treatment',
+          role_rank: 1,
+          source_scope: 'external_seed',
+          entries: [
+            {
+              query: 'oil control treatment',
+              role_id: 'oil_control_treatment',
+              role_rank: 1,
+              preferred_step: 'treatment',
+              source_scope: 'external_seed',
+              query_index: 1,
+            },
+          ],
+        },
+      ],
+    }),
+    searchPivotaBackendProducts: async ({ query }) => {
+      backendQueries.push(String(query || ''));
+      return {
+        ok: true,
+        reason: 'empty',
+        actual_http_attempt_count: 1,
+        products: [],
+      };
+    },
+    fetchExternalSeedSupplementFromBackend: async (args) => {
+      supplementCalls.push(args);
+      return {
+        products: [
+          {
+            product_id: 'external_seed_treatment_1',
+            merchant_id: 'external_seed',
+            title: 'External Oil Control Treatment',
+            source: 'external_seed',
+          },
+        ],
+        metadata: {
+          attempted: true,
+          applied: true,
+          reason: 'external_seed_direct_local_hit',
+        },
+      };
+    },
+  });
+
+  const out = await runtime.runLocalBeautyDiscoveryMainline({
+    search: {
+      query: 'im oily skin, what products should i use?',
+      product_only: true,
+    },
+    metadata: {
+      source: 'aurora-bff',
+      catalog_surface: 'beauty',
+    },
+    requestContract: {
+      surface: 'direct',
+      primary_lane: 'beauty_discovery_mainline',
+      primary_retrieval_contract: 'agent_v1_search_beauty_mainline',
+    },
+    executionPlan: {
+      primary_lane: 'beauty_discovery_mainline',
+      primary_retrieval_contract: 'agent_v1_search_beauty_mainline',
+      owner_switch_count: 0,
+    },
+    rawUserQuery: 'im oily skin, what products should i use?',
+    gatewayRequestId: 'trace-framework-external-direct',
+    traceQueryClass: 'query',
+    timeoutMs: 6500,
+    invokeStartedAtMs: Date.now(),
+    logger: { warn() {} },
+    authHeaders: { authorization: 'Bearer test' },
+    operation: 'find_products_multi',
+  });
+
+  assert.equal(out.handled, true);
+  assert.deepEqual(backendQueries, ['oil control treatment']);
+  assert.equal(supplementCalls.length, 1);
+  assert.equal(supplementCalls[0].directOnly, true);
+  assert.equal(out.response.products?.[0]?.product_id, 'external_seed_treatment_1');
 });
 
 test('step-aware local beauty mainline trims sunscreen primary query pack to critical queries', async () => {

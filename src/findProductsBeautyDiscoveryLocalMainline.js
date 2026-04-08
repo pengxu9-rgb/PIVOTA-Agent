@@ -542,12 +542,71 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
       .trim()
       .toLowerCase();
     const sourceForFrameworkLocal = metadataSource || searchSource;
-    return (
+  return (
       plannerMode === 'framework_generic' &&
       requestClass === 'generic_concern' &&
       sourceForFrameworkLocal === 'aurora-bff' &&
       looksLikeBroadBeautyDiscoveryQuery(queryText)
     );
+  }
+
+  async function fetchLocalExternalSeedDirectSupplement({
+    queryParams = null,
+    checkoutToken = null,
+    neededCount = 0,
+    source = '',
+    timeoutMs = 2400,
+  } = {}) {
+    if (typeof fetchExternalSeedSupplementFromBackend !== 'function') {
+      return {
+        products: [],
+        metadata: {
+          attempted: false,
+          applied: false,
+          reason: 'external_seed_direct_local_unavailable',
+          requested_count: Number(neededCount || 0),
+        },
+      };
+    }
+    const externalSeedDirectTimeoutMs = Math.min(
+      Math.max(120, Number(timeoutMs || 0) || 2400),
+      2400,
+    );
+    let externalSeedDirectTimer = null;
+    const supplementPromise = fetchExternalSeedSupplementFromBackend({
+      queryParams,
+      checkoutToken,
+      neededCount,
+      source,
+      directOnly: true,
+    }).catch((err) => ({
+      products: [],
+      metadata: {
+        attempted: true,
+        applied: false,
+        reason: 'external_seed_direct_local_error',
+        error: err?.message || String(err),
+      },
+    }));
+    const supplement = await Promise.race([
+      supplementPromise,
+      new Promise((resolve) => {
+        externalSeedDirectTimer = setTimeout(() => {
+          resolve({
+            products: [],
+            metadata: {
+              attempted: true,
+              applied: false,
+              reason: 'external_seed_direct_local_timeout',
+              timeout_ms: externalSeedDirectTimeoutMs,
+              query: firstNonEmptyString(queryParams?.query),
+            },
+          });
+        }, externalSeedDirectTimeoutMs);
+      }),
+    ]);
+    if (externalSeedDirectTimer) clearTimeout(externalSeedDirectTimer);
+    return supplement;
   }
 
   async function runLocalBeautySearchAttempt({
@@ -581,11 +640,6 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
         'unified_relevance',
       ) || 'unified_relevance';
     if (allowExternalSeed && typeof fetchExternalSeedSupplementFromBackend === 'function') {
-      const externalSeedDirectTimeoutMs = Math.min(
-        Math.max(120, Number(timeoutMs || 0) || 2400),
-        2400,
-      );
-      let externalSeedDirectTimer = null;
       const externalSeedDirectQueryParams = {
         ...query,
         query: queryText,
@@ -623,39 +677,12 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
           ? { product_only: true }
           : {}),
       };
-      const supplementPromise = fetchExternalSeedSupplementFromBackend({
+      const supplement = await fetchLocalExternalSeedDirectSupplement({
         queryParams: externalSeedDirectQueryParams,
-        checkoutToken: null,
         neededCount: limit,
         source: metadataState?.source || 'aurora-bff',
-        directOnly: true,
-      }).catch((err) => ({
-        products: [],
-        metadata: {
-          attempted: true,
-          applied: false,
-          reason: 'external_seed_direct_local_error',
-          error: err?.message || String(err),
-        },
-      }));
-      const supplement = await Promise.race([
-        supplementPromise,
-        new Promise((resolve) => {
-          externalSeedDirectTimer = setTimeout(() => {
-            resolve({
-              products: [],
-              metadata: {
-                attempted: true,
-                applied: false,
-                reason: 'external_seed_direct_local_timeout',
-                timeout_ms: externalSeedDirectTimeoutMs,
-                query: queryText,
-              },
-            });
-          }, externalSeedDirectTimeoutMs);
-        }),
-      ]);
-      if (externalSeedDirectTimer) clearTimeout(externalSeedDirectTimer);
+        timeoutMs,
+      });
       const supplementProducts = (Array.isArray(supplement?.products) ? supplement.products : [])
         .map((product) =>
           typeof normalizeRecoCatalogProduct === 'function'
@@ -958,6 +985,19 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
         metadata: metadataObj,
       },
     });
+    const fetchLocalStepAwareExternalSeedSupplement = async ({
+      queryParams: supplementQueryParams = null,
+      checkoutToken = null,
+      neededCount = normalizedLimit,
+      source = metadataObj?.source || 'aurora-bff',
+    } = {}) =>
+      fetchLocalExternalSeedDirectSupplement({
+        queryParams: supplementQueryParams,
+        checkoutToken,
+        neededCount,
+        source,
+        timeoutMs: clampLocalStepAwareAttemptTimeoutMs(primaryTimeoutMs),
+      });
     let initialSearch;
     let initialSearchErrorAttempt = null;
     try {
@@ -1147,7 +1187,8 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
         semanticOwnerContext.describeSemanticOwnerObservationFallback,
       buildSemanticOwnerExternalRescueQueryPack:
         semanticOwnerContext.buildSemanticOwnerExternalRescueQueryPack,
-      fetchExternalSeedSupplementFromBackend,
+      fetchExternalSeedSupplementFromBackend:
+        fetchLocalStepAwareExternalSeedSupplement,
       normalizeAgentProductsListResponse,
       checkoutToken: null,
       metadata: metadataObj,
@@ -1497,40 +1538,95 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
           break;
         }
         const attemptStartedAtMs = Date.now();
-        const out = await searchPivotaBackendProducts({
-          query: entry?.query,
-          limit: normalizedLimit,
-          logger,
-          timeoutMs: effectiveTimeoutMs,
-          searchSourceOverride: metadataObj?.source || null,
-          catalogSurface:
-            searchObj.catalog_surface ||
-            searchObj.catalogSurface ||
-            metadataObj.catalog_surface ||
-            'beauty',
-          allowExternalSeed: sourceScope !== 'internal',
-          externalSeedStrategy:
-            sourceScope === 'internal'
-              ? 'on_empty_only'
-              : 'supplement_internal_first',
-          fastMode: sourceScope !== 'external_seed',
-          transportPolicy,
-          queryStepStrength:
-            Number(entry?.role_rank || 99) <= 1
-              ? 'strong_goal_family'
-              : 'supportive_family',
-          targetStepFamily: preferredStep,
-          semanticFamily:
-            String(semanticContract.semantic_family || entry?.role_id || '').trim() ||
-            undefined,
-          productOnly: true,
-          semanticContract: stagedSemanticContract,
-          traceId: gatewayRequestId,
-          queryIndex: queryCursor,
-          queryTotal: recallEntries.length,
-          authHeaders,
-          localMainlineChild: true,
-        });
+        let out;
+        if (sourceScope === 'external_seed') {
+          const supplement = await fetchLocalExternalSeedDirectSupplement({
+            queryParams: {
+              query: entry?.query,
+              limit: normalizedLimit,
+              offset: 0,
+              allow_external_seed: true,
+              allow_stale_cache: false,
+              external_seed_strategy: 'supplement_internal_first',
+              fast_mode: false,
+              query_step_strength:
+                Number(entry?.role_rank || 99) <= 1
+                  ? 'strong_goal_family'
+                  : 'supportive_family',
+              target_step_family: preferredStep,
+              semantic_family:
+                String(semanticContract.semantic_family || entry?.role_id || '').trim() ||
+                undefined,
+              product_only: true,
+            },
+            neededCount: normalizedLimit,
+            source: metadataObj?.source || 'aurora-bff',
+            timeoutMs: effectiveTimeoutMs,
+          });
+          const supplementProducts = (Array.isArray(supplement?.products) ? supplement.products : [])
+            .map((product) =>
+              typeof normalizeRecoCatalogProduct === 'function'
+                ? normalizeRecoCatalogProduct(product)
+                : product,
+            )
+            .filter((product) => isPlainObject(product));
+          const supplementReason = String(supplement?.metadata?.reason || '')
+            .trim()
+            .toLowerCase();
+          const mappedReason =
+            supplementProducts.length > 0
+              ? 'ok'
+              : supplementReason === 'external_seed_direct_local_timeout'
+                ? 'upstream_timeout'
+                : supplementReason === 'external_seed_direct_local_error'
+                  ? 'upstream_error'
+                  : 'empty';
+          out = {
+            ok: mappedReason !== 'upstream_timeout' && mappedReason !== 'upstream_error',
+            reason: mappedReason === 'ok' ? 'ok' : mappedReason,
+            actual_http_attempt_count: 0,
+            products: supplementProducts,
+            source_base_url: 'local_external_seed_direct',
+            source_endpoint: 'local_external_seed_direct',
+            source_path: null,
+            external_seed_supplement: supplement?.metadata || null,
+            ...(supplement?.metadata?.error
+              ? { error: String(supplement.metadata.error) }
+              : {}),
+          };
+        } else {
+          out = await searchPivotaBackendProducts({
+            query: entry?.query,
+            limit: normalizedLimit,
+            logger,
+            timeoutMs: effectiveTimeoutMs,
+            searchSourceOverride: metadataObj?.source || null,
+            catalogSurface:
+              searchObj.catalog_surface ||
+              searchObj.catalogSurface ||
+              metadataObj.catalog_surface ||
+              'beauty',
+            allowExternalSeed: false,
+            externalSeedStrategy: 'on_empty_only',
+            fastMode: true,
+            transportPolicy,
+            queryStepStrength:
+              Number(entry?.role_rank || 99) <= 1
+                ? 'strong_goal_family'
+                : 'supportive_family',
+            targetStepFamily: preferredStep,
+            semanticFamily:
+              String(semanticContract.semantic_family || entry?.role_id || '').trim() ||
+              undefined,
+            productOnly: true,
+            semanticContract: stagedSemanticContract,
+            traceId: gatewayRequestId,
+            queryIndex: queryCursor,
+            queryTotal: recallEntries.length,
+            authHeaders,
+            localMainlineChild: true,
+          });
+        }
         const attemptElapsedMs = Math.max(0, Date.now() - attemptStartedAtMs);
         queryCursor += 1;
         executedQueryCount += 1;
