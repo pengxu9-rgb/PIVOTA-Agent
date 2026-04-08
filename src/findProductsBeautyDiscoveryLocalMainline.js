@@ -581,49 +581,81 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
         'unified_relevance',
       ) || 'unified_relevance';
     if (allowExternalSeed && typeof fetchExternalSeedSupplementFromBackend === 'function') {
-      const supplement = await fetchExternalSeedSupplementFromBackend({
-        queryParams: {
-          ...query,
-          query: queryText,
-          limit,
-          offset: 0,
-          allow_external_seed: true,
-          allow_stale_cache: false,
-          external_seed_strategy: externalSeedStrategy,
-          fast_mode: true,
-          ...(firstNonEmptyString(query.target_step_family, query.targetStepFamily)
-            ? {
-                target_step_family: firstNonEmptyString(
-                  query.target_step_family,
-                  query.targetStepFamily,
-                ),
-              }
-            : {}),
-          ...(firstNonEmptyString(query.semantic_family, query.semanticFamily)
-            ? {
-                semantic_family: firstNonEmptyString(
-                  query.semantic_family,
-                  query.semanticFamily,
-                ),
-              }
-            : {}),
-          ...(firstNonEmptyString(query.query_step_strength, query.queryStepStrength)
-            ? {
-                query_step_strength: firstNonEmptyString(
-                  query.query_step_strength,
-                  query.queryStepStrength,
-                ),
-              }
-            : {}),
-          ...(parseBooleanLike(query.product_only ?? query.productOnly) === true
-            ? { product_only: true }
-            : {}),
-        },
+      const externalSeedDirectTimeoutMs = Math.min(
+        Math.max(120, Number(timeoutMs || 0) || 2400),
+        2400,
+      );
+      let externalSeedDirectTimer = null;
+      const externalSeedDirectQueryParams = {
+        ...query,
+        query: queryText,
+        limit,
+        offset: 0,
+        allow_external_seed: true,
+        allow_stale_cache: false,
+        external_seed_strategy: externalSeedStrategy,
+        fast_mode: true,
+        ...(firstNonEmptyString(query.target_step_family, query.targetStepFamily)
+          ? {
+              target_step_family: firstNonEmptyString(
+                query.target_step_family,
+                query.targetStepFamily,
+              ),
+            }
+          : {}),
+        ...(firstNonEmptyString(query.semantic_family, query.semanticFamily)
+          ? {
+              semantic_family: firstNonEmptyString(
+                query.semantic_family,
+                query.semanticFamily,
+              ),
+            }
+          : {}),
+        ...(firstNonEmptyString(query.query_step_strength, query.queryStepStrength)
+          ? {
+              query_step_strength: firstNonEmptyString(
+                query.query_step_strength,
+                query.queryStepStrength,
+              ),
+            }
+          : {}),
+        ...(parseBooleanLike(query.product_only ?? query.productOnly) === true
+          ? { product_only: true }
+          : {}),
+      };
+      const supplementPromise = fetchExternalSeedSupplementFromBackend({
+        queryParams: externalSeedDirectQueryParams,
         checkoutToken: null,
         neededCount: limit,
         source: metadataState?.source || 'aurora-bff',
         directOnly: true,
-      });
+      }).catch((err) => ({
+        products: [],
+        metadata: {
+          attempted: true,
+          applied: false,
+          reason: 'external_seed_direct_local_error',
+          error: err?.message || String(err),
+        },
+      }));
+      const supplement = await Promise.race([
+        supplementPromise,
+        new Promise((resolve) => {
+          externalSeedDirectTimer = setTimeout(() => {
+            resolve({
+              products: [],
+              metadata: {
+                attempted: true,
+                applied: false,
+                reason: 'external_seed_direct_local_timeout',
+                timeout_ms: externalSeedDirectTimeoutMs,
+                query: queryText,
+              },
+            });
+          }, externalSeedDirectTimeoutMs);
+        }),
+      ]);
+      if (externalSeedDirectTimer) clearTimeout(externalSeedDirectTimer);
       const supplementProducts = (Array.isArray(supplement?.products) ? supplement.products : [])
         .map((product) =>
           typeof normalizeRecoCatalogProduct === 'function'
