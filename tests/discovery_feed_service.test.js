@@ -4132,8 +4132,9 @@ describe('discovery feed service', () => {
     delete process.env.PIVOTA_BACKEND_BASE_URL;
     delete process.env.PIVOTA_API_BASE;
 
-    await expect(
-      getDiscoveryFeed({
+    let caught = null;
+    try {
+      await getDiscoveryFeed({
         surface: 'home_hot_deals',
         limit: 3,
         context: {
@@ -4142,8 +4143,19 @@ describe('discovery feed service', () => {
           recent_views: [],
           recent_queries: [],
         },
+      });
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeInstanceOf(DiscoveryCatalogUnavailableError);
+    expect(caught.details).toEqual(
+      expect.objectContaining({
+        providerBreakdown: expect.any(Array),
+        recallSummary: expect.any(Array),
+        candidateSource: expect.any(String),
       }),
-    ).rejects.toBeInstanceOf(DiscoveryCatalogUnavailableError);
+    );
 
     const snapshot = getLastDiscoverySnapshot('home_hot_deals');
     expect(snapshot).toEqual(

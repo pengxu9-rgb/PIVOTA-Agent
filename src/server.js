@@ -16765,9 +16765,84 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         });
       }
       if (err instanceof DiscoveryCatalogUnavailableError || Number(err?.statusCode) === 503) {
-        return res.status(503).json({
-          error: err.code || 'DISCOVERY_CATALOG_UNAVAILABLE',
-          message: err.message || 'Discovery catalog is unavailable',
+        const discoverySource =
+          effectivePayload && typeof effectivePayload === 'object' && !Array.isArray(effectivePayload)
+            ? effectivePayload.discovery &&
+              typeof effectivePayload.discovery === 'object' &&
+              !Array.isArray(effectivePayload.discovery)
+              ? { ...effectivePayload.discovery, ...effectivePayload }
+              : effectivePayload
+            : {};
+        const surface = String(discoverySource?.surface || '').trim() || 'home_hot_deals';
+        const page = Math.max(1, Number(discoverySource?.page || 1) || 1);
+        const limit = Math.max(1, Math.min(100, Number(discoverySource?.limit || 20) || 20));
+        const locale =
+          String(discoverySource?.context?.locale || 'en-US').trim() || 'en-US';
+        const details =
+          err?.details && typeof err.details === 'object' && !Array.isArray(err.details)
+            ? err.details
+            : {};
+        return res.json({
+          status: 'success',
+          success: true,
+          products: [],
+          total: 0,
+          page,
+          page_size: 0,
+          metadata: {
+            surface,
+            locale,
+            discovery_strategy: 'catalog_unavailable',
+            personalization_source: 'none',
+            candidate_source: String(details.candidateSource || 'multi_provider'),
+            primary_path_used:
+              typeof details.primaryPathUsed === 'string' && details.primaryPathUsed.trim()
+                ? details.primaryPathUsed.trim()
+                : null,
+            fallback_triggered: details.fallbackTriggered === true,
+            ...(typeof details.fallbackReason === 'string' && details.fallbackReason.trim()
+              ? { fallback_reason: details.fallbackReason.trim() }
+              : {}),
+            provider_breakdown: Array.isArray(details.providerBreakdown)
+              ? details.providerBreakdown
+              : [],
+            recall_summary: Array.isArray(details.recallSummary) ? details.recallSummary : [],
+            candidate_counts: {
+              raw: 0,
+              normalized: 0,
+              scored: 0,
+              eligiblePool: 0,
+              returned: 0,
+              sameDomain: 0,
+              semanticDeduped: 0,
+            },
+            has_more: false,
+            facets: {
+              categories: [],
+            },
+            catalog_status: 'unavailable',
+            error_code: err.code || 'DISCOVERY_CATALOG_UNAVAILABLE',
+            error_message: err.message || 'Discovery catalog is unavailable',
+            route_health: {
+              primary_path_used:
+                typeof details.primaryPathUsed === 'string' && details.primaryPathUsed.trim()
+                  ? details.primaryPathUsed.trim()
+                  : null,
+              fallback_triggered: details.fallbackTriggered === true,
+              fallback_reason:
+                typeof details.fallbackReason === 'string' && details.fallbackReason.trim()
+                  ? details.fallbackReason.trim()
+                  : null,
+            },
+            search_decision: {
+              primary_path_used:
+                typeof details.primaryPathUsed === 'string' && details.primaryPathUsed.trim()
+                  ? details.primaryPathUsed.trim()
+                  : null,
+              fallback_triggered: details.fallbackTriggered === true,
+              final_decision: 'empty',
+            },
+          },
         });
       }
       logger.error(
