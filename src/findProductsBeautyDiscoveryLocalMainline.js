@@ -2308,6 +2308,22 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
             ...(Number.isFinite(Number(row?.actual_http_attempt_count))
               ? { actual_http_attempt_count: Number(row.actual_http_attempt_count) }
               : {}),
+            ...(row?.reason ? { reason: String(row.reason) } : {}),
+            ...(Number.isFinite(Number(row?.status_code))
+              ? { status_code: Number(row.status_code) }
+              : {}),
+            ...(row?.upstream_error_code
+              ? { upstream_error_code: String(row.upstream_error_code) }
+              : {}),
+            ...(row?.upstream_error_message
+              ? { upstream_error_message: String(row.upstream_error_message) }
+              : {}),
+            ...(row?.upstream_failure_stage
+              ? { upstream_failure_stage: String(row.upstream_failure_stage) }
+              : {}),
+            ...(row?.upstream_internal_error_code
+              ? { upstream_internal_error_code: String(row.upstream_internal_error_code) }
+              : {}),
             ...(row?.error ? { error: String(row.error) } : {}),
             ...(row?.skipped_reason ? { skipped_reason: String(row.skipped_reason) } : {}),
           };
