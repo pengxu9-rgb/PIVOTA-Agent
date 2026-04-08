@@ -1317,6 +1317,121 @@ test('/v1/chat keeps current frontend action id/type reco payload compatible wit
   );
 });
 
+test('/v1/chat early-locks freeform beauty reco before identity resolution', async () => {
+  await withEnv({}, async () => {
+    const routes = require('../src/auroraBff/routes');
+    let captured = null;
+    routes.__internal.__setRouteDependencyOverridesForTest({
+      resolveIdentity: () => new Promise(() => {}),
+      maybeHandleBeautyOwnedChatReco: async (args) => {
+        captured = args;
+        return {
+          handled: true,
+          envelope: {
+            assistant_message: { role: 'assistant', format: 'text', content: 'early beauty lock' },
+            suggested_chips: [],
+            cards: [],
+            session_patch: {},
+            events: [],
+          },
+        };
+      },
+    });
+    try {
+      const response = await supertest(createApp())
+        .post('/v1/chat')
+        .timeout({ deadline: 1500, response: 1500 })
+        .set(buildHeaders())
+        .send({
+          session: {
+            state: 'IDLE_CHAT',
+            profile: {
+              skinType: 'oily',
+              goals: ['oil control'],
+            },
+          },
+          message: 'im oily skin, what products should i use?',
+          language: 'EN',
+          client_state: { state: 'IDLE_CHAT' },
+          messages: [{ role: 'user', content: 'im oily skin, what products should i use?' }],
+        })
+        .expect(200);
+
+      assert.equal(response.status, 200);
+      assert.equal(captured?.message, 'im oily skin, what products should i use?');
+      assert.equal(captured?.typedRecoOwnershipKeepsV1Mainline, true);
+      assert.equal(captured?.profile?.skinType, 'oily');
+      assert.deepEqual(captured?.profile?.goals, ['oil control']);
+      assert.deepEqual(captured?.recentLogs, []);
+    } finally {
+      routes.__internal.__resetRouteDependencyOverridesForTest();
+    }
+  });
+});
+
+test('/v1/chat early-locks beauty reco action payload before identity resolution', async () => {
+  await withEnv({}, async () => {
+    const routes = require('../src/auroraBff/routes');
+    let captured = null;
+    routes.__internal.__setRouteDependencyOverridesForTest({
+      resolveIdentity: () => new Promise(() => {}),
+      maybeHandleBeautyOwnedChatReco: async (args) => {
+        captured = args;
+        return {
+          handled: true,
+          envelope: {
+            assistant_message: { role: 'assistant', format: 'text', content: 'early beauty lock action' },
+            suggested_chips: [],
+            cards: [],
+            session_patch: {},
+            events: [],
+          },
+        };
+      },
+    });
+    try {
+      const response = await supertest(createApp())
+        .post('/v1/chat')
+        .timeout({ deadline: 1500, response: 1500 })
+        .set(buildHeaders())
+        .send({
+          session: {
+            state: 'IDLE_CHAT',
+            profile: {
+              skinType: 'combination',
+              goals: ['hydration'],
+            },
+          },
+          language: 'EN',
+          client_state: { state: 'IDLE_CHAT' },
+          action: {
+            id: 'chip.start.reco_products',
+            type: 'chip.start.reco_products',
+            data: {
+              reply_text: 'im oily skin, what product should i use?',
+              profile_patch: {
+                skin_type: 'oily',
+                goals: ['oil control'],
+              },
+            },
+          },
+          messages: [{ role: 'user', content: 'im oily skin, what product should i use?' }],
+        })
+        .expect(200);
+
+      assert.equal(response.status, 200);
+      assert.equal(captured?.message, 'im oily skin, what product should i use?');
+      assert.equal(captured?.actionId, 'chip.start.reco_products');
+      assert.equal(captured?.typedRecoOwnershipKeepsV1Mainline, true);
+      assert.equal(captured?.profile?.skinType, 'oily');
+      assert.deepEqual(captured?.profile?.goals, ['oil control']);
+      assert.deepEqual(captured?.recentLogs, []);
+    } finally {
+      routes.__internal.__resetRouteDependencyOverridesForTest();
+    }
+  });
+});
+
 test('/v1/chat keeps explicit target_step reco requests on the v1 mainline even without profile', async () => {
   await withEnv(
     {

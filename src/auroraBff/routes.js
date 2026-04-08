@@ -1693,9 +1693,11 @@ async function buildChatIntentContract(body) {
   const sessionProfilePatch = isPlainObject(extractedSessionProfilePatch)
     ? extractedSessionProfilePatch
     : {};
-  const parsedActionProfilePatch = parseProfilePatchFromAction(action);
-  const actionProfilePatch = isPlainObject(parsedActionProfilePatch)
-    ? parsedActionProfilePatch
+  const extractedActionProfilePatch = extractProfilePatchFromSession({
+    profile_patch: parseProfilePatchFromAction(action),
+  });
+  const actionProfilePatch = isPlainObject(extractedActionProfilePatch)
+    ? extractedActionProfilePatch
     : {};
   const implicitAnalysisFollowupActionId = resolveImplicitAnalysisFollowupActionId({
     actionId,
@@ -1733,16 +1735,65 @@ async function buildChatIntentContract(body) {
     };
   }
 
+  const message = pickFirstTrimmed(
+    payload.message,
+    payload.text,
+    actionData.reply_text,
+    actionData.replyText,
+    extractLastUserMessageFromChatRequestMessages(payload.messages),
+  ) || '';
+  const hasMessage = Boolean(message);
+  const typedRecoOwnershipKeepsV1Mainline =
+    hasMessage ? shouldKeepTypedRecoRequestOnV1MainlinePolicy({ ...payload, message }) : false;
+  const beautyRecoTargetContext = hasMessage
+    ? resolveRecommendationTargetContext({
+        explicitStep: pickFirstTrimmed(
+          payload.target_step,
+          payload.targetStep,
+          bodyParams.target_step,
+          bodyParams.targetStep,
+          actionData.target_step,
+          actionData.targetStep,
+        ),
+        focus: pickFirstTrimmed(
+          payload.focus,
+          payload.goal,
+          bodyParams.focus,
+          bodyParams.goal,
+          actionData.focus,
+          actionData.goal,
+        ),
+        text: message,
+        entryType: 'chat',
+        profileSummary: {
+          ...(sessionProfile && typeof sessionProfile === 'object' && !Array.isArray(sessionProfile)
+            ? sessionProfile
+            : {}),
+          ...sessionProfilePatch,
+          ...actionProfilePatch,
+        },
+      })
+    : null;
+
   if ((payload.action != null || payload.action_id != null) && !canDelegateActionToV2) {
-    return {
-      contract_version: 'chat_intent_v1',
-      surface: 'chat',
-      ownership_domain: 'legacy_quarantine',
-      request_class: 'legacy_compat',
-      delegate_target: 'legacy_quarantine',
-      should_search: false,
-      reply_mode: 'action',
-    };
+    const actionKeepsBeautyMainline =
+      hasMessage &&
+      isBeautyOwnedChatRecoRequest({
+        typedRecoOwnershipKeepsV1Mainline,
+        targetContext: beautyRecoTargetContext,
+        message: '',
+      });
+    if (!actionKeepsBeautyMainline) {
+      return {
+        contract_version: 'chat_intent_v1',
+        surface: 'chat',
+        ownership_domain: 'legacy_quarantine',
+        request_class: 'legacy_compat',
+        delegate_target: 'legacy_quarantine',
+        should_search: false,
+        reply_mode: 'action',
+      };
+    }
   }
 
   if (canDelegateActionToV2) {
@@ -1757,14 +1808,6 @@ async function buildChatIntentContract(body) {
     };
   }
 
-  const hasMessage = Boolean(pickFirstTrimmed(payload.message, payload.text));
-  const message = pickFirstTrimmed(
-    payload.message,
-    payload.text,
-    actionData.reply_text,
-    actionData.replyText,
-    extractLastUserMessageFromChatRequestMessages(payload.messages),
-  ) || '';
   const anchorProductId = pickFirstTrimmed(
     payload.anchor_product_id,
     payload.anchorProductId,
@@ -1818,38 +1861,6 @@ async function buildChatIntentContract(body) {
       reply_mode: 'compatibility',
     };
   }
-  const localMessage = hasMessage ? pickFirstTrimmed(payload.message, payload.text) || '' : '';
-  const typedRecoOwnershipKeepsV1Mainline =
-    hasMessage ? shouldKeepTypedRecoRequestOnV1MainlinePolicy(payload) : false;
-  const beautyRecoTargetContext = hasMessage
-    ? resolveRecommendationTargetContext({
-      explicitStep: pickFirstTrimmed(
-        payload.target_step,
-        payload.targetStep,
-        bodyParams.target_step,
-        bodyParams.targetStep,
-        actionData.target_step,
-        actionData.targetStep,
-      ),
-      focus: pickFirstTrimmed(
-        payload.focus,
-        payload.goal,
-        bodyParams.focus,
-        bodyParams.goal,
-        actionData.focus,
-        actionData.goal,
-      ),
-      text: localMessage,
-      entryType: 'chat',
-      profileSummary: {
-        ...(sessionProfile && typeof sessionProfile === 'object' && !Array.isArray(sessionProfile)
-          ? sessionProfile
-          : {}),
-        ...sessionProfilePatch,
-        ...actionProfilePatch,
-      },
-    })
-    : null;
   if (
     hasMessage &&
     isBeautyOwnedChatRecoRequest({
@@ -2009,8 +2020,6 @@ function shouldEarlyLockBeautyOwnedChatReco({
   if (!contract) return false;
   if (String(contract.delegate_target || '').trim().toLowerCase() !== 'beauty_mainline') return false;
   if (String(contract.request_class || '').trim().toLowerCase() !== 'beauty_discovery') return false;
-  if (normalizedActionPayload) return false;
-  if (pickFirstTrimmed(actionId, actionLabel)) return false;
   return Boolean(String(message || '').trim());
 }
 
@@ -75200,6 +75209,96 @@ function mountAuroraBffRoutes(app, { logger }) {
           parsed.data?.session?.id,
         ),
       );
+
+      const earlyNormalizedActionPayload = (() => {
+        if (parsed.data.action) return normalizeIncomingChatAction(parsed.data.action);
+        if (typeof parsed.data.action_id === 'string' && parsed.data.action_id.trim()) {
+          return {
+            action_id: parsed.data.action_id.trim(),
+            kind: 'action',
+            ...(parsed.data.action_data && typeof parsed.data.action_data === 'object' && !Array.isArray(parsed.data.action_data)
+              ? { data: parsed.data.action_data }
+              : {}),
+          };
+        }
+        if (typeof parsed.data.action_label === 'string' && parsed.data.action_label.trim()) {
+          return parsed.data.action_label.trim();
+        }
+        return null;
+      })();
+      const earlyActionLabelFromPayload =
+        typeof parsed.data.action_label === 'string' && parsed.data.action_label.trim()
+          ? parsed.data.action_label.trim()
+          : earlyNormalizedActionPayload && typeof earlyNormalizedActionPayload === 'string' && earlyNormalizedActionPayload.trim()
+            ? earlyNormalizedActionPayload.trim()
+            : null;
+      const earlyExplicitActionId =
+        (earlyNormalizedActionPayload && typeof earlyNormalizedActionPayload === 'object'
+          ? earlyNormalizedActionPayload.action_id
+          : typeof earlyNormalizedActionPayload === 'string'
+            ? earlyNormalizedActionPayload
+            : null) ||
+        parsed.data.action_id ||
+        null;
+      const earlyMessage = extractPrimaryChatRequestMessage(parsed.data, earlyNormalizedActionPayload);
+      const earlyLatestRecoContextFromSession = extractLatestRecoContextFromSession(parsed.data.session);
+      const earlyProfilePatchFromSession = extractProfilePatchFromSession(parsed.data.session);
+      const earlyProfilePatchFromAction = extractProfilePatchFromSession({
+        profile_patch: parseProfilePatchFromAction(earlyNormalizedActionPayload),
+      });
+      const earlyProfileForBeautyMainline =
+        earlyProfilePatchFromSession || earlyProfilePatchFromAction
+          ? {
+              ...(earlyProfilePatchFromSession || {}),
+              ...(earlyProfilePatchFromAction || {}),
+            }
+          : null;
+      const earlyIncludeAlternatives = extractIncludeAlternativesFromAction(earlyNormalizedActionPayload);
+      const earlyDebugHeader = req.get('X-Debug') ?? req.get('X-Aurora-Debug');
+      const earlyDebugFromHeader = earlyDebugHeader == null ? undefined : coerceBoolean(earlyDebugHeader);
+      const earlyDebugFromBody = typeof parsed.data.debug === 'boolean' ? parsed.data.debug : undefined;
+      const earlyDebugUpstream = earlyDebugFromHeader ?? earlyDebugFromBody;
+      const earlyTypedRecoOwnershipKeepsV1Mainline = shouldKeepTypedRecoRequestOnV1MainlinePolicy(parsed.data);
+      const shouldEarlyBeautyRecoHardLockAtIngress = shouldEarlyLockBeautyOwnedChatReco({
+        ingressChatIntentContract,
+        normalizedActionPayload: earlyNormalizedActionPayload,
+        actionId: earlyExplicitActionId,
+        actionLabel: earlyActionLabelFromPayload,
+        message: earlyMessage,
+      });
+      if (shouldEarlyBeautyRecoHardLockAtIngress) {
+        const earlyBeautyOwnedRecoResponse =
+          await maybeHandleBeautyOwnedChatRecoForRoute({
+            ctx,
+            logger,
+            message: earlyMessage,
+            typedRecoOwnershipKeepsV1Mainline: earlyTypedRecoOwnershipKeepsV1Mainline,
+            forceUpstreamAfterPendingAbandon: false,
+            ingredientDrivenRecommendationRequested: false,
+            recoEntrySourceDetail: 'typed_reco',
+            latestRecoContextFromSession: earlyLatestRecoContextFromSession,
+            profile: earlyProfileForBeautyMainline,
+            recentLogs: [],
+            includeAlternatives: earlyIncludeAlternatives,
+            actionId: earlyExplicitActionId,
+            shouldAutoRerunRecommendationsFromProfilePatch: false,
+            debugUpstream: earlyDebugUpstream,
+          });
+        if (earlyBeautyOwnedRecoResponse?.handled) {
+          return sendChatEnvelope(earlyBeautyOwnedRecoResponse.envelope);
+        }
+        return sendChatEnvelope(
+          buildBeautyMainlineHandoffFallbackEnvelope({
+            ctx,
+            fallback: {
+              fallback_reason: 'beauty_mainline_handoff_required',
+              notice_reason: 'upstream_empty_recommendations',
+              mainline_status: 'needs_more_context',
+            },
+            suggestedChips: [],
+          }),
+        );
+      }
 
       const identity = await resolveIdentityForRoute(req, ctx);
       const identityRef = { auroraUid: identity.auroraUid, userId: identity.userId };
