@@ -1923,6 +1923,7 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
         if (String(out?.reason || '').trim().toLowerCase() === 'upstream_timeout') {
           timeoutCount += 1;
           stageBudgetExhausted = true;
+          frameworkBudgetExhausted = true;
         }
         searchResults.push({
           stage_id: stageId,

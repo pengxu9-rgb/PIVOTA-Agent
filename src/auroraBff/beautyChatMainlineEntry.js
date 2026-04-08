@@ -45,6 +45,27 @@ function buildBeautyChatPlannerMeta(trace = null) {
   };
 }
 
+function createBeautyChatMainlineBudget({ budgetMs = 0 } = {}) {
+  const normalizedBudgetMs =
+    Number.isFinite(Number(budgetMs)) && Number(budgetMs) > 0
+      ? Math.trunc(Number(budgetMs))
+      : 13000;
+  const startedAtMs = Date.now();
+  const deadlineAtMs = startedAtMs + normalizedBudgetMs;
+  return {
+    startedAtMs,
+    deadlineAtMs,
+    budgetMs: normalizedBudgetMs,
+    getRemainingMs(reserveMs = 0) {
+      const reserve =
+        Number.isFinite(Number(reserveMs)) && Number(reserveMs) > 0
+          ? Math.trunc(Number(reserveMs))
+          : 0;
+      return Math.max(0, deadlineAtMs - Date.now() - reserve);
+    },
+  };
+}
+
 function pickBeautyRecoProductId(row) {
   return pickFirstTrimmed(row?.product_id, row?.productId, row?.sku?.product_id, row?.sku?.productId);
 }
@@ -160,6 +181,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
   const {
     RECO_CATALOG_GROUNDED_ENABLED = false,
     RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS = 0,
+    AURORA_BFF_CHAT_RECO_BUDGET_MS = 13000,
     BEAUTY_DISCOVERY_MAINLINE_OWNER = 'shopping_agent_beauty_mainline',
     resolveRecommendationTargetContext,
     summarizeProfileForContext,
@@ -252,6 +274,15 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
       return { handled: false, targetContext: hardPathRecoTargetContext };
     }
 
+    const hardPathBudget = createBeautyChatMainlineBudget({
+      budgetMs: AURORA_BFF_CHAT_RECO_BUDGET_MS,
+    });
+    const plannerReserveMs = Math.max(
+      3000,
+      Number.isFinite(Number(RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS))
+        ? Math.trunc(Number(RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS))
+        : 0,
+    );
     let hardPathPlannerTrace = null;
     let hardPathPlannerSemanticPlan = null;
     let effectivePlannerTargetContext = hardPathRecoTargetContext;
@@ -260,56 +291,69 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
       typeof runConcernSemanticPlanner === 'function' &&
       typeof buildConcernTargetContextFromSemanticPlan === 'function'
     ) {
-      try {
-        const concernPlanOut = await runConcernSemanticPlanner({
-          ctx,
-          logger,
-          requestText: pickFirstTrimmed(recoRequestMessage, message),
-          focus: hardPathRecoFocusForMainline,
-          profileSummary,
-          recommendationTaskContext: latestRecoContextFromSession,
-        });
-        hardPathPlannerTrace =
-          concernPlanOut?.trace && typeof concernPlanOut.trace === 'object' && !Array.isArray(concernPlanOut.trace)
-            ? concernPlanOut.trace
-            : null;
-        const plannerSemanticPlan =
-          concernPlanOut?.semanticPlan && typeof concernPlanOut.semanticPlan === 'object' && !Array.isArray(concernPlanOut.semanticPlan)
-            ? concernPlanOut.semanticPlan
-            : null;
-        hardPathPlannerSemanticPlan = plannerSemanticPlan;
-        if (plannerSemanticPlan) {
-          effectivePlannerTargetContext = normalizeBeautyChatPlannerTargetContext(
-            hardPathRecoTargetContext,
-            buildConcernTargetContextFromSemanticPlan(plannerSemanticPlan, {
-              text: pickFirstTrimmed(recoRequestMessage, message),
-              focus: hardPathRecoFocusForMainline,
-              entryType: 'chat',
-            }),
-          );
-        }
-      } catch (err) {
-        const errMessage = String(err?.message || err || '').trim();
-        const failureClass =
-          /timeout/i.test(errMessage) || String(err?.code || '').trim().toUpperCase() === 'ECONNABORTED'
-            ? 'timeout'
-            : 'planner_untrusted';
+      const plannerDeadlineAtMs = hardPathBudget.deadlineAtMs - plannerReserveMs;
+      if (plannerDeadlineAtMs <= Date.now() + 250) {
         hardPathPlannerTrace = {
-          ...(hardPathPlannerTrace && typeof hardPathPlannerTrace === 'object' ? hardPathPlannerTrace : {}),
-          planner_used: hardPathPlannerTrace?.planner_used === true,
-          planner_failure_class: failureClass,
+          planner_used: false,
+          planner_failure_class: 'timeout',
+          planner_source: 'budget_guard',
         };
         hardPathPlannerSemanticPlan = {
           selection_owner_state: 'fallback',
         };
-        logger?.warn(
-          {
-            request_id: ctx?.request_id,
-            trace_id: ctx?.trace_id,
-            err: err?.message || String(err),
-          },
-          'aurora bff: beauty chat mainline planner failed; fallback target context used',
-        );
+      } else {
+        try {
+          const concernPlanOut = await runConcernSemanticPlanner({
+            ctx,
+            logger,
+            requestText: pickFirstTrimmed(recoRequestMessage, message),
+            focus: hardPathRecoFocusForMainline,
+            profileSummary,
+            recommendationTaskContext: latestRecoContextFromSession,
+            deadlineAtMs: plannerDeadlineAtMs,
+          });
+          hardPathPlannerTrace =
+            concernPlanOut?.trace && typeof concernPlanOut.trace === 'object' && !Array.isArray(concernPlanOut.trace)
+              ? concernPlanOut.trace
+              : null;
+          const plannerSemanticPlan =
+            concernPlanOut?.semanticPlan && typeof concernPlanOut.semanticPlan === 'object' && !Array.isArray(concernPlanOut.semanticPlan)
+              ? concernPlanOut.semanticPlan
+              : null;
+          hardPathPlannerSemanticPlan = plannerSemanticPlan;
+          if (plannerSemanticPlan) {
+            effectivePlannerTargetContext = normalizeBeautyChatPlannerTargetContext(
+              hardPathRecoTargetContext,
+              buildConcernTargetContextFromSemanticPlan(plannerSemanticPlan, {
+                text: pickFirstTrimmed(recoRequestMessage, message),
+                focus: hardPathRecoFocusForMainline,
+                entryType: 'chat',
+              }),
+            );
+          }
+        } catch (err) {
+          const errMessage = String(err?.message || err || '').trim();
+          const failureClass =
+            /timeout/i.test(errMessage) || String(err?.code || '').trim().toUpperCase() === 'ECONNABORTED'
+              ? 'timeout'
+              : 'planner_untrusted';
+          hardPathPlannerTrace = {
+            ...(hardPathPlannerTrace && typeof hardPathPlannerTrace === 'object' ? hardPathPlannerTrace : {}),
+            planner_used: hardPathPlannerTrace?.planner_used === true,
+            planner_failure_class: failureClass,
+          };
+          hardPathPlannerSemanticPlan = {
+            selection_owner_state: 'fallback',
+          };
+          logger?.warn(
+            {
+              request_id: ctx?.request_id,
+              trace_id: ctx?.trace_id,
+              err: err?.message || String(err),
+            },
+            'aurora bff: beauty chat mainline planner failed; fallback target context used',
+          );
+        }
       }
     }
 
@@ -342,6 +386,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
         targetContext: effectivePlannerTargetContext,
         fallbackFocus: hardPathRecoFocusForMainline,
         profileSummary,
+        deadlineAtMs: hardPathBudget.deadlineAtMs,
         debug: debugUpstream,
         timeoutMs: RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
         minTimeoutMs: RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
@@ -393,7 +438,8 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
         hardPathSelectorSemanticPlan &&
         typeof hardPathSelectorSemanticPlan === 'object' &&
         !Array.isArray(hardPathSelectorSemanticPlan) &&
-        hardPathRecommendations.length > 1
+        hardPathRecommendations.length > 1 &&
+        hardPathBudget.getRemainingMs(1200) > 350
       ) {
         const selectorOut = await runConcernSelectorRace({
           ctx,
@@ -401,6 +447,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
           requestText: pickFirstTrimmed(recoRequestMessage, message),
           semanticPlan: hardPathSelectorSemanticPlan,
           recommendations: hardPathRecommendations,
+          deadlineAtMs: hardPathBudget.deadlineAtMs - 1200,
         });
         hardPathSelectorTrace = {
           ...(selectorOut?.trace && typeof selectorOut.trace === 'object' ? selectorOut.trace : {}),
@@ -530,6 +577,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
                 profile,
                 baseText: baseAssistantText,
                 allowLockedSelectionRewrite: true,
+                deadlineAtMs: hardPathBudget.deadlineAtMs,
               })
             : { text: baseAssistantText, llm_used: false, reason: 'rewrite_unavailable' };
         const assistantText = pickFirstTrimmed(assistantRewrite?.text, baseAssistantText);
