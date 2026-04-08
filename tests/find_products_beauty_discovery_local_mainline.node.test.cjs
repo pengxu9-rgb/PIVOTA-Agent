@@ -131,6 +131,7 @@ function createRuntime(overrides = {}) {
       };
     },
     normalizeRecoCatalogProduct: (product) => product,
+    normalizeAgentProductsListResponse: (body) => body,
     finalizeConcernFrameworkCandidatePools: (rawCandidates) => {
       const list = Array.isArray(rawCandidates) ? rawCandidates : [];
       const treatment = list.find((item) => item.retrieval_role_id === 'oil_control_treatment') || null;
@@ -423,6 +424,125 @@ test('local beauty discovery mainline returns authoritative search metadata and 
         did_change_primary_slot: false,
       },
     ],
+  );
+});
+
+test('catalog child recall uses local child transport instead of falling back to legacy upstream', async () => {
+  const runtime = createRuntime({
+    searchPivotaBackendProducts: async ({ query, localMainlineChild, transportPolicy }) => {
+      assert.equal(localMainlineChild, true);
+      assert.equal(transportPolicy?.include_self_proxy, false);
+      assert.equal(transportPolicy?.prefer_self_proxy_first, false);
+      return {
+        ok: true,
+        reason: 'ok',
+        actual_http_attempt_count: 1,
+        products: [
+          {
+            product_id: 'sunscreen_1',
+            merchant_id: 'merchant_internal',
+            title: 'Oil Control Sunscreen SPF 50',
+            retrieval_source: 'internal_search',
+            source_tier: 'fresh_internal',
+            source_quality_class: 'trusted',
+          },
+        ],
+      };
+    },
+  });
+
+  const out = await runtime.runLocalBeautyCatalogChildRecall({
+    search: {
+      query: 'best sunscreen for oily skin',
+      limit: 6,
+      target_step_family: 'sunscreen',
+      semantic_family: 'sunscreen',
+      product_only: true,
+    },
+    metadata: {
+      source: 'aurora-bff',
+      catalog_surface: 'beauty',
+    },
+    requestContract: {
+      surface: 'direct',
+      primary_lane: 'catalog_child_recall',
+      primary_retrieval_contract: 'agent_v2_catalog_child_recall',
+      semantic_contract: {
+        planner_mode: 'step_aware',
+        request_class: 'sunscreen',
+        target_step_family: 'sunscreen',
+        semantic_family: 'sunscreen',
+      },
+    },
+    executionPlan: {
+      primary_lane: 'catalog_child_recall',
+      primary_retrieval_contract: 'agent_v2_catalog_child_recall',
+      owner_switch_count: 0,
+    },
+    rawUserQuery: 'best sunscreen for oily skin',
+    timeoutMs: 3200,
+  });
+
+  assert.equal(out.handled, true);
+  assert.equal(out.response.reply, null);
+  assert.deepEqual(
+    (out.response.products || []).map((item) => item.product_id),
+    ['sunscreen_1'],
+  );
+  assert.equal(
+    out.response.metadata?.search_execution_trace?.primary_lane,
+    'catalog_child_recall',
+  );
+  assert.equal(
+    out.response.metadata?.search_execution_trace?.primary_retrieval_contract,
+    'agent_v2_catalog_child_recall',
+  );
+  assert.equal(out.response.metadata?.search_execution_trace?.primary_failure_stage, null);
+});
+
+test('catalog child recall fail-closes on timeout without owner switch', async () => {
+  const runtime = createRuntime({
+    searchPivotaBackendProducts: async () => {
+      const err = new Error('timeout of 2400ms exceeded');
+      err.code = 'ECONNABORTED';
+      throw err;
+    },
+  });
+
+  const out = await runtime.runLocalBeautyCatalogChildRecall({
+    search: {
+      query: 'best sunscreen for oily skin',
+      limit: 6,
+      target_step_family: 'sunscreen',
+      product_only: true,
+    },
+    metadata: {
+      source: 'aurora-bff',
+      catalog_surface: 'beauty',
+    },
+    requestContract: {
+      surface: 'direct',
+      primary_lane: 'catalog_child_recall',
+      primary_retrieval_contract: 'agent_v2_catalog_child_recall',
+    },
+    executionPlan: {
+      primary_lane: 'catalog_child_recall',
+      primary_retrieval_contract: 'agent_v2_catalog_child_recall',
+      owner_switch_count: 0,
+    },
+    rawUserQuery: 'best sunscreen for oily skin',
+    timeoutMs: 2400,
+  });
+
+  assert.equal(out.handled, true);
+  assert.deepEqual(out.response.products || [], []);
+  assert.equal(
+    out.response.metadata?.search_execution_trace?.primary_failure_stage,
+    'primary_upstream_timeout',
+  );
+  assert.equal(
+    out.response.metadata?.search_execution_trace?.owner_switch_count,
+    0,
   );
 });
 

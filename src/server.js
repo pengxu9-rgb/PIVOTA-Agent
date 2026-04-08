@@ -15199,6 +15199,7 @@ const {
   SEARCH_LIMIT_MAX,
 });
 const {
+  runLocalBeautyCatalogChildRecall,
   shouldUseLocalBeautyDiscoveryMainline,
   runLocalBeautyDiscoveryMainline,
 } = createFindProductsBeautyDiscoveryLocalMainlineRuntime({
@@ -20547,6 +20548,27 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               FIND_PRODUCTS_MULTI_UPSTREAM_BEAUTY_MAINLINE_TIMEOUT_MS,
           })
         : getUpstreamTimeoutMs(operation);
+    if (
+      operation === 'find_products_multi' &&
+      String(findProductsExecutionPlan?.primary_lane || '').trim() === 'catalog_child_recall'
+    ) {
+      const localBeautyCatalogChildRecall = await runLocalBeautyCatalogChildRecall({
+        search: findProductsMultiSearchPayload,
+        metadata,
+        requestContract: findProductsSearchRequestContract,
+        executionPlan: findProductsExecutionPlan,
+        rawUserQuery,
+        timeoutMs: upstreamBudgetMsForSearch,
+        logger,
+        authHeaders: buildInvokeUpstreamAuthHeaders({ checkoutToken }),
+      });
+      if (
+        localBeautyCatalogChildRecall?.handled === true &&
+        localBeautyCatalogChildRecall.response
+      ) {
+        return res.status(200).json(localBeautyCatalogChildRecall.response);
+      }
+    }
     if (
       operation === 'find_products_multi' &&
       (!strictCommerceFindProductsMulti || strictBeautyDirectSearch) &&

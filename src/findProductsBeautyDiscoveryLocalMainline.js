@@ -129,6 +129,16 @@ function normalizeSearchObject(value) {
   return isPlainObject(value) ? value : {};
 }
 
+function mapLocalSearchReasonToPrimaryFailureStage(reason = '') {
+  const normalized = String(reason || '').trim().toLowerCase();
+  if (!normalized || normalized === 'ok') return null;
+  if (normalized === 'upstream_timeout' || normalized === 'budget_exhausted') {
+    return 'primary_upstream_timeout';
+  }
+  if (normalized === 'upstream_error') return 'primary_upstream_error';
+  return 'no_recall_from_planned_sources';
+}
+
 function buildStepAwareCriticalQueryPack(queryPack = [], semanticContract = null) {
   const normalized = Array.from(
     new Set(
@@ -1267,6 +1277,282 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
     };
   }
 
+  function buildLocalBeautyCatalogChildRecallResponse({
+    responseBody = null,
+    searchObj = null,
+    contract = null,
+    plan = null,
+    primaryTimeoutMs = 0,
+    primaryFailureStage = null,
+  } = {}) {
+    const normalizedSearch = normalizeSearchObject(searchObj);
+    const normalizedContract = isPlainObject(contract) ? contract : {};
+    const normalizedPlan = isPlainObject(plan) ? plan : {};
+    const upstreamBody = isPlainObject(responseBody) ? responseBody : {};
+    const upstreamMetadata = normalizeSearchObject(upstreamBody.metadata);
+    const normalizedProducts = Array.isArray(upstreamBody.products)
+      ? upstreamBody.products.filter((product) => isPlainObject(product))
+      : [];
+    const limit = Math.max(
+      1,
+      Math.min(
+        12,
+        Number(
+          normalizedSearch.limit ||
+            normalizedSearch.page_size ||
+            upstreamBody.page_size ||
+            normalizedProducts.length ||
+            6,
+        ) || 6,
+      ),
+    );
+    const offset = Math.max(0, Number(normalizedSearch.offset || 0) || 0);
+    const normalizedBodyInput = {
+      status: 'success',
+      success: true,
+      products: normalizedProducts,
+      total: Number.isFinite(Number(upstreamBody.total))
+        ? Number(upstreamBody.total)
+        : normalizedProducts.length,
+      page:
+        Number.isFinite(Number(upstreamBody.page)) && Number(upstreamBody.page) > 0
+          ? Number(upstreamBody.page)
+          : Math.floor(offset / Math.max(1, limit)) + 1,
+      page_size:
+        Number.isFinite(Number(upstreamBody.page_size)) && Number(upstreamBody.page_size) > 0
+          ? Number(upstreamBody.page_size)
+          : normalizedProducts.length,
+      reply: upstreamBody.reply ?? null,
+      metadata: {
+        ...upstreamMetadata,
+        query_source:
+          firstNonEmptyString(upstreamMetadata.query_source, 'catalog_child_recall') ||
+          'catalog_child_recall',
+        primary_lane:
+          firstNonEmptyString(
+            upstreamMetadata.primary_lane,
+            normalizedPlan.primary_lane,
+            normalizedContract.primary_lane,
+            'catalog_child_recall',
+          ) || 'catalog_child_recall',
+        primary_retrieval_contract:
+          firstNonEmptyString(
+            upstreamMetadata.primary_retrieval_contract,
+            normalizedPlan.primary_retrieval_contract,
+            normalizedContract.primary_retrieval_contract,
+            'agent_v2_catalog_child_recall',
+          ) || 'agent_v2_catalog_child_recall',
+      },
+    };
+    const normalizedBody =
+      typeof normalizeAgentProductsListResponse === 'function'
+        ? normalizeAgentProductsListResponse(normalizedBodyInput, { limit, offset })
+        : normalizedBodyInput;
+    const searchExecutionTrace =
+      typeof buildFindProductsSearchExecutionTrace === 'function'
+        ? buildFindProductsSearchExecutionTrace({
+            requestContract: normalizedContract,
+            executionPlan: normalizedPlan,
+            primarySearchInitialTimeoutMs: primaryTimeoutMs,
+            primarySearchFinalTimeoutMs: primaryTimeoutMs,
+            primarySearchRetryCount: 0,
+            primarySearchRetryReasons: [],
+            primaryFailureStage,
+            supplementsAttempted: [],
+          })
+        : null;
+    return {
+      ...normalizedBody,
+      metadata: {
+        ...(normalizedBody.metadata && isPlainObject(normalizedBody.metadata)
+          ? normalizedBody.metadata
+          : {}),
+        ...(searchExecutionTrace ? { search_execution_trace: searchExecutionTrace } : {}),
+      },
+    };
+  }
+
+  async function runLocalBeautyCatalogChildRecall({
+    search = null,
+    metadata = null,
+    requestContract = null,
+    executionPlan = null,
+    rawUserQuery = '',
+    timeoutMs = null,
+    logger = null,
+    authHeaders = null,
+  } = {}) {
+    if (
+      typeof searchPivotaBackendProducts !== 'function' ||
+      typeof normalizeAgentProductsListResponse !== 'function'
+    ) {
+      return { handled: false, response: null };
+    }
+    const searchObj = normalizeSearchObject(search);
+    const metadataObj = normalizeSearchObject(metadata);
+    const contract = isPlainObject(requestContract) ? requestContract : {};
+    const plan = isPlainObject(executionPlan) ? executionPlan : {};
+    if (String(contract.primary_lane || '').trim() !== 'catalog_child_recall') {
+      return { handled: false, response: null };
+    }
+    const queryText = firstNonEmptyString(rawUserQuery, searchObj.query, searchObj.q);
+    if (!queryText) {
+      return {
+        handled: true,
+        response: buildLocalBeautyCatalogChildRecallResponse({
+          responseBody: {
+            products: [],
+            total: 0,
+            page: 1,
+            page_size: 0,
+            reply: null,
+            metadata: {
+              query_source: 'catalog_child_recall',
+            },
+          },
+          searchObj,
+          contract,
+          plan,
+          primaryTimeoutMs:
+            Number.isFinite(Number(timeoutMs)) && Number(timeoutMs) > 0
+              ? Number(timeoutMs)
+              : 0,
+          primaryFailureStage: 'query_missing',
+        }),
+      };
+    }
+    const primaryTimeoutMs =
+      Number.isFinite(Number(timeoutMs)) && Number(timeoutMs) > 0 ? Number(timeoutMs) : 15000;
+    const semanticContract = isPlainObject(contract.semantic_contract)
+      ? contract.semantic_contract
+      : isPlainObject(searchObj.semantic_contract)
+        ? searchObj.semantic_contract
+        : null;
+    const queryParams = {
+      query: queryText,
+      limit: Math.max(
+        1,
+        Math.min(12, Number(searchObj.limit || searchObj.page_size || 6) || 6),
+      ),
+      offset: Math.max(0, Number(searchObj.offset || 0) || 0),
+      ...(parseBooleanLike(searchObj.allow_external_seed ?? searchObj.allowExternalSeed) !== undefined
+        ? {
+            allow_external_seed:
+              parseBooleanLike(searchObj.allow_external_seed ?? searchObj.allowExternalSeed) ===
+              true,
+          }
+        : {}),
+      ...(firstNonEmptyString(
+        searchObj.external_seed_strategy,
+        searchObj.externalSeedStrategy,
+      )
+        ? {
+            external_seed_strategy: firstNonEmptyString(
+              searchObj.external_seed_strategy,
+              searchObj.externalSeedStrategy,
+            ),
+          }
+        : {}),
+      ...(firstNonEmptyString(searchObj.target_step_family, searchObj.targetStepFamily)
+        ? {
+            target_step_family: firstNonEmptyString(
+              searchObj.target_step_family,
+              searchObj.targetStepFamily,
+            ),
+          }
+        : {}),
+      ...(firstNonEmptyString(searchObj.semantic_family, searchObj.semanticFamily)
+        ? {
+            semantic_family: firstNonEmptyString(
+              searchObj.semantic_family,
+              searchObj.semanticFamily,
+            ),
+          }
+        : {}),
+      ...(firstNonEmptyString(searchObj.query_step_strength, searchObj.queryStepStrength)
+        ? {
+            query_step_strength: firstNonEmptyString(
+              searchObj.query_step_strength,
+              searchObj.queryStepStrength,
+            ),
+          }
+        : {}),
+      ...(parseBooleanLike(searchObj.product_only ?? searchObj.productOnly) === true
+        ? { product_only: true }
+        : {}),
+      ...(semanticContract ? { semantic_contract: semanticContract } : {}),
+      catalog_surface:
+        searchObj.catalog_surface ||
+        searchObj.catalogSurface ||
+        metadataObj.catalog_surface ||
+        'beauty',
+      commerce_surface:
+        searchObj.commerce_surface ||
+        searchObj.commerceSurface ||
+        searchObj.catalog_surface ||
+        searchObj.catalogSurface ||
+        metadataObj.catalog_surface ||
+        'beauty',
+      local_mainline_child: true,
+    };
+    try {
+      const childSearch = await runLocalBeautySearchAttempt({
+        queryParams,
+        searchObj,
+        metadataObj,
+        semanticContract,
+        timeoutMs: primaryTimeoutMs,
+        logger,
+        authHeaders,
+      });
+      const primaryFailureStage =
+        Array.isArray(childSearch?.upstreamData?.products) &&
+        childSearch.upstreamData.products.length > 0
+          ? null
+          : mapLocalSearchReasonToPrimaryFailureStage(childSearch?.searchOut?.reason);
+      return {
+        handled: true,
+        response: buildLocalBeautyCatalogChildRecallResponse({
+          responseBody:
+            childSearch?.upstreamData && isPlainObject(childSearch.upstreamData)
+              ? childSearch.upstreamData
+              : childSearch?.response?.data,
+          searchObj,
+          contract,
+          plan,
+          primaryTimeoutMs,
+          primaryFailureStage,
+        }),
+      };
+    } catch (err) {
+      const errText = `${err?.code || ''} ${err?.message || String(err)}`;
+      return {
+        handled: true,
+        response: buildLocalBeautyCatalogChildRecallResponse({
+          responseBody: {
+            products: [],
+            total: 0,
+            page: 1,
+            page_size: 0,
+            reply: null,
+            metadata: {
+              query_source: 'catalog_child_recall',
+              upstream_error_code: err?.code || null,
+              upstream_error_message: err?.message || String(err),
+            },
+          },
+          searchObj,
+          contract,
+          plan,
+          primaryTimeoutMs,
+          primaryFailureStage: /timeout|ECONNABORTED/i.test(errText)
+            ? 'primary_upstream_timeout'
+            : 'primary_upstream_error',
+        }),
+      };
+    }
+  }
+
   async function runLocalBeautyDiscoveryMainline({
     search = null,
     metadata = null,
@@ -1795,6 +2081,7 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
   }
 
   return {
+    runLocalBeautyCatalogChildRecall,
     shouldUseLocalBeautyDiscoveryMainline,
     runLocalBeautyDiscoveryMainline,
   };
