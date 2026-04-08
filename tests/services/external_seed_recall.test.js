@@ -57,6 +57,38 @@ describe('externalSeedRecall', () => {
     expect(doc.exclusion_flags.gift_card).toBe(true);
     expect(doc.exclusion_flags.donation_bundle).toBe(true);
     expect(doc.vertical).toBe('gift_card');
+    expect(doc.quality_state).toBe('limited');
+    expect(doc.suppression_flags).toEqual(
+      expect.objectContaining({
+        exclude_from_recall: false,
+        exclude_from_similar: true,
+      }),
+    );
+  });
+
+  test('blocks obvious non-merch pages from recall and similar', () => {
+    const doc = buildExternalSeedRecallDoc({
+      row: {
+        id: 'eps_non_merch',
+        title: 'Store Locator',
+        canonical_url: 'https://brand.example/pages/store-locator',
+        destination_url: 'https://brand.example/pages/store-locator',
+        source_page_type: 'page',
+      },
+      seedData: {
+        description: 'Find a store near you.',
+      },
+      snapshot: {},
+    });
+
+    expect(doc.quality_state).toBe('blocked');
+    expect(doc.suppression_flags).toEqual(
+      expect.objectContaining({
+        exclude_from_recall: true,
+        exclude_from_similar: true,
+        suppress_facts: true,
+      }),
+    );
   });
 
   test('re-cleans stored recall docs before using them for PDP recall', () => {

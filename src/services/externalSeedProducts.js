@@ -1,6 +1,10 @@
 const crypto = require('node:crypto');
 const { lookupExternalSeedImageOverride } = require('./externalSeedImageOverrides');
-const { resolveExternalSeedRecallDoc, normalizeNonEmptyString } = require('./externalSeedRecall');
+const {
+  resolveExternalSeedRecallDoc,
+  normalizeNonEmptyString,
+  resolveExternalSeedProtectionContract,
+} = require('./externalSeedRecall');
 const { normalizePdpImageUrl } = require('../utils/pdpImageUrls');
 
 const SHOPIFY_ASSET_HASH_SUFFIX_RE =
@@ -1219,6 +1223,13 @@ function buildExternalSeedProduct(row, options = {}) {
 
   const merchantName =
     String(seedData.merchant_display_name || brand || row.domain || 'External').trim() || 'External';
+  const protection = resolveExternalSeedProtectionContract({
+    row,
+    seedData,
+    snapshot,
+    stored: recall,
+    exclusionFlags: recall.exclusion_flags,
+  });
 
   return {
     id: externalProductId,
@@ -1246,6 +1257,8 @@ function buildExternalSeedProduct(row, options = {}) {
     external_seed_id: row.id ? String(row.id) : undefined,
     seed_data: seedData,
     external_seed_recall: recall,
+    external_seed_quality_state: protection.quality_state,
+    external_seed_suppression_flags: protection.suppression_flags,
     external_seed_quality_signals: recall.quality_signals || undefined,
     ...(options.matchSource ? { external_seed_match_source: String(options.matchSource).trim() } : {}),
     variants,
@@ -1276,6 +1289,14 @@ function buildExternalSeedBrandSearchProduct(row) {
   const seedData = ensureJsonObject(row.seed_data);
   const snapshot = ensureJsonObject(seedData.snapshot);
   const recall = resolveExternalSeedRecallDoc({ row, seedData, snapshot });
+  const protection = resolveExternalSeedProtectionContract({
+    row,
+    seedData,
+    snapshot,
+    stored: recall,
+    exclusionFlags: recall.exclusion_flags,
+  });
+  if (protection.suppression_flags?.exclude_from_recall === true) return null;
   const destinationUrl = String(
     row.destination_url || snapshot.destination_url || seedData.destination_url || '',
   ).trim();
@@ -1392,6 +1413,8 @@ function buildExternalSeedBrandSearchProduct(row) {
     ...(destinationUrl ? { destination_url: destinationUrl } : {}),
     ...(row.id ? { external_seed_id: String(row.id) } : {}),
     external_seed_recall: recall,
+    external_seed_quality_state: protection.quality_state,
+    external_seed_suppression_flags: protection.suppression_flags,
     ...(brand ? { vendor: brand, brand } : {}),
     ...(normalizedCategory ? { category: normalizedCategory } : {}),
   };
