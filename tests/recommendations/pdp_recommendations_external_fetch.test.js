@@ -4,6 +4,85 @@ describe('RecommendationEngine external candidate fetch', () => {
     jest.clearAllMocks();
     delete process.env.DATABASE_URL;
     delete process.env.PDP_RECS_EXTERNAL_QUERY_TIMEOUT_MS;
+    delete process.env.PDP_RECS_EXTERNAL_BASE_QUERY_TIMEOUT_MS;
+    delete process.env.PDP_RECS_EXTERNAL_BASE_FETCH_TIMEOUT_MS;
+  });
+
+  test('prefers same-domain external candidates for external base products before broad semantic fallback', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryMock = jest.fn(async (sql, params) => {
+      const predicate = params?.[3];
+      if (String(sql).includes("lower(coalesce(domain, '')) = ANY($4::text[])")) {
+        return {
+          rows: [
+            {
+              id: 'eps_domain_1',
+              external_product_id: 'ext_domain_1',
+              canonical_url: 'https://fentybeauty.com/products/blemish-defeatr',
+              destination_url: 'https://fentybeauty.com/products/blemish-defeatr',
+              domain: 'fentybeauty.com',
+              title: "Blemish Defeat'r BHA Spot-Targeting Gel",
+              image_url: 'https://example.com/blemish.jpg',
+              price_amount: 25,
+              price_currency: 'USD',
+              availability: 'in_stock',
+              seed_brand: 'Fenty Beauty',
+              seed_category: 'Treatment',
+              seed_product_type: 'Treatment',
+              seed_description: 'A targeted BHA treatment gel.',
+            },
+            {
+              id: 'eps_domain_2',
+              external_product_id: 'ext_domain_2',
+              canonical_url: 'https://fentybeauty.com/products/total-cleansr',
+              destination_url: 'https://fentybeauty.com/products/total-cleansr',
+              domain: 'fentybeauty.com',
+              title: "Total Cleans'r Remove-It-All Cleanser",
+              image_url: 'https://example.com/cleanser.jpg',
+              price_amount: 29,
+              price_currency: 'USD',
+              availability: 'in_stock',
+              seed_brand: 'Fenty Beauty',
+              seed_category: 'Cleanser',
+              seed_product_type: 'Cleanser',
+              seed_description: 'A daily gel cleanser for fresh skin.',
+            },
+          ],
+        };
+      }
+      if (String(predicate || '') === 'fenty beauty') {
+        return { rows: [] };
+      }
+      if (Array.isArray(predicate)) {
+        return { rows: [] };
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchExternalCandidates({
+      brandHint: 'Fenty Beauty',
+      categoryHint: 'Treatment',
+      baseProduct: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_fenty_bha',
+        title: "Blemish Defeat'r BHA Spot-Targeting Gel",
+        brand: 'Fenty Beauty',
+        category: 'Treatment',
+        canonical_url: 'https://fentybeauty.com/products/blemish-defeatr',
+        source: 'external_seed',
+      },
+      limit: 12,
+    });
+
+    expect(products.map((product) => product.product_id)).toEqual(
+      expect.arrayContaining(['ext_domain_1', 'ext_domain_2']),
+    );
+    expect(queryMock.mock.calls.some(([sql]) => String(sql).includes("lower(coalesce(domain, '')) = ANY($4::text[])"))).toBe(true);
   });
 
   test('uses focused brand/category candidates without dropping into recent fallback when pool is already sufficient', async () => {
