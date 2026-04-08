@@ -72,6 +72,13 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
     && fitKeywordMatches === 0
     && queryTermMatches === 0
     && ingredientMatches === 0;
+  const treatmentSerumIngredientRescueApplied =
+    preferredStep === 'treatment'
+    && candidateStep === 'serum'
+    && ingredientMatches >= 2
+    && productTypeMatches > 0
+    && fitKeywordMatches === 0
+    && queryTermMatches === 0;
 
   let score = 0;
   if (exactStep) score += preferredStep === 'treatment' ? 0.22 : 0.34;
@@ -88,6 +95,7 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
   score += Math.min(0.16, ingredientMatches * 0.08);
   score += Math.min(0.12, productTypeMatches * 0.06);
   if (retrievalRoleMatched) score += semanticFitMatched ? 0.08 : 0.02;
+  if (treatmentSerumIngredientRescueApplied) score += 0.32;
   // For routine-ready support slots, keep exact-step moisturizer/sunscreen matches viable
   // when the catalog only gives us the role-matched product shape, without loosening treatment rules.
   if (supportStepRescueApplied) score += 0.1;
@@ -105,6 +113,11 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
     strong_semantic_fit_matched: strongSemanticFitMatched,
     retrieval_role_matched: retrievalRoleMatched,
     support_step_rescue_applied: supportStepRescueApplied,
+    treatment_serum_ingredient_rescue_applied: treatmentSerumIngredientRescueApplied,
+    fit_keyword_matches: fitKeywordMatches,
+    query_term_matches: queryTermMatches,
+    ingredient_matches: ingredientMatches,
+    product_type_matches: productTypeMatches,
     exact_step: exactStep,
     alternate_step: alternateStep,
   };
