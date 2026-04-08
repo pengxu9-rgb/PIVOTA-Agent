@@ -20,6 +20,9 @@ function makeProduct({
   inventory_quantity = 10,
   status = 'active',
   source,
+  canonical_url,
+  destination_url,
+  domain,
 } = {}) {
   return {
     merchant_id,
@@ -35,6 +38,9 @@ function makeProduct({
     inventory_quantity,
     status,
     ...(source ? { source } : {}),
+    ...(canonical_url ? { canonical_url } : {}),
+    ...(destination_url ? { destination_url } : {}),
+    ...(domain ? { domain } : {}),
   };
 }
 
@@ -113,6 +119,85 @@ describe('RecommendationEngine (PDP)', () => {
     const top5 = out.items.slice(0, 5);
     const top5SigmaExternal = top5.filter((p) => _internals.getBrandName(p) === 'sigma' && _internals.isExternalProduct(p)).length;
     expect(top5SigmaExternal).toBeGreaterThanOrEqual(2);
+  });
+
+  test('b2) external same-domain fallback can rescue branded seeds even when candidate categories stay generic', () => {
+    const base = makeProduct({
+      merchant_id: 'external_seed',
+      product_id: 'ext_fenty_base',
+      title: 'Bright Fix Eye Brightener',
+      brand: 'Fenty Beauty',
+      category_path: ['Beauty', 'Concealer'],
+      category: 'Concealer',
+      price: 28,
+      currency: 'USD',
+      source: 'external_seed',
+      canonical_url: 'https://fentybeauty.com/products/bright-fix-eye-brightener-crepe',
+      destination_url: 'https://fentybeauty.com/products/bright-fix-eye-brightener-crepe',
+      domain: 'fentybeauty.com',
+    });
+
+    const external = [
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_fenty_match_1',
+        title: 'Cheeks Suede Powder Blush',
+        brand: 'Fenty Beauty',
+        category: 'Beauty',
+        product_type: 'Beauty',
+        price: 26,
+        source: 'external_seed',
+        canonical_url: 'https://fentybeauty.com/products/cheeks-suede-powder-blush',
+        destination_url: 'https://fentybeauty.com/products/cheeks-suede-powder-blush',
+        domain: 'fentybeauty.com',
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_fenty_match_2',
+        title: 'Gloss Bomb Universal Lip Luminizer',
+        brand: 'Fenty Beauty',
+        category: 'Beauty',
+        product_type: 'Beauty',
+        price: 22,
+        source: 'external_seed',
+        canonical_url: 'https://fentybeauty.com/products/gloss-bomb-universal-lip-luminizer',
+        destination_url: 'https://fentybeauty.com/products/gloss-bomb-universal-lip-luminizer',
+        domain: 'fentybeauty.com',
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_fenty_match_3',
+        title: 'Soft Lit Naturally Luminous Longwear Foundation',
+        brand: 'Fenty Beauty',
+        category: 'Beauty',
+        product_type: 'Beauty',
+        price: 39,
+        source: 'external_seed',
+        canonical_url: 'https://fentybeauty.com/products/soft-lit-foundation',
+        destination_url: 'https://fentybeauty.com/products/soft-lit-foundation',
+        domain: 'fentybeauty.com',
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_other_domain',
+        title: 'Generic Brightener',
+        brand: 'Other Brand',
+        category: 'Beauty',
+        product_type: 'Beauty',
+        price: 20,
+        source: 'external_seed',
+        canonical_url: 'https://other.example/products/generic-brightener',
+        destination_url: 'https://other.example/products/generic-brightener',
+        domain: 'other.example',
+      }),
+    ];
+
+    const out = pickLayeredRecommendations({ baseProduct: base, internalCandidates: [], externalCandidates: external, k: 4 });
+
+    expect(out.items.map((item) => item.product_id)).toEqual(
+      expect.arrayContaining(['ext_fenty_match_1', 'ext_fenty_match_2', 'ext_fenty_match_3']),
+    );
+    expect(out.metadata.retrieval_mix.external).toBeGreaterThanOrEqual(3);
   });
 
   test('c) no brand matches but same category + near price fills', () => {

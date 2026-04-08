@@ -1038,11 +1038,17 @@ function pickLayeredRecommendations({
         const key = `${candidate.features.merchantId}::${candidate.features.productId}`;
         if (chosenKeys.has(key)) return false;
         if (candidate.source !== 'external') return false;
+        const sameDomainBrandVerticalFallback =
+          candidate.brandMatch &&
+          base.vertical !== UNKNOWN_VERTICAL &&
+          candidate.features.vertical === base.vertical &&
+          sharesExternalSeedDomain(baseProduct, candidate.product);
         return (
           (candidate.brandMatch &&
             candidate.features.leafCategory &&
             !['external', 'beauty'].includes(candidate.features.leafCategory) &&
             candidate.features.vertical === base.vertical) ||
+          sameDomainBrandVerticalFallback ||
           candidate.leafMatch ||
           candidate.parentMatch ||
           (base.vertical !== UNKNOWN_VERTICAL && candidate.features.vertical === base.vertical)
@@ -1431,6 +1437,12 @@ function getExternalSeedDomainHints(product) {
         .filter(Boolean),
     ),
   );
+}
+
+function sharesExternalSeedDomain(baseProduct, candidateProduct) {
+  const baseHints = new Set(getExternalSeedDomainHints(baseProduct));
+  if (!baseHints.size) return false;
+  return getExternalSeedDomainHints(candidateProduct).some((hint) => baseHints.has(hint));
 }
 
 async function fetchExternalCandidates({ brandHint, categoryHint, limit, baseProduct = null }) {
