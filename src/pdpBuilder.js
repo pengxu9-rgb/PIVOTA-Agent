@@ -112,6 +112,8 @@ const EXTERNAL_SEED_OVERVIEW_MEASUREMENT_RE =
 const UI_CHROME_IMAGE_FILENAME_RE =
   /^(?:menu|close|search|cart|account|icon[-_](?:search|cart|account)|tf_logo|logo)\.(?:svg|ico|gif)$/i;
 
+const { buildProductIntelBundle } = require('./pdpProductIntel');
+
 function createPageRequestId() {
   return `pr_${Math.random().toString(36).slice(2)}_${Date.now().toString(36)}`;
 }
@@ -293,6 +295,24 @@ const MODULE_REQUIREMENTS = {
         sections.some((section) => section?.heading && section?.content && section?.content_type)
       );
     },
+  },
+  product_intel: {
+    requiredPaths: ['data.display_name', 'data.what_it_is'],
+    validate: (module) =>
+      Boolean(module?.data?.what_it_is?.headline || module?.data?.what_it_is?.body),
+  },
+  texture_finish: {
+    validate: (module) =>
+      Boolean(
+        module?.data?.texture ||
+          module?.data?.finish ||
+          (Array.isArray(module?.data?.sensory_notes) && module.data.sensory_notes.length) ||
+          (Array.isArray(module?.data?.layering_notes) && module.data.layering_notes.length),
+      ),
+  },
+  community_signals: {
+    requiredPaths: ['data.status'],
+    validate: (module) => String(module?.data?.status || '').trim().toLowerCase() === 'available',
   },
   reviews_preview: {
     requiredPaths: ['data.rating', 'data.review_count'],

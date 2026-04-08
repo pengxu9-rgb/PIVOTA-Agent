@@ -1,0 +1,872 @@
+#!/usr/bin/env node
+
+const fs = require('fs');
+const path = require('path');
+const axios = require('axios');
+
+const {
+  buildProductIntelDraftBundle,
+  PRODUCT_INTEL_CONTRACT_VERSION,
+  PIVOTA_INSIGHTS_DISPLAY_NAME,
+} = require('../src/pdpProductIntel');
+
+function parseArgs(argv) {
+  const out = {
+    cases: 'scripts/fixtures/product_intel_pilot_cases.json',
+    out: '',
+    markdown: '',
+    model: process.env.PRODUCT_INTEL_PILOT_GEMINI_MODEL || 'gemini-3-pro-preview',
+    skipGemini: false,
+  };
+
+  for (let i = 2; i < argv.length; i += 1) {
+    const token = argv[i];
+    const next = argv[i + 1];
+    if (token === '--cases' && next) {
+      out.cases = next;
+      i += 1;
+    } else if (token === '--out' && next) {
+      out.out = next;
+      i += 1;
+    } else if (token === '--markdown' && next) {
+      out.markdown = next;
+      i += 1;
+    } else if (token === '--model' && next) {
+      out.model = next;
+      i += 1;
+    } else if (token === '--skip-gemini') {
+      out.skipGemini = true;
+    }
+  }
+
+  return out;
+}
+
+function resolvePath(rootDir, target) {
+  if (!target) return '';
+  if (path.isAbsolute(target)) return target;
+  return path.join(rootDir, target);
+}
+
+function ensureDir(filePath) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+}
+
+function readJson(filePath) {
+  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+}
+
+function writeJson(filePath, value) {
+  ensureDir(filePath);
+  fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+function writeText(filePath, value) {
+  ensureDir(filePath);
+  fs.writeFileSync(filePath, value);
+}
+
+function asString(value) {
+  if (typeof value === 'string') return value.trim();
+  if (value == null) return '';
+  return String(value).trim();
+}
+
+function toList(value) {
+  if (Array.isArray(value)) return value.filter(Boolean);
+  if (typeof value === 'string') {
+    return value
+      .split(/[,\n]/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function normalizeLabelSet(values) {
+  return new Set(
+    toList(values)
+      .map((value) => asString(value).toLowerCase())
+      .filter(Boolean),
+  );
+}
+
+function jaccardOverlap(leftValues, rightValues) {
+  const left = normalizeLabelSet(leftValues);
+  const right = normalizeLabelSet(rightValues);
+  if (!left.size && !right.size) return 1;
+  if (!left.size || !right.size) return 0;
+  let intersection = 0;
+  for (const value of left) {
+    if (right.has(value)) intersection += 1;
+  }
+  const union = new Set([...left, ...right]).size;
+  return union ? intersection / union : 0;
+}
+
+function deepClone(value) {
+  return value == null ? value : JSON.parse(JSON.stringify(value));
+}
+
+function hasGeminiKey() {
+  return Boolean(
+    String(
+      process.env.GEMINI_API_KEY ||
+        process.env.PIVOTA_GEMINI_API_KEY ||
+        process.env.GOOGLE_API_KEY ||
+        '',
+    ).trim(),
+  );
+}
+
+function geminiApiKey() {
+  return String(
+    process.env.GEMINI_API_KEY ||
+      process.env.PIVOTA_GEMINI_API_KEY ||
+      process.env.GOOGLE_API_KEY ||
+      '',
+  ).trim();
+}
+
+function geminiBaseUrl() {
+  return String(
+    process.env.GEMINI_BASE_URL ||
+      process.env.GOOGLE_GENAI_BASE_URL ||
+      'https://generativelanguage.googleapis.com',
+  )
+    .trim()
+    .replace(/\/+$/, '')
+    .replace(/\/v1beta$/i, '')
+    .replace(/\/v1$/i, '');
+}
+
+function extractJsonObject(text) {
+  const raw = asString(text);
+  if (!raw) throw new Error('empty_gemini_payload');
+  try {
+    return JSON.parse(raw);
+  } catch {
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (match) return JSON.parse(match[0]);
+    throw new Error('invalid_gemini_json');
+  }
+}
+
+function normalizeEvidenceAvailability(flags) {
+  const source = flags && typeof flags === 'object' ? flags : {};
+  return {
+    seller: Boolean(source.seller),
+    formula: Boolean(source.formula),
+    reviews: Boolean(source.reviews),
+    creator: Boolean(source.creator),
+    editorial: Boolean(source.editorial),
+  };
+}
+
+function buildFactsPack(caseRow, baselineDraft) {
+  const product = caseRow && typeof caseRow.product === 'object' ? caseRow.product : {};
+  const reviewSummary =
+    product.review_summary && typeof product.review_summary === 'object'
+      ? {
+          rating: product.review_summary.rating ?? null,
+          review_count:
+            product.review_summary.review_count ??
+            product.review_summary.reviewCount ??
+            null,
+        }
+      : null;
+  const communitySignals =
+    product.community_signals && typeof product.community_signals === 'object'
+      ? product.community_signals
+      : null;
+
+  return {
+    case_id: asString(caseRow.case_id),
+    title: asString(product.title || product.name),
+    brand: asString(product.brand),
+    category: asString(product.category || product.product_type),
+    description: asString(product.description),
+    tags: toList(product.tags),
+    texture: asString(product.texture),
+    finish: asString(product.finish),
+    how_to_use: asString(product.how_to_use || product.howToUse),
+    ingredients_inci: toList(product.ingredients_inci || product.ingredients),
+    review_summary: reviewSummary,
+    community_signals: communitySignals,
+    evidence_availability: normalizeEvidenceAvailability({
+      seller: Boolean(
+        asString(product.title || product.name) &&
+          (asString(product.description) || asString(product.category || product.product_type)),
+      ),
+      formula: toList(product.ingredients_inci || product.ingredients).length > 0,
+      reviews: Number(reviewSummary?.review_count || 0) > 0,
+      creator: Number(communitySignals?.source_counts?.creator_mentions || 0) > 0,
+      editorial: Number(communitySignals?.source_counts?.editorial || 0) > 0,
+    }),
+    baseline_evidence_profile: baselineDraft?.evidence_profile || null,
+    baseline_quality_state: baselineDraft?.quality_state || null,
+    baseline_source_coverage: baselineDraft?.source_coverage || null,
+    baseline_routine_step: asString(baselineDraft?.product_intel_core?.routine_fit?.step),
+    baseline_community_status: asString(baselineDraft?.community_signals?.status || 'unavailable'),
+  };
+}
+
+function buildGeminiPrompt(caseRow, baselineDraft) {
+  const factsPack = buildFactsPack(caseRow, baselineDraft);
+  return [
+    'You are generating narrative product intelligence for a Pivota normalized product page.',
+    'Return only JSON matching the requested schema.',
+    '',
+    'Hard rules:',
+    '- Ground every field only in the supplied product facts.',
+    '- Do not invent price, offers, ingredients, ratings, or community feedback.',
+    '- evidence_availability is authoritative. If reviews/creator/editorial are all false, community_signals.status must be "unavailable".',
+    '- Do not output source_coverage, evidence_profile, quality_state, or freshness. Those are computed separately.',
+    '- Avoid phrases like "users say", "people love", "viral", or "social media" unless community evidence is supplied.',
+    '- Keep highlights concise, concrete, and product-specific.',
+    '- Do not leave product_intel_core.what_it_is.body empty when title/category/description exist.',
+    '- If title/category/description are enough to infer routine role, fill routine_fit conservatively.',
+    '- For seller_only or seller_plus_formula cases, still provide at least 1 best_for item and 1 why_it_stands_out item when description/category clearly support them.',
+    '- Use [] or null for unsupported fields, never empty strings for required narrative text.',
+    '',
+    'Output fields:',
+    '- product_intel_core.what_it_is',
+    '- product_intel_core.best_for',
+    '- product_intel_core.why_it_stands_out',
+    '- product_intel_core.routine_fit',
+    '- product_intel_core.watchouts',
+    '- texture_finish',
+    '- community_signals',
+    '',
+    'Product facts:',
+    JSON.stringify(factsPack, null, 2),
+  ].join('\n');
+}
+
+function normalizeGeminiDraftOutput(output) {
+  const bestFor = toList(output?.product_intel_core?.best_for)
+    .map((item) => {
+      const row = item && typeof item === 'object' ? item : null;
+      const label = asString(row?.label || item).slice(0, 120);
+      if (!label) return null;
+      return {
+        tag:
+          asString(row?.tag).slice(0, 80) ||
+          label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 80) ||
+          'fit',
+        label,
+        confidence: 'moderate',
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 4);
+
+  const highlights = toList(output?.product_intel_core?.why_it_stands_out)
+    .map((item) => {
+      const row = item && typeof item === 'object' ? item : null;
+      const headline = asString(row?.headline).slice(0, 120);
+      const body = asString(row?.body || item).slice(0, 240);
+      if (!headline && !body) return null;
+      const evidenceStrengthRaw = asString(row?.evidence_strength).toLowerCase();
+      return {
+        headline: headline || body.slice(0, 120),
+        body,
+        evidence_strength: ['strong', 'moderate', 'limited', 'uncertain'].includes(evidenceStrengthRaw)
+          ? evidenceStrengthRaw
+          : 'limited',
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 4);
+
+  const watchouts = toList(output?.product_intel_core?.watchouts)
+    .map((item) => {
+      const row = item && typeof item === 'object' ? item : null;
+      const label = asString(row?.label || item).slice(0, 160);
+      if (!label) return null;
+      const severityRaw = asString(row?.severity).toLowerCase();
+      return {
+        type: asString(row?.type).slice(0, 80) || 'watchout',
+        label,
+        severity: ['low', 'medium', 'high'].includes(severityRaw) ? severityRaw : 'low',
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 4);
+
+  const textureFinish =
+    output?.texture_finish && typeof output.texture_finish === 'object'
+      ? {
+          texture: asString(output.texture_finish.texture) || null,
+          finish: asString(output.texture_finish.finish) || null,
+          sensory_notes: toList(output.texture_finish.sensory_notes)
+            .map((item) => asString(item).slice(0, 120))
+            .filter(Boolean)
+            .slice(0, 4),
+          layering_notes: toList(output.texture_finish.layering_notes)
+            .map((item) => asString(item).slice(0, 160))
+            .filter(Boolean)
+            .slice(0, 4),
+        }
+      : null;
+
+  const communityStatusRaw = asString(output?.community_signals?.status).toLowerCase();
+  const communitySignals = {
+    status: communityStatusRaw === 'available' ? 'available' : 'unavailable',
+    unavailable_reason: asString(output?.community_signals?.unavailable_reason) || null,
+    top_loves: toList(output?.community_signals?.top_loves)
+      .map((item) => asString(item).slice(0, 160))
+      .filter(Boolean)
+      .slice(0, 4),
+    top_complaints: toList(output?.community_signals?.top_complaints)
+      .map((item) => asString(item).slice(0, 160))
+      .filter(Boolean)
+      .slice(0, 4),
+    best_fit_users: toList(output?.community_signals?.best_fit_users)
+      .map((item) => asString(item).slice(0, 160))
+      .filter(Boolean)
+      .slice(0, 3),
+    mixed_feedback: toList(output?.community_signals?.mixed_feedback)
+      .map((item) => asString(item).slice(0, 180))
+      .filter(Boolean)
+      .slice(0, 3),
+  };
+
+  return {
+    product_intel_core: {
+      what_it_is: {
+        headline:
+          asString(output?.product_intel_core?.what_it_is?.headline).slice(0, 120) ||
+          PIVOTA_INSIGHTS_DISPLAY_NAME,
+        body: asString(output?.product_intel_core?.what_it_is?.body).slice(0, 400),
+      },
+      best_for: bestFor,
+      why_it_stands_out: highlights,
+      routine_fit: {
+        step: asString(output?.product_intel_core?.routine_fit?.step).slice(0, 80),
+        am_pm: toList(output?.product_intel_core?.routine_fit?.am_pm)
+          .map((item) => asString(item).toLowerCase())
+          .filter((item) => item === 'am' || item === 'pm')
+          .slice(0, 2),
+        pairing_notes: toList(output?.product_intel_core?.routine_fit?.pairing_notes)
+          .map((item) => asString(item).slice(0, 160))
+          .filter(Boolean)
+          .slice(0, 4),
+      },
+      watchouts,
+    },
+    texture_finish: textureFinish,
+    community_signals: communitySignals,
+  };
+}
+
+async function runGeminiDraft(caseRow, baselineDraft, model) {
+  if (!hasGeminiKey()) {
+    return { skipped: true, reason: 'missing_gemini_api_key' };
+  }
+  const prompt = buildGeminiPrompt(caseRow, baselineDraft);
+
+  try {
+    const response = await axios.post(
+      `${geminiBaseUrl()}/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(geminiApiKey())}`,
+      {
+        systemInstruction: {
+          parts: [
+            {
+              text: 'You are a strict JSON generator. Output JSON only. No markdown, no extra keys, no prose.',
+            },
+          ],
+        },
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0,
+          responseMimeType: 'application/json',
+        },
+      },
+      { timeout: 45000 },
+    );
+    const text =
+      response?.data?.candidates?.[0]?.content?.parts?.map((part) => part?.text).filter(Boolean).join('\n') || '';
+    const parsed = normalizeGeminiDraftOutput(extractJsonObject(text));
+    return {
+      skipped: false,
+      output: parsed,
+    };
+  } catch (err) {
+    return {
+      skipped: true,
+      reason: asString(err && (err.code || err.message)) || 'gemini_failed',
+    };
+  }
+}
+
+function mergeGeminiDraftIntoBaseline(caseRow, baselineBundle, geminiOutput, model) {
+  if (!baselineBundle || !geminiOutput) return null;
+  const generatedAt = new Date().toISOString();
+  const merged = deepClone(baselineBundle);
+  const baselineCore = baselineBundle.product_intel_core || {};
+  const baselineCommunity = baselineBundle.community_signals || {};
+  const geminiCore = geminiOutput.product_intel_core || {};
+  const geminiRoutine = geminiCore.routine_fit || {};
+
+  merged.product_intel_core = {
+    ...baselineCore,
+    what_it_is: {
+      ...(baselineCore.what_it_is || {}),
+      ...(geminiCore.what_it_is || {}),
+    },
+    best_for:
+      Array.isArray(geminiCore.best_for) && geminiCore.best_for.length
+        ? geminiCore.best_for
+        : baselineCore.best_for || [],
+    why_it_stands_out:
+      Array.isArray(geminiCore.why_it_stands_out) && geminiCore.why_it_stands_out.length
+        ? geminiCore.why_it_stands_out
+        : baselineCore.why_it_stands_out || [],
+    routine_fit: {
+      ...(baselineCore.routine_fit || {}),
+      step: asString(baselineCore.routine_fit?.step),
+      am_pm:
+        Array.isArray(geminiRoutine.am_pm) && geminiRoutine.am_pm.length
+          ? geminiRoutine.am_pm
+          : baselineCore.routine_fit?.am_pm || [],
+      pairing_notes:
+        Array.isArray(geminiRoutine.pairing_notes) && geminiRoutine.pairing_notes.length
+          ? geminiRoutine.pairing_notes
+          : baselineCore.routine_fit?.pairing_notes || [],
+    },
+    watchouts:
+      Array.isArray(geminiCore.watchouts) && geminiCore.watchouts.length
+        ? geminiCore.watchouts
+        : baselineCore.watchouts || [],
+    confidence: baselineCore.confidence || merged.confidence,
+    freshness: {
+      generated_at: generatedAt,
+      source_version: `pilot_gemini_candidate:${model}`,
+    },
+    quality_state: baselineCore.quality_state || baselineBundle.quality_state || 'limited',
+    evidence_profile: baselineCore.evidence_profile || baselineBundle.evidence_profile || null,
+    source_coverage: baselineCore.source_coverage || baselineBundle.source_coverage || null,
+  };
+
+  if (geminiOutput.texture_finish) {
+    merged.texture_finish = {
+      ...(baselineBundle.texture_finish || {}),
+      ...geminiOutput.texture_finish,
+      confidence:
+        baselineBundle.texture_finish?.confidence ||
+        baselineCore.confidence?.overall ||
+        baselineBundle.confidence?.overall ||
+        'moderate',
+      evidence_profile: baselineBundle.evidence_profile || null,
+    };
+  }
+
+  if ((baselineCommunity.status || 'unavailable') === 'available') {
+    merged.community_signals = {
+      ...baselineCommunity,
+      top_loves:
+        geminiOutput.community_signals?.top_loves?.length
+          ? geminiOutput.community_signals.top_loves
+          : baselineCommunity.top_loves || [],
+      top_complaints:
+        geminiOutput.community_signals?.top_complaints?.length
+          ? geminiOutput.community_signals.top_complaints
+          : baselineCommunity.top_complaints || [],
+      best_fit_users:
+        geminiOutput.community_signals?.best_fit_users?.length
+          ? geminiOutput.community_signals.best_fit_users
+          : baselineCommunity.best_fit_users || [],
+      mixed_feedback:
+        geminiOutput.community_signals?.mixed_feedback?.length
+          ? geminiOutput.community_signals.mixed_feedback
+          : baselineCommunity.mixed_feedback || [],
+      status: 'available',
+      unavailable_reason: null,
+    };
+  } else {
+    merged.community_signals = {
+      ...baselineCommunity,
+      status: 'unavailable',
+      unavailable_reason: 'insufficient_feedback',
+    };
+  }
+
+  merged.quality_state = baselineBundle.quality_state || 'limited';
+  merged.evidence_profile = baselineBundle.evidence_profile || null;
+  merged.source_coverage = baselineBundle.source_coverage || null;
+  merged.confidence = baselineBundle.confidence || baselineCore.confidence || null;
+  merged.freshness = {
+    generated_at: generatedAt,
+    source_version: `pilot_gemini_candidate:${model}`,
+  };
+  merged.provenance = {
+    ...(baselineBundle.provenance || {}),
+    source: 'product_intel_pilot_compare',
+    generator: 'gemini_candidate',
+    model,
+    case_id: asString(caseRow?.case_id),
+  };
+
+  return merged;
+}
+
+function flattenBundleNarrative(bundle) {
+  const core = bundle?.product_intel_core || {};
+  const community = bundle?.community_signals || {};
+  return [
+    core.what_it_is?.headline,
+    core.what_it_is?.body,
+    ...(core.best_for || []).map((item) => item?.label || item?.tag),
+    ...(core.why_it_stands_out || []).flatMap((item) => [item?.headline, item?.body]),
+    ...(core.watchouts || []).map((item) => item?.label),
+    ...(community.top_loves || []),
+    ...(community.top_complaints || []),
+    ...(community.best_fit_users || []),
+    ...(community.mixed_feedback || []),
+  ]
+    .map((value) => asString(value))
+    .filter(Boolean)
+    .join(' ');
+}
+
+function hasMeaningfulTextureFinish(textureFinish) {
+  if (!textureFinish || typeof textureFinish !== 'object') return false;
+  return Boolean(
+    asString(textureFinish.texture) ||
+      asString(textureFinish.finish) ||
+      (Array.isArray(textureFinish.sensory_notes) && textureFinish.sensory_notes.length) ||
+      (Array.isArray(textureFinish.layering_notes) && textureFinish.layering_notes.length),
+  );
+}
+
+function evaluateGeminiCandidateQuality(baselineBundle, geminiCandidateBundle) {
+  if (!baselineBundle || !geminiCandidateBundle) {
+    return {
+      candidate_available: false,
+      overall_pass: false,
+      quality_score: 0,
+      fail_reasons: ['missing_candidate'],
+      field_decisions: {},
+    };
+  }
+
+  const baselineCore = baselineBundle.product_intel_core || {};
+  const candidateCore = geminiCandidateBundle.product_intel_core || {};
+  const baselineCommunity = baselineBundle.community_signals || {};
+  const candidateCommunity = geminiCandidateBundle.community_signals || {};
+  const sellerOnlyMode =
+    baselineBundle.evidence_profile === 'seller_only' ||
+    baselineBundle.evidence_profile === 'seller_plus_formula';
+  const narrativeText = flattenBundleNarrative(geminiCandidateBundle);
+  const sellerOnlyViolation =
+    sellerOnlyMode &&
+    /\b(users?|people|reviewers?|customers?|community|viral|tiktok|reddit|social media)\b/i.test(
+      narrativeText,
+    );
+
+  const bestForOverlap = Number(
+    jaccardOverlap(
+      (baselineCore.best_for || []).map((item) => item.label || item.tag),
+      (candidateCore.best_for || []).map((item) => item.label || item.tag),
+    ).toFixed(2),
+  );
+  const watchoutOverlap = Number(
+    jaccardOverlap(
+      (baselineCore.watchouts || []).map((item) => item.label),
+      (candidateCore.watchouts || []).map((item) => item.label),
+    ).toFixed(2),
+  );
+
+  const fieldDecisions = {
+    what_it_is:
+      asString(candidateCore.what_it_is?.body).length >= 24 && !sellerOnlyViolation,
+    best_for:
+      Array.isArray(candidateCore.best_for) &&
+      candidateCore.best_for.length > 0 &&
+      (
+        !baselineCore.best_for?.length ||
+        baselineBundle.evidence_profile !== 'community_supported' ||
+        bestForOverlap >= 0.15
+      ) &&
+      !sellerOnlyViolation,
+    why_it_stands_out:
+      Array.isArray(candidateCore.why_it_stands_out) &&
+      candidateCore.why_it_stands_out.length > 0 &&
+      candidateCore.why_it_stands_out.some((item) => asString(item?.body).length >= 20) &&
+      !sellerOnlyViolation,
+    routine_fit:
+      asString(candidateCore.routine_fit?.step) === asString(baselineCore.routine_fit?.step) &&
+      (toList(candidateCore.routine_fit?.pairing_notes).length > 0 ||
+        toList(candidateCore.routine_fit?.am_pm).length > 0) &&
+      !sellerOnlyViolation,
+    watchouts:
+      (!sellerOnlyViolation &&
+        Array.isArray(candidateCore.watchouts) &&
+        candidateCore.watchouts.every((item) => asString(item?.label).length > 0)) ||
+      false,
+    texture_finish: hasMeaningfulTextureFinish(geminiCandidateBundle.texture_finish),
+    community_signals:
+      (baselineCommunity.status || 'unavailable') === 'available' &&
+      (candidateCommunity.status || 'unavailable') === 'available' &&
+      (toList(candidateCommunity.top_loves).length > 0 ||
+        toList(candidateCommunity.top_complaints).length > 0 ||
+        toList(candidateCommunity.best_fit_users).length > 0 ||
+        toList(candidateCommunity.mixed_feedback).length > 0),
+  };
+
+  const qualityScore = Object.values(fieldDecisions).filter(Boolean).length;
+  const failReasons = [];
+  if (sellerOnlyViolation) failReasons.push('seller_only_community_language');
+  if (!fieldDecisions.what_it_is) failReasons.push('weak_what_it_is');
+  if (!fieldDecisions.best_for) failReasons.push('weak_best_for');
+  if (!fieldDecisions.why_it_stands_out) failReasons.push('weak_highlights');
+  if (!fieldDecisions.routine_fit) failReasons.push('weak_routine_fit');
+  if ((baselineCommunity.status || 'unavailable') === 'available' && !fieldDecisions.community_signals) {
+    failReasons.push('weak_community_signals');
+  }
+
+  return {
+    candidate_available: true,
+    overall_pass: qualityScore >= 4 && !sellerOnlyViolation,
+    quality_score: qualityScore,
+    fail_reasons: failReasons,
+    seller_only_violation: sellerOnlyViolation,
+    best_for_overlap: bestForOverlap,
+    watchout_overlap: watchoutOverlap,
+    field_decisions: fieldDecisions,
+  };
+}
+
+function buildSelectedBundle(baselineBundle, geminiCandidateBundle, quality, model) {
+  const selected = deepClone(baselineBundle);
+  const fieldSources = {
+    what_it_is: 'baseline',
+    best_for: 'baseline',
+    why_it_stands_out: 'baseline',
+    routine_fit: 'baseline',
+    watchouts: 'baseline',
+    texture_finish: 'baseline',
+    community_signals: 'baseline',
+  };
+
+  if (geminiCandidateBundle && quality?.candidate_available) {
+    if (quality.field_decisions.what_it_is) {
+      selected.product_intel_core.what_it_is = deepClone(
+        geminiCandidateBundle.product_intel_core.what_it_is,
+      );
+      fieldSources.what_it_is = 'gemini';
+    }
+    if (quality.field_decisions.best_for) {
+      selected.product_intel_core.best_for = deepClone(
+        geminiCandidateBundle.product_intel_core.best_for,
+      );
+      fieldSources.best_for = 'gemini';
+    }
+    if (quality.field_decisions.why_it_stands_out) {
+      selected.product_intel_core.why_it_stands_out = deepClone(
+        geminiCandidateBundle.product_intel_core.why_it_stands_out,
+      );
+      fieldSources.why_it_stands_out = 'gemini';
+    }
+    if (quality.field_decisions.routine_fit) {
+      selected.product_intel_core.routine_fit = deepClone(
+        geminiCandidateBundle.product_intel_core.routine_fit,
+      );
+      fieldSources.routine_fit = 'gemini';
+    }
+    if (quality.field_decisions.watchouts) {
+      selected.product_intel_core.watchouts = deepClone(
+        geminiCandidateBundle.product_intel_core.watchouts,
+      );
+      fieldSources.watchouts = 'gemini';
+    }
+    if (quality.field_decisions.texture_finish) {
+      selected.texture_finish = deepClone(geminiCandidateBundle.texture_finish);
+      fieldSources.texture_finish = 'gemini';
+    }
+    if (quality.field_decisions.community_signals) {
+      selected.community_signals = deepClone(geminiCandidateBundle.community_signals);
+      fieldSources.community_signals = 'gemini';
+    }
+  }
+
+  const selectedFieldCount = Object.values(fieldSources).filter((value) => value === 'gemini').length;
+  const generatedAt = new Date().toISOString();
+  if (selectedFieldCount > 0) {
+    selected.freshness = {
+      generated_at: generatedAt,
+      source_version: `pilot_selected:${model}`,
+    };
+    if (selected.product_intel_core) {
+      selected.product_intel_core.freshness = deepClone(selected.freshness);
+    }
+  }
+
+  selected.provenance = {
+    ...(selected.provenance || {}),
+    source: 'product_intel_pilot_compare',
+    generator: selectedFieldCount > 0 ? 'baseline_plus_gemini' : 'baseline_only',
+    selection_strategy: 'baseline_first_gemini_guarded',
+    gemini_model: geminiCandidateBundle ? model : null,
+    field_sources: fieldSources,
+    gemini_quality_gate: quality || {
+      candidate_available: false,
+      overall_pass: false,
+      quality_score: 0,
+      fail_reasons: ['missing_candidate'],
+      field_decisions: {},
+    },
+  };
+
+  return {
+    bundle: selected,
+    field_sources: fieldSources,
+    selected_field_count: selectedFieldCount,
+    selected_mode: selectedFieldCount > 0 ? 'hybrid_gemini' : 'baseline_only',
+  };
+}
+
+function buildComparisonSummary(baselineBundle, geminiCandidateBundle, selectedResult, quality) {
+  const baselineCore = baselineBundle?.product_intel_core || {};
+  const geminiCore = geminiCandidateBundle?.product_intel_core || {};
+  return {
+    compared: Boolean(baselineBundle && geminiCandidateBundle),
+    best_for_overlap: Number(
+      jaccardOverlap(
+        (baselineCore.best_for || []).map((item) => item.label || item.tag),
+        (geminiCore.best_for || []).map((item) => item.label || item.tag),
+      ).toFixed(2),
+    ),
+    watchout_overlap: Number(
+      jaccardOverlap(
+        (baselineCore.watchouts || []).map((item) => item.label),
+        (geminiCore.watchouts || []).map((item) => item.label),
+      ).toFixed(2),
+    ),
+    baseline_highlight_count: Array.isArray(baselineCore.why_it_stands_out)
+      ? baselineCore.why_it_stands_out.length
+      : 0,
+    gemini_highlight_count: Array.isArray(geminiCore.why_it_stands_out)
+      ? geminiCore.why_it_stands_out.length
+      : 0,
+    gemini_quality: quality || null,
+    selected_mode: selectedResult?.selected_mode || 'baseline_only',
+    selected_field_count: selectedResult?.selected_field_count || 0,
+    selected_field_sources: selectedResult?.field_sources || {},
+  };
+}
+
+function buildMarkdownReport(rows, meta) {
+  const lines = [
+    '# Product Intel Pilot Compare',
+    '',
+    `Generated: ${meta.generated_at}`,
+    `Cases: ${rows.length}`,
+    `Gemini model: ${meta.gemini_model}`,
+    `Gemini completed: ${meta.gemini_completed}`,
+    `Gemini skipped: ${meta.gemini_skipped}`,
+    `Hybrid selected: ${meta.hybrid_selected}`,
+    `Baseline only: ${meta.baseline_only}`,
+    '',
+  ];
+
+  for (const row of rows) {
+    lines.push(`## ${row.case_id}`);
+    if (row.notes) lines.push('', row.notes);
+    lines.push('');
+    lines.push(`- Evidence profile: ${row.baseline?.evidence_profile || 'n/a'}`);
+    lines.push(`- Baseline what it is: ${row.baseline?.product_intel_core?.what_it_is?.body || 'n/a'}`);
+    lines.push(`- Gemini what it is: ${row.gemini?.candidate?.product_intel_core?.what_it_is?.body || row.gemini?.reason || 'n/a'}`);
+    lines.push(`- Selected mode: ${row.selected?.selected_mode || 'baseline_only'}`);
+    lines.push(`- Selected field sources: ${JSON.stringify(row.selected?.field_sources || {})}`);
+    lines.push(`- Gemini quality: ${JSON.stringify(row.quality_gate || {})}`);
+    lines.push('');
+  }
+
+  return `${lines.join('\n')}\n`;
+}
+
+async function main() {
+  const rootDir = path.resolve(__dirname, '..');
+  const args = parseArgs(process.argv);
+  const casesPath = resolvePath(rootDir, args.cases);
+  const casesPayload = readJson(casesPath);
+  const cases = Array.isArray(casesPayload) ? casesPayload : [];
+
+  const reportRows = [];
+  for (const caseRow of cases) {
+    const baseline = buildProductIntelDraftBundle({
+      product: caseRow.product || {},
+      relatedProducts: Array.isArray(caseRow.related_products) ? caseRow.related_products : [],
+      canonicalProductRef: caseRow.canonical_product_ref || null,
+      productGroupId: caseRow.product_group_id || null,
+    });
+
+    const geminiRaw = args.skipGemini
+      ? { skipped: true, reason: 'skip_gemini_flag' }
+      : await runGeminiDraft(caseRow, baseline, args.model);
+    const geminiCandidate = geminiRaw.skipped
+      ? null
+      : mergeGeminiDraftIntoBaseline(caseRow, baseline, geminiRaw.output, args.model);
+    const qualityGate = evaluateGeminiCandidateQuality(baseline, geminiCandidate);
+    const selected = buildSelectedBundle(baseline, geminiCandidate, qualityGate, args.model);
+
+    reportRows.push({
+      case_id: asString(caseRow.case_id) || 'unnamed_case',
+      notes: asString(caseRow.notes),
+      baseline,
+      gemini: geminiRaw.skipped
+        ? { skipped: true, reason: geminiRaw.reason }
+        : { skipped: false, raw: geminiRaw.output, candidate: geminiCandidate },
+      quality_gate: qualityGate,
+      selected,
+      comparison: buildComparisonSummary(baseline, geminiCandidate, selected, qualityGate),
+    });
+  }
+
+  const generatedAt = new Date().toISOString();
+  const jsonOut =
+    resolvePath(
+      rootDir,
+      args.out || `reports/product_intel_pilot_compare_${generatedAt.replace(/[:.]/g, '-')}.json`,
+    );
+  const markdownOut =
+    resolvePath(
+      rootDir,
+      args.markdown || `reports/product_intel_pilot_compare_${generatedAt.replace(/[:.]/g, '-')}.md`,
+    );
+  const meta = {
+    generated_at: generatedAt,
+    contract_version: PRODUCT_INTEL_CONTRACT_VERSION,
+    gemini_model: args.model,
+    gemini_completed: reportRows.filter((row) => row.gemini && row.gemini.skipped === false).length,
+    gemini_skipped: reportRows.filter((row) => row.gemini && row.gemini.skipped !== false).length,
+    hybrid_selected: reportRows.filter((row) => row.selected?.selected_mode === 'hybrid_gemini').length,
+    baseline_only: reportRows.filter((row) => row.selected?.selected_mode !== 'hybrid_gemini').length,
+  };
+
+  writeJson(jsonOut, { meta, rows: reportRows });
+  writeText(markdownOut, buildMarkdownReport(reportRows, meta));
+
+  process.stdout.write(
+    `${JSON.stringify({ status: 'ok', cases: reportRows.length, json: jsonOut, markdown: markdownOut })}\n`,
+  );
+}
+
+if (require.main === module) {
+  main().catch((err) => {
+    process.stderr.write(`${err && err.stack ? err.stack : String(err)}\n`);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  buildFactsPack,
+  normalizeGeminiDraftOutput,
+  mergeGeminiDraftIntoBaseline,
+  evaluateGeminiCandidateQuality,
+  buildSelectedBundle,
+  buildComparisonSummary,
+  buildMarkdownReport,
+};

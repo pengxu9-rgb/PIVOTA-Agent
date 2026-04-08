@@ -2,6 +2,10 @@ const { query } = require('../db');
 const { kbQuery } = require('./pciKbClient');
 const { ensureJsonObject } = require('./externalSeedProducts');
 const {
+  buildAuthoritativeIngredientView,
+  mergeIngredientIntelWithAuthority,
+} = require('./pdpIngredientAuthority');
+const {
   buildExternalSeedHarvesterCandidates,
   extractRawIngredientText,
 } = require('./externalSeedHarvesterBridge');
@@ -710,6 +714,14 @@ function buildIngredientBlock({
     keyIngredients.length ? keyIngredients : normalizedIngredientTokens,
     16,
   );
+  const authoritativeIngredientView =
+    source === ENRICHMENT_SOURCE.kbReviewed || source === ENRICHMENT_SOURCE.descriptionParse
+      ? buildAuthoritativeIngredientView({
+          raw_ingredient_text_clean: rawText,
+          inci_list: normalizedInciList,
+          active_ingredients: normalizedActiveIngredients,
+        })
+      : null;
   const intel = {
     ...(normalizedIngredientTokens.length
       ? { inci_normalized: normalizedIngredientTokens, key_ingredients: normalizedKeyIngredients }
@@ -717,6 +729,11 @@ function buildIngredientBlock({
     ...(normalizedActiveIngredients.length ? { active_ingredients: normalizedActiveIngredients } : {}),
     ...(rawText ? { raw_ingredient_text_clean: rawText } : {}),
     ...(normalizedInciList ? { inci_list: normalizedInciList, inci_raw: rawText || normalizedInciList } : {}),
+    ...(authoritativeIngredientView &&
+    ((authoritativeIngredientView.items && authoritativeIngredientView.items.length) ||
+      (authoritativeIngredientView.active_items && authoritativeIngredientView.active_items.length))
+      ? { authoritative: authoritativeIngredientView }
+      : {}),
     external_seed_enrichment: {
       source,
       version: SEED_INGREDIENT_WRITEBACK_VERSION,
@@ -840,7 +857,7 @@ function buildBlockFromAnchor(anchorDecision = {}) {
 function mergeIngredientIntel(existingValue, nextValue) {
   const existing = ensureJsonObject(existingValue);
   const next = ensureJsonObject(nextValue);
-  return {
+  const merged = {
     ...existing,
     ...next,
     external_seed_enrichment: {
@@ -848,6 +865,10 @@ function mergeIngredientIntel(existingValue, nextValue) {
       ...ensureJsonObject(next.external_seed_enrichment),
     },
   };
+  if (next.authoritative || existing.authoritative) {
+    return mergeIngredientIntelWithAuthority(merged, next.authoritative || existing.authoritative);
+  }
+  return merged;
 }
 
 function mergeStructuredBlockIntoSeedData(seedDataValue, block) {

@@ -1,0 +1,96 @@
+[
+  {
+    "case_id": "pilot_fenty_instant_reset",
+    "notes": "Seller-grounded moisturizer pilot for overnight recovery positioning.",
+    "canonical_product_ref": {
+      "merchant_id": "pilot_fenty",
+      "product_id": "pilot_fenty_instant_reset"
+    },
+    "product": {
+      "merchant_id": "pilot_fenty",
+      "product_id": "pilot_fenty_instant_reset",
+      "brand": "Fenty Skin",
+      "title": "Instant Reset Overnight Recovery Gel-Cream",
+      "category": "Skincare/Moisturizer",
+      "description": "An overnight gel-cream that hydrates, supports the skin barrier, and helps skin feel comfortable by morning.",
+      "tags": ["overnight", "hydrating", "barrier"],
+      "texture": "gel-cream",
+      "finish": "natural",
+      "ingredients_inci": ["Niacinamide", "Hyaluronic Acid", "Kalahari Melon Oil"],
+      "how_to_use": "Apply in the evening after serum as the last skincare step."
+    }
+  },
+  {
+    "case_id": "pilot_naturium_dew_glow_spf50",
+    "notes": "Seller-plus-formula sunscreen pilot with finish and layering considerations.",
+    "canonical_product_ref": {
+      "merchant_id": "pilot_naturium",
+      "product_id": "pilot_naturium_dew_glow_spf50"
+    },
+    "product": {
+      "merchant_id": "pilot_naturium",
+      "product_id": "pilot_naturium_dew_glow_spf50",
+      "brand": "Naturium",
+      "title": "Dew-Glow Moisturizer SPF 50",
+      "category": "Skincare/Sunscreen",
+      "description": "A glow-leaning daily moisturizer with SPF 50 designed to hydrate and protect with a dewy finish.",
+      "tags": ["spf", "daily", "dewy"],
+      "texture": "light cream",
+      "finish": "dewy",
+      "ingredients_inci": ["Zinc Oxide", "Squalane", "Glycerin", "Tocopherol"],
+      "how_to_use": "Use in the morning as the last skincare step before makeup."
+    }
+  },
+  {
+    "case_id": "pilot_tom_ford_noir_de_noir",
+    "notes": "Fragrance pilot to verify role, positioning, and seller-grounded restraint.",
+    "canonical_product_ref": {
+      "merchant_id": "pilot_tom_ford",
+      "product_id": "pilot_tom_ford_noir_de_noir"
+    },
+    "product": {
+      "merchant_id": "pilot_tom_ford",
+      "product_id": "pilot_tom_ford_noir_de_noir",
+      "brand": "Tom Ford",
+      "title": "Noir de Noir Eau de Parfum",
+      "category": "Fragrance/Perfume",
+      "description": "A warm floral fragrance built around saffron, black rose, truffle, vanilla, patchouli, and oud wood.",
+      "tags": ["fragrance", "warm floral", "evening"],
+      "how_to_use": "Spray on pulse points."
+    }
+  },
+  {
+    "case_id": "pilot_murad_clarifying_cleanser",
+    "notes": "Community-supported cleanser pilot with explicit review signals.",
+    "canonical_product_ref": {
+      "merchant_id": "pilot_murad",
+      "product_id": "pilot_murad_clarifying_cleanser"
+    },
+    "product": {
+      "merchant_id": "pilot_murad",
+      "product_id": "pilot_murad_clarifying_cleanser",
+      "brand": "Murad",
+      "title": "Clarifying Cleanser",
+      "category": "Skincare/Cleanser",
+      "description": "A foaming cleanser designed to help clear excess oil, refresh skin, and support breakout-prone routines.",
+      "tags": ["acne", "foaming", "oil control"],
+      "ingredients_inci": ["Salicylic Acid", "Green Tea Extract", "Menthol"],
+      "how_to_use": "Use morning and evening on damp skin before treatment products.",
+      "review_summary": {
+        "rating": 4.4,
+        "review_count": 128
+      },
+      "community_signals": {
+        "top_loves": ["Feels clarifying without leaving residue", "Helpful for oily T-zones"],
+        "top_complaints": ["Can feel drying with twice-daily use"],
+        "best_fit_users": ["Oily or breakout-prone skin"],
+        "mixed_feedback": ["Some users like the refreshing feel, others find it a bit strong"],
+        "source_counts": {
+          "reviews": 128,
+          "creator_mentions": 9,
+          "editorial": 2
+        }
+      }
+    }
+  }
+]

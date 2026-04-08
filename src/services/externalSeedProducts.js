@@ -9,6 +9,10 @@ const { normalizePdpImageUrl } = require('../utils/pdpImageUrls');
 
 const SHOPIFY_ASSET_HASH_SUFFIX_RE =
   /^(.*?_[0-9a-z]+(?:[a-z])?)_(?:[0-9a-f]{8,}(?:-[0-9a-f]{4,}){2,}|[0-9a-f-]{16,})(\.[a-z0-9]+)$/i;
+const {
+  buildAuthoritativeIngredientView,
+  mergeIngredientIntelWithAuthority,
+} = require('./pdpIngredientAuthority');
 
 const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
 const BEAUTY_CATEGORY_PATTERNS = [
@@ -1231,6 +1235,39 @@ function buildExternalSeedProduct(row, options = {}) {
     exclusionFlags: recall.exclusion_flags,
   });
 
+  const authority = buildAuthoritativeIngredientView({
+    product_id: externalProductId,
+    merchant_id: EXTERNAL_SEED_MERCHANT_ID,
+    seed_data: seedData,
+    raw_ingredient_text_clean:
+      seedData.raw_ingredient_text_clean ||
+      snapshot.raw_ingredient_text_clean ||
+      ingredientIntel.raw_ingredient_text_clean ||
+      snapshotIngredientIntel.raw_ingredient_text_clean,
+    inci_list:
+      seedData.inci_list ||
+      snapshot.inci_list ||
+      ingredientIntel.inci_list ||
+      snapshotIngredientIntel.inci_list,
+    ingredients_inci: Array.isArray(seedData.ingredients_inci) ? seedData.ingredients_inci : undefined,
+    active_ingredients: Array.isArray(seedData.active_ingredients)
+      ? seedData.active_ingredients
+      : Array.isArray(snapshot.active_ingredients)
+        ? snapshot.active_ingredients
+        : undefined,
+    pdp_ingredients_raw: seedData.pdp_ingredients_raw || snapshot.pdp_ingredients_raw,
+    pdp_active_ingredients_raw:
+      seedData.pdp_active_ingredients_raw || snapshot.pdp_active_ingredients_raw,
+    details_sections:
+      Array.isArray(seedData.details_sections) && seedData.details_sections.length
+        ? seedData.details_sections
+        : Array.isArray(snapshot.details_sections)
+          ? snapshot.details_sections
+          : undefined,
+    ingredient_intel: ingredientIntel,
+  });
+  const mergedIngredientIntel = mergeIngredientIntelWithAuthority(ingredientIntel, authority);
+
   return {
     id: externalProductId,
     product_id: externalProductId,
@@ -1278,6 +1315,9 @@ function buildExternalSeedProduct(row, options = {}) {
     ...(pdpFieldCaptureStatus ? { pdp_field_capture_status: pdpFieldCaptureStatus } : {}),
     ...(Object.keys(ingredientIntel).length ? { ingredient_intel: ingredientIntel } : {}),
     ...(ingredientTokens.length ? { ingredient_tokens: ingredientTokens } : {}),
+    ...(authority.items.length ? { ingredients_inci: authority.items } : {}),
+    ...(authority.active_items.length ? { active_ingredients: authority.active_items } : {}),
+    ...(Object.keys(mergedIngredientIntel).length ? { ingredient_intel: mergedIngredientIntel } : {}),
     ...(brand ? { vendor: brand, brand } : {}),
     ...(normalizedCategory ? { category: normalizedCategory } : {}),
   };

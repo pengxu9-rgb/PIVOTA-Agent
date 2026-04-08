@@ -146,7 +146,9 @@
     "ingredient:audit": "node scripts/ingest_ingredient_sources.js --audit-only --fail-on-audit",
     "photo:llm-review:batch": "node scripts/batch_photo_llm_review_pack.mjs",
     "photo:llm-review:baseline": "node scripts/build_product_intel_fallback_baseline.mjs",
-    "deploy:verify:production": "bash scripts/verify_deployed_commit_matches.sh"
+    "deploy:verify:production": "bash scripts/verify_deployed_commit_matches.sh",
+    "product-intel:pilot:compare": "node scripts/product_intel_pilot_compare.js",
+    "product-intel:pilot:publish": "node scripts/publish_product_intel_pilot_to_kb.js"
   },
   "keywords": [
     "pivota",
