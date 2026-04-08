@@ -253,6 +253,26 @@ test('product-only direct beauty search still uses local beauty discovery mainli
   assert.equal(out, true);
 });
 
+test('shopping direct broad beauty search still uses local beauty discovery mainline', () => {
+  const runtime = createRuntime();
+  const out = runtime.shouldUseLocalBeautyDiscoveryMainline({
+    search: {
+      query: 'im oily skin, what products should i use?',
+      source: 'shopping',
+    },
+    metadata: {
+      source: 'shopping',
+      catalog_surface: 'beauty',
+    },
+    requestContract: {
+      surface: 'direct',
+      primary_lane: 'beauty_discovery_mainline',
+    },
+  });
+
+  assert.equal(out, true);
+});
+
 test('aurora-bff search calls still use local beauty discovery mainline', () => {
   const runtime = createRuntime();
   const out = runtime.shouldUseLocalBeautyDiscoveryMainline({
@@ -859,6 +879,58 @@ test('framework local recall gives the first primary internal anchor a wider tim
       ?.attempt_timeout_ms >= 4500,
     true,
   );
+});
+
+test('framework local beauty mainline only reports observed transport hops', async () => {
+  const runtime = createRuntime({
+    searchPivotaBackendProducts: async ({ query }) => ({
+      ok: true,
+      reason: 'ok',
+      actual_http_attempt_count: 1,
+      products: [
+        {
+          product_id: String(query || '').includes('moisturizer') ? 'moisturizer_1' : 'niacinamide_1',
+          merchant_id: 'merchant_internal',
+          title: 'Observed Hop Free Product',
+          retrieval_source: 'internal_search',
+          source_tier: 'fresh_internal',
+          source_quality_class: 'trusted',
+        },
+      ],
+    }),
+  });
+  const out = await runtime.runLocalBeautyDiscoveryMainline({
+    search: {
+      query: 'im oily skin, what products should i use?',
+      limit: 6,
+    },
+    metadata: {
+      source: 'shopping',
+      catalog_surface: 'beauty',
+    },
+    requestContract: {
+      surface: 'direct',
+      primary_lane: 'beauty_discovery_mainline',
+      primary_retrieval_contract: 'agent_v1_search_beauty_mainline',
+    },
+    executionPlan: {
+      primary_lane: 'beauty_discovery_mainline',
+      primary_retrieval_contract: 'agent_v1_search_beauty_mainline',
+      transport_owner: 'internal_products_search_primitive',
+      endpoint_kind: 'internal_primitive',
+      owner_switch_count: 0,
+    },
+    rawUserQuery: 'im oily skin, what products should i use?',
+    gatewayRequestId: 'trace_observed_transport_only',
+    timeoutMs: 6500,
+    invokeStartedAtMs: Date.now(),
+  });
+
+  assert.equal(out.handled, true);
+  assert.equal(out.response.metadata?.primary_transport_owner, undefined);
+  assert.equal(out.response.metadata?.primary_endpoint_kind, undefined);
+  assert.deepEqual(out.response.metadata?.transport_hops || [], []);
+  assert.deepEqual(out.response.metadata?.attempted_internal_paths || [], []);
 });
 
 test('step-aware sunscreen query can use local beauty discovery mainline', () => {

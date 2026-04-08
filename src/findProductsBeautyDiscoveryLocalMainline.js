@@ -257,25 +257,44 @@ function normalizeTransportHop(value) {
   return isPlainObject(value) ? value : null;
 }
 
-function collectLocalTransportTrace({
-  rows = [],
-  metadata = null,
-  executionPlan = null,
-} = {}) {
-  const hops = [];
-  const internalBaseUrls = new Set();
-  const internalPaths = new Set();
-  const normalizedRows = Array.isArray(rows) ? rows : [];
-  const normalizedMetadata = normalizeSearchObject(metadata);
-  const normalizedPlan = isPlainObject(executionPlan) ? executionPlan : {};
+  function collectLocalTransportTrace({
+    rows = [],
+    metadata = null,
+    executionPlan = null,
+  } = {}) {
+    const hops = [];
+    const internalBaseUrls = new Set();
+    const internalPaths = new Set();
+    const normalizedRows = Array.isArray(rows) ? rows : [];
+    const normalizedMetadata = normalizeSearchObject(metadata);
+    let observedPrimaryTransportOwner = firstNonEmptyString(
+      normalizedMetadata.primary_transport_owner,
+      normalizedMetadata.transport_owner,
+    );
+    let observedPrimaryEndpointKind = firstNonEmptyString(
+      normalizedMetadata.primary_endpoint_kind,
+      normalizedMetadata.endpoint_kind,
+    );
 
-  const appendRow = (row) => {
-    if (!isPlainObject(row)) return;
-    if (Array.isArray(row.transport_hops)) {
-      row.transport_hops
-        .map(normalizeTransportHop)
-        .filter(Boolean)
-        .forEach((hop) => hops.push(hop));
+    const appendRow = (row) => {
+      if (!isPlainObject(row)) return;
+      if (!observedPrimaryTransportOwner) {
+        observedPrimaryTransportOwner = firstNonEmptyString(
+          row.primary_transport_owner,
+          row.transport_owner,
+        );
+      }
+      if (!observedPrimaryEndpointKind) {
+        observedPrimaryEndpointKind = firstNonEmptyString(
+          row.primary_endpoint_kind,
+          row.endpoint_kind,
+        );
+      }
+      if (Array.isArray(row.transport_hops)) {
+        row.transport_hops
+          .map(normalizeTransportHop)
+          .filter(Boolean)
+          .forEach((hop) => hops.push(hop));
     }
     (Array.isArray(row.attempted_internal_base_urls) ? row.attempted_internal_base_urls : [])
       .map((value) => String(value || '').trim())
@@ -290,24 +309,25 @@ function collectLocalTransportTrace({
   normalizedRows.forEach(appendRow);
   appendRow(normalizedMetadata);
 
+  if (!observedPrimaryTransportOwner && hops.length > 0) {
+    observedPrimaryTransportOwner = firstNonEmptyString(
+      hops[0]?.transport_owner,
+    );
+  }
+  if (!observedPrimaryEndpointKind && hops.length > 0) {
+    observedPrimaryEndpointKind = firstNonEmptyString(
+      hops[0]?.endpoint_kind,
+    );
+  }
+
   return {
     transport_hops: hops,
     transport_hop_count: hops.length,
     nested_orchestrator_hops: hops.filter(
       (hop) => String(hop?.endpoint_kind || '').trim().toLowerCase() === 'public_orchestrator',
     ).length,
-    primary_transport_owner:
-      firstNonEmptyString(
-        normalizedMetadata.primary_transport_owner,
-        normalizedMetadata.transport_owner,
-        normalizedPlan.transport_owner,
-      ) || null,
-    primary_endpoint_kind:
-      firstNonEmptyString(
-        normalizedMetadata.primary_endpoint_kind,
-        normalizedMetadata.endpoint_kind,
-        normalizedPlan.endpoint_kind,
-      ) || null,
+    primary_transport_owner: observedPrimaryTransportOwner || null,
+    primary_endpoint_kind: observedPrimaryEndpointKind || null,
     attempted_internal_base_urls: Array.from(internalBaseUrls),
     attempted_internal_paths: Array.from(internalPaths),
   };
@@ -687,17 +707,10 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
       if (String(process.env.NODE_ENV || '').trim().toLowerCase() === 'test') return false;
       return targetStepFamily === 'sunscreen' && requestClass === 'sunscreen';
     }
-    const metadataSource = String(metadataObj.source || metadataObj.source_surface || '')
-      .trim()
-      .toLowerCase();
-    const searchSource = String(searchObj.source || searchObj.source_surface || '')
-      .trim()
-      .toLowerCase();
-    const sourceForFrameworkLocal = metadataSource || searchSource;
-  return (
+    return (
       plannerMode === 'framework_generic' &&
       requestClass === 'generic_concern' &&
-      sourceForFrameworkLocal === 'aurora-bff' &&
+      String(contract.primary_lane || '').trim() === 'beauty_discovery_mainline' &&
       looksLikeBroadBeautyDiscoveryQuery(queryText)
     );
   }
