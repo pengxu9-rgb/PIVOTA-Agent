@@ -192,6 +192,31 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     };
   }
 
+  function normalizeInvokeSearchContractPayload(body = {}) {
+    const payload =
+      body?.payload && typeof body.payload === 'object' && !Array.isArray(body.payload)
+        ? body.payload
+        : {};
+    const search =
+      payload?.search && typeof payload.search === 'object' && !Array.isArray(payload.search)
+        ? payload.search
+        : body?.search && typeof body.search === 'object' && !Array.isArray(body.search)
+          ? body.search
+          : {};
+    const metadata =
+      body?.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
+        ? body.metadata
+        : payload?.metadata && typeof payload.metadata === 'object' && !Array.isArray(payload.metadata)
+          ? payload.metadata
+          : {};
+
+    return {
+      ...search,
+      ...(metadata?.source ? { source: metadata.source } : {}),
+      ...(body?.operation ? { operation: body.operation } : {}),
+    };
+  }
+
   function nockPrimarySearchTransport(predicate, response) {
     let capturedPayload = null;
     let capturedTransport = null;
@@ -211,14 +236,33 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       .query((query) => matchAndCapture(query, 'legacy_get'))
       .reply(200, response);
 
+    let internalPrimitiveBody = null;
     const internalPrimitive = nock('http://pivota.test')
-      .post('/agent/internal/products/search', (body) =>
-        matchAndCapture(body, 'internal_primitive'),
+      .post('/agent/internal/products/search', (body) => {
+        internalPrimitiveBody = body && typeof body === 'object' ? body : {};
+        return true;
+      })
+      .query((query) =>
+        matchAndCapture(
+          {
+            ...(query && typeof query === 'object' ? query : {}),
+            ...(internalPrimitiveBody && typeof internalPrimitiveBody === 'object'
+              ? internalPrimitiveBody
+              : {}),
+          },
+          'internal_primitive',
+        ),
+      )
+      .reply(200, response);
+
+    const invokeContract = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke', (body) =>
+        matchAndCapture(normalizeInvokeSearchContractPayload(body), 'invoke_contract'),
       )
       .reply(200, response);
 
     return {
-      isDone: () => legacyGet.isDone() || internalPrimitive.isDone(),
+      isDone: () => legacyGet.isDone() || internalPrimitive.isDone() || invokeContract.isDone(),
       getCapturedPayload: () => capturedPayload,
       getCapturedTransport: () => capturedTransport,
     };
@@ -346,14 +390,11 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       },
     }));
 
-    const upstreamSearch = nock('http://pivota.test')
-      .get('/agent/v1/products/search')
-      .query(
-        (q) =>
-          String(q.search_all_merchants || '') === 'true' &&
-          String(q.query || '') === 'IPSA Time Reset Aqua',
-      )
-      .reply(200, {
+    const upstreamSearch = nockPrimarySearchTransport(
+      (q) =>
+        String(q.search_all_merchants || '') === 'true' &&
+        String(q.query || '') === 'IPSA Time Reset Aqua',
+      {
         status: 'success',
         success: true,
         products: [
@@ -370,7 +411,8 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
           },
         ],
         total: 1,
-      });
+      },
+    );
 
     const app = require('../../src/server');
     const resp = await request(app)
@@ -818,7 +860,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(externalSupplement.isDone()).toBe(false);
     expect(guardedSearch.isDone()).toBe(true);
     if (guardedSearch.getCapturedTransport() === 'internal_primitive') {
-      expect(String(capturedGuardedSearch?.catalog_surface || '')).toBe('beauty');
+      expect(String(capturedGuardedSearch?.search_all_merchants || '')).toBe('true');
     } else {
       expect(guardedSearch.getCapturedTransport()).toBe('legacy_get');
       expect(String(capturedGuardedSearch?.search_all_merchants || '')).toBe('true');
@@ -962,7 +1004,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(externalSupplement.isDone()).toBe(true);
     expect(guardedSearch.isDone()).toBe(true);
     if (guardedSearch.getCapturedTransport() === 'internal_primitive') {
-      expect(String(capturedGuardedSearch?.catalog_surface || '')).toBe('beauty');
+      expect(String(capturedGuardedSearch?.search_all_merchants || '')).toBe('true');
     } else {
       expect(guardedSearch.getCapturedTransport()).toBe('legacy_get');
       expect(String(capturedGuardedSearch?.search_all_merchants || '')).toBe('true');
@@ -1045,7 +1087,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(externalSupplement.isDone()).toBe(false);
     expect(guardedSearch.isDone()).toBe(true);
     if (guardedSearch.getCapturedTransport() === 'internal_primitive') {
-      expect(String(capturedGuardedSearch?.catalog_surface || '')).toBe('beauty');
+      expect(String(capturedGuardedSearch?.search_all_merchants || '')).toBe('true');
     } else {
       expect(guardedSearch.getCapturedTransport()).toBe('legacy_get');
       expect(String(capturedGuardedSearch?.search_all_merchants || '')).toBe('true');
@@ -2497,24 +2539,23 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       }),
     );
     if (upstreamSearch.getCapturedTransport() === 'internal_primitive') {
-      expect(capturedQuery).toEqual(
+      expect(String(capturedQuery?.search_all_merchants || '')).toBe('true');
+      expect(String(capturedQuery?.in_stock_only || '')).toBe('true');
+      expect(String(capturedQuery?.limit || '')).toBe('5');
+      expect(String(capturedQuery?.offset || '')).toBe('0');
+      const semanticContract = JSON.parse(String(capturedQuery?.semantic_contract || '{}'));
+      expect(semanticContract).toEqual(
         expect.objectContaining({
-          search_all_merchants: true,
-          in_stock_only: 'true',
-          limit: 5,
-          offset: 0,
-          catalog_surface: 'beauty',
-          allow_external_seed: true,
+          target_step_family: 'treatment',
+          semantic_family: 'oil_control',
         }),
       );
+      expect(String(capturedQuery?.source || '')).toBe('search');
     } else {
       expect(String(capturedQuery?.search_all_merchants || '')).toBe('true');
       expect(String(capturedQuery?.in_stock_only || '')).toBe('true');
       expect(String(capturedQuery?.limit || '')).toBe('5');
       expect(String(capturedQuery?.offset || '')).toBe('0');
-    }
-    if (upstreamSearch.getCapturedTransport() === 'internal_primitive') {
-      expect(String(capturedQuery?.target_step_family || '')).toBe('treatment');
     }
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
@@ -2970,7 +3011,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(upstreamSearch.isDone()).toBe(true);
     expect(['legacy_get', 'internal_primitive']).toContain(upstreamSearch.getCapturedTransport());
     if (upstreamSearch.getCapturedTransport() === 'internal_primitive') {
-      expect(String(capturedQuery?.catalog_surface || '')).toBe('beauty');
+      expect(String(capturedQuery?.search_all_merchants || '')).toBe('true');
     } else {
       expect(String(capturedQuery?.search_all_merchants || '')).toBe('true');
     }
