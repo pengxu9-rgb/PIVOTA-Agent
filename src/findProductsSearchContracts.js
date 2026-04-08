@@ -2,6 +2,9 @@ const {
   resolveSourceProfile,
   normalizeSourceToken,
 } = require('./api/gateway/sourceProfiles');
+const {
+  INTERNAL_PRODUCTS_SEARCH_PATH,
+} = require('./findProductsInternalSearchPrimitive');
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -337,12 +340,18 @@ function resolveFindProductsSearchExecutionPlan({
     };
   }
   if (primaryLane === 'catalog_child_recall') {
+    const catalogChildSearchBase =
+      String(searchInvokeBase || '').replace(/\/$/, '') ||
+      String(pivotaApiBase || '').replace(/\/$/, '');
     return {
       primary_lane: 'catalog_child_recall',
       primary_retrieval_contract: 'agent_v2_catalog_child_recall',
-      upstream_method: null,
-      upstream_url: null,
-      transport_owner: 'pivota_agent_v2_products_search',
+      upstream_method: 'POST',
+      upstream_url: catalogChildSearchBase
+        ? `${catalogChildSearchBase}${INTERNAL_PRODUCTS_SEARCH_PATH}`
+        : null,
+      transport_owner: 'internal_products_search_primitive',
+      endpoint_kind: 'internal_primitive',
       owner_switch_count: 0,
       policy_only_source: true,
     };
@@ -354,15 +363,13 @@ function resolveFindProductsSearchExecutionPlan({
     primary_lane: 'beauty_discovery_mainline',
     primary_retrieval_contract:
       primaryRetrievalContract || 'agent_v1_search_beauty_mainline',
-    upstream_method: 'GET',
-    upstream_url: `${beautyDiscoverySearchBase}/agent/v1/products/search`,
-    fallback_upstream_url:
-      normalizedPivotaApiBase &&
-      normalizedSearchInvokeBase &&
-      normalizedPivotaApiBase !== normalizedSearchInvokeBase
-      ? `${normalizedPivotaApiBase}/agent/v1/products/search`
+    upstream_method: 'POST',
+    upstream_url: beautyDiscoverySearchBase
+      ? `${beautyDiscoverySearchBase}${INTERNAL_PRODUCTS_SEARCH_PATH}`
       : null,
-    transport_owner: 'pivota_agent_v1_search',
+    fallback_upstream_url: null,
+    transport_owner: 'internal_products_search_primitive',
+    endpoint_kind: 'internal_primitive',
     owner_switch_count: 0,
     policy_only_source: true,
   };
@@ -377,6 +384,12 @@ function buildFindProductsSearchExecutionTrace({
   primarySearchRetryReasons = [],
   primaryFailureStage = null,
   supplementsAttempted = [],
+  transportHops = [],
+  primaryTransportOwner = null,
+  primaryEndpointKind = null,
+  attemptedInternalBaseUrls = [],
+  attemptedInternalPaths = [],
+  nestedOrchestratorHops = null,
 } = {}) {
   const contract = isPlainObject(requestContract) ? requestContract : {};
   const plan = isPlainObject(executionPlan) ? executionPlan : {};
@@ -385,6 +398,30 @@ function buildFindProductsSearchExecutionTrace({
         .map((value) => String(value || '').trim())
         .filter(Boolean)
     : [];
+  const normalizedTransportHops = Array.isArray(transportHops)
+    ? transportHops.filter((value) => isPlainObject(value))
+    : [];
+  const normalizedAttemptedInternalBaseUrls = Array.isArray(attemptedInternalBaseUrls)
+    ? Array.from(
+        new Set(
+          attemptedInternalBaseUrls
+            .map((value) => String(value || '').trim())
+            .filter(Boolean),
+        ),
+      )
+    : [];
+  const normalizedAttemptedInternalPaths = Array.isArray(attemptedInternalPaths)
+    ? Array.from(
+        new Set(
+          attemptedInternalPaths
+            .map((value) => String(value || '').trim())
+            .filter(Boolean),
+        ),
+      )
+    : [];
+  const derivedNestedOrchestratorHops = normalizedTransportHops.filter(
+    (hop) => String(hop?.endpoint_kind || '').trim().toLowerCase() === 'public_orchestrator',
+  ).length;
   return {
     primary_lane: String(plan.primary_lane || contract.primary_lane || '').trim() || null,
     primary_retrieval_contract:
@@ -420,6 +457,19 @@ function buildFindProductsSearchExecutionTrace({
         ? Number(plan.owner_switch_count)
         : 0,
     ),
+    primary_transport_owner:
+      String(primaryTransportOwner || plan.transport_owner || '').trim() || null,
+    primary_endpoint_kind:
+      String(primaryEndpointKind || plan.endpoint_kind || '').trim() || null,
+    transport_hops: normalizedTransportHops,
+    transport_hop_count: normalizedTransportHops.length,
+    nested_orchestrator_hops:
+      Number.isFinite(Number(nestedOrchestratorHops)) &&
+      Number(nestedOrchestratorHops) >= 0
+        ? Number(nestedOrchestratorHops)
+        : derivedNestedOrchestratorHops,
+    attempted_internal_base_urls: normalizedAttemptedInternalBaseUrls,
+    attempted_internal_paths: normalizedAttemptedInternalPaths,
   };
 }
 

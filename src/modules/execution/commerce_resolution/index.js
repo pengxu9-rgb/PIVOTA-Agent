@@ -1,4 +1,8 @@
 const axios = require('axios');
+const {
+  INTERNAL_PRODUCTS_SEARCH_PATH,
+  sanitizeInternalProductsSearchRequest,
+} = require('../../../findProductsInternalSearchPrimitive');
 
 const {
   createExecutionFacingInput,
@@ -1728,6 +1732,7 @@ function createCommerceResolutionRuntime(deps = {}) {
     relevanceQuery,
     attemptNo,
     useSearchEndpoint = false,
+    useInternalSearchEndpoint = false,
     timeoutMs = getProxySearchFallbackTimeoutMs(),
   } = {}) {
     if (customInvokeFindProductsMultiFallbackOnceImpl !== null) {
@@ -1743,6 +1748,7 @@ function createCommerceResolutionRuntime(deps = {}) {
         relevanceQuery,
         attemptNo,
         useSearchEndpoint,
+        useInternalSearchEndpoint,
         timeoutMs,
       });
     }
@@ -1760,8 +1766,26 @@ function createCommerceResolutionRuntime(deps = {}) {
       250,
       Number(timeoutMs || getProxySearchFallbackTimeoutMs()) || getProxySearchFallbackTimeoutMs(),
     );
+    const internalSearchPayload = sanitizeInternalProductsSearchRequest(searchPayload, {
+      rejectUnknown: false,
+      rejectForbidden: false,
+      defaultSearchAllMerchants: true,
+    });
 
-    const response = useSearchEndpoint
+    const response = useInternalSearchEndpoint
+      ? await httpRequestImpl({
+          method: 'POST',
+          url: searchUrl,
+          data: internalSearchPayload?.search || {},
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Internal-Search-Timeout-Ms': String(requestTimeoutMs),
+            ...requestHeaders,
+          },
+          timeout: requestTimeoutMs,
+          validateStatus: () => true,
+        })
+      : useSearchEndpoint
       ? await httpRequestImpl({
           method: 'GET',
           url: searchUrl,
@@ -2337,6 +2361,7 @@ function createCommerceResolutionRuntime(deps = {}) {
     const searchApiBase = getProxySearchApiBaseImpl(normalizedRequestSource);
     const url = `${searchApiBase}/agent/shop/v1/invoke`;
     const searchUrl = `${searchApiBase}/agent/v1/products/search`;
+    const internalSearchUrl = `${searchApiBase}${INTERNAL_PRODUCTS_SEARCH_PATH}`;
     const preserveAuroraSource =
       getProxySearchAuroraPreserveSourceOnInvoke() && isAuroraSourceImpl(normalizedRequestSource);
     const baseQueryText = String(payload?.search?.query || '').trim();
@@ -2394,9 +2419,21 @@ function createCommerceResolutionRuntime(deps = {}) {
               },
             };
       const useSearchEndpoint = semanticRetryEnabled && i > 0;
+      const beautyOwnedRetry =
+        isAuroraSourceImpl(normalizedRequestSource) ||
+        String(
+          attemptPayload?.search?.catalog_surface ||
+            attemptPayload?.search?.catalogSurface ||
+            payload?.search?.catalog_surface ||
+            payload?.search?.catalogSurface ||
+            '',
+        )
+          .trim()
+          .toLowerCase() === 'beauty';
+      const useInternalSearchEndpoint = useSearchEndpoint && beautyOwnedRetry;
       const attempt = await invokeFindProductsMultiFallbackOnce({
         url,
-        searchUrl,
+        searchUrl: useInternalSearchEndpoint ? internalSearchUrl : searchUrl,
         payload: attemptPayload,
         checkoutToken,
         requestSource: normalizedRequestSource,
@@ -2405,7 +2442,8 @@ function createCommerceResolutionRuntime(deps = {}) {
         fallbackSource,
         relevanceQuery: queryText,
         attemptNo: i + 1,
-        useSearchEndpoint,
+        useSearchEndpoint: useSearchEndpoint && !useInternalSearchEndpoint,
+        useInternalSearchEndpoint,
         timeoutMs: attemptTimeoutMs,
       });
 

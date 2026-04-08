@@ -94,8 +94,13 @@ test('beauty discovery primary transport uses search upstream base without chang
 
   assert.equal(executionPlan.primary_lane, 'beauty_discovery_mainline');
   assert.equal(executionPlan.primary_retrieval_contract, 'agent_v1_search_beauty_mainline');
-  assert.equal(executionPlan.upstream_method, 'GET');
-  assert.equal(executionPlan.upstream_url, 'https://agent-search.example/agent/v1/products/search');
+  assert.equal(executionPlan.upstream_method, 'POST');
+  assert.equal(
+    executionPlan.upstream_url,
+    'https://agent-search.example/agent/internal/products/search',
+  );
+  assert.equal(executionPlan.transport_owner, 'internal_products_search_primitive');
+  assert.equal(executionPlan.endpoint_kind, 'internal_primitive');
   assert.equal(executionPlan.owner_switch_count, 0);
   assert.equal(executionPlan.policy_only_source, true);
 });
@@ -130,6 +135,12 @@ test('execution trace preserves primary timeout and failure stage without owner 
   assert.equal(trace.primary_failure_stage, 'primary_upstream_timeout');
   assert.equal(trace.owner_switch_count, 0);
   assert.deepEqual(trace.supplements_attempted, ['external_seed_supplement']);
+  assert.equal(trace.primary_transport_owner, 'internal_products_search_primitive');
+  assert.equal(trace.primary_endpoint_kind, 'internal_primitive');
+  assert.deepEqual(trace.transport_hops, []);
+  assert.equal(trace.transport_hop_count, 0);
+  assert.equal(trace.nested_orchestrator_hops, 0);
+  assert.deepEqual(trace.attempted_internal_paths, []);
 });
 
 test('local mainline child recall keeps beauty surface but bypasses discovery owner', () => {
@@ -169,9 +180,13 @@ test('local mainline child recall keeps beauty surface but bypasses discovery ow
   assert.equal(contract.primary_retrieval_contract, 'agent_v2_catalog_child_recall');
   assert.deepEqual(contract.supplement_lanes, []);
   assert.equal(plan.primary_lane, 'catalog_child_recall');
-  assert.equal(plan.upstream_method, null);
-  assert.equal(plan.upstream_url, null);
-  assert.equal(plan.transport_owner, 'pivota_agent_v2_products_search');
+  assert.equal(plan.upstream_method, 'POST');
+  assert.equal(
+    plan.upstream_url,
+    'https://pivota.example/agent/internal/products/search',
+  );
+  assert.equal(plan.transport_owner, 'internal_products_search_primitive');
+  assert.equal(plan.endpoint_kind, 'internal_primitive');
 });
 
 test('ingress search contract is preferred over execution-time rebuild', () => {
