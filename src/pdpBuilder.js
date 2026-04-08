@@ -209,7 +209,10 @@ function detectTemplateHint(product) {
 }
 
 function isExternalSeedProduct(product) {
-  return String(product?.source || '').trim().toLowerCase() === 'external_seed';
+  const source = String(product?.source || '').trim().toLowerCase();
+  const merchantId = String(product?.merchant_id || product?.merchant?.id || '').trim().toLowerCase();
+  const productId = String(product?.product_id || product?.id || '').trim().toLowerCase();
+  return source === 'external_seed' || merchantId === 'external_seed' || productId.startsWith('ext_');
 }
 
 function looksLikeExternalSeedFactNoise(value) {
@@ -1546,7 +1549,7 @@ function isRegulatoryActiveIngredientSource(sourceMeta, rawText) {
 }
 
 function shouldSuppressLowConfidenceActiveIngredients(product, items, ingredientsModule, sourceMeta, rawText) {
-  if (String(product?.source || '').trim().toLowerCase() !== 'external_seed') return false;
+  if (!isExternalSeedProduct(product)) return false;
   if (detectTemplateHint(product) !== 'beauty') return false;
   if (isRegulatoryActiveIngredientSource(sourceMeta, rawText)) return false;
   const qualityStatus = String(sourceMeta?.source_quality_status || '').trim().toLowerCase();
@@ -1597,7 +1600,7 @@ function shouldSuppressLowConfidenceActiveIngredients(product, items, ingredient
 }
 
 function shouldSuppressLowConfidenceIngredients(product, items, sourceMeta, rawText) {
-  if (String(product?.source || '').trim().toLowerCase() !== 'external_seed') return false;
+  if (!isExternalSeedProduct(product)) return false;
   if (detectTemplateHint(product) !== 'beauty') return false;
   const qualityStatus = String(sourceMeta?.source_quality_status || '').trim().toLowerCase();
   if (qualityStatus === 'reviewed' || qualityStatus === 'high') return false;
@@ -1796,11 +1799,7 @@ function buildProductFactSections(product, detailSections, primaryDescription = 
       if (CATEGORY_SECTION_HEADING_RE.test(String(section.heading || '').trim())) return false;
       const contentKey = normalizeComparisonKey(section.content);
       if (!contentKey) return false;
-      if (
-        GENERIC_DETAIL_SECTION_HEADING_RE.test(String(section.heading || '').trim()) &&
-        normalizedPrimaryDescription &&
-        contentKey === normalizedPrimaryDescription
-      ) {
+      if (normalizedPrimaryDescription && contentKey === normalizedPrimaryDescription) {
         return false;
       }
       const dedupeKey = `${String(section.heading || '').trim().toLowerCase()}|${contentKey}`;
@@ -1840,6 +1839,45 @@ function isRedundantDescriptionOnlyFacts(sections, primaryDescription = '') {
   const sectionKey = normalizeComparisonKey(section?.content);
   const descriptionKey = normalizeComparisonKey(primaryDescription);
   return Boolean(sectionKey && descriptionKey && sectionKey === descriptionKey);
+}
+
+function shouldDropNarrativeIngredientModules(product, activeIngredientsModule, ingredientsModule) {
+  if (!isExternalSeedProduct(product)) return false;
+  if (detectTemplateHint(product) !== 'beauty') return false;
+  if (!activeIngredientsModule || !ingredientsModule) return false;
+  if (
+    isRegulatoryActiveIngredientSource(
+      activeIngredientsModule,
+      activeIngredientsModule?.raw_text || ingredientsModule?.raw_text,
+    )
+  ) {
+    return false;
+  }
+
+  const activeItems = normalizeStringList(activeIngredientsModule?.items || []);
+  const ingredientItems = normalizeIngredientItems(ingredientsModule?.items || []);
+  const activeRawText = normalizeTextValue(activeIngredientsModule?.raw_text);
+  const ingredientRawText = sanitizeIngredientRawText(ingredientsModule?.raw_text);
+  const narrativeRawText = activeRawText || ingredientRawText;
+  const verboseIngredientItemCount = ingredientItems.filter(
+    (item) => String(item || '').trim().split(/\s+/).length >= 4,
+  ).length;
+  const ingredientKeys = new Set(
+    ingredientItems.map((item) => normalizeIngredientComparisonKey(item)).filter(Boolean),
+  );
+  const activeKeys = activeItems.map((item) => normalizeIngredientComparisonKey(item)).filter(Boolean);
+  const activeSubsetOfIngredients =
+    activeKeys.length > 0 && activeKeys.every((item) => ingredientKeys.has(item));
+  const sameRawText =
+    normalizeComparisonKey(activeRawText) &&
+    normalizeComparisonKey(activeRawText) === normalizeComparisonKey(ingredientRawText);
+
+  return Boolean(
+    !looksLikeStructuredIngredientList(narrativeRawText) &&
+      hasNarrativeIngredientSignals(narrativeRawText) &&
+      verboseIngredientItemCount >= Math.max(2, Math.ceil(Math.max(ingredientItems.length, 1) * 0.3)) &&
+      (sameRawText || activeSubsetOfIngredients || activeItems.length <= 4),
+  );
 }
 
 function buildProductDetailsSections(product, detailSections, primaryDescription = '', beautyOverview = null) {
@@ -2098,12 +2136,16 @@ function buildPdpPayload(args) {
     beautyOverview?.description ||
       sanitizeNarrativeText(product.pdp_description_raw || product.description),
   );
-  const ingredientsModule = buildIngredientsModule(product, detailSections);
-  const activeIngredientsModule = buildActiveIngredientsModule(
+  let ingredientsModule = buildIngredientsModule(product, detailSections);
+  let activeIngredientsModule = buildActiveIngredientsModule(
     product,
     detailSections,
     ingredientsModule,
   );
+  if (shouldDropNarrativeIngredientModules(product, activeIngredientsModule, ingredientsModule)) {
+    ingredientsModule = null;
+    activeIngredientsModule = null;
+  }
   const howToUseModule = buildHowToUseModule(product, detailSections);
   const productFactsSections = buildProductFactSections(
     product,

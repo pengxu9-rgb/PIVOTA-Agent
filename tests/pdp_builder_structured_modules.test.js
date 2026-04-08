@@ -929,7 +929,6 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
       product: {
         product_id: 'ext_07c58c61909cb0ed6d722435',
         merchant_id: 'external_seed',
-        source: 'external_seed',
         title: 'Instant Reset Brightening Overnight Recovery Gel-Cream with Niacinamide + Kalahari Melon Oil',
         brand: 'fenty beauty',
         category: 'Moisturizer',
@@ -986,6 +985,7 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
         content: payload.product.description,
       }),
     ]);
+    expect(factSections).toEqual([]);
     expect(JSON.stringify(factSections)).not.toMatch(/about the brands|clara lionel foundation|student discounts|careers/i);
   });
 
