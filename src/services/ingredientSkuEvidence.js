@@ -2376,15 +2376,20 @@ async function recallIngredientProductsFromProfile({
     ...(Array.isArray(profile.exact_phrases) ? profile.exact_phrases : []),
     ...(Array.isArray(profile.alias_phrases) ? profile.alias_phrases : []),
   ]);
+  const fastExitInitialAnchoredLimit = Math.max(6, Math.min(Math.max(Number(limit || 0) * 2, 6), 8));
+  const fastExitInitialExplicitLimit = Math.max(8, Math.min(Math.max(Number(limit || 0) * 2, 8), 12));
+  const shouldProbeInitialProductsCache = fastExitOnInitialMiss !== true;
   diagnostics.attached_seed_recall_attempted = true;
-  diagnostics.products_cache_recall_attempted = true;
-  const [attachedAnchoredRows, attachedSeedRows, cacheAnchoredRows, cacheExplicitRows] = await Promise.all([
+  diagnostics.products_cache_recall_attempted = shouldProbeInitialProductsCache;
+  const initialDirectFetches = [
     fetchSeedRowsByPatterns({
       patterns: targetAnchoredExplicitPatterns,
       market,
       tool,
       attachedState: 'attached',
-      limit: resolveRecallFetchLimit(profile, limit, 2, 18, 18),
+      limit: shouldProbeInitialProductsCache
+        ? resolveRecallFetchLimit(profile, limit, 2, 18, 18)
+        : fastExitInitialAnchoredLimit,
       inStockOnly,
     }),
     fetchSeedRowsByPatterns({
@@ -2392,35 +2397,49 @@ async function recallIngredientProductsFromProfile({
       market,
       tool,
       attachedState: 'attached',
-      limit: resolveRecallFetchLimit(profile, limit, 3, 24, 24),
+      limit: shouldProbeInitialProductsCache
+        ? resolveRecallFetchLimit(profile, limit, 3, 24, 24)
+        : fastExitInitialExplicitLimit,
       inStockOnly,
     }),
-    fetchProductsCacheRowsByPatterns({
-      patterns: targetAnchoredExplicitPatterns,
-      limit: resolveRecallFetchLimit(profile, limit, 2, 18, 18),
-    }),
-    fetchProductsCacheRowsByPatterns({
-      patterns: explicitPatterns,
-      limit: resolveRecallFetchLimit(profile, limit, 3, 24, 24),
-    }),
-  ]);
+  ];
+  if (shouldProbeInitialProductsCache) {
+    initialDirectFetches.push(
+      fetchProductsCacheRowsByPatterns({
+        patterns: targetAnchoredExplicitPatterns,
+        limit: resolveRecallFetchLimit(profile, limit, 2, 18, 18),
+      }),
+      fetchProductsCacheRowsByPatterns({
+        patterns: explicitPatterns,
+        limit: resolveRecallFetchLimit(profile, limit, 3, 24, 24),
+      }),
+    );
+  }
+  const [
+    attachedAnchoredRows,
+    attachedSeedRows,
+    cacheAnchoredRows = [],
+    cacheExplicitRows = [],
+  ] = await Promise.all(initialDirectFetches);
   diagnostics.attached_seed_recall_recovered =
     attachedAnchoredRows.length > 0 || attachedSeedRows.length > 0 ? 1 : 0;
   addRows(attachedAnchoredRows, 'attached_seed_target_anchored');
   addRows(attachedSeedRows, 'attached_seed');
 
-  diagnostics.products_cache_recall_recovered =
-    cacheAnchoredRows.length > 0 || cacheExplicitRows.length > 0 ? 1 : 0;
-  addRows(cacheAnchoredRows, 'products_cache_target_anchored', {
-    mapper: mapProductsCacheRowToRecallProduct,
-    kbResolver: (_row, product, lookup) => resolveKbEvidenceForProduct(product, lookup),
-    useKbEvidence: true,
-  });
-  addRows(cacheExplicitRows, 'products_cache', {
-    mapper: mapProductsCacheRowToRecallProduct,
-    kbResolver: (_row, product, lookup) => resolveKbEvidenceForProduct(product, lookup),
-    useKbEvidence: true,
-  });
+  if (shouldProbeInitialProductsCache) {
+    diagnostics.products_cache_recall_recovered =
+      cacheAnchoredRows.length > 0 || cacheExplicitRows.length > 0 ? 1 : 0;
+    addRows(cacheAnchoredRows, 'products_cache_target_anchored', {
+      mapper: mapProductsCacheRowToRecallProduct,
+      kbResolver: (_row, product, lookup) => resolveKbEvidenceForProduct(product, lookup),
+      useKbEvidence: true,
+    });
+    addRows(cacheExplicitRows, 'products_cache', {
+      mapper: mapProductsCacheRowToRecallProduct,
+      kbResolver: (_row, product, lookup) => resolveKbEvidenceForProduct(product, lookup),
+      useKbEvidence: true,
+    });
+  }
   let candidates = rankIngredientRecallCandidates(explicitCandidates);
   let stabilizedProducts = buildStabilizedIngredientRecallProducts(candidates, {
     profile,
