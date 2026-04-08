@@ -19177,31 +19177,54 @@ async function collectRecoCandidatesFromQueryLevels({
             },
           };
         }
-        const out = usePurchasableFallback
-          ? await buildPurchasableFallbackCandidates({
-              query: queryEntry.query,
-              limit,
-              logger,
-              timeoutMs: effectiveTimeoutMs,
-              allowExternalSeed: queryAllowExternalSeed,
-              externalSeedStrategy: queryExternalSeedStrategy,
-              transportPolicyMode: 'step_aware',
-            })
-          : await runSearch({
-              query: queryEntry.query,
-              limit,
-              logger,
-              timeoutMs: effectiveTimeoutMs,
-              deadlineMs: normalizedDeadlineMs,
-              allowExternalSeed: false,
-              fastMode: true,
-              transportPolicy: buildRecoRecallTransportPolicy({ mode: 'step_aware' }),
-              queryStepStrength,
-              targetStepFamily,
-              semanticFamily: queryEntry?.role_id || '',
-              productOnly: true,
-              authHeaders,
-            });
+        let out = null;
+        try {
+          out = await withTimeout(
+            Promise.resolve().then(() =>
+              usePurchasableFallback
+                ? buildPurchasableFallbackCandidates({
+                    query: queryEntry.query,
+                    limit,
+                    logger,
+                    timeoutMs: effectiveTimeoutMs,
+                    allowExternalSeed: queryAllowExternalSeed,
+                    externalSeedStrategy: queryExternalSeedStrategy,
+                    transportPolicyMode: 'step_aware',
+                  })
+                : runSearch({
+                    query: queryEntry.query,
+                    limit,
+                    logger,
+                    timeoutMs: effectiveTimeoutMs,
+                    deadlineMs: normalizedDeadlineMs,
+                    allowExternalSeed: false,
+                    fastMode: true,
+                    transportPolicy: buildRecoRecallTransportPolicy({ mode: 'step_aware' }),
+                    queryStepStrength,
+                    targetStepFamily,
+                    semanticFamily: queryEntry?.role_id || '',
+                    productOnly: true,
+                    authHeaders,
+                  }),
+            ),
+            effectiveTimeoutMs,
+            'RECO_RECALL_WALL_CLOCK_TIMEOUT',
+          );
+        } catch (err) {
+          const timeoutTriggered = String(err?.code || '').trim() === 'RECO_RECALL_WALL_CLOCK_TIMEOUT';
+          out = {
+            ok: false,
+            products: [],
+            reason: timeoutTriggered ? 'upstream_timeout' : 'upstream_error',
+            actual_http_attempt_count: 0,
+            attempted_request_timeouts_ms:
+              Number.isFinite(Number(effectiveTimeoutMs)) && Number(effectiveTimeoutMs) >= 0
+                ? [Math.trunc(Number(effectiveTimeoutMs))]
+                : [],
+            error: err?.message || String(err),
+            ...(timeoutTriggered ? { timeout_guard: 'caller_wall_clock' } : {}),
+          };
+        }
         return {
           queryEntry,
           out,

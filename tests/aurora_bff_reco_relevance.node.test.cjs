@@ -4892,6 +4892,55 @@ test('__internal: collectRecoCandidatesFromQueryLevels clamps per-query timeout 
   }
 });
 
+test('__internal: collectRecoCandidatesFromQueryLevels hard-stops wall clock when search hangs', async () => {
+  const { __internal } = loadRoutesFresh();
+  const targetContext = {
+    framework_id: 'framework_oily_skin_v1',
+    primary_role_id: 'oil_control_treatment',
+    framework_roles: [
+      {
+        role_id: 'oil_control_treatment',
+        rank: 1,
+        preferred_step: 'treatment',
+      },
+    ],
+    framework_owner_source: 'generic_concern_framework_resolver',
+    framework_owner_state: 'trusted',
+  };
+  const queryLevels = [
+    {
+      level_index: 0,
+      ladder_level: 'framework_oil_control_treatment',
+      queries: [
+        { query: 'oil control serum', step: 'treatment', slot: 'other', ladder_level: 'framework_oil_control_treatment', role_id: 'oil_control_treatment' },
+        { query: 'shine control serum', step: 'treatment', slot: 'other', ladder_level: 'framework_oil_control_treatment', role_id: 'oil_control_treatment' },
+      ],
+    },
+  ];
+  const startedAt = Date.now();
+
+  const out = await __internal.collectRecoCandidatesFromQueryLevels({
+    queryLevels,
+    targetContext,
+    recommendationTaskContext: null,
+    logger: null,
+    timeoutMs: 50,
+    limit: 6,
+    usePurchasableFallback: false,
+    allowExternalSeed: false,
+    searchFn: async () => new Promise(() => {}),
+  });
+
+  assert.ok(Date.now() - startedAt < 1000);
+  assert.equal(Array.isArray(out.searchResults), true);
+  assert.equal(out.searchResults.length, 2);
+  for (const row of out.searchResults) {
+    assert.equal(row.reason, 'upstream_timeout');
+    assert.equal(row.timeout_guard, 'caller_wall_clock');
+    assert.deepEqual(row.products, []);
+  }
+});
+
 test('/v1/chat: profile-driven beauty-owned reco chip without explicit ask clean fail-closes before legacy planner', async () => {
   const originalGet = axios.get;
   const observedQueries = [];

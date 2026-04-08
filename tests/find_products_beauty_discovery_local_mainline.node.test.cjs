@@ -2529,3 +2529,62 @@ test('framework local beauty mainline stops after primary timeout before support
     [],
   );
 });
+
+test('framework local beauty mainline hard-stops wall clock when internal primitive hangs', async () => {
+  const attemptedQueries = [];
+  const runtime = createRuntime({
+    searchPivotaBackendProducts: async ({ query }) => {
+      attemptedQueries.push(String(query || ''));
+      return new Promise(() => {});
+    },
+  });
+
+  const startedAt = Date.now();
+  const out = await runtime.runLocalBeautyDiscoveryMainline({
+    search: {
+      query: 'im oily skin, what products should i use?',
+      source: 'aurora-bff',
+      product_only: true,
+    },
+    metadata: {
+      source: 'aurora-bff',
+      catalog_surface: 'beauty',
+    },
+    requestContract: {
+      surface: 'direct',
+      primary_lane: 'beauty_discovery_mainline',
+      primary_retrieval_contract: 'agent_v1_search_beauty_mainline',
+      owner_switch_count: 0,
+    },
+    executionPlan: {
+      primary_lane: 'beauty_discovery_mainline',
+      primary_retrieval_contract: 'agent_v1_search_beauty_mainline',
+      owner_switch_count: 0,
+    },
+    rawUserQuery: 'im oily skin, what products should i use?',
+    gatewayRequestId: 'trace-framework-wall-clock-timeout',
+    traceQueryClass: 'query',
+    timeoutMs: 250,
+    invokeStartedAtMs: Date.now(),
+    logger: { warn() {} },
+    authHeaders: { authorization: 'Bearer test' },
+    operation: 'find_products_multi',
+  });
+
+  assert.equal(out.handled, true);
+  assert.ok(Date.now() - startedAt < 1500);
+  assert.deepEqual(attemptedQueries, ['oil control treatment']);
+  assert.deepEqual(out.response.products, []);
+  assert.equal(
+    out.response.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts?.[0]?.reason,
+    'upstream_timeout',
+  );
+  assert.equal(
+    out.response.metadata?.search_execution_trace?.primary_failure_stage,
+    'primary_upstream_timeout',
+  );
+  assert.deepEqual(
+    out.response.metadata?.search_execution_trace?.supplements_attempted || [],
+    [],
+  );
+});

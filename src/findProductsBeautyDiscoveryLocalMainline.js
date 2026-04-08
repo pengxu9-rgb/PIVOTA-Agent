@@ -139,6 +139,48 @@ function mapLocalSearchReasonToPrimaryFailureStage(reason = '') {
   return 'no_recall_from_planned_sources';
 }
 
+function withWallClockTimeout(promise, timeoutMs, timeoutCode = 'LOCAL_WALL_CLOCK_TIMEOUT') {
+  const normalizedTimeoutMs = Number.isFinite(Number(timeoutMs))
+    ? Math.max(1, Math.trunc(Number(timeoutMs)))
+    : 0;
+  if (!normalizedTimeoutMs) return Promise.resolve(promise);
+  let timer = null;
+  return Promise.race([
+    Promise.resolve(promise),
+    new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        const err = new Error(timeoutCode);
+        err.code = timeoutCode;
+        reject(err);
+      }, normalizedTimeoutMs);
+      if (timer && typeof timer.unref === 'function') timer.unref();
+    }),
+  ]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
+function buildBoundedPrimitiveFailure({
+  reason = 'upstream_error',
+  timeoutMs = 0,
+  error = '',
+} = {}) {
+  return {
+    ok: false,
+    products: [],
+    reason: String(reason || '').trim().toLowerCase() || 'upstream_error',
+    actual_http_attempt_count: 0,
+    attempted_request_timeouts_ms:
+      Number.isFinite(Number(timeoutMs)) && Number(timeoutMs) >= 0
+        ? [Math.trunc(Number(timeoutMs))]
+        : [],
+    ...(String(error || '').trim() ? { error: String(error || '').trim() } : {}),
+    ...(String(reason || '').trim().toLowerCase() === 'upstream_timeout'
+      ? { timeout_guard: 'caller_wall_clock' }
+      : {}),
+  };
+}
+
 function buildStepAwareCriticalQueryPack(queryPack = [], semanticContract = null) {
   const normalized = Array.from(
     new Set(
@@ -895,73 +937,88 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
         };
       }
     }
-    const searchOut = await runInternalSearchPrimitive({
-      query: queryText,
-      limit,
-      logger,
-      timeoutMs,
-      searchSourceOverride: metadataState?.source || null,
-      catalogSurface:
-        query.catalog_surface ||
-        query.catalogSurface ||
-        searchState.catalog_surface ||
-        searchState.catalogSurface ||
-        metadataState.catalog_surface ||
-        'beauty',
-      allowExternalSeed:
-        allowExternalSeed,
-      externalSeedStrategy,
-      fastMode:
-        parseBooleanLike(query.fast_mode ?? query.fastMode ?? searchState.fast_mode ?? searchState.fastMode) !==
-        false,
-      transportPolicy: {
-        mode: 'local_beauty_mainline',
-        include_self_proxy: false,
-        prefer_self_proxy_first: false,
-        allow_secondary_base_failover: false,
-        allow_secondary_path_failover: false,
-        max_base_urls: 1,
-        max_paths: 1,
-      },
-      queryStepStrength:
-        firstNonEmptyString(query.query_step_strength, query.queryStepStrength) || undefined,
-      targetStepFamily:
-        firstNonEmptyString(query.target_step_family, query.targetStepFamily) || undefined,
-      semanticFamily:
-        firstNonEmptyString(query.semantic_family, query.semanticFamily) || undefined,
-      productOnly:
-        parseBooleanLike(query.product_only ?? query.productOnly ?? searchState.product_only ?? searchState.productOnly) ===
-        true,
-      semanticContract,
-      traceId: gatewayRequestId,
-      queryIndex:
-        Number.isFinite(Number(query.query_index)) ? Number(query.query_index) : null,
-      queryTotal:
-        Number.isFinite(Number(query.query_total)) ? Number(query.query_total) : null,
-      authHeaders,
-      merchantId:
-        firstNonEmptyString(
-          query.merchant_id,
-          query.merchantId,
-          searchState.merchant_id,
-          searchState.merchantId,
-        ) || '',
-      merchantIds: Array.isArray(query.merchant_ids ?? query.merchantIds)
-        ? (query.merchant_ids ?? query.merchantIds)
-        : [],
-      offset,
-      inStockOnly:
-        parseBooleanLike(
-          query.in_stock_only ??
-            query.inStockOnly ??
-            searchState.in_stock_only ??
-            searchState.inStockOnly,
-        ) !== false,
-      callerLane:
-        parseBooleanLike(query.local_mainline_child ?? query.localMainlineChild) === true
-          ? 'catalog_child_recall'
-          : 'beauty_discovery_mainline',
-    });
+    let searchOut = null;
+    try {
+      searchOut = await withWallClockTimeout(
+        runInternalSearchPrimitive({
+          query: queryText,
+          limit,
+          logger,
+          timeoutMs,
+          searchSourceOverride: metadataState?.source || null,
+          catalogSurface:
+            query.catalog_surface ||
+            query.catalogSurface ||
+            searchState.catalog_surface ||
+            searchState.catalogSurface ||
+            metadataState.catalog_surface ||
+            'beauty',
+          allowExternalSeed:
+            allowExternalSeed,
+          externalSeedStrategy,
+          fastMode:
+            parseBooleanLike(query.fast_mode ?? query.fastMode ?? searchState.fast_mode ?? searchState.fastMode) !==
+            false,
+          transportPolicy: {
+            mode: 'local_beauty_mainline',
+            include_self_proxy: false,
+            prefer_self_proxy_first: false,
+            allow_secondary_base_failover: false,
+            allow_secondary_path_failover: false,
+            max_base_urls: 1,
+            max_paths: 1,
+          },
+          queryStepStrength:
+            firstNonEmptyString(query.query_step_strength, query.queryStepStrength) || undefined,
+          targetStepFamily:
+            firstNonEmptyString(query.target_step_family, query.targetStepFamily) || undefined,
+          semanticFamily:
+            firstNonEmptyString(query.semantic_family, query.semanticFamily) || undefined,
+          productOnly:
+            parseBooleanLike(query.product_only ?? query.productOnly ?? searchState.product_only ?? searchState.productOnly) ===
+            true,
+          semanticContract,
+          traceId: gatewayRequestId,
+          queryIndex:
+            Number.isFinite(Number(query.query_index)) ? Number(query.query_index) : null,
+          queryTotal:
+            Number.isFinite(Number(query.query_total)) ? Number(query.query_total) : null,
+          authHeaders,
+          merchantId:
+            firstNonEmptyString(
+              query.merchant_id,
+              query.merchantId,
+              searchState.merchant_id,
+              searchState.merchantId,
+            ) || '',
+          merchantIds: Array.isArray(query.merchant_ids ?? query.merchantIds)
+            ? (query.merchant_ids ?? query.merchantIds)
+            : [],
+          offset,
+          inStockOnly:
+            parseBooleanLike(
+              query.in_stock_only ??
+                query.inStockOnly ??
+                searchState.in_stock_only ??
+                searchState.inStockOnly,
+            ) !== false,
+          callerLane:
+            parseBooleanLike(query.local_mainline_child ?? query.localMainlineChild) === true
+              ? 'catalog_child_recall'
+              : 'beauty_discovery_mainline',
+        }),
+        timeoutMs,
+        'LOCAL_INTERNAL_SEARCH_WALL_CLOCK_TIMEOUT',
+      );
+    } catch (err) {
+      const timeoutTriggered =
+        String(err?.code || '').trim() === 'LOCAL_INTERNAL_SEARCH_WALL_CLOCK_TIMEOUT';
+      searchOut = buildBoundedPrimitiveFailure({
+        reason: timeoutTriggered ? 'upstream_timeout' : 'upstream_error',
+        timeoutMs,
+        error: err?.message || String(err),
+      });
+    }
     const failureReason = String(searchOut?.reason || '').trim().toLowerCase();
     if (searchOut?.ok !== true && ['upstream_timeout', 'upstream_error', 'rate_limited'].includes(failureReason)) {
       const err = new Error(
@@ -2129,39 +2186,53 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
               : {}),
           };
         } else {
-          out = await runInternalSearchPrimitive({
-            query: entry?.query,
-            limit: normalizedLimit,
-            logger,
-            timeoutMs: effectiveTimeoutMs,
-            searchSourceOverride: metadataObj?.source || null,
-            catalogSurface:
-              searchObj.catalog_surface ||
-              searchObj.catalogSurface ||
-              metadataObj.catalog_surface ||
-              'beauty',
-            allowExternalSeed: false,
-            externalSeedStrategy: 'on_empty_only',
-            fastMode: true,
-            transportPolicy,
-            queryStepStrength:
-              Number(entry?.role_rank || 99) <= 1
-                ? 'strong_goal_family'
-                : 'supportive_family',
-            targetStepFamily: preferredStep,
-            semanticFamily:
-              String(semanticContract.semantic_family || entry?.role_id || '').trim() ||
-              undefined,
-            productOnly: true,
-            semanticContract: stagedSemanticContract,
-            traceId: gatewayRequestId,
-            queryIndex: queryCursor,
-            queryTotal: recallEntries.length,
-            authHeaders,
-            offset: 0,
-            inStockOnly: true,
-            callerLane: 'beauty_discovery_mainline',
-          });
+          try {
+            out = await withWallClockTimeout(
+              runInternalSearchPrimitive({
+                query: entry?.query,
+                limit: normalizedLimit,
+                logger,
+                timeoutMs: effectiveTimeoutMs,
+                searchSourceOverride: metadataObj?.source || null,
+                catalogSurface:
+                  searchObj.catalog_surface ||
+                  searchObj.catalogSurface ||
+                  metadataObj.catalog_surface ||
+                  'beauty',
+                allowExternalSeed: false,
+                externalSeedStrategy: 'on_empty_only',
+                fastMode: true,
+                transportPolicy,
+                queryStepStrength:
+                  Number(entry?.role_rank || 99) <= 1
+                    ? 'strong_goal_family'
+                    : 'supportive_family',
+                targetStepFamily: preferredStep,
+                semanticFamily:
+                  String(semanticContract.semantic_family || entry?.role_id || '').trim() ||
+                  undefined,
+                productOnly: true,
+                semanticContract: stagedSemanticContract,
+                traceId: gatewayRequestId,
+                queryIndex: queryCursor,
+                queryTotal: recallEntries.length,
+                authHeaders,
+                offset: 0,
+                inStockOnly: true,
+                callerLane: 'beauty_discovery_mainline',
+              }),
+              effectiveTimeoutMs,
+              'LOCAL_FRAMEWORK_INTERNAL_SEARCH_WALL_CLOCK_TIMEOUT',
+            );
+          } catch (err) {
+            const timeoutTriggered =
+              String(err?.code || '').trim() === 'LOCAL_FRAMEWORK_INTERNAL_SEARCH_WALL_CLOCK_TIMEOUT';
+            out = buildBoundedPrimitiveFailure({
+              reason: timeoutTriggered ? 'upstream_timeout' : 'upstream_error',
+              timeoutMs: effectiveTimeoutMs,
+              error: err?.message || String(err),
+            });
+          }
         }
         const attemptElapsedMs = Math.max(0, Date.now() - attemptStartedAtMs);
         queryCursor += 1;
