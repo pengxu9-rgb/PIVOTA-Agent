@@ -485,6 +485,7 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
     operation = 'find_products_multi',
     upstreamMetadata = null,
     transportTrace = null,
+    candidateState = null,
   } = {}) {
     const normalizedContract = isPlainObject(contract) ? contract : {};
     const normalizedPlan = isPlainObject(plan) ? plan : {};
@@ -506,6 +507,7 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
         ? normalizedSelectedProducts
         : normalizedRawCandidates,
     );
+    const normalizedCandidateState = isPlainObject(candidateState) ? candidateState : {};
     const baseResponse = {
       status: 'success',
       success: true,
@@ -519,6 +521,27 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
         fetched_at: new Date().toISOString(),
         ...(isPlainObject(upstreamMetadata) ? upstreamMetadata : {}),
         ...(isPlainObject(semanticContract) ? { semantic_contract: semanticContract } : {}),
+        ...(Number.isFinite(Number(normalizedCandidateState.raw_candidate_count))
+          ? { raw_candidate_count: Number(normalizedCandidateState.raw_candidate_count) }
+          : {}),
+        ...(Number.isFinite(Number(normalizedCandidateState.viable_candidate_count))
+          ? { viable_candidate_count: Number(normalizedCandidateState.viable_candidate_count) }
+          : {}),
+        ...(Number.isFinite(Number(normalizedCandidateState.selected_candidate_count))
+          ? { selected_candidate_count: Number(normalizedCandidateState.selected_candidate_count) }
+          : {}),
+        ...(typeof normalizedCandidateState.primary_role_matched === 'boolean'
+          ? { primary_role_matched: normalizedCandidateState.primary_role_matched }
+          : {}),
+        ...(normalizedCandidateState.best_available_role_id
+          ? { best_available_role_id: String(normalizedCandidateState.best_available_role_id) }
+          : {}),
+        ...(normalizedCandidateState.weak_viable_pool === true
+          ? { weak_viable_pool: true }
+          : {}),
+        ...(Array.isArray(normalizedCandidateState.hard_reject_preview)
+          ? { hard_reject_preview: normalizedCandidateState.hard_reject_preview }
+          : {}),
         ...(Array.isArray(normalizedTransportTrace.transport_hops)
           ? { transport_hops: normalizedTransportTrace.transport_hops }
           : {}),
@@ -2464,6 +2487,7 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
           rows: searchResults,
           executionPlan: plan,
         }),
+        candidateState,
       }),
     };
   }

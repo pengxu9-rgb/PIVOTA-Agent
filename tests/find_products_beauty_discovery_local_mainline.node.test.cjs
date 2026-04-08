@@ -450,6 +450,116 @@ test('local beauty discovery mainline returns authoritative search metadata and 
   );
 });
 
+test('local beauty discovery mainline exposes candidate pool diagnostics in response metadata', async () => {
+  const runtime = createRuntime({
+    buildRecoRecallPlan: () => ({
+      mode: 'framework_generic',
+      entries: [
+        {
+          stage_id: 'framework_stage_a_primary_internal',
+          query: 'oil control serum',
+          role_id: 'oil_control_treatment',
+          role_rank: 1,
+          preferred_step: 'treatment',
+          source_scope: 'internal',
+          query_index: 0,
+        },
+      ],
+      stages: [
+        {
+          stage_id: 'framework_stage_a_primary_internal',
+          role_id: 'oil_control_treatment',
+          role_rank: 1,
+          source_scope: 'internal',
+          entries: [
+            {
+              query: 'oil control serum',
+              role_id: 'oil_control_treatment',
+              role_rank: 1,
+              preferred_step: 'treatment',
+              source_scope: 'internal',
+              query_index: 0,
+            },
+          ],
+        },
+      ],
+    }),
+    searchPivotaBackendProducts: async () => ({
+      ok: true,
+      reason: 'ok',
+      actual_http_attempt_count: 1,
+      products: [
+        {
+          product_id: 'generic_serum_1',
+          merchant_id: 'merchant_internal',
+          title: 'Generic Serum',
+          retrieval_source: 'internal_search',
+          source_tier: 'fresh_internal',
+          source_quality_class: 'trusted',
+        },
+      ],
+    }),
+    finalizeConcernFrameworkCandidatePools: (rawCandidates) => {
+      const list = Array.isArray(rawCandidates) ? rawCandidates : [];
+      return {
+        selected_recommendations: [],
+        primary_role_matched: false,
+        raw_candidate_count: list.length,
+        viable_candidate_count: 0,
+        selected_candidate_count: 0,
+        best_available_role_id: 'oil_control_treatment',
+        weak_viable_pool: true,
+        hard_reject_preview: [
+          {
+            product_id: 'generic_serum_1',
+            retrieval_source: 'internal_search',
+            matched_role_id: 'oil_control_treatment',
+            candidate_step: 'serum',
+            framework_score: 0.41,
+            framework_semantic_fit: false,
+            reason: 'framework_primary_semantic_missing',
+          },
+        ],
+      };
+    },
+  });
+
+  const out = await runtime.runLocalBeautyDiscoveryMainline({
+    search: {
+      query: 'im oily skin, what products should i use?',
+      limit: 6,
+    },
+    metadata: {
+      source: 'shopping',
+      catalog_surface: 'beauty',
+    },
+    requestContract: {
+      surface: 'direct',
+      primary_lane: 'beauty_discovery_mainline',
+      primary_retrieval_contract: 'agent_v1_search_beauty_mainline',
+    },
+    executionPlan: {
+      primary_lane: 'beauty_discovery_mainline',
+      primary_retrieval_contract: 'agent_v1_search_beauty_mainline',
+      owner_switch_count: 0,
+    },
+    rawUserQuery: 'im oily skin, what products should i use?',
+    gatewayRequestId: 'trace_candidate_pool_debug',
+    timeoutMs: 12000,
+    invokeStartedAtMs: Date.now(),
+  });
+
+  assert.equal(out.handled, true);
+  assert.deepEqual(out.response.products, []);
+  assert.equal(out.response.metadata?.raw_candidate_count, 1);
+  assert.equal(out.response.metadata?.viable_candidate_count, 0);
+  assert.equal(out.response.metadata?.selected_candidate_count, 0);
+  assert.equal(out.response.metadata?.primary_role_matched, false);
+  assert.equal(out.response.metadata?.best_available_role_id, 'oil_control_treatment');
+  assert.equal(out.response.metadata?.weak_viable_pool, true);
+  assert.equal(out.response.metadata?.hard_reject_preview?.[0]?.reason, 'framework_primary_semantic_missing');
+});
+
 test('local beauty discovery mainline preserves backend internal primitive failure details in query attempts', async () => {
   const runtime = createRuntime({
     searchPivotaBackendProducts: async ({ query }) => {
