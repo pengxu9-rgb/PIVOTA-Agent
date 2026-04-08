@@ -65,15 +65,32 @@ function createFindProductsSearchRouteEntryRuntime(deps = {}) {
         }
       : (req.query && typeof req.query === 'object' && !Array.isArray(req.query) ? req.query : {});
 
-    const payload = buildFindProductsMultiPayloadFromQuery(nextQuery);
-    if (!payload) {
-      return {
-        invalid: true,
-        query: nextQuery,
-      };
-    }
+	    const payload = buildFindProductsMultiPayloadFromQuery(nextQuery);
+	    if (!payload) {
+	      return {
+	        invalid: true,
+	        query: nextQuery,
+	      };
+	    }
+	    const localMainlineChild = parseRouteBoolean(
+	      nextQuery.local_mainline_child ?? nextQuery.localMainlineChild,
+	    );
+	    if (localMainlineChild !== undefined) {
+	      payload.search = {
+	        ...(payload?.search && typeof payload.search === 'object' && !Array.isArray(payload.search)
+	          ? payload.search
+	          : {}),
+	        local_mainline_child: localMainlineChild,
+	      };
+	      payload.metadata = {
+	        ...(payload?.metadata && typeof payload.metadata === 'object' && !Array.isArray(payload.metadata)
+	          ? payload.metadata
+	          : {}),
+	        local_mainline_child: localMainlineChild,
+	      };
+	    }
 
-    const publicSearchSource = String(payload?.metadata?.source || '').trim();
+	    const publicSearchSource = String(payload?.metadata?.source || '').trim();
     const rawSearch =
       payload?.search && typeof payload.search === 'object' && !Array.isArray(payload.search)
         ? payload.search
