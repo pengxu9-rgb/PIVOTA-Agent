@@ -200,6 +200,72 @@ describe('RecommendationEngine (PDP)', () => {
     expect(out.metadata.retrieval_mix.external).toBeGreaterThanOrEqual(3);
   });
 
+  test('b3) same-domain supplemental fallback does not pull known makeup vertical mismatches into skincare PDPs', () => {
+    const base = {
+      merchant_id: 'external_seed',
+      product_id: 'ext_fenty_skincare_base',
+      title: 'Instant Reset Brightening Overnight Recovery Gel-Cream with Niacinamide + Kalahari Melon Oil',
+      brand: 'Fenty Beauty',
+      category: 'Moisturizer',
+      product_type: 'Moisturizer',
+      description:
+        'Take it to bed-wake up transformed. A brightening overnight gel-cream with niacinamide and kalahari melon oil.',
+      price: 31.2,
+      currency: 'USD',
+      source: 'external_seed',
+      canonical_url: 'https://fentybeauty.com/products/instant-reset-brightening-overnight-recovery-gel-cream',
+      destination_url: 'https://fentybeauty.com/products/instant-reset-brightening-overnight-recovery-gel-cream',
+      domain: 'fentybeauty.com',
+    };
+
+    const external = [
+      {
+        ...makeProduct({
+          merchant_id: 'external_seed',
+          product_id: 'ext_wrong_highlighter',
+          title: 'Mini Killawatt Freestyle Highlighter — Wattab!*%#',
+          brand: 'Fenty Beauty',
+          category: 'Moisturizer',
+          product_type: 'Moisturizer',
+          price: 20,
+          source: 'external_seed',
+          canonical_url: 'https://fentybeauty.com/products/mini-killawatt-freestyle-highlighter-wattab',
+          destination_url: 'https://fentybeauty.com/products/mini-killawatt-freestyle-highlighter-wattab',
+          domain: 'fentybeauty.com',
+        }),
+        description:
+          'Weightless, longwear cream-powder hybrid highlighters that range from subtle dayglow to insanely supercharged.',
+      },
+      {
+        ...makeProduct({
+          merchant_id: 'external_seed',
+          product_id: 'ext_right_toner',
+          title: 'Fat Water Niacinamide Pore-Refining Toner Serum with Barbados Cherry',
+          brand: 'Fenty Beauty',
+          category: 'Toner',
+          product_type: 'Toner',
+          price: 18,
+          source: 'external_seed',
+          canonical_url: 'https://fentybeauty.com/products/fat-water-niacinamide-pore-refining-toner-serum-with-barbados-cherry',
+          destination_url: 'https://fentybeauty.com/products/fat-water-niacinamide-pore-refining-toner-serum-with-barbados-cherry',
+          domain: 'fentybeauty.com',
+        }),
+        description:
+          'The power of a serum plus the treatment of a toner in one pore-busting step.',
+      },
+    ];
+
+    const out = pickLayeredRecommendations({
+      baseProduct: base,
+      internalCandidates: [],
+      externalCandidates: external,
+      k: 2,
+    });
+
+    expect(out.items.map((item) => item.product_id)).toContain('ext_right_toner');
+    expect(out.items.map((item) => item.product_id)).not.toContain('ext_wrong_highlighter');
+  });
+
   test('c) no brand matches but same category + near price fills', () => {
     const base = makeProduct({
       merchant_id: 'merch_store',

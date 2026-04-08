@@ -862,4 +862,48 @@ describe('externalSeedProducts helper', () => {
     expect(product.external_seed_match_source).toBe('recall_title');
     expect(product.brand).toBe('Fenty Beauty');
   });
+
+  test('does not infer makeup highlighters as moisturizers just because description mentions cream', () => {
+    const product = buildExternalSeedBrandSearchProduct({
+      id: 'eps_fenty_killawatt',
+      external_product_id: 'ext_fenty_killawatt',
+      canonical_url: 'https://fentybeauty.com/products/mini-killawatt-freestyle-highlighter-wattab',
+      destination_url: 'https://fentybeauty.com/products/mini-killawatt-freestyle-highlighter-wattab',
+      title: 'Mini Killawatt Freestyle Highlighter — Wattab!*%#',
+      seed_data: {
+        brand: 'Fenty Beauty',
+        snapshot: {
+          title: 'Mini Killawatt Freestyle Highlighter — Wattab!*%#',
+        },
+        derived: {
+          recall: {
+            retrieval_title: 'Mini Killawatt Freestyle Highlighter — Wattab!*%#',
+            retrieval_summary:
+              'Weightless, longwear cream-powder hybrid highlighters that range from subtle dayglow to insanely supercharged.',
+            retrieval_body:
+              'Weightless, longwear cream-powder hybrid highlighters that range from subtle dayglow to insanely supercharged.',
+            brand: 'Fenty Beauty',
+            category: null,
+            vertical: 'makeup',
+            ingredient_tokens: [],
+            alias_tokens: ['mini', 'killawatt', 'highlighter'],
+            exclusion_flags: {
+              gift_card: false,
+              donation_bundle: false,
+              non_merchandise: false,
+            },
+            quality_signals: {
+              template_polluted: false,
+              synthetic_summary: false,
+              extractor_description_present: true,
+            },
+            version: 'v1',
+          },
+        },
+      },
+    });
+
+    expect(product.category).toBe('Highlighter');
+    expect(product.product_type).toBe('Highlighter');
+  });
 });

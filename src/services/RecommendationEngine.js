@@ -761,6 +761,10 @@ function shouldFilterKnownVerticalMismatch(base, candidate) {
     return !allowByVertical && !allowByToken;
   }
   if (!['skincare', 'makeup', 'haircare'].includes(base.vertical)) return false;
+  if (candidateVertical !== UNKNOWN_VERTICAL && candidateVertical !== base.vertical) {
+    if ((candidate.leafMatch || candidate.parentMatch) && candidate.tokenOverlap >= 0.24) return false;
+    return true;
+  }
   if (candidate.leafMatch || candidate.parentMatch) return false;
   if (candidateVertical === base.vertical) return false;
   if (candidateVertical === UNKNOWN_VERTICAL && candidate.tokenOverlap >= 0.18) return false;
