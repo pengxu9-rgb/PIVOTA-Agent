@@ -112,6 +112,11 @@ const VERTICAL_KEYWORDS = {
     'tool',
     'tools',
     'accessory',
+    'accessories',
+    'cuff',
+    'cuffs',
+    'wristband',
+    'headband',
     'kit',
     'set of brushes',
     '刷具',
@@ -165,7 +170,30 @@ function buildProductSemanticText(product) {
     .join(' ');
 }
 
+function buildWeightedSemanticText(product) {
+  return {
+    title: [product?.title, product?.name]
+      .map((v) => String(v || '').trim())
+      .filter(Boolean)
+      .join(' '),
+    category: [
+      product?.category,
+      product?.product_type,
+      product?.productType,
+      getCategoryPathText(product),
+    ]
+      .map((v) => String(v || '').trim())
+      .filter(Boolean)
+      .join(' '),
+    body: [product?.description, product?.vendor, product?.brand?.name, product?.brand]
+      .map((v) => String(v || '').trim())
+      .filter(Boolean)
+      .join(' '),
+  };
+}
+
 function inferVerticalFromProduct(product) {
+  const weightedText = buildWeightedSemanticText(product);
   const text = buildProductSemanticText(product);
   const scores = {
     fragrance: 0,
@@ -186,8 +214,11 @@ function inferVerticalFromProduct(product) {
 
   for (const [vertical, keywords] of Object.entries(VERTICAL_KEYWORDS)) {
     for (const keyword of keywords) {
-      if (!containsKeyword(text, keyword)) continue;
-      scores[vertical] += 1;
+      const titleHit = containsKeyword(weightedText.title, keyword);
+      const categoryHit = containsKeyword(weightedText.category, keyword);
+      const bodyHit = containsKeyword(weightedText.body, keyword);
+      if (!titleHit && !categoryHit && !bodyHit && !containsKeyword(text, keyword)) continue;
+      scores[vertical] += (titleHit ? 3 : 0) + (categoryHit ? 2 : 0) + (bodyHit ? 1 : 0);
       if (matches[vertical].length < 5) matches[vertical].push(keyword);
     }
   }
