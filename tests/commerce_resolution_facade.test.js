@@ -1997,6 +1997,8 @@ describe('Commerce resolution facade', () => {
           attemptNo: input.attemptNo,
           query: input.payload?.search?.query,
           useSearchEndpoint: input.useSearchEndpoint,
+          useInternalSearchEndpoint: input.useInternalSearchEndpoint,
+          searchUrl: input.searchUrl,
           timeoutMs: input.timeoutMs,
           requestSource: input.requestSource,
         });
@@ -2092,7 +2094,9 @@ describe('Commerce resolution facade', () => {
       expect.objectContaining({
         attemptNo: 2,
         query: 'repair barrier serum',
-        useSearchEndpoint: true,
+        useSearchEndpoint: false,
+        useInternalSearchEndpoint: true,
+        searchUrl: 'https://pivota.test/agent/internal/products/search',
         requestSource: 'aurora-bff',
       }),
     );
@@ -2175,6 +2179,94 @@ describe('Commerce resolution facade', () => {
         headers: expect.objectContaining({
           Authorization: 'Bearer checkout-token',
           'Content-Type': 'application/json',
+        }),
+      }),
+    );
+  });
+
+  test('beauty semantic retry uses internal products search primitive endpoint', async () => {
+    const capturedRequests = [];
+    const runtime = createCommerceResolutionRuntime({
+      httpRequest(requestConfig) {
+        capturedRequests.push(requestConfig);
+        return Promise.resolve({
+          status: 200,
+          data: {
+            products: [{ product_id: 'p1', title: 'Oil Control Serum' }],
+          },
+        });
+      },
+      buildInvokeUpstreamAuthHeaders({ checkoutToken }) {
+        return checkoutToken ? { Authorization: `Bearer ${checkoutToken}` } : {};
+      },
+      normalizeAgentProductsListResponse(body) {
+        return body;
+      },
+      countUsableSearchProducts(products) {
+        return Array.isArray(products) ? products.length : 0;
+      },
+      parseQueryNumber(value) {
+        return Number(value);
+      },
+      normalizeSearchTextForMatch(value) {
+        return String(value || '').trim().toLowerCase();
+      },
+      summarizeGuidanceCandidatePool() {
+        return {
+          target_relevant_count: 1,
+          counts: { strong_goal_family: 1 },
+          top3_quality_score: 120,
+        };
+      },
+    });
+
+    await expect(
+      runtime.invokeFindProductsMultiFallbackOnce({
+        url: 'https://pivota.test/agent/shop/v1/invoke',
+        searchUrl: 'https://pivota.test/agent/internal/products/search',
+        payload: {
+          search: {
+            query: 'oil control serum',
+            limit: 12,
+            offset: 0,
+            catalog_surface: 'beauty',
+            primary_lane: 'beauty_discovery_mainline',
+          },
+        },
+        checkoutToken: 'checkout-token',
+        requestSource: 'aurora-bff',
+        triggerReason: 'primary_irrelevant',
+        preserveAuroraSource: true,
+        fallbackSource: 'agent_search_proxy_fallback',
+        relevanceQuery: 'oil control serum',
+        attemptNo: 2,
+        useInternalSearchEndpoint: true,
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        status: 200,
+        usableCount: 1,
+        queryUsed: 'oil control serum',
+      }),
+    );
+
+    expect(capturedRequests).toHaveLength(1);
+    expect(capturedRequests[0]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        url: 'https://pivota.test/agent/internal/products/search',
+        timeout: expect.any(Number),
+        data: {
+          query: 'oil control serum',
+          limit: 12,
+          offset: 0,
+          search_all_merchants: true,
+          catalog_surface: 'beauty',
+        },
+        headers: expect.objectContaining({
+          Authorization: 'Bearer checkout-token',
+          'Content-Type': 'application/json',
+          'X-Internal-Search-Timeout-Ms': expect.any(String),
         }),
       }),
     );

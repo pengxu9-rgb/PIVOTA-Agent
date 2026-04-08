@@ -229,6 +229,10 @@ const {
   createFindProductsBeautyDiscoveryLocalMainlineRuntime,
 } = require('./findProductsBeautyDiscoveryLocalMainline');
 const {
+  INTERNAL_PRODUCTS_SEARCH_PATH,
+  createFindProductsInternalSearchPrimitiveRuntime,
+} = require('./findProductsInternalSearchPrimitive');
+const {
   isAuthoritativeDirectBeautySearchIngress,
   normalizeFindProductsSearchRequestContract,
   buildFindProductsSearchRequestContract,
@@ -13696,6 +13700,19 @@ app.post('/photos/confirm', proxyPhotosToBackend);
 app.get('/photos/qc', proxyPhotosToBackend);
 app.delete('/photos', proxyPhotosToBackend);
 
+const {
+  handleInternalProductsSearch,
+} = createFindProductsInternalSearchPrimitiveRuntime({
+  buildSearchProductsV2Body,
+  normalizeAgentProductsListResponse,
+  callUpstreamWithOptionalRetry,
+  buildInvokeUpstreamAuthHeaders,
+  getUpstreamUrl: () => `${String(PIVOTA_API_BASE || '').replace(/\/$/, '')}/agent/v2/products/search`,
+  getDefaultTimeoutMs: () => getUpstreamTimeoutMs('find_products_multi'),
+});
+
+app.post(INTERNAL_PRODUCTS_SEARCH_PATH, requireExternalInvokeAuth, handleInternalProductsSearch);
+
 async function handleAgentProductsSearchViaInvoke(req, res) {
   const routePlan = prepareAgentProductsSearchRoute(req);
   req.query = routePlan.query;
@@ -15265,9 +15282,9 @@ const {
   shouldRunRecoRecallStage,
   buildRecoRecallTransportPolicy,
   resolveRecoRecallTransportModeForPlannerMode,
-  searchPivotaBackendProducts:
-    typeof auroraBffInternal?.searchPivotaBackendProducts === 'function'
-      ? auroraBffInternal.searchPivotaBackendProducts
+  searchInternalProductsPrimitive:
+    typeof auroraBffInternal?.searchInternalProductsPrimitive === 'function'
+      ? auroraBffInternal.searchInternalProductsPrimitive
       : null,
   normalizeRecoCatalogProduct:
     typeof auroraBffInternal?.normalizeRecoCatalogProduct === 'function'
@@ -22737,6 +22754,30 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           primarySearchRetryReasons,
           primaryFailureStage,
           supplementsAttempted,
+          transportHops:
+            Array.isArray(enriched?.metadata?.transport_hops)
+              ? enriched.metadata.transport_hops
+              : [],
+          primaryTransportOwner:
+            enriched?.metadata?.primary_transport_owner ||
+            enriched?.metadata?.transport_owner ||
+            null,
+          primaryEndpointKind:
+            enriched?.metadata?.primary_endpoint_kind ||
+            enriched?.metadata?.endpoint_kind ||
+            null,
+          attemptedInternalBaseUrls:
+            Array.isArray(enriched?.metadata?.attempted_internal_base_urls)
+              ? enriched.metadata.attempted_internal_base_urls
+              : [],
+          attemptedInternalPaths:
+            Array.isArray(enriched?.metadata?.attempted_internal_paths)
+              ? enriched.metadata.attempted_internal_paths
+              : [],
+          nestedOrchestratorHops:
+            Number.isFinite(Number(enriched?.metadata?.nested_orchestrator_hops))
+              ? Number(enriched.metadata.nested_orchestrator_hops)
+              : null,
         });
         const normalizedSupplementTraces = semanticOwnerSupplementTraces.filter(
           (trace) => trace && typeof trace === 'object' && !Array.isArray(trace),

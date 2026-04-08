@@ -253,6 +253,93 @@ function parseLocalUrlQuery(url = '') {
   }
 }
 
+function normalizeTransportHop(value) {
+  return isPlainObject(value) ? value : null;
+}
+
+function collectLocalTransportTrace({
+  rows = [],
+  metadata = null,
+  executionPlan = null,
+} = {}) {
+  const hops = [];
+  const internalBaseUrls = new Set();
+  const internalPaths = new Set();
+  const normalizedRows = Array.isArray(rows) ? rows : [];
+  const normalizedMetadata = normalizeSearchObject(metadata);
+  const normalizedPlan = isPlainObject(executionPlan) ? executionPlan : {};
+
+  const appendRow = (row) => {
+    if (!isPlainObject(row)) return;
+    if (Array.isArray(row.transport_hops)) {
+      row.transport_hops
+        .map(normalizeTransportHop)
+        .filter(Boolean)
+        .forEach((hop) => hops.push(hop));
+    }
+    (Array.isArray(row.attempted_internal_base_urls) ? row.attempted_internal_base_urls : [])
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+      .forEach((value) => internalBaseUrls.add(value));
+    (Array.isArray(row.attempted_internal_paths) ? row.attempted_internal_paths : [])
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+      .forEach((value) => internalPaths.add(value));
+  };
+
+  normalizedRows.forEach(appendRow);
+  appendRow(normalizedMetadata);
+
+  return {
+    transport_hops: hops,
+    transport_hop_count: hops.length,
+    nested_orchestrator_hops: hops.filter(
+      (hop) => String(hop?.endpoint_kind || '').trim().toLowerCase() === 'public_orchestrator',
+    ).length,
+    primary_transport_owner:
+      firstNonEmptyString(
+        normalizedMetadata.primary_transport_owner,
+        normalizedMetadata.transport_owner,
+        normalizedPlan.transport_owner,
+      ) || null,
+    primary_endpoint_kind:
+      firstNonEmptyString(
+        normalizedMetadata.primary_endpoint_kind,
+        normalizedMetadata.endpoint_kind,
+        normalizedPlan.endpoint_kind,
+      ) || null,
+    attempted_internal_base_urls: Array.from(internalBaseUrls),
+    attempted_internal_paths: Array.from(internalPaths),
+  };
+}
+
+function extractTransportMetadataFromSearchOut(searchOut = null) {
+  const out = isPlainObject(searchOut) ? searchOut : {};
+  return {
+    ...(Array.isArray(out.transport_hops) ? { transport_hops: out.transport_hops } : {}),
+    ...(Number.isFinite(Number(out.transport_hop_count))
+      ? { transport_hop_count: Number(out.transport_hop_count) }
+      : {}),
+    ...(Number.isFinite(Number(out.nested_orchestrator_hops))
+      ? { nested_orchestrator_hops: Number(out.nested_orchestrator_hops) }
+      : {}),
+    ...(out.primary_transport_owner
+      ? { primary_transport_owner: String(out.primary_transport_owner).trim() }
+      : {}),
+    ...(out.primary_endpoint_kind
+      ? { primary_endpoint_kind: String(out.primary_endpoint_kind).trim() }
+      : {}),
+    ...(Array.isArray(out.attempted_internal_base_urls)
+      ? { attempted_internal_base_urls: out.attempted_internal_base_urls }
+      : {}),
+    ...(Array.isArray(out.attempted_internal_paths)
+      ? { attempted_internal_paths: out.attempted_internal_paths }
+      : {}),
+    ...(out.transport_owner ? { transport_owner: String(out.transport_owner).trim() } : {}),
+    ...(out.endpoint_kind ? { endpoint_kind: String(out.endpoint_kind).trim() } : {}),
+  };
+}
+
 function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
   const {
     buildBeautyDiscoverySemanticContract,
@@ -264,6 +351,7 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
     shouldRunRecoRecallStage,
     buildRecoRecallTransportPolicy,
     resolveRecoRecallTransportModeForPlannerMode,
+    searchInternalProductsPrimitive,
     searchPivotaBackendProducts,
     normalizeRecoCatalogProduct,
     normalizeAgentProductsListResponse,
@@ -281,6 +369,12 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
     buildFindProductsSearchExecutionTrace,
     BEAUTY_DISCOVERY_MAINLINE_OWNER,
   } = deps;
+  const runInternalSearchPrimitive =
+    typeof searchInternalProductsPrimitive === 'function'
+      ? searchInternalProductsPrimitive
+      : typeof searchPivotaBackendProducts === 'function'
+        ? searchPivotaBackendProducts
+        : null;
 
   function buildLocalBeautyDiscoveryMainlineResponse({
     queryText = '',
@@ -300,6 +394,7 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
     finalDecision = 'strict_empty',
     operation = 'find_products_multi',
     upstreamMetadata = null,
+    transportTrace = null,
   } = {}) {
     const normalizedContract = isPlainObject(contract) ? contract : {};
     const normalizedPlan = isPlainObject(plan) ? plan : {};
@@ -310,6 +405,12 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
     const normalizedSupplementTraces = Array.isArray(supplementTraces)
       ? supplementTraces
       : [];
+    const normalizedTransportTrace = isPlainObject(transportTrace)
+      ? transportTrace
+      : collectLocalTransportTrace({
+          metadata: upstreamMetadata,
+          executionPlan: normalizedPlan,
+        });
     const sourceObservability = countCandidateOriginBreakdown(
       normalizedSelectedProducts.length > 0
         ? normalizedSelectedProducts
@@ -328,6 +429,30 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
         fetched_at: new Date().toISOString(),
         ...(isPlainObject(upstreamMetadata) ? upstreamMetadata : {}),
         ...(isPlainObject(semanticContract) ? { semantic_contract: semanticContract } : {}),
+        ...(Array.isArray(normalizedTransportTrace.transport_hops)
+          ? { transport_hops: normalizedTransportTrace.transport_hops }
+          : {}),
+        ...(Number.isFinite(Number(normalizedTransportTrace.transport_hop_count))
+          ? { transport_hop_count: Number(normalizedTransportTrace.transport_hop_count) }
+          : {}),
+        ...(Number.isFinite(Number(normalizedTransportTrace.nested_orchestrator_hops))
+          ? { nested_orchestrator_hops: Number(normalizedTransportTrace.nested_orchestrator_hops) }
+          : {}),
+        ...(normalizedTransportTrace.primary_transport_owner
+          ? { primary_transport_owner: normalizedTransportTrace.primary_transport_owner }
+          : {}),
+        ...(normalizedTransportTrace.primary_endpoint_kind
+          ? { primary_endpoint_kind: normalizedTransportTrace.primary_endpoint_kind }
+          : {}),
+        ...(Array.isArray(normalizedTransportTrace.attempted_internal_base_urls)
+          ? {
+              attempted_internal_base_urls:
+                normalizedTransportTrace.attempted_internal_base_urls,
+            }
+          : {}),
+        ...(Array.isArray(normalizedTransportTrace.attempted_internal_paths)
+          ? { attempted_internal_paths: normalizedTransportTrace.attempted_internal_paths }
+          : {}),
       },
     };
 
@@ -478,6 +603,14 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
       primarySearchRetryReasons: [],
       primaryFailureStage,
       supplementsAttempted: supplementTypes,
+      transportHops: normalizedTransportTrace.transport_hops,
+      primaryTransportOwner: normalizedTransportTrace.primary_transport_owner,
+      primaryEndpointKind: normalizedTransportTrace.primary_endpoint_kind,
+      attemptedInternalBaseUrls:
+        normalizedTransportTrace.attempted_internal_base_urls,
+      attemptedInternalPaths: normalizedTransportTrace.attempted_internal_paths,
+      nestedOrchestratorHops:
+        normalizedTransportTrace.nested_orchestrator_hops,
     });
 
     return {
@@ -749,7 +882,7 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
         };
       }
     }
-    const searchOut = await searchPivotaBackendProducts({
+    const searchOut = await runInternalSearchPrimitive({
       query: queryText,
       limit,
       logger,
@@ -793,7 +926,28 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
       queryTotal:
         Number.isFinite(Number(query.query_total)) ? Number(query.query_total) : null,
       authHeaders,
-      localMainlineChild: true,
+      merchantId:
+        firstNonEmptyString(
+          query.merchant_id,
+          query.merchantId,
+          searchState.merchant_id,
+          searchState.merchantId,
+        ) || '',
+      merchantIds: Array.isArray(query.merchant_ids ?? query.merchantIds)
+        ? (query.merchant_ids ?? query.merchantIds)
+        : [],
+      offset,
+      inStockOnly:
+        parseBooleanLike(
+          query.in_stock_only ??
+            query.inStockOnly ??
+            searchState.in_stock_only ??
+            searchState.inStockOnly,
+        ) !== false,
+      callerLane:
+        parseBooleanLike(query.local_mainline_child ?? query.localMainlineChild) === true
+          ? 'catalog_child_recall'
+          : 'beauty_discovery_mainline',
     });
     const failureReason = String(searchOut?.reason || '').trim().toLowerCase();
     if (searchOut?.ok !== true && ['upstream_timeout', 'upstream_error', 'rate_limited'].includes(failureReason)) {
@@ -823,16 +977,17 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
             page,
             page_size: products.length,
             reply: null,
-            metadata: {
-              query_source: 'agent_products_search',
-              query_target_step_family:
-                firstNonEmptyString(query.target_step_family, query.targetStepFamily) || null,
-              semantic_family:
-                firstNonEmptyString(query.semantic_family, query.semanticFamily) || null,
-              query_step_strength:
-                firstNonEmptyString(query.query_step_strength, query.queryStepStrength) || null,
-            },
+          metadata: {
+            query_source: 'agent_products_search',
+            query_target_step_family:
+              firstNonEmptyString(query.target_step_family, query.targetStepFamily) || null,
+            semantic_family:
+              firstNonEmptyString(query.semantic_family, query.semanticFamily) || null,
+            query_step_strength:
+              firstNonEmptyString(query.query_step_strength, query.queryStepStrength) || null,
+            ...extractTransportMetadataFromSearchOut(searchOut),
           },
+        },
           { limit, offset },
         )
       : {
@@ -851,6 +1006,7 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
               firstNonEmptyString(query.semantic_family, query.semanticFamily) || null,
             query_step_strength:
               firstNonEmptyString(query.query_step_strength, query.queryStepStrength) || null,
+            ...extractTransportMetadataFromSearchOut(searchOut),
           },
         };
     return {
@@ -882,7 +1038,7 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
       typeof buildBeautyDiscoveryQueryPackFromContract !== 'function' ||
       typeof prepareInvokeSemanticOwnerContext !== 'function' ||
       typeof runInvokeSemanticOwnerExecution !== 'function' ||
-      typeof searchPivotaBackendProducts !== 'function'
+      typeof runInternalSearchPrimitive !== 'function'
     ) {
       return { handled: false, response: null };
     }
@@ -1139,13 +1295,17 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
               local_step_aware_query_pack_truncated:
                 criticalQueryPack.length < fullQueryPack.length,
             },
+            transportTrace: collectLocalTransportTrace({
+              rows: [initialSearchErr?.searchOut],
+              executionPlan: plan,
+            }),
           }),
         };
       }
     }
     let response = initialSearch.response;
     let upstreamData = initialSearch.upstreamData;
-    const localBaseUrl = 'http://local-beauty-mainline.test/agent/v1/products/search';
+    const localBaseUrl = 'http://local-beauty-mainline.test/agent/internal/products/search';
     const localCallTrackedUpstream = async (_op, config = {}) => {
       const parsedQuery = parseLocalUrlQuery(config?.url);
       const localQueryParams = {
@@ -1285,6 +1445,10 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
         operation,
         upstreamMetadata:
           upstreamData && isPlainObject(upstreamData.metadata) ? upstreamData.metadata : null,
+        transportTrace: collectLocalTransportTrace({
+          metadata: upstreamData?.metadata,
+          executionPlan: plan,
+        }),
       }),
     };
   }
@@ -1296,12 +1460,19 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
     plan = null,
     primaryTimeoutMs = 0,
     primaryFailureStage = null,
+    transportTrace = null,
   } = {}) {
     const normalizedSearch = normalizeSearchObject(searchObj);
     const normalizedContract = isPlainObject(contract) ? contract : {};
     const normalizedPlan = isPlainObject(plan) ? plan : {};
     const upstreamBody = isPlainObject(responseBody) ? responseBody : {};
     const upstreamMetadata = normalizeSearchObject(upstreamBody.metadata);
+    const normalizedTransportTrace = isPlainObject(transportTrace)
+      ? transportTrace
+      : collectLocalTransportTrace({
+          metadata: upstreamMetadata,
+          executionPlan: normalizedPlan,
+        });
     const normalizedProducts = Array.isArray(upstreamBody.products)
       ? upstreamBody.products.filter((product) => isPlainObject(product))
       : [];
@@ -1354,6 +1525,30 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
             normalizedContract.primary_retrieval_contract,
             'agent_v2_catalog_child_recall',
           ) || 'agent_v2_catalog_child_recall',
+        ...(Array.isArray(normalizedTransportTrace.transport_hops)
+          ? { transport_hops: normalizedTransportTrace.transport_hops }
+          : {}),
+        ...(Number.isFinite(Number(normalizedTransportTrace.transport_hop_count))
+          ? { transport_hop_count: Number(normalizedTransportTrace.transport_hop_count) }
+          : {}),
+        ...(Number.isFinite(Number(normalizedTransportTrace.nested_orchestrator_hops))
+          ? { nested_orchestrator_hops: Number(normalizedTransportTrace.nested_orchestrator_hops) }
+          : {}),
+        ...(normalizedTransportTrace.primary_transport_owner
+          ? { primary_transport_owner: normalizedTransportTrace.primary_transport_owner }
+          : {}),
+        ...(normalizedTransportTrace.primary_endpoint_kind
+          ? { primary_endpoint_kind: normalizedTransportTrace.primary_endpoint_kind }
+          : {}),
+        ...(Array.isArray(normalizedTransportTrace.attempted_internal_base_urls)
+          ? {
+              attempted_internal_base_urls:
+                normalizedTransportTrace.attempted_internal_base_urls,
+            }
+          : {}),
+        ...(Array.isArray(normalizedTransportTrace.attempted_internal_paths)
+          ? { attempted_internal_paths: normalizedTransportTrace.attempted_internal_paths }
+          : {}),
       },
     };
     const normalizedBody =
@@ -1371,6 +1566,15 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
             primarySearchRetryReasons: [],
             primaryFailureStage,
             supplementsAttempted: [],
+            transportHops: normalizedTransportTrace.transport_hops,
+            primaryTransportOwner: normalizedTransportTrace.primary_transport_owner,
+            primaryEndpointKind: normalizedTransportTrace.primary_endpoint_kind,
+            attemptedInternalBaseUrls:
+              normalizedTransportTrace.attempted_internal_base_urls,
+            attemptedInternalPaths:
+              normalizedTransportTrace.attempted_internal_paths,
+            nestedOrchestratorHops:
+              normalizedTransportTrace.nested_orchestrator_hops,
           })
         : null;
     return {
@@ -1395,7 +1599,7 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
     authHeaders = null,
   } = {}) {
     if (
-      typeof searchPivotaBackendProducts !== 'function' ||
+      typeof runInternalSearchPrimitive !== 'function' ||
       typeof normalizeAgentProductsListResponse !== 'function'
     ) {
       return { handled: false, response: null };
@@ -1430,6 +1634,9 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
               ? Number(timeoutMs)
               : 0,
           primaryFailureStage: 'query_missing',
+          transportTrace: collectLocalTransportTrace({
+            executionPlan: plan,
+          }),
         }),
       };
     }
@@ -1534,6 +1741,11 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
           plan,
           primaryTimeoutMs,
           primaryFailureStage,
+          transportTrace: collectLocalTransportTrace({
+            metadata: childSearch?.upstreamData?.metadata,
+            rows: [childSearch?.searchOut],
+            executionPlan: plan,
+          }),
         }),
       };
     } catch (err) {
@@ -1551,6 +1763,7 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
               query_source: 'catalog_child_recall',
               upstream_error_code: err?.code || null,
               upstream_error_message: err?.message || String(err),
+              ...extractTransportMetadataFromSearchOut(err?.searchOut),
             },
           },
           searchObj,
@@ -1560,6 +1773,10 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
           primaryFailureStage: /timeout|ECONNABORTED/i.test(errText)
             ? 'primary_upstream_timeout'
             : 'primary_upstream_error',
+          transportTrace: collectLocalTransportTrace({
+            rows: [err?.searchOut],
+            executionPlan: plan,
+          }),
         }),
       };
     }
@@ -1588,7 +1805,7 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
       typeof shouldRunRecoRecallStage !== 'function' ||
       typeof buildRecoRecallTransportPolicy !== 'function' ||
       typeof resolveRecoRecallTransportModeForPlannerMode !== 'function' ||
-      typeof searchPivotaBackendProducts !== 'function' ||
+      typeof runInternalSearchPrimitive !== 'function' ||
       typeof normalizeRecoCatalogProduct !== 'function' ||
       typeof finalizeConcernFrameworkCandidatePools !== 'function' ||
       typeof countCandidateOriginBreakdown !== 'function' ||
@@ -1899,7 +2116,7 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
               : {}),
           };
         } else {
-          out = await searchPivotaBackendProducts({
+          out = await runInternalSearchPrimitive({
             query: entry?.query,
             limit: normalizedLimit,
             logger,
@@ -1928,7 +2145,9 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
             queryIndex: queryCursor,
             queryTotal: recallEntries.length,
             authHeaders,
-            localMainlineChild: true,
+            offset: 0,
+            inStockOnly: true,
+            callerLane: 'beauty_discovery_mainline',
           });
         }
         const attemptElapsedMs = Math.max(0, Date.now() - attemptStartedAtMs);
@@ -2049,6 +2268,27 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
             ...(Array.isArray(row?.attempted_paths)
               ? { attempted_paths: row.attempted_paths }
               : {}),
+            ...(Array.isArray(row?.attempted_internal_base_urls)
+              ? { attempted_internal_base_urls: row.attempted_internal_base_urls }
+              : {}),
+            ...(Array.isArray(row?.attempted_internal_paths)
+              ? { attempted_internal_paths: row.attempted_internal_paths }
+              : {}),
+            ...(Array.isArray(row?.transport_hops)
+              ? { transport_hops: row.transport_hops }
+              : {}),
+            ...(Number.isFinite(Number(row?.transport_hop_count))
+              ? { transport_hop_count: Number(row.transport_hop_count) }
+              : {}),
+            ...(Number.isFinite(Number(row?.nested_orchestrator_hops))
+              ? { nested_orchestrator_hops: Number(row.nested_orchestrator_hops) }
+              : {}),
+            ...(row?.primary_transport_owner
+              ? { primary_transport_owner: String(row.primary_transport_owner) }
+              : {}),
+            ...(row?.primary_endpoint_kind
+              ? { primary_endpoint_kind: String(row.primary_endpoint_kind) }
+              : {}),
             ...(row?.source_endpoint ? { source_endpoint: String(row.source_endpoint) } : {}),
             ...(row?.source_base_url ? { source_base_url: String(row.source_base_url) } : {}),
             ...(row?.source_path ? { source_path: String(row.source_path) } : {}),
@@ -2095,6 +2335,10 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
         primaryFailureStage,
         finalDecision,
         operation,
+        transportTrace: collectLocalTransportTrace({
+          rows: searchResults,
+          executionPlan: plan,
+        }),
       }),
     };
   }

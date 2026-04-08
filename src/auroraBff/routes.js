@@ -114,6 +114,10 @@ const {
   createDirectRecoGenerateHandlerRuntime,
 } = require('./directRecoGenerateHandler');
 const {
+  INTERNAL_PRODUCTS_SEARCH_PATH,
+  sanitizeInternalProductsSearchRequest,
+} = require('../findProductsInternalSearchPrimitive');
+const {
   createRecoAlternativesRouteHandlerRuntime,
 } = require('./recoAlternativesRouteHandler');
 const {
@@ -4413,6 +4417,260 @@ function beginRecoCatalogFailFastProbe(nowMs = Date.now()) {
   if (!snapshot.open || !snapshot.can_probe_while_open) return false;
   recoCatalogFailFastState.last_probe_started_at = nowMs;
   return true;
+}
+
+async function searchInternalProductsPrimitive({
+  query,
+  limit = 6,
+  logger,
+  timeoutMs = 5000,
+  searchAllMerchants = true,
+  catalogSurface = '',
+  searchSourceOverride = '',
+  allowExternalSeed = undefined,
+  externalSeedStrategy = '',
+  fastMode = undefined,
+  queryStepStrength = '',
+  targetStepFamily = '',
+  semanticFamily = '',
+  productOnly = undefined,
+  traceId = null,
+  authHeaders = null,
+  merchantId = '',
+  merchantIds = [],
+  offset = 0,
+  inStockOnly = true,
+  callerLane = 'beauty_discovery_mainline',
+} = {}) {
+  const startedAt = Date.now();
+  const q = String(query || '').trim();
+  const normalizedBase = normalizeBaseUrlForRecoCatalogSearch(PIVOTA_BACKEND_BASE_URL);
+  const normalizedPath = INTERNAL_PRODUCTS_SEARCH_PATH;
+  const attemptedTimeoutMs = Math.max(
+    200,
+    Math.min(12000, Number.isFinite(Number(timeoutMs)) ? Math.trunc(Number(timeoutMs)) : 5000),
+  );
+  const normalizedLimit = Math.max(
+    1,
+    Math.min(12, Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 6),
+  );
+  const normalizedOffset = Math.max(
+    0,
+    Number.isFinite(Number(offset)) ? Math.trunc(Number(offset)) : 0,
+  );
+  const normalizedMerchantId = String(merchantId || '').trim();
+  const normalizedMerchantIds = Array.from(
+    new Set(
+      (Array.isArray(merchantIds) ? merchantIds : [])
+        .map((value) => String(value || '').trim())
+        .filter(Boolean)
+        .filter((value) => value !== normalizedMerchantId),
+    ),
+  );
+  const sanitizedRequest = sanitizeInternalProductsSearchRequest(
+    {
+      query: q,
+      limit: normalizedLimit,
+      offset: normalizedOffset,
+      ...(normalizedMerchantId ? { merchant_id: normalizedMerchantId } : {}),
+      ...(!normalizedMerchantId && normalizedMerchantIds.length > 0
+        ? { merchant_ids: normalizedMerchantIds }
+        : {}),
+      search_all_merchants: searchAllMerchants === true,
+      ...(String(catalogSurface || '').trim()
+        ? { catalog_surface: String(catalogSurface || '').trim().toLowerCase() }
+        : {}),
+      in_stock_only: inStockOnly !== false,
+      ...(allowExternalSeed !== undefined
+        ? { allow_external_seed: allowExternalSeed === true }
+        : {}),
+      ...(String(externalSeedStrategy || '').trim()
+        ? {
+            external_seed_strategy: String(externalSeedStrategy || '')
+              .trim()
+              .toLowerCase(),
+          }
+        : {}),
+      ...(fastMode !== undefined ? { fast_mode: fastMode === true } : {}),
+      ...(String(targetStepFamily || '').trim()
+        ? { target_step_family: String(targetStepFamily || '').trim().toLowerCase() }
+        : {}),
+      ...(String(semanticFamily || '').trim()
+        ? { semantic_family: String(semanticFamily || '').trim().toLowerCase() }
+        : {}),
+      ...(String(queryStepStrength || '').trim()
+        ? {
+            query_step_strength: String(queryStepStrength || '')
+              .trim()
+              .toLowerCase(),
+          }
+        : {}),
+      ...(productOnly !== undefined ? { product_only: productOnly === true } : {}),
+      ...(traceId ? { trace_id: String(traceId).trim() } : {}),
+    },
+    {
+      rejectUnknown: false,
+      rejectForbidden: false,
+      defaultSearchAllMerchants: true,
+    },
+  );
+  const endpoint = normalizedBase ? `${normalizedBase}${normalizedPath}` : '';
+  const buildTransportMeta = ({
+    ok = false,
+    reason = 'upstream_error',
+    products = [],
+    statusCode = null,
+    errCode = null,
+  } = {}) => {
+    const transportHop = {
+      caller_lane: String(callerLane || '').trim() || null,
+      target_base_url: normalizedBase || null,
+      target_path: normalizedPath,
+      endpoint_kind: 'internal_primitive',
+      transport_owner: 'internal_products_search_primitive',
+      latency_ms: Date.now() - startedAt,
+      result: String(reason || '').trim() || (ok ? 'ok' : 'upstream_error'),
+    };
+    return {
+      ok,
+      products,
+      reason,
+      status_code:
+        Number.isFinite(Number(statusCode)) && Number(statusCode) > 0
+          ? Math.trunc(Number(statusCode))
+          : null,
+      error_code: errCode ? String(errCode).trim() : null,
+      source_base_url: normalizedBase || null,
+      source_endpoint: endpoint || null,
+      source_path: normalizedPath,
+      attempted_endpoints: endpoint ? [endpoint] : [],
+      attempted_paths: [normalizedPath],
+      attempted_base_urls: normalizedBase ? [normalizedBase] : [],
+      attempted_request_timeouts_ms: [attemptedTimeoutMs],
+      attempted_internal_base_urls: normalizedBase ? [normalizedBase] : [],
+      attempted_internal_paths: [normalizedPath],
+      actual_http_attempt_count: endpoint ? 1 : 0,
+      endpoint_kind: 'internal_primitive',
+      primary_endpoint_kind: 'internal_primitive',
+      transport_owner: 'internal_products_search_primitive',
+      primary_transport_owner: 'internal_products_search_primitive',
+      transport_hops: [transportHop],
+      transport_hop_count: 1,
+      nested_orchestrator_hops: 0,
+      search_source: String(searchSourceOverride || '').trim().toLowerCase() || null,
+      latency_ms: Date.now() - startedAt,
+    };
+  };
+  if (!q) {
+    return buildTransportMeta({
+      ok: false,
+      reason: 'query_missing',
+      products: [],
+    });
+  }
+  if (!normalizedBase || !endpoint) {
+    return buildTransportMeta({
+      ok: false,
+      reason: 'pivota_backend_not_configured',
+      products: [],
+    });
+  }
+  const forwardedAuthHeaders = normalizeForwardedPivotaBackendAuthHeaders(authHeaders);
+  try {
+    const resp = await axios.post(endpoint, sanitizedRequest.search, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...buildPivotaBackendAgentHeaders(),
+        ...forwardedAuthHeaders,
+        ...(traceId ? { 'X-Trace-ID': String(traceId).trim() } : {}),
+        'X-Internal-Search-Timeout-Ms': String(attemptedTimeoutMs),
+        ...(callerLane ? { 'X-Internal-Caller-Lane': String(callerLane).trim() } : {}),
+      },
+      timeout: attemptedTimeoutMs,
+      validateStatus: () => true,
+    });
+    const statusCode = Number.isFinite(Number(resp?.status))
+      ? Math.trunc(Number(resp.status))
+      : null;
+    const body = resp && resp.data ? resp.data : null;
+    const products = normalizeProductsFromSearchData(body);
+    const bodyReason = products.length
+      ? null
+      : inferSearchFailureReasonFromBody({ data: body, statusCode });
+    if (!statusCode || statusCode < 200 || statusCode >= 300) {
+      const reason =
+        statusCode === 404
+          ? 'not_found'
+          : statusCode === 429
+            ? 'rate_limited'
+            : statusCode === 408 || statusCode === 504
+              ? 'upstream_timeout'
+              : 'upstream_error';
+      return buildTransportMeta({
+        ok: false,
+        reason,
+        products: [],
+        statusCode,
+      });
+    }
+    if (bodyReason && bodyReason !== 'not_found') {
+      return buildTransportMeta({
+        ok: false,
+        reason: bodyReason,
+        products: [],
+        statusCode,
+      });
+    }
+    return {
+      ...buildTransportMeta({
+        ok: true,
+        reason: products.length > 0 ? null : bodyReason || 'empty',
+        products,
+        statusCode,
+      }),
+      products,
+      resolver_first_applied: false,
+      resolver_first_skipped_for_aurora: false,
+      source_temporarily_deprioritized: false,
+    };
+  } catch (err) {
+    const statusCode = Number.isFinite(Number(err?.response?.status))
+      ? Math.trunc(Number(err.response.status))
+      : null;
+    const errCode = typeof err?.code === 'string' ? err.code.trim().toUpperCase() : '';
+    const errMessage = err && err.message ? err.message : String(err);
+    const reason =
+      errCode === 'ECONNABORTED' || /timeout/i.test(errMessage)
+        ? 'upstream_timeout'
+        : statusCode === 429
+          ? 'rate_limited'
+          : 'upstream_error';
+    logger?.warn(
+      {
+        query: q.slice(0, 120),
+        source_endpoint: endpoint,
+        source_path: normalizedPath,
+        reason,
+        status_code: statusCode || null,
+        code: errCode || null,
+        err: errMessage,
+      },
+      'aurora bff: internal products search primitive failed',
+    );
+    return {
+      ...buildTransportMeta({
+        ok: false,
+        reason,
+        products: [],
+        statusCode,
+        errCode,
+      }),
+      err: errMessage,
+      resolver_first_applied: false,
+      resolver_first_skipped_for_aurora: false,
+      source_temporarily_deprioritized: false,
+    };
+  }
 }
 
 async function searchPivotaBackendProducts({
@@ -80750,6 +81008,7 @@ const __internal = {
   resolveAvailabilityProductByQuery,
   resolveAvailabilityProductByLocalResolver,
   searchPivotaBackendProducts,
+  searchInternalProductsPrimitive,
   getRecoCatalogSearchSourceHealthSnapshot,
   normalizeRecoCatalogProduct,
   scoreRealtimeCompetitorCandidate,
