@@ -17492,6 +17492,7 @@ async function executeRecoRecallPlanEntry({
   queryIndex = null,
   queryTotal = null,
   authHeaders = null,
+  searchFn = null,
 } = {}) {
   const sourceScope = (() => {
     const normalizedSourceScope = String(entry?.source_scope || 'internal').trim().toLowerCase();
@@ -17517,7 +17518,8 @@ async function executeRecoRecallPlanEntry({
       preferredStep: entry?.preferred_step,
     });
   }
-  return searchPivotaBackendProducts({
+  const runSearch = typeof searchFn === 'function' ? searchFn : searchPivotaBackendProducts;
+  return runSearch({
     query: entry?.query,
     limit,
     logger,
@@ -18374,6 +18376,217 @@ function deriveBeautyMainlineHandoff({
   };
 }
 
+function buildBeautyMainlineLocalSourceBreakdown(products = []) {
+  const sourceTierCounts = {};
+  const rows = Array.isArray(products) ? products : [];
+  for (const row of rows) {
+    const retrievalSource = String(
+      row?.retrieval_source || row?.retrievalSource || row?.source || '',
+    )
+      .trim()
+      .toLowerCase();
+    const bucket = retrievalSource === 'external_seed' ? 'fresh_external' : 'fresh_internal';
+    sourceTierCounts[bucket] = Number(sourceTierCounts[bucket] || 0) + 1;
+  }
+  const first = rows[0] || null;
+  return {
+    source_tier_counts: sourceTierCounts,
+    top_candidate_provenance: {
+      source_owner:
+        pickFirstTrimmed(
+          first?.retrieval_source,
+          first?.retrievalSource,
+          first?.source,
+        ) || null,
+    },
+  };
+}
+
+function buildBeautyMainlineLocalSelectionContract({
+  selectedProducts = [],
+  mainlineStatus = 'empty_structured',
+} = {}) {
+  const rows = Array.isArray(selectedProducts) ? selectedProducts : [];
+  return {
+    selection_owner: BEAUTY_DISCOVERY_MAINLINE_OWNER,
+    selected_product_ids: rows
+      .map((row) => pickFirstString(row?.product_id, row?.productId))
+      .filter(Boolean),
+    selected_titles: rows
+      .map((row) => pickFirstTrimmed(row?.display_name, row?.displayName, row?.name, row?.title))
+      .filter(Boolean),
+    selection_signature: null,
+    mainline_status: String(mainlineStatus || '').trim() || 'empty_structured',
+  };
+}
+
+function buildBeautyMainlineLocalFailureStage(collected = null) {
+  const candidateDropStage = String(collected?.candidateDropStage || '').trim().toLowerCase();
+  const primaryStageTimeoutClass = String(collected?.primaryStageTimeoutClass || '').trim().toLowerCase();
+  if (
+    primaryStageTimeoutClass === 'transient_timeout' ||
+    candidateDropStage === 'upstream_timeout' ||
+    candidateDropStage === 'upstream_timeout_primary_role'
+  ) {
+    return 'primary_upstream_timeout';
+  }
+  return 'no_recall_from_planned_sources';
+}
+
+function buildBeautyMainlineLocalSearchResult({
+  collected = null,
+  selectedProducts = [],
+} = {}) {
+  const selected = Array.isArray(selectedProducts) ? selectedProducts : [];
+  const mainlineStatus = selected.length > 0 ? 'grounded_success' : 'empty_structured';
+  const selectionContract = buildBeautyMainlineLocalSelectionContract({
+    selectedProducts: selected,
+    mainlineStatus,
+  });
+  const sourceBreakdown = buildBeautyMainlineLocalSourceBreakdown(
+    selected.length > 0 ? selected : Array.isArray(collected?.rawCandidates) ? collected.rawCandidates : [],
+  );
+  const primaryFailureStage =
+    selected.length > 0 ? null : buildBeautyMainlineLocalFailureStage(collected);
+  const semanticOwnerQueryAttempts = (Array.isArray(collected?.searchResults) ? collected.searchResults : []).map((row) => ({
+    query: pickFirstTrimmed(row?.query) || null,
+    role_id: pickFirstTrimmed(row?.role_id) || null,
+    role_rank: Number.isFinite(Number(row?.role_rank)) ? Number(row.role_rank) : null,
+    source_scope: pickFirstTrimmed(row?.source_scope) || null,
+    result_count: Array.isArray(row?.products) ? row.products.length : 0,
+    reason: pickFirstTrimmed(row?.reason) || null,
+    ...(Array.isArray(row?.attempted_internal_paths)
+      ? { attempted_internal_paths: row.attempted_internal_paths }
+      : {}),
+    ...(Array.isArray(row?.transport_hops) ? { transport_hops: row.transport_hops } : {}),
+    ...(Number.isFinite(Number(row?.nested_orchestrator_hops))
+      ? { nested_orchestrator_hops: Number(row.nested_orchestrator_hops) }
+      : {}),
+    ...(pickFirstTrimmed(row?.primary_endpoint_kind)
+      ? { primary_endpoint_kind: pickFirstTrimmed(row.primary_endpoint_kind) }
+      : {}),
+    ...(pickFirstTrimmed(row?.primary_transport_owner)
+      ? { primary_transport_owner: pickFirstTrimmed(row.primary_transport_owner) }
+      : {}),
+    ...(pickFirstTrimmed(row?.upstream_error_code)
+      ? { upstream_error_code: pickFirstTrimmed(row.upstream_error_code) }
+      : {}),
+    ...(pickFirstTrimmed(row?.upstream_error_message)
+      ? { upstream_error_message: pickFirstTrimmed(row.upstream_error_message) }
+      : {}),
+  }));
+  const metadata = {
+    query_source: 'beauty_mainline_local_handoff',
+    decision_owner: BEAUTY_DISCOVERY_MAINLINE_OWNER,
+    semantic_owner: BEAUTY_DISCOVERY_MAINLINE_OWNER,
+    final_decision: selected.length > 0 ? 'products_returned' : 'strict_empty',
+    contract_bridge: {
+      attempted_contract: 'agent_v1_search_beauty_mainline',
+      resolved_contract: 'agent_v1_search_beauty_mainline',
+    },
+    source_breakdown: sourceBreakdown,
+    final_selection: selectionContract,
+    search_stage_ledger: {
+      final_selection: selectionContract,
+      ...(primaryFailureStage ? { primary_failure_stage: primaryFailureStage } : {}),
+      ...(pickFirstTrimmed(collected?.candidateDropStage)
+        ? { candidate_drop_stage: pickFirstTrimmed(collected.candidateDropStage) }
+        : {}),
+    },
+    ...(semanticOwnerQueryAttempts.length
+      ? { semantic_owner_query_attempts: semanticOwnerQueryAttempts }
+      : {}),
+    ...(primaryFailureStage ? { primary_failure_stage: primaryFailureStage } : {}),
+  };
+  return {
+    ok: selected.length > 0,
+    products: selected,
+    reason:
+      selected.length > 0
+        ? null
+        : primaryFailureStage === 'primary_upstream_timeout'
+          ? 'upstream_timeout'
+          : 'empty',
+    decision_owner: BEAUTY_DISCOVERY_MAINLINE_OWNER,
+    semantic_owner: BEAUTY_DISCOVERY_MAINLINE_OWNER,
+    query_source: 'beauty_mainline_local_handoff',
+    final_selection: selectionContract,
+    search_stage_ledger: metadata.search_stage_ledger,
+    source_breakdown: sourceBreakdown,
+    contract_bridge: metadata.contract_bridge,
+    metadata,
+  };
+}
+
+async function runBeautyMainlineLocalHandoffSearch({
+  ctx,
+  logger,
+  targetContext = null,
+  profileSummary = null,
+  timeoutMs = 0,
+  authHeaders = null,
+} = {}) {
+  const internalSearchFn = resolveAuroraRouteDependency(
+    'searchInternalProductsPrimitive',
+    searchInternalProductsPrimitive,
+  );
+  if (typeof internalSearchFn !== 'function') return null;
+
+  const queryLevels = buildRecoCatalogQueryLevels({
+    targetContext,
+    profileSummary,
+    ingredientContext: null,
+    recommendationTaskContext: null,
+    lang: ctx?.lang || 'EN',
+  });
+  if (!Array.isArray(queryLevels) || queryLevels.length === 0) {
+    return buildBeautyMainlineLocalSearchResult({
+      collected: {
+        rawCandidates: [],
+        searchResults: [],
+        candidateState: finalizeRecommendationCandidatePools([], {
+          targetContext,
+          recoContext: null,
+        }),
+        candidateDropStage: 'no_recall_from_planned_sources',
+        primaryStageTimeoutClass: '',
+      },
+      selectedProducts: [],
+    });
+  }
+
+  const collected = await collectRecoCandidatesFromQueryLevels({
+    queryLevels,
+    targetContext,
+    recommendationTaskContext: null,
+    logger,
+    timeoutMs: Math.max(
+      1200,
+      Math.min(
+        Number.isFinite(Number(timeoutMs)) ? Math.trunc(Number(timeoutMs)) : 5000,
+        normalizeRecoTargetStep(targetContext?.resolved_target_step) === 'sunscreen' ? 6500 : 5000,
+      ),
+    ),
+    limit: 6,
+    usePurchasableFallback: false,
+    allowExternalSeed: true,
+    externalSeedStrategy: 'supplement_internal_first',
+    authHeaders,
+    searchFn: async (args) =>
+      internalSearchFn({
+        ...args,
+        callerLane: 'beauty_chat_handoff',
+      }),
+  });
+  const selectedProducts = Array.isArray(collected?.candidateState?.selected_recommendations)
+    ? collected.candidateState.selected_recommendations
+    : [];
+  return buildBeautyMainlineLocalSearchResult({
+    collected,
+    selectedProducts,
+  });
+}
+
 async function handoffRecoToBeautyMainlineSearch({
   ctx,
   logger,
@@ -18439,29 +18652,75 @@ async function handoffRecoToBeautyMainlineSearch({
   const handoffSearchMinTimeoutMs = shouldUseSunscreenRecallBudget
     ? Math.max(effectiveMinTimeoutMs, 5000)
     : effectiveMinTimeoutMs;
-  const runSearch = typeof searchFn === 'function' ? searchFn : searchPivotaBackendProducts;
-  const searchResult = await runSearch({
-    query,
-    limit: 6,
-    logger,
-    timeoutMs: handoffSearchTimeoutMs,
-    minTimeoutMs: handoffSearchMinTimeoutMs,
-    mode: 'main_path',
-    searchAllMerchants: true,
-    catalogSurface: 'beauty',
-    deadlineMs: Number.isFinite(Number(deadlineAtMs)) ? Number(deadlineAtMs) : 0,
-    searchSourceOverride: 'aurora-bff',
-    allowExternalSeed: shouldUseExternalSeedSupplement,
-    externalSeedStrategy: shouldUseExternalSeedSupplement ? 'unified_relevance' : '',
-    fastMode: undefined,
-    transportPolicy: handoffTransportPolicy,
-    queryStepStrength,
-    targetStepFamily: semanticTargetStepFamily,
-    semanticFamily,
-    semanticContract,
-    traceId: pickFirstTrimmed(ctx?.trace_id, ctx?.request_id) || null,
-    authHeaders: authHeaders || ctx?.backend_auth_headers || null,
-  });
+  let searchResult = null;
+  if (typeof searchFn === 'function') {
+    searchResult = await searchFn({
+      query,
+      limit: 6,
+      logger,
+      timeoutMs: handoffSearchTimeoutMs,
+      minTimeoutMs: handoffSearchMinTimeoutMs,
+      mode: 'main_path',
+      searchAllMerchants: true,
+      catalogSurface: 'beauty',
+      deadlineMs: Number.isFinite(Number(deadlineAtMs)) ? Number(deadlineAtMs) : 0,
+      searchSourceOverride: 'aurora-bff',
+      allowExternalSeed: shouldUseExternalSeedSupplement,
+      externalSeedStrategy: shouldUseExternalSeedSupplement ? 'unified_relevance' : '',
+      fastMode: undefined,
+      transportPolicy: handoffTransportPolicy,
+      queryStepStrength,
+      targetStepFamily: semanticTargetStepFamily,
+      semanticFamily,
+      semanticContract,
+      traceId: pickFirstTrimmed(ctx?.trace_id, ctx?.request_id) || null,
+      authHeaders: authHeaders || ctx?.backend_auth_headers || null,
+    });
+  } else {
+    try {
+      searchResult = await runBeautyMainlineLocalHandoffSearch({
+        ctx,
+        logger,
+        targetContext: effectiveTargetContext,
+        profileSummary,
+        timeoutMs: handoffSearchMinTimeoutMs,
+        authHeaders: authHeaders || ctx?.backend_auth_headers || null,
+      });
+    } catch (err) {
+      logger?.warn?.(
+        {
+          request_id: ctx?.request_id,
+          trace_id: ctx?.trace_id,
+          err: err?.message || String(err),
+        },
+        'aurora bff: local beauty handoff search failed; falling back to proxy search',
+      );
+    }
+    if (!searchResult) {
+      searchResult = await searchPivotaBackendProducts({
+        query,
+        limit: 6,
+        logger,
+        timeoutMs: handoffSearchTimeoutMs,
+        minTimeoutMs: handoffSearchMinTimeoutMs,
+        mode: 'main_path',
+        searchAllMerchants: true,
+        catalogSurface: 'beauty',
+        deadlineMs: Number.isFinite(Number(deadlineAtMs)) ? Number(deadlineAtMs) : 0,
+        searchSourceOverride: 'aurora-bff',
+        allowExternalSeed: shouldUseExternalSeedSupplement,
+        externalSeedStrategy: shouldUseExternalSeedSupplement ? 'unified_relevance' : '',
+        fastMode: undefined,
+        transportPolicy: handoffTransportPolicy,
+        queryStepStrength,
+        targetStepFamily: semanticTargetStepFamily,
+        semanticFamily,
+        semanticContract,
+        traceId: pickFirstTrimmed(ctx?.trace_id, ctx?.request_id) || null,
+        authHeaders: authHeaders || ctx?.backend_auth_headers || null,
+      });
+    }
+  }
   const canonicalSelection = extractRecoFinalSelectionContract(searchResult);
   const recommendations = buildRecoRowsFromMainlineProducts(searchResult?.products, {
     targetContext: effectiveTargetContext,
@@ -18827,6 +19086,7 @@ async function collectRecoCandidatesFromQueryLevels({
   allowExternalSeed = false,
   externalSeedStrategy = 'on_empty_only',
   authHeaders = null,
+  searchFn = null,
 } = {}) {
   const rawCandidates = [];
   const searchResults = [];
@@ -18854,6 +19114,7 @@ async function collectRecoCandidatesFromQueryLevels({
         const queryStepStrength = isPrimaryRoleQuery || Number(queryEntry?.role_rank || 99) <= 1
           ? 'strong_goal_family'
           : 'supportive_family';
+        const runSearch = typeof searchFn === 'function' ? searchFn : searchPivotaBackendProducts;
         const out = usePurchasableFallback
           ? await buildPurchasableFallbackCandidates({
               query: queryEntry.query,
@@ -18864,7 +19125,7 @@ async function collectRecoCandidatesFromQueryLevels({
               externalSeedStrategy: queryExternalSeedStrategy,
               transportPolicyMode: 'step_aware',
             })
-          : await searchPivotaBackendProducts({
+          : await runSearch({
               query: queryEntry.query,
               limit,
               logger,

@@ -190,6 +190,102 @@ test('handoffRecoToBeautyMainlineSearch forces self-proxy-first transport for fr
   }
 });
 
+test('handoffRecoToBeautyMainlineSearch defaults to local beauty mainline over internal primitive for framework asks', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const captured = [];
+    __internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async (args) => {
+        captured.push(args);
+        const normalizedQuery = String(args?.query || '').trim().toLowerCase();
+        const base = {
+          ok: true,
+          attempted_internal_paths: ['/agent/internal/products/search'],
+          transport_hops: [
+            {
+              caller_lane: String(args?.callerLane || ''),
+              target_base_url: 'https://web-production-fedb.up.railway.app',
+              target_path: '/agent/internal/products/search',
+              endpoint_kind: 'internal_primitive',
+              transport_owner: 'internal_products_search_primitive',
+              latency_ms: 12,
+              result: normalizedQuery === 'oil control treatment' ? 'ok' : 'empty',
+            },
+          ],
+          transport_hop_count: 1,
+          nested_orchestrator_hops: 0,
+          primary_transport_owner: 'internal_products_search_primitive',
+          primary_endpoint_kind: 'internal_primitive',
+        };
+        if (normalizedQuery === 'oil control treatment') {
+          return {
+            ...base,
+            products: [
+              {
+                product_id: 'oil_control_serum_1',
+                merchant_id: 'merchant_internal',
+                brand: 'GoalSkin',
+                name: 'Oil Control Serum',
+                display_name: 'GoalSkin Oil Control Serum',
+                title: 'GoalSkin Oil Control Serum',
+                category: 'Treatment',
+                product_type: 'treatment',
+                candidate_step: 'treatment',
+                retrieval_source: 'internal_search',
+                retrieval_reason: 'internal_primitive_match',
+              },
+            ],
+          };
+        }
+        return {
+          ...base,
+          products: [],
+        };
+      },
+    });
+
+    const out = await __internal.handoffRecoToBeautyMainlineSearch({
+      ctx: { lang: 'EN', request_id: 'req_local_handoff' },
+      primaryQuery: 'what products should i use for oily skin?',
+      fallbackMessage: 'what products should i use for oily skin?',
+      targetContext: resolveRecommendationTargetContext({
+        text: 'what products should i use for oily skin?',
+        focus: '',
+        entryType: 'chat',
+      }),
+      timeoutMs: 5000,
+      minTimeoutMs: 5000,
+    });
+
+    assert.equal(captured.length > 0, true);
+    assert.equal(captured.every((row) => row?.callerLane === 'beauty_chat_handoff'), true);
+    assert.equal(out.searchResult?.query_source, 'beauty_mainline_local_handoff');
+    assert.equal(
+      out.searchResult?.metadata?.contract_bridge?.resolved_contract,
+      'agent_v1_search_beauty_mainline',
+    );
+    assert.equal(
+      out.searchResult?.metadata?.primary_failure_stage,
+      undefined,
+    );
+    assert.deepEqual(
+      out.searchResult?.metadata?.final_selection?.selected_product_ids,
+      ['oil_control_serum_1'],
+    );
+    assert.deepEqual(
+      out.recommendations.map((item) => item.display_name),
+      ['GoalSkin Oil Control Serum'],
+    );
+    assert.deepEqual(
+      out.searchResult?.metadata?.semantic_owner_query_attempts?.[0]?.attempted_internal_paths,
+      ['/agent/internal/products/search'],
+    );
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+    delete require.cache[moduleId];
+  }
+});
+
 test('handoffRecoToBeautyMainlineSearch builds reco rows from canonical final selection instead of raw mixed products', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
