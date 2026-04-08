@@ -299,12 +299,21 @@ function buildBeautyMainlineRecallPlan({ mode, semanticContract = null, rawQuery
   if (String(mode || '').trim().toLowerCase() === 'framework_generic' && frameworkRoles.length > 0) {
     const primaryRole = frameworkRoles[0] || null;
     const supportRoles = frameworkRoles.slice(1, 3);
-    const buildRoleStageQueries = (role, { allowConcernFallback = false } = {}) => {
+    const buildRoleStageQueries = (
+      role,
+      {
+        allowConcernFallback = false,
+        preferProductLedInternal = false,
+      } = {},
+    ) => {
       const queries = buildFrameworkRoleQueries(
         role,
         rawQuery,
         allowConcernFallback ? 3 : 2,
-        { allowConcernFallback },
+        {
+          allowConcernFallback,
+          preferProductLedInternal,
+        },
       );
       return queries.length > 0
         ? queries
@@ -313,7 +322,13 @@ function buildBeautyMainlineRecallPlan({ mode, semanticContract = null, rawQuery
             semanticContract: contract,
           }).slice(0, allowConcernFallback ? 3 : 2);
     };
-    const primaryQueries = buildRoleStageQueries(primaryRole, { allowConcernFallback: true });
+    const primaryInternalQueries = buildRoleStageQueries(primaryRole, {
+      allowConcernFallback: true,
+      preferProductLedInternal: true,
+    });
+    const primaryExternalQueries = buildRoleStageQueries(primaryRole, {
+      allowConcernFallback: true,
+    });
     const primaryPreferredStep = normalizeSemanticStepFamily(primaryRole?.preferred_step || contract.target_step_family);
     stages = [
       buildStage({
@@ -321,9 +336,9 @@ function buildBeautyMainlineRecallPlan({ mode, semanticContract = null, rawQuery
         roleId: primaryRole?.role_id || contract.primary_role_id || null,
         roleRank: Number.isFinite(Number(primaryRole?.rank)) ? Number(primaryRole.rank) : 1,
         sourceScope: 'internal',
-        queries: primaryQueries,
+        queries: primaryInternalQueries,
         concurrency: 1,
-        maxAttemptsForStage: Math.min(primaryQueries.length || 1, 3),
+        maxAttemptsForStage: Math.min(primaryInternalQueries.length || 1, 3),
         stopOnViableMatch: true,
         reasonForInclusion: 'framework_primary_internal',
         runIf: 'always',
@@ -335,9 +350,9 @@ function buildBeautyMainlineRecallPlan({ mode, semanticContract = null, rawQuery
         roleId: primaryRole?.role_id || contract.primary_role_id || null,
         roleRank: Number.isFinite(Number(primaryRole?.rank)) ? Number(primaryRole.rank) : 1,
         sourceScope: 'external_seed',
-        queries: primaryQueries,
+        queries: primaryExternalQueries,
         concurrency: 1,
-        maxAttemptsForStage: Math.min(primaryQueries.length || 1, 3),
+        maxAttemptsForStage: Math.min(primaryExternalQueries.length || 1, 3),
         stopOnViableMatch: true,
         reasonForInclusion: 'framework_primary_external_seed',
         runIf: 'if_no_primary_viable_or_transient_only',
@@ -544,7 +559,15 @@ function buildStage({
   return stage;
 }
 
-function buildFrameworkRoleQueries(role, concernText, maxQueries, { allowConcernFallback = false } = {}) {
+function buildFrameworkRoleQueries(
+  role,
+  concernText,
+  maxQueries,
+  {
+    allowConcernFallback = false,
+    preferProductLedInternal = false,
+  } = {},
+) {
   const roleObj = role && typeof role === 'object' && !Array.isArray(role) ? role : null;
   if (!roleObj) return [];
   const preferredStep = String(roleObj.preferred_step || '').trim();
@@ -552,20 +575,27 @@ function buildFrameworkRoleQueries(role, concernText, maxQueries, { allowConcern
   const out = [];
   const isTreatmentPrimary =
     allowConcernFallback && String(preferredStep).trim().toLowerCase() === 'treatment';
+  const anchorQuery = isTreatmentPrimary ? buildPrimaryTreatmentAnchorQuery(roleObj) : '';
+  const ingredientLedQuery = isTreatmentPrimary ? buildPrimaryTreatmentIngredientQuery(roleObj) : '';
+  const semanticQueries = isTreatmentPrimary ? buildPrimaryTreatmentSemanticQueries(roleObj) : [];
   if (isTreatmentPrimary) {
-    const anchorQuery = buildPrimaryTreatmentAnchorQuery(roleObj);
-    if (anchorQuery) out.push(anchorQuery);
-    const ingredientLedQuery = buildPrimaryTreatmentIngredientQuery(roleObj);
-    if (ingredientLedQuery) out.push(ingredientLedQuery);
-  }
-  if (roleQueries.length > 0) out.push(roleQueries[0]);
-  if (isTreatmentPrimary) {
-    out.push(...buildPrimaryTreatmentSemanticQueries(roleObj));
-  }
-  out.push(...roleQueries.slice(1));
-  if (isTreatmentPrimary && roleQueries.length <= 1) {
-    const roleLabelOrIdQuery = buildPrimaryTreatmentAnchorQuery(roleObj);
-    if (roleLabelOrIdQuery) out.push(roleLabelOrIdQuery);
+    if (preferProductLedInternal) {
+      if (ingredientLedQuery) out.push(ingredientLedQuery);
+      if (roleQueries.length > 0) out.push(roleQueries[0]);
+      out.push(...semanticQueries);
+      out.push(...roleQueries.slice(1));
+      if (anchorQuery) out.push(anchorQuery);
+    } else {
+      if (anchorQuery) out.push(anchorQuery);
+      if (ingredientLedQuery) out.push(ingredientLedQuery);
+      if (roleQueries.length > 0) out.push(roleQueries[0]);
+      out.push(...semanticQueries);
+      out.push(...roleQueries.slice(1));
+      if (roleQueries.length <= 1 && anchorQuery) out.push(anchorQuery);
+    }
+  } else {
+    if (roleQueries.length > 0) out.push(roleQueries[0]);
+    out.push(...roleQueries.slice(1));
   }
   if (allowConcernFallback && concernText) {
     if (preferredStep) out.push(`${concernText} ${preferredStep}`);
