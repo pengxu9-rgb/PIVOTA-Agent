@@ -4468,6 +4468,9 @@ async function searchPivotaBackendProducts({
     effectiveTransportPolicy.include_self_proxy !== false &&
     maxConfiguredBaseUrls === 1 &&
     maxConfiguredPaths === 1;
+  const forceGenericOnly =
+    effectiveTransportPolicy.force_generic_only === true ||
+    strictSingleOwnerSelfProxyMainPath;
   const normalizedLimit = Math.max(1, Math.min(12, Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 6));
   const normalizedTargetStepFamily = normalizeRecoTargetStep(targetStepFamily);
   const hasSemanticContract =
@@ -4569,7 +4572,7 @@ async function searchPivotaBackendProducts({
     preferSelfProxyFirst,
   });
   const pathCandidates = buildRecoCatalogSearchPathCandidates({
-    forceGenericOnly: strictSingleOwnerSelfProxyMainPath,
+    forceGenericOnly,
   }).slice(
     0,
     maxConfiguredPaths > 0 ? maxConfiguredPaths : undefined,
