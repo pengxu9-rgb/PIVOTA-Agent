@@ -78,9 +78,26 @@ function stripWhatItIsFootnotes(text) {
     .trim();
 }
 
+function normalizeWhatItIsReadability(text, { sellerOnly = false } = {}) {
+  let clean = String(text || '')
+    .replace(/([.!?])([A-Z])/g, '$1 $2')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (sellerOnly) {
+    clean = clean.replace(/^our\s+/i, 'A ');
+  }
+
+  clean = clean.replace(/^[a-z]/, (value) => value.toUpperCase());
+  return clean;
+}
+
 function compactWhatItIsBody(text, { sellerOnly = false, fallback = '' } = {}) {
   const maxChars = sellerOnly ? 320 : 420;
-  const clean = stripHtml(stripWhatItIsFootnotes(stripWhatItIsPromoPrefixes(text)));
+  const clean = normalizeWhatItIsReadability(
+    stripHtml(stripWhatItIsFootnotes(stripWhatItIsPromoPrefixes(text))),
+    { sellerOnly },
+  );
   if (!clean) return toSentence(fallback, fallback);
   if (clean.length <= maxChars) return toSentence(clean, fallback);
 

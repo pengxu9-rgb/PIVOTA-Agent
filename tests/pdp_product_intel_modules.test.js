@@ -168,6 +168,7 @@ describe('pdp product intel bundle shaping', () => {
     });
 
     expect(bundle.product_intel_core.what_it_is.body.length).toBeLessThanOrEqual(320);
+    expect(bundle.product_intel_core.what_it_is.body).toMatch(/^A /);
     expect(bundle.product_intel_core.what_it_is.body).not.toMatch(/^Double up and save with/i);
     expect(bundle.product_intel_core.what_it_is.body).not.toMatch(/in an 8-week clinical study/i);
   });
