@@ -1307,6 +1307,24 @@ describe('RecommendationEngine (PDP)', () => {
     ).toBe(true);
   });
 
+  test('n2) external-base fetch plan uses tighter budgets than generic recommendation fetches', () => {
+    const genericPlan = _internals.buildExternalRecommendationFetchPlan({
+      baseProductIsExternal: false,
+      safeK: 6,
+    });
+    const externalPlan = _internals.buildExternalRecommendationFetchPlan({
+      baseProductIsExternal: true,
+      safeK: 6,
+    });
+
+    expect(externalPlan.internal_fetch_timeout_ms).toBeLessThan(genericPlan.internal_fetch_timeout_ms);
+    expect(externalPlan.external_fetch_limit).toBeLessThan(genericPlan.external_fetch_limit);
+    expect(externalPlan.external_fetch_timeout_ms).toBeLessThanOrEqual(3200);
+    expect(externalPlan.external_query_timeout_ms).toBeLessThanOrEqual(2200);
+    expect(externalPlan.same_domain_cap).toBeLessThanOrEqual(genericPlan.same_domain_cap);
+    expect(externalPlan.same_domain_enough_threshold).toBeLessThan(genericPlan.same_domain_enough_threshold);
+  });
+
   test('o) diversified similar keeps same-brand adjacent items and other-brand same-category items in the mainline mix', () => {
     const base = makeProduct({
       merchant_id: 'external_seed',

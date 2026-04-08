@@ -128,6 +128,56 @@ function shouldSkipExternalFetch({
   return qualifiedInternalCount >= wantedCount;
 }
 
+function buildExternalRecommendationFetchPlan({ baseProductIsExternal = false, safeK = 6 } = {}) {
+  const requestedCount = Math.max(1, Number(safeK || 6) || 6);
+  if (!baseProductIsExternal) {
+    return {
+      internal_fetch_timeout_ms: PDP_RECS_INTERNAL_FETCH_TIMEOUT_MS,
+      external_fetch_limit: Math.max(120, requestedCount * 15),
+      external_fetch_timeout_ms: PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS,
+      external_query_timeout_ms: PDP_RECS_EXTERNAL_QUERY_TIMEOUT_MS,
+      same_domain_cap: Math.min(120, Math.max(48, requestedCount * 4)),
+      same_domain_enough_threshold: Math.min(
+        Math.min(120, Math.max(48, requestedCount * 4)),
+        Math.max(18, requestedCount * 3),
+      ),
+      brand_exact_cap: Math.min(40, requestedCount),
+      brand_pattern_cap: Math.min(40, requestedCount),
+      category_exact_cap: Math.min(120, requestedCount),
+      category_semantic_cap: Math.min(160, requestedCount),
+      vertical_cap: Math.min(180, requestedCount),
+    };
+  }
+
+  const externalFetchLimit = Math.max(48, requestedCount * 8);
+  const sameDomainCap = Math.min(48, Math.max(24, externalFetchLimit));
+  return {
+    internal_fetch_timeout_ms: Math.max(
+      400,
+      Math.min(PDP_RECS_INTERNAL_FETCH_TIMEOUT_MS, 900),
+    ),
+    external_fetch_limit: externalFetchLimit,
+    external_fetch_timeout_ms: Math.max(
+      2200,
+      Math.min(Math.max(PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS, 3200), 3200),
+    ),
+    external_query_timeout_ms: Math.max(
+      1200,
+      Math.min(PDP_RECS_EXTERNAL_QUERY_TIMEOUT_MS, 2200),
+    ),
+    same_domain_cap: sameDomainCap,
+    same_domain_enough_threshold: Math.min(
+      sameDomainCap,
+      Math.max(12, requestedCount * 2),
+    ),
+    brand_exact_cap: Math.min(24, externalFetchLimit),
+    brand_pattern_cap: Math.min(24, externalFetchLimit),
+    category_exact_cap: Math.min(48, externalFetchLimit),
+    category_semantic_cap: Math.min(60, externalFetchLimit),
+    vertical_cap: Math.min(72, externalFetchLimit),
+  };
+}
+
 function getCacheEntry(cacheKey) {
   const entry = PDP_RECS_CACHE.get(cacheKey);
   if (!entry) {
@@ -1467,6 +1517,10 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
   const market = String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
   const tool = 'creator_agents';
   const baseProductIsExternal = isExternalProduct(baseProduct);
+  const fetchPlan = buildExternalRecommendationFetchPlan({
+    baseProductIsExternal,
+    safeK: safeLimit,
+  });
 
   const brand = normalizeText(brandHint);
   const brandPatterns = buildExternalBrandSearchPatterns(brand);
@@ -1570,13 +1624,13 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
   function runQueryWithBudget(whereSql, params, cap, queryName) {
     return withSoftTimeout(
       runQuery(whereSql, params, cap, queryName),
-      PDP_RECS_EXTERNAL_QUERY_TIMEOUT_MS,
+      fetchPlan.external_query_timeout_ms,
       [],
       () => {
         logger.warn(
           {
             query: queryName || 'external_recent',
-            timeout_ms: PDP_RECS_EXTERNAL_QUERY_TIMEOUT_MS,
+            timeout_ms: fetchPlan.external_query_timeout_ms,
             product_id: getProductId(baseProduct),
           },
           'recommendations external subquery timed out',
@@ -1642,8 +1696,8 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
         coalesce(seed_data->'derived'->'recall'->>'brand', '')
       )) LIKE ANY($4::text[])
   `;
-  const sameDomainCap = Math.min(120, Math.max(48, safeLimit * 4));
-  const sameDomainEnoughThreshold = Math.min(sameDomainCap, Math.max(18, safeLimit * 3));
+  const sameDomainCap = fetchPlan.same_domain_cap;
+  const sameDomainEnoughThreshold = fetchPlan.same_domain_enough_threshold;
   const sameDomainMatches = domainHints.length
     ? await runQueryWithBudget(
         `AND lower(coalesce(domain, '')) = ANY($4::text[])`,
@@ -1674,7 +1728,7 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
       ? await runQueryWithBudget(
         `AND ${brandExactSurfaceSql}`,
         [brand],
-        Math.min(40, safeLimit),
+        fetchPlan.brand_exact_cap,
         'external_brand_exact',
       )
     : [];
@@ -1698,7 +1752,7 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
     ? runQueryWithBudget(
         `AND ${brandPatternSurfaceSql}`,
         [brandPatterns],
-        Math.min(40, safeLimit),
+        fetchPlan.brand_pattern_cap,
         'external_brand_pattern',
       )
     : Promise.resolve([]);
@@ -1706,7 +1760,7 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
     ? runQueryWithBudget(
         `AND ${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} = ANY($4::text[])`,
         [exactCategoryTerms],
-        Math.min(120, safeLimit),
+        fetchPlan.category_exact_cap,
         'external_category_exact',
       )
     : Promise.resolve([]);
@@ -1714,7 +1768,7 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
     ? runQueryWithBudget(
         `AND ${categorySurfaceSql} LIKE ANY($4::text[])`,
         [semanticPatterns],
-        Math.min(160, safeLimit),
+        fetchPlan.category_semantic_cap,
         'external_category_semantic',
       )
     : Promise.resolve([]);
@@ -1722,7 +1776,7 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
     ? runQueryWithBudget(
         `AND ${EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical} = $4`,
         [vertical],
-        Math.min(180, safeLimit),
+        fetchPlan.vertical_cap,
         'external_same_vertical',
       )
     : Promise.resolve([]);
@@ -1985,9 +2039,11 @@ async function recommend({
     Boolean(baseRecallExclusionFlags.gift_card) ||
     Boolean(baseRecallExclusionFlags.donation_bundle) ||
     Boolean(baseRecallExclusionFlags.non_merchandise);
-  const effectiveExternalFetchTimeoutMs = baseProductIsExternal
-    ? Math.max(PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS, 6500)
-    : PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS;
+  const fetchPlan = buildExternalRecommendationFetchPlan({
+    baseProductIsExternal,
+    safeK,
+  });
+  const effectiveExternalFetchTimeoutMs = fetchPlan.external_fetch_timeout_ms;
 
   const providedInternal = Array.isArray(options?.internal_candidates) ? options.internal_candidates : null;
   const providedExternal = Array.isArray(options?.external_candidates) ? options.external_candidates : null;
@@ -2003,14 +2059,14 @@ async function recommend({
           excludeMerchantId: getMerchantId(baseProduct),
           baseProduct,
         }),
-    PDP_RECS_INTERNAL_FETCH_TIMEOUT_MS,
+    fetchPlan.internal_fetch_timeout_ms,
     [],
     () => {
       internalTimedOut = true;
       logger.warn(
         {
           product_id: baseProductId,
-          timeout_ms: PDP_RECS_INTERNAL_FETCH_TIMEOUT_MS,
+          timeout_ms: fetchPlan.internal_fetch_timeout_ms,
         },
         'PDP recommendations internal candidate fetch timed out',
       );
@@ -2023,7 +2079,7 @@ async function recommend({
             brandHint: baseBrand,
             categoryHint: baseLeaf,
             baseProduct,
-            limit: Math.max(120, safeK * 15),
+            limit: fetchPlan.external_fetch_limit,
           }),
           effectiveExternalFetchTimeoutMs,
           [],
@@ -2082,7 +2138,7 @@ async function recommend({
               brandHint: baseBrand,
               categoryHint: baseLeaf,
               baseProduct,
-              limit: Math.max(120, safeK * 15),
+              limit: fetchPlan.external_fetch_limit,
             }),
         effectiveExternalFetchTimeoutMs,
         [],
@@ -2210,5 +2266,6 @@ module.exports = {
     fetchExternalCandidates,
     shouldCacheRecommendationResult,
     shouldSkipExternalFetch,
+    buildExternalRecommendationFetchPlan,
   },
 };
