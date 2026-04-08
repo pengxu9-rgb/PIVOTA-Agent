@@ -450,6 +450,111 @@ test('local beauty discovery mainline returns authoritative search metadata and 
   );
 });
 
+test('local beauty discovery mainline preserves backend internal primitive failure details in query attempts', async () => {
+  const runtime = createRuntime({
+    searchPivotaBackendProducts: async ({ query }) => {
+      if (query === 'oil control treatment') {
+        return {
+          ok: false,
+          reason: 'upstream_error',
+          status_code: 502,
+          actual_http_attempt_count: 1,
+          products: [],
+          source_base_url: 'https://web-production-fedb.up.railway.app',
+          source_endpoint:
+            'https://web-production-fedb.up.railway.app/agent/internal/products/search',
+          source_path: '/agent/internal/products/search',
+          attempted_base_urls: ['https://web-production-fedb.up.railway.app'],
+          attempted_paths: ['/agent/internal/products/search'],
+          attempted_internal_base_urls: ['https://web-production-fedb.up.railway.app'],
+          attempted_internal_paths: ['/agent/internal/products/search'],
+          transport_hops: [
+            {
+              caller_lane: 'beauty_discovery_mainline',
+              target_base_url: 'https://web-production-fedb.up.railway.app',
+              target_path: '/agent/internal/products/search',
+              endpoint_kind: 'internal_primitive',
+              transport_owner: 'internal_products_search_primitive',
+              latency_ms: 164,
+              result: 'upstream_error',
+            },
+          ],
+          transport_hop_count: 1,
+          nested_orchestrator_hops: 0,
+          primary_transport_owner: 'internal_products_search_primitive',
+          primary_endpoint_kind: 'internal_primitive',
+          upstream_error_code: 'INTERNAL_PRODUCTS_SEARCH_UPSTREAM_ERROR',
+          upstream_error_message: 'cache query failed',
+          upstream_failure_stage: 'local_cache_retrieval',
+          upstream_internal_error_code: 'CACHE_QUERY_FAILED',
+          error: 'cache query failed',
+        };
+      }
+      return {
+        ok: true,
+        reason: 'ok',
+        actual_http_attempt_count: 1,
+        products: [
+          {
+            product_id: 'moisturizer_1',
+            merchant_id: 'merchant_internal',
+            title: 'Lightweight Gel Moisturizer',
+            retrieval_source: 'internal_search',
+            source_tier: 'fresh_internal',
+            source_quality_class: 'trusted',
+          },
+        ],
+      };
+    },
+  });
+
+  const out = await runtime.runLocalBeautyDiscoveryMainline({
+    search: {
+      query: 'im oily skin, what products should i use?',
+      limit: 6,
+    },
+    metadata: {
+      source: 'shopping',
+      catalog_surface: 'beauty',
+    },
+    requestContract: {
+      surface: 'direct',
+      primary_lane: 'beauty_discovery_mainline',
+      primary_retrieval_contract: 'agent_v1_search_beauty_mainline',
+    },
+    executionPlan: {
+      primary_lane: 'beauty_discovery_mainline',
+      primary_retrieval_contract: 'agent_v1_search_beauty_mainline',
+      transport_owner: 'internal_products_search_primitive',
+      endpoint_kind: 'internal_primitive',
+      owner_switch_count: 0,
+    },
+    rawUserQuery: 'im oily skin, what products should i use?',
+    gatewayRequestId: 'trace_internal_failure_details',
+    timeoutMs: 12000,
+    invokeStartedAtMs: Date.now(),
+  });
+
+  assert.equal(out.handled, true);
+  const attempts =
+    out.response.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts || [];
+  assert.equal(attempts.length, 2);
+  assert.equal(attempts[0]?.reason, 'upstream_error');
+  assert.equal(attempts[0]?.status_code, 502);
+  assert.equal(
+    attempts[0]?.upstream_error_code,
+    'INTERNAL_PRODUCTS_SEARCH_UPSTREAM_ERROR',
+  );
+  assert.equal(attempts[0]?.upstream_error_message, 'cache query failed');
+  assert.equal(attempts[0]?.upstream_failure_stage, 'local_cache_retrieval');
+  assert.equal(attempts[0]?.upstream_internal_error_code, 'CACHE_QUERY_FAILED');
+  assert.deepEqual(attempts[0]?.attempted_internal_paths || [], [
+    '/agent/internal/products/search',
+  ]);
+  assert.equal(attempts[0]?.primary_endpoint_kind, 'internal_primitive');
+  assert.equal(attempts[0]?.nested_orchestrator_hops, 0);
+});
+
 test('catalog child recall uses local child transport instead of falling back to legacy upstream', async () => {
   const runtime = createRuntime({
     searchPivotaBackendProducts: async ({
