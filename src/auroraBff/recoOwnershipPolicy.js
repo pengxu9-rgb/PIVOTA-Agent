@@ -104,8 +104,15 @@ function shouldProxyFrameworkRecoToV1Mainline(input) {
   const payload = isPlainObject(input) ? input : {};
   if (shouldKeepTypedRecoRequestOnV1Mainline(payload)) return true;
   const action = isPlainObject(payload.action) ? payload.action : {};
-  const hasAction = Boolean(pickFirstTrimmed(payload.action_id, action.action_id));
-  if (hasAction) return false;
+  const actionId = pickFirstTrimmed(payload.action_id, action.action_id);
+  if (actionId) {
+    const normalizedActionId = String(actionId).trim().toLowerCase();
+    const isRecoAction =
+      normalizedActionId === 'chip.start.reco_products' ||
+      normalizedActionId === 'chip_start_reco_products';
+    if (!isRecoAction) return false;
+    return looksLikeFrameworkRecoConcernAsk(payload);
+  }
   return looksLikeFrameworkRecoConcernAsk(payload);
 }
 
