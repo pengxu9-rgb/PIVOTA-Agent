@@ -89,6 +89,8 @@ const INGREDIENT_ITEM_NOISE_PATTERNS = [
 ];
 const EXTERNAL_SEED_FACT_NOISE_RE =
   /\b(contact us|customer service|privacy policy|terms(?: and conditions)?|shipping policy|return policy|about us|about the brands?|blog|blogs|impact|foundation transparency|transparency|give 20%|donation|donate|store locator|support|avoid contact with eyes|keep out of reach of children|customerservice@|clearorg\.eu|clear \d+\s+rue|student discounts|careers)\b/i;
+const EXTERNAL_SEED_LOW_VALUE_FACT_RE =
+  /\b(earth-conscious details?|outer box is recyclable|recyclable packaging|refillable packaging|recycle the inner container)\b/i;
 const EXTERNAL_SEED_SYNTHETIC_SUMMARY_RE =
   /^\s*OFFICIAL:\s*([\s\S]*?)(?:\s*\/\/\/\s*SOCIAL HIGHLIGHTS:\s*[\s\S]*)$/i;
 const EXTERNAL_SEED_OVERVIEW_TAG_PHRASES = [
@@ -1262,8 +1264,18 @@ function looksLikeStructuredIngredientList(value) {
   const text = sanitizeIngredientRawText(value);
   if (!text) return false;
   if (/\b(aqua\/water\/eau|ingredients(?:\s*\(inci\))?\s*:|ci\s*\d{3,5})\b/i.test(text)) return true;
-  const commaCount = (text.match(/,(?![^()]*\))/g) || []).length;
-  return commaCount >= 3;
+  const parts = text
+    .split(/,(?![^()]*\))/)
+    .map((item) => normalizeTextValue(item))
+    .filter(Boolean);
+  if (parts.length < 4) return false;
+  const verboseItemCount = parts.filter((item) => item.split(/\s+/).length >= 4).length;
+  const likelyNarrative =
+    hasNarrativeIngredientSignals(text) ||
+    /[.!?]/.test(text) ||
+    verboseItemCount >= Math.max(2, Math.ceil(parts.length * 0.35));
+  if (likelyNarrative) return false;
+  return true;
 }
 
 function hasNarrativeIngredientSignals(value) {
@@ -1584,7 +1596,6 @@ function shouldSuppressLowConfidenceActiveIngredients(product, items, ingredient
   if (
     qualityStatus !== 'reviewed' &&
     qualityStatus !== 'high' &&
-    !looksLikeStructuredIngredientList(rawText) &&
     hasNarrativeIngredientSignals(rawText) &&
     (subsetOfIngredients || activeCount <= 4)
   ) {
@@ -1791,6 +1802,9 @@ function buildProductFactSections(product, detailSections, primaryDescription = 
     .filter((section) => {
       if (!section?.heading || !section?.content) return false;
       if (isExternalSeedProduct(product) && looksLikeExternalSeedFactNoise(`${section.heading} ${section.content}`)) {
+        return false;
+      }
+      if (isExternalSeedProduct(product) && EXTERNAL_SEED_LOW_VALUE_FACT_RE.test(`${section.heading} ${section.content}`)) {
         return false;
       }
       if (isExternalSeedProduct(product) && looksLikeExternalSeedOverviewTagSoup(section.content)) {

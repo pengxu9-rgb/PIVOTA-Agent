@@ -938,14 +938,14 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
           title: 'Active ingredients',
           items: ['Niacinamide', 'Hyaluronic acid'],
           raw_text:
-            'Kalahari Melon Oil Vitamin and antioxidant-rich; locks in hydration Niacinamide Fights shine and reduces the look of pores and dark spots Hyaluronic Acid & Aloe Help hydrate, soothe and condition Baobab A nutrient-rich superfruit that helps hydrate',
+            'Kalahari Melon Oil, vitamin and antioxidant-rich, locks in hydration. Niacinamide fights shine and reduces the look of pores and dark spots. Hyaluronic Acid & Aloe help hydrate, soothe and condition. Baobab is a nutrient-rich superfruit that helps hydrate.',
           source_origin: 'retail_pdp',
           source_quality_status: 'captured',
         },
         ingredients_inci: {
           title: 'Ingredients',
           raw_text:
-            'Kalahari Melon Oil Vitamin and antioxidant-rich; locks in hydration Niacinamide Fights shine and reduces the look of pores and dark spots Hyaluronic Acid & Aloe Help hydrate, soothe and condition Baobab A nutrient-rich superfruit that helps hydrate',
+            'Kalahari Melon Oil, vitamin and antioxidant-rich, locks in hydration. Niacinamide fights shine and reduces the look of pores and dark spots. Hyaluronic Acid & Aloe help hydrate, soothe and condition. Baobab is a nutrient-rich superfruit that helps hydrate.',
           items: [
             'Kalahari Melon Oil',
             'Vitamin and antioxidant-rich',
@@ -965,6 +965,10 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
           {
             heading: 'ABOUT ABOUT',
             body: 'Rihanna was inspired to create the world of Fenty Beauty brands. About the Brands Clara Lionel Foundation Student Discounts Careers',
+          },
+          {
+            heading: 'Earth-conscious Details Earth-conscious Details',
+            body: 'Outer box is recyclable. Sleek, refillable packaging: When you’re done, recycle the inner container and refill.',
           },
         ],
       },
