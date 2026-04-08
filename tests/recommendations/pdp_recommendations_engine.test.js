@@ -863,6 +863,28 @@ describe('RecommendationEngine (PDP)', () => {
       }),
       makeProduct({
         merchant_id: 'external_seed',
+        product_id: 'ext_fenty_eyeliner_mislabeled',
+        title: 'Flypencil Longwear Pencil Eyeliner — Bachelor Pad',
+        brand: 'Fenty Beauty',
+        vendor: 'Fenty Beauty',
+        category: 'Toner',
+        product_type: 'Toner',
+        source: 'external_seed',
+        price: 23,
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_fenty_cuffs_mislabeled',
+        title: 'Fenty Skin Cleansing Cuffs',
+        brand: 'Fenty Beauty',
+        vendor: 'Fenty Beauty',
+        category: 'Cleanser',
+        product_type: 'Cleanser',
+        source: 'external_seed',
+        price: 15,
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
         product_id: 'ext_fenty_cherry_dub',
         title: 'Cherry Dub BHA Toner with Salicylic Acid + Aloe Juice Deluxe Sample',
         brand: 'Fenty Beauty',
@@ -892,6 +914,8 @@ describe('RecommendationEngine (PDP)', () => {
       expect.arrayContaining([
         'ext_fenty_body_generic',
         'ext_fenty_styling_generic',
+        'ext_fenty_eyeliner_mislabeled',
+        'ext_fenty_cuffs_mislabeled',
       ]),
     );
   });
