@@ -135,6 +135,8 @@ function buildIngredientIntentDirectBaseMetadata({
       ingredientBudgetRescueAttempted && ingredientBudgetRescueQueries.length > 0
         ? ingredientBudgetRescueQueries[0]
         : null,
+    ingredient_direct_fast_exit_applied:
+      diagnostics.ingredient_direct_fast_exit_applied === true,
     ingredient_direct_recall_limit: ingredientDirectRecallLimit,
     ingredient_direct_minimum_products: ingredientDirectMinimumProducts,
     products_returned_count: mergedRecalledProducts.length,

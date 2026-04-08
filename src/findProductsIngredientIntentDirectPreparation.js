@@ -134,6 +134,10 @@ function createFindProductsIngredientIntentDirectPreparationRuntime(deps = {}) {
     const ingredientDirectRecallLimit = useTighterStrictIngredientRecallWindow
       ? Math.min(directRecallResultWindow, 6)
       : directRecallResultWindow;
+    const ingredientDirectFastExitEnabled =
+      source === 'search' &&
+      strictConstraintReason === 'multi_constraint' &&
+      Boolean(directPriceConstraint);
 
     const recalled = await recallIngredientProducts({
       query: relevanceQueryText,
@@ -144,6 +148,7 @@ function createFindProductsIngredientIntentDirectPreparationRuntime(deps = {}) {
       inStockOnly,
       allowFamilyFallback: true,
       minimumDirectProductCount: ingredientDirectMinimumProducts,
+      fastExitOnInitialMiss: ingredientDirectFastExitEnabled,
     });
     const diagnostics =
       recalled?.diagnostics &&

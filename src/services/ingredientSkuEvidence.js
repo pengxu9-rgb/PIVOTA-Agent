@@ -2214,6 +2214,7 @@ async function recallIngredientProductsFromProfile({
   inStockOnly = false,
   allowFamilyFallback = false,
   minimumDirectProductCount = null,
+  fastExitOnInitialMiss = false,
 } = {}) {
   const diagnostics = {
     ingredient_intent_detected: Boolean(profile),
@@ -2260,6 +2261,7 @@ async function recallIngredientProductsFromProfile({
     runtime_ingredient_evidence_source: 'none',
     seed_anchor_source_kind: 'none',
     seed_anchor_conflict_status: 'none',
+    ingredient_direct_fast_exit_applied: false,
     ingredient_direct_minimum_products:
       Number.isFinite(Number(minimumDirectProductCount)) && Number(minimumDirectProductCount) > 0
         ? Math.max(1, Math.floor(Number(minimumDirectProductCount)))
@@ -2426,8 +2428,16 @@ async function recallIngredientProductsFromProfile({
     query,
     limit,
   });
+  const hasEnoughInitialDirectProducts = hasEnoughDirectRecallProducts(
+    stabilizedProducts,
+    limit,
+    minimumDirectProductCount,
+  );
+  if (!hasEnoughInitialDirectProducts && fastExitOnInitialMiss) {
+    diagnostics.ingredient_direct_fast_exit_applied = true;
+  }
 
-  if (!hasEnoughDirectRecallProducts(stabilizedProducts, limit, minimumDirectProductCount)) {
+  if (!hasEnoughInitialDirectProducts && !fastExitOnInitialMiss) {
     diagnostics.kb_recall_attempted = true;
 
     const kbRows = await fetchKbRowsForProfile({
@@ -2566,7 +2576,11 @@ async function recallIngredientProductsFromProfile({
   if (lateEligibleRows.length) candidates = lateEligibleRows;
   else if (lateRejectedRows.length) candidates = [];
 
-  if (!candidates.length && allowFamilyFallback) {
+  if (
+    !candidates.length &&
+    allowFamilyFallback &&
+    diagnostics.ingredient_direct_fast_exit_applied !== true
+  ) {
     diagnostics.family_fallback_attempted = true;
     const familyPatterns = buildPhrasePatterns(profile.family_phrases);
     if (familyPatterns.length) {
