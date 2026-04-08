@@ -219,32 +219,63 @@ function resolveInternalSearchTimeoutMs(headerValue, fallbackTimeoutMs) {
   return fallback !== undefined ? fallback : 5000;
 }
 
+function buildInternalSearchTimeoutError(timeoutMs) {
+  const err = new Error(`internal products search timed out after ${timeoutMs}ms`);
+  err.code = 'ECONNABORTED';
+  return err;
+}
+
+async function withLocalSearchTimeout(promise, timeoutMs) {
+  const safeTimeoutMs = resolveInternalSearchTimeoutMs(timeoutMs, timeoutMs);
+  let timer = null;
+  try {
+    return await Promise.race([
+      Promise.resolve(promise),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(buildInternalSearchTimeoutError(safeTimeoutMs)), safeTimeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+function matchesMerchantScope(product, merchantScope = null) {
+  const allowed = merchantScope instanceof Set ? merchantScope : new Set();
+  if (allowed.size <= 0) return true;
+  const merchantId = firstNonEmptyString(product?.merchant_id, product?.merchantId);
+  return merchantId ? allowed.has(merchantId) : false;
+}
+
+function sliceInternalSearchProducts(products, offset, limit) {
+  const normalizedProducts = Array.isArray(products) ? products : [];
+  const safeOffset = normalizeNonNegativeInteger(offset, { min: 0 }) || 0;
+  const safeLimit = normalizeNonNegativeInteger(limit, { min: 1, max: 50 }) || 20;
+  return normalizedProducts.slice(safeOffset, safeOffset + safeLimit);
+}
+
 function createFindProductsInternalSearchPrimitiveRuntime(deps = {}) {
-  const buildSearchProductsV2Body =
-    typeof deps.buildSearchProductsV2Body === 'function' ? deps.buildSearchProductsV2Body : null;
   const normalizeAgentProductsListResponse =
     typeof deps.normalizeAgentProductsListResponse === 'function'
       ? deps.normalizeAgentProductsListResponse
       : (value) => value;
-  const callUpstreamWithOptionalRetry =
-    typeof deps.callUpstreamWithOptionalRetry === 'function'
-      ? deps.callUpstreamWithOptionalRetry
-      : null;
-  const buildInvokeUpstreamAuthHeaders =
-    typeof deps.buildInvokeUpstreamAuthHeaders === 'function'
-      ? deps.buildInvokeUpstreamAuthHeaders
-      : () => ({});
-  const getUpstreamUrl =
-    typeof deps.getUpstreamUrl === 'function'
-      ? deps.getUpstreamUrl
-      : () => String(deps.upstreamUrl || '').trim();
   const getDefaultTimeoutMs =
     typeof deps.getDefaultTimeoutMs === 'function'
       ? deps.getDefaultTimeoutMs
       : () => Number(deps.defaultTimeoutMs || 5000) || 5000;
+  const searchCrossMerchantFromCache =
+    typeof deps.searchCrossMerchantFromCache === 'function' ? deps.searchCrossMerchantFromCache : null;
+  const loadCrossMerchantBrowseFromCache =
+    typeof deps.loadCrossMerchantBrowseFromCache === 'function' ? deps.loadCrossMerchantBrowseFromCache : null;
+  const loadMerchantBrowseFromCache =
+    typeof deps.loadMerchantBrowseFromCache === 'function' ? deps.loadMerchantBrowseFromCache : null;
 
   async function handleInternalProductsSearch(req, res) {
-    if (!callUpstreamWithOptionalRetry) {
+    if (
+      !searchCrossMerchantFromCache &&
+      !loadCrossMerchantBrowseFromCache &&
+      !loadMerchantBrowseFromCache
+    ) {
       return res.status(503).json({
         error: 'INTERNAL_PRODUCTS_SEARCH_UNAVAILABLE',
         message: 'internal products search primitive is not configured',
@@ -266,47 +297,43 @@ function createFindProductsInternalSearchPrimitiveRuntime(deps = {}) {
       });
     }
 
-    const checkoutToken = String(
-      req.header('X-Checkout-Token') || req.header('x-checkout-token') || '',
-    ).trim();
     const traceId = firstNonEmptyString(validation.search.trace_id, req.header('X-Trace-ID'));
-    const upstreamUrl = firstNonEmptyString(getUpstreamUrl());
-    if (!upstreamUrl) {
-      return res.status(503).json({
-        error: 'INTERNAL_PRODUCTS_SEARCH_UPSTREAM_MISSING',
-        message: 'internal products search upstream is not configured',
-      });
-    }
 
     const timeoutMs = resolveInternalSearchTimeoutMs(
       req.header('X-Internal-Search-Timeout-Ms') || req.header('x-internal-search-timeout-ms'),
       getDefaultTimeoutMs(),
     );
-    const upstreamBody = buildInternalProductsSearchUpstreamBody({
-      search: validation.search,
-      buildSearchProductsV2Body,
-      traceId,
-    });
+    const limit = normalizeNonNegativeInteger(validation.search.limit, { min: 1, max: 50 }) || 20;
+    const offset = normalizeNonNegativeInteger(validation.search.offset, { min: 0 }) || 0;
+    const page = Math.floor(offset / Math.max(1, limit)) + 1;
+    const fetchLimit = Math.max(limit, offset + limit);
+    const inStockOnly = parseBooleanLike(validation.search.in_stock_only) !== false;
+    const merchantId = firstNonEmptyString(validation.search.merchant_id);
+    const merchantIds = normalizeStringArray(validation.search.merchant_ids);
+    const merchantScope = new Set([merchantId, ...merchantIds].filter(Boolean));
 
-    let response;
+    let localResult;
     try {
-      response = await callUpstreamWithOptionalRetry(
-        'find_products_multi',
-        {
-          method: 'POST',
-          url: upstreamUrl,
-          data: upstreamBody,
-          timeout: timeoutMs,
-          validateStatus: () => true,
-          headers: {
-            'Content-Type': 'application/json',
-            ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
-            ...(traceId ? { 'X-Trace-ID': traceId } : {}),
-          },
-        },
-        {
-          disableTimeoutRetry: true,
-        },
+      localResult = await withLocalSearchTimeout(
+        (async () => {
+          if (!validation.search.query && merchantId && loadMerchantBrowseFromCache) {
+            return await loadMerchantBrowseFromCache(merchantId, 1, fetchLimit, {
+              inStockOnly,
+            });
+          }
+          if (!validation.search.query && loadCrossMerchantBrowseFromCache) {
+            return await loadCrossMerchantBrowseFromCache(1, fetchLimit, {
+              inStockOnly,
+            });
+          }
+          if (!searchCrossMerchantFromCache) {
+            throw new Error('cross-merchant cache search is not configured');
+          }
+          return await searchCrossMerchantFromCache(validation.search.query, 1, fetchLimit, {
+            inStockOnly,
+          });
+        })(),
+        timeoutMs,
       );
     } catch (err) {
       const statusCode = err?.code === 'ECONNABORTED' ? 504 : 502;
@@ -319,9 +346,53 @@ function createFindProductsInternalSearchPrimitiveRuntime(deps = {}) {
       });
     }
 
-    const limit = normalizeNonNegativeInteger(validation.search.limit, { min: 1, max: 50 }) || 20;
-    const offset = normalizeNonNegativeInteger(validation.search.offset, { min: 0 }) || 0;
-    const normalizedBody = normalizeAgentProductsListResponse(response?.data, { limit, offset });
+    const allProducts = (Array.isArray(localResult?.products) ? localResult.products : []).filter((product) =>
+      matchesMerchantScope(product, merchantScope),
+    );
+    const products = sliceInternalSearchProducts(allProducts, offset, limit);
+    const normalizedBody = normalizeAgentProductsListResponse(
+      {
+        status: 'success',
+        success: true,
+        products,
+        total:
+          merchantScope.size > 0
+            ? allProducts.length
+            : Number(localResult?.total || 0) || allProducts.length,
+        page,
+        page_size: products.length,
+        reply: null,
+        metadata: {
+          query_source: 'internal_products_search_primitive_cache',
+          transport_owner: 'internal_products_search_primitive',
+          endpoint_kind: 'internal_primitive',
+          thin_search_primitive: true,
+          fetched_at: new Date().toISOString(),
+          ...(traceId ? { trace_id: traceId } : {}),
+          ...(firstNonEmptyString(validation.search.target_step_family)
+            ? { query_target_step_family: firstNonEmptyString(validation.search.target_step_family) }
+            : {}),
+          ...(firstNonEmptyString(validation.search.semantic_family)
+            ? { semantic_family: firstNonEmptyString(validation.search.semantic_family) }
+            : {}),
+          ...(firstNonEmptyString(validation.search.query_step_strength)
+            ? { query_step_strength: firstNonEmptyString(validation.search.query_step_strength) }
+            : {}),
+          ...(merchantId ? { merchant_id: merchantId } : {}),
+          ...(merchantIds.length > 0 ? { merchant_ids: merchantIds } : {}),
+          ...(Array.isArray(localResult?.retrieval_sources)
+            ? { retrieval_sources: localResult.retrieval_sources }
+            : {}),
+          ...(Array.isArray(localResult?.query_terms)
+            ? { query_terms: localResult.query_terms }
+            : {}),
+          ...(firstNonEmptyString(localResult?.beauty_query_bucket)
+            ? { beauty_query_bucket: firstNonEmptyString(localResult.beauty_query_bucket) }
+            : {}),
+        },
+      },
+      { limit, offset },
+    );
     const responseBody = isPlainObject(normalizedBody)
       ? normalizedBody
       : {
@@ -335,12 +406,11 @@ function createFindProductsInternalSearchPrimitiveRuntime(deps = {}) {
         };
     const metadata = pruneEmptyFields({
       ...(isPlainObject(responseBody.metadata) ? responseBody.metadata : {}),
-      query_source: 'internal_products_search_primitive',
       transport_owner: 'internal_products_search_primitive',
       endpoint_kind: 'internal_primitive',
       thin_search_primitive: true,
     });
-    return res.status(Number(response?.status || 200) || 200).json({
+    return res.status(200).json({
       ...responseBody,
       metadata,
     });
