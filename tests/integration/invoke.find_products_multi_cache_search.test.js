@@ -2771,6 +2771,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         allowFamilyFallback: true,
         limit: 5,
         minimumDirectProductCount: 2,
+        fastExitOnInitialMiss: true,
       }),
     );
     expect(resp.body.products.map((item) => item.product_id)).toEqual(['prod_vitc_direct_1']);
@@ -2778,6 +2779,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       expect.objectContaining({
         query_source: 'agent_products_ingredient_recall_direct',
         ingredient_budget_query_rescue_attempted: false,
+        ingredient_direct_fast_exit_applied: false,
         ingredient_direct_recall_limit: 5,
         ingredient_direct_minimum_products: 2,
         strict_constraint_query: true,
@@ -3087,6 +3089,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         allowFamilyFallback: true,
         limit: 5,
         minimumDirectProductCount: 2,
+        fastExitOnInitialMiss: true,
       }),
     );
     expect(resp.body.metadata).toEqual(
