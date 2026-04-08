@@ -131,6 +131,134 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
     );
   });
 
+  test('serves generic beauty shopping search from authoritative external-seed mainline before slow upstream', async () => {
+    process.env.DATABASE_URL = 'postgres://shopping-beauty-mainline';
+
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (!text.includes('FROM external_product_seeds')) {
+          return { rows: [] };
+        }
+        return {
+          rows: [
+            {
+              id: 'seed_serum_1',
+              external_product_id: 'ext_serum_1',
+              destination_url: 'https://seed.example.com/products/brightening-serum',
+              canonical_url: 'https://seed.example.com/products/brightening-serum',
+              domain: 'seed.example.com',
+              title: 'Brightening Vitamin C Serum',
+              image_url: 'https://cdn.example.com/brightening-serum.jpg',
+              price_amount: '32',
+              price_currency: 'USD',
+              availability: 'in stock',
+              seed_data: {
+                brand: 'Seed Beauty',
+                category: 'serum',
+                snapshot: {
+                  title: 'Brightening Vitamin C Serum',
+                  description: 'A lightweight facial serum for dullness and uneven tone.',
+                  brand: 'Seed Beauty',
+                  category: 'serum',
+                  destination_url: 'https://seed.example.com/products/brightening-serum',
+                  canonical_url: 'https://seed.example.com/products/brightening-serum',
+                },
+              },
+              updated_at: '2026-01-01T00:00:00.000Z',
+              created_at: '2026-01-01T00:00:00.000Z',
+            },
+            {
+              id: 'seed_serum_2',
+              external_product_id: 'ext_serum_2',
+              destination_url: 'https://seed.example.com/products/barrier-serum',
+              canonical_url: 'https://seed.example.com/products/barrier-serum',
+              domain: 'seed.example.com',
+              title: 'Barrier Repair Serum',
+              image_url: 'https://cdn.example.com/barrier-serum.jpg',
+              price_amount: '28',
+              price_currency: 'USD',
+              availability: 'in stock',
+              seed_data: {
+                brand: 'Seed Beauty',
+                category: 'serum',
+                snapshot: {
+                  title: 'Barrier Repair Serum',
+                  description: 'A soothing facial serum for barrier support.',
+                  brand: 'Seed Beauty',
+                  category: 'serum',
+                  destination_url: 'https://seed.example.com/products/barrier-serum',
+                  canonical_url: 'https://seed.example.com/products/barrier-serum',
+                },
+              },
+              updated_at: '2026-01-02T00:00:00.000Z',
+              created_at: '2026-01-02T00:00:00.000Z',
+            },
+          ],
+        };
+      }),
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+        metadata: {
+          query_source: 'agent_products_search',
+        },
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'serum',
+            limit: 10,
+            page: 1,
+            in_stock_only: true,
+            allow_external_seed: true,
+            allow_stale_cache: false,
+            external_seed_strategy: 'unified_relevance',
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(upstreamSearch.isDone()).toBe(false);
+    expect(resp.body.products).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          product_id: 'ext_serum_1',
+          merchant_id: 'external_seed',
+          title: 'Brightening Vitamin C Serum',
+        }),
+      ]),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_search',
+        beauty_search_mainline_applied: true,
+        beauty_search_mainline_prefetch_short_circuit: true,
+        beauty_search_mainline_upstream_skipped: true,
+        legacy_contract: false,
+        route_health: expect.objectContaining({
+          primary_path_used: 'beauty_search_external_seed_mainline',
+          fallback_triggered: false,
+        }),
+      }),
+    );
+  });
+
   test('keeps title-like beauty exact product queries on raw lookup text', async () => {
     let capturedPrimaryUpstreamPath = null;
 
@@ -425,7 +553,9 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
       expect.objectContaining({
         query_source: 'agent_products_search',
         strict_empty: true,
-        strict_empty_reason: expect.stringMatching(/^shopping_mainline_(exception|upstream_5xx)$/),
+        strict_empty_reason: expect.stringMatching(
+          /^shopping_mainline_(exception|upstream_5xx|fallback_blocked)$/,
+        ),
         route_health: expect.objectContaining({
           fallback_triggered: false,
         }),

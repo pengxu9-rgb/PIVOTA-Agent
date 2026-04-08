@@ -20506,6 +20506,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         ? ''
         : buildQueryString(queryParams);
     const primarySearchQueryText = String(extractSearchQueryText(queryParams) || rawUserQuery || '').trim();
+    const beautySearchMainlineDirectQueryText = String(rawUserQuery || primarySearchQueryText || '').trim();
     const primarySearchAnchorTokens = extractSearchAnchorTokens(primarySearchQueryText);
     const isLookupPolicyQuery = isLookupStyleSearchQuery(primarySearchQueryText, primarySearchAnchorTokens);
     const queryClassForBudget = String(traceQueryClass || '').toLowerCase();
@@ -20558,6 +20559,25 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       Boolean(primarySearchQueryText) &&
       Boolean(detectBrandEntities(primarySearchQueryText, { candidateProducts: [] })?.brand_like) &&
       !hasExplicitCategoryHint(primarySearchQueryText, effectiveIntent);
+    const primarySearchQueryTokens = Array.from(
+      new Set(tokenizeSearchTextForMatch(normalizeSearchTextForMatch(primarySearchQueryText))),
+    );
+    const beautySearchMainlineExactTitleLookup =
+      operation === 'find_products_multi' &&
+      Boolean(primarySearchQueryText) &&
+      shouldRunExternalSeedExactTitleRecall({
+        queryText: primarySearchQueryText,
+        queryTokens: primarySearchQueryTokens,
+        ingredientIntent: false,
+      });
+    const beautySearchMainlineDirectPreflight =
+      operation === 'find_products_multi' &&
+      !strictCommerceFindProductsMulti &&
+      strictBeautyDirectSearch &&
+      authoritativeOrPublicSearchRail &&
+      !publicBrandSearchMainlinePreflight &&
+      Boolean(beautySearchMainlineDirectQueryText) &&
+      !beautySearchMainlineExactTitleLookup;
     const publicBrandSearchRequestedLimit = Math.min(
       Math.max(1, Number(queryParams?.limit || queryParams?.page_size || 20) || 20),
       SEARCH_LIMIT_MAX,
@@ -20582,6 +20602,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     let publicBrandSearchMainlineResolved = null;
     let publicBrandSearchMainlineShortCircuited = false;
     let publicBrandSearchMainlineShortCircuitStage = null;
+    let beautySearchMainlineDirectPromise = null;
+    let beautySearchMainlineDirectResolved = null;
     if (publicBrandSearchMainlinePreflight) {
       publicBrandSearchMainlinePromise = searchExternalSeedOnlyProductsDirect({
         search: {
@@ -20606,6 +20628,42 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         logger.warn(
           { err: err?.message || String(err), query: primarySearchQueryText },
           'public brand search mainline prefetch failed',
+        );
+        return null;
+      });
+    }
+    if (beautySearchMainlineDirectPreflight) {
+      beautySearchMainlineDirectPromise = searchExternalSeedOnlyProductsDirect({
+        search: {
+          query: beautySearchMainlineDirectQueryText,
+          page: publicBrandSearchRequestedPage,
+          limit: publicBrandSearchRequestedLimit,
+          offset: publicBrandSearchRequestedOffset,
+          merchant_id: 'external_seed',
+          external_seed_only: true,
+          allow_external_seed: true,
+          allow_stale_cache: false,
+          external_seed_strategy: 'unified_relevance',
+          fast_mode: true,
+          in_stock_only:
+            parseQueryBoolean(
+              queryParams?.in_stock_only ??
+                queryParams?.inStockOnly ??
+                effectivePayload?.search?.in_stock_only ??
+                effectivePayload?.search?.inStockOnly,
+            ) !== false,
+          source: metadata?.source || null,
+        },
+        metadata: {
+          source: metadata?.source || null,
+          relevance_query_text: beautySearchMainlineDirectQueryText,
+          decision_mode: 'shopping_search_mainline',
+        },
+        guidanceFastpath: true,
+      }).catch((err) => {
+        logger.warn(
+          { err: err?.message || String(err), query: beautySearchMainlineDirectQueryText },
+          'beauty search mainline direct prefetch failed',
         );
         return null;
       });
@@ -20717,6 +20775,75 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       publicBrandSearchMainlineShortCircuitStage = stage;
       return true;
     };
+    const maybeAdoptBeautySearchMainlineDirectResponse = async ({
+      stage = 'pre_primary_upstream',
+    } = {}) => {
+      if (response || !beautySearchMainlineDirectPromise) return false;
+      beautySearchMainlineDirectResolved = await beautySearchMainlineDirectPromise;
+      const directProducts = Array.isArray(beautySearchMainlineDirectResolved?.products)
+        ? beautySearchMainlineDirectResolved.products
+        : [];
+      if (directProducts.length <= 0) return false;
+      const existingDirectMeta = isPlainRecord(beautySearchMainlineDirectResolved?.metadata)
+        ? beautySearchMainlineDirectResolved.metadata
+        : {};
+      const existingSourceBreakdown = isPlainRecord(existingDirectMeta.source_breakdown)
+        ? existingDirectMeta.source_breakdown
+        : {};
+      const fetchedRows = Math.max(
+        Number(existingDirectMeta.external_seed_rows_fetched || 0) || 0,
+        Number(beautySearchMainlineDirectResolved?.total || 0) || 0,
+        directProducts.length,
+      );
+      const builtRows = Math.max(
+        Number(existingDirectMeta.external_seed_rows_built || 0) || 0,
+        directProducts.length,
+      );
+      beautySearchMainlineDirectResolved = withSearchDiagnostics(
+        {
+          ...beautySearchMainlineDirectResolved,
+          metadata: {
+            ...existingDirectMeta,
+            query_source: 'agent_products_search',
+            beauty_search_mainline_applied: true,
+            beauty_search_mainline_attempted: true,
+            beauty_search_mainline_prefetch_short_circuit: true,
+            beauty_search_mainline_prefetch_stage: stage,
+            beauty_search_mainline_upstream_skipped: true,
+            source_breakdown: {
+              ...existingSourceBreakdown,
+              internal_count: 0,
+              external_seed_count: directProducts.length,
+              stale_cache_used: false,
+              strategy_applied: 'beauty_search_external_seed_mainline',
+            },
+            external_seed_rows_fetched: fetchedRows,
+            external_seed_rows_built: builtRows,
+            external_seed_returned_count: directProducts.length,
+          },
+        },
+        {
+          route_health: {
+            primary_path_used: 'beauty_search_external_seed_mainline',
+            fallback_triggered: false,
+            fallback_reason: null,
+            upstream_search_skipped: true,
+            external_seed_rows_fetched: fetchedRows,
+            external_seed_rows_built: builtRows,
+          },
+          search_trace: {
+            final_decision: 'products_returned',
+          },
+          search_decision: {
+            final_decision: 'products_returned',
+            primary_path_used: 'beauty_search_external_seed_mainline',
+            decision_authority: 'agent_products_search',
+          },
+        },
+      );
+      response = { status: 200, data: beautySearchMainlineDirectResolved };
+      return true;
+    };
     if (!response) {
       const strictIngredientDirectResult =
         await maybeApplyInvokeStrictIngredientDirect({
@@ -20737,6 +20864,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       response = strictIngredientDirectResult.response;
       searchContractBridgeMeta =
         strictIngredientDirectResult.searchContractBridgeMeta;
+    }
+    if (!response && beautySearchMainlineDirectPreflight) {
+      await maybeAdoptBeautySearchMainlineDirectResponse({
+        stage: 'pre_shared_path',
+      });
     }
     let resolverRejectedReason = null;
     let resolverRejectedQueryUsed = null;
