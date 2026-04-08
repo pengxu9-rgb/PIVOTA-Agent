@@ -39,17 +39,6 @@ const PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS = Math.max(
   300,
   parseTimeoutMs(process.env.PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS, 1200),
 );
-const PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_MULTIPLIER = Math.max(
-  1,
-  Math.min(
-    6,
-    Number(process.env.PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_MULTIPLIER || 2.5) || 2.5,
-  ),
-);
-const PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_ABS = Math.max(
-  4,
-  Math.min(120, Number(process.env.PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_ABS || 14) || 14),
-);
 const PDP_RECS_CACHE = new Map(); // cacheKey -> { value, storedAtMs, expiresAtMs }
 const PDP_RECS_CACHE_METRICS = {
   hits: 0,
@@ -153,6 +142,13 @@ function normalizeText(input) {
     .replace(/<[^>]+>/g, ' ')
     .replace(/[^a-z0-9\s-]+/g, ' ')
     .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeBrandLookupKey(input) {
+  return String(input || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '')
     .trim();
 }
 
@@ -688,7 +684,7 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit }) {
   const market = String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
   const tool = 'creator_agents';
 
-  const brand = normalizeText(brandHint);
+  const brand = normalizeBrandLookupKey(brandHint);
   const category = normalizeText(categoryHint);
 
   async function runQuery(whereSql, params, cap, queryName) {
@@ -739,7 +735,32 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit }) {
   if (brand && category) {
     queries.push(
       runQuery(
-        `AND lower(coalesce(seed_data->>'brand','')) = $4 AND lower(coalesce(seed_data->>'category','')) = $5`,
+        `AND lower(
+               regexp_replace(
+                 coalesce(
+                   seed_data->>'brand',
+                   seed_data->'snapshot'->>'brand',
+                   split_part(domain, '.', 1),
+                   ''
+                 ),
+                 '[^a-z0-9]+',
+                 '',
+                 'g'
+               )
+             ) = $4
+             AND lower(
+               coalesce(
+                 seed_data->'derived'->'recall'->>'category',
+                 seed_data->>'category',
+                 seed_data->'product'->>'category',
+                 seed_data->'snapshot'->>'category',
+                 seed_data->>'product_type',
+                 seed_data->>'productType',
+                 seed_data->'snapshot'->>'product_type',
+                 seed_data->'snapshot'->>'productType',
+                 ''
+               )
+             ) = $5`,
         [brand, category],
         Math.min(160, safeLimit),
         'external_brand_category',
@@ -749,7 +770,19 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit }) {
   if (brand) {
     queries.push(
       runQuery(
-        `AND lower(coalesce(seed_data->>'brand','')) = $4`,
+        `AND lower(
+               regexp_replace(
+                 coalesce(
+                   seed_data->>'brand',
+                   seed_data->'snapshot'->>'brand',
+                   split_part(domain, '.', 1),
+                   ''
+                 ),
+                 '[^a-z0-9]+',
+                 '',
+                 'g'
+               )
+             ) = $4`,
         [brand],
         Math.min(180, safeLimit),
         'external_brand',
@@ -862,7 +895,14 @@ async function enrichExternalBaseProduct(baseProduct) {
   }
 
   const seedCategory = String(
-    seedData?.category || seedData?.product?.category || seedData?.snapshot?.category || '',
+    seedData?.category ||
+      seedData?.product?.category ||
+      seedData?.snapshot?.category ||
+      seedData?.product_type ||
+      seedData?.productType ||
+      seedData?.snapshot?.product_type ||
+      seedData?.snapshot?.productType ||
+      '',
   ).trim();
   if (!getLeafCategory(enriched) && seedCategory) {
     if (!String(enriched.category || '').trim()) enriched.category = seedCategory;
@@ -963,7 +1003,7 @@ async function recommend({
   let externalTimedOut = false;
   let internalErrorCode = null;
   let externalErrorCode = null;
-  const internalCandidates = await withSoftTimeout(
+  const internalCandidatesPromise = withSoftTimeout(
     (providedInternal
       ? Promise.resolve(providedInternal)
       : fetchInternalCandidates({
@@ -989,8 +1029,7 @@ async function recommend({
     },
   );
 
-  const internalCount = Array.isArray(internalCandidates) ? internalCandidates.length : 0;
-  const externalCandidates = await withSoftTimeout(
+  const externalCandidatesPromise = withSoftTimeout(
     (providedExternal
       ? Promise.resolve(providedExternal)
       : fetchExternalCandidates({
@@ -1015,6 +1054,12 @@ async function recommend({
       );
     },
   );
+
+  const [internalCandidates, externalCandidates] = await Promise.all([
+    internalCandidatesPromise,
+    externalCandidatesPromise,
+  ]);
+  const internalCount = Array.isArray(internalCandidates) ? internalCandidates.length : 0;
 
   const picked = pickLayeredRecommendations({
     baseProduct,
@@ -1133,11 +1178,14 @@ module.exports = {
       PDP_RECS_CACHE_METRICS.evictions = 0;
     },
     normalizeText,
+    normalizeBrandLookupKey,
     tokenize,
     jaccard,
     getBrandName,
     getLeafCategory,
     getParentCategory,
     isExternalProduct,
+    fetchExternalCandidates,
+    enrichExternalBaseProduct,
   },
 };
