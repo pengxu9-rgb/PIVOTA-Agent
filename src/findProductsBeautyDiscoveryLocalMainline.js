@@ -570,6 +570,107 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
     );
     const offset = Math.max(0, Number(query.offset || 0) || 0);
     const page = Number(query.page || 0) > 0 ? Number(query.page || 0) : Math.floor(offset / limit) + 1;
+    const allowExternalSeed =
+      parseBooleanLike(query.allow_external_seed ?? query.allowExternalSeed) === true;
+    const externalSeedStrategy =
+      firstNonEmptyString(
+        query.external_seed_strategy,
+        query.externalSeedStrategy,
+        searchState.external_seed_strategy,
+        searchState.externalSeedStrategy,
+        'unified_relevance',
+      ) || 'unified_relevance';
+    if (allowExternalSeed && typeof fetchExternalSeedSupplementFromBackend === 'function') {
+      const supplement = await fetchExternalSeedSupplementFromBackend({
+        queryParams: {
+          ...query,
+          query: queryText,
+          limit,
+          offset: 0,
+          allow_external_seed: true,
+          allow_stale_cache: false,
+          external_seed_strategy: externalSeedStrategy,
+          fast_mode: true,
+          ...(firstNonEmptyString(query.target_step_family, query.targetStepFamily)
+            ? {
+                target_step_family: firstNonEmptyString(
+                  query.target_step_family,
+                  query.targetStepFamily,
+                ),
+              }
+            : {}),
+          ...(firstNonEmptyString(query.semantic_family, query.semanticFamily)
+            ? {
+                semantic_family: firstNonEmptyString(
+                  query.semantic_family,
+                  query.semanticFamily,
+                ),
+              }
+            : {}),
+          ...(firstNonEmptyString(query.query_step_strength, query.queryStepStrength)
+            ? {
+                query_step_strength: firstNonEmptyString(
+                  query.query_step_strength,
+                  query.queryStepStrength,
+                ),
+              }
+            : {}),
+          ...(parseBooleanLike(query.product_only ?? query.productOnly) === true
+            ? { product_only: true }
+            : {}),
+        },
+        checkoutToken: null,
+        neededCount: limit,
+        source: metadataState?.source || 'aurora-bff',
+        directOnly: true,
+      });
+      const supplementProducts = (Array.isArray(supplement?.products) ? supplement.products : [])
+        .map((product) =>
+          typeof normalizeRecoCatalogProduct === 'function'
+            ? normalizeRecoCatalogProduct(product)
+            : product,
+        )
+        .filter((product) => isPlainObject(product));
+      if (supplementProducts.length > 0 || supplement?.metadata?.attempted === true) {
+        const bodyInput = {
+          status: 'success',
+          success: true,
+          products: supplementProducts,
+          total: supplementProducts.length,
+          page,
+          page_size: supplementProducts.length,
+          reply: null,
+          metadata: {
+            query_source: 'local_external_seed_direct_child',
+            external_seed_direct_child: true,
+            external_seed_supplement: supplement?.metadata || null,
+            query_target_step_family:
+              firstNonEmptyString(query.target_step_family, query.targetStepFamily) || null,
+            semantic_family:
+              firstNonEmptyString(query.semantic_family, query.semanticFamily) || null,
+            query_step_strength:
+              firstNonEmptyString(query.query_step_strength, query.queryStepStrength) || null,
+          },
+        };
+        const body =
+          typeof normalizeAgentProductsListResponse === 'function'
+            ? normalizeAgentProductsListResponse(bodyInput, { limit, offset: 0 })
+            : bodyInput;
+        return {
+          response: {
+            status: 200,
+            data: body,
+          },
+          upstreamData: body,
+          searchOut: {
+            ok: true,
+            reason: supplementProducts.length > 0 ? 'external_seed_direct_local_hit' : 'empty',
+            actual_http_attempt_count: 0,
+            products: supplementProducts,
+          },
+        };
+      }
+    }
     const searchOut = await searchPivotaBackendProducts({
       query: queryText,
       limit,
@@ -584,15 +685,8 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
         metadataState.catalog_surface ||
         'beauty',
       allowExternalSeed:
-        parseBooleanLike(query.allow_external_seed ?? query.allowExternalSeed) === true,
-      externalSeedStrategy:
-        firstNonEmptyString(
-          query.external_seed_strategy,
-          query.externalSeedStrategy,
-          searchState.external_seed_strategy,
-          searchState.externalSeedStrategy,
-          'unified_relevance',
-        ) || 'unified_relevance',
+        allowExternalSeed,
+      externalSeedStrategy,
       fastMode:
         parseBooleanLike(query.fast_mode ?? query.fastMode ?? searchState.fast_mode ?? searchState.fastMode) !==
         false,
@@ -762,7 +856,7 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
       limit: normalizedLimit,
       offset: 0,
       allow_external_seed:
-        parseBooleanLike(searchObj.allow_external_seed ?? searchObj.allowExternalSeed) === true,
+        parseBooleanLike(searchObj.allow_external_seed ?? searchObj.allowExternalSeed) !== false,
       allow_stale_cache: false,
       external_seed_strategy: 'unified_relevance',
       target_step_family: semanticContract.target_step_family,
