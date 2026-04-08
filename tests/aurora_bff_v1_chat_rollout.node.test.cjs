@@ -801,6 +801,37 @@ test('buildChatIntentContract locks beauty reco free-text before v2 delegation',
   assert.equal(contract.should_search, true);
 });
 
+test('buildChatIntentContract resolves beauty reco free-text before legacy ingredient runtime checks can hang', async () => {
+  resetAuroraModules();
+  const { __internal } = require('../src/auroraBff/routes');
+  __internal.__setGetBestIngredientReferenceMatchForTest(() => new Promise(() => {}));
+  __internal.__setGetBestIngredientSignalMatchForTest(() => new Promise(() => {}));
+
+  try {
+    const contract = await Promise.race([
+      __internal.buildChatIntentContract({
+        message: 'im oily skin, what products should i use?',
+        language: 'EN',
+        session: {
+          state: 'IDLE_CHAT',
+          profile: {
+            skinType: 'oily',
+            goals: ['oil control'],
+          },
+        },
+      }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('beauty reco contract timeout')), 200)),
+    ]);
+
+    assert.equal(contract.ownership_domain, 'beauty_mainline');
+    assert.equal(contract.request_class, 'beauty_discovery');
+    assert.equal(contract.delegate_target, 'beauty_mainline');
+  } finally {
+    __internal.__resetGetBestIngredientReferenceMatchForTest();
+    __internal.__resetGetBestIngredientSignalMatchForTest();
+  }
+});
+
 test('shouldEarlyLockBeautyOwnedChatReco locks current frontend beauty reco freeform payloads onto the bounded mainline path', async () => {
   resetAuroraModules();
   const { __internal } = require('../src/auroraBff/routes');
