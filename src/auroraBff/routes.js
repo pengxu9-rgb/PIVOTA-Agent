@@ -1987,6 +1987,25 @@ async function shouldDelegateV1ChatToV2(body) {
   return chatIntentContract?.delegate_target === 'v2';
 }
 
+function shouldEarlyLockBeautyOwnedChatReco({
+  ingressChatIntentContract = null,
+  normalizedActionPayload = null,
+  actionId = '',
+  actionLabel = '',
+  message = '',
+} = {}) {
+  const contract =
+    ingressChatIntentContract && typeof ingressChatIntentContract === 'object' && !Array.isArray(ingressChatIntentContract)
+      ? ingressChatIntentContract
+      : null;
+  if (!contract) return false;
+  if (String(contract.delegate_target || '').trim().toLowerCase() !== 'beauty_mainline') return false;
+  if (String(contract.request_class || '').trim().toLowerCase() !== 'beauty_discovery') return false;
+  if (normalizedActionPayload) return false;
+  if (pickFirstTrimmed(actionId, actionLabel)) return false;
+  return Boolean(String(message || '').trim());
+}
+
 function extractLastUserMessageFromChatRequestMessages(messages) {
   const list = Array.isArray(messages) ? messages : [];
   for (let index = list.length - 1; index >= 0; index -= 1) {
@@ -76131,6 +76150,47 @@ function mountAuroraBffRoutes(app, { logger }) {
         recordPendingClarificationCompleted();
       }
 
+      const shouldEarlyBeautyRecoHardLock = shouldEarlyLockBeautyOwnedChatReco({
+        ingressChatIntentContract,
+        normalizedActionPayload,
+        actionId,
+        actionLabel,
+        message,
+      });
+      if (shouldEarlyBeautyRecoHardLock) {
+        const earlyBeautyOwnedRecoResponse =
+          await maybeHandleBeautyOwnedChatRecoForRoute({
+            ctx,
+            logger,
+            message,
+            typedRecoOwnershipKeepsV1Mainline,
+            forceUpstreamAfterPendingAbandon,
+            ingredientDrivenRecommendationRequested: false,
+            recoEntrySourceDetail: 'typed_reco',
+            latestRecoContextFromSession,
+            profile,
+            recentLogs,
+            includeAlternatives,
+            actionId,
+            shouldAutoRerunRecommendationsFromProfilePatch: false,
+            debugUpstream,
+          });
+        if (earlyBeautyOwnedRecoResponse?.handled) {
+          return sendChatEnvelope(earlyBeautyOwnedRecoResponse.envelope);
+        }
+        return sendChatEnvelope(
+          buildBeautyMainlineHandoffFallbackEnvelope({
+            ctx,
+            fallback: {
+              fallback_reason: 'beauty_mainline_handoff_required',
+              notice_reason: 'upstream_empty_recommendations',
+              mainline_status: 'needs_more_context',
+            },
+            suggestedChips: [],
+          }),
+        );
+      }
+
       // Optional session state override (used to escape sticky gates like S6_BUDGET when user switches intent).
       let nextStateOverride = null;
       const ingredientScienceIntent = looksLikeIngredientScienceIntent(message, normalizedActionPayload);
@@ -81123,6 +81183,7 @@ const __internal = {
       delete auroraRouteDependencyOverridesForTest[name];
     }
   },
+  shouldEarlyLockBeautyOwnedChatReco,
   shouldKeepTypedRecoRequestOnV1Mainline: shouldKeepTypedRecoRequestOnV1MainlinePolicy,
 };
 
