@@ -2530,6 +2530,128 @@ test('framework local beauty mainline stops after primary timeout before support
   );
 });
 
+test('framework local beauty mainline does not promote external-seed timeout into primary timeout', async () => {
+  const runtime = createRuntime({
+    buildRecoRecallPlan: () => ({
+      mode: 'framework_generic',
+      entries: [
+        {
+          stage_id: 'framework_stage_a_primary_internal',
+          query: 'oil control treatment',
+          role_id: 'oil_control_treatment',
+          role_rank: 1,
+          preferred_step: 'treatment',
+          source_scope: 'internal',
+          query_index: 0,
+        },
+        {
+          stage_id: 'framework_stage_b_primary_external_seed',
+          query: 'oil control treatment',
+          role_id: 'oil_control_treatment',
+          role_rank: 1,
+          preferred_step: 'treatment',
+          source_scope: 'external_seed',
+          query_index: 1,
+        },
+      ],
+      stages: [
+        {
+          stage_id: 'framework_stage_a_primary_internal',
+          role_id: 'oil_control_treatment',
+          role_rank: 1,
+          source_scope: 'internal',
+          entries: [
+            {
+              query: 'oil control treatment',
+              role_id: 'oil_control_treatment',
+              role_rank: 1,
+              preferred_step: 'treatment',
+              source_scope: 'internal',
+              query_index: 0,
+            },
+          ],
+        },
+        {
+          stage_id: 'framework_stage_b_primary_external_seed',
+          role_id: 'oil_control_treatment',
+          role_rank: 1,
+          source_scope: 'external_seed',
+          entries: [
+            {
+              query: 'oil control treatment',
+              role_id: 'oil_control_treatment',
+              role_rank: 1,
+              preferred_step: 'treatment',
+              source_scope: 'external_seed',
+              query_index: 1,
+            },
+          ],
+        },
+      ],
+    }),
+    searchPivotaBackendProducts: async () => ({
+      ok: true,
+      reason: 'ok',
+      actual_http_attempt_count: 1,
+      products: [],
+    }),
+    fetchExternalSeedSupplementFromBackend: async () => new Promise(() => {}),
+  });
+
+  const startedAt = Date.now();
+  const out = await runtime.runLocalBeautyDiscoveryMainline({
+    search: {
+      query: 'im oily skin, what products should i use?',
+      source: 'shopping',
+      product_only: true,
+    },
+    metadata: {
+      source: 'shopping',
+      catalog_surface: 'beauty',
+    },
+    requestContract: {
+      surface: 'direct',
+      primary_lane: 'beauty_discovery_mainline',
+      primary_retrieval_contract: 'agent_v1_search_beauty_mainline',
+      owner_switch_count: 0,
+    },
+    executionPlan: {
+      primary_lane: 'beauty_discovery_mainline',
+      primary_retrieval_contract: 'agent_v1_search_beauty_mainline',
+      owner_switch_count: 0,
+    },
+    rawUserQuery: 'im oily skin, what products should i use?',
+    gatewayRequestId: 'trace-framework-external-timeout',
+    traceQueryClass: 'query',
+    timeoutMs: 2600,
+    invokeStartedAtMs: Date.now(),
+    logger: { warn() {} },
+    authHeaders: { authorization: 'Bearer test' },
+    operation: 'find_products_multi',
+  });
+
+  assert.equal(out.handled, true);
+  assert.ok(Date.now() - startedAt < 4000);
+  assert.deepEqual(out.response.products, []);
+  assert.equal(
+    out.response.metadata?.search_execution_trace?.primary_failure_stage,
+    'no_recall_from_planned_sources',
+  );
+  assert.deepEqual(
+    out.response.metadata?.search_execution_trace?.supplements_attempted || [],
+    ['semantic_owner_external_coverage'],
+  );
+  assert.equal(
+    out.response.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts?.[1]?.reason,
+    'upstream_timeout',
+  );
+  assert.equal(
+    out.response.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts?.[1]
+      ?.source_scope,
+    'external_seed',
+  );
+});
+
 test('framework local beauty mainline hard-stops wall clock when internal primitive hangs', async () => {
   const attemptedQueries = [];
   const runtime = createRuntime({

@@ -92,6 +92,25 @@ function buildSupplementTrace({
   };
 }
 
+function isFrameworkPrimaryInternalStageId(stageId = '') {
+  const normalizedStageId = String(stageId || '').trim().toLowerCase();
+  if (!normalizedStageId) return false;
+  return (
+    normalizedStageId === 'framework_stage_a_primary_internal' ||
+    normalizedStageId.startsWith('framework_stage_a_primary_')
+  );
+}
+
+function hasFrameworkPrimaryStageTimeout(searchResults = []) {
+  return (Array.isArray(searchResults) ? searchResults : []).some((row) => {
+    const stageId = String(row?.stage_id || row?.ladder_level || '').trim().toLowerCase();
+    if (!isFrameworkPrimaryInternalStageId(stageId)) return false;
+    const reason = String(row?.reason || '').trim().toLowerCase();
+    const skippedReason = String(row?.skipped_reason || '').trim().toLowerCase();
+    return reason === 'upstream_timeout' || skippedReason === 'budget_guard';
+  });
+}
+
 function buildPrimaryQueryPackAttempts(recallPlan = null) {
   return (Array.isArray(recallPlan?.entries) ? recallPlan.entries : [])
     .map((entry, index, rows) => ({
@@ -2403,15 +2422,11 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
     const sourceObservability = countCandidateOriginBreakdown(
       selectedProducts.length > 0 ? selectedProducts : rawCandidates,
     );
-    const anyTimeout = searchResults.some(
-      (row) =>
-        String(row?.reason || '').trim().toLowerCase() === 'upstream_timeout' ||
-        String(row?.skipped_reason || '').trim().toLowerCase() === 'budget_guard',
-    );
+    const primaryInternalTimeout = hasFrameworkPrimaryStageTimeout(searchResults);
     const primaryFailureStage =
       selectedProducts.length > 0
         ? null
-        : anyTimeout
+        : primaryInternalTimeout
           ? 'primary_upstream_timeout'
           : 'no_recall_from_planned_sources';
     const finalDecision =
