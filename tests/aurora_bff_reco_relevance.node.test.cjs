@@ -238,6 +238,54 @@ function buildConcernSelectorFixture({
   };
 }
 
+function buildBroadOilyInternalPrimitiveProduct({
+  productId = 'serum_chat_1',
+  merchantId = 'mid_internal',
+} = {}) {
+  return {
+    product_id: productId,
+    merchant_id: merchantId,
+    brand: 'The Ordinary',
+    name: 'Niacinamide 10% + Zinc 1%',
+    display_name: 'Niacinamide 10% + Zinc 1%',
+    category: 'serum',
+    product_type: 'serum',
+    retrieval_source: 'internal_search',
+    source: 'internal_search',
+    ingredient_tokens: ['niacinamide', 'zinc pca'],
+    benefit_tags: ['oil control', 'shine control'],
+    search_aliases: ['Oil Control Serum'],
+    canonical_pdp_url: 'https://example.com/products/niacinamide-zinc',
+    short_description: 'A lightweight serum for oily skin with niacinamide and zinc.',
+  };
+}
+
+function buildInternalPrimitiveSearchSuccess(products = []) {
+  return {
+    ok: true,
+    reason: null,
+    products: Array.isArray(products) ? products : [],
+    actual_http_attempt_count: 1,
+    attempted_internal_base_urls: ['https://pivota-backend.test'],
+    attempted_internal_paths: ['/agent/internal/products/search'],
+    attempted_request_timeouts_ms: [4800],
+    primary_endpoint_kind: 'internal_primitive',
+    primary_transport_owner: 'internal_products_search_primitive',
+    transport_hops: [
+      {
+        caller_lane: 'beauty_chat_handoff',
+        target_base_url: 'https://pivota-backend.test',
+        target_path: '/agent/internal/products/search',
+        endpoint_kind: 'internal_primitive',
+        transport_owner: 'internal_products_search_primitive',
+        latency_ms: 15,
+        result: Array.isArray(products) && products.length > 0 ? 'ok' : 'empty',
+      },
+    ],
+    nested_orchestrator_hops: 0,
+  };
+}
+
 function buildConcernPlannerMock({
   selectorResult = null,
   plannerResult = null,
@@ -2595,16 +2643,10 @@ test('/v1/chat: generic concern planner records model telemetry from a successfu
   }
 });
 
-test('/v1/chat: generic concern planner fails closed when both flash and pro prose remain untrusted', async () => {
-  const originalGet = axios.get;
-  let searchCalls = 0;
+test('/v1/chat: generic concern planner falls back to deterministic mainline when both flash and pro prose remain untrusted', async () => {
   let harness = null;
   const plannerAttempts = [];
-
-  axios.get = async (url) => {
-    if (isProductsSearchUrl(url)) searchCalls += 1;
-    throw new Error(`Unexpected axios.get after untrusted planner output: ${url}`);
-  };
+  const observedSearchCalls = [];
 
   try {
     harness = createAppWithPatchedAuroraChat({
@@ -2616,6 +2658,27 @@ test('/v1/chat: generic concern planner fails closed when both flash and pro pro
         attemptRecorder: ({ model, structured_contract }) => plannerAttempts.push(`gemini:${model}:${structured_contract}`),
       }),
       useMemoryStore: false,
+    });
+    harness.routesMod.__internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async (args = {}) => {
+        observedSearchCalls.push({
+          query: String(args?.query || '').trim().toLowerCase(),
+          callerLane: String(args?.callerLane || ''),
+          targetStepFamily: String(args?.targetStepFamily || ''),
+          semanticFamily: String(args?.semanticFamily || ''),
+          queryStepStrength: String(args?.queryStepStrength || ''),
+        });
+        const query = String(args?.query || '').trim().toLowerCase();
+        if (/(oil control|shine control)/.test(query)) {
+          return buildInternalPrimitiveSearchSuccess([
+            buildBroadOilyInternalPrimitiveProduct({
+              productId: 'serum_invalid_1',
+              merchantId: 'mid_serum_invalid',
+            }),
+          ]);
+        }
+        return buildInternalPrimitiveSearchSuccess([]);
+      },
     });
 
     await seedHighConfidenceArtifactForReco({ auroraUid: 'chat_framework_invalid_uid', briefId: 'chat_framework_invalid_brief' });
@@ -2646,35 +2709,39 @@ test('/v1/chat: generic concern planner fails closed when both flash and pro pro
       });
 
     assert.equal(response.statusCode, 200);
-    assert.equal(searchCalls, 0);
-    assert.equal(getRecommendationsPayload(response.body), null);
-    const notice = getConfidenceNoticePayload(response.body);
-    assert.ok(notice);
-    assert.equal(notice.reason, 'planner_untrusted');
+    const payload = getRecommendationsPayload(response.body);
+    assert.ok(payload);
+    assert.equal(payload.primary_role_id, 'oil_control_treatment');
+    assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
     const recoEvent = getRecoRequestedEvent(response.body);
     assert.equal(
       recoEvent?.data?.recommendation_meta?.source_mode || recoEvent?.data?.source_mode,
       'framework_mainline',
+    );
+    assert.equal(response.body.cards.some((card) => card?.type === 'confidence_notice'), false);
+    assert.ok(
+      observedSearchCalls.some((entry) =>
+        entry.callerLane === 'beauty_chat_handoff'
+        && entry.targetStepFamily === 'serum'
+        && entry.semanticFamily === 'oil_control_treatment'
+        && entry.queryStepStrength === 'strong_goal_family'
+        && /(oil control|shine control)/.test(entry.query)
+      ),
+      JSON.stringify(observedSearchCalls),
     );
     assert.deepEqual(plannerAttempts, [
       'gemini:gemini-3-flash-preview:plain_text',
       'gemini:gemini-3-pro-preview:plain_text',
     ]);
   } finally {
+    harness?.routesMod?.__internal?.__resetRouteDependencyOverridesForTest?.();
     harness?.restore?.();
-    axios.get = originalGet;
   }
 });
 
-test('/v1/chat: generic concern planner junk prose output still fail-closes instead of trusting fallback roles', async () => {
-  const originalGet = axios.get;
-  let searchCalls = 0;
+test('/v1/chat: generic concern planner junk prose output falls back to deterministic mainline', async () => {
   let harness = null;
-
-  axios.get = async (url) => {
-    if (isProductsSearchUrl(url)) searchCalls += 1;
-    throw new Error(`Unexpected axios.get after planner schema-invalid output: ${url}`);
-  };
+  const observedSearchCalls = [];
 
   try {
     harness = createAppWithPatchedAuroraChat({
@@ -2682,6 +2749,27 @@ test('/v1/chat: generic concern planner junk prose output still fail-closes inst
         plainText: 'A few products could help oily skin, but I need to think more.',
       }),
       useMemoryStore: false,
+    });
+    harness.routesMod.__internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async (args = {}) => {
+        observedSearchCalls.push({
+          query: String(args?.query || '').trim().toLowerCase(),
+          callerLane: String(args?.callerLane || ''),
+          targetStepFamily: String(args?.targetStepFamily || ''),
+          semanticFamily: String(args?.semanticFamily || ''),
+          queryStepStrength: String(args?.queryStepStrength || ''),
+        });
+        const query = String(args?.query || '').trim().toLowerCase();
+        if (/(oil control|shine control)/.test(query)) {
+          return buildInternalPrimitiveSearchSuccess([
+            buildBroadOilyInternalPrimitiveProduct({
+              productId: 'serum_junk_1',
+              merchantId: 'mid_serum_junk',
+            }),
+          ]);
+        }
+        return buildInternalPrimitiveSearchSuccess([]);
+      },
     });
 
     await seedHighConfidenceArtifactForReco({ auroraUid: 'chat_framework_junk_uid', briefId: 'chat_framework_junk_brief' });
@@ -2712,31 +2800,35 @@ test('/v1/chat: generic concern planner junk prose output still fail-closes inst
       });
 
     assert.equal(response.statusCode, 200);
-    assert.equal(searchCalls, 0);
-    assert.equal(getRecommendationsPayload(response.body), null);
-    const notice = getConfidenceNoticePayload(response.body);
-    assert.ok(notice);
-    assert.equal(notice.reason, 'planner_untrusted');
+    const payload = getRecommendationsPayload(response.body);
+    assert.ok(payload);
+    assert.equal(payload.primary_role_id, 'oil_control_treatment');
+    assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
     const recoEvent = getRecoRequestedEvent(response.body);
     assert.equal(
       recoEvent?.data?.recommendation_meta?.source_mode || recoEvent?.data?.source_mode,
       'framework_mainline',
     );
+    assert.equal(response.body.cards.some((card) => card?.type === 'confidence_notice'), false);
+    assert.ok(
+      observedSearchCalls.some((entry) =>
+        entry.callerLane === 'beauty_chat_handoff'
+        && entry.targetStepFamily === 'serum'
+        && entry.semanticFamily === 'oil_control_treatment'
+        && entry.queryStepStrength === 'strong_goal_family'
+        && /(oil control|shine control)/.test(entry.query)
+      ),
+      JSON.stringify(observedSearchCalls),
+    );
   } finally {
+    harness?.routesMod?.__internal?.__resetRouteDependencyOverridesForTest?.();
     harness?.restore?.();
-    axios.get = originalGet;
   }
 });
 
-test('/v1/chat: generic concern planner timeout fail-closes the mainline instead of surfacing fallback recommendations', async () => {
-  const originalGet = axios.get;
-  let searchCalls = 0;
+test('/v1/chat: generic concern planner timeout falls back to deterministic mainline when budget remains', async () => {
   let harness = null;
-
-  axios.get = async (url) => {
-    if (isProductsSearchUrl(url)) searchCalls += 1;
-    throw new Error(`Unexpected axios.get after planner timeout: ${url}`);
-  };
+  const observedSearchCalls = [];
 
   try {
     harness = createAppWithPatchedAuroraChat({
@@ -2744,6 +2836,27 @@ test('/v1/chat: generic concern planner timeout fail-closes the mainline instead
         throwOnConcernPrompt: true,
       }),
       useMemoryStore: false,
+    });
+    harness.routesMod.__internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async (args = {}) => {
+        observedSearchCalls.push({
+          query: String(args?.query || '').trim().toLowerCase(),
+          callerLane: String(args?.callerLane || ''),
+          targetStepFamily: String(args?.targetStepFamily || ''),
+          semanticFamily: String(args?.semanticFamily || ''),
+          queryStepStrength: String(args?.queryStepStrength || ''),
+        });
+        const query = String(args?.query || '').trim().toLowerCase();
+        if (/(oil control|shine control)/.test(query)) {
+          return buildInternalPrimitiveSearchSuccess([
+            buildBroadOilyInternalPrimitiveProduct({
+              productId: 'serum_timeout_1',
+              merchantId: 'mid_serum_timeout',
+            }),
+          ]);
+        }
+        return buildInternalPrimitiveSearchSuccess([]);
+      },
     });
 
     await seedHighConfidenceArtifactForReco({ auroraUid: 'chat_framework_timeout_uid', briefId: 'chat_framework_timeout_brief' });
@@ -2774,22 +2887,29 @@ test('/v1/chat: generic concern planner timeout fail-closes the mainline instead
       });
 
     assert.equal(response.statusCode, 200);
-    assert.equal(searchCalls, 0);
-    assert.equal(getRecommendationsPayload(response.body), null);
-    const notice = getConfidenceNoticePayload(response.body);
-    assert.ok(notice);
-    assert.equal(notice.reason, 'planner_untrusted');
+    const payload = getRecommendationsPayload(response.body);
+    assert.ok(payload);
+    assert.equal(payload.primary_role_id, 'oil_control_treatment');
+    assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
     const recoEvent = getRecoRequestedEvent(response.body);
     assert.equal(
       recoEvent?.data?.recommendation_meta?.source_mode || recoEvent?.data?.source_mode,
       'framework_mainline',
     );
-    assert.equal(recoEvent?.data?.recommendation_meta?.products_empty_reason ?? 'planner_untrusted', 'planner_untrusted');
-    assert.equal(recoEvent?.data?.recommendation_meta?.telemetry_failure_reason ?? 'planner_timeout', 'planner_timeout');
-    assert.equal(recoEvent?.data?.recommendation_meta?.winner_source ?? 'deterministic', 'deterministic');
+    assert.equal(response.body.cards.some((card) => card?.type === 'confidence_notice'), false);
+    assert.ok(
+      observedSearchCalls.some((entry) =>
+        entry.callerLane === 'beauty_chat_handoff'
+        && entry.targetStepFamily === 'serum'
+        && entry.semanticFamily === 'oil_control_treatment'
+        && entry.queryStepStrength === 'strong_goal_family'
+        && /(oil control|shine control)/.test(entry.query)
+      ),
+      JSON.stringify(observedSearchCalls),
+    );
   } finally {
+    harness?.routesMod?.__internal?.__resetRouteDependencyOverridesForTest?.();
     harness?.restore?.();
-    axios.get = originalGet;
   }
 });
 

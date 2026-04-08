@@ -17,6 +17,14 @@ function shouldUseBeautyChatMainlinePlanner(targetContext = null) {
   return Array.isArray(targetContext?.framework_roles) && targetContext.framework_roles.length > 0;
 }
 
+function canUseDeterministicBeautyChatPlannerFallback(targetContext = null) {
+  if (!shouldUseBeautyChatMainlinePlanner(targetContext)) return false;
+  const primaryRoleId = String(targetContext?.primary_role_id || '').trim();
+  if (!primaryRoleId) return false;
+  return Array.isArray(targetContext?.framework_roles)
+    && targetContext.framework_roles.some((role) => String(role?.role_id || '').trim() === primaryRoleId);
+}
+
 function normalizeBeautyChatPlannerTargetContext(baseTargetContext = null, plannerTargetContext = null) {
   if (
     plannerTargetContext &&
@@ -38,6 +46,7 @@ function buildBeautyChatPlannerMeta(trace = null) {
   if (!plannerTrace) return {};
   return {
     chat_planner_used: plannerTrace.planner_used === true,
+    chat_planner_fallback_used: plannerTrace.planner_fallback_used === true,
     ...(pickFirstTrimmed(plannerTrace.planner_source) ? { chat_planner_source: pickFirstTrimmed(plannerTrace.planner_source) } : {}),
     ...(pickFirstTrimmed(plannerTrace.planner_failure_class) ? { chat_planner_failure_class: pickFirstTrimmed(plannerTrace.planner_failure_class) } : {}),
     ...(pickFirstTrimmed(plannerTrace.planner_route) ? { chat_planner_route: pickFirstTrimmed(plannerTrace.planner_route) } : {}),
@@ -363,15 +372,38 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
         hardPathPlannerSemanticPlan,
       );
       if (plannerBlock) {
-        return {
-          handled: true,
-          targetContext: hardPathRecoTargetContext,
-          envelope: buildBeautyMainlineHandoffFallbackEnvelope({
-            ctx,
-            fallback: plannerBlock,
-            suggestedChips: [],
-          }),
+        if (!canUseDeterministicBeautyChatPlannerFallback(hardPathRecoTargetContext)) {
+          return {
+            handled: true,
+            targetContext: hardPathRecoTargetContext,
+            envelope: buildBeautyMainlineHandoffFallbackEnvelope({
+              ctx,
+              fallback: plannerBlock,
+              suggestedChips: [],
+            }),
+          };
+        }
+        hardPathPlannerTrace = {
+          ...(hardPathPlannerTrace && typeof hardPathPlannerTrace === 'object' ? hardPathPlannerTrace : {}),
+          planner_fallback_used: true,
+          planner_source:
+            pickFirstTrimmed(
+              hardPathPlannerTrace?.planner_source,
+              'deterministic_target_context_fallback',
+            ) || 'deterministic_target_context_fallback',
+          planner_selection_source:
+            pickFirstTrimmed(
+              hardPathPlannerTrace?.planner_selection_source,
+              'deterministic_target_context_fallback',
+            ) || 'deterministic_target_context_fallback',
         };
+        hardPathPlannerSemanticPlan =
+          hardPathRecoTargetContext?.semantic_plan &&
+          typeof hardPathRecoTargetContext.semantic_plan === 'object' &&
+          !Array.isArray(hardPathRecoTargetContext.semantic_plan)
+            ? hardPathRecoTargetContext.semantic_plan
+            : hardPathPlannerSemanticPlan;
+        effectivePlannerTargetContext = hardPathRecoTargetContext;
       }
     }
 

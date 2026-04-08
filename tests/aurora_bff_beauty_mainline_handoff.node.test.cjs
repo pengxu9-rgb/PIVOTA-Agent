@@ -749,6 +749,151 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
   assert.equal(observed.rewriteDeadlineAtMs, observed.handoffDeadlineAtMs);
 });
 
+test('beauty chat mainline entry falls back to deterministic generic-concern target context when planner is untrusted', async () => {
+  const observed = {
+    handoffTargetContext: null,
+    plannerMeta: null,
+  };
+  const runtime = createBeautyChatMainlineEntryRuntime({
+    RECO_CATALOG_GROUNDED_ENABLED: true,
+    RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS: 1000,
+    resolveRecommendationTargetContext: () => ({
+      entry_type: 'chat',
+      intent_mode: 'generic_concern',
+      step_aware_intent: false,
+      resolved_target_step: null,
+      framework_owner_source: 'generic_concern_framework_resolver',
+      framework_owner_state: 'trusted',
+      primary_role_id: 'oil_control_treatment',
+      framework_roles: [
+        {
+          role_id: 'oil_control_treatment',
+          rank: 1,
+          preferred_step: 'treatment',
+          label: 'Oil-control treatment',
+        },
+      ],
+      semantic_plan: {
+        selection_owner_source: 'generic_concern_framework_resolver',
+        selection_owner_state: 'trusted',
+      },
+    }),
+    summarizeProfileForContext: (profile) => profile,
+    mergeIngredientRecoContextValue: (left, right) => ({ ...(left || {}), ...(right || {}) }),
+    appendLatestRecoContextToSessionPatch: (sessionPatch, recoContext) => {
+      sessionPatch.latest_reco_context = recoContext;
+    },
+    extractRecoFinalSelectionContract: () => ({
+      selection_owner: 'shopping_agent_beauty_mainline',
+    }),
+    buildRouteAwareAssistantText: () => 'deterministic fallback handoff response',
+    makeAssistantMessage: (content) => ({ role: 'assistant', format: 'text', content }),
+    buildEnvelope: (_ctx, envelope) => envelope,
+    makeEvent: (_ctx, kind, data) => ({ kind, data }),
+    applyRecoContractToRecoRequestedEvents: (events) => ({ events }),
+    buildRecoRequestedEventData: ({ payload, source }) => ({ payload, source }),
+    normalizeRecoSourceDetail: (value) => value,
+    stateChangeAllowed: () => false,
+    runConcernSemanticPlanner: async () => ({
+      semanticPlan: {
+        selection_owner_source: 'rule_concern_planner_fallback',
+        selection_owner_state: 'fallback',
+      },
+      trace: {
+        planner_used: true,
+        planner_failure_class: 'planner_untrusted',
+      },
+    }),
+    buildConcernTargetContextFromSemanticPlan: () => ({
+      intent_mode: 'generic_concern',
+      framework_roles: [],
+    }),
+    handoffRecoToBeautyMainlineSearch: async (args) => {
+      observed.handoffTargetContext = args.targetContext;
+      return {
+        targetContext: args.targetContext,
+        recommendations: [
+          {
+            product_id: 'fallback_oily_1',
+            display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+            matched_role_id: 'oil_control_treatment',
+          },
+        ],
+        searchResult: {
+          decision_owner: 'shopping_agent_beauty_mainline',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+          metadata: {
+            contract_bridge: {
+              resolved_contract: 'agent_v1_search_beauty_mainline',
+            },
+            source_breakdown: {
+              source_tier_counts: { fresh_internal: 1 },
+            },
+            search_stage_ledger: {
+              final_selection: {
+                selection_owner: 'shopping_agent_beauty_mainline',
+                selected_product_ids: ['fallback_oily_1'],
+                selected_titles: ['The Ordinary Niacinamide 10% + Zinc 1%'],
+                selection_signature: 'search_sel_fallback_oily',
+                mainline_status: 'grounded_success',
+                source_tier_counts: { fresh_internal: 1 },
+              },
+            },
+          },
+        },
+      };
+    },
+    buildRecoPayloadFromBeautyMainlineHandoff: ({ targetContext, basePayload }) => {
+      observed.plannerMeta = basePayload?.recommendation_meta || null;
+      return {
+        payload: {
+          source: 'catalog_grounded_v1',
+          mainline_status: 'grounded_success',
+          recommendation_meta: {
+            ...(basePayload?.recommendation_meta || {}),
+            source_mode: 'framework_mainline',
+          },
+          target_context: targetContext,
+        },
+        contract: {
+          version: 'test_contract',
+        },
+      };
+    },
+    classifyBeautyMainlineHandoffFallback: () => ({
+      reason: 'unreachable',
+    }),
+    buildBeautyMainlineHandoffFallbackEnvelope: () => ({
+      cards: [],
+    }),
+    looksLikeRecommendationRequest: () => true,
+    sendChatEnvelope: async () => null,
+  });
+
+  const result = await runtime.maybeHandleBeautyOwnedChatReco({
+    ctx: {
+      request_id: 'req_det_fallback_oily',
+      trace_id: 'trace_det_fallback_oily',
+      lang: 'EN',
+      trigger_source: 'chat',
+    },
+    logger: null,
+    message: 'im oily skin, what products should i use?',
+    recoEntrySourceDetail: 'typed_reco',
+    profile: {
+      skinType: 'oily',
+      goals: ['oil control'],
+    },
+  });
+
+  assert.equal(result?.handled, true);
+  assert.equal(observed.handoffTargetContext?.framework_owner_source, 'generic_concern_framework_resolver');
+  assert.equal(observed.handoffTargetContext?.primary_role_id, 'oil_control_treatment');
+  assert.equal(observed.plannerMeta?.chat_planner_failure_class, 'planner_untrusted');
+  assert.equal(observed.plannerMeta?.chat_planner_fallback_used, true);
+  assert.equal(result?.envelope?.cards?.[0]?.payload?.mainline_status, 'grounded_success');
+});
+
 test('beauty chat mainline entry lets llm selector rerank only grounded primary-role candidates', async () => {
   const observed = {
     selectorCalls: 0,
