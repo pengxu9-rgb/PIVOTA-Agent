@@ -442,6 +442,20 @@ function buildPrimaryTreatmentIngredientQuery(role) {
   return normalizeConcernQueryToken(`${picked} treatment`);
 }
 
+function buildPrimaryTreatmentAnchorQuery(role) {
+  const roleObj = role && typeof role === 'object' && !Array.isArray(role) ? role : null;
+  if (!roleObj) return '';
+  const roleLabelOrIdQuery = normalizeConcernQueryToken(
+    String(roleObj.label || roleObj.role_id || '').replace(/[-_/]+/g, ' '),
+  ).toLowerCase();
+  if (!roleLabelOrIdQuery) return '';
+  if (/\btreatment\b/.test(roleLabelOrIdQuery)) return roleLabelOrIdQuery;
+  if (/\b(oil control|shine control|mattify|mattifying|balancing|acne|blemish|spot|dark spot|pigment|texture|pore)\b/.test(roleLabelOrIdQuery)) {
+    return normalizeConcernQueryToken(`${roleLabelOrIdQuery} treatment`);
+  }
+  return roleLabelOrIdQuery;
+}
+
 function buildPrimaryTreatmentSemanticQueries(role) {
   const roleObj = role && typeof role === 'object' && !Array.isArray(role) ? role : null;
   if (!roleObj) return [];
@@ -536,21 +550,21 @@ function buildFrameworkRoleQueries(role, concernText, maxQueries, { allowConcern
   const preferredStep = String(roleObj.preferred_step || '').trim();
   const roleQueries = Array.isArray(roleObj.query_terms) ? roleObj.query_terms : [];
   const out = [];
-  if (roleQueries.length > 0) out.push(roleQueries[0]);
-  if (allowConcernFallback && String(preferredStep).trim().toLowerCase() === 'treatment') {
+  const isTreatmentPrimary =
+    allowConcernFallback && String(preferredStep).trim().toLowerCase() === 'treatment';
+  if (isTreatmentPrimary) {
+    const anchorQuery = buildPrimaryTreatmentAnchorQuery(roleObj);
+    if (anchorQuery) out.push(anchorQuery);
     const ingredientLedQuery = buildPrimaryTreatmentIngredientQuery(roleObj);
     if (ingredientLedQuery) out.push(ingredientLedQuery);
+  }
+  if (roleQueries.length > 0) out.push(roleQueries[0]);
+  if (isTreatmentPrimary) {
     out.push(...buildPrimaryTreatmentSemanticQueries(roleObj));
   }
   out.push(...roleQueries.slice(1));
-  if (
-    allowConcernFallback
-    && String(preferredStep).trim().toLowerCase() === 'treatment'
-    && roleQueries.length <= 1
-  ) {
-    const roleLabelOrIdQuery = normalizeConcernQueryToken(
-      String(roleObj.label || roleObj.role_id || '').replace(/[-_/]+/g, ' '),
-    ).toLowerCase();
+  if (isTreatmentPrimary && roleQueries.length <= 1) {
+    const roleLabelOrIdQuery = buildPrimaryTreatmentAnchorQuery(roleObj);
     if (roleLabelOrIdQuery) out.push(roleLabelOrIdQuery);
   }
   if (allowConcernFallback && concernText) {

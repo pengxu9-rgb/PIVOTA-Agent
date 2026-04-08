@@ -3175,9 +3175,9 @@ test('__internal: framework recall planner emits role-aware primary and support 
     ],
   );
   assert.deepEqual(plan.stages[0]?.entries?.map((entry) => entry?.query), [
+    'oil control treatment',
     'oil control serum',
     'shine control serum',
-    'mattifying serum',
   ]);
   assert.deepEqual(plan.stages[2]?.entries?.map((entry) => entry?.query), [
     'lightweight moisturizer',
@@ -3211,9 +3211,9 @@ test('__internal: framework recall planner prefers ingredient-led treatment quer
   });
 
   assert.deepEqual(plan.stages[0]?.entries?.map((entry) => entry?.query), [
-    'oil control serum',
+    'oil control treatment',
     'Salicylic acid treatment',
-    'shine control serum',
+    'oil control serum',
   ]);
 });
 
@@ -3378,15 +3378,14 @@ test('__internal: framework recall planner injects canonical shine-control serum
           label: 'Oil-control treatment',
           query_terms: ['oil control serum', 'oil balance serum'],
           fit_keywords: ['oil control', 'oil balance', 'shine control', 'mattifying'],
-          ingredient_hypotheses: ['Salicylic acid'],
         },
       ],
     },
   });
 
   assert.deepEqual(plan.stages[0]?.entries?.map((entry) => entry?.query), [
+    'oil control treatment',
     'oil control serum',
-    'Salicylic acid treatment',
     'shine control serum',
   ]);
 });
@@ -3412,8 +3411,8 @@ test('__internal: framework recall planner falls back to role label query when t
   });
 
   assert.deepEqual(plan.stages[0]?.entries?.map((entry) => entry?.query), [
-    'oil control serum',
     'oil control treatment',
+    'oil control serum',
     'im oily skin, what product should i use? treatment',
   ]);
 });
