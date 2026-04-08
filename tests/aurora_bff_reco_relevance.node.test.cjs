@@ -3633,6 +3633,44 @@ test('__internal: internal primitive client surfaces backend error details', asy
   }
 });
 
+test('__internal: internal primitive client normalizes structured backend error envelopes', async () => {
+  const { __internal } = loadRoutesFresh();
+  const originalPost = axios.post;
+  axios.post = async () => ({
+    status: 405,
+    data: {
+      status: 'error',
+      error: {
+        code: 'INTERNAL_SERVER_ERROR',
+        message: 'Method Not Allowed',
+        details: { error: 'Method Not Allowed' },
+      },
+      metadata: { request_id: 'req_123' },
+      detail: 'Method Not Allowed',
+    },
+  });
+
+  try {
+    const out = await __internal.searchInternalProductsPrimitive({
+      query: 'oil control serum',
+      limit: 6,
+      timeoutMs: 4800,
+      catalogSurface: 'beauty',
+      callerLane: 'beauty_discovery_mainline',
+    });
+
+    assert.equal(out.ok, false);
+    assert.equal(out.reason, 'upstream_error');
+    assert.equal(out.status_code, 405);
+    assert.equal(out.upstream_error_code, 'INTERNAL_SERVER_ERROR');
+    assert.equal(out.upstream_error_message, 'Method Not Allowed');
+    assert.equal(out.upstream_failure_stage, null);
+    assert.equal(out.upstream_internal_error_code, null);
+  } finally {
+    axios.post = originalPost;
+  }
+});
+
 test('__internal: local external seed search patterns do not fall back to singleton token noise for multi-token queries', async () => {
   const { __internal } = loadRoutesFresh();
   const patterns = __internal.buildLocalExternalSeedSearchPatterns('oil control serum');

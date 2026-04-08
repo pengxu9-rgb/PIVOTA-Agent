@@ -4570,6 +4570,21 @@ async function searchInternalProductsPrimitive({
       latency_ms: Date.now() - startedAt,
     };
   };
+  const readPrimitiveErrorCode = (payload) => {
+    const rawError = payload?.error;
+    if (rawError && typeof rawError === 'object') {
+      return String(rawError.code || rawError.error || rawError.type || '').trim();
+    }
+    return String(rawError || '').trim();
+  };
+  const readPrimitiveErrorMessage = (payload, fallback = '') => {
+    const rawError = payload?.error;
+    if (rawError && typeof rawError === 'object') {
+      const nestedDetail = String(rawError?.details?.error || '').trim();
+      return String(rawError.message || payload?.message || nestedDetail || fallback || '').trim();
+    }
+    return String(payload?.message || fallback || '').trim();
+  };
   if (!q) {
     return buildTransportMeta({
       ok: false,
@@ -4602,8 +4617,8 @@ async function searchInternalProductsPrimitive({
       ? Math.trunc(Number(resp.status))
       : null;
     const body = resp && resp.data ? resp.data : null;
-    const bodyErrorCode = String(body?.error || '').trim();
-    const bodyErrorMessage = String(body?.message || '').trim();
+    const bodyErrorCode = readPrimitiveErrorCode(body);
+    const bodyErrorMessage = readPrimitiveErrorMessage(body);
     const bodyFailureStage = String(body?.failure_stage || '').trim();
     const bodyInternalErrorCode = String(body?.internal_error_code || '').trim();
     const products = extractAgentProductsFromSearchResponse(body)
@@ -4679,8 +4694,8 @@ async function searchInternalProductsPrimitive({
     const errMessage = err && err.message ? err.message : String(err);
     const responseData =
       err?.response?.data && typeof err.response.data === 'object' ? err.response.data : null;
-    const responseErrorCode = String(responseData?.error || '').trim();
-    const responseErrorMessage = String(responseData?.message || errMessage || '').trim();
+    const responseErrorCode = readPrimitiveErrorCode(responseData);
+    const responseErrorMessage = readPrimitiveErrorMessage(responseData, errMessage);
     const responseFailureStage = String(responseData?.failure_stage || '').trim();
     const responseInternalErrorCode = String(responseData?.internal_error_code || '').trim();
     const reason =
