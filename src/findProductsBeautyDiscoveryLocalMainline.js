@@ -763,8 +763,10 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
         mode: 'local_beauty_mainline',
         include_self_proxy: false,
         prefer_self_proxy_first: false,
-        allow_secondary_base_failover: true,
-        allow_secondary_path_failover: true,
+        allow_secondary_base_failover: false,
+        allow_secondary_path_failover: false,
+        max_base_urls: 1,
+        max_paths: 1,
       },
       queryStepStrength:
         firstNonEmptyString(query.query_step_strength, query.queryStepStrength) || undefined,

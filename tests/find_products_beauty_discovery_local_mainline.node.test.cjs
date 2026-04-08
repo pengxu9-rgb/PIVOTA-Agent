@@ -433,6 +433,10 @@ test('catalog child recall uses local child transport instead of falling back to
       assert.equal(localMainlineChild, true);
       assert.equal(transportPolicy?.include_self_proxy, false);
       assert.equal(transportPolicy?.prefer_self_proxy_first, false);
+      assert.equal(transportPolicy?.allow_secondary_base_failover, false);
+      assert.equal(transportPolicy?.allow_secondary_path_failover, false);
+      assert.equal(transportPolicy?.max_base_urls, 1);
+      assert.equal(transportPolicy?.max_paths, 1);
       return {
         ok: true,
         reason: 'ok',
