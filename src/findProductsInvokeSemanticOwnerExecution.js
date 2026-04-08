@@ -6,6 +6,14 @@ function firstQueryValue(value) {
   return Array.isArray(value) ? value[0] : value;
 }
 
+function firstNonEmptyString(...values) {
+  for (const value of values) {
+    const normalized = String(value || '').trim();
+    if (normalized) return normalized;
+  }
+  return '';
+}
+
 function parseBooleanQueryValue(value) {
   const raw = firstQueryValue(value);
   if (raw == null) return undefined;
@@ -410,6 +418,38 @@ function getSemanticOwnerSupportSupplementTimeoutMs({
   return 1200;
 }
 
+function extractSemanticOwnerAttemptFailure(upstreamData = null) {
+  const metadata =
+    upstreamData?.metadata && isPlainObject(upstreamData.metadata) ? upstreamData.metadata : {};
+  const primaryFailureStage = String(metadata.primary_failure_stage || '').trim().toLowerCase();
+  const externalSeedSupplement =
+    metadata.external_seed_supplement && isPlainObject(metadata.external_seed_supplement)
+      ? metadata.external_seed_supplement
+      : {};
+  const externalSeedReason = String(externalSeedSupplement.reason || '').trim();
+  const upstreamErrorCode = String(metadata.upstream_error_code || '').trim();
+  const upstreamErrorMessage = String(metadata.upstream_error_message || '').trim();
+  const initialQueryError = String(metadata.initial_query_error || '').trim();
+  const timeout =
+    primaryFailureStage === 'primary_upstream_timeout' ||
+    /timeout|ECONNABORTED/i.test(
+      `${externalSeedReason} ${upstreamErrorCode} ${upstreamErrorMessage} ${initialQueryError}`,
+    );
+  if (!timeout && primaryFailureStage !== 'primary_upstream_error' && !externalSeedReason && !upstreamErrorMessage) {
+    return null;
+  }
+  return {
+    error: firstNonEmptyString(
+      initialQueryError,
+      upstreamErrorMessage,
+      externalSeedReason,
+      primaryFailureStage,
+      timeout ? 'primary_upstream_timeout' : 'primary_upstream_error',
+    ),
+    timeout,
+  };
+}
+
 function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
   const {
     FPM_GATE_SIMPLIFY_V1,
@@ -451,7 +491,9 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
     getFpmRemainingBudgetMs = null,
     logger = null,
     rawUserQuery = '',
+    strictFailCloseOnPrimaryTimeout = false,
   } = {}) {
+    const initialAttemptFailure = extractSemanticOwnerAttemptFailure(upstreamData);
     const primarySemanticOwnerAdoption = evaluateSemanticOwnerBeautyAdoption({
       upstreamData,
       queryText: String(queryParams?.query || '').trim() || semanticOwnerQueryPack[0] || '',
@@ -475,6 +517,7 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
     let semanticOwnerCacheSourceIsolationReason = null;
     let semanticOwnerExternalRescueQueriesAttempted = [];
     const semanticOwnerSupplementTraces = [];
+    let semanticOwnerPrimaryTimeoutObserved = initialAttemptFailure?.timeout === true;
     let semanticOwnerObservationFallback =
       semanticOwnerControlled &&
       primarySemanticOwnerAdoption.adopt !== true &&
@@ -504,8 +547,8 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
                 : 0,
               adopted: primarySemanticOwnerAdoption.adopt,
               ...(primarySemanticOwnerAdoption.hitDecision
-                ? {
-                    hit_quality:
+              ? {
+                  hit_quality:
                       primarySemanticOwnerAdoption.hitDecision.hit_quality || null,
                     invalid_hit_reason:
                       primarySemanticOwnerAdoption.hitDecision.invalid_hit_reason || null,
@@ -520,6 +563,12 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
                       primarySemanticOwnerObservation.ignore === true,
                     observation_ignore_reason:
                       primarySemanticOwnerObservation.ignore_reason || null,
+                  }
+                : {}),
+              ...(initialAttemptFailure
+                ? {
+                    error: initialAttemptFailure.error,
+                    timeout_error: initialAttemptFailure.timeout === true,
                   }
                 : {}),
             },
@@ -600,6 +649,10 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
             requestBodyOverride: variantRequestBody,
           });
         } catch (semanticOwnerRetryErr) {
+          const retryErrorText = String(semanticOwnerRetryErr?.message || semanticOwnerRetryErr);
+          if (/timeout|ECONNABORTED/i.test(`${semanticOwnerRetryErr?.code || ''} ${retryErrorText}`)) {
+            semanticOwnerPrimaryTimeoutObserved = true;
+          }
           const retrySearchOut =
             semanticOwnerRetryErr?.searchOut || semanticOwnerRetryErr?.search_out || null;
           semanticOwnerQueryAttempts.push({
@@ -650,6 +703,11 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
           variantResponse?.status < 300 &&
           variantProducts.length > 0 &&
           variantAdoption.adopt === true;
+        const variantAttemptFailure =
+          shouldAdoptVariant ? null : extractSemanticOwnerAttemptFailure(variantUpstreamData);
+        if (variantAttemptFailure?.timeout === true) {
+          semanticOwnerPrimaryTimeoutObserved = true;
+        }
         const variantObservationFallback =
           semanticOwnerControlled &&
           !shouldAdoptVariant &&
@@ -715,6 +773,12 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
                   variantObservationFallback?.ignore_reason || null,
               }
             : {}),
+          ...(variantAttemptFailure
+            ? {
+                error: variantAttemptFailure.error,
+                timeout_error: variantAttemptFailure.timeout === true,
+              }
+            : {}),
         });
         if (shouldAdoptVariant) {
           semanticOwnerAdoptedByValidHit = true;
@@ -733,7 +797,11 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
       }
     }
 
+    const semanticOwnerSupplementsSuppressedByPrimaryTimeout =
+      strictFailCloseOnPrimaryTimeout === true && semanticOwnerPrimaryTimeoutObserved;
+
     if (
+      !semanticOwnerSupplementsSuppressedByPrimaryTimeout &&
       shouldAttemptSemanticOwnerCoverageSupplement({
         operation,
         semanticOwnerControlled,
@@ -1019,6 +1087,7 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
     if (
       operation === 'find_products_multi' &&
       semanticOwnerControlled &&
+      !semanticOwnerSupplementsSuppressedByPrimaryTimeout &&
       semanticOwnerAdoptedByValidHit &&
       semanticOwnerSupportRoleQueryPack.length > 0
     ) {
@@ -1265,6 +1334,7 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
     if (
       operation === 'find_products_multi' &&
       semanticOwnerControlled &&
+      !semanticOwnerSupplementsSuppressedByPrimaryTimeout &&
       !semanticOwnerAdoptedByValidHit &&
       (
         semanticOwnerIgnoredObservationCandidate ||
@@ -1531,6 +1601,7 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
     if (
       operation === 'find_products_multi' &&
       semanticOwnerControlled &&
+      !semanticOwnerSupplementsSuppressedByPrimaryTimeout &&
       !semanticOwnerAdoptedByValidHit &&
       semanticOwnerObservationFallback &&
       Array.isArray(semanticOwnerObservationFallback.upstreamData?.products) &&
@@ -1569,6 +1640,8 @@ function createFindProductsInvokeSemanticOwnerExecutionRuntime(deps = {}) {
       semanticOwnerCacheSourceIsolationReason,
       semanticOwnerLastResortCacheApplied,
       semanticOwnerLastResortCacheQuery,
+      semanticOwnerPrimaryTimeoutObserved,
+      semanticOwnerSupplementsSuppressedByPrimaryTimeout,
     };
   }
 
