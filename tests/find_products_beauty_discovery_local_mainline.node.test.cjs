@@ -2652,6 +2652,150 @@ test('framework local beauty mainline does not promote external-seed timeout int
   );
 });
 
+test('framework local beauty mainline does not promote tail primary timeout when earlier primary recall already returned candidates', async () => {
+  const runtime = createRuntime({
+    buildRecoRecallPlan: () => ({
+      mode: 'framework_generic',
+      entries: [
+        {
+          stage_id: 'framework_stage_a_primary_internal',
+          query: 'oil control serum',
+          role_id: 'oil_control_treatment',
+          role_rank: 1,
+          preferred_step: 'treatment',
+          source_scope: 'internal',
+          query_index: 0,
+        },
+        {
+          stage_id: 'framework_stage_a_primary_internal',
+          query: 'mattifying serum',
+          role_id: 'oil_control_treatment',
+          role_rank: 1,
+          preferred_step: 'treatment',
+          source_scope: 'internal',
+          query_index: 1,
+        },
+      ],
+      stages: [
+        {
+          stage_id: 'framework_stage_a_primary_internal',
+          role_id: 'oil_control_treatment',
+          role_rank: 1,
+          source_scope: 'internal',
+          entries: [
+            {
+              query: 'oil control serum',
+              role_id: 'oil_control_treatment',
+              role_rank: 1,
+              preferred_step: 'treatment',
+              source_scope: 'internal',
+              query_index: 0,
+            },
+            {
+              query: 'mattifying serum',
+              role_id: 'oil_control_treatment',
+              role_rank: 1,
+              preferred_step: 'treatment',
+              source_scope: 'internal',
+              query_index: 1,
+            },
+          ],
+        },
+      ],
+    }),
+    searchPivotaBackendProducts: async ({ query }) => {
+      if (query === 'oil control serum') {
+        return {
+          ok: true,
+          reason: 'ok',
+          actual_http_attempt_count: 1,
+          products: [
+            {
+              product_id: 'int_moist_timeout_diag_1',
+              merchant_id: 'merchant_int_moist_timeout_diag',
+              brand: 'Embryolisse',
+              title: 'Mattifying Moisturizer',
+              display_name: 'Embryolisse Mattifying Moisturizer',
+              category: 'serum',
+              product_type: 'serum',
+              retrieval_source: 'catalog',
+              source_tier: 'fresh_internal',
+              source_quality_class: 'trusted',
+              benefit_tags: ['oil control', 'shine control'],
+              short_description: 'A lightweight mattifying moisturizer for combination to oily skin.',
+            },
+          ],
+        };
+      }
+      return {
+        ok: false,
+        reason: 'upstream_timeout',
+        actual_http_attempt_count: 1,
+        products: [],
+      };
+    },
+    finalizeConcernFrameworkCandidatePools: (rawCandidates) => {
+      const list = Array.isArray(rawCandidates) ? rawCandidates : [];
+      return {
+        selected_recommendations: [],
+        primary_role_matched: false,
+        raw_candidate_count: list.length,
+        viable_candidate_count: 0,
+        selected_candidate_count: 0,
+        weak_viable_pool: false,
+      };
+    },
+  });
+
+  const out = await runtime.runLocalBeautyDiscoveryMainline({
+    search: {
+      query: 'im oily skin, what products should i use?',
+      source: 'shopping',
+      product_only: true,
+    },
+    metadata: {
+      source: 'shopping',
+      catalog_surface: 'beauty',
+    },
+    requestContract: {
+      surface: 'direct',
+      primary_lane: 'beauty_discovery_mainline',
+      primary_retrieval_contract: 'agent_v1_search_beauty_mainline',
+      owner_switch_count: 0,
+    },
+    executionPlan: {
+      primary_lane: 'beauty_discovery_mainline',
+      primary_retrieval_contract: 'agent_v1_search_beauty_mainline',
+      owner_switch_count: 0,
+    },
+    rawUserQuery: 'im oily skin, what products should i use?',
+    gatewayRequestId: 'trace-framework-partial-primary-timeout',
+    traceQueryClass: 'query',
+    timeoutMs: 2600,
+    invokeStartedAtMs: Date.now(),
+    logger: { warn() {} },
+    authHeaders: { authorization: 'Bearer test' },
+    operation: 'find_products_multi',
+  });
+
+  assert.equal(out.handled, true);
+  assert.deepEqual(out.response.products, []);
+  assert.equal(
+    out.response.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts?.[0]
+      ?.result_count,
+    1,
+  );
+  assert.equal(
+    out.response.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts?.[1]
+      ?.reason,
+    'upstream_timeout',
+  );
+  assert.equal(
+    out.response.metadata?.search_execution_trace?.primary_failure_stage,
+    'no_recall_from_planned_sources',
+  );
+});
+
 test('framework local beauty mainline hard-stops wall clock when internal primitive hangs', async () => {
   const attemptedQueries = [];
   const runtime = createRuntime({

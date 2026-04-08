@@ -111,6 +111,15 @@ function hasFrameworkPrimaryStageTimeout(searchResults = []) {
   });
 }
 
+function hasFrameworkPrimaryStageRecall(searchResults = []) {
+  return (Array.isArray(searchResults) ? searchResults : []).some((row) => {
+    const stageId = String(row?.stage_id || row?.ladder_level || '').trim().toLowerCase();
+    if (!isFrameworkPrimaryInternalStageId(stageId)) return false;
+    const products = Array.isArray(row?.products) ? row.products : [];
+    return products.length > 0;
+  });
+}
+
 function buildPrimaryQueryPackAttempts(recallPlan = null) {
   return (Array.isArray(recallPlan?.entries) ? recallPlan.entries : [])
     .map((entry, index, rows) => ({
@@ -2423,10 +2432,11 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
       selectedProducts.length > 0 ? selectedProducts : rawCandidates,
     );
     const primaryInternalTimeout = hasFrameworkPrimaryStageTimeout(searchResults);
+    const primaryInternalRecall = hasFrameworkPrimaryStageRecall(searchResults);
     const primaryFailureStage =
       selectedProducts.length > 0
         ? null
-        : primaryInternalTimeout
+        : primaryInternalTimeout && !primaryInternalRecall
           ? 'primary_upstream_timeout'
           : 'no_recall_from_planned_sources';
     const finalDecision =
