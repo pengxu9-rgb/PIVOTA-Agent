@@ -786,14 +786,8 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
       productOnly:
         parseBooleanLike(query.product_only ?? query.productOnly ?? searchState.product_only ?? searchState.productOnly) ===
         true,
-      semanticContract,
       traceId: gatewayRequestId,
-      queryIndex:
-        Number.isFinite(Number(query.query_index)) ? Number(query.query_index) : null,
-      queryTotal:
-        Number.isFinite(Number(query.query_total)) ? Number(query.query_total) : null,
       authHeaders,
-      localMainlineChild: true,
     });
     const failureReason = String(searchOut?.reason || '').trim().toLowerCase();
     if (searchOut?.ok !== true && ['upstream_timeout', 'upstream_error', 'rate_limited'].includes(failureReason)) {
@@ -1923,12 +1917,8 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
               String(semanticContract.semantic_family || entry?.role_id || '').trim() ||
               undefined,
             productOnly: true,
-            semanticContract: stagedSemanticContract,
             traceId: gatewayRequestId,
-            queryIndex: queryCursor,
-            queryTotal: recallEntries.length,
             authHeaders,
-            localMainlineChild: true,
           });
         }
         const attemptElapsedMs = Math.max(0, Date.now() - attemptStartedAtMs);
