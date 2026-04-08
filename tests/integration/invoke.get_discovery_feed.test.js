@@ -163,4 +163,138 @@ describe('/agent/shop/v1/invoke get_discovery_feed', () => {
       else process.env.DATABASE_URL = previousDatabaseUrl;
     }
   });
+
+  test('fails open with provider diagnostics when products_search is unauthorized', async () => {
+    const previousDiscoveryBaseUrl = process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL;
+    const previousDiscoveryApiKey = process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY;
+    const previousDatabaseUrl = process.env.DATABASE_URL;
+
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://catalog.test';
+    process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY = 'bad-token';
+    delete process.env.DATABASE_URL;
+
+    nock('http://catalog.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(401, { error: 'unauthorized' });
+
+    try {
+      const res = await request(app)
+        .post('/agent/shop/v1/invoke')
+        .send({
+          operation: 'get_discovery_feed',
+          payload: {
+            surface: 'home_hot_deals',
+            page: 1,
+            limit: 6,
+            context: {
+              auth_state: 'anonymous',
+              locale: 'en-US',
+              recent_views: [],
+              recent_queries: [],
+            },
+          },
+        })
+        .expect(200);
+
+      expect(res.body.metadata).toEqual(
+        expect.objectContaining({
+          catalog_status: 'unavailable',
+          provider_breakdown: expect.arrayContaining([
+            expect.objectContaining({
+              provider: 'products_search',
+              successful: false,
+              failure_reason: 'http_401',
+            }),
+          ]),
+        }),
+      );
+    } finally {
+      if (previousDiscoveryBaseUrl === undefined) delete process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL;
+      else process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = previousDiscoveryBaseUrl;
+      if (previousDiscoveryApiKey === undefined) delete process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY;
+      else process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY = previousDiscoveryApiKey;
+      if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = previousDatabaseUrl;
+    }
+  });
+
+  test('browse_products serves warm cache when discovery base URL disappears', async () => {
+    const previousDiscoveryBaseUrl = process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL;
+    const previousDiscoveryApiKey = process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY;
+    const previousBackendBaseUrl = process.env.PIVOTA_BACKEND_BASE_URL;
+    const previousApiBase = process.env.PIVOTA_API_BASE;
+
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://catalog.test';
+    process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY = 'test-token';
+
+    nock('http://catalog.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .once()
+      .reply(200, {
+        products: Array.from({ length: 6 }, (_, idx) => ({
+          merchant_id: `m${idx + 1}`,
+          product_id: `warm_${idx + 1}`,
+          title: `Warm ${idx + 1}`,
+          category: 'Skincare',
+          product_type: 'Serum',
+          inventory_quantity: 8,
+          status: 'active',
+        })),
+      });
+
+    try {
+      const basePayload = {
+        operation: 'get_discovery_feed',
+        payload: {
+          surface: 'browse_products',
+          page: 1,
+          limit: 2,
+          debug: true,
+          context: {
+            auth_state: 'anonymous',
+            locale: 'en-US',
+            recent_views: [],
+            recent_queries: [],
+          },
+        },
+      };
+
+      const firstPage = await request(app).post('/agent/shop/v1/invoke').send(basePayload).expect(200);
+      delete process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL;
+      delete process.env.PIVOTA_BACKEND_BASE_URL;
+      delete process.env.PIVOTA_API_BASE;
+      const secondPage = await request(app)
+        .post('/agent/shop/v1/invoke')
+        .send({
+          ...basePayload,
+          payload: {
+            ...basePayload.payload,
+            page: 2,
+          },
+        })
+        .expect(200);
+
+      expect(firstPage.body.products).toHaveLength(2);
+      expect(secondPage.body.products).toHaveLength(2);
+      expect(secondPage.body.metadata.rank_debug.recall_summary).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            label: 'browse_pool_cache',
+            cache_hit: true,
+          }),
+        ]),
+      );
+    } finally {
+      if (previousDiscoveryBaseUrl === undefined) delete process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL;
+      else process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = previousDiscoveryBaseUrl;
+      if (previousDiscoveryApiKey === undefined) delete process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY;
+      else process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY = previousDiscoveryApiKey;
+      if (previousBackendBaseUrl === undefined) delete process.env.PIVOTA_BACKEND_BASE_URL;
+      else process.env.PIVOTA_BACKEND_BASE_URL = previousBackendBaseUrl;
+      if (previousApiBase === undefined) delete process.env.PIVOTA_API_BASE;
+      else process.env.PIVOTA_API_BASE = previousApiBase;
+    }
+  });
 });

@@ -443,8 +443,10 @@ const { recommend: recommendPdpProducts, getCacheStats: getPdpRecsCacheStats } =
 const {
   DiscoveryCatalogUnavailableError,
   DiscoveryValidationError,
+  getDiscoveryHealthSnapshot,
   getDiscoveryFeed,
 } = require('./services/discoveryFeed');
+const { getLastDiscoverySnapshot } = require('./observability/discoveryMetrics');
 const { getGeminiGlobalGate } = require('./lib/geminiGlobalGate');
 const {
   resolveProductRef,
@@ -12887,7 +12889,17 @@ function withTimeoutCode(promise, timeoutMs, timeoutCode) {
   });
 }
 
-const healthRouteHandler = (req, res) => {
+function getLastCatalogUnavailableSnapshotForHealth() {
+  const snapshots = getLastDiscoverySnapshot();
+  const values = snapshots && typeof snapshots === 'object' ? Object.values(snapshots) : [];
+  return (
+    values
+      .filter((snapshot) => snapshot && snapshot.status === 'catalog_unavailable')
+      .sort((a, b) => String(b?.recorded_at || '').localeCompare(String(a?.recorded_at || '')))[0] || null
+  );
+}
+
+const healthRouteHandler = async (req, res) => {
   const dbConfigured = Boolean(process.env.DATABASE_URL);
   const taxonomyEnabled = process.env.TAXONOMY_ENABLED !== 'false';
   const minSellable = Math.max(Number(process.env.HEALTHZ_MIN_SELLABLE_PRODUCTS || 20) || 20, 0);
@@ -12912,183 +12924,224 @@ const healthRouteHandler = (req, res) => {
       ? getIngredientRecallRegistryHealth()
       : Promise.resolve(null);
   const dependencyTimeoutMs = getHealthzDependencyTimeoutMs();
+  const discoveryHealthPromise =
+    typeof getDiscoveryHealthSnapshot === 'function'
+      ? getDiscoveryHealthSnapshot()
+      : Promise.resolve({
+          products_search_ready: false,
+          db_backed_providers_ready: false,
+          single_provider_mode: false,
+          discovery_ready: false,
+        });
 
-  Promise.allSettled([
-    withTimeoutCode(cacheStatsPromise, dependencyTimeoutMs, 'HEALTHZ_CACHE_STATS_TIMEOUT'),
-    withTimeoutCode(ingredientRegistryHealthPromise, dependencyTimeoutMs, 'HEALTHZ_INGREDIENT_REGISTRY_TIMEOUT'),
-  ])
-    .then(([cacheStatsResult, ingredientRegistryHealthResult]) => {
-      if (cacheStatsResult.status === 'rejected') {
-        logger.warn({ err: cacheStatsResult.reason?.code || cacheStatsResult.reason?.message }, 'healthz cache stats probe degraded');
-      }
-      if (ingredientRegistryHealthResult.status === 'rejected') {
-        logger.warn(
-          { err: ingredientRegistryHealthResult.reason?.code || ingredientRegistryHealthResult.reason?.message },
-          'healthz ingredient registry probe degraded',
-        );
-      }
+  try {
+    const [cacheStatsResult, ingredientRegistryHealthResult, discoveryHealthResult] = await Promise.allSettled([
+      withTimeoutCode(cacheStatsPromise, dependencyTimeoutMs, 'HEALTHZ_CACHE_STATS_TIMEOUT'),
+      withTimeoutCode(ingredientRegistryHealthPromise, dependencyTimeoutMs, 'HEALTHZ_INGREDIENT_REGISTRY_TIMEOUT'),
+      withTimeoutCode(discoveryHealthPromise, dependencyTimeoutMs, 'HEALTHZ_DISCOVERY_TIMEOUT'),
+    ]);
 
-      const cacheStats = cacheStatsResult.status === 'fulfilled' ? cacheStatsResult.value : null;
-      const ingredientRegistryHealth =
-        ingredientRegistryHealthResult.status === 'fulfilled'
-          ? ingredientRegistryHealthResult.value
-          : {
-              ok: false,
-              degraded: true,
-              code: ingredientRegistryHealthResult.reason?.code || 'HEALTHZ_INGREDIENT_REGISTRY_TIMEOUT',
-            };
-      const sellable = cacheStats && typeof cacheStats.products_cache_sellable_total === 'number'
-        ? cacheStats.products_cache_sellable_total
-        : null;
-      const cacheWarning = typeof sellable === 'number' ? sellable < minSellable : null;
-      const intervalConfig = getCreatorCatalogAutoSyncIntervalConfig();
-      const limitConfig = getCreatorCatalogAutoSyncLimitConfig();
+    if (cacheStatsResult.status === 'rejected') {
+      logger.warn({ err: cacheStatsResult.reason?.code || cacheStatsResult.reason?.message }, 'healthz cache stats probe degraded');
+    }
+    if (ingredientRegistryHealthResult.status === 'rejected') {
+      logger.warn(
+        { err: ingredientRegistryHealthResult.reason?.code || ingredientRegistryHealthResult.reason?.message },
+        'healthz ingredient registry probe degraded',
+      );
+    }
+    if (discoveryHealthResult.status === 'rejected') {
+      logger.warn(
+        { err: discoveryHealthResult.reason?.code || discoveryHealthResult.reason?.message },
+        'healthz discovery probe degraded',
+      );
+    }
 
-      return res.status(auroraStartupCritical ? 503 : 200).json({
-    ok: !auroraStartupCritical,
-    use_mock: USE_MOCK,
-    port: PORT,
-    api_mode: API_MODE,
-    aurora_routes_ready: auroraRoutesReady,
-    aurora_routes_fail_closed: AURORA_ROUTES_FAIL_CLOSED,
-    aurora_routes_error: auroraRoutesLoadError,
-    required_routes_ok:
-      requiredRoutesHealth && Object.prototype.hasOwnProperty.call(requiredRoutesHealth, 'ok')
-        ? Boolean(requiredRoutesHealth.ok)
-        : null,
-    missing_routes:
-      requiredRoutesHealth && Array.isArray(requiredRoutesHealth.missing_routes)
-        ? requiredRoutesHealth.missing_routes
-        : [],
-    modes: {
-      mock: USE_MOCK,
-      hybrid: USE_HYBRID,
-      real_api_enabled: REAL_API_ENABLED
-    },
-    version: {
-      service: SERVICE_NAME,
-      commit: SERVICE_GIT_SHA_SHORT,
-      build_id: SERVICE_BUILD_ID,
-      branch: SERVICE_GIT_BRANCH || null,
-      deployment_id: SERVICE_DEPLOYMENT_ID || null,
-      started_at: SERVICE_STARTED_AT,
-    },
-        backend: {
-          api_base: PIVOTA_API_BASE,
-          aurora_proxy_search_api_base: PROXY_SEARCH_AURORA_API_BASE || null,
-          api_key_configured: !!PIVOTA_API_KEY,
-          db_configured: dbConfigured,
-          ingredient_registry: ingredientRegistryHealth,
-          taxonomy_enabled: taxonomyEnabled,
-          taxonomy_view_id: process.env.TAXONOMY_VIEW_ID || 'GLOBAL_FASHION',
-          taxonomy_version: process.env.TAXONOMY_VERSION || null,
-    },
-    aurora_chat_contract: auroraChatContract,
-    resolve_product_candidates_cache: snapshotResolveProductCandidatesCacheStats(),
-    resolve_product_group_cache: snapshotResolveProductGroupCacheStats(),
-    product_detail_cache: snapshotProductDetailCacheStats(),
-    pdp_v2_core_hot_cache: snapshotPdpV2CoreHotCacheStats(),
-    pdp_recommendations_cache: getPdpRecsCacheStats(),
-    products_available: true,
-    catalog_cache: includeCacheStats
-      ? {
-          creator_id: creatorIdForStats,
-          merchant_ids: merchantIds,
-          min_sellable_products: minSellable,
-          warning: cacheWarning,
-          stats: cacheStats,
-        }
-      : undefined,
-    catalog_sync: {
-      enabled: CREATOR_CATALOG_AUTO_SYNC_ENABLED,
-      interval_minutes: intervalConfig.intervalMinutes,
-      interval_minutes_max: intervalConfig.maxIntervalMinutes,
-      cache_ttl_seconds: CREATOR_CATALOG_CACHE_TTL_SECONDS,
-      limit_configured: limitConfig.limitConfigured,
-      limit_effective: limitConfig.limitEffective,
-      limit_fallback_applied: limitConfig.limitFallbackApplied,
-      limit_raised_to_min: limitConfig.limitRaisedToMin,
-      limit_clamped_to_max: limitConfig.limitClampedToMax,
-      request_timeout_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS,
-      request_timeout_max_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MAX_MS,
-      retry_attempts: CREATOR_CATALOG_AUTO_SYNC_RETRIES,
-      retry_backoff_ms: CREATOR_CATALOG_AUTO_SYNC_RETRY_BACKOFF_MS,
-      non_retryable_cooldown_seconds: CREATOR_CATALOG_AUTO_SYNC_NON_RETRYABLE_COOLDOWN_SECONDS,
-      invalid_merchant_cooldown_seconds: CREATOR_CATALOG_AUTO_SYNC_INVALID_MERCHANT_COOLDOWN_SECONDS,
-      target_source: catalogSyncState.target_source,
-      target_count: catalogSyncState.target_count,
-      target_eligible_count: catalogSyncState.target_eligible_count,
-      target_suppressed_count: catalogSyncState.target_suppressed_count,
-      target_sample: catalogSyncState.target_sample,
-      target_suppressed_sample: catalogSyncState.target_suppressed_sample,
-      last_run_at: catalogSyncState.last_run_at,
-      last_success_at: catalogSyncState.last_success_at,
-      last_error: catalogSyncState.last_error,
-      per_merchant: summarizeCatalogSyncMerchantState(),
-    },
-    features: {
-      product_search: true,
-      order_creation: true,
-      payment: 'real',
-      tracking: true,
-      layer1_compatibility: true,
-      find_products_multi_vector_enabled:
-        process.env.FIND_PRODUCTS_MULTI_VECTOR_ENABLED === 'true',
-    },
-    startup_guards: {
-      aurora_routes_critical: auroraStartupCritical,
-    },
-    message: `Running in ${API_MODE} mode. ${
-      USE_MOCK || USE_HYBRID
-        ? 'Shopping runtime mocks are deprecated and ignored; live upstream paths are used.'
-        : 'Full real API integration.'
-    }`
-      });
-    })
-    .catch((err) => {
-      logger.warn({ err: err.message }, 'healthz cache stats probe failed');
-      return res.status(auroraStartupCritical ? 503 : 200).json({
-        ok: !auroraStartupCritical,
-        api_mode: API_MODE,
-        aurora_routes_ready: auroraRoutesReady,
-        aurora_routes_fail_closed: AURORA_ROUTES_FAIL_CLOSED,
-        aurora_routes_error: auroraRoutesLoadError,
-        required_routes_ok:
-          requiredRoutesHealth && Object.prototype.hasOwnProperty.call(requiredRoutesHealth, 'ok')
-            ? Boolean(requiredRoutesHealth.ok)
-            : null,
-        missing_routes:
-          requiredRoutesHealth && Array.isArray(requiredRoutesHealth.missing_routes)
-            ? requiredRoutesHealth.missing_routes
-            : [],
-        version: {
-          service: SERVICE_NAME,
-          commit: SERVICE_GIT_SHA_SHORT,
-          build_id: SERVICE_BUILD_ID,
-          branch: SERVICE_GIT_BRANCH || null,
-          deployment_id: SERVICE_DEPLOYMENT_ID || null,
-          started_at: SERVICE_STARTED_AT,
-        },
-        backend: {
-          api_base: PIVOTA_API_BASE,
-          aurora_proxy_search_api_base: PROXY_SEARCH_AURORA_API_BASE || null,
-          api_key_configured: !!PIVOTA_API_KEY,
-          db_configured: dbConfigured,
-          ingredient_registry: null,
-        },
-        aurora_chat_contract: auroraChatContract,
-        resolve_product_candidates_cache: snapshotResolveProductCandidatesCacheStats(),
-        resolve_product_group_cache: snapshotResolveProductGroupCacheStats(),
-        product_detail_cache: snapshotProductDetailCacheStats(),
-        pdp_v2_core_hot_cache: snapshotPdpV2CoreHotCacheStats(),
-        pdp_recommendations_cache: getPdpRecsCacheStats(),
-        products_available: true,
-        startup_guards: {
-          aurora_routes_critical: auroraStartupCritical,
-        },
-        warning: 'healthz_cache_stats_failed',
-      });
+    const cacheStats = cacheStatsResult.status === 'fulfilled' ? cacheStatsResult.value : null;
+    const ingredientRegistryHealth =
+      ingredientRegistryHealthResult.status === 'fulfilled'
+        ? ingredientRegistryHealthResult.value
+        : {
+            ok: false,
+            degraded: true,
+            code: ingredientRegistryHealthResult.reason?.code || 'HEALTHZ_INGREDIENT_REGISTRY_TIMEOUT',
+          };
+    const discoveryHealth =
+      discoveryHealthResult.status === 'fulfilled'
+        ? {
+            ...discoveryHealthResult.value,
+            last_catalog_unavailable_snapshot: getLastCatalogUnavailableSnapshotForHealth(),
+          }
+        : {
+            products_search_ready: false,
+            db_backed_providers_ready: false,
+            single_provider_mode: false,
+            discovery_ready: false,
+            degraded: true,
+            code: discoveryHealthResult.reason?.code || 'HEALTHZ_DISCOVERY_TIMEOUT',
+            last_catalog_unavailable_snapshot: getLastCatalogUnavailableSnapshotForHealth(),
+          };
+    const sellable = cacheStats && typeof cacheStats.products_cache_sellable_total === 'number'
+      ? cacheStats.products_cache_sellable_total
+      : null;
+    const cacheWarning = typeof sellable === 'number' ? sellable < minSellable : null;
+    const intervalConfig = getCreatorCatalogAutoSyncIntervalConfig();
+    const limitConfig = getCreatorCatalogAutoSyncLimitConfig();
+
+    return res.status(auroraStartupCritical ? 503 : 200).json({
+      ok: !auroraStartupCritical,
+      use_mock: USE_MOCK,
+      port: PORT,
+      api_mode: API_MODE,
+      aurora_routes_ready: auroraRoutesReady,
+      aurora_routes_fail_closed: AURORA_ROUTES_FAIL_CLOSED,
+      aurora_routes_error: auroraRoutesLoadError,
+      required_routes_ok:
+        requiredRoutesHealth && Object.prototype.hasOwnProperty.call(requiredRoutesHealth, 'ok')
+          ? Boolean(requiredRoutesHealth.ok)
+          : null,
+      missing_routes:
+        requiredRoutesHealth && Array.isArray(requiredRoutesHealth.missing_routes)
+          ? requiredRoutesHealth.missing_routes
+          : [],
+      modes: {
+        mock: USE_MOCK,
+        hybrid: USE_HYBRID,
+        real_api_enabled: REAL_API_ENABLED,
+      },
+      version: {
+        service: SERVICE_NAME,
+        commit: SERVICE_GIT_SHA_SHORT,
+        build_id: SERVICE_BUILD_ID,
+        branch: SERVICE_GIT_BRANCH || null,
+        deployment_id: SERVICE_DEPLOYMENT_ID || null,
+        started_at: SERVICE_STARTED_AT,
+      },
+      backend: {
+        api_base: PIVOTA_API_BASE,
+        aurora_proxy_search_api_base: PROXY_SEARCH_AURORA_API_BASE || null,
+        api_key_configured: !!PIVOTA_API_KEY,
+        db_configured: dbConfigured,
+        ingredient_registry: ingredientRegistryHealth,
+        taxonomy_enabled: taxonomyEnabled,
+        taxonomy_view_id: process.env.TAXONOMY_VIEW_ID || 'GLOBAL_FASHION',
+        taxonomy_version: process.env.TAXONOMY_VERSION || null,
+      },
+      discovery: discoveryHealth,
+      aurora_chat_contract: auroraChatContract,
+      resolve_product_candidates_cache: snapshotResolveProductCandidatesCacheStats(),
+      resolve_product_group_cache: snapshotResolveProductGroupCacheStats(),
+      product_detail_cache: snapshotProductDetailCacheStats(),
+      pdp_v2_core_hot_cache: snapshotPdpV2CoreHotCacheStats(),
+      pdp_recommendations_cache: getPdpRecsCacheStats(),
+      products_available: discoveryHealth.discovery_ready === true,
+      catalog_cache: includeCacheStats
+        ? {
+            creator_id: creatorIdForStats,
+            merchant_ids: merchantIds,
+            min_sellable_products: minSellable,
+            warning: cacheWarning,
+            stats: cacheStats,
+          }
+        : undefined,
+      catalog_sync: {
+        enabled: CREATOR_CATALOG_AUTO_SYNC_ENABLED,
+        interval_minutes: intervalConfig.intervalMinutes,
+        interval_minutes_max: intervalConfig.maxIntervalMinutes,
+        cache_ttl_seconds: CREATOR_CATALOG_CACHE_TTL_SECONDS,
+        limit_configured: limitConfig.limitConfigured,
+        limit_effective: limitConfig.limitEffective,
+        limit_fallback_applied: limitConfig.limitFallbackApplied,
+        limit_raised_to_min: limitConfig.limitRaisedToMin,
+        limit_clamped_to_max: limitConfig.limitClampedToMax,
+        request_timeout_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS,
+        request_timeout_max_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MAX_MS,
+        retry_attempts: CREATOR_CATALOG_AUTO_SYNC_RETRIES,
+        retry_backoff_ms: CREATOR_CATALOG_AUTO_SYNC_RETRY_BACKOFF_MS,
+        non_retryable_cooldown_seconds: CREATOR_CATALOG_AUTO_SYNC_NON_RETRYABLE_COOLDOWN_SECONDS,
+        invalid_merchant_cooldown_seconds: CREATOR_CATALOG_AUTO_SYNC_INVALID_MERCHANT_COOLDOWN_SECONDS,
+        target_source: catalogSyncState.target_source,
+        target_count: catalogSyncState.target_count,
+        target_eligible_count: catalogSyncState.target_eligible_count,
+        target_suppressed_count: catalogSyncState.target_suppressed_count,
+        target_sample: catalogSyncState.target_sample,
+        target_suppressed_sample: catalogSyncState.target_suppressed_sample,
+        last_run_at: catalogSyncState.last_run_at,
+        last_success_at: catalogSyncState.last_success_at,
+        last_error: catalogSyncState.last_error,
+        per_merchant: summarizeCatalogSyncMerchantState(),
+      },
+      features: {
+        product_search: true,
+        order_creation: true,
+        payment: 'real',
+        tracking: true,
+        layer1_compatibility: true,
+        find_products_multi_vector_enabled:
+          process.env.FIND_PRODUCTS_MULTI_VECTOR_ENABLED === 'true',
+      },
+      startup_guards: {
+        aurora_routes_critical: auroraStartupCritical,
+      },
+      message: `Running in ${API_MODE} mode. ${
+        USE_MOCK || USE_HYBRID
+          ? 'Shopping runtime mocks are deprecated and ignored; live upstream paths are used.'
+          : 'Full real API integration.'
+      }`,
     });
+  } catch (err) {
+    logger.warn({ err: err.message }, 'healthz probe failed');
+    return res.status(auroraStartupCritical ? 503 : 200).json({
+      ok: !auroraStartupCritical,
+      api_mode: API_MODE,
+      aurora_routes_ready: auroraRoutesReady,
+      aurora_routes_fail_closed: AURORA_ROUTES_FAIL_CLOSED,
+      aurora_routes_error: auroraRoutesLoadError,
+      required_routes_ok:
+        requiredRoutesHealth && Object.prototype.hasOwnProperty.call(requiredRoutesHealth, 'ok')
+          ? Boolean(requiredRoutesHealth.ok)
+          : null,
+      missing_routes:
+        requiredRoutesHealth && Array.isArray(requiredRoutesHealth.missing_routes)
+          ? requiredRoutesHealth.missing_routes
+          : [],
+      version: {
+        service: SERVICE_NAME,
+        commit: SERVICE_GIT_SHA_SHORT,
+        build_id: SERVICE_BUILD_ID,
+        branch: SERVICE_GIT_BRANCH || null,
+        deployment_id: SERVICE_DEPLOYMENT_ID || null,
+        started_at: SERVICE_STARTED_AT,
+      },
+      backend: {
+        api_base: PIVOTA_API_BASE,
+        aurora_proxy_search_api_base: PROXY_SEARCH_AURORA_API_BASE || null,
+        api_key_configured: !!PIVOTA_API_KEY,
+        db_configured: dbConfigured,
+        ingredient_registry: null,
+      },
+      discovery: {
+        products_search_ready: false,
+        db_backed_providers_ready: false,
+        single_provider_mode: false,
+        discovery_ready: false,
+        degraded: true,
+        code: 'HEALTHZ_PROBE_FAILED',
+        last_catalog_unavailable_snapshot: getLastCatalogUnavailableSnapshotForHealth(),
+      },
+      aurora_chat_contract: auroraChatContract,
+      resolve_product_candidates_cache: snapshotResolveProductCandidatesCacheStats(),
+      resolve_product_group_cache: snapshotResolveProductGroupCacheStats(),
+      product_detail_cache: snapshotProductDetailCacheStats(),
+      pdp_v2_core_hot_cache: snapshotPdpV2CoreHotCacheStats(),
+      pdp_recommendations_cache: getPdpRecsCacheStats(),
+      products_available: false,
+      startup_guards: {
+        aurora_routes_critical: auroraStartupCritical,
+      },
+      warning: 'healthz_probe_failed',
+    });
+  }
 };
 
 app.get('/healthz', healthRouteHandler);

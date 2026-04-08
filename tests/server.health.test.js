@@ -114,4 +114,55 @@ describe('health endpoints', () => {
       },
     );
   });
+
+  it('/healthz exposes discovery readiness and marks products unavailable when discovery config is missing', async () => {
+    await withEnv(
+      {
+        DISCOVERY_PRODUCTS_SEARCH_BASE_URL: undefined,
+        DISCOVERY_PRODUCTS_SEARCH_API_KEY: undefined,
+        PIVOTA_BACKEND_BASE_URL: undefined,
+        PIVOTA_API_BASE: undefined,
+        DATABASE_URL: undefined,
+      },
+      async () => {
+        jest.resetModules();
+        const app = require('../src/server');
+        const resp = await request(app).get('/healthz').expect(200);
+
+        expect(resp.body.discovery).toEqual(
+          expect.objectContaining({
+            products_search_ready: false,
+            db_backed_providers_ready: false,
+            discovery_ready: false,
+          }),
+        );
+        expect(resp.body.products_available).toBe(false);
+      },
+    );
+  });
+
+  it('/healthz marks single_provider_mode when products_search is configured without db-backed providers', async () => {
+    await withEnv(
+      {
+        DISCOVERY_PRODUCTS_SEARCH_BASE_URL: 'https://catalog.test',
+        DISCOVERY_PRODUCTS_SEARCH_API_KEY: 'health-test-key',
+        DATABASE_URL: undefined,
+      },
+      async () => {
+        jest.resetModules();
+        const app = require('../src/server');
+        const resp = await request(app).get('/healthz').expect(200);
+
+        expect(resp.body.discovery).toEqual(
+          expect.objectContaining({
+            products_search_ready: true,
+            db_backed_providers_ready: false,
+            single_provider_mode: true,
+            discovery_ready: false,
+          }),
+        );
+        expect(resp.body.products_available).toBe(false);
+      },
+    );
+  });
 });

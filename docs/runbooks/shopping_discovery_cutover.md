@@ -15,14 +15,20 @@ Do not cut the creator UI directly onto `web-production-fedb` for discovery.
 Set on `pivota-agent-production`:
 
 ```bash
-PIVOTA_API_BASE=https://web-production-fedb.up.railway.app
-PIVOTA_BACKEND_BASE_URL=https://web-production-fedb.up.railway.app
-PIVOTA_API_KEY=<pivota backend key>
+DISCOVERY_PRODUCTS_SEARCH_BASE_URL=https://web-production-fedb.up.railway.app
+DISCOVERY_PRODUCTS_SEARCH_API_KEY=<pivota backend key>
 API_MODE=REAL
 USE_MOCK=false
-DISCOVERY_PRODUCTS_SEARCH_TIMEOUT_MS=6500
+DISCOVERY_PRODUCTS_SEARCH_TIMEOUT_MS=1800
 DISCOVERY_PRODUCTS_SEARCH_MAX_CALLS=4
+DISCOVERY_RECALL_BUDGET_MS=1800
+CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET=US
 ```
+
+Compatibility-only fallback envs such as `PIVOTA_BACKEND_BASE_URL`, `PIVOTA_API_BASE`, and `PIVOTA_API_KEY`
+should not be used as the production discovery mainline. If discovery is still relying on those fallbacks,
+`/healthz.discovery.discovery_ready` can stay true, but `discovery.products_search_ready.legacy_config_fallback`
+or related warning codes will indicate a degraded configuration that must be cleaned up before cutover signoff.
 
 Set on creator UI:
 
@@ -53,12 +59,28 @@ BASE_URL=https://pivota-agent-production.up.railway.app \
 npm run smoke:discovery:prod
 ```
 
+5. Verify `/healthz`:
+
+```bash
+curl -s https://pivota-agent-production.up.railway.app/healthz | jq '.discovery'
+```
+
+Required health signals:
+
+- `discovery.discovery_ready=true`
+- `discovery.products_search_ready.ready=true`
+- `discovery.db_backed_providers_ready.ready=true`
+- `discovery.single_provider_mode=false`
+- `products_available=true`
+
 ## Smoke success criteria
 
 The smoke gate validates:
 
 - `get_discovery_feed` is accepted on the public gateway
-- `metadata.candidate_source=products_search`
+- `metadata.catalog_status` is not `unavailable`
+- `metadata.provider_breakdown` contains at least one `successful=true` provider
+- `products_search.failure_reason` is not `missing_base_url`, `http_401`, `http_403`, or `timeout`
 - deploy provenance is already verified separately via `/version`
 - cold-start `home_hot_deals` returns `cold_start_curated`
 - history-seeded `home_hot_deals` returns `personalized_interest`
@@ -72,7 +94,8 @@ After backend smoke passes:
 1. Open creator UI with `?tab=deals&debug=1`
 2. Verify `/api/creator-agent/discovery` returns `200`
 3. Verify debug panel shows:
-   - `candidateSource: products_search`
+   - `catalogStatus` is not `unavailable`
+   - at least one provider in `providerBreakdown` is successful
    - `discoveryStrategy: cold_start_curated` for empty-history sessions
    - `discoveryStrategy: personalized_interest` after browsing at least one product
 4. Verify no unsupported-operation or mock fallback errors appear

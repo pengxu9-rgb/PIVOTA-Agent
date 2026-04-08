@@ -99,6 +99,37 @@ function validateDiscoveryResponse(response, expectations = {}) {
   ensure(response && typeof response === 'object', 'response must be an object');
   const products = Array.isArray(response.products) ? response.products : [];
   const metadata = response.metadata && typeof response.metadata === 'object' ? response.metadata : {};
+  const providerBreakdown = Array.isArray(metadata.provider_breakdown) ? metadata.provider_breakdown : [];
+  const summarizedProviderBreakdown = providerBreakdown.map((entry) => ({
+    provider: entry?.provider || null,
+    successful: entry?.successful === true,
+    returned: Number(entry?.returned || 0),
+    skipped: entry?.skipped === true,
+    failure_reason: entry?.failure_reason || entry?.zero_recall_reason || null,
+  }));
+  ensure(
+    String(metadata.catalog_status || '') !== 'unavailable',
+    `response reported unavailable discovery catalog: ${JSON.stringify({
+      catalog_status: metadata.catalog_status,
+      provider_breakdown: summarizedProviderBreakdown,
+    })}`,
+  );
+  ensure(
+    providerBreakdown.some((entry) => entry?.successful === true),
+    `response reported no successful discovery providers: ${JSON.stringify(summarizedProviderBreakdown)}`,
+  );
+  const productsSearchBreakdown = providerBreakdown.find(
+    (entry) => String(entry?.provider || '').trim() === 'products_search',
+  );
+  const disallowedProductsSearchFailures = new Set(['missing_base_url', 'http_401', 'http_403', 'timeout']);
+  ensure(
+    !disallowedProductsSearchFailures.has(String(productsSearchBreakdown?.failure_reason || '').trim()),
+    `products_search provider degraded unexpectedly: ${JSON.stringify({
+      provider: productsSearchBreakdown?.provider || null,
+      failure_reason: productsSearchBreakdown?.failure_reason || null,
+      returned: Number(productsSearchBreakdown?.returned || 0),
+    })}`,
+  );
   const minimumProducts = expectations.minProducts || 1;
   ensure(
     products.length >= minimumProducts,
@@ -110,14 +141,7 @@ function validateDiscoveryResponse(response, expectations = {}) {
       candidate_source: metadata.candidate_source || null,
       candidate_counts: metadata.candidate_counts || {},
       filter_counts: metadata.filter_counts || {},
-      provider_breakdown: Array.isArray(metadata.provider_breakdown)
-        ? metadata.provider_breakdown.map((entry) => ({
-            provider: entry?.provider || null,
-            successful: entry?.successful === true,
-            returned: Number(entry?.returned || 0),
-            skipped: entry?.skipped === true,
-          }))
-        : [],
+      provider_breakdown: summarizedProviderBreakdown,
     })}`,
   );
   if (Array.isArray(expectations.candidateSource)) {
@@ -211,7 +235,7 @@ function validateDiscoveryResponse(response, expectations = {}) {
     strategy: metadata.discovery_strategy || null,
     personalizationSource: metadata.personalization_source || null,
     candidateSource: metadata.candidate_source || null,
-    providerBreakdown: Array.isArray(metadata.provider_breakdown) ? metadata.provider_breakdown : [],
+    providerBreakdown,
     topProducts: summarizeProducts(products),
     recallSummary: Array.isArray(metadata.rank_debug?.recall_summary)
       ? metadata.rank_debug.recall_summary
