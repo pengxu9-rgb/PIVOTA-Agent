@@ -4,51 +4,31 @@ describe('RecommendationEngine external candidate fetch', () => {
     jest.clearAllMocks();
     delete process.env.DATABASE_URL;
     delete process.env.PDP_RECS_EXTERNAL_QUERY_TIMEOUT_MS;
-    delete process.env.PDP_RECS_EXTERNAL_BASE_QUERY_TIMEOUT_MS;
-    delete process.env.PDP_RECS_EXTERNAL_BASE_FETCH_TIMEOUT_MS;
   });
 
-  test('prefers same-domain external candidates for external base products before broad semantic fallback', async () => {
+  test('returns large same-domain pools for external base products without falling through to slower broad lanes', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 
     const queryMock = jest.fn(async (sql, params) => {
       const predicate = params?.[3];
       if (String(sql).includes("lower(coalesce(domain, '')) = ANY($4::text[])")) {
         return {
-          rows: [
-            {
-              id: 'eps_domain_1',
-              external_product_id: 'ext_domain_1',
-              canonical_url: 'https://fentybeauty.com/products/blemish-defeatr',
-              destination_url: 'https://fentybeauty.com/products/blemish-defeatr',
-              domain: 'fentybeauty.com',
-              title: "Blemish Defeat'r BHA Spot-Targeting Gel",
-              image_url: 'https://example.com/blemish.jpg',
-              price_amount: 25,
-              price_currency: 'USD',
-              availability: 'in_stock',
-              seed_brand: 'Fenty Beauty',
-              seed_category: 'Treatment',
-              seed_product_type: 'Treatment',
-              seed_description: 'A targeted BHA treatment gel.',
-            },
-            {
-              id: 'eps_domain_2',
-              external_product_id: 'ext_domain_2',
-              canonical_url: 'https://fentybeauty.com/products/total-cleansr',
-              destination_url: 'https://fentybeauty.com/products/total-cleansr',
-              domain: 'fentybeauty.com',
-              title: "Total Cleans'r Remove-It-All Cleanser",
-              image_url: 'https://example.com/cleanser.jpg',
-              price_amount: 29,
-              price_currency: 'USD',
-              availability: 'in_stock',
-              seed_brand: 'Fenty Beauty',
-              seed_category: 'Cleanser',
-              seed_product_type: 'Cleanser',
-              seed_description: 'A daily gel cleanser for fresh skin.',
-            },
-          ],
+          rows: Array.from({ length: 48 }).map((_, index) => ({
+            id: `eps_domain_${index + 1}`,
+            external_product_id: `ext_domain_${index + 1}`,
+            canonical_url: `https://fentybeauty.com/products/item-${index + 1}`,
+            destination_url: `https://fentybeauty.com/products/item-${index + 1}`,
+            domain: 'fentybeauty.com',
+            title: index === 0 ? "Blemish Defeat'r BHA Spot-Targeting Gel" : `Fenty Domain Item ${index + 1}`,
+            image_url: `https://example.com/item-${index + 1}.jpg`,
+            price_amount: 20 + index,
+            price_currency: 'USD',
+            availability: 'in_stock',
+            seed_brand: 'Fenty Beauty',
+            seed_category: index % 2 === 0 ? 'Treatment' : 'Makeup',
+            seed_product_type: index % 2 === 0 ? 'Treatment' : 'Makeup',
+            seed_description: index % 2 === 0 ? 'A targeted BHA treatment gel.' : 'A Fenty complexion product.',
+          })),
         };
       }
       if (String(predicate || '') === 'fenty beauty') {
@@ -80,9 +60,10 @@ describe('RecommendationEngine external candidate fetch', () => {
     });
 
     expect(products.map((product) => product.product_id)).toEqual(
-      expect.arrayContaining(['ext_domain_1', 'ext_domain_2']),
+      expect.arrayContaining(['ext_domain_1', 'ext_domain_2', 'ext_domain_24']),
     );
     expect(queryMock.mock.calls.some(([sql]) => String(sql).includes("lower(coalesce(domain, '')) = ANY($4::text[])"))).toBe(true);
+    expect(queryMock.mock.calls.some(([, params]) => String(params?.[3] || '') === 'fenty beauty')).toBe(false);
   });
 
   test('uses focused brand/category candidates without dropping into recent fallback when pool is already sufficient', async () => {
