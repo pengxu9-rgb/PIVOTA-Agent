@@ -3263,6 +3263,91 @@ async function loadCatalogCandidates({
         : 'beauty_interest_mainline_zero_recall';
   }
 
+  const shouldUseNoSignalExternalSeedFastpath = isGenericNoSignalDiscoveryRequest(request, profile);
+  if (shouldUseNoSignalExternalSeedFastpath) {
+    try {
+      const externalResult = await fetchBeautyInterestExternalSeedFastpathCandidates({
+        request,
+        profile,
+        queries: externalProviderQueries,
+        limit: externalProviderLimit,
+        fetchFn: providerOverrides?.external_seeds || null,
+        providerName: 'external_seeds',
+        productProvider: 'external_seeds',
+        stepName: 'external_seed_pool_fastpath',
+        label: 'external_seed_pool_fastpath',
+      });
+      providerResults.push({
+        provider: 'external_seeds',
+        products: externalResult.products,
+        recallSummary: externalResult.recallSummary,
+      });
+      mergeProducts(externalResult.products);
+    } catch (err) {
+      providerResults.push(buildProviderErrorResult('external_seeds', err));
+    }
+
+    if (shouldSkipNoSignalProviderExpansion(mergedProducts, { request, profile })) {
+      candidateSource = 'external_seed_fastpath';
+      primaryPathUsed = 'external_seed_fastpath';
+      providerResults.push(
+        buildSkippedProviderResult('products_search', {
+          label: getProviderLabel('products_search'),
+          query: providerQueries.join(' | '),
+          limit: safeLimit,
+          skipReason: 'anonymous_cold_start_fastpath_sufficient',
+        }),
+      );
+      providerResults.push(
+        buildSkippedProviderResult('internal_catalog', {
+          label: getProviderLabel('internal_catalog'),
+          query: providerQueries.join(' | '),
+          limit: internalProviderLimit,
+          skipReason: 'anonymous_cold_start_internal_disabled',
+        }),
+      );
+      return finalizeProviderResult();
+    }
+
+    candidateSource = 'external_seed_fastpath+products_search';
+    primaryPathUsed = 'external_seed_fastpath';
+    fallbackTriggered = true;
+    fallbackReason =
+      mergedProducts.length > 0
+        ? 'anonymous_cold_start_fastpath_insufficient'
+        : 'anonymous_cold_start_fastpath_zero_recall';
+
+    try {
+      const searchResult = await loadProductsSearchCandidates({
+        request,
+        profile,
+        limit: safeLimit,
+      });
+      const productsSearchResult = {
+        provider: 'products_search',
+        products: annotateProviderProducts('products_search', searchResult?.products || []),
+        recallSummary: Array.isArray(searchResult?.recallSummary)
+          ? searchResult.recallSummary.map((step) => ({ provider: 'products_search', ...step }))
+          : [],
+      };
+      providerResults.push(productsSearchResult);
+      mergeProducts(productsSearchResult.products);
+    } catch (err) {
+      providerResults.push(buildProviderErrorResult('products_search', err));
+    }
+
+    providerResults.push(
+      buildSkippedProviderResult('internal_catalog', {
+        label: getProviderLabel('internal_catalog'),
+        query: providerQueries.join(' | '),
+        limit: internalProviderLimit,
+        skipReason: 'anonymous_cold_start_internal_disabled',
+      }),
+    );
+
+    return finalizeProviderResult();
+  }
+
   try {
     const searchResult = await loadProductsSearchCandidates({
       request,
@@ -3357,42 +3442,6 @@ async function loadCatalogCandidates({
         skipReason: 'sufficient_personalized_primary_candidates',
       }),
     );
-    return finalizeProviderResult();
-  }
-
-  const shouldUseNoSignalExternalSeedFastpath = isGenericNoSignalDiscoveryRequest(request, profile);
-  if (shouldUseNoSignalExternalSeedFastpath) {
-    providerResults.push(
-      buildSkippedProviderResult('internal_catalog', {
-        label: getProviderLabel('internal_catalog'),
-        query: providerQueries.join(' | '),
-        limit: internalProviderLimit,
-        skipReason: 'anonymous_cold_start_internal_disabled',
-      }),
-    );
-
-    try {
-      const externalResult = await fetchBeautyInterestExternalSeedFastpathCandidates({
-        request,
-        profile,
-        queries: externalProviderQueries,
-        limit: externalProviderLimit,
-        fetchFn: providerOverrides?.external_seeds || null,
-        providerName: 'external_seeds',
-        productProvider: 'external_seeds',
-        stepName: 'external_seed_pool_fastpath',
-        label: 'external_seed_pool_fastpath',
-      });
-      providerResults.push({
-        provider: 'external_seeds',
-        products: externalResult.products,
-        recallSummary: externalResult.recallSummary,
-      });
-      mergeProducts(externalResult.products);
-    } catch (err) {
-      providerResults.push(buildProviderErrorResult('external_seeds', err));
-    }
-
     return finalizeProviderResult();
   }
 

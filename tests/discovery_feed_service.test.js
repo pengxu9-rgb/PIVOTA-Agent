@@ -2833,9 +2833,15 @@ describe('discovery feed service', () => {
     expect(internalSpy).not.toHaveBeenCalled();
     expect(externalSpy).toHaveBeenCalledTimes(1);
     expect(response.products.some((product) => product.product_id === 'internal_1')).toBe(false);
+    expect(response.metadata.candidate_source).toBe('external_seed_fastpath');
+    expect(response.metadata.primary_path_used).toBe('external_seed_fastpath');
     expect(response.metadata.provider_breakdown).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ provider: 'products_search', successful: true }),
+        expect.objectContaining({
+          provider: 'products_search',
+          skipped: true,
+          skip_reason: 'anonymous_cold_start_fastpath_sufficient',
+        }),
         expect.objectContaining({
           provider: 'internal_catalog',
           skipped: true,
@@ -3385,7 +3391,7 @@ describe('discovery feed service', () => {
     );
   });
 
-  test('cold start discovery prefers discovery-specific products/search base and skips external seeds once primary pools are sufficient', async () => {
+  test('cold start discovery falls back to discovery-specific products/search after cold-start fastpath underfills', async () => {
     process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://wrong-backend.test';
     delete process.env.PIVOTA_API_BASE;
@@ -3442,24 +3448,26 @@ describe('discovery feed service', () => {
     );
 
     expect(response.products).toHaveLength(4);
-    expect(externalSpy).not.toHaveBeenCalled();
+    expect(externalSpy).toHaveBeenCalledTimes(1);
+    expect(response.metadata.candidate_source).toBe('external_seed_fastpath+products_search');
+    expect(response.metadata.primary_path_used).toBe('external_seed_fastpath');
     expect(response.metadata.provider_breakdown).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ provider: 'products_search', successful: true }),
         expect.objectContaining({
           provider: 'internal_catalog',
           skipped: true,
-          skip_reason: 'sufficient_no_signal_primary_candidates',
+          skip_reason: 'anonymous_cold_start_internal_disabled',
         }),
-        expect.objectContaining({ provider: 'external_seeds', skipped: true }),
+        expect.objectContaining({ provider: 'external_seeds', successful: true, returned: 1 }),
       ]),
     );
     expect(response.metadata.rank_debug.recall_summary).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           provider: 'external_seeds',
-          skipped: true,
-          skip_reason: 'sufficient_no_signal_primary_candidates',
+          label: 'external_seed_pool_fastpath',
+          status: 200,
         }),
       ]),
     );
@@ -3645,25 +3653,26 @@ describe('discovery feed service', () => {
     expect(response.products).toHaveLength(12);
     expect(response.products.every((product) => product.merchant_id === 'external_seed')).toBe(true);
     expect(internalSpy).not.toHaveBeenCalled();
-    expect(externalSpy).not.toHaveBeenCalled();
+    expect(externalSpy).toHaveBeenCalledTimes(1);
+    expect(response.metadata.candidate_source).toBe('external_seed_fastpath+products_search');
+    expect(response.metadata.primary_path_used).toBe('external_seed_fastpath');
     expect(response.metadata.provider_breakdown).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ provider: 'products_search', successful: true }),
-        expect.objectContaining({ provider: 'internal_catalog', skipped: true }),
-        expect.objectContaining({ provider: 'external_seeds', skipped: true }),
+        expect.objectContaining({
+          provider: 'internal_catalog',
+          skipped: true,
+          skip_reason: 'anonymous_cold_start_internal_disabled',
+        }),
+        expect.objectContaining({ provider: 'external_seeds', successful: true }),
       ]),
     );
     expect(response.metadata.rank_debug.recall_summary).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          provider: 'internal_catalog',
-          skipped: true,
-          skip_reason: 'sufficient_no_signal_primary_candidates',
-        }),
-        expect.objectContaining({
           provider: 'external_seeds',
-          skipped: true,
-          skip_reason: 'sufficient_no_signal_primary_candidates',
+          label: 'external_seed_pool_fastpath',
+          status: 200,
         }),
       ]),
     );
@@ -3738,25 +3747,26 @@ describe('discovery feed service', () => {
     expect(response.products).toHaveLength(12);
     expect(response.products.every((product) => product.merchant_id === 'external_seed')).toBe(true);
     expect(internalSpy).not.toHaveBeenCalled();
-    expect(externalSpy).not.toHaveBeenCalled();
+    expect(externalSpy).toHaveBeenCalledTimes(1);
+    expect(response.metadata.candidate_source).toBe('external_seed_fastpath+products_search');
+    expect(response.metadata.primary_path_used).toBe('external_seed_fastpath');
     expect(response.metadata.provider_breakdown).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ provider: 'products_search', successful: true }),
-        expect.objectContaining({ provider: 'internal_catalog', skipped: true }),
-        expect.objectContaining({ provider: 'external_seeds', skipped: true }),
+        expect.objectContaining({
+          provider: 'internal_catalog',
+          skipped: true,
+          skip_reason: 'anonymous_cold_start_internal_disabled',
+        }),
+        expect.objectContaining({ provider: 'external_seeds', successful: true }),
       ]),
     );
     expect(response.metadata.rank_debug.recall_summary).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          provider: 'internal_catalog',
-          skipped: true,
-          skip_reason: 'sufficient_no_signal_primary_candidates',
-        }),
-        expect.objectContaining({
           provider: 'external_seeds',
-          skipped: true,
-          skip_reason: 'sufficient_no_signal_primary_candidates',
+          label: 'external_seed_pool_fastpath',
+          status: 200,
         }),
       ]),
     );
@@ -3828,28 +3838,29 @@ describe('discovery feed service', () => {
       },
     );
 
-    expect(response.products).toHaveLength(7);
+    expect(response.products).toHaveLength(8);
     expect(response.products.every((product) => product.merchant_id === 'external_seed')).toBe(true);
     expect(internalSpy).not.toHaveBeenCalled();
-    expect(externalSpy).not.toHaveBeenCalled();
+    expect(externalSpy).toHaveBeenCalledTimes(1);
+    expect(response.metadata.candidate_source).toBe('external_seed_fastpath+products_search');
+    expect(response.metadata.primary_path_used).toBe('external_seed_fastpath');
     expect(response.metadata.provider_breakdown).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ provider: 'products_search', successful: true }),
-        expect.objectContaining({ provider: 'internal_catalog', skipped: true }),
-        expect.objectContaining({ provider: 'external_seeds', skipped: true }),
+        expect.objectContaining({
+          provider: 'internal_catalog',
+          skipped: true,
+          skip_reason: 'anonymous_cold_start_internal_disabled',
+        }),
+        expect.objectContaining({ provider: 'external_seeds', successful: true }),
       ]),
     );
     expect(response.metadata.rank_debug.recall_summary).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          provider: 'internal_catalog',
-          skipped: true,
-          skip_reason: 'sufficient_no_signal_primary_candidates',
-        }),
-        expect.objectContaining({
           provider: 'external_seeds',
-          skipped: true,
-          skip_reason: 'sufficient_no_signal_primary_candidates',
+          label: 'external_seed_pool_fastpath',
+          status: 200,
         }),
       ]),
     );
@@ -3936,12 +3947,18 @@ describe('discovery feed service', () => {
     );
 
     expect(externalSpy).toHaveBeenCalled();
+    expect(response.metadata.candidate_source).toBe('external_seed_fastpath');
+    expect(response.metadata.primary_path_used).toBe('external_seed_fastpath');
     expect(response.products.map((product) => product.product_id)).toEqual(
       expect.arrayContaining(['external_1', 'external_4']),
     );
     expect(response.metadata.provider_breakdown).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ provider: 'products_search', successful: true }),
+        expect.objectContaining({
+          provider: 'products_search',
+          skipped: true,
+          skip_reason: 'anonymous_cold_start_fastpath_sufficient',
+        }),
         expect.objectContaining({ provider: 'external_seeds', successful: true, returned: 4 }),
       ]),
     );

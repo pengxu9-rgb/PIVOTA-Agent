@@ -1835,13 +1835,14 @@ describe('ingredientProductRecall', () => {
       expect.objectContaining({
         ingredient_direct_fast_exit_applied: true,
         kb_recall_attempted: false,
+        products_cache_recall_attempted: false,
         unattached_seed_recall_attempted: false,
         family_fallback_attempted: false,
       }),
     );
     expect(kbQueryMock).not.toHaveBeenCalled();
     expect(dbQueryMock.mock.calls.filter((call) => String(call?.[0] || '').includes('FROM external_product_seeds'))).toHaveLength(2);
-    expect(dbQueryMock.mock.calls.filter((call) => String(call?.[0] || '').includes('FROM products_cache pc'))).toHaveLength(2);
+    expect(dbQueryMock.mock.calls.filter((call) => String(call?.[0] || '').includes('FROM products_cache pc'))).toHaveLength(0);
   });
 
   test('buildTargetAnchoredExplicitPatterns combines ingredient phrases with target-step anchors', async () => {
