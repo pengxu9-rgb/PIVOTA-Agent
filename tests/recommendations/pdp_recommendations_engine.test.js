@@ -266,6 +266,52 @@ describe('RecommendationEngine (PDP)', () => {
     expect(out.items.map((item) => item.product_id)).not.toContain('ext_wrong_highlighter');
   });
 
+  test('b4) excludes external seeds explicitly suppressed from similar eligibility', () => {
+    const base = makeProduct({
+      merchant_id: 'external_seed',
+      product_id: 'ext_base',
+      title: 'Night Cream',
+      brand: 'Fenty Beauty',
+      category: 'Moisturizer',
+      product_type: 'Moisturizer',
+      price: 31,
+      currency: 'USD',
+      source: 'external_seed',
+      canonical_url: 'https://fentybeauty.com/products/night-cream',
+      destination_url: 'https://fentybeauty.com/products/night-cream',
+      domain: 'fentybeauty.com',
+    });
+
+    const out = pickLayeredRecommendations({
+      baseProduct: base,
+      internalCandidates: [],
+      externalCandidates: [
+        {
+          ...makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'ext_suppressed',
+            title: 'Store Locator',
+            brand: 'Fenty Beauty',
+            category: 'Moisturizer',
+            product_type: 'Moisturizer',
+            price: 28,
+            source: 'external_seed',
+            canonical_url: 'https://fentybeauty.com/pages/store-locator',
+            destination_url: 'https://fentybeauty.com/pages/store-locator',
+            domain: 'fentybeauty.com',
+          }),
+          external_seed_suppression_flags: {
+            exclude_from_recall: true,
+            exclude_from_similar: true,
+          },
+        },
+      ],
+      k: 2,
+    });
+
+    expect(out.items.map((item) => item.product_id)).not.toContain('ext_suppressed');
+  });
+
   test('c) no brand matches but same category + near price fills', () => {
     const base = makeProduct({
       merchant_id: 'merch_store',

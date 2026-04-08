@@ -114,6 +114,10 @@ function createPageRequestId() {
   return `pr_${Math.random().toString(36).slice(2)}_${Date.now().toString(36)}`;
 }
 
+function ensureJsonObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
 function stripHtml(input) {
   return String(input || '')
     .replace(/<[^>]+>/g, ' ')
@@ -1608,6 +1612,12 @@ function shouldSuppressLowConfidenceIngredients(product, items, sourceMeta, rawT
 }
 
 function buildIngredientsModule(product, detailSections) {
+  const suppressionFlags = ensureJsonObject(
+    product?.external_seed_suppression_flags ||
+      product?.suppression_flags ||
+      product?.external_seed_recall?.suppression_flags,
+  );
+  if (suppressionFlags.suppress_ingredients === true) return null;
   const directIngredientsPayload =
     product.ingredients_inci ||
     product.ingredientsInci ||
@@ -1656,6 +1666,12 @@ function buildIngredientsModule(product, detailSections) {
 }
 
 function buildActiveIngredientsModule(product, detailSections, ingredientsModule) {
+  const suppressionFlags = ensureJsonObject(
+    product?.external_seed_suppression_flags ||
+      product?.suppression_flags ||
+      product?.external_seed_recall?.suppression_flags,
+  );
+  if (suppressionFlags.suppress_active_ingredients === true) return null;
   const directActivePayload =
     product.active_ingredients ||
     product.activeIngredients ||
@@ -1743,6 +1759,12 @@ function buildHowToUseModule(product, detailSections) {
 }
 
 function buildProductFactSections(product, detailSections, primaryDescription = '', beautyOverview = null) {
+  const suppressionFlags = ensureJsonObject(
+    product?.external_seed_suppression_flags ||
+      product?.suppression_flags ||
+      product?.external_seed_recall?.suppression_flags,
+  );
+  if (suppressionFlags.suppress_facts === true) return [];
   const normalizedPrimaryDescription = normalizeComparisonKey(primaryDescription);
   const seen = new Set();
   const narrativeDetailSections = (Array.isArray(detailSections) ? detailSections : []).filter((section) => {
@@ -2060,6 +2082,11 @@ function buildRecommendations(input, currencyFallback) {
 
 function buildPdpPayload(args) {
   const product = args.product || {};
+  const suppressionFlags = ensureJsonObject(
+    product?.external_seed_suppression_flags ||
+      product?.suppression_flags ||
+      product?.external_seed_recall?.suppression_flags,
+  );
   const brandLabel = resolveProductBrandLabel(product);
   const currency = product.currency || 'USD';
   const variants = buildVariants(product);
@@ -2101,7 +2128,20 @@ function buildPdpPayload(args) {
       ? { ...args.relatedProducts, items: Array.isArray(args.relatedProducts.items) ? args.relatedProducts.items : [] }
       : { items: [] };
   const recommendations = relatedProducts.items.length
-    ? buildRecommendations(relatedProducts, currency)
+    ? buildRecommendations(
+        {
+          ...relatedProducts,
+          items: relatedProducts.items.filter((item) => {
+            const flags = ensureJsonObject(
+              item?.external_seed_suppression_flags ||
+                item?.suppression_flags ||
+                item?.external_seed_recall?.suppression_flags,
+            );
+            return flags.exclude_from_similar !== true && flags.exclude_from_recall !== true;
+          }),
+        },
+        currency,
+      )
     : null;
   const brandStory = extractBrandStory(product, productFactsSections);
   const emitLegacyProductDetails = Boolean(
@@ -2189,7 +2229,11 @@ function buildPdpPayload(args) {
       data: reviews,
     });
   }
-  if (recommendations && recommendations.items.length) {
+  if (
+    recommendations &&
+    recommendations.items.length &&
+    suppressionFlags.exclude_from_similar !== true
+  ) {
     modules.push({
       module_id: 'm_recs',
       type: 'recommendations',

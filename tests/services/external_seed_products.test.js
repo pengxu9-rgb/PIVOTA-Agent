@@ -906,4 +906,42 @@ describe('externalSeedProducts helper', () => {
     expect(product.category).toBe('Highlighter');
     expect(product.product_type).toBe('Highlighter');
   });
+
+  test('drops blocked non-merch recall rows from brand-search runtime products', () => {
+    const product = buildExternalSeedBrandSearchProduct({
+      id: 'eps_non_merch',
+      external_product_id: 'ext_non_merch',
+      canonical_url: 'https://brand.example/pages/store-locator',
+      destination_url: 'https://brand.example/pages/store-locator',
+      title: 'Store Locator',
+      source_page_type: 'page',
+      seed_data: {
+        derived: {
+          recall: {
+            retrieval_title: 'Store Locator',
+            retrieval_summary: 'Find a store near you.',
+            retrieval_body: 'Find a store near you.',
+            exclusion_flags: {
+              gift_card: false,
+              donation_bundle: false,
+              non_merchandise: true,
+            },
+            quality_signals: {
+              template_polluted: false,
+              synthetic_summary: false,
+              extractor_description_present: false,
+            },
+            quality_state: 'blocked',
+            suppression_flags: {
+              exclude_from_recall: true,
+              exclude_from_similar: true,
+            },
+            version: 'v1',
+          },
+        },
+      },
+    });
+
+    expect(product).toBeNull();
+  });
 });

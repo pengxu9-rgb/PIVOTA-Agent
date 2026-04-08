@@ -988,4 +988,53 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     ]);
     expect(JSON.stringify(factSections)).not.toMatch(/about the brands|clara lionel foundation|student discounts|careers/i);
   });
+
+  test('respects explicit external seed suppression flags on modules and similar rail', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_blocked_modules',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Giftable Limited Bundle',
+        description: 'A limited bundle.',
+        external_seed_suppression_flags: {
+          suppress_ingredients: true,
+          suppress_active_ingredients: true,
+          suppress_facts: true,
+          exclude_from_similar: true,
+        },
+        active_ingredients: {
+          items: ['Niacinamide'],
+          raw_text: 'Niacinamide',
+        },
+        ingredients_inci: {
+          raw_text: 'Ingredients: Water, Glycerin',
+          items: ['Water', 'Glycerin'],
+        },
+        pdp_details_sections: [
+          {
+            heading: 'ABOUT',
+            body: 'About the Brands Student Discounts Careers',
+          },
+        ],
+      },
+      relatedProducts: {
+        items: [
+          {
+            product_id: 'sim_blocked',
+            merchant_id: 'external_seed',
+            title: 'Should Not Render',
+            price: 18,
+            currency: 'USD',
+          },
+        ],
+      },
+      entryPoint: 'agent',
+    });
+
+    expect(payload.modules.find((module) => module.type === 'active_ingredients')).toBeFalsy();
+    expect(payload.modules.find((module) => module.type === 'ingredients_inci')).toBeFalsy();
+    expect(payload.modules.find((module) => module.type === 'product_facts')).toBeFalsy();
+    expect(payload.modules.find((module) => module.type === 'recommendations')).toBeFalsy();
+  });
 });
