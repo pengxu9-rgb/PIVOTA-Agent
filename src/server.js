@@ -43,6 +43,7 @@ const {
   buildProductRecommendationIntentsResponse,
   hydrateProductWithPublishedIntel,
 } = require('./pdpProductIntel');
+const { mockProducts, searchProducts, getProductById } = require('./mockProducts');
 const { buildStructuredPdpIngredientModules } = require('./services/pdpIngredientAuthority');
 const {
   getAllPromotions,
