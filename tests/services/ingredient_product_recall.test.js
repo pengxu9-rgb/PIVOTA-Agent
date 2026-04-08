@@ -1803,6 +1803,47 @@ describe('ingredientProductRecall', () => {
     expect(whereSql).toContain("seed_data->'snapshot'->>'category'");
   });
 
+  test('strict budget fast-exit skips kb, unattached seed, and family fallback after initial direct miss', async () => {
+    const dbQueryMock = jest.fn(async (sql) => {
+      const text = String(sql || '');
+      if (text.includes('FROM external_product_seeds')) return { rows: [] };
+      if (text.includes('FROM products_cache pc')) return { rows: [] };
+      return { rows: [] };
+    });
+    const kbQueryMock = jest.fn(async () => ({ rows: [] }));
+
+    jest.doMock('../../src/db', () => ({
+      query: dbQueryMock,
+    }));
+    jest.doMock('../../src/services/pciKbClient', () => ({
+      kbQuery: kbQueryMock,
+    }));
+
+    const { recallIngredientProducts } = require('../../src/services/ingredientProductRecall');
+    const out = await recallIngredientProducts({
+      query: 'vitamin c serum under €30',
+      ingredientId: 'ascorbic_acid',
+      targetStepFamily: 'serum',
+      limit: 5,
+      allowFamilyFallback: true,
+      minimumDirectProductCount: 2,
+      fastExitOnInitialMiss: true,
+    });
+
+    expect(out.products).toEqual([]);
+    expect(out.diagnostics).toEqual(
+      expect.objectContaining({
+        ingredient_direct_fast_exit_applied: true,
+        kb_recall_attempted: false,
+        unattached_seed_recall_attempted: false,
+        family_fallback_attempted: false,
+      }),
+    );
+    expect(kbQueryMock).not.toHaveBeenCalled();
+    expect(dbQueryMock.mock.calls.filter((call) => String(call?.[0] || '').includes('FROM external_product_seeds'))).toHaveLength(2);
+    expect(dbQueryMock.mock.calls.filter((call) => String(call?.[0] || '').includes('FROM products_cache pc'))).toHaveLength(2);
+  });
+
   test('buildTargetAnchoredExplicitPatterns combines ingredient phrases with target-step anchors', async () => {
     const { _internals } = require('../../src/services/ingredientSkuEvidence');
     const glycerinPatterns = _internals.buildTargetAnchoredExplicitPatterns({
