@@ -201,7 +201,7 @@ function clampLocalBeautyRecallAttemptTimeoutMs({
     isPrimaryInternalAnchor === true &&
     normalizedQueryTotal > 6
   ) {
-    return Math.min(remaining, Math.max(120, Math.min(primary, 3200)));
+    return Math.min(remaining, Math.max(120, Math.min(primary, 4800)));
   }
   const capByFanout = normalizedQueryTotal > 6 ? 1800 : 2400;
   const capBySource = normalizedSourceScope === 'external_seed' ? 2400 : capByFanout;

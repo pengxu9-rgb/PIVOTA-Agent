@@ -827,11 +827,11 @@ test('framework local recall gives the first primary internal anchor a wider tim
 
   assert.equal(out.handled, true);
   assert.equal(attemptedTimeouts.length, 1);
-  assert.equal(attemptedTimeouts[0] >= 3000, true);
-  assert.equal(attemptedTimeouts[0] <= 3200, true);
+  assert.equal(attemptedTimeouts[0] >= 4500, true);
+  assert.equal(attemptedTimeouts[0] <= 4800, true);
   assert.equal(
     out.response.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts?.[0]
-      ?.attempt_timeout_ms >= 3000,
+      ?.attempt_timeout_ms >= 4500,
     true,
   );
 });
