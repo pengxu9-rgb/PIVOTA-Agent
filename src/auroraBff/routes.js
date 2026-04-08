@@ -18848,6 +18848,14 @@ function buildConcernFrameworkRejectPreview(entries = [], max = 5) {
       const product = isPlainObject(entry?.product) ? entry.product : null;
       return {
         product_id: pickFirstTrimmed(product?.product_id, product?.productId, product?.id) || null,
+        merchant_id: pickFirstTrimmed(product?.merchant_id, product?.merchantId) || null,
+        title:
+          pickFirstTrimmed(
+            product?.display_name,
+            product?.displayName,
+            product?.name,
+            product?.title,
+          ) || null,
         retrieval_source: pickFirstTrimmed(product?.retrieval_source, product?.retrievalSource, 'none') || 'none',
         matched_role_id: pickFirstTrimmed(product?.matched_role_id, product?.matchedRoleId) || null,
         candidate_step: pickFirstTrimmed(product?.candidate_step, product?.candidateStep) || null,
