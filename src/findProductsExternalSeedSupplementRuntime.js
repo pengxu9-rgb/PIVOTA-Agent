@@ -41,6 +41,7 @@ function createFindProductsExternalSeedSupplementRuntime(deps = {}) {
     checkoutToken,
     neededCount,
     source,
+    directOnly = false,
   }) {
     const query = queryParams && typeof queryParams === 'object' ? queryParams : {};
     const queryText = extractSearchQueryText(query);
@@ -183,6 +184,36 @@ function createFindProductsExternalSeedSupplementRuntime(deps = {}) {
               },
             };
           }
+          if (directOnly) {
+            return {
+              products: [],
+              metadata: {
+                attempted: true,
+                applied: false,
+                reason: 'external_seed_direct_local_empty',
+                requested_count: requestedCount,
+                fetched_count: 0,
+                fetched_raw_count:
+                  Number(directMeta.external_seed_rows_fetched || 0) || 0,
+                fetched_variant_count: queryVariants.length,
+                upstream_calls: 0,
+                brand_query_detected: Boolean(brandDetection?.brand_like),
+                brand_entities: brandTerms,
+                brand_scope: hasExplicitCategory ? 'category_scoped' : 'broad',
+                filtered_out_irrelevant_count:
+                  Number(directMeta.external_seed_rows_fetched || 0) || 0,
+                query_variants: queryVariants,
+                upstream_status: 200,
+                retrieval_mode: guidanceContext.is_guidance_recall_first
+                  ? GUIDANCE_RETRIEVAL_MODE
+                  : 'direct_local',
+                negative_constraints_applied: guidanceContext.negative_constraints,
+                external_seed_rows_raw:
+                  Number(directMeta.external_seed_rows_fetched || 0) || 0,
+                external_seed_rows_relevant: 0,
+              },
+            };
+          }
         }
       } catch (directExternalErr) {
         logger.warn(
@@ -192,7 +223,42 @@ function createFindProductsExternalSeedSupplementRuntime(deps = {}) {
           },
           'local external seed supplement direct path failed; falling back to public route',
         );
+        if (directOnly) {
+          return {
+            products: [],
+            metadata: {
+              attempted: true,
+              applied: false,
+              reason: 'external_seed_direct_local_error',
+              requested_count: requestedCount,
+              fetched_count: 0,
+              fetched_raw_count: 0,
+              fetched_variant_count: queryVariants.length,
+              upstream_calls: 0,
+              upstream_status: 0,
+              query_variants: queryVariants,
+              error: directExternalErr?.message || String(directExternalErr),
+            },
+          };
+        }
       }
+    }
+    if (directOnly) {
+      return {
+        products: [],
+        metadata: {
+          attempted: false,
+          applied: false,
+          reason: 'external_seed_direct_local_unavailable',
+          requested_count: requestedCount,
+          fetched_count: 0,
+          fetched_raw_count: 0,
+          fetched_variant_count: queryVariants.length,
+          upstream_calls: 0,
+          upstream_status: 0,
+          query_variants: queryVariants,
+        },
+      };
     }
 
     const externalSupplementApiBase =

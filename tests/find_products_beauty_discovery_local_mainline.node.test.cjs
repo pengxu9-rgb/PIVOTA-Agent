@@ -828,6 +828,156 @@ test('step-aware local beauty mainline reuses semantic-owner runtime wiring', as
   );
 });
 
+test('step-aware local beauty mainline uses direct external seed child recall', async () => {
+  let backendCalled = 0;
+  const directCalls = [];
+  const runtime = createRuntime({
+    buildBeautyDiscoverySemanticContract: () => ({
+      planner_mode: 'step_aware',
+      request_class: 'sunscreen',
+      target_step_family: 'sunscreen',
+      semantic_family: 'oil_control',
+      primary_role_id: 'daily_sunscreen',
+    }),
+    buildBeautyDiscoveryQueryPackFromContract: () => [
+      'lightweight sunscreen oily skin',
+    ],
+    fetchExternalSeedSupplementFromBackend: async (args) => {
+      directCalls.push(args);
+      return {
+        products: [
+          {
+            product_id: 'external_seed_spf_direct_1',
+            merchant_id: 'external_seed',
+            title: 'External Oil Control Sunscreen',
+            source: 'external_seed',
+          },
+        ],
+        metadata: {
+          attempted: true,
+          applied: true,
+          reason: 'external_seed_direct_local_hit',
+        },
+      };
+    },
+    searchPivotaBackendProducts: async () => {
+      backendCalled += 1;
+      throw new Error('backend child should not be called for external-seed direct recall');
+    },
+    prepareInvokeSemanticOwnerContext: ({ semanticRewriteResultMeta }) => ({
+      semanticOwnerQueryPack: semanticRewriteResultMeta.normalized_query_pack,
+      semanticOwnerQueryTotal: semanticRewriteResultMeta.normalized_query_pack.length,
+      semanticOwnerSupportRoleQueryPack: [],
+      semanticOwnerTargetStepFamily: 'sunscreen',
+      semanticOwnerSemanticFamily: 'oil_control',
+      semanticOwnerQueryStepStrength: 'exact_step',
+      semanticOwnerMinQueriesBeforeBudgetGuard: 1,
+      buildVariantRequestBody: (_body, queryValue, queryIndex) => ({
+        search: {
+          query: queryValue,
+          query_index: queryIndex,
+          query_total: semanticRewriteResultMeta.normalized_query_pack.length,
+        },
+      }),
+      evaluateSemanticOwnerBeautyAdoption: ({ upstreamData }) => ({
+        adopt: Array.isArray(upstreamData?.products) && upstreamData.products.length > 0,
+        hitDecision: {
+          hit_quality:
+            Array.isArray(upstreamData?.products) && upstreamData.products.length > 0
+              ? 'valid_hit'
+              : 'empty',
+          valid_products: Array.isArray(upstreamData?.products) ? upstreamData.products : [],
+        },
+      }),
+      describeSemanticOwnerObservationFallback: () => ({
+        ignore: false,
+        score: 0,
+        last_resort_cache_candidate: false,
+      }),
+      buildSemanticOwnerExternalRescueQueryPack: () => [],
+    }),
+    runInvokeSemanticOwnerExecution: async ({
+      response,
+      upstreamData,
+      semanticOwnerQueryPack,
+    }) => ({
+      response,
+      upstreamData,
+      queryParams: {
+        query: semanticOwnerQueryPack[0],
+        query_index: 0,
+        query_total: semanticOwnerQueryPack.length,
+      },
+      requestBody: { search: { query: semanticOwnerQueryPack[0] } },
+      axiosConfig: {},
+      semanticOwnerQueryAttempts: [
+        {
+          query: semanticOwnerQueryPack[0],
+          query_index: 0,
+          query_total: semanticOwnerQueryPack.length,
+          result_count: Array.isArray(upstreamData?.products) ? upstreamData.products.length : 0,
+          adopted: true,
+        },
+      ],
+      semanticOwnerSupplementTraces: [],
+      semanticOwnerExternalRescueQueriesAttempted: [],
+      semanticOwnerCacheSourceIsolated: false,
+      semanticOwnerCacheSourceIsolationReason: null,
+      semanticOwnerLastResortCacheApplied: false,
+      semanticOwnerLastResortCacheQuery: null,
+    }),
+    normalizeAgentProductsListResponse: (body) => body,
+  });
+
+  const out = await runtime.runLocalBeautyDiscoveryMainline({
+    search: {
+      query: 'best sunscreen for oily skin',
+      target_step_family: 'sunscreen',
+    },
+    metadata: {
+      source: 'public',
+      catalog_surface: 'beauty',
+    },
+    requestContract: {
+      surface: 'direct',
+      primary_lane: 'beauty_discovery_mainline',
+      primary_retrieval_contract: 'agent_v1_search_beauty_mainline',
+      semantic_contract: {
+        planner_mode: 'step_aware',
+        request_class: 'sunscreen',
+        target_step_family: 'sunscreen',
+        semantic_family: 'oil_control',
+        primary_role_id: 'daily_sunscreen',
+      },
+    },
+    executionPlan: {
+      primary_lane: 'beauty_discovery_mainline',
+      primary_retrieval_contract: 'agent_v1_search_beauty_mainline',
+      owner_switch_count: 0,
+    },
+    rawUserQuery: 'best sunscreen for oily skin',
+    gatewayRequestId: 'trace-step-aware-external-direct',
+    traceQueryClass: 'query',
+    timeoutMs: 6500,
+    invokeStartedAtMs: Date.now(),
+    logger: { warn() {} },
+    authHeaders: { authorization: 'Bearer test' },
+    operation: 'find_products_multi',
+  });
+
+  assert.equal(out.handled, true);
+  assert.equal(backendCalled, 0);
+  assert.equal(directCalls.length, 1);
+  assert.equal(directCalls[0].directOnly, true);
+  assert.equal(directCalls[0].queryParams.allow_external_seed, true);
+  assert.equal(out.response.products?.[0]?.product_id, 'external_seed_spf_direct_1');
+  assert.equal(
+    out.response.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts?.[0]
+      ?.result_count,
+    1,
+  );
+});
+
 test('step-aware local beauty mainline trims sunscreen primary query pack to critical queries', async () => {
   const attemptedQueries = [];
   let observedSemanticOwnerQueryPack = null;
