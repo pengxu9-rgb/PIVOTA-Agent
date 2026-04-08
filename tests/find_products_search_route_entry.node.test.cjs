@@ -8,7 +8,7 @@ const {
   buildFindProductsSearchRequestContract,
 } = require('../src/findProductsSearchContracts');
 
-function buildRuntime() {
+function buildRuntime(overrides = {}) {
   return createFindProductsSearchRouteEntryRuntime({
     resolveGuidanceSearchSessionId: () => null,
     firstQueryParamValue: (value) => (Array.isArray(value) ? value[0] : value),
@@ -30,6 +30,7 @@ function buildRuntime() {
     normalizeRecommendationDecisionMode: (value) => String(value || '').trim().toLowerCase(),
     searchExternalSeedOnlyProductsDirect: async () => null,
     searchIngredientIntentProductsDirect: async () => null,
+    ...overrides,
   });
 }
 
@@ -76,6 +77,33 @@ test('direct route explicit strict catalog surface uses strict shop lane', () =>
     routePlan.payload.metadata.search_request_contract.ownership_domain,
     'strict_shop',
   );
+});
+
+test('direct route preserves local mainline child marker into invoke payload', () => {
+  const runtime = buildRuntime({
+    buildFindProductsMultiPayloadFromQuery: (query) => ({
+      search: {
+        query: query.query,
+        catalog_surface: query.catalog_surface,
+      },
+      metadata: {
+        ...(query.source ? { source: query.source } : {}),
+        ...(query.catalog_surface ? { catalog_surface: query.catalog_surface } : {}),
+      },
+    }),
+  });
+  const routePlan = runtime.prepareAgentProductsSearchRoute({
+    query: {
+      query: 'best sunscreen for oily skin',
+      source: 'aurora-bff',
+      catalog_surface: 'beauty',
+      local_mainline_child: 'true',
+    },
+  });
+
+  assert.equal(routePlan.invalid, false);
+  assert.equal(routePlan.payload.search.local_mainline_child, true);
+  assert.equal(routePlan.payload.metadata.local_mainline_child, true);
 });
 
 test('guidance-only external seed route remains a direct fastpath, not discovery owner lock', () => {
