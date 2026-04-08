@@ -803,6 +803,99 @@ describe('RecommendationEngine (PDP)', () => {
     );
   });
 
+  test('j0d) face-skincare moisturizer base filters same-brand body cream and styling cream even under generic moisturizer categories', () => {
+    const base = makeProduct({
+      merchant_id: 'external_seed',
+      product_id: 'ext_fenty_night_cream',
+      title: 'Instant Reset Brightening Overnight Recovery Gel-Cream with Niacinamide + Kalahari Melon Oil',
+      brand: 'Fenty Beauty',
+      vendor: 'Fenty Beauty',
+      category: 'Moisturizer',
+      product_type: 'Moisturizer',
+      source: 'external_seed',
+      price: 31.2,
+    });
+
+    const external = [
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_fenty_hydra_vizor',
+        title: 'Hydra Vizor Invisible Moisturizer Broad Spectrum SPF 30 Sunscreen',
+        brand: 'Fenty Beauty',
+        vendor: 'Fenty Beauty',
+        category: 'Moisturizer',
+        product_type: 'Moisturizer',
+        source: 'external_seed',
+        price: 38,
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_fenty_fat_water',
+        title: 'Fat Water Niacinamide Pore-Refining Toner Serum with Barbados Cherry',
+        brand: 'Fenty Beauty',
+        vendor: 'Fenty Beauty',
+        category: 'Toner',
+        product_type: 'Toner',
+        source: 'external_seed',
+        price: 18,
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_fenty_body_generic',
+        title: 'Jumbo Butta Drop Whipped Oil Body Cream with Tropical Oils + Shea Butter — Vanilla Dream',
+        brand: 'Fenty Beauty',
+        vendor: 'Fenty Beauty',
+        category: 'Moisturizer',
+        product_type: 'Moisturizer',
+        source: 'external_seed',
+        price: 45,
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_fenty_styling_generic',
+        title: 'The Protective Type Frizz-Smoothing Heat Protectant Styling Cream Deluxe Sample',
+        brand: 'Fenty Beauty',
+        vendor: 'Fenty Beauty',
+        category: 'Moisturizer',
+        product_type: 'Moisturizer',
+        source: 'external_seed',
+        price: 18,
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_fenty_cherry_dub',
+        title: 'Cherry Dub BHA Toner with Salicylic Acid + Aloe Juice Deluxe Sample',
+        brand: 'Fenty Beauty',
+        vendor: 'Fenty Beauty',
+        category: 'Toner',
+        product_type: 'Toner',
+        source: 'external_seed',
+        price: 15,
+      }),
+    ];
+
+    const out = pickLayeredRecommendations({
+      baseProduct: base,
+      internalCandidates: [],
+      externalCandidates: external,
+      k: 6,
+    });
+
+    expect(out.metadata?.base_semantic?.vertical).toBe('skincare');
+    expect(out.items.map((item) => item.product_id)).toEqual(
+      expect.arrayContaining([
+        'ext_fenty_hydra_vizor',
+        'ext_fenty_fat_water',
+      ]),
+    );
+    expect(out.items.map((item) => item.product_id)).not.toEqual(
+      expect.arrayContaining([
+        'ext_fenty_body_generic',
+        'ext_fenty_styling_generic',
+      ]),
+    );
+  });
+
   test('j1) same-brand tokens alone must not lift unrelated category items into similar results', () => {
     const base = makeProduct({
       merchant_id: 'external_seed',
