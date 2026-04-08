@@ -63,6 +63,14 @@ const PDP_RECS_EXTERNAL_QUERY_TIMEOUT_MS = Math.max(
   500,
   parseTimeoutMs(process.env.PDP_RECS_EXTERNAL_QUERY_TIMEOUT_MS, 4200),
 );
+const PDP_RECS_EXTERNAL_BASE_QUERY_TIMEOUT_MS = Math.max(
+  PDP_RECS_EXTERNAL_QUERY_TIMEOUT_MS,
+  parseTimeoutMs(process.env.PDP_RECS_EXTERNAL_BASE_QUERY_TIMEOUT_MS, 9000),
+);
+const PDP_RECS_EXTERNAL_BASE_FETCH_TIMEOUT_MS = Math.max(
+  PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS,
+  parseTimeoutMs(process.env.PDP_RECS_EXTERNAL_BASE_FETCH_TIMEOUT_MS, 11000),
+);
 const PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_MULTIPLIER = Math.max(
   1,
   Math.min(
@@ -1399,14 +1407,53 @@ function buildExternalBrandSearchPatterns(brandHint) {
   );
 }
 
+function parseDomainHost(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  try {
+    const withProtocol = /^[a-z]+:\/\//i.test(raw) ? raw : `https://${raw}`;
+    return String(new URL(withProtocol).hostname || '').trim().toLowerCase();
+  } catch {
+    return raw.replace(/^https?:\/\//i, '').split('/')[0].trim().toLowerCase();
+  }
+}
+
+function buildDomainVariants(value) {
+  const host = parseDomainHost(value);
+  if (!host) return [];
+  const bare = host.replace(/^www\./i, '');
+  return Array.from(new Set([host, bare, bare ? `www.${bare}` : ''].filter(Boolean)));
+}
+
+function getExternalSeedDomainHints(product) {
+  return Array.from(
+    new Set(
+      [
+        product?.domain,
+        product?.external_seed_domain,
+        product?.merchant_domain,
+        product?.canonical_url,
+        product?.destination_url,
+      ]
+        .flatMap((value) => buildDomainVariants(value))
+        .filter(Boolean),
+    ),
+  );
+}
+
 async function fetchExternalCandidates({ brandHint, categoryHint, limit, baseProduct = null }) {
   if (!process.env.DATABASE_URL) return [];
   const safeLimit = Math.min(Math.max(1, Number(limit || 180)), 500);
   const market = String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
   const tool = 'creator_agents';
+  const baseProductIsExternal = isExternalProduct(baseProduct);
+  const externalQueryTimeoutMs = baseProductIsExternal
+    ? PDP_RECS_EXTERNAL_BASE_QUERY_TIMEOUT_MS
+    : PDP_RECS_EXTERNAL_QUERY_TIMEOUT_MS;
 
   const brand = normalizeText(brandHint);
   const brandPatterns = buildExternalBrandSearchPatterns(brand);
+  const domainHints = getExternalSeedDomainHints(baseProduct);
   const leafCategory = normalizeText(categoryHint);
   const parentCategory = normalizeText(getParentCategory(baseProduct));
   const vertical = inferVerticalFromProduct(baseProduct || {}).vertical || UNKNOWN_VERTICAL;
@@ -1483,7 +1530,7 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
             AND market = $1
             AND (tool = '*' OR tool = $2)
             ${whereSql}
-          ORDER BY updated_at DESC, created_at DESC
+          ORDER BY created_at DESC NULLS LAST, id DESC
           LIMIT $3
         `,
         [market, tool, cap, ...params],
@@ -1506,13 +1553,13 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
   function runQueryWithBudget(whereSql, params, cap, queryName) {
     return withSoftTimeout(
       runQuery(whereSql, params, cap, queryName),
-      PDP_RECS_EXTERNAL_QUERY_TIMEOUT_MS,
+      externalQueryTimeoutMs,
       [],
       () => {
         logger.warn(
           {
             query: queryName || 'external_recent',
-            timeout_ms: PDP_RECS_EXTERNAL_QUERY_TIMEOUT_MS,
+            timeout_ms: externalQueryTimeoutMs,
             product_id: getProductId(baseProduct),
           },
           'recommendations external subquery timed out',
@@ -1578,6 +1625,28 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
         coalesce(seed_data->'derived'->'recall'->>'brand', '')
       )) LIKE ANY($4::text[])
   `;
+  const sameDomainMatches = domainHints.length
+    ? await runQueryWithBudget(
+        `AND lower(coalesce(domain, '')) = ANY($4::text[])`,
+        [domainHints],
+        Math.min(240, Math.max(60, safeLimit)),
+        'external_same_domain',
+      )
+    : [];
+  const focusedSameDomainMatches = sameDomainMatches.filter((product) =>
+    matchesFocusedCategoryRecall(product, {
+      leafCategory,
+      parentCategory,
+      semanticPatterns,
+      vertical,
+    }),
+  );
+  if (focusedSameDomainMatches.length >= Math.min(8, safeLimit)) {
+    return uniqueByKey(
+      [...focusedSameDomainMatches, ...sameDomainMatches],
+      (p) => `${getMerchantId(p)}::${getProductId(p)}`,
+    ).slice(0, safeLimit * 3);
+  }
 
   const brandExactMatches = brand
       ? await runQueryWithBudget(
@@ -1660,7 +1729,7 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit, basePro
   );
 
   return uniqueByKey(
-    [...brandMatches, ...focusedCategoryMatches, ...verticalMatches],
+    [...focusedSameDomainMatches, ...sameDomainMatches, ...brandMatches, ...focusedCategoryMatches, ...verticalMatches],
     (p) => `${getMerchantId(p)}::${getProductId(p)}`,
   ).slice(0, safeLimit * 3);
 }
@@ -1711,7 +1780,7 @@ async function loadExternalSeedSemanticRecord(baseProduct) {
         FROM external_product_seeds
         WHERE status = 'active'
           AND (${clauses.join(' OR ')})
-        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+        ORDER BY created_at DESC NULLS LAST, id DESC
         LIMIT 1
       `,
       params,
@@ -1895,7 +1964,7 @@ async function recommend({
     Boolean(baseRecallExclusionFlags.donation_bundle) ||
     Boolean(baseRecallExclusionFlags.non_merchandise);
   const effectiveExternalFetchTimeoutMs = baseProductIsExternal
-    ? Math.max(PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS, 6500)
+    ? PDP_RECS_EXTERNAL_BASE_FETCH_TIMEOUT_MS
     : PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS;
 
   const providedInternal = Array.isArray(options?.internal_candidates) ? options.internal_candidates : null;

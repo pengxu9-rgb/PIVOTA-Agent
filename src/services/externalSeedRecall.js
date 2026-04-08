@@ -3,7 +3,7 @@ const { stripExternalSeedMarketingBannerPrefix } = require('./externalSeedMarket
 const SYNTHETIC_SUMMARY_RE = /\bOFFICIAL:[\s\S]*\/\/\/\s*SOCIAL HIGHLIGHTS:/i;
 const TEMPLATE_PREFIX_RE = /^experience the ultimate luxury with\s+/i;
 const RECALL_NOISE_RE =
-  /\b(contact us|customer service|privacy policy|terms(?: and conditions)?|shipping policy|return policy|about us|our story|blog|blogs|impact|foundation transparency|transparency|give 20%|give back|charity|donation|store locator|faq|support)\b/i;
+  /\b(contact us|customer service|customer support|support center|support centre|support team|support policy|privacy policy|terms(?: and conditions)?|shipping policy|return policy|about us|our story|blog|blogs|impact|foundation transparency|transparency|give 20%|give back|charity|donation|store locator|faq)\b/i;
 const GIFT_CARD_RE = /\b(e-?gift\s*card|gift\s*card|digital\s+gift\s+card)\b/i;
 const DONATION_RE = /\b(donation|donate|charity)\b/i;
 const NON_MERCH_PAGE_RE =
