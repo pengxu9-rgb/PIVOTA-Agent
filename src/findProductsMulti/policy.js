@@ -50,6 +50,17 @@ const strictFindProductsMultiRuntime = createStrictFindProductsMultiRuntime({
   buildBeautyQueryProfile,
 });
 
+function parseBooleanLike(value) {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (raw == null) return undefined;
+  if (typeof raw === 'boolean') return raw;
+  const normalized = String(raw).trim().toLowerCase();
+  if (!normalized) return undefined;
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  return undefined;
+}
+
 const DEBUG_STATS_ENABLED = process.env.FIND_PRODUCTS_MULTI_DEBUG_STATS === '1';
 const POLICY_VERSION = 'find_products_multi_policy_v40';
 const BEAUTY_SEMANTIC_CONTRACT_VERSION = 'beauty_semantic_contract_v1';
@@ -4176,6 +4187,13 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     ...topLevelSearchCompat,
     ...(search && typeof search === 'object' ? search : {}),
   };
+  const localMainlineChild =
+    parseBooleanLike(
+      normalizedSearchInput.local_mainline_child ??
+        normalizedSearchInput.localMainlineChild ??
+        metadata?.local_mainline_child ??
+        metadata?.localMainlineChild,
+    ) === true;
   const requestedCatalogSurface = String(
     normalizedSearchInput?.catalog_surface ||
       normalizedSearchInput?.catalogSurface ||
@@ -4209,13 +4227,16 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
   const preserveStrictQueryOwner =
     Boolean(strictQueryOwnerDecision.enabled) &&
     (explicitStrictCatalogSurface || strictQueryOwnerSourceEligible);
-  let semanticContract = normalizeSearchSemanticContract(
-    search?.semantic_contract ||
-      search?.semanticContract ||
-      metadata?.semantic_contract ||
-      metadata?.semanticContract,
-  );
+  let semanticContract = localMainlineChild
+    ? null
+    : normalizeSearchSemanticContract(
+        search?.semantic_contract ||
+          search?.semanticContract ||
+          metadata?.semantic_contract ||
+          metadata?.semanticContract,
+      );
   const allowDerivedBeautySemanticContract =
+    !localMainlineChild &&
     !semanticContract &&
     Boolean(latestUserQuery) &&
     (

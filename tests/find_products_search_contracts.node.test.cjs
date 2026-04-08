@@ -127,3 +127,45 @@ test('execution trace preserves primary timeout and failure stage without owner 
   assert.equal(trace.owner_switch_count, 0);
   assert.deepEqual(trace.supplements_attempted, ['external_seed_supplement']);
 });
+
+test('local mainline child recall keeps beauty surface but bypasses discovery owner', () => {
+  const contract = buildFindProductsSearchRequestContract({
+    surface: 'direct',
+    operation: 'find_products_multi',
+    search: {
+      query: 'best sunscreen for oily skin',
+      catalog_surface: 'beauty',
+      local_mainline_child: true,
+      semantic_contract: {
+        planner_mode: 'step_aware',
+        target_step_family: 'sunscreen',
+      },
+    },
+    metadata: {
+      source: 'aurora-bff',
+      local_mainline_child: true,
+    },
+    beautyMainlineBypass: {
+      bypass: true,
+      semanticContract: {
+        planner_mode: 'framework_generic',
+        target_step_family: 'treatment',
+      },
+    },
+  });
+  const plan = resolveFindProductsSearchExecutionPlan({
+    requestContract: contract,
+    pivotaApiBase: 'https://pivota.example',
+  });
+
+  assert.equal(contract.ownership_domain, 'beauty_mainline');
+  assert.equal(contract.request_class, 'catalog_child_recall');
+  assert.equal(contract.semantic_contract, null);
+  assert.equal(contract.primary_lane, 'catalog_child_recall');
+  assert.equal(contract.primary_retrieval_contract, 'agent_v2_catalog_child_recall');
+  assert.deepEqual(contract.supplement_lanes, []);
+  assert.equal(plan.primary_lane, 'catalog_child_recall');
+  assert.equal(plan.upstream_method, null);
+  assert.equal(plan.upstream_url, null);
+  assert.equal(plan.transport_owner, 'pivota_agent_v2_products_search');
+});

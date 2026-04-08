@@ -139,7 +139,13 @@ test('direct route child marker suppresses beauty semantic handoff reinjection',
   assert.equal(routePlan.invalid, false);
   assert.equal(routePlan.payload.search.local_mainline_child, true);
   assert.equal(routePlan.payload.search.semantic_contract, undefined);
+  assert.equal(routePlan.forceDirectInvokeMainPath, true);
   assert.equal(routePlan.payload.metadata.search_request_contract.semantic_contract, null);
+  assert.equal(routePlan.payload.metadata.primary_lane, 'catalog_child_recall');
+  assert.equal(
+    routePlan.payload.metadata.primary_retrieval_contract,
+    'agent_v2_catalog_child_recall',
+  );
 });
 
 test('guidance-only external seed route remains a direct fastpath, not discovery owner lock', () => {
