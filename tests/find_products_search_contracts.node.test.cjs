@@ -2,7 +2,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+  normalizeFindProductsSearchRequestContract,
   buildFindProductsSearchRequestContract,
+  selectFindProductsSearchRequestContract,
   resolveFindProductsSearchExecutionPlan,
   buildFindProductsSearchExecutionTrace,
 } = require('../src/findProductsSearchContracts');
@@ -168,4 +170,59 @@ test('local mainline child recall keeps beauty surface but bypasses discovery ow
   assert.equal(plan.upstream_method, null);
   assert.equal(plan.upstream_url, null);
   assert.equal(plan.transport_owner, 'pivota_agent_v2_products_search');
+});
+
+test('ingress search contract is preferred over execution-time rebuild', () => {
+  const ingressContract = buildFindProductsSearchRequestContract({
+    surface: 'direct',
+    operation: 'find_products_multi',
+    search: { query: 'best sunscreen for oily skin' },
+    metadata: { source: 'aurora-bff' },
+  });
+
+  const selected = selectFindProductsSearchRequestContract({
+    ingressContract,
+    surface: 'direct',
+    operation: 'find_products_multi',
+    search: { query: 'best sunscreen for oily skin', catalog_surface: 'agent_api' },
+    metadata: { source: 'aurora-bff' },
+    strictConstraintQuery: true,
+  });
+
+  assert.equal(selected, ingressContract);
+  assert.equal(selected.primary_lane, 'beauty_discovery_mainline');
+  assert.equal(selected.primary_retrieval_contract, 'agent_v1_search_beauty_mainline');
+});
+
+test('invalid ingress search contract is rejected and falls back to rebuild', () => {
+  const normalized = normalizeFindProductsSearchRequestContract(
+    {
+      contract_version: 'search_contract_v999',
+      surface: 'direct',
+      operation: 'find_products_multi',
+      primary_lane: 'beauty_discovery_mainline',
+      primary_retrieval_contract: 'agent_v1_search_beauty_mainline',
+    },
+    { surface: 'direct', operation: 'find_products_multi' },
+  );
+
+  assert.equal(normalized, null);
+
+  const selected = selectFindProductsSearchRequestContract({
+    ingressContract: {
+      contract_version: 'search_contract_v999',
+      surface: 'direct',
+      operation: 'find_products_multi',
+      primary_lane: 'beauty_discovery_mainline',
+      primary_retrieval_contract: 'agent_v1_search_beauty_mainline',
+    },
+    surface: 'direct',
+    operation: 'find_products_multi',
+    search: { query: 'merchant constrained serum' },
+    metadata: { source: 'shopping' },
+    strictConstraintQuery: true,
+  });
+
+  assert.equal(selected.primary_lane, 'shop_invoke_strict');
+  assert.equal(selected.primary_retrieval_contract, 'shop_invoke_strict');
 });
