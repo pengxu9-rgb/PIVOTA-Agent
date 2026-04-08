@@ -61,6 +61,36 @@ describeIfRuntimeDeps('/agent/shop/v1/invoke product intel contracts', () => {
       pdp_active_ingredients_raw:
         'Active Ingredients: Niacinamide, Tamanu Oil. Can I use this with an active ingredient?',
     });
+    mockProducts.external_seed = [
+      {
+        product_id: 'ext_mock_intel_1',
+        merchant_id: 'external_seed',
+        title: 'Hydra Vizor Invisible Moisturizer SPF 30',
+        description:
+          'A daily moisturizer with broad spectrum SPF 30 that hydrates the skin and wears invisibly under makeup.',
+        category: 'Skincare/Sunscreen',
+        price: 39,
+        currency: 'USD',
+        in_stock: true,
+        assessment: {
+          summary:
+            'A daily moisturizer with broad spectrum SPF 30 that provides invisible sun protection while hydrating the skin.',
+          best_for: ['Daily UV protection', 'Normal to dry skin'],
+          formula_intent: ['Hydration support', 'Daily sun protection'],
+        },
+        evidence: {
+          science: {
+            key_ingredients: ['Hyaluronic Acid', 'Niacinamide'],
+            risk_notes: [],
+          },
+          social_signals: {
+            typical_positive: [],
+            typical_negative: [],
+            risk_for_groups: [],
+          },
+        },
+      },
+    ];
     app = require('../../src/server');
     server = app.listen(0);
     await once(server, 'listening');
@@ -121,6 +151,25 @@ describeIfRuntimeDeps('/agent/shop/v1/invoke product intel contracts', () => {
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('success');
     expect(res.body.contract_version).toBe('pivota.product_intel.v1');
+    expect(res.body.display_name).toBe('Pivota Insights');
+    expect(res.body.offer_pointers.commerce_modes).toContain('merchant_embedded_checkout');
+  });
+
+  test('get_product_intel_v1 resolves external seed product_id without merchant_id', async () => {
+    const res = await invoke('get_product_intel_v1', {
+      product_ref: {
+        product_id: 'ext_mock_intel_1',
+      },
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('success');
+    expect(res.body.canonical_product_ref).toEqual(
+      expect.objectContaining({
+        merchant_id: 'external_seed',
+        product_id: 'ext_mock_intel_1',
+      }),
+    );
     expect(res.body.display_name).toBe('Pivota Insights');
     expect(res.body.offer_pointers.commerce_modes).toContain('merchant_embedded_checkout');
   });

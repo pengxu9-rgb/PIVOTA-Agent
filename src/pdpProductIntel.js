@@ -62,6 +62,45 @@ function toSentence(text, fallback) {
   return `${clean}.`;
 }
 
+function stripWhatItIsPromoPrefixes(text) {
+  return String(text || '')
+    .replace(/^double up and save with\s+/i, '')
+    .replace(/^this\s+jumbo\s+size\s+of\s+/i, '')
+    .replace(/^jumbo\s+size\s+of\s+/i, '')
+    .replace(/^our\s+jumbo\s+size\s+of\s+/i, '')
+    .trim();
+}
+
+function stripWhatItIsFootnotes(text) {
+  return String(text || '')
+    .replace(/\*{1,2}\s*in an?\s+\d+[-\s]?week clinical study[\s\S]*$/i, '')
+    .replace(/in an?\s+\d+[-\s]?week clinical study[\s\S]*$/i, '')
+    .trim();
+}
+
+function compactWhatItIsBody(text, { sellerOnly = false, fallback = '' } = {}) {
+  const maxChars = sellerOnly ? 320 : 420;
+  const clean = stripHtml(stripWhatItIsFootnotes(stripWhatItIsPromoPrefixes(text)));
+  if (!clean) return toSentence(fallback, fallback);
+  if (clean.length <= maxChars) return toSentence(clean, fallback);
+
+  const sentences = clean.match(/[^.!?]+[.!?]?/g) || [];
+  let picked = '';
+  for (const sentence of sentences) {
+    const next = picked ? `${picked} ${sentence.trim()}` : sentence.trim();
+    if (next.length > maxChars) break;
+    picked = next;
+    if (picked.length >= Math.floor(maxChars * 0.72)) break;
+  }
+  if (picked) return toSentence(picked, fallback);
+
+  const trimmed = clean.slice(0, maxChars);
+  const boundary = trimmed.lastIndexOf(' ');
+  const compact =
+    boundary >= Math.floor(maxChars * 0.6) ? trimmed.slice(0, boundary).trim() : trimmed.trim();
+  return toSentence(compact, fallback);
+}
+
 function normalizeTimestamp(value) {
   const text = asString(value);
   if (!text) return null;
@@ -215,6 +254,19 @@ function normalizePublishedProductIntelBundle(bundle, {
     buildRecommendationIntents(relatedProducts);
   const offers = Array.isArray(offersData?.offers) ? offersData.offers : [];
   const commerceModes = uniqueStrings(offers.map((offer) => asString(offer?.commerce_mode)));
+  const coreEvidenceProfile =
+    asString(core.evidence_profile) || asString(source.evidence_profile) || 'seller_only';
+  const normalizedCore = {
+    ...core,
+    what_it_is: {
+      ...(asPlainObject(core.what_it_is) || {}),
+      body: compactWhatItIsBody(core.what_it_is?.body, {
+        sellerOnly:
+          coreEvidenceProfile === 'seller_only' || coreEvidenceProfile === 'seller_plus_formula',
+        fallback: core.what_it_is?.body || '',
+      }),
+    },
+  };
 
   return {
     contract_version: PRODUCT_INTEL_CONTRACT_VERSION,
@@ -222,13 +274,12 @@ function normalizePublishedProductIntelBundle(bundle, {
     canonical_product_ref: canonicalProductRef || source.canonical_product_ref || null,
     product_group_id: productGroupId || source.product_group_id || null,
     product_intel_core: {
-      ...core,
+      ...normalizedCore,
       display_name: PIVOTA_INSIGHTS_DISPLAY_NAME,
       freshness: asPlainObject(core.freshness) || asPlainObject(source.freshness) || buildFreshness({}),
       quality_state:
         asString(core.quality_state) || asString(source.quality_state) || 'limited',
-      evidence_profile:
-        asString(core.evidence_profile) || asString(source.evidence_profile) || 'seller_only',
+      evidence_profile: coreEvidenceProfile,
       source_coverage:
         asPlainObject(core.source_coverage) ||
         asPlainObject(source.source_coverage) ||
@@ -980,7 +1031,10 @@ function buildProductIntelCore(product, { evidenceProfile, qualityState, sourceC
           product.what_it_is_headline,
           product.whatItIs?.headline,
         ) || roleLabel,
-      body: toSentence(whatItIsBody, `${roleLabel}.`),
+      body: compactWhatItIsBody(whatItIsBody, {
+        sellerOnly,
+        fallback: `${roleLabel}.`,
+      }),
     },
     best_for: inferBestFor(product),
     why_it_stands_out: inferWhyItStandsOut(product, finalEvidenceProfile),

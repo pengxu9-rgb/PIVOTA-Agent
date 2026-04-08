@@ -35,6 +35,7 @@ const {
   buildPdpCorePrewarmRequestBody,
   inferCanonicalPdpMerchantId,
 } = require('./pdpConfig');
+const { inferMerchantIdFromProductId } = require('./productIntelResolve');
 const {
   PRODUCT_INTEL_CONTRACT_VERSION,
   buildNormalizedPdpMetadata,
@@ -14852,6 +14853,9 @@ async function resolveProductIntelInvokeContext({
   }
   if (!productId && canonicalProductRef?.product_id) {
     productId = String(canonicalProductRef.product_id || '').trim();
+  }
+  if (!requestedMerchantId && productId) {
+    requestedMerchantId = inferMerchantIdFromProductId(productId);
   }
 
   const parsedOffer = offerId ? parseOfferId(offerId) : null;
