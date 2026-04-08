@@ -432,8 +432,18 @@ test('local beauty discovery mainline returns authoritative search metadata and 
 
 test('catalog child recall uses local child transport instead of falling back to legacy upstream', async () => {
   const runtime = createRuntime({
-    searchPivotaBackendProducts: async ({ query, localMainlineChild, transportPolicy }) => {
-      assert.equal(localMainlineChild, true);
+    searchPivotaBackendProducts: async ({
+      query,
+      localMainlineChild,
+      transportPolicy,
+      semanticContract,
+      queryIndex,
+      queryTotal,
+    }) => {
+      assert.equal(localMainlineChild, undefined);
+      assert.equal(semanticContract, undefined);
+      assert.equal(queryIndex, undefined);
+      assert.equal(queryTotal, undefined);
       assert.equal(transportPolicy?.include_self_proxy, false);
       assert.equal(transportPolicy?.prefer_self_proxy_first, false);
       assert.equal(transportPolicy?.allow_secondary_base_failover, false);
@@ -747,6 +757,7 @@ test('framework local recall stops after primary timeout instead of advancing to
 
 test('framework local recall gives the first primary internal anchor a wider timeout floor under full fanout', async () => {
   const attemptedTimeouts = [];
+  const attemptedArgs = [];
   const runtime = createRuntime({
     buildRecoRecallPlan: () => ({
       mode: 'framework_generic',
@@ -789,7 +800,9 @@ test('framework local recall gives the first primary internal anchor a wider tim
         },
       ],
     }),
-    searchPivotaBackendProducts: async ({ timeoutMs }) => {
+    searchPivotaBackendProducts: async (args) => {
+      attemptedArgs.push(args);
+      const { timeoutMs } = args;
       attemptedTimeouts.push(Number(timeoutMs || 0));
       return {
         ok: false,
@@ -827,6 +840,11 @@ test('framework local recall gives the first primary internal anchor a wider tim
 
   assert.equal(out.handled, true);
   assert.equal(attemptedTimeouts.length, 1);
+  assert.equal(attemptedArgs.length, 1);
+  assert.equal(attemptedArgs[0]?.localMainlineChild, undefined);
+  assert.equal(attemptedArgs[0]?.semanticContract, undefined);
+  assert.equal(attemptedArgs[0]?.queryIndex, undefined);
+  assert.equal(attemptedArgs[0]?.queryTotal, undefined);
   assert.equal(attemptedTimeouts[0] >= 4500, true);
   assert.equal(attemptedTimeouts[0] <= 4800, true);
   assert.equal(
