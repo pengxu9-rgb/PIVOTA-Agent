@@ -770,6 +770,7 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
         false,
       transportPolicy: {
         mode: 'local_beauty_mainline',
+        force_generic_only: true,
         include_self_proxy: false,
         prefer_self_proxy_first: false,
         allow_secondary_base_failover: false,
@@ -1723,6 +1724,7 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
       ...buildRecoRecallTransportPolicy({
         mode: resolveRecoRecallTransportModeForPlannerMode(recallPlan?.mode),
       }),
+      force_generic_only: true,
       include_self_proxy: false,
       prefer_self_proxy_first: false,
     };

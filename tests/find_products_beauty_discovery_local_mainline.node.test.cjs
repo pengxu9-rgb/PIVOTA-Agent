@@ -444,6 +444,7 @@ test('catalog child recall uses local child transport instead of falling back to
       assert.equal(semanticContract, undefined);
       assert.equal(queryIndex, undefined);
       assert.equal(queryTotal, undefined);
+      assert.equal(transportPolicy?.force_generic_only, true);
       assert.equal(transportPolicy?.include_self_proxy, false);
       assert.equal(transportPolicy?.prefer_self_proxy_first, false);
       assert.equal(transportPolicy?.allow_secondary_base_failover, false);
@@ -845,6 +846,7 @@ test('framework local recall gives the first primary internal anchor a wider tim
   assert.equal(attemptedArgs[0]?.semanticContract, undefined);
   assert.equal(attemptedArgs[0]?.queryIndex, undefined);
   assert.equal(attemptedArgs[0]?.queryTotal, undefined);
+  assert.equal(attemptedArgs[0]?.transportPolicy?.force_generic_only, true);
   assert.equal(attemptedTimeouts[0] >= 4500, true);
   assert.equal(attemptedTimeouts[0] <= 4800, true);
   assert.equal(
