@@ -175,6 +175,7 @@ function clampLocalBeautyRecallAttemptTimeoutMs({
   queryTotal = 1,
   sourceScope = '',
   plannerMode = '',
+  isPrimaryInternalAnchor = false,
 } = {}) {
   const remaining =
     Number.isFinite(Number(remainingBudgetMs)) && Number(remainingBudgetMs) > 0
@@ -194,6 +195,14 @@ function clampLocalBeautyRecallAttemptTimeoutMs({
       ? Number(queryTotal)
       : 1;
   const normalizedSourceScope = String(sourceScope || '').trim().toLowerCase();
+  if (
+    normalizedPlannerMode === 'framework_generic' &&
+    normalizedSourceScope === 'internal' &&
+    isPrimaryInternalAnchor === true &&
+    normalizedQueryTotal > 6
+  ) {
+    return Math.min(remaining, Math.max(120, Math.min(primary, 3200)));
+  }
   const capByFanout = normalizedQueryTotal > 6 ? 1800 : 2400;
   const capBySource = normalizedSourceScope === 'external_seed' ? 2400 : capByFanout;
   return Math.min(remaining, Math.max(120, Math.min(primary, capBySource)));
@@ -1796,12 +1805,18 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
         const preferredStep =
           String(entry?.preferred_step || normalizeRoleStep(entry?.role_id)).trim() ||
           null;
+        const isPrimaryInternalAnchor =
+          stageId === 'framework_stage_a_primary_internal' &&
+          sourceScope === 'internal' &&
+          Number.isFinite(Number(entry?.query_index)) &&
+          Number(entry.query_index) === 0;
         const effectiveTimeoutMs = clampLocalBeautyRecallAttemptTimeoutMs({
           primaryTimeoutMs,
           remainingBudgetMs: getLocalFrameworkRemainingBudgetMs(),
           queryTotal: recallEntries.length,
           sourceScope,
           plannerMode: 'framework_generic',
+          isPrimaryInternalAnchor,
         });
         if (effectiveTimeoutMs < 120) {
           timeoutCount += 1;
