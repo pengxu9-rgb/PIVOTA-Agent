@@ -58,6 +58,7 @@ const COLD_START_PRIMARY_RECALL_LIMIT = 24;
 const COLD_START_FILL_RECALL_LIMIT = 24;
 const BROWSE_PRIMARY_RECALL_LIMIT = 24;
 const BROWSE_FILL_RECALL_LIMIT = 24;
+const BRAND_RECOMMENDATION_FALLBACK_LIMIT = 12;
 const MIN_COLD_START_NON_DEFERRED_RESULTS = 2;
 const COLD_START_DEFERRED_DOMAINS = new Set(['pet', 'sleepwear', 'apparel']);
 const COLD_START_DEFERRED_BEAUTY_BUCKETS = new Set(['tools']);
@@ -3578,7 +3579,7 @@ async function loadBrandScopedRecommendationFallback({
   const sourceProductId = String(request?.source_product_ref?.product_id || '').trim();
   const merchantId = String(request?.source_product_ref?.merchant_id || '').trim() || null;
   const brandName = Array.isArray(request?.scope?.brand_names) ? String(request.scope.brand_names[0] || '').trim() : '';
-  const safeLimit = clampInt(limit, Math.max(limit, 24), 1, 180);
+  const safeLimit = clampInt(limit, BRAND_RECOMMENDATION_FALLBACK_LIMIT, 1, BRAND_RECOMMENDATION_FALLBACK_LIMIT);
   const baseProduct = {
     ...(sourceProductId ? { product_id: sourceProductId } : {}),
     ...(merchantId ? { merchant_id: merchantId } : {}),
@@ -3589,12 +3590,8 @@ async function loadBrandScopedRecommendationFallback({
   try {
     const result = await recommendFn({
       pdp_product: baseProduct,
-      k: clampInt(limit, Math.max(limit, 24), 1, 72),
+      k: safeLimit,
       locale: request?.context?.locale || 'en-US',
-      options: {
-        no_cache: true,
-        cache_bypass: true,
-      },
     });
     return Array.isArray(result?.items) ? result.items : [];
   } catch (err) {
