@@ -454,6 +454,13 @@ function pickLayeredRecommendations({
         candidate.brandMatch &&
         (candidate.parentMatch || candidate.verticalMatch || !base.leafCategory),
     },
+    {
+      id: 'L3',
+      name: 'same_brand_only_fallback',
+      priority: 3,
+      predicate: (candidate) =>
+        candidate.brandMatch && !candidate.features.leafCategory && !candidate.features.parentCategory,
+    },
   ];
   const layerById = Object.fromEntries(layers.map((layer) => [layer.id, layer]));
 
@@ -524,7 +531,8 @@ function pickLayeredRecommendations({
       source: candidate.source,
       reason: `${candidate.layerId}:${candidate.source}:${layerById[candidate.layerId]?.name || ''}`,
       x_score: Number(candidate.score.toFixed(4)),
-      x_confidence: candidate.layerId === 'L1' ? 'high' : 'moderate',
+      x_confidence:
+        candidate.layerId === 'L1' ? 'high' : candidate.layerId === 'L3' ? 'low' : 'moderate',
     }),
   );
 

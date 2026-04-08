@@ -215,6 +215,54 @@ describe('RecommendationEngine (PDP)', () => {
     expect(result.metadata.similar_sources.external.returned).toBe(2);
   });
 
+  test('same-brand candidates without category still surface through fallback layer', async () => {
+    const base = makeProduct({
+      merchant_id: 'external_seed',
+      product_id: 'ext_krave_gbr',
+      title: 'Great Barrier Relief',
+      vendor: 'KraveBeauty',
+      category_path: ['Beauty', 'Serum'],
+      source: 'external_seed',
+      price: 28,
+    });
+
+    const external = [
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_krave_matcha',
+        title: 'Matcha Hemp Hydrating Cleanser',
+        vendor: 'KraveBeauty',
+        price: 16,
+        source: 'external_seed',
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_krave_oat',
+        title: 'Oat So Simple Water Cream',
+        vendor: 'KraveBeauty',
+        price: 28,
+        source: 'external_seed',
+      }),
+    ];
+
+    const result = await recommend({
+      pdp_product: base,
+      k: 2,
+      options: {
+        debug: true,
+        internal_candidates: [],
+        external_candidates: external,
+      },
+    });
+
+    expect(result.items).toHaveLength(2);
+    expect(result.items.map((item) => item.reason)).toContain('L3:external:same_brand_only_fallback');
+    expect(result.items.every((item) => item.reason.startsWith('L2:external:') || item.reason.startsWith('L3:external:'))).toBe(true);
+    expect(result.items.map((item) => item.x_confidence)).toContain('low');
+    expect(result.metadata.similar_status).toBe('ready');
+    expect(result.metadata.empty_reason).toBeNull();
+  });
+
   test('dedupes repeated candidates and filters out out-of-stock entries', () => {
     const base = makeProduct({
       merchant_id: 'merch_store',
