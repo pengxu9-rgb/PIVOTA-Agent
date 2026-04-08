@@ -679,6 +679,97 @@ describe('discovery feed service', () => {
     );
   });
 
+  test('brand-scoped browse from source product uses direct brand pool as the primary path', async () => {
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+    delete process.env.PIVOTA_API_BASE;
+    delete process.env.PIVOTA_API_KEY;
+    process.env.PIVOTA_BACKEND_AGENT_API_KEY = 'bridge-key';
+
+    const axiosGetSpy = jest.spyOn(axios, 'get').mockImplementation(async () => {
+      throw new Error('products_search should not be called for brand-direct primary');
+    });
+    const recommendSpy = jest.fn(async () => ({ items: [] }));
+
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        sort: 'popular',
+        debug: true,
+        scope: {
+          brand_names: ['KraveBeauty'],
+        },
+        source_product_ref: {
+          product_id: 'ext_670fd3f47ecd319d143f8c65',
+          merchant_id: 'external_seed',
+        },
+        context: {
+          locale: 'en-US',
+        },
+      },
+      {
+        brandFallbackFetchInternalCandidatesFn: async () => [
+          makeProduct({
+            merchant_id: 'products_cache',
+            product_id: 'krave_internal_1',
+            title: 'Oat So Simple Water Cream',
+            brand: 'KraveBeauty',
+            category: 'Skincare',
+            product_type: 'Moisturizer',
+          }),
+        ],
+        brandFallbackFetchExternalCandidatesFn: async () => [
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'krave_external_1',
+            title: 'Matcha Hemp Hydrating Cleanser',
+            brand: 'KraveBeauty',
+            category: 'Skincare',
+            product_type: 'Cleanser',
+          }),
+        ],
+        brandFallbackRecommendFn: recommendSpy,
+      },
+    );
+
+    expect(axiosGetSpy).not.toHaveBeenCalled();
+    expect(recommendSpy).not.toHaveBeenCalled();
+    expect(response.products.map((product) => product.product_id)).toEqual(
+      expect.arrayContaining(['krave_external_1', 'krave_internal_1']),
+    );
+    expect(response.metadata.candidate_source).toBe('brand_direct_primary');
+    expect(response.metadata.primary_path_used).toBe('brand_direct_pool');
+    expect(response.metadata.provider_breakdown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          provider: 'products_search',
+          attempted: true,
+          successful: false,
+          returned: 0,
+          skipped: true,
+          skip_reason: 'brand_direct_pool_primary_used',
+        }),
+      ]),
+    );
+    expect(response.metadata.rank_debug.recall_summary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          provider: null,
+          label: 'brand_direct_pool',
+          returned: 2,
+        }),
+        expect.objectContaining({
+          provider: 'products_search',
+          label: 'brand_pool',
+          skipped: true,
+          skip_reason: 'brand_direct_pool_primary_used',
+        }),
+      ]),
+    );
+  });
+
   test('brand-scoped browse keeps total stable across page-size budgets', async () => {
     process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
     delete process.env.PIVOTA_BACKEND_BASE_URL;
