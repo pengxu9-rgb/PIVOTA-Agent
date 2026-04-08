@@ -2060,6 +2060,16 @@ function shouldUseBrandDirectPoolInsteadOfGenericBrandExpansion(request) {
   return request?.surface === 'browse_products' && hasBrandScope(request);
 }
 
+function shouldUseBrandDirectPoolAsPrimary(request) {
+  return (
+    request?.surface === 'browse_products' &&
+    hasBrandScope(request) &&
+    !hasDiscoveryQueryText(request) &&
+    !hasDiscoveryCategoryScope(request) &&
+    Boolean(String(request?.source_product_ref?.product_id || '').trim())
+  );
+}
+
 function shouldSkipBrandDirectPool(scopedCandidates = [], { request, limit } = {}) {
   if (request?.surface !== 'browse_products' || !hasBrandScope(request)) return false;
   const safeLimit = clampInt(limit, resolveDiscoveryCandidateLimit(request), 24, MAX_CANDIDATE_FETCH);
@@ -3784,19 +3794,32 @@ async function loadCatalogCandidates({
     );
     const providerBreakdown = buildProviderBreakdown(providerResults);
     const successfulProviders = providerBreakdown.filter((entry) => entry.successful);
+    const unavailableError = new DiscoveryCatalogUnavailableError(
+      'Failed to load discovery candidates from discovery providers',
+      {
+        providerBreakdown,
+        recallSummary,
+        candidateSource,
+        primaryPathUsed,
+        fallbackTriggered,
+        fallbackReason,
+      },
+    );
 
     if (successfulProviders.length <= 0) {
-      throw new DiscoveryCatalogUnavailableError(
-        'Failed to load discovery candidates from discovery providers',
-        {
-          providerBreakdown,
+      if (shouldUseBrandDirectPoolInsteadOfGenericBrandExpansion(request)) {
+        return {
+          products: mergedProducts,
           recallSummary,
+          providerBreakdown,
           candidateSource,
           primaryPathUsed,
           fallbackTriggered,
           fallbackReason,
-        },
-      );
+          catalogUnavailableError: unavailableError,
+        };
+      }
+      throw unavailableError;
     }
 
     return {
@@ -3807,6 +3830,7 @@ async function loadCatalogCandidates({
       primaryPathUsed,
       fallbackTriggered,
       fallbackReason,
+      catalogUnavailableError: null,
     };
   };
 
@@ -4133,6 +4157,62 @@ async function loadCatalogCandidates({
   }
 
   return finalizeProviderResult();
+}
+
+function buildBrandDirectPrimaryCandidateResult({
+  request,
+  profile,
+  limit = MAX_CANDIDATE_FETCH,
+  directLoadResult = null,
+} = {}) {
+  const safeLimit = clampInt(limit, resolveDiscoveryCandidateLimit(request), 24, MAX_CANDIDATE_FETCH);
+  const providerQueries = buildDiscoveryProviderQueries(request, profile);
+  const externalProviderQueries = buildExternalSeedProviderQueries(request, profile, providerQueries);
+  const internalProviderLimit = Math.min(safeLimit, 72);
+  const externalProviderLimit = resolveExternalSeedProviderLimit(request, safeLimit);
+  const brandQuery = buildDiscoveryBrandScopedQuery(request);
+  const skippedProviderResults = [
+    buildSkippedProviderResult('products_search', {
+      label: 'brand_pool',
+      query: brandQuery,
+      limit: safeLimit,
+      skipReason: 'brand_direct_pool_primary_used',
+    }),
+    buildSkippedProviderResult('internal_catalog', {
+      label: 'internal_catalog_pool',
+      query: providerQueries.join(' | '),
+      limit: internalProviderLimit,
+      skipReason: 'brand_direct_pool_primary_used',
+    }),
+    buildSkippedProviderResult('external_seeds', {
+      label: 'external_seed_pool',
+      query: externalProviderQueries.join(' | '),
+      limit: externalProviderLimit,
+      skipReason: 'brand_direct_pool_primary_used',
+    }),
+  ];
+
+  return {
+    products: annotateProviderProducts('brand_direct_pool', directLoadResult?.products || []),
+    recallSummary: [
+      ...((Array.isArray(directLoadResult?.recallSummary) ? directLoadResult.recallSummary : []).map((step) => ({
+        provider: null,
+        ...step,
+      }))),
+      ...skippedProviderResults.flatMap((result) =>
+        (Array.isArray(result?.recallSummary) ? result.recallSummary : []).map((step) => ({
+          provider: result.provider,
+          ...step,
+        })),
+      ),
+    ],
+    providerBreakdown: buildProviderBreakdown(skippedProviderResults),
+    candidateSource: 'brand_direct_primary',
+    primaryPathUsed: 'brand_direct_pool',
+    fallbackTriggered: false,
+    fallbackReason: null,
+    catalogUnavailableError: null,
+  };
 }
 
 function scoreAnchorSimilarity(candidate, anchors) {
@@ -5271,6 +5351,10 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       strategy === 'personalized_interest' ? profile.personalizationSource : 'none';
     const candidateLimit = options.candidateLimit || resolveDiscoveryCandidateLimit(request);
     const brandScopeAliases = buildBrandScopeAliases(request.scope?.brand_names || []);
+    const shouldUseBrandDirectPrimary =
+      !Array.isArray(options.candidateProducts) &&
+      brandScopeAliases.length > 0 &&
+      shouldUseBrandDirectPoolAsPrimary(request);
     const brandDirectLimit = resolveBrandDirectCandidateLimit(request, candidateLimit);
     const scheduledBrandDirectLoad =
       !Array.isArray(options.candidateProducts) &&
@@ -5284,12 +5368,36 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
             fetchInternalCandidatesFn: options.brandFallbackFetchInternalCandidatesFn,
           })
         : null;
+    let prefetchedBrandDirectLoadResult = null;
+    if (shouldUseBrandDirectPrimary) {
+      prefetchedBrandDirectLoadResult = scheduledBrandDirectLoad
+        ? await scheduledBrandDirectLoad.startNow()
+        : await loadBrandScopedDirectCandidates({
+            request,
+            brandAliases: brandScopeAliases,
+            limit: brandDirectLimit,
+            fetchExternalCandidatesFn: options.brandFallbackFetchExternalCandidatesFn,
+            fetchInternalCandidatesFn: options.brandFallbackFetchInternalCandidatesFn,
+          });
+    }
+    const brandDirectAppliedPrimary =
+      shouldUseBrandDirectPrimary &&
+      Array.isArray(prefetchedBrandDirectLoadResult?.products) &&
+      prefetchedBrandDirectLoadResult.products.length > 0;
 
     const candidateLoadResult = Array.isArray(options.candidateProducts)
       ? {
           products: options.candidateProducts,
           recallSummary: [],
+          catalogUnavailableError: null,
         }
+      : brandDirectAppliedPrimary
+        ? buildBrandDirectPrimaryCandidateResult({
+            request,
+            profile,
+            limit: candidateLimit,
+            directLoadResult: prefetchedBrandDirectLoadResult,
+          })
       : await loadCatalogCandidates({
           request,
           profile,
@@ -5316,6 +5424,10 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
     const fallbackReason =
       typeof candidateLoadResult?.fallbackReason === 'string' && candidateLoadResult.fallbackReason.trim()
         ? candidateLoadResult.fallbackReason.trim()
+        : null;
+    const catalogUnavailableError =
+      candidateLoadResult?.catalogUnavailableError instanceof DiscoveryCatalogUnavailableError
+        ? candidateLoadResult.catalogUnavailableError
         : null;
     let effectiveRawCandidates = rawCandidates;
     observeDiscoveryCandidateCount({
@@ -5352,9 +5464,10 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       limit: candidateLimit,
     });
 
-    if (brandScopeAliases.length > 0 && !skipBrandDirectPool) {
+    if (brandScopeAliases.length > 0 && !skipBrandDirectPool && !brandDirectAppliedPrimary) {
       const directBrandLoadResult =
-        scheduledBrandDirectLoad
+        prefetchedBrandDirectLoadResult ||
+        (scheduledBrandDirectLoad
           ? await scheduledBrandDirectLoad.startNow()
           : await loadBrandScopedDirectCandidates({
               request,
@@ -5362,7 +5475,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
               limit: brandDirectLimit,
               fetchExternalCandidatesFn: options.brandFallbackFetchExternalCandidatesFn,
               fetchInternalCandidatesFn: options.brandFallbackFetchInternalCandidatesFn,
-            });
+            }));
       if (Array.isArray(directBrandLoadResult?.products) && directBrandLoadResult.products.length > 0) {
         effectiveCandidateSource = `${effectiveCandidateSource}+brand_direct`;
         effectiveRawCandidates = effectiveRawCandidates.concat(directBrandLoadResult.products);
@@ -5435,6 +5548,9 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
           matchesBrandScopeCandidate(candidate, brandScopeAliases),
         );
       }
+    }
+    if (brandScopeAliases.length > 0 && scopedCandidates.length === 0 && catalogUnavailableError) {
+      throw catalogUnavailableError;
     }
     observeDiscoveryCandidateCount({
       surface: request.surface,
