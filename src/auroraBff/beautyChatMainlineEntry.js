@@ -552,6 +552,10 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
         language: ctx?.lang || 'EN',
       });
       if (isPlainObject(hardPathPayloadBundle?.payload) && isPlainObject(hardPathPayloadBundle?.contract)) {
+        const assistantProfile =
+          profileSummary && typeof profileSummary === 'object' && !Array.isArray(profileSummary)
+            ? profileSummary
+            : profile;
         if (isPlainObject(hardPathPayloadBundle.payload?.recommendation_meta)) {
           hardPathPayloadBundle.payload.recommendation_meta.selector_race_applied =
             Boolean(hardPathSelectorTrace);
@@ -596,7 +600,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
             route: 'reco',
             payload: hardPathPayloadBundle.payload,
             language: ctx?.lang,
-            profile,
+            profile: assistantProfile,
           }) ||
           (ctx?.lang === 'CN'
             ? '我已经把这轮候选收成结构化推荐卡片。'
@@ -604,13 +608,13 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
         const assistantRewrite =
           typeof maybeRewriteRecoAssistantTextWithLlm === 'function'
             ? await maybeRewriteRecoAssistantTextWithLlm({
-                payload: hardPathPayloadBundle.payload,
-                language: ctx?.lang,
-                profile,
-                baseText: baseAssistantText,
-                allowLockedSelectionRewrite: true,
-                deadlineAtMs: hardPathBudget.deadlineAtMs,
-              })
+              payload: hardPathPayloadBundle.payload,
+              language: ctx?.lang,
+              profile: assistantProfile,
+              baseText: baseAssistantText,
+              allowLockedSelectionRewrite: true,
+              deadlineAtMs: hardPathBudget.deadlineAtMs,
+            })
             : { text: baseAssistantText, llm_used: false, reason: 'rewrite_unavailable' };
         const assistantText = pickFirstTrimmed(assistantRewrite?.text, baseAssistantText);
         if (isPlainObject(hardPathPayloadBundle.payload?.recommendation_meta)) {

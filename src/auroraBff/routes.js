@@ -35363,7 +35363,7 @@ function extractProfilePatchFromRequestContextPayload(payload) {
   const candidates = [];
   const visited = new Set();
   const visit = (node, depth = 0) => {
-    if (depth > 1 || !node || typeof node !== 'object' || Array.isArray(node) || visited.has(node)) return;
+    if (depth > 2 || !node || typeof node !== 'object' || Array.isArray(node) || visited.has(node)) return;
     visited.add(node);
     candidates.push(node);
     for (const key of ['profile', 'profile_patch', 'profilePatch', 'skin_profile', 'skinProfile', 'goal_profile', 'goalProfile', 'meta', 'metadata', 'context']) {
@@ -75328,16 +75328,15 @@ function mountAuroraBffRoutes(app, { logger }) {
       const earlyMessage = extractPrimaryChatRequestMessage(parsed.data, earlyNormalizedActionPayload);
       const earlyLatestRecoContextFromSession = extractLatestRecoContextFromSession(parsed.data.session);
       const earlyProfilePatchFromSession = extractProfilePatchFromSession(parsed.data.session);
+      const earlyProfilePatchFromRequestContext = extractProfilePatchFromRequestContextPayload(parsed.data);
       const earlyProfilePatchFromAction = extractProfilePatchFromSession({
         profile_patch: parseProfilePatchFromAction(earlyNormalizedActionPayload),
       });
-      const earlyProfileForBeautyMainline =
-        earlyProfilePatchFromSession || earlyProfilePatchFromAction
-          ? {
-              ...(earlyProfilePatchFromSession || {}),
-              ...(earlyProfilePatchFromAction || {}),
-            }
-          : null;
+      const earlyProfileForBeautyMainline = extractAnalysisProfileContextOverlay(
+        earlyProfilePatchFromSession,
+        earlyProfilePatchFromRequestContext,
+        earlyProfilePatchFromAction,
+      );
       const earlyIncludeAlternatives = extractIncludeAlternativesFromAction(earlyNormalizedActionPayload);
       const earlyDebugHeader = req.get('X-Debug') ?? req.get('X-Aurora-Debug');
       const earlyDebugFromHeader = earlyDebugHeader == null ? undefined : coerceBoolean(earlyDebugHeader);
@@ -75369,6 +75368,9 @@ function mountAuroraBffRoutes(app, { logger }) {
             shouldAutoRerunRecommendationsFromProfilePatch: false,
             debugUpstream: earlyDebugUpstream,
           });
+        if (earlyProfileForBeautyMainline) {
+          profile = { ...(profile || {}), ...earlyProfileForBeautyMainline };
+        }
         if (earlyBeautyOwnedRecoResponse?.handled) {
           return sendChatEnvelope(earlyBeautyOwnedRecoResponse.envelope);
         }
@@ -75444,11 +75446,15 @@ function mountAuroraBffRoutes(app, { logger }) {
       // If the client already has a profile snapshot (for example, cached from bootstrap or a local quick-profile flow),
       // use it as an additional best-effort context source so we don't re-ask for already-known fields when DB reads fail.
       const profilePatchFromSession = extractProfilePatchFromSession(parsed.data.session);
-      if (!profilePatchFromSession) {
+      const profilePatchFromRequestContext = extractProfilePatchFromRequestContextPayload(parsed.data);
+      if (!profilePatchFromSession && !profilePatchFromRequestContext) {
         recordProfileContextMissing({ side: 'frontend' });
       }
       if (profilePatchFromSession) {
         profile = { ...(profile || {}), ...profilePatchFromSession };
+      }
+      if (profilePatchFromRequestContext) {
+        profile = { ...(profile || {}), ...profilePatchFromRequestContext };
       }
       if (!chatContext && profile && typeof profile === 'object' && profile.chatContext && typeof profile.chatContext === 'object') {
         chatContext = profile.chatContext;
@@ -75490,10 +75496,16 @@ function mountAuroraBffRoutes(app, { logger }) {
           // Always apply inline for gating even if DB is unavailable.
           profile = { ...(profile || {}), ...patchParsed.data };
           try {
-            profile = await runAuroraTimedOperation(
+            const persistedProfile = await runAuroraTimedOperation(
               () => upsertProfileForIdentityForRoute(identityRef, patchParsed.data),
               { timeoutMs: getAuroraStorageWriteTimeoutMs(), timeoutCode: 'AURORA_CHAT_PROFILE_PATCH_TIMEOUT' },
             );
+            profile = {
+              ...((persistedProfile && typeof persistedProfile === 'object' && !Array.isArray(persistedProfile))
+                ? persistedProfile
+                : (profile && typeof profile === 'object' && !Array.isArray(profile) ? profile : {})),
+              ...patchParsed.data,
+            };
           } catch (err) {
             logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to apply profile chip patch');
           }
@@ -75527,10 +75539,16 @@ function mountAuroraBffRoutes(app, { logger }) {
         };
         profile = { ...(profile || {}), ...pregnancyPolicy.patch };
         try {
-          profile = await runAuroraTimedOperation(
+          const persistedProfile = await runAuroraTimedOperation(
             () => upsertProfileForIdentityForRoute(identityRef, pregnancyPolicy.patch),
             { timeoutMs: getAuroraStorageWriteTimeoutMs(), timeoutCode: 'AURORA_CHAT_PREGNANCY_PATCH_TIMEOUT' },
           );
+          profile = {
+            ...((persistedProfile && typeof persistedProfile === 'object' && !Array.isArray(persistedProfile))
+              ? persistedProfile
+              : (profile && typeof profile === 'object' && !Array.isArray(profile) ? profile : {})),
+            ...pregnancyPolicy.patch,
+          };
         } catch (err) {
           logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to persist pregnancy policy patch');
         }
@@ -75685,10 +75703,16 @@ function mountAuroraBffRoutes(app, { logger }) {
         const shouldPersistTextPatch = shouldPersistProfilePatch(profileBeforePatch, normalizedPatch);
         if (shouldPersistTextPatch) {
           try {
-            profile = await runAuroraTimedOperation(
+            const persistedProfile = await runAuroraTimedOperation(
               () => upsertProfileForIdentityForRoute(identityRef, normalizedPatch),
               { timeoutMs: getAuroraStorageWriteTimeoutMs(), timeoutCode: 'AURORA_CHAT_TEXT_PROFILE_PATCH_TIMEOUT' },
             );
+            profile = {
+              ...((persistedProfile && typeof persistedProfile === 'object' && !Array.isArray(persistedProfile))
+                ? persistedProfile
+                : (profile && typeof profile === 'object' && !Array.isArray(profile) ? profile : {})),
+              ...normalizedPatch,
+            };
             for (const field of patchFields) {
               recordAuroraProfileAutoPatch({ field, outcome: 'persisted' });
             }
@@ -75762,8 +75786,9 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
       const profileSummaryForFollowup = summarizeChatProfileForContext(profile);
-      const requestScopedProfileOverride = mergeMissingProfilePatchFields(
-        mergeMissingProfilePatchFields({}, profilePatchFromSession),
+      const requestScopedProfileOverride = extractAnalysisProfileContextOverlay(
+        profilePatchFromSession,
+        profilePatchFromRequestContext,
         appliedProfilePatch || textDerivedProfilePatch,
       );
       let cachedLatestArtifactForConversation;

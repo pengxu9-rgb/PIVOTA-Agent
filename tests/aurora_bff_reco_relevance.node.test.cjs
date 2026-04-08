@@ -2913,6 +2913,133 @@ test('/v1/chat: generic concern planner timeout falls back to deterministic main
   }
 });
 
+test('/v1/chat: freeform beauty reco carries request context profile into assistant text', async () => {
+  let harness = null;
+
+  try {
+    harness = createAppWithPatchedAuroraChat({
+      geminiTextImpl: buildConcernPlannerGeminiTextMock({
+        throwOnConcernPrompt: true,
+      }),
+      useMemoryStore: false,
+    });
+    harness.routesMod.__internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async (args = {}) => {
+        const query = String(args?.query || '').trim().toLowerCase();
+        if (/(oil control|shine control)/.test(query)) {
+          return buildInternalPrimitiveSearchSuccess([
+            buildBroadOilyInternalPrimitiveProduct({
+              productId: 'serum_freeform_profile_1',
+              merchantId: 'mid_freeform_profile',
+            }),
+          ]);
+        }
+        return buildInternalPrimitiveSearchSuccess([]);
+      },
+    });
+
+    await seedHighConfidenceArtifactForReco({ auroraUid: 'chat_freeform_profile_uid', briefId: 'chat_freeform_profile_brief' });
+    const response = await harness.request
+      .post('/v1/chat')
+      .set({
+        'X-Aurora-UID': 'chat_freeform_profile_uid',
+        'X-Trace-ID': 'trace_chat_freeform_profile',
+        'X-Brief-ID': 'chat_freeform_profile_brief',
+      })
+      .send({
+        message: 'im oily skin, what products should i use?',
+        context: {
+          locale: 'en',
+          profile: {
+            skinType: 'oily',
+            sensitivity: 'low',
+            barrierStatus: 'stable',
+            goals: ['oil control'],
+          },
+        },
+        client_state: 'IDLE_CHAT',
+        session: { state: 'idle' },
+        language: 'EN',
+      });
+
+    assert.equal(response.statusCode, 200);
+    const payload = getRecommendationsPayload(response.body);
+    assert.ok(payload);
+    assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
+    const assistantText = String(response.body?.assistant_message?.content || response.body?.assistant_text || '');
+    assert.match(assistantText, /Context:\s*oily \/ low sensitivity \/ stable; Goals: oil control\./i);
+    assert.doesNotMatch(assistantText, /pending/i);
+  } finally {
+    harness?.routesMod?.__internal?.__resetRouteDependencyOverridesForTest?.();
+    harness?.restore?.();
+  }
+});
+
+test('/v1/chat: action beauty reco carries profile patch into assistant text', async () => {
+  let harness = null;
+
+  try {
+    harness = createAppWithPatchedAuroraChat({
+      geminiTextImpl: buildConcernPlannerGeminiTextMock({
+        throwOnConcernPrompt: true,
+      }),
+      useMemoryStore: false,
+    });
+    harness.routesMod.__internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async (args = {}) => {
+        const query = String(args?.query || '').trim().toLowerCase();
+        if (/(oil control|shine control)/.test(query)) {
+          return buildInternalPrimitiveSearchSuccess([
+            buildBroadOilyInternalPrimitiveProduct({
+              productId: 'serum_action_profile_1',
+              merchantId: 'mid_action_profile',
+            }),
+          ]);
+        }
+        return buildInternalPrimitiveSearchSuccess([]);
+      },
+    });
+
+    await seedHighConfidenceArtifactForReco({ auroraUid: 'chat_action_profile_uid', briefId: 'chat_action_profile_brief' });
+    const response = await harness.request
+      .post('/v1/chat')
+      .set({
+        'X-Aurora-UID': 'chat_action_profile_uid',
+        'X-Trace-ID': 'trace_chat_action_profile',
+        'X-Brief-ID': 'chat_action_profile_brief',
+      })
+      .send({
+        action: {
+          action_id: 'chip.start.reco_products',
+          kind: 'chip',
+          data: {
+            reply_text: 'im oily skin, what product should i use?',
+            profile_patch: {
+              skinType: 'oily',
+              sensitivity: 'low',
+              barrierStatus: 'stable',
+              goals: ['oil control'],
+            },
+          },
+        },
+        client_state: 'IDLE_CHAT',
+        session: { state: 'idle' },
+        language: 'EN',
+      });
+
+    assert.equal(response.statusCode, 200);
+    const payload = getRecommendationsPayload(response.body);
+    assert.ok(payload);
+    assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
+    const assistantText = String(response.body?.assistant_message?.content || response.body?.assistant_text || '');
+    assert.match(assistantText, /Context:\s*oily \/ low sensitivity \/ stable; Goals: oil control\./i);
+    assert.doesNotMatch(assistantText, /pending/i);
+  } finally {
+    harness?.routesMod?.__internal?.__resetRouteDependencyOverridesForTest?.();
+    harness?.restore?.();
+  }
+});
+
 test('/v1/chat: generic oily-skin ask does not surface support-only fallback recommendations when the primary role is unmatched', async () => {
   const originalGet = axios.get;
   const observedSearchParams = [];
