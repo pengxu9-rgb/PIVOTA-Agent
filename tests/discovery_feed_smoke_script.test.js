@@ -133,7 +133,7 @@ describe('run_discovery_feed_smoke helpers', () => {
         personalizationSource: 'none',
         candidateSource: 'multi_provider',
         requireRankDebug: true,
-        requiredRecallLabels: [['cold_start_curated', 'cold_start_fill']],
+        requiredRecallLabels: [['cold_start_curated', 'cold_start_fill', 'external_seed_pool_fastpath']],
         requiredProviders: ['products_search', 'internal_catalog'],
       },
     );
@@ -213,7 +213,7 @@ describe('run_discovery_feed_smoke helpers', () => {
           personalizationSource: 'none',
           candidateSource: 'multi_provider',
           requireRankDebug: true,
-          requiredRecallLabels: [['cold_start_curated', 'cold_start_fill']],
+          requiredRecallLabels: [['cold_start_curated', 'cold_start_fill', 'external_seed_pool_fastpath']],
           disallowTopN: 3,
           disallowTitlePatterns: ['\\blingerie\\b'],
         },

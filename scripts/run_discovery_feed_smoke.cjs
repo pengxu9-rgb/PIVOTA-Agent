@@ -327,10 +327,15 @@ async function runSmoke(options = {}) {
   const coldStartResult = validateDiscoveryResponse(coldStart, {
     discoveryStrategy: 'cold_start_curated',
     personalizationSource: 'none',
-    candidateSource: [EXPECTED_CANDIDATE_SOURCE, 'products_search+external_seed_fastpath'],
+    candidateSource: [
+      EXPECTED_CANDIDATE_SOURCE,
+      'products_search+external_seed_fastpath',
+      'external_seed_fastpath',
+      'external_seed_fastpath+products_search',
+    ],
     minProducts: 3,
     requireRankDebug: true,
-    requiredRecallLabels: [['cold_start_curated', 'cold_start_fill']],
+    requiredRecallLabels: [['cold_start_curated', 'cold_start_fill', 'external_seed_pool_fastpath']],
     requiredProviders: ['products_search', 'external_seeds'],
     disallowTopN: 3,
     disallowTitlePatterns: [
