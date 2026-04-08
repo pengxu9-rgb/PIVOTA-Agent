@@ -2,8 +2,10 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+  isAuthoritativeDirectBeautySearchIngress,
   normalizeFindProductsSearchRequestContract,
   buildFindProductsSearchRequestContract,
+  resolveFindProductsSearchSurface,
   selectFindProductsSearchRequestContract,
   resolveFindProductsSearchExecutionPlan,
   buildFindProductsSearchExecutionTrace,
@@ -225,4 +227,45 @@ test('invalid ingress search contract is rejected and falls back to rebuild', ()
 
   assert.equal(selected.primary_lane, 'shop_invoke_strict');
   assert.equal(selected.primary_retrieval_contract, 'shop_invoke_strict');
+});
+
+test('shop client channel keeps aurora beauty search on direct surface', () => {
+  assert.equal(
+    resolveFindProductsSearchSurface({
+      metadataSource: 'aurora-bff',
+      routeClientChannel: 'shop',
+    }),
+    'direct',
+  );
+  assert.equal(
+    resolveFindProductsSearchSurface({
+      metadataSource: 'aurora-bff',
+      routeClientChannel: 'aurora',
+    }),
+    'chat',
+  );
+});
+
+test('direct beauty ingress is authoritative even when source token is aurora-bff', () => {
+  const requestContract = buildFindProductsSearchRequestContract({
+    surface: 'direct',
+    operation: 'find_products_multi',
+    search: { query: 'best sunscreen for oily skin' },
+    metadata: { source: 'aurora-bff' },
+  });
+
+  assert.equal(
+    isAuthoritativeDirectBeautySearchIngress({
+      requestContract,
+      routeClientChannel: 'shop',
+    }),
+    true,
+  );
+  assert.equal(
+    isAuthoritativeDirectBeautySearchIngress({
+      requestContract,
+      routeClientChannel: 'aurora',
+    }),
+    false,
+  );
 });

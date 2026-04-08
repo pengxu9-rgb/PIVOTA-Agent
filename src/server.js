@@ -229,8 +229,10 @@ const {
   createFindProductsBeautyDiscoveryLocalMainlineRuntime,
 } = require('./findProductsBeautyDiscoveryLocalMainline');
 const {
+  isAuthoritativeDirectBeautySearchIngress,
   normalizeFindProductsSearchRequestContract,
   buildFindProductsSearchRequestContract,
+  resolveFindProductsSearchSurface,
   selectFindProductsSearchRequestContract,
   resolveFindProductsSearchExecutionPlan,
   buildFindProductsSearchExecutionTrace,
@@ -19846,19 +19848,20 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           queryClass: traceQueryClass || null,
           strictConstraintQuery: Boolean(strictCommerceFindProductsMulti),
         });
-        const requestSurface =
-          isAuroraSource(metadata?.source)
-            ? 'chat'
-            : routeContext?.client_channel === 'shop'
-              ? 'direct'
-              : 'gateway';
         const ingressSearchRequestContract = normalizeFindProductsSearchRequestContract(
           metadata?.search_request_contract || metadata?.searchRequestContract,
           {
-            surface: requestSurface,
+            surface: resolveFindProductsSearchSurface({
+              metadataSource: metadata?.source,
+              routeClientChannel: routeContext?.client_channel,
+            }),
             operation,
           },
         );
+        const requestSurface = resolveFindProductsSearchSurface({
+          metadataSource: metadata?.source,
+          routeClientChannel: routeContext?.client_channel,
+        });
         findProductsSearchRequestContract = selectFindProductsSearchRequestContract({
           ingressContract: ingressSearchRequestContract,
           surface: requestSurface,
@@ -19874,10 +19877,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           pivotaApiBase: PIVOTA_API_BASE,
           searchInvokeBase,
         });
+        const authoritativeDirectBeautyIngress = isAuthoritativeDirectBeautySearchIngress({
+          requestContract: findProductsSearchRequestContract,
+          routeClientChannel: routeContext?.client_channel,
+        });
         autoStrictSearchSourceBeautyDirectSearch =
-          strictCommerceFindProductsMulti && authoritativeOrPublicSearchRail;
+          strictCommerceFindProductsMulti &&
+          (authoritativeOrPublicSearchRail || authoritativeDirectBeautyIngress);
         strictBeautyDirectSearch =
-          authoritativeOrPublicSearchRail &&
+          (authoritativeOrPublicSearchRail || authoritativeDirectBeautyIngress) &&
           String(findProductsExecutionPlan?.primary_lane || '').trim() ===
           'beauty_discovery_mainline';
         useStableCrossMerchantAgentSearch = false;
