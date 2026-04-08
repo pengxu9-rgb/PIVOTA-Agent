@@ -106,16 +106,25 @@ function buildFindProductsSearchRequestContract({
     ),
   );
   const sourceProfile = resolveSourceProfile(normalizedSource);
+  const localMainlineChild =
+    parseBooleanLike(
+      normalizedSearch.local_mainline_child ??
+        normalizedSearch.localMainlineChild ??
+        normalizedMetadata.local_mainline_child ??
+        normalizedMetadata.localMainlineChild,
+    ) === true;
   const semanticContract =
-    normalizeStructuredSemanticContract(
-      normalizedSearch.semantic_contract ||
-        normalizedSearch.semanticContract ||
-        normalizedMetadata.semantic_contract ||
-        normalizedMetadata.semanticContract,
-    ) ||
-    (isPlainObject(beautyMainlineBypass?.semanticContract)
-      ? beautyMainlineBypass.semanticContract
-      : null);
+    localMainlineChild
+      ? null
+      : normalizeStructuredSemanticContract(
+          normalizedSearch.semantic_contract ||
+            normalizedSearch.semanticContract ||
+            normalizedMetadata.semantic_contract ||
+            normalizedMetadata.semanticContract,
+        ) ||
+        (isPlainObject(beautyMainlineBypass?.semanticContract)
+          ? beautyMainlineBypass.semanticContract
+          : null);
   const uiSurface = normalizeUiSurface(
     firstNonEmptyString(
       normalizedMetadata.ui_surface,
@@ -168,24 +177,30 @@ function buildFindProductsSearchRequestContract({
   const supportRecallRequest =
     String(semanticContract?.request_class || '').trim().toLowerCase() === 'support_role' ||
     uiSurface === 'ingredient_plan_guidance_only';
-  const requestClass = strictConstraintQuery
-    ? 'beauty_discovery'
-    : supportRecallRequest
-      ? 'support_recall'
-      : ['lookup', 'attribute', 'category'].includes(normalizedQueryClass)
-        ? 'resolver_lookup'
-        : 'beauty_discovery';
-  const primaryLane = strictConstraintQuery
-    ? 'shop_invoke_strict'
-    : requestClass === 'resolver_lookup' &&
-      String(semanticContract?.resolver_only || '').trim().toLowerCase() === 'true'
-      ? 'resolver_only'
-      : 'beauty_discovery_mainline';
-  const primaryRetrievalContract = strictConstraintQuery
-    ? 'shop_invoke_strict'
-    : primaryLane === 'resolver_only'
-      ? 'resolver_only'
-      : 'agent_v1_search_beauty_mainline';
+  const requestClass = localMainlineChild
+    ? 'catalog_child_recall'
+    : strictConstraintQuery
+      ? 'beauty_discovery'
+      : supportRecallRequest
+        ? 'support_recall'
+        : ['lookup', 'attribute', 'category'].includes(normalizedQueryClass)
+          ? 'resolver_lookup'
+          : 'beauty_discovery';
+  const primaryLane = localMainlineChild
+    ? 'catalog_child_recall'
+    : strictConstraintQuery
+      ? 'shop_invoke_strict'
+      : requestClass === 'resolver_lookup' &&
+        String(semanticContract?.resolver_only || '').trim().toLowerCase() === 'true'
+        ? 'resolver_only'
+        : 'beauty_discovery_mainline';
+  const primaryRetrievalContract = localMainlineChild
+    ? 'agent_v2_catalog_child_recall'
+    : strictConstraintQuery
+      ? 'shop_invoke_strict'
+      : primaryLane === 'resolver_only'
+        ? 'resolver_only'
+        : 'agent_v1_search_beauty_mainline';
 
   return {
     contract_version: 'search_contract_v1',
@@ -247,6 +262,17 @@ function resolveFindProductsSearchExecutionPlan({
       upstream_method: null,
       upstream_url: null,
       transport_owner: 'resolver_only',
+      owner_switch_count: 0,
+      policy_only_source: true,
+    };
+  }
+  if (primaryLane === 'catalog_child_recall') {
+    return {
+      primary_lane: 'catalog_child_recall',
+      primary_retrieval_contract: 'agent_v2_catalog_child_recall',
+      upstream_method: null,
+      upstream_url: null,
+      transport_owner: 'pivota_agent_v2_products_search',
       owner_switch_count: 0,
       policy_only_source: true,
     };

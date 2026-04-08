@@ -146,6 +146,7 @@ function createFindProductsSearchRouteEntryRuntime(deps = {}) {
     const forceStrictShoppingMainPath =
       String(searchRequestContract?.primary_lane || '').trim() === 'shop_invoke_strict';
     const forceDirectInvokeMainPath =
+      localMainlineChild === true ||
       forceStrictShoppingMainPath ||
       forceBeautyMainlineInvokePath;
 

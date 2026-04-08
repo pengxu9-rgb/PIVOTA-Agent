@@ -7538,15 +7538,15 @@ function buildFindProductsMultiPayloadFromQuery(rawQuery, options = {}) {
   const semanticFamily = String(firstQueryParamValue(query.semantic_family || query.semanticFamily) || '').trim();
   if (semanticFamily) search.semantic_family = semanticFamily;
 
-	  const productOnly = parseQueryBoolean(query.product_only ?? query.productOnly);
-	  if (productOnly !== undefined) search.product_only = productOnly;
-	  const localMainlineChild = parseQueryBoolean(query.local_mainline_child ?? query.localMainlineChild);
-	  if (localMainlineChild !== undefined) {
-	    search.local_mainline_child = localMainlineChild;
-	    metadata.local_mainline_child = localMainlineChild;
-	  }
-	  const semanticContract = parseQueryJsonObject(query.semantic_contract ?? query.semanticContract);
-	  if (semanticContract) search.semantic_contract = semanticContract;
+  const productOnly = parseQueryBoolean(query.product_only ?? query.productOnly);
+  if (productOnly !== undefined) search.product_only = productOnly;
+  const localMainlineChild = parseQueryBoolean(query.local_mainline_child ?? query.localMainlineChild);
+  if (localMainlineChild !== undefined) {
+    search.local_mainline_child = localMainlineChild;
+    metadata.local_mainline_child = localMainlineChild;
+  }
+  const semanticContract = parseQueryJsonObject(query.semantic_contract ?? query.semanticContract);
+  if (semanticContract && localMainlineChild !== true) search.semantic_contract = semanticContract;
 
   const negativeConstraints = parseQueryStringArray(query.negative_constraints ?? query.negativeConstraints);
   if (negativeConstraints.length) search.negative_constraints = negativeConstraints;
