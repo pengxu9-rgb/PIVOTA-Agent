@@ -745,6 +745,97 @@ test('framework local recall stops after primary timeout instead of advancing to
   );
 });
 
+test('framework local recall gives the first primary internal anchor a wider timeout floor under full fanout', async () => {
+  const attemptedTimeouts = [];
+  const runtime = createRuntime({
+    buildRecoRecallPlan: () => ({
+      mode: 'framework_generic',
+      entries: [
+        {
+          stage_id: 'framework_stage_a_primary_internal',
+          query: 'oil control treatment',
+          role_id: 'oil_control_treatment',
+          role_rank: 1,
+          preferred_step: 'treatment',
+          source_scope: 'internal',
+          query_index: 0,
+        },
+        ...Array.from({ length: 13 }, (_, index) => ({
+          stage_id: 'framework_stage_c_support_daily_sunscreen',
+          query: `support query ${index + 1}`,
+          role_id: 'daily_sunscreen',
+          role_rank: 3,
+          preferred_step: 'sunscreen',
+          source_scope: 'internal',
+          query_index: index + 1,
+        })),
+      ],
+      stages: [
+        {
+          stage_id: 'framework_stage_a_primary_internal',
+          role_id: 'oil_control_treatment',
+          role_rank: 1,
+          source_scope: 'internal',
+          entries: [
+            {
+              query: 'oil control treatment',
+              role_id: 'oil_control_treatment',
+              role_rank: 1,
+              preferred_step: 'treatment',
+              source_scope: 'internal',
+              query_index: 0,
+            },
+          ],
+        },
+      ],
+    }),
+    searchPivotaBackendProducts: async ({ timeoutMs }) => {
+      attemptedTimeouts.push(Number(timeoutMs || 0));
+      return {
+        ok: false,
+        reason: 'upstream_timeout',
+        actual_http_attempt_count: 1,
+        products: [],
+      };
+    },
+  });
+
+  const out = await runtime.runLocalBeautyDiscoveryMainline({
+    search: {
+      query: 'im oily skin, what products should i use?',
+      limit: 6,
+    },
+    metadata: {
+      source: 'aurora-bff',
+      catalog_surface: 'beauty',
+    },
+    requestContract: {
+      surface: 'direct',
+      primary_lane: 'beauty_discovery_mainline',
+      primary_retrieval_contract: 'agent_v1_search_beauty_mainline',
+    },
+    executionPlan: {
+      primary_lane: 'beauty_discovery_mainline',
+      primary_retrieval_contract: 'agent_v1_search_beauty_mainline',
+      owner_switch_count: 0,
+    },
+    rawUserQuery: 'im oily skin, what products should i use?',
+    gatewayRequestId: 'trace_framework_anchor_budget',
+    timeoutMs: 6500,
+    invokeStartedAtMs: Date.now(),
+  });
+
+  assert.equal(out.handled, true);
+  assert.equal(attemptedTimeouts.length, 1);
+  assert.equal(attemptedTimeouts[0] >= 3000, true);
+  assert.equal(attemptedTimeouts[0] <= 3200, true);
+  assert.equal(
+    out.response.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts?.[0]
+      ?.attempt_timeout_ms >= 3000,
+    true,
+  );
+});
+
 test('step-aware sunscreen query can use local beauty discovery mainline', () => {
   const runtime = createRuntime({
     buildBeautyDiscoverySemanticContract: () => ({
