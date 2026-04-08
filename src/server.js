@@ -229,7 +229,9 @@ const {
   createFindProductsBeautyDiscoveryLocalMainlineRuntime,
 } = require('./findProductsBeautyDiscoveryLocalMainline');
 const {
+  normalizeFindProductsSearchRequestContract,
   buildFindProductsSearchRequestContract,
+  selectFindProductsSearchRequestContract,
   resolveFindProductsSearchExecutionPlan,
   buildFindProductsSearchExecutionTrace,
 } = require('./findProductsSearchContracts');
@@ -19850,7 +19852,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             : routeContext?.client_channel === 'shop'
               ? 'direct'
               : 'gateway';
-        findProductsSearchRequestContract = buildFindProductsSearchRequestContract({
+        const ingressSearchRequestContract = normalizeFindProductsSearchRequestContract(
+          metadata?.search_request_contract || metadata?.searchRequestContract,
+          {
+            surface: requestSurface,
+            operation,
+          },
+        );
+        findProductsSearchRequestContract = selectFindProductsSearchRequestContract({
+          ingressContract: ingressSearchRequestContract,
           surface: requestSurface,
           operation,
           search,

@@ -88,6 +88,28 @@ function buildSupplementLanes({
   return Array.from(new Set(lanes));
 }
 
+function normalizeFindProductsSearchRequestContract(
+  value,
+  { surface = null, operation = null } = {},
+) {
+  const contract = isPlainObject(value) ? value : null;
+  if (!contract) return null;
+  const contractVersion = String(contract.contract_version || '').trim();
+  if (contractVersion && contractVersion !== 'search_contract_v1') return null;
+  const primaryLane = String(contract.primary_lane || '').trim();
+  const primaryRetrievalContract = String(contract.primary_retrieval_contract || '').trim();
+  if (!primaryLane || !primaryRetrievalContract) return null;
+  if (surface) {
+    const contractSurface = String(contract.surface || '').trim();
+    if (contractSurface && contractSurface !== String(surface || '').trim()) return null;
+  }
+  if (operation) {
+    const contractOperation = String(contract.operation || '').trim();
+    if (contractOperation && contractOperation !== String(operation || '').trim()) return null;
+  }
+  return contract;
+}
+
 function buildFindProductsSearchRequestContract({
   surface = 'direct',
   operation = 'find_products_multi',
@@ -234,6 +256,33 @@ function buildFindProductsSearchRequestContract({
   };
 }
 
+function selectFindProductsSearchRequestContract({
+  ingressContract = null,
+  surface = 'direct',
+  operation = 'find_products_multi',
+  search = null,
+  metadata = null,
+  queryClass = '',
+  strictConstraintQuery = false,
+  beautyMainlineBypass = null,
+} = {}) {
+  return (
+    normalizeFindProductsSearchRequestContract(ingressContract, {
+      surface,
+      operation,
+    }) ||
+    buildFindProductsSearchRequestContract({
+      surface,
+      operation,
+      search,
+      metadata,
+      queryClass,
+      strictConstraintQuery,
+      beautyMainlineBypass,
+    })
+  );
+}
+
 function resolveFindProductsSearchExecutionPlan({
   requestContract = null,
   pivotaApiBase = '',
@@ -354,8 +403,10 @@ function buildFindProductsSearchExecutionTrace({
 }
 
 module.exports = {
+  normalizeFindProductsSearchRequestContract,
   normalizeStructuredSemanticContract,
   buildFindProductsSearchRequestContract,
+  selectFindProductsSearchRequestContract,
   resolveFindProductsSearchExecutionPlan,
   buildFindProductsSearchExecutionTrace,
 };
