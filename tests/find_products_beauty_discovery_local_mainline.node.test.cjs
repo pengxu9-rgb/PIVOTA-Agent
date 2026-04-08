@@ -605,7 +605,7 @@ test('framework local recall stops after primary timeout instead of advancing to
       entries: [
         {
           stage_id: 'framework_stage_a_primary_internal',
-          query: 'oil control serum',
+          query: 'oil control treatment',
           role_id: 'oil_control_treatment',
           role_rank: 1,
           preferred_step: 'treatment',
@@ -639,7 +639,7 @@ test('framework local recall stops after primary timeout instead of advancing to
           source_scope: 'internal',
           entries: [
             {
-              query: 'oil control serum',
+              query: 'oil control treatment',
               role_id: 'oil_control_treatment',
               role_rank: 1,
               preferred_step: 'treatment',
@@ -677,7 +677,7 @@ test('framework local recall stops after primary timeout instead of advancing to
     searchPivotaBackendProducts: async ({ query, timeoutMs }) => {
       attemptedQueries.push(String(query || ''));
       attemptedTimeouts.push(Number(timeoutMs || 0));
-      if (query === 'oil control serum') {
+      if (query === 'oil control treatment') {
         return {
           ok: false,
           reason: 'upstream_timeout',
@@ -728,7 +728,7 @@ test('framework local recall stops after primary timeout instead of advancing to
   });
 
   assert.equal(out.handled, true);
-  assert.deepEqual(attemptedQueries, ['oil control serum']);
+  assert.deepEqual(attemptedQueries, ['oil control treatment']);
   assert.ok(attemptedTimeouts.every((timeout) => timeout <= 2400));
   assert.equal(
     out.response.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts?.[0]
