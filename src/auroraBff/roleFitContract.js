@@ -40,6 +40,29 @@ function countConcernRoleSignalMatches(text, values = [], maxHits = 2) {
   return hits;
 }
 
+function buildConcernIngredientAliases(value) {
+  const token = normalizeConcernQueryToken(value).toLowerCase();
+  if (!token) return [];
+  const aliases = new Set([token]);
+  if (token === 'zinc pca') aliases.add('zinc');
+  if (token === 'salicylic acid') aliases.add('bha');
+  return [...aliases];
+}
+
+function countConcernIngredientMatches(text, values = [], maxHits = 2) {
+  const haystack = String(text || '').trim().toLowerCase();
+  if (!haystack) return 0;
+  let hits = 0;
+  for (const raw of Array.isArray(values) ? values : []) {
+    const aliases = buildConcernIngredientAliases(raw);
+    if (aliases.length <= 0) continue;
+    if (!aliases.some((token) => token && haystack.includes(token))) continue;
+    hits += 1;
+    if (hits >= maxHits) break;
+  }
+  return hits;
+}
+
 function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '' } = {}) {
   const roleId = String(role?.role_id || '').trim();
   if (!roleId) return null;
@@ -57,7 +80,7 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
   const retrievalRoleMatched = Boolean(retrievalRoleId && retrievalRoleId === roleId);
   const fitKeywordMatches = countConcernRoleSignalMatches(candidateText, role?.fit_keywords, 3);
   const queryTermMatches = countConcernRoleSignalMatches(candidateText, role?.query_terms, 3);
-  const ingredientMatches = countConcernRoleSignalMatches(candidateText, role?.ingredient_hypotheses, 2);
+  const ingredientMatches = countConcernIngredientMatches(candidateText, role?.ingredient_hypotheses, 2);
   const productTypeMatches = countConcernRoleSignalMatches(candidateText, role?.product_type_hypotheses, 2);
   const strongSemanticFitMatched = fitKeywordMatches > 0 || queryTermMatches > 0;
   const exactStep = Boolean(candidateStep && preferredStep && candidateStep === preferredStep);

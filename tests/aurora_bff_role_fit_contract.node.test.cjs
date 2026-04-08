@@ -11,7 +11,7 @@ function buildOilControlTreatmentRole() {
     alternate_steps: ['serum'],
     fit_keywords: ['oil control', 'shine control', 'mattifying'],
     query_terms: ['oil control serum', 'shine control serum'],
-    ingredient_hypotheses: ['niacinamide', 'zinc', 'salicylic acid'],
+    ingredient_hypotheses: ['niacinamide', 'zinc pca', 'salicylic acid'],
     product_type_hypotheses: ['treatment', 'serum'],
   };
 }
