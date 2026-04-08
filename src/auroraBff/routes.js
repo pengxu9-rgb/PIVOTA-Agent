@@ -1814,6 +1814,62 @@ async function buildChatIntentContract(body) {
       reply_mode: 'compatibility',
     };
   }
+  const localMessage = hasMessage ? pickFirstTrimmed(payload.message, payload.text) || '' : '';
+  const typedRecoOwnershipKeepsV1Mainline =
+    hasMessage ? shouldKeepTypedRecoRequestOnV1MainlinePolicy(payload) : false;
+  const beautyRecoTargetContext = hasMessage
+    ? resolveRecommendationTargetContext({
+      explicitStep: pickFirstTrimmed(
+        payload.target_step,
+        payload.targetStep,
+        bodyParams.target_step,
+        bodyParams.targetStep,
+        actionData.target_step,
+        actionData.targetStep,
+      ),
+      focus: pickFirstTrimmed(
+        payload.focus,
+        payload.goal,
+        bodyParams.focus,
+        bodyParams.goal,
+        actionData.focus,
+        actionData.goal,
+      ),
+      text: localMessage,
+      entryType: 'chat',
+      profileSummary: {
+        ...(sessionProfile && typeof sessionProfile === 'object' && !Array.isArray(sessionProfile)
+          ? sessionProfile
+          : {}),
+        ...sessionProfilePatch,
+        ...actionProfilePatch,
+      },
+    })
+    : null;
+  if (
+    hasMessage &&
+    isBeautyOwnedChatRecoRequest({
+      typedRecoOwnershipKeepsV1Mainline,
+      targetContext: beautyRecoTargetContext,
+      message: '',
+    })
+  ) {
+    return {
+      contract_version: 'chat_intent_v1',
+      surface: 'chat',
+      ownership_domain: 'beauty_mainline',
+      request_class: 'beauty_discovery',
+      delegate_target: 'beauty_mainline',
+      should_search: true,
+      reply_mode:
+        beautyRecoTargetContext?.step_aware_intent &&
+        beautyRecoTargetContext?.resolved_target_step
+          ? 'reco_step_aware'
+          : 'reco_framework',
+      primary_lane: 'beauty_discovery_mainline',
+      target_context: beautyRecoTargetContext,
+    };
+  }
   if (hasMessage && AURORA_CHAT_CATALOG_AVAIL_FAST_PATH_ENABLED) {
     const requestLang = pickFirstTrimmed(
       payload.language,
@@ -1849,58 +1905,6 @@ async function buildChatIntentContract(body) {
     };
   }
   if (hasMessage) {
-    const localMessage = pickFirstTrimmed(payload.message, payload.text) || '';
-    const typedRecoOwnershipKeepsV1Mainline = shouldKeepTypedRecoRequestOnV1MainlinePolicy(payload);
-    const beautyRecoTargetContext = resolveRecommendationTargetContext({
-      explicitStep: pickFirstTrimmed(
-        payload.target_step,
-        payload.targetStep,
-        bodyParams.target_step,
-        bodyParams.targetStep,
-        actionData.target_step,
-        actionData.targetStep,
-      ),
-      focus: pickFirstTrimmed(
-        payload.focus,
-        payload.goal,
-        bodyParams.focus,
-        bodyParams.goal,
-        actionData.focus,
-        actionData.goal,
-      ),
-      text: localMessage,
-      entryType: 'chat',
-      profileSummary: {
-        ...(sessionProfile && typeof sessionProfile === 'object' && !Array.isArray(sessionProfile)
-          ? sessionProfile
-          : {}),
-        ...sessionProfilePatch,
-        ...actionProfilePatch,
-      },
-    });
-    if (
-      isBeautyOwnedChatRecoRequest({
-        typedRecoOwnershipKeepsV1Mainline,
-        targetContext: beautyRecoTargetContext,
-        message: '',
-      })
-    ) {
-      return {
-        contract_version: 'chat_intent_v1',
-        surface: 'chat',
-        ownership_domain: 'beauty_mainline',
-        request_class: 'beauty_discovery',
-        delegate_target: 'beauty_mainline',
-        should_search: true,
-        reply_mode:
-          beautyRecoTargetContext?.step_aware_intent &&
-          beautyRecoTargetContext?.resolved_target_step
-            ? 'reco_step_aware'
-            : 'reco_framework',
-        primary_lane: 'beauty_discovery_mainline',
-        target_context: beautyRecoTargetContext,
-      };
-    }
     if (looksLikeDiagnosisStart(localMessage)) {
       return {
         contract_version: 'chat_intent_v1',
