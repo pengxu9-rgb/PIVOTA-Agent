@@ -13650,11 +13650,10 @@ app.delete('/photos', proxyPhotosToBackend);
 const {
   handleInternalProductsSearch,
 } = createFindProductsInternalSearchPrimitiveRuntime({
-  buildSearchProductsV2Body,
   normalizeAgentProductsListResponse,
-  callUpstreamWithOptionalRetry,
-  buildInvokeUpstreamAuthHeaders,
-  getUpstreamUrl: () => `${String(PIVOTA_API_BASE || '').replace(/\/$/, '')}/agent/v2/products/search`,
+  searchCrossMerchantFromCache,
+  loadCrossMerchantBrowseFromCache,
+  loadMerchantBrowseFromCache,
   getDefaultTimeoutMs: () => getUpstreamTimeoutMs('find_products_multi'),
 });
 

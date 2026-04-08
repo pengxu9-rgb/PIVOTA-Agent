@@ -18,26 +18,23 @@ test('internal products search primitive rejects orchestration fields', () => {
   assert.deepEqual(out.forbidden_fields.sort(), ['primary_lane', 'semantic_contract']);
 });
 
-test('internal products search primitive proxies to thin upstream with timeout retry disabled', async () => {
+test('internal products search primitive uses local cache retrieval instead of upstream orchestrator', async () => {
   const calls = [];
   const runtime = createFindProductsInternalSearchPrimitiveRuntime({
-    buildSearchProductsV2Body: ({ search, metadata }) => ({
-      operation: 'find_products_multi',
-      payload: { search, metadata },
-    }),
     normalizeAgentProductsListResponse: (body) => body,
-    callUpstreamWithOptionalRetry: async (operation, config, options) => {
-      calls.push({ operation, config, options });
+    searchCrossMerchantFromCache: async (query, page, limit, options) => {
+      calls.push({ query, page, limit, options });
       return {
-        status: 200,
-        data: {
-          products: [{ product_id: 'p1', title: 'Oil Control Serum' }],
-        },
+        products: [
+          { product_id: 'p1', title: 'Oil Control Serum', merchant_id: 'm1' },
+          { product_id: 'p2', title: 'Niacinamide Serum', merchant_id: 'm2' },
+        ],
+        total: 2,
+        retrieval_sources: [{ source: 'lexical_cache', used: true, count: 2 }],
+        query_terms: ['oil', 'control', 'serum'],
+        beauty_query_bucket: 'skincare',
       };
     },
-    buildInvokeUpstreamAuthHeaders: ({ checkoutToken }) =>
-      checkoutToken ? { Authorization: `Bearer ${checkoutToken}` } : {},
-    getUpstreamUrl: () => 'https://backend.example/agent/v2/products/search',
     getDefaultTimeoutMs: () => 4800,
   });
 
@@ -50,7 +47,6 @@ test('internal products search primitive proxies to thin upstream with timeout r
     },
     header(name) {
       const headers = {
-        'x-checkout-token': 'checkout-token',
         'x-trace-id': 'trace-123',
         'x-internal-search-timeout-ms': '4200',
       };
@@ -74,32 +70,15 @@ test('internal products search primitive proxies to thin upstream with timeout r
 
   assert.equal(statusCode, 200);
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].operation, 'find_products_multi');
-  assert.equal(calls[0].config.method, 'POST');
-  assert.equal(calls[0].config.url, 'https://backend.example/agent/v2/products/search');
-  assert.equal(calls[0].config.timeout, 4200);
-  assert.equal(calls[0].options.disableTimeoutRetry, true);
-  assert.deepEqual(calls[0].config.data, {
-    operation: 'find_products_multi',
-    payload: {
-      search: {
-        query: 'oil control serum',
-        limit: 6,
-        search_all_merchants: true,
-        catalog_surface: 'beauty',
-        target_step_family: 'treatment',
-      },
-      metadata: {
-        source: 'internal_products_search_primitive',
-        trace_id: 'trace-123',
-      },
-    },
-  });
-  assert.equal(
-    calls[0].config.headers.Authorization,
-    'Bearer checkout-token',
-  );
-  assert.equal(responseBody.metadata.query_source, 'internal_products_search_primitive');
+  assert.equal(calls[0].query, 'oil control serum');
+  assert.equal(calls[0].page, 1);
+  assert.equal(calls[0].limit, 6);
+  assert.equal(calls[0].options.inStockOnly, true);
+  assert.equal(responseBody.metadata.query_source, 'internal_products_search_primitive_cache');
   assert.equal(responseBody.metadata.endpoint_kind, 'internal_primitive');
   assert.equal(responseBody.metadata.transport_owner, 'internal_products_search_primitive');
+  assert.deepEqual(responseBody.metadata.query_terms, ['oil', 'control', 'serum']);
+  assert.equal(responseBody.metadata.beauty_query_bucket, 'skincare');
+  assert.equal(responseBody.total, 2);
+  assert.equal(responseBody.products.length, 2);
 });
