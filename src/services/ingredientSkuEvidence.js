@@ -9,6 +9,7 @@ const {
   LOCAL_INGREDIENT_RECALL_REGISTRY,
   normalizeIngredientRecallText,
 } = require('./ingredientRecallRegistry');
+const { EXTERNAL_SEED_RECALL_SQL_FIELDS } = require('./externalSeedRecall');
 const {
   getRecoTargetFamilyRelation,
   normalizeRecoTargetStep,
@@ -1990,136 +1991,122 @@ async function fetchSeedRowsByIdentity({ seedIds = [], urls = [], market = DEFAU
 async function fetchSeedRowsByPatterns({ patterns = [], market = DEFAULT_MARKET, tool = DEFAULT_TOOL, attachedState = null, limit = 24, inStockOnly = false } = {}) {
   const normalizedPatterns = uniqStrings(patterns, 16);
   if (!normalizedPatterns.length) return [];
-  const sqlParams = [
-    String(market || DEFAULT_MARKET).trim().toUpperCase() || DEFAULT_MARKET,
-    String(tool || DEFAULT_TOOL).trim() || DEFAULT_TOOL,
-    normalizedPatterns,
+  const safeLimit = Math.max(6, Number(limit) || 24);
+  const marketValue = String(market || DEFAULT_MARKET).trim().toUpperCase() || DEFAULT_MARKET;
+  const toolValue = String(tool || DEFAULT_TOOL).trim() || DEFAULT_TOOL;
+  const selectSql = `
+    id,
+    external_product_id,
+    destination_url,
+    canonical_url,
+    domain,
+    title,
+    image_url,
+    price_amount,
+    price_currency,
+    availability,
+    seed_data,
+    attached_product_key,
+    updated_at,
+    created_at
+  `;
+  const baseFilters = [
+    `status = 'active'`,
+    `market = $1`,
+    `(tool = '*' OR tool = $2)`,
   ];
-  const filters = [
-    `(
-      lower(coalesce(title, '')) LIKE ANY($3::text[])
-      OR lower(coalesce(canonical_url, '')) LIKE ANY($3::text[])
-      OR lower(coalesce(destination_url, '')) LIKE ANY($3::text[])
-      OR lower(coalesce(seed_data->>'title', '')) LIKE ANY($3::text[])
-      OR lower(coalesce(seed_data->>'canonical_url', '')) LIKE ANY($3::text[])
-      OR lower(coalesce(seed_data->>'destination_url', '')) LIKE ANY($3::text[])
-      OR lower(coalesce(seed_data->'snapshot'->>'title', '')) LIKE ANY($3::text[])
-      OR lower(coalesce(seed_data->>'raw_ingredient_text_clean', '')) LIKE ANY($3::text[])
-      OR lower(coalesce(seed_data->>'inci_list', '')) LIKE ANY($3::text[])
-      OR lower(coalesce((seed_data->'ingredient_tokens')::text, '')) LIKE ANY($3::text[])
-      OR lower(coalesce((seed_data->'key_ingredients')::text, '')) LIKE ANY($3::text[])
-      OR lower(coalesce((seed_data->'keyIngredients')::text, '')) LIKE ANY($3::text[])
-      OR lower(coalesce((seed_data->'hero_ingredients')::text, '')) LIKE ANY($3::text[])
-      OR lower(coalesce((seed_data->'active_ingredients')::text, '')) LIKE ANY($3::text[])
-      OR lower(coalesce((seed_data->'ingredients')::text, '')) LIKE ANY($3::text[])
-      OR lower(coalesce((seed_data->'science'->'key_ingredients')::text, '')) LIKE ANY($3::text[])
-      OR lower(coalesce((seed_data->'science'->'keyIngredients')::text, '')) LIKE ANY($3::text[])
-      OR lower(coalesce((seed_data->'ingredient_intel'->'inci_normalized')::text, '')) LIKE ANY($3::text[])
-      OR lower(coalesce((seed_data->'ingredient_intel'->'inciNormalized')::text, '')) LIKE ANY($3::text[])
-      OR lower(coalesce(seed_data->'ingredient_intel'->>'inci_raw', '')) LIKE ANY($3::text[])
-      OR lower(coalesce(seed_data->'ingredient_intel'->>'raw_ingredient_text_clean', '')) LIKE ANY($3::text[])
-      OR lower(coalesce(seed_data->'ingredient_intel'->>'inci_list', '')) LIKE ANY($3::text[])
-      OR lower(coalesce(seed_data->'snapshot'->>'raw_ingredient_text_clean', '')) LIKE ANY($3::text[])
-      OR lower(coalesce(seed_data->'snapshot'->>'inci_list', '')) LIKE ANY($3::text[])
-      OR lower(coalesce((seed_data->'snapshot'->'ingredient_tokens')::text, '')) LIKE ANY($3::text[])
-      OR lower(coalesce((seed_data->'snapshot'->'key_ingredients')::text, '')) LIKE ANY($3::text[])
-      OR lower(coalesce((seed_data->'snapshot'->'keyIngredients')::text, '')) LIKE ANY($3::text[])
-      OR lower(coalesce((seed_data->'snapshot'->'hero_ingredients')::text, '')) LIKE ANY($3::text[])
-      OR lower(coalesce((seed_data->'snapshot'->'active_ingredients')::text, '')) LIKE ANY($3::text[])
-      OR lower(coalesce((seed_data->'snapshot'->'ingredients')::text, '')) LIKE ANY($3::text[])
-      OR lower(coalesce((seed_data->'snapshot'->'science'->'key_ingredients')::text, '')) LIKE ANY($3::text[])
-      OR lower(coalesce((seed_data->'snapshot'->'science'->'keyIngredients')::text, '')) LIKE ANY($3::text[])
-      OR lower(coalesce((seed_data->'snapshot'->'ingredient_intel'->'inci_normalized')::text, '')) LIKE ANY($3::text[])
-      OR lower(coalesce((seed_data->'snapshot'->'ingredient_intel'->'inciNormalized')::text, '')) LIKE ANY($3::text[])
-      OR lower(coalesce(seed_data->'snapshot'->'ingredient_intel'->>'inci_raw', '')) LIKE ANY($3::text[])
-      OR lower(coalesce(seed_data->'snapshot'->'ingredient_intel'->>'raw_ingredient_text_clean', '')) LIKE ANY($3::text[])
-      OR lower(coalesce(seed_data->'snapshot'->'ingredient_intel'->>'inci_list', '')) LIKE ANY($3::text[])
-      OR ${EXTERNAL_SEED_STRONG_TEXT_SQL} LIKE ANY($3::text[])
-    )`,
-  ];
-  if (attachedState === 'attached') filters.push(`coalesce(attached_product_key, '') <> ''`);
-  if (attachedState === 'unattached') filters.push(`coalesce(attached_product_key, '') = ''`);
+  if (attachedState === 'attached') baseFilters.push(`coalesce(attached_product_key, '') <> ''`);
+  if (attachedState === 'unattached') baseFilters.push(`coalesce(attached_product_key, '') = ''`);
   if (inStockOnly) {
-    filters.push(`coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')`);
+    baseFilters.push(`coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')`);
   }
-  sqlParams.push(Math.max(6, Number(limit) || 24));
-  const limitBind = `$${sqlParams.length}`;
-  const res = await runAppQuery(
-    `
+  const baseWhereSql = baseFilters.join('\n        AND ');
+  const collectedRows = [];
+  const seenIds = new Set();
+  const appendStageRows = (rows) => {
+    for (const row of Array.isArray(rows) ? rows : []) {
+      const id = Number(row?.id || 0);
+      if (!Number.isFinite(id) || id <= 0 || seenIds.has(id)) continue;
+      seenIds.add(id);
+      collectedRows.push(row);
+      if (collectedRows.length >= safeLimit) break;
+    }
+  };
+  const runStage = async ({ predicateBuilder, cap = safeLimit } = {}) => {
+    if (typeof predicateBuilder !== 'function' || collectedRows.length >= safeLimit) return;
+    const sqlParams = [marketValue, toolValue];
+    const bind = (value) => {
+      sqlParams.push(value);
+      return `$${sqlParams.length}`;
+    };
+    const predicateSql = predicateBuilder(bind);
+    if (!predicateSql) return;
+    let sql = `
       SELECT
-        id,
-        external_product_id,
-        destination_url,
-        canonical_url,
-        domain,
-        title,
-        image_url,
-        price_amount,
-        price_currency,
-        availability,
-        seed_data,
-        attached_product_key,
-        updated_at,
-        created_at
+        ${selectSql}
       FROM external_product_seeds
-      WHERE status = 'active'
-        AND market = $1
-        AND (tool = '*' OR tool = $2)
-        AND ${filters.join('\n        AND ')}
-      ORDER BY
-        CASE
-          WHEN lower(coalesce(title, '')) LIKE ANY($3::text[]) THEN 0
-          WHEN ${EXTERNAL_SEED_STRONG_TEXT_SQL} LIKE ANY($3::text[]) THEN 1
-          WHEN (
-            lower(coalesce(seed_data->>'raw_ingredient_text_clean', '')) LIKE ANY($3::text[])
-            OR lower(coalesce(seed_data->>'inci_list', '')) LIKE ANY($3::text[])
-            OR lower(coalesce((seed_data->'ingredient_tokens')::text, '')) LIKE ANY($3::text[])
-            OR lower(coalesce((seed_data->'key_ingredients')::text, '')) LIKE ANY($3::text[])
-            OR lower(coalesce((seed_data->'keyIngredients')::text, '')) LIKE ANY($3::text[])
-            OR lower(coalesce((seed_data->'hero_ingredients')::text, '')) LIKE ANY($3::text[])
-            OR lower(coalesce((seed_data->'active_ingredients')::text, '')) LIKE ANY($3::text[])
-            OR lower(coalesce((seed_data->'ingredients')::text, '')) LIKE ANY($3::text[])
-            OR lower(coalesce((seed_data->'science'->'key_ingredients')::text, '')) LIKE ANY($3::text[])
-            OR lower(coalesce((seed_data->'science'->'keyIngredients')::text, '')) LIKE ANY($3::text[])
-            OR lower(coalesce((seed_data->'ingredient_intel'->'inci_normalized')::text, '')) LIKE ANY($3::text[])
-            OR lower(coalesce((seed_data->'ingredient_intel'->'inciNormalized')::text, '')) LIKE ANY($3::text[])
-            OR lower(coalesce(seed_data->'ingredient_intel'->>'inci_raw', '')) LIKE ANY($3::text[])
-            OR lower(coalesce(seed_data->'ingredient_intel'->>'raw_ingredient_text_clean', '')) LIKE ANY($3::text[])
-            OR lower(coalesce(seed_data->'ingredient_intel'->>'inci_list', '')) LIKE ANY($3::text[])
-            OR lower(coalesce(seed_data->'snapshot'->>'raw_ingredient_text_clean', '')) LIKE ANY($3::text[])
-            OR lower(coalesce(seed_data->'snapshot'->>'inci_list', '')) LIKE ANY($3::text[])
-            OR lower(coalesce((seed_data->'snapshot'->'ingredient_tokens')::text, '')) LIKE ANY($3::text[])
-            OR lower(coalesce((seed_data->'snapshot'->'key_ingredients')::text, '')) LIKE ANY($3::text[])
-            OR lower(coalesce((seed_data->'snapshot'->'keyIngredients')::text, '')) LIKE ANY($3::text[])
-            OR lower(coalesce((seed_data->'snapshot'->'hero_ingredients')::text, '')) LIKE ANY($3::text[])
-            OR lower(coalesce((seed_data->'snapshot'->'active_ingredients')::text, '')) LIKE ANY($3::text[])
-            OR lower(coalesce((seed_data->'snapshot'->'ingredients')::text, '')) LIKE ANY($3::text[])
-            OR lower(coalesce((seed_data->'snapshot'->'science'->'key_ingredients')::text, '')) LIKE ANY($3::text[])
-            OR lower(coalesce((seed_data->'snapshot'->'science'->'keyIngredients')::text, '')) LIKE ANY($3::text[])
-            OR lower(coalesce((seed_data->'snapshot'->'ingredient_intel'->'inci_normalized')::text, '')) LIKE ANY($3::text[])
-            OR lower(coalesce((seed_data->'snapshot'->'ingredient_intel'->'inciNormalized')::text, '')) LIKE ANY($3::text[])
-            OR lower(coalesce(seed_data->'snapshot'->'ingredient_intel'->>'inci_raw', '')) LIKE ANY($3::text[])
-            OR lower(coalesce(seed_data->'snapshot'->'ingredient_intel'->>'raw_ingredient_text_clean', '')) LIKE ANY($3::text[])
-            OR lower(coalesce(seed_data->'snapshot'->'ingredient_intel'->>'inci_list', '')) LIKE ANY($3::text[])
-          ) THEN 2
-          WHEN lower(coalesce(seed_data->>'title', '')) LIKE ANY($3::text[]) THEN 3
-          WHEN lower(coalesce(seed_data->'snapshot'->>'title', '')) LIKE ANY($3::text[]) THEN 4
-          WHEN (
-            lower(coalesce(canonical_url, '')) LIKE ANY($3::text[])
-            OR lower(coalesce(destination_url, '')) LIKE ANY($3::text[])
-            OR lower(coalesce(seed_data->>'canonical_url', '')) LIKE ANY($3::text[])
-            OR lower(coalesce(seed_data->>'destination_url', '')) LIKE ANY($3::text[])
-          ) THEN 5
-          ELSE 6
-        END,
-        CASE WHEN coalesce(attached_product_key, '') <> '' THEN 0 ELSE 1 END,
-        updated_at DESC NULLS LAST,
-        created_at DESC NULLS LAST
+      WHERE ${baseWhereSql}
+        AND ${predicateSql}
+    `;
+    if (seenIds.size > 0) {
+      const excludedIdsBind = bind(Array.from(seenIds));
+      sql += `
+        AND id <> ALL(${excludedIdsBind}::bigint[])
+      `;
+    }
+    const limitBind = bind(Math.max(6, Number(cap) || safeLimit));
+    sql += `
+      ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
       LIMIT ${limitBind}
-    `,
-    sqlParams,
-  );
-  return Array.isArray(res?.rows) ? res.rows : [];
+    `;
+    const res = await runAppQuery(sql, sqlParams);
+    appendStageRows(res?.rows);
+  };
+
+  await runStage({
+    predicateBuilder: (bind) => {
+      const patternBind = bind(normalizedPatterns);
+      return `(
+        lower(coalesce(title, '')) LIKE ANY(${patternBind}::text[])
+        OR lower(coalesce(seed_data->>'title', '')) LIKE ANY(${patternBind}::text[])
+        OR lower(coalesce(seed_data->'snapshot'->>'title', '')) LIKE ANY(${patternBind}::text[])
+        OR lower(coalesce(canonical_url, '')) LIKE ANY(${patternBind}::text[])
+        OR lower(coalesce(destination_url, '')) LIKE ANY(${patternBind}::text[])
+        OR lower(coalesce(seed_data->>'canonical_url', '')) LIKE ANY(${patternBind}::text[])
+        OR lower(coalesce(seed_data->>'destination_url', '')) LIKE ANY(${patternBind}::text[])
+      )`;
+    },
+    cap: Math.max(safeLimit * 2, 12),
+  });
+
+  await runStage({
+    predicateBuilder: (bind) => {
+      const patternBind = bind(normalizedPatterns);
+      return `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${patternBind}::text[])`;
+    },
+    cap: Math.max(safeLimit * 2, 12),
+  });
+
+  await runStage({
+    predicateBuilder: (bind) => {
+      const patternBind = bind(normalizedPatterns);
+      return `(
+        ${EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokens} LIKE ANY(${patternBind}::text[])
+        OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY(${patternBind}::text[])
+      )`;
+    },
+    cap: Math.max(safeLimit * 2, 12),
+  });
+
+  await runStage({
+    predicateBuilder: (bind) => {
+      const patternBind = bind(normalizedPatterns);
+      return `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${patternBind}::text[])`;
+    },
+    cap: Math.max(safeLimit, 12),
+  });
+
+  return collectedRows.slice(0, safeLimit);
 }
 
 function resolveSourceRank(sourceTag) {
