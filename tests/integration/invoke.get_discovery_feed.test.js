@@ -98,4 +98,69 @@ describe('/agent/shop/v1/invoke get_discovery_feed', () => {
     expect(Array.isArray(res.body.metadata.rank_debug.top_candidates)).toBe(true);
     expect(Array.isArray(res.body.metadata.rank_debug.recall_summary)).toBe(true);
   });
+
+  test('fails open with an empty discovery payload when providers are unavailable', async () => {
+    const previousApiBase = process.env.PIVOTA_API_BASE;
+    const previousBackendBaseUrl = process.env.PIVOTA_BACKEND_BASE_URL;
+    const previousDiscoveryBaseUrl = process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL;
+    const previousDatabaseUrl = process.env.DATABASE_URL;
+
+    delete process.env.PIVOTA_API_BASE;
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+    delete process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL;
+    delete process.env.DATABASE_URL;
+
+    try {
+      const res = await request(app)
+        .post('/agent/shop/v1/invoke')
+        .send({
+          operation: 'get_discovery_feed',
+          payload: {
+            surface: 'home_hot_deals',
+            page: 1,
+            limit: 6,
+            context: {
+              auth_state: 'anonymous',
+              locale: 'en-US',
+              recent_views: [],
+              recent_queries: [],
+            },
+          },
+        })
+        .expect(200);
+
+      expect(res.body).toEqual(
+        expect.objectContaining({
+          status: 'success',
+          success: true,
+          products: [],
+          total: 0,
+          page: 1,
+          page_size: 0,
+          metadata: expect.objectContaining({
+            surface: 'home_hot_deals',
+            locale: 'en-US',
+            catalog_status: 'unavailable',
+            error_code: 'DISCOVERY_CATALOG_UNAVAILABLE',
+            provider_breakdown: expect.any(Array),
+            recall_summary: expect.any(Array),
+            candidate_counts: expect.objectContaining({
+              raw: 0,
+              normalized: 0,
+              scored: 0,
+              eligiblePool: 0,
+              returned: 0,
+            }),
+          }),
+        }),
+      );
+    } finally {
+      process.env.PIVOTA_API_BASE = previousApiBase;
+      process.env.PIVOTA_BACKEND_BASE_URL = previousBackendBaseUrl;
+      if (previousDiscoveryBaseUrl === undefined) delete process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL;
+      else process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = previousDiscoveryBaseUrl;
+      if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = previousDatabaseUrl;
+    }
+  });
 });

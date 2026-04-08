@@ -247,11 +247,15 @@ class DiscoveryValidationError extends Error {
 }
 
 class DiscoveryCatalogUnavailableError extends Error {
-  constructor(message = 'Discovery catalog is unavailable') {
+  constructor(message = 'Discovery catalog is unavailable', details = null) {
     super(message);
     this.name = 'DiscoveryCatalogUnavailableError';
     this.statusCode = 503;
     this.code = 'DISCOVERY_CATALOG_UNAVAILABLE';
+    this.details =
+      details && typeof details === 'object' && !Array.isArray(details)
+        ? details
+        : {};
   }
 }
 
@@ -3234,7 +3238,17 @@ async function loadCatalogCandidates({
     const successfulProviders = providerBreakdown.filter((entry) => entry.successful);
 
     if (successfulProviders.length <= 0) {
-      throw new DiscoveryCatalogUnavailableError('Failed to load discovery candidates from discovery providers');
+      throw new DiscoveryCatalogUnavailableError(
+        'Failed to load discovery candidates from discovery providers',
+        {
+          providerBreakdown,
+          recallSummary,
+          candidateSource,
+          primaryPathUsed,
+          fallbackTriggered,
+          fallbackReason,
+        },
+      );
     }
 
     return {
