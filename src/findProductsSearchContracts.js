@@ -283,6 +283,27 @@ function selectFindProductsSearchRequestContract({
   );
 }
 
+function resolveFindProductsSearchSurface({
+  metadataSource = '',
+  routeClientChannel = '',
+} = {}) {
+  const normalizedClientChannel = String(routeClientChannel || '').trim().toLowerCase();
+  if (normalizedClientChannel === 'shop') return 'direct';
+  return normalizeSourceToken(metadataSource) === 'aurora-bff' ? 'chat' : 'gateway';
+}
+
+function isAuthoritativeDirectBeautySearchIngress({
+  requestContract = null,
+  routeClientChannel = '',
+} = {}) {
+  if (String(routeClientChannel || '').trim().toLowerCase() !== 'shop') return false;
+  const contract = normalizeFindProductsSearchRequestContract(requestContract, {
+    surface: 'direct',
+    operation: 'find_products_multi',
+  });
+  return String(contract?.primary_lane || '').trim() === 'beauty_discovery_mainline';
+}
+
 function resolveFindProductsSearchExecutionPlan({
   requestContract = null,
   pivotaApiBase = '',
@@ -403,9 +424,11 @@ function buildFindProductsSearchExecutionTrace({
 }
 
 module.exports = {
+  isAuthoritativeDirectBeautySearchIngress,
   normalizeFindProductsSearchRequestContract,
   normalizeStructuredSemanticContract,
   buildFindProductsSearchRequestContract,
+  resolveFindProductsSearchSurface,
   selectFindProductsSearchRequestContract,
   resolveFindProductsSearchExecutionPlan,
   buildFindProductsSearchExecutionTrace,
