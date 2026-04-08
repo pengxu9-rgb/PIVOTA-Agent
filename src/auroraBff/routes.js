@@ -4433,6 +4433,7 @@ async function searchInternalProductsPrimitive({
   limit = 6,
   logger,
   timeoutMs = 5000,
+  deadlineMs = 0,
   searchAllMerchants = true,
   catalogSurface = '',
   searchSourceOverride = '',
@@ -4455,10 +4456,19 @@ async function searchInternalProductsPrimitive({
   const q = String(query || '').trim();
   const normalizedBase = normalizeBaseUrlForRecoCatalogSearch(PIVOTA_BACKEND_BASE_URL);
   const normalizedPath = INTERNAL_PRODUCTS_SEARCH_PATH;
-  const attemptedTimeoutMs = Math.max(
+  const requestedTimeoutMs = Math.max(
     200,
     Math.min(12000, Number.isFinite(Number(timeoutMs)) ? Math.trunc(Number(timeoutMs)) : 5000),
   );
+  const normalizedDeadlineMs = Number.isFinite(Number(deadlineMs))
+    ? Math.trunc(Number(deadlineMs))
+    : 0;
+  const remainingDeadlineMs = normalizedDeadlineMs > 0
+    ? Math.max(0, normalizedDeadlineMs - Date.now() - 20)
+    : null;
+  const attemptedTimeoutMs = Number.isFinite(remainingDeadlineMs)
+    ? Math.max(0, Math.min(requestedTimeoutMs, Math.trunc(remainingDeadlineMs)))
+    : requestedTimeoutMs;
   const normalizedLimit = Math.max(
     1,
     Math.min(12, Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 6),
@@ -4605,6 +4615,13 @@ async function searchInternalProductsPrimitive({
     return buildTransportMeta({
       ok: false,
       reason: 'pivota_backend_not_configured',
+      products: [],
+    });
+  }
+  if (attemptedTimeoutMs < 120) {
+    return buildTransportMeta({
+      ok: false,
+      reason: 'budget_exhausted',
       products: [],
     });
   }
@@ -18533,6 +18550,7 @@ async function runBeautyMainlineLocalHandoffSearch({
   targetContext = null,
   profileSummary = null,
   timeoutMs = 0,
+  deadlineMs = 0,
   authHeaders = null,
 } = {}) {
   const internalSearchFn = resolveAuroraRouteDependency(
@@ -18581,6 +18599,7 @@ async function runBeautyMainlineLocalHandoffSearch({
     allowExternalSeed: true,
     externalSeedStrategy: 'supplement_internal_first',
     authHeaders,
+    deadlineMs,
     searchFn: async (args) =>
       internalSearchFn({
         ...args,
@@ -18693,6 +18712,7 @@ async function handoffRecoToBeautyMainlineSearch({
         targetContext: effectiveTargetContext,
         profileSummary,
         timeoutMs: handoffSearchMinTimeoutMs,
+        deadlineMs: Number.isFinite(Number(deadlineAtMs)) ? Number(deadlineAtMs) : 0,
         authHeaders: authHeaders || ctx?.backend_auth_headers || null,
       });
     } catch (err) {
@@ -19090,6 +19110,7 @@ async function collectRecoCandidatesFromQueryLevels({
   recommendationTaskContext = null,
   logger,
   timeoutMs,
+  deadlineMs = 0,
   limit = 6,
   usePurchasableFallback = false,
   allowExternalSeed = false,
@@ -19101,6 +19122,13 @@ async function collectRecoCandidatesFromQueryLevels({
   const searchResults = [];
   let candidateState = finalizeRecommendationCandidatePools([], { targetContext, recoContext: recommendationTaskContext });
   let stopLevel = null;
+  const normalizedDeadlineMs = Number.isFinite(Number(deadlineMs))
+    ? Math.trunc(Number(deadlineMs))
+    : 0;
+  const computeRemainingDeadlineMs = () =>
+    normalizedDeadlineMs > 0
+      ? Math.max(0, normalizedDeadlineMs - Date.now() - 20)
+      : null;
 
   for (const level of Array.isArray(queryLevels) ? queryLevels : []) {
     const queries = Array.isArray(level?.queries) ? level.queries : [];
@@ -19124,12 +19152,37 @@ async function collectRecoCandidatesFromQueryLevels({
           ? 'strong_goal_family'
           : 'supportive_family';
         const runSearch = typeof searchFn === 'function' ? searchFn : searchPivotaBackendProducts;
+        const remainingDeadlineMs = computeRemainingDeadlineMs();
+        const effectiveTimeoutMs = Number.isFinite(remainingDeadlineMs)
+          ? Math.max(
+              0,
+              Math.min(
+                Number.isFinite(Number(timeoutMs)) ? Math.trunc(Number(timeoutMs)) : 0,
+                Math.trunc(remainingDeadlineMs),
+              ),
+            )
+          : timeoutMs;
+        if (Number.isFinite(remainingDeadlineMs) && effectiveTimeoutMs < 120) {
+          return {
+            queryEntry,
+            out: {
+              ok: false,
+              products: [],
+              reason: 'budget_exhausted',
+              actual_http_attempt_count: 0,
+              attempted_request_timeouts_ms:
+                Number.isFinite(Number(effectiveTimeoutMs)) && Number(effectiveTimeoutMs) >= 0
+                  ? [Math.trunc(Number(effectiveTimeoutMs))]
+                  : [],
+            },
+          };
+        }
         const out = usePurchasableFallback
           ? await buildPurchasableFallbackCandidates({
               query: queryEntry.query,
               limit,
               logger,
-              timeoutMs,
+              timeoutMs: effectiveTimeoutMs,
               allowExternalSeed: queryAllowExternalSeed,
               externalSeedStrategy: queryExternalSeedStrategy,
               transportPolicyMode: 'step_aware',
@@ -19138,7 +19191,8 @@ async function collectRecoCandidatesFromQueryLevels({
               query: queryEntry.query,
               limit,
               logger,
-              timeoutMs,
+              timeoutMs: effectiveTimeoutMs,
+              deadlineMs: normalizedDeadlineMs,
               allowExternalSeed: false,
               fastMode: true,
               transportPolicy: buildRecoRecallTransportPolicy({ mode: 'step_aware' }),

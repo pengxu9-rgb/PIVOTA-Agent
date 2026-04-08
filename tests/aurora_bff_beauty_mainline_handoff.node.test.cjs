@@ -286,6 +286,58 @@ test('handoffRecoToBeautyMainlineSearch defaults to local beauty mainline over i
   }
 });
 
+test('handoffRecoToBeautyMainlineSearch clamps local internal primitive timeout by deadline budget', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const captured = [];
+    __internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async (args) => {
+        captured.push({
+          timeoutMs: Number(args?.timeoutMs || 0),
+          deadlineMs: Number(args?.deadlineMs || 0),
+          callerLane: String(args?.callerLane || ''),
+        });
+        return {
+          ok: true,
+          products: [],
+          attempted_internal_paths: ['/agent/internal/products/search'],
+          transport_hops: [],
+          transport_hop_count: 0,
+          nested_orchestrator_hops: 0,
+          primary_transport_owner: 'internal_products_search_primitive',
+          primary_endpoint_kind: 'internal_primitive',
+        };
+      },
+    });
+
+    await __internal.handoffRecoToBeautyMainlineSearch({
+      ctx: { lang: 'EN', request_id: 'req_deadline_handoff' },
+      primaryQuery: 'what product should i use for oily skin?',
+      fallbackMessage: 'what product should i use for oily skin?',
+      targetContext: resolveRecommendationTargetContext({
+        text: 'what product should i use for oily skin?',
+        focus: '',
+        entryType: 'chat',
+      }),
+      timeoutMs: 5000,
+      minTimeoutMs: 5000,
+      deadlineAtMs: Date.now() + 380,
+    });
+
+    assert.equal(captured.length > 0, true);
+    for (const row of captured) {
+      assert.equal(row.callerLane, 'beauty_chat_handoff');
+      assert.ok(row.timeoutMs > 0);
+      assert.ok(row.timeoutMs < 5000);
+      assert.ok(row.timeoutMs <= 380);
+      assert.ok(row.deadlineMs > 0);
+    }
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+    delete require.cache[moduleId];
+  }
+});
+
 test('handoffRecoToBeautyMainlineSearch builds reco rows from canonical final selection instead of raw mixed products', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {

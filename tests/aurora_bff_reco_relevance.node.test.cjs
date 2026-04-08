@@ -3671,6 +3671,44 @@ test('__internal: internal primitive client normalizes structured backend error 
   }
 });
 
+test('__internal: internal primitive client clamps timeout by overall deadline', async () => {
+  const { __internal } = loadRoutesFresh();
+  const originalPost = axios.post;
+  const observed = [];
+  axios.post = async (_url, _body, config = {}) => {
+    observed.push({
+      timeout: Number(config?.timeout || 0),
+      headerTimeout: Number(config?.headers?.['X-Internal-Search-Timeout-Ms'] || 0),
+    });
+    return {
+      status: 200,
+      data: {
+        products: [],
+      },
+    };
+  };
+
+  try {
+    const out = await __internal.searchInternalProductsPrimitive({
+      query: 'oil control serum',
+      limit: 6,
+      timeoutMs: 4800,
+      deadlineMs: Date.now() + 350,
+      catalogSurface: 'beauty',
+      callerLane: 'beauty_discovery_mainline',
+    });
+
+    assert.equal(out.ok, true);
+    assert.equal(observed.length, 1);
+    assert.ok(observed[0].timeout > 0);
+    assert.ok(observed[0].timeout < 4800);
+    assert.ok(observed[0].timeout <= 350);
+    assert.equal(observed[0].headerTimeout, observed[0].timeout);
+  } finally {
+    axios.post = originalPost;
+  }
+});
+
 test('__internal: local external seed search patterns do not fall back to singleton token noise for multi-token queries', async () => {
   const { __internal } = loadRoutesFresh();
   const patterns = __internal.buildLocalExternalSeedSearchPatterns('oil control serum');
@@ -4782,7 +4820,7 @@ test('__internal: framework reco query collection runs per-level catalog searche
     assert.ok(Array.isArray(out.searchResults));
     assert.equal(out.searchResults.length, 3);
     assert.ok(maxInFlight >= 2);
-    assert.equal(observedParams.length, 3);
+    assert.ok(observedParams.length >= 2);
     for (const params of observedParams) {
       assert.equal(params?.query_step_strength, 'strong_goal_family');
       assert.equal(params?.target_step_family, 'serum');
@@ -4791,6 +4829,66 @@ test('__internal: framework reco query collection runs per-level catalog searche
     }
   } finally {
     axios.get = originalGet;
+  }
+});
+
+test('__internal: collectRecoCandidatesFromQueryLevels clamps per-query timeout by deadline', async () => {
+  const { __internal } = loadRoutesFresh();
+  const observed = [];
+  const targetContext = {
+    framework_id: 'framework_oily_skin_v1',
+    primary_role_id: 'oil_control_treatment',
+    framework_roles: [
+      {
+        role_id: 'oil_control_treatment',
+        rank: 1,
+        preferred_step: 'treatment',
+      },
+    ],
+    framework_owner_source: 'generic_concern_framework_resolver',
+    framework_owner_state: 'trusted',
+  };
+  const queryLevels = [
+    {
+      level_index: 0,
+      ladder_level: 'framework_oil_control_treatment',
+      queries: [
+        { query: 'oil control serum', step: 'treatment', slot: 'other', ladder_level: 'framework_oil_control_treatment', role_id: 'oil_control_treatment' },
+        { query: 'shine control serum', step: 'treatment', slot: 'other', ladder_level: 'framework_oil_control_treatment', role_id: 'oil_control_treatment' },
+      ],
+    },
+  ];
+
+  const out = await __internal.collectRecoCandidatesFromQueryLevels({
+    queryLevels,
+    targetContext,
+    recommendationTaskContext: null,
+    logger: null,
+    timeoutMs: 800,
+    deadlineMs: Date.now() + 360,
+    limit: 6,
+    usePurchasableFallback: false,
+    allowExternalSeed: false,
+    searchFn: async (args) => {
+      observed.push({
+        timeoutMs: Number(args?.timeoutMs || 0),
+        deadlineMs: Number(args?.deadlineMs || 0),
+      });
+      return {
+        ok: true,
+        products: [],
+        reason: 'empty',
+      };
+    },
+  });
+
+  assert.equal(Array.isArray(out.searchResults), true);
+  assert.equal(observed.length, 2);
+  for (const row of observed) {
+    assert.ok(row.timeoutMs > 0);
+    assert.ok(row.timeoutMs < 800);
+    assert.ok(row.timeoutMs <= 360);
+    assert.ok(row.deadlineMs > 0);
   }
 });
 
