@@ -66,10 +66,9 @@ const TREATMENT_LEANING_INGREDIENT_CLASSES = new Set([
   'exfoliant',
   'balancing_active',
 ]);
-const SAME_FAMILY_EXPLICIT_REQUIRED_INGREDIENT_CLASSES = new Set([
-  'humectant',
-  'soothing_humectant',
-]);
+const SAME_FAMILY_EXPLICIT_REQUIRED_INGREDIENT_CLASSES = new Set(
+  ['humectant', 'soothing_humectant'].map((value) => normalizeIngredientRecallText(value)),
+);
 const DIRECT_RECALL_SOURCE_BUCKETS = Object.freeze([
   'kb_attached_seed',
   'attached_seed',
@@ -514,9 +513,10 @@ function isDerivedStructuredTokenNoise(evidence = {}) {
   if (Number(evidence?.target_surface_anchor_hits || 0) > 0) return false;
   const competingSurfaceHits = Number(evidence?.competing_surface_hits || 0);
   const competingTitleUrlHits = Number(evidence?.competing_title_url_hits || 0);
-  if (competingSurfaceHits > 0) return true;
+  if (competingTitleUrlHits > 0) return true;
+  if (competingSurfaceHits > 1) return true;
   if (
-    competingTitleUrlHits > 0 &&
+    competingSurfaceHits > 1 &&
     (
       tokenTier === STRUCTURED_TOKEN_TIER.descriptionParsedSeed ||
       tokenTier === STRUCTURED_TOKEN_TIER.unknownSeedStructured
@@ -1022,6 +1022,23 @@ function buildKbProductNamePatterns(kbRows, maxItems = 16) {
   );
 }
 
+function buildSeedStageRowKey(row) {
+  const id = String(row?.id ?? '').trim();
+  if (id) return `id:${id}`;
+  const externalProductId = String(row?.external_product_id || '').trim();
+  if (externalProductId) return `external:${externalProductId}`;
+  const canonicalUrl = normalizeUrl(row?.canonical_url || row?.destination_url || '');
+  if (canonicalUrl) return `url:${canonicalUrl}`;
+  const title = normalizeIngredientRecallText(row?.title || row?.seed_data?.title || row?.seed_data?.snapshot?.title || '');
+  if (title) return `title:${title}`;
+  return '';
+}
+
+function buildSeedStageSqlId(row) {
+  const id = String(row?.id ?? '').trim();
+  return /^\d+$/.test(id) ? id : null;
+}
+
 function mapSeedRowToRecallProduct(row, sourceTag) {
   const product = buildExternalSeedProduct(row);
   if (!product) return null;
@@ -1437,6 +1454,9 @@ function buildCandidateEvidence(
     sameFamilyGateRequired &&
     familyRelation === 'same_family'
   ) {
+    if (normalizedTargetStepFamily !== 'moisturizer') {
+      return { reject_reason: 'no_explicit_sku_evidence', evidence };
+    }
     if (targetAnchorHits <= 0 && !hasSameFamilyKbHint) {
       return { reject_reason: 'no_explicit_sku_evidence', evidence };
     }
@@ -1481,7 +1501,7 @@ function evaluateIngredientRecallCandidate(
     kbEvidence,
     queryText,
   });
-  if (!scored || !scored.evidence) {
+  if (!scored || !scored.evidence || scored.reject_reason) {
     return {
       reject_reason: String(scored?.reject_reason || 'all_candidates_filtered_noise').trim() || 'all_candidates_filtered_noise',
       evidence: scored?.evidence || null,
@@ -1526,7 +1546,7 @@ function scoreCandidateEvidence(candidate, sourceRank = 0) {
     score -= 320;
   }
   score -= Number(candidate?.evidence?.competing_surface_hits || 0) *
-    (Number(candidate?.evidence?.target_surface_anchor_hits || 0) > 0 ? 20 : 120);
+    (Number(candidate?.evidence?.target_surface_anchor_hits || 0) > 0 ? 0 : 120);
   if (isDerivedStructuredTokenNoise(candidate?.evidence)) score -= 240;
   if (candidate?.evidence?.family_relation === 'same_family') score += 40;
   if (candidate?.evidence?.family_relation === 'adjacent_family') score -= 10;
@@ -2022,12 +2042,15 @@ async function fetchSeedRowsByPatterns({ patterns = [], market = DEFAULT_MARKET,
   }
   const baseWhereSql = baseFilters.join('\n        AND ');
   const collectedRows = [];
-  const seenIds = new Set();
+  const seenRowKeys = new Set();
+  const seenSqlIds = new Set();
   const appendStageRows = (rows) => {
     for (const row of Array.isArray(rows) ? rows : []) {
-      const id = Number(row?.id || 0);
-      if (!Number.isFinite(id) || id <= 0 || seenIds.has(id)) continue;
-      seenIds.add(id);
+      const rowKey = buildSeedStageRowKey(row);
+      if (!rowKey || seenRowKeys.has(rowKey)) continue;
+      seenRowKeys.add(rowKey);
+      const sqlId = buildSeedStageSqlId(row);
+      if (sqlId) seenSqlIds.add(sqlId);
       collectedRows.push(row);
       if (collectedRows.length >= safeLimit) break;
     }
@@ -2048,8 +2071,8 @@ async function fetchSeedRowsByPatterns({ patterns = [], market = DEFAULT_MARKET,
       WHERE ${baseWhereSql}
         AND ${predicateSql}
     `;
-    if (seenIds.size > 0) {
-      const excludedIdsBind = bind(Array.from(seenIds));
+    if (seenSqlIds.size > 0) {
+      const excludedIdsBind = bind(Array.from(seenSqlIds));
       sql += `
         AND id <> ALL(${excludedIdsBind}::bigint[])
       `;
@@ -2131,7 +2154,7 @@ function resolveSourceRank(sourceTag) {
   return 60;
 }
 
-function rankIngredientRecallCandidates(explicitCandidates = []) {
+function rankIngredientRecallCandidates(explicitCandidates = [], { minimumDirectProductCount = null } = {}) {
   let candidates = Array.isArray(explicitCandidates) ? explicitCandidates.slice() : [];
   const explicitRows = candidates.filter((row) => Number(row?.evidence?.explicit_hits || 0) > 0);
   if (explicitRows.length) candidates = explicitRows;
@@ -2140,7 +2163,13 @@ function rankIngredientRecallCandidates(explicitCandidates = []) {
   const nonNoiseRows = candidates.filter((row) => row.obviousNoise !== true);
   if (nonNoiseRows.length) candidates = nonNoiseRows;
   const nonBundleRows = candidates.filter((row) => row.bundleLike !== true);
-  if (nonBundleRows.length) candidates = nonBundleRows;
+  const explicitMinimum =
+    Number.isFinite(Number(minimumDirectProductCount)) && Number(minimumDirectProductCount) > 0
+      ? Math.max(1, Math.floor(Number(minimumDirectProductCount)))
+      : null;
+  if (nonBundleRows.length && (explicitMinimum == null || nonBundleRows.length >= explicitMinimum)) {
+    candidates = nonBundleRows;
+  }
   return candidates;
 }
 
@@ -2303,7 +2332,7 @@ async function recallIngredientProductsFromProfile({
       kbEvidence,
       queryText: query,
     });
-    if (!scored || !scored.evidence) {
+    if (!scored || !scored.evidence || scored.reject_reason) {
       recordRejectedCandidate(product, sourceTag, scored?.reject_reason, scored?.evidence, kbEvidence);
       return;
     }
@@ -2320,7 +2349,6 @@ async function recallIngredientProductsFromProfile({
       evidence: scored.evidence,
       source_tag: sourceTag,
       ...scoreCandidateEvidence(
-        product,
         {
           evidence: scored.evidence,
           product,
@@ -2431,7 +2459,7 @@ async function recallIngredientProductsFromProfile({
       useKbEvidence: true,
     });
   }
-  let candidates = rankIngredientRecallCandidates(explicitCandidates);
+  let candidates = rankIngredientRecallCandidates(explicitCandidates, { minimumDirectProductCount });
   let stabilizedProducts = buildStabilizedIngredientRecallProducts(candidates, {
     profile,
     targetStepFamily,
@@ -2494,7 +2522,7 @@ async function recallIngredientProductsFromProfile({
       useKbEvidence: true,
     });
 
-    candidates = rankIngredientRecallCandidates(explicitCandidates);
+    candidates = rankIngredientRecallCandidates(explicitCandidates, { minimumDirectProductCount });
     stabilizedProducts = buildStabilizedIngredientRecallProducts(candidates, {
       profile,
       targetStepFamily,
@@ -2557,7 +2585,7 @@ async function recallIngredientProductsFromProfile({
       addRows(kbNamedUnattachedRows, 'kb_named_unattached_seed', { useKbEvidence: true });
       addRows(unattachedSeedRows, 'unattached_seed');
 
-      candidates = rankIngredientRecallCandidates(explicitCandidates);
+      candidates = rankIngredientRecallCandidates(explicitCandidates, { minimumDirectProductCount });
       stabilizedProducts = buildStabilizedIngredientRecallProducts(candidates, {
         profile,
         targetStepFamily,
