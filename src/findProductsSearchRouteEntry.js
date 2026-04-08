@@ -90,7 +90,11 @@ function createFindProductsSearchRouteEntryRuntime(deps = {}) {
 	      };
 	    }
 
-	    const publicSearchSource = String(payload?.metadata?.source || '').trim();
+    const childSafeBeautyMainlineBypass =
+      localMainlineChild === true
+        ? { bypass: false, semanticContract: null }
+        : null;
+    const publicSearchSource = String(payload?.metadata?.source || '').trim();
     const rawSearch =
       payload?.search && typeof payload.search === 'object' && !Array.isArray(payload.search)
         ? payload.search
@@ -99,13 +103,15 @@ function createFindProductsSearchRouteEntryRuntime(deps = {}) {
       payload?.metadata && typeof payload.metadata === 'object' && !Array.isArray(payload.metadata)
         ? payload.metadata
         : {};
-    const publicBeautyMainlineBypass = resolveLegacyBeautyCacheOwnerBypass({
-      search: rawSearch,
-      metadata: routeMetadata,
-      rawQuery: rawSearch?.query || '',
-      queryClass: null,
-      strictConstraintQuery: false,
-    });
+    const publicBeautyMainlineBypass =
+      childSafeBeautyMainlineBypass ||
+      resolveLegacyBeautyCacheOwnerBypass({
+        search: rawSearch,
+        metadata: routeMetadata,
+        rawQuery: rawSearch?.query || '',
+        queryClass: null,
+        strictConstraintQuery: false,
+      });
     const explicitShoppingExternalSeedOnly =
       rawSearch?.external_seed_only === true &&
       String(rawSearch?.merchant_id || '').trim() === 'external_seed';
@@ -186,7 +192,7 @@ function createFindProductsSearchRouteEntryRuntime(deps = {}) {
         ...(payload?.search && typeof payload.search === 'object' && !Array.isArray(payload.search)
           ? payload.search
           : {}),
-        ...(publicBeautyMainlineBypass.semanticContract
+        ...(localMainlineChild !== true && publicBeautyMainlineBypass.semanticContract
           ? { semantic_contract: publicBeautyMainlineBypass.semanticContract }
           : {}),
         catalog_surface:

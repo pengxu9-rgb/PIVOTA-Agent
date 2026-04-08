@@ -106,6 +106,42 @@ test('direct route preserves local mainline child marker into invoke payload', (
   assert.equal(routePlan.payload.metadata.local_mainline_child, true);
 });
 
+test('direct route child marker suppresses beauty semantic handoff reinjection', () => {
+  const runtime = buildRuntime({
+    buildFindProductsMultiPayloadFromQuery: (query) => ({
+      search: {
+        query: query.query,
+        catalog_surface: query.catalog_surface,
+      },
+      metadata: {
+        ...(query.source ? { source: query.source } : {}),
+        ...(query.catalog_surface ? { catalog_surface: query.catalog_surface } : {}),
+      },
+    }),
+    resolveLegacyBeautyCacheOwnerBypass: () => ({
+      bypass: true,
+      semanticContract: {
+        planner_mode: 'step_aware',
+        request_class: 'sunscreen',
+        target_step_family: 'sunscreen',
+      },
+    }),
+  });
+  const routePlan = runtime.prepareAgentProductsSearchRoute({
+    query: {
+      query: 'best sunscreen for oily skin',
+      source: 'aurora-bff',
+      catalog_surface: 'beauty',
+      local_mainline_child: 'true',
+    },
+  });
+
+  assert.equal(routePlan.invalid, false);
+  assert.equal(routePlan.payload.search.local_mainline_child, true);
+  assert.equal(routePlan.payload.search.semantic_contract, undefined);
+  assert.equal(routePlan.payload.metadata.search_request_contract.semantic_contract, null);
+});
+
 test('guidance-only external seed route remains a direct fastpath, not discovery owner lock', () => {
   const runtime = buildRuntime();
   const routePlan = runtime.prepareAgentProductsSearchRoute({
