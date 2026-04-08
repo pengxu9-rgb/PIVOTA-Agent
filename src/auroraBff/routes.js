@@ -1325,6 +1325,8 @@ const {
 } = createBeautyChatMainlineEntryRuntime({
   RECO_CATALOG_GROUNDED_ENABLED,
   RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
+  AURORA_BFF_CHAT_RECO_BUDGET_MS:
+    Number(process.env.AURORA_BFF_CHAT_RECO_BUDGET_MS || 13000),
   BEAUTY_DISCOVERY_MAINLINE_OWNER,
   resolveRecommendationTargetContext,
   summarizeProfileForContext,
@@ -47616,6 +47618,7 @@ async function maybeRewriteRecoAssistantTextWithLlm({
   profile,
   baseText,
   allowLockedSelectionRewrite = false,
+  deadlineAtMs = 0,
 } = {}) {
   const fallbackText = String(baseText || '').trim();
   if (!fallbackText) return { text: '', llm_used: false, reason: 'empty_base_text' };
@@ -47632,6 +47635,18 @@ async function maybeRewriteRecoAssistantTextWithLlm({
   if (!names.length || !primaryTarget) return { text: fallbackText, llm_used: false, reason: 'missing_primary_payload' };
 
   try {
+    const remainingBudgetMs = Number.isFinite(Number(deadlineAtMs))
+      ? Math.max(0, Math.trunc(Number(deadlineAtMs) - Date.now()))
+      : null;
+    if (Number.isFinite(remainingBudgetMs) && remainingBudgetMs <= 250) {
+      return { text: fallbackText, llm_used: false, reason: 'rewrite_budget_exhausted' };
+    }
+    const effectiveRewriteTimeoutMs = Number.isFinite(remainingBudgetMs)
+      ? Math.max(
+        250,
+        Math.min(AURORA_RECO_ASSISTANT_REWRITE_TIMEOUT_MS, Math.trunc(remainingBudgetMs)),
+      )
+      : AURORA_RECO_ASSISTANT_REWRITE_TIMEOUT_MS;
     const result = await callStructuredSummaryJson({
       llmProvider: AURORA_PRODUCT_INTEL_LLM_PROVIDER,
       llmModel: AURORA_PRODUCT_INTEL_LLM_MODEL,
@@ -47643,7 +47658,7 @@ async function maybeRewriteRecoAssistantTextWithLlm({
         baseText: fallbackText,
       }),
       responseSchema: RECO_ASSISTANT_REWRITE_JSON_SCHEMA,
-      timeoutMs: AURORA_RECO_ASSISTANT_REWRITE_TIMEOUT_MS,
+      timeoutMs: effectiveRewriteTimeoutMs,
       maxOutputTokens: AURORA_RECO_ASSISTANT_REWRITE_MAX_OUTPUT_TOKENS,
       route: 'aurora_reco_assistant_rewrite',
     });
@@ -53451,6 +53466,7 @@ async function runConcernSemanticPlanner({
   focus = '',
   profileSummary = null,
   recommendationTaskContext = null,
+  deadlineAtMs = 0,
 } = {}) {
   const fallbackPlan = buildConcernSemanticPlanFallback({
     text: requestText,
@@ -53515,7 +53531,38 @@ async function runConcernSemanticPlanner({
     let anyTimeout = false;
     for (let index = 0; index < plannerAttempts.length; index += 1) {
       const attempt = plannerAttempts[index];
-      const attemptTimeoutMs = index === 0 ? 8000 : 10000;
+      const defaultAttemptTimeoutMs = index === 0 ? 8000 : 10000;
+      const remainingBudgetMs = Number.isFinite(Number(deadlineAtMs))
+        ? Math.max(0, Math.trunc(Number(deadlineAtMs) - Date.now()))
+        : null;
+      if (Number.isFinite(remainingBudgetMs) && remainingBudgetMs <= 250) {
+        anyTimeout = true;
+        trace.planner_attempts.push({
+          provider: attempt.provider,
+          model: attempt.model,
+          structured_contract: attempt.structured_contract || 'plain_text',
+          requested_provider: attempt.provider,
+          requested_model: attempt.model,
+          effective_provider: null,
+          effective_model: null,
+          selection_source: 'budget_guard',
+          route: 'aurora_concern_semantic_plan_plain_text',
+          route_group: classifyAuroraGeminiRouteGroup('aurora_concern_semantic_plan_plain_text'),
+          key_slot: null,
+          provider_reason: 'BUDGET_EXHAUSTED',
+          provider_parse_status: null,
+          raw_top_keys: [],
+          repaired_from_text: false,
+          answer_preview: '',
+          normalized_core_role_ids: [],
+          normalized_support_role_ids: [],
+          trusted: false,
+        });
+        break;
+      }
+      const attemptTimeoutMs = Number.isFinite(remainingBudgetMs)
+        ? Math.max(250, Math.min(defaultAttemptTimeoutMs, Math.trunc(remainingBudgetMs)))
+        : defaultAttemptTimeoutMs;
       const plannerResponse = await callGeminiTextResponseImpl({
         model: attempt.model,
         systemPrompt: promptBundle.systemPrompt,
@@ -53778,6 +53825,7 @@ async function runConcernSelectorRace({
   requestText = '',
   semanticPlan = null,
   recommendations = [],
+  deadlineAtMs = 0,
 } = {}) {
   const query = buildConcernSelectorRacePrompt({
     requestText,
@@ -53802,6 +53850,12 @@ async function runConcernSelectorRace({
   };
   if (!Array.isArray(recommendations) || recommendations.length === 0) return { result: normalizeConcernSelectorRaceOutput(null, { recommendations, semanticPlan }), trace };
   try {
+    const remainingBudgetMs = Number.isFinite(Number(deadlineAtMs))
+      ? Math.max(0, Math.trunc(Number(deadlineAtMs) - Date.now()))
+      : null;
+    if (Number.isFinite(remainingBudgetMs) && remainingBudgetMs <= 250) {
+      return { result: normalizeConcernSelectorRaceOutput(null, { recommendations, semanticPlan }), trace, upstream: null };
+    }
     const selectorModel = resolveAuroraGeminiMainlineModel({
       configuredModel: pickConfiguredEnv(['AURORA_CONCERN_SELECTOR_GEMINI_MODEL', 'AURORA_CONCERN_PLANNER_GEMINI_MODEL', 'GEMINI_MODEL']).value,
       fallbackModel: 'gemini-3-flash-preview',
@@ -53812,7 +53866,9 @@ async function runConcernSelectorRace({
       model: selectorModel.effective_model,
       systemPrompt: 'Return strict JSON only.',
       userPrompt: query,
-      timeoutMs: Math.min(RECO_UPSTREAM_TIMEOUT_MS, 3000),
+      timeoutMs: Number.isFinite(remainingBudgetMs)
+        ? Math.max(250, Math.min(RECO_UPSTREAM_TIMEOUT_MS, 3000, Math.trunc(remainingBudgetMs)))
+        : Math.min(RECO_UPSTREAM_TIMEOUT_MS, 3000),
       temperature: 0.1,
       maxOutputTokens: 600,
       route: 'aurora_concern_selector_race',

@@ -400,10 +400,14 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
     plannerCalls: 0,
     handoffTargetContext: null,
     plannerMeta: null,
+    plannerDeadlineAtMs: null,
+    handoffDeadlineAtMs: null,
+    rewriteDeadlineAtMs: null,
   };
   const runtime = createBeautyChatMainlineEntryRuntime({
     RECO_CATALOG_GROUNDED_ENABLED: true,
     RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS: 1000,
+    AURORA_BFF_CHAT_RECO_BUDGET_MS: 9000,
     resolveRecommendationTargetContext: () => ({
       entry_type: 'chat',
       intent_mode: 'generic_concern',
@@ -434,8 +438,9 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
     buildRecoRequestedEventData: ({ payload, source }) => ({ payload, source }),
     normalizeRecoSourceDetail: (value) => value,
     stateChangeAllowed: () => false,
-    runConcernSemanticPlanner: async () => {
+    runConcernSemanticPlanner: async ({ deadlineAtMs }) => {
       observed.plannerCalls += 1;
+      observed.plannerDeadlineAtMs = deadlineAtMs;
       return {
         semanticPlan: {
           plan_id: 'llm_broad_oily_plan',
@@ -498,6 +503,7 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
     }),
     handoffRecoToBeautyMainlineSearch: async (args) => {
       observed.handoffTargetContext = args.targetContext;
+      observed.handoffDeadlineAtMs = args.deadlineAtMs;
       return {
         targetContext: args.targetContext,
         recommendations: [
@@ -546,6 +552,10 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
         },
       };
     },
+    maybeRewriteRecoAssistantTextWithLlm: async ({ deadlineAtMs, baseText }) => {
+      observed.rewriteDeadlineAtMs = deadlineAtMs;
+      return { text: baseText, llm_used: false, reason: 'test_passthrough' };
+    },
     classifyBeautyMainlineHandoffFallback: () => ({
       reason: 'unreachable',
     }),
@@ -584,6 +594,11 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
     observed.plannerMeta?.chat_planner_route,
     'aurora_concern_semantic_plan_plain_text',
   );
+  assert.equal(Number.isFinite(observed.plannerDeadlineAtMs), true);
+  assert.equal(Number.isFinite(observed.handoffDeadlineAtMs), true);
+  assert.equal(Number.isFinite(observed.rewriteDeadlineAtMs), true);
+  assert.ok(observed.handoffDeadlineAtMs >= observed.plannerDeadlineAtMs);
+  assert.equal(observed.rewriteDeadlineAtMs, observed.handoffDeadlineAtMs);
 });
 
 test('beauty chat mainline entry lets llm selector rerank only grounded primary-role candidates', async () => {

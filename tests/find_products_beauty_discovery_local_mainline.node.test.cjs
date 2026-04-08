@@ -596,7 +596,7 @@ test('local beauty discovery mainline fail-closes when recall plan is empty', as
   assert.equal(out.response.metadata?.search_execution_trace?.owner_switch_count, 0);
 });
 
-test('framework local recall advances to next stage after stage timeout', async () => {
+test('framework local recall stops after primary timeout instead of advancing to support stage', async () => {
   const attemptedQueries = [];
   const attemptedTimeouts = [];
   const runtime = createRuntime({
@@ -728,10 +728,7 @@ test('framework local recall advances to next stage after stage timeout', async 
   });
 
   assert.equal(out.handled, true);
-  assert.deepEqual(attemptedQueries, [
-    'oil control serum',
-    'lightweight moisturizer oily skin',
-  ]);
+  assert.deepEqual(attemptedQueries, ['oil control serum']);
   assert.ok(attemptedTimeouts.every((timeout) => timeout <= 2400));
   assert.equal(
     out.response.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts?.[0]
@@ -739,9 +736,12 @@ test('framework local recall advances to next stage after stage timeout', async 
     true,
   );
   assert.equal(
-    out.response.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts?.[1]
-      ?.query,
-    'lightweight moisturizer oily skin',
+    out.response.metadata?.search_execution_trace?.primary_failure_stage,
+    'primary_upstream_timeout',
+  );
+  assert.deepEqual(
+    out.response.metadata?.search_execution_trace?.supplements_attempted || [],
+    [],
   );
 });
 
@@ -2152,6 +2152,81 @@ test('step-aware local beauty mainline suppresses supplement lanes after primary
     Array.isArray(out.response.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts),
     true,
   );
+  assert.equal(
+    out.response.metadata?.search_execution_trace?.primary_failure_stage,
+    'primary_upstream_timeout',
+  );
+  assert.deepEqual(
+    out.response.metadata?.search_execution_trace?.supplements_attempted || [],
+    [],
+  );
+});
+
+test('framework local beauty mainline stops after primary timeout before support stages', async () => {
+  const executedQueries = [];
+  const runtime = createRuntime({
+    searchPivotaBackendProducts: async ({ query }) => {
+      executedQueries.push(query);
+      if (query === 'oil control treatment') {
+        return {
+          ok: false,
+          reason: 'upstream_timeout',
+          actual_http_attempt_count: 1,
+          products: [],
+        };
+      }
+      return {
+        ok: true,
+        reason: 'ok',
+        actual_http_attempt_count: 1,
+        products: [
+          {
+            product_id: 'moisturizer_1',
+            merchant_id: 'merchant_internal',
+            title: 'Lightweight Gel Moisturizer',
+            retrieval_source: 'internal_search',
+            source_tier: 'fresh_internal',
+            source_quality_class: 'trusted',
+          },
+        ],
+      };
+    },
+  });
+
+  const out = await runtime.runLocalBeautyDiscoveryMainline({
+    search: {
+      query: 'im oily skin, what products should i use?',
+      source: 'aurora-bff',
+      product_only: true,
+    },
+    metadata: {
+      source: 'aurora-bff',
+      catalog_surface: 'beauty',
+    },
+    requestContract: {
+      surface: 'direct',
+      primary_lane: 'beauty_discovery_mainline',
+      primary_retrieval_contract: 'agent_v1_search_beauty_mainline',
+      owner_switch_count: 0,
+    },
+    executionPlan: {
+      primary_lane: 'beauty_discovery_mainline',
+      primary_retrieval_contract: 'agent_v1_search_beauty_mainline',
+      owner_switch_count: 0,
+    },
+    rawUserQuery: 'im oily skin, what products should i use?',
+    gatewayRequestId: 'trace-framework-timeout-stop',
+    traceQueryClass: 'query',
+    timeoutMs: 2400,
+    invokeStartedAtMs: Date.now(),
+    logger: { warn() {} },
+    authHeaders: { authorization: 'Bearer test' },
+    operation: 'find_products_multi',
+  });
+
+  assert.equal(out.handled, true);
+  assert.deepEqual(executedQueries, ['oil control treatment']);
+  assert.deepEqual(out.response.products, []);
   assert.equal(
     out.response.metadata?.search_execution_trace?.primary_failure_stage,
     'primary_upstream_timeout',
