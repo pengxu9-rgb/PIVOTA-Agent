@@ -787,6 +787,7 @@ describe('discovery feed service', () => {
 
   test('brand-scoped discovery falls back to source-product recommendations when brand pool is empty', async () => {
     let recommendCalls = 0;
+    let capturedRecommendArgs = null;
     const response = await getDiscoveryFeed(
       {
         surface: 'browse_products',
@@ -817,8 +818,9 @@ describe('discovery feed service', () => {
         ],
         brandFallbackFetchInternalCandidatesFn: async () => [],
         brandFallbackFetchExternalCandidatesFn: async () => [],
-        brandFallbackRecommendFn: async () => {
+        brandFallbackRecommendFn: async (args) => {
           recommendCalls += 1;
+          capturedRecommendArgs = args;
           return {
             items: [
               makeProduct({
@@ -851,6 +853,19 @@ describe('discovery feed service', () => {
     ]);
     expect(response.metadata.candidate_source).toBe('override+brand_recommendation_fallback');
     expect(recommendCalls).toBe(1);
+    expect(capturedRecommendArgs).toEqual(
+      expect.objectContaining({
+        pdp_product: expect.objectContaining({
+          product_id: 'ext_seed_1',
+          merchant_id: 'external_seed',
+          brand: 'Tom Ford Beauty',
+          vendor: 'Tom Ford Beauty',
+        }),
+        k: 12,
+        locale: 'en-US',
+      }),
+    );
+    expect(capturedRecommendArgs.options).toBeUndefined();
   });
 
   test('browse selection applies explicit query text filtering within a brand scope', async () => {
