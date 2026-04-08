@@ -4451,12 +4451,16 @@ async function searchPivotaBackendProducts({
     normalizedTargetStepFamily === 'sunscreen' && allowExternalSeed === true;
   const semanticExternalSeedSearch =
     allowExternalSeed === true && hasSemanticContract;
+  const selfProxyTimeoutFloorMs =
+    localMainlineChild === true
+      ? RECO_CATALOG_MAIN_PATH_TIMEOUT_FLOOR_MS
+      : RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS;
   const timeoutFloorForMode = strictSingleOwnerSelfProxyMainPath
-    ? RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS
+    ? selfProxyTimeoutFloorMs
     : isMainPathMode
       ? RECO_CATALOG_MAIN_PATH_TIMEOUT_FLOOR_MS
     : isSelfProxyMode
-      ? RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS
+      ? selfProxyTimeoutFloorMs
       : 120;
   const normalizedMinTimeout = Math.max(
     120,
@@ -4890,7 +4894,7 @@ async function searchPivotaBackendProducts({
       const remainingOverallMs = Math.max(0, getRemainingOverallMs() - deadlineReserveMs);
       const requestTimeoutMs = Math.trunc(Math.max(0, Math.min(remainingBudgetMs, remainingOverallMs)));
         const requestTimeoutFloorMs = isSelfProxyBase
-          ? RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS
+          ? selfProxyTimeoutFloorMs
           : normalizedMinTimeout;
         const effectiveRequestTimeoutMs =
           isSelfProxyBase && normalizedDeadlineMs <= 0

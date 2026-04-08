@@ -2017,6 +2017,64 @@ test('Catalog search: invalid skincare hit does not count as successful products
   );
 });
 
+test('Catalog search: local mainline child bypasses self-proxy timeout floor', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED: 'true',
+      AURORA_BFF_RECO_CATALOG_SELF_PROXY_BASE_URL: 'http://127.0.0.1:3000',
+      AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED: 'false',
+      AURORA_BFF_RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS: '5000',
+      AURORA_BFF_RECO_CATALOG_MAIN_PATH_TIMEOUT_FLOOR_MS: '700',
+    },
+    async () => {
+      const originalGet = axios.get;
+      let observedTimeout = null;
+      axios.get = async (url, config = {}) => {
+        const target = String(url || '');
+        if (target.startsWith('http://127.0.0.1:3000') && isProductsSearchUrl(target)) {
+          observedTimeout = Number(config?.timeout || 0) || null;
+          return {
+            status: 200,
+            data: {
+              products: [],
+            },
+          };
+        }
+        throw new Error(`Unexpected axios.get: ${target}`);
+      };
+
+      try {
+        const { __internal } = loadRoutesFresh();
+        const out = await __internal.searchPivotaBackendProducts({
+          query: 'best sunscreen for oily skin',
+          limit: 6,
+          timeoutMs: 2400,
+          minTimeoutMs: 120,
+          logger: null,
+          transportPolicy: {
+            mode: 'step_aware',
+            include_local_fallback: false,
+            include_self_proxy: true,
+            prefer_self_proxy_first: true,
+            max_base_urls: 1,
+            max_paths: 1,
+            allow_secondary_base_failover: false,
+            allow_secondary_path_failover: false,
+          },
+          localMainlineChild: true,
+        });
+
+        assert.ok(observedTimeout <= 2400);
+        assert.ok(observedTimeout >= 700);
+        assert.equal(out?.ok, true);
+        assert.equal(out?.reason, 'empty');
+      } finally {
+        axios.get = originalGet;
+      }
+    },
+  );
+});
+
 test('/v1/chat availability: specific query uses catalog hit directly without resolve fallback', async () => {
   await withEnv(
     {
