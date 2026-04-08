@@ -923,4 +923,118 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
       }),
     ]);
   });
+
+  test('suppresses noisy active ingredients and ingredient modules for external seed key-ingredient prose', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_07c58c61909cb0ed6d722435',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Instant Reset Brightening Overnight Recovery Gel-Cream with Niacinamide + Kalahari Melon Oil',
+        brand: 'fenty beauty',
+        category: 'Moisturizer',
+        pdp_description_raw:
+          'Take it to bed-wake up transformed. The best overnighter you’ve ever had: it’s the instant rebound for smoothed-out pores, visibly reduced dark spots and fine lines, replenished hydration and a plump, juicy look.',
+        active_ingredients: {
+          title: 'Active ingredients',
+          items: ['Niacinamide', 'Hyaluronic acid'],
+          raw_text:
+            'Kalahari Melon Oil Vitamin and antioxidant-rich; locks in hydration Niacinamide Fights shine and reduces the look of pores and dark spots Hyaluronic Acid & Aloe Help hydrate, soothe and condition Baobab A nutrient-rich superfruit that helps hydrate',
+          source_origin: 'retail_pdp',
+          source_quality_status: 'captured',
+        },
+        ingredients_inci: {
+          title: 'Ingredients',
+          raw_text:
+            'Kalahari Melon Oil Vitamin and antioxidant-rich; locks in hydration Niacinamide Fights shine and reduces the look of pores and dark spots Hyaluronic Acid & Aloe Help hydrate, soothe and condition Baobab A nutrient-rich superfruit that helps hydrate',
+          items: [
+            'Kalahari Melon Oil',
+            'Vitamin and antioxidant-rich',
+            'locks in hydration',
+            'Niacinamide',
+            'Fights shine and reduces the look of pores and dark spots',
+            'Hyaluronic Acid & Aloe',
+          ],
+          source_origin: 'retail_pdp',
+          source_quality_status: 'captured',
+        },
+        pdp_details_sections: [
+          {
+            heading: 'DETAILS DETAILS',
+            body: 'Take it to bed-wake up transformed. The best overnighter you’ve ever had: it’s the instant rebound for smoothed-out pores, visibly reduced dark spots and fine lines, replenished hydration and a plump, juicy look.',
+          },
+          {
+            heading: 'ABOUT ABOUT',
+            body: 'Rihanna was inspired to create the world of Fenty Beauty brands. About the Brands Clara Lionel Foundation Student Discounts Careers',
+          },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const detailSections =
+      payload.modules.find((module) => module.type === 'product_details')?.data?.sections || [];
+    const factSections =
+      payload.modules.find((module) => module.type === 'product_facts')?.data?.sections || [];
+
+    expect(payload.modules.find((module) => module.type === 'active_ingredients')).toBeFalsy();
+    expect(payload.modules.find((module) => module.type === 'ingredients_inci')).toBeFalsy();
+    expect(detailSections).toEqual([
+      expect.objectContaining({
+        heading: 'Overview',
+        content: payload.product.description,
+      }),
+    ]);
+    expect(JSON.stringify(factSections)).not.toMatch(/about the brands|clara lionel foundation|student discounts|careers/i);
+  });
+
+  test('respects explicit external seed suppression flags on modules and similar rail', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_blocked_modules',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Giftable Limited Bundle',
+        description: 'A limited bundle.',
+        external_seed_suppression_flags: {
+          suppress_ingredients: true,
+          suppress_active_ingredients: true,
+          suppress_facts: true,
+          exclude_from_similar: true,
+        },
+        active_ingredients: {
+          items: ['Niacinamide'],
+          raw_text: 'Niacinamide',
+        },
+        ingredients_inci: {
+          raw_text: 'Ingredients: Water, Glycerin',
+          items: ['Water', 'Glycerin'],
+        },
+        pdp_details_sections: [
+          {
+            heading: 'ABOUT',
+            body: 'About the Brands Student Discounts Careers',
+          },
+        ],
+      },
+      relatedProducts: {
+        items: [
+          {
+            product_id: 'sim_blocked',
+            merchant_id: 'external_seed',
+            title: 'Should Not Render',
+            price: 18,
+            currency: 'USD',
+          },
+        ],
+      },
+      entryPoint: 'agent',
+    });
+
+    expect(payload.modules.find((module) => module.type === 'active_ingredients')).toBeFalsy();
+    expect(payload.modules.find((module) => module.type === 'ingredients_inci')).toBeFalsy();
+    expect(payload.modules.find((module) => module.type === 'product_facts')).toBeFalsy();
+    expect(payload.modules.find((module) => module.type === 'recommendations')).toBeFalsy();
+  });
 });

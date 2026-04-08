@@ -3,7 +3,7 @@ const { stripExternalSeedMarketingBannerPrefix } = require('./externalSeedMarket
 const SYNTHETIC_SUMMARY_RE = /\bOFFICIAL:[\s\S]*\/\/\/\s*SOCIAL HIGHLIGHTS:/i;
 const TEMPLATE_PREFIX_RE = /^experience the ultimate luxury with\s+/i;
 const RECALL_NOISE_RE =
-  /\b(contact us|customer service|customer support|support center|support centre|support team|support policy|privacy policy|terms(?: and conditions)?|shipping policy|return policy|about us|our story|blog|blogs|impact|foundation transparency|transparency|give 20%|give back|charity|donation|store locator|faq)\b/i;
+  /\b(contact us|customer service|customer support|support center|support centre|support team|support policy|privacy policy|terms(?: and conditions)?|shipping policy|return policy|about us|about the brands?|our story|blog|blogs|impact|foundation transparency|transparency|give 20%|give back|charity|donation|store locator|faq|student discounts|careers)\b/i;
 const GIFT_CARD_RE = /\b(e-?gift\s*card|gift\s*card|digital\s+gift\s+card)\b/i;
 const DONATION_RE = /\b(donation|donate|charity)\b/i;
 const NON_MERCH_PAGE_RE =
@@ -15,6 +15,23 @@ const BEAUTY_VERTICAL_PATTERNS = Object.freeze([
   ['beauty_tools', /\b(brush|makeup brush|kabuki|tool|tools|applicator|sponge|detangling brush)\b/i],
   ['makeup', /\b(concealer|foundation|powder|mascara|lip|lipstick|gloss|blush|bronzer|eyeshadow|eye shadow|brow|liner|highlighter)\b/i],
   ['skincare', /\b(cleanser|serum|toner|mist|cream|moisturizer|moisturiser|mask|treatment|essence|ampoule|sunscreen|spf|lotion)\b/i],
+]);
+const EXTERNAL_SEED_SUPPRESSION_FLAG_KEYS = Object.freeze([
+  'exclude_from_recall',
+  'exclude_from_similar',
+  'suppress_ingredients',
+  'suppress_active_ingredients',
+  'suppress_facts',
+]);
+const BLOCKED_SOURCE_PAGE_TYPES = new Set([
+  'collection',
+  'collections',
+  'category',
+  'search',
+  'blog',
+  'page',
+  'non_merchandise',
+  'support',
 ]);
 
 function normalizeNonEmptyString(value) {
@@ -59,6 +76,15 @@ function ensureJsonObject(value) {
 function normalizeUrlLike(value) {
   const normalized = normalizeNonEmptyString(value);
   return /^https?:\/\//i.test(normalized) ? normalized : '';
+}
+
+function normalizeBooleanLike(value) {
+  if (typeof value === 'boolean') return value;
+  const normalized = normalizeNonEmptyString(value).toLowerCase();
+  if (!normalized) return undefined;
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  return undefined;
 }
 
 function normalizeWhitespace(value) {
@@ -309,14 +335,138 @@ function detectExclusionFlags({ title = '', canonicalUrl = '', destinationUrl = 
 
 function inferVertical({ title = '', category = '', summary = '', body = '', exclusionFlags = null } = {}) {
   if (exclusionFlags?.gift_card) return 'gift_card';
-  const combined = [title, category, summary, body]
-    .filter(Boolean)
-    .join(' ')
-    .replace(/\bfragrance[-\s]?free\b/gi, ' ');
-  for (const [label, pattern] of BEAUTY_VERTICAL_PATTERNS) {
-    if (pattern.test(combined)) return label;
+  const normalizeSurface = (value) =>
+    String(value || '')
+      .replace(/\bfragrance[-\s]?free\b/gi, ' ')
+      .trim();
+  const primarySurface = normalizeSurface([title, category].filter(Boolean).join(' '));
+  const secondarySurface = normalizeSurface([summary, body].filter(Boolean).join(' '));
+  const fragrancePattern = BEAUTY_VERTICAL_PATTERNS.find(([label]) => label === 'fragrance')?.[1] || null;
+  const nonFragrancePatterns = BEAUTY_VERTICAL_PATTERNS.filter(([label]) => label !== 'fragrance');
+
+  for (const [label, pattern] of nonFragrancePatterns) {
+    if (pattern.test(primarySurface)) return label;
   }
+  if (fragrancePattern && fragrancePattern.test(primarySurface)) return 'fragrance';
+
+  for (const [label, pattern] of nonFragrancePatterns) {
+    if (pattern.test(secondarySurface)) return label;
+  }
+  if (fragrancePattern && fragrancePattern.test(secondarySurface)) return 'fragrance';
   return 'beauty';
+}
+
+function normalizeSuppressionFlags(value) {
+  const raw = ensureJsonObject(value);
+  const out = {};
+  for (const key of EXTERNAL_SEED_SUPPRESSION_FLAG_KEYS) {
+    const normalized = normalizeBooleanLike(raw?.[key]);
+    if (normalized === true) out[key] = true;
+    else if (normalized === false) out[key] = false;
+  }
+  return out;
+}
+
+function deriveExternalSeedSuppressionFlags({
+  explicitFlags = {},
+  exclusionFlags = {},
+  sourcePageType = '',
+  contentQuality = '',
+} = {}) {
+  const normalizedPageType = normalizeNonEmptyString(sourcePageType).toLowerCase();
+  const normalizedContentQuality = normalizeNonEmptyString(contentQuality).toLowerCase();
+  const blockedPage =
+    BLOCKED_SOURCE_PAGE_TYPES.has(normalizedPageType) ||
+    normalizedContentQuality === 'blocked' ||
+    normalizedContentQuality === 'excluded' ||
+    normalizedContentQuality === 'reject';
+
+  return {
+    exclude_from_recall:
+      explicitFlags.exclude_from_recall === true ||
+      Boolean(exclusionFlags?.non_merchandise) ||
+      blockedPage,
+    exclude_from_similar:
+      explicitFlags.exclude_from_similar === true ||
+      Boolean(exclusionFlags?.non_merchandise) ||
+      Boolean(exclusionFlags?.gift_card) ||
+      Boolean(exclusionFlags?.donation_bundle) ||
+      blockedPage,
+    suppress_ingredients:
+      explicitFlags.suppress_ingredients === true ||
+      Boolean(exclusionFlags?.non_merchandise) ||
+      blockedPage,
+    suppress_active_ingredients:
+      explicitFlags.suppress_active_ingredients === true ||
+      Boolean(exclusionFlags?.non_merchandise) ||
+      blockedPage,
+    suppress_facts:
+      explicitFlags.suppress_facts === true ||
+      Boolean(exclusionFlags?.non_merchandise) ||
+      blockedPage,
+  };
+}
+
+function deriveExternalSeedQualityState({
+  explicitQualityState = '',
+  suppressionFlags = {},
+  contentQuality = '',
+} = {}) {
+  const normalizedExplicit = normalizeNonEmptyString(explicitQualityState).toLowerCase();
+  if (['eligible', 'limited', 'blocked'].includes(normalizedExplicit)) return normalizedExplicit;
+  const normalizedContentQuality = normalizeNonEmptyString(contentQuality).toLowerCase();
+  if (['blocked', 'excluded', 'reject'].includes(normalizedContentQuality)) return 'blocked';
+  if (suppressionFlags.exclude_from_recall === true) return 'blocked';
+  if (
+    suppressionFlags.exclude_from_similar === true ||
+    suppressionFlags.suppress_ingredients === true ||
+    suppressionFlags.suppress_active_ingredients === true ||
+    suppressionFlags.suppress_facts === true
+  ) {
+    return 'limited';
+  }
+  return 'eligible';
+}
+
+function resolveExternalSeedProtectionContract({ row = {}, seedData = {}, snapshot = {}, stored = {}, exclusionFlags = {} } = {}) {
+  const explicitFlags = {
+    ...normalizeSuppressionFlags(stored?.suppression_flags),
+    ...normalizeSuppressionFlags(seedData?.suppression_flags),
+    ...normalizeSuppressionFlags(snapshot?.suppression_flags),
+    ...normalizeSuppressionFlags(row?.suppression_flags),
+  };
+  const sourcePageType = firstNonEmptyString(
+    stored?.source_page_type,
+    seedData?.source_page_type,
+    snapshot?.source_page_type,
+    row?.source_page_type,
+  );
+  const contentQuality = firstNonEmptyString(
+    stored?.content_quality,
+    seedData?.content_quality,
+    snapshot?.content_quality,
+    row?.content_quality,
+  );
+  const suppressionFlags = deriveExternalSeedSuppressionFlags({
+    explicitFlags,
+    exclusionFlags,
+    sourcePageType,
+    contentQuality,
+  });
+  const qualityState = deriveExternalSeedQualityState({
+    explicitQualityState: firstNonEmptyString(
+      stored?.quality_state,
+      seedData?.quality_state,
+      snapshot?.quality_state,
+      row?.quality_state,
+    ),
+    suppressionFlags,
+    contentQuality,
+  });
+  return {
+    quality_state: qualityState,
+    suppression_flags: suppressionFlags,
+  };
 }
 
 function getRecallSourceTitle(seedData = {}, snapshot = {}, row = {}) {
@@ -379,6 +529,12 @@ function buildExternalSeedRecallDoc({ row = {}, seedData = {}, snapshot = {} } =
     normalizeNonEmptyString(seedData.seed_description_origin || snapshot.seed_description_origin) === 'synthetic_summary';
   const templatePolluted = rawTextCandidates.some((item) => TEMPLATE_PREFIX_RE.test(item) || looksLikeRecallNoise(item));
   const ingredientTokens = normalizeIngredientTokens(seedData, snapshot, row);
+  const protection = resolveExternalSeedProtectionContract({
+    row,
+    seedData,
+    snapshot,
+    exclusionFlags,
+  });
 
   return {
     retrieval_title: retrievalTitle || titleSource || normalizeUrlLike(row.canonical_url || row.destination_url),
@@ -397,6 +553,8 @@ function buildExternalSeedRecallDoc({ row = {}, seedData = {}, snapshot = {} } =
         normalizeNonEmptyString(seedData.pdp_description_raw || snapshot.pdp_description_raw),
       ),
     },
+    quality_state: protection.quality_state,
+    suppression_flags: protection.suppression_flags,
     version: 'v1',
   };
 }
@@ -436,6 +594,13 @@ function resolveExternalSeedRecallDoc({ row = {}, seedData = {}, snapshot = {} }
       body: retrievalBody,
       exclusionFlags,
     });
+    const protection = resolveExternalSeedProtectionContract({
+      row,
+      seedData,
+      snapshot,
+      stored,
+      exclusionFlags,
+    });
 
     return {
       ...buildExternalSeedRecallDoc({ row, seedData, snapshot }),
@@ -452,6 +617,8 @@ function resolveExternalSeedRecallDoc({ row = {}, seedData = {}, snapshot = {} }
         synthetic_summary: Boolean(stored?.quality_signals?.synthetic_summary),
         extractor_description_present: Boolean(stored?.quality_signals?.extractor_description_present),
       },
+      quality_state: protection.quality_state,
+      suppression_flags: protection.suppression_flags,
     };
   }
   return buildExternalSeedRecallDoc({ row, seedData, snapshot });
@@ -537,6 +704,8 @@ module.exports = {
   cleanRecallBody,
   detectExclusionFlags,
   inferVertical,
+  normalizeSuppressionFlags,
+  resolveExternalSeedProtectionContract,
   buildExternalSeedRecallLikePredicate,
   classifyExternalSeedRecallMatchSource,
   EXTERNAL_SEED_RECALL_SQL_FIELDS,

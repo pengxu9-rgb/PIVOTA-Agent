@@ -862,4 +862,86 @@ describe('externalSeedProducts helper', () => {
     expect(product.external_seed_match_source).toBe('recall_title');
     expect(product.brand).toBe('Fenty Beauty');
   });
+
+  test('does not infer makeup highlighters as moisturizers just because description mentions cream', () => {
+    const product = buildExternalSeedBrandSearchProduct({
+      id: 'eps_fenty_killawatt',
+      external_product_id: 'ext_fenty_killawatt',
+      canonical_url: 'https://fentybeauty.com/products/mini-killawatt-freestyle-highlighter-wattab',
+      destination_url: 'https://fentybeauty.com/products/mini-killawatt-freestyle-highlighter-wattab',
+      title: 'Mini Killawatt Freestyle Highlighter — Wattab!*%#',
+      seed_data: {
+        brand: 'Fenty Beauty',
+        snapshot: {
+          title: 'Mini Killawatt Freestyle Highlighter — Wattab!*%#',
+        },
+        derived: {
+          recall: {
+            retrieval_title: 'Mini Killawatt Freestyle Highlighter — Wattab!*%#',
+            retrieval_summary:
+              'Weightless, longwear cream-powder hybrid highlighters that range from subtle dayglow to insanely supercharged.',
+            retrieval_body:
+              'Weightless, longwear cream-powder hybrid highlighters that range from subtle dayglow to insanely supercharged.',
+            brand: 'Fenty Beauty',
+            category: null,
+            vertical: 'makeup',
+            ingredient_tokens: [],
+            alias_tokens: ['mini', 'killawatt', 'highlighter'],
+            exclusion_flags: {
+              gift_card: false,
+              donation_bundle: false,
+              non_merchandise: false,
+            },
+            quality_signals: {
+              template_polluted: false,
+              synthetic_summary: false,
+              extractor_description_present: true,
+            },
+            version: 'v1',
+          },
+        },
+      },
+    });
+
+    expect(product.category).toBe('Highlighter');
+    expect(product.product_type).toBe('Highlighter');
+  });
+
+  test('drops blocked non-merch recall rows from brand-search runtime products', () => {
+    const product = buildExternalSeedBrandSearchProduct({
+      id: 'eps_non_merch',
+      external_product_id: 'ext_non_merch',
+      canonical_url: 'https://brand.example/pages/store-locator',
+      destination_url: 'https://brand.example/pages/store-locator',
+      title: 'Store Locator',
+      source_page_type: 'page',
+      seed_data: {
+        derived: {
+          recall: {
+            retrieval_title: 'Store Locator',
+            retrieval_summary: 'Find a store near you.',
+            retrieval_body: 'Find a store near you.',
+            exclusion_flags: {
+              gift_card: false,
+              donation_bundle: false,
+              non_merchandise: true,
+            },
+            quality_signals: {
+              template_polluted: false,
+              synthetic_summary: false,
+              extractor_description_present: false,
+            },
+            quality_state: 'blocked',
+            suppression_flags: {
+              exclude_from_recall: true,
+              exclude_from_similar: true,
+            },
+            version: 'v1',
+          },
+        },
+      },
+    });
+
+    expect(product).toBeNull();
+  });
 });

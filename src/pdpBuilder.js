@@ -88,7 +88,7 @@ const INGREDIENT_ITEM_NOISE_PATTERNS = [
   /\btom ford research\b/i,
 ];
 const EXTERNAL_SEED_FACT_NOISE_RE =
-  /\b(contact us|customer service|privacy policy|terms(?: and conditions)?|shipping policy|return policy|about us|blog|blogs|impact|foundation transparency|transparency|give 20%|donation|donate|store locator|support|avoid contact with eyes|keep out of reach of children|customerservice@|clearorg\.eu|clear \d+\s+rue)\b/i;
+  /\b(contact us|customer service|privacy policy|terms(?: and conditions)?|shipping policy|return policy|about us|about the brands?|blog|blogs|impact|foundation transparency|transparency|give 20%|donation|donate|store locator|support|avoid contact with eyes|keep out of reach of children|customerservice@|clearorg\.eu|clear \d+\s+rue|student discounts|careers)\b/i;
 const EXTERNAL_SEED_SYNTHETIC_SUMMARY_RE =
   /^\s*OFFICIAL:\s*([\s\S]*?)(?:\s*\/\/\/\s*SOCIAL HIGHLIGHTS:\s*[\s\S]*)$/i;
 const EXTERNAL_SEED_OVERVIEW_TAG_PHRASES = [
@@ -112,6 +112,10 @@ const UI_CHROME_IMAGE_FILENAME_RE =
 
 function createPageRequestId() {
   return `pr_${Math.random().toString(36).slice(2)}_${Date.now().toString(36)}`;
+}
+
+function ensureJsonObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
 
 function stripHtml(input) {
@@ -1251,6 +1255,22 @@ function sanitizeIngredientRawText(value) {
   return text;
 }
 
+function looksLikeStructuredIngredientList(value) {
+  const text = sanitizeIngredientRawText(value);
+  if (!text) return false;
+  if (/\b(aqua\/water\/eau|ingredients(?:\s*\(inci\))?\s*:|ci\s*\d{3,5})\b/i.test(text)) return true;
+  const commaCount = (text.match(/,(?![^()]*\))/g) || []).length;
+  return commaCount >= 3;
+}
+
+function hasNarrativeIngredientSignals(value) {
+  const text = normalizeTextValue(value);
+  if (!text) return false;
+  return /\b(vitamin|antioxidant|locks in hydration|hydrates?|hydration|fights shine|reduces the look|helps hydrate|soothe|condition|nutrient-rich|superfruit|detoxif|commonly used|reduces oil|refines pores)\b/i.test(
+    text,
+  );
+}
+
 function cleanIngredientItem(value) {
   return normalizeTextValue(value)
     .replace(/^full ingredients[:\s-]*/i, '')
@@ -1544,8 +1564,29 @@ function shouldSuppressLowConfidenceActiveIngredients(product, items, ingredient
     : [];
   const subsetOfIngredients =
     activeKeys.length > 0 && activeKeys.every((item) => ingredientKeys.has(item));
+  const activeRawKey = normalizeComparisonKey(rawText);
+  const ingredientRawKey = normalizeComparisonKey(ingredientsModule?.raw_text);
   if (activeCount <= 1 && ingredientsCount >= 4) return true;
   if (subsetOfIngredients && activeCount <= 3 && ingredientsCount >= 8) return true;
+  if (
+    qualityStatus !== 'reviewed' &&
+    qualityStatus !== 'high' &&
+    subsetOfIngredients &&
+    activeRawKey &&
+    ingredientRawKey &&
+    activeRawKey === ingredientRawKey
+  ) {
+    return true;
+  }
+  if (
+    qualityStatus !== 'reviewed' &&
+    qualityStatus !== 'high' &&
+    !looksLikeStructuredIngredientList(rawText) &&
+    hasNarrativeIngredientSignals(rawText) &&
+    (subsetOfIngredients || activeCount <= 4)
+  ) {
+    return true;
+  }
   if (qualityStatus === 'captured') return false;
   return (
     !normalizeTextValue(rawText) &&
@@ -1555,7 +1596,28 @@ function shouldSuppressLowConfidenceActiveIngredients(product, items, ingredient
   );
 }
 
+function shouldSuppressLowConfidenceIngredients(product, items, sourceMeta, rawText) {
+  if (String(product?.source || '').trim().toLowerCase() !== 'external_seed') return false;
+  if (detectTemplateHint(product) !== 'beauty') return false;
+  const qualityStatus = String(sourceMeta?.source_quality_status || '').trim().toLowerCase();
+  if (qualityStatus === 'reviewed' || qualityStatus === 'high') return false;
+  if (looksLikeStructuredIngredientList(rawText)) return false;
+  const normalizedItems = Array.isArray(items) ? items : [];
+  if (!normalizedItems.length) return false;
+  const verboseItemCount = normalizedItems.filter((item) => String(item || '').trim().split(/\s+/).length >= 4).length;
+  const likelyNarrative =
+    hasNarrativeIngredientSignals(rawText) ||
+    verboseItemCount >= Math.max(2, Math.ceil(normalizedItems.length * 0.35));
+  return likelyNarrative;
+}
+
 function buildIngredientsModule(product, detailSections) {
+  const suppressionFlags = ensureJsonObject(
+    product?.external_seed_suppression_flags ||
+      product?.suppression_flags ||
+      product?.external_seed_recall?.suppression_flags,
+  );
+  if (suppressionFlags.suppress_ingredients === true) return null;
   const directIngredientsPayload =
     product.ingredients_inci ||
     product.ingredientsInci ||
@@ -1589,17 +1651,27 @@ function buildIngredientsModule(product, detailSections) {
       : parsedRawItems;
   if (!rawText && !normalizedItems.length) return null;
   const sourceMeta = extractStructuredSourceMeta(directIngredientsPayload);
+  const resolvedSourceMeta = Object.keys(sourceMeta).length
+    ? sourceMeta
+    : resolveIngredientSourceMeta(product, Boolean(product.pdp_ingredients_raw));
+  if (shouldSuppressLowConfidenceIngredients(product, normalizedItems, resolvedSourceMeta, rawText)) {
+    return null;
+  }
   return {
     title: 'Ingredients',
     raw_text: rawText || undefined,
     items: normalizedItems,
-    ...(Object.keys(sourceMeta).length
-      ? sourceMeta
-      : resolveIngredientSourceMeta(product, Boolean(product.pdp_ingredients_raw))),
+    ...resolvedSourceMeta,
   };
 }
 
 function buildActiveIngredientsModule(product, detailSections, ingredientsModule) {
+  const suppressionFlags = ensureJsonObject(
+    product?.external_seed_suppression_flags ||
+      product?.suppression_flags ||
+      product?.external_seed_recall?.suppression_flags,
+  );
+  if (suppressionFlags.suppress_active_ingredients === true) return null;
   const directActivePayload =
     product.active_ingredients ||
     product.activeIngredients ||
@@ -1687,6 +1759,12 @@ function buildHowToUseModule(product, detailSections) {
 }
 
 function buildProductFactSections(product, detailSections, primaryDescription = '', beautyOverview = null) {
+  const suppressionFlags = ensureJsonObject(
+    product?.external_seed_suppression_flags ||
+      product?.suppression_flags ||
+      product?.external_seed_recall?.suppression_flags,
+  );
+  if (suppressionFlags.suppress_facts === true) return [];
   const normalizedPrimaryDescription = normalizeComparisonKey(primaryDescription);
   const seen = new Set();
   const narrativeDetailSections = (Array.isArray(detailSections) ? detailSections : []).filter((section) => {
@@ -2004,6 +2082,11 @@ function buildRecommendations(input, currencyFallback) {
 
 function buildPdpPayload(args) {
   const product = args.product || {};
+  const suppressionFlags = ensureJsonObject(
+    product?.external_seed_suppression_flags ||
+      product?.suppression_flags ||
+      product?.external_seed_recall?.suppression_flags,
+  );
   const brandLabel = resolveProductBrandLabel(product);
   const currency = product.currency || 'USD';
   const variants = buildVariants(product);
@@ -2045,7 +2128,20 @@ function buildPdpPayload(args) {
       ? { ...args.relatedProducts, items: Array.isArray(args.relatedProducts.items) ? args.relatedProducts.items : [] }
       : { items: [] };
   const recommendations = relatedProducts.items.length
-    ? buildRecommendations(relatedProducts, currency)
+    ? buildRecommendations(
+        {
+          ...relatedProducts,
+          items: relatedProducts.items.filter((item) => {
+            const flags = ensureJsonObject(
+              item?.external_seed_suppression_flags ||
+                item?.suppression_flags ||
+                item?.external_seed_recall?.suppression_flags,
+            );
+            return flags.exclude_from_similar !== true && flags.exclude_from_recall !== true;
+          }),
+        },
+        currency,
+      )
     : null;
   const brandStory = extractBrandStory(product, productFactsSections);
   const emitLegacyProductDetails = Boolean(
@@ -2133,7 +2229,11 @@ function buildPdpPayload(args) {
       data: reviews,
     });
   }
-  if (recommendations && recommendations.items.length) {
+  if (
+    recommendations &&
+    recommendations.items.length &&
+    suppressionFlags.exclude_from_similar !== true
+  ) {
     modules.push({
       module_id: 'm_recs',
       type: 'recommendations',

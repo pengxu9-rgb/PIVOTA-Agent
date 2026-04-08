@@ -705,6 +705,14 @@ function confidenceRank(level) {
   return 1;
 }
 
+function getExternalSeedSuppressionFlags(product) {
+  return ensureJsonObject(
+    product?.external_seed_suppression_flags ||
+      product?.suppression_flags ||
+      product?.external_seed_recall?.suppression_flags,
+  );
+}
+
 function classifyConfidenceLevel(base, candidate, layerId) {
   const nearPriceTight = candidate.relDiff != null && candidate.relDiff <= 0.25;
   if (candidate.brandMatch && candidate.leafMatch && nearPriceTight) return 'high';
@@ -761,6 +769,10 @@ function shouldFilterKnownVerticalMismatch(base, candidate) {
     return !allowByVertical && !allowByToken;
   }
   if (!['skincare', 'makeup', 'haircare'].includes(base.vertical)) return false;
+  if (candidateVertical !== UNKNOWN_VERTICAL && candidateVertical !== base.vertical) {
+    if ((candidate.leafMatch || candidate.parentMatch) && candidate.tokenOverlap >= 0.24) return false;
+    return true;
+  }
   if (candidate.leafMatch || candidate.parentMatch) return false;
   if (candidateVertical === base.vertical) return false;
   if (candidateVertical === UNKNOWN_VERTICAL && candidate.tokenOverlap >= 0.18) return false;
@@ -917,6 +929,10 @@ function pickLayeredRecommendations({
       const pid = getProductId(p);
       const mid = getMerchantId(p);
       if (!pid || !mid) return null;
+      const suppressionFlags = getExternalSeedSuppressionFlags(p);
+      if (suppressionFlags.exclude_from_similar === true || suppressionFlags.exclude_from_recall === true) {
+        return null;
+      }
       // Exclude the base product even if multiple merchants share the same product_id.
       // (In multi-offer scenarios those belong in offers[], not recommendations.)
       if (pid === base.productId) return null;
