@@ -2805,11 +2805,6 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
     };
   }
 
-  const params = [market, tool];
-  const bind = (value) => {
-    params.push(value);
-    return `$${params.length}`;
-  };
   const selectSql = buildBeautyInterestSeedSelect();
   const baseWhereSql = `
     status = 'active'
@@ -2817,61 +2812,51 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
       AND market = $1
       AND (tool = '*' OR tool = $2)
   `;
-  const stageSql = [];
-  const addStage = ({ whereSql, score, stage, cap }) => {
-    const limitBind = bind(clampInt(cap, safeLimit, 12, safeLimit));
-    stageSql.push(`
-      (
-        SELECT
-          ${selectSql},
-          ${Number(score || 0)}::int AS match_score,
-          '${stage}'::text AS match_stage
-        FROM external_product_seeds
-        WHERE ${baseWhereSql}
-          AND ${whereSql}
-        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
-        LIMIT ${limitBind}
-      )
-    `);
-  };
-
+  const stageDefinitions = [];
   if (recallTerms.patterns.length > 0) {
-    const patternBind = bind(recallTerms.patterns);
-    addStage({
-      whereSql: `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${patternBind}::text[])`,
+    stageDefinitions.push({
       score: 48,
       stage: 'recall_title',
-      cap: Math.min(safeLimit, 72),
+      cap: Math.max(safeLimit, Math.min(safeLimit * 2, 48)),
+      buildWhereSql: (stageBind) =>
+        `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${stageBind(recallTerms.patterns)}::text[])`,
     });
-    addStage({
-      whereSql: `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${patternBind}::text[])`,
-      score: 30,
-      stage: 'recall_summary',
-      cap: Math.min(safeLimit, 72),
+    stageDefinitions.push({
+      score: 40,
+      stage: 'recall_tokens',
+      cap: Math.max(safeLimit, Math.min(safeLimit * 2, 48)),
+      buildWhereSql: (stageBind) => {
+        const patternBind = stageBind(recallTerms.patterns);
+        return `(
+          ${EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokens} LIKE ANY(${patternBind}::text[])
+          OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY(${patternBind}::text[])
+        )`;
+      },
     });
   }
 
   if (recallTerms.categoryTerms.length > 0) {
-    const categoryBind = bind(recallTerms.categoryTerms);
-    addStage({
-      whereSql: `${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} = ANY(${categoryBind}::text[])`,
+    stageDefinitions.push({
       score: 36,
       stage: 'recall_category',
-      cap: Math.min(safeLimit, 96),
+      cap: Math.max(safeLimit, Math.min(safeLimit * 2, 48)),
+      buildWhereSql: (stageBind) =>
+        `${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} = ANY(${stageBind(recallTerms.categoryTerms)}::text[])`,
     });
   }
 
   if (recallTerms.verticalTerms.length > 0) {
-    const verticalBind = bind(recallTerms.verticalTerms);
-    addStage({
-      whereSql: `${EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical} = ANY(${verticalBind}::text[])`,
+    stageDefinitions.push({
       score: 18,
       stage: 'recall_vertical',
-      cap: safeLimit,
+      cap: Math.max(safeLimit, Math.min(safeLimit * 2, 36)),
+      buildWhereSql: (stageBind) =>
+        `${EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical} = ANY(${stageBind(recallTerms.verticalTerms)}::text[])`,
     });
   }
 
-  if (stageSql.length === 0) {
+  const shouldRunSummaryFallback = recallTerms.patterns.length > 0;
+  if (stageDefinitions.length === 0 && !shouldRunSummaryFallback) {
     recordDiscoveryRecallStep({
       surface: request?.surface,
       step: stepName,
@@ -2897,28 +2882,68 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
     };
   }
 
-  const finalLimitBind = bind(safeLimit);
-
   try {
-    const res = await query(
-      `
-        WITH fastpath_rows AS (
-          ${stageSql.join('\n          UNION ALL\n')}
-        ),
-        deduped AS (
-          SELECT DISTINCT ON (id)
-            *
-          FROM fastpath_rows
-          ORDER BY id, match_score DESC, updated_at DESC NULLS LAST, created_at DESC NULLS LAST
-        )
-        SELECT *
-        FROM deduped
-        ORDER BY match_score DESC, updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
-        LIMIT ${finalLimitBind}
-      `,
-      params,
-    );
-    const rows = Array.isArray(res?.rows) ? res.rows : [];
+    const stagedRows = [];
+    const seenIds = new Set();
+    const summaryThreshold = Math.min(safeLimit, Math.max(4, getPrimaryPathEnoughThreshold(request)));
+    const appendRows = (rows = []) => {
+      for (const row of Array.isArray(rows) ? rows : []) {
+        const rowId = Number(row?.id || 0);
+        if (!Number.isFinite(rowId) || rowId <= 0 || seenIds.has(rowId)) continue;
+        seenIds.add(rowId);
+        stagedRows.push(row);
+        if (stagedRows.length >= safeLimit) break;
+      }
+    };
+    const runStage = async ({ buildWhereSql, score, stage, cap }) => {
+      if (typeof buildWhereSql !== 'function' || stagedRows.length >= safeLimit) return;
+      const stageParams = [market, tool];
+      const stageBind = (value) => {
+        stageParams.push(value);
+        return `$${stageParams.length}`;
+      };
+      const stageWhereSql = buildWhereSql(stageBind);
+      if (!stageWhereSql) return;
+      let sql = `
+        SELECT
+          ${selectSql},
+          ${Number(score || 0)}::int AS match_score,
+          '${stage}'::text AS match_stage
+        FROM external_product_seeds
+        WHERE ${baseWhereSql}
+          AND ${stageWhereSql}
+      `;
+      if (seenIds.size > 0) {
+        const excludedIdsBind = stageBind(Array.from(seenIds));
+        sql += `
+          AND id <> ALL(${excludedIdsBind}::bigint[])
+        `;
+      }
+      const limitBind = stageBind(clampInt(cap, safeLimit, 12, Math.max(safeLimit, cap)));
+      sql += `
+        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
+        LIMIT ${limitBind}
+      `;
+      const res = await query(sql, stageParams);
+      appendRows(Array.isArray(res?.rows) ? res.rows : []);
+    };
+
+    for (const stageDefinition of stageDefinitions) {
+      await runStage(stageDefinition);
+      if (stagedRows.length >= summaryThreshold) break;
+    }
+
+    if (shouldRunSummaryFallback && stagedRows.length < summaryThreshold) {
+      await runStage({
+        score: 30,
+        stage: 'recall_summary',
+        cap: Math.max(safeLimit, Math.min(safeLimit * 2, 48)),
+        buildWhereSql: (stageBind) =>
+          `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${stageBind(recallTerms.patterns)}::text[])`,
+      });
+    }
+
+    const rows = stagedRows.slice(0, safeLimit);
     const products = annotateProviderProducts(
       productProvider,
       rows.map((row) => buildExternalSeedBrandSearchProduct(row)).filter(Boolean),
