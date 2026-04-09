@@ -170,6 +170,29 @@ function toList(value) {
   return [];
 }
 
+function formatCompactCount(count) {
+  const n = Number(count);
+  if (!Number.isFinite(n) || n <= 0) return '0';
+  if (n >= 1000000) return `${(n / 1000000).toFixed(n >= 10000000 ? 0 : 1)}m`;
+  if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k`;
+  return String(Math.round(n));
+}
+
+function toHeadlineCase(value) {
+  return asString(value)
+    .replace(/_+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .map((token) =>
+      token
+        .split('-')
+        .map((part) => (part ? part.charAt(0).toUpperCase() + part.slice(1) : part))
+        .join('-'),
+    )
+    .join(' ');
+}
+
 function normalizeLabelSet(values) {
   return new Set(
     toList(values)
@@ -204,6 +227,162 @@ function resolveManualOverride(caseRow, manualOverrides) {
     manualOverrides[`product:${productId}`] ||
     null
   );
+}
+
+function inferRoutineLabel(step, fallbackCategory) {
+  const stepText = asString(step).toLowerCase();
+  if (stepText === 'serum') return 'serum';
+  if (stepText === 'moisturizer') return 'moisturizer';
+  if (stepText === 'sunscreen') return 'sunscreen';
+  if (stepText === 'cleanser') return 'cleanser';
+  if (stepText === 'eye treatment') return 'eye treatment';
+  if (stepText === 'eye stick') return 'eye stick';
+  const category = asString(fallbackCategory).toLowerCase();
+  if (category.includes('serum')) return 'serum';
+  if (category.includes('moisturizer') || category.includes('cream')) return 'cream';
+  if (category.includes('sunscreen') || category.includes('spf')) return 'sunscreen';
+  if (category.includes('cleanser')) return 'cleanser';
+  if (category.includes('eye')) return 'eye treatment';
+  return '';
+}
+
+function compactWhatItIsHeadline(headline) {
+  const text = toHeadlineCase(headline);
+  if (!text || /^Pivota Insights$/i.test(text)) return '';
+  return text.length <= 42 ? text : '';
+}
+
+function buildCompactSubtitle(caseRow, bundle) {
+  const product = caseRow?.product && typeof caseRow.product === 'object' ? caseRow.product : {};
+  const core = bundle?.product_intel_core || {};
+  const stepLabel = inferRoutineLabel(core?.routine_fit?.step, product.category || product.product_type);
+  const whatBody = asString(core?.what_it_is?.body).toLowerCase();
+
+  if (whatBody.includes('multi-active') && stepLabel) {
+    return toHeadlineCase(`multi-active ${stepLabel}`);
+  }
+  if (whatBody.includes('vitamin c') && whatBody.includes('niacinamide') && stepLabel) {
+    return toHeadlineCase(`vitamin c + niacinamide ${stepLabel}`);
+  }
+  if (whatBody.includes('amla') && stepLabel) {
+    return toHeadlineCase(`amla brightening ${stepLabel}`);
+  }
+  if ((whatBody.includes('broad-spectrum') || whatBody.includes('spf') || whatBody.includes('sunscreen')) && stepLabel === 'moisturizer') {
+    return 'SPF moisturizer';
+  }
+  if (whatBody.includes('color-correcting') && whatBody.includes('eye') && stepLabel) {
+    return toHeadlineCase(`color-correcting ${stepLabel}`);
+  }
+
+  const compactHeadline = compactWhatItIsHeadline(core?.what_it_is?.headline);
+  if (compactHeadline) return compactHeadline;
+
+  return toHeadlineCase(product.product_type || product.category).slice(0, 42);
+}
+
+function normalizeBadgeCandidates(value) {
+  return toList(value)
+    .map((item) => {
+      const row = item && typeof item === 'object' ? item : null;
+      const badgeLabel = asString(row?.badge_label || row?.label || item);
+      if (!badgeLabel) return null;
+      return {
+        badge_type: asString(row?.badge_type || row?.type),
+        badge_label: badgeLabel,
+      };
+    })
+    .filter(Boolean);
+}
+
+function buildProofBadge(caseRow, bundle) {
+  const product = caseRow?.product && typeof caseRow.product === 'object' ? caseRow.product : {};
+  const explicit = normalizeBadgeCandidates(
+    bundle?.market_signal_badges || product.market_signal_badges,
+  );
+  if (explicit.length) return explicit[0];
+
+  const review = product.review_summary && typeof product.review_summary === 'object' ? product.review_summary : {};
+  const rating = Number(review.rating || review.average_rating || 0) || 0;
+  const reviewCount = Number(review.review_count || review.reviewCount || 0) || 0;
+  if (rating >= 4.5 && reviewCount >= 100) {
+    return {
+      badge_type: 'review_signal',
+      badge_label: `${rating.toFixed(1)}★ (${formatCompactCount(reviewCount)})`,
+    };
+  }
+
+  const counts =
+    product.community_signals && typeof product.community_signals === 'object'
+      ? product.community_signals.source_counts || {}
+      : {};
+  const editorial = Number(counts.editorial || 0) || 0;
+  const creatorMentions = Number(counts.creator_mentions || counts.creatorMentions || 0) || 0;
+  const media = Number(counts.media || 0) || 0;
+  if (editorial >= 3) {
+    return {
+      badge_type: 'editorial_signal',
+      badge_label: `Seen in ${editorial} editor picks`,
+    };
+  }
+  if (creatorMentions >= 8) {
+    return {
+      badge_type: 'creator_signal',
+      badge_label: `Seen in ${creatorMentions} creator mentions`,
+    };
+  }
+  if (media >= 3) {
+    return {
+      badge_type: 'media_signal',
+      badge_label: `Seen in ${media} media mentions`,
+    };
+  }
+  return null;
+}
+
+function buildTitleCandidate(caseRow) {
+  const product = caseRow?.product && typeof caseRow.product === 'object' ? caseRow.product : {};
+  const brand = asString(product.brand);
+  const title = asString(product.title || product.name);
+  if (!brand || !title) return title || 'Untitled product';
+  if (title.toLowerCase().startsWith(brand.toLowerCase())) return title;
+  return `${brand} ${title}`.trim();
+}
+
+function buildShoppingCardPayload(caseRow, bundle) {
+  const title = buildTitleCandidate(caseRow);
+  const subtitle = buildCompactSubtitle(caseRow, bundle);
+  const proofBadge = buildProofBadge(caseRow, bundle);
+  const intro = asString(bundle?.product_intel_core?.what_it_is?.body);
+  const marketSignalBadges = normalizeBadgeCandidates(
+    bundle?.market_signal_badges || (proofBadge ? [proofBadge] : []),
+  );
+
+  return {
+    contract_version: 'pivota.shopping_card.v1',
+    title,
+    ...(subtitle ? { subtitle } : {}),
+    ...(proofBadge?.badge_label ? { proof_badge: proofBadge.badge_label } : {}),
+    ...(intro ? { intro } : {}),
+    ...(marketSignalBadges.length ? { market_signal_badges: marketSignalBadges } : {}),
+    ...(asString(bundle?.evidence_profile) ? { evidence_profile: asString(bundle.evidence_profile) } : {}),
+  };
+}
+
+function attachShoppingCard(caseRow, bundle) {
+  const next = deepClone(bundle);
+  const shoppingCard = buildShoppingCardPayload(caseRow, next);
+  const proofBadge = asString(shoppingCard.proof_badge);
+  next.shopping_card = shoppingCard;
+  next.search_card = {
+    title_candidate: shoppingCard.title,
+    ...(shoppingCard.subtitle ? { compact_candidate: shoppingCard.subtitle } : {}),
+    ...(proofBadge ? { proof_badge_candidate: proofBadge } : {}),
+    ...(shoppingCard.intro ? { intro_candidate: shoppingCard.intro } : {}),
+  };
+  if (Array.isArray(shoppingCard.market_signal_badges) && shoppingCard.market_signal_badges.length) {
+    next.market_signal_badges = shoppingCard.market_signal_badges;
+  }
+  return next;
 }
 
 function hasGeminiKey() {
@@ -755,7 +934,7 @@ function evaluateGeminiCandidateQuality(baselineBundle, geminiCandidateBundle) {
   };
 }
 
-function buildSelectedBundle(baselineBundle, geminiCandidateBundle, quality, model) {
+function buildSelectedBundle(caseRow, baselineBundle, geminiCandidateBundle, quality, model) {
   const selected = deepClone(baselineBundle);
   const fieldSources = {
     what_it_is: 'baseline',
@@ -837,14 +1016,14 @@ function buildSelectedBundle(baselineBundle, geminiCandidateBundle, quality, mod
   };
 
   return {
-    bundle: selected,
+    bundle: attachShoppingCard(caseRow, selected),
     field_sources: fieldSources,
     selected_field_count: selectedFieldCount,
     selected_mode: selectedFieldCount > 0 ? 'hybrid_gemini' : 'baseline_only',
   };
 }
 
-function applyManualOverrideToSelected(selectedResult, manualOverride) {
+function applyManualOverrideToSelected(caseRow, selectedResult, manualOverride) {
   if (!selectedResult || !manualOverride || typeof manualOverride !== 'object') return selectedResult;
 
   const selected = deepClone(selectedResult);
@@ -893,7 +1072,7 @@ function applyManualOverrideToSelected(selectedResult, manualOverride) {
     override_reason: asString(manualOverride.notes) || 'manual_quality_override',
   };
 
-  selected.bundle = bundle;
+  selected.bundle = attachShoppingCard(caseRow, bundle);
   selected.field_sources = fieldSources;
   selected.selected_field_count = manualFieldCount;
   selected.selected_mode = 'manual_override';
@@ -984,9 +1163,9 @@ async function main() {
       ? null
       : mergeGeminiDraftIntoBaseline(caseRow, baseline, geminiRaw.output, args.model);
     const qualityGate = evaluateGeminiCandidateQuality(baseline, geminiCandidate);
-    const selectedBase = buildSelectedBundle(baseline, geminiCandidate, qualityGate, args.model);
+    const selectedBase = buildSelectedBundle(caseRow, baseline, geminiCandidate, qualityGate, args.model);
     const manualOverride = resolveManualOverride(caseRow, manualOverrides);
-    const selected = applyManualOverrideToSelected(selectedBase, manualOverride);
+    const selected = applyManualOverrideToSelected(caseRow, selectedBase, manualOverride);
 
     reportRows.push({
       case_id: asString(caseRow.case_id) || 'unnamed_case',
@@ -1049,4 +1228,5 @@ module.exports = {
   buildMarkdownReport,
   applyManualOverrideToSelected,
   resolveManualOverride,
+  buildShoppingCardPayload,
 };
