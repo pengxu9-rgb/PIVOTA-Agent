@@ -118,6 +118,13 @@ function isGenericSellerHighlightText(text) {
     /\bacting like\b/,
     /\brole\b/,
     /\bformat\b/,
+    /\bdaily moisture plus brightening support\b/,
+    /\bglow and hydration in one serum\b/,
+    /\bricher overnight cream texture\b/,
+    /\blotion step between serum and cream\b/,
+    /\btargeted under-eye application\b/,
+    /\bgel-cream daily texture\b/,
+    /\bdedicated dark-spot serum\b/,
   ].some((pattern) => pattern.test(normalized));
 }
 

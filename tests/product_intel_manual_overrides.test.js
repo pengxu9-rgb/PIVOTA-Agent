@@ -14,6 +14,13 @@ describe('product intel manual overrides', () => {
       /\bdedicated treatment step\b/i,
       /\brole\b/i,
       /\bformat\b/i,
+      /\bdaily moisture plus brightening support\b/i,
+      /\bglow and hydration in one serum\b/i,
+      /\bricher overnight cream texture\b/i,
+      /\blotion step between serum and cream\b/i,
+      /\btargeted under-eye application\b/i,
+      /\bgel-cream daily texture\b/i,
+      /\bdedicated dark-spot serum\b/i,
     ];
 
     Object.entries(manualOverrides).forEach(([key, override]) => {

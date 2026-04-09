@@ -152,8 +152,8 @@
           "evidence_strength": "seller_grounded"
         },
         {
-          "headline": "Tone and spot treatment focus",
-          "body": "Built for dullness, uneven tone, and dark-spot routines rather than hydration alone.",
+          "headline": "Dark-spot-leaning brightening",
+          "body": "Frames the serum around dullness, uneven tone, and visible spots instead of general hydration or barrier support.",
           "evidence_strength": "seller_grounded"
         }
       ],
@@ -181,7 +181,7 @@
     "product_intel_core": {
       "what_it_is": {
         "headline": "Brightening moisturizer",
-        "body": "A daily moisturizer that combines vitamin C and niacinamide with a hydration-first cream step for brightness, smoother texture, and glow."
+        "body": "A daily moisturizer that pairs vitamin C and niacinamide with a cream step focused on hydration, glow, and smoother-looking skin."
       },
       "best_for": [
         {
@@ -202,8 +202,8 @@
           "evidence_strength": "seller_grounded"
         },
         {
-          "headline": "Daily moisture plus brightening support",
-          "body": "Combines everyday hydration with tone and glow support instead of acting like a basic barrier cream.",
+          "headline": "Vitamin C plus niacinamide pairing",
+          "body": "Keeps two familiar tone-support ingredients in the moisturizer itself instead of reserving them for a dedicated treatment layer.",
           "evidence_strength": "seller_grounded"
         }
       ],
@@ -246,8 +246,8 @@
           "evidence_strength": "seller_grounded"
         },
         {
-          "headline": "Glow and hydration in one serum",
-          "body": "Combines radiance support with plumper-feeling hydration in one pre-moisturizer step.",
+          "headline": "Hydration-heavy brightening profile",
+          "body": "Leans more hydrating than a stripped-down brightening serum because humectants sit alongside the brightening actives.",
           "evidence_strength": "seller_grounded"
         }
       ],
@@ -269,7 +269,7 @@
     "product_intel_core": {
       "what_it_is": {
         "headline": "Night cream",
-        "body": "A rich overnight cream that combines colloidal oatmeal and niacinamide with a moisture-sealing night step aimed at comfort and visible firmness support."
+        "body": "An overnight cream that pairs colloidal oatmeal and niacinamide with a rich moisturizer step focused on barrier comfort and firmer-looking skin."
       },
       "best_for": [
         {
@@ -285,13 +285,13 @@
       ],
       "why_it_stands_out": [
         {
-          "headline": "Richer overnight cream texture",
-          "body": "Uses a fuller night-cream texture built for overnight moisture support instead of a light gel-cream feel.",
+          "headline": "Overnight barrier-comfort formula",
+          "body": "Uses colloidal oatmeal in a richer cream base to seal in moisture overnight rather than behaving like a light day cream.",
           "evidence_strength": "seller_grounded"
         },
         {
-          "headline": "Oatmeal plus niacinamide support",
-          "body": "Pairs colloidal oatmeal and niacinamide to combine comfort support with a firmer-looking finish.",
+          "headline": "Colloidal oatmeal plus niacinamide",
+          "body": "Pairs comfort-focused oatmeal support with niacinamide instead of relying on rich texture alone.",
           "evidence_strength": "seller_grounded"
         }
       ],
@@ -389,8 +389,8 @@
           "evidence_strength": "seller_grounded"
         },
         {
-          "headline": "Lotion step between serum and cream",
-          "body": "Sits between a serum and moisturizer, giving discoloration care a lighter lotion feel.",
+          "headline": "Discoloration care in lotion texture",
+          "body": "Delivers niacinamide-led post-acne-mark care in a lightweight lotion texture rather than a thin serum or harsher peel-style treatment.",
           "evidence_strength": "seller_grounded"
         }
       ],
@@ -439,8 +439,8 @@
           "evidence_strength": "seller_grounded"
         },
         {
-          "headline": "Targeted under-eye application",
-          "body": "Keeps application focused on the under-eye area rather than general full-face brightening.",
+          "headline": "Precision dark-circle placement",
+          "body": "Focuses correction on the under-eye area, where banana-toned pigments can neutralize shadow before concealer.",
           "evidence_strength": "seller_grounded"
         }
       ],
@@ -483,7 +483,7 @@
           "evidence_strength": "seller_grounded"
         },
         {
-          "headline": "Gel-cream daily texture",
+          "headline": "Daily brightening without a heavy cream feel",
           "body": "Keeps a lighter gel-cream texture while still targeting dullness and dark-spot routines.",
           "evidence_strength": "seller_grounded"
         }
@@ -527,8 +527,8 @@
           "evidence_strength": "seller_grounded"
         },
         {
-          "headline": "Dedicated dark-spot serum",
-          "body": "Built as a focused discoloration step rather than a moisturizer or toner with secondary brightening claims.",
+          "headline": "Post-acne-mark treatment focus",
+          "body": "Keeps the serum centered on dark spots and lingering post-acne marks instead of broad all-over hydration claims.",
           "evidence_strength": "seller_grounded"
         }
       ],

@@ -1,0 +1,7 @@
+interface:
+  display_name: "Pivota Insights"
+  short_description: "Generate, review, and publish PDP insights"
+  default_prompt: "Use $pivota-insights to generate, review, and publish Pivota Insights for a new product batch."
+
+policy:
+  allow_implicit_invocation: true

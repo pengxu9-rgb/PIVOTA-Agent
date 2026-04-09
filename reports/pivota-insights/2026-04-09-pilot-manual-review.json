@@ -1,0 +1,113 @@
+{
+  "meta": {
+    "reviewed_at": "2026-04-09T16:30:00+08:00",
+    "review_standard": "strict_manual_editorial_review",
+    "reviewer": "codex",
+    "batch": "pilot-10-live-products",
+    "model_preference": "gemini-3-pro-preview",
+    "decision": "all_pass_after_curated_rewrite",
+    "search_card_policy": "Prefer a condensed intro derived from What it is over raw Overview copy for retrieval-facing product cards."
+  },
+  "rows": [
+    {
+      "case_id": "live_ext_13c520e764f9f7d7f23c611b",
+      "product_id": "ext_13c520e764f9f7d7f23c611b",
+      "brand": "Naturium",
+      "title": "Vitamin C Super Serum Plus - Jumbo",
+      "review_status": "pass",
+      "rewrite_required_before_pass": false,
+      "review_notes": "Pass. Clear product type, active stack, and treatment scope. Strong enough for PDP and card-intro reuse.",
+      "search_card_intro_candidate": "A multi-active treatment serum that combines vitamin C, retinol, niacinamide, hyaluronic acid, and salicylic acid to target tone, texture, and early signs of aging in one step."
+    },
+    {
+      "case_id": "live_ext_8d735b108c0f01151b80797b",
+      "product_id": "ext_8d735b108c0f01151b80797b",
+      "brand": "Beekman 1802",
+      "title": "Golden Booster Amla Berry Vitamin C Brightening Serum",
+      "review_status": "pass",
+      "rewrite_required_before_pass": true,
+      "review_notes": "Pass after rewrite. The second highlight now explains the dark-spot-leaning brightening angle instead of vague treatment-focus copy.",
+      "search_card_intro_candidate": "A brightening serum built around amla berry as a vitamin C-focused ingredient to target dullness, uneven tone, and the look of dark spots."
+    },
+    {
+      "case_id": "live_ext_4e155bb184ec35f3cd7827e3",
+      "product_id": "ext_4e155bb184ec35f3cd7827e3",
+      "brand": "Olehenriksen",
+      "title": "Banana Bright+ Firm and Glow Moisturizer with Vitamin C and Niacinamide",
+      "review_status": "pass",
+      "rewrite_required_before_pass": true,
+      "review_notes": "Pass after rewrite. The copy now explains why the moisturizer step matters and avoids repeating generic hydration-plus-brightening filler.",
+      "search_card_intro_candidate": "A daily moisturizer that pairs vitamin C and niacinamide with a cream step focused on hydration, glow, and smoother-looking skin."
+    },
+    {
+      "case_id": "live_ext_7036139f48c84539ff819d8d",
+      "product_id": "ext_7036139f48c84539ff819d8d",
+      "brand": "Olehenriksen",
+      "title": "Peach Glaze Glow Niacinamide Serum with Vitamin C",
+      "review_status": "pass",
+      "rewrite_required_before_pass": true,
+      "review_notes": "Pass after rewrite. The second highlight now makes the hydration-heavy profile explicit instead of repeating a generic glow-and-hydration claim.",
+      "search_card_intro_candidate": "A lightweight serum that combines niacinamide, vitamin C, peach extract, hyaluronic acid, and polyglutamic acid to brighten dullness while supporting plumper-feeling hydration."
+    },
+    {
+      "case_id": "live_ext_f22e924478be64d4c3a1b918",
+      "product_id": "ext_f22e924478be64d4c3a1b918",
+      "brand": "First Aid Beauty",
+      "title": "Ultra Repair Firming Night Cream with Colloidal Oatmeal + Niacinamide",
+      "review_status": "pass",
+      "rewrite_required_before_pass": true,
+      "review_notes": "Pass after rewrite. The night-cream explanation now focuses on barrier comfort and oatmeal-plus-niacinamide substance rather than generic rich-texture copy.",
+      "search_card_intro_candidate": "An overnight cream that pairs colloidal oatmeal and niacinamide with a rich moisturizer step focused on barrier comfort and firmer-looking skin."
+    },
+    {
+      "case_id": "live_ext_f326aabff0f8a4a698aa192c",
+      "product_id": "ext_f326aabff0f8a4a698aa192c",
+      "brand": "fenty beauty",
+      "title": "Hydra Vizor Invisible Moisturizer Broad Spectrum SPF 30 Sunscreen with Niacinamide + Kalahari Melon",
+      "review_status": "pass",
+      "rewrite_required_before_pass": false,
+      "review_notes": "Pass. The compression of moisturizer plus SPF is the real differentiator, and the wear-profile highlight is useful rather than generic.",
+      "search_card_intro_candidate": "A daily moisturizer with broad-spectrum SPF 30 that combines sun protection, hydration, and niacinamide-led skin-support benefits in one morning step."
+    },
+    {
+      "case_id": "live_ext_1d9e01e4c3a8800a0c22b175",
+      "product_id": "ext_1d9e01e4c3a8800a0c22b175",
+      "brand": "First Aid Beauty",
+      "title": "Daily Resurfacing Lotion with 2% Niacinamide",
+      "review_status": "pass",
+      "rewrite_required_before_pass": true,
+      "review_notes": "Pass after rewrite. The second highlight now explains the lotion-texture tradeoff in functional terms instead of sounding like format filler.",
+      "search_card_intro_candidate": "A lightweight treatment lotion built around 2% niacinamide, glycerin, and ceramides to target post-acne marks while supporting hydration and barrier comfort."
+    },
+    {
+      "case_id": "live_ext_6c540ac96c2c1ab33f1af31d",
+      "product_id": "ext_6c540ac96c2c1ab33f1af31d",
+      "brand": "Olehenriksen",
+      "title": "Banana Bright+ Vitamin CC Stick",
+      "review_status": "pass",
+      "rewrite_required_before_pass": true,
+      "review_notes": "Pass after rewrite. The second highlight now ties precise placement back to dark-circle correction instead of merely stating that the item is targeted.",
+      "search_card_intro_candidate": "A targeted under-eye stick that combines vitamin C support with banana-toned pigments for immediate dark-circle correction and added hydration."
+    },
+    {
+      "case_id": "live_ext_aa93bbb9dbe9e3529030408b",
+      "product_id": "ext_aa93bbb9dbe9e3529030408b",
+      "brand": "SKINTIFIC",
+      "title": "Vitamin C Brightening Boost Moisturizer",
+      "review_status": "pass",
+      "rewrite_required_before_pass": true,
+      "review_notes": "Pass after rewrite. The texture callout now matters because it clarifies wear profile, not because gel-cream is inherently special.",
+      "search_card_intro_candidate": "A lightweight gel-cream moisturizer that uses vitamin C to combine daily hydration with a brightening, dark-spot-focused moisturizer step."
+    },
+    {
+      "case_id": "live_ext_7c4b0a2885131b08d1cda84a",
+      "product_id": "ext_7c4b0a2885131b08d1cda84a",
+      "brand": "First Aid Beauty",
+      "title": "Dark Spot Serum with Niacinamide",
+      "review_status": "pass",
+      "rewrite_required_before_pass": true,
+      "review_notes": "Pass after rewrite. The second highlight now explains the post-acne-mark treatment emphasis instead of just restating that the product is a dedicated serum.",
+      "search_card_intro_candidate": "A niacinamide-led serum aimed at dark spots, post-acne marks, and uneven tone, with a gentler treatment profile than a harsher acid-led discoloration serum."
+    }
+  ]
+}
