@@ -5,7 +5,7 @@ Use `Pivota Insights` core content as the source for retrieval-facing product-ca
 ## Recommendation
 
 - Split card copy into two surfaces:
-  - compact grid cards: normalized title + a very short subtitle or noun phrase
+  - compact grid cards: normalized title + a very short subtitle or noun phrase + at most one proof badge
   - wider list/detail cards: one short intro sentence derived from `product_intel_core.what_it_is`
 - Do not reuse raw `Overview` when it is generic, promotional, or hides the product attributes needed for recall.
 
@@ -55,8 +55,18 @@ The better version exposes:
 For retrieval-facing titles, prefer:
 
 - `brand + product type + key concern/function + hero active or feature + critical format/strength`
+- example: `Naturium Multi-active Serum`
+- example: `Fenty SPF 30 Moisturizer`
+- example: `Olehenriksen Under-eye Brightening Stick`
 
 Only include attributes that are high-confidence and deterministically known.
+
+Do not use:
+
+- creative-only product naming with no category/function cue
+- long sentence fragments inside the title line
+- duplicate qualifiers such as `SPF 30 SPF Moisturizer`
+- weak marketing fillers such as `special edition`, `must-have`, `glow boost`
 
 ## Card Intro Guidance
 

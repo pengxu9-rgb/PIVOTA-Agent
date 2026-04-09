@@ -4,6 +4,7 @@ const {
   assertAllReviewRowsPassed,
   buildReviewRows,
   buildSearchCardCompactCandidate,
+  buildSearchCardTitleCandidate,
   compactCardIntroCandidate,
   displayPath,
   renderReviewMarkdown,
@@ -76,6 +77,7 @@ describe('pivota insights review workflow', () => {
       review_status: 'pending',
     });
     expect(rows[0].search_card_intro_candidate).toMatch(/brightening serum/i);
+    expect(rows[0].search_card_title_candidate).toBe('Brand Brightening Serum');
     expect(rows[0].search_card_proof_badge_candidate).toBe('Editorial: top pick');
     expect(rows[0].search_card_compact_candidate).toBe('Brightening serum');
     expect(rows[0].search_card_title_guidance).toMatch(/brand \+ product type/i);
@@ -127,6 +129,7 @@ describe('pivota insights review workflow', () => {
     });
 
     expect(markdown).toMatch(/Only publish rows marked `pass`/);
+    expect(markdown).toMatch(/search_card_title_candidate:/);
     expect(markdown).toMatch(/search_card_proof_badge_candidate: Editorial: top pick/);
     expect(markdown).toMatch(/search_card_compact_candidate:/);
     expect(markdown).toMatch(/search_card_intro_candidate: A brightening serum for dullness\./);
@@ -179,5 +182,37 @@ describe('pivota insights review workflow', () => {
         why_it_stands_out: [{ headline: 'Multi-active formula' }],
       }),
     ).toBe('Multi-active serum');
+  });
+
+  test('buildSearchCardTitleCandidate keeps compact cards attribute-led and short', () => {
+    expect(
+      buildSearchCardTitleCandidate('Naturium', {
+        what_it_is: {
+          headline: 'Treatment serum',
+          body: 'A multi-active treatment serum that combines vitamin C, retinol, niacinamide, and salicylic acid.',
+        },
+        why_it_stands_out: [{ headline: 'Multi-active formula' }],
+      }),
+    ).toBe('Naturium Multi-Active Serum');
+
+    expect(
+      buildSearchCardTitleCandidate('Fenty', {
+        what_it_is: {
+          headline: 'Moisturizer with SPF',
+          body: 'A daily moisturizer with broad-spectrum SPF 30 and hydration support in one morning step.',
+        },
+        why_it_stands_out: [{ headline: 'Moisturizer and sunscreen in one step' }],
+      }),
+    ).toBe('Fenty SPF 30 Moisturizer');
+
+    expect(
+      buildSearchCardTitleCandidate('Olehenriksen', {
+        what_it_is: {
+          headline: 'Brightening moisturizer',
+          body: 'A brightening moisturizer with vitamin C and niacinamide for dullness and uneven tone.',
+        },
+        why_it_stands_out: [{ headline: 'Vitamin C + niacinamide support' }],
+      }),
+    ).toBe('Olehenriksen Vitamin C + Niacinamide Brightening Cream');
   });
 });

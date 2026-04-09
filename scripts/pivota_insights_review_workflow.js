@@ -155,6 +155,114 @@ function buildSearchCardCompactCandidate(core) {
   return candidate;
 }
 
+function toTitleCase(value) {
+  return asString(value)
+    .toLowerCase()
+    .replace(/\b[a-z]/g, (match) => match.toUpperCase());
+}
+
+function normalizeCompactForTitle(compactCandidate) {
+  const compact = asString(compactCandidate);
+  if (!compact) return '';
+  return compact
+    .replace(/^spfs?\b/i, 'SPF')
+    .replace(/\bspf\s*(\d+)/i, 'SPF $1')
+    .replace(/\bvitamin c\b/gi, 'Vitamin C')
+    .replace(/\bniacinamide\b/gi, 'Niacinamide')
+    .replace(/\bamla\b/gi, 'Amla')
+    .replace(/\boatmeal\b/gi, 'Oatmeal')
+    .replace(/\bunder-eye\b/gi, 'Under-eye')
+    .replace(/\bdark-spot\b/gi, 'Dark-spot');
+}
+
+function formatTitlePhrase(value) {
+  return asString(value)
+    .replace(/\b[a-z]/g, (match) => match.toUpperCase())
+    .replace(/\bSpf\b/g, 'SPF')
+    .replace(/\bVitamin C\b/g, 'Vitamin C')
+    .replace(/\bNiacinamide\b/g, 'Niacinamide')
+    .replace(/\bAmla\b/g, 'Amla')
+    .replace(/\bOatmeal\b/g, 'Oatmeal')
+    .replace(/\bUnder-Eye\b/g, 'Under-eye')
+    .replace(/\bDark-Spot\b/g, 'Dark-spot');
+}
+
+function uniquePhraseList(values) {
+  const out = [];
+  const seen = new Set();
+  for (const value of values) {
+    const phrase = asString(value);
+    if (!phrase) continue;
+    const key = phrase.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(phrase);
+  }
+  return out;
+}
+
+function inferTitleQualifier(core, compactCandidate) {
+  const compact = asString(compactCandidate).toLowerCase();
+  const body = asString(core?.what_it_is?.body).toLowerCase();
+  const firstHighlight = asString(core?.why_it_stands_out?.[0]?.headline).toLowerCase();
+  const firstHighlightBody = asString(core?.why_it_stands_out?.[0]?.body).toLowerCase();
+  const pool = `${compact} ${body} ${firstHighlight} ${firstHighlightBody}`;
+
+  if (/\bmulti-active\b/.test(pool)) return 'multi-active';
+  if (/\bdark-spot\b/.test(pool)) return 'dark-spot';
+  if (/\bunder-eye\b/.test(pool)) return 'under-eye';
+  if (/\bbrighten/.test(pool) || /\bbrightening\b/.test(pool)) return 'brightening';
+  if (/\bspf\s*50\b/.test(pool)) return 'SPF 50';
+  if (/\bspf\s*30\b/.test(pool)) return 'SPF 30';
+  if (/\b2%\s*niacinamide\b/.test(pool)) return '2% niacinamide';
+  if (/\bamla\b/.test(pool)) return 'amla';
+  if (/\boatmeal\b/.test(pool)) return 'oatmeal';
+  if (/\bvitamin c\b/.test(pool) && /\bniacinamide\b/.test(pool)) return 'Vitamin C + niacinamide';
+  if (/\bvitamin c\b/.test(pool)) return 'Vitamin C';
+  return '';
+}
+
+function mergeQualifierIntoTitleCore(titleCore, qualifier) {
+  const core = asString(titleCore);
+  const qualifierText = asString(qualifier);
+  if (!core) return qualifierText;
+  if (!qualifierText) return core;
+
+  const coreLower = core.toLowerCase();
+  const qualifierLower = qualifierText.toLowerCase();
+
+  if (coreLower.includes(qualifierLower)) return core;
+
+  if (/^spf\s+\d+/i.test(qualifierText) && /^spf\b/i.test(core)) {
+    return core.replace(/^SPF\b/i, qualifierText);
+  }
+
+  if (['brightening', 'dark-spot', 'under-eye', 'multi-active'].includes(qualifierLower)) {
+    const parts = core.split(' ');
+    if (parts.length > 1) {
+      return `${parts.slice(0, -1).join(' ')} ${qualifierText} ${parts[parts.length - 1]}`.trim();
+    }
+  }
+
+  return `${qualifierText} ${core}`.trim();
+}
+
+function buildSearchCardTitleCandidate(brand, core) {
+  const compactCandidate = buildSearchCardCompactCandidate(core);
+  const normalizedCompact = normalizeCompactForTitle(compactCandidate);
+  const qualifier = inferTitleQualifier(core, compactCandidate);
+  let titleCore = mergeQualifierIntoTitleCore(normalizedCompact, qualifier);
+
+  const parts = uniquePhraseList([toTitleCase(brand), titleCore]);
+  let candidate = formatTitlePhrase(parts.join(' ').replace(/\s+/g, ' ').trim());
+  if (candidate.length > 68) {
+    const trimmed = candidate.slice(0, 68);
+    const boundary = trimmed.lastIndexOf(' ');
+    candidate = (boundary >= 40 ? trimmed.slice(0, boundary) : trimmed).trim();
+  }
+  return candidate;
+}
+
 function buildCaseLookup(casesPayload) {
   const rows = Array.isArray(casesPayload)
     ? casesPayload
@@ -201,6 +309,7 @@ function buildReviewRows(compareReport, casesPayload) {
         headline: asString(item?.headline),
         body: asString(item?.body),
       })),
+      search_card_title_candidate: buildSearchCardTitleCandidate(asString(product.brand), core),
       search_card_proof_badge_candidate: asString(firstBadge?.badge_label),
       search_card_compact_candidate: buildSearchCardCompactCandidate(core),
       search_card_intro_candidate: compactCardIntroCandidate(core?.what_it_is?.body, 96),
@@ -228,6 +337,7 @@ function renderReviewMarkdown(reviewDoc) {
     '- Only publish rows marked `pass`.',
     '- Mark `rewrite` if `What it is` or `Why it stands out` is generic, abstract, inflated, or still sounds like seller copy.',
     '- Use `search_card_compact_candidate` for tight grid cards; reserve `search_card_intro_candidate` for wider list/detail surfaces.',
+    '- Treat `search_card_title_candidate` as the compact-card primary line; review it for structured recall, not for cleverness.',
     '- `search_card_proof_badge_candidate` should only appear when it is backed by hard evidence such as ratings, editorial tags, or reviewed source counts.',
     '- Prefer normalized title copy over raw merchant `Overview` when the surface is compact.',
     '',
@@ -246,6 +356,7 @@ function renderReviewMarkdown(reviewDoc) {
     for (const item of row.why_it_stands_out || []) {
       lines.push(`  - ${item.headline}: ${item.body}`);
     }
+    lines.push(`- search_card_title_candidate: ${row.search_card_title_candidate}`);
     lines.push(`- search_card_proof_badge_candidate: ${row.search_card_proof_badge_candidate || '(none)'}`);
     lines.push(`- search_card_compact_candidate: ${row.search_card_compact_candidate}`);
     lines.push(`- search_card_intro_candidate: ${row.search_card_intro_candidate}`);
@@ -386,6 +497,7 @@ module.exports = {
   assertAllReviewRowsPassed,
   buildReviewRows,
   buildSearchCardCompactCandidate,
+  buildSearchCardTitleCandidate,
   compactCardIntroCandidate,
   displayPath,
   parseArgs,

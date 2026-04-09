@@ -107,7 +107,11 @@ npm run pivota-insights:skill -- bakeoff --cases <cases.json>
 ## Search Card Reuse
 
 - Use [references/search_card_policy.md](references/search_card_policy.md) when deciding how `Pivota Insights` should feed external search or recommendation cards.
-- In general, prefer a condensed intro derived from `what_it_is` over raw `Overview` copy.
+- Default card stack is now:
+  - `search_card_title_candidate`
+  - `search_card_compact_candidate`
+  - optional `search_card_proof_badge_candidate`
+- In general, prefer normalized title + compact subtitle over raw `Overview` copy.
 
 ## Output Expectations
 
