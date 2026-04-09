@@ -99,6 +99,50 @@ function isLowSignalSellerHighlightText(text) {
   );
 }
 
+function isGenericSellerHighlightText(text) {
+  const normalized = stripHtml(text).toLowerCase();
+  if (!normalized) return false;
+  return [
+    /\bpositions? itself\b/,
+    /\bcenters? its\b.*\bstory\b/,
+    /\bbuilds? its\b.*\bstory\b/,
+    /\bformula story\b/,
+    /\bvisible-[a-z-]+\s+story\b/,
+    /\bpositioning\b/,
+    /\bframes? itself as\b/,
+    /\bleans toward\b/,
+    /\bdedicated treatment step\b/,
+    /\bplain barrier cream\b/,
+    /\bgeneral face brightening serum\b/,
+    /\bfunctioning as\b/,
+    /\bacting like\b/,
+    /\brole\b/,
+    /\bformat\b/,
+  ].some((pattern) => pattern.test(normalized));
+}
+
+function shouldSuppressSellerHighlightText(text) {
+  return isLowSignalSellerHighlightText(text) || isGenericSellerHighlightText(text);
+}
+
+function joinWithCommasAnd(values) {
+  const items = asArray(values).map((value) => asString(value)).filter(Boolean);
+  if (!items.length) return '';
+  if (items.length === 1) return items[0];
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(', ')}, and ${items[items.length - 1]}`;
+}
+
+function describeConcernCoverage(concerns, step) {
+  const labels = asArray(concerns).map((item) => asString(item)).filter(Boolean);
+  if (!labels.length) return '';
+  const joined = joinWithCommasAnd(labels);
+  if (step === 'serum') return `Addresses ${joined} in one serum step.`;
+  if (step === 'moisturizer') return `Covers ${joined} in a daily moisturizer step.`;
+  if (step === 'sunscreen') return `Combines ${joined} with daytime sun protection in one morning step.`;
+  return `Covers ${joined} in one product step.`;
+}
+
 function firstMeaningfulHighlightSentence(text, { sellerOnly = false } = {}) {
   const clean = stripWhatItIsFootnotes(stripHtml(text));
   if (!clean) return '';
@@ -106,12 +150,12 @@ function firstMeaningfulHighlightSentence(text, { sellerOnly = false } = {}) {
   for (const sentence of sentences) {
     const normalized = toSentence(stripSellerMerchandisingLead(sentence), '').trim();
     if (!normalized || normalized.length < 24) continue;
-    if (sellerOnly && isLowSignalSellerHighlightText(normalized)) continue;
+    if (sellerOnly && shouldSuppressSellerHighlightText(normalized)) continue;
     return normalized;
   }
   const fallback = toSentence(stripSellerMerchandisingLead(clean), '').trim();
   if (!fallback) return '';
-  if (sellerOnly && isLowSignalSellerHighlightText(fallback)) return '';
+  if (sellerOnly && shouldSuppressSellerHighlightText(fallback)) return '';
   return fallback;
 }
 
@@ -309,7 +353,7 @@ function normalizePublishedProductIntelBundle(bundle, {
         const sellerOnly =
           coreEvidenceProfile === 'seller_only' || coreEvidenceProfile === 'seller_plus_formula';
         if (!sellerOnly) return true;
-        return !isLowSignalSellerHighlightText(`${row.headline || ''} ${row.body || ''}`);
+        return !shouldSuppressSellerHighlightText(`${row.headline || ''} ${row.body || ''}`);
       })
       .map((item) => {
         const row = asPlainObject(item) || {};
@@ -416,7 +460,7 @@ function buildPublishedIntelKbKeys(product, canonicalProductRef = null) {
 
 async function hydrateProductWithPublishedIntel({ product, canonicalProductRef = null } = {}) {
   const sourceProduct = asPlainObject(product) || {};
-  if (readPublishedProductIntelBundle(sourceProduct, { canonicalProductRef })) return sourceProduct;
+  const embeddedBundle = readPublishedProductIntelBundle(sourceProduct, { canonicalProductRef });
 
   let getProductIntelKbEntry = null;
   let normalizeProductAnalysis = null;
@@ -507,6 +551,7 @@ async function hydrateProductWithPublishedIntel({ product, canonicalProductRef =
     };
   }
 
+  if (embeddedBundle) return sourceProduct;
   return sourceProduct;
 }
 
@@ -796,12 +841,13 @@ function inferWhyItStandsOut(product, evidenceProfile) {
 
   const out = [];
   const sellerOnly = evidenceProfile === 'seller_only' || evidenceProfile === 'seller_plus_formula';
+  const step = inferRoutineStep(product);
   const pushHighlight = (headline, body, evidenceStrength = 'seller_grounded') => {
     if (!headline || !body) return;
     const normalizedHeadline = asString(headline);
     const normalizedBody = toSentence(stripSellerMerchandisingLead(body), body);
     if (!normalizedBody) return;
-    if (sellerOnly && isLowSignalSellerHighlightText(`${normalizedHeadline} ${normalizedBody}`)) return;
+    if (sellerOnly && shouldSuppressSellerHighlightText(`${normalizedHeadline} ${normalizedBody}`)) return;
     if (out.some((item) => item.headline.toLowerCase() === String(headline).toLowerCase())) return;
     out.push({
       headline: normalizedHeadline,
@@ -818,7 +864,7 @@ function inferWhyItStandsOut(product, evidenceProfile) {
   if (keyIngredients.length) {
     pushHighlight(
       'Formula focus',
-      `Highlights ${keyIngredients.slice(0, 3).join(', ')} in the formula story.`,
+      `Built around ${joinWithCommasAnd(keyIngredients.slice(0, 3))} as key formula ingredients.`,
       'formula_supported',
     );
   }
@@ -834,8 +880,8 @@ function inferWhyItStandsOut(product, evidenceProfile) {
   const concernCoverage = inferConcernCoverageFromText(product);
   if (concernCoverage.length >= 2) {
     pushHighlight(
-      'Broad concern coverage',
-      `Positions itself as a single serum for ${concernCoverage.join(', ')} rather than a one-note active.`,
+      'Multi-concern coverage',
+      describeConcernCoverage(concernCoverage, step),
       'seller_grounded',
     );
   }
