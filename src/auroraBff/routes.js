@@ -916,6 +916,13 @@ const AURORA_RECO_ASSISTANT_REWRITE_MAX_OUTPUT_TOKENS = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 320;
   return Math.max(120, Math.min(800, v));
 })();
+const AURORA_RECO_ASSISTANT_REWRITE_GEMINI_THINKING_LEVEL = (() => {
+  const raw = String(process.env.AURORA_RECO_ASSISTANT_REWRITE_GEMINI_THINKING_LEVEL || 'minimal')
+    .trim()
+    .toLowerCase();
+  if (raw === 'minimal' || raw === 'low' || raw === 'medium' || raw === 'high') return raw;
+  return 'minimal';
+})();
 const AURORA_PRODUCT_RELEVANCE_QA_MODE = (() => {
   const explicitMode = String(process.env.AURORA_LLM_QA_MODE || '')
     .trim()
@@ -2449,6 +2456,7 @@ const PIVOTA_BACKEND_AGENT_API_KEY = String(
 const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || '').trim();
 const {
   hasAuroraGeminiApiKey,
+  pickAuroraGeminiApiKey,
   getAuroraGeminiClient,
   callAuroraGeminiGenerateContent,
   callAuroraGeminiGenerateContentWithMeta,
@@ -18596,6 +18604,101 @@ function buildBeautyMainlineLocalSearchResult({
   };
 }
 
+function buildBeautyMainlineLocalHandoffPreflightSnapshot(searchResult = null) {
+  if (!isPlainObject(searchResult)) return null;
+  const metadata = isPlainObject(searchResult.metadata) ? searchResult.metadata : {};
+  const topLevelLedger = isPlainObject(searchResult.search_stage_ledger)
+    ? searchResult.search_stage_ledger
+    : {};
+  const metadataLedger = isPlainObject(metadata.search_stage_ledger)
+    ? metadata.search_stage_ledger
+    : {};
+  const combinedLedger = {
+    ...topLevelLedger,
+    ...metadataLedger,
+  };
+  const selectionContract = extractRecoFinalSelectionContract(searchResult);
+  return {
+    query_source:
+      pickFirstTrimmed(searchResult.query_source, metadata.query_source, 'beauty_mainline_local_handoff')
+      || 'beauty_mainline_local_handoff',
+    final_decision:
+      pickFirstTrimmed(
+        metadata.final_decision,
+        combinedLedger.final_decision,
+        Array.isArray(searchResult.products) && searchResult.products.length > 0
+          ? 'products_returned'
+          : 'strict_empty',
+      ) || 'strict_empty',
+    reason: pickFirstTrimmed(searchResult.reason) || null,
+    ...(isPlainObject(searchResult.source_breakdown)
+      ? { source_breakdown: searchResult.source_breakdown }
+      : {}),
+    ...(isPlainObject(selectionContract) ? { final_selection: selectionContract } : {}),
+    ...(isPlainObject(combinedLedger) && Object.keys(combinedLedger).length > 0
+      ? { search_stage_ledger: combinedLedger }
+      : {}),
+    ...(Array.isArray(metadata.semantic_owner_query_attempts) && metadata.semantic_owner_query_attempts.length
+      ? { semantic_owner_query_attempts: metadata.semantic_owner_query_attempts }
+      : {}),
+  };
+}
+
+function shouldAttemptBeautyMainlineProxyRescue({
+  localSearchResult = null,
+  deadlineAtMs = null,
+} = {}) {
+  if (!isPlainObject(localSearchResult)) return false;
+  const querySource = pickFirstTrimmed(
+    localSearchResult.query_source,
+    localSearchResult?.metadata?.query_source,
+    'beauty_mainline_local_handoff',
+  ).toLowerCase();
+  if (querySource && querySource !== 'beauty_mainline_local_handoff') return false;
+  const selectionContract = extractRecoFinalSelectionContract(localSearchResult);
+  const selectedProductIds = Array.isArray(selectionContract?.selected_product_ids)
+    ? selectionContract.selected_product_ids
+        .map((item) => String(item || '').trim())
+        .filter(Boolean)
+    : [];
+  if (selectedProductIds.length > 0) return false;
+  if (Array.isArray(localSearchResult.products) && localSearchResult.products.length > 0) return false;
+  if (Number.isFinite(Number(deadlineAtMs))) {
+    const remainingMs = Math.max(0, Number(deadlineAtMs) - Date.now());
+    if (remainingMs <= RECO_CATALOG_MAIN_PATH_TIMEOUT_FLOOR_MS) return false;
+  }
+  return true;
+}
+
+function attachBeautyMainlineLocalHandoffPreflight(searchResult = null, localSearchResult = null) {
+  if (!isPlainObject(searchResult)) return searchResult;
+  const preflight = buildBeautyMainlineLocalHandoffPreflightSnapshot(localSearchResult);
+  if (!isPlainObject(preflight)) return searchResult;
+  const metadata = isPlainObject(searchResult.metadata) ? searchResult.metadata : {};
+  const topLevelLedger = isPlainObject(searchResult.search_stage_ledger)
+    ? searchResult.search_stage_ledger
+    : {};
+  const metadataLedger = isPlainObject(metadata.search_stage_ledger)
+    ? metadata.search_stage_ledger
+    : {};
+  return {
+    ...searchResult,
+    local_handoff_preflight: preflight,
+    search_stage_ledger: {
+      ...topLevelLedger,
+      local_handoff_preflight: preflight,
+    },
+    metadata: {
+      ...metadata,
+      local_handoff_preflight: preflight,
+      search_stage_ledger: {
+        ...metadataLedger,
+        local_handoff_preflight: preflight,
+      },
+    },
+  };
+}
+
 async function runBeautyMainlineLocalHandoffSearch({
   ctx,
   logger,
@@ -18706,6 +18809,10 @@ async function handoffRecoToBeautyMainlineSearch({
     handoff?.targetContext && typeof handoff.targetContext === 'object' && !Array.isArray(handoff.targetContext)
       ? handoff.targetContext
       : targetContext;
+  const proxySearchFn = resolveAuroraRouteDependency(
+    'searchPivotaBackendProducts',
+    searchPivotaBackendProducts,
+  );
   const effectiveTimeoutMs = Math.max(
     RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
     RECO_CATALOG_MAIN_PATH_TIMEOUT_FLOOR_MS,
@@ -18765,8 +18872,9 @@ async function handoffRecoToBeautyMainlineSearch({
       authHeaders: authHeaders || ctx?.backend_auth_headers || null,
     });
   } else {
+    let localSearchResult = null;
     try {
-      searchResult = await runBeautyMainlineLocalHandoffSearch({
+      localSearchResult = await runBeautyMainlineLocalHandoffSearch({
         ctx,
         logger,
         targetContext: effectiveTargetContext,
@@ -18785,8 +18893,26 @@ async function handoffRecoToBeautyMainlineSearch({
         'aurora bff: local beauty handoff search failed; falling back to proxy search',
       );
     }
-    if (!searchResult) {
-      searchResult = await searchPivotaBackendProducts({
+    const shouldRescueLocalEmpty = shouldAttemptBeautyMainlineProxyRescue({
+      localSearchResult,
+      deadlineAtMs,
+    });
+    if (localSearchResult && !shouldRescueLocalEmpty) {
+      searchResult = localSearchResult;
+    } else {
+      if (shouldRescueLocalEmpty) {
+        logger?.info?.(
+          {
+            request_id: ctx?.request_id,
+            trace_id: ctx?.trace_id,
+            local_query_source: pickFirstTrimmed(localSearchResult?.query_source) || 'beauty_mainline_local_handoff',
+            local_reason: pickFirstTrimmed(localSearchResult?.reason) || 'empty',
+          },
+          'aurora bff: local beauty handoff returned empty; attempting proxy rescue',
+        );
+      }
+      try {
+        searchResult = await proxySearchFn({
         query,
         limit: 6,
         logger,
@@ -18807,7 +18933,22 @@ async function handoffRecoToBeautyMainlineSearch({
         semanticContract,
         traceId: pickFirstTrimmed(ctx?.trace_id, ctx?.request_id) || null,
         authHeaders: authHeaders || ctx?.backend_auth_headers || null,
-      });
+        });
+      } catch (err) {
+        if (!localSearchResult || !shouldRescueLocalEmpty) throw err;
+        logger?.warn?.(
+          {
+            request_id: ctx?.request_id,
+            trace_id: ctx?.trace_id,
+            err: err?.message || String(err),
+          },
+          'aurora bff: proxy rescue after local beauty handoff empty failed; preserving local empty result',
+        );
+        searchResult = localSearchResult;
+      }
+      if (searchResult && shouldRescueLocalEmpty && localSearchResult) {
+        searchResult = attachBeautyMainlineLocalHandoffPreflight(searchResult, localSearchResult);
+      }
     }
   }
   const canonicalSelection = extractRecoFinalSelectionContract(searchResult);
@@ -20906,6 +21047,272 @@ async function extractTextFromGeminiResponse(response) {
   return parts.join('\n').trim();
 }
 
+function normalizeGeminiRestModelName(model) {
+  return String(model || '')
+    .trim()
+    .replace(/^models\//i, '')
+    .replace(/^publishers\/google\/models\//i, '');
+}
+
+async function callGeminiJsonObjectViaRest({
+  resolvedModel,
+  requestedModel,
+  systemPrompt,
+  userPrompt,
+  timeoutMs = 3000,
+  temperature = 0,
+  maxOutputTokens = null,
+  responseSchema = null,
+  route = 'aurora_routes_json',
+  queueTimeoutMs = 0,
+  upstreamTimeoutMs = 0,
+  thinkingBudget = undefined,
+  thinkingLevel = undefined,
+} = {}) {
+  const apiKey = pickAuroraGeminiApiKey(AURORA_GEMINI_KEY_FEATURE_ENV);
+  if (!apiKey) {
+    return {
+      ok: false,
+      reason: 'gemini_client_unavailable',
+      provider: 'gemini',
+      requested_model: requestedModel,
+      effective_model: resolvedModel,
+      selection_source: 'local_gemini_rest_direct',
+    };
+  }
+  const systemText = String(systemPrompt || 'Return strict JSON only.').trim();
+  const userText = String(userPrompt || '').trim();
+  const promptText = `${systemText}\n\n${userText}`;
+  const sanitizedSchema =
+    responseSchema && typeof responseSchema === 'object' ? sanitizeGeminiJsonSchema(responseSchema) : null;
+  const effectiveMaxOutputTokens =
+    Number.isFinite(Number(maxOutputTokens)) && Number(maxOutputTokens) > 0
+      ? Math.max(64, Math.min(4096, Math.trunc(Number(maxOutputTokens))))
+      : 0;
+  const promptBytes = Buffer.byteLength(promptText, 'utf8');
+  const schemaBytes = safeJsonByteLength(sanitizedSchema);
+  const timeoutBudget = splitGeminiTimeoutBudget(timeoutMs, {
+    queueMs: queueTimeoutMs,
+    upstreamMs: upstreamTimeoutMs || timeoutMs,
+  });
+  const modelName = normalizeGeminiRestModelName(resolvedModel || requestedModel || ANALYSIS_STORY_MODEL_GEMINI);
+  const requestBody = {
+    contents: [
+      {
+        role: 'user',
+        parts: [{ text: userText }],
+      },
+    ],
+    generationConfig: {
+      temperature,
+      ...(effectiveMaxOutputTokens ? { maxOutputTokens: effectiveMaxOutputTokens } : {}),
+      responseMimeType: 'application/json',
+      ...(sanitizedSchema ? { responseSchema: sanitizedSchema } : {}),
+    },
+  };
+  if (systemText) {
+    requestBody.systemInstruction = {
+      parts: [{ text: systemText }],
+    };
+  }
+  const thinkingConfig = {};
+  if (Number.isFinite(thinkingBudget)) thinkingConfig.thinkingBudget = Math.trunc(Number(thinkingBudget));
+  const normalizedThinkingLevel = String(thinkingLevel || '').trim().toLowerCase();
+  if (normalizedThinkingLevel) thinkingConfig.thinkingLevel = normalizedThinkingLevel;
+  if (Object.keys(thinkingConfig).length > 0) {
+    thinkingConfig.includeThoughts = false;
+    requestBody.generationConfig.thinkingConfig = thinkingConfig;
+  }
+  try {
+    const gate = getGeminiGlobalGate();
+    const startedAt = Date.now();
+    let upstreamStartedAt = startedAt;
+    const totalTimeoutMs = Math.max(
+      1,
+      Number(timeoutBudget.queue_timeout_ms || 0) + Number(timeoutBudget.upstream_timeout_ms || 0),
+    );
+    const gatePromise = gate.withGate(route, async () => {
+      upstreamStartedAt = Date.now();
+      return await withTimeout(
+        fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-goog-api-key': apiKey,
+          },
+          body: JSON.stringify(requestBody),
+        }),
+        timeoutBudget.upstream_timeout_ms,
+        'GEMINI_UPSTREAM_TIMEOUT',
+      );
+    });
+    let response;
+    try {
+      response = await withTimeout(gatePromise, totalTimeoutMs, 'GEMINI_TOTAL_TIMEOUT');
+    } catch (err) {
+      if (String(err?.code || '').trim().toUpperCase() === 'GEMINI_TOTAL_TIMEOUT') {
+        const now = Date.now();
+        const timedOutUpstream = upstreamStartedAt > startedAt;
+        err.code = timedOutUpstream ? 'GEMINI_UPSTREAM_TIMEOUT' : 'GEMINI_QUEUE_TIMEOUT';
+        err.timeout_stage = timedOutUpstream ? 'upstream' : 'queue';
+        err.meta = {
+          gate_wait_ms: timedOutUpstream ? Math.max(0, upstreamStartedAt - startedAt) : Math.max(0, now - startedAt),
+          upstream_ms: timedOutUpstream ? Math.max(0, now - upstreamStartedAt) : 0,
+          total_ms: Math.max(0, now - startedAt),
+        };
+      }
+      throw err;
+    }
+    const finishedAt = Date.now();
+    const totalMs = Math.max(0, finishedAt - startedAt);
+    const upstreamMs = Math.max(0, finishedAt - upstreamStartedAt);
+    const gateWaitMs = Math.max(0, totalMs - upstreamMs);
+    const responseBody = await response.json().catch(() => null);
+    if (!response.ok) {
+      const detailMessage =
+        pickFirstTrimmed(
+          responseBody?.error?.message,
+          responseBody?.error?.status,
+          response.statusText,
+        ) || `status=${response.status}`;
+      const failedMeta = normalizeQaTimeoutMeta(
+        {
+          gate_wait_ms: gateWaitMs,
+          upstream_ms: upstreamMs,
+          total_ms: totalMs,
+        },
+        {
+          route,
+          model: resolvedModel,
+          promptBytes,
+          schemaBytes,
+          maxOutputTokens: effectiveMaxOutputTokens,
+          resultReason: 'gemini_http_error',
+          detail: detailMessage,
+        },
+      );
+      if (shouldTrackQaRoute(route)) recordQaRouteObservability(failedMeta);
+      return {
+        ok: false,
+        reason: 'gemini_http_error',
+        detail: detailMessage,
+        raw_text: responseBody ? JSON.stringify(responseBody) : null,
+        finish_reason: null,
+        parse_status: null,
+        timeout_stage: null,
+        meta: failedMeta,
+        gate_wait_ms: failedMeta.gate_wait_ms,
+        upstream_ms: failedMeta.upstream_ms,
+        total_ms: failedMeta.total_ms,
+        schema_sanitized: Boolean(sanitizedSchema),
+        provider: 'gemini',
+        requested_model: requestedModel,
+        effective_model: resolvedModel,
+        selection_source: 'local_gemini_rest_direct',
+      };
+    }
+    const finishReason = extractGeminiFinishReason(responseBody);
+    const qaMeta = normalizeQaTimeoutMeta(
+      {
+        gate_wait_ms: gateWaitMs,
+        upstream_ms: upstreamMs,
+        total_ms: totalMs,
+      },
+      {
+        route,
+        model: resolvedModel,
+        promptBytes,
+        schemaBytes,
+        maxOutputTokens: effectiveMaxOutputTokens,
+        resultReason: finishReason === 'MAX_TOKENS' ? 'gemini_json_max_tokens' : 'ok',
+      },
+    );
+    const text = await extractTextFromGeminiResponse(responseBody);
+    const parsedResult = parseGeminiJsonPayload(text, sanitizedSchema);
+    const parsed = parsedResult.parsed;
+    if (!parsed || typeof parsed !== 'object') {
+      const invalidReason = parsedResult.parse_status === 'parse_truncated' || finishReason === 'MAX_TOKENS'
+        ? 'PARSE_TRUNCATED_JSON'
+        : 'gemini_json_invalid';
+      const invalidMeta = {
+        ...qaMeta,
+        result_reason: invalidReason,
+        detail: finishReason ? `finish_reason=${finishReason}` : null,
+      };
+      if (shouldTrackQaRoute(route)) recordQaRouteObservability(invalidMeta);
+      return {
+        ok: false,
+        reason: invalidReason,
+        detail: finishReason ? `finish_reason=${finishReason}` : null,
+        raw_text: parsedResult.raw_text || (typeof text === 'string' ? text : null),
+        finish_reason: finishReason,
+        parse_status: parsedResult.parse_status,
+        timeout_stage: null,
+        meta: invalidMeta,
+        gate_wait_ms: invalidMeta.gate_wait_ms,
+        upstream_ms: invalidMeta.upstream_ms,
+        total_ms: invalidMeta.total_ms,
+        schema_sanitized: Boolean(sanitizedSchema),
+        provider: 'gemini',
+        requested_model: requestedModel,
+        effective_model: resolvedModel,
+        selection_source: 'local_gemini_rest_direct',
+      };
+    }
+    if (shouldTrackQaRoute(route)) recordQaRouteObservability(qaMeta);
+    return {
+      ok: true,
+      json: parsed,
+      finish_reason: finishReason,
+      parse_status: parsedResult.parse_status,
+      timeout_stage: null,
+      meta: qaMeta,
+      gate_wait_ms: qaMeta.gate_wait_ms,
+      upstream_ms: qaMeta.upstream_ms,
+      total_ms: qaMeta.total_ms,
+      schema_sanitized: Boolean(sanitizedSchema),
+      provider: 'gemini',
+      requested_model: requestedModel,
+      effective_model: resolvedModel,
+      selection_source: 'local_gemini_rest_direct',
+    };
+  } catch (err) {
+    const classified = buildGeminiJsonTimeoutResult(err, 'gemini_error');
+    const failedMeta = normalizeQaTimeoutMeta(
+      err && err.meta && typeof err.meta === 'object' ? err.meta : {},
+      {
+        route,
+        model: resolvedModel,
+        promptBytes,
+        schemaBytes,
+        maxOutputTokens: effectiveMaxOutputTokens,
+        resultReason: classified.reason,
+        timeoutStage: classified.timeout_stage,
+        detail: classified.detail,
+      },
+    );
+    if (shouldTrackQaRoute(route)) recordQaRouteObservability(failedMeta);
+    return {
+      ok: false,
+      reason: classified.reason,
+      detail: classified.detail,
+      raw_text: null,
+      finish_reason: null,
+      parse_status: null,
+      timeout_stage: classified.timeout_stage,
+      meta: failedMeta,
+      gate_wait_ms: failedMeta.gate_wait_ms,
+      upstream_ms: failedMeta.upstream_ms,
+      total_ms: failedMeta.total_ms,
+      schema_sanitized: Boolean(sanitizedSchema),
+      provider: 'gemini',
+      requested_model: requestedModel,
+      effective_model: resolvedModel,
+      selection_source: 'local_gemini_rest_direct',
+    };
+  }
+}
+
 async function callOpenAiJsonObject({
   model,
   systemPrompt,
@@ -21268,18 +21675,8 @@ async function callGeminiJsonObject({
   upstreamTimeoutMs = 0,
   ignoreForceModel = false,
   thinkingBudget = undefined,
+  thinkingLevel = undefined,
 } = {}) {
-  const gemini = getGeminiClient();
-  if (!gemini || !gemini.client) {
-    return {
-      ok: false,
-      reason: gemini && gemini.init_error ? String(gemini.init_error) : 'gemini_client_unavailable',
-      provider: 'gemini',
-      requested_model: String(model || ANALYSIS_STORY_MODEL_GEMINI).trim() || ANALYSIS_STORY_MODEL_GEMINI,
-      effective_model: String(model || ANALYSIS_STORY_MODEL_GEMINI).trim() || ANALYSIS_STORY_MODEL_GEMINI,
-      selection_source: 'local_gemini_direct',
-    };
-  }
   const requestedModel = String(model || ANALYSIS_STORY_MODEL_GEMINI).trim() || ANALYSIS_STORY_MODEL_GEMINI;
   const resolvedModel =
     ignoreForceModel === true
@@ -21287,15 +21684,44 @@ async function callGeminiJsonObject({
       : AURORA_DIAG_FORCE_GEMINI
         ? AURORA_DIAG_FORCE_GEMINI_MODEL
         : requestedModel;
-  const systemText = String(systemPrompt || 'Return strict JSON only.').trim();
-  const userText = String(userPrompt || '').trim();
-  const promptText = `${systemText}\n\n${userText}`;
   const requestedSchema =
     responseSchema && typeof responseSchema === 'object'
       ? responseSchema
       : responseJsonSchema && typeof responseJsonSchema === 'object'
         ? responseJsonSchema
         : null;
+  const normalizedThinkingLevel = String(thinkingLevel || '').trim().toLowerCase();
+  if (normalizedThinkingLevel) {
+    return callGeminiJsonObjectViaRest({
+      resolvedModel,
+      requestedModel,
+      systemPrompt,
+      userPrompt,
+      timeoutMs,
+      temperature,
+      maxOutputTokens,
+      responseSchema: requestedSchema,
+      route,
+      queueTimeoutMs,
+      upstreamTimeoutMs,
+      thinkingBudget,
+      thinkingLevel: normalizedThinkingLevel,
+    });
+  }
+  const gemini = getGeminiClient();
+  if (!gemini || !gemini.client) {
+    return {
+      ok: false,
+      reason: gemini && gemini.init_error ? String(gemini.init_error) : 'gemini_client_unavailable',
+      provider: 'gemini',
+      requested_model: requestedModel,
+      effective_model: resolvedModel,
+      selection_source: 'local_gemini_direct',
+    };
+  }
+  const systemText = String(systemPrompt || 'Return strict JSON only.').trim();
+  const userText = String(userPrompt || '').trim();
+  const promptText = `${systemText}\n\n${userText}`;
   const sanitizedSchema =
     requestedSchema && typeof requestedSchema === 'object' ? sanitizeGeminiJsonSchema(requestedSchema) : null;
   const effectiveMaxOutputTokens =
@@ -29217,6 +29643,37 @@ function normalizeRecoveredSummaryText(value, { maxLen = 320 } = {}) {
   return text.slice(0, maxLen);
 }
 
+function normalizeRecoveredRecoAssistantText(value, { maxLen = 520 } = {}) {
+  const text = String(value || '')
+    .replace(/\\n/g, ' ')
+    .replace(/\\"/g, '"')
+    .replace(/\\t/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[}",\]]+$/g, '')
+    .trim();
+  if (!text) return null;
+  return text.slice(0, maxLen);
+}
+
+function recoverRecoAssistantRewriteTextFromRaw(rawText) {
+  const raw = String(rawText || '').trim();
+  if (!raw) return null;
+  const extracted =
+    extractJsonObjectByKeys(unwrapCodeFence(raw), ['assistant_text']) ||
+    parseJsonOnlyObject(unwrapCodeFence(raw));
+  const extractedText = normalizeRecoveredRecoAssistantText(extracted && extracted.assistant_text);
+  if (extractedText) return extractedText;
+  const stripped = raw
+    .replace(/^Here is the JSON requested:\s*/i, '')
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .trim();
+  const openEndedMatch = stripped.match(/"assistant_text"\s*:\s*"([\s\S]{1,1200})$/i);
+  if (!openEndedMatch || !openEndedMatch[1]) return null;
+  return normalizeRecoveredRecoAssistantText(openEndedMatch[1]);
+}
+
 function recoverReturningSummaryTextFromRaw(rawText, { language } = {}) {
   const raw = String(rawText || '').trim();
   if (!raw) return null;
@@ -29248,6 +29705,7 @@ async function callStructuredSummaryJson({
   timeoutMs,
   maxOutputTokens,
   route,
+  thinkingLevel,
 } = {}) {
   const provider = resolveStructuredSummaryProvider(llmProvider);
   const effectiveModel =
@@ -29295,6 +29753,7 @@ async function callStructuredSummaryJson({
     maxOutputTokens,
     responseSchema,
     route,
+    thinkingLevel,
   });
   if (!result || result.ok !== true || !result.json || typeof result.json !== 'object') {
     return {
@@ -47945,6 +48404,45 @@ function hasRecoCanonicalAuthority(payload) {
   );
 }
 
+function isBeautyMainlineLocalHandoffRecoPayload(payload) {
+  const payloadObj = isPlainObject(payload) ? payload : {};
+  const meta = isPlainObject(payloadObj.recommendation_meta) ? payloadObj.recommendation_meta : {};
+  const payloadMeta = isPlainObject(payloadObj.metadata) ? payloadObj.metadata : {};
+  const decisionOwner = pickFirstTrimmed(
+    payloadObj.decision_owner,
+    meta.decision_owner,
+    payloadMeta.decision_owner,
+  );
+  const semanticOwner = pickFirstTrimmed(
+    payloadObj.semantic_owner,
+    meta.semantic_owner,
+    payloadMeta.semantic_owner,
+  );
+  const resolvedContract = pickFirstTrimmed(
+    meta.resolved_contract,
+    payloadMeta.resolved_contract,
+    meta.contract_bridge?.resolved_contract,
+    payloadMeta.contract_bridge?.resolved_contract,
+  );
+  const querySource = pickFirstTrimmed(
+    payloadObj.query_source,
+    meta.query_source,
+    payloadMeta.query_source,
+  );
+  const sourceMode = inferRecoSourceMode(
+    pickFirstTrimmed(meta.source_mode, payloadMeta.source_mode),
+    pickFirstTrimmed(payloadObj.source, meta.source, payloadMeta.source),
+    { defaultValue: '' },
+  );
+  return (
+    querySource === 'beauty_mainline_local_handoff' &&
+    decisionOwner === BEAUTY_DISCOVERY_MAINLINE_OWNER &&
+    semanticOwner === BEAUTY_DISCOVERY_MAINLINE_OWNER &&
+    (!resolvedContract || resolvedContract === 'agent_v1_search_beauty_mainline') &&
+    (sourceMode === 'framework_mainline' || sourceMode === 'step_aware_mainline')
+  );
+}
+
 function buildRecoFinalSelectionContract({
   payload,
   fallbackSelection = null,
@@ -48414,7 +48912,31 @@ const RECO_ASSISTANT_REWRITE_JSON_SCHEMA = {
   },
 };
 
-function buildRecoAssistantRewritePrompt({ payload, language, profile, baseText } = {}) {
+function inferRecoAssistantRequestMode(userRequestText) {
+  const raw = String(userRequestText || '').trim().toLowerCase();
+  if (!raw) return 'generic';
+  if (
+    /\b(use\s+first|start\s+with|first\s+step|what\s+should\s+i\s+start\s+with)\b/i.test(raw)
+    || /(先用什么|先从什么开始|先上什么|先用哪个|先开始用什么)/i.test(raw)
+  ) {
+    return 'use_first';
+  }
+  if (
+    /\b(what\s+should\s+i\s+buy|which\s+product\s+should\s+i\s+buy|what\s+should\s+i\s+get|purchase|buy)\b/i.test(raw)
+    || /(买什么|买哪个|购买|入手|下单|推荐买)/i.test(raw)
+  ) {
+    return 'buy';
+  }
+  if (
+    /\b(what\s+should\s+i\s+use|what\s+products\s+should\s+i\s+use|should\s+i\s+use|use)\b/i.test(raw)
+    || /(用什么|该用什么|应该用什么|推荐用)/i.test(raw)
+  ) {
+    return 'use';
+  }
+  return 'generic';
+}
+
+function buildRecoAssistantRewritePrompt({ payload, language, profile, userRequestText } = {}) {
   const lang = language === 'CN' ? 'CN' : 'EN';
   const names = pickRecoNames(payload, 3);
   const { primaryTarget, secondaryTargets, selectionShiftReason } = pickRecoMetaTargets(payload);
@@ -48479,21 +49001,113 @@ function buildRecoAssistantRewritePrompt({ payload, language, profile, baseText 
         'medium',
       ),
     ).trim().toLowerCase(),
-    base_text: String(baseText || '').trim(),
+    user_request: pickFirstTrimmed(
+      userRequestText,
+      payload?.recommendation_meta?.request_text,
+      payload?.request_text,
+    ) || null,
+    request_mode: inferRecoAssistantRequestMode(
+      pickFirstTrimmed(
+        userRequestText,
+        payload?.recommendation_meta?.request_text,
+        payload?.request_text,
+      ),
+    ),
     primary_focus: normalizeRecoContextPrimaryFocus(payload?.recommendation_meta?.primary_focus),
     target_label: primaryTargetLabel || null,
+    selected_target_ids: Array.isArray(payload?.recommendation_meta?.selected_target_ids)
+      ? payload.recommendation_meta.selected_target_ids
+          .map((value) => String(value || '').trim())
+          .filter(Boolean)
+          .slice(0, 4)
+      : [],
+    ranked_target_ids: Array.isArray(payload?.recommendation_meta?.ranked_targets)
+      ? payload.recommendation_meta.ranked_targets
+          .map((target) => pickFirstTrimmed(target && target.target_id))
+          .filter(Boolean)
+          .slice(0, 4)
+      : [],
   };
   return [
     'Return strict JSON only.',
-    'Rewrite the recommendation explanation so it is natural, specific, concise, and aligned to the final payload.',
+    'Write one recommendation assistant message that is natural, specific, concise, and aligned to the final payload.',
+    'Address the user_request directly and respond to the user\'s real complaint first.',
+    'If request_mode is "buy", use shopping advice tone.',
+    'If request_mode is "use_first", use starting-point advice tone.',
+    'If request_mode is "use", use practical product guidance tone.',
     'Only mention targets, ingredients, steps, and product names that already exist in Context.',
+    'Do not invent products, targets, routines, claims, or benefits beyond Context.',
     'If there is one selected product, keep a single main direction.',
     'If secondary targets exist, mention them briefly and explicitly as secondary.',
     'If confidence_level is low, keep the wording conservative and non-definitive.',
     'Do not mention "Direction 1/2/3", generic shopping filler, or any product not in selected_products.',
+    'Do not use internal phrases or internal framing such as "Primary recommendation focus" or "Products actually selected this time".',
     'Schema: { "assistant_text": string }',
     `Context: ${JSON.stringify(context)}`,
   ].join('\n');
+}
+
+function resolveRecoAssistantRewriteThinkingLevel({ llmProvider, llmModel } = {}) {
+  const provider = resolveStructuredSummaryProvider(llmProvider);
+  if (provider !== 'gemini') return null;
+  const normalizedModel = String(
+    llmModel || AURORA_DIAG_FORCE_GEMINI_MODEL || ANALYSIS_STORY_MODEL_GEMINI || '',
+  ).trim().toLowerCase();
+  if (!normalizedModel.includes('gemini-3')) return null;
+  return AURORA_RECO_ASSISTANT_REWRITE_GEMINI_THINKING_LEVEL;
+}
+
+function validateRecoAssistantRewriteCandidate({
+  candidateText,
+  payload,
+  language,
+  primaryTarget,
+  secondaryTargets,
+  names,
+} = {}) {
+  const text = String(candidateText || '').trim();
+  if (!text) return { ok: false, reason: 'empty_rewrite' };
+  const primaryTargetLabel = pickFirstTrimmed(
+    primaryTarget && primaryTarget.ingredient_query,
+    primaryTarget && primaryTarget.ingredient_id,
+    humanizeRecoProductType(
+      pickFirstTrimmed(primaryTarget && primaryTarget.resolved_target_step, payload?.recommendation_meta?.resolved_target_step, 'other'),
+      language === 'CN' ? 'CN' : 'EN',
+    ),
+  );
+  const confidenceLevel = String(
+    pickFirstTrimmed(
+      payload?.recommendation_confidence_level,
+      payload?.recommendation_meta?.recommendation_confidence_level,
+      payload?.recommendation_meta?.resolved_target_step_confidence,
+      'medium',
+    ),
+  ).trim().toLowerCase();
+  const mentionsSelectedProduct = assistantTextMentionsAny(text, names);
+  const mentionsPrimaryTarget = !primaryTargetLabel || assistantTextMentionsAny(text, [
+    primaryTargetLabel,
+    pickFirstTrimmed(primaryTarget && primaryTarget.resolved_target_step),
+  ]);
+  const mentionsUnknownDirections = /(direction\s*[123]|方向\s*[123])/i.test(text);
+  const usesInternalTemplatePhrases =
+    looksLikePayloadBoundRecoAssistantText(text, language)
+    || /(primary recommendation focus|products actually selected this time|当前主推荐方向|本次实际选中的商品)/i.test(text);
+  const overconfident = confidenceLevel === 'low' && assistantTextUsesOverconfidentRecoLanguage(text);
+  const secondaryTargetsMentionedAsTooMany =
+    secondaryTargets.length <= 1
+      ? false
+      : secondaryTargets.length > 2;
+  if (
+    !mentionsSelectedProduct
+    || !mentionsPrimaryTarget
+    || mentionsUnknownDirections
+    || usesInternalTemplatePhrases
+    || overconfident
+    || secondaryTargetsMentionedAsTooMany
+  ) {
+    return { ok: false, reason: 'rewrite_failed_alignment_guard' };
+  }
+  return { ok: true, reason: null };
 }
 
 async function maybeRewriteRecoAssistantTextWithLlm({
@@ -48501,11 +49115,11 @@ async function maybeRewriteRecoAssistantTextWithLlm({
   language,
   profile,
   baseText,
+  userRequestText,
   allowLockedSelectionRewrite = false,
   deadlineAtMs = 0,
 } = {}) {
   const fallbackText = String(baseText || '').trim();
-  if (!fallbackText) return { text: '', llm_used: false, reason: 'empty_base_text' };
   if (extractRecoFinalSelectionContract(payload)?.selection_signature && allowLockedSelectionRewrite !== true) {
     return { text: fallbackText, llm_used: false, reason: 'selection_contract_locked' };
   }
@@ -48519,8 +49133,9 @@ async function maybeRewriteRecoAssistantTextWithLlm({
   if (!names.length || !primaryTarget) return { text: fallbackText, llm_used: false, reason: 'missing_primary_payload' };
 
   try {
-    const remainingBudgetMs = Number.isFinite(Number(deadlineAtMs))
-      ? Math.max(0, Math.trunc(Number(deadlineAtMs) - Date.now()))
+    const normalizedDeadlineAtMs = Number(deadlineAtMs);
+    const remainingBudgetMs = Number.isFinite(normalizedDeadlineAtMs) && normalizedDeadlineAtMs > 0
+      ? Math.max(0, Math.trunc(normalizedDeadlineAtMs - Date.now()))
       : null;
     if (Number.isFinite(remainingBudgetMs) && remainingBudgetMs <= 250) {
       return { text: fallbackText, llm_used: false, reason: 'rewrite_budget_exhausted' };
@@ -48531,6 +49146,10 @@ async function maybeRewriteRecoAssistantTextWithLlm({
         Math.min(AURORA_RECO_ASSISTANT_REWRITE_TIMEOUT_MS, Math.trunc(remainingBudgetMs)),
       )
       : AURORA_RECO_ASSISTANT_REWRITE_TIMEOUT_MS;
+    const rewriteThinkingLevel = resolveRecoAssistantRewriteThinkingLevel({
+      llmProvider: AURORA_PRODUCT_INTEL_LLM_PROVIDER,
+      llmModel: AURORA_PRODUCT_INTEL_LLM_MODEL,
+    });
     const result = await callStructuredSummaryJson({
       llmProvider: AURORA_PRODUCT_INTEL_LLM_PROVIDER,
       llmModel: AURORA_PRODUCT_INTEL_LLM_MODEL,
@@ -48539,53 +49158,43 @@ async function maybeRewriteRecoAssistantTextWithLlm({
         payload,
         language,
         profile,
-        baseText: fallbackText,
+        userRequestText,
       }),
       responseSchema: RECO_ASSISTANT_REWRITE_JSON_SCHEMA,
       timeoutMs: effectiveRewriteTimeoutMs,
       maxOutputTokens: AURORA_RECO_ASSISTANT_REWRITE_MAX_OUTPUT_TOKENS,
       route: 'aurora_reco_assistant_rewrite',
+      thinkingLevel: rewriteThinkingLevel,
     });
-    const candidateText = String(result && result.json && result.json.assistant_text || '').trim();
+    let candidateText = String(result && result.json && result.json.assistant_text || '').trim();
+    let parseStatus = result && result.parse_status ? String(result.parse_status).trim() : null;
+    if (!candidateText && typeof result?.raw_text === 'string') {
+      const recoveredText = recoverRecoAssistantRewriteTextFromRaw(result.raw_text);
+      if (recoveredText) {
+        candidateText = recoveredText;
+        parseStatus = parseStatus ? `recovered_${parseStatus}` : 'recovered_raw_text';
+      }
+    }
     if (!candidateText) {
       return { text: fallbackText, llm_used: false, reason: result && result.failure_reason ? result.failure_reason : 'empty_rewrite' };
     }
-    const primaryTargetLabel = pickFirstTrimmed(
-      primaryTarget && primaryTarget.ingredient_query,
-      primaryTarget && primaryTarget.ingredient_id,
-      humanizeRecoProductType(
-        pickFirstTrimmed(primaryTarget && primaryTarget.resolved_target_step, payload?.recommendation_meta?.resolved_target_step, 'other'),
-        language === 'CN' ? 'CN' : 'EN',
-      ),
-    );
-    const confidenceLevel = String(
-      pickFirstTrimmed(
-        payload?.recommendation_confidence_level,
-        payload?.recommendation_meta?.recommendation_confidence_level,
-        payload?.recommendation_meta?.resolved_target_step_confidence,
-        'medium',
-      ),
-    ).trim().toLowerCase();
-    const mentionsSelectedProduct = assistantTextMentionsAny(candidateText, names);
-    const mentionsPrimaryTarget = !primaryTargetLabel || assistantTextMentionsAny(candidateText, [
-      primaryTargetLabel,
-      pickFirstTrimmed(primaryTarget && primaryTarget.resolved_target_step),
-    ]);
-    const mentionsUnknownDirections = /(direction\s*[123]|方向\s*[123])/i.test(candidateText);
-    const overconfident = confidenceLevel === 'low' && assistantTextUsesOverconfidentRecoLanguage(candidateText);
-    const secondaryTargetsMentionedAsTooMany =
-      secondaryTargets.length <= 1
-      ? false
-      : secondaryTargets.length > 2;
-    if (!mentionsSelectedProduct || !mentionsPrimaryTarget || mentionsUnknownDirections || overconfident || secondaryTargetsMentionedAsTooMany) {
-      return { text: fallbackText, llm_used: false, reason: 'rewrite_failed_alignment_guard' };
+    const validation = validateRecoAssistantRewriteCandidate({
+      candidateText,
+      payload,
+      language,
+      primaryTarget,
+      secondaryTargets,
+      names,
+    });
+    if (!validation.ok) {
+      return { text: fallbackText, llm_used: false, reason: validation.reason };
     }
     return {
       text: candidateText,
       llm_used: true,
       provider: result.provider || null,
       model: result.model || null,
-      parse_status: result.parse_status || null,
+      parse_status: parseStatus,
       reason: null,
     };
   } catch (err) {
@@ -48840,6 +49449,19 @@ function buildBeautyCanonicalOwnershipAudit({ envelope, route = '', assistantTex
   const routineSurfacePresent = hasRoutineAnalysisSurface(cards);
   const photoSurfacePresent = Boolean(photoModulesCard);
   const hasRecommendations = Array.isArray(recoPayload && recoPayload.recommendations) && recoPayload.recommendations.length > 0;
+  const assistantTextTrimmed = String(assistantText || '').trim();
+  const auditLanguage = (() => {
+    const raw = String(
+      pickFirstTrimmed(
+        envelope && envelope.language,
+        sessionPatch.language,
+        sessionMeta.language,
+        sessionMeta.lang,
+        'EN',
+      ) || 'EN',
+    ).trim().toUpperCase();
+    return raw === 'CN' || raw === 'ZH' || raw === 'ZH-CN' || raw === 'ZH_HANS' ? 'CN' : 'EN';
+  })();
   const selectedProducts = pickRecoNames(recoPayload || {}, 3);
   const primaryTargetLabel = pickFirstTrimmed(
     recoPrimaryTarget && recoPrimaryTarget.ingredient_query,
@@ -48955,11 +49577,30 @@ function buildBeautyCanonicalOwnershipAudit({ envelope, route = '', assistantTex
       || (Boolean(recoPayload || confidenceNoticeCard) && !payloadTargetBundlePresent)
     )
   );
+  const isBeautyMainlineLocalHandoff = isBeautyMainlineLocalHandoffRecoPayload(recoPayload);
+  const assistantMissingAllowed = Boolean(
+    isBeautyMainlineLocalHandoff &&
+    hasRecommendations &&
+    !assistantTextTrimmed,
+  );
+  const assistantMentionsSelectedProducts =
+    selectedProducts.length > 0 && assistantTextMentionsAny(assistantText, selectedProducts);
+  const assistantMentionsPrimaryTarget =
+    Boolean(primaryTargetLabel) && assistantTextMentionsAny(assistantText, [primaryTargetLabel]);
   const assistantPayloadMismatch = Boolean(
     hasRecommendations &&
+    !assistantMissingAllowed &&
     (
-      (selectedProducts.length > 0 && !assistantTextMentionsAny(assistantText, selectedProducts))
-      || (primaryTargetLabel && !assistantTextMentionsAny(assistantText, [primaryTargetLabel]))
+      isBeautyMainlineLocalHandoff
+        ? (
+          selectedProducts.length > 0
+            ? !assistantMentionsSelectedProducts
+            : Boolean(primaryTargetLabel && !assistantMentionsPrimaryTarget)
+        )
+        : (
+          (selectedProducts.length > 0 && !assistantMentionsSelectedProducts)
+          || (primaryTargetLabel && !assistantMentionsPrimaryTarget)
+        )
     )
   );
   const cardConflictSameTurn = Boolean(
@@ -49017,7 +49658,25 @@ function buildBeautyCanonicalOwnershipAudit({ envelope, route = '', assistantTex
       recommendation_primary_target: recoPrimaryTarget,
       latest_reco_primary_target: contextPrimaryTarget,
       ingredient_plan_primary_target: ingredientPlanTarget,
-      assistant_copy_strategy: hasRecommendations ? 'payload_bound' : shouldUseFrameworkRecoAssistantCopy(recoPayload) ? 'framework_summary' : confidenceNoticeReason ? 'fallback_notice' : 'none',
+      assistant_copy_strategy: hasRecommendations
+        ? (
+          isBeautyMainlineLocalHandoff
+            ? (
+              !assistantTextTrimmed
+                ? 'card_only'
+                : recommendationMeta.assistant_rewrite_llm_used === true
+                  ? 'llm_rewrite'
+                  : looksLikePayloadBoundRecoAssistantText(assistantTextTrimmed, auditLanguage)
+                    ? 'payload_bound'
+                    : 'assistant_visible'
+            )
+            : 'payload_bound'
+        )
+        : shouldUseFrameworkRecoAssistantCopy(recoPayload)
+          ? 'framework_summary'
+          : confidenceNoticeReason
+            ? 'fallback_notice'
+            : 'none',
       photo_focus: photoFocus,
       story_focus: {
         headline: storySignal.headline,
@@ -49170,9 +49829,15 @@ function applyBeautyCanonicalOwnershipToEnvelope({ envelope, route = '', assista
         ? out.assistant_message.content
         : assistantText;
     const selectionContract = extractRecoFinalSelectionContract(recoPayload);
-    const shouldRebuildForSelectionContract = Boolean(recoPayload && selectionContract);
+    const shouldPreserveBeautyMainlineAssistantSurface = isBeautyMainlineLocalHandoffRecoPayload(recoPayload);
+    const shouldRebuildForSelectionContract = Boolean(
+      recoPayload &&
+      selectionContract &&
+      !shouldPreserveBeautyMainlineAssistantSurface,
+    );
     if (
       recoPayload &&
+      !shouldPreserveBeautyMainlineAssistantSurface &&
       (
         shouldRebuildForSelectionContract
         || (
@@ -81834,6 +82499,7 @@ const __internal = {
   applyRecoContentSpineToPayload,
   buildRouteAwareAssistantText,
   buildPayloadBoundRecoAssistantText,
+  buildRecoAssistantRewritePrompt,
   maybeRewriteRecoAssistantTextWithLlm,
   isSkincareCategory,
   isBlacklistedCategoryOrTitle,

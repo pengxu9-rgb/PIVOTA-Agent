@@ -248,7 +248,6 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
     mergeIngredientRecoContextValue,
     appendLatestRecoContextToSessionPatch,
     extractRecoFinalSelectionContract,
-    buildRouteAwareAssistantText,
     maybeRewriteRecoAssistantTextWithLlm,
     makeAssistantMessage,
     buildEnvelope,
@@ -343,6 +342,11 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
       selectorMs: 0,
       rewriteMs: 0,
     };
+    const rewriteReserveMs = Math.max(
+      3000,
+      Math.min(4000, Math.trunc(hardPathBudget.budgetMs * 0.25)),
+    );
+    const handoffDeadlineAtMs = hardPathBudget.deadlineAtMs - rewriteReserveMs;
     const plannerReserveMs = Math.max(
       3000,
       Number.isFinite(Number(RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS))
@@ -479,7 +483,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
         targetContext: effectivePlannerTargetContext,
         fallbackFocus: hardPathRecoFocusForMainline,
         profileSummary,
-        deadlineAtMs: hardPathBudget.deadlineAtMs,
+        deadlineAtMs: handoffDeadlineAtMs,
         debug: debugUpstream,
         timeoutMs: RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
         minTimeoutMs: RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
@@ -534,7 +538,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
         typeof hardPathSelectorSemanticPlan === 'object' &&
         !Array.isArray(hardPathSelectorSemanticPlan) &&
         hardPathRecommendations.length > 1 &&
-        hardPathBudget.getRemainingMs(1200) > 350
+        hardPathBudget.getRemainingMs(rewriteReserveMs + 1200) > 350
       ) {
         const selectorStartedAtMs = Date.now();
         const selectorOut = await runConcernSelectorRace({
@@ -543,7 +547,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
           requestText: pickFirstTrimmed(recoRequestMessage, message),
           semanticPlan: hardPathSelectorSemanticPlan,
           recommendations: hardPathRecommendations,
-          deadlineAtMs: hardPathBudget.deadlineAtMs - 1200,
+          deadlineAtMs: handoffDeadlineAtMs - 1200,
         });
         hardPathSelectorTrace = {
           ...(selectorOut?.trace && typeof selectorOut.trace === 'object' ? selectorOut.trace : {}),
@@ -666,16 +670,6 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
             updated_at_ms: Date.now(),
           }),
         );
-        const baseAssistantText =
-          buildRouteAwareAssistantText({
-            route: 'reco',
-            payload: hardPathPayloadBundle.payload,
-            language: ctx?.lang,
-            profile: assistantProfile,
-          }) ||
-          (ctx?.lang === 'CN'
-            ? '我已经把这轮候选收成结构化推荐卡片。'
-            : 'I summarized this pass into structured recommendation cards.');
         const assistantRewrite =
           typeof maybeRewriteRecoAssistantTextWithLlm === 'function'
             ? await (async () => {
@@ -685,7 +679,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
                   payload: hardPathPayloadBundle.payload,
                   language: ctx?.lang,
                   profile: assistantProfile,
-                  baseText: baseAssistantText,
+                  userRequestText: pickFirstTrimmed(recoRequestMessage, message),
                   allowLockedSelectionRewrite: true,
                   deadlineAtMs: hardPathBudget.deadlineAtMs,
                 });
@@ -693,8 +687,11 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
                 hardPathTiming.rewriteMs = elapsedBeautyChatStageMs(rewriteStartedAtMs);
               }
             })()
-            : { text: baseAssistantText, llm_used: false, reason: 'rewrite_unavailable' };
-        const assistantText = pickFirstTrimmed(assistantRewrite?.text, baseAssistantText);
+            : { text: '', llm_used: false, reason: 'rewrite_unavailable' };
+        const assistantText =
+          assistantRewrite?.llm_used === true
+            ? pickFirstTrimmed(assistantRewrite?.text)
+            : '';
         if (isPlainObject(hardPathPayloadBundle.payload?.recommendation_meta)) {
           hardPathPayloadBundle.payload.recommendation_meta.assistant_rewrite_llm_used =
             assistantRewrite?.llm_used === true;
@@ -726,7 +723,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
           }),
         );
         const envelope = buildEnvelope(ctx, {
-          assistant_message: makeAssistantMessage(assistantText),
+          assistant_message: assistantText ? makeAssistantMessage(assistantText) : null,
           suggested_chips: [],
           cards: [
             {

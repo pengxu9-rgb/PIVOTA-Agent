@@ -104,7 +104,7 @@ const ChatCardsResponseSchema = z
     assistant_text: z.string(),
     mainline_status: z.string().min(1).optional(),
     context_warning: z.record(z.string(), z.any()).optional(),
-    assistant_message: AssistantMessageSchema.optional(),
+    assistant_message: AssistantMessageSchema.nullable().optional(),
     cards: z.array(ChatCardSchema).max(4),
     follow_up_questions: z.array(FollowUpQuestionSchema).max(3),
     suggested_quick_replies: z.array(QuickReplySchema).max(8),

@@ -11,6 +11,255 @@ function loadRouteInternals() {
   return { moduleId, __internal };
 }
 
+test('reco assistant rewrite prompt omits deterministic base text and carries request mode', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'oily_pick_1',
+            display_name: 'GoalSkin Oil Control Serum',
+            brand: 'GoalSkin',
+            category: 'Serum',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'treatment',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Niacinamide',
+        resolved_target_step: 'treatment',
+        primary_target_id: 'oil_control_treatment',
+        ranked_targets: [
+          {
+            target_id: 'oil_control_treatment',
+            ingredient_query: 'Niacinamide',
+            resolved_target_step: 'treatment',
+          },
+        ],
+        selected_target_ids: ['oil_control_treatment'],
+      },
+    );
+    const prompt = __internal.buildRecoAssistantRewritePrompt({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily', goals: ['oil control'] },
+      userRequestText: 'I am oily skin. What product should I buy?',
+      baseText: 'Primary recommendation focus: keep this pass centered on Niacinamide.',
+    });
+
+    assert.match(prompt, /"request_mode":"buy"/);
+    assert.match(prompt, /"user_request":"I am oily skin\. What product should I buy\?"/);
+    assert.match(prompt, /If request_mode is "buy", use shopping advice tone\./);
+    assert.match(prompt, /If request_mode is "use_first", use starting-point advice tone\./);
+    assert.doesNotMatch(prompt, /"base_text":/);
+    assert.doesNotMatch(
+      prompt,
+      /Primary recommendation focus: keep this pass centered on Niacinamide\./,
+    );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('reco assistant rewrite helper no longer requires base text before availability checks', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'oily_pick_1',
+            display_name: 'GoalSkin Oil Control Serum',
+            brand: 'GoalSkin',
+            category: 'Serum',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'treatment',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Niacinamide',
+        resolved_target_step: 'treatment',
+        primary_target_id: 'oil_control_treatment',
+        ranked_targets: [
+          {
+            target_id: 'oil_control_treatment',
+            ingredient_query: 'Niacinamide',
+            resolved_target_step: 'treatment',
+          },
+        ],
+        selected_target_ids: ['oil_control_treatment'],
+      },
+    );
+    const rewrite = await __internal.maybeRewriteRecoAssistantTextWithLlm({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily', goals: ['oil control'] },
+      userRequestText: 'What product should I use first?',
+      allowLockedSelectionRewrite: true,
+    });
+
+    assert.equal(rewrite.llm_used, false);
+    assert.equal(rewrite.reason, 'rewrite_disabled');
+    assert.equal(rewrite.text, '');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('reco assistant rewrite uses minimal thinking for gemini 3 structured output', async () => {
+  const prevMock = process.env.AURORA_BFF_USE_MOCK;
+  const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+  const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+  process.env.AURORA_BFF_USE_MOCK = 'false';
+  process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = 'gemini';
+  process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = 'gemini-3-flash-preview';
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'oily_pick_1',
+            display_name: 'GoalSkin Oil Control Serum',
+            brand: 'GoalSkin',
+            category: 'Serum',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'treatment',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Oil-control treatment',
+        resolved_target_step: 'treatment',
+        primary_target_id: 'oil_control_treatment',
+        ranked_targets: [
+          {
+            target_id: 'oil_control_treatment',
+            ingredient_query: 'Oil-control treatment',
+            resolved_target_step: 'treatment',
+          },
+        ],
+        selected_target_ids: ['oil_control_treatment'],
+      },
+    );
+    let capturedArgs = null;
+    __internal.__setCallGeminiJsonObjectForTest(async (args = {}) => {
+      capturedArgs = args;
+      return {
+        ok: true,
+        json: {
+          assistant_text: 'For oily skin, buy GoalSkin GoalSkin Oil Control Serum first as your oil-control treatment.',
+        },
+        parse_status: 'parsed',
+        provider: 'gemini',
+        effective_model: args.model,
+      };
+    });
+
+    const rewrite = await __internal.maybeRewriteRecoAssistantTextWithLlm({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily', goals: ['oil control'] },
+      userRequestText: 'What product should I buy?',
+      allowLockedSelectionRewrite: true,
+    });
+
+    assert.equal(capturedArgs?.thinkingLevel, 'minimal');
+    assert.equal(rewrite.llm_used, true);
+    assert.match(String(rewrite.text || ''), /GoalSkin GoalSkin Oil Control Serum/);
+  } finally {
+    __internal.__resetCallGeminiJsonObjectForTest();
+    if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
+    else process.env.AURORA_BFF_USE_MOCK = prevMock;
+    if (prevProvider === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = prevProvider;
+    if (prevModel === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = prevModel;
+    delete require.cache[moduleId];
+  }
+});
+
+test('reco assistant rewrite recovers truncated raw json when assistant_text is recoverable', async () => {
+  const prevMock = process.env.AURORA_BFF_USE_MOCK;
+  const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+  const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+  process.env.AURORA_BFF_USE_MOCK = 'false';
+  process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = 'gemini';
+  process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = 'gemini-3-flash-preview';
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'oily_pick_1',
+            display_name: 'GoalSkin Oil Control Serum',
+            brand: 'GoalSkin',
+            category: 'Serum',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'treatment',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Oil-control treatment',
+        resolved_target_step: 'treatment',
+        primary_target_id: 'oil_control_treatment',
+        ranked_targets: [
+          {
+            target_id: 'oil_control_treatment',
+            ingredient_query: 'Oil-control treatment',
+            resolved_target_step: 'treatment',
+          },
+        ],
+        selected_target_ids: ['oil_control_treatment'],
+      },
+    );
+    __internal.__setCallGeminiJsonObjectForTest(async () => ({
+      ok: false,
+      reason: 'PARSE_TRUNCATED_JSON',
+      raw_text:
+        'Here is the JSON requested:\n{"assistant_text":"For oily skin, buy GoalSkin GoalSkin Oil Control Serum first as your oil-control treatment to keep shine in check',
+      parse_status: 'parse_truncated',
+      provider: 'gemini',
+      effective_model: 'gemini-3-flash-preview',
+    }));
+
+    const rewrite = await __internal.maybeRewriteRecoAssistantTextWithLlm({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily', goals: ['oil control'] },
+      userRequestText: 'What product should I buy?',
+      allowLockedSelectionRewrite: true,
+    });
+
+    assert.equal(rewrite.llm_used, true);
+    assert.equal(rewrite.reason, null);
+    assert.equal(rewrite.parse_status, 'recovered_parse_truncated');
+    assert.match(String(rewrite.text || ''), /GoalSkin GoalSkin Oil Control Serum/);
+  } finally {
+    __internal.__resetCallGeminiJsonObjectForTest();
+    if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
+    else process.env.AURORA_BFF_USE_MOCK = prevMock;
+    if (prevProvider === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = prevProvider;
+    if (prevModel === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = prevModel;
+    delete require.cache[moduleId];
+  }
+});
+
 test('beauty canonical ownership recomputes final selection from surfaced recommendations', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
@@ -106,6 +355,156 @@ test('beauty canonical ownership recomputes final selection from surfaced recomm
     );
     assert.match(String(out.assistant_message.content || ''), /Niacinamide|Winona/i);
     assert.doesNotMatch(String(out.assistant_message.content || ''), /Brush/i);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('beauty canonical ownership keeps beauty mainline reco card-only when assistant rewrite fails', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        query_source: 'beauty_mainline_local_handoff',
+        decision_owner: 'shopping_agent_beauty_mainline',
+        semantic_owner: 'shopping_agent_beauty_mainline',
+        recommendations: [
+          {
+            product_id: '9886499864904',
+            display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+            category: 'Serum',
+            matched_role_id: 'oil_control_treatment',
+          },
+        ],
+        recommendation_meta: {
+          source_mode: 'framework_mainline',
+          resolved_contract: 'agent_v1_search_beauty_mainline',
+          mainline_status: 'grounded_success',
+          assistant_rewrite_llm_used: false,
+          assistant_rewrite_reason: 'PARSE_TRUNCATED_JSON',
+        },
+        metadata: {
+          resolved_contract: 'agent_v1_search_beauty_mainline',
+        },
+      },
+      {
+        primary_target_id: 'oil_control_treatment',
+        ranked_targets: [
+          {
+            target_id: 'oil_control_treatment',
+            ingredient_query: 'Oil-control treatment',
+            resolved_target_step: 'treatment',
+          },
+        ],
+        selected_target_ids: ['oil_control_treatment'],
+      },
+    );
+
+    const out = __internal.applyBeautyCanonicalOwnershipToEnvelope({
+      envelope: {
+        assistant_message: null,
+        cards: [
+          {
+            card_id: 'reco_test',
+            type: 'recommendations',
+            payload,
+          },
+        ],
+        session_patch: {
+          state: {
+            latest_reco_context: {
+              primary_target_id: 'oil_control_treatment',
+              ranked_targets: [
+                {
+                  target_id: 'oil_control_treatment',
+                  ingredient_query: 'Oil-control treatment',
+                  resolved_target_step: 'treatment',
+                },
+              ],
+              selected_target_ids: ['oil_control_treatment'],
+            },
+          },
+        },
+      },
+      route: 'chat',
+      assistantText: '',
+      profile: { skinType: 'oily', goals: ['oil control'] },
+    });
+
+    assert.equal(out.assistant_message, null);
+    assert.equal(out.meta?.canonical_ownership?.audit?.assistant_copy_strategy, 'card_only');
+    assert.equal(out.meta?.canonical_ownership?.drift?.assistant_payload_mismatch, false);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('beauty canonical ownership preserves successful beauty mainline rewrite text', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        query_source: 'beauty_mainline_local_handoff',
+        decision_owner: 'shopping_agent_beauty_mainline',
+        semantic_owner: 'shopping_agent_beauty_mainline',
+        recommendations: [
+          {
+            product_id: '9886499864904',
+            display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+            category: 'Serum',
+            matched_role_id: 'oil_control_treatment',
+          },
+        ],
+        recommendation_meta: {
+          source_mode: 'framework_mainline',
+          resolved_contract: 'agent_v1_search_beauty_mainline',
+          mainline_status: 'grounded_success',
+          assistant_rewrite_llm_used: true,
+          assistant_rewrite_reason: 'ok',
+        },
+        metadata: {
+          resolved_contract: 'agent_v1_search_beauty_mainline',
+        },
+      },
+      {
+        primary_target_id: 'oil_control_treatment',
+        ranked_targets: [
+          {
+            target_id: 'oil_control_treatment',
+            ingredient_query: 'Oil-control treatment',
+            resolved_target_step: 'treatment',
+          },
+        ],
+        selected_target_ids: ['oil_control_treatment'],
+      },
+    );
+    const assistantText =
+      'For oily skin, buy The Ordinary Niacinamide 10% + Zinc 1% first. Start with one serum and keep the rest of your routine stable.';
+
+    const out = __internal.applyBeautyCanonicalOwnershipToEnvelope({
+      envelope: {
+        assistant_message: {
+          role: 'assistant',
+          content: assistantText,
+          format: 'text',
+        },
+        cards: [
+          {
+            card_id: 'reco_test',
+            type: 'recommendations',
+            payload,
+          },
+        ],
+      },
+      route: 'chat',
+      assistantText,
+      profile: { skinType: 'oily', goals: ['oil control'] },
+    });
+
+    assert.equal(out.assistant_message?.content, assistantText);
+    assert.equal(out.meta?.canonical_ownership?.audit?.assistant_copy_strategy, 'llm_rewrite');
+    assert.equal(out.meta?.canonical_ownership?.drift?.assistant_payload_mismatch, false);
+    assert.doesNotMatch(String(out.assistant_message?.content || ''), /Primary recommendation focus|Products actually selected this time/i);
   } finally {
     delete require.cache[moduleId];
   }

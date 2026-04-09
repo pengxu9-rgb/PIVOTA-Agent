@@ -82,3 +82,82 @@ test('auroraGeminiGlobalClient exports callAuroraGeminiGenerateContentWithMeta w
     else delete require.cache[clientModuleId];
   }
 });
+
+test('auroraGeminiGlobalClient classifies gate stalls as queue timeouts when total timeout is exhausted', async () => {
+  const clientModuleId = require.resolve('../src/auroraBff/auroraGeminiGlobalClient');
+  const keyModuleId = require.resolve('../src/auroraBff/auroraGeminiKeys');
+  const gateModuleId = require.resolve('../src/lib/geminiGlobalGate');
+  const originalKeyModule = require.cache[keyModuleId];
+  const originalGateModule = require.cache[gateModuleId];
+  const originalClientModule = require.cache[clientModuleId];
+  const originalLoad = Module._load;
+
+  require.cache[keyModuleId] = {
+    id: keyModuleId,
+    filename: keyModuleId,
+    loaded: true,
+    exports: {
+      resolveAuroraGeminiKey() {
+        return 'test-gemini-key';
+      },
+    },
+  };
+  require.cache[gateModuleId] = {
+    id: gateModuleId,
+    filename: gateModuleId,
+    loaded: true,
+    exports: {
+      getGeminiGlobalGate() {
+        return {
+          withGate: async () => await new Promise(() => {}),
+          getApiKey: () => 'test-gemini-key',
+          snapshot: () => ({ gate: { keyCount: 1 } }),
+        };
+      },
+    },
+  };
+  Module._load = function patchedLoad(request, parent, isMain) {
+    if (request === '@google/genai') {
+      return {
+        GoogleGenAI: class MockGoogleGenAI {
+          constructor() {
+            this.models = {
+              generateContent: async () => ({ ok: true }),
+            };
+          }
+        },
+      };
+    }
+    return originalLoad.call(this, request, parent, isMain);
+  };
+
+  delete require.cache[clientModuleId];
+
+  try {
+    const geminiClient = require(clientModuleId);
+    await assert.rejects(
+      async () => {
+        await geminiClient.callAuroraGeminiGenerateContentWithMeta({
+          featureEnvVar: 'AURORA_VISION_GEMINI_API_KEY',
+          route: 'aurora_test_queue_timeout',
+          request: { model: 'gemini-test-model' },
+          upstreamTimeoutMs: 25,
+        });
+      },
+      (error) => {
+        assert.equal(error?.code, 'GEMINI_QUEUE_TIMEOUT');
+        assert.equal(error?.timeout_stage, 'queue');
+        assert.equal(Number.isFinite(error?.meta?.total_ms), true);
+        return true;
+      },
+    );
+  } finally {
+    Module._load = originalLoad;
+    if (originalKeyModule) require.cache[keyModuleId] = originalKeyModule;
+    else delete require.cache[keyModuleId];
+    if (originalGateModule) require.cache[gateModuleId] = originalGateModule;
+    else delete require.cache[gateModuleId];
+    if (originalClientModule) require.cache[clientModuleId] = originalClientModule;
+    else delete require.cache[clientModuleId];
+  }
+});

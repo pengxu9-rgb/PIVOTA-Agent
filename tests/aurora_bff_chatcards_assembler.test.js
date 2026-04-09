@@ -297,4 +297,39 @@ describe('chatCardsAssembler safety mapping', () => {
       brand: 'Winona',
     });
   });
+
+  test('beauty mainline reco card-only responses preserve null assistant text instead of generic filler', () => {
+    const out = buildChatCardsResponse({
+      envelope: makeEnvelope({
+        assistant_message: null,
+        cards: [
+          {
+            type: 'recommendations',
+            card_id: 'reco_card_only_test',
+            payload: {
+              query_source: 'beauty_mainline_local_handoff',
+              decision_owner: 'shopping_agent_beauty_mainline',
+              semantic_owner: 'shopping_agent_beauty_mainline',
+              recommendation_meta: {
+                source_mode: 'framework_mainline',
+                assistant_rewrite_llm_used: false,
+                assistant_rewrite_reason: 'GEMINI_JSON_TIMEOUT',
+              },
+              recommendations: [
+                {
+                  product_id: '9886499864904',
+                  display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+                },
+              ],
+            },
+          },
+        ],
+      }),
+      ctx: makeCtx(),
+      intent: 'reco_products',
+    });
+
+    expect(out.assistant_text).toBe('');
+    expect(out.assistant_message).toBeNull();
+  });
 });

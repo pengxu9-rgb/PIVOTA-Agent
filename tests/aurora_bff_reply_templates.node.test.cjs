@@ -167,6 +167,43 @@ test('replyTemplates: recommendations enforce RECO_RESULTS with actionable next-
   assert.ok(actionChips.length >= 2);
 });
 
+test('replyTemplates: beauty mainline reco keeps assistant null while preserving reco state and chips', () => {
+  const envelope = makeEnvelope({
+    cards: [
+      {
+        card_id: 'reco_mainline_1',
+        type: 'recommendations',
+        payload: {
+          query_source: 'beauty_mainline_local_handoff',
+          decision_owner: 'shopping_agent_beauty_mainline',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+          recommendations_count: 1,
+          recommendations: [
+            {
+              offer: { affiliate_url: 'https://example.com/buy' },
+              display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+            },
+          ],
+          recommendation_meta: {
+            source_mode: 'framework_mainline',
+          },
+        },
+      },
+    ],
+    session_patch: {
+      next_state: 'S7_PRODUCT_RECO',
+    },
+  });
+
+  const out = applyReplyTemplates({ envelope, ctx: { lang: 'EN' } });
+  const chips = Array.isArray(out?.suggested_chips) ? out.suggested_chips : [];
+  const actionChips = chips.filter((chip) => chip && chip.kind === 'action');
+
+  assert.equal(out?.assistant_message, null);
+  assert.equal(out?.session_patch?.next_state, 'RECO_RESULTS');
+  assert.ok(actionChips.length >= 2);
+});
+
 test('replyTemplates: empty recommendations card does not select recommendations template', () => {
   const envelope = makeEnvelope({
     assistant_message: { role: 'assistant', format: 'text', content: 'Fallback guidance.' },

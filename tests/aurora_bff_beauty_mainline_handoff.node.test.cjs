@@ -404,6 +404,192 @@ test('handoffRecoToBeautyMainlineSearch skips duplicate external-seed-only level
   }
 });
 
+test('handoffRecoToBeautyMainlineSearch rescues local framework strict-empty via proxy search', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const localCalls = [];
+    const proxyCalls = [];
+    __internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async (args) => {
+        localCalls.push({
+          query: String(args?.query || ''),
+          callerLane: String(args?.callerLane || ''),
+        });
+        return {
+          ok: true,
+          products: [],
+          attempted_internal_paths: ['/agent/internal/products/search'],
+          transport_hops: [],
+          transport_hop_count: 0,
+          nested_orchestrator_hops: 0,
+          primary_transport_owner: 'internal_products_search_primitive',
+          primary_endpoint_kind: 'internal_primitive',
+        };
+      },
+      searchPivotaBackendProducts: async (args) => {
+        proxyCalls.push({
+          query: String(args?.query || ''),
+          allowExternalSeed: args?.allowExternalSeed === true,
+          externalSeedStrategy: String(args?.externalSeedStrategy || ''),
+        });
+        return {
+          ok: true,
+          products: [
+            {
+              product_id: 'niacinamide_1',
+              merchant_id: 'merchant_proxy',
+              title: 'The Ordinary Niacinamide 10% + Zinc 1%',
+              display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+              category: 'Serum',
+              product_type: 'treatment',
+              candidate_step: 'treatment',
+              retrieval_source: 'external_seed',
+              canonical_pdp_url: 'https://example.com/products/niacinamide-1',
+            },
+          ],
+          decision_owner: 'shopping_agent_beauty_mainline',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+          query_source: 'agent_products_search',
+          final_selection: {
+            selection_owner: 'shopping_agent_beauty_mainline',
+            selected_product_ids: ['niacinamide_1'],
+            selected_titles: ['The Ordinary Niacinamide 10% + Zinc 1%'],
+            selection_signature: 'sel_proxy_niacinamide_1',
+            mainline_status: 'grounded_success',
+          },
+          search_stage_ledger: {
+            final_selection: {
+              selection_owner: 'shopping_agent_beauty_mainline',
+              selected_product_ids: ['niacinamide_1'],
+              selected_titles: ['The Ordinary Niacinamide 10% + Zinc 1%'],
+              selection_signature: 'sel_proxy_niacinamide_1',
+              mainline_status: 'grounded_success',
+            },
+          },
+          source_breakdown: {
+            source_tier_counts: { fresh_external: 1 },
+            top_candidate_provenance: { source_owner: 'external_seed' },
+          },
+          metadata: {
+            final_decision: 'products_returned',
+            search_stage_ledger: {
+              final_selection: {
+                selection_owner: 'shopping_agent_beauty_mainline',
+                selected_product_ids: ['niacinamide_1'],
+                selected_titles: ['The Ordinary Niacinamide 10% + Zinc 1%'],
+                selection_signature: 'sel_proxy_niacinamide_1',
+                mainline_status: 'grounded_success',
+              },
+            },
+          },
+        };
+      },
+    });
+
+    const out = await __internal.handoffRecoToBeautyMainlineSearch({
+      ctx: { lang: 'EN', request_id: 'req_proxy_rescue_after_local_empty' },
+      primaryQuery: 'what products should i use for oily skin?',
+      fallbackMessage: 'what products should i use for oily skin?',
+      targetContext: resolveRecommendationTargetContext({
+        text: 'what products should i use for oily skin?',
+        focus: '',
+        entryType: 'chat',
+      }),
+      timeoutMs: 5000,
+      minTimeoutMs: 5000,
+      deadlineAtMs: Date.now() + 15000,
+    });
+
+    assert.equal(localCalls.length > 0, true);
+    assert.equal(proxyCalls.length, 1);
+    assert.equal(proxyCalls[0]?.query, 'what products should i use for oily skin?');
+    assert.equal(proxyCalls[0]?.allowExternalSeed, true);
+    assert.equal(proxyCalls[0]?.externalSeedStrategy, 'unified_relevance');
+    assert.deepEqual(
+      out.recommendations.map((item) => item.display_name),
+      ['The Ordinary Niacinamide 10% + Zinc 1%'],
+    );
+    assert.equal(out.searchResult?.query_source, 'agent_products_search');
+    assert.equal(
+      out.searchResult?.metadata?.local_handoff_preflight?.query_source,
+      'beauty_mainline_local_handoff',
+    );
+    assert.equal(
+      out.searchResult?.metadata?.local_handoff_preflight?.final_decision,
+      'strict_empty',
+    );
+    assert.equal(
+      out.searchResult?.metadata?.local_handoff_preflight?.reason,
+      'empty',
+    );
+    assert.equal(
+      out.searchResult?.metadata?.local_handoff_preflight?.search_stage_ledger?.local_handoff?.planned_level_count,
+      6,
+    );
+    assert.equal(
+      out.searchResult?.metadata?.local_handoff_preflight?.search_stage_ledger?.local_handoff?.executed_level_count,
+      3,
+    );
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+    delete require.cache[moduleId];
+  }
+});
+
+test('handoffRecoToBeautyMainlineSearch preserves local empty result when proxy rescue fails', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const localCalls = [];
+    let proxyAttempts = 0;
+    __internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async (args) => {
+        localCalls.push({
+          query: String(args?.query || ''),
+          callerLane: String(args?.callerLane || ''),
+        });
+        return {
+          ok: true,
+          products: [],
+          attempted_internal_paths: ['/agent/internal/products/search'],
+          transport_hops: [],
+          transport_hop_count: 0,
+          nested_orchestrator_hops: 0,
+          primary_transport_owner: 'internal_products_search_primitive',
+          primary_endpoint_kind: 'internal_primitive',
+        };
+      },
+      searchPivotaBackendProducts: async () => {
+        proxyAttempts += 1;
+        throw new Error('proxy rescue failed');
+      },
+    });
+
+    const out = await __internal.handoffRecoToBeautyMainlineSearch({
+      ctx: { lang: 'EN', request_id: 'req_proxy_rescue_fails_preserve_local' },
+      primaryQuery: 'what products should i use for oily skin?',
+      fallbackMessage: 'what products should i use for oily skin?',
+      targetContext: resolveRecommendationTargetContext({
+        text: 'what products should i use for oily skin?',
+        focus: '',
+        entryType: 'chat',
+      }),
+      timeoutMs: 5000,
+      minTimeoutMs: 5000,
+      deadlineAtMs: Date.now() + 15000,
+    });
+
+    assert.equal(localCalls.length > 0, true);
+    assert.equal(proxyAttempts, 1);
+    assert.deepEqual(out.recommendations, []);
+    assert.equal(out.searchResult?.query_source, 'beauty_mainline_local_handoff');
+    assert.equal(out.searchResult?.metadata?.final_decision, 'strict_empty');
+    assert.equal(out.searchResult?.reason, 'empty');
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+    delete require.cache[moduleId];
+  }
+});
+
 test('handoffRecoToBeautyMainlineSearch builds reco rows from canonical final selection instead of raw mixed products', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
@@ -617,6 +803,8 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
     plannerDeadlineAtMs: null,
     handoffDeadlineAtMs: null,
     rewriteDeadlineAtMs: null,
+    rewriteBaseText: 'unset',
+    rewriteUserRequestText: null,
   };
   const runtime = createBeautyChatMainlineEntryRuntime({
     RECO_CATALOG_GROUNDED_ENABLED: true,
@@ -766,9 +954,11 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
         },
       };
     },
-    maybeRewriteRecoAssistantTextWithLlm: async ({ deadlineAtMs, baseText }) => {
+    maybeRewriteRecoAssistantTextWithLlm: async ({ deadlineAtMs, baseText, userRequestText }) => {
       observed.rewriteDeadlineAtMs = deadlineAtMs;
-      return { text: baseText, llm_used: false, reason: 'test_passthrough' };
+      observed.rewriteBaseText = baseText;
+      observed.rewriteUserRequestText = userRequestText;
+      return { text: '', llm_used: false, reason: 'test_passthrough' };
     },
     classifyBeautyMainlineHandoffFallback: () => ({
       reason: 'unreachable',
@@ -829,7 +1019,175 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
   assert.equal(Number.isFinite(observed.handoffDeadlineAtMs), true);
   assert.equal(Number.isFinite(observed.rewriteDeadlineAtMs), true);
   assert.ok(observed.handoffDeadlineAtMs >= observed.plannerDeadlineAtMs);
-  assert.equal(observed.rewriteDeadlineAtMs, observed.handoffDeadlineAtMs);
+  assert.ok(observed.rewriteDeadlineAtMs > observed.handoffDeadlineAtMs);
+  assert.equal(observed.rewriteBaseText, undefined);
+  assert.equal(observed.rewriteUserRequestText, 'im oily skin, what products should i use?');
+  assert.equal(result?.envelope?.assistant_message, null);
+  assert.equal(payload?.recommendation_meta?.assistant_rewrite_llm_used, false);
+  assert.equal(payload?.recommendation_meta?.assistant_rewrite_reason, 'test_passthrough');
+});
+
+test('beauty chat mainline entry returns only llm rewrite prose on successful rewrite', async () => {
+  const observed = {
+    rewriteBaseText: 'unset',
+    rewriteUserRequestText: null,
+  };
+  const runtime = createBeautyChatMainlineEntryRuntime({
+    RECO_CATALOG_GROUNDED_ENABLED: true,
+    RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS: 1000,
+    resolveRecommendationTargetContext: () => ({
+      entry_type: 'chat',
+      intent_mode: 'generic_concern',
+      step_aware_intent: false,
+      resolved_target_step: null,
+      primary_role_id: 'oil_control_treatment',
+      framework_roles: [
+        {
+          role_id: 'oil_control_treatment',
+          rank: 1,
+          preferred_step: 'treatment',
+          label: 'Oil-control treatment',
+        },
+      ],
+    }),
+    summarizeProfileForContext: (profile) => profile,
+    mergeIngredientRecoContextValue: (left, right) => ({ ...(left || {}), ...(right || {}) }),
+    appendLatestRecoContextToSessionPatch: (sessionPatch, recoContext) => {
+      sessionPatch.latest_reco_context = recoContext;
+    },
+    extractRecoFinalSelectionContract: () => ({
+      selection_owner: 'shopping_agent_beauty_mainline',
+    }),
+    makeAssistantMessage: (content) => ({ role: 'assistant', format: 'text', content }),
+    buildEnvelope: (_ctx, envelope) => envelope,
+    makeEvent: (_ctx, kind, data) => ({ kind, data }),
+    applyRecoContractToRecoRequestedEvents: (events) => ({ events }),
+    buildRecoRequestedEventData: ({ payload, source }) => ({ payload, source }),
+    normalizeRecoSourceDetail: (value) => value,
+    stateChangeAllowed: () => false,
+    handoffRecoToBeautyMainlineSearch: async (args) => ({
+      targetContext: args.targetContext,
+      recommendations: [
+        {
+          product_id: 'oily_pick_1',
+          display_name: 'GoalSkin Oil Control Serum',
+          matched_role_id: 'oil_control_treatment',
+        },
+      ],
+      searchResult: {
+        decision_owner: 'shopping_agent_beauty_mainline',
+        semantic_owner: 'shopping_agent_beauty_mainline',
+        metadata: {
+          contract_bridge: {
+            resolved_contract: 'agent_v1_search_beauty_mainline',
+          },
+          source_breakdown: {
+            source_tier_counts: { fresh_external: 1 },
+          },
+          search_stage_ledger: {
+            final_selection: {
+              selection_owner: 'shopping_agent_beauty_mainline',
+              selected_product_ids: ['oily_pick_1'],
+              selected_titles: ['GoalSkin Oil Control Serum'],
+              selection_signature: 'search_sel_oily_pick_1',
+              mainline_status: 'grounded_success',
+              source_tier_counts: { fresh_external: 1 },
+            },
+          },
+        },
+      },
+    }),
+    buildRecoPayloadFromBeautyMainlineHandoff: ({ basePayload }) => ({
+      payload: {
+        source: 'catalog_grounded_v1',
+        mainline_status: 'grounded_success',
+        recommendations: [
+          {
+            product_id: 'oily_pick_1',
+            display_name: 'GoalSkin Oil Control Serum',
+            matched_role_id: 'oil_control_treatment',
+          },
+        ],
+        recommendation_meta: {
+          ...(basePayload?.recommendation_meta || {}),
+          primary_target_id: 'oil_control_treatment',
+          ranked_targets: [
+            {
+              target_id: 'oil_control_treatment',
+              ingredient_query: 'Niacinamide',
+              resolved_target_step: 'treatment',
+            },
+          ],
+          selected_target_ids: ['oil_control_treatment'],
+        },
+        metadata: {},
+      },
+      contract: {
+        version: 'test_contract',
+      },
+    }),
+    maybeRewriteRecoAssistantTextWithLlm: async ({ baseText, userRequestText }) => {
+      observed.rewriteBaseText = baseText;
+      observed.rewriteUserRequestText = userRequestText;
+      return {
+        text: 'Start with GoalSkin Oil Control Serum for oil control, then keep the rest of your routine stable for 1-2 weeks.',
+        llm_used: true,
+        provider: 'test_provider',
+        model: 'test_model',
+        reason: null,
+      };
+    },
+    classifyBeautyMainlineHandoffFallback: () => ({
+      reason: 'unreachable',
+    }),
+    buildBeautyMainlineHandoffFallbackEnvelope: () => ({
+      cards: [],
+    }),
+    looksLikeRecommendationRequest: () => true,
+    sendChatEnvelope: async () => null,
+  });
+
+  const result = await runtime.maybeHandleBeautyOwnedChatReco({
+    ctx: {
+      request_id: 'req_llm_only_rewrite',
+      trace_id: 'trace_llm_only_rewrite',
+      lang: 'EN',
+      trigger_source: 'chat',
+    },
+    logger: null,
+    message: 'i am oily skin, what product should i use first?',
+    recoEntrySourceDetail: 'typed_reco',
+    profile: {
+      skinType: 'oily',
+      sensitivity: 'low',
+      barrierStatus: 'stable',
+      goals: ['oil control'],
+    },
+  });
+
+  assert.equal(result?.handled, true);
+  assert.equal(observed.rewriteBaseText, undefined);
+  assert.equal(observed.rewriteUserRequestText, 'i am oily skin, what product should i use first?');
+  assert.equal(
+    result?.envelope?.assistant_message?.content,
+    'Start with GoalSkin Oil Control Serum for oil control, then keep the rest of your routine stable for 1-2 weeks.',
+  );
+  assert.doesNotMatch(
+    String(result?.envelope?.assistant_message?.content || ''),
+    /Primary recommendation focus:|Products actually selected this time:/i,
+  );
+  assert.equal(
+    result?.envelope?.cards?.[0]?.payload?.recommendation_meta?.assistant_rewrite_llm_used,
+    true,
+  );
+  assert.equal(
+    result?.envelope?.cards?.[0]?.payload?.recommendation_meta?.assistant_rewrite_provider,
+    'test_provider',
+  );
+  assert.equal(
+    result?.envelope?.cards?.[0]?.payload?.recommendation_meta?.assistant_rewrite_model,
+    'test_model',
+  );
 });
 
 test('beauty chat mainline entry falls back to deterministic generic-concern target context when planner is untrusted', async () => {

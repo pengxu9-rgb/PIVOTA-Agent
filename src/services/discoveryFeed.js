@@ -5084,6 +5084,242 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
   };
 }
 
+const SHOPPING_CARD_CONTRACT_VERSION = 'pivota.shopping_card.v1';
+
+function discoveryCardString(value) {
+  if (typeof value === 'string') return value.trim();
+  if (value == null) return '';
+  return String(value).trim();
+}
+
+function firstDiscoveryCardString(...values) {
+  for (const value of values) {
+    const text = discoveryCardString(value);
+    if (text) return text;
+  }
+  return '';
+}
+
+function discoveryCardArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function formatDiscoveryCompactCount(count) {
+  if (!Number.isFinite(count) || count <= 0) return '0';
+  if (count >= 1000000) return `${(count / 1000000).toFixed(count >= 10000000 ? 0 : 1)}m`;
+  if (count >= 1000) return `${(count / 1000).toFixed(count >= 10000 ? 0 : 1)}k`;
+  return String(Math.round(count));
+}
+
+function formatDiscoveryTitleCase(value) {
+  return discoveryCardString(value)
+    .split(/\s+/)
+    .map((token) => {
+      if (!token) return token;
+      return token.charAt(0).toUpperCase() + token.slice(1);
+    })
+    .join(' ');
+}
+
+function formatDiscoveryCategoryLabel(value) {
+  return discoveryCardString(value)
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
+function normalizeDiscoveryReviewSummary(value) {
+  const source = value && typeof value === 'object' ? value : {};
+  const scale = Number(source.scale || source.rating_scale || 5) || 5;
+  const rawRating =
+    Number(source.rating || source.average_rating || source.avg_rating || source.value || 0) || 0;
+  const normalizedRating =
+    rawRating > 0 ? Math.min(5, scale === 5 ? rawRating : (rawRating / scale) * 5) : null;
+  const reviewCount =
+    Number(source.review_count || source.reviewCount || source.count || source.total_reviews || 0) || 0;
+  if (!normalizedRating && !reviewCount) return null;
+  return {
+    rating: normalizedRating,
+    review_count: reviewCount,
+  };
+}
+
+function buildDiscoveryReviewBadge(reviewSummary) {
+  const review = normalizeDiscoveryReviewSummary(reviewSummary);
+  if (!review) return null;
+  if (Number(review.rating || 0) < 4.5 || Number(review.review_count || 0) < 100) return null;
+  return {
+    badge_type: 'review_signal',
+    badge_label: `${review.rating.toFixed(1)}★ (${formatDiscoveryCompactCount(review.review_count)})`,
+  };
+}
+
+function normalizeDiscoveryBadgeLabel(value) {
+  return discoveryCardString(value)
+    .split(/\s+/)
+    .map((token) => {
+      if (!token) return token;
+      if (/^[A-Z0-9]+$/.test(token)) return token;
+      return token.charAt(0).toUpperCase() + token.slice(1);
+    })
+    .join(' ');
+}
+
+function normalizeDiscoveryMarketSignalBadges(value) {
+  const seen = new Set();
+  const out = [];
+  for (const item of discoveryCardArray(value)) {
+    const row = item && typeof item === 'object' ? item : null;
+    const label = firstDiscoveryCardString(row?.badge_label, row?.label, item);
+    if (!label) continue;
+    const badge = {
+      badge_type: discoveryCardString(row?.badge_type || row?.type),
+      badge_label: label,
+    };
+    const key = `${badge.badge_type}::${badge.badge_label}`.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(badge);
+  }
+  return out;
+}
+
+function readDiscoveryConfiguredBadge(raw) {
+  const attributes = raw?.attributes && typeof raw.attributes === 'object' ? raw.attributes : null;
+  const merchandising =
+    raw?.raw_detail?.merchandising && typeof raw.raw_detail.merchandising === 'object'
+      ? raw.raw_detail.merchandising
+      : null;
+  const label = firstDiscoveryCardString(
+    raw?.card_badge,
+    raw?.badge,
+    raw?.editorial_badge,
+    attributes?.card_badge,
+    attributes?.card_label,
+    attributes?.badge,
+    attributes?.editorial_badge,
+    merchandising?.card_badge,
+    merchandising?.card_label,
+    merchandising?.badge,
+    merchandising?.editorial_badge,
+  );
+  if (!label) return null;
+  return {
+    badge_type: 'configured_badge',
+    badge_label: label,
+  };
+}
+
+function readDiscoveryBadgeFromTags(tags) {
+  for (const rawTag of discoveryCardArray(tags)) {
+    const tag = discoveryCardString(rawTag);
+    if (!tag) continue;
+    const match = tag.match(/^(editorial|media|award|creator)\s*:\s*(.+)$/i);
+    if (!match) continue;
+    const type = `${String(match[1]).toLowerCase()}_signal`;
+    const label = normalizeDiscoveryBadgeLabel(match[2] || '');
+    if (!label) continue;
+    return {
+      badge_type: type,
+      badge_label: label,
+    };
+  }
+  return null;
+}
+
+function buildDiscoveryMarketSignalBadges(raw, candidate) {
+  const explicit = normalizeDiscoveryMarketSignalBadges(
+    raw?.market_signal_badges ||
+      raw?.marketSignalBadges ||
+      raw?.shopping_card?.market_signal_badges ||
+      raw?.shoppingCard?.marketSignalBadges,
+  );
+  if (explicit.length) return explicit;
+
+  const synthetic = [];
+  const reviewBadge = buildDiscoveryReviewBadge(raw?.review_summary);
+  if (reviewBadge) synthetic.push(reviewBadge);
+  const configuredBadge = readDiscoveryConfiguredBadge(raw);
+  if (configuredBadge) synthetic.push(configuredBadge);
+  const taggedBadge = readDiscoveryBadgeFromTags(raw?.tags || candidate?.raw?.tags);
+  if (taggedBadge) synthetic.push(taggedBadge);
+  return normalizeDiscoveryMarketSignalBadges(synthetic);
+}
+
+function buildDiscoveryCardSubtitle(raw, candidate) {
+  const explicit = firstDiscoveryCardString(
+    raw?.card_subtitle,
+    raw?.search_card?.compact_candidate,
+    raw?.searchCard?.compact_candidate,
+    raw?.search_card_compact_candidate,
+    raw?.shopping_card?.subtitle,
+    raw?.shoppingCard?.subtitle,
+  );
+  if (explicit) return explicit;
+
+  const category = firstDiscoveryCardString(
+    raw?.product_type,
+    raw?.productType,
+    raw?.category,
+    raw?.department,
+    candidate?.category,
+    candidate?.parentCategory,
+  );
+  if (!category) return '';
+  const formatted = formatDiscoveryCategoryLabel(category);
+  if (!formatted || /^General$/i.test(formatted)) return '';
+  return formatted.slice(0, 48);
+}
+
+function buildDiscoveryCardPayload(raw, candidate) {
+  const marketSignalBadges = buildDiscoveryMarketSignalBadges(raw, candidate);
+  const title = firstDiscoveryCardString(
+    raw?.card_title,
+    raw?.search_card?.title_candidate,
+    raw?.searchCard?.title_candidate,
+    raw?.search_card_title_candidate,
+    raw?.shopping_card?.title,
+    raw?.shoppingCard?.title,
+    raw?.title,
+    raw?.name,
+    candidate?.productId,
+  );
+  const subtitle = buildDiscoveryCardSubtitle(raw, candidate);
+  const proofBadge = firstDiscoveryCardString(
+    raw?.card_badge,
+    raw?.search_card?.proof_badge_candidate,
+    raw?.searchCard?.proof_badge_candidate,
+    raw?.search_card_proof_badge_candidate,
+    raw?.shopping_card?.proof_badge,
+    raw?.shoppingCard?.proof_badge,
+    marketSignalBadges[0]?.badge_label,
+  );
+  const intro = firstDiscoveryCardString(
+    raw?.card_intro,
+    raw?.search_card?.intro_candidate,
+    raw?.searchCard?.intro_candidate,
+    raw?.search_card_intro_candidate,
+    raw?.shopping_card?.intro,
+    raw?.shoppingCard?.intro,
+  );
+  const evidenceProfile = firstDiscoveryCardString(
+    raw?.evidence_profile,
+    raw?.product_intel?.evidence_profile,
+    raw?.productIntel?.evidence_profile,
+  );
+
+  return {
+    contract_version: SHOPPING_CARD_CONTRACT_VERSION,
+    title,
+    ...(subtitle ? { subtitle } : {}),
+    ...(proofBadge ? { proof_badge: proofBadge } : {}),
+    ...(intro ? { intro } : {}),
+    ...(marketSignalBadges.length ? { market_signal_badges: marketSignalBadges } : {}),
+    ...(evidenceProfile ? { evidence_profile: evidenceProfile } : {}),
+  };
+}
+
 function formatDiscoveryResponseProduct(candidate, request = null) {
   const { __discovery_provider, ...raw } = candidate.raw || {};
   if (request?.response_detail === 'card') {
@@ -5099,6 +5335,14 @@ function formatDiscoveryResponseProduct(candidate, request = null) {
           ? candidate.priceAmount
           : undefined;
     const inStock = isCandidateSellable(raw);
+    const shoppingCard = buildDiscoveryCardPayload(raw, candidate);
+    const marketSignalBadges = normalizeDiscoveryMarketSignalBadges(shoppingCard.market_signal_badges);
+    const searchCard = {
+      title_candidate: shoppingCard.title,
+      ...(shoppingCard.subtitle ? { compact_candidate: shoppingCard.subtitle } : {}),
+      ...(shoppingCard.proof_badge ? { proof_badge_candidate: shoppingCard.proof_badge } : {}),
+      ...(shoppingCard.intro ? { intro_candidate: shoppingCard.intro } : {}),
+    };
 
     return {
       id: raw.id || candidate.productId,
@@ -5131,6 +5375,13 @@ function formatDiscoveryResponseProduct(candidate, request = null) {
       ...(raw.seller_feedback_summary && typeof raw.seller_feedback_summary === 'object'
         ? { seller_feedback_summary: raw.seller_feedback_summary }
         : {}),
+      card_title: shoppingCard.title,
+      ...(shoppingCard.subtitle ? { card_subtitle: shoppingCard.subtitle } : {}),
+      ...(shoppingCard.proof_badge ? { card_badge: shoppingCard.proof_badge } : {}),
+      ...(shoppingCard.intro ? { card_intro: shoppingCard.intro } : {}),
+      search_card: searchCard,
+      shopping_card: shoppingCard,
+      ...(marketSignalBadges.length ? { market_signal_badges: marketSignalBadges } : {}),
     };
   }
 

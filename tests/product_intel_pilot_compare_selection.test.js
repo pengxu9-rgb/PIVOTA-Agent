@@ -4,6 +4,7 @@ const {
   evaluateGeminiCandidateQuality,
   buildSelectedBundle,
   applyManualOverrideToSelected,
+  buildShoppingCardPayload,
 } = require('../scripts/product_intel_pilot_compare');
 
 describe('product_intel pilot compare selection', () => {
@@ -131,7 +132,7 @@ describe('product_intel pilot compare selection', () => {
 
     const candidate = mergeGeminiDraftIntoBaseline(caseRow, baseline, geminiOutput, 'gemini-test');
     const quality = evaluateGeminiCandidateQuality(baseline, candidate);
-    const selected = buildSelectedBundle(baseline, candidate, quality, 'gemini-test');
+    const selected = buildSelectedBundle(caseRow, baseline, candidate, quality, 'gemini-test');
 
     expect(quality.seller_only_violation).toBe(true);
     expect(selected.selected_mode).toBe('baseline_only');
@@ -210,7 +211,7 @@ describe('product_intel pilot compare selection', () => {
 
     const candidate = mergeGeminiDraftIntoBaseline(caseRow, baseline, geminiOutput, 'gemini-test');
     const quality = evaluateGeminiCandidateQuality(baseline, candidate);
-    const selected = buildSelectedBundle(baseline, candidate, quality, 'gemini-test');
+    const selected = buildSelectedBundle(caseRow, baseline, candidate, quality, 'gemini-test');
 
     expect(quality.overall_pass).toBe(true);
     expect(selected.selected_mode).toBe('hybrid_gemini');
@@ -410,6 +411,17 @@ describe('product_intel pilot compare selection', () => {
     });
 
     const selected = buildSelectedBundle(
+      {
+        product: {
+          merchant_id: 'external_seed',
+          product_id: 'ext_13c520e764f9f7d7f23c611b',
+          brand: 'Naturium',
+          title: 'Vitamin C Super Serum Plus - Jumbo',
+          category: 'Serum',
+          description:
+            'Double up and save with this jumbo size of our supercharged serum with vitamin c, retinol, hyaluronic acid, niacinamide and salicylic acid.',
+        },
+      },
       baseline,
       null,
       {
@@ -422,7 +434,20 @@ describe('product_intel pilot compare selection', () => {
       'gemini-test',
     );
 
-    const overridden = applyManualOverrideToSelected(selected, {
+    const overridden = applyManualOverrideToSelected(
+      {
+        product: {
+          merchant_id: 'external_seed',
+          product_id: 'ext_13c520e764f9f7d7f23c611b',
+          brand: 'Naturium',
+          title: 'Vitamin C Super Serum Plus - Jumbo',
+          category: 'Serum',
+          description:
+            'Double up and save with this jumbo size of our supercharged serum with vitamin c, retinol, hyaluronic acid, niacinamide and salicylic acid.',
+        },
+      },
+      selected,
+      {
       notes: 'curated rewrite',
       product_intel_core: {
         what_it_is: {
@@ -443,5 +468,62 @@ describe('product_intel pilot compare selection', () => {
     expect(overridden.field_sources.why_it_stands_out).toBe('manual');
     expect(overridden.bundle.product_intel_core.what_it_is.body).toMatch(/multi-active treatment serum/i);
     expect(overridden.bundle.provenance.generator).toBe('curated_override');
+    expect(overridden.bundle.shopping_card).toEqual(
+      expect.objectContaining({
+        contract_version: 'pivota.shopping_card.v1',
+        title: 'Naturium Vitamin C Super Serum Plus - Jumbo',
+        subtitle: 'Multi-Active Serum',
+      }),
+    );
+    expect(overridden.bundle.search_card).toEqual(
+      expect.objectContaining({
+        title_candidate: 'Naturium Vitamin C Super Serum Plus - Jumbo',
+        compact_candidate: 'Multi-Active Serum',
+      }),
+    );
+  });
+
+  test('builds shopping card payload from selected bundle and hard evidence', () => {
+    const caseRow = {
+      product: {
+        merchant_id: 'merch_demo',
+        product_id: 'prod_demo',
+        brand: 'Olehenriksen',
+        title: 'Banana Bright+ Vitamin CC Stick',
+        category: 'Eye Treatment',
+        review_summary: {
+          rating: 4.8,
+          review_count: 412,
+        },
+      },
+    };
+
+    const shoppingCard = buildShoppingCardPayload(caseRow, {
+      evidence_profile: 'mixed',
+      product_intel_core: {
+        what_it_is: {
+          headline: 'Color-correcting eye stick',
+          body: 'A color-correcting eye stick that brightens and hydrates the under-eye area.',
+        },
+        routine_fit: {
+          step: 'eye stick',
+        },
+      },
+    });
+
+    expect(shoppingCard).toEqual({
+      contract_version: 'pivota.shopping_card.v1',
+      title: 'Olehenriksen Banana Bright+ Vitamin CC Stick',
+      subtitle: 'Color-Correcting Eye Stick',
+      proof_badge: '4.8★ (412)',
+      intro: 'A color-correcting eye stick that brightens and hydrates the under-eye area.',
+      market_signal_badges: [
+        {
+          badge_type: 'review_signal',
+          badge_label: '4.8★ (412)',
+        },
+      ],
+      evidence_profile: 'mixed',
+    });
   });
 });
