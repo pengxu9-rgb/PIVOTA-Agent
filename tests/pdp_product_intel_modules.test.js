@@ -62,6 +62,49 @@ describe('pdp product intel bundle shaping', () => {
     expect(bundle.product_intel_core.what_it_is.body).toMatch(/daily gel-cream moisturizer/i);
     expect(bundle.texture_finish.texture).toBe('gel-cream');
     expect(bundle.community_signals.status).toBe('available');
+    expect(Array.isArray(bundle.market_signal_badges)).toBe(true);
+  });
+
+  test('buildProductIntelBundle can surface deterministic market signal badges from ratings and editorial tags', () => {
+    const bundle = buildProductIntelBundle({
+      product: {
+        product_id: 'p_intel_badges_1',
+        merchant_id: 'm_intel_badges_1',
+        title: 'Barrier Calm Cream',
+        description: 'A daily moisturizer for barrier comfort.',
+        category: 'Skincare/Moisturizer',
+        tags: ['editorial: top pick'],
+        assessment: {
+          summary: 'A daily moisturizer focused on barrier comfort.',
+          best_for: ['Sensitive skin'],
+          formula_intent: ['Barrier comfort'],
+        },
+        evidence: {
+          social_signals: {
+            typical_positive: ['comfort'],
+            typical_negative: [],
+            risk_for_groups: [],
+          },
+        },
+        review_summary: {
+          rating: 4.9,
+          review_count: 128,
+        },
+      },
+    });
+
+    expect(bundle.market_signal_badges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          badge_type: 'editorial_signal',
+          badge_label: 'Editorial: top pick',
+        }),
+        expect.objectContaining({
+          badge_type: 'review_signal',
+          badge_label: '4.9★ from 128 reviews',
+        }),
+      ]),
+    );
   });
 
   test('seller-only bundles keep community signals unavailable', () => {
@@ -226,6 +269,53 @@ describe('pdp product intel bundle shaping', () => {
     });
 
     expect(bundle.product_intel_core.why_it_stands_out).toEqual([]);
+  });
+
+  test('published bundles keep reviewed market signal badges', () => {
+    const bundle = normalizePublishedProductIntelBundle({
+      contract_version: 'pivota.product_intel.v1',
+      product_intel_core: {
+        what_it_is: {
+          headline: 'Brightening serum',
+          body: 'A brightening serum for dullness and uneven tone.',
+        },
+        best_for: [{ tag: 'tone', label: 'Uneven tone concerns', confidence: 'moderate' }],
+        why_it_stands_out: [],
+        routine_fit: { step: 'serum', am_pm: ['am', 'pm'], pairing_notes: [] },
+        watchouts: [],
+        confidence: { overall: 'moderate' },
+        freshness: { generated_at: '2026-04-08T12:00:00.000Z', source_version: 'pilot_selected:test' },
+        quality_state: 'limited',
+        evidence_profile: 'community_supported',
+      },
+      market_signal_badges: [
+        {
+          badge_type: 'review_signal',
+          badge_label: '4.9★ from 128 reviews',
+          evidence_count: 128,
+          source_types: ['reviews'],
+          confidence: 'high',
+          display_priority: 20,
+        },
+      ],
+      community_signals: {
+        status: 'available',
+        top_loves: ['hydrating'],
+        confidence: 'moderate',
+        evidence_profile: 'community_supported',
+      },
+      quality_state: 'limited',
+      evidence_profile: 'community_supported',
+    });
+
+    expect(bundle.market_signal_badges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          badge_type: 'review_signal',
+          badge_label: '4.9★ from 128 reviews',
+        }),
+      ]),
+    );
   });
 
   test('published bundles suppress seller-only abstract positioning highlights at read time', () => {

@@ -224,6 +224,82 @@ function normalizeStringList(value) {
   return [];
 }
 
+function normalizeMarketSignalBadges(value) {
+  const rows = asArray(value)
+    .map((item) => asPlainObject(item))
+    .filter(Boolean)
+    .map((item) => {
+      const badgeType = asString(item.badge_type || item.type).toLowerCase();
+      const badgeLabel = asString(item.badge_label || item.label);
+      if (!badgeType || !badgeLabel) return null;
+      const evidenceCountRaw = Number(item.evidence_count);
+      return {
+        badge_type: badgeType,
+        badge_label: badgeLabel,
+        evidence_count: Number.isFinite(evidenceCountRaw) && evidenceCountRaw > 0 ? evidenceCountRaw : null,
+        source_types: uniqueStrings(item.source_types || item.sources || []),
+        freshness: asPlainObject(item.freshness) || null,
+        confidence: clampConfidence(item.confidence || 'moderate'),
+        display_priority: Number.isFinite(Number(item.display_priority))
+          ? Number(item.display_priority)
+          : 50,
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => Number(left.display_priority || 50) - Number(right.display_priority || 50));
+  return rows.slice(0, 3);
+}
+
+function buildMarketSignalBadges(product, evidenceProfile) {
+  const badges = [];
+  const tags = readTags(product).map((item) => item.toLowerCase());
+  const reviewSummary = asPlainObject(product.review_summary) || asPlainObject(product.reviewSummary) || null;
+  const rating = Number(reviewSummary?.rating ?? reviewSummary?.rating_value);
+  const reviewCount = Number(reviewSummary?.review_count ?? reviewSummary?.count);
+
+  if (Number.isFinite(rating) && Number.isFinite(reviewCount) && reviewCount >= 100 && rating >= 4.5) {
+    badges.push({
+      badge_type: 'review_signal',
+      badge_label: `${rating.toFixed(1)}★ from ${reviewCount} reviews`,
+      evidence_count: reviewCount,
+      source_types: ['reviews'],
+      freshness: buildFreshness({}),
+      confidence: evidenceProfile === 'community_supported' ? 'high' : 'moderate',
+      display_priority: 20,
+    });
+  }
+
+  if (tags.some((tag) => /^editorial:\s*/.test(tag))) {
+    const editorialTag = tags.find((tag) => /^editorial:\s*/.test(tag));
+    const label = editorialTag.replace(/^editorial:\s*/i, '').trim();
+    badges.push({
+      badge_type: 'editorial_signal',
+      badge_label: label ? `Editorial: ${label}` : 'Editorial pick',
+      evidence_count: 1,
+      source_types: ['editorial'],
+      freshness: buildFreshness({}),
+      confidence: 'moderate',
+      display_priority: 10,
+    });
+  }
+
+  if (tags.some((tag) => /^award:\s*/.test(tag))) {
+    const awardTag = tags.find((tag) => /^award:\s*/.test(tag));
+    const label = awardTag.replace(/^award:\s*/i, '').trim();
+    badges.push({
+      badge_type: 'award_signal',
+      badge_label: label || 'Award winner',
+      evidence_count: 1,
+      source_types: ['award'],
+      freshness: buildFreshness({}),
+      confidence: 'moderate',
+      display_priority: 15,
+    });
+  }
+
+  return normalizeMarketSignalBadges(badges);
+}
+
 function canonicalizeProductUrlForIntelKb(rawUrl) {
   const text = asString(rawUrl);
   if (!text) return '';
@@ -395,6 +471,7 @@ function normalizePublishedProductIntelBundle(bundle, {
       confidence: 'low',
       evidence_profile: asString(source.evidence_profile) || 'seller_only',
     },
+    market_signal_badges: normalizeMarketSignalBadges(source.market_signal_badges || source.marketSignals),
     recommendation_intents: recommendationIntents,
     quality_state: asString(source.quality_state) || asString(core.quality_state) || 'limited',
     evidence_profile:
@@ -1325,6 +1402,7 @@ function buildProductIntelBundleInternal({
   });
   const textureFinish = inferTextureFinish(normalizedProduct, evidenceProfile);
   const communitySignals = normalizeCommunitySignals(normalizedProduct, evidenceProfile);
+  const marketSignalBadges = buildMarketSignalBadges(normalizedProduct, evidenceProfile);
   const recommendationIntents = buildRecommendationIntents(relatedProducts);
   const offers = Array.isArray(offersData?.offers) ? offersData.offers : [];
   const commerceModes = uniqueStrings(offers.map((offer) => asString(offer?.commerce_mode)));
@@ -1337,6 +1415,7 @@ function buildProductIntelBundleInternal({
     product_intel_core: core,
     texture_finish: textureFinish,
     community_signals: communitySignals,
+    market_signal_badges: marketSignalBadges,
     recommendation_intents: recommendationIntents,
     quality_state: qualityState,
     evidence_profile: evidenceProfile,
@@ -1417,6 +1496,7 @@ function buildProductFeedbackResponse({ productIntel, canonicalProductRef, produ
     evidence_profile: productIntel?.evidence_profile || 'seller_only',
     source_coverage: productIntel?.source_coverage || null,
     freshness: productIntel?.freshness || null,
+    market_signal_badges: productIntel?.market_signal_badges || [],
   };
 }
 
@@ -1454,4 +1534,5 @@ module.exports = {
   buildProductRecommendationIntentsResponse,
   normalizePublishedProductIntelBundle,
   readPublishedProductIntelBundle,
+  normalizeMarketSignalBadges,
 };

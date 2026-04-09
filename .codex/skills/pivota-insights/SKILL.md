@@ -73,6 +73,8 @@ npm run product-intel:model:bakeoff -- --cases <cases.json>
 - Curated rewrites live in `scripts/fixtures/product_intel_manual_overrides.json`.
 - Use curated overrides for rows that fail manual review.
 - Do not treat frontend suppression as the solution. The published bundle itself must be high quality.
+- `market_signal_badges` are optional proof badges for cards and PDP surfaces.
+- Never invent celebrity, creator, editorial, or media claims. If the evidence is not explicitly present, leave badges empty.
 
 ## Search Card Reuse
 
@@ -84,4 +86,5 @@ npm run product-intel:model:bakeoff -- --cases <cases.json>
 - Review packet in `reports/pivota-insights/<batch-name>/`
 - Row-by-row `pass` or `rewrite`
 - Notes for every rewritten row
+- Card-ready outputs including compact subtitle, optional proof badge, and longer intro sentence
 - Publish result only after the review gate is green

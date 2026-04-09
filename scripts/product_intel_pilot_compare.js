@@ -772,6 +772,7 @@ function buildSelectedBundle(baselineBundle, geminiCandidateBundle, quality, mod
     watchouts: 'baseline',
     texture_finish: 'baseline',
     community_signals: 'baseline',
+    market_signal_badges: 'baseline',
   };
 
   if (geminiCandidateBundle && quality?.candidate_available) {
@@ -888,6 +889,12 @@ function applyManualOverrideToSelected(selectedResult, manualOverride) {
   if (manualOverride.community_signals && typeof manualOverride.community_signals === 'object') {
     bundle.community_signals = deepClone(manualOverride.community_signals);
     fieldSources.community_signals = 'manual';
+    manualFieldCount += 1;
+  }
+
+  if (Array.isArray(manualOverride.market_signal_badges)) {
+    bundle.market_signal_badges = deepClone(manualOverride.market_signal_badges);
+    fieldSources.market_signal_badges = 'manual';
     manualFieldCount += 1;
   }
 

@@ -181,6 +181,9 @@ function buildReviewRows(compareReport, casesPayload) {
     const selectedBundle = row?.selected?.bundle || {};
     const core = selectedBundle.product_intel_core || {};
     const highlights = Array.isArray(core.why_it_stands_out) ? core.why_it_stands_out : [];
+    const firstBadge = Array.isArray(selectedBundle.market_signal_badges)
+      ? selectedBundle.market_signal_badges.find((item) => asString(item?.badge_label))
+      : null;
     return {
       case_id: caseId,
       product_id: asString(selectedBundle?.canonical_product_ref?.product_id || product.product_id),
@@ -198,6 +201,7 @@ function buildReviewRows(compareReport, casesPayload) {
         headline: asString(item?.headline),
         body: asString(item?.body),
       })),
+      search_card_proof_badge_candidate: asString(firstBadge?.badge_label),
       search_card_compact_candidate: buildSearchCardCompactCandidate(core),
       search_card_intro_candidate: compactCardIntroCandidate(core?.what_it_is?.body, 96),
       search_card_title_guidance:
@@ -224,6 +228,7 @@ function renderReviewMarkdown(reviewDoc) {
     '- Only publish rows marked `pass`.',
     '- Mark `rewrite` if `What it is` or `Why it stands out` is generic, abstract, inflated, or still sounds like seller copy.',
     '- Use `search_card_compact_candidate` for tight grid cards; reserve `search_card_intro_candidate` for wider list/detail surfaces.',
+    '- `search_card_proof_badge_candidate` should only appear when it is backed by hard evidence such as ratings, editorial tags, or reviewed source counts.',
     '- Prefer normalized title copy over raw merchant `Overview` when the surface is compact.',
     '',
   ];
@@ -241,6 +246,7 @@ function renderReviewMarkdown(reviewDoc) {
     for (const item of row.why_it_stands_out || []) {
       lines.push(`  - ${item.headline}: ${item.body}`);
     }
+    lines.push(`- search_card_proof_badge_candidate: ${row.search_card_proof_badge_candidate || '(none)'}`);
     lines.push(`- search_card_compact_candidate: ${row.search_card_compact_candidate}`);
     lines.push(`- search_card_intro_candidate: ${row.search_card_intro_candidate}`);
     lines.push(`- review_notes: ${row.review_notes || '(fill me in)'}`);

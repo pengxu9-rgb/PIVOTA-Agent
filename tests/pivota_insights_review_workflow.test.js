@@ -24,6 +24,12 @@ describe('pivota insights review workflow', () => {
               },
               evidence_profile: 'seller_only',
               quality_state: 'limited',
+              market_signal_badges: [
+                {
+                  badge_type: 'editorial_signal',
+                  badge_label: 'Editorial: top pick',
+                },
+              ],
               product_intel_core: {
                 what_it_is: {
                   headline: 'Brightening serum',
@@ -70,6 +76,7 @@ describe('pivota insights review workflow', () => {
       review_status: 'pending',
     });
     expect(rows[0].search_card_intro_candidate).toMatch(/brightening serum/i);
+    expect(rows[0].search_card_proof_badge_candidate).toBe('Editorial: top pick');
     expect(rows[0].search_card_compact_candidate).toBe('Brightening serum');
     expect(rows[0].search_card_title_guidance).toMatch(/brand \+ product type/i);
   });
@@ -111,13 +118,16 @@ describe('pivota insights review workflow', () => {
           quality_state: 'limited',
           what_it_is: { body: 'A brightening serum for dullness.' },
           why_it_stands_out: [{ headline: 'Vitamin C plus niacinamide', body: 'Two brightening actives in one step.' }],
+          search_card_proof_badge_candidate: 'Editorial: top pick',
           search_card_intro_candidate: 'A brightening serum for dullness.',
+          search_card_compact_candidate: 'Brightening serum',
           review_notes: '',
         },
       ],
     });
 
     expect(markdown).toMatch(/Only publish rows marked `pass`/);
+    expect(markdown).toMatch(/search_card_proof_badge_candidate: Editorial: top pick/);
     expect(markdown).toMatch(/search_card_compact_candidate:/);
     expect(markdown).toMatch(/search_card_intro_candidate: A brightening serum for dullness\./);
   });

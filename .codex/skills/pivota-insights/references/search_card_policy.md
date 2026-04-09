@@ -77,12 +77,15 @@ Use:
 
 - a normalized title as the main line
 - an optional short subtitle like `Brightening serum`, `SPF 30 moisturizer`, or `Dark-spot serum`
+- at most one `proof badge` such as `4.9★ from 128 reviews` or `Editorial: top pick`
 
 Do not use:
 
 - a 90-140 character sentence under a tight grid-card title
 - raw merchant `Overview`
 - fluffy adjective stacks that waste the limited card space
+- multiple competing badges on a small card
+- celebrity or KOL claims unless they are explicitly sourced and reviewed
 
 Good pattern:
 
