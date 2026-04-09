@@ -275,8 +275,8 @@ function looksLikeGenericSingleProductAsk(text) {
     return false;
   }
   return (
-    /\bwhat product should i use\b/.test(normalized)
-    || /\bwhich product should i use\b/.test(normalized)
+    /\b(?:what|which)\s+(?:skincare\s+)?product\s+should\s+i\s+(?:use|buy|get)(?:\s+first)?\b/.test(normalized)
+    || /\b(?:what|which)\s+(?:skincare\s+)?products\s+should\s+i\s+(?:use|buy|get)(?:\s+first)?\b/.test(normalized)
     || /\bwhat should i use\b/.test(normalized)
     || /\bwhat do you recommend\b/.test(normalized)
     || /\bwhat should i get\b/.test(normalized)
@@ -291,8 +291,17 @@ function canonicalizeGenericConcernQuery(text) {
   if (!looksLikeGenericSingleProductAsk(normalized)) return normalized;
   return normalizeQueryToken(
     normalized
+      .replace(/\b(?:what|which)\s+skincare\s+product\s+should\s+i\s+use(?:\s+first)?\b/gi, 'what skincare products should i use')
+      .replace(/\b(?:what|which)\s+skincare\s+product\s+should\s+i\s+buy(?:\s+first)?\b/gi, 'what skincare products should i buy')
+      .replace(/\b(?:what|which)\s+skincare\s+product\s+should\s+i\s+get(?:\s+first)?\b/gi, 'what skincare products should i get')
       .replace(/\bwhat product should i use\b/gi, 'what products should i use')
       .replace(/\bwhich product should i use\b/gi, 'what products should i use')
+      .replace(/\bwhat product should i buy(?:\s+first)?\b/gi, 'what products should i buy')
+      .replace(/\bwhich product should i buy(?:\s+first)?\b/gi, 'what products should i buy')
+      .replace(/\bwhat product should i get(?:\s+first)?\b/gi, 'what products should i get')
+      .replace(/\bwhich product should i get(?:\s+first)?\b/gi, 'what products should i get')
+      .replace(/\bwhat product should i use(?:\s+first)?\b/gi, 'what products should i use')
+      .replace(/\bwhich product should i use(?:\s+first)?\b/gi, 'what products should i use')
       .replace(/\bwhat should i use\b/gi, 'what products should i use')
       .replace(/\bwhat can i use\b/gi, 'what products can i use')
       .replace(/\bwhat do you recommend\b/gi, 'what products do you recommend')

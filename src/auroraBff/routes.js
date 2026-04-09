@@ -1784,7 +1784,7 @@ async function buildChatIntentContract(body) {
       isBeautyOwnedChatRecoRequest({
         typedRecoOwnershipKeepsV1Mainline,
         targetContext: beautyRecoTargetContext,
-        message: '',
+        message,
       });
     if (!actionKeepsBeautyMainline) {
       return {
@@ -1869,7 +1869,7 @@ async function buildChatIntentContract(body) {
     isBeautyOwnedChatRecoRequest({
       typedRecoOwnershipKeepsV1Mainline,
       targetContext: beautyRecoTargetContext,
-      message: '',
+      message,
     })
   ) {
     return {
@@ -1923,7 +1923,7 @@ async function buildChatIntentContract(body) {
     };
   }
   if (hasMessage) {
-    if (looksLikeDiagnosisStart(localMessage)) {
+    if (looksLikeDiagnosisStart(message)) {
       return {
         contract_version: 'chat_intent_v1',
         surface: 'chat',
@@ -1934,7 +1934,7 @@ async function buildChatIntentContract(body) {
         reply_mode: 'diagnosis',
       };
     }
-    if (looksLikeProgressCheckRequest(localMessage, actionId)) {
+    if (looksLikeProgressCheckRequest(message, actionId)) {
       return {
         contract_version: 'chat_intent_v1',
         surface: 'chat',
