@@ -28,7 +28,6 @@ function parseTimeoutMs(raw, fallbackMs) {
 }
 
 const PDP_RECS_CACHE_ENABLED = process.env.PDP_RECS_CACHE_ENABLED !== 'false';
-const PDP_RECS_CACHE_VERSION = String(process.env.PDP_RECS_CACHE_VERSION || 'stable_v2');
 const PDP_RECS_CACHE_TTL_MS = parseTimeoutMs(process.env.PDP_RECS_CACHE_TTL_MS, 10 * 60 * 1000);
 const PDP_RECS_CACHE_MAX_ENTRIES = Math.max(0, Number(process.env.PDP_RECS_CACHE_MAX_ENTRIES || 2000) || 2000);
 const PDP_RECS_INTERNAL_FETCH_TIMEOUT_MS = Math.max(
@@ -39,6 +38,17 @@ const PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS = Math.max(
   300,
   parseTimeoutMs(process.env.PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS, 1200),
 );
+const PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_MULTIPLIER = Math.max(
+  1,
+  Math.min(
+    6,
+    Number(process.env.PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_MULTIPLIER || 2.5) || 2.5,
+  ),
+);
+const PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_ABS = Math.max(
+  4,
+  Math.min(120, Number(process.env.PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_ABS || 14) || 14),
+);
 const PDP_RECS_CACHE = new Map(); // cacheKey -> { value, storedAtMs, expiresAtMs }
 const PDP_RECS_CACHE_METRICS = {
   hits: 0,
@@ -47,12 +57,6 @@ const PDP_RECS_CACHE_METRICS = {
   bypasses: 0,
   evictions: 0,
 };
-const ALLOW_MOCK_RECOMMENDATION_CATALOG =
-  String(process.env.API_MODE || '')
-    .trim()
-    .toUpperCase() === 'MOCK' ||
-  process.env.NODE_ENV === 'test' ||
-  Boolean(process.env.JEST_WORKER_ID);
 
 function getCacheStats() {
   return {
@@ -95,17 +99,6 @@ function setCacheEntry(cacheKey, value, ttlMs = PDP_RECS_CACHE_TTL_MS) {
   }
 }
 
-function shouldCacheRecommendationResult(result) {
-  const metadata = result && typeof result === 'object' ? result.metadata : null;
-  const status = String(metadata?.similar_status || '').trim().toLowerCase();
-  const similarSources = metadata && typeof metadata.similar_sources === 'object' ? metadata.similar_sources : {};
-  const hasHardFailure = Object.values(similarSources).some(
-    (source) => source && typeof source === 'object' && (source.timed_out === true || Boolean(source.error_code)),
-  );
-  if (hasHardFailure) return false;
-  return status === 'ready' || status === 'empty';
-}
-
 function stableHashShort(input) {
   return crypto.createHash('sha256').update(String(input || ''), 'utf8').digest('hex').slice(0, 12);
 }
@@ -142,13 +135,6 @@ function normalizeText(input) {
     .replace(/<[^>]+>/g, ' ')
     .replace(/[^a-z0-9\s-]+/g, ' ')
     .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function normalizeBrandLookupKey(input) {
-  return String(input || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '')
     .trim();
 }
 
@@ -337,6 +323,118 @@ function toCandidate(product, overrides = {}) {
   };
 }
 
+function buildCandidateKey(product) {
+  return `${getMerchantId(product)}::${getProductId(product)}`;
+}
+
+function buildExcludedCandidateState(items = []) {
+  const exactKeys = new Set();
+  const productIds = new Set();
+
+  for (const item of Array.isArray(items) ? items : []) {
+    const productId = getProductId(item);
+    if (!productId) continue;
+    const merchantId = getMerchantId(item);
+    if (merchantId) {
+      exactKeys.add(`${merchantId}::${productId}`);
+    } else {
+      productIds.add(productId);
+    }
+  }
+
+  return { exactKeys, productIds };
+}
+
+function mergeExcludedCandidateStates(...states) {
+  const exactKeys = new Set();
+  const productIds = new Set();
+
+  for (const state of states) {
+    if (!state || typeof state !== 'object') continue;
+    for (const key of state.exactKeys || []) exactKeys.add(key);
+    for (const productId of state.productIds || []) productIds.add(productId);
+  }
+
+  return { exactKeys, productIds };
+}
+
+function isExcludedCandidate(product, state) {
+  if (!product || !state) return false;
+  const productId = getProductId(product);
+  if (!productId) return false;
+  if (state.productIds?.has(productId)) return true;
+  const merchantId = getMerchantId(product);
+  return merchantId ? state.exactKeys?.has(`${merchantId}::${productId}`) === true : false;
+}
+
+function filterCandidateCollection(candidates, state) {
+  if (!state) return Array.isArray(candidates) ? candidates : [];
+  return (Array.isArray(candidates) ? candidates : []).filter((candidate) => !isExcludedCandidate(candidate, state));
+}
+
+function normalizeRecentView(input) {
+  const productId = String(input?.product_id || input?.productId || '').trim();
+  if (!productId) return null;
+  const merchantId =
+    String(input?.merchant_id || input?.merchantId || '').trim() ||
+    (productId.startsWith('ext_') ? EXTERNAL_SEED_MERCHANT_ID : '');
+
+  return {
+    product_id: productId,
+    ...(merchantId ? { merchant_id: merchantId } : {}),
+    ...(input?.title ? { title: String(input.title).trim() } : {}),
+    ...(input?.description ? { description: String(input.description).trim() } : {}),
+    ...(input?.brand ? { brand: String(input.brand).trim() } : {}),
+    ...(input?.category ? { category: String(input.category).trim() } : {}),
+    ...(input?.product_type || input?.productType
+      ? { product_type: String(input?.product_type || input?.productType).trim() }
+      : {}),
+    ...(input?.viewed_at || input?.viewedAt
+      ? { viewed_at: String(input?.viewed_at || input?.viewedAt).trim() }
+      : {}),
+  };
+}
+
+function normalizeRecentViews(input, { excludeProductId = '', limit = 6 } = {}) {
+  const excludedProductId = String(excludeProductId || '').trim();
+  const out = [];
+  const seen = new Set();
+
+  for (const item of Array.isArray(input) ? input : []) {
+    const normalized = normalizeRecentView(item);
+    if (!normalized) continue;
+    if (excludedProductId && normalized.product_id === excludedProductId) continue;
+    const key = buildCandidateKey(normalized);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(normalized);
+    if (out.length >= Math.max(1, Math.min(Number(limit || 6) || 6, 12))) break;
+  }
+
+  return out;
+}
+
+function countRecommendationSources(items) {
+  return (Array.isArray(items) ? items : []).reduce(
+    (acc, item) => {
+      const source = isExternalProduct(item) ? 'external' : 'internal';
+      acc[source] += 1;
+      return acc;
+    },
+    { internal: 0, external: 0 },
+  );
+}
+
+function appendReasonCode(existingCodes, nextCode) {
+  const codes = new Set(
+    (Array.isArray(existingCodes) ? existingCodes : [])
+      .map((item) => String(item || '').trim())
+      .filter(Boolean),
+  );
+  if (nextCode) codes.add(String(nextCode).trim());
+  return Array.from(codes);
+}
+
 function uniqueByKey(items, keyFn) {
   const seen = new Set();
   const out = [];
@@ -429,6 +527,78 @@ function buildCandidateFeatures(candidateProduct, baseCurrency) {
   };
 }
 
+function confidenceRank(level) {
+  if (level === 'high') return 3;
+  if (level === 'medium') return 2;
+  return 1;
+}
+
+function classifyConfidenceLevel(base, candidate, layerId) {
+  const nearPriceTight = candidate.relDiff != null && candidate.relDiff <= 0.25;
+  if (candidate.brandMatch && candidate.leafMatch && nearPriceTight) return 'high';
+  if (candidate.brandMatch && candidate.parentMatch && candidate.relDiff != null && candidate.relDiff <= 0.6) return 'high';
+  if (candidate.leafMatch && nearPriceTight) return 'high';
+
+  if (base.vertical !== UNKNOWN_VERTICAL && candidate.features.vertical !== UNKNOWN_VERTICAL) {
+    if (base.vertical === candidate.features.vertical && candidate.tokenOverlap >= 0.12) return 'medium';
+    if (base.vertical !== candidate.features.vertical) return 'low';
+  }
+
+  if (layerId === 'L4' && candidate.tokenOverlap >= 0.24) return 'medium';
+  return 'low';
+}
+
+function pickBalancedCandidates(candidates, k, baseIsExternal) {
+  const K = Math.max(1, Math.min(Number(k || 6) || 6, 30));
+  const internalQueue = candidates.filter((c) => c.source === 'internal');
+  const externalQueue = candidates.filter((c) => c.source === 'external');
+  if (!internalQueue.length || !externalQueue.length) {
+    return candidates.slice(0, K);
+  }
+
+  const pattern = baseIsExternal ? ['internal', 'external'] : ['internal', 'internal', 'external'];
+  const pointers = { internal: 0, external: 0 };
+  const selected = [];
+  const used = new Set();
+
+  const nextFromSource = (source) => {
+    const queue = source === 'internal' ? internalQueue : externalQueue;
+    while (pointers[source] < queue.length) {
+      const candidate = queue[pointers[source]];
+      pointers[source] += 1;
+      const key = `${candidate.features.merchantId}::${candidate.features.productId}`;
+      if (used.has(key)) continue;
+      used.add(key);
+      return candidate;
+    }
+    return null;
+  };
+
+  while (selected.length < K) {
+    let progress = false;
+    for (const source of pattern) {
+      if (selected.length >= K) break;
+      const next = nextFromSource(source);
+      if (!next) continue;
+      selected.push(next);
+      progress = true;
+    }
+    if (!progress) break;
+  }
+
+  if (selected.length < K) {
+    for (const candidate of candidates) {
+      if (selected.length >= K) break;
+      const key = `${candidate.features.merchantId}::${candidate.features.productId}`;
+      if (used.has(key)) continue;
+      used.add(key);
+      selected.push(candidate);
+    }
+  }
+
+  return selected.slice(0, K);
+}
+
 function pickLayeredRecommendations({
   baseProduct,
   internalCandidates,
@@ -438,31 +608,40 @@ function pickLayeredRecommendations({
 }) {
   const K = Math.max(1, Math.min(Number(k || 6) || 6, 30));
   const base = buildBaseFeatures(baseProduct);
-  const preferSource = base.isExternal ? 'external' : 'internal';
+
+  const nearPriceTight = (relDiff) => relDiff != null && relDiff <= 0.25;
+  const nearPriceLoose = (relDiff) => relDiff != null && relDiff <= 0.6;
   const layers = [
     {
       id: 'L1',
-      name: 'same_brand+leaf_category',
+      name: 'same_brand+leaf_category+near_price',
       priority: 1,
-      predicate: (candidate) => candidate.brandMatch && candidate.leafMatch,
+      predicate: (c) => c.brandMatch && c.leafMatch && nearPriceTight(c.relDiff),
     },
     {
       id: 'L2',
-      name: 'same_brand+adjacent_category',
+      name: 'same_brand+parent_category+loose_price',
       priority: 2,
-      predicate: (candidate) =>
-        candidate.brandMatch &&
-        (candidate.parentMatch || candidate.verticalMatch || !base.leafCategory),
+      predicate: (c) => c.brandMatch && c.parentMatch && nearPriceLoose(c.relDiff),
     },
     {
       id: 'L3',
-      name: 'same_brand_only_fallback',
+      name: 'leaf_category+near_price',
       priority: 3,
-      predicate: (candidate) =>
-        candidate.brandMatch && !candidate.features.leafCategory && !candidate.features.parentCategory,
+      predicate: (c) => c.leafMatch && nearPriceTight(c.relDiff),
+    },
+    {
+      id: 'L4',
+      name: 'title_token_overlap',
+      priority: 4,
+      predicate: (c) => c.tokenOverlap >= 0.18,
     },
   ];
+
   const layerById = Object.fromEntries(layers.map((layer) => [layer.id, layer]));
+
+  let filteredByVertical = 0;
+  let filteredByConfidence = 0;
 
   const rawCandidates = [
     ...(Array.isArray(internalCandidates) ? internalCandidates : []),
@@ -480,13 +659,26 @@ function pickLayeredRecommendations({
       const features = buildCandidateFeatures(p, base.currency);
       const source = features.isExternal ? 'external' : 'internal';
       const scoreDetail = scoreCandidate(base, features);
-      const verticalMatch =
-        base.vertical !== UNKNOWN_VERTICAL &&
-        features.vertical !== UNKNOWN_VERTICAL &&
-        base.vertical === features.vertical;
-      const matchedLayer =
-        layers.find((layer) => layer.predicate({ ...scoreDetail, features, verticalMatch })) || null;
+      const matchedLayer = layers.find((layer) => layer.predicate(scoreDetail)) || null;
+
+      if (base.vertical === 'fragrance') {
+        const candidateVertical = features.vertical;
+        const allowByVertical = candidateVertical === 'fragrance';
+        const allowByToken = scoreDetail.tokenOverlap >= 0.18 && candidateVertical !== 'tools';
+        if (!allowByVertical && !allowByToken) {
+          filteredByVertical += 1;
+          return null;
+        }
+      }
+
       if (!matchedLayer) {
+        filteredByConfidence += 1;
+        return null;
+      }
+
+      const confidence = classifyConfidenceLevel(base, { ...scoreDetail, features }, matchedLayer.id);
+      if (confidence === 'low') {
+        filteredByConfidence += 1;
         return null;
       }
 
@@ -497,7 +689,7 @@ function pickLayeredRecommendations({
         layerId: matchedLayer.id,
         layerName: matchedLayer.name,
         layerPriority: matchedLayer.priority,
-        verticalMatch,
+        confidence,
         ...scoreDetail,
       };
     })
@@ -510,29 +702,26 @@ function pickLayeredRecommendations({
   const candidates = uniqueCandidates
     .sort((a, b) => {
       if (a.layerPriority !== b.layerPriority) return a.layerPriority - b.layerPriority;
-      if (a.source === preferSource && b.source !== preferSource) return -1;
-      if (b.source === preferSource && a.source !== preferSource) return 1;
-      if ((a.relDiff ?? Number.POSITIVE_INFINITY) !== (b.relDiff ?? Number.POSITIVE_INFINITY)) {
-        return (a.relDiff ?? Number.POSITIVE_INFINITY) - (b.relDiff ?? Number.POSITIVE_INFINITY);
+      if (confidenceRank(a.confidence) !== confidenceRank(b.confidence)) {
+        return confidenceRank(b.confidence) - confidenceRank(a.confidence);
       }
       if (a.score !== b.score) return b.score - a.score;
       return a.features.productId.localeCompare(b.features.productId);
     })
-    .slice(0, 160);
+    .slice(0, 400);
 
   const layerCounts = {};
   for (const candidate of candidates) {
     layerCounts[candidate.layerId] = (layerCounts[candidate.layerId] || 0) + 1;
   }
 
-  const chosenCandidates = candidates.slice(0, K);
+  const chosenCandidates = pickBalancedCandidates(candidates, K, base.isExternal);
   const selected = chosenCandidates.map((candidate) =>
     toCandidate(candidate.product, {
       source: candidate.source,
       reason: `${candidate.layerId}:${candidate.source}:${layerById[candidate.layerId]?.name || ''}`,
       x_score: Number(candidate.score.toFixed(4)),
-      x_confidence:
-        candidate.layerId === 'L1' ? 'high' : candidate.layerId === 'L3' ? 'low' : 'moderate',
+      x_confidence: candidate.confidence,
     }),
   );
 
@@ -545,6 +734,15 @@ function pickLayeredRecommendations({
     { internal: 0, external: 0 },
   );
 
+  const confidenceCounts = chosenCandidates.reduce(
+    (acc, candidate) => {
+      const level = candidate.confidence || 'low';
+      acc[level] = (acc[level] || 0) + 1;
+      return acc;
+    },
+    { high: 0, medium: 0, low: 0 },
+  );
+
   const signalStrength =
     Number(baseSemantic?.signal_strength) ||
     computeSemanticSignalStrength({
@@ -554,17 +752,28 @@ function pickLayeredRecommendations({
     });
   const baseSemanticStrong = signalStrength >= 2;
 
-  const l1Count = chosenCandidates.filter((candidate) => candidate.layerId === 'L1').length;
   const similarConfidence =
-    !selected.length ? 'low' : l1Count >= Math.max(1, Math.ceil(selected.length * 0.6)) ? 'high' : 'medium';
-  const lowConfidence = selected.length === 0;
+    !selected.length
+      ? 'low'
+      : confidenceCounts.high >= Math.max(1, Math.ceil(selected.length * 0.7))
+        ? 'high'
+        : confidenceCounts.high + confidenceCounts.medium >= Math.max(1, Math.ceil(selected.length * 0.8))
+          ? 'medium'
+          : 'low';
+  const lowConfidence = selected.length < K || similarConfidence === 'low';
+
+  const lowConfidenceReasonCodes = [];
+  if (!baseSemanticStrong) lowConfidenceReasonCodes.push('BASE_SEMANTIC_WEAK');
+  if (filteredByVertical > 0) lowConfidenceReasonCodes.push('CATEGORY_MISMATCH_FILTERED');
+  if (selected.length < K) lowConfidenceReasonCodes.push('UNDERFILL_FOR_QUALITY');
+  if (!lowConfidenceReasonCodes.length && lowConfidence) lowConfidenceReasonCodes.push('INSUFFICIENT_HIGH_CONFIDENCE');
 
   return {
     items: selected.slice(0, K),
     metadata: {
       similar_confidence: similarConfidence,
       low_confidence: lowConfidence,
-      low_confidence_reason_codes: selected.length ? [] : ['NO_SAME_BRAND_MATCHES'],
+      low_confidence_reason_codes: lowConfidenceReasonCodes,
       retrieval_mix: {
         internal: sourceCounts.internal,
         external: sourceCounts.external,
@@ -591,9 +800,10 @@ function pickLayeredRecommendations({
       layers: layerCounts,
       candidates_total: candidates.length,
       sources: sourceCounts,
+      confidence: confidenceCounts,
       filters: {
-        same_brand_only: true,
-        semantic_expansion_removed: true,
+        by_vertical: filteredByVertical,
+        by_confidence: filteredByConfidence,
       },
     },
   };
@@ -603,15 +813,12 @@ async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId })
   const mid = String(merchantId || '').trim();
   const safeLimit = Math.min(Math.max(1, Number(limit || 120)), 400);
 
+  // In MOCK mode we may not have DATABASE_URL configured; use in-memory mock catalog
+  // so PDP recommendations are still non-empty and fast locally.
   if (!process.env.DATABASE_URL) {
-    if (!ALLOW_MOCK_RECOMMENDATION_CATALOG) {
-      logger.warn(
-        { merchantId: mid || null },
-        'recommendations internal candidates skipped: DATABASE_URL missing outside mock/test mode',
-      );
-      return [];
-    }
     try {
+      // Lazy require to avoid impacting production paths.
+      // eslint-disable-next-line global-require
       const { mockProducts } = require('../mockProducts');
       const out = [];
 
@@ -692,27 +899,8 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit }) {
   const market = String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
   const tool = 'creator_agents';
 
-  const brandAlias = normalizeText(brandHint);
-  const brandCompact = normalizeBrandLookupKey(brandHint);
-  const brandAliases = Array.from(new Set([brandAlias, brandCompact].filter(Boolean)));
-
-  function buildBrandWhereClause(aliasBind, titleBind) {
-    return `AND (
-              lower(coalesce(seed_data->>'brand', '')) = ANY(${aliasBind}::text[])
-              OR lower(coalesce(seed_data->>'brand_name', '')) = ANY(${aliasBind}::text[])
-              OR lower(coalesce(seed_data->>'vendor', '')) = ANY(${aliasBind}::text[])
-              OR lower(coalesce(seed_data->>'vendor_name', '')) = ANY(${aliasBind}::text[])
-              OR lower(coalesce(seed_data->'snapshot'->>'brand', '')) = ANY(${aliasBind}::text[])
-              OR lower(coalesce(seed_data->'snapshot'->>'brand_name', '')) = ANY(${aliasBind}::text[])
-              OR lower(coalesce(seed_data->'snapshot'->>'vendor', '')) = ANY(${aliasBind}::text[])
-              OR lower(coalesce(seed_data->'snapshot'->>'vendor_name', '')) = ANY(${aliasBind}::text[])
-              OR EXISTS (
-                SELECT 1
-                FROM unnest(${titleBind}::text[]) AS alias
-                WHERE lower(coalesce(seed_data->'snapshot'->>'title', seed_data->>'title', title, '')) LIKE alias || ' %'
-              )
-            )`;
-  }
+  const brand = normalizeText(brandHint);
+  const category = normalizeText(categoryHint);
 
   async function runQuery(whereSql, params, cap, queryName) {
     try {
@@ -734,6 +922,7 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit }) {
             created_at
           FROM external_product_seeds
           WHERE status = 'active'
+            AND attached_product_key IS NULL
             AND market = $1
             AND (tool = '*' OR tool = $2)
             ${whereSql}
@@ -757,14 +946,33 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit }) {
     }
   }
 
-  if (!brandAliases.length) return [];
-  const out = await runQuery(
-    buildBrandWhereClause('$4', '$4'),
-    [brandAliases],
-    Math.min(180, safeLimit),
-    'external_brand',
-  );
-  return uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`).slice(0, safeLimit * 2);
+  const [brandMatches, categoryMatches] = await Promise.all([
+    brand
+      ? runQuery(
+          `AND lower(coalesce(seed_data->>'brand','')) = $4`,
+          [brand],
+          Math.min(120, safeLimit),
+          'external_brand',
+        )
+      : Promise.resolve([]),
+    category
+      ? runQuery(
+          `AND lower(coalesce(seed_data->>'category','')) = $4`,
+          [category],
+          Math.min(120, safeLimit),
+          'external_category',
+        )
+      : Promise.resolve([]),
+  ]);
+
+  const out = [...brandMatches, ...categoryMatches];
+  const enoughFocusedCandidates = out.length >= Math.max(safeLimit, 80);
+  if (!enoughFocusedCandidates) {
+    const recent = await runQuery('', [], Math.min(240, safeLimit), 'external_recent');
+    out.push(...recent);
+  }
+
+  return uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`).slice(0, safeLimit * 3);
 }
 
 function collectExternalLookupKeys(baseProduct) {
@@ -867,14 +1075,7 @@ async function enrichExternalBaseProduct(baseProduct) {
   }
 
   const seedCategory = String(
-    seedData?.category ||
-      seedData?.product?.category ||
-      seedData?.snapshot?.category ||
-      seedData?.product_type ||
-      seedData?.productType ||
-      seedData?.snapshot?.product_type ||
-      seedData?.snapshot?.productType ||
-      '',
+    seedData?.category || seedData?.product?.category || seedData?.snapshot?.category || '',
   ).trim();
   if (!getLeafCategory(enriched) && seedCategory) {
     if (!String(enriched.category || '').trim()) enriched.category = seedCategory;
@@ -932,15 +1133,30 @@ async function recommend({
   }
   const baseMerchantId = getMerchantId(rawBaseProduct);
   const safeK = Math.max(1, Math.min(Number(k || 6) || 6, 30));
+  const normalizedRecentViews = normalizeRecentViews(
+    options?.recent_views || options?.recentViews,
+    {
+      excludeProductId: baseProductId,
+      limit: Math.max(3, Math.min(safeK, 6)),
+    },
+  );
+  const excludeItems = Array.isArray(options?.exclude_items)
+    ? options.exclude_items
+    : Array.isArray(options?.exclude_ids)
+      ? options.exclude_ids.map((productId) => ({ product_id: String(productId || '').trim() }))
+      : [];
+  const excludedCandidates = buildExcludedCandidateState(excludeItems);
 
   const baseCurrency = currency || normalizeCurrency(rawBaseProduct, 'USD');
   const cacheKey = JSON.stringify({
-    version: PDP_RECS_CACHE_VERSION,
     merchant_id: baseMerchantId || null,
     product_id: baseProductId,
     k: safeK,
     locale: String(locale || 'en-US'),
     currency: baseCurrency,
+    recent_view_keys: normalizedRecentViews.map((item) => buildCandidateKey(item)),
+    exclude_product_ids: Array.from(excludedCandidates.productIds).sort(),
+    exclude_exact_keys: Array.from(excludedCandidates.exactKeys).sort(),
   });
 
   const bypassCache = options?.no_cache === true || options?.cache_bypass === true || options?.bypass_cache === true;
@@ -965,7 +1181,7 @@ async function recommend({
   const baseSemanticStrong = Number(baseSemantic?.signal_strength || 0) >= 2;
   const baseProductIsExternal = isExternalProduct(baseProduct);
   const effectiveExternalFetchTimeoutMs = baseProductIsExternal
-    ? Math.max(PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS, 5000)
+    ? Math.max(PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS, 2600)
     : PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS;
 
   const providedInternal = Array.isArray(options?.internal_candidates) ? options.internal_candidates : null;
@@ -973,20 +1189,14 @@ async function recommend({
 
   let internalTimedOut = false;
   let externalTimedOut = false;
-  let internalErrorCode = null;
-  let externalErrorCode = null;
-  const internalCandidatesPromise = withSoftTimeout(
-    (providedInternal
+  const internalCandidates = await withSoftTimeout(
+    providedInternal
       ? Promise.resolve(providedInternal)
       : fetchInternalCandidates({
           merchantId: getMerchantId(baseProduct),
-          limit: Math.max(40, safeK * 8),
+          limit: Math.max(60, safeK * 10),
           excludeMerchantId: getMerchantId(baseProduct),
-        })
-    ).catch((err) => {
-      internalErrorCode = err?.code || 'internal_fetch_failed';
-      return [];
-    }),
+        }),
     PDP_RECS_INTERNAL_FETCH_TIMEOUT_MS,
     [],
     () => {
@@ -1001,114 +1211,161 @@ async function recommend({
     },
   );
 
-  const externalCandidatesPromise = withSoftTimeout(
-    (providedExternal
-      ? Promise.resolve(providedExternal)
-      : fetchExternalCandidates({
-          brandHint: baseBrand,
-          categoryHint: baseLeaf,
-          limit: Math.max(60, safeK * 10),
-        })
-    ).catch((err) => {
-      externalErrorCode = err?.code || 'external_fetch_failed';
-      return [];
-    }),
-    effectiveExternalFetchTimeoutMs,
-    [],
-    () => {
-      externalTimedOut = true;
-      logger.warn(
-        {
-          product_id: baseProductId,
-          timeout_ms: effectiveExternalFetchTimeoutMs,
-        },
-        'PDP recommendations external candidate fetch timed out',
-      );
-    },
-  );
-
-  const [internalCandidates, externalCandidates] = await Promise.all([
-    internalCandidatesPromise,
-    externalCandidatesPromise,
-  ]);
   const internalCount = Array.isArray(internalCandidates) ? internalCandidates.length : 0;
+  const skipExternalMin = Math.max(
+    PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_ABS,
+    Math.ceil(safeK * PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_MULTIPLIER),
+  );
+  const shouldSkipExternal =
+    !providedExternal &&
+    internalCount >= skipExternalMin &&
+    baseSemanticStrong &&
+    !baseProductIsExternal;
+
+  const externalCandidates = shouldSkipExternal
+    ? []
+      : await withSoftTimeout(
+        providedExternal
+          ? Promise.resolve(providedExternal)
+          : fetchExternalCandidates({
+              brandHint: baseBrand,
+              categoryHint: baseLeaf,
+              limit: Math.max(120, safeK * 15),
+            }),
+        effectiveExternalFetchTimeoutMs,
+        [],
+        () => {
+          externalTimedOut = true;
+          logger.warn(
+            {
+              product_id: baseProductId,
+              timeout_ms: effectiveExternalFetchTimeoutMs,
+            },
+            'PDP recommendations external candidate fetch timed out',
+          );
+        },
+      );
+
+  const filteredInternalCandidates = filterCandidateCollection(internalCandidates, excludedCandidates);
+  const filteredExternalCandidates = filterCandidateCollection(externalCandidates, excludedCandidates);
 
   const picked = pickLayeredRecommendations({
     baseProduct,
-    internalCandidates,
-    externalCandidates,
+    internalCandidates: filteredInternalCandidates,
+    externalCandidates: filteredExternalCandidates,
     k: safeK,
     baseSemantic,
   });
 
-  const similarSources = {
-    internal: {
-      attempted: true,
-      timed_out: internalTimedOut,
-      returned: internalCount,
-      skipped: false,
-      error_code: internalErrorCode || undefined,
-    },
-    external: {
-      attempted: true,
-      timed_out: externalTimedOut,
-      returned: Array.isArray(externalCandidates) ? externalCandidates.length : 0,
-      skipped: false,
-      error_code: externalErrorCode || undefined,
-    },
+  let finalItems = Array.isArray(picked.items) ? picked.items.slice(0, safeK) : [];
+  const historyFallbackDebug = {
+    used: false,
+    anchors_considered: normalizedRecentViews.length,
+    anchors_used: [],
+    added_count: 0,
   };
-  const internalHealthy = !internalTimedOut && !internalErrorCode;
-  const externalHealthy = !externalTimedOut && !externalErrorCode;
-  const anyHealthySource = internalHealthy || externalHealthy;
-  const anyHardFailure = internalTimedOut || externalTimedOut || Boolean(internalErrorCode) || Boolean(externalErrorCode);
-  let similarStatus = 'ready';
-  let emptyReason = null;
-  if (!picked.items.length) {
-    if (anyHealthySource && !anyHardFailure) {
-      similarStatus = 'empty';
-      emptyReason = 'no_same_brand_candidates';
-    } else if (anyHealthySource) {
-      similarStatus = 'degraded';
-      emptyReason = 'partial_source_failure';
-    } else {
-      similarStatus = 'unavailable';
-      emptyReason = 'all_sources_failed';
+
+  if (finalItems.length === 0 && normalizedRecentViews.length > 0) {
+    const historyExcludedCandidates = mergeExcludedCandidateStates(
+      excludedCandidates,
+      buildExcludedCandidateState(
+        normalizedRecentViews.map((item) => ({
+          product_id: item.product_id,
+          ...(item.merchant_id ? { merchant_id: item.merchant_id } : {}),
+        })),
+      ),
+    );
+    let historyItems = [];
+
+    for (const recentView of normalizedRecentViews) {
+      const remaining = safeK - historyItems.length;
+      if (remaining <= 0) break;
+
+      const { product: historyBaseProduct, semantic: historyBaseSemantic } = await enrichExternalBaseProduct({
+        merchant_id: recentView.merchant_id || null,
+        product_id: recentView.product_id,
+        title: recentView.title,
+        description: recentView.description,
+        brand: recentView.brand,
+        category: recentView.category,
+        product_type: recentView.product_type,
+      });
+
+      const perAnchorExcluded = mergeExcludedCandidateStates(
+        historyExcludedCandidates,
+        buildExcludedCandidateState(historyItems),
+      );
+      const historyPicked = pickLayeredRecommendations({
+        baseProduct: historyBaseProduct,
+        internalCandidates: filterCandidateCollection(filteredInternalCandidates, perAnchorExcluded),
+        externalCandidates: filterCandidateCollection(filteredExternalCandidates, perAnchorExcluded),
+        k: remaining,
+        baseSemantic: historyBaseSemantic,
+      });
+
+      if (!Array.isArray(historyPicked.items) || historyPicked.items.length === 0) continue;
+
+      historyItems = uniqueByKey(
+        [...historyItems, ...historyPicked.items],
+        (item) => buildCandidateKey(item),
+      ).slice(0, safeK);
+
+      historyFallbackDebug.anchors_used.push({
+        product_id: getProductId(historyBaseProduct),
+        merchant_id: getMerchantId(historyBaseProduct) || null,
+        added_count: historyPicked.items.length,
+      });
     }
-  } else if (anyHardFailure) {
-    similarStatus = 'degraded';
+
+    if (historyItems.length > 0) {
+      finalItems = historyItems;
+      historyFallbackDebug.used = true;
+      historyFallbackDebug.added_count = historyItems.length;
+    }
   }
 
   const elapsedMs = Date.now() - start;
+  const finalSourceCounts = countRecommendationSources(finalItems);
+  const finalMetadata = {
+    ...(picked.metadata || {}),
+    retrieval_mix: finalSourceCounts,
+    underfill: Math.max(0, safeK - finalItems.length),
+    low_confidence: Boolean(picked?.metadata?.low_confidence),
+  };
+
+  if (historyFallbackDebug.used) {
+    finalMetadata.low_confidence = true;
+    finalMetadata.similar_confidence = 'low';
+    finalMetadata.low_confidence_reason_codes = appendReasonCode(
+      finalMetadata.low_confidence_reason_codes,
+      'RECENT_VIEWS_FALLBACK_USED',
+    );
+  }
+
   const result = {
-    strategy: 'related_products',
-    status: similarStatus === 'unavailable' ? 'unavailable' : 'success',
-    items: picked.items,
-    metadata: {
-      ...(picked.metadata || {}),
-      similar_status: similarStatus,
-      similar_sources: similarSources,
-      empty_reason: emptyReason,
-      low_confidence: Boolean(picked?.metadata?.low_confidence),
-    },
+    items: finalItems,
+    metadata: finalMetadata,
     debug: {
       ...picked.debug,
       timing_ms: elapsedMs,
       fetch_strategy: {
-        internal_count: internalCount,
-        external_count: Array.isArray(externalCandidates) ? externalCandidates.length : 0,
+        internal_count: Array.isArray(filteredInternalCandidates) ? filteredInternalCandidates.length : 0,
+        external_count: Array.isArray(filteredExternalCandidates) ? filteredExternalCandidates.length : 0,
         internal_timed_out: internalTimedOut,
         external_timed_out: externalTimedOut,
+        external_skipped: shouldSkipExternal,
+        external_skip_min_candidates: skipExternalMin,
         base_semantic_strong: baseSemanticStrong,
         base_product_is_external: baseProductIsExternal,
-        internal_error_code: internalErrorCode,
-        external_error_code: externalErrorCode,
       },
+      sources: finalSourceCounts,
+      history_fallback: historyFallbackDebug,
       base_semantic: baseSemantic || null,
       cache_key_hash: debugEnabled ? stableHashShort(cacheKey) : undefined,
     },
   };
 
-  if (PDP_RECS_CACHE_ENABLED && !bypassCache && shouldCacheRecommendationResult(result)) {
+  if (PDP_RECS_CACHE_ENABLED && !bypassCache) {
     setCacheEntry(cacheKey, result);
   }
 
@@ -1121,11 +1378,11 @@ async function recommend({
       timing_ms: elapsedMs,
       candidates_total: picked.debug?.candidates_total,
       layers: picked.debug?.layers,
-      sources: picked.debug?.sources,
-      similar_status: similarStatus,
-      similar_confidence: picked?.metadata?.similar_confidence || null,
-      low_confidence: Boolean(picked?.metadata?.low_confidence),
-      underfill: Math.max(0, safeK - (picked.items?.length || 0)),
+      sources: finalSourceCounts,
+      similar_confidence: finalMetadata.similar_confidence || null,
+      low_confidence: Boolean(finalMetadata.low_confidence),
+      underfill: Math.max(0, safeK - finalItems.length),
+      history_fallback_used: historyFallbackDebug.used,
     },
     'PDP recommendations generated',
   );
@@ -1150,14 +1407,11 @@ module.exports = {
       PDP_RECS_CACHE_METRICS.evictions = 0;
     },
     normalizeText,
-    normalizeBrandLookupKey,
     tokenize,
     jaccard,
     getBrandName,
     getLeafCategory,
     getParentCategory,
     isExternalProduct,
-    fetchExternalCandidates,
-    enrichExternalBaseProduct,
   },
 };
