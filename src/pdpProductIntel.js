@@ -78,6 +78,43 @@ function stripWhatItIsFootnotes(text) {
     .trim();
 }
 
+function stripSellerMerchandisingLead(text) {
+  return String(text || '')
+    .replace(/^double up and save with\s+/i, '')
+    .replace(/^stock up with\s+/i, '')
+    .replace(/^save with\s+/i, '')
+    .replace(/^offered in (an? )?/i, '')
+    .replace(/^available in (an? )?/i, '')
+    .replace(/^this\s+jumbo\s+size\s+of\s+/i, '')
+    .replace(/^jumbo\s+size\s+of\s+/i, '')
+    .replace(/^our\s+jumbo\s+size\s+of\s+/i, '')
+    .trim();
+}
+
+function isLowSignalSellerHighlightText(text) {
+  const normalized = stripHtml(text).toLowerCase();
+  if (!normalized) return false;
+  return /(^|\b)(double up and save|stock up|save with|jumbo size|travel size|value size|value pack|limited edition|extended use)(\b|$)/.test(
+    normalized,
+  );
+}
+
+function firstMeaningfulHighlightSentence(text, { sellerOnly = false } = {}) {
+  const clean = stripWhatItIsFootnotes(stripHtml(text));
+  if (!clean) return '';
+  const sentences = clean.match(/[^.!?]+[.!?]?/g) || [];
+  for (const sentence of sentences) {
+    const normalized = toSentence(stripSellerMerchandisingLead(sentence), '').trim();
+    if (!normalized || normalized.length < 24) continue;
+    if (sellerOnly && isLowSignalSellerHighlightText(normalized)) continue;
+    return normalized;
+  }
+  const fallback = toSentence(stripSellerMerchandisingLead(clean), '').trim();
+  if (!fallback) return '';
+  if (sellerOnly && isLowSignalSellerHighlightText(fallback)) return '';
+  return fallback;
+}
+
 function compactWhatItIsBody(text, { sellerOnly = false, fallback = '' } = {}) {
   const maxChars = sellerOnly ? 320 : 420;
   const clean = stripHtml(stripWhatItIsFootnotes(stripWhatItIsPromoPrefixes(text)));
@@ -266,6 +303,21 @@ function normalizePublishedProductIntelBundle(bundle, {
         fallback: core.what_it_is?.body || '',
       }),
     },
+    why_it_stands_out: asArray(core.why_it_stands_out)
+      .filter((item) => {
+        const row = asPlainObject(item) || {};
+        const sellerOnly =
+          coreEvidenceProfile === 'seller_only' || coreEvidenceProfile === 'seller_plus_formula';
+        if (!sellerOnly) return true;
+        return !isLowSignalSellerHighlightText(`${row.headline || ''} ${row.body || ''}`);
+      })
+      .map((item) => {
+        const row = asPlainObject(item) || {};
+        return {
+          ...row,
+          body: toSentence(stripSellerMerchandisingLead(row.body), row.body),
+        };
+      }),
   };
 
   return {
@@ -365,7 +417,6 @@ function buildPublishedIntelKbKeys(product, canonicalProductRef = null) {
 async function hydrateProductWithPublishedIntel({ product, canonicalProductRef = null } = {}) {
   const sourceProduct = asPlainObject(product) || {};
   if (readPublishedProductIntelBundle(sourceProduct, { canonicalProductRef })) return sourceProduct;
-  if (readPublishedIntelSource(sourceProduct)) return sourceProduct;
 
   let getProductIntelKbEntry = null;
   let normalizeProductAnalysis = null;
@@ -499,6 +550,39 @@ function readKeyIngredients(product) {
       science?.key_ingredients ||
       science?.keyIngredients,
   ).slice(0, 6);
+}
+
+function inferNamedActivesFromText(product) {
+  const text = buildCombinedText(product);
+  const patterns = [
+    ['Vitamin C', /\bvitamin c\b/],
+    ['Retinol', /\bretinol\b/],
+    ['Niacinamide', /\bniacinamide\b/],
+    ['Hyaluronic acid', /\bhyaluronic acid\b/],
+    ['Salicylic acid', /\bsalicylic acid\b/],
+    ['Glycolic acid', /\bglycolic acid\b/],
+    ['Lactic acid', /\blactic acid\b/],
+    ['Ceramides', /\bceramide\b/],
+    ['Peptides', /\bpeptide\b/],
+    ['Zinc oxide', /\bzinc oxide\b/],
+  ];
+  return patterns
+    .filter(([, pattern]) => pattern.test(text))
+    .map(([label]) => label)
+    .slice(0, 5);
+}
+
+function inferConcernCoverageFromText(product) {
+  const text = buildCombinedText(product);
+  const concerns = [];
+  const pushConcern = (label) => {
+    if (!concerns.includes(label)) concerns.push(label);
+  };
+  if (/\b(bright|brighten|dark spot|uneven tone|tone)\b/.test(text)) pushConcern('brightness');
+  if (/\b(texture|smooth|refine|resurface)\b/.test(text)) pushConcern('smoother texture');
+  if (/\b(fine lines?|wrinkles?|aging)\b/.test(text)) pushConcern('fine-line support');
+  if (/\b(hydrat|plump|dehydrat)\b/.test(text)) pushConcern('hydration support');
+  return concerns.slice(0, 3);
 }
 
 function hasStructuredCommunitySignals(product) {
@@ -711,12 +795,17 @@ function inferWhyItStandsOut(product, evidenceProfile) {
       );
 
   const out = [];
+  const sellerOnly = evidenceProfile === 'seller_only' || evidenceProfile === 'seller_plus_formula';
   const pushHighlight = (headline, body, evidenceStrength = 'seller_grounded') => {
     if (!headline || !body) return;
+    const normalizedHeadline = asString(headline);
+    const normalizedBody = toSentence(stripSellerMerchandisingLead(body), body);
+    if (!normalizedBody) return;
+    if (sellerOnly && isLowSignalSellerHighlightText(`${normalizedHeadline} ${normalizedBody}`)) return;
     if (out.some((item) => item.headline.toLowerCase() === String(headline).toLowerCase())) return;
     out.push({
-      headline,
-      body: toSentence(body, body),
+      headline: normalizedHeadline,
+      body: normalizedBody,
       evidence_strength: evidenceStrength,
     });
   };
@@ -734,9 +823,27 @@ function inferWhyItStandsOut(product, evidenceProfile) {
     );
   }
 
+  const namedActives = keyIngredients.length ? [] : inferNamedActivesFromText(product);
+  if (namedActives.length >= 3) {
+    pushHighlight(
+      'Multi-active formula',
+      `Brings together ${namedActives.slice(0, 4).join(', ')} in one treatment step.`,
+      'seller_grounded',
+    );
+  }
+  const concernCoverage = inferConcernCoverageFromText(product);
+  if (concernCoverage.length >= 2) {
+    pushHighlight(
+      'Broad concern coverage',
+      `Positions itself as a single serum for ${concernCoverage.join(', ')} rather than a one-note active.`,
+      'seller_grounded',
+    );
+  }
+
   const desc = stripHtml(product.description);
   if (desc && out.length < (evidenceProfile === 'seller_only' ? 2 : 4)) {
-    pushHighlight('Positioning', desc.split('. ')[0], 'seller_grounded');
+    const descSentence = firstMeaningfulHighlightSentence(desc, { sellerOnly });
+    if (descSentence) pushHighlight('Formula angle', descSentence, 'seller_grounded');
   }
 
   return out.slice(0, evidenceProfile === 'seller_only' ? 2 : 4);

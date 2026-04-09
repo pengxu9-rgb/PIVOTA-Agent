@@ -15,6 +15,7 @@ function parseArgs(argv) {
     cases: 'scripts/fixtures/product_intel_pilot_cases.json',
     out: '',
     markdown: '',
+    manualOverrides: 'scripts/fixtures/product_intel_manual_overrides.json',
     model: process.env.PRODUCT_INTEL_PILOT_GEMINI_MODEL || 'gemini-3-pro-preview',
     skipGemini: false,
   };
@@ -30,6 +31,9 @@ function parseArgs(argv) {
       i += 1;
     } else if (token === '--markdown' && next) {
       out.markdown = next;
+      i += 1;
+    } else if (token === '--manual-overrides' && next) {
+      out.manualOverrides = next;
       i += 1;
     } else if (token === '--model' && next) {
       out.model = next;
@@ -56,6 +60,12 @@ function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
 }
 
+function readJsonIfExists(filePath) {
+  if (!filePath) return null;
+  if (!fs.existsSync(filePath)) return null;
+  return readJson(filePath);
+}
+
 function writeJson(filePath, value) {
   ensureDir(filePath);
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
@@ -70,6 +80,68 @@ function asString(value) {
   if (typeof value === 'string') return value.trim();
   if (value == null) return '';
   return String(value).trim();
+}
+
+function isLowSignalSellerHighlightText(text) {
+  const normalized = asString(text).toLowerCase();
+  if (!normalized) return false;
+  return /(^|\b)(double up and save|stock up|save with|jumbo size|travel size|value size|value pack|limited edition|extended use)(\b|$)/.test(
+    normalized,
+  );
+}
+
+function isGenericSellerHighlightText(text) {
+  const normalized = asString(text).toLowerCase();
+  if (!normalized) return false;
+  return [
+    /(^|\b)designed to\b/,
+    /(^|\b)claims? to\b/,
+    /(^|\b)features? a (lightweight|rich|gel|stick|buttery|non-greasy|smooth)\b/,
+    /(^|\b)delivered in (a )?convenient\b/,
+    /(^|\b)formulated to be gentle\b/,
+    /(^|\b)powered by (a )?blend\b/,
+    /(^|\b)provides? up to \d+\s*hours?\b/,
+    /(^|\b)for daily use\b/,
+    /(^|\b)for intensive overnight moisture\b/,
+  ].some((pattern) => pattern.test(normalized));
+}
+
+function stripSellerMerchandisingLead(text) {
+  return asString(text)
+    .replace(/^double up and save with\s+/i, '')
+    .replace(/^stock up with\s+/i, '')
+    .replace(/^save with\s+/i, '')
+    .replace(/^offered in (an? )?/i, '')
+    .replace(/^available in (an? )?/i, '')
+    .replace(/^this\s+jumbo\s+size\s+of\s+/i, '')
+    .replace(/^jumbo[-\s]+sized?\s+/i, '')
+    .replace(/^jumbo\s+size\s+of\s+/i, '')
+    .replace(/^our\s+jumbo\s+size\s+of\s+/i, '')
+    .trim();
+}
+
+function normalizeSellerWhatItIs(text) {
+  return asString(text)
+    .replace(/^our\s+/i, 'A ')
+    .replace(/^this\s+/i, 'A ')
+    .replace(/^clinically-inspired\s+/i, 'A ')
+    .replace(/^clinically inspired\s+/i, 'A ')
+    .replace(/^jumbo[-\s]+sized?,?\s+/i, 'A ')
+    .replace(/^a\s+a\s+/i, 'A ')
+    .trim();
+}
+
+function isWeakSellerWhatItIsText(text) {
+  const normalized = asString(text).toLowerCase();
+  if (!normalized) return true;
+  if (normalized.length < 36) return true;
+  return [
+    /\bour supercharged\b/,
+    /\bmulti-benefit\b/,
+    /\bjumbo[-\s]+size\b/,
+    /\bdouble up and save\b/,
+    /\bclinically-inspired\b/,
+  ].some((pattern) => pattern.test(normalized));
 }
 
 function toList(value) {
@@ -106,6 +178,17 @@ function jaccardOverlap(leftValues, rightValues) {
 
 function deepClone(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
+}
+
+function resolveManualOverride(caseRow, manualOverrides) {
+  if (!manualOverrides || typeof manualOverrides !== 'object') return null;
+  const caseId = asString(caseRow?.case_id);
+  const productId = asString(caseRow?.canonical_product_ref?.product_id || caseRow?.product?.product_id);
+  return (
+    manualOverrides[caseId] ||
+    manualOverrides[`product:${productId}`] ||
+    null
+  );
 }
 
 function hasGeminiKey() {
@@ -224,6 +307,12 @@ function buildGeminiPrompt(caseRow, baselineDraft) {
     '- Do not output source_coverage, evidence_profile, quality_state, or freshness. Those are computed separately.',
     '- Avoid phrases like "users say", "people love", "viral", or "social media" unless community evidence is supplied.',
     '- Keep highlights concise, concrete, and product-specific.',
+    '- For seller_only and seller_plus_formula cases, write in neutral product language, not brand voice.',
+    '- Do not use packaging, size, value, convenience, or bare claim copy as a highlight unless it is central to how the product works.',
+    '- Do not write generic highlights like "designed to provide hydration", "features a lightweight texture", or "delivered in a convenient stick format".',
+    '- In seller_only mode, prefer formula architecture, role combination, active blend, UV role, or concern coverage over generic texture or claim repetition.',
+    '- Keep what_it_is to 1-2 short sentences and avoid phrases like "our", "supercharged", "multi-benefit", or "clinically inspired".',
+    '- Limit seller_only why_it_stands_out to at most 2 items.',
     '- Do not leave product_intel_core.what_it_is.body empty when title/category/description exist.',
     '- If title/category/description are enough to infer routine role, fill routine_fit conservatively.',
     '- For seller_only or seller_plus_formula cases, still provide at least 1 best_for item and 1 why_it_stands_out item when description/category clearly support them.',
@@ -276,7 +365,12 @@ function normalizeGeminiDraftOutput(output) {
           : 'limited',
       };
     })
-    .filter(Boolean)
+    .filter(
+      (item) =>
+        item &&
+        !isLowSignalSellerHighlightText(`${item.headline} ${item.body}`) &&
+        !isGenericSellerHighlightText(`${item.headline} ${item.body}`),
+    )
     .slice(0, 4);
 
   const watchouts = toList(output?.product_intel_core?.watchouts)
@@ -338,7 +432,7 @@ function normalizeGeminiDraftOutput(output) {
         headline:
           asString(output?.product_intel_core?.what_it_is?.headline).slice(0, 120) ||
           PIVOTA_INSIGHTS_DISPLAY_NAME,
-        body: asString(output?.product_intel_core?.what_it_is?.body).slice(0, 400),
+        body: normalizeSellerWhatItIs(asString(output?.product_intel_core?.what_it_is?.body)).slice(0, 400),
       },
       best_for: bestFor,
       why_it_stands_out: highlights,
@@ -580,7 +674,9 @@ function evaluateGeminiCandidateQuality(baselineBundle, geminiCandidateBundle) {
 
   const fieldDecisions = {
     what_it_is:
-      asString(candidateCore.what_it_is?.body).length >= 24 && !sellerOnlyViolation,
+      asString(candidateCore.what_it_is?.body).length >= 24 &&
+      !sellerOnlyViolation &&
+      !(sellerOnlyMode && isWeakSellerWhatItIsText(candidateCore.what_it_is?.body)),
     best_for:
       Array.isArray(candidateCore.best_for) &&
       candidateCore.best_for.length > 0 &&
@@ -593,7 +689,12 @@ function evaluateGeminiCandidateQuality(baselineBundle, geminiCandidateBundle) {
     why_it_stands_out:
       Array.isArray(candidateCore.why_it_stands_out) &&
       candidateCore.why_it_stands_out.length > 0 &&
-      candidateCore.why_it_stands_out.some((item) => asString(item?.body).length >= 20) &&
+      candidateCore.why_it_stands_out.some(
+        (item) =>
+          asString(item?.body).length >= 20 &&
+          !isLowSignalSellerHighlightText(`${item?.headline || ''} ${item?.body || ''}`) &&
+          !(sellerOnlyMode && isGenericSellerHighlightText(`${item?.headline || ''} ${item?.body || ''}`)),
+      ) &&
       !sellerOnlyViolation,
     routine_fit:
       asString(candidateCore.routine_fit?.step) === asString(baselineCore.routine_fit?.step) &&
@@ -727,6 +828,62 @@ function buildSelectedBundle(baselineBundle, geminiCandidateBundle, quality, mod
   };
 }
 
+function applyManualOverrideToSelected(selectedResult, manualOverride) {
+  if (!selectedResult || !manualOverride || typeof manualOverride !== 'object') return selectedResult;
+
+  const selected = deepClone(selectedResult);
+  const bundle = selected.bundle || {};
+  const core = bundle.product_intel_core || {};
+  const manualCore = manualOverride.product_intel_core && typeof manualOverride.product_intel_core === 'object'
+    ? manualOverride.product_intel_core
+    : {};
+
+  const fieldSources = {
+    ...(selected.field_sources || {}),
+  };
+  let manualFieldCount = 0;
+
+  const assignManualField = (field, value) => {
+    if (value == null) return;
+    core[field] = deepClone(value);
+    fieldSources[field] = 'manual';
+    manualFieldCount += 1;
+  };
+
+  assignManualField('what_it_is', manualCore.what_it_is);
+  assignManualField('best_for', manualCore.best_for);
+  assignManualField('why_it_stands_out', manualCore.why_it_stands_out);
+  assignManualField('routine_fit', manualCore.routine_fit);
+  assignManualField('watchouts', manualCore.watchouts);
+
+  if (manualOverride.texture_finish && typeof manualOverride.texture_finish === 'object') {
+    bundle.texture_finish = deepClone(manualOverride.texture_finish);
+    fieldSources.texture_finish = 'manual';
+    manualFieldCount += 1;
+  }
+
+  if (manualOverride.community_signals && typeof manualOverride.community_signals === 'object') {
+    bundle.community_signals = deepClone(manualOverride.community_signals);
+    fieldSources.community_signals = 'manual';
+    manualFieldCount += 1;
+  }
+
+  bundle.product_intel_core = core;
+  bundle.provenance = {
+    ...(bundle.provenance || {}),
+    source: 'product_intel_pilot_compare',
+    generator: 'curated_override',
+    selection_strategy: 'curated_override',
+    override_reason: asString(manualOverride.notes) || 'manual_quality_override',
+  };
+
+  selected.bundle = bundle;
+  selected.field_sources = fieldSources;
+  selected.selected_field_count = manualFieldCount;
+  selected.selected_mode = 'manual_override';
+  return selected;
+}
+
 function buildComparisonSummary(baselineBundle, geminiCandidateBundle, selectedResult, quality) {
   const baselineCore = baselineBundle?.product_intel_core || {};
   const geminiCore = geminiCandidateBundle?.product_intel_core || {};
@@ -793,6 +950,7 @@ async function main() {
   const casesPath = resolvePath(rootDir, args.cases);
   const casesPayload = readJson(casesPath);
   const cases = Array.isArray(casesPayload) ? casesPayload : [];
+  const manualOverrides = readJsonIfExists(resolvePath(rootDir, args.manualOverrides)) || {};
 
   const reportRows = [];
   for (const caseRow of cases) {
@@ -810,15 +968,19 @@ async function main() {
       ? null
       : mergeGeminiDraftIntoBaseline(caseRow, baseline, geminiRaw.output, args.model);
     const qualityGate = evaluateGeminiCandidateQuality(baseline, geminiCandidate);
-    const selected = buildSelectedBundle(baseline, geminiCandidate, qualityGate, args.model);
+    const selectedBase = buildSelectedBundle(baseline, geminiCandidate, qualityGate, args.model);
+    const manualOverride = resolveManualOverride(caseRow, manualOverrides);
+    const selected = applyManualOverrideToSelected(selectedBase, manualOverride);
 
     reportRows.push({
       case_id: asString(caseRow.case_id) || 'unnamed_case',
       notes: asString(caseRow.notes),
+      manual_override_applied: Boolean(manualOverride),
       baseline,
       gemini: geminiRaw.skipped
         ? { skipped: true, reason: geminiRaw.reason }
         : { skipped: false, raw: geminiRaw.output, candidate: geminiCandidate },
+      manual_override: manualOverride ? deepClone(manualOverride) : null,
       quality_gate: qualityGate,
       selected,
       comparison: buildComparisonSummary(baseline, geminiCandidate, selected, qualityGate),
@@ -869,4 +1031,6 @@ module.exports = {
   buildSelectedBundle,
   buildComparisonSummary,
   buildMarkdownReport,
+  applyManualOverrideToSelected,
+  resolveManualOverride,
 };

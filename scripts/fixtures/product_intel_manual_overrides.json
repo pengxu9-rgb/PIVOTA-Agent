@@ -1,0 +1,554 @@
+{
+  "live_ext_13c520e764f9f7d7f23c611b": {
+    "notes": "Curated seller-only rewrite to replace low-signal jumbo-size merchandising copy with product-substance highlights.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Treatment serum",
+        "body": "A multi-active treatment serum that combines vitamin C, retinol, niacinamide, hyaluronic acid, and salicylic acid to target tone, texture, and early signs of aging in one step."
+      },
+      "best_for": [
+        {
+          "tag": "uneven_tone",
+          "label": "Uneven tone concerns",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "texture_refinement",
+          "label": "Texture-smoothing routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "early_signs_of_aging",
+          "label": "Early fine line concerns",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Multi-active formula",
+          "body": "Brings together vitamin C, retinol, niacinamide, hyaluronic acid, and salicylic acid in one treatment step.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Broad concern coverage",
+          "body": "Positions itself as a single serum for brightness, smoother texture, and visible fine-line support rather than a one-note active.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply before moisturizer; use SPF in the morning.",
+          "Start slowly if your routine already includes multiple strong actives."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "retinoid",
+          "label": "The active blend may be too much for very sensitive or over-exfoliated skin.",
+          "severity": "high"
+        },
+        {
+          "type": "usage",
+          "label": "Introduce gradually if you are not already using retinoid or exfoliating-acid serums.",
+          "severity": "medium"
+        }
+      ]
+    }
+  },
+  "product:ext_13c520e764f9f7d7f23c611b": {
+    "notes": "Curated seller-only rewrite to replace low-signal jumbo-size merchandising copy with product-substance highlights.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Treatment serum",
+        "body": "A multi-active treatment serum that combines vitamin C, retinol, niacinamide, hyaluronic acid, and salicylic acid to target tone, texture, and early signs of aging in one step."
+      },
+      "best_for": [
+        {
+          "tag": "uneven_tone",
+          "label": "Uneven tone concerns",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "texture_refinement",
+          "label": "Texture-smoothing routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "early_signs_of_aging",
+          "label": "Early fine line concerns",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Multi-active formula",
+          "body": "Brings together vitamin C, retinol, niacinamide, hyaluronic acid, and salicylic acid in one treatment step.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Broad concern coverage",
+          "body": "Positions itself as a single serum for brightness, smoother texture, and visible fine-line support rather than a one-note active.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply before moisturizer; use SPF in the morning.",
+          "Start slowly if your routine already includes multiple strong actives."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "retinoid",
+          "label": "The active blend may be too much for very sensitive or over-exfoliated skin.",
+          "severity": "high"
+        },
+        {
+          "type": "usage",
+          "label": "Introduce gradually if you are not already using retinoid or exfoliating-acid serums.",
+          "severity": "medium"
+        }
+      ]
+    }
+  },
+  "live_ext_8d735b108c0f01151b80797b": {
+    "notes": "Curated seller-only rewrite to emphasize the brightening active story over generic finish copy.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Brightening serum",
+        "body": "A brightening serum built around amla berry as a vitamin C-focused ingredient to target dullness, uneven tone, and the look of dark spots."
+      },
+      "best_for": [
+        {
+          "tag": "dullness",
+          "label": "Dullness-focused routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "uneven_tone",
+          "label": "Uneven tone concerns",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "dark_spots",
+          "label": "Dark spot routines",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Amla berry-led brightening",
+          "body": "Centers its brightening story on amla berry rather than a traditional pure vitamin C serum position.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Tone-focused serum role",
+          "body": "Targets radiance, uneven tone, and visible dark-spot concerns in a dedicated treatment step.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply before moisturizer; use SPF in daytime brightening routines."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "sun",
+          "label": "Daytime brightening routines still need sunscreen to help limit new discoloration.",
+          "severity": "medium"
+        }
+      ]
+    }
+  },
+  "live_ext_4e155bb184ec35f3cd7827e3": {
+    "notes": "Curated seller-only rewrite to keep the moisturizer story concrete and less claim-driven.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Brightening moisturizer",
+        "body": "A daily moisturizer that combines vitamin C and niacinamide with a hydration-first cream step for brightness, smoother texture, and glow."
+      },
+      "best_for": [
+        {
+          "tag": "dullness",
+          "label": "Dullness-focused routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "daily_moisturizer",
+          "label": "Daily moisturizer users who want added brightening",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Brightening actives in a moisturizer step",
+          "body": "Packages vitamin C and niacinamide into a daily cream rather than a separate treatment-serum format.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Glow plus hydration positioning",
+          "body": "Balances everyday moisture with a visible-brightness story instead of functioning as a plain barrier cream.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "moisturizer",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use after serum; add SPF in the morning if this is your daytime moisturizer."
+        ]
+      },
+      "watchouts": []
+    }
+  },
+  "live_ext_7036139f48c84539ff819d8d": {
+    "notes": "Curated seller-only rewrite to stress the brightening-plus-hydration blend instead of generic texture claims.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Hydrating brightening serum",
+        "body": "A lightweight serum that combines niacinamide, vitamin C, peach extract, hyaluronic acid, and polyglutamic acid to brighten dullness while supporting plumper-feeling hydration."
+      },
+      "best_for": [
+        {
+          "tag": "dullness",
+          "label": "Dull or tired-looking skin",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "dehydration",
+          "label": "Hydration-focused serum routines",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Brightening plus humectant blend",
+          "body": "Pairs niacinamide and vitamin C with hyaluronic acid and polyglutamic acid instead of leaning on a one-note glow claim.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Serum step for glow and bounce",
+          "body": "Targets radiance and plumper-feeling hydration in a dedicated pre-moisturizer treatment step.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply before moisturizer; use SPF in the morning."
+        ]
+      },
+      "watchouts": []
+    }
+  },
+  "live_ext_f22e924478be64d4c3a1b918": {
+    "notes": "Curated seller-only rewrite to avoid generic night-cream texture filler.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Night cream",
+        "body": "A rich overnight cream that combines colloidal oatmeal and niacinamide with a moisture-sealing night step aimed at comfort and visible firmness support."
+      },
+      "best_for": [
+        {
+          "tag": "overnight_hydration",
+          "label": "Overnight hydration routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "comfort",
+          "label": "Dry or comfort-focused night routines",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Rich night-step format",
+          "body": "Takes a fuller night-cream approach rather than a light gel moisturizer for overnight moisture support.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Comfort plus firmness positioning",
+          "body": "Pairs colloidal oatmeal and niacinamide with a visible-firming story instead of framing itself as a purely soothing cream.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "moisturizer",
+        "am_pm": [
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use after serum as the last skincare step at night."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "texture",
+          "label": "The richer overnight texture may feel heavy if you prefer lightweight night moisturizers.",
+          "severity": "medium"
+        }
+      ]
+    }
+  },
+  "live_ext_f326aabff0f8a4a698aa192c": {
+    "notes": "Curated seller-only rewrite to keep the SPF moisturizer explanation crisp and practical.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Moisturizer with SPF",
+        "body": "A daily moisturizer with broad-spectrum SPF 30 that combines sun protection, hydration, and niacinamide-led skin-support benefits in one morning step."
+      },
+      "best_for": [
+        {
+          "tag": "daily_spf",
+          "label": "Everyday SPF users who want a moisturizer feel",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "morning_routine",
+          "label": "Simplified morning routines",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Moisturizer and sunscreen in one step",
+          "body": "Functions as a daytime cream and SPF 30 product rather than requiring separate moisturizer and sunscreen layers.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Hydration-led SPF positioning",
+          "body": "Builds its sunscreen story around invisible wear and daily hydration instead of a beach or sport-SPF profile.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "sunscreen",
+        "am_pm": [
+          "am"
+        ],
+        "pairing_notes": [
+          "Use as the last skincare step before makeup in the morning.",
+          "Reapply during the day if you rely on it for sun protection."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "spf",
+          "label": "Daily SPF performance still depends on full application and reapplication when needed.",
+          "severity": "medium"
+        }
+      ]
+    }
+  },
+  "live_ext_1d9e01e4c3a8800a0c22b175": {
+    "notes": "Curated seller-only rewrite to remove the inaccurate niacinamide-resurfacing framing.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Treatment lotion",
+        "body": "A lightweight treatment lotion built around 2% niacinamide, glycerin, and ceramides to target post-acne marks while supporting hydration and barrier comfort."
+      },
+      "best_for": [
+        {
+          "tag": "post_acne_marks",
+          "label": "Post-acne mark routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "blemish_prone_skin",
+          "label": "Blemish-prone skin that still needs hydration",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Niacinamide plus barrier support",
+          "body": "Pairs 2% niacinamide with glycerin and ceramides instead of treating discoloration as a dry, strong-active serum step.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Lotion texture for treatment routines",
+          "body": "Uses a lightweight lotion format that sits between a serum and moisturizer rather than a watery spot-treatment profile.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "treatment",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply before moisturizer; use SPF in daytime discoloration routines."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "layering",
+          "label": "Keep the rest of the routine simple if you already use multiple strong discoloration treatments.",
+          "severity": "medium"
+        }
+      ]
+    }
+  },
+  "live_ext_6c540ac96c2c1ab33f1af31d": {
+    "notes": "Curated seller-only rewrite to keep the under-eye story specific instead of convenience-led.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Color-correcting eye treatment stick",
+        "body": "A targeted under-eye stick that combines vitamin C treatment positioning with banana-toned pigments for immediate dark-circle correction and added hydration."
+      },
+      "best_for": [
+        {
+          "tag": "dark_circles",
+          "label": "Dark-circle correction",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "under_eye_brightness",
+          "label": "Under-eye brightening routines",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Instant correction plus treatment angle",
+          "body": "Bridges cosmetic under-eye color correction with a vitamin C brightening story instead of acting like a plain eye cream.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Targeted stick delivery",
+          "body": "Focuses application on the under-eye area rather than positioning itself as a general face brightening serum.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "eye_treatment",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply directly to the under-eye area and blend before concealer if desired."
+        ]
+      },
+      "watchouts": []
+    }
+  },
+  "live_ext_aa93bbb9dbe9e3529030408b": {
+    "notes": "Curated seller-only rewrite to remove vague antioxidant filler and keep the moisturizer story grounded.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Brightening moisturizer",
+        "body": "A lightweight gel-cream moisturizer that uses vitamin C to combine daily hydration with a brightening, dark-spot-focused moisturizer step."
+      },
+      "best_for": [
+        {
+          "tag": "dullness",
+          "label": "Dullness-focused routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "dark_spots",
+          "label": "Dark-spot routines that still need daily moisture",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Brightening built into a gel-cream step",
+          "body": "Positions vitamin C inside a lightweight moisturizer rather than a separate brightening serum.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Everyday glow without a heavy cream feel",
+          "body": "Leans toward a lighter daily-moisturizer texture while still carrying a visible-brightness story.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "moisturizer",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use after serum; add sunscreen in the morning."
+        ]
+      },
+      "watchouts": []
+    }
+  },
+  "live_ext_7c4b0a2885131b08d1cda84a": {
+    "notes": "Curated seller-only rewrite to make the discoloration role more specific and less generic.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Dark-spot serum",
+        "body": "A niacinamide-led serum aimed at dark spots, post-acne marks, and uneven tone, with a gentler treatment profile than a harsher acid-led discoloration serum."
+      },
+      "best_for": [
+        {
+          "tag": "dark_spots",
+          "label": "Dark spot routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "post_acne_marks",
+          "label": "Post-acne marks and discoloration",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Niacinamide-first discoloration focus",
+          "body": "Keeps the formula story centered on niacinamide rather than a stronger peel or exfoliating-acid approach.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Targeted serum role",
+          "body": "Frames itself as a dedicated discoloration step rather than a general brightening moisturizer or toner.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply before moisturizer; use sunscreen in daytime dark-spot routines."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "sun",
+          "label": "Dark-spot routines work best when daytime sun protection is consistent.",
+          "severity": "medium"
+        }
+      ]
+    }
+  }
+}

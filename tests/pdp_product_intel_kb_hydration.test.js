@@ -204,4 +204,117 @@ describe('pdpProductIntel KB hydration', () => {
     expect(bundle.product_intel_core.what_it_is.body).toMatch(/hydration and barrier comfort/i);
     expect(bundle.evidence_profile).toBe('seller_plus_formula');
   });
+
+  test('prefers direct product_intel_v1 bundle from aurora_product_intel_kb over stale legacy assessment', async () => {
+    jest.doMock('../src/auroraBff/productIntelKbStore', () => ({
+      getProductIntelKbEntry: jest.fn(async (kbKey) => {
+        if (kbKey !== 'product:ext_case_bundle_legacy_1') return null;
+        return {
+          kb_key: kbKey,
+          source: 'pivota_product_intel_pilot_selected',
+          last_success_at: '2026-04-09T03:58:54.000Z',
+          analysis: {
+            product_intel_v1: {
+              contract_version: 'pivota.product_intel.v1',
+              display_name: 'Pivota Insights',
+              canonical_product_ref: {
+                merchant_id: 'external_seed',
+                product_id: 'ext_case_bundle_legacy_1',
+              },
+              product_intel_core: {
+                what_it_is: {
+                  headline: 'Treatment serum',
+                  body: 'A multi-active treatment serum that combines vitamin C, retinol, niacinamide, hyaluronic acid, and salicylic acid to target tone, texture, and early signs of aging in one step.',
+                },
+                best_for: [{ tag: 'tone', label: 'Dullness and uneven tone', confidence: 'moderate' }],
+                why_it_stands_out: [
+                  {
+                    headline: 'Multi-active formula',
+                    body: 'Brings together vitamin C, retinol, niacinamide, hyaluronic acid, and salicylic acid in one treatment step.',
+                    evidence_strength: 'seller_grounded',
+                  },
+                ],
+                routine_fit: {
+                  step: 'serum',
+                  am_pm: ['pm'],
+                  pairing_notes: ['Use after cleansing and before moisturizer.'],
+                },
+                watchouts: [],
+                confidence: { overall: 'moderate' },
+                freshness: {
+                  generated_at: '2026-04-09T03:58:54.000Z',
+                  source_version: 'pilot_selected:manual_override',
+                },
+                quality_state: 'limited',
+                evidence_profile: 'seller_only',
+              },
+              community_signals: {
+                status: 'unavailable',
+                unavailable_reason: 'insufficient_feedback',
+                confidence: 'low',
+                evidence_profile: 'seller_only',
+              },
+              quality_state: 'limited',
+              evidence_profile: 'seller_only',
+              freshness: {
+                generated_at: '2026-04-09T03:58:54.000Z',
+                source_version: 'pilot_selected:manual_override',
+              },
+              provenance: {
+                source: 'product_intel_pilot_compare',
+                generator: 'curated_override',
+              },
+            },
+          },
+        };
+      }),
+    }));
+
+    jest.doMock('../src/auroraBff/normalize', () => ({
+      normalizeProductAnalysis: jest.fn((raw) => ({
+        payload: raw,
+      })),
+    }));
+
+    const { hydrateProductWithPublishedIntel, buildProductIntelBundle } = require('../src/pdpProductIntel');
+
+    const product = {
+      merchant_id: 'external_seed',
+      product_id: 'ext_case_bundle_legacy_1',
+      title: 'Vitamin C Super Serum Plus - Jumbo',
+      category: 'Skincare/Serum',
+      description: 'A multi-benefit serum.',
+      assessment: {
+        summary:
+          'Double up and save with this jumbo size of our supercharged serum formulated to improve the look of fine lines and wrinkles.',
+      },
+      evidence: {
+        science: {
+          key_ingredients: ['Vitamin C', 'Retinol'],
+        },
+      },
+    };
+
+    const hydrated = await hydrateProductWithPublishedIntel({
+      product,
+      canonicalProductRef: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_case_bundle_legacy_1',
+      },
+    });
+
+    expect(hydrated.product_intel.contract_version).toBe('pivota.product_intel.v1');
+
+    const bundle = buildProductIntelBundle({
+      product: hydrated,
+      canonicalProductRef: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_case_bundle_legacy_1',
+      },
+    });
+
+    expect(bundle.product_intel_core.what_it_is.body).toMatch(/multi-active treatment serum/i);
+    expect(bundle.product_intel_core.why_it_stands_out[0].headline).toBe('Multi-active formula');
+    expect(bundle.product_intel_core.what_it_is.body).not.toMatch(/Double up and save/i);
+  });
 });

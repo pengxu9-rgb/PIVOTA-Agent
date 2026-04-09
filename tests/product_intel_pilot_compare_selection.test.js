@@ -3,6 +3,7 @@ const {
   mergeGeminiDraftIntoBaseline,
   evaluateGeminiCandidateQuality,
   buildSelectedBundle,
+  applyManualOverrideToSelected,
 } = require('../scripts/product_intel_pilot_compare');
 
 describe('product_intel pilot compare selection', () => {
@@ -217,5 +218,175 @@ describe('product_intel pilot compare selection', () => {
     expect(selected.field_sources.best_for).toBe('gemini');
     expect(selected.bundle.product_intel_core.what_it_is.body).toMatch(/overnight gel-cream moisturizer/i);
     expect(selected.bundle.evidence_profile).toBe(baseline.evidence_profile);
+  });
+
+  test('rejects seller-only gemini highlights that are just merchandising or pack-size copy', () => {
+    const caseRow = {
+      case_id: 'pilot_naturium_jumbo',
+      canonical_product_ref: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_13c520e764f9f7d7f23c611b',
+      },
+      product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_13c520e764f9f7d7f23c611b',
+        brand: 'Naturium',
+        title: 'Vitamin C Super Serum Plus - Jumbo',
+        category: 'Serum',
+        description:
+          'A multi-benefit serum with vitamin c, retinol, niacinamide, hyaluronic acid and salicylic acid.',
+      },
+    };
+
+    const baseline = buildProductIntelDraftBundle({
+      product: caseRow.product,
+      canonicalProductRef: caseRow.canonical_product_ref,
+    });
+
+    const geminiOutput = {
+      product_intel_core: {
+        what_it_is: {
+          headline: 'Treatment serum',
+          body: 'A multi-benefit serum designed for uneven tone and texture.',
+        },
+        best_for: [{ tag: 'uneven_tone', label: 'Uneven tone concerns', confidence: 'moderate' }],
+        why_it_stands_out: [
+          {
+            headline: 'Offered in a jumbo size for extended use.',
+            body: 'Offered in a jumbo size for extended use.',
+            evidence_strength: 'limited',
+          },
+        ],
+        routine_fit: {
+          step: 'serum',
+          am_pm: ['am', 'pm'],
+          pairing_notes: ['Apply before moisturizer; follow with SPF if used in the morning.'],
+        },
+        watchouts: [],
+      },
+      community_signals: {
+        status: 'unavailable',
+      },
+    };
+
+    const candidate = mergeGeminiDraftIntoBaseline(caseRow, baseline, geminiOutput, 'gemini-test');
+    const quality = evaluateGeminiCandidateQuality(baseline, candidate);
+
+    expect(quality.field_decisions.why_it_stands_out).toBe(false);
+    expect(quality.fail_reasons).toContain('weak_highlights');
+  });
+
+  test('rejects seller-only gemini highlights that are generic claim or format filler', () => {
+    const caseRow = {
+      case_id: 'pilot_generic_claims',
+      canonical_product_ref: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_generic_claims',
+      },
+      product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_generic_claims',
+        brand: 'Brand',
+        title: 'Daily Brightening Moisturizer',
+        category: 'Moisturizer',
+        description: 'A daily moisturizer with vitamin C and niacinamide for brighter-looking skin.',
+      },
+    };
+
+    const baseline = buildProductIntelDraftBundle({
+      product: caseRow.product,
+      canonicalProductRef: caseRow.canonical_product_ref,
+    });
+
+    const geminiOutput = {
+      product_intel_core: {
+        what_it_is: {
+          headline: 'Moisturizer',
+          body: 'Our multi-benefit moisturizer designed to brighten and hydrate skin every day.',
+        },
+        best_for: [{ tag: 'dullness', label: 'Dullness concerns', confidence: 'moderate' }],
+        why_it_stands_out: [
+          {
+            headline: 'Designed to provide up to 24 hours of hydration',
+            body: 'Designed to provide up to 24 hours of hydration.',
+            evidence_strength: 'limited',
+          },
+          {
+            headline: 'Features a lightweight texture for daily use',
+            body: 'Features a lightweight texture for daily use.',
+            evidence_strength: 'limited',
+          },
+        ],
+        routine_fit: {
+          step: 'moisturizer',
+          am_pm: ['am', 'pm'],
+          pairing_notes: ['Apply after serum.'],
+        },
+        watchouts: [],
+      },
+      community_signals: {
+        status: 'unavailable',
+      },
+    };
+
+    const candidate = mergeGeminiDraftIntoBaseline(caseRow, baseline, geminiOutput, 'gemini-test');
+    const quality = evaluateGeminiCandidateQuality(baseline, candidate);
+
+    expect(quality.field_decisions.what_it_is).toBe(false);
+    expect(quality.field_decisions.why_it_stands_out).toBe(false);
+    expect(quality.fail_reasons).toContain('weak_what_it_is');
+    expect(quality.fail_reasons).toContain('weak_highlights');
+  });
+
+  test('manual override replaces selected narrative fields when a curated rewrite exists', () => {
+    const baseline = buildProductIntelDraftBundle({
+      product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_13c520e764f9f7d7f23c611b',
+        title: 'Vitamin C Super Serum Plus - Jumbo',
+        category: 'Serum',
+        description:
+          'Double up and save with this jumbo size of our supercharged serum with vitamin c, retinol, hyaluronic acid, niacinamide and salicylic acid.',
+      },
+      canonicalProductRef: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_13c520e764f9f7d7f23c611b',
+      },
+    });
+
+    const selected = buildSelectedBundle(
+      baseline,
+      null,
+      {
+        candidate_available: false,
+        overall_pass: false,
+        quality_score: 0,
+        fail_reasons: ['missing_candidate'],
+        field_decisions: {},
+      },
+      'gemini-test',
+    );
+
+    const overridden = applyManualOverrideToSelected(selected, {
+      notes: 'curated rewrite',
+      product_intel_core: {
+        what_it_is: {
+          headline: 'Treatment serum',
+          body: 'A multi-active treatment serum for tone, texture, and early fine-line support.',
+        },
+        why_it_stands_out: [
+          {
+            headline: 'Multi-active formula',
+            body: 'Brings together vitamin C, retinol, niacinamide, hyaluronic acid, and salicylic acid in one step.',
+          },
+        ],
+      },
+    });
+
+    expect(overridden.selected_mode).toBe('manual_override');
+    expect(overridden.field_sources.what_it_is).toBe('manual');
+    expect(overridden.field_sources.why_it_stands_out).toBe('manual');
+    expect(overridden.bundle.product_intel_core.what_it_is.body).toMatch(/multi-active treatment serum/i);
+    expect(overridden.bundle.provenance.generator).toBe('curated_override');
   });
 });
