@@ -16,7 +16,7 @@ function parseArgs(argv) {
     out: '',
     markdown: '',
     manualOverrides: '',
-    models: ['gemini-3.0-pro-preview', 'gemini-3.1-pro-preview'],
+    models: ['gemini-3-flash-preview', 'gemini-3-pro-preview', 'gemini-3.1-pro-preview'],
   };
 
   for (let i = 2; i < argv.length; i += 1) {
@@ -89,8 +89,20 @@ function summarizeModel(report) {
   ).length;
   const sellerOnlyViolations = rows.filter((row) => row?.quality_gate?.seller_only_violation).length;
 
+  const requestedModel =
+    asString(report?.meta?.gemini_model_requested || report?.meta?.gemini_model) || 'unknown';
+  const resolvedModels = Array.from(
+    new Set(
+      rows.flatMap((row) =>
+        Array.isArray(row?.gemini?.meta?.resolved_models) ? row.gemini.meta.resolved_models.map(asString).filter(Boolean) : [],
+      ),
+    ),
+  );
+
   return {
-    model: report?.meta?.gemini_model || 'unknown',
+    model: requestedModel,
+    requested_model: requestedModel,
+    resolved_models: resolvedModels,
     cases: rows.length,
     gemini_completed: Number(report?.meta?.gemini_completed || 0),
     hybrid_selected: Number(report?.meta?.hybrid_selected || 0),
@@ -105,11 +117,13 @@ function summarizeModel(report) {
 function compareRowsByCase(modelReports) {
   const caseMap = new Map();
   for (const report of modelReports) {
-    const model = report?.meta?.gemini_model || 'unknown';
+    const model = asString(report?.meta?.gemini_model_requested || report?.meta?.gemini_model) || 'unknown';
     for (const row of report.rows || []) {
       const caseId = asString(row.case_id) || 'unnamed_case';
       const entry = caseMap.get(caseId) || { case_id: caseId, models: {} };
       entry.models[model] = {
+        requested_model: asString(row?.gemini?.meta?.requested_model) || model,
+        resolved_models: Array.isArray(row?.gemini?.meta?.resolved_models) ? row.gemini.meta.resolved_models : [],
         selected_mode: row?.selected?.selected_mode || 'baseline_only',
         quality_score: Number(row?.quality_gate?.quality_score || 0),
         fail_reasons: row?.quality_gate?.fail_reasons || [],
@@ -142,7 +156,7 @@ function buildMarkdown(summaryRows, caseComparisons, meta) {
 
   for (const row of summaryRows) {
     lines.push(
-      `| ${row.model} | ${row.avg_quality_score} | ${row.hybrid_selected} | ${row.baseline_only} | ${row.weak_highlights} | ${row.seller_only_violations} |`,
+      `| ${row.requested_model} (${row.resolved_models.join(', ') || 'unknown'}) | ${row.avg_quality_score} | ${row.hybrid_selected} | ${row.baseline_only} | ${row.weak_highlights} | ${row.seller_only_violations} |`,
     );
   }
 
@@ -151,7 +165,9 @@ function buildMarkdown(summaryRows, caseComparisons, meta) {
     lines.push(`### ${row.case_id}`, '');
     for (const model of Object.keys(row.models)) {
       const item = row.models[model];
-      lines.push(`- ${model}: quality=${item.quality_score}, selected=${item.selected_mode}, selected_fields=${item.selected_field_count}, fail_reasons=${JSON.stringify(item.fail_reasons)}`);
+      lines.push(
+        `- ${model} (resolved=${(item.resolved_models || []).join(', ') || 'unknown'}): quality=${item.quality_score}, selected=${item.selected_mode}, selected_fields=${item.selected_field_count}, fail_reasons=${JSON.stringify(item.fail_reasons)}`,
+      );
     }
     lines.push('');
   }
@@ -220,6 +236,9 @@ function main() {
     meta: {
       generated_at: generatedAt,
       models: args.models,
+      resolved_models_observed: Array.from(
+        new Set(summaryRows.flatMap((row) => row.resolved_models || []).map((value) => asString(value)).filter(Boolean)),
+      ),
       case_count: caseCount,
     },
     summary: summaryRows,
@@ -240,3 +259,10 @@ if (require.main === module) {
     process.exit(1);
   }
 }
+
+module.exports = {
+  parseArgs,
+  summarizeModel,
+  compareRowsByCase,
+  buildMarkdown,
+};

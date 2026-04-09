@@ -4,6 +4,7 @@ const {
   evaluateGeminiCandidateQuality,
   buildSelectedBundle,
   applyManualOverrideToSelected,
+  extractGeminiResponseMeta,
 } = require('../scripts/product_intel_pilot_compare');
 
 describe('product_intel pilot compare selection', () => {
@@ -443,5 +444,42 @@ describe('product_intel pilot compare selection', () => {
     expect(overridden.field_sources.why_it_stands_out).toBe('manual');
     expect(overridden.bundle.product_intel_core.what_it_is.body).toMatch(/multi-active treatment serum/i);
     expect(overridden.bundle.provenance.generator).toBe('curated_override');
+  });
+
+  test('extracts requested and resolved Gemini model metadata from API responses', () => {
+    const meta = extractGeminiResponseMeta(
+      {
+        data: {
+          modelVersion: 'gemini-3-pro-preview-0401',
+          responseId: 'resp_123',
+          usageMetadata: {
+            promptTokenCount: 123,
+            candidatesTokenCount: 45,
+            totalTokenCount: 168,
+          },
+          candidates: [
+            {
+              finishReason: 'STOP',
+            },
+          ],
+        },
+        headers: {
+          'x-goog-request-id': 'goog_req_123',
+        },
+      },
+      'gemini-3-pro-preview',
+    );
+
+    expect(meta.requested_model).toBe('gemini-3-pro-preview');
+    expect(meta.resolved_model).toBe('gemini-3-pro-preview-0401');
+    expect(meta.resolved_models).toEqual(['gemini-3-pro-preview-0401']);
+    expect(meta.response_id).toBe('resp_123');
+    expect(meta.request_id).toBe('goog_req_123');
+    expect(meta.finish_reasons).toEqual(['STOP']);
+    expect(meta.usage_metadata).toEqual({
+      prompt_token_count: 123,
+      candidates_token_count: 45,
+      total_token_count: 168,
+    });
   });
 });

@@ -202,6 +202,16 @@ function deepClone(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
 }
 
+function uniqueStrings(values) {
+  return Array.from(
+    new Set(
+      toList(values)
+        .map((value) => asString(value))
+        .filter(Boolean),
+    ),
+  );
+}
+
 function resolveManualOverride(caseRow, manualOverrides) {
   if (!manualOverrides || typeof manualOverrides !== 'object') return null;
   const caseId = asString(caseRow?.case_id);
@@ -502,11 +512,13 @@ async function runGeminiDraft(caseRow, baselineDraft, model) {
       },
       { timeout: 45000 },
     );
+    const meta = extractGeminiResponseMeta(response, model);
     const text =
       response?.data?.candidates?.[0]?.content?.parts?.map((part) => part?.text).filter(Boolean).join('\n') || '';
     const parsed = normalizeGeminiDraftOutput(extractJsonObject(text));
     return {
       skipped: false,
+      meta,
       output: parsed,
     };
   } catch (err) {
@@ -517,7 +529,58 @@ async function runGeminiDraft(caseRow, baselineDraft, model) {
   }
 }
 
-function mergeGeminiDraftIntoBaseline(caseRow, baselineBundle, geminiOutput, model) {
+function extractGeminiResponseMeta(response, requestedModel) {
+  const data = response && typeof response === 'object' ? response.data || {} : {};
+  const headers = response && typeof response === 'object' ? response.headers || {} : {};
+  const candidateResolvedModels = Array.isArray(data?.candidates)
+    ? data.candidates
+        .map((candidate) =>
+          asString(
+            candidate?.modelVersion ||
+              candidate?.model ||
+              candidate?.modelName ||
+              candidate?.model_name ||
+              candidate?.resolvedModel,
+          ),
+        )
+        .filter(Boolean)
+    : [];
+  const topLevelResolved = asString(
+    data?.modelVersion ||
+      data?.model ||
+      data?.modelName ||
+      data?.model_name ||
+      data?.resolvedModel,
+  );
+  const resolvedModels = uniqueStrings([topLevelResolved, ...candidateResolvedModels]);
+  const usageMetadata =
+    data?.usageMetadata && typeof data.usageMetadata === 'object'
+      ? {
+          prompt_token_count: Number(data.usageMetadata.promptTokenCount || 0) || null,
+          candidates_token_count: Number(data.usageMetadata.candidatesTokenCount || 0) || null,
+          total_token_count: Number(data.usageMetadata.totalTokenCount || 0) || null,
+        }
+      : null;
+  return {
+    requested_model: asString(requestedModel) || null,
+    resolved_model: resolvedModels[0] || null,
+    resolved_models: resolvedModels,
+    resolved_model_source: topLevelResolved
+      ? 'top_level'
+      : candidateResolvedModels.length
+        ? 'candidate'
+        : 'unknown',
+    response_id: asString(data?.responseId || data?.response_id) || null,
+    request_id:
+      asString(headers['x-request-id'] || headers['x-goog-request-id'] || headers['x-cloud-trace-context']) || null,
+    finish_reasons: uniqueStrings(
+      Array.isArray(data?.candidates) ? data.candidates.map((candidate) => candidate?.finishReason) : [],
+    ),
+    usage_metadata: usageMetadata,
+  };
+}
+
+function mergeGeminiDraftIntoBaseline(caseRow, baselineBundle, geminiOutput, model, geminiMeta) {
   if (!baselineBundle || !geminiOutput) return null;
   const generatedAt = new Date().toISOString();
   const merged = deepClone(baselineBundle);
@@ -622,6 +685,9 @@ function mergeGeminiDraftIntoBaseline(caseRow, baselineBundle, geminiOutput, mod
     source: 'product_intel_pilot_compare',
     generator: 'gemini_candidate',
     model,
+    requested_model: geminiMeta?.requested_model || model,
+    resolved_model: geminiMeta?.resolved_model || null,
+    resolved_models: Array.isArray(geminiMeta?.resolved_models) ? geminiMeta.resolved_models : [],
     case_id: asString(caseRow?.case_id),
   };
 
@@ -762,7 +828,7 @@ function evaluateGeminiCandidateQuality(baselineBundle, geminiCandidateBundle) {
   };
 }
 
-function buildSelectedBundle(baselineBundle, geminiCandidateBundle, quality, model) {
+function buildSelectedBundle(baselineBundle, geminiCandidateBundle, quality, model, geminiMeta) {
   const selected = deepClone(baselineBundle);
   const fieldSources = {
     what_it_is: 'baseline',
@@ -834,6 +900,12 @@ function buildSelectedBundle(baselineBundle, geminiCandidateBundle, quality, mod
     generator: selectedFieldCount > 0 ? 'baseline_plus_gemini' : 'baseline_only',
     selection_strategy: 'baseline_first_gemini_guarded',
     gemini_model: geminiCandidateBundle ? model : null,
+    requested_gemini_model: geminiCandidateBundle ? geminiMeta?.requested_model || model : null,
+    resolved_gemini_model: geminiCandidateBundle ? geminiMeta?.resolved_model || null : null,
+    resolved_gemini_models:
+      geminiCandidateBundle && Array.isArray(geminiMeta?.resolved_models)
+        ? geminiMeta.resolved_models
+        : [],
     field_sources: fieldSources,
     gemini_quality_gate: quality || {
       candidate_available: false,
@@ -950,7 +1022,8 @@ function buildMarkdownReport(rows, meta) {
     '',
     `Generated: ${meta.generated_at}`,
     `Cases: ${rows.length}`,
-    `Gemini model: ${meta.gemini_model}`,
+    `Gemini model requested: ${meta.gemini_model_requested || meta.gemini_model}`,
+    `Gemini model resolved: ${(meta.gemini_resolved_models || []).join(', ') || 'unknown'}`,
     `Gemini completed: ${meta.gemini_completed}`,
     `Gemini skipped: ${meta.gemini_skipped}`,
     `Hybrid selected: ${meta.hybrid_selected}`,
@@ -965,6 +1038,14 @@ function buildMarkdownReport(rows, meta) {
     lines.push(`- Evidence profile: ${row.baseline?.evidence_profile || 'n/a'}`);
     lines.push(`- Baseline what it is: ${row.baseline?.product_intel_core?.what_it_is?.body || 'n/a'}`);
     lines.push(`- Gemini what it is: ${row.gemini?.candidate?.product_intel_core?.what_it_is?.body || row.gemini?.reason || 'n/a'}`);
+    lines.push(
+      `- Gemini model meta: ${JSON.stringify(
+        row.gemini?.meta || {
+          requested_model: meta.gemini_model_requested || meta.gemini_model,
+          resolved_models: meta.gemini_resolved_models || [],
+        },
+      )}`,
+    );
     lines.push(`- Selected mode: ${row.selected?.selected_mode || 'baseline_only'}`);
     lines.push(`- Selected field sources: ${JSON.stringify(row.selected?.field_sources || {})}`);
     lines.push(`- Gemini quality: ${JSON.stringify(row.quality_gate || {})}`);
@@ -996,9 +1077,15 @@ async function main() {
       : await runGeminiDraft(caseRow, baseline, args.model);
     const geminiCandidate = geminiRaw.skipped
       ? null
-      : mergeGeminiDraftIntoBaseline(caseRow, baseline, geminiRaw.output, args.model);
+      : mergeGeminiDraftIntoBaseline(caseRow, baseline, geminiRaw.output, args.model, geminiRaw.meta);
     const qualityGate = evaluateGeminiCandidateQuality(baseline, geminiCandidate);
-    const selectedBase = buildSelectedBundle(baseline, geminiCandidate, qualityGate, args.model);
+    const selectedBase = buildSelectedBundle(
+      baseline,
+      geminiCandidate,
+      qualityGate,
+      args.model,
+      geminiRaw.meta || null,
+    );
     const manualOverride = resolveManualOverride(caseRow, manualOverrides);
     const selected = applyManualOverrideToSelected(selectedBase, manualOverride);
 
@@ -1009,7 +1096,7 @@ async function main() {
       baseline,
       gemini: geminiRaw.skipped
         ? { skipped: true, reason: geminiRaw.reason }
-        : { skipped: false, raw: geminiRaw.output, candidate: geminiCandidate },
+        : { skipped: false, meta: geminiRaw.meta || null, raw: geminiRaw.output, candidate: geminiCandidate },
       manual_override: manualOverride ? deepClone(manualOverride) : null,
       quality_gate: qualityGate,
       selected,
@@ -1032,6 +1119,10 @@ async function main() {
     generated_at: generatedAt,
     contract_version: PRODUCT_INTEL_CONTRACT_VERSION,
     gemini_model: args.model,
+    gemini_model_requested: args.model,
+    gemini_resolved_models: uniqueStrings(
+      reportRows.flatMap((row) => (Array.isArray(row?.gemini?.meta?.resolved_models) ? row.gemini.meta.resolved_models : [])),
+    ),
     gemini_completed: reportRows.filter((row) => row.gemini && row.gemini.skipped === false).length,
     gemini_skipped: reportRows.filter((row) => row.gemini && row.gemini.skipped !== false).length,
     hybrid_selected: reportRows.filter((row) => row.selected?.selected_mode === 'hybrid_gemini').length,
@@ -1063,4 +1154,5 @@ module.exports = {
   buildMarkdownReport,
   applyManualOverrideToSelected,
   resolveManualOverride,
+  extractGeminiResponseMeta,
 };
