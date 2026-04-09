@@ -22,7 +22,17 @@ Use this skill when the goal is to produce user-facing `Pivota Insights` content
 
 ## Commands
 
-Generate compare output plus a review packet:
+Preferred internal entrypoint:
+
+```bash
+npm run pivota-insights:skill -- prepare \
+  --cases <cases.json> \
+  --batch-name <batch-name>
+```
+
+This generates compare output plus a review packet, and prints the exact `status` / `publish` follow-ups.
+
+Underlying prepare command:
 
 ```bash
 npm run product-intel:review:init -- \
@@ -31,7 +41,23 @@ npm run product-intel:review:init -- \
   --model gemini-3-pro-preview
 ```
 
+Check whether review is ready:
+
+```bash
+npm run pivota-insights:skill -- status \
+  --review reports/pivota-insights/<batch-name>/review.json
+```
+
 Publish only after review rows are all `pass`:
+
+```bash
+npm run pivota-insights:skill -- publish \
+  --report reports/pivota-insights/<batch-name>/compare.json \
+  --review reports/pivota-insights/<batch-name>/review.json \
+  --write
+```
+
+Underlying publish command:
 
 ```bash
 npm run product-intel:review:publish -- \
@@ -61,11 +87,13 @@ railway run -- node /Users/pengchydan/dev/PIVOTA-Agent-codex-mainline/scripts/pi
 ## Model Policy
 
 - Current preferred seller-only model: `gemini-3-pro-preview`
-- `gemini-3.1-pro-preview` is not the default for seller-only flows until it beats `3-pro-preview` in bakeoff quality.
+- The workflow now records both `requested_model` and `resolved_model`.
+- Current production bakeoff shows `gemini-3-pro-preview` resolving to `gemini-3.1-pro-preview`, so do not assume the requested name is the actual serving model.
+- `gemini-3.1-pro-preview` is not the default for seller-only flows until it beats the stricter reviewed path in bakeoff quality.
 - When model quality is in doubt, run:
 
 ```bash
-npm run product-intel:model:bakeoff -- --cases <cases.json>
+npm run pivota-insights:skill -- bakeoff --cases <cases.json>
 ```
 
 ## Curated Overrides
@@ -88,3 +116,4 @@ npm run product-intel:model:bakeoff -- --cases <cases.json>
 - Notes for every rewritten row
 - Card-ready outputs including compact subtitle, optional proof badge, and longer intro sentence
 - Publish result only after the review gate is green
+- Internal operators should use `prepare -> status -> publish`, not ad hoc direct writes

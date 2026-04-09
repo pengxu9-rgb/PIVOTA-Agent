@@ -151,7 +151,8 @@
     "product-intel:pilot:publish": "node scripts/publish_product_intel_pilot_to_kb.js",
     "product-intel:model:bakeoff": "node scripts/product_intel_model_bakeoff.js",
     "product-intel:review:init": "node scripts/pivota_insights_review_workflow.js init",
-    "product-intel:review:publish": "node scripts/pivota_insights_review_workflow.js publish"
+    "product-intel:review:publish": "node scripts/pivota_insights_review_workflow.js publish",
+    "pivota-insights:skill": "node scripts/pivota_insights_skill.js"
   },
   "keywords": [
     "pivota",
