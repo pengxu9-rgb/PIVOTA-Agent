@@ -4,6 +4,7 @@ const {
   evaluateGeminiCandidateQuality,
   buildSelectedBundle,
   applyManualOverrideToSelected,
+  buildSearchCardPayload,
 } = require('../scripts/product_intel_pilot_compare');
 
 describe('product_intel pilot compare selection', () => {
@@ -443,5 +444,92 @@ describe('product_intel pilot compare selection', () => {
     expect(overridden.field_sources.why_it_stands_out).toBe('manual');
     expect(overridden.bundle.product_intel_core.what_it_is.body).toMatch(/multi-active treatment serum/i);
     expect(overridden.bundle.provenance.generator).toBe('curated_override');
+  });
+
+  test('manual override can also replace reviewed proof badges', () => {
+    const baseline = buildProductIntelDraftBundle({
+      product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_demo_badge',
+        brand: 'Brand',
+        title: 'Glow Serum',
+        category: 'Serum',
+        description: 'A brightening serum with vitamin C.',
+      },
+      canonicalProductRef: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_demo_badge',
+      },
+    });
+
+    const selected = buildSelectedBundle(
+      baseline,
+      null,
+      {
+        candidate_available: false,
+        overall_pass: false,
+        quality_score: 0,
+        fail_reasons: ['missing_candidate'],
+        field_decisions: {},
+      },
+      'gemini-test',
+    );
+
+    const overridden = applyManualOverrideToSelected(selected, {
+      notes: 'reviewed badge override',
+      market_signal_badges: [
+        {
+          badge_type: 'editorial_signal',
+          badge_label: 'Editorial: top pick',
+          display_priority: 10,
+        },
+      ],
+    });
+
+    expect(overridden.field_sources.market_signal_badges).toBe('manual');
+    expect(overridden.bundle.market_signal_badges).toEqual([
+      expect.objectContaining({
+        badge_type: 'editorial_signal',
+        badge_label: 'Editorial: top pick',
+      }),
+    ]);
+  });
+
+  test('buildSearchCardPayload produces title subtitle and proof badge from selected bundle', () => {
+    const payload = buildSearchCardPayload(
+      {
+        product_intel_core: {
+          what_it_is: {
+            headline: 'Brightening moisturizer',
+            body: 'A brightening moisturizer with vitamin C and niacinamide for dullness and uneven tone.',
+          },
+          why_it_stands_out: [
+            {
+              headline: 'Vitamin C + niacinamide support',
+              body: 'Keeps two brightening ingredients in one cream step.',
+            },
+          ],
+        },
+        market_signal_badges: [
+          {
+            badge_type: 'editorial_signal',
+            badge_label: 'Seen in 4 editor picks',
+            display_priority: 12,
+          },
+        ],
+      },
+      {
+        product: {
+          brand: 'Olehenriksen',
+        },
+      },
+    );
+
+    expect(payload).toEqual({
+      title_candidate: 'Olehenriksen Vitamin C + Niacinamide Brightening Cream',
+      compact_candidate: 'Vitamin C + niacinamide cream',
+      proof_badge_candidate: 'Seen in 4 editor picks',
+      intro_candidate: 'A brightening moisturizer with vitamin C and niacinamide for dullness and uneven tone.',
+    });
   });
 });

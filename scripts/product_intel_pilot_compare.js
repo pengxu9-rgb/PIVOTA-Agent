@@ -884,6 +884,12 @@ function applyManualOverrideToSelected(selectedResult, manualOverride) {
     manualFieldCount += 1;
   }
 
+  if (Array.isArray(manualOverride.market_signal_badges)) {
+    bundle.market_signal_badges = deepClone(manualOverride.market_signal_badges);
+    fieldSources.market_signal_badges = 'manual';
+    manualFieldCount += 1;
+  }
+
   bundle.product_intel_core = core;
   bundle.provenance = {
     ...(bundle.provenance || {}),
@@ -898,6 +904,181 @@ function applyManualOverrideToSelected(selectedResult, manualOverride) {
   selected.selected_field_count = manualFieldCount;
   selected.selected_mode = 'manual_override';
   return selected;
+}
+
+function normalizeCompactForTitle(compactCandidate) {
+  const compact = asString(compactCandidate);
+  if (!compact) return '';
+  return compact
+    .replace(/^spfs?\b/i, 'SPF')
+    .replace(/\bspf\s*(\d+)/i, 'SPF $1')
+    .replace(/\bvitamin c\b/gi, 'Vitamin C')
+    .replace(/\bniacinamide\b/gi, 'Niacinamide')
+    .replace(/\bamla\b/gi, 'Amla')
+    .replace(/\boatmeal\b/gi, 'Oatmeal')
+    .replace(/\bunder-eye\b/gi, 'Under-eye')
+    .replace(/\bdark-spot\b/gi, 'Dark-spot');
+}
+
+function formatTitlePhrase(value) {
+  return asString(value)
+    .replace(/\b[a-z]/g, (match) => match.toUpperCase())
+    .replace(/\bSpf\b/g, 'SPF')
+    .replace(/\bVitamin C\b/g, 'Vitamin C')
+    .replace(/\bNiacinamide\b/g, 'Niacinamide')
+    .replace(/\bAmla\b/g, 'Amla')
+    .replace(/\bOatmeal\b/g, 'Oatmeal')
+    .replace(/\bUnder-Eye\b/g, 'Under-eye')
+    .replace(/\bDark-Spot\b/g, 'Dark-spot');
+}
+
+function uniquePhraseList(values) {
+  const out = [];
+  const seen = new Set();
+  for (const value of values) {
+    const phrase = asString(value);
+    if (!phrase) continue;
+    const key = phrase.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(phrase);
+  }
+  return out;
+}
+
+function compactCardIntroCandidate(text, maxChars = 96) {
+  const clean = asString(text).replace(/\s+/g, ' ').trim();
+  if (!clean) return '';
+  const sentence = /[.!?]$/.test(clean) ? clean : `${clean}.`;
+  if (sentence.length <= maxChars) return sentence;
+  const trimmed = sentence.slice(0, maxChars);
+  const boundary = trimmed.lastIndexOf(' ');
+  const compact = boundary >= Math.floor(maxChars * 0.65) ? trimmed.slice(0, boundary) : trimmed;
+  return `${compact.trim()}…`;
+}
+
+function buildSearchCardCompactCandidate(core) {
+  const headline = asString(core?.what_it_is?.headline);
+  const body = asString(core?.what_it_is?.body).toLowerCase();
+  const firstHighlight = asString(core?.why_it_stands_out?.[0]?.headline).toLowerCase();
+  let candidate = headline
+    .replace(/\s+/g, ' ')
+    .replace(/\bmoisturizer with spf\b/i, 'SPF moisturizer')
+    .trim();
+
+  if (/^treatment serum$/i.test(candidate) && /\bmulti-active\b/.test(firstHighlight || body)) {
+    candidate = 'Multi-active serum';
+  } else if (/^brightening serum$/i.test(candidate) && /\bamla\b/.test(body)) {
+    candidate = 'Amla brightening serum';
+  } else if (/^brightening moisturizer$/i.test(candidate) && /\bniacinamide\b/.test(body)) {
+    candidate = 'Vitamin C + niacinamide cream';
+  } else if (/^night cream$/i.test(candidate) && /\boatmeal\b/.test(body)) {
+    candidate = 'Oatmeal night cream';
+  } else if (/^treatment lotion$/i.test(candidate) && /\b2%\s*niacinamide\b/.test(body)) {
+    candidate = '2% niacinamide lotion';
+  } else if (/^color-correcting eye treatment stick$/i.test(candidate)) {
+    candidate = 'Color-correcting eye stick';
+  } else if (/^brightening moisturizer$/i.test(candidate) && /\bgel-cream\b/.test(body)) {
+    candidate = 'Vitamin C gel-cream';
+  }
+
+  if (!candidate && /spf\s*30/.test(body) && /moisturi[sz]er/.test(body)) {
+    candidate = 'SPF 30 moisturizer';
+  }
+  if (!candidate && /brighten/.test(body) && /serum/.test(body)) {
+    candidate = 'Brightening serum';
+  }
+  if (!candidate && /moisturi[sz]er/.test(body)) {
+    candidate = 'Moisturizer';
+  }
+  if (!candidate && /eye/.test(body)) {
+    candidate = 'Eye treatment';
+  }
+
+  if (candidate.length > 44) {
+    const trimmed = candidate.slice(0, 44);
+    const boundary = trimmed.lastIndexOf(' ');
+    candidate = boundary >= 20 ? trimmed.slice(0, boundary).trim() : trimmed.trim();
+  }
+  return candidate;
+}
+
+function inferTitleQualifier(core, compactCandidate) {
+  const compact = asString(compactCandidate).toLowerCase();
+  const body = asString(core?.what_it_is?.body).toLowerCase();
+  const firstHighlight = asString(core?.why_it_stands_out?.[0]?.headline).toLowerCase();
+  const firstHighlightBody = asString(core?.why_it_stands_out?.[0]?.body).toLowerCase();
+  const pool = `${compact} ${body} ${firstHighlight} ${firstHighlightBody}`;
+
+  if (/\bmulti-active\b/.test(pool)) return 'multi-active';
+  if (/\bdark-spot\b/.test(pool)) return 'dark-spot';
+  if (/\bunder-eye\b/.test(pool)) return 'under-eye';
+  if (/\bbrighten/.test(pool) || /\bbrightening\b/.test(pool)) return 'brightening';
+  if (/\bspf\s*50\b/.test(pool)) return 'SPF 50';
+  if (/\bspf\s*30\b/.test(pool)) return 'SPF 30';
+  if (/\b2%\s*niacinamide\b/.test(pool)) return '2% niacinamide';
+  if (/\bamla\b/.test(pool)) return 'Amla';
+  if (/\boatmeal\b/.test(pool)) return 'Oatmeal';
+  if (/\bvitamin c\b/.test(pool) && /\bniacinamide\b/.test(pool)) return 'Vitamin C + niacinamide';
+  if (/\bvitamin c\b/.test(pool)) return 'Vitamin C';
+  return '';
+}
+
+function mergeQualifierIntoTitleCore(titleCore, qualifier) {
+  const core = asString(titleCore);
+  const qualifierText = asString(qualifier);
+  if (!core) return qualifierText;
+  if (!qualifierText) return core;
+
+  const coreLower = core.toLowerCase();
+  const qualifierLower = qualifierText.toLowerCase();
+
+  if (coreLower.includes(qualifierLower)) return core;
+
+  if (/^spf\s+\d+/i.test(qualifierText) && /^spf\b/i.test(core)) {
+    return core.replace(/^SPF\b/i, qualifierText);
+  }
+
+  if (['brightening', 'dark-spot', 'under-eye', 'multi-active'].includes(qualifierLower)) {
+    const parts = core.split(' ');
+    if (parts.length > 1) {
+      return `${parts.slice(0, -1).join(' ')} ${qualifierText} ${parts[parts.length - 1]}`.trim();
+    }
+  }
+
+  return `${qualifierText} ${core}`.trim();
+}
+
+function buildSearchCardTitleCandidate(brand, core) {
+  const compactCandidate = buildSearchCardCompactCandidate(core);
+  const normalizedCompact = normalizeCompactForTitle(compactCandidate);
+  const qualifier = inferTitleQualifier(core, compactCandidate);
+  const titleCore = mergeQualifierIntoTitleCore(normalizedCompact, qualifier);
+  const parts = uniquePhraseList([asString(brand), titleCore]);
+  let candidate = formatTitlePhrase(parts.join(' ').replace(/\s+/g, ' ').trim());
+  if (candidate.length > 68) {
+    const trimmed = candidate.slice(0, 68);
+    const boundary = trimmed.lastIndexOf(' ');
+    candidate = (boundary >= 40 ? trimmed.slice(0, boundary) : trimmed).trim();
+  }
+  return candidate;
+}
+
+function buildSearchCardPayload(selectedBundle, caseRow) {
+  const product = caseRow && typeof caseRow.product === 'object' ? caseRow.product : {};
+  const core = selectedBundle?.product_intel_core || {};
+  const badge = Array.isArray(selectedBundle?.market_signal_badges)
+    ? selectedBundle.market_signal_badges.find((item) => asString(item?.badge_label))
+    : null;
+  return {
+    title_candidate: buildSearchCardTitleCandidate(
+      asString(product.brand || selectedBundle?.canonical_product_ref?.merchant_id),
+      core,
+    ),
+    compact_candidate: buildSearchCardCompactCandidate(core),
+    proof_badge_candidate: asString(badge?.badge_label),
+    intro_candidate: compactCardIntroCandidate(core?.what_it_is?.body, 96),
+  };
 }
 
 function buildComparisonSummary(baselineBundle, geminiCandidateBundle, selectedResult, quality) {
@@ -927,6 +1108,7 @@ function buildComparisonSummary(baselineBundle, geminiCandidateBundle, selectedR
     selected_mode: selectedResult?.selected_mode || 'baseline_only',
     selected_field_count: selectedResult?.selected_field_count || 0,
     selected_field_sources: selectedResult?.field_sources || {},
+    search_card: selectedResult?.search_card || null,
   };
 }
 
@@ -951,6 +1133,9 @@ function buildMarkdownReport(rows, meta) {
     lines.push(`- Evidence profile: ${row.baseline?.evidence_profile || 'n/a'}`);
     lines.push(`- Baseline what it is: ${row.baseline?.product_intel_core?.what_it_is?.body || 'n/a'}`);
     lines.push(`- Gemini what it is: ${row.gemini?.candidate?.product_intel_core?.what_it_is?.body || row.gemini?.reason || 'n/a'}`);
+    lines.push(`- Search card title: ${row.selected?.search_card?.title_candidate || 'n/a'}`);
+    lines.push(`- Search card subtitle: ${row.selected?.search_card?.compact_candidate || 'n/a'}`);
+    lines.push(`- Search card badge: ${row.selected?.search_card?.proof_badge_candidate || '(none)'}`);
     lines.push(`- Selected mode: ${row.selected?.selected_mode || 'baseline_only'}`);
     lines.push(`- Selected field sources: ${JSON.stringify(row.selected?.field_sources || {})}`);
     lines.push(`- Gemini quality: ${JSON.stringify(row.quality_gate || {})}`);
@@ -987,6 +1172,7 @@ async function main() {
     const selectedBase = buildSelectedBundle(baseline, geminiCandidate, qualityGate, args.model);
     const manualOverride = resolveManualOverride(caseRow, manualOverrides);
     const selected = applyManualOverrideToSelected(selectedBase, manualOverride);
+    selected.search_card = buildSearchCardPayload(selected.bundle, caseRow);
 
     reportRows.push({
       case_id: asString(caseRow.case_id) || 'unnamed_case',
@@ -1049,4 +1235,7 @@ module.exports = {
   buildMarkdownReport,
   applyManualOverrideToSelected,
   resolveManualOverride,
+  buildSearchCardCompactCandidate,
+  buildSearchCardTitleCandidate,
+  buildSearchCardPayload,
 };
