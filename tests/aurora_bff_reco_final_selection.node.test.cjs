@@ -213,6 +213,156 @@ test('beauty canonical ownership recomputes final selection from surfaced recomm
   }
 });
 
+test('beauty canonical ownership keeps beauty mainline reco card-only when assistant rewrite fails', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        query_source: 'beauty_mainline_local_handoff',
+        decision_owner: 'shopping_agent_beauty_mainline',
+        semantic_owner: 'shopping_agent_beauty_mainline',
+        recommendations: [
+          {
+            product_id: '9886499864904',
+            display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+            category: 'Serum',
+            matched_role_id: 'oil_control_treatment',
+          },
+        ],
+        recommendation_meta: {
+          source_mode: 'framework_mainline',
+          resolved_contract: 'agent_v1_search_beauty_mainline',
+          mainline_status: 'grounded_success',
+          assistant_rewrite_llm_used: false,
+          assistant_rewrite_reason: 'PARSE_TRUNCATED_JSON',
+        },
+        metadata: {
+          resolved_contract: 'agent_v1_search_beauty_mainline',
+        },
+      },
+      {
+        primary_target_id: 'oil_control_treatment',
+        ranked_targets: [
+          {
+            target_id: 'oil_control_treatment',
+            ingredient_query: 'Oil-control treatment',
+            resolved_target_step: 'treatment',
+          },
+        ],
+        selected_target_ids: ['oil_control_treatment'],
+      },
+    );
+
+    const out = __internal.applyBeautyCanonicalOwnershipToEnvelope({
+      envelope: {
+        assistant_message: null,
+        cards: [
+          {
+            card_id: 'reco_test',
+            type: 'recommendations',
+            payload,
+          },
+        ],
+        session_patch: {
+          state: {
+            latest_reco_context: {
+              primary_target_id: 'oil_control_treatment',
+              ranked_targets: [
+                {
+                  target_id: 'oil_control_treatment',
+                  ingredient_query: 'Oil-control treatment',
+                  resolved_target_step: 'treatment',
+                },
+              ],
+              selected_target_ids: ['oil_control_treatment'],
+            },
+          },
+        },
+      },
+      route: 'chat',
+      assistantText: '',
+      profile: { skinType: 'oily', goals: ['oil control'] },
+    });
+
+    assert.equal(out.assistant_message, null);
+    assert.equal(out.meta?.canonical_ownership?.audit?.assistant_copy_strategy, 'card_only');
+    assert.equal(out.meta?.canonical_ownership?.drift?.assistant_payload_mismatch, false);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('beauty canonical ownership preserves successful beauty mainline rewrite text', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        query_source: 'beauty_mainline_local_handoff',
+        decision_owner: 'shopping_agent_beauty_mainline',
+        semantic_owner: 'shopping_agent_beauty_mainline',
+        recommendations: [
+          {
+            product_id: '9886499864904',
+            display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+            category: 'Serum',
+            matched_role_id: 'oil_control_treatment',
+          },
+        ],
+        recommendation_meta: {
+          source_mode: 'framework_mainline',
+          resolved_contract: 'agent_v1_search_beauty_mainline',
+          mainline_status: 'grounded_success',
+          assistant_rewrite_llm_used: true,
+          assistant_rewrite_reason: 'ok',
+        },
+        metadata: {
+          resolved_contract: 'agent_v1_search_beauty_mainline',
+        },
+      },
+      {
+        primary_target_id: 'oil_control_treatment',
+        ranked_targets: [
+          {
+            target_id: 'oil_control_treatment',
+            ingredient_query: 'Oil-control treatment',
+            resolved_target_step: 'treatment',
+          },
+        ],
+        selected_target_ids: ['oil_control_treatment'],
+      },
+    );
+    const assistantText =
+      'For oily skin, buy The Ordinary Niacinamide 10% + Zinc 1% first. Start with one serum and keep the rest of your routine stable.';
+
+    const out = __internal.applyBeautyCanonicalOwnershipToEnvelope({
+      envelope: {
+        assistant_message: {
+          role: 'assistant',
+          content: assistantText,
+          format: 'text',
+        },
+        cards: [
+          {
+            card_id: 'reco_test',
+            type: 'recommendations',
+            payload,
+          },
+        ],
+      },
+      route: 'chat',
+      assistantText,
+      profile: { skinType: 'oily', goals: ['oil control'] },
+    });
+
+    assert.equal(out.assistant_message?.content, assistantText);
+    assert.equal(out.meta?.canonical_ownership?.audit?.assistant_copy_strategy, 'llm_rewrite');
+    assert.equal(out.meta?.canonical_ownership?.drift?.assistant_payload_mismatch, false);
+    assert.doesNotMatch(String(out.assistant_message?.content || ''), /Primary recommendation focus|Products actually selected this time/i);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('canonical search result mirror keeps payload-bound assistant text when canonical target bundle is present', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {

@@ -47945,6 +47945,45 @@ function hasRecoCanonicalAuthority(payload) {
   );
 }
 
+function isBeautyMainlineLocalHandoffRecoPayload(payload) {
+  const payloadObj = isPlainObject(payload) ? payload : {};
+  const meta = isPlainObject(payloadObj.recommendation_meta) ? payloadObj.recommendation_meta : {};
+  const payloadMeta = isPlainObject(payloadObj.metadata) ? payloadObj.metadata : {};
+  const decisionOwner = pickFirstTrimmed(
+    payloadObj.decision_owner,
+    meta.decision_owner,
+    payloadMeta.decision_owner,
+  );
+  const semanticOwner = pickFirstTrimmed(
+    payloadObj.semantic_owner,
+    meta.semantic_owner,
+    payloadMeta.semantic_owner,
+  );
+  const resolvedContract = pickFirstTrimmed(
+    meta.resolved_contract,
+    payloadMeta.resolved_contract,
+    meta.contract_bridge?.resolved_contract,
+    payloadMeta.contract_bridge?.resolved_contract,
+  );
+  const querySource = pickFirstTrimmed(
+    payloadObj.query_source,
+    meta.query_source,
+    payloadMeta.query_source,
+  );
+  const sourceMode = inferRecoSourceMode(
+    pickFirstTrimmed(meta.source_mode, payloadMeta.source_mode),
+    pickFirstTrimmed(payloadObj.source, meta.source, payloadMeta.source),
+    { defaultValue: '' },
+  );
+  return (
+    querySource === 'beauty_mainline_local_handoff' &&
+    decisionOwner === BEAUTY_DISCOVERY_MAINLINE_OWNER &&
+    semanticOwner === BEAUTY_DISCOVERY_MAINLINE_OWNER &&
+    (!resolvedContract || resolvedContract === 'agent_v1_search_beauty_mainline') &&
+    (sourceMode === 'framework_mainline' || sourceMode === 'step_aware_mainline')
+  );
+}
+
 function buildRecoFinalSelectionContract({
   payload,
   fallbackSelection = null,
@@ -48903,6 +48942,19 @@ function buildBeautyCanonicalOwnershipAudit({ envelope, route = '', assistantTex
   const routineSurfacePresent = hasRoutineAnalysisSurface(cards);
   const photoSurfacePresent = Boolean(photoModulesCard);
   const hasRecommendations = Array.isArray(recoPayload && recoPayload.recommendations) && recoPayload.recommendations.length > 0;
+  const assistantTextTrimmed = String(assistantText || '').trim();
+  const auditLanguage = (() => {
+    const raw = String(
+      pickFirstTrimmed(
+        envelope && envelope.language,
+        sessionPatch.language,
+        sessionMeta.language,
+        sessionMeta.lang,
+        'EN',
+      ) || 'EN',
+    ).trim().toUpperCase();
+    return raw === 'CN' || raw === 'ZH' || raw === 'ZH-CN' || raw === 'ZH_HANS' ? 'CN' : 'EN';
+  })();
   const selectedProducts = pickRecoNames(recoPayload || {}, 3);
   const primaryTargetLabel = pickFirstTrimmed(
     recoPrimaryTarget && recoPrimaryTarget.ingredient_query,
@@ -49018,11 +49070,30 @@ function buildBeautyCanonicalOwnershipAudit({ envelope, route = '', assistantTex
       || (Boolean(recoPayload || confidenceNoticeCard) && !payloadTargetBundlePresent)
     )
   );
+  const isBeautyMainlineLocalHandoff = isBeautyMainlineLocalHandoffRecoPayload(recoPayload);
+  const assistantMissingAllowed = Boolean(
+    isBeautyMainlineLocalHandoff &&
+    hasRecommendations &&
+    !assistantTextTrimmed,
+  );
+  const assistantMentionsSelectedProducts =
+    selectedProducts.length > 0 && assistantTextMentionsAny(assistantText, selectedProducts);
+  const assistantMentionsPrimaryTarget =
+    Boolean(primaryTargetLabel) && assistantTextMentionsAny(assistantText, [primaryTargetLabel]);
   const assistantPayloadMismatch = Boolean(
     hasRecommendations &&
+    !assistantMissingAllowed &&
     (
-      (selectedProducts.length > 0 && !assistantTextMentionsAny(assistantText, selectedProducts))
-      || (primaryTargetLabel && !assistantTextMentionsAny(assistantText, [primaryTargetLabel]))
+      isBeautyMainlineLocalHandoff
+        ? (
+          selectedProducts.length > 0
+            ? !assistantMentionsSelectedProducts
+            : Boolean(primaryTargetLabel && !assistantMentionsPrimaryTarget)
+        )
+        : (
+          (selectedProducts.length > 0 && !assistantMentionsSelectedProducts)
+          || (primaryTargetLabel && !assistantMentionsPrimaryTarget)
+        )
     )
   );
   const cardConflictSameTurn = Boolean(
@@ -49080,7 +49151,25 @@ function buildBeautyCanonicalOwnershipAudit({ envelope, route = '', assistantTex
       recommendation_primary_target: recoPrimaryTarget,
       latest_reco_primary_target: contextPrimaryTarget,
       ingredient_plan_primary_target: ingredientPlanTarget,
-      assistant_copy_strategy: hasRecommendations ? 'payload_bound' : shouldUseFrameworkRecoAssistantCopy(recoPayload) ? 'framework_summary' : confidenceNoticeReason ? 'fallback_notice' : 'none',
+      assistant_copy_strategy: hasRecommendations
+        ? (
+          isBeautyMainlineLocalHandoff
+            ? (
+              !assistantTextTrimmed
+                ? 'card_only'
+                : recommendationMeta.assistant_rewrite_llm_used === true
+                  ? 'llm_rewrite'
+                  : looksLikePayloadBoundRecoAssistantText(assistantTextTrimmed, auditLanguage)
+                    ? 'payload_bound'
+                    : 'assistant_visible'
+            )
+            : 'payload_bound'
+        )
+        : shouldUseFrameworkRecoAssistantCopy(recoPayload)
+          ? 'framework_summary'
+          : confidenceNoticeReason
+            ? 'fallback_notice'
+            : 'none',
       photo_focus: photoFocus,
       story_focus: {
         headline: storySignal.headline,
@@ -49233,9 +49322,15 @@ function applyBeautyCanonicalOwnershipToEnvelope({ envelope, route = '', assista
         ? out.assistant_message.content
         : assistantText;
     const selectionContract = extractRecoFinalSelectionContract(recoPayload);
-    const shouldRebuildForSelectionContract = Boolean(recoPayload && selectionContract);
+    const shouldPreserveBeautyMainlineAssistantSurface = isBeautyMainlineLocalHandoffRecoPayload(recoPayload);
+    const shouldRebuildForSelectionContract = Boolean(
+      recoPayload &&
+      selectionContract &&
+      !shouldPreserveBeautyMainlineAssistantSurface,
+    );
     if (
       recoPayload &&
+      !shouldPreserveBeautyMainlineAssistantSurface &&
       (
         shouldRebuildForSelectionContract
         || (
