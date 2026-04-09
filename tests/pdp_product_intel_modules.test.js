@@ -139,6 +139,27 @@ describe('pdp product intel bundle shaping', () => {
     expect(draft.product_intel_core.what_it_is.body).not.toMatch(/in an 8-week clinical study/i);
   });
 
+  test('seller-only drafts suppress merchandising highlights and fall back to product substance', () => {
+    const draft = buildProductIntelDraftBundle({
+      product: {
+        product_id: 'pilot_long_2',
+        merchant_id: 'pilot_merchant_2',
+        title: 'Vitamin C Super Serum Plus - Jumbo',
+        category: 'Serum',
+        description:
+          'Double up and save with this jumbo size of our supercharged, multi-benefit serum formulated with vitamin c, retinol, hyaluronic acid, niacinamide and salicylic acid to help improve the look of fine lines and wrinkles. Our Vitamin C Super Serum Plus is clinically proven to brighten skin appearance and improve the look of fine lines and wrinkles plus skin tone and texture in just 8 weeks.',
+      },
+    });
+
+    expect(draft.product_intel_core.why_it_stands_out).toHaveLength(2);
+    expect(draft.product_intel_core.why_it_stands_out[0].headline).toBe('Multi-active formula');
+    expect(draft.product_intel_core.why_it_stands_out[0].body).toMatch(/vitamin c/i);
+    expect(draft.product_intel_core.why_it_stands_out[0].body).not.toMatch(/double up and save|jumbo size/i);
+    expect(draft.product_intel_core.why_it_stands_out[1].headline).toBe('Multi-concern coverage');
+    expect(draft.product_intel_core.why_it_stands_out[1].body).toMatch(/uneven tone|texture|fine-line/i);
+    expect(draft.product_intel_core.why_it_stands_out[1].body).not.toMatch(/positions itself|story|role|format/i);
+  });
+
   test('published bundles compact overlong what_it_is narrative at read time', () => {
     const bundle = normalizePublishedProductIntelBundle({
       contract_version: 'pivota.product_intel.v1',
@@ -170,5 +191,75 @@ describe('pdp product intel bundle shaping', () => {
     expect(bundle.product_intel_core.what_it_is.body.length).toBeLessThanOrEqual(320);
     expect(bundle.product_intel_core.what_it_is.body).not.toMatch(/^Double up and save with/i);
     expect(bundle.product_intel_core.what_it_is.body).not.toMatch(/in an 8-week clinical study/i);
+  });
+
+  test('published bundles suppress seller-only merchandising highlights at read time', () => {
+    const bundle = normalizePublishedProductIntelBundle({
+      contract_version: 'pivota.product_intel.v1',
+      product_intel_core: {
+        what_it_is: {
+          headline: 'Treatment serum',
+          body: 'A multi-benefit serum for uneven tone and texture.',
+        },
+        best_for: [{ tag: 'tone', label: 'Uneven tone concerns', confidence: 'moderate' }],
+        why_it_stands_out: [
+          {
+            headline: 'Positioning',
+            body: 'Double up and save with this jumbo size of our supercharged serum.',
+          },
+        ],
+        routine_fit: { step: 'serum', am_pm: ['am', 'pm'], pairing_notes: [] },
+        watchouts: [],
+        confidence: { overall: 'moderate' },
+        freshness: { generated_at: '2026-04-08T12:00:00.000Z', source_version: 'pilot_selected:test' },
+        quality_state: 'limited',
+        evidence_profile: 'seller_only',
+      },
+      community_signals: {
+        status: 'unavailable',
+        unavailable_reason: 'insufficient_feedback',
+        confidence: 'low',
+        evidence_profile: 'seller_only',
+      },
+      quality_state: 'limited',
+      evidence_profile: 'seller_only',
+    });
+
+    expect(bundle.product_intel_core.why_it_stands_out).toEqual([]);
+  });
+
+  test('published bundles suppress seller-only abstract positioning highlights at read time', () => {
+    const bundle = normalizePublishedProductIntelBundle({
+      contract_version: 'pivota.product_intel.v1',
+      product_intel_core: {
+        what_it_is: {
+          headline: 'Treatment serum',
+          body: 'A treatment serum for uneven tone and texture.',
+        },
+        best_for: [{ tag: 'tone', label: 'Uneven tone concerns', confidence: 'moderate' }],
+        why_it_stands_out: [
+          {
+            headline: 'Brightening positioning',
+            body: 'Positions itself as a dedicated treatment step for radiance and tone correction.',
+          },
+        ],
+        routine_fit: { step: 'serum', am_pm: ['am', 'pm'], pairing_notes: [] },
+        watchouts: [],
+        confidence: { overall: 'moderate' },
+        freshness: { generated_at: '2026-04-08T12:00:00.000Z', source_version: 'pilot_selected:test' },
+        quality_state: 'limited',
+        evidence_profile: 'seller_only',
+      },
+      community_signals: {
+        status: 'unavailable',
+        unavailable_reason: 'insufficient_feedback',
+        confidence: 'low',
+        evidence_profile: 'seller_only',
+      },
+      quality_state: 'limited',
+      evidence_profile: 'seller_only',
+    });
+
+    expect(bundle.product_intel_core.why_it_stands_out).toEqual([]);
   });
 });

@@ -338,6 +338,61 @@ describe('product_intel pilot compare selection', () => {
     expect(quality.fail_reasons).toContain('weak_highlights');
   });
 
+  test('rejects seller-only gemini highlights that use positioning or story language instead of product substance', () => {
+    const caseRow = {
+      case_id: 'pilot_positioning_copy',
+      canonical_product_ref: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_positioning_copy',
+      },
+      product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_positioning_copy',
+        brand: 'Brand',
+        title: 'Brightening Serum',
+        category: 'Serum',
+        description: 'A serum with niacinamide and vitamin C for dullness and uneven tone.',
+      },
+    };
+
+    const baseline = buildProductIntelDraftBundle({
+      product: caseRow.product,
+      canonicalProductRef: caseRow.canonical_product_ref,
+    });
+
+    const geminiOutput = {
+      product_intel_core: {
+        what_it_is: {
+          headline: 'Serum',
+          body: 'A brightening serum with niacinamide and vitamin C.',
+        },
+        best_for: [{ tag: 'dullness', label: 'Dullness concerns', confidence: 'moderate' }],
+        why_it_stands_out: [
+          {
+            headline: 'Brightening positioning',
+            body: 'Positions itself as a dedicated treatment step for radiance and tone correction.',
+            evidence_strength: 'limited',
+          },
+        ],
+        routine_fit: {
+          step: 'serum',
+          am_pm: ['am', 'pm'],
+          pairing_notes: ['Apply before moisturizer.'],
+        },
+        watchouts: [],
+      },
+      community_signals: {
+        status: 'unavailable',
+      },
+    };
+
+    const candidate = mergeGeminiDraftIntoBaseline(caseRow, baseline, geminiOutput, 'gemini-test');
+    const quality = evaluateGeminiCandidateQuality(baseline, candidate);
+
+    expect(quality.field_decisions.why_it_stands_out).toBe(false);
+    expect(quality.fail_reasons).toContain('weak_highlights');
+  });
+
   test('manual override replaces selected narrative fields when a curated rewrite exists', () => {
     const baseline = buildProductIntelDraftBundle({
       product: {
