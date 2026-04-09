@@ -75765,16 +75765,14 @@ function mountAuroraBffRoutes(app, { logger }) {
         setResponseHeader('x-aurora-variant', String(rolloutContext.variant || 'legacy'));
         setResponseHeader('x-aurora-policy-version', String(rolloutContext.policy_version || policyMeta.policy_version || 'legacy'));
       }
-      if (debugResponseRequested) {
-        setResponseHeader('x-aurora-chat-handler', 'v1_mainline');
-        if (ingressDelegateTargetForDebug) {
-          setResponseHeader('x-aurora-chat-ingress-delegate-target', ingressDelegateTargetForDebug);
-        }
-        if (ingressRequestClassForDebug) {
-          setResponseHeader('x-aurora-chat-ingress-request-class', ingressRequestClassForDebug);
-        }
-        setResponseHeader('x-aurora-chat-early-beauty-lock', String(ingressEarlyBeautyLockForDebug));
+      setResponseHeader('x-aurora-chat-handler', 'v1_mainline');
+      if (ingressDelegateTargetForDebug) {
+        setResponseHeader('x-aurora-chat-ingress-delegate-target', ingressDelegateTargetForDebug);
       }
+      if (ingressRequestClassForDebug) {
+        setResponseHeader('x-aurora-chat-ingress-request-class', ingressRequestClassForDebug);
+      }
+      setResponseHeader('x-aurora-chat-early-beauty-lock', String(ingressEarlyBeautyLockForDebug));
       if (lowMediumFiltered.applied) {
         logger?.info(
           {

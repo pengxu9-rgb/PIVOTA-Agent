@@ -1422,7 +1422,7 @@ test('/v1/chat early-locks freeform beauty reco before identity resolution', asy
   });
 });
 
-test('/v1/chat exposes v1-mainline debug headers for beauty reco ingress when requested', async () => {
+test('/v1/chat exposes v1-mainline routing headers for beauty reco ingress', async () => {
   await withEnv({}, async () => {
     const routes = require('../src/auroraBff/routes');
     routes.__internal.__setRouteDependencyOverridesForTest({
@@ -1441,10 +1441,7 @@ test('/v1/chat exposes v1-mainline debug headers for beauty reco ingress when re
     try {
       const response = await supertest(createApp())
         .post('/v1/chat')
-        .set({
-          ...buildHeaders(),
-          'X-Debug': '1',
-        })
+        .set(buildHeaders())
         .send({
           message: 'im oily skin. what product should i buy?',
           client_state: 'IDLE_CHAT',
