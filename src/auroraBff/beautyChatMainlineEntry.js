@@ -186,6 +186,57 @@ function classifyBeautyChatPlannerBlock(trace = null, semanticPlan = null) {
   };
 }
 
+function elapsedBeautyChatStageMs(startedAtMs = 0) {
+  const started = Number(startedAtMs);
+  if (!Number.isFinite(started) || started <= 0) return 0;
+  return Math.max(0, Date.now() - started);
+}
+
+function buildBeautyChatMainlineTimingLedger({
+  budgetMs = 0,
+  plannerMs = 0,
+  handoffMs = 0,
+  selectorMs = 0,
+  rewriteMs = 0,
+  totalElapsedMs = 0,
+  plannerTrace = null,
+  selectorTrace = null,
+  selectorApplied = null,
+  rewrite = null,
+} = {}) {
+  return {
+    owner: 'beauty_chat_mainline_entry',
+    budget_ms: Number.isFinite(Number(budgetMs)) ? Math.max(0, Math.trunc(Number(budgetMs))) : 0,
+    planner_ms: Number.isFinite(Number(plannerMs)) ? Math.max(0, Math.trunc(Number(plannerMs))) : 0,
+    handoff_ms: Number.isFinite(Number(handoffMs)) ? Math.max(0, Math.trunc(Number(handoffMs))) : 0,
+    selector_ms: Number.isFinite(Number(selectorMs)) ? Math.max(0, Math.trunc(Number(selectorMs))) : 0,
+    rewrite_ms: Number.isFinite(Number(rewriteMs)) ? Math.max(0, Math.trunc(Number(rewriteMs))) : 0,
+    total_elapsed_ms: Number.isFinite(Number(totalElapsedMs))
+      ? Math.max(0, Math.trunc(Number(totalElapsedMs)))
+      : 0,
+    planner_used: plannerTrace?.planner_used === true,
+    planner_fallback_used: plannerTrace?.planner_fallback_used === true,
+    selector_attempted: Boolean(selectorTrace),
+    selector_applied: pickFirstTrimmed(selectorApplied?.winner_source).toLowerCase() === 'llm_selector',
+    rewrite_attempted: rewrite?.attempted === true,
+    rewrite_llm_used: rewrite?.llm_used === true,
+  };
+}
+
+function attachBeautyChatMainlineTimingLedger(payload = null, timingLedger = null) {
+  if (!isPlainObject(payload) || !isPlainObject(timingLedger)) return;
+  const metadata = isPlainObject(payload.metadata) ? payload.metadata : {};
+  const searchStageLedger =
+    isPlainObject(metadata.search_stage_ledger) ? metadata.search_stage_ledger : {};
+  payload.metadata = {
+    ...metadata,
+    search_stage_ledger: {
+      ...searchStageLedger,
+      chat_mainline_timing: timingLedger,
+    },
+  };
+}
+
 function createBeautyChatMainlineEntryRuntime(deps = {}) {
   const {
     RECO_CATALOG_GROUNDED_ENABLED = false,
@@ -286,6 +337,12 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
     const hardPathBudget = createBeautyChatMainlineBudget({
       budgetMs: AURORA_BFF_CHAT_RECO_BUDGET_MS,
     });
+    const hardPathTiming = {
+      plannerMs: 0,
+      handoffMs: 0,
+      selectorMs: 0,
+      rewriteMs: 0,
+    };
     const plannerReserveMs = Math.max(
       3000,
       Number.isFinite(Number(RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS))
@@ -311,6 +368,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
           selection_owner_state: 'fallback',
         };
       } else {
+        const plannerStartedAtMs = Date.now();
         try {
           const concernPlanOut = await runConcernSemanticPlanner({
             ctx,
@@ -362,6 +420,8 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
             },
             'aurora bff: beauty chat mainline planner failed; fallback target context used',
           );
+        } finally {
+          hardPathTiming.plannerMs = elapsedBeautyChatStageMs(plannerStartedAtMs);
         }
       }
     }
@@ -409,6 +469,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
 
     let hardPathHandoff = null;
     let hardPathHandoffErr = null;
+    const handoffStartedAtMs = Date.now();
     try {
       hardPathHandoff = await handoffRecoToBeautyMainlineSearch({
         ctx,
@@ -433,6 +494,8 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
         },
         'aurora bff: beauty mainline hard branch failed',
       );
+    } finally {
+      hardPathTiming.handoffMs = elapsedBeautyChatStageMs(handoffStartedAtMs);
     }
 
     const hardPathRecommendations = Array.isArray(hardPathHandoff?.recommendations)
@@ -473,6 +536,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
         hardPathRecommendations.length > 1 &&
         hardPathBudget.getRemainingMs(1200) > 350
       ) {
+        const selectorStartedAtMs = Date.now();
         const selectorOut = await runConcernSelectorRace({
           ctx,
           logger,
@@ -501,6 +565,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
             selectionOwner: hardPathSelectionOwner,
           });
         }
+        hardPathTiming.selectorMs = elapsedBeautyChatStageMs(selectorStartedAtMs);
       }
       const hardPathRecoContext = mergeIngredientRecoContextValue(
         latestRecoContextFromSession,
@@ -613,14 +678,21 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
             : 'I summarized this pass into structured recommendation cards.');
         const assistantRewrite =
           typeof maybeRewriteRecoAssistantTextWithLlm === 'function'
-            ? await maybeRewriteRecoAssistantTextWithLlm({
-              payload: hardPathPayloadBundle.payload,
-              language: ctx?.lang,
-              profile: assistantProfile,
-              baseText: baseAssistantText,
-              allowLockedSelectionRewrite: true,
-              deadlineAtMs: hardPathBudget.deadlineAtMs,
-            })
+            ? await (async () => {
+              const rewriteStartedAtMs = Date.now();
+              try {
+                return await maybeRewriteRecoAssistantTextWithLlm({
+                  payload: hardPathPayloadBundle.payload,
+                  language: ctx?.lang,
+                  profile: assistantProfile,
+                  baseText: baseAssistantText,
+                  allowLockedSelectionRewrite: true,
+                  deadlineAtMs: hardPathBudget.deadlineAtMs,
+                });
+              } finally {
+                hardPathTiming.rewriteMs = elapsedBeautyChatStageMs(rewriteStartedAtMs);
+              }
+            })()
             : { text: baseAssistantText, llm_used: false, reason: 'rewrite_unavailable' };
         const assistantText = pickFirstTrimmed(assistantRewrite?.text, baseAssistantText);
         if (isPlainObject(hardPathPayloadBundle.payload?.recommendation_meta)) {
@@ -635,6 +707,24 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
               pickFirstTrimmed(assistantRewrite?.model) || null;
           }
         }
+        attachBeautyChatMainlineTimingLedger(
+          hardPathPayloadBundle.payload,
+          buildBeautyChatMainlineTimingLedger({
+            budgetMs: hardPathBudget.budgetMs,
+            plannerMs: hardPathTiming.plannerMs,
+            handoffMs: hardPathTiming.handoffMs,
+            selectorMs: hardPathTiming.selectorMs,
+            rewriteMs: hardPathTiming.rewriteMs,
+            totalElapsedMs: elapsedBeautyChatStageMs(hardPathBudget.startedAtMs),
+            plannerTrace: hardPathPlannerTrace,
+            selectorTrace: hardPathSelectorTrace,
+            selectorApplied: hardPathSelectorApplied,
+            rewrite: {
+              attempted: typeof maybeRewriteRecoAssistantTextWithLlm === 'function',
+              llm_used: assistantRewrite?.llm_used === true,
+            },
+          }),
+        );
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeAssistantMessage(assistantText),
           suggested_chips: [],

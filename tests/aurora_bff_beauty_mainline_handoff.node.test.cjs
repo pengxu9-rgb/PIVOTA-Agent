@@ -808,6 +808,23 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
     observed.plannerMeta?.chat_planner_route,
     'aurora_concern_semantic_plan_plain_text',
   );
+  const payload = result?.envelope?.cards?.[0]?.payload;
+  const timingLedger = payload?.metadata?.search_stage_ledger?.chat_mainline_timing;
+  assert.equal(timingLedger?.owner, 'beauty_chat_mainline_entry');
+  assert.equal(timingLedger?.budget_ms, 9000);
+  assert.equal(timingLedger?.planner_used, true);
+  assert.equal(timingLedger?.planner_fallback_used, false);
+  assert.equal(timingLedger?.selector_attempted, false);
+  assert.equal(timingLedger?.selector_applied, false);
+  assert.equal(timingLedger?.rewrite_attempted, true);
+  assert.equal(timingLedger?.rewrite_llm_used, false);
+  assert.equal(Number.isFinite(timingLedger?.planner_ms), true);
+  assert.equal(Number.isFinite(timingLedger?.handoff_ms), true);
+  assert.equal(Number.isFinite(timingLedger?.selector_ms), true);
+  assert.equal(Number.isFinite(timingLedger?.rewrite_ms), true);
+  assert.equal(Number.isFinite(timingLedger?.total_elapsed_ms), true);
+  assert.ok(timingLedger?.total_elapsed_ms >= timingLedger?.planner_ms);
+  assert.ok(timingLedger?.total_elapsed_ms >= timingLedger?.handoff_ms);
   assert.equal(Number.isFinite(observed.plannerDeadlineAtMs), true);
   assert.equal(Number.isFinite(observed.handoffDeadlineAtMs), true);
   assert.equal(Number.isFinite(observed.rewriteDeadlineAtMs), true);
@@ -958,6 +975,14 @@ test('beauty chat mainline entry falls back to deterministic generic-concern tar
   assert.equal(observed.plannerMeta?.chat_planner_failure_class, 'planner_untrusted');
   assert.equal(observed.plannerMeta?.chat_planner_fallback_used, true);
   assert.equal(result?.envelope?.cards?.[0]?.payload?.mainline_status, 'grounded_success');
+  assert.equal(
+    result?.envelope?.cards?.[0]?.payload?.metadata?.search_stage_ledger?.chat_mainline_timing?.planner_fallback_used,
+    true,
+  );
+  assert.equal(
+    result?.envelope?.cards?.[0]?.payload?.metadata?.search_stage_ledger?.chat_mainline_timing?.rewrite_attempted,
+    false,
+  );
 });
 
 test('beauty chat mainline entry lets llm selector rerank only grounded primary-role candidates', async () => {
@@ -1130,4 +1155,7 @@ test('beauty chat mainline entry lets llm selector rerank only grounded primary-
   );
   assert.equal(payload?.recommendation_meta?.llm_selector_used, true);
   assert.equal(payload?.recommendation_meta?.selector_winner_source, 'llm_selector');
+  assert.equal(payload?.metadata?.search_stage_ledger?.chat_mainline_timing?.selector_attempted, true);
+  assert.equal(payload?.metadata?.search_stage_ledger?.chat_mainline_timing?.selector_applied, true);
+  assert.equal(Number.isFinite(payload?.metadata?.search_stage_ledger?.chat_mainline_timing?.selector_ms), true);
 });
