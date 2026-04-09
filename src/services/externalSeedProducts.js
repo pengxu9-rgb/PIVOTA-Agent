@@ -1103,9 +1103,17 @@ function buildExternalSeedProduct(row, options = {}) {
   const brand = firstNonEmptyString(
     recall.brand,
     seedData.brand,
+    seedData.brand_name,
+    seedData.vendor,
+    seedData.vendor_name,
     snapshot.brand,
+    snapshot.brand_name,
+    snapshot.vendor,
+    snapshot.vendor_name,
     row.seed_brand,
+    row.seed_vendor,
     row.brand,
+    row.vendor,
   ) || undefined;
   const explicitCategory =
     normalizeExplicitBeautyCategory(recall.category) ||

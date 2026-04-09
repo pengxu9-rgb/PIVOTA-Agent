@@ -44,9 +44,16 @@ describe('RecommendationEngine external candidate fetch', () => {
     process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET = 'US';
 
     const queryMock = jest.fn(async (sql, params) => {
-      const brandKey = params?.[3];
-      const categoryKey = params?.[4];
-      if (brandKey === 'kravebeauty' && categoryKey === 'serum') {
+      const brandAliases = params?.[3];
+      const brandCompacts = params?.[4];
+      const categoryKey = params?.[5];
+      if (
+        Array.isArray(brandAliases) &&
+        brandAliases.includes('kravebeauty') &&
+        Array.isArray(brandCompacts) &&
+        brandCompacts.includes('kravebeauty') &&
+        categoryKey === 'serum'
+      ) {
         return {
           rows: [
             makeExternalRow({
@@ -59,7 +66,12 @@ describe('RecommendationEngine external candidate fetch', () => {
           ],
         };
       }
-      if (brandKey === 'kravebeauty') {
+      if (
+        Array.isArray(brandAliases) &&
+        brandAliases.includes('kravebeauty') &&
+        Array.isArray(brandCompacts) &&
+        brandCompacts.includes('kravebeauty')
+      ) {
         return {
           rows: [
             makeExternalRow({
@@ -96,7 +108,9 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(
       queryMock.mock.calls.some(([sql]) =>
         String(sql).includes("regexp_replace(") &&
-        String(sql).includes("split_part(domain, '.', 1)"),
+        String(sql).includes("split_part(domain, '.', 1)") &&
+        String(sql).includes("seed_data->>'vendor'") &&
+        !String(sql).includes('attached_product_key IS NULL'),
       ),
     ).toBe(true);
     expect(
@@ -110,7 +124,16 @@ describe('RecommendationEngine external candidate fetch', () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 
     const queryMock = jest.fn(async (_sql, params) => {
-      if (params?.[3] === 'kravebeauty' && params?.[4] === 'treatment') {
+      const brandAliases = params?.[3];
+      const brandCompacts = params?.[4];
+      const categoryKey = params?.[5];
+      if (
+        Array.isArray(brandAliases) &&
+        brandAliases.includes('kravebeauty') &&
+        Array.isArray(brandCompacts) &&
+        brandCompacts.includes('kravebeauty') &&
+        categoryKey === 'treatment'
+      ) {
         return {
           rows: [
             {
@@ -196,6 +219,65 @@ describe('RecommendationEngine external candidate fetch', () => {
       }),
     );
     expect(out.semantic?.rescue_fields).toEqual(expect.arrayContaining(['brand', 'category', 'description']));
+  });
+
+  test('includes attached same-brand seeds through broad brand fallback matching', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryMock = jest.fn(async (sql, params) => {
+      const brandAliases = params?.[3];
+      const brandCompacts = params?.[4];
+      if (
+        Array.isArray(brandAliases) &&
+        brandAliases.includes('kravebeauty') &&
+        Array.isArray(brandCompacts) &&
+        brandCompacts.includes('kravebeauty')
+      ) {
+        return {
+          rows: [
+            {
+              ...makeExternalRow({
+                id: 'eps_matcha',
+                external_product_id: 'ext_matcha',
+                title: 'Matcha Hemp Hydrating Cleanser',
+                brand: '',
+                category: '',
+              }),
+              attached_product_key: 'native::sku_123',
+              seed_data: {
+                vendor: 'KraveBeauty',
+                snapshot: {
+                  title: 'KraveBeauty Matcha Hemp Hydrating Cleanser',
+                },
+              },
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchExternalCandidates({
+      brandHint: 'KraveBeauty',
+      categoryHint: '',
+      limit: 12,
+    });
+
+    expect(products).toHaveLength(1);
+    expect(products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'ext_matcha',
+        brand: 'KraveBeauty',
+        title: 'KraveBeauty Matcha Hemp Hydrating Cleanser',
+      }),
+    );
+    expect(
+      queryMock.mock.calls.every(([sql]) => !String(sql).includes('attached_product_key IS NULL')),
+    ).toBe(true);
   });
 
   test('recommend fetches internal and external pools in parallel instead of serially stacking source latency', async () => {
