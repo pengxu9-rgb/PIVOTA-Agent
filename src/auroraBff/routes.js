@@ -35140,7 +35140,8 @@ function isUnsureToken(raw) {
 function inferGoalFromClarificationText(raw) {
   const text = String(raw || '').trim().toLowerCase();
   if (!text) return '';
-  if (/(acne|breakout|pore|oil|控痘|痘|闭口|粉刺|毛孔|出油)/.test(text)) return 'acne';
+  if (/(acne|breakout|blemish|comedo|控痘|痘|闭口|粉刺)/.test(text)) return 'acne';
+  if (/(oil control|oily|oiliness|sebum|shine|greasy|pore|控油|出油|毛孔)/.test(text)) return 'oil control';
   if (/(redness|sensitive|reactive|泛红|敏感|刺痛|修护屏障|屏障)/.test(text)) return 'redness';
   if (/(dark spot|pigment|bright|tone|淡斑|美白|提亮|暗沉|色沉|痘印)/.test(text)) return 'dark_spots';
   if (/(dry|hydrate|moist|保湿|补水|干燥|紧绷)/.test(text)) return 'dehydration';
@@ -35774,9 +35775,9 @@ function buildChatIngressSignalSnapshot({ data = null, language = 'EN' } = {}) {
   });
   const profileOverlay = extractAnalysisProfileContextOverlay(
     profilePatchFromSession,
+    profilePatchFromFreeText,
     profilePatchFromRequestContext,
     profilePatchFromAction,
-    profilePatchFromFreeText,
   );
   return {
     normalizedActionPayload,
