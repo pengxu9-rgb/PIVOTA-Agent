@@ -634,7 +634,7 @@ test('beauty mainline handoff search policy falls through from self proxy timeou
       AURORA_BFF_RECO_CATALOG_SEARCH_PREFER_CONFIGURED_BASE_URLS: 'true',
       AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED: 'true',
       AURORA_BFF_RECO_CATALOG_SELF_PROXY_BASE_URL: 'http://127.0.0.1:3000',
-      AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED: 'true',
+      AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED: 'false',
     },
     async () => {
       const originalGet = axios.get;

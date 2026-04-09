@@ -4815,6 +4815,9 @@ async function searchPivotaBackendProducts({
   const effectiveTransportPolicy = isPlainObject(transportPolicy)
     ? transportPolicy
     : buildRecoRecallTransportPolicy({ mode: transportPolicy });
+  const multiSourceEnabledForRequest =
+    effectiveTransportPolicy.force_multi_source === true ||
+    RECO_CATALOG_MULTI_SOURCE_ENABLED;
   const transportPolicyMode = pickFirstTrimmed(effectiveTransportPolicy?.mode, 'default') || 'default';
   const maxConfiguredPaths = Number.isFinite(Number(effectiveTransportPolicy.max_paths))
     ? Math.max(0, Math.trunc(Number(effectiveTransportPolicy.max_paths)))
@@ -5193,7 +5196,7 @@ async function searchPivotaBackendProducts({
     return rawList.map((p) => normalizeRecoCatalogProduct(p)).filter(Boolean);
   };
   const normalizeAttemptTimeout = (index) => {
-    const baseTimeout = index <= 0 || !RECO_CATALOG_MULTI_SOURCE_ENABLED
+    const baseTimeout = index <= 0 || !multiSourceEnabledForRequest
       ? normalizedTimeout
       : Math.max(260, Math.min(normalizedTimeout, Math.trunc(normalizedTimeout * 0.66)));
     const remaining = getRemainingOverallMs();
@@ -5204,14 +5207,14 @@ async function searchPivotaBackendProducts({
     const token = String(reason || '').trim().toLowerCase();
     if (!token) return false;
     if (token === 'upstream_timeout' || token === 'upstream_error' || token === 'rate_limited') {
-      return RECO_CATALOG_MULTI_SOURCE_ENABLED && (
+      return multiSourceEnabledForRequest && (
         !shouldAttemptLocalSearchFallback ||
         RECO_PDP_LOCAL_SEARCH_FALLBACK_ON_TRANSIENT ||
         baseUrlCandidates.length > 1
       );
     }
     if (token === 'empty' || token === 'not_found') {
-      return RECO_CATALOG_MULTI_SOURCE_ENABLED && RECO_CATALOG_MULTI_SOURCE_ON_EMPTY;
+      return multiSourceEnabledForRequest && RECO_CATALOG_MULTI_SOURCE_ON_EMPTY;
     }
     return false;
   };
@@ -5518,7 +5521,7 @@ async function searchPivotaBackendProducts({
 
   const nowMs = Date.now();
   const preserveFirstBaseUrl = effectiveTransportPolicy.prefer_self_proxy_first === true;
-  const orderedBaseUrls = RECO_CATALOG_MULTI_SOURCE_ENABLED
+  const orderedBaseUrls = multiSourceEnabledForRequest
     ? rankRecoCatalogSearchBaseUrls(baseUrlCandidates, nowMs, { preserveFirst: preserveFirstBaseUrl })
     : baseUrlCandidates.slice(0, 1);
   const effectiveOrderedBaseUrls = orderedBaseUrls.slice(
@@ -18850,6 +18853,7 @@ function buildBeautyMainlineHandoffTransportPolicy({ mode } = {}) {
   const basePolicy = buildRecoRecallTransportPolicy({ mode });
   return {
     ...basePolicy,
+    force_multi_source: true,
     include_self_proxy: true,
     prefer_self_proxy_first: true,
     max_base_urls: Math.max(2, Number.isFinite(Number(basePolicy?.max_base_urls)) ? Number(basePolicy.max_base_urls) : 0),
