@@ -18462,6 +18462,48 @@ function buildBeautyMainlineLocalFailureStage(collected = null) {
   return 'no_recall_from_planned_sources';
 }
 
+function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
+  const levels = Array.isArray(queryLevels)
+    ? queryLevels.filter((level) => level && typeof level === 'object' && !Array.isArray(level))
+    : [];
+  const keptLevels = [];
+  const skippedExternalSeedLevels = [];
+  for (const level of levels) {
+    const queries = Array.isArray(level?.queries) ? level.queries : [];
+    const allowExternalSeedOnly =
+      queries.length > 0 &&
+      queries.every((query) => query && query.allow_external_seed === true);
+    if (allowExternalSeedOnly) {
+      skippedExternalSeedLevels.push(
+        String(level?.ladder_level || level?.stage_id || '').trim() || `level_${skippedExternalSeedLevels.length + 1}`,
+      );
+      continue;
+    }
+    keptLevels.push(level);
+  }
+  if (keptLevels.length === 0) {
+    return {
+      queryLevels: levels,
+      summary: {
+        planned_level_count: levels.length,
+        executed_level_count: levels.length,
+        skipped_external_seed_level_count: 0,
+      },
+    };
+  }
+  return {
+    queryLevels: keptLevels,
+    summary: {
+      planned_level_count: levels.length,
+      executed_level_count: keptLevels.length,
+      skipped_external_seed_level_count: skippedExternalSeedLevels.length,
+      ...(skippedExternalSeedLevels.length
+        ? { skipped_external_seed_levels: skippedExternalSeedLevels }
+        : {}),
+    },
+  };
+}
+
 function buildBeautyMainlineLocalSearchResult({
   collected = null,
   selectedProducts = [],
@@ -18477,6 +18519,12 @@ function buildBeautyMainlineLocalSearchResult({
   );
   const primaryFailureStage =
     selected.length > 0 ? null : buildBeautyMainlineLocalFailureStage(collected);
+  const localHandoffStageSummary =
+    collected?.localHandoffStageSummary &&
+    typeof collected.localHandoffStageSummary === 'object' &&
+    !Array.isArray(collected.localHandoffStageSummary)
+      ? collected.localHandoffStageSummary
+      : null;
   const semanticOwnerQueryAttempts = (Array.isArray(collected?.searchResults) ? collected.searchResults : []).map((row) => ({
     query: pickFirstTrimmed(row?.query) || null,
     role_id: pickFirstTrimmed(row?.role_id) || null,
@@ -18517,6 +18565,7 @@ function buildBeautyMainlineLocalSearchResult({
     final_selection: selectionContract,
     search_stage_ledger: {
       final_selection: selectionContract,
+      ...(localHandoffStageSummary ? { local_handoff: localHandoffStageSummary } : {}),
       ...(primaryFailureStage ? { primary_failure_stage: primaryFailureStage } : {}),
       ...(pickFirstTrimmed(collected?.candidateDropStage)
         ? { candidate_drop_stage: pickFirstTrimmed(collected.candidateDropStage) }
@@ -18584,9 +18633,13 @@ async function runBeautyMainlineLocalHandoffSearch({
       selectedProducts: [],
     });
   }
+  const {
+    queryLevels: localHandoffQueryLevels,
+    summary: localHandoffStageSummary,
+  } = buildBeautyMainlineLocalHandoffStageSummary(queryLevels);
 
-  const collected = await collectRecoCandidatesFromQueryLevels({
-    queryLevels,
+  const collectedBase = await collectRecoCandidatesFromQueryLevels({
+    queryLevels: localHandoffQueryLevels,
     targetContext,
     recommendationTaskContext: null,
     logger,
@@ -18609,6 +18662,10 @@ async function runBeautyMainlineLocalHandoffSearch({
         callerLane: 'beauty_chat_handoff',
       }),
   });
+  const collected = {
+    ...(collectedBase && typeof collectedBase === 'object' && !Array.isArray(collectedBase) ? collectedBase : {}),
+    localHandoffStageSummary,
+  };
   const selectedProducts = Array.isArray(collected?.candidateState?.selected_recommendations)
     ? collected.candidateState.selected_recommendations
     : [];
