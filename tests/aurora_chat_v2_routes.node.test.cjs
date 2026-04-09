@@ -75,6 +75,34 @@ test('POST /v2/chat accepts free-form payloads and returns text_response cards',
   assert.ok(Array.isArray(response.body.next_actions));
 });
 
+test('POST /v1/chat on standalone skill-router mount exposes proxy diagnostics for beauty reco prompts', async () => {
+  const app = createApp();
+  const response = await request(app)
+    .post('/v1/chat')
+    .set('X-Debug', '1')
+    .send({
+      message: 'im oily skin. what product should i buy?',
+      client_state: 'IDLE_CHAT',
+      session: { state: 'idle' },
+      context: {
+        locale: 'en',
+        profile: {
+          skinType: 'oily',
+          sensitivity: 'low',
+          barrierStatus: 'stable',
+          goals: ['oil control'],
+        },
+      },
+      language: 'EN',
+    })
+    .expect(200);
+
+  assert.equal(response.headers['x-aurora-chat-handler'], 'skill_router_v2');
+  assert.equal(response.headers['x-aurora-reco-proxy-eligible'], 'true');
+  assert.equal(response.headers['x-aurora-reco-proxy-available'], 'false');
+  assert.equal(response.headers['x-aurora-reco-proxy-attempted'], 'false');
+});
+
 test('POST /v2/chat answers dryness questions even when profile says oily', async () => {
   const app = createApp();
   const response = await request(app)

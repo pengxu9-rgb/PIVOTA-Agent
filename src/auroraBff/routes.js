@@ -75253,6 +75253,10 @@ function mountAuroraBffRoutes(app, { logger }) {
     let actionIdForReplay = null;
     let clientStateForReplay = DEFAULT_AGENT_STATE;
     let agentStateForReplay = DEFAULT_AGENT_STATE;
+    let debugResponseRequested = false;
+    let ingressDelegateTargetForDebug = null;
+    let ingressRequestClassForDebug = null;
+    let ingressEarlyBeautyLockForDebug = false;
     let ingredientReplayContext = {
       intent_requested: false,
       starter_action: false,
@@ -75760,6 +75764,16 @@ function mountAuroraBffRoutes(app, { logger }) {
         setResponseHeader('x-aurora-bucket', String(Number.isFinite(Number(rolloutContext.bucket)) ? Number(rolloutContext.bucket) : 0));
         setResponseHeader('x-aurora-variant', String(rolloutContext.variant || 'legacy'));
         setResponseHeader('x-aurora-policy-version', String(rolloutContext.policy_version || policyMeta.policy_version || 'legacy'));
+      }
+      if (debugResponseRequested) {
+        setResponseHeader('x-aurora-chat-handler', 'v1_mainline');
+        if (ingressDelegateTargetForDebug) {
+          setResponseHeader('x-aurora-chat-ingress-delegate-target', ingressDelegateTargetForDebug);
+        }
+        if (ingressRequestClassForDebug) {
+          setResponseHeader('x-aurora-chat-ingress-request-class', ingressRequestClassForDebug);
+        }
+        setResponseHeader('x-aurora-chat-early-beauty-lock', String(ingressEarlyBeautyLockForDebug));
       }
       if (lowMediumFiltered.applied) {
         logger?.info(
@@ -76409,6 +76423,12 @@ function mountAuroraBffRoutes(app, { logger }) {
     try {
       requireAuroraUid(ctx);
       const ingressChatIntentContract = await buildChatIntentContract(req.body || {});
+      const requestDebugHeader = req.get('X-Debug') ?? req.get('X-Aurora-Debug');
+      const ingressDebugFromHeader = requestDebugHeader == null ? undefined : coerceBoolean(requestDebugHeader);
+      const ingressDebugFromBody = parsed.success && typeof parsed.data?.debug === 'boolean' ? parsed.data.debug : undefined;
+      debugResponseRequested = ingressDebugFromHeader ?? ingressDebugFromBody ?? false;
+      ingressDelegateTargetForDebug = pickFirstTrimmed(ingressChatIntentContract?.delegate_target) || null;
+      ingressRequestClassForDebug = pickFirstTrimmed(ingressChatIntentContract?.request_class) || null;
       if (
         effectiveChatFlags.skill_router_v2 &&
         ingressChatIntentContract?.delegate_target === 'v2'
@@ -76461,6 +76481,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         actionLabel: earlyActionLabelFromPayload,
         message: earlyMessage,
       });
+      ingressEarlyBeautyLockForDebug = shouldEarlyBeautyRecoHardLockAtIngress === true;
       if (shouldEarlyBeautyRecoHardLockAtIngress) {
         const earlyBeautyOwnedRecoResponse =
           await maybeHandleBeautyOwnedChatRecoForRoute({

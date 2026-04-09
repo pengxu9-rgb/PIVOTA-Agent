@@ -269,6 +269,16 @@ function setResponseHeader(res, name, value) {
   }
 }
 
+function isDebugResponseRequested(req, body = null) {
+  const headerValue =
+    (typeof req?.get === 'function' ? req.get('x-debug') || req.get('x-aurora-debug') : null) ||
+    req?.headers?.['x-debug'] ||
+    req?.headers?.['x-aurora-debug'];
+  const headerDebug = headerValue == null ? undefined : toBool(headerValue, false);
+  if (typeof headerDebug === 'boolean') return headerDebug;
+  return Boolean(isPlainObject(body) && body.debug === true);
+}
+
 function applyRolloutMeta(payload, { req, ctx, body, identity, res } = {}) {
   const base = isPlainObject(payload) ? { ...payload } : {};
   const rolloutContext = computeAuroraChatRolloutContext({
@@ -1399,7 +1409,18 @@ async function handleChat(req, res) {
   try {
     const auth = await resolveRequestIdentity(req, getRoutesInternal());
     const body = isPlainObject(req.body) ? req.body : {};
-    if (shouldProxyFrameworkRecoToV1Mainline(body, auth.internal) && canProxyRecoToV1Mainline()) {
+    const debugResponseRequested = isDebugResponseRequested(req, body);
+    const proxyEligible = shouldProxyFrameworkRecoToV1Mainline(body, auth.internal);
+    const proxyAvailable = canProxyRecoToV1Mainline();
+    if (debugResponseRequested) {
+      setResponseHeader(res, 'x-aurora-chat-handler', 'skill_router_v2');
+      setResponseHeader(res, 'x-aurora-reco-proxy-eligible', String(proxyEligible));
+      setResponseHeader(res, 'x-aurora-reco-proxy-available', String(proxyAvailable));
+    }
+    if (proxyEligible && proxyAvailable) {
+      if (debugResponseRequested) {
+        setResponseHeader(res, 'x-aurora-reco-proxy-attempted', 'true');
+      }
       const mainlineResponse = await invokeBoundedV1MainlineChat({ req, body });
       res.json(
         applyRolloutMeta(mergeResponseMeta(mainlineResponse, auth.ctx.auth_meta), {
@@ -1411,6 +1432,15 @@ async function handleChat(req, res) {
         }),
       );
       return;
+    }
+    if (debugResponseRequested) {
+      setResponseHeader(res, 'x-aurora-reco-proxy-attempted', 'false');
+    }
+    if (proxyEligible && !proxyAvailable) {
+      console.warn('[chat] beauty reco proxy unavailable; continuing on skill router path', {
+        request_id: auth?.ctx?.request_id || null,
+        path: req?.path || null,
+      });
     }
     const skillRequest = await enrichSkillRequestForCompat(req, buildSkillRequest(req), auth.internal);
     let promptMeta = null;
