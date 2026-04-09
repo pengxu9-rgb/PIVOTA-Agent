@@ -1717,6 +1717,148 @@
       }
     },
     {
+      "id": "beauty_reco_freeform_oily_grounded",
+      "family": "beauty_reco_grounded",
+      "query": "im oily skin, what products should i use?",
+      "source": "aurora-bff",
+      "targets": {
+        "prompt_live_smoke": {
+          "title": "freeform beauty reco returns a grounded recommendations card on the non-debug mainline",
+          "request": {
+            "message": "im oily skin, what products should i use?",
+            "language": "EN",
+            "session": {
+              "state": "IDLE_CHAT",
+              "profile": {
+                "skinType": "oily",
+                "sensitivity": "low",
+                "barrierStatus": "stable",
+                "goals": [
+                  "oil control"
+                ]
+              }
+            },
+            "context": {
+              "profile": {
+                "skinType": "oily",
+                "sensitivity": "low",
+                "barrierStatus": "stable",
+                "goals": [
+                  "oil control"
+                ]
+              }
+            },
+            "client_state": {
+              "state": "IDLE_CHAT"
+            },
+            "messages": [
+              {
+                "role": "user",
+                "content": "im oily skin, what products should i use?"
+              }
+            ],
+            "headers": {
+              "X-Lang": "EN",
+              "X-Aurora-Lang": "en"
+            }
+          },
+          "correctness": {
+            "expect_http_status": 200
+          },
+          "observability": {
+            "must_have_paths": [
+              "cards.0.type",
+              "cards.0.payload.mainline_status",
+              "cards.0.payload.recommendations.0.product_id"
+            ],
+            "must_equal_paths": {
+              "cards.0.type": "recommendations",
+              "cards.0.payload.mainline_status": "grounded_success"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "beauty_reco_action_oily_grounded",
+      "family": "beauty_reco_grounded",
+      "query": "chip.start.reco_products oily grounded path",
+      "source": "aurora-bff",
+      "targets": {
+        "prompt_live_smoke": {
+          "title": "action beauty reco returns a grounded recommendations card on the non-debug mainline",
+          "request": {
+            "action": {
+              "action_id": "chip.start.reco_products",
+              "kind": "chip",
+              "data": {
+                "trigger_source": "chip",
+                "reply_text": "im oily skin, what products should i use?",
+                "profile_patch": {
+                  "skin_type": "oily",
+                  "sensitivity": "low",
+                  "barrier_status": "stable",
+                  "goals": [
+                    "oil control"
+                  ]
+                },
+                "include_alternatives": true
+              }
+            },
+            "language": "EN",
+            "session": {
+              "state": "IDLE_CHAT",
+              "profile": {
+                "skinType": "oily",
+                "sensitivity": "low",
+                "barrierStatus": "stable",
+                "goals": [
+                  "oil control"
+                ]
+              }
+            },
+            "context": {
+              "profile": {
+                "skinType": "oily",
+                "sensitivity": "low",
+                "barrierStatus": "stable",
+                "goals": [
+                  "oil control"
+                ]
+              }
+            },
+            "client_state": {
+              "state": "IDLE_CHAT"
+            },
+            "messages": [
+              {
+                "role": "user",
+                "content": "im oily skin, what products should i use?"
+              }
+            ],
+            "headers": {
+              "X-Lang": "EN",
+              "X-Aurora-Lang": "en"
+            }
+          },
+          "correctness": {
+            "expect_http_status": 200
+          },
+          "observability": {
+            "must_have_paths": [
+              "cards.0.type",
+              "cards.0.payload.mainline_status",
+              "cards.0.payload.recommendations.0.product_id"
+            ],
+            "must_equal_paths": {
+              "cards.0.type": "recommendations",
+              "cards.0.payload.mainline_status": "grounded_success"
+            }
+          }
+        }
+      }
+    },
+    {
       "id": "public_direct_api_deep_pagination_blocked",
       "family": "governance_deep_pagination",
       "query": "ipsa",

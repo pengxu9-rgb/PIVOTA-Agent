@@ -552,6 +552,12 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
         language: ctx?.lang || 'EN',
       });
       if (isPlainObject(hardPathPayloadBundle?.payload) && isPlainObject(hardPathPayloadBundle?.contract)) {
+        const effectiveHardPathRecoContext =
+          hardPathPayloadBundle?.recoContext &&
+          typeof hardPathPayloadBundle.recoContext === 'object' &&
+          !Array.isArray(hardPathPayloadBundle.recoContext)
+            ? hardPathPayloadBundle.recoContext
+            : hardPathRecoContext;
         const assistantProfile =
           profileSummary && typeof profileSummary === 'object' && !Array.isArray(profileSummary)
             ? profileSummary
@@ -584,7 +590,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
         const sessionPatch = nextState ? { next_state: nextState } : {};
         appendLatestRecoContextToSessionPatch(
           sessionPatch,
-          mergeIngredientRecoContextValue(hardPathRecoContext, {
+          mergeIngredientRecoContextValue(effectiveHardPathRecoContext, {
             intent: 'reco_products',
             source_detail: recoEntrySourceDetail,
             trigger_source: ctx?.trigger_source,
