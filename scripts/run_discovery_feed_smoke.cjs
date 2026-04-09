@@ -410,7 +410,10 @@ async function runSmoke(options = {}) {
     candidateSource: [EXPECTED_CANDIDATE_SOURCE, 'beauty_interest_mainline', 'beauty_interest_mainline+multi_provider'],
     minProducts: 4,
     requireRankDebug: true,
-    requiredRecallLabels: ['interest_pool', 'expansion_pool'],
+    requiredRecallLabels: [
+      ['interest_pool', 'beauty_interest_mainline'],
+      ['expansion_pool', 'products_search_pool', 'internal_catalog_pool', 'external_seed_pool'],
+    ],
     excludeProductKeys: [suppressedKey],
   });
   console.log(`PASS personalized_home ${JSON.stringify(personalizedHomeResult)}`);

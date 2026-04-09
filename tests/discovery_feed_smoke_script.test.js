@@ -76,8 +76,8 @@ describe('run_discovery_feed_smoke helpers', () => {
           personalization_source: 'account_history',
           rank_debug: {
             recall_summary: [
-              { label: 'interest_pool', status: 200, returned: 3 },
-              { label: 'expansion_pool', status: 200, returned: 6 },
+              { label: 'beauty_interest_mainline', status: 200, returned: 3 },
+              { label: 'products_search_pool', status: 200, returned: 6 },
             ],
           },
         },
@@ -87,7 +87,10 @@ describe('run_discovery_feed_smoke helpers', () => {
         personalizationSource: 'account_history',
         candidateSource: 'multi_provider',
         requireRankDebug: true,
-        requiredRecallLabels: ['interest_pool', 'expansion_pool'],
+        requiredRecallLabels: [
+          ['interest_pool', 'beauty_interest_mainline'],
+          ['expansion_pool', 'products_search_pool', 'internal_catalog_pool', 'external_seed_pool'],
+        ],
         requiredProviders: ['products_search', 'external_seeds'],
         excludeProductKeys: ['m1::p1'],
       },
@@ -186,6 +189,58 @@ describe('run_discovery_feed_smoke helpers', () => {
     );
 
     expect(summary.productCount).toBe(2);
+  });
+
+  test('accepts beauty-interest mainline personalized recall labels from production', () => {
+    const summary = validateDiscoveryResponse(
+      {
+        products: [
+          {
+            merchant_id: 'm2',
+            product_id: 'p2',
+            title: 'Barrier Healer',
+          },
+          {
+            merchant_id: 'm3',
+            product_id: 'p3',
+            title: 'Great Barrier Relief',
+          },
+        ],
+        metadata: {
+          candidate_source: 'beauty_interest_mainline',
+          provider_breakdown: [
+            { provider: 'beauty_interest_mainline', successful: true, returned: 18 },
+            { provider: 'products_search', successful: false, skipped: true, skip_reason: 'beauty_interest_mainline_sufficient' },
+            { provider: 'internal_catalog', successful: false, skipped: true, skip_reason: 'beauty_interest_mainline_sufficient' },
+            { provider: 'external_seeds', successful: false, skipped: true, skip_reason: 'beauty_interest_mainline_primary_used' },
+          ],
+          discovery_strategy: 'personalized_interest',
+          personalization_source: 'account_history',
+          rank_debug: {
+            recall_summary: [
+              { label: 'beauty_interest_mainline', status: 200, returned: 18 },
+              { label: 'products_search_pool', skipped: true, returned: 0 },
+              { label: 'internal_catalog_pool', skipped: true, returned: 0 },
+              { label: 'external_seed_pool', skipped: true, returned: 0 },
+            ],
+          },
+        },
+      },
+      {
+        discoveryStrategy: 'personalized_interest',
+        personalizationSource: 'account_history',
+        candidateSource: ['multi_provider', 'beauty_interest_mainline', 'beauty_interest_mainline+multi_provider'],
+        requireRankDebug: true,
+        requiredRecallLabels: [
+          ['interest_pool', 'beauty_interest_mainline'],
+          ['expansion_pool', 'products_search_pool', 'internal_catalog_pool', 'external_seed_pool'],
+        ],
+        requiredProviders: ['beauty_interest_mainline', 'products_search', 'internal_catalog', 'external_seeds'],
+        minProducts: 2,
+      },
+    );
+
+    expect(summary.candidateSource).toBe('beauty_interest_mainline');
   });
 
   test('rejects disallowed cold-start titles in the top rows', () => {
