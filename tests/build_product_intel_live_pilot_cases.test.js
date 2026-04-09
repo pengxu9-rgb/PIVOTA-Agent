@@ -1,9 +1,21 @@
+jest.mock('axios', () => ({
+  post: jest.fn(),
+}));
+
 const {
+  buildPilotCaseFromExternalSeedProduct,
   buildPilotCaseFromPdpResponse,
   buildPilotCaseFromSearchCandidate,
+  extractProductIdsFromFrontendHtml,
+  fetchDiscoveryCandidates,
   hasBadgeEvidence,
+  loadCoveredProductIdSet,
+  loadCoveredProductIdSetFromReport,
   sampleWithoutReplacement,
+  selectDiverseCases,
 } = require('../scripts/build_product_intel_live_pilot_cases');
+
+const axios = require('axios');
 
 describe('build_product_intel_live_pilot_cases', () => {
   test('samples deterministically without replacement', () => {
@@ -16,6 +28,56 @@ describe('build_product_intel_live_pilot_cases', () => {
     expect(new Set(first).size).toBe(3);
     expect(first).toEqual(second);
     expect(third).not.toEqual(first);
+  });
+
+  test('loads covered product ids from KB keys', async () => {
+    const covered = await loadCoveredProductIdSet(['prod_a', 'prod_b'], async () => ({
+      rows: [{ kb_key: 'product:prod_a' }],
+    }));
+
+    expect(Array.from(covered)).toEqual(['prod_a']);
+  });
+
+  test('loads covered product ids from a compare report', () => {
+    const tmpReport = '/tmp/build-product-intel-covered-report.json';
+    require('fs').writeFileSync(
+      tmpReport,
+      JSON.stringify({
+        rows: [
+          {
+            selected: {
+              bundle: {
+                canonical_product_ref: {
+                  product_id: 'prod_a',
+                },
+              },
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(Array.from(loadCoveredProductIdSetFromReport(tmpReport))).toEqual(['prod_a']);
+  });
+
+  test('selects a diverse subset across brands and categories', () => {
+    const cases = [
+      { case_id: '1', product: { brand: 'Brand A', category: 'Serum' } },
+      { case_id: '2', product: { brand: 'Brand A', category: 'Serum' } },
+      { case_id: '3', product: { brand: 'Brand B', category: 'Moisturizer' } },
+      { case_id: '4', product: { brand: 'Brand C', category: 'Toner' } },
+    ];
+
+    const selected = selectDiverseCases(cases, {
+      limit: 3,
+      seed: 'seed-1',
+      maxPerBrand: 1,
+      maxPerCategory: 1,
+    });
+
+    expect(selected).toHaveLength(3);
+    expect(new Set(selected.map((row) => row.product.brand)).size).toBe(3);
+    expect(new Set(selected.map((row) => row.product.category)).size).toBe(3);
   });
 
   test('builds a live pilot case from get_pdp_v2 response', () => {
@@ -88,6 +150,86 @@ describe('build_product_intel_live_pilot_cases', () => {
         review_summary: undefined,
       },
     });
+  });
+
+  test('builds a live pilot case from external seed product fallback', () => {
+    expect(
+      buildPilotCaseFromExternalSeedProduct({
+        merchant_id: 'external_seed',
+        id: 'ext_demo_seed',
+        brand: 'Naturium',
+        title: 'Vitamin C Super Serum Plus',
+        category_path: ['Skincare', 'Serum'],
+        description: 'A multi-active serum for tone and texture.',
+        ingredients_inci: ['Ascorbic Acid', 'Niacinamide'],
+        review_summary: {
+          rating: 4.6,
+          review_count: 228,
+        },
+      }),
+    ).toEqual({
+      case_id: 'live_ext_demo_seed',
+      notes: 'Live pilot case sampled from external product seeds (Naturium).',
+      canonical_product_ref: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_demo_seed',
+      },
+      product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_demo_seed',
+        brand: 'Naturium',
+        title: 'Vitamin C Super Serum Plus',
+        category: 'Skincare/Serum',
+        description: 'A multi-active serum for tone and texture.',
+        tags: ['Skincare', 'Serum'],
+        texture: '',
+        finish: '',
+        ingredients_inci: ['Ascorbic Acid', 'Niacinamide'],
+        how_to_use: '',
+        review_summary: {
+          rating: 4.6,
+          review_count: 228,
+        },
+      },
+    });
+  });
+
+  test('fetches discovery candidates from get_discovery_feed card surface', async () => {
+    axios.post.mockResolvedValueOnce({
+      data: {
+        products: [{ product_id: 'ext_demo', title: 'Demo Product' }],
+      },
+    });
+
+    await expect(
+      fetchDiscoveryCandidates('https://agent.pivota.cc/api/gateway', 'browse_products', 2, 24),
+    ).resolves.toEqual([{ product_id: 'ext_demo', title: 'Demo Product' }]);
+
+    expect(axios.post).toHaveBeenCalledWith(
+      'https://agent.pivota.cc/api/gateway',
+      expect.objectContaining({
+        operation: 'get_discovery_feed',
+        payload: expect.objectContaining({
+          surface: 'browse_products',
+          page: 2,
+          limit: 24,
+          response_detail: 'card',
+        }),
+      }),
+      expect.any(Object),
+    );
+  });
+
+  test('extracts product ids from frontend HTML links', () => {
+    const ids = extractProductIdsFromFrontendHtml(`
+      <a href="/products/ext_13c520e764f9f7d7f23c611b?return=%2Fproducts">Naturium</a>
+      <a href="/products/ext_4e155bb184ec35f3cd7827e3">Olehenriksen</a>
+    `);
+
+    expect(ids).toEqual([
+      'ext_13c520e764f9f7d7f23c611b',
+      'ext_4e155bb184ec35f3cd7827e3',
+    ]);
   });
 
   test('builds a seed case from a search candidate with review evidence', () => {
