@@ -61,6 +61,7 @@ describe('discovery feed service', () => {
       AGENT_API_KEY: process.env.AGENT_API_KEY,
       DISCOVERY_PRODUCTS_SEARCH_MAX_CALLS: process.env.DISCOVERY_PRODUCTS_SEARCH_MAX_CALLS,
       DISCOVERY_PRODUCTS_SEARCH_TIMEOUT_MS: process.env.DISCOVERY_PRODUCTS_SEARCH_TIMEOUT_MS,
+      DISCOVERY_BRAND_DIRECT_PREFETCH_DELAY_MS: process.env.DISCOVERY_BRAND_DIRECT_PREFETCH_DELAY_MS,
       DISCOVERY_RECALL_BUDGET_MS: process.env.DISCOVERY_RECALL_BUDGET_MS,
       DISCOVERY_POOL_CACHE_TTL_MS: process.env.DISCOVERY_POOL_CACHE_TTL_MS,
       CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET: process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET,
@@ -529,6 +530,7 @@ describe('discovery feed service', () => {
     delete process.env.PIVOTA_API_BASE;
     delete process.env.PIVOTA_API_KEY;
     process.env.PIVOTA_BACKEND_AGENT_API_KEY = 'bridge-key';
+    process.env.DISCOVERY_BRAND_DIRECT_PREFETCH_DELAY_MS = '0';
 
     const internalSpy = jest.fn(async () => [
       makeProduct({
@@ -1588,6 +1590,7 @@ describe('discovery feed service', () => {
       .matchHeader('x-api-key', 'bridge-key')
       .get('/agent/v1/products/search')
       .query(true)
+      .delay(25)
       .reply(200, { products });
 
     const response = await getDiscoveryFeed(

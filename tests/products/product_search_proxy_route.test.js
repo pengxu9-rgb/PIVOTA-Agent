@@ -81,6 +81,9 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
         process.env.PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_ENABLED,
       PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_MAX_QUERIES:
         process.env.PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_MAX_QUERIES,
+      FIND_PRODUCTS_MULTI_EXPANSION_MODE: process.env.FIND_PRODUCTS_MULTI_EXPANSION_MODE,
+      FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE:
+        process.env.FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE,
       UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_ALLOW_UNSAFE_LOWER:
         process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_ALLOW_UNSAFE_LOWER,
       UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS: process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS,
@@ -128,6 +131,8 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     delete process.env.PROXY_SEARCH_AURORA_TWO_PASS_MIN_USABLE;
     delete process.env.PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_ENABLED;
     delete process.env.PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_MAX_QUERIES;
+    delete process.env.FIND_PRODUCTS_MULTI_EXPANSION_MODE;
+    delete process.env.FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE;
     delete process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_ALLOW_UNSAFE_LOWER;
     delete process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS;
     delete process.env.PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS;
@@ -286,6 +291,18 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     } else {
       process.env.PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_MAX_QUERIES =
         prevEnv.PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_MAX_QUERIES;
+    }
+    if (prevEnv.FIND_PRODUCTS_MULTI_EXPANSION_MODE === undefined) {
+      delete process.env.FIND_PRODUCTS_MULTI_EXPANSION_MODE;
+    } else {
+      process.env.FIND_PRODUCTS_MULTI_EXPANSION_MODE =
+        prevEnv.FIND_PRODUCTS_MULTI_EXPANSION_MODE;
+    }
+    if (prevEnv.FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE === undefined) {
+      delete process.env.FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE;
+    } else {
+      process.env.FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE =
+        prevEnv.FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE;
     }
     if (prevEnv.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_ALLOW_UNSAFE_LOWER === undefined) {
       delete process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_ALLOW_UNSAFE_LOWER;
@@ -456,32 +473,28 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
   });
 
-  test('generic beauty search infers aurora defaults for skincare queries', async () => {
+  test('generic beauty ingredient queries bypass legacy aurora GET bridge and resolve on the local direct path', async () => {
     const queryText = 'niacinamide serum';
     process.env.PROXY_SEARCH_AURORA_API_BASE = 'http://aurora-upstream.test';
 
     const auroraPrimaryScope = nock('http://aurora-upstream.test')
       .get('/agent/v1/products/search')
-      .query((q) => {
-        return (
-          String(q.query || '').includes(queryText) &&
-          String(q.fast_mode || '') === 'true' &&
-          String(q.allow_stale_cache || '') === 'false' &&
-          String(q.allow_external_seed || '') === 'false' &&
-          String(q.external_seed_strategy || '').length > 0
-        );
-      })
+      .query(true)
       .reply(200, {
         status: 'success',
         success: true,
-        products: [
-          {
-            product_id: 'beauty_generic_1',
-            merchant_id: 'merch_efbc46b4619cfbdf',
-            title: 'Niacinamide Serum',
-          },
-        ],
-        total: 1,
+        products: [],
+        total: 0,
+      });
+
+    const legacyPublicScope = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
       });
 
     const app = require('../../src/server');
@@ -492,12 +505,17 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       });
 
     expect(resp.status).toBe(200);
-    expect(auroraPrimaryScope.isDone()).toBe(true);
+    expect(auroraPrimaryScope.isDone()).toBe(false);
+    expect(legacyPublicScope.isDone()).toBe(false);
     expect(Array.isArray(resp.body.products)).toBe(true);
-    expect(resp.body.products[0]).toEqual(
+    expect(resp.body.products).toHaveLength(0);
+    expect(resp.body.metadata).toEqual(
       expect.objectContaining({
-        product_id: 'beauty_generic_1',
-        merchant_id: 'merch_efbc46b4619cfbdf',
+        invoke_search_rail: 'public_observability',
+        legacy_contract: false,
+        query_source: 'agent_products_ingredient_recall_direct',
+        strict_empty: true,
+        strict_constraint_query: true,
       }),
     );
   });
@@ -682,7 +700,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
   });
 
-  test('v2 primary search failure does not fall back to legacy public search bridge', async () => {
+  test('v2 primary contract mismatch does not fall back to legacy public search bridge', async () => {
     const queryText = 'sunscreen oily skin';
     process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
     process.env.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED = 'false';
@@ -692,9 +710,14 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     const primaryV2Scope = nock('http://pivota.test')
       .post('/agent/v2/products/search')
       .query(true)
-      .reply(502, {
-        error: 'UPSTREAM_UNAVAILABLE',
-        message: 'v2 primary failed',
+      .reply(422, {
+        detail: [
+          {
+            loc: ['body', 'search'],
+            msg: 'Field required',
+            type: 'missing',
+          },
+        ],
       });
 
     const legacyV1Scope = nock('http://pivota.test')
@@ -713,6 +736,22 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
         total: 1,
       });
 
+    const invokeFallbackScope = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'invoke_fallback_should_not_run',
+            merchant_id: 'fallback_merch',
+            title: 'Invoke Fallback Should Not Run',
+          },
+        ],
+        total: 1,
+      });
+
     const app = require('../../src/server');
     const resp = await request(app)
       .get('/agent/v1/products/search')
@@ -725,12 +764,134 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     expect(resp.status).toBe(200);
     expect(primaryV2Scope.isDone()).toBe(true);
     expect(legacyV1Scope.isDone()).toBe(false);
+    expect(invokeFallbackScope.isDone()).toBe(false);
     expect(Array.isArray(resp.body.products)).toBe(true);
     expect(resp.body.products).toHaveLength(0);
     const { metadata, proxySearchFallback } = readFallbackSections(resp);
     expect(String(metadata?.query_source || '')).toBe('agent_products_error_fallback');
+    expect(String(metadata?.invoke_search_rail || '')).toBe('public_observability');
+    expect(metadata?.legacy_contract).toBe(false);
     expect(String(metadata?.contract_bridge?.resolved_contract || '')).not.toBe('agent_v1');
     expect(String(proxySearchFallback?.reason || '')).not.toContain('legacy');
+  });
+
+  test('public beauty second-stage supplement stays on v2 transport instead of old GET search routes', async () => {
+    const queryText = 'fragrance-free barrier moisturizer';
+    process.env.FIND_PRODUCTS_MULTI_EXPANSION_MODE = 'conservative';
+    process.env.FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE = 'aggressive';
+    process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED = 'false';
+    process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'false';
+    const capturedV2Requests = [];
+
+    const legacyV1Scope = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'legacy_get_should_not_run',
+            merchant_id: 'legacy_merch',
+            title: 'Legacy GET Should Not Run',
+          },
+        ],
+        total: 1,
+      });
+
+    const legacyV2GetScope = nock('http://pivota.test')
+      .get('/agent/v2/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'legacy_v2_get_should_not_run',
+            merchant_id: 'legacy_merch',
+            title: 'Legacy V2 GET Should Not Run',
+          },
+        ],
+        total: 1,
+      });
+
+    const v2SearchScope = nock('http://pivota.test')
+      .post(/\/agent\/v2\/products\/search(?:\?.*)?$/)
+      .times(2)
+      .reply(function reply(uri, body) {
+        capturedV2Requests.push({
+          uri,
+          query: String(body?.query || ''),
+        });
+        if (capturedV2Requests.length === 1) {
+          return [
+            200,
+            {
+              status: 'success',
+              success: true,
+              products: [
+                {
+                  product_id: 'primary_barrier_hit',
+                  merchant_id: 'merch_primary',
+                  title: 'Barrier Repair Moisturizer',
+                },
+              ],
+              total: 1,
+              metadata: {
+                query_source: 'agent_products_search',
+              },
+            },
+          ];
+        }
+        return [
+          200,
+          {
+            status: 'success',
+            success: true,
+            products: [
+              {
+                product_id: 'second_stage_barrier_hit',
+                merchant_id: 'merch_secondary',
+                title: 'Ceramide Barrier Cream',
+              },
+            ],
+            total: 1,
+            metadata: {
+              query_source: 'agent_products_search',
+            },
+          },
+        ];
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: queryText,
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+        limit: '8',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(v2SearchScope.isDone()).toBe(true);
+    expect(capturedV2Requests).toHaveLength(2);
+    expect(legacyV1Scope.isDone()).toBe(false);
+    expect(legacyV2GetScope.isDone()).toBe(false);
+    expect(capturedV2Requests.some((row) => row.query && row.query !== queryText)).toBe(true);
+    expect(resp.body.products.map((row) => row.title)).toEqual(
+      expect.arrayContaining([
+        'Barrier Repair Moisturizer',
+        'Ceramide Barrier Cream',
+      ]),
+    );
+    expect(resp.body.metadata?.search_stage_b).toEqual(
+      expect.objectContaining({
+        attempted: true,
+        applied: true,
+        reason: 'second_stage_supplemented',
+      }),
+    );
   });
 
   test('aurora source honors explicit allow_external_seed override from query params', async () => {

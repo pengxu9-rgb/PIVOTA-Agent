@@ -1,0 +1,66 @@
+{
+  "cases": [
+    {
+      "id": "route_coupling_ext4_wrong_merchant_current",
+      "bucket": "route_coupling_404_current",
+      "product_id": "ext_4e155bb184ec35f3cd7827e3",
+      "merchant_id": "merch_208139f7600dbf42",
+      "expect_status": 404,
+      "expect_reason_codes": ["PRODUCT_NOT_FOUND"],
+      "notes": "Observed on 2026-04-09 production. Wrong-merchant ext_* route returns a false 404, while the same product opens on the unscoped canonical route."
+    },
+    {
+      "id": "route_coupling_ext13_wrong_merchant_current",
+      "bucket": "route_coupling_404_current",
+      "product_id": "ext_13c520e764f9f7d7f23c611b",
+      "merchant_id": "merch_208139f7600dbf42",
+      "expect_status": 404,
+      "expect_reason_codes": ["PRODUCT_NOT_FOUND"],
+      "notes": "Observed on 2026-04-09 production. This is a second false-404 sample: the wrong-merchant ext_* route returned PRODUCT_NOT_FOUND, while the unscoped canonical route still returned HTTP 200."
+    },
+    {
+      "id": "canonical_ext4_unscoped_current",
+      "bucket": "canonical_ext_baseline_current",
+      "product_id": "ext_4e155bb184ec35f3cd7827e3",
+      "expect_status": 200,
+      "notes": "Observed on 2026-04-09 production via API probe. Unscoped canonical route returned HTTP 200 in about 6.96s with offers, reviews_preview, and similar present."
+    },
+    {
+      "id": "canonical_ext13_unscoped_current",
+      "bucket": "canonical_ext_baseline_current",
+      "product_id": "ext_13c520e764f9f7d7f23c611b",
+      "expect_status": 200,
+      "notes": "Observed on 2026-04-09 production via API probe. The unscoped canonical route remained healthy for this second merchant-mismatch sample, while the wrong-merchant route false-404ed."
+    },
+    {
+      "id": "canonical_not_found_ext5a_current",
+      "bucket": "canonical_not_found_current",
+      "product_id": "ext_5a3f0ba2f0e0394b72018937",
+      "expect_status": 404,
+      "expect_reason_codes": ["PRODUCT_NOT_FOUND"],
+      "notes": "Observed on 2026-04-09 production as a stable true canonical not-found sample. Unscoped, external_seed, and wrong-merchant probes all returned 404 PRODUCT_NOT_FOUND."
+    },
+    {
+      "id": "canonical_not_found_extf4_current",
+      "bucket": "canonical_not_found_current",
+      "product_id": "ext_f4c5fce9fe8b50130878fb76",
+      "expect_status": 404,
+      "expect_reason_codes": ["PRODUCT_NOT_FOUND"],
+      "notes": "Observed on 2026-04-09 production as a second stable true canonical not-found sample. Unscoped, external_seed, and wrong-merchant probes all returned 404 PRODUCT_NOT_FOUND."
+    },
+    {
+      "id": "timeout_ext6_unscoped_current",
+      "bucket": "unstable_ext_long_tail_current",
+      "product_id": "ext_6c540ac96c2c1ab33f1af31d",
+      "notes": "Observed on 2026-04-09 production as a flappy long-tail sample. Some probes exceeded the 25s client timeout with ECONNABORTED, while later probes returned HTTP 200 in about 7.5s. Keep this as a watch sample instead of a strict gate."
+    },
+    {
+      "id": "healthy_shopify_9886500749640_current",
+      "bucket": "healthy_shopify_current",
+      "product_id": "9886500749640",
+      "merchant_id": "merch_efbc46b4619cfbdf",
+      "expect_status": 200,
+      "notes": "Observed on 2026-04-09 production. Stable shopify-backed PDP baseline with offers, reviews_preview, and similar all present."
+    }
+  ]
+}

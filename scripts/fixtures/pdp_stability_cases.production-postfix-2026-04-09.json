@@ -1,0 +1,68 @@
+{
+  "cases": [
+    {
+      "id": "merchant_mismatch_ext4_after_fix",
+      "bucket": "merchant_mismatch",
+      "product_id": "ext_4e155bb184ec35f3cd7827e3",
+      "merchant_id": "merch_208139f7600dbf42",
+      "expect_status": 200,
+      "expect_resolved_merchant_id": "external_seed",
+      "expect_canonicalization_applied": true,
+      "notes": "Post-deploy verification target. Same real production sample currently false-404s on 2026-04-09, but should auto-correct to the canonical ext route after the get_pdp_v2 stability fix is deployed."
+    },
+    {
+      "id": "merchant_mismatch_ext13_after_fix",
+      "bucket": "merchant_mismatch",
+      "product_id": "ext_13c520e764f9f7d7f23c611b",
+      "merchant_id": "merch_208139f7600dbf42",
+      "expect_status": 200,
+      "expect_resolved_merchant_id": "external_seed",
+      "expect_canonicalization_applied": true,
+      "notes": "Second post-deploy merchant-mismatch canary. On 2026-04-09 production this ext PDP false-404ed only when a non-canonical merchant_id was supplied, while the unscoped canonical route returned 200."
+    },
+    {
+      "id": "canonical_ext4_unscoped_after_fix",
+      "bucket": "canonical_ext_baseline",
+      "product_id": "ext_4e155bb184ec35f3cd7827e3",
+      "expect_status": 200,
+      "notes": "Control case. Canonical unscoped ext route should remain 200 after deploy."
+    },
+    {
+      "id": "canonical_ext13_unscoped_after_fix",
+      "bucket": "canonical_ext_baseline",
+      "product_id": "ext_13c520e764f9f7d7f23c611b",
+      "expect_status": 200,
+      "notes": "Second canonical ext control. This unscoped PDP already returned 200 on 2026-04-09 production and should stay healthy after deploy."
+    },
+    {
+      "id": "canonical_not_found_ext5a_after_fix",
+      "bucket": "canonical_not_found",
+      "product_id": "ext_5a3f0ba2f0e0394b72018937",
+      "expect_status": 404,
+      "expect_reason_codes": ["PRODUCT_NOT_FOUND"],
+      "notes": "Stable true not-found control. This real production ext id returned 404 PRODUCT_NOT_FOUND on unscoped, external_seed, and wrong-merchant probes on 2026-04-09, so it should remain 404 after deploy."
+    },
+    {
+      "id": "canonical_not_found_extf4_after_fix",
+      "bucket": "canonical_not_found",
+      "product_id": "ext_f4c5fce9fe8b50130878fb76",
+      "expect_status": 404,
+      "expect_reason_codes": ["PRODUCT_NOT_FOUND"],
+      "notes": "Second stable true not-found control. This production ext id also returned 404 PRODUCT_NOT_FOUND on unscoped, external_seed, and wrong-merchant probes on 2026-04-09, so it should remain 404 after deploy."
+    },
+    {
+      "id": "unstable_ext6_long_tail_watch_after_fix",
+      "bucket": "unstable_long_tail_watch",
+      "product_id": "ext_6c540ac96c2c1ab33f1af31d",
+      "notes": "Watch sample, not a hard gate. On 2026-04-09 this real production ext PDP oscillated between client timeout and HTTP 200, so use it to inspect whether post-deploy route health and request IDs become diagnosable when the long tail reproduces."
+    },
+    {
+      "id": "healthy_shopify_9886500749640_after_fix",
+      "bucket": "healthy_shopify",
+      "product_id": "9886500749640",
+      "merchant_id": "merch_efbc46b4619cfbdf",
+      "expect_status": 200,
+      "notes": "Stable shopify-backed control sample for deploy verification."
+    }
+  ]
+}

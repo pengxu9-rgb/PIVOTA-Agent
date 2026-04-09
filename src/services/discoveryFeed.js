@@ -5702,7 +5702,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
     const scheduledBrandDirectLoad =
       !Array.isArray(options.candidateProducts) &&
       brandScopeAliases.length > 0 &&
-      shouldUseBrandDirectPoolInsteadOfGenericBrandExpansion(request)
+      shouldUseBrandDirectPrimary
         ? scheduleBrandScopedDirectCandidatesLoad({
             request,
             brandAliases: brandScopeAliases,

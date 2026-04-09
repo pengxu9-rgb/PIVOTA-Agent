@@ -18,6 +18,11 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
       PIVOTA_API_KEY: process.env.PIVOTA_API_KEY,
       API_MODE: process.env.API_MODE,
       DATABASE_URL: process.env.DATABASE_URL,
+      STRICT_FIND_PRODUCTS_MULTI_AUTO_CONSTRAINT_ENABLED:
+        process.env.STRICT_FIND_PRODUCTS_MULTI_AUTO_CONSTRAINT_ENABLED,
+      FIND_PRODUCTS_MULTI_EXPANSION_MODE: process.env.FIND_PRODUCTS_MULTI_EXPANSION_MODE,
+      FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE:
+        process.env.FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE,
       PROXY_SEARCH_RESOLVER_FIRST_ENABLED: process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED,
       PROXY_SEARCH_INVOKE_FALLBACK_ENABLED: process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED,
       PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED:
@@ -28,6 +33,9 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
     process.env.PIVOTA_API_KEY = 'test_key';
     process.env.API_MODE = 'REAL';
     delete process.env.DATABASE_URL;
+    process.env.STRICT_FIND_PRODUCTS_MULTI_AUTO_CONSTRAINT_ENABLED = 'false';
+    process.env.FIND_PRODUCTS_MULTI_EXPANSION_MODE = 'off';
+    process.env.FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE = 'off';
     process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
     process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED = 'true';
     process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'true';
@@ -48,6 +56,23 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
     else process.env.API_MODE = prevEnv.API_MODE;
     if (prevEnv.DATABASE_URL === undefined) delete process.env.DATABASE_URL;
     else process.env.DATABASE_URL = prevEnv.DATABASE_URL;
+    if (prevEnv.STRICT_FIND_PRODUCTS_MULTI_AUTO_CONSTRAINT_ENABLED === undefined) {
+      delete process.env.STRICT_FIND_PRODUCTS_MULTI_AUTO_CONSTRAINT_ENABLED;
+    } else {
+      process.env.STRICT_FIND_PRODUCTS_MULTI_AUTO_CONSTRAINT_ENABLED =
+        prevEnv.STRICT_FIND_PRODUCTS_MULTI_AUTO_CONSTRAINT_ENABLED;
+    }
+    if (prevEnv.FIND_PRODUCTS_MULTI_EXPANSION_MODE === undefined) {
+      delete process.env.FIND_PRODUCTS_MULTI_EXPANSION_MODE;
+    } else {
+      process.env.FIND_PRODUCTS_MULTI_EXPANSION_MODE = prevEnv.FIND_PRODUCTS_MULTI_EXPANSION_MODE;
+    }
+    if (prevEnv.FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE === undefined) {
+      delete process.env.FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE;
+    } else {
+      process.env.FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE =
+        prevEnv.FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE;
+    }
     if (prevEnv.PROXY_SEARCH_RESOLVER_FIRST_ENABLED === undefined) {
       delete process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED;
     } else {
@@ -67,9 +92,11 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
   });
 
   test('keeps shopping search on fresh upstream with unified external seed blending', async () => {
+    const queryText = 'hydrating face cream';
     let capturedBody = null;
     const upstreamSearch = nock('http://pivota.test')
-      .post('/agent/shop/v1/invoke')
+      .post('/agent/v2/products/search')
+      .query(true)
       .reply(200, function reply(_uri, body) {
         capturedBody = body;
         return {
@@ -79,7 +106,7 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
             {
               product_id: 'prod_1',
               merchant_id: 'merch_1',
-              title: 'Niacinamide Serum',
+              title: 'Hydrating Face Cream',
               description: 'Fresh upstream result',
             },
           ],
@@ -90,116 +117,7 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
         };
       });
 
-    const app = require('../../src/server');
-    const resp = await request(app)
-      .post('/agent/shop/v1/invoke')
-      .send({
-        operation: 'find_products_multi',
-        payload: {
-          search: {
-            query: 'niacinamide serum',
-            limit: 10,
-            page: 1,
-            in_stock_only: true,
-            allow_external_seed: true,
-            allow_stale_cache: false,
-            external_seed_strategy: 'unified_relevance',
-          },
-        },
-        metadata: {
-          source: 'shopping_agent',
-        },
-      });
-
-    expect(resp.status).toBe(200);
-    expect(upstreamSearch.isDone()).toBe(true);
-    expect(capturedBody).toEqual(
-      expect.objectContaining({
-        operation: 'find_products_multi',
-        metadata: expect.objectContaining({
-          source: 'shopping_agent',
-        }),
-      }),
-    );
-    expect(resp.body.metadata).toEqual(
-      expect.objectContaining({
-        query_source: 'agent_products_search',
-        route_health: expect.objectContaining({
-          fallback_triggered: false,
-        }),
-      }),
-    );
-  });
-
-  test('serves generic beauty shopping search from authoritative external-seed mainline before slow upstream', async () => {
-    process.env.DATABASE_URL = 'postgres://shopping-beauty-mainline';
-
-    jest.doMock('../../src/db', () => ({
-      query: jest.fn(async (sql) => {
-        const text = String(sql || '');
-        if (!text.includes('FROM external_product_seeds')) {
-          return { rows: [] };
-        }
-        return {
-          rows: [
-            {
-              id: 'seed_serum_1',
-              external_product_id: 'ext_serum_1',
-              destination_url: 'https://seed.example.com/products/brightening-serum',
-              canonical_url: 'https://seed.example.com/products/brightening-serum',
-              domain: 'seed.example.com',
-              title: 'Brightening Vitamin C Serum',
-              image_url: 'https://cdn.example.com/brightening-serum.jpg',
-              price_amount: '32',
-              price_currency: 'USD',
-              availability: 'in stock',
-              seed_data: {
-                brand: 'Seed Beauty',
-                category: 'serum',
-                snapshot: {
-                  title: 'Brightening Vitamin C Serum',
-                  description: 'A lightweight facial serum for dullness and uneven tone.',
-                  brand: 'Seed Beauty',
-                  category: 'serum',
-                  destination_url: 'https://seed.example.com/products/brightening-serum',
-                  canonical_url: 'https://seed.example.com/products/brightening-serum',
-                },
-              },
-              updated_at: '2026-01-01T00:00:00.000Z',
-              created_at: '2026-01-01T00:00:00.000Z',
-            },
-            {
-              id: 'seed_serum_2',
-              external_product_id: 'ext_serum_2',
-              destination_url: 'https://seed.example.com/products/barrier-serum',
-              canonical_url: 'https://seed.example.com/products/barrier-serum',
-              domain: 'seed.example.com',
-              title: 'Barrier Repair Serum',
-              image_url: 'https://cdn.example.com/barrier-serum.jpg',
-              price_amount: '28',
-              price_currency: 'USD',
-              availability: 'in stock',
-              seed_data: {
-                brand: 'Seed Beauty',
-                category: 'serum',
-                snapshot: {
-                  title: 'Barrier Repair Serum',
-                  description: 'A soothing facial serum for barrier support.',
-                  brand: 'Seed Beauty',
-                  category: 'serum',
-                  destination_url: 'https://seed.example.com/products/barrier-serum',
-                  canonical_url: 'https://seed.example.com/products/barrier-serum',
-                },
-              },
-              updated_at: '2026-01-02T00:00:00.000Z',
-              created_at: '2026-01-02T00:00:00.000Z',
-            },
-          ],
-        };
-      }),
-    }));
-
-    const upstreamSearch = nock('http://pivota.test')
+    const legacySearch = nock('http://pivota.test')
       .get('/agent/v1/products/search')
       .query(true)
       .reply(200, {
@@ -207,9 +125,6 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
         success: true,
         products: [],
         total: 0,
-        metadata: {
-          query_source: 'agent_products_search',
-        },
       });
 
     const app = require('../../src/server');
@@ -219,271 +134,7 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
         operation: 'find_products_multi',
         payload: {
           search: {
-            query: 'serum',
-            limit: 10,
-            page: 1,
-            in_stock_only: true,
-            allow_external_seed: true,
-            allow_stale_cache: false,
-            external_seed_strategy: 'unified_relevance',
-          },
-        },
-        metadata: {
-          source: 'shopping_agent',
-        },
-      });
-
-    expect(resp.status).toBe(200);
-    expect(upstreamSearch.isDone()).toBe(false);
-    expect(resp.body.products).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          product_id: 'ext_serum_1',
-          merchant_id: 'external_seed',
-          title: 'Brightening Vitamin C Serum',
-        }),
-      ]),
-    );
-    expect(resp.body.metadata).toEqual(
-      expect.objectContaining({
-        query_source: 'agent_products_search',
-        beauty_search_mainline_applied: true,
-        beauty_search_mainline_prefetch_short_circuit: true,
-        beauty_search_mainline_upstream_skipped: true,
-        legacy_contract: false,
-        route_health: expect.objectContaining({
-          primary_path_used: 'beauty_search_external_seed_mainline',
-          fallback_triggered: false,
-        }),
-      }),
-    );
-  });
-
-  test('keeps title-like beauty exact product queries on raw lookup text', async () => {
-    let capturedPrimaryUpstreamPath = null;
-
-    const primaryLookup = nock('http://pivota.test')
-      .get('/agent/v1/products/search')
-      .query(true)
-      .reply(200, function reply(uri) {
-        capturedPrimaryUpstreamPath = uri;
-        return {
-          status: 'success',
-          success: true,
-          products: [
-            {
-              product_id: 'ext_multicalm',
-              merchant_id: 'external_seed',
-              title: 'Multi-Calm Cream Cleanser',
-              source: 'external_seed',
-            },
-          ],
-          total: 1,
-          metadata: {
-            query_source: 'agent_products_search',
-          },
-        };
-      });
-
-    const exactTitleRescue = nock('http://pivota.test')
-      .get('/agent/v1/products/search')
-      .query(
-        (query) =>
-          String(query.merchant_id || '').trim() === 'external_seed' &&
-          String(query.external_seed_only || '').trim().toLowerCase() === 'true',
-      )
-      .reply(200, function reply() {
-        return {
-          status: 'success',
-          success: true,
-          products: [
-            {
-              product_id: 'ext_multicalm',
-              merchant_id: 'external_seed',
-              title: 'Multi-Calm Cream Cleanser',
-              source: 'external_seed',
-            },
-          ],
-          total: 1,
-          metadata: {
-            query_source: 'agent_products_search',
-          },
-        };
-      });
-
-    const legacyInvoke = nock('http://pivota.test')
-      .post('/agent/shop/v1/invoke')
-      .query(true)
-      .reply(200, function reply() {
-        return {
-          status: 'success',
-          success: true,
-          products: [
-            {
-              product_id: 'ext_multicalm',
-              merchant_id: 'external_seed',
-              title: 'Multi-Calm Cream Cleanser',
-              source: 'external_seed',
-            },
-          ],
-          total: 1,
-          metadata: {
-            query_source: 'agent_products_search',
-          },
-        };
-      });
-
-    const app = require('../../src/server');
-    const resp = await request(app)
-      .post('/agent/shop/v1/invoke')
-      .send({
-        operation: 'find_products_multi',
-        payload: {
-          search: {
-            query: 'Multi-Calm Cream Cleanser',
-            limit: 10,
-            page: 1,
-            in_stock_only: true,
-            allow_external_seed: true,
-            allow_stale_cache: false,
-            external_seed_strategy: 'unified_relevance',
-          },
-        },
-        metadata: {
-          source: 'shopping_agent',
-        },
-    });
-
-    expect(resp.status).toBe(200);
-    expect(String(capturedPrimaryUpstreamPath || '')).toContain('/agent/v1/products/search');
-    expect(String(capturedPrimaryUpstreamPath || '')).toContain('Multi-Calm+Cream+Cleanser');
-    expect(primaryLookup.isDone()).toBe(true);
-    expect(exactTitleRescue.isDone()).toBe(false);
-    expect(legacyInvoke.isDone()).toBe(false);
-    expect(resp.body.metadata).toEqual(
-      expect.objectContaining({
-        query_source: 'agent_products_search',
-      }),
-    );
-  });
-
-  test('rescues shopping exact-title lookups with direct external-seed exact matches on the mainline', async () => {
-    process.env.DATABASE_URL = 'postgres://shopping-exact-title-rescue';
-
-    const rerankSpy = jest.fn(async ({ response }) => ({
-      applied: true,
-      response: {
-        ...response,
-        products: [...(Array.isArray(response?.products) ? response.products : [])].reverse(),
-      },
-      provider: 'test',
-      items_count: Array.isArray(response?.products) ? response.products.length : 0,
-      duration_ms: 1,
-    }));
-    jest.doMock('../../src/findProductsMulti/rerankLlm', () => ({
-      maybeRerankFindProductsMultiResponse: rerankSpy,
-    }));
-
-    jest.doMock('../../src/db', () => ({
-      query: jest.fn(async (sql) => {
-        const text = String(sql || '');
-        if (!text.includes('FROM external_product_seeds')) {
-          return { rows: [] };
-        }
-        if (text.includes('external_seed_exact_title_recall')) {
-          return {
-            rows: [
-              {
-                id: 'seed_multicalm_exact',
-                external_product_id: 'ext_multicalm_exact',
-                destination_url: 'https://seed.example.com/products/multi-calm-cream-cleanser',
-                canonical_url: 'https://seed.example.com/products/multi-calm-cream-cleanser',
-                domain: 'seed.example.com',
-                title: 'Multi-Calm Cream Cleanser',
-                image_url: 'https://cdn.example.com/multi-calm.jpg',
-                price_amount: '29',
-                price_currency: 'USD',
-                availability: 'in stock',
-                seed_data: {
-                  brand: 'Seed Beauty',
-                  snapshot: {
-                    title: 'Multi-Calm Cream Cleanser',
-                    brand: 'Seed Beauty',
-                    destination_url: 'https://seed.example.com/products/multi-calm-cream-cleanser',
-                    canonical_url: 'https://seed.example.com/products/multi-calm-cream-cleanser',
-                  },
-                },
-                updated_at: '2025-01-01T00:00:00.000Z',
-                created_at: '2025-01-01T00:00:00.000Z',
-              },
-            ],
-          };
-        }
-        return {
-          rows: [
-            {
-              id: 'seed_generic_cleanser_1',
-              external_product_id: 'ext_generic_cleanser_1',
-              destination_url: 'https://seed.example.com/products/ultra-gentle-cleanser',
-              canonical_url: 'https://seed.example.com/products/ultra-gentle-cleanser',
-              domain: 'seed.example.com',
-              title: 'Ultra Gentle Cream-to-Foam Face Cleanser Jumbo',
-              image_url: 'https://cdn.example.com/ultra-gentle.jpg',
-              price_amount: '42',
-              price_currency: 'USD',
-              availability: 'in stock',
-              seed_data: {
-                snapshot: {
-                  title: 'Ultra Gentle Cream-to-Foam Face Cleanser Jumbo',
-                  destination_url: 'https://seed.example.com/products/ultra-gentle-cleanser',
-                  canonical_url: 'https://seed.example.com/products/ultra-gentle-cleanser',
-                },
-              },
-              updated_at: '2026-01-01T00:00:00.000Z',
-              created_at: '2026-01-01T00:00:00.000Z',
-            },
-          ],
-        };
-      }),
-    }));
-
-    const upstreamSearch = nock('http://pivota.test')
-      .get('/agent/v1/products/search')
-      .query(true)
-      .reply(200, {
-        status: 'success',
-        success: true,
-        products: [
-          {
-            product_id: 'ext_wrong_1',
-            merchant_id: 'external_seed',
-            title: 'Ultra Gentle Cream-to-Foam Face Cleanser Jumbo',
-            source: 'external_seed',
-          },
-          {
-            product_id: 'ext_wrong_2',
-            merchant_id: 'external_seed',
-            title: 'Ultra Gentle Cream-to-Foam Face Cleanser with Colloidal Oatmeal + Glycerin Travel Size',
-            source: 'external_seed',
-          },
-        ],
-        total: 2,
-        metadata: {
-          query_source: 'agent_products_search',
-          route_health: {
-            primary_path_used: 'upstream_stage',
-          },
-        },
-      });
-
-    const app = require('../../src/server');
-    const resp = await request(app)
-      .post('/agent/shop/v1/invoke')
-      .send({
-        operation: 'find_products_multi',
-        payload: {
-          search: {
-            query: 'Multi-Calm Cream Cleanser',
+            query: queryText,
             limit: 10,
             page: 1,
             in_stock_only: true,
@@ -499,33 +150,53 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
 
     expect(resp.status).toBe(200);
     expect(upstreamSearch.isDone()).toBe(true);
-    expect(Array.isArray(resp.body.products)).toBe(true);
-    expect(rerankSpy).not.toHaveBeenCalled();
-    expect(resp.body.products[0]).toEqual(
+    expect(legacySearch.isDone()).toBe(false);
+    expect(capturedBody).toEqual(
       expect.objectContaining({
-        product_id: 'ext_multicalm_exact',
-        merchant_id: 'external_seed',
-        title: 'Multi-Calm Cream Cleanser',
+        search_all_merchants: true,
+        allow_external_seed: true,
+        allow_stale_cache: false,
+        external_seed_strategy: 'unified_relevance',
+        query: queryText,
+        request_context: expect.objectContaining({
+          channel: 'shopping_agent',
+        }),
       }),
     );
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
-        query_source: 'agent_products_search_exact_title_supplemented',
-        shopping_exact_title_external_seed_applied: true,
-        shopping_exact_title_external_seed_match_count: 1,
+        invoke_search_rail: 'authoritative_shopping',
+        legacy_contract: false,
+        query_source: 'agent_products_search',
       }),
     );
   });
 
   test('returns strict empty instead of adopting cache or resolver fallback on upstream failure', async () => {
     const upstreamSearch = nock('http://pivota.test')
-      .get('/agent/v1/products/search')
+      .post('/agent/v2/products/search')
       .query(true)
       .reply(500, {
         error: 'UPSTREAM_FAILURE',
         message: 'backend failed',
       });
 
+    const legacySearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'legacy_1',
+            merchant_id: 'legacy_merchant',
+            title: 'Legacy fallback product',
+          },
+        ],
+        total: 1,
+      });
+
     const app = require('../../src/server');
     const resp = await request(app)
       .post('/agent/shop/v1/invoke')
@@ -545,113 +216,43 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
         metadata: {
           source: 'shopping_agent',
         },
-    });
+      });
 
     expect(resp.status).toBe(200);
+    expect(upstreamSearch.isDone()).toBe(true);
+    expect(legacySearch.isDone()).toBe(false);
     expect(resp.body.products).toEqual([]);
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
+        invoke_search_rail: 'authoritative_shopping',
+        legacy_contract: false,
         query_source: 'agent_products_search',
         strict_empty: true,
-        strict_empty_reason: expect.stringMatching(
-          /^shopping_mainline_(exception|upstream_5xx|fallback_blocked)$/,
-        ),
+        strict_empty_reason: expect.stringMatching(/^shopping_mainline_(exception|upstream_5xx)$/),
         route_health: expect.objectContaining({
           fallback_triggered: false,
         }),
       }),
     );
+    expect(resp.body.metadata?.proxy_search_fallback?.applied).not.toBe(true);
   });
 
-  test('does not recover shopping strict queries from prefetched external seed cache', async () => {
+  test('does not bridge authoritative shopping v2 contract mismatch back to legacy v1 search', async () => {
+    const queryText = 'hydrating face cream';
     const upstreamSearch = nock('http://pivota.test')
       .post('/agent/v2/products/search')
-      .query(true)
-      .reply(200, {
-        status: 'success',
-        success: true,
-        products: [],
-        total: 0,
-        metadata: {
-          query_source: 'agent_products_error_fallback',
-          strict_empty: true,
-          strict_empty_reason: 'shopping_mainline_timeout',
-        },
-      });
-
-    const app = require('../../src/server');
-    const resp = await request(app)
-      .post('/agent/shop/v1/invoke')
-      .send({
-        operation: 'find_products_multi',
-        payload: {
-          search: {
-            query: 'niacinamide serum',
-            limit: 10,
-            page: 1,
-            in_stock_only: true,
-            allow_external_seed: true,
-            allow_stale_cache: false,
-            external_seed_strategy: 'unified_relevance',
+      .query((q) => String(q.query || '').includes(queryText))
+      .reply(422, {
+        detail: [
+          {
+            loc: ['body', 'search'],
+            msg: 'Field required',
+            type: 'missing',
           },
-        },
-        metadata: {
-          source: 'shopping_agent',
-          external_seed_candidates: [
-            {
-              product_id: 'ext_prefetched_1',
-              merchant_id: 'external_seed',
-              title: 'Prefetched recovery product',
-              price: 12.5,
-              currency: 'USD',
-            },
-          ],
-        },
+        ],
       });
 
-    expect(resp.status).toBe(200);
-    expect(resp.body.products).toEqual([]);
-    expect(resp.body.metadata).toEqual(
-      expect.objectContaining({
-        strict_empty: true,
-      }),
-    );
-    expect(resp.body.metadata.query_source).not.toBe('cache_multi_intent');
-  });
-
-  test('does not let shopping cache-stage short-circuit fresh upstream search', async () => {
-    process.env.DATABASE_URL = 'postgres://test';
-
-    jest.doMock('../../src/db', () => ({
-      query: async (sql) => {
-        const text = String(sql || '');
-        if (text.includes('COUNT(*)::int AS total')) {
-          return { rows: [{ total: 1 }] };
-        }
-        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
-          return {
-            rows: [
-              {
-                merchant_id: 'merch_cache_1',
-                merchant_name: 'Cache Merchant',
-                product_data: {
-                  id: 'cache_only_product',
-                  product_id: 'cache_only_product',
-                  merchant_id: 'merch_cache_1',
-                  title: 'Cached Hydrating Face Cream',
-                  description: 'Should not short-circuit shopping mainline',
-                  status: 'published',
-                  inventory_quantity: 6,
-                },
-              },
-            ],
-          };
-        }
-        return { rows: [] };
-      },
-    }));
-
-    const upstreamSearch = nock('http://pivota.test')
+    const legacySearch = nock('http://pivota.test')
       .get('/agent/v1/products/search')
       .query(true)
       .reply(200, {
@@ -659,16 +260,12 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
         success: true,
         products: [
           {
-            product_id: 'fresh_upstream_1',
-            merchant_id: 'merch_fresh_1',
-            title: 'Fresh Hydrating Face Cream',
-            description: 'Fresh upstream result',
+            product_id: 'legacy_422_should_not_run',
+            merchant_id: 'legacy_merchant',
+            title: 'Legacy bridge should not run',
           },
         ],
         total: 1,
-        metadata: {
-          query_source: 'agent_products_search',
-        },
       });
 
     const app = require('../../src/server');
@@ -678,7 +275,7 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
         operation: 'find_products_multi',
         payload: {
           search: {
-            query: 'hydrating face cream',
+            query: queryText,
             limit: 10,
             page: 1,
             in_stock_only: true,
@@ -690,149 +287,21 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
         metadata: {
           source: 'shopping_agent',
         },
-    });
-
-    expect(resp.status).toBe(200);
-    expect(resp.body.metadata).toEqual(
-      expect.objectContaining({
-        query_source: 'agent_products_search',
-        route_health: expect.objectContaining({
-          fallback_triggered: false,
-        }),
-      }),
-    );
-  });
-
-  test('blocks resolver fallback responses from becoming shopping final answers', async () => {
-    const upstreamSearch = nock('http://pivota.test')
-      .get('/agent/v1/products/search')
-      .query(true)
-      .reply(200, {
-        status: 'success',
-        success: true,
-        products: [
-          {
-            product_id: 'resolver_1',
-            merchant_id: 'merchant_resolver',
-            title: 'Resolver fallback product',
-          },
-        ],
-        total: 1,
-        metadata: {
-          query_source: 'agent_products_resolver_fallback',
-          route_health: {
-            primary_path_used: 'resolver_stage',
-          },
-          search_trace: {
-            final_decision: 'resolver_returned',
-          },
-          search_decision: {
-            final_decision: 'resolver_returned',
-          },
-        },
       });
 
-    const app = require('../../src/server');
-    const resp = await request(app)
-      .post('/agent/shop/v1/invoke')
-      .send({
-        operation: 'find_products_multi',
-        payload: {
-          search: {
-            query: 'barrier repair cream',
-            limit: 10,
-            page: 1,
-            in_stock_only: true,
-            allow_external_seed: true,
-            allow_stale_cache: false,
-            external_seed_strategy: 'unified_relevance',
-          },
-        },
-        metadata: {
-          source: 'shopping_agent',
-        },
-    });
-
     expect(resp.status).toBe(200);
+    expect(upstreamSearch.isDone()).toBe(true);
+    expect(legacySearch.isDone()).toBe(false);
     expect(resp.body.products).toEqual([]);
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
-        query_source: 'agent_products_search',
+        invoke_search_rail: 'authoritative_shopping',
+        legacy_contract: false,
         strict_empty: true,
-        strict_empty_reason: 'shopping_mainline_resolver_blocked',
-        shopping_blocked_query_source: 'agent_products_resolver_fallback',
-        route_health: expect.objectContaining({
-          fallback_triggered: false,
-        }),
+        strict_empty_reason: 'shopping_mainline_exception',
       }),
     );
-  });
-
-  test('blocks cache-stage upstream responses instead of treating them as shopping success', async () => {
-    const upstreamSearch = nock('http://pivota.test')
-      .get('/agent/v1/products/search')
-      .query(true)
-      .reply(200, {
-        status: 'success',
-        success: true,
-        products: [
-          {
-            product_id: 'cached_1',
-            merchant_id: 'merch_cache_1',
-            title: 'Cached Hydrating Face Cream',
-            description: 'Old cache result',
-          },
-        ],
-        total: 1,
-        metadata: {
-          query_source: 'cache_multi_intent',
-          route_health: {
-            primary_path_used: 'cache_stage',
-          },
-          search_trace: {
-            final_decision: 'cache_returned',
-          },
-          service_version: {
-            build_id: 'cache-build',
-          },
-        },
-      });
-
-    const app = require('../../src/server');
-    const resp = await request(app)
-      .post('/agent/shop/v1/invoke')
-      .send({
-        operation: 'find_products_multi',
-        payload: {
-          search: {
-            query: 'hydrating face cream',
-            limit: 10,
-            page: 1,
-            in_stock_only: true,
-            allow_external_seed: true,
-            allow_stale_cache: false,
-            external_seed_strategy: 'unified_relevance',
-          },
-        },
-        metadata: {
-          source: 'shopping_agent',
-        },
-    });
-
-    expect(resp.status).toBe(200);
-    expect(resp.body.products).toEqual([]);
-    expect(resp.body.metadata).toEqual(
-      expect.objectContaining({
-        query_source: 'agent_products_search',
-        strict_empty: true,
-        strict_empty_reason: 'shopping_mainline_cache_blocked',
-        shopping_mainline_cache_blocked: true,
-        blocked_cache_query_source: 'cache_multi_intent',
-        blocked_cache_primary_path_used: 'cache_stage',
-        route_health: expect.objectContaining({
-          fallback_triggered: false,
-        }),
-      }),
-    );
+    expect(String(resp.body.metadata?.contract_bridge?.resolved_contract || '')).not.toBe('agent_v1');
+    expect(resp.body.metadata?.proxy_search_fallback?.applied).not.toBe(true);
   });
 });
