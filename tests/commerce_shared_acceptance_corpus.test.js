@@ -209,6 +209,32 @@ describe('Commerce shared acceptance corpus', () => {
                 },
               },
             },
+            {
+              id: 'beauty_reco_case',
+              family: 'beauty_reco_grounded',
+              source: 'aurora-bff',
+              targets: {
+                prompt_live_smoke: {
+                  request: {
+                    message: 'im oily skin, what products should i use?',
+                  },
+                  correctness: {
+                    expect_http_status: 200,
+                  },
+                  observability: {
+                    must_have_paths: [
+                      'cards.0.type',
+                      'cards.0.payload.mainline_status',
+                      'cards.0.payload.recommendations.0.product_id',
+                    ],
+                    must_equal_paths: {
+                      'cards.0.type': 'recommendations',
+                      'cards.0.payload.mainline_status': 'grounded_success',
+                    },
+                  },
+                },
+              },
+            },
           ],
         },
         null,
@@ -248,6 +274,24 @@ describe('Commerce shared acceptance corpus', () => {
             'meta.conversation_progress': 'follow_up',
             'meta.early_decision': 'resume_prior_goal',
             'meta.decision_owner': 'aurora_orchestration',
+          }),
+        }),
+      }),
+      expect.objectContaining({
+        id: 'beauty_reco_case',
+        family: 'beauty_reco_grounded',
+        correctness: expect.objectContaining({
+          expect_http_status: 200,
+        }),
+        observability: expect.objectContaining({
+          must_have_paths: expect.arrayContaining([
+            'cards.0.type',
+            'cards.0.payload.mainline_status',
+            'cards.0.payload.recommendations.0.product_id',
+          ]),
+          must_equal_paths: expect.objectContaining({
+            'cards.0.type': 'recommendations',
+            'cards.0.payload.mainline_status': 'grounded_success',
           }),
         }),
       }),

@@ -331,20 +331,6 @@
       }
     },
     {
-      "correctness": {
-        "expect_http_status": 200
-      },
-      "observability": {
-        "must_have_paths": [
-          "cards.0.type",
-          "cards.0.payload.mainline_status",
-          "cards.0.payload.recommendations.0.product_id"
-        ],
-        "must_equal_paths": {
-          "cards.0.type": "recommendations",
-          "cards.0.payload.mainline_status": "grounded_success"
-        }
-      },
       "id": "beauty_reco_freeform_oily_grounded",
       "family": "beauty_reco_grounded",
       "query": "im oily skin, what products should i use?",
@@ -387,9 +373,7 @@
           "X-Lang": "EN",
           "X-Aurora-Lang": "en"
         }
-      }
-    },
-    {
+      },
       "correctness": {
         "expect_http_status": 200
       },
@@ -403,7 +387,9 @@
           "cards.0.type": "recommendations",
           "cards.0.payload.mainline_status": "grounded_success"
         }
-      },
+      }
+    },
+    {
       "id": "beauty_reco_action_oily_grounded",
       "family": "beauty_reco_grounded",
       "query": "chip.start.reco_products oily grounded path",
@@ -461,6 +447,20 @@
         "headers": {
           "X-Lang": "EN",
           "X-Aurora-Lang": "en"
+        }
+      },
+      "correctness": {
+        "expect_http_status": 200
+      },
+      "observability": {
+        "must_have_paths": [
+          "cards.0.type",
+          "cards.0.payload.mainline_status",
+          "cards.0.payload.recommendations.0.product_id"
+        ],
+        "must_equal_paths": {
+          "cards.0.type": "recommendations",
+          "cards.0.payload.mainline_status": "grounded_success"
         }
       }
     }
