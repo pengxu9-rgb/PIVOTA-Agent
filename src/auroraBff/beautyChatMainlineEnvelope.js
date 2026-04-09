@@ -35,6 +35,27 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
     buildConcernFrameworkSummary,
   } = deps;
 
+  function hasCanonicalTargetBundle(payload = null) {
+    const meta = isPlainObject(payload?.recommendation_meta) ? payload.recommendation_meta : {};
+    const rankedTargets = Array.isArray(meta.ranked_targets)
+      ? meta.ranked_targets.filter((item) => isPlainObject(item))
+      : [];
+    const primaryTargetId = pickFirstTrimmed(
+      meta.primary_target_id,
+      rankedTargets.find((item) => pickFirstTrimmed(item?.target_role) === 'primary')?.target_id,
+      rankedTargets[0]?.target_id,
+    );
+    const selectedTargetIds = Array.isArray(meta.selected_target_ids)
+      ? meta.selected_target_ids.map((item) => String(item || '').trim()).filter(Boolean)
+      : [];
+    return Boolean(
+      primaryTargetId &&
+      rankedTargets.length > 0 &&
+      rankedTargets.some((item) => pickFirstTrimmed(item?.target_id) === primaryTargetId) &&
+      selectedTargetIds.length > 0,
+    );
+  }
+
   function classifyBeautyMainlineHandoffFallback({ handoff = null, err = null } = {}) {
     const transientCode =
       typeof classifyRecoUpstreamFailureCode === 'function' && err
@@ -131,6 +152,186 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
     });
   }
 
+  function buildRecoContextProductCandidateFromRecommendation(row) {
+    if (!isPlainObject(row)) return null;
+    const productId = pickFirstTrimmed(row.product_id, row.productId);
+    const merchantId = pickFirstTrimmed(row.merchant_id, row.merchantId);
+    const brand = pickFirstTrimmed(row.brand, row.brand_name, row.brandName);
+    const name = pickFirstTrimmed(row.name, row.title, row.display_name, row.displayName);
+    const displayName = pickFirstTrimmed(row.display_name, row.displayName, row.name, row.title);
+    const category = pickFirstTrimmed(
+      row.category,
+      row.category_name,
+      row.categoryName,
+      row.product_type,
+      row.productType,
+      row.step,
+    );
+    const productType = pickFirstTrimmed(
+      row.product_type,
+      row.productType,
+      row.category,
+      row.category_name,
+      row.categoryName,
+    );
+    if (!productId && !merchantId && !displayName && !name) return null;
+    return {
+      ...(productId ? { product_id: productId } : {}),
+      ...(merchantId ? { merchant_id: merchantId } : {}),
+      ...(brand ? { brand } : {}),
+      ...(name ? { name } : {}),
+      ...(displayName ? { display_name: displayName } : {}),
+      ...(category ? { category } : {}),
+      ...(productType ? { product_type: productType } : {}),
+      ...(pickFirstTrimmed(row.retrieval_source, row.retrievalSource, row.source)
+        ? { retrieval_source: pickFirstTrimmed(row.retrieval_source, row.retrievalSource, row.source) }
+        : {}),
+      ...(pickFirstTrimmed(row.url, row.product_url, row.productUrl, row.canonical_pdp_url, row.canonicalPdpUrl, row.purchase_path, row.purchasePath)
+        ? { url: pickFirstTrimmed(row.url, row.product_url, row.productUrl, row.canonical_pdp_url, row.canonicalPdpUrl, row.purchase_path, row.purchasePath) }
+        : {}),
+    };
+  }
+
+  function buildFrameworkRecoContextPatch({
+    recoContext = null,
+    targetContext = null,
+    recommendations = [],
+  } = {}) {
+    const frameworkRoles = Array.isArray(targetContext?.framework_roles)
+      ? targetContext.framework_roles.filter((role) => isPlainObject(role))
+      : [];
+    if (!frameworkRoles.length) return null;
+
+    const primaryRoleId = pickFirstTrimmed(
+      targetContext?.primary_role_id,
+      frameworkRoles[0]?.role_id,
+    );
+    const primaryRole =
+      frameworkRoles.find((role) => pickFirstTrimmed(role?.role_id) === primaryRoleId)
+      || frameworkRoles[0]
+      || null;
+    const candidatesByRoleId = new Map();
+
+    for (const row of Array.isArray(recommendations) ? recommendations : []) {
+      const roleId = pickFirstTrimmed(row?.matched_role_id, row?.matchedRoleId);
+      const candidate = buildRecoContextProductCandidateFromRecommendation(row);
+      if (!roleId || !candidate) continue;
+      const current = candidatesByRoleId.get(roleId) || [];
+      if (
+        current.some((item) =>
+          pickFirstTrimmed(item?.product_id, item?.productId) ===
+            pickFirstTrimmed(candidate?.product_id, candidate?.productId),
+        )
+      ) {
+        continue;
+      }
+      candidatesByRoleId.set(roleId, [...current, candidate].slice(0, 4));
+    }
+
+    const rankedTargets = frameworkRoles.slice(0, 4).map((role, index) => {
+      const roleId = pickFirstTrimmed(role?.role_id);
+      const roleLabel = pickFirstTrimmed(role?.label, roleId);
+      const preferredStep = pickFirstTrimmed(
+        role?.preferred_step,
+        targetContext?.resolved_target_step,
+      );
+      if (!roleId && !roleLabel && !preferredStep) return null;
+      return {
+        ...(roleId ? { target_id: roleId } : {}),
+        target_role:
+          roleId && primaryRoleId
+            ? roleId === primaryRoleId
+              ? 'primary'
+              : 'secondary'
+            : index === 0
+              ? 'primary'
+              : 'secondary',
+        ...(roleLabel ? { ingredient_query: roleLabel } : {}),
+        ...(preferredStep ? { resolved_target_step: preferredStep } : {}),
+        target_confidence: index === 0 ? 'high' : 'medium',
+        source: 'beauty_mainline_handoff',
+        ...(Array.isArray(candidatesByRoleId.get(roleId)) && candidatesByRoleId.get(roleId).length
+          ? { product_candidates: candidatesByRoleId.get(roleId) }
+          : {}),
+      };
+    }).filter(Boolean);
+
+    if (!rankedTargets.length) return null;
+
+    const selectedTargetIds = Array.from(new Set(
+      (Array.isArray(recommendations) ? recommendations : [])
+        .map((row) => pickFirstTrimmed(row?.matched_role_id, row?.matchedRoleId))
+        .filter((roleId) =>
+          roleId && rankedTargets.some((target) => pickFirstTrimmed(target?.target_id) === roleId),
+        ),
+    ));
+
+    const patch = {};
+    patch.ranked_targets = rankedTargets;
+    patch.primary_target_id = primaryRoleId || pickFirstTrimmed(rankedTargets[0]?.target_id);
+    patch.selected_target_ids = selectedTargetIds.length
+      ? selectedTargetIds
+      : patch.primary_target_id
+        ? [patch.primary_target_id]
+        : [];
+    patch.owner_source = BEAUTY_DISCOVERY_MAINLINE_OWNER;
+    patch.target_bundle_owner = BEAUTY_DISCOVERY_MAINLINE_OWNER;
+    patch.final_outcome_owner = BEAUTY_DISCOVERY_MAINLINE_OWNER;
+
+    const existingResolvedTargetStep = pickFirstTrimmed(
+      recoContext?.resolved_target_step,
+      recoContext?.resolvedTargetStep,
+      recoContext?.target_step,
+      recoContext?.targetStep,
+      recoContext?.step,
+    );
+    const primaryPreferredStep = pickFirstTrimmed(
+      primaryRole?.preferred_step,
+      targetContext?.resolved_target_step,
+    );
+    if (!existingResolvedTargetStep && primaryPreferredStep) {
+      patch.resolved_target_step = primaryPreferredStep;
+      patch.target_step = primaryPreferredStep;
+      patch.step = primaryPreferredStep;
+    }
+
+    const existingResolvedTargetStepConfidence = pickFirstTrimmed(
+      recoContext?.resolved_target_step_confidence,
+      recoContext?.resolvedTargetStepConfidence,
+      recoContext?.target_step_confidence,
+      recoContext?.targetStepConfidence,
+      recoContext?.step_confidence,
+      recoContext?.stepConfidence,
+    );
+    if (
+      !existingResolvedTargetStepConfidence &&
+      pickFirstTrimmed(targetContext?.resolved_target_step_confidence)
+    ) {
+      patch.resolved_target_step_confidence = pickFirstTrimmed(
+        targetContext?.resolved_target_step_confidence,
+      );
+    }
+
+    const existingResolvedTargetStepSource = pickFirstTrimmed(
+      recoContext?.resolved_target_step_source,
+      recoContext?.resolvedTargetStepSource,
+      recoContext?.target_step_source,
+      recoContext?.targetStepSource,
+      recoContext?.step_source,
+      recoContext?.stepSource,
+    );
+    if (
+      !existingResolvedTargetStepSource &&
+      pickFirstTrimmed(targetContext?.resolved_target_step_source)
+    ) {
+      patch.resolved_target_step_source = pickFirstTrimmed(
+        targetContext?.resolved_target_step_source,
+      );
+    }
+
+    return Object.keys(patch).length > 0 ? patch : null;
+  }
+
   function buildRecoPayloadFromBeautyMainlineHandoff({
     handoff = null,
     profile = null,
@@ -185,6 +386,18 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
       selectionContract,
     );
     if (!canonicalRecommendations.length) return null;
+
+    const frameworkRecoContextPatch = buildFrameworkRecoContextPatch({
+      recoContext,
+      targetContext,
+      recommendations: canonicalRecommendations,
+    });
+    const effectiveRecoContext = frameworkRecoContextPatch
+      ? {
+          ...(isPlainObject(recoContext) ? recoContext : {}),
+          ...frameworkRecoContextPatch,
+        }
+      : recoContext;
 
     const effectiveSelectionOwner =
       pickFirstTrimmed(
@@ -250,7 +463,7 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
     nextPayload = applyRecoCanonicalSearchResultToPayload(nextPayload, searchResult, {
       selectionOwner: effectiveSelectionOwner,
     });
-    nextPayload = applyRecoContentSpineToPayload(nextPayload, recoContext);
+    nextPayload = applyRecoContentSpineToPayload(nextPayload, effectiveRecoContext);
     if (Array.isArray(targetContext?.framework_roles) && targetContext.framework_roles.length > 0) {
       const frameworkSummary =
         typeof buildConcernFrameworkSummary === 'function'
@@ -298,6 +511,35 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
           : [],
       };
     }
+    if (isPlainObject(nextPayload.recommendation_meta)) {
+      nextPayload.recommendation_meta.owner_source = BEAUTY_DISCOVERY_MAINLINE_OWNER;
+      nextPayload.recommendation_meta.final_outcome_owner = BEAUTY_DISCOVERY_MAINLINE_OWNER;
+    }
+    if (Array.isArray(targetContext?.framework_roles) && targetContext.framework_roles.length > 0 && !hasCanonicalTargetBundle(nextPayload)) {
+      return null;
+    }
+    const persistedRecoContext = {
+      ...(isPlainObject(effectiveRecoContext) ? effectiveRecoContext : {}),
+      primary_focus: isPlainObject(nextPayload.recommendation_meta?.primary_focus)
+        ? nextPayload.recommendation_meta.primary_focus
+        : effectiveRecoContext?.primary_focus,
+      confidence_policy: isPlainObject(nextPayload.recommendation_meta?.confidence_policy)
+        ? nextPayload.recommendation_meta.confidence_policy
+        : effectiveRecoContext?.confidence_policy,
+      ranked_targets: Array.isArray(nextPayload.recommendation_meta?.ranked_targets)
+        ? nextPayload.recommendation_meta.ranked_targets
+        : effectiveRecoContext?.ranked_targets,
+      primary_target_id: pickFirstTrimmed(
+        nextPayload.recommendation_meta?.primary_target_id,
+        effectiveRecoContext?.primary_target_id,
+      ),
+      selected_target_ids: Array.isArray(nextPayload.recommendation_meta?.selected_target_ids)
+        ? nextPayload.recommendation_meta.selected_target_ids
+        : effectiveRecoContext?.selected_target_ids,
+      owner_source: BEAUTY_DISCOVERY_MAINLINE_OWNER,
+      target_bundle_owner: BEAUTY_DISCOVERY_MAINLINE_OWNER,
+      final_outcome_owner: BEAUTY_DISCOVERY_MAINLINE_OWNER,
+    };
 
     const recoContract = buildRecoMainlineContract({
       recommendations: nextPayload.recommendations,
@@ -330,6 +572,7 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
       payload: nextPayload,
       contract: recoContract,
       selectionContract: extractRecoFinalSelectionContract(nextPayload),
+      recoContext: persistedRecoContext,
     };
   }
 
