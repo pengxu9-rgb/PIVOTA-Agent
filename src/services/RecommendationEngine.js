@@ -692,8 +692,42 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit }) {
   const market = String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
   const tool = 'creator_agents';
 
-  const brand = normalizeBrandLookupKey(brandHint);
+  const brandAlias = normalizeText(brandHint);
+  const brandCompact = normalizeBrandLookupKey(brandHint);
   const category = normalizeText(categoryHint);
+  const brandAliases = Array.from(new Set([brandAlias, brandCompact].filter(Boolean)));
+  const brandCompacts = Array.from(new Set([brandCompact].filter(Boolean)));
+
+  function buildBrandWhereClause(aliasBind, compactBind, titleBind) {
+    return `AND (
+              lower(coalesce(seed_data->>'brand', '')) = ANY(${aliasBind}::text[])
+              OR lower(coalesce(seed_data->>'brand_name', '')) = ANY(${aliasBind}::text[])
+              OR lower(coalesce(seed_data->>'vendor', '')) = ANY(${aliasBind}::text[])
+              OR lower(coalesce(seed_data->>'vendor_name', '')) = ANY(${aliasBind}::text[])
+              OR lower(coalesce(seed_data->'snapshot'->>'brand', '')) = ANY(${aliasBind}::text[])
+              OR lower(coalesce(seed_data->'snapshot'->>'brand_name', '')) = ANY(${aliasBind}::text[])
+              OR lower(coalesce(seed_data->'snapshot'->>'vendor', '')) = ANY(${aliasBind}::text[])
+              OR lower(coalesce(seed_data->'snapshot'->>'vendor_name', '')) = ANY(${aliasBind}::text[])
+              OR lower(
+                   regexp_replace(
+                     coalesce(
+                       seed_data->>'brand',
+                       seed_data->'snapshot'->>'brand',
+                       split_part(domain, '.', 1),
+                       ''
+                     ),
+                     '[^a-z0-9]+',
+                     '',
+                     'g'
+                   )
+                 ) = ANY(${compactBind}::text[])
+              OR EXISTS (
+                SELECT 1
+                FROM unnest(${titleBind}::text[]) AS alias
+                WHERE lower(coalesce(seed_data->'snapshot'->>'title', seed_data->>'title', title, '')) LIKE alias || ' %'
+              )
+            )`;
+  }
 
   async function runQuery(whereSql, params, cap, queryName) {
     try {
@@ -715,7 +749,6 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit }) {
             created_at
           FROM external_product_seeds
           WHERE status = 'active'
-            AND attached_product_key IS NULL
             AND market = $1
             AND (tool = '*' OR tool = $2)
             ${whereSql}
@@ -740,22 +773,10 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit }) {
   }
 
   const queries = [];
-  if (brand && category) {
+  if (brandAliases.length && brandCompacts.length && category) {
     queries.push(
       runQuery(
-        `AND lower(
-               regexp_replace(
-                 coalesce(
-                   seed_data->>'brand',
-                   seed_data->'snapshot'->>'brand',
-                   split_part(domain, '.', 1),
-                   ''
-                 ),
-                 '[^a-z0-9]+',
-                 '',
-                 'g'
-               )
-             ) = $4
+        `${buildBrandWhereClause('$4', '$5', '$4')}
              AND lower(
                coalesce(
                  seed_data->'derived'->'recall'->>'category',
@@ -768,30 +789,18 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit }) {
                  seed_data->'snapshot'->>'productType',
                  ''
                )
-             ) = $5`,
-        [brand, category],
+             ) = $6`,
+        [brandAliases, brandCompacts, category],
         Math.min(160, safeLimit),
         'external_brand_category',
       ),
     );
   }
-  if (brand) {
+  if (brandAliases.length && brandCompacts.length) {
     queries.push(
       runQuery(
-        `AND lower(
-               regexp_replace(
-                 coalesce(
-                   seed_data->>'brand',
-                   seed_data->'snapshot'->>'brand',
-                   split_part(domain, '.', 1),
-                   ''
-                 ),
-                 '[^a-z0-9]+',
-                 '',
-                 'g'
-               )
-             ) = $4`,
-        [brand],
+        buildBrandWhereClause('$4', '$5', '$4'),
+        [brandAliases, brandCompacts],
         Math.min(180, safeLimit),
         'external_brand',
       ),
