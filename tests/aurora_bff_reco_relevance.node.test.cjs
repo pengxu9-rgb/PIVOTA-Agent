@@ -7366,6 +7366,17 @@ test('/v1/chat: exact oily first-turn matrix keeps canonical target bundle and g
       expectedProfile: profile,
     },
     {
+      label: 'seeded_top_level_profile',
+      body: {
+        message: 'im oily skin. what product should i use?',
+        profile,
+        client_state: 'IDLE_CHAT',
+        session: { state: 'idle' },
+        language: 'EN',
+      },
+      expectedProfile: profile,
+    },
+    {
       label: 'action_patched',
       body: {
         action: {
@@ -7416,6 +7427,7 @@ test('/v1/chat: exact oily first-turn matrix keeps canonical target bundle and g
       );
       assert.doesNotMatch(assistantText, /skin type pending/i, testCase.label);
       assert.match(assistantText, /oily/i, testCase.label);
+      assert.match(assistantText, /Goals:\s*oil control\./i, testCase.label);
 
       const quality = harness.routesMod.__internal.evaluateQualityContractForEnvelope({
         envelope: {
