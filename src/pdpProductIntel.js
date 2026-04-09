@@ -261,6 +261,144 @@ function readTags(product) {
   return [];
 }
 
+function formatCompactCount(value) {
+  const count = Number(value);
+  if (!Number.isFinite(count) || count <= 0) return '';
+  if (count >= 1000) return `${Number((count / 1000).toFixed(count >= 10000 ? 0 : 1))}k`;
+  return String(Math.round(count));
+}
+
+function normalizeMarketSignalBadges(value) {
+  return asArray(value)
+    .map((item) => asPlainObject(item))
+    .filter(Boolean)
+    .map((item) => {
+      const badgeType = asString(item.badge_type || item.type).toLowerCase();
+      const badgeLabel = asString(item.badge_label || item.label);
+      if (!badgeType || !badgeLabel) return null;
+      const evidenceCount = Number(item.evidence_count);
+      return {
+        badge_type: badgeType,
+        badge_label: badgeLabel,
+        evidence_count: Number.isFinite(evidenceCount) && evidenceCount > 0 ? evidenceCount : null,
+        source_types: uniqueStrings(item.source_types || item.sources || []),
+        freshness: asPlainObject(item.freshness) || null,
+        confidence: clampConfidence(item.confidence || 'moderate'),
+        display_priority: Number.isFinite(Number(item.display_priority)) ? Number(item.display_priority) : 50,
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => Number(left.display_priority || 50) - Number(right.display_priority || 50))
+    .slice(0, 3);
+}
+
+function buildMarketSignalBadges(product, evidenceProfile) {
+  const badges = [];
+  const tags = readTags(product).map((item) => item.toLowerCase());
+  const community =
+    asPlainObject(product.community_signals) ||
+    asPlainObject(product.communitySignals) ||
+    asPlainObject(product.social_signals) ||
+    asPlainObject(product.socialSignals) ||
+    null;
+  const sourceCounts = asPlainObject(community?.source_counts || community?.sourceCounts) || {};
+  const reviewSummary = asPlainObject(product.review_summary) || asPlainObject(product.reviewSummary) || null;
+  const rating = Number(reviewSummary?.rating ?? reviewSummary?.rating_value);
+  const reviewCount = Number(reviewSummary?.review_count ?? reviewSummary?.reviewCount ?? reviewSummary?.count);
+  const creatorCount =
+    Number(sourceCounts.creator_mentions || sourceCounts.creatorMentions || sourceCounts.creator || 0) || 0;
+  const editorialCount = Number(sourceCounts.editorial || 0) || 0;
+  const mediaCount = Number(sourceCounts.media || sourceCounts.media_mentions || sourceCounts.mediaMentions || 0) || 0;
+
+  if (Number.isFinite(rating) && Number.isFinite(reviewCount) && reviewCount >= 100 && rating >= 4.5) {
+    badges.push({
+      badge_type: 'review_signal',
+      badge_label: `${rating.toFixed(1)}★ from ${formatCompactCount(reviewCount)} reviews`,
+      evidence_count: reviewCount,
+      source_types: ['reviews'],
+      freshness: buildFreshness({}),
+      confidence: evidenceProfile === 'community_supported' ? 'high' : 'moderate',
+      display_priority: 20,
+    });
+  }
+
+  if (creatorCount >= 8) {
+    badges.push({
+      badge_type: 'creator_signal',
+      badge_label: `Seen in ${formatCompactCount(creatorCount)} creator mentions`,
+      evidence_count: creatorCount,
+      source_types: ['creator'],
+      freshness: buildFreshness({}),
+      confidence: evidenceProfile === 'community_supported' ? 'high' : 'moderate',
+      display_priority: 18,
+    });
+  }
+
+  if (tags.some((tag) => /^editorial:\s*/.test(tag))) {
+    const editorialTag = tags.find((tag) => /^editorial:\s*/.test(tag));
+    const label = editorialTag.replace(/^editorial:\s*/i, '').trim();
+    badges.push({
+      badge_type: 'editorial_signal',
+      badge_label: label ? `Editorial: ${label}` : 'Editorial pick',
+      evidence_count: 1,
+      source_types: ['editorial'],
+      freshness: buildFreshness({}),
+      confidence: 'moderate',
+      display_priority: 10,
+    });
+  } else if (editorialCount >= 3) {
+    badges.push({
+      badge_type: 'editorial_signal',
+      badge_label: `Seen in ${formatCompactCount(editorialCount)} editor picks`,
+      evidence_count: editorialCount,
+      source_types: ['editorial'],
+      freshness: buildFreshness({}),
+      confidence: evidenceProfile === 'community_supported' ? 'high' : 'moderate',
+      display_priority: 12,
+    });
+  }
+
+  if (tags.some((tag) => /^award:\s*/.test(tag))) {
+    const awardTag = tags.find((tag) => /^award:\s*/.test(tag));
+    const label = awardTag.replace(/^award:\s*/i, '').trim();
+    badges.push({
+      badge_type: 'award_signal',
+      badge_label: label || 'Award winner',
+      evidence_count: 1,
+      source_types: ['award'],
+      freshness: buildFreshness({}),
+      confidence: 'moderate',
+      display_priority: 15,
+    });
+  }
+
+  if (tags.some((tag) => /^media:\s*/.test(tag))) {
+    const mediaTag = tags.find((tag) => /^media:\s*/.test(tag));
+    const label = mediaTag.replace(/^media:\s*/i, '').trim();
+    badges.push({
+      badge_type: 'media_signal',
+      badge_label: label ? `Media: ${label}` : 'Media pick',
+      evidence_count: 1,
+      source_types: ['media'],
+      freshness: buildFreshness({}),
+      confidence: 'moderate',
+      display_priority: 14,
+    });
+  } else if (mediaCount >= 3) {
+    badges.push({
+      badge_type: 'media_signal',
+      badge_label: `Seen in ${formatCompactCount(mediaCount)} media mentions`,
+      evidence_count: mediaCount,
+      source_types: ['media'],
+      freshness: buildFreshness({}),
+      confidence: evidenceProfile === 'community_supported' ? 'high' : 'moderate',
+      display_priority: 16,
+    });
+  }
+
+  return normalizeMarketSignalBadges(badges);
+}
+
 function buildCombinedText(product) {
   return [
     product.title,
@@ -382,6 +520,7 @@ function normalizePublishedProductIntelBundle(bundle, {
         null,
     },
     texture_finish: asPlainObject(source.texture_finish) || null,
+    market_signal_badges: normalizeMarketSignalBadges(source.market_signal_badges || source.marketSignals),
     community_signals: asPlainObject(source.community_signals) || {
       status: 'unavailable',
       unavailable_reason: 'insufficient_feedback',
@@ -1318,6 +1457,7 @@ function buildProductIntelBundleInternal({
   });
   const textureFinish = inferTextureFinish(normalizedProduct, evidenceProfile);
   const communitySignals = normalizeCommunitySignals(normalizedProduct, evidenceProfile);
+  const marketSignalBadges = buildMarketSignalBadges(normalizedProduct, evidenceProfile);
   const recommendationIntents = buildRecommendationIntents(relatedProducts);
   const offers = Array.isArray(offersData?.offers) ? offersData.offers : [];
   const commerceModes = uniqueStrings(offers.map((offer) => asString(offer?.commerce_mode)));
@@ -1329,6 +1469,7 @@ function buildProductIntelBundleInternal({
     product_group_id: productGroupId || null,
     product_intel_core: core,
     texture_finish: textureFinish,
+    market_signal_badges: marketSignalBadges,
     community_signals: communitySignals,
     recommendation_intents: recommendationIntents,
     quality_state: qualityState,
@@ -1407,6 +1548,7 @@ function buildProductFeedbackResponse({ productIntel, canonicalProductRef, produ
       confidence: 'low',
       evidence_profile: productIntel?.evidence_profile || 'seller_only',
     },
+    market_signal_badges: productIntel?.market_signal_badges || [],
     evidence_profile: productIntel?.evidence_profile || 'seller_only',
     source_coverage: productIntel?.source_coverage || null,
     freshness: productIntel?.freshness || null,
