@@ -45,32 +45,9 @@ describe('RecommendationEngine external candidate fetch', () => {
 
     const queryMock = jest.fn(async (sql, params) => {
       const brandAliases = params?.[3];
-      const brandCompacts = params?.[4];
-      const categoryKey = params?.[5];
       if (
         Array.isArray(brandAliases) &&
-        brandAliases.includes('kravebeauty') &&
-        Array.isArray(brandCompacts) &&
-        brandCompacts.includes('kravebeauty') &&
-        categoryKey === 'serum'
-      ) {
-        return {
-          rows: [
-            makeExternalRow({
-              id: 'eps_krave_1',
-              external_product_id: 'ext_krave_1',
-              title: 'Great Barrier Relief',
-              brand: 'KraveBeauty',
-              category: 'Serum',
-            }),
-          ],
-        };
-      }
-      if (
-        Array.isArray(brandAliases) &&
-        brandAliases.includes('kravebeauty') &&
-        Array.isArray(brandCompacts) &&
-        brandCompacts.includes('kravebeauty')
+        brandAliases.includes('kravebeauty')
       ) {
         return {
           rows: [
@@ -107,15 +84,9 @@ describe('RecommendationEngine external candidate fetch', () => {
     );
     expect(
       queryMock.mock.calls.some(([sql]) =>
-        String(sql).includes("regexp_replace(") &&
-        String(sql).includes("split_part(domain, '.', 1)") &&
         String(sql).includes("seed_data->>'vendor'") &&
+        String(sql).includes("seed_data->'snapshot'->>'title'") &&
         !String(sql).includes('attached_product_key IS NULL'),
-      ),
-    ).toBe(true);
-    expect(
-      queryMock.mock.calls.some(([sql]) =>
-        String(sql).includes("seed_data->'derived'->'recall'->>'category'"),
       ),
     ).toBe(true);
   });
@@ -125,14 +96,9 @@ describe('RecommendationEngine external candidate fetch', () => {
 
     const queryMock = jest.fn(async (_sql, params) => {
       const brandAliases = params?.[3];
-      const brandCompacts = params?.[4];
-      const categoryKey = params?.[5];
       if (
         Array.isArray(brandAliases) &&
-        brandAliases.includes('kravebeauty') &&
-        Array.isArray(brandCompacts) &&
-        brandCompacts.includes('kravebeauty') &&
-        categoryKey === 'treatment'
+        brandAliases.includes('kravebeauty')
       ) {
         return {
           rows: [
@@ -226,12 +192,9 @@ describe('RecommendationEngine external candidate fetch', () => {
 
     const queryMock = jest.fn(async (sql, params) => {
       const brandAliases = params?.[3];
-      const brandCompacts = params?.[4];
       if (
         Array.isArray(brandAliases) &&
-        brandAliases.includes('kravebeauty') &&
-        Array.isArray(brandCompacts) &&
-        brandCompacts.includes('kravebeauty')
+        brandAliases.includes('kravebeauty')
       ) {
         return {
           rows: [

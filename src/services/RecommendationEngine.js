@@ -694,11 +694,9 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit }) {
 
   const brandAlias = normalizeText(brandHint);
   const brandCompact = normalizeBrandLookupKey(brandHint);
-  const category = normalizeText(categoryHint);
   const brandAliases = Array.from(new Set([brandAlias, brandCompact].filter(Boolean)));
-  const brandCompacts = Array.from(new Set([brandCompact].filter(Boolean)));
 
-  function buildBrandWhereClause(aliasBind, compactBind, titleBind) {
+  function buildBrandWhereClause(aliasBind, titleBind) {
     return `AND (
               lower(coalesce(seed_data->>'brand', '')) = ANY(${aliasBind}::text[])
               OR lower(coalesce(seed_data->>'brand_name', '')) = ANY(${aliasBind}::text[])
@@ -708,19 +706,6 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit }) {
               OR lower(coalesce(seed_data->'snapshot'->>'brand_name', '')) = ANY(${aliasBind}::text[])
               OR lower(coalesce(seed_data->'snapshot'->>'vendor', '')) = ANY(${aliasBind}::text[])
               OR lower(coalesce(seed_data->'snapshot'->>'vendor_name', '')) = ANY(${aliasBind}::text[])
-              OR lower(
-                   regexp_replace(
-                     coalesce(
-                       seed_data->>'brand',
-                       seed_data->'snapshot'->>'brand',
-                       split_part(domain, '.', 1),
-                       ''
-                     ),
-                     '[^a-z0-9]+',
-                     '',
-                     'g'
-                   )
-                 ) = ANY(${compactBind}::text[])
               OR EXISTS (
                 SELECT 1
                 FROM unnest(${titleBind}::text[]) AS alias
@@ -772,43 +757,13 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit }) {
     }
   }
 
-  const queries = [];
-  if (brandAliases.length && brandCompacts.length && category) {
-    queries.push(
-      runQuery(
-        `${buildBrandWhereClause('$4', '$5', '$4')}
-             AND lower(
-               coalesce(
-                 seed_data->'derived'->'recall'->>'category',
-                 seed_data->>'category',
-                 seed_data->'product'->>'category',
-                 seed_data->'snapshot'->>'category',
-                 seed_data->>'product_type',
-                 seed_data->>'productType',
-                 seed_data->'snapshot'->>'product_type',
-                 seed_data->'snapshot'->>'productType',
-                 ''
-               )
-             ) = $6`,
-        [brandAliases, brandCompacts, category],
-        Math.min(160, safeLimit),
-        'external_brand_category',
-      ),
-    );
-  }
-  if (brandAliases.length && brandCompacts.length) {
-    queries.push(
-      runQuery(
-        buildBrandWhereClause('$4', '$5', '$4'),
-        [brandAliases, brandCompacts],
-        Math.min(180, safeLimit),
-        'external_brand',
-      ),
-    );
-  }
-  if (!queries.length) return [];
-  const resultSets = await Promise.all(queries);
-  const out = resultSets.flatMap((items) => (Array.isArray(items) ? items : []));
+  if (!brandAliases.length) return [];
+  const out = await runQuery(
+    buildBrandWhereClause('$4', '$4'),
+    [brandAliases],
+    Math.min(180, safeLimit),
+    'external_brand',
+  );
   return uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`).slice(0, safeLimit * 2);
 }
 
