@@ -18424,6 +18424,27 @@ function buildRecoRowsFromMainlineProducts(products, {
   });
 }
 
+function buildBeautyMainlineProxyRescueQueries({
+  rawQuery = '',
+  semanticContract = null,
+} = {}) {
+  const literalQuery = String(rawQuery || '').trim();
+  const semanticQueryPack = buildBeautyDiscoveryQueryPackFromContract({
+    rawQuery: literalQuery,
+    semanticContract,
+  });
+  const semanticQueries = Array.isArray(semanticQueryPack) ? semanticQueryPack : [];
+  return uniqCaseInsensitiveStrings(
+    [
+      ...semanticQueries,
+      literalQuery,
+    ]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean),
+    4,
+  );
+}
+
 function deriveBeautyMainlineHandoff({
   primaryQuery = '',
   fallbackMessage = '',
@@ -18526,10 +18547,17 @@ function deriveBeautyMainlineHandoff({
     }
     return null;
   })();
+  const proxyQueries = buildBeautyMainlineProxyRescueQueries({
+    rawQuery: handoffText,
+    semanticContract,
+  });
+  const proxyQuery = pickFirstTrimmed(proxyQueries[0], handoffText);
   const query = handoffText || '';
 
   return {
     query,
+    proxy_query: proxyQuery || null,
+    proxy_queries: proxyQueries,
     semanticContract,
     targetContext: stepAlignedTargetContext,
   };
@@ -18945,6 +18973,7 @@ async function handoffRecoToBeautyMainlineSearch({
   authHeaders = null,
   timeoutMs = 0,
   minTimeoutMs = 0,
+  proxyRescueDeadlineAtMs = null,
   searchFn = null,
 } = {}) {
   const handoff = deriveBeautyMainlineHandoff({
@@ -18955,6 +18984,7 @@ async function handoffRecoToBeautyMainlineSearch({
     fallbackFocus,
   });
   const query = String(handoff?.query || '').trim();
+  const proxyRescueQuery = pickFirstTrimmed(handoff?.proxy_query, query);
   const semanticContract =
     handoff?.semanticContract && typeof handoff.semanticContract === 'object' && !Array.isArray(handoff.semanticContract)
       ? handoff.semanticContract
@@ -18993,6 +19023,16 @@ async function handoffRecoToBeautyMainlineSearch({
         ? 'step_aware'
         : 'framework_first_turn',
   });
+  const normalizedDeadlineAtMs = Number.isFinite(Number(deadlineAtMs))
+    ? Math.trunc(Number(deadlineAtMs))
+    : 0;
+  const normalizedProxyRescueDeadlineAtMs = Number.isFinite(Number(proxyRescueDeadlineAtMs))
+    ? Math.trunc(Number(proxyRescueDeadlineAtMs))
+    : 0;
+  const effectiveProxyRescueDeadlineAtMs = Math.max(
+    normalizedDeadlineAtMs,
+    normalizedProxyRescueDeadlineAtMs,
+  );
   const handoffSearchTimeoutMs = shouldUseSunscreenRecallBudget
     ? Math.max(effectiveTimeoutMs, RECO_CATALOG_SUNSCREEN_HANDOFF_TIMEOUT_MS)
     : shouldUseExternalSeedSupplement
@@ -19012,7 +19052,7 @@ async function handoffRecoToBeautyMainlineSearch({
       mode: 'main_path',
       searchAllMerchants: true,
       catalogSurface: 'beauty',
-      deadlineMs: Number.isFinite(Number(deadlineAtMs)) ? Number(deadlineAtMs) : 0,
+      deadlineMs: normalizedDeadlineAtMs,
       searchSourceOverride: 'aurora-bff',
       allowExternalSeed: shouldUseExternalSeedSupplement,
       externalSeedStrategy: shouldUseExternalSeedSupplement ? 'unified_relevance' : '',
@@ -19034,7 +19074,7 @@ async function handoffRecoToBeautyMainlineSearch({
         targetContext: effectiveTargetContext,
         profileSummary,
         timeoutMs: handoffSearchMinTimeoutMs,
-        deadlineMs: Number.isFinite(Number(deadlineAtMs)) ? Number(deadlineAtMs) : 0,
+        deadlineMs: normalizedDeadlineAtMs,
         authHeaders: authHeaders || ctx?.backend_auth_headers || null,
       });
     } catch (err) {
@@ -19067,7 +19107,7 @@ async function handoffRecoToBeautyMainlineSearch({
       }
       try {
         searchResult = await proxySearchFn({
-        query,
+        query: proxyRescueQuery || query,
         limit: 6,
         logger,
         timeoutMs: handoffSearchTimeoutMs,
@@ -19075,7 +19115,7 @@ async function handoffRecoToBeautyMainlineSearch({
         mode: 'main_path',
         searchAllMerchants: true,
         catalogSurface: 'beauty',
-        deadlineMs: Number.isFinite(Number(deadlineAtMs)) ? Number(deadlineAtMs) : 0,
+        deadlineMs: effectiveProxyRescueDeadlineAtMs,
         searchSourceOverride: 'aurora-bff',
         allowExternalSeed: shouldUseExternalSeedSupplement,
         externalSeedStrategy: shouldUseExternalSeedSupplement ? 'unified_relevance' : '',
