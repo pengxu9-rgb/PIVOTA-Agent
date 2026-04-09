@@ -133,6 +133,28 @@ function isWeatherIntent({ envelope, ctx }) {
   return routeHint === 'weather' || routeHint === 'weather_env';
 }
 
+function isBeautyMainlineLocalHandoffRecommendationsCard(card) {
+  if (!isPlainObject(card) || safeString(card.type).trim().toLowerCase() !== 'recommendations') return false;
+  const payload = isPlainObject(card.payload) ? card.payload : {};
+  const meta = isPlainObject(payload.recommendation_meta) ? payload.recommendation_meta : {};
+  const payloadMeta = isPlainObject(payload.metadata) ? payload.metadata : {};
+  const querySource = safeString(payload.query_source || meta.query_source || payloadMeta.query_source).trim();
+  const decisionOwner = safeString(payload.decision_owner || meta.decision_owner || payloadMeta.decision_owner).trim();
+  const semanticOwner = safeString(payload.semantic_owner || meta.semantic_owner || payloadMeta.semantic_owner).trim();
+  const sourceMode = safeString(meta.source_mode || payloadMeta.source_mode || payload.source_mode).trim().toLowerCase();
+  return (
+    querySource === 'beauty_mainline_local_handoff' &&
+    decisionOwner === 'shopping_agent_beauty_mainline' &&
+    semanticOwner === 'shopping_agent_beauty_mainline' &&
+    (sourceMode === 'framework_mainline' || sourceMode === 'step_aware_mainline')
+  );
+}
+
+function shouldSuppressBeautyMainlineRecoTemplateMessage(envelope) {
+  const recoCard = findCard(getCards(envelope), 'recommendations');
+  return isBeautyMainlineLocalHandoffRecommendationsCard(recoCard);
+}
+
 function selectTemplate({ envelope, ctx } = {}) {
   const cards = getCards(envelope);
   const sessionPatch = getSessionPatch(envelope);
@@ -774,6 +796,11 @@ function applyReplyTemplates({ envelope, ctx } = {}) {
   const existingFormat = safeString(currentMessage && currentMessage.format).trim().toLowerCase();
   const allowMarkdown = templateId === 'env_weather_qa.standard' || templateId === 'recommendations_output.standard';
   const isRichTravel = looksLikeRichTravelReply(existingText);
+  const suppressBeautyMainlineRecoTemplateMessage = Boolean(
+    templateId === 'recommendations_output.standard' &&
+    !currentMessage &&
+    shouldSuppressBeautyMainlineRecoTemplateMessage(env),
+  );
 
   const violations = [];
   if (!currentMessage) violations.push('missing_message');
@@ -788,10 +815,21 @@ function applyReplyTemplates({ envelope, ctx } = {}) {
   }
 
   let replacedByTemplate = false;
-  if (violations.length > 0 && normalizeAssistantMessage(rendered.assistant_message)) {
+  const onlyMissingMessageViolation =
+    violations.length > 0 &&
+    violations.every((violation) => violation === 'missing_message');
+  if (
+    violations.length > 0 &&
+    normalizeAssistantMessage(rendered.assistant_message) &&
+    !(suppressBeautyMainlineRecoTemplateMessage && onlyMissingMessageViolation)
+  ) {
     env.assistant_message = rendered.assistant_message;
     replacedByTemplate = true;
-  } else if (!currentMessage && normalizeAssistantMessage(rendered.assistant_message)) {
+  } else if (
+    !currentMessage &&
+    !suppressBeautyMainlineRecoTemplateMessage &&
+    normalizeAssistantMessage(rendered.assistant_message)
+  ) {
     env.assistant_message = rendered.assistant_message;
     replacedByTemplate = true;
   }
