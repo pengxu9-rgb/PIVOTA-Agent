@@ -111,7 +111,7 @@ test('beauty canonical ownership recomputes final selection from surfaced recomm
   }
 });
 
-test('canonical search result mirror can use framework summary assistant text after selection is locked', () => {
+test('canonical search result mirror keeps payload-bound assistant text when canonical target bundle is present', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     const payload = {
@@ -172,9 +172,30 @@ test('canonical search result mirror can use framework summary assistant text af
       },
     };
 
-    const mirrored = __internal.applyRecoCanonicalSearchResultToPayload(payload, searchResult, {
-      selectionOwner: 'shopping_agent_beauty_mainline',
-    });
+    const mirrored = __internal.applyRecoContentSpineToPayload(
+      __internal.applyRecoCanonicalSearchResultToPayload(payload, searchResult, {
+        selectionOwner: 'shopping_agent_beauty_mainline',
+      }),
+      {
+        resolved_target_step: 'treatment',
+        primary_target_id: 'oil_control_treatment',
+        ranked_targets: [
+          {
+            target_id: 'oil_control_treatment',
+            target_role: 'primary',
+            ingredient_query: 'Oil-control treatment',
+            resolved_target_step: 'treatment',
+            product_candidates: [
+              {
+                product_id: 'generic_plain_text_1',
+                display_name: 'GoalSkin Oil Control Serum',
+              },
+            ],
+          },
+        ],
+        selected_target_ids: ['oil_control_treatment'],
+      },
+    );
     const assistantText = __internal.buildPayloadBoundRecoAssistantText({
       payload: mirrored,
       language: 'EN',
@@ -190,11 +211,63 @@ test('canonical search result mirror can use framework summary assistant text af
     assert.equal(mirrored.metadata?.contract_bridge?.resolved_contract, 'agent_v1_search_beauty_mainline');
     assert.deepEqual(mirrored.metadata?.search_stage_ledger?.final_selection?.selected_product_ids, ['generic_plain_text_1']);
     assert.equal(mirrored.recommendation_meta?.assistant_text_selection_signature, undefined);
+    assert.equal(mirrored.recommendation_meta?.primary_target_id, 'oil_control_treatment');
+    assert.deepEqual(mirrored.recommendation_meta?.selected_target_ids, ['oil_control_treatment']);
     assert.match(String(assistantText || ''), /Products actually selected this time: GoalSkin Oil Control Serum\./i);
-    assert.notEqual(routeAwareText, assistantText);
-    assert.match(String(routeAwareText || ''), /care framework/i);
-    assert.match(String(routeAwareText || ''), /Priority order: Oil-control treatment\./i);
-    assert.match(String(routeAwareText || ''), /Top pick for that first role: GoalSkin Oil Control Serum\./i);
+    assert.equal(routeAwareText, assistantText);
+    assert.match(String(routeAwareText || ''), /Primary recommendation focus: keep this pass centered on Oil-control treatment\./i);
+    assert.doesNotMatch(String(routeAwareText || ''), /Priority order:|care framework|Top pick for that first role/i);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('payload-bound assistant text does not reconstruct target labels from framework summary when canonical targets are missing', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = {
+        recommendations: [
+          {
+            product_id: 'generic_plain_text_1',
+            display_name: 'GoalSkin Oil Control Serum',
+            category: 'Serum',
+            matched_role_id: 'oil_control_treatment',
+          },
+        ],
+        roles: [
+          {
+            role_id: 'oil_control_treatment',
+            label: 'Oil-control treatment',
+            rank: 1,
+            why_this_role: 'Reduce excess sebum.',
+            preferred_step: 'treatment',
+          },
+        ],
+        framework_summary: {
+          concern_text: 'oily skin',
+          primary_role_id: 'oil_control_treatment',
+          primary_role_label: 'Oil-control treatment',
+        },
+        recommendation_meta: {
+          beauty_mainline_handoff_applied: true,
+        },
+      };
+    const assistantText = __internal.buildPayloadBoundRecoAssistantText({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily', goals: ['oil control'] },
+    });
+    const routeAwareText = __internal.buildRouteAwareAssistantText({
+      route: 'reco',
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily', goals: ['oil control'] },
+    });
+
+    assert.match(String(assistantText || ''), /Products actually selected this time: GoalSkin Oil Control Serum\./i);
+    assert.doesNotMatch(String(assistantText || ''), /Oil-control treatment/i);
+    assert.match(String(assistantText || ''), /skincare product/i);
+    assert.equal(routeAwareText, assistantText);
   } finally {
     delete require.cache[moduleId];
   }
@@ -281,6 +354,76 @@ test('beauty handoff payload builder replaces mixed planner rows with canonical 
       out?.payload?.recommendation_meta?.source_tier_counts,
       { fresh_internal: 1, fresh_external: 1 },
     );
+    assert.equal(out?.recoContext?.owner_source, 'shopping_agent_beauty_mainline');
+    assert.equal(out?.recoContext?.final_outcome_owner, 'shopping_agent_beauty_mainline');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('beauty handoff payload builder fails closed when framework roles cannot materialize a canonical target bundle', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const out = __internal.buildRecoPayloadFromBeautyMainlineHandoff({
+      handoff: {
+        recommendations: [
+          {
+            product_id: 'generic_plain_text_1',
+            display_name: 'GoalSkin Oil Control Serum',
+            category: 'Serum',
+          },
+        ],
+        searchResult: {
+          decision_owner: 'shopping_agent_beauty_mainline',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+          query_source: 'agent_products_search',
+          metadata: {
+            contract_bridge: {
+              attempted_contract: 'agent_v1_search_beauty_mainline',
+              resolved_contract: 'agent_v1_search_beauty_mainline',
+            },
+            source_breakdown: {
+              source_tier_counts: { fresh_internal: 1 },
+              top_candidate_provenance: { source_owner: 'internal_search' },
+            },
+            search_stage_ledger: {
+              final_selection: {
+                selection_owner: 'shopping_agent_beauty_mainline',
+                selected_product_ids: ['generic_plain_text_1'],
+                selected_titles: ['GoalSkin Oil Control Serum'],
+                selection_signature: 'selection_sig_missing_bundle',
+                mainline_status: 'grounded_success',
+                source_tier_counts: { fresh_internal: 1 },
+                top_candidate_provenance: { source_owner: 'internal_search' },
+              },
+            },
+          },
+        },
+      },
+      profile: { skinType: 'oily', goals: ['oil control'] },
+      targetContext: {
+        intent_mode: 'generic_concern',
+        primary_role_id: 'daily_sunscreen',
+        framework_roles: [
+          {
+            role_id: 'daily_sunscreen',
+            label: 'Daily sunscreen',
+            rank: 1,
+            preferred_step: 'sunscreen',
+          },
+        ],
+      },
+      recoContext: {
+        resolved_target_step: 'sunscreen',
+      },
+      taskMode: 'goal_based_products',
+      triggerSource: 'text_freeform',
+      sourceMode: 'framework_mainline',
+      selectionOwner: 'shopping_agent_beauty_mainline',
+      entryType: 'chat',
+    });
+
+    assert.equal(out, null);
   } finally {
     delete require.cache[moduleId];
   }

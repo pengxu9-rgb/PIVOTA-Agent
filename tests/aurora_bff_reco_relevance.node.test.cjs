@@ -806,6 +806,7 @@ test('__internal: quality contract exposes semantic reco alignment flags', async
         display_name: 'Barrier Rescue Cream',
         product_type: 'moisturizer',
         category: 'moisturizer',
+        url: 'https://example.com/pdp/barrier-rescue-cream',
         pdp_url: 'https://example.com/pdp/barrier-rescue-cream',
       },
     ],
@@ -901,6 +902,7 @@ test('__internal: quality contract exposes semantic reco alignment flags', async
           latest_reco_context: {
             ingredient_query: 'Ceramide NP',
             resolved_target_step: 'moisturizer',
+            resolved_target_step_confidence: 'low',
             primary_focus: {
               module_id: 'cheek_left',
               module_label: 'Left cheek',
@@ -908,15 +910,9 @@ test('__internal: quality contract exposes semantic reco alignment flags', async
               issue_label: 'redness',
               confidence_bucket: 'low',
             },
-            primary_target_id: 'ceramide_np__moisturizer',
-            ranked_targets: [
-              {
-                target_id: 'ceramide_np__moisturizer',
-                target_role: 'primary',
-                ingredient_query: 'Ceramide NP',
-                resolved_target_step: 'moisturizer',
-              },
-            ],
+            primary_target_id: payload.recommendation_meta?.primary_target_id,
+            ranked_targets: payload.recommendation_meta?.ranked_targets,
+            selected_target_ids: payload.recommendation_meta?.selected_target_ids,
           },
         },
       },
@@ -931,6 +927,100 @@ test('__internal: quality contract exposes semantic reco alignment flags', async
   assert.equal(quality.target_bundle_alignment_pass, true);
   assert.equal(quality.assistant_reco_alignment_pass, true);
   assert.equal(quality.confidence_consistency_pass, true);
+});
+
+test('__internal: quality contract ignores how-to-use and caution headings for known seeded profile fields', async () => {
+  const { __internal } = loadRoutesFresh();
+  const payload = __internal.applyRecoContentSpineToPayload({
+    recommendations: [
+      {
+        product_id: 'prod_oil_control',
+        merchant_id: 'mid_test',
+        brand: 'GoalSkin',
+        name: 'Oil Control Serum',
+        display_name: 'GoalSkin Oil Control Serum',
+        product_type: 'serum',
+        category: 'serum',
+        url: 'https://example.com/pdp/oil-control-serum',
+        pdp_url: 'https://example.com/pdp/oil-control-serum',
+      },
+    ],
+    recommendation_meta: {
+      resolved_target_step: 'treatment',
+      resolved_target_step_confidence: 'medium',
+      mainline_status: 'grounded_success',
+      source_mode: 'framework_mainline',
+    },
+  }, {
+    ingredient_query: 'Oil-control treatment',
+    resolved_target_step: 'treatment',
+    resolved_target_step_confidence: 'medium',
+    primary_target_id: 'oil_control_treatment',
+    ranked_targets: [
+      {
+        target_id: 'oil_control_treatment',
+        target_role: 'primary',
+        ingredient_query: 'Oil-control treatment',
+        resolved_target_step: 'treatment',
+        product_candidates: [
+          {
+            product_id: 'prod_oil_control',
+            merchant_id: 'mid_test',
+            display_name: 'GoalSkin Oil Control Serum',
+          },
+        ],
+      },
+    ],
+    selected_target_ids: ['oil_control_treatment'],
+  });
+  const assistantText = [
+    __internal.buildPayloadBoundRecoAssistantText({
+      payload,
+      language: 'EN',
+      profile: {
+        skinType: 'oily',
+        sensitivity: 'low',
+        barrierStatus: 'stable',
+        goals: ['oil control'],
+      },
+    }),
+    'How to use / caution: start 2-3 nights per week and stop if irritation persists.',
+  ].join('\n');
+  const quality = __internal.evaluateQualityContractForEnvelope({
+    envelope: {
+      cards: [
+        {
+          type: 'recommendations',
+          payload,
+        },
+      ],
+      session_patch: {
+        state: {
+          latest_reco_context: {
+            ingredient_query: 'Oil-control treatment',
+            resolved_target_step: 'treatment',
+            resolved_target_step_confidence: 'medium',
+            primary_target_id: payload.recommendation_meta?.primary_target_id,
+            ranked_targets: payload.recommendation_meta?.ranked_targets,
+            selected_target_ids: payload.recommendation_meta?.selected_target_ids,
+          },
+        },
+      },
+    },
+    policyMeta: { intent_canonical: 'reco_products' },
+    assistantText,
+    profile: {
+      skinType: 'oily',
+      sensitivity: 'low',
+      barrierStatus: 'stable',
+      goals: ['oil control'],
+    },
+  });
+
+  assert.equal(quality.strict_fail_flags.entity_miss_fail_seed_profile, false);
+  assert.equal(quality.context_persistence_pass, true);
+  assert.equal(quality.semantic_contract_pass, true);
+  assert.equal(quality.contract_pass, true);
 });
 
 test('__internal: low-confidence reco downgrade rewrites assistant text to match notice-only output', async () => {
@@ -6922,9 +7012,8 @@ test('/v1/chat: plain-text sunscreen reco short-circuits to beauty mainline befo
 });
 
 test('/v1/chat: plain-text beauty reco with latest_reco_context still short-circuits to canonical handoff before aurora planner', { concurrency: false }, async () => {
-  const originalGet = axios.get;
   let auroraChatCallCount = 0;
-  const observedCalls = [];
+  const observedInternalQueries = [];
   const harness = createAppWithPatchedAuroraChat({
     auroraChatImpl: async () => {
       auroraChatCallCount += 1;
@@ -6943,15 +7032,22 @@ test('/v1/chat: plain-text beauty reco with latest_reco_context still short-circ
       };
     },
   });
-
-  axios.get = async (url, config = {}) => {
-    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
-    const query = String(config?.params?.query || '').trim().toLowerCase();
-    observedCalls.push(query);
-    if (query === 'what products should i use for oily skin?') {
-      return {
-        status: 200,
-        data: {
+  harness.routesMod.__internal.__setRouteDependencyOverridesForTest({
+    searchInternalProductsPrimitive: async (args = {}) => {
+      const query = String(args?.query || '').trim().toLowerCase();
+      observedInternalQueries.push(query);
+      const base = {
+        ok: true,
+        attempted_internal_paths: ['/agent/internal/products/search'],
+        transport_hops: [],
+        transport_hop_count: 0,
+        nested_orchestrator_hops: 0,
+        primary_transport_owner: 'internal_products_search_primitive',
+        primary_endpoint_kind: 'internal_primitive',
+      };
+      if (query === 'oil control treatment') {
+        return {
+          ...base,
           products: [
             {
               product_id: 'niacinamide_1',
@@ -6961,7 +7057,10 @@ test('/v1/chat: plain-text beauty reco with latest_reco_context still short-circ
               display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
               category: 'serum',
               product_type: 'serum',
-              source: 'internal_search',
+              url: 'https://example.com/pdp/niacinamide-zinc',
+              candidate_step: 'treatment',
+              retrieval_source: 'internal_search',
+              retrieval_reason: 'internal_primitive_match',
             },
             {
               product_id: 'wrong_serum_2',
@@ -6971,39 +7070,19 @@ test('/v1/chat: plain-text beauty reco with latest_reco_context still short-circ
               display_name: 'Winona Soothing Repair Serum',
               category: 'serum',
               product_type: 'serum',
-              source: 'external_seed',
+              candidate_step: 'treatment',
+              retrieval_source: 'external_seed',
+              retrieval_reason: 'internal_primitive_match',
             },
           ],
-          metadata: {
-            query_source: 'agent_products_search',
-            decision_owner: 'shopping_agent_beauty_mainline',
-            semantic_owner: 'shopping_agent_beauty_mainline',
-            final_decision: 'products_returned',
-            contract_bridge: {
-              attempted_contract: 'agent_v1_search_beauty_mainline',
-              resolved_contract: 'agent_v1_search_beauty_mainline',
-            },
-            source_breakdown: {
-              source_tier_counts: { fresh_internal: 1, fresh_external: 1 },
-              top_candidate_provenance: { source_owner: 'internal_search' },
-            },
-            search_stage_ledger: {
-              final_selection: {
-                selection_owner: 'shopping_agent_beauty_mainline',
-                selected_product_ids: ['niacinamide_1'],
-                selected_titles: ['The Ordinary Niacinamide 10% + Zinc 1%'],
-                selection_signature: 'sel_niacinamide_only',
-                mainline_status: 'grounded_success',
-                source_tier_counts: { fresh_internal: 1, fresh_external: 1 },
-                top_candidate_provenance: { source_owner: 'internal_search' },
-              },
-            },
-          },
-        },
+        };
+      }
+      return {
+        ...base,
+        products: [],
       };
-    }
-    return { status: 200, data: { products: [] } };
-  };
+    },
+  });
 
   try {
     const response = await harness.request
@@ -7052,10 +7131,318 @@ test('/v1/chat: plain-text beauty reco with latest_reco_context still short-circ
     );
     assert.deepEqual(payload.metadata?.final_selection?.selected_product_ids, ['niacinamide_1']);
     assert.equal(payload.recommendation_meta?.resolved_contract, 'agent_v1_search_beauty_mainline');
-    assert.deepEqual(payload.metadata?.source_breakdown?.source_tier_counts, { fresh_internal: 1, fresh_external: 1 });
-    assert.ok(observedCalls.includes('what products should i use for oily skin?'));
+    assert.deepEqual(payload.metadata?.source_breakdown?.source_tier_counts, { fresh_internal: 1 });
+    assert.ok(observedInternalQueries.includes('oil control treatment'));
   } finally {
-    axios.get = originalGet;
+    harness.routesMod.__internal.__resetRouteDependencyOverridesForTest();
+    harness.restore();
+  }
+});
+
+test('/v1/chat: exact oily free-text beauty reco carries parsed profile and canonical latest_reco_context through the early beauty mainline', { concurrency: false }, async () => {
+  let auroraChatCallCount = 0;
+  const observedInternalQueries = [];
+  const harness = createAppWithPatchedAuroraChat({
+    auroraChatImpl: async () => {
+      auroraChatCallCount += 1;
+      return {
+        intent: 'recommend_products',
+        answer: '{"summary":"legacy planner should not run"}',
+        structured: {
+          recommendations: [
+            {
+              product_id: 'legacy_wrong_body',
+              display_name: 'Legacy Body Oil',
+            },
+          ],
+        },
+        context: {},
+      };
+    },
+  });
+  harness.routesMod.__internal.__setRouteDependencyOverridesForTest({
+    searchInternalProductsPrimitive: async (args = {}) => {
+      const query = String(args?.query || '').trim().toLowerCase();
+      observedInternalQueries.push(query);
+      const base = {
+        ok: true,
+        attempted_internal_paths: ['/agent/internal/products/search'],
+        transport_hops: [],
+        transport_hop_count: 0,
+        nested_orchestrator_hops: 0,
+        primary_transport_owner: 'internal_products_search_primitive',
+        primary_endpoint_kind: 'internal_primitive',
+      };
+      if (query === 'oil control treatment') {
+        return {
+          ...base,
+          products: [
+            {
+              product_id: 'niacinamide_1',
+              merchant_id: 'mid_internal',
+              brand: 'The Ordinary',
+              name: 'Niacinamide 10% + Zinc 1%',
+              display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+              category: 'serum',
+              product_type: 'serum',
+              url: 'https://example.com/pdp/niacinamide-zinc',
+              candidate_step: 'treatment',
+              retrieval_source: 'internal_search',
+              retrieval_reason: 'internal_primitive_match',
+              short_description: 'A mattifying oil-control serum for oily skin.',
+              ingredient_tokens: ['niacinamide', 'zinc pca'],
+            },
+            {
+              product_id: 'light_moisturizer_1',
+              merchant_id: 'mid_external',
+              brand: 'GelLab',
+              name: 'Balance Gel Cream',
+              display_name: 'GelLab Balance Gel Cream',
+              category: 'moisturizer',
+              product_type: 'moisturizer',
+              url: 'https://example.com/pdp/balance-gel-cream',
+              candidate_step: 'moisturizer',
+              retrieval_source: 'internal_search',
+              retrieval_reason: 'internal_primitive_match',
+              short_description: 'A lightweight moisturizer for oily skin.',
+            },
+          ],
+        };
+      }
+      return {
+        ...base,
+        products: [],
+      };
+    },
+  });
+
+  try {
+    const response = await harness.request
+      .post('/v1/chat')
+      .set({
+        'X-Aurora-UID': 'chat_exact_oily_prompt_uid',
+        'X-Trace-ID': 'trace_chat_exact_oily_prompt',
+        'X-Brief-ID': 'chat_exact_oily_prompt_brief',
+      })
+      .send({
+        message: 'im oily skin. what product should i use?',
+        client_state: 'IDLE_CHAT',
+        session: {
+          state: 'idle',
+        },
+        language: 'EN',
+      });
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(auroraChatCallCount, 0);
+    assert.equal(observedInternalQueries.length > 0, true);
+    assert.ok(observedInternalQueries.includes('oil control treatment'));
+
+    const payload = getRecommendationsPayload(response.body);
+    assert.ok(payload);
+    assert.equal(payload.profile?.skinType, 'oily');
+    assert.equal(Array.isArray(payload.recommendations), true);
+    assert.equal(payload.recommendations.length >= 1, true);
+    assert.equal(payload.recommendations[0]?.product_id, 'niacinamide_1');
+    assert.equal(payload.recommendation_meta?.primary_target_id, 'oil_control_treatment');
+    assert.equal(Array.isArray(payload.recommendation_meta?.ranked_targets), true);
+    assert.equal(payload.recommendation_meta.ranked_targets.length > 0, true);
+    assert.equal(payload.recommendation_meta.ranked_targets[0]?.target_id, 'oil_control_treatment');
+    assert.ok(payload.recommendation_meta.ranked_targets[0]?.product_candidates?.length >= 1);
+
+    const latestRecoContext = response.body?.session_patch?.state?.latest_reco_context || null;
+    assert.ok(latestRecoContext);
+    assert.equal(latestRecoContext.primary_target_id, 'oil_control_treatment');
+    assert.equal(Array.isArray(latestRecoContext.ranked_targets), true);
+    assert.equal(latestRecoContext.ranked_targets.length > 0, true);
+    assert.equal(latestRecoContext.ranked_targets[0]?.target_id, 'oil_control_treatment');
+    assert.equal(Array.isArray(latestRecoContext.selected_target_ids), true);
+    assert.ok(latestRecoContext.selected_target_ids.includes('oil_control_treatment'));
+
+    const assistantText = String(
+      response.body?.assistant_message?.content || response.body?.assistant_text || '',
+    );
+    assert.doesNotMatch(assistantText, /skin type pending/i);
+    assert.match(assistantText, /oily/i);
+  } finally {
+    harness.routesMod.__internal.__resetRouteDependencyOverridesForTest();
+    harness.restore();
+  }
+});
+
+test('/v1/chat: exact oily first-turn matrix keeps canonical target bundle and green quality contract across bare, seeded, and action-patched paths', { concurrency: false }, async () => {
+  let auroraChatCallCount = 0;
+  const observedInternalQueries = [];
+  const harness = createAppWithPatchedAuroraChat({
+    auroraChatImpl: async () => {
+      auroraChatCallCount += 1;
+      return {
+        intent: 'recommend_products',
+        answer: '{"summary":"legacy planner should not run"}',
+        structured: {
+          recommendations: [
+            {
+              product_id: 'legacy_wrong_body',
+              display_name: 'Legacy Body Oil',
+            },
+          ],
+        },
+        context: {},
+      };
+    },
+  });
+  harness.routesMod.__internal.__setRouteDependencyOverridesForTest({
+    searchInternalProductsPrimitive: async (args = {}) => {
+      const query = String(args?.query || '').trim().toLowerCase();
+      observedInternalQueries.push(query);
+      const base = {
+        ok: true,
+        attempted_internal_paths: ['/agent/internal/products/search'],
+        transport_hops: [],
+        transport_hop_count: 0,
+        nested_orchestrator_hops: 0,
+        primary_transport_owner: 'internal_products_search_primitive',
+        primary_endpoint_kind: 'internal_primitive',
+      };
+      if (query === 'oil control treatment') {
+        return {
+          ...base,
+          products: [
+            {
+              product_id: 'niacinamide_1',
+              merchant_id: 'mid_internal',
+              brand: 'The Ordinary',
+              name: 'Niacinamide 10% + Zinc 1%',
+              display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+              category: 'serum',
+              product_type: 'serum',
+              url: 'https://example.com/pdp/niacinamide-zinc',
+              candidate_step: 'treatment',
+              retrieval_source: 'internal_search',
+              retrieval_reason: 'internal_primitive_match',
+              short_description: 'A mattifying oil-control serum for oily skin.',
+              ingredient_tokens: ['niacinamide', 'zinc pca'],
+              matched_role_id: 'oil_control_treatment',
+            },
+          ],
+        };
+      }
+      return {
+        ...base,
+        products: [],
+      };
+    },
+  });
+
+  const profile = {
+    skinType: 'oily',
+    sensitivity: 'low',
+    barrierStatus: 'stable',
+    goals: ['oil control'],
+  };
+  const cases = [
+    {
+      label: 'bare_freeform',
+      body: {
+        message: 'im oily skin. what product should i use?',
+        client_state: 'IDLE_CHAT',
+        session: { state: 'idle' },
+        language: 'EN',
+      },
+      expectedProfile: { skinType: 'oily' },
+    },
+    {
+      label: 'seeded_freeform',
+      body: {
+        message: 'im oily skin. what product should i use?',
+        client_state: 'IDLE_CHAT',
+        session: { state: 'idle' },
+        context: {
+          locale: 'en',
+          profile,
+        },
+        language: 'EN',
+      },
+      expectedProfile: profile,
+    },
+    {
+      label: 'action_patched',
+      body: {
+        action: {
+          action_id: 'chip.start.reco_products',
+          kind: 'chip',
+          data: {
+            reply_text: 'im oily skin. what product should i use?',
+            profile_patch: profile,
+          },
+        },
+        client_state: 'IDLE_CHAT',
+        session: { state: 'idle' },
+        language: 'EN',
+      },
+      expectedProfile: profile,
+    },
+  ];
+
+  try {
+    for (const testCase of cases) {
+      const response = await harness.request
+        .post('/v1/chat')
+        .set({
+          'X-Aurora-UID': `chat_exact_oily_matrix_${testCase.label}_uid`,
+          'X-Trace-ID': `trace_chat_exact_oily_matrix_${testCase.label}`,
+          'X-Brief-ID': `chat_exact_oily_matrix_${testCase.label}_brief`,
+        })
+        .send(testCase.body);
+
+      assert.equal(response.statusCode, 200, testCase.label);
+      const payload = getRecommendationsPayload(response.body);
+      assert.ok(payload, testCase.label);
+      assert.equal(payload.profile?.skinType, 'oily', testCase.label);
+      assert.equal(payload.recommendation_meta?.primary_target_id, 'oil_control_treatment', testCase.label);
+      assert.equal(Array.isArray(payload.recommendation_meta?.ranked_targets), true, testCase.label);
+      assert.equal(payload.recommendation_meta.ranked_targets.length > 0, true, testCase.label);
+      assert.deepEqual(payload.recommendation_meta?.selected_target_ids, ['oil_control_treatment'], testCase.label);
+
+      const latestRecoContext = response.body?.session_patch?.state?.latest_reco_context || null;
+      assert.ok(latestRecoContext, testCase.label);
+      assert.equal(latestRecoContext.primary_target_id, 'oil_control_treatment', testCase.label);
+      assert.equal(Array.isArray(latestRecoContext.ranked_targets), true, testCase.label);
+      assert.equal(latestRecoContext.ranked_targets.length > 0, true, testCase.label);
+      assert.deepEqual(latestRecoContext.selected_target_ids, ['oil_control_treatment'], testCase.label);
+
+      const assistantText = String(
+        response.body?.assistant_message?.content || response.body?.assistant_text || '',
+      );
+      assert.doesNotMatch(assistantText, /skin type pending/i, testCase.label);
+      assert.match(assistantText, /oily/i, testCase.label);
+
+      const quality = harness.routesMod.__internal.evaluateQualityContractForEnvelope({
+        envelope: {
+          cards: Array.isArray(response.body?.cards) ? response.body.cards : [],
+          session_patch:
+            response.body?.session_patch && typeof response.body.session_patch === 'object'
+              ? response.body.session_patch
+              : {},
+          events: Array.isArray(response.body?.events) ? response.body.events : [],
+        },
+        policyMeta: { intent_canonical: 'reco_products' },
+        assistantText,
+        profile: testCase.expectedProfile,
+      });
+      assert.equal(quality.strict_fail_flags.entity_miss_fail_seed_profile, false, testCase.label);
+      assert.equal(quality.context_persistence_pass, true, testCase.label);
+      assert.equal(quality.semantic_contract_pass, true, testCase.label);
+      assert.equal(quality.contract_pass, true, testCase.label);
+    }
+
+    assert.equal(auroraChatCallCount, 0);
+    assert.equal(
+      observedInternalQueries.filter((query) => query === 'oil control treatment').length >= cases.length,
+      true,
+    );
+  } finally {
+    harness.routesMod.__internal.__resetRouteDependencyOverridesForTest();
     harness.restore();
   }
 });

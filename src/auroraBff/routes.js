@@ -30986,11 +30986,19 @@ function sanitizeRecoRequestContext(raw = {}) {
 function extractLatestRecoContextFromSession(session) {
   if (!session || typeof session !== 'object' || Array.isArray(session)) return null;
   const state = isPlainObject(session.state) ? session.state : null;
-  if (!state) return null;
+  const meta = isPlainObject(session.meta) ? session.meta : null;
   const context = sanitizeRecoRequestContext(
-    state.latest_reco_context && typeof state.latest_reco_context === 'object'
+    state && isPlainObject(state.latest_reco_context)
       ? state.latest_reco_context
-      : null,
+      : isPlainObject(session.latest_reco_context)
+        ? session.latest_reco_context
+        : isPlainObject(session.latestRecoContext)
+          ? session.latestRecoContext
+          : meta && isPlainObject(meta.latest_reco_context)
+            ? meta.latest_reco_context
+            : meta && isPlainObject(meta.latestRecoContext)
+              ? meta.latestRecoContext
+              : null,
   );
   if (!context) return null;
   return context;
@@ -35710,6 +35718,80 @@ function extractProfilePatchFromFreeText({ message, canonicalIntent } = {}) {
   if (!parsed.success) return null;
   const clean = parsed.data;
   return Object.keys(clean).length ? clean : null;
+}
+
+function normalizeChatRouteActionPayload(data = {}) {
+  const body = isPlainObject(data) ? data : {};
+  if (body.action) return normalizeIncomingChatAction(body.action);
+  if (typeof body.action_id === 'string' && body.action_id.trim()) {
+    return {
+      action_id: body.action_id.trim(),
+      kind: 'action',
+      ...(body.action_data && typeof body.action_data === 'object' && !Array.isArray(body.action_data)
+        ? { data: body.action_data }
+        : {}),
+    };
+  }
+  if (typeof body.action_label === 'string' && body.action_label.trim()) {
+    return body.action_label.trim();
+  }
+  return null;
+}
+
+function buildChatIngressSignalSnapshot({ data = null, language = 'EN' } = {}) {
+  const body = isPlainObject(data) ? data : {};
+  const normalizedActionPayload = normalizeChatRouteActionPayload(body);
+  const actionLabel =
+    typeof body.action_label === 'string' && body.action_label.trim()
+      ? body.action_label.trim()
+      : normalizedActionPayload && typeof normalizedActionPayload === 'string' && normalizedActionPayload.trim()
+        ? normalizedActionPayload.trim()
+        : null;
+  const explicitActionId =
+    (normalizedActionPayload && typeof normalizedActionPayload === 'object'
+      ? normalizedActionPayload.action_id
+      : typeof normalizedActionPayload === 'string'
+        ? normalizedActionPayload
+        : null) ||
+    body.action_id ||
+    null;
+  const message = extractPrimaryChatRequestMessage(body, normalizedActionPayload);
+  const canonicalIntent = inferCanonicalIntent({
+    message,
+    actionId: explicitActionId,
+    actionLabel,
+    language,
+  });
+  const latestRecoContextFromSession = extractLatestRecoContextFromSession(body.session);
+  const profilePatchFromSession = extractProfilePatchFromSession(body.session);
+  const profilePatchFromRequestContext = extractProfilePatchFromRequestContextPayload(body);
+  const profilePatchFromAction = extractProfilePatchFromSession({
+    profile_patch: parseProfilePatchFromAction(normalizedActionPayload),
+  });
+  const profilePatchFromFreeText = extractProfilePatchFromFreeText({
+    message,
+    canonicalIntent,
+  });
+  const profileOverlay = extractAnalysisProfileContextOverlay(
+    profilePatchFromSession,
+    profilePatchFromRequestContext,
+    profilePatchFromAction,
+    profilePatchFromFreeText,
+  );
+  return {
+    normalizedActionPayload,
+    actionLabel,
+    explicitActionId,
+    message,
+    canonicalIntent,
+    latestRecoContextFromSession,
+    profilePatchFromSession,
+    profilePatchFromRequestContext,
+    profilePatchFromAction,
+    profilePatchFromFreeText,
+    profileOverlay,
+    includeAlternatives: extractIncludeAlternativesFromAction(normalizedActionPayload),
+  };
 }
 
 function extractTrackerLogFromFreeText({ message } = {}) {
@@ -47213,17 +47295,44 @@ function collectVisibleCardTextForKnownFieldReask(cards) {
   return fragments.join('\n');
 }
 
+function stripInstructionalKnownFieldReaskNoise(text = '') {
+  return String(text || '')
+    .replace(/^\s*how to use\b[^\n]*$/gim, '')
+    .replace(/^\s*how to apply\b[^\n]*$/gim, '')
+    .replace(/^\s*how to layer\b[^\n]*$/gim, '')
+    .replace(/^\s*how to introduce\b[^\n]*$/gim, '')
+    .replace(/^\s*how to use\s*\/\s*caution\b[^\n]*$/gim, '')
+    .replace(/^\s*caution\b[^\n]*$/gim, '')
+    .replace(/^\s*stop signals\b[^\n]*$/gim, '')
+    .replace(/^\s*usage notes?\b[^\n]*$/gim, '');
+}
+
+function extractKnownFieldReaskQuestionText(text = '') {
+  const cleaned = stripInstructionalKnownFieldReaskNoise(text);
+  const lines = cleaned
+    .split(/\n+/)
+    .map((line) => String(line || '').trim())
+    .filter(Boolean);
+  return lines
+    .filter((line) => (
+      /\?/.test(line) ||
+      /^(?:-|\*|\d+\.)?\s*(?:which|what|what's|what is|can you share|could you share|are you|do you have|is your|确认|是否|还是|哪种|how sensitive)\b/i.test(line)
+    ))
+    .join('\n');
+}
+
 function hasKnownFieldReaskInText({ profile, text, cards }) {
   const p = profile && typeof profile === 'object' && !Array.isArray(profile) ? profile : {};
-  const composite = `${String(text || '')}\n${collectVisibleCardTextForKnownFieldReask(cards)}`;
-  const hasQuestionHint = /(\?|which|what|是否|还是|哪种|确认|how)/i.test(composite);
-  if (!hasQuestionHint) return false;
-  if (typeof p.skinType === 'string' && p.skinType.trim() && /(skin type|肤质|油皮|混油|混干|干皮)/i.test(composite)) return true;
-  if (typeof p.sensitivity === 'string' && p.sensitivity.trim() && /(sensitivity|sensitive|敏感度)/i.test(composite)) return true;
-  if (typeof p.barrierStatus === 'string' && p.barrierStatus.trim() && /(barrier|屏障(状态|受损)?)/i.test(composite)) return true;
-  if (Array.isArray(p.goals) && p.goals.length && /(goals?|concerns?|目标|诉求)/i.test(composite)) return true;
-  if (typeof p.pregnancy_status === 'string' && p.pregnancy_status.trim() && /(pregnan|怀孕|孕周|备孕)/i.test(composite)) return true;
-  if (typeof p.lactation_status === 'string' && p.lactation_status.trim() && /(lactat|breastfeed|哺乳)/i.test(composite)) return true;
+  const questionText = extractKnownFieldReaskQuestionText(
+    `${String(text || '')}\n${collectVisibleCardTextForKnownFieldReask(cards)}`,
+  );
+  if (!questionText) return false;
+  if (typeof p.skinType === 'string' && p.skinType.trim() && /(skin type|肤质|油皮|混油|混干|干皮)/i.test(questionText)) return true;
+  if (typeof p.sensitivity === 'string' && p.sensitivity.trim() && /(sensitivity|sensitive|敏感度)/i.test(questionText)) return true;
+  if (typeof p.barrierStatus === 'string' && p.barrierStatus.trim() && /(barrier|屏障(状态|受损)?)/i.test(questionText)) return true;
+  if (Array.isArray(p.goals) && p.goals.length && /(goals?|concerns?|目标|诉求)/i.test(questionText)) return true;
+  if (typeof p.pregnancy_status === 'string' && p.pregnancy_status.trim() && /(pregnan|怀孕|孕周|备孕)/i.test(questionText)) return true;
+  if (typeof p.lactation_status === 'string' && p.lactation_status.trim() && /(lactat|breastfeed|哺乳)/i.test(questionText)) return true;
   return false;
 }
 
@@ -48082,50 +48191,6 @@ function assistantTextMatchesRecoSelectionContract(text, selectionContract) {
 function pickRecoMetaTargets(payload) {
   const meta = isPlainObject(payload && payload.recommendation_meta) ? payload.recommendation_meta : {};
   const rankedTargets = normalizeRecoContextRankedTargets(meta.ranked_targets);
-  const frameworkSummary = isPlainObject(payload?.framework_summary) ? payload.framework_summary : null;
-  const frameworkRoles = Array.isArray(payload?.roles)
-    ? payload.roles.filter((item) => isPlainObject(item))
-    : [];
-  const fallbackFrameworkPrimaryTarget =
-    frameworkSummary && !rankedTargets.length
-      ? {
-          target_id: pickFirstTrimmed(
-            frameworkSummary.primary_role_id,
-            payload?.primary_role_id,
-            frameworkRoles[0]?.role_id,
-          ),
-          target_role: 'primary',
-          ingredient_query: pickFirstTrimmed(
-            frameworkSummary.primary_role_label,
-            frameworkRoles.find((role) =>
-              pickFirstTrimmed(role?.role_id) ===
-              pickFirstTrimmed(frameworkSummary.primary_role_id, payload?.primary_role_id)
-            )?.label,
-          ),
-          resolved_target_step: pickFirstTrimmed(
-            frameworkRoles.find((role) =>
-              pickFirstTrimmed(role?.role_id) ===
-              pickFirstTrimmed(frameworkSummary.primary_role_id, payload?.primary_role_id)
-            )?.preferred_step,
-          ),
-        }
-      : null;
-  const fallbackFrameworkSecondaryTargets =
-    frameworkSummary && !rankedTargets.length
-      ? frameworkRoles
-          .filter((role) =>
-            pickFirstTrimmed(role?.role_id) &&
-            pickFirstTrimmed(role?.role_id) !==
-              pickFirstTrimmed(frameworkSummary.primary_role_id, payload?.primary_role_id)
-          )
-          .slice(0, 2)
-          .map((role) => ({
-            target_id: pickFirstTrimmed(role?.role_id),
-            target_role: 'secondary',
-            ingredient_query: pickFirstTrimmed(role?.label),
-            resolved_target_step: pickFirstTrimmed(role?.preferred_step),
-          }))
-      : [];
   const primaryTargetId = pickFirstTrimmed(
     meta.primary_target_id,
     rankedTargets.find((item) => item.target_role === 'primary')?.target_id,
@@ -48142,12 +48207,11 @@ function pickRecoMetaTargets(payload) {
     || rankedTargets.find((item) => item.target_id === primaryTargetId)
     || displayedTargets[0]
     || rankedTargets[0]
-    || fallbackFrameworkPrimaryTarget
     || null;
   const secondaryTargets = (
     displayedTargets.length
       ? displayedTargets.filter((item) => item && item.target_id !== (primaryTarget && primaryTarget.target_id)).slice(0, 2)
-      : fallbackFrameworkSecondaryTargets
+      : []
   );
   return {
     meta,
@@ -48157,6 +48221,41 @@ function pickRecoMetaTargets(payload) {
     secondaryTargets,
     selectionShiftReason: pickFirstTrimmed(meta.selection_shift_reason),
   };
+}
+
+function hasCompleteCanonicalRecoTargetBundle(payload) {
+  const metaTargets = pickRecoMetaTargets(payload);
+  const primaryTargetId = pickFirstTrimmed(
+    metaTargets.meta.primary_target_id,
+    metaTargets.rankedTargets.find((item) => item.target_role === 'primary')?.target_id,
+    metaTargets.rankedTargets[0]?.target_id,
+  );
+  const selectedTargetIds = normalizeRecoContextTargetIds(metaTargets.meta.selected_target_ids);
+  return Boolean(
+    primaryTargetId &&
+    metaTargets.rankedTargets.length > 0 &&
+    metaTargets.rankedTargets.some((item) => pickFirstTrimmed(item?.target_id) === primaryTargetId) &&
+    selectedTargetIds.length > 0,
+  );
+}
+
+function shouldUseFrameworkRecoAssistantCopy(payload) {
+  const p = isPlainObject(payload) ? payload : {};
+  const frameworkSummary = isPlainObject(p.framework_summary) ? p.framework_summary : null;
+  const frameworkRoles = Array.isArray(p.roles) ? p.roles.filter((item) => isPlainObject(item)) : [];
+  const recoSelectionContract = extractRecoFinalSelectionContract(p);
+  const hasCanonicalRecoSelection = Boolean(
+    recoSelectionContract?.selection_signature &&
+    Array.isArray(recoSelectionContract.selected_product_ids) &&
+    recoSelectionContract.selected_product_ids.length > 0
+  );
+  return Boolean(
+    frameworkSummary &&
+    frameworkRoles.length > 0 &&
+    hasCanonicalRecoSelection &&
+    hasRecoCanonicalAuthority(p) &&
+    hasCompleteCanonicalRecoTargetBundle(p),
+  );
 }
 
 function buildPayloadBoundRecoAssistantText({ payload, language, profile }) {
@@ -48214,7 +48313,9 @@ function buildPayloadBoundRecoAssistantText({ payload, language, profile }) {
       shiftLine || secondaryLine,
       isLowConfidence
         ? '使用建议：先低频、少量、单一引入，观察 1-2 周再决定是否加频。'
-        : '使用建议：先单一引入主产品，再根据耐受决定是否补充次方向。',
+        : secondaryTargets.length || selectionShiftReason
+          ? '使用建议：先单一引入主产品，再根据耐受决定是否补充次方向。'
+          : '使用建议：先单一引入主产品，并把其余 routine 保持稳定 1-2 周再看是否需要加东西。',
     ].filter(Boolean).join('\n');
   }
   return [
@@ -48227,7 +48328,9 @@ function buildPayloadBoundRecoAssistantText({ payload, language, profile }) {
     shiftLine || secondaryLine,
     isLowConfidence
       ? 'How to use / caution: introduce it slowly, keep the rest of the routine simple, and reassess after 1-2 weeks.'
-      : 'How to use / caution: introduce the primary product first, then add any secondary direction only if tolerance stays stable.',
+      : secondaryTargets.length || selectionShiftReason
+        ? 'How to use / caution: introduce the primary product first, then add any secondary direction only if tolerance stays stable.'
+        : 'How to use / caution: introduce the primary product first and keep the rest of the routine stable for 1-2 weeks before adding anything else.',
   ].filter(Boolean).join('\n');
 }
 
@@ -48645,6 +48748,12 @@ function buildBeautyCanonicalOwnershipAudit({ envelope, route = '', assistantTex
   );
   const contextSpine = getRecoContentSpineFromContext(latestRecoContext || recommendationMeta);
   const metaTargets = pickRecoMetaTargets(recoPayload || { recommendation_meta: recommendationMeta });
+  const payloadTargetBundlePresent = hasCompleteCanonicalRecoTargetBundle(
+    recoPayload || { recommendation_meta: recommendationMeta },
+  );
+  const latestRecoTargetBundlePresent = hasCompleteCanonicalRecoTargetBundle({
+    recommendation_meta: latestRecoContext || {},
+  });
   const recoPrimaryTarget = metaTargets.primaryTarget;
   const recoMainlineStatus = String(
     pickFirstTrimmed(recoPayload && recoPayload.mainline_status, recommendationMeta.mainline_status) || '',
@@ -48784,9 +48893,8 @@ function buildBeautyCanonicalOwnershipAudit({ envelope, route = '', assistantTex
     contextPersistenceExpected &&
     (
       !latestRecoContext
-      || !pickFirstTrimmed(latestRecoContext.primary_target_id)
-      || !Array.isArray(latestRecoContext.ranked_targets)
-      || latestRecoContext.ranked_targets.length === 0
+      || !latestRecoTargetBundlePresent
+      || (Boolean(recoPayload || confidenceNoticeCard) && !payloadTargetBundlePresent)
     )
   );
   const assistantPayloadMismatch = Boolean(
@@ -48837,6 +48945,8 @@ function buildBeautyCanonicalOwnershipAudit({ envelope, route = '', assistantTex
       has_confidence_notice: Boolean(confidenceNoticeCard),
       has_latest_reco_context: Boolean(latestRecoContext),
       has_latest_reco_primary_target: Boolean(pickFirstTrimmed(latestRecoContext && latestRecoContext.primary_target_id)),
+      payload_target_bundle_present: payloadTargetBundlePresent,
+      latest_reco_target_bundle_present: latestRecoTargetBundlePresent,
     },
     audit: {
       story_generation_skipped_reason: pickFirstTrimmed(analysisMeta.story_generation_skipped_reason) || '',
@@ -48849,6 +48959,7 @@ function buildBeautyCanonicalOwnershipAudit({ envelope, route = '', assistantTex
       recommendation_primary_target: recoPrimaryTarget,
       latest_reco_primary_target: contextPrimaryTarget,
       ingredient_plan_primary_target: ingredientPlanTarget,
+      assistant_copy_strategy: hasRecommendations ? 'payload_bound' : shouldUseFrameworkRecoAssistantCopy(recoPayload) ? 'framework_summary' : confidenceNoticeReason ? 'fallback_notice' : 'none',
       photo_focus: photoFocus,
       story_focus: {
         headline: storySignal.headline,
@@ -49090,6 +49201,12 @@ function buildRecoSemanticQualityAudit({ envelope, assistantText } = {}) {
   const ingredientPlanTarget = extractIngredientPlanPrimaryTargetSignal(ingredientPlanCard && ingredientPlanCard.payload);
   const contextSpine = getRecoContentSpineFromContext(latestRecoContext || recommendationMeta);
   const metaTargets = pickRecoMetaTargets(recoPayload || { recommendation_meta: recommendationMeta });
+  const payloadTargetBundlePresent = hasCompleteCanonicalRecoTargetBundle(
+    recoPayload || { recommendation_meta: recommendationMeta },
+  );
+  const latestRecoTargetBundlePresent = hasCompleteCanonicalRecoTargetBundle({
+    recommendation_meta: latestRecoContext || {},
+  });
   const canonicalOwnerSource = normalizeBeautyOwnerToken(
     pickFirstTrimmed(
       recommendationMeta.owner_source,
@@ -49136,7 +49253,13 @@ function buildRecoSemanticQualityAudit({ envelope, assistantText } = {}) {
     || recoDisplayTargets.every((target) =>
       contextSpine.ranked_targets.some((contextTarget) => targetsAreSemanticallyAligned(contextTarget, target)),
     );
-  const targetBundleAlignmentPass = primaryTargetAligned || (Boolean(selectionShiftReason) && displayedTargetsAligned);
+  const targetBundleAlignmentPass =
+    (!recoPayload && !latestRecoContext)
+    || (
+      payloadTargetBundlePresent
+      && latestRecoTargetBundlePresent
+      && (primaryTargetAligned || (Boolean(selectionShiftReason) && displayedTargetsAligned))
+    );
 
   const primaryTargetLabel = pickFirstTrimmed(
     recoPrimaryTarget && recoPrimaryTarget.ingredient_query,
@@ -49209,6 +49332,8 @@ function buildRecoSemanticQualityAudit({ envelope, assistantText } = {}) {
       recommendation_primary_target: recoPrimaryTarget,
       displayed_target_ids: normalizeRecoContextTargetIds(recommendationMeta.displayed_target_ids),
       selected_target_ids: normalizeRecoContextTargetIds(recommendationMeta.selected_target_ids),
+      payload_target_bundle_present: payloadTargetBundlePresent,
+      latest_reco_target_bundle_present: latestRecoTargetBundlePresent,
       selection_shift_reason: selectionShiftReason || '',
       selected_products: selectedProducts,
       llm_vs_deterministic_disagreement: {
@@ -49485,16 +49610,14 @@ function buildRouteAwareAssistantText({ route, payload, language, profile }) {
     });
     const frameworkSummary = isPlainObject(p.framework_summary) ? p.framework_summary : null;
     const frameworkRoles = Array.isArray(p.roles) ? p.roles.filter((item) => isPlainObject(item)) : [];
-    const recoSelectionContract = extractRecoFinalSelectionContract(p);
-    const hasCanonicalRecoSelection = Boolean(
-      recoSelectionContract?.selection_signature &&
-      Array.isArray(recoSelectionContract.selected_product_ids) &&
-      recoSelectionContract.selected_product_ids.length > 0
-    );
-    if (hasCanonicalRecoSelection && payloadBound && !(frameworkSummary && frameworkRoles.length)) {
+    const canUseFrameworkCopy = shouldUseFrameworkRecoAssistantCopy(p);
+    if (payloadBound && !canUseFrameworkCopy) {
       return payloadBound;
     }
-    if (frameworkSummary && frameworkRoles.length) {
+    if (payloadBound && hasCompleteCanonicalRecoTargetBundle(p)) {
+      return payloadBound;
+    }
+    if (canUseFrameworkCopy && frameworkSummary && frameworkRoles.length) {
       const recommendationMeta = isPlainObject(p.recommendation_meta) ? p.recommendation_meta : {};
       const recommendations = Array.isArray(p.recommendations) ? p.recommendations : [];
       const primaryRoleId = pickFirstTrimmed(
@@ -75313,50 +75436,19 @@ function mountAuroraBffRoutes(app, { logger }) {
           parsed.data?.session?.id,
         ),
       );
-
-      const earlyNormalizedActionPayload = (() => {
-        if (parsed.data.action) return normalizeIncomingChatAction(parsed.data.action);
-        if (typeof parsed.data.action_id === 'string' && parsed.data.action_id.trim()) {
-          return {
-            action_id: parsed.data.action_id.trim(),
-            kind: 'action',
-            ...(parsed.data.action_data && typeof parsed.data.action_data === 'object' && !Array.isArray(parsed.data.action_data)
-              ? { data: parsed.data.action_data }
-              : {}),
-          };
-        }
-        if (typeof parsed.data.action_label === 'string' && parsed.data.action_label.trim()) {
-          return parsed.data.action_label.trim();
-        }
-        return null;
-      })();
-      const earlyActionLabelFromPayload =
-        typeof parsed.data.action_label === 'string' && parsed.data.action_label.trim()
-          ? parsed.data.action_label.trim()
-          : earlyNormalizedActionPayload && typeof earlyNormalizedActionPayload === 'string' && earlyNormalizedActionPayload.trim()
-            ? earlyNormalizedActionPayload.trim()
-            : null;
-      const earlyExplicitActionId =
-        (earlyNormalizedActionPayload && typeof earlyNormalizedActionPayload === 'object'
-          ? earlyNormalizedActionPayload.action_id
-          : typeof earlyNormalizedActionPayload === 'string'
-            ? earlyNormalizedActionPayload
-            : null) ||
-        parsed.data.action_id ||
-        null;
-      const earlyMessage = extractPrimaryChatRequestMessage(parsed.data, earlyNormalizedActionPayload);
-      const earlyLatestRecoContextFromSession = extractLatestRecoContextFromSession(parsed.data.session);
-      const earlyProfilePatchFromSession = extractProfilePatchFromSession(parsed.data.session);
-      const earlyProfilePatchFromRequestContext = extractProfilePatchFromRequestContextPayload(parsed.data);
-      const earlyProfilePatchFromAction = extractProfilePatchFromSession({
-        profile_patch: parseProfilePatchFromAction(earlyNormalizedActionPayload),
+      const ingressSignalSnapshot = buildChatIngressSignalSnapshot({
+        data: parsed.data,
+        language: ctx.match_lang || ctx.lang,
       });
-      const earlyProfileForBeautyMainline = extractAnalysisProfileContextOverlay(
-        earlyProfilePatchFromSession,
-        earlyProfilePatchFromRequestContext,
-        earlyProfilePatchFromAction,
-      );
-      const earlyIncludeAlternatives = extractIncludeAlternativesFromAction(earlyNormalizedActionPayload);
+
+      const earlyNormalizedActionPayload = ingressSignalSnapshot.normalizedActionPayload;
+      const earlyActionLabelFromPayload = ingressSignalSnapshot.actionLabel;
+      const earlyExplicitActionId = ingressSignalSnapshot.explicitActionId;
+      const earlyMessage = ingressSignalSnapshot.message;
+      const earlyCanonicalIntent = ingressSignalSnapshot.canonicalIntent;
+      const earlyLatestRecoContextFromSession = ingressSignalSnapshot.latestRecoContextFromSession;
+      const earlyProfileForBeautyMainline = ingressSignalSnapshot.profileOverlay;
+      const earlyIncludeAlternatives = ingressSignalSnapshot.includeAlternatives;
       const earlyDebugHeader = req.get('X-Debug') ?? req.get('X-Aurora-Debug');
       const earlyDebugFromHeader = earlyDebugHeader == null ? undefined : coerceBoolean(earlyDebugHeader);
       const earlyDebugFromBody = typeof parsed.data.debug === 'boolean' ? parsed.data.debug : undefined;
@@ -75464,8 +75556,8 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       // If the client already has a profile snapshot (for example, cached from bootstrap or a local quick-profile flow),
       // use it as an additional best-effort context source so we don't re-ask for already-known fields when DB reads fail.
-      const profilePatchFromSession = extractProfilePatchFromSession(parsed.data.session);
-      const profilePatchFromRequestContext = extractProfilePatchFromRequestContextPayload(parsed.data);
+      const profilePatchFromSession = ingressSignalSnapshot.profilePatchFromSession;
+      const profilePatchFromRequestContext = ingressSignalSnapshot.profilePatchFromRequestContext;
       if (!profilePatchFromSession && !profilePatchFromRequestContext) {
         recordProfileContextMissing({ side: 'frontend' });
       }
@@ -75479,35 +75571,15 @@ function mountAuroraBffRoutes(app, { logger }) {
         chatContext = profile.chatContext;
       }
 
-      const normalizedActionPayload = (() => {
-        if (parsed.data.action) return normalizeIncomingChatAction(parsed.data.action);
-        if (typeof parsed.data.action_id === 'string' && parsed.data.action_id.trim()) {
-          return {
-            action_id: parsed.data.action_id.trim(),
-            kind: 'action',
-            ...(parsed.data.action_data && typeof parsed.data.action_data === 'object' && !Array.isArray(parsed.data.action_data)
-              ? { data: parsed.data.action_data }
-              : {}),
-          };
-        }
-        if (typeof parsed.data.action_label === 'string' && parsed.data.action_label.trim()) {
-          return parsed.data.action_label.trim();
-        }
-        return null;
-      })();
-      const actionLabelFromPayload =
-        typeof parsed.data.action_label === 'string' && parsed.data.action_label.trim()
-          ? parsed.data.action_label.trim()
-          : normalizedActionPayload && typeof normalizedActionPayload === 'string' && normalizedActionPayload.trim()
-            ? normalizedActionPayload.trim()
-            : null;
+      const normalizedActionPayload = ingressSignalSnapshot.normalizedActionPayload;
+      const actionLabelFromPayload = ingressSignalSnapshot.actionLabel;
 
       // Allow chips/actions to patch profile inline (so chat can progress without an extra API call).
-      const profilePatchFromAction = parseProfilePatchFromAction(normalizedActionPayload);
+      const profilePatchFromAction = ingressSignalSnapshot.profilePatchFromAction;
       let appliedProfilePatch = null;
       let textDerivedProfilePatch = null;
       let textDerivedSkinLog = null;
-      const latestRecoContextFromSession = extractLatestRecoContextFromSession(parsed.data.session);
+      const latestRecoContextFromSession = ingressSignalSnapshot.latestRecoContextFromSession;
       if (profilePatchFromAction) {
         const patchParsed = UserProfilePatchSchema.safeParse(profilePatchFromAction);
         if (patchParsed.success) {
@@ -75647,12 +75719,15 @@ function mountAuroraBffRoutes(app, { logger }) {
           : '';
       const upstreamMessages = Array.isArray(parsed.data.messages) ? parsed.data.messages : null;
 
-      let canonicalIntent = inferCanonicalIntent({
-        message,
-        actionId,
-        actionLabel,
-        language: ctx.match_lang || ctx.lang,
-      });
+      let canonicalIntent =
+        actionId && actionId !== ingressSignalSnapshot.explicitActionId
+          ? inferCanonicalIntent({
+            message,
+            actionId,
+            actionLabel,
+            language: ctx.match_lang || ctx.lang,
+          })
+          : ingressSignalSnapshot.canonicalIntent;
       if (
         AURORA_ROUTER_DST_PATCH_V1_ENABLED &&
         hasRoutineSosSignal(message) &&
@@ -75680,7 +75755,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             : {},
       };
 
-      const textDerivedPatch = extractProfilePatchFromFreeText({ message, canonicalIntent });
+      const textDerivedPatch = ingressSignalSnapshot.profilePatchFromFreeText;
       if (textDerivedPatch) {
         const profileBeforePatch = profile && typeof profile === 'object' ? profile : null;
         const normalizedPatch = {
