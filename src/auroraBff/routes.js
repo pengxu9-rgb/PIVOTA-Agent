@@ -367,6 +367,7 @@ const {
   classifySkincareCandidateDomain,
   isSkincareCandidate,
   normalizeCandidateStep,
+  canonicalizeGenericConcernQuery,
 } = require('./recommendationSharedStack');
 const { mountDupeRoutes } = require('./routes/dupeRoutes');
 const { dupeFlags } = require('./dupeFlags');
@@ -1735,13 +1736,15 @@ async function buildChatIntentContract(body) {
     };
   }
 
-  const message = pickFirstTrimmed(
-    payload.message,
-    payload.text,
-    actionData.reply_text,
-    actionData.replyText,
-    extractLastUserMessageFromChatRequestMessages(payload.messages),
-  ) || '';
+  const message = canonicalizeGenericConcernQuery(
+    pickFirstTrimmed(
+      payload.message,
+      payload.text,
+      actionData.reply_text,
+      actionData.replyText,
+      extractLastUserMessageFromChatRequestMessages(payload.messages),
+    ) || '',
+  );
   const hasMessage = Boolean(message);
   const typedRecoOwnershipKeepsV1Mainline =
     hasMessage ? shouldKeepTypedRecoRequestOnV1MainlinePolicy({ ...payload, message }) : false;
@@ -2045,12 +2048,12 @@ function extractPrimaryChatRequestMessage(payload, normalizedActionPayload = nul
       : normalizedActionPayload && typeof normalizedActionPayload === 'string' && normalizedActionPayload.trim()
         ? normalizedActionPayload.trim()
         : null;
-  return (
+  return canonicalizeGenericConcernQuery(
     String(body.message || body.query || '').trim() ||
     actionReplyText ||
     actionLabelFromPayload ||
     pickFirstTrimmed(extractLastUserMessageFromChatRequestMessages(body.messages)) ||
-    ''
+    '',
   );
 }
 

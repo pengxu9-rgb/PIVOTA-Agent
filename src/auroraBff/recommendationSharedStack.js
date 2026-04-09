@@ -285,6 +285,22 @@ function looksLikeGenericSingleProductAsk(text) {
   );
 }
 
+function canonicalizeGenericConcernQuery(text) {
+  const normalized = normalizeQueryToken(text);
+  if (!normalized) return '';
+  if (!looksLikeGenericSingleProductAsk(normalized)) return normalized;
+  return normalizeQueryToken(
+    normalized
+      .replace(/\bwhat product should i use\b/gi, 'what products should i use')
+      .replace(/\bwhich product should i use\b/gi, 'what products should i use')
+      .replace(/\bwhat should i use\b/gi, 'what products should i use')
+      .replace(/\bwhat can i use\b/gi, 'what products can i use')
+      .replace(/\bwhat do you recommend\b/gi, 'what products do you recommend')
+      .replace(/\bwhat should i get\b/gi, 'what products should i get')
+      .replace(/\bwhat should i buy\b/gi, 'what products should i buy'),
+  );
+}
+
 function collectConcernFrameworkSignals({ text = '', focus = '', profileSummary = null } = {}) {
   const normalized = `${normalizeQueryToken(text)} ${normalizeQueryToken(focus)}`.trim().toLowerCase();
   const goals = Array.isArray(profileSummary?.goals) ? profileSummary.goals.map((item) => normalizeQueryToken(item).toLowerCase()) : [];
@@ -1422,6 +1438,7 @@ module.exports = {
   classifySkincareCandidateDomain,
   isSkincareCandidate,
   classifySkincareCandidate,
+  canonicalizeGenericConcernQuery,
   resolveRecommendationTargetContext,
   buildConcernSemanticPlanFallback,
   buildConcernTargetContextFromSemanticPlan,

@@ -9,6 +9,7 @@ const {
   RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1,
   GROUP_SEMANTICS_VERSION,
   resolveRecommendationTargetContext,
+  canonicalizeGenericConcernQuery,
   buildSameFamilyQueryLevels,
   finalizeRecommendationCandidatePools,
   shouldStopStepAwareBroadening,
@@ -84,6 +85,13 @@ test('generic single-product chat asks resolve into a framework-first role plan 
   assert.ok(primaryRole.query_terms.includes('shine control serum'));
   assert.ok(primaryRole.fit_keywords.includes('oil control'));
   assert.ok(primaryRole.fit_keywords.includes('mattifying'));
+});
+
+test('generic single-product concern helper canonicalizes singular broad asks to plural wording', () => {
+  assert.equal(
+    canonicalizeGenericConcernQuery('im oily skin, what product should i use?'),
+    'im oily skin, what products should i use?',
+  );
 });
 
 test('same-family ladder never broadens moisturizer into cleanser or sunscreen family', () => {

@@ -1420,7 +1420,7 @@ test('/v1/chat early-locks beauty reco action payload before identity resolution
         .expect(200);
 
       assert.equal(response.status, 200);
-      assert.equal(captured?.message, 'im oily skin, what product should i use?');
+      assert.equal(captured?.message, 'im oily skin, what products should i use?');
       assert.equal(captured?.actionId, 'chip.start.reco_products');
       assert.equal(captured?.typedRecoOwnershipKeepsV1Mainline, true);
       assert.equal(captured?.profile?.skinType, 'oily');
