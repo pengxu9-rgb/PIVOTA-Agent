@@ -22,6 +22,8 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       FIND_PRODUCTS_MULTI_VECTOR_ENABLED: process.env.FIND_PRODUCTS_MULTI_VECTOR_ENABLED,
       FIND_PRODUCTS_MULTI_ROUTE_DEBUG: process.env.FIND_PRODUCTS_MULTI_ROUTE_DEBUG,
       PROXY_SEARCH_RESOLVER_FIRST_ENABLED: process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED,
+      PROXY_SEARCH_CACHE_MISS_RESOLVER_FALLBACK_ENABLED:
+        process.env.PROXY_SEARCH_CACHE_MISS_RESOLVER_FALLBACK_ENABLED,
       PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY:
         process.env.PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY,
       SEARCH_CACHE_VALIDATE: process.env.SEARCH_CACHE_VALIDATE,
@@ -48,6 +50,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     process.env.FIND_PRODUCTS_MULTI_VECTOR_ENABLED = 'false';
     process.env.FIND_PRODUCTS_MULTI_ROUTE_DEBUG = '1';
     process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
+    delete process.env.PROXY_SEARCH_CACHE_MISS_RESOLVER_FALLBACK_ENABLED;
     delete process.env.PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY;
     delete process.env.SEARCH_CACHE_VALIDATE;
     delete process.env.SEARCH_EXTERNAL_HARD_RULE_PRUNE;
@@ -89,6 +92,12 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       delete process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED;
     } else {
       process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = prevEnv.PROXY_SEARCH_RESOLVER_FIRST_ENABLED;
+    }
+    if (prevEnv.PROXY_SEARCH_CACHE_MISS_RESOLVER_FALLBACK_ENABLED === undefined) {
+      delete process.env.PROXY_SEARCH_CACHE_MISS_RESOLVER_FALLBACK_ENABLED;
+    } else {
+      process.env.PROXY_SEARCH_CACHE_MISS_RESOLVER_FALLBACK_ENABLED =
+        prevEnv.PROXY_SEARCH_CACHE_MISS_RESOLVER_FALLBACK_ENABLED;
     }
     if (prevEnv.PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY === undefined) {
       delete process.env.PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY;
@@ -1601,6 +1610,112 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         resp.body.metadata?.route_debug?.cross_merchant_cache?.supplement?.reason || '',
       ),
     ).toBe('no_external_candidates');
+  });
+
+  test('shopping_agent cache miss lookup skips resolver fallback and stays on authoritative upstream', async () => {
+    process.env.PROXY_SEARCH_CACHE_MISS_RESOLVER_FALLBACK_ENABLED = 'true';
+
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return { rows: [] };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const resolverFallback = nock('http://pivota.test')
+      .post('/agent/v1/products/resolve')
+      .query(true)
+      .reply(200, {
+        resolved: true,
+        product_ref: {
+          product_id: 'resolver_prod_1',
+          merchant_id: 'resolver_merch_1',
+        },
+      });
+
+    const legacySearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(
+        (q) =>
+          String(q.search_all_merchants || '') === 'true' &&
+          String(q.query || '') === 'ipsa',
+      )
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    let capturedBody = null;
+    const upstreamSearch = nock('http://pivota.test')
+      .post('/agent/v2/products/search')
+      .query(true)
+      .reply(200, function reply(_uri, body) {
+        capturedBody = body;
+        return {
+          status: 'success',
+          success: true,
+          products: [
+            {
+              product_id: 'prod_ipsa_upstream_1',
+              merchant_id: 'merch_1',
+              title: 'IPSA Time Reset Aqua',
+              description: 'Fresh authoritative upstream result',
+            },
+          ],
+          total: 1,
+          metadata: {
+            query_source: 'agent_products_search',
+          },
+        };
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'ipsa',
+            page: 1,
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(upstreamSearch.isDone()).toBe(true);
+    expect(resolverFallback.isDone()).toBe(false);
+    expect(legacySearch.isDone()).toBe(false);
+    expect(capturedBody).toEqual(
+      expect.objectContaining({
+        query: 'ipsa',
+        in_stock_only: true,
+        limit: 10,
+        offset: 0,
+        request_context: expect.objectContaining({
+          channel: 'shopping_agent',
+        }),
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        invoke_search_rail: 'authoritative_shopping',
+        legacy_contract: false,
+        query_source: 'agent_products_search',
+      }),
+    );
+    expect(resp.body.metadata?.route_health?.fallback_triggered).toBe(false);
   });
 
   test('uses early ambiguity decision on cache miss for scenario query without upstream call', async () => {

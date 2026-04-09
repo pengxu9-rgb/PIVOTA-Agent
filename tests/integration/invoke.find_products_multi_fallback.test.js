@@ -135,6 +135,16 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
     const productId = '9886500127048';
     const merchantId = 'merch_efbc46b4619cfbdf';
 
+    const modernScope = nock('http://pivota.test')
+      .post('/agent/v2/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
     const primaryScope = nock('http://pivota.test')
       .get('/agent/v1/products/search')
       .query(true)
@@ -185,6 +195,7 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
         query_source: 'agent_products_search',
       }),
     );
+    expect(modernScope.isDone()).toBe(false);
     expect(primaryScope.isDone()).toBe(true);
   });
 
@@ -207,7 +218,7 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
       resolveProductRef,
     }));
 
-    nock('http://pivota.test')
+    const legacyScope = nock('http://pivota.test')
       .persist()
       .get('/agent/v1/products/search')
       .query(true)
@@ -216,6 +227,18 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
         success: true,
         products: [],
         total: 0,
+      });
+    const primaryScope = nock('http://pivota.test')
+      .post('/agent/v2/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+        metadata: {
+          query_source: 'agent_products_search',
+        },
       });
 
     const app = require('../../src/server');
@@ -239,6 +262,9 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
 
     expect(resp.status).toBe(200);
     expect(resolveProductRef).not.toHaveBeenCalled();
+    expect(primaryScope.isDone()).toBe(true);
+    legacyScope.persist(false);
+    expect(legacyScope.isDone()).toBe(false);
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
         invoke_search_rail: 'authoritative_shopping',

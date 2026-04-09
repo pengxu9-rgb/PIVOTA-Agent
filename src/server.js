@@ -37,12 +37,24 @@ const {
   buildCreatorCategoryTree,
   getCreatorCategoryProducts,
 } = require('./services/categories');
+const {
+  DiscoveryCatalogUnavailableError,
+  DiscoveryValidationError,
+  getDiscoveryHealthSnapshot,
+  getDiscoveryFeed,
+} = require('./services/discoveryFeed');
 const { resolveNonImageGeminiModel } = require('./lib/geminiModelFloor');
 const { recommendHandler } = require('./recommend/index');
 const {
   buildFindProductsMultiContext,
   applyFindProductsMultiPolicy,
 } = require('./findProductsMulti/policy');
+const {
+  buildFindProductsSearchRequestContract,
+} = require('./findProductsSearchContracts');
+const {
+  createFindProductsSearchRouteEntryRuntime,
+} = require('./findProductsSearchRouteEntry');
 const {
   buildBeautyQueryProfile,
   classifyBeautyBucketFromText: classifySharedBeautyBucketFromText,
@@ -58,10 +70,18 @@ const {
 const { buildClarification } = require('./findProductsMulti/clarification');
 const { buildExternalSeedProduct } = require('./services/externalSeedProducts');
 const {
+  buildIngredientIntentDirectBaseMetadata,
+  buildIngredientIntentDirectEmptyResponse,
+  buildIngredientIntentDirectHitResponse,
+} = require('./findProductsIngredientIntentDirectResponse');
+const {
   buildSearchDebugBundle,
   shouldExposeDebugBundle,
   shouldLogDebugBundle,
 } = require('./observability/debugBundle');
+const {
+  normalizeRecommendationDecisionMode,
+} = require('./shared/recommendationDecisionCapability');
 const { maybeRerankFindProductsMultiResponse } = require('./findProductsMulti/rerankLlm');
 const { embedText } = require('./services/embeddings');
 const {
@@ -1190,6 +1210,12 @@ async function prefetchStrictIngredientExternalSeedCandidates({
   );
   paramIndex = seedDataLike.nextIndex;
   params.push(Math.max(STRICT_FIND_PRODUCTS_MULTI_EXTERNAL_PREFETCH_LIMIT * 3, 24));
+  const structuredIngredientEvidenceClauses = [
+    "COALESCE(jsonb_array_length(CASE WHEN jsonb_typeof(COALESCE(seed_data, '{}'::jsonb)->'reviewed_ingredient_ids') = 'array' THEN COALESCE(seed_data, '{}'::jsonb)->'reviewed_ingredient_ids' ELSE '[]'::jsonb END), 0) > 0",
+    "COALESCE(jsonb_array_length(CASE WHEN jsonb_typeof(COALESCE(seed_data, '{}'::jsonb)->'ingredient_ids') = 'array' THEN COALESCE(seed_data, '{}'::jsonb)->'ingredient_ids' ELSE '[]'::jsonb END), 0) > 0",
+    "COALESCE(jsonb_array_length(CASE WHEN jsonb_typeof(COALESCE(seed_data, '{}'::jsonb)->'snapshot'->'reviewed_ingredient_ids') = 'array' THEN COALESCE(seed_data, '{}'::jsonb)->'snapshot'->'reviewed_ingredient_ids' ELSE '[]'::jsonb END), 0) > 0",
+    "COALESCE(jsonb_array_length(CASE WHEN jsonb_typeof(COALESCE(seed_data, '{}'::jsonb)->'snapshot'->'ingredient_ids') = 'array' THEN COALESCE(seed_data, '{}'::jsonb)->'snapshot'->'ingredient_ids' ELSE '[]'::jsonb END), 0) > 0",
+  ];
 
   const sql = `
     SELECT
@@ -1214,6 +1240,9 @@ async function prefetchStrictIngredientExternalSeedCandidates({
     WHERE status = 'active'
       AND attached_product_key IS NULL
       AND market = $1
+      AND (
+        ${structuredIngredientEvidenceClauses.join(' OR ')}
+      )
       AND (
         ${[...titleLike.clauses, ...urlLike.clauses, ...seedDataLike.clauses].join(' OR ')}
       )
@@ -4719,6 +4748,85 @@ function withStrictEmptyFallback({
   });
 }
 
+function normalizeAuthoritativeSearchNoFallbackResponse(
+  body,
+  {
+    querySource = 'agent_products_search',
+    primaryPath = 'upstream_stage',
+    reason = null,
+    decisionLockReason = 'authoritative_no_fallback',
+  } = {},
+) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return body;
+  const metadata =
+    body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
+      ? body.metadata
+      : {};
+  const routeHealth =
+    metadata.route_health && typeof metadata.route_health === 'object' && !Array.isArray(metadata.route_health)
+      ? metadata.route_health
+      : {};
+  const searchTrace =
+    metadata.search_trace && typeof metadata.search_trace === 'object' && !Array.isArray(metadata.search_trace)
+      ? metadata.search_trace
+      : {};
+  const searchDecision =
+    metadata.search_decision &&
+    typeof metadata.search_decision === 'object' &&
+    !Array.isArray(metadata.search_decision)
+      ? metadata.search_decision
+      : {};
+  const proxySearchFallback =
+    metadata.proxy_search_fallback &&
+    typeof metadata.proxy_search_fallback === 'object' &&
+    !Array.isArray(metadata.proxy_search_fallback)
+      ? metadata.proxy_search_fallback
+      : {};
+  const contractBridge =
+    metadata.contract_bridge &&
+    typeof metadata.contract_bridge === 'object' &&
+    !Array.isArray(metadata.contract_bridge)
+      ? metadata.contract_bridge
+      : {};
+
+  return {
+    ...body,
+    metadata: {
+      ...metadata,
+      ...buildInvokeSearchRailMetadata('authoritative_shopping'),
+      query_source: querySource,
+      contract_bridge: {
+        ...contractBridge,
+        legacy_fallback: false,
+      },
+      proxy_search_fallback: {
+        ...proxySearchFallback,
+        applied: false,
+        reason: null,
+      },
+      route_health: {
+        ...routeHealth,
+        fallback_triggered: false,
+        fallback_reason: null,
+        primary_path_used: primaryPath,
+      },
+      search_trace: {
+        ...searchTrace,
+        fallback_reason: null,
+        primary_path_used: primaryPath,
+      },
+      search_decision: {
+        ...searchDecision,
+        fallback_reason: null,
+        primary_path_used: primaryPath,
+        decision_authority: querySource,
+        decision_locked: true,
+        decision_lock_reason: decisionLockReason,
+      },
+    },
+  };
+}
+
 function isUpstreamQuotaExhausted({ upstreamStatus = null, upstreamCode = null, upstreamMessage = null }) {
   const status = Number(upstreamStatus || 0);
   const code = String(upstreamCode || '').trim().toUpperCase();
@@ -5138,6 +5246,10 @@ function isShoppingSource(source) {
   );
 }
 
+function isPublicSearchSource(source) {
+  return normalizeAgentSource(source) === 'search';
+}
+
 function isCreatorUiSource(source) {
   return normalizeAgentSource(source) === 'creator-agent-ui';
 }
@@ -5154,6 +5266,77 @@ function isCatalogGuardSource(source) {
 
 function isResolverFirstCatalogSource(source) {
   return isShoppingSource(source) || normalizeAgentSource(source) === 'creator-agent';
+}
+
+function hasExplicitLegacyInvokeContracts(metadata = null) {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return false;
+  return metadata.legacy_contracts === true || metadata.legacy_contract === true;
+}
+
+function isPublicBeautyMainlineSearchRoute(metadata = null) {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return false;
+  if (metadata.public_search_route !== true) return false;
+  const searchRequestContract =
+    metadata.search_request_contract &&
+    typeof metadata.search_request_contract === 'object' &&
+    !Array.isArray(metadata.search_request_contract)
+      ? metadata.search_request_contract
+      : null;
+  if (!searchRequestContract) return false;
+  return (
+    String(searchRequestContract.surface || '').trim() === 'direct' &&
+    String(searchRequestContract.operation || '').trim() === 'find_products_multi' &&
+    String(searchRequestContract.primary_lane || '').trim() === 'beauty_discovery_mainline'
+  );
+}
+
+function isPublicSearchRouteMetadata(metadata = null) {
+  return Boolean(
+    metadata &&
+      typeof metadata === 'object' &&
+      !Array.isArray(metadata) &&
+      metadata.public_search_route === true,
+  );
+}
+
+function classifyInvokeSearchRail(source, { explicitLegacy = false, metadata = null } = {}) {
+  const normalized = normalizeAgentSource(source);
+  if (
+    explicitLegacy ||
+    normalized === 'creator-agent' ||
+    normalized === 'creator-agent-ui'
+  ) {
+    return 'legacy_internal';
+  }
+  if (isShoppingSource(source)) {
+    return 'authoritative_shopping';
+  }
+  if (
+    isPublicSearchSource(source) ||
+    isPublicSearchRouteMetadata(metadata) ||
+    isPublicBeautyMainlineSearchRoute(metadata)
+  ) {
+    return 'public_observability';
+  }
+  if (isAuroraSource(source)) {
+    return 'legacy_internal';
+  }
+  return 'legacy_internal';
+}
+
+function resolveInvokeSearchRailFromMetadata(metadata = null) {
+  return classifyInvokeSearchRail(metadata?.source, {
+    explicitLegacy: hasExplicitLegacyInvokeContracts(metadata),
+    metadata,
+  });
+}
+
+function buildInvokeSearchRailMetadata(searchRail = null) {
+  const normalizedSearchRail = String(searchRail || '').trim().toLowerCase() || 'legacy_internal';
+  return {
+    invoke_search_rail: normalizedSearchRail,
+    legacy_contract: normalizedSearchRail === 'legacy_internal',
+  };
 }
 
 function isAuroraSource(source) {
@@ -5175,6 +5358,10 @@ function getAuroraFallbackOverrides(source, operation) {
     forceSecondaryFallback: isAurora && PROXY_SEARCH_AURORA_FORCE_SECONDARY_FALLBACK,
     forceInvokeFallback: isAurora && PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK,
   };
+}
+
+function applyFindProductsMultiSourceContract(rawPayload, metadata = {}, operation = '') {
+  return rawPayload;
 }
 
 function applyShoppingCatalogQueryGuards(queryParams, source) {
@@ -6531,6 +6718,48 @@ function buildFindProductsMultiPayloadFromQuery(rawQuery, options = {}) {
   return payload;
 }
 
+function resolvePublicSearchRouteSessionId({ req, query = null, metadata = null } = {}) {
+  const queryParams =
+    query && typeof query === 'object' && !Array.isArray(query) ? query : {};
+  const requestMetadata =
+    metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {};
+  const headerSessionId =
+    req && typeof req.header === 'function'
+      ? req.header('x-session-id') || req.header('X-Session-Id')
+      : null;
+  return (
+    String(
+      firstQueryParamValue(queryParams.session_id || queryParams.sessionId) ||
+        requestMetadata.session_id ||
+        requestMetadata.sessionId ||
+        headerSessionId ||
+        '',
+    ).trim() || null
+  );
+}
+
+function resolveLegacyBeautyCacheOwnerBypassForPublicSearchRoute() {
+  return {
+    bypass: false,
+    semanticContract: null,
+  };
+}
+
+const agentProductsSearchRouteEntryRuntime = createFindProductsSearchRouteEntryRuntime({
+  resolveGuidanceSearchSessionId: resolvePublicSearchRouteSessionId,
+  firstQueryParamValue,
+  buildFindProductsMultiPayloadFromQuery,
+  buildFindProductsSearchRequestContract,
+  resolveLegacyBeautyCacheOwnerBypass: resolveLegacyBeautyCacheOwnerBypassForPublicSearchRoute,
+  normalizeAgentSource,
+  runGuidanceServerOwnedLadderSearch: async () => null,
+  persistGuidanceSearchSeenProducts: async () => false,
+  normalizeSearchUiSurface,
+  normalizeRecommendationDecisionMode,
+  searchExternalSeedOnlyProductsDirect: async () => null,
+  searchIngredientIntentProductsDirect: async () => null,
+});
+
 async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutToken, neededCount, source }) {
   const query = queryParams && typeof queryParams === 'object' ? queryParams : {};
   const queryText = extractSearchQueryText(query);
@@ -7521,14 +7750,38 @@ function shouldAllowSecondaryFallback(operation, { forceSecondaryFallback = fals
   return true;
 }
 
-function shouldAllowInvokeFallback(operation, { forceInvokeFallback = false } = {}) {
+function isFallbackSuppressedSearchRail(searchRail = null) {
+  const normalizedSearchRail = String(searchRail || '').trim().toLowerCase();
+  return (
+    normalizedSearchRail === 'authoritative_shopping' ||
+    normalizedSearchRail === 'public_observability'
+  );
+}
+
+function shouldAllowInvokeFallback(operation, { forceInvokeFallback = false, metadata = null } = {}) {
   if (forceInvokeFallback) return true;
   if (!(operation === 'find_products' || operation === 'find_products_multi')) return false;
+  const searchRail = String(
+    metadata?.invoke_search_rail || resolveInvokeSearchRailFromMetadata(metadata),
+  )
+    .trim()
+    .toLowerCase();
+  if (isFallbackSuppressedSearchRail(searchRail)) {
+    return false;
+  }
   return PROXY_SEARCH_INVOKE_FALLBACK_ENABLED;
 }
 
-function shouldAllowResolverFallback(operation) {
+function shouldAllowResolverFallback(operation, { metadata = null } = {}) {
   if (!(operation === 'find_products' || operation === 'find_products_multi')) return false;
+  const searchRail = String(
+    metadata?.invoke_search_rail || resolveInvokeSearchRailFromMetadata(metadata),
+  )
+    .trim()
+    .toLowerCase();
+  if (isFallbackSuppressedSearchRail(searchRail)) {
+    return false;
+  }
   return PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED;
 }
 
@@ -7603,6 +7856,14 @@ function shouldUseResolverFirstSearch({
     Number.isFinite(Number(remainingBudgetMs)) &&
     Number(remainingBudgetMs) < FPM_LATENCY_GUARD_RESOLVER_MIN_REMAINING_MS
   ) {
+    return false;
+  }
+  const searchRail = String(
+    metadata?.invoke_search_rail || resolveInvokeSearchRailFromMetadata(metadata),
+  )
+    .trim()
+    .toLowerCase();
+  if (isFallbackSuppressedSearchRail(searchRail)) {
     return false;
   }
 
@@ -11444,6 +11705,98 @@ function resolveAuroraChatContractConfig() {
   };
 }
 
+function buildDiscoveryHealthFallbackSnapshot(err = null) {
+  return {
+    products_search_ready: false,
+    db_backed_providers_ready: false,
+    single_provider_mode: false,
+    discovery_ready: false,
+    products_search: {
+      base_url_configured: false,
+      api_key_configured: false,
+      base_url_source: null,
+      api_key_source: null,
+      legacy_base_url_fallback: false,
+      legacy_api_key_fallback: false,
+      timeout_ms: null,
+      recall_budget_ms: null,
+      degraded: true,
+    },
+    db_backed_providers: {
+      database_configured: Boolean(process.env.DATABASE_URL),
+      code: err ? 'health_probe_failed' : null,
+      internal_catalog: null,
+      external_seeds: null,
+      beauty_interest_mainline: null,
+    },
+    market: {
+      value: 'US',
+      source: 'default',
+      is_default: true,
+    },
+    ...(err ? { error: err?.message || String(err) } : {}),
+  };
+}
+
+function buildDiscoveryUnavailableInvokeResponse(payload = {}, err = null) {
+  const context =
+    payload?.context && typeof payload.context === 'object' && !Array.isArray(payload.context)
+      ? payload.context
+      : {};
+  const details =
+    err?.details && typeof err.details === 'object' && !Array.isArray(err.details)
+      ? err.details
+      : {};
+  const page = Math.max(1, Number(payload?.page || 1) || 1);
+  const providerBreakdown = Array.isArray(details.providerBreakdown) ? details.providerBreakdown : [];
+  const recallSummary = Array.isArray(details.recallSummary) ? details.recallSummary : [];
+  const fallbackReason =
+    typeof details.fallbackReason === 'string' && details.fallbackReason.trim()
+      ? details.fallbackReason.trim()
+      : null;
+  const primaryPathUsed =
+    typeof details.primaryPathUsed === 'string' && details.primaryPathUsed.trim()
+      ? details.primaryPathUsed.trim()
+      : 'multi_provider';
+
+  return {
+    status: 'success',
+    success: true,
+    products: [],
+    total: 0,
+    page,
+    page_size: 0,
+    metadata: {
+      surface: String(payload?.surface || '').trim() || 'unknown',
+      locale: String(context?.locale || payload?.locale || 'en-US').trim() || 'en-US',
+      catalog_status: 'unavailable',
+      error_code: err?.code || 'DISCOVERY_CATALOG_UNAVAILABLE',
+      candidate_source:
+        typeof details.candidateSource === 'string' && details.candidateSource.trim()
+          ? details.candidateSource.trim()
+          : 'multi_provider',
+      primary_path_used: primaryPathUsed,
+      fallback_triggered: details.fallbackTriggered === true,
+      ...(fallbackReason ? { fallback_reason: fallbackReason } : {}),
+      provider_breakdown: providerBreakdown,
+      recall_summary: recallSummary,
+      candidate_counts: {
+        raw: 0,
+        normalized: 0,
+        scored: 0,
+        eligiblePool: 0,
+        eligible_pool: 0,
+        returned: 0,
+      },
+      route_health: {
+        primary_path_used: primaryPathUsed,
+        fallback_triggered: details.fallbackTriggered === true,
+        fallback_reason: fallbackReason,
+      },
+    },
+  };
+}
+
 const healthRouteHandler = (req, res) => {
   const dbConfigured = Boolean(process.env.DATABASE_URL);
   const taxonomyEnabled = process.env.TAXONOMY_ENABLED !== 'false';
@@ -11464,9 +11817,13 @@ const healthRouteHandler = (req, res) => {
     includeCacheStats && dbConfigured && merchantIds.length
       ? probeCreatorCacheDbStats(merchantIds, 'unknown', { force: true })
       : Promise.resolve(null);
+  const discoveryHealthPromise = getDiscoveryHealthSnapshot().catch((err) => {
+    logger.warn({ err: err?.message || String(err) }, 'healthz discovery probe failed');
+    return buildDiscoveryHealthFallbackSnapshot(err);
+  });
 
-  cacheStatsPromise
-    .then((cacheStats) => {
+  Promise.all([cacheStatsPromise, discoveryHealthPromise])
+    .then(([cacheStats, discoveryHealth]) => {
       const sellable = cacheStats && typeof cacheStats.products_cache_sellable_total === 'number'
         ? cacheStats.products_cache_sellable_total
         : null;
@@ -11513,12 +11870,13 @@ const healthRouteHandler = (req, res) => {
       taxonomy_version: process.env.TAXONOMY_VERSION || null,
     },
     aurora_chat_contract: auroraChatContract,
+    discovery: discoveryHealth,
     resolve_product_candidates_cache: snapshotResolveProductCandidatesCacheStats(),
     resolve_product_group_cache: snapshotResolveProductGroupCacheStats(),
     product_detail_cache: snapshotProductDetailCacheStats(),
     pdp_v2_core_hot_cache: snapshotPdpV2CoreHotCacheStats(),
     pdp_recommendations_cache: getPdpRecsCacheStats(),
-    products_available: true,
+    products_available: discoveryHealth?.discovery_ready === true,
     catalog_cache: includeCacheStats
       ? {
           creator_id: creatorIdForStats,
@@ -11572,46 +11930,49 @@ const healthRouteHandler = (req, res) => {
     })
     .catch((err) => {
       logger.warn({ err: err.message }, 'healthz cache stats probe failed');
-      return res.status(auroraStartupCritical ? 503 : 200).json({
-        ok: !auroraStartupCritical,
-        api_mode: API_MODE,
-        aurora_routes_ready: auroraRoutesReady,
-        aurora_routes_fail_closed: AURORA_ROUTES_FAIL_CLOSED,
-        aurora_routes_error: auroraRoutesLoadError,
-        required_routes_ok:
-          requiredRoutesHealth && Object.prototype.hasOwnProperty.call(requiredRoutesHealth, 'ok')
-            ? Boolean(requiredRoutesHealth.ok)
-            : null,
-        missing_routes:
-          requiredRoutesHealth && Array.isArray(requiredRoutesHealth.missing_routes)
-            ? requiredRoutesHealth.missing_routes
-            : [],
-        version: {
-          service: SERVICE_NAME,
-          commit: SERVICE_GIT_SHA_SHORT,
-          build_id: SERVICE_BUILD_ID,
-          branch: SERVICE_GIT_BRANCH || null,
-          deployment_id: SERVICE_DEPLOYMENT_ID || null,
-          started_at: SERVICE_STARTED_AT,
-        },
-        backend: {
-          api_base: PIVOTA_API_BASE,
-          aurora_proxy_search_api_base: PROXY_SEARCH_AURORA_API_BASE || null,
-          api_key_configured: !!PIVOTA_API_KEY,
-          db_configured: dbConfigured,
-        },
-        aurora_chat_contract: auroraChatContract,
-        resolve_product_candidates_cache: snapshotResolveProductCandidatesCacheStats(),
-        resolve_product_group_cache: snapshotResolveProductGroupCacheStats(),
-        product_detail_cache: snapshotProductDetailCacheStats(),
-        pdp_v2_core_hot_cache: snapshotPdpV2CoreHotCacheStats(),
-        pdp_recommendations_cache: getPdpRecsCacheStats(),
-        products_available: true,
-        startup_guards: {
-          aurora_routes_critical: auroraStartupCritical,
-        },
-        warning: 'healthz_cache_stats_failed',
-      });
+      return discoveryHealthPromise.then((discoveryHealth) =>
+        res.status(auroraStartupCritical ? 503 : 200).json({
+          ok: !auroraStartupCritical,
+          api_mode: API_MODE,
+          aurora_routes_ready: auroraRoutesReady,
+          aurora_routes_fail_closed: AURORA_ROUTES_FAIL_CLOSED,
+          aurora_routes_error: auroraRoutesLoadError,
+          required_routes_ok:
+            requiredRoutesHealth && Object.prototype.hasOwnProperty.call(requiredRoutesHealth, 'ok')
+              ? Boolean(requiredRoutesHealth.ok)
+              : null,
+          missing_routes:
+            requiredRoutesHealth && Array.isArray(requiredRoutesHealth.missing_routes)
+              ? requiredRoutesHealth.missing_routes
+              : [],
+          version: {
+            service: SERVICE_NAME,
+            commit: SERVICE_GIT_SHA_SHORT,
+            build_id: SERVICE_BUILD_ID,
+            branch: SERVICE_GIT_BRANCH || null,
+            deployment_id: SERVICE_DEPLOYMENT_ID || null,
+            started_at: SERVICE_STARTED_AT,
+          },
+          backend: {
+            api_base: PIVOTA_API_BASE,
+            aurora_proxy_search_api_base: PROXY_SEARCH_AURORA_API_BASE || null,
+            api_key_configured: !!PIVOTA_API_KEY,
+            db_configured: dbConfigured,
+          },
+          aurora_chat_contract: auroraChatContract,
+          discovery: discoveryHealth,
+          resolve_product_candidates_cache: snapshotResolveProductCandidatesCacheStats(),
+          resolve_product_group_cache: snapshotResolveProductGroupCacheStats(),
+          product_detail_cache: snapshotProductDetailCacheStats(),
+          pdp_v2_core_hot_cache: snapshotPdpV2CoreHotCacheStats(),
+          pdp_recommendations_cache: getPdpRecsCacheStats(),
+          products_available: discoveryHealth?.discovery_ready === true,
+          startup_guards: {
+            aurora_routes_critical: auroraStartupCritical,
+          },
+          warning: 'healthz_cache_stats_failed',
+        }),
+      );
     });
 };
 
@@ -12141,1243 +12502,40 @@ app.post('/photos/confirm', proxyPhotosToBackend);
 app.get('/photos/qc', proxyPhotosToBackend);
 app.delete('/photos', proxyPhotosToBackend);
 
-// ---------------- Agent search proxy (PDP resolution) ----------------
-
-// Aurora Chatbox uses this to resolve `merchant_id` for a given `product_id`/name so it can open PDP.
-// Keep it lightweight: pass-through query params; server-side auth only.
-async function proxyAgentSearchToBackend(req, res) {
-  const checkoutToken =
-    String(req.header('X-Checkout-Token') || req.header('x-checkout-token') || '').trim() || null;
-
-  const source = String(firstQueryParamValue(req.query?.source) || '').trim().toLowerCase();
-  const searchApiBase = getProxySearchApiBase(source);
-  const url = `${searchApiBase}${req.path}`;
-  const { queryText, queryParams } = normalizeSearchQueryParams(req.query);
-  const auroraFallbackOverrides = getAuroraFallbackOverrides(source, 'find_products_multi');
-  const resolverTimeoutMs = auroraFallbackOverrides.active
-    ? PROXY_SEARCH_AURORA_RESOLVER_TIMEOUT_MS
-    : PROXY_SEARCH_RESOLVER_TIMEOUT_MS;
-  const guardedQueryParams = applyShoppingCatalogQueryGuards(queryParams, source);
-  const resolverFirstMetadata = source ? { source } : null;
-  const traceId = randomUUID();
-  const startedAtMs = Date.now();
-  let requestDeadlineMs = startedAtMs + PROXY_SEARCH_AURORA_TOTAL_BUDGET_MS;
-  const getRemainingBudgetMs = () => Math.max(0, requestDeadlineMs - Date.now());
-  const normalizedQuery = String(queryText || '').trim();
-  const resolverStage = {
-    called: false,
-    hit: false,
-    miss: false,
-    latency_ms: null,
-  };
-  let resolverRejectedReason = null;
-  let resolverRejectedQueryUsed = null;
-  const proxySearchQueryClass = isLookupStyleSearchQuery(
-    queryText,
-    extractSearchAnchorTokens(queryText),
-  )
-    ? 'lookup'
-    : null;
-  const cacheStage = {
-    hit: false,
-    candidate_count: 0,
-    relevant_count: 0,
-    retrieval_sources: [],
-  };
-
-  const respondSearch = (
-    status,
-    body,
-    {
-      finalDecision = 'upstream_returned',
-      primaryPathUsed = 'proxy_search_primary',
-      fallbackTriggered = false,
-      fallbackReason = null,
-      upstreamStage = null,
-      strictEmptyReason = null,
-      expansionMode = 'off',
-      expandedQuery = normalizedQuery,
-      intent = null,
-	      fallbackStrategy = null,
-	      flagsSnapshot = null,
-	    } = {},
-	  ) => {
-    const latencyMs = Math.max(0, Date.now() - startedAtMs);
-    const intNonNegative = (value, fallback = 0) => {
-      const parsed = Number(value);
-      return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : Math.max(0, Math.floor(fallback));
-    };
-    const responseProducts = Array.isArray(body?.products) ? body.products : [];
-    const responseMetadata =
-      body?.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
-        ? body.metadata
-        : {};
-    const sourceBreakdown =
-      responseMetadata.source_breakdown &&
-      typeof responseMetadata.source_breakdown === 'object' &&
-      !Array.isArray(responseMetadata.source_breakdown)
-        ? responseMetadata.source_breakdown
-        : {};
-    const retryAttemptCount = intNonNegative(
-      fallbackStrategy?.secondary_attempt_count != null
-        ? fallbackStrategy.secondary_attempt_count
-        : Array.isArray(fallbackStrategy?.secondary_attempts)
-        ? fallbackStrategy.secondary_attempts.length
-        : responseMetadata.retry_attempt_count,
-      0,
-    );
-    const fallbackAttemptCount = intNonNegative(
-      responseMetadata.fallback_attempt_count != null
-        ? responseMetadata.fallback_attempt_count
-        : fallbackStrategy?.secondary_attempt_count != null
-        ? fallbackStrategy.secondary_attempt_count
-        : fallbackStrategy?.secondary_attempts?.length,
-      retryAttemptCount,
-    );
-    const selectedFallbackAttempt = intNonNegative(
-      responseMetadata.selected_fallback_attempt != null
-        ? responseMetadata.selected_fallback_attempt
-        : fallbackStrategy?.secondary_selected_attempt,
-      0,
-    );
-    const semanticRetryActualAttempted = Boolean(
-      responseMetadata.semantic_retry_actual_attempted != null
-        ? responseMetadata.semantic_retry_actual_attempted
-        : fallbackStrategy?.secondary_actual_retry_attempted === true,
-    );
-    const primaryQualityScore =
-      Number.isFinite(Number(fallbackStrategy?.primary_quality_score)) &&
-      Number(fallbackStrategy?.primary_quality_score) >= 0
-        ? Math.max(0, Math.min(1, Number(fallbackStrategy.primary_quality_score)))
-        : Number.isFinite(Number(responseMetadata.primary_quality_score)) &&
-          Number(responseMetadata.primary_quality_score) >= 0
-        ? Math.max(0, Math.min(1, Number(responseMetadata.primary_quality_score)))
-        : null;
-    const lowQualityNonemptyDetected = Boolean(
-      fallbackStrategy?.low_quality_nonempty_detected || responseMetadata.low_quality_nonempty_detected,
-    );
-    const primaryQualityGatePassed =
-      fallbackStrategy?.primary_quality_gate_passed != null
-        ? Boolean(fallbackStrategy.primary_quality_gate_passed)
-        : responseMetadata.primary_quality_gate_passed != null
-        ? Boolean(responseMetadata.primary_quality_gate_passed)
-        : !lowQualityNonemptyDetected;
-    const supplementAttempted = Boolean(
-      fallbackStrategy?.secondary_attempted || responseMetadata?.search_stage_b?.attempted,
-    );
-    const supplementSkipReason =
-      String(responseMetadata.supplement_skip_reason || '').trim() ||
-      String(responseMetadata?.search_stage_b?.reason || '').trim() ||
-      (supplementAttempted
-        ? null
-        : primaryQualityGatePassed
-        ? 'not_needed'
-        : String(fallbackStrategy?.secondary_skipped_reason || '').trim() || 'quality_gate_forced_but_skipped');
-    let out = withSearchDiagnostics(body, {
-      route_health: buildSearchRouteHealth({
-        primaryPathUsed,
-        primaryLatencyMs: latencyMs,
-        fallbackTriggered,
-        fallbackReason,
-        internalRawCount: intNonNegative(
-          responseMetadata.internal_raw_count != null
-            ? responseMetadata.internal_raw_count
-            : sourceBreakdown.internal_count,
-          responseProducts.filter((product) => !isExternalSeedProduct(product)).length,
-        ),
-        externalRawCount: intNonNegative(
-          responseMetadata.external_raw_count != null
-            ? responseMetadata.external_raw_count
-            : sourceBreakdown.external_seed_count,
-          responseProducts.filter((product) => isExternalSeedProduct(product)).length,
-        ),
-        mergedPreLimitCount: intNonNegative(
-          responseMetadata.merged_pre_limit_count != null
-            ? responseMetadata.merged_pre_limit_count
-            : responseMetadata.total != null
-            ? responseMetadata.total
-            : body?.total,
-          responseProducts.length,
-        ),
-        primaryQualityGatePassed,
-        primaryQualityScore,
-        lowQualityNonemptyDetected,
-        supplementAttempted,
-        supplementSkipReason,
-        retryAttemptCount,
-        fallbackAttemptCount,
-        selectedFallbackAttempt,
-        semanticRetryApplied:
-          responseMetadata.semantic_retry_applied != null
-            ? responseMetadata.semantic_retry_applied
-            : semanticRetryActualAttempted,
-        semanticRetryActualAttempted,
-        semanticRetryQuery: responseMetadata.semantic_retry_query || null,
-        semanticRetryHits: intNonNegative(responseMetadata.semantic_retry_hits, 0),
-        externalSeedQueryTimeout: Boolean(responseMetadata.external_seed_query_timeout),
-        externalSeedSkipReason: responseMetadata.external_seed_skip_reason || null,
-        externalSeedCacheHit: Boolean(responseMetadata.external_seed_cache_hit),
-        externalSeedRowsFetched: intNonNegative(responseMetadata.external_seed_rows_fetched, 0),
-        externalSeedRowsBuilt: intNonNegative(responseMetadata.external_seed_rows_built, 0),
-        externalFillGateReason: responseMetadata.external_fill_gate_reason || null,
-        querySemanticClass: responseMetadata.query_semantic_class || null,
-        domainFilterDroppedExternal: intNonNegative(
-          responseMetadata.domain_filter_dropped_external,
-          0,
-        ),
-        finalReturnedCount: intNonNegative(
-          responseMetadata.final_returned_count != null
-            ? responseMetadata.final_returned_count
-            : responseProducts.length,
-          responseProducts.length,
-        ),
-      }),
-      search_trace: buildSearchTrace({
-        traceId,
-        rawQuery: normalizedQuery,
-        expandedQuery,
-        expansionMode,
-        intent,
-        cacheStage,
-        upstreamStage,
-	        resolverStage,
-	        finalDecision,
-	        flagsSnapshot,
-	      }),
-      ...(fallbackStrategy && typeof fallbackStrategy === 'object'
-        ? { fallback_strategy: fallbackStrategy }
-        : {}),
-      ...(strictEmptyReason
-        ? {
-            strict_empty: true,
-            strict_empty_reason: strictEmptyReason,
-          }
-        : {}),
-    });
-    if (out && typeof out === 'object' && !Array.isArray(out)) {
-      out = {
-        ...out,
-        metadata: {
-          ...(out.metadata && typeof out.metadata === 'object' && !Array.isArray(out.metadata)
-            ? out.metadata
-            : {}),
-          guard_source_normalized: normalizeAgentSource(source) || null,
-          resolver_rejected_reason:
-            responseMetadata.resolver_rejected_reason ||
-            fallbackStrategy?.resolver_rejected_reason ||
-            resolverRejectedReason ||
-            null,
-          resolver_query_used:
-            responseMetadata.resolver_query_used ||
-            responseMetadata.resolve_query_used ||
-            fallbackStrategy?.resolver_query_used ||
-            resolverRejectedQueryUsed ||
-            null,
-          secondary_fallback_skipped: Boolean(
-            fallbackStrategy &&
-              typeof fallbackStrategy === 'object' &&
-              fallbackStrategy.skip_secondary_after_resolver_miss === true,
-          ),
-          secondary_fallback_skip_reason:
-            fallbackStrategy &&
-            typeof fallbackStrategy === 'object' &&
-            fallbackStrategy.skip_secondary_after_resolver_miss === true
-              ? String(
-                  fallbackStrategy.secondary_skipped_reason || 'resolver_miss_skip_secondary',
-                )
-              : null,
-        },
-      };
-    }
-
-    if (
-      SEARCH_STRICT_EMPTY_ENABLED &&
-      normalizedQuery &&
-      Array.isArray(out?.products) &&
-      out.products.length === 0 &&
-      !out?.metadata?.strict_empty
-    ) {
-      out = withSearchDiagnostics(out, {
-        strict_empty: true,
-        strict_empty_reason: strictEmptyReason || 'no_candidates',
-      });
-    }
-    return res.status(status).json(out);
-  };
-
-  let resolverFirstResult = null;
-  const resolverFirstBrandLike = Boolean(
-    detectBrandEntities(queryText, { candidateProducts: [] })?.brand_like,
-  );
-  const shouldAttemptResolverFirst = shouldUseResolverFirstSearch({
-      operation: 'find_products_multi',
-      metadata: resolverFirstMetadata,
-      queryText,
-      queryClass: proxySearchQueryClass,
-      brandLike: resolverFirstBrandLike,
-  }) && PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED;
-
-  if (shouldAttemptResolverFirst) {
-    resolverStage.called = true;
-    const resolverStartedAtMs = Date.now();
-    try {
-      resolverFirstResult = await withStageBudget(
-        queryResolveSearchFallback({
-        queryParams: guardedQueryParams,
-        checkoutToken,
-        reason: 'resolver_first',
-        requestSource: source,
-        timeoutMs: resolverTimeoutMs,
-        }),
-        FIND_PRODUCTS_MULTI_RESOLVER_STAGE_BUDGET_MS,
-        'resolver_stage',
-      );
-      resolverStage.latency_ms = Math.max(0, Date.now() - resolverStartedAtMs);
-      if (
-        resolverFirstResult &&
-        resolverFirstResult.status >= 200 &&
-        resolverFirstResult.status < 300 &&
-        resolverFirstResult.usableCount > 0
-      ) {
-        const resolverAdoption = getResolverFallbackAdoptionDecision({
-          result: resolverFirstResult,
-          queryText,
-          queryClass: proxySearchQueryClass,
-        });
-        if (resolverAdoption.adopt) {
-          resolverStage.hit = true;
-          return respondSearch(resolverFirstResult.status, resolverFirstResult.data, {
-            finalDecision: 'resolver_returned',
-            primaryPathUsed: 'resolver_first',
-            fallbackTriggered: true,
-            fallbackReason: 'resolver_first',
-            upstreamStage: {
-              called: false,
-              timeout: false,
-              status: null,
-              latency_ms: 0,
-            },
-          });
-        }
-        resolverRejectedReason = resolverAdoption.reason || resolverRejectedReason;
-        resolverRejectedQueryUsed = resolverAdoption.resolveQueryUsed || resolverRejectedQueryUsed;
-      }
-      resolverStage.miss = true;
-    } catch (resolverErr) {
-      resolverStage.miss = true;
-      resolverStage.latency_ms = Math.max(0, Date.now() - resolverStartedAtMs);
-      logger.warn(
-        { err: resolverErr?.message || String(resolverErr) },
-        'proxy agent search resolver-first failed; falling back to upstream',
-      );
-    }
-  }
-
-  try {
-    const basePrimaryTimeoutMsRaw = Math.min(
-      getUpstreamTimeoutMs('find_products_multi'),
-      PROXY_SEARCH_ROUTE_PRIMARY_TIMEOUT_MS,
-    );
-    const basePrimaryTimeoutMs = auroraFallbackOverrides.active
-      ? Math.min(basePrimaryTimeoutMsRaw, PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS)
-      : basePrimaryTimeoutMsRaw;
-    const primaryTimeoutMs =
-      shouldReducePrimaryTimeoutAfterResolverMiss(resolverFirstResult, queryText)
-        ? Math.min(basePrimaryTimeoutMs, PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS)
-        : basePrimaryTimeoutMs;
-    const totalBudgetMs = Math.max(primaryTimeoutMs, PROXY_SEARCH_AURORA_TOTAL_BUDGET_MS);
-    requestDeadlineMs = Date.now() + totalBudgetMs;
-    const secondarySkipBrandLike = Boolean(
-      detectBrandEntities(queryText, { candidateProducts: [] })?.brand_like,
-    );
-    const secondaryFallbackSkipReason = getSecondaryFallbackSkipReason(
-      resolverFirstResult,
-      queryText,
-      {
-        disableSkipAfterResolverMiss: auroraFallbackOverrides.disableSkipAfterResolverMiss,
-        queryClass: proxySearchQueryClass,
-        brandLike: secondarySkipBrandLike,
-      },
-    );
-    const skipSecondaryFallback = Boolean(secondaryFallbackSkipReason);
-    const allowSecondaryFallback = shouldAllowSecondaryFallback('find_products_multi', {
-      forceSecondaryFallback: auroraFallbackOverrides.forceSecondaryFallback,
-    });
-    const allowResolverFallback = shouldAllowResolverFallback('find_products_multi');
-    const allowInvokeFallback = true;
-    const fallbackStrategy = {
-      source: auroraFallbackOverrides.strategySource,
-      request_source: source || null,
-      resolver_attempted: false,
-      secondary_attempted: false,
-      pass1_attempted: false,
-      pass2_attempted: false,
-      pass2_selected: false,
-      pass2_skipped_reason: null,
-      secondary_skipped_reason: secondaryFallbackSkipReason,
-      fallback_skipped_due_budget: false,
-      fallback_after_primary_timeout_attempted: false,
-      total_budget_ms: totalBudgetMs,
-      allow_secondary_fallback: allowSecondaryFallback,
-      allow_invoke_fallback: allowInvokeFallback,
-      skip_secondary_after_resolver_miss: skipSecondaryFallback,
-      aurora_external_seed_forced: Boolean(auroraFallbackOverrides.active),
-      aurora_external_seed_enabled: Boolean(
-        auroraFallbackOverrides.active && PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED,
-      ),
-      aurora_seed_strategy: auroraFallbackOverrides.active
-        ? PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY
-        : null,
-      aurora_upstream_base: auroraFallbackOverrides.active
-        ? getProxySearchApiBase(source)
-        : null,
-      aurora_primary_timeout_ms: auroraFallbackOverrides.active
-        ? PROXY_SEARCH_AURORA_PRIMARY_TIMEOUT_MS
-        : null,
-      aurora_fallback_timeout_ms: auroraFallbackOverrides.active
-        ? PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS
-        : null,
-      primary_monoculture_detected: false,
-      primary_monoculture_dominant_brand: null,
-      primary_monoculture_external_ratio: 0,
-      fallback_adopt_usable_threshold: null,
-      resolver_rejected_reason: null,
-      resolver_query_used: null,
-    };
-
-    const runPrimarySearchRequest = async ({ params, timeoutMs, pass }) => {
-      const startedMs = Date.now();
-      const response = await axios({
-        method: 'GET',
-        url,
-        params,
-        headers: {
-          ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
-        },
-        timeout: timeoutMs,
-        validateStatus: () => true,
-      });
-      const upstream = {
-        called: true,
-        timeout: false,
-        status: Number(response?.status || 0) || 0,
-        latency_ms: Math.max(0, Date.now() - startedMs),
-        pass,
-      };
-      const normalizedResponse = normalizeAgentProductsListResponse(response.data, {
-        limit: parseQueryNumber(params?.limit ?? params?.page_size),
-        offset: parseQueryNumber(params?.offset),
-      });
-      const usableCount = countUsableSearchProducts(normalizedResponse?.products);
-      const unusable = Boolean(queryText) && shouldFallbackProxySearch(normalizedResponse, response.status);
-      const relevant = queryText ? isProxySearchFallbackRelevant(normalizedResponse, queryText) : true;
-      const primaryQualityGate = evaluateCacheQualityGate({
-        products: normalizedResponse?.products,
-        queryText,
-        intent: null,
-        queryClass: proxySearchQueryClass,
-      });
-      const primaryQualityScore = computePrimaryQualityScore(primaryQualityGate);
-      const primaryProducts = Array.isArray(normalizedResponse?.products) ? normalizedResponse.products : [];
-      const primaryHasExternalSeed = primaryProducts.some((product) => isExternalSeedProduct(product));
-      const primaryBrandLike = Boolean(
-        detectBrandEntities(queryText, { candidateProducts: primaryProducts })?.brand_like,
-      );
-      const lowQualityNonempty =
-        Boolean(queryText) &&
-        usableCount > 0 &&
-        primaryQualityGate.enabled &&
-        !primaryQualityGate.accepted &&
-        !primaryBrandLike &&
-        !primaryHasExternalSeed;
-      const monocultureSignal = detectAuroraExternalSeedMonoculture({
-        normalized: normalizedResponse,
-        queryText,
-        source,
-      });
-      const monoculture = Boolean(monocultureSignal.detected);
-      const irrelevant = Boolean(queryText) && ((usableCount > 0 && !relevant) || monoculture);
-      return {
-        pass,
-        response,
-        upstream,
-        params,
-        timeout_ms: timeoutMs,
-        normalized: normalizedResponse,
-        usable_count: usableCount,
-        unusable,
-        relevant,
-        monoculture_signal: monocultureSignal,
-        monoculture,
-        irrelevant,
-        primary_quality_gate: primaryQualityGate,
-        primary_quality_score: primaryQualityScore,
-        low_quality_nonempty: lowQualityNonempty,
-        should_fallback: unusable || irrelevant || lowQualityNonempty,
-      };
-    };
-
-    const auroraTwoPassEnabled = Boolean(
-      auroraFallbackOverrides.active &&
-      PROXY_SEARCH_AURORA_FORCE_TWO_PASS &&
-      queryText,
-    );
-    const primaryDeadlineMs = Date.now() + primaryTimeoutMs;
-    const pass1QueryParams = auroraTwoPassEnabled
-      ? {
-          ...guardedQueryParams,
-          allow_external_seed: false,
-          external_seed_strategy: 'legacy',
-          fast_mode: true,
-        }
-      : guardedQueryParams;
-    const pass1TimeoutMs = auroraTwoPassEnabled
-      ? Math.max(
-          250,
-          Math.min(
-            PROXY_SEARCH_AURORA_PASS1_TIMEOUT_MS,
-            Math.max(250, primaryDeadlineMs - Date.now()),
-            primaryTimeoutMs,
-          ),
-        )
-      : primaryTimeoutMs;
-    fallbackStrategy.pass1_attempted = true;
-    fallbackStrategy.pass1_timeout_ms = pass1TimeoutMs;
-
-    let primaryRun = await runPrimarySearchRequest({
-      params: pass1QueryParams,
-      timeoutMs: pass1TimeoutMs,
-      pass: auroraTwoPassEnabled ? 'pass1_internal_fast' : 'single_pass',
-    });
-    fallbackStrategy.pass1_usable_count = Number(primaryRun.usable_count || 0);
-    fallbackStrategy.pass1_relevance_passed = primaryRun.relevant === true;
-
-    if (auroraTwoPassEnabled) {
-      const requestedLimit = parseQueryNumber(guardedQueryParams?.limit ?? guardedQueryParams?.page_size);
-      const pass2TargetUsable = Math.max(
-        1,
-        Math.min(
-          PROXY_SEARCH_AURORA_TWO_PASS_MIN_USABLE,
-          Number.isFinite(Number(requestedLimit)) && Number(requestedLimit) > 0 ? Number(requestedLimit) : PROXY_SEARCH_AURORA_TWO_PASS_MIN_USABLE,
-        ),
-      );
-      const needPass2 = primaryRun.usable_count < pass2TargetUsable || primaryRun.should_fallback;
-      if (!needPass2) {
-        fallbackStrategy.pass2_skipped_reason = 'pass1_sufficient';
-      } else if (guardedQueryParams.allow_external_seed !== true) {
-        fallbackStrategy.pass2_skipped_reason = 'external_seed_disabled';
-      } else {
-        const remainingBudgetMs = Math.max(0, primaryDeadlineMs - Date.now());
-        if (remainingBudgetMs < 200) {
-          fallbackStrategy.pass2_skipped_reason = 'budget_exhausted';
-        } else {
-          const pass2TimeoutMs = Math.max(
-            200,
-            Math.min(PROXY_SEARCH_AURORA_PASS2_TIMEOUT_MS, remainingBudgetMs),
-          );
-          const pass2QueryParams = {
-            ...guardedQueryParams,
-            allow_external_seed: true,
-            external_seed_strategy:
-              firstQueryParamValue(
-                guardedQueryParams.external_seed_strategy ??
-                  guardedQueryParams.externalSeedStrategy,
-              ) || PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY,
-            fast_mode: true,
-          };
-          fallbackStrategy.pass2_attempted = true;
-          fallbackStrategy.pass2_timeout_ms = pass2TimeoutMs;
-          recordAuroraCompPass2Invoked({ mode: 'main_path' });
-          try {
-            const pass2Run = await runPrimarySearchRequest({
-              params: pass2QueryParams,
-              timeoutMs: pass2TimeoutMs,
-              pass: 'pass2_external_seed',
-            });
-            fallbackStrategy.pass2_usable_count = Number(pass2Run.usable_count || 0);
-            fallbackStrategy.pass2_relevance_passed = pass2Run.relevant === true;
-            const pass2Preferred =
-              pass2Run.usable_count > primaryRun.usable_count ||
-              (
-                (primaryRun.unusable || primaryRun.irrelevant) &&
-                pass2Run.usable_count > 0 &&
-                pass2Run.relevant === true
-              );
-            if (pass2Preferred) {
-              primaryRun = pass2Run;
-              fallbackStrategy.pass2_selected = true;
-            } else {
-              fallbackStrategy.pass2_selected = false;
-              fallbackStrategy.pass2_skipped_reason = 'pass2_not_better';
-            }
-          } catch (pass2Err) {
-            fallbackStrategy.pass2_skipped_reason =
-              String(pass2Err?.code || '').toUpperCase() === 'ECONNABORTED'
-                ? 'pass2_timeout'
-                : 'pass2_exception';
-            if (fallbackStrategy.pass2_skipped_reason === 'pass2_timeout') {
-              recordAuroraCompPass2Timeout({ mode: 'main_path' });
-            }
-            logger.warn(
-              { err: pass2Err?.message || String(pass2Err) },
-              'proxy agent search aurora pass2 failed; keeping pass1',
-            );
-          }
-        }
-      }
-    } else {
-      fallbackStrategy.pass2_skipped_reason = auroraFallbackOverrides.active ? 'two_pass_disabled' : 'not_aurora';
-    }
-
-    const resp = primaryRun.response;
-    const upstreamStage = primaryRun.upstream;
-    const normalized = primaryRun.normalized;
-    const primaryUsableCount = primaryRun.usable_count;
-    const primaryUnusable = primaryRun.unusable;
-    const primaryRelevant = primaryRun.relevant;
-    const primaryMonocultureSignal = primaryRun.monoculture_signal;
-    const primaryMonoculture = primaryRun.monoculture;
-    const primaryIrrelevant = primaryRun.irrelevant;
-    const primaryQualityGate = primaryRun.primary_quality_gate || null;
-    const primaryQualityScore = primaryRun.primary_quality_score;
-    const primaryLowQualityNonempty = Boolean(primaryRun.low_quality_nonempty);
-    const shouldFallback = primaryRun.should_fallback;
-    const primaryProducts = Array.isArray(normalized?.products) ? normalized.products : [];
-    const primaryExternalRawCount = primaryProducts.filter((product) => isExternalSeedProduct(product)).length;
-    const primaryInternalRawCount = Math.max(0, primaryProducts.length - primaryExternalRawCount);
-    fallbackStrategy.primary_monoculture_detected = primaryMonoculture;
-    fallbackStrategy.primary_monoculture_dominant_brand = primaryMonocultureSignal.dominantBrand || null;
-    fallbackStrategy.primary_monoculture_external_ratio = Number(
-      primaryMonocultureSignal.externalRatio || 0,
-    );
-    fallbackStrategy.primary_quality_gate_passed = !primaryLowQualityNonempty;
-    fallbackStrategy.primary_quality_score =
-      Number.isFinite(Number(primaryQualityScore)) && Number(primaryQualityScore) >= 0
-        ? Number(primaryQualityScore)
-        : null;
-    fallbackStrategy.low_quality_nonempty_detected = primaryLowQualityNonempty;
-    fallbackStrategy.internal_raw_count = primaryInternalRawCount;
-    fallbackStrategy.external_raw_count = primaryExternalRawCount;
-    fallbackStrategy.merged_pre_limit_count = Number.isFinite(Number(normalized?.total))
-      ? Math.max(primaryProducts.length, Number(normalized.total))
-      : primaryProducts.length;
-    fallbackStrategy.primary_quality_reason =
-      primaryQualityGate && typeof primaryQualityGate === 'object'
-        ? String(primaryQualityGate.reason || '').trim() || null
-        : null;
-    const fallbackAdoptUsableThreshold = getFallbackAdoptUsableThreshold({
-      operation: 'find_products_multi',
-      source,
-      primaryUsableCount,
-      primaryIrrelevant,
-    });
-    fallbackStrategy.fallback_adopt_usable_threshold = fallbackAdoptUsableThreshold;
-
-    if (shouldFallback) {
-      if (allowResolverFallback && !skipSecondaryFallback) {
-        const resolverRemainingBudgetMs = getRemainingBudgetMs();
-        if (resolverRemainingBudgetMs < 120) {
-          fallbackStrategy.fallback_skipped_due_budget = true;
-          fallbackStrategy.resolver_skipped_reason = 'budget_exhausted';
-        } else {
-          fallbackStrategy.resolver_attempted = true;
-          try {
-            const resolverFallback = await queryResolveSearchFallback({
-              queryParams: guardedQueryParams,
-              checkoutToken,
-              reason: 'resolver_after_primary',
-              requestSource: source,
-              timeoutMs: Math.max(120, Math.min(resolverTimeoutMs, resolverRemainingBudgetMs)),
-            });
-            if (
-              resolverFallback &&
-              resolverFallback.status >= 200 &&
-              resolverFallback.status < 300 &&
-              resolverFallback.usableCount > 0
-            ) {
-              const resolverAdoption = getResolverFallbackAdoptionDecision({
-                result: resolverFallback,
-                queryText,
-                queryClass: proxySearchQueryClass,
-              });
-              if (resolverAdoption.adopt) {
-                resolverStage.hit = true;
-                fallbackStrategy.remaining_budget_ms = getRemainingBudgetMs();
-                return respondSearch(resolverFallback.status, resolverFallback.data, {
-                  finalDecision: 'resolver_returned',
-                  primaryPathUsed: 'proxy_search_primary',
-                  fallbackTriggered: true,
-                  fallbackReason: 'resolver_after_primary',
-                  upstreamStage,
-                  fallbackStrategy,
-                });
-              }
-              fallbackStrategy.resolver_rejected_reason = resolverAdoption.reason;
-              fallbackStrategy.resolver_query_used = resolverAdoption.resolveQueryUsed;
-              resolverRejectedReason = resolverAdoption.reason || resolverRejectedReason;
-              resolverRejectedQueryUsed = resolverAdoption.resolveQueryUsed || resolverRejectedQueryUsed;
-            }
-          } catch (resolverErr) {
-            logger.warn(
-              { err: resolverErr?.message || String(resolverErr) },
-              'proxy agent search resolver fallback failed; keeping primary response',
-            );
-          }
-        }
-      }
-
-      const secondaryFallbackReason = primaryUnusable
-        ? primaryUsableCount > 0
-          ? 'insufficient_primary'
-          : 'empty_or_unusable_primary'
-        : primaryMonoculture
-        ? 'primary_monoculture'
-        : primaryLowQualityNonempty
-        ? 'primary_low_quality'
-        : 'primary_irrelevant';
-
-      if (allowSecondaryFallback && allowInvokeFallback && !skipSecondaryFallback) {
-        const secondaryRemainingBudgetMs = getRemainingBudgetMs();
-        const forceLowQualityFallbackAttempt =
-          primaryLowQualityNonempty && SEARCH_EXTERNAL_HARD_RULE_PRUNE;
-        if (secondaryRemainingBudgetMs < 160 && !forceLowQualityFallbackAttempt) {
-          fallbackStrategy.fallback_skipped_due_budget = true;
-          fallbackStrategy.secondary_skipped_reason = 'budget_exhausted';
-        } else {
-          fallbackStrategy.secondary_attempted = true;
-          try {
-            const fallbackTimeoutMs = forceLowQualityFallbackAttempt
-              ? Math.max(500, secondaryRemainingBudgetMs)
-              : secondaryRemainingBudgetMs;
-            const fallback = await queryFindProductsMultiFallback({
-              queryParams: guardedQueryParams,
-              checkoutToken,
-              reason: secondaryFallbackReason,
-              requestSource: source,
-              timeoutMs: fallbackTimeoutMs,
-            });
-            const fallbackRelevant = Boolean(
-              fallback &&
-                (
-                  (hasFragranceQuerySignal(queryText) && Number(fallback?.usableCount || 0) > 0) ||
-                  fallback.relevanceMatched === true ||
-                  (fallback.relevanceMatched == null && isProxySearchFallbackRelevant(fallback.data, queryText))
-                ),
-            );
-            const fallbackUsableCount = Math.max(0, Number(fallback?.usableCount || 0) || 0);
-            const fallbackRecallImproved = fallbackUsableCount >= Math.max(
-              fallbackAdoptUsableThreshold,
-              primaryUsableCount + (primaryLowQualityNonempty ? 1 : 2),
-            );
-            fallbackStrategy.secondary_usable_count = Number(fallback?.usableCount || 0);
-            fallbackStrategy.secondary_relevance_passed = fallbackRelevant;
-            fallbackStrategy.secondary_selected_query = fallback?.selectedQuery || null;
-            fallbackStrategy.secondary_selected_attempt = Math.max(
-              0,
-              Number(fallback?.selectedAttemptNo || 0) || 0,
-            );
-            fallbackStrategy.secondary_actual_retry_attempted = Boolean(
-              fallback?.actualRetryAttempted,
-            );
-            fallbackStrategy.secondary_attempt_count = Array.isArray(fallback?.attempts)
-              ? fallback.attempts.length
-              : fallback
-              ? 1
-              : 0;
-            if (Array.isArray(fallback?.attempts) && fallback.attempts.length > 0) {
-              fallbackStrategy.secondary_attempts = fallback.attempts.slice(0, 3);
-            }
-            if (
-              fallback &&
-              fallback.status >= 200 &&
-              fallback.status < 300 &&
-              fallbackUsableCount >= fallbackAdoptUsableThreshold &&
-              (
-                (primaryLowQualityNonempty && (fallbackRecallImproved || fallbackRelevant)) ||
-                fallbackRelevant
-              )
-            ) {
-              fallbackStrategy.secondary_rejected_reason = null;
-              fallbackStrategy.remaining_budget_ms = getRemainingBudgetMs();
-              return respondSearch(fallback.status, fallback.data, {
-                finalDecision: 'upstream_returned',
-                primaryPathUsed: 'proxy_search_primary',
-                fallbackTriggered: true,
-                fallbackReason: primaryUnusable
-                  ? 'secondary_after_primary_unusable'
-                  : primaryMonoculture
-                  ? 'secondary_after_primary_monoculture'
-                  : primaryLowQualityNonempty
-                  ? 'secondary_after_primary_low_quality'
-                  : 'secondary_after_primary_irrelevant',
-                upstreamStage,
-                fallbackStrategy,
-              });
-            }
-            fallbackStrategy.secondary_rejected_reason = !fallback
-              ? 'secondary_unavailable'
-              : fallback.status < 200 || fallback.status >= 300
-              ? 'secondary_status_non_2xx'
-              : fallback.usableCount < fallbackAdoptUsableThreshold
-              ? 'secondary_below_usable_threshold'
-              : !fallbackRelevant
-              ? 'secondary_irrelevant'
-              : 'secondary_not_adopted';
-          } catch (fallbackErr) {
-            fallbackStrategy.secondary_rejected_reason = 'secondary_exception';
-            logger.warn(
-              { err: fallbackErr?.message || String(fallbackErr) },
-              'proxy agent search fallback invoke failed; keeping primary response',
-            );
-          }
-        }
-      } else if (!allowSecondaryFallback) {
-        fallbackStrategy.secondary_skipped_reason = 'secondary_disabled';
-      } else if (!allowInvokeFallback) {
-        fallbackStrategy.secondary_skipped_reason = 'invoke_fallback_disabled';
-      } else if (skipSecondaryFallback) {
-        fallbackStrategy.secondary_skipped_reason =
-          fallbackStrategy.secondary_skipped_reason || 'resolver_miss_skip_secondary';
-      }
-    }
-    fallbackStrategy.remaining_budget_ms = getRemainingBudgetMs();
-    const normalizedProducts = Array.isArray(normalized?.products) ? normalized.products : [];
-    const fallbackAttempts = Array.isArray(fallbackStrategy.secondary_attempts)
-      ? fallbackStrategy.secondary_attempts
-      : [];
-    const semanticRetryApplied = Boolean(fallbackStrategy.secondary_actual_retry_attempted);
-    const semanticRetryQuery = semanticRetryApplied
-      ? String(
-          fallbackStrategy.secondary_selected_query ||
-            fallbackAttempts[fallbackAttempts.length - 1]?.query ||
-            '',
-        ).trim() || null
-      : null;
-    const fallbackNotBetterReason = semanticRetryApplied
-      ? primaryLowQualityNonempty
-        ? 'low_quality_semantic_retry_exhausted'
-        : 'semantic_retry_exhausted'
-      : primaryLowQualityNonempty
-      ? 'low_quality_no_improvement'
-      : 'fallback_not_better';
-
-    if (primaryIrrelevant && Number(resp.status) >= 200 && Number(resp.status) < 300) {
-      const reason = skipSecondaryFallback
-        ? primaryMonoculture
-          ? 'primary_monoculture_skip_secondary'
-          : 'primary_irrelevant_skip_secondary'
-        : primaryMonoculture
-        ? 'primary_monoculture_no_fallback'
-        : 'primary_irrelevant_no_fallback';
-      return respondSearch(
-        200,
-        buildProxySearchSoftFallbackResponse({
-          body: normalized,
-          queryParams: guardedQueryParams,
-          reason,
-          upstreamStatus: resp.status,
-          route: 'proxy_search_primary_irrelevant',
-          queryText,
-          semanticRetryApplied: Boolean(semanticRetryApplied),
-          semanticRetryQuery,
-          semanticRetryHits: Math.max(0, Number(fallbackStrategy.secondary_usable_count || 0) || 0),
-          forceClarify: true,
-        }),
-        {
-          finalDecision: 'clarify',
-          primaryPathUsed: 'proxy_search_primary',
-          fallbackTriggered: true,
-          fallbackReason: reason,
-          upstreamStage,
-          fallbackStrategy,
-        },
-      );
-    }
-
-    if (Number(resp.status) >= 500) {
-      const reason = 'primary_status_5xx';
-      return respondSearch(
-        200,
-        withStrictEmptyFallback({
-          body: normalized,
-          queryParams: guardedQueryParams,
-          reason,
-          upstreamStatus: resp.status,
-          route: 'proxy_search_primary_status',
-          fallbackStrategy,
-        }),
-        {
-          finalDecision: 'strict_empty',
-          primaryPathUsed: 'proxy_search_primary',
-          fallbackTriggered: true,
-          fallbackReason: reason,
-          upstreamStage,
-          strictEmptyReason: reason,
-          fallbackStrategy,
-        },
-      );
-    }
-
-    const shouldForceClarifyAfterFallback =
-      SEARCH_EXTERNAL_HARD_RULE_PRUNE &&
-      normalizedProducts.length === 0 &&
-      shouldFallback &&
-      !primaryIrrelevant &&
-      !skipSecondaryFallback &&
-      semanticRetryApplied;
-    const shouldForceClarifyLowQuality =
-      SEARCH_EXTERNAL_HARD_RULE_PRUNE &&
-      primaryLowQualityNonempty &&
-      shouldFallback &&
-      !primaryIrrelevant;
-    if (shouldForceClarifyAfterFallback || shouldForceClarifyLowQuality) {
-      const clarifyBody = buildProxySearchSoftFallbackResponse({
-        body: normalized,
-        queryParams: guardedQueryParams,
-        reason: fallbackNotBetterReason,
-        upstreamStatus: resp.status,
-        route: 'proxy_search_fallback_exhausted',
-        queryText,
-        semanticRetryApplied: Boolean(semanticRetryApplied),
-        semanticRetryQuery,
-        semanticRetryHits: Math.max(0, Number(fallbackStrategy.secondary_usable_count || 0) || 0),
-        forceClarify: true,
-      });
-      return respondSearch(
-        200,
-        clarifyBody,
-        {
-          finalDecision: 'clarify',
-          primaryPathUsed: 'proxy_search_primary',
-          fallbackTriggered: true,
-          fallbackReason: fallbackNotBetterReason,
-          upstreamStage,
-          strictEmptyReason: null,
-          fallbackStrategy,
-        },
-      );
-    }
-
-    return respondSearch(
-      resp.status,
-      withProxySearchFallbackMetadata(normalized, {
-        applied: false,
-        reason:
-          primaryIrrelevant
-            ? skipSecondaryFallback
-              ? primaryMonoculture
-                ? 'primary_monoculture_skip_secondary'
-                : 'primary_irrelevant_skip_secondary'
-              : primaryMonoculture
-              ? 'primary_monoculture_no_fallback'
-              : 'primary_irrelevant_no_fallback'
-            : shouldFallback && skipSecondaryFallback
-            ? 'resolver_miss_skip_secondary'
-            : shouldFallback
-              ? fallbackNotBetterReason
-              : 'not_needed',
-        ...(semanticRetryApplied ? { query_variant: 'semantic_retry' } : {}),
-      }),
-      {
-        finalDecision:
-          normalizedProducts.length > 0
-            ? 'upstream_returned'
-            : 'strict_empty',
-        primaryPathUsed: 'proxy_search_primary',
-        fallbackTriggered: Boolean(shouldFallback),
-        fallbackReason:
-          primaryIrrelevant
-            ? skipSecondaryFallback
-              ? primaryMonoculture
-                ? 'primary_monoculture_skip_secondary'
-                : 'primary_irrelevant_skip_secondary'
-              : primaryMonoculture
-              ? 'primary_monoculture_no_fallback'
-              : 'primary_irrelevant_no_fallback'
-            : shouldFallback && skipSecondaryFallback
-            ? 'resolver_miss_skip_secondary'
-            : shouldFallback
-              ? fallbackNotBetterReason
-              : null,
-        upstreamStage,
-        strictEmptyReason:
-          normalizedProducts.length > 0
-            ? null
-            : shouldFallback && skipSecondaryFallback
-            ? 'resolver_miss_skip_secondary'
-            : shouldFallback
-            ? fallbackNotBetterReason
-            : 'no_candidates',
-        fallbackStrategy,
-      },
-    );
-  } catch (err) {
-    const primaryTimedOut = String(err?.code || '').toUpperCase() === 'ECONNABORTED';
-    const secondarySkipBrandLike = Boolean(
-      detectBrandEntities(queryText, { candidateProducts: [] })?.brand_like,
-    );
-    const secondaryFallbackSkipReason = getSecondaryFallbackSkipReason(
-      resolverFirstResult,
-      queryText,
-      {
-        disableSkipAfterResolverMiss: auroraFallbackOverrides.disableSkipAfterResolverMiss,
-        queryClass: proxySearchQueryClass,
-        brandLike: secondarySkipBrandLike,
-      },
-    );
-    const skipSecondaryFallback = Boolean(secondaryFallbackSkipReason);
-    const allowSecondaryFallback = shouldAllowSecondaryFallback('find_products_multi', {
-      forceSecondaryFallback: auroraFallbackOverrides.forceSecondaryFallback,
-    });
-    const allowResolverFallback = shouldAllowResolverFallback('find_products_multi');
-    const allowInvokeFallback = true;
-    const bypassSkipSecondaryFallback = shouldBypassSecondaryFallbackSkipOnPrimaryException({ err });
-    const allowResolverFallbackOnException =
-      allowResolverFallback && (!skipSecondaryFallback || bypassSkipSecondaryFallback);
-    const allowSecondaryFallbackOnException =
-      allowSecondaryFallback &&
-      allowInvokeFallback &&
-      (!skipSecondaryFallback || bypassSkipSecondaryFallback);
-    const fallbackStrategy = {
-      source: auroraFallbackOverrides.strategySource,
-      request_source: source || null,
-      resolver_attempted: false,
-      secondary_attempted: false,
-      pass1_attempted: true,
-      pass2_attempted: false,
-      pass2_selected: false,
-      pass2_skipped_reason: 'primary_exception',
-      secondary_skipped_reason: secondaryFallbackSkipReason,
-      fallback_skipped_due_budget: false,
-      fallback_after_primary_timeout_attempted: false,
-      total_budget_ms: Math.max(0, requestDeadlineMs - startedAtMs),
-      allow_secondary_fallback: allowSecondaryFallback,
-      allow_invoke_fallback: allowInvokeFallback,
-      skip_secondary_after_resolver_miss: skipSecondaryFallback,
-      bypass_skip_after_exception: bypassSkipSecondaryFallback,
-      aurora_external_seed_forced: Boolean(auroraFallbackOverrides.active),
-      aurora_external_seed_enabled: Boolean(
-        auroraFallbackOverrides.active && PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED,
-      ),
-      aurora_seed_strategy: auroraFallbackOverrides.active
-        ? PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY
-        : null,
-      aurora_upstream_base: auroraFallbackOverrides.active
-        ? getProxySearchApiBase(source)
-        : null,
-      resolver_rejected_reason: null,
-      resolver_query_used: null,
-    };
-    if (queryText) {
-      if (allowResolverFallbackOnException) {
-        const resolverRemainingBudgetMs = getRemainingBudgetMs();
-        if (resolverRemainingBudgetMs < 120) {
-          fallbackStrategy.fallback_skipped_due_budget = true;
-          fallbackStrategy.resolver_skipped_reason = 'budget_exhausted';
-        } else {
-          fallbackStrategy.resolver_attempted = true;
-          if (primaryTimedOut) {
-            fallbackStrategy.fallback_after_primary_timeout_attempted = true;
-          }
-          try {
-            const resolverStartedAtMs = Date.now();
-            resolverStage.called = true;
-            const resolverFallback = await queryResolveSearchFallback({
-              queryParams: guardedQueryParams,
-              checkoutToken,
-              reason: 'resolver_after_exception',
-              requestSource: source,
-              timeoutMs: Math.max(120, Math.min(resolverTimeoutMs, resolverRemainingBudgetMs)),
-            });
-            resolverStage.latency_ms = Math.max(0, Date.now() - resolverStartedAtMs);
-            if (
-              resolverFallback &&
-              resolverFallback.status >= 200 &&
-              resolverFallback.status < 300 &&
-              resolverFallback.usableCount > 0
-            ) {
-              const resolverAdoption = getResolverFallbackAdoptionDecision({
-                result: resolverFallback,
-                queryText,
-                queryClass: proxySearchQueryClass,
-              });
-              if (resolverAdoption.adopt) {
-                resolverStage.hit = true;
-                fallbackStrategy.remaining_budget_ms = getRemainingBudgetMs();
-                return respondSearch(resolverFallback.status, resolverFallback.data, {
-                  finalDecision: 'resolver_returned',
-                  primaryPathUsed: 'proxy_search_primary',
-                  fallbackTriggered: true,
-                  fallbackReason: 'resolver_after_exception',
-                  upstreamStage: {
-                    called: true,
-                    timeout: primaryTimedOut,
-                    status: Number(err?.response?.status || err?.status || 0) || 0,
-                    latency_ms: Math.max(0, Date.now() - startedAtMs),
-                  },
-                  fallbackStrategy,
-                });
-              }
-              fallbackStrategy.resolver_rejected_reason = resolverAdoption.reason;
-              fallbackStrategy.resolver_query_used = resolverAdoption.resolveQueryUsed;
-              resolverRejectedReason = resolverAdoption.reason || resolverRejectedReason;
-              resolverRejectedQueryUsed = resolverAdoption.resolveQueryUsed || resolverRejectedQueryUsed;
-            }
-            resolverStage.miss = true;
-          } catch (resolverErr) {
-            resolverStage.miss = true;
-            logger.warn(
-              { err: resolverErr?.message || String(resolverErr) },
-              'proxy agent search resolver fallback failed after primary exception',
-            );
-          }
-        }
-      }
-
-      if (allowSecondaryFallbackOnException) {
-        const secondaryRemainingBudgetMs = getRemainingBudgetMs();
-        if (secondaryRemainingBudgetMs < 160) {
-          fallbackStrategy.fallback_skipped_due_budget = true;
-          fallbackStrategy.secondary_skipped_reason = 'budget_exhausted';
-        } else {
-          fallbackStrategy.secondary_attempted = true;
-          if (primaryTimedOut) {
-            fallbackStrategy.fallback_after_primary_timeout_attempted = true;
-          }
-          try {
-            const fallback = await queryFindProductsMultiFallback({
-              queryParams: guardedQueryParams,
-              checkoutToken,
-              reason: 'primary_request_failed',
-              requestSource: source,
-              timeoutMs: secondaryRemainingBudgetMs,
-            });
-            const fallbackRelevant = Boolean(
-              fallback &&
-                (
-                  (hasFragranceQuerySignal(queryText) && Number(fallback?.usableCount || 0) > 0) ||
-                  fallback.relevanceMatched === true ||
-                  (fallback.relevanceMatched == null && isProxySearchFallbackRelevant(fallback.data, queryText))
-                ),
-            );
-            fallbackStrategy.secondary_usable_count = Number(fallback?.usableCount || 0);
-            fallbackStrategy.secondary_relevance_passed = fallbackRelevant;
-            fallbackStrategy.secondary_selected_query = fallback?.selectedQuery || null;
-            fallbackStrategy.secondary_selected_attempt = Math.max(
-              0,
-              Number(fallback?.selectedAttemptNo || 0) || 0,
-            );
-            fallbackStrategy.secondary_actual_retry_attempted = Boolean(
-              fallback?.actualRetryAttempted,
-            );
-            fallbackStrategy.secondary_attempt_count = Array.isArray(fallback?.attempts)
-              ? fallback.attempts.length
-              : fallback
-              ? 1
-              : 0;
-            if (Array.isArray(fallback?.attempts) && fallback.attempts.length > 0) {
-              fallbackStrategy.secondary_attempts = fallback.attempts.slice(0, 3);
-            }
-            if (
-              fallback &&
-              fallback.status >= 200 &&
-              fallback.status < 300 &&
-              fallback.usableCount > 0 &&
-              fallbackRelevant
-            ) {
-              fallbackStrategy.secondary_rejected_reason = null;
-              fallbackStrategy.remaining_budget_ms = getRemainingBudgetMs();
-              return respondSearch(fallback.status, fallback.data, {
-                finalDecision: 'upstream_returned',
-                primaryPathUsed: 'proxy_search_primary',
-                fallbackTriggered: true,
-                fallbackReason: 'secondary_after_exception',
-                upstreamStage: {
-                  called: true,
-                  timeout: primaryTimedOut,
-                  status: Number(err?.response?.status || err?.status || 0) || 0,
-                  latency_ms: Math.max(0, Date.now() - startedAtMs),
-                },
-                fallbackStrategy,
-              });
-            }
-            fallbackStrategy.secondary_rejected_reason = !fallback
-              ? 'secondary_unavailable'
-              : fallback.status < 200 || fallback.status >= 300
-              ? 'secondary_status_non_2xx'
-              : fallback.usableCount <= 0
-              ? 'secondary_no_usable_products'
-              : !fallbackRelevant
-              ? 'secondary_irrelevant'
-              : 'secondary_not_adopted';
-          } catch (fallbackErr) {
-            fallbackStrategy.secondary_rejected_reason = 'secondary_exception';
-            logger.warn(
-              { err: fallbackErr?.message || String(fallbackErr) },
-              'proxy agent search fallback invoke failed after primary exception',
-            );
-          }
-        }
-      } else if (!allowSecondaryFallback) {
-        fallbackStrategy.secondary_skipped_reason = 'secondary_disabled';
-      } else if (!allowInvokeFallback) {
-        fallbackStrategy.secondary_skipped_reason = 'invoke_fallback_disabled';
-      } else if (skipSecondaryFallback && !bypassSkipSecondaryFallback) {
-        fallbackStrategy.secondary_skipped_reason =
-          fallbackStrategy.secondary_skipped_reason || 'resolver_miss_skip_secondary';
-      }
-      fallbackStrategy.remaining_budget_ms = getRemainingBudgetMs();
-    }
-
-    const { code, message, data } = extractUpstreamErrorCode(err);
-    const statusCode = err?.response?.status || err?.status || (err?.code === 'ECONNABORTED' ? 504 : 500);
-    if (queryText) {
-      const reason = err?.code === 'ECONNABORTED' ? 'primary_timeout' : 'primary_exception';
-      return respondSearch(
-        200,
-        withStrictEmptyFallback({
-          body: null,
-          queryParams: guardedQueryParams,
-          reason,
-          upstreamStatus: statusCode,
-          upstreamCode: code || err?.code || null,
-          upstreamMessage: message || err?.message || null,
-          route: 'proxy_search_exception',
-          fallbackStrategy,
-        }),
-        {
-          finalDecision: 'strict_empty',
-          primaryPathUsed: 'proxy_search_primary',
-          fallbackTriggered: true,
-          fallbackReason: reason,
-          upstreamStage: {
-            called: true,
-            timeout: String(err?.code || '').toUpperCase() === 'ECONNABORTED',
-            status: Number(statusCode || 0) || 0,
-            latency_ms: Math.max(0, Date.now() - startedAtMs),
-          },
-          strictEmptyReason: reason,
-          fallbackStrategy,
-        },
-      );
-    }
-    return res.status(statusCode).json({
-      error: code || 'FAILED_TO_PROXY_AGENT_SEARCH',
-      message: message || 'Failed to proxy agent search request',
-      details: data || null,
-    });
-  }
-}
-
 async function handleAgentProductsSearchViaInvoke(req, res) {
-  const payload = buildFindProductsMultiPayloadFromQuery(req.query);
-  if (!payload) {
+  const routePreparation = agentProductsSearchRouteEntryRuntime.prepareAgentProductsSearchRoute(req);
+  if (!routePreparation || routePreparation.invalid || !routePreparation.payload) {
     return res.status(400).json({
       error: 'INVALID_QUERY',
       message: 'query payload is invalid',
     });
   }
 
+  const payload = {
+    ...routePreparation.payload,
+    metadata:
+      routePreparation.payload?.metadata &&
+      typeof routePreparation.payload.metadata === 'object' &&
+      !Array.isArray(routePreparation.payload.metadata)
+        ? {
+            ...routePreparation.payload.metadata,
+            public_search_route: true,
+          }
+        : {
+            public_search_route: true,
+          },
+  };
+
+  const fastpathResult = await agentProductsSearchRouteEntryRuntime.maybeHandleAgentProductsSearchRouteFastpaths({
+    req,
+    payload,
+    forceDirectInvokeMainPath: routePreparation.forceDirectInvokeMainPath === true,
+  });
+  if (fastpathResult?.handled && fastpathResult.response) {
+    return res.status(200).json(fastpathResult.response);
+  }
+
+  req.query = routePreparation.query || req.query;
   req.body = {
     operation: 'find_products_multi',
     payload,
@@ -15599,6 +14757,46 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         'failed to normalize find_products_multi metadata',
       );
     }
+    try {
+      const operation = String(debugRuntime.operation || req?.body?.operation || '')
+        .trim()
+        .toLowerCase();
+      if (
+        (operation === 'find_products' || operation === 'find_products_multi') &&
+        finalBody &&
+        typeof finalBody === 'object' &&
+        !Array.isArray(finalBody)
+      ) {
+        const existingMeta =
+          finalBody.metadata &&
+          typeof finalBody.metadata === 'object' &&
+          !Array.isArray(finalBody.metadata)
+            ? finalBody.metadata
+            : {};
+        const invokeSearchRail = String(
+          debugRuntime.invokeSearchRail ||
+            existingMeta.invoke_search_rail ||
+            resolveInvokeSearchRailFromMetadata(req?.body?.metadata || null),
+        )
+          .trim()
+          .toLowerCase();
+        finalBody = {
+          ...finalBody,
+          metadata: {
+            ...existingMeta,
+            ...buildInvokeSearchRailMetadata(invokeSearchRail),
+          },
+        };
+      }
+    } catch (railErr) {
+      logger.warn(
+        {
+          gateway_request_id: gatewayRequestId,
+          err: railErr?.message || String(railErr),
+        },
+        'failed to stamp invoke search rail metadata',
+      );
+    }
     setInvokePerfHeaders();
     return originalJson(finalBody);
   };
@@ -15617,6 +14815,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     const { operation, payload } = parsed.data;
     debugRuntime.operation = String(operation || '').trim().toLowerCase();
     const metadata = normalizeMetadata(req.body.metadata, payload);
+    const invokeSearchRail =
+      operation === 'find_products' || operation === 'find_products_multi'
+        ? resolveInvokeSearchRailFromMetadata(metadata)
+        : null;
+    debugRuntime.invokeSearchRail = invokeSearchRail;
     const creatorId = extractCreatorId({ ...payload, metadata });
     const now = new Date();
     let findProductsMultiCtx = null;
@@ -15798,6 +15001,31 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     const promotions = await getActivePromotions(now, creatorId);
     const enriched = applyDealsToResponse(withPolicy, promotions, now, creatorId);
     return res.json(enriched);
+  }
+
+  if (operation === 'get_discovery_feed') {
+    try {
+      const discoveryResponse = await getDiscoveryFeed(effectivePayload);
+      return res.status(200).json(discoveryResponse);
+    } catch (err) {
+      if (err instanceof DiscoveryCatalogUnavailableError) {
+        return res.status(200).json(buildDiscoveryUnavailableInvokeResponse(effectivePayload, err));
+      }
+      if (err instanceof DiscoveryValidationError || Number(err?.statusCode) === 400) {
+        return res.status(400).json({
+          error: err?.code || 'INVALID_DISCOVERY_REQUEST',
+          message: err?.message || 'Invalid discovery request',
+        });
+      }
+      logger.error(
+        { err: err?.message || String(err), operation },
+        'get_discovery_feed failed unexpectedly',
+      );
+      return res.status(502).json({
+        error: err?.code || 'GET_DISCOVERY_FEED_FAILED',
+        message: err?.message || 'Failed to build discovery feed',
+      });
+    }
   }
   
   if (shouldUseMock) {
@@ -18202,7 +17430,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     let crossMerchantCacheRouteDebug = null;
     const shoppingFreshMainlineSearch =
       (operation === 'find_products' || operation === 'find_products_multi') &&
-      isShoppingSource(metadata?.source);
+      invokeSearchRail === 'authoritative_shopping';
     let resolvedOfferId = null;
     let resolvedMerchantId = null;
     let productDetailMerchantId = null;
@@ -18223,6 +17451,59 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         });
         strictCommerceFindProductsMulti = Boolean(strictFindProductsMultiDecision.enabled);
 	      const queryText = String(search.query || '').trim();
+      const ingredientIntentIds = Array.isArray(strictFindProductsMultiDecision?.ingredientIntents)
+        ? strictFindProductsMultiDecision.ingredientIntents
+            .map((value) => String(value || '').trim().toLowerCase())
+            .filter(Boolean)
+        : [];
+      if (strictCommerceFindProductsMulti && ingredientIntentIds.length > 0) {
+        const safePage = Math.max(1, Number(search.page || 1) || 1);
+        const safeLimit = Math.min(
+          Math.max(1, Number(search.limit || search.page_size || 20) || 20),
+          SEARCH_LIMIT_MAX,
+        );
+        const safeOffset = Math.max(
+          0,
+          Number.isFinite(Number(search.offset))
+            ? Math.floor(Number(search.offset))
+            : (safePage - 1) * safeLimit,
+        );
+        const directProducts = await prefetchStrictIngredientExternalSeedCandidates({
+          search,
+          strictInvokeDecision: strictFindProductsMultiDecision,
+          rawQueryText: rawUserQuery || queryText,
+        });
+        const pagedDirectProducts = directProducts.slice(safeOffset, safeOffset + safeLimit);
+        const baseMetadata = {
+          ...buildIngredientIntentDirectBaseMetadata({
+            ingredientIntentDetected: ingredientIntentIds.length > 0,
+            ingredientIntentIds,
+            strictConstraintReason: strictFindProductsMultiDecision?.strictConstraintReason,
+            mergedRecalledProducts: directProducts,
+            directServiceProducts: directProducts,
+          }),
+          invoke_search_rail: 'authoritative_shopping',
+          legacy_contract: false,
+        };
+        const directResponse =
+          pagedDirectProducts.length > 0
+            ? buildIngredientIntentDirectHitResponse({
+                responseProducts: pagedDirectProducts,
+                mergedRecalledProducts: directProducts,
+                safePage,
+                baseMetadata,
+                ingredientIntentIds,
+                ingredientIntentDetected: true,
+              })
+            : buildIngredientIntentDirectEmptyResponse({
+                safePage,
+                baseMetadata,
+                ingredientIntentIds,
+                ingredientIntentDetected: true,
+              });
+        const promotions = await getActivePromotions(now, creatorId);
+        return res.json(applyDealsToResponse(directResponse, promotions, now, creatorId));
+      }
 	      const isCreatorUiColdStart = isCreatorUiSource(source) && queryText.length === 0;
       const inStockOnly = search.in_stock_only !== false;
 
@@ -19307,8 +18588,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               return res.json(earlyDiagnosed);
             }
           }
-          if (
+          const allowCacheMissResolverFallback =
             PROXY_SEARCH_CACHE_MISS_RESOLVER_FALLBACK_ENABLED &&
+            shouldAllowResolverFallback('find_products_multi', {
+              metadata: {
+                ...(metadata || {}),
+                ...(invokeSearchRail ? { invoke_search_rail: invokeSearchRail } : {}),
+              },
+            });
+          if (
+            allowCacheMissResolverFallback &&
             isLookupQuery &&
             cacheQueryText.length > 0
           ) {
@@ -19659,6 +18948,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        : PIVOTA_API_BASE;
 	    // Build URL with path parameters
 	    let url = `${searchInvokeBase}${route.path}`;
+      let upstreamMethod = route.method;
+      let searchPrimaryContract = null;
 	    let requestBody = {};
 	    let requoteRequestBody = null;
 	    queryParams = {};
@@ -19702,14 +18993,21 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           offset,
         };
         queryParams = applyShoppingCatalogQueryGuards(queryParams, metadata?.source);
-        requestBody = buildSearchProductsV2Body({
-          payload,
-          search,
-          metadata,
-          clientChannel,
-          gatewayRequestId,
-          defaultSearchAllMerchants: searchAllMerchants,
-        });
+        if (invokeSearchRail === 'legacy_internal') {
+          url = `${searchInvokeBase}/agent/v1/products/search`;
+          upstreamMethod = 'GET';
+          searchPrimaryContract = 'agent_v1';
+        } else {
+          requestBody = buildSearchProductsV2Body({
+            payload,
+            search,
+            metadata,
+            clientChannel,
+            gatewayRequestId,
+            defaultSearchAllMerchants: searchAllMerchants,
+          });
+          searchPrimaryContract = 'agent_v2';
+        }
         break;
       }
 
@@ -19799,6 +19097,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             strictInvokeDecision: strictFindProductsMultiDecision,
             rawQueryText: rawUserQuery || search?.query,
           });
+          searchPrimaryContract = 'shop_invoke_strict';
+        } else if (invokeSearchRail === 'legacy_internal') {
+          url = `${searchInvokeBase}/agent/v1/products/search`;
+          upstreamMethod = 'GET';
+          searchPrimaryContract = 'agent_v1';
         } else {
           requestBody = buildSearchProductsV2Body({
             payload,
@@ -19809,6 +19112,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             defaultSearchAllMerchants:
               !merchantId && merchantIds.length === 0 && !shouldScopeToCreatorCatalog,
           });
+          searchPrimaryContract = 'agent_v2';
         }
         break;
       }
@@ -20347,7 +19651,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
     }
 
-    logger.info({ operation, method: route.method, url, hasQuery: Object.keys(queryParams).length > 0 }, 'Forwarding invoke request');
+    logger.info({ operation, method: upstreamMethod, url, hasQuery: Object.keys(queryParams).length > 0 }, 'Forwarding invoke request');
 
     // Make the upstream request
     const queryString =
@@ -20366,10 +19670,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       : FIND_PRODUCTS_MULTI_UPSTREAM_DEFAULT_TIMEOUT_MS;
 
     const axiosConfig = {
-      method: route.method,
+      method: upstreamMethod,
       url: `${url}${queryString}`,
       headers: {
-        ...(route.method !== 'GET' && { 'Content-Type': 'application/json' }),
+        ...(upstreamMethod !== 'GET' && { 'Content-Type': 'application/json' }),
         ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
       },
       // Use a longer timeout for quote/order/payment operations (Shopify pricing can be slow).
@@ -20377,10 +19681,107 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         operation === 'find_products_multi'
           ? Math.min(getUpstreamTimeoutMs(operation), upstreamBudgetMsForSearch)
           : getUpstreamTimeoutMs(operation),
-      ...(route.method !== 'GET' && Object.keys(requestBody).length > 0 && { data: requestBody })
+      ...(upstreamMethod !== 'GET' && Object.keys(requestBody).length > 0 && { data: requestBody })
+    };
+    const buildFindProductsMultiSecondStageAxiosConfig = ({
+      expandedQuery,
+      limit,
+    } = {}) => {
+      if (operation !== 'find_products_multi') return null;
+      const normalizedExpandedQuery = String(expandedQuery || '').trim();
+      const normalizedLimit = Math.min(
+        Math.max(1, Number(limit || queryParams?.limit || 20) || 20),
+        80,
+      );
+      if (!normalizedExpandedQuery) return null;
+      const secondaryQueryParams = {
+        ...queryParams,
+        query: normalizedExpandedQuery,
+        offset: 0,
+        limit: normalizedLimit,
+      };
+      if (searchPrimaryContract === 'agent_v1') {
+        return {
+          method: 'GET',
+          url: `${url}${buildQueryString(secondaryQueryParams)}`,
+          headers: buildInvokeUpstreamAuthHeaders({ checkoutToken }),
+          timeout: Math.min(2400, Number(axiosConfig.timeout || 2400)),
+          validateStatus: () => true,
+        };
+      }
+      if (searchPrimaryContract === 'agent_v2') {
+        const baseSearch =
+          effectivePayload?.search &&
+          typeof effectivePayload.search === 'object' &&
+          !Array.isArray(effectivePayload.search)
+            ? effectivePayload.search
+            : payload?.search && typeof payload.search === 'object' && !Array.isArray(payload.search)
+              ? payload.search
+              : {};
+        const secondarySearch = {
+          ...baseSearch,
+          ...(secondaryQueryParams?.merchant_id
+            ? { merchant_id: secondaryQueryParams.merchant_id }
+            : {}),
+          ...(Array.isArray(secondaryQueryParams?.merchant_ids) &&
+          secondaryQueryParams.merchant_ids.length > 0
+            ? { merchant_ids: secondaryQueryParams.merchant_ids }
+            : {}),
+          ...(secondaryQueryParams?.search_all_merchants === true
+            ? { search_all_merchants: true }
+            : {}),
+          query: normalizedExpandedQuery,
+          limit: normalizedLimit,
+          page: 1,
+          ...(secondaryQueryParams?.category ? { category: secondaryQueryParams.category } : {}),
+          ...(secondaryQueryParams?.catalog_surface
+            ? { catalog_surface: secondaryQueryParams.catalog_surface }
+            : {}),
+          ...(secondaryQueryParams?.min_price != null
+            ? { min_price: secondaryQueryParams.min_price }
+            : {}),
+          ...(secondaryQueryParams?.max_price != null
+            ? { max_price: secondaryQueryParams.max_price }
+            : {}),
+          ...(secondaryQueryParams?.allow_external_seed !== undefined
+            ? { allow_external_seed: secondaryQueryParams.allow_external_seed }
+            : {}),
+          ...(secondaryQueryParams?.allow_stale_cache !== undefined
+            ? { allow_stale_cache: secondaryQueryParams.allow_stale_cache }
+            : {}),
+          ...(secondaryQueryParams?.fast_mode !== undefined
+            ? { fast_mode: secondaryQueryParams.fast_mode }
+            : {}),
+          ...(secondaryQueryParams?.external_seed_strategy
+            ? { external_seed_strategy: secondaryQueryParams.external_seed_strategy }
+            : {}),
+          in_stock_only: secondaryQueryParams?.in_stock_only !== false,
+        };
+        return {
+          method: 'POST',
+          url,
+          headers: {
+            'Content-Type': 'application/json',
+            ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
+          },
+          timeout: Math.min(2400, Number(axiosConfig.timeout || 2400)),
+          validateStatus: () => true,
+          data: buildSearchProductsV2Body({
+            payload,
+            search: secondarySearch,
+            metadata,
+            clientChannel,
+            gatewayRequestId,
+            defaultSearchAllMerchants: secondaryQueryParams?.search_all_merchants === true,
+          }),
+        };
+      }
+      return null;
     };
     const legacySearchAxiosConfig =
       (operation === 'find_products' || operation === 'find_products_multi') &&
+      searchPrimaryContract !== 'agent_v1' &&
+      !isFallbackSuppressedSearchRail(invokeSearchRail) &&
       !shoppingFreshMainlineSearch &&
       !(strictCommerceFindProductsMulti && operation === 'find_products_multi')
         ? {
@@ -20424,7 +19825,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     );
     let shouldAttemptResolverFirst = shouldUseResolverFirstSearch({
       operation,
-      metadata,
+      metadata: {
+        ...(metadata || {}),
+        ...(invokeSearchRail ? { invoke_search_rail: invokeSearchRail } : {}),
+      },
       queryText: resolverQueryText,
       remainingBudgetMs: resolverRemainingBudgetMs,
       queryClass: traceQueryClass,
@@ -20609,6 +20013,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     resolved_contract: 'shop_invoke_strict',
                     legacy_fallback: false,
                   }
+                : searchPrimaryContract === 'agent_v1'
+                  ? {
+                      attempted_contract: 'agent_v1',
+                      resolved_contract: 'agent_v1',
+                      legacy_fallback: false,
+                    }
                 : {
                     attempted_contract: 'agent_v2',
                     resolved_contract: 'agent_v2',
@@ -20749,20 +20159,27 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         const upstreamStatus = err?.response?.status || null;
         const { code: upstreamCode, message: upstreamMessage } = extractUpstreamErrorCode(err);
         if (shoppingFreshMainlineSearch) {
+          const shoppingMainlineReason =
+            err?.code === 'ECONNABORTED'
+              ? 'shopping_mainline_timeout'
+              : 'shopping_mainline_exception';
           response = {
             status: 200,
-            data: withStrictEmptyFallback({
-              body: null,
-              queryParams,
-              reason:
-                err?.code === 'ECONNABORTED'
-                  ? 'shopping_mainline_timeout'
-                  : 'shopping_mainline_exception',
-              upstreamStatus,
-              upstreamCode: upstreamCode || err?.code || null,
-              upstreamMessage: upstreamMessage || err?.message || null,
-              route: 'shopping_mainline_primary_exception',
-            }),
+            data: normalizeAuthoritativeSearchNoFallbackResponse(
+              withStrictEmptyFallback({
+                body: null,
+                queryParams,
+                reason: shoppingMainlineReason,
+                upstreamStatus,
+                upstreamCode: upstreamCode || err?.code || null,
+                upstreamMessage: upstreamMessage || err?.message || null,
+                route: 'shopping_mainline_primary_exception',
+              }),
+              {
+                reason: shoppingMainlineReason,
+                primaryPath: 'upstream_stage',
+              },
+            ),
           };
         }
         if (!response && operation === 'find_products_multi' && strictCommerceFindProductsMulti) {
@@ -20797,17 +20214,28 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             brandLike: secondarySkipBrandLike,
           },
         );
-        const allowResolverFallback = shouldAllowResolverFallback(operation);
+        const allowResolverFallback = shouldAllowResolverFallback(operation, {
+          metadata: {
+            ...(metadata || {}),
+            ...(invokeSearchRail ? { invoke_search_rail: invokeSearchRail } : {}),
+          },
+        });
         const allowSecondaryFallback = shouldAllowSecondaryFallback(operation, {
           forceSecondaryFallback: auroraFallbackOverrides.forceSecondaryFallback,
         });
+        const hardDisableInvokeFallback = isFallbackSuppressedSearchRail(invokeSearchRail);
         const allowInvokeFallback = shouldAllowInvokeFallback(operation, {
           forceInvokeFallback: auroraFallbackOverrides.forceInvokeFallback,
+          metadata: {
+            ...(metadata || {}),
+            ...(invokeSearchRail ? { invoke_search_rail: invokeSearchRail } : {}),
+          },
         });
         const bypassSkipSecondaryFallback = shouldBypassSecondaryFallbackSkipOnPrimaryException({ err });
         const allowResolverFallbackOnException =
           allowResolverFallback && (!skipSecondaryFallback || bypassSkipSecondaryFallback);
         const allowSecondaryFallbackOnException =
+          !hardDisableInvokeFallback &&
           allowSecondaryFallback &&
           allowInvokeFallback &&
           (!skipSecondaryFallback || bypassSkipSecondaryFallback);
@@ -20965,13 +20393,19 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     ) {
       response = {
         status: 200,
-        data: withStrictEmptyFallback({
-          body: null,
-          queryParams,
-          reason: 'shopping_mainline_upstream_5xx',
-          upstreamStatus: Number(response?.status || 0) || null,
-          route: 'shopping_mainline_primary_status',
-        }),
+        data: normalizeAuthoritativeSearchNoFallbackResponse(
+          withStrictEmptyFallback({
+            body: null,
+            queryParams,
+            reason: 'shopping_mainline_upstream_5xx',
+            upstreamStatus: Number(response?.status || 0) || null,
+            route: 'shopping_mainline_primary_status',
+          }),
+          {
+            reason: 'shopping_mainline_upstream_5xx',
+            primaryPath: 'upstream_stage',
+          },
+        ),
       };
     }
     let upstreamData = response.data;
@@ -21080,12 +20514,22 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         costMsEstimate: 25,
         queryClass: traceQueryClass,
       });
-      const allowResolverFallback = shouldAllowResolverFallback(operation);
+      const allowResolverFallback = shouldAllowResolverFallback(operation, {
+        metadata: {
+          ...(metadata || {}),
+          ...(invokeSearchRail ? { invoke_search_rail: invokeSearchRail } : {}),
+        },
+      });
       const allowSecondaryFallback = shouldAllowSecondaryFallback(operation, {
         forceSecondaryFallback: auroraFallbackOverrides.forceSecondaryFallback,
       });
+      const hardDisableInvokeFallback = isFallbackSuppressedSearchRail(invokeSearchRail);
       const allowInvokeFallback = shouldAllowInvokeFallback(operation, {
         forceInvokeFallback: auroraFallbackOverrides.forceInvokeFallback,
+        metadata: {
+          ...(metadata || {}),
+          ...(invokeSearchRail ? { invoke_search_rail: invokeSearchRail } : {}),
+        },
       });
       let secondarySupplementMeta = null;
       let semanticRetryApplied = false;
@@ -21163,88 +20607,100 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             secondStageCtx?.adjustedPayload?.search?.query || queryText,
           ).trim();
           if (expandedSecondaryQuery && expandedSecondaryQuery !== queryText) {
-            const secondaryQueryParams = {
-              ...queryParams,
-              query: expandedSecondaryQuery,
-              offset: 0,
-              limit: Math.min(Math.max(requestedLimit * 2, 20), 80),
-            };
-            const secondaryResp = await axios({
-              method: 'GET',
-              url: `${url}${buildQueryString(secondaryQueryParams)}`,
-              headers: axiosConfig.headers,
-              timeout: Math.min(2400, Number(axiosConfig.timeout || 2400)),
-              validateStatus: () => true,
+            const secondStageLimit = Math.min(Math.max(requestedLimit * 2, 20), 80);
+            const secondStageAxiosConfig = buildFindProductsMultiSecondStageAxiosConfig({
+              expandedQuery: expandedSecondaryQuery,
+              limit: secondStageLimit,
             });
-            const secondaryNormalized = normalizeAgentProductsListResponse(secondaryResp.data, {
-              limit: secondaryQueryParams.limit,
-              offset: 0,
-            });
-            const secondaryProducts = Array.isArray(secondaryNormalized?.products)
-              ? secondaryNormalized.products
-              : [];
-            if (secondaryResp.status >= 200 && secondaryResp.status < 300 && secondaryProducts.length > 0) {
-              const primaryProducts = Array.isArray(upstreamData?.products) ? upstreamData.products : [];
-              const seen = new Set(primaryProducts.map((product) => buildSearchProductKey(product)).filter(Boolean));
-              const toAppend = [];
-              for (const product of secondaryProducts) {
-                if (!isSupplementCandidateRelevant(product, queryText)) continue;
-                const key = buildSearchProductKey(product);
-                if (!key || seen.has(key)) continue;
-                seen.add(key);
-                toAppend.push(product);
-                if (primaryProducts.length + toAppend.length >= requestedLimit) break;
-              }
-              if (toAppend.length > 0) {
-                const mergedProducts = primaryProducts.concat(toAppend);
-                upstreamData = normalizeAgentProductsListResponse(
-                  {
-                    ...(upstreamData && typeof upstreamData === 'object' && !Array.isArray(upstreamData) ? upstreamData : {}),
-                    products: mergedProducts,
-                    total: Math.max(
-                      Number(upstreamData?.total || 0) || 0,
-                      mergedProducts.length,
-                    ),
-                  },
-                  {
-                    limit: queryParams?.limit,
-                    offset: queryParams?.offset,
-                  },
-                );
-              }
-              secondarySupplementMeta = {
-                attempted: true,
-                applied: toAppend.length > 0,
-                added_count: toAppend.length,
-                expansion_mode: FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE,
-                expanded_query: expandedSecondaryQuery,
-                reason: toAppend.length > 0 ? 'second_stage_supplemented' : 'second_stage_no_relevant_candidates',
-              };
-              addFpmGateTrace({
-                gateId: 'second_stage_expansion_result',
-                applied: true,
-                decision: toAppend.length > 0 ? 'applied' : 'no_change',
-                reason: toAppend.length > 0 ? 'second_stage_supplemented' : 'second_stage_no_relevant_candidates',
-                costMsEstimate: 25,
-                queryClass: traceQueryClass,
-              });
-            } else {
+            if (!secondStageAxiosConfig) {
               secondarySupplementMeta = {
                 attempted: true,
                 applied: false,
                 added_count: 0,
                 expansion_mode: FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE,
                 expanded_query: expandedSecondaryQuery,
-                reason: 'second_stage_unavailable',
+                reason: 'second_stage_contract_unsupported',
               };
               addFpmGateTrace({
                 gateId: 'second_stage_expansion_result',
                 applied: true,
-                decision: 'no_change',
-                reason: 'second_stage_unavailable',
-                costMsEstimate: 25,
+                decision: 'skipped',
+                reason: 'second_stage_contract_unsupported',
+                costMsEstimate: 0,
                 queryClass: traceQueryClass,
               });
+            } else {
+              const secondaryResp = await axios(secondStageAxiosConfig);
+              const secondaryNormalized = normalizeAgentProductsListResponse(secondaryResp.data, {
+                limit: secondStageLimit,
+                offset: 0,
+              });
+              const secondaryProducts = Array.isArray(secondaryNormalized?.products)
+                ? secondaryNormalized.products
+                : [];
+              if (secondaryResp.status >= 200 && secondaryResp.status < 300 && secondaryProducts.length > 0) {
+                const primaryProducts = Array.isArray(upstreamData?.products) ? upstreamData.products : [];
+                const seen = new Set(primaryProducts.map((product) => buildSearchProductKey(product)).filter(Boolean));
+                const toAppend = [];
+                for (const product of secondaryProducts) {
+                  if (!isSupplementCandidateRelevant(product, queryText)) continue;
+                  const key = buildSearchProductKey(product);
+                  if (!key || seen.has(key)) continue;
+                  seen.add(key);
+                  toAppend.push(product);
+                  if (primaryProducts.length + toAppend.length >= requestedLimit) break;
+                }
+                if (toAppend.length > 0) {
+                  const mergedProducts = primaryProducts.concat(toAppend);
+                  upstreamData = normalizeAgentProductsListResponse(
+                    {
+                      ...(upstreamData && typeof upstreamData === 'object' && !Array.isArray(upstreamData) ? upstreamData : {}),
+                      products: mergedProducts,
+                      total: Math.max(
+                        Number(upstreamData?.total || 0) || 0,
+                        mergedProducts.length,
+                      ),
+                    },
+                    {
+                      limit: queryParams?.limit,
+                      offset: queryParams?.offset,
+                    },
+                  );
+                }
+                secondarySupplementMeta = {
+                  attempted: true,
+                  applied: toAppend.length > 0,
+                  added_count: toAppend.length,
+                  expansion_mode: FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE,
+                  expanded_query: expandedSecondaryQuery,
+                  reason: toAppend.length > 0 ? 'second_stage_supplemented' : 'second_stage_no_relevant_candidates',
+                };
+                addFpmGateTrace({
+                  gateId: 'second_stage_expansion_result',
+                  applied: true,
+                  decision: toAppend.length > 0 ? 'applied' : 'no_change',
+                  reason: toAppend.length > 0 ? 'second_stage_supplemented' : 'second_stage_no_relevant_candidates',
+                  costMsEstimate: 25,
+                  queryClass: traceQueryClass,
+                });
+              } else {
+                secondarySupplementMeta = {
+                  attempted: true,
+                  applied: false,
+                  added_count: 0,
+                  expansion_mode: FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE,
+                  expanded_query: expandedSecondaryQuery,
+                  reason: 'second_stage_unavailable',
+                };
+                addFpmGateTrace({
+                  gateId: 'second_stage_expansion_result',
+                  applied: true,
+                  decision: 'no_change',
+                  reason: 'second_stage_unavailable',
+                  costMsEstimate: 25,
+                  queryClass: traceQueryClass,
+                });
+              }
             }
           }
         } catch (secondaryErr) {
@@ -21314,6 +20770,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
         if (
           !replacedByFallback &&
+          !hardDisableInvokeFallback &&
           allowSecondaryFallback &&
           (allowInvokeFallback || forceInvokeFallbackForFragrance) &&
           !skipSecondaryFallback
@@ -22250,6 +21707,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         queryText.length > 0 &&
         products.length === 0 &&
         !hasClarification;
+      const existingStrictEmptyReason =
+        typeof existingMeta?.strict_empty_reason === 'string' &&
+        existingMeta.strict_empty_reason.trim()
+          ? existingMeta.strict_empty_reason.trim()
+          : null;
       const querySource = String(existingMeta?.query_source || '').trim() || 'agent_products_search';
       const primaryPathUsed =
         querySource.startsWith('cache_')
@@ -22385,7 +21847,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         ...(isStrictEmpty
           ? {
               strict_empty: true,
-              strict_empty_reason: fallbackReason || 'no_candidates',
+              strict_empty_reason: existingStrictEmptyReason || fallbackReason || 'no_candidates',
             }
           : {}),
       });
@@ -22841,11 +22303,15 @@ module.exports._debug = {
   loadCreatorSellableFromCache,
   searchCreatorSellableFromCache,
   searchCrossMerchantFromCache,
+  applyFindProductsMultiSourceContract,
+  applyShoppingCatalogQueryGuards,
+  classifyInvokeSearchRail,
   normalizeProductImages,
   buildFindProductsMultiPayloadFromQuery,
   buildServiceVersionMetadata,
   buildCacheStageDiagnosticBundle,
   buildCacheStageSnapshot,
+  uiChatBuildLoopBreakRetryArgs,
   decideGenericSkincareCachePreference,
   collapseNearDuplicateSearchProducts,
   buildTravelLookupSearchProductDedupeKey,
