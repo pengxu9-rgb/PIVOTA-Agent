@@ -1419,6 +1419,82 @@ describe('discovery feed service', () => {
     );
   });
 
+  test('browse_products card response detail hydrates reviewed shopping card fields from product intel KB', async () => {
+    const kbStore = require('../src/auroraBff/productIntelKbStore');
+    jest.spyOn(kbStore, 'getProductIntelKbEntry').mockResolvedValue({
+      kb_key: 'product:ext_13c520e764f9f7d7f23c611b',
+      analysis: {
+        product_intel_v1: {
+          evidence_profile: 'seller_only',
+          shopping_card: {
+            contract_version: 'pivota.shopping_card.v1',
+            title: 'Naturium Vitamin C Super Serum Plus - Jumbo',
+            subtitle: 'Multi-Active Serum',
+            intro:
+              'A multi-active treatment serum that combines vitamin C, retinol, niacinamide, hyaluronic acid, and salicylic acid.',
+          },
+          search_card: {
+            title_candidate: 'Naturium Vitamin C Super Serum Plus - Jumbo',
+            compact_candidate: 'Multi-Active Serum',
+            intro_candidate:
+              'A multi-active treatment serum that combines vitamin C, retinol, niacinamide, hyaluronic acid, and salicylic acid.',
+          },
+        },
+      },
+    });
+
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        response_detail: 'card',
+        context: {
+          locale: 'en-US',
+        },
+      },
+      {
+        candidateProducts: [
+          {
+            ...makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'ext_13c520e764f9f7d7f23c611b',
+              title: 'Vitamin C Super Serum Plus - Jumbo',
+              brand: 'Naturium',
+              category: 'Serum',
+              product_type: 'Serum',
+              price: 33,
+            }),
+          },
+        ],
+      },
+    );
+
+    expect(response.products).toHaveLength(1);
+    expect(response.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'ext_13c520e764f9f7d7f23c611b',
+        card_title: 'Naturium Vitamin C Super Serum Plus - Jumbo',
+        card_subtitle: 'Multi-Active Serum',
+        card_intro:
+          'A multi-active treatment serum that combines vitamin C, retinol, niacinamide, hyaluronic acid, and salicylic acid.',
+        search_card: expect.objectContaining({
+          title_candidate: 'Naturium Vitamin C Super Serum Plus - Jumbo',
+          compact_candidate: 'Multi-Active Serum',
+          intro_candidate:
+            'A multi-active treatment serum that combines vitamin C, retinol, niacinamide, hyaluronic acid, and salicylic acid.',
+        }),
+        shopping_card: expect.objectContaining({
+          contract_version: 'pivota.shopping_card.v1',
+          title: 'Naturium Vitamin C Super Serum Plus - Jumbo',
+          subtitle: 'Multi-Active Serum',
+          intro:
+            'A multi-active treatment serum that combines vitamin C, retinol, niacinamide, hyaluronic acid, and salicylic acid.',
+        }),
+      }),
+    );
+  });
+
   test('brand-scoped browse skips supplemental providers once products_search already has enough primary brand candidates', async () => {
     process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://wrong-backend.test';

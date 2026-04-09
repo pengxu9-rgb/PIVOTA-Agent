@@ -18476,6 +18476,8 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
     : [];
   const keptLevels = [];
   const skippedExternalSeedLevels = [];
+  const skippedSupportLevels = [];
+  const internalLevels = [];
   for (const level of levels) {
     const queries = Array.isArray(level?.queries) ? level.queries : [];
     const allowExternalSeedOnly =
@@ -18487,7 +18489,25 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
       );
       continue;
     }
-    keptLevels.push(level);
+    internalLevels.push(level);
+  }
+  const isFrameworkLocalHandoff = internalLevels.some((level) =>
+    String(level?.ladder_level || level?.stage_id || '').trim().toLowerCase().startsWith('framework_stage_'),
+  );
+  if (isFrameworkLocalHandoff && internalLevels.length > 0) {
+    const primaryInternalLevel =
+      internalLevels.find((level) =>
+        String(level?.ladder_level || level?.stage_id || '').trim().toLowerCase() === 'framework_stage_a_primary_internal',
+      ) || internalLevels[0];
+    keptLevels.push(primaryInternalLevel);
+    for (const level of internalLevels) {
+      if (level === primaryInternalLevel) continue;
+      skippedSupportLevels.push(
+        String(level?.ladder_level || level?.stage_id || '').trim() || `level_${skippedSupportLevels.length + 1}`,
+      );
+    }
+  } else {
+    keptLevels.push(...internalLevels);
   }
   if (keptLevels.length === 0) {
     return {
@@ -18505,6 +18525,12 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
       planned_level_count: levels.length,
       executed_level_count: keptLevels.length,
       skipped_external_seed_level_count: skippedExternalSeedLevels.length,
+      ...(skippedSupportLevels.length
+        ? {
+            skipped_support_level_count: skippedSupportLevels.length,
+            skipped_support_levels: skippedSupportLevels,
+          }
+        : {}),
       ...(skippedExternalSeedLevels.length
         ? { skipped_external_seed_levels: skippedExternalSeedLevels }
         : {}),
@@ -18713,6 +18739,8 @@ async function runBeautyMainlineLocalHandoffSearch({
     searchInternalProductsPrimitive,
   );
   if (typeof internalSearchFn !== 'function') return null;
+  const isFrameworkLocalHandoff =
+    Array.isArray(targetContext?.framework_roles) && targetContext.framework_roles.length > 0;
 
   const queryLevels = buildRecoCatalogQueryLevels({
     targetContext,
@@ -18750,7 +18778,11 @@ async function runBeautyMainlineLocalHandoffSearch({
       1200,
       Math.min(
         Number.isFinite(Number(timeoutMs)) ? Math.trunc(Number(timeoutMs)) : 5000,
-        normalizeRecoTargetStep(targetContext?.resolved_target_step) === 'sunscreen' ? 6500 : 5000,
+        isFrameworkLocalHandoff
+          ? 2400
+          : normalizeRecoTargetStep(targetContext?.resolved_target_step) === 'sunscreen'
+            ? 6500
+            : 5000,
       ),
     ),
     limit: 6,

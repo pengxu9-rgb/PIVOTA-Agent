@@ -32,6 +32,7 @@ const {
   detectBrandEntities,
   normalizeBrandText,
 } = require('../findProductsMulti/brandLexicon');
+let productIntelKbStore = null;
 
 const SCORING_VERSION = 'discovery_v2';
 const MAX_RECENT_VIEWS = 50;
@@ -304,6 +305,10 @@ function uniqStrings(values, limit) {
     if (limit && out.length >= limit) break;
   }
   return out;
+}
+
+function asPlainObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
 }
 
 function normalizeDiscoverySort(raw) {
@@ -5185,6 +5190,85 @@ function normalizeDiscoveryMarketSignalBadges(value) {
   return out;
 }
 
+function getProductIntelKbStore() {
+  if (productIntelKbStore !== null) return productIntelKbStore;
+  try {
+    // Lazy-load so tests can stub the store without depending on discoveryFeed module init order.
+    // eslint-disable-next-line global-require
+    productIntelKbStore = require('../auroraBff/productIntelKbStore');
+  } catch {
+    productIntelKbStore = {};
+  }
+  return productIntelKbStore;
+}
+
+function extractDiscoveryProductIntelBundle(entry) {
+  const analysis = asPlainObject(entry?.analysis);
+  if (!analysis) return null;
+  return (
+    asPlainObject(analysis.product_intel_v1) ||
+    asPlainObject(analysis.product_intel) ||
+    asPlainObject(analysis.bundle) ||
+    null
+  );
+}
+
+async function hydrateDiscoveryCandidateProductIntel(candidate) {
+  if (!candidate || typeof candidate !== 'object') return candidate;
+  const raw = asPlainObject(candidate.raw);
+  if (!raw) return candidate;
+
+  const productId = String(raw.product_id || candidate.productId || '').trim();
+  if (!productId) return candidate;
+
+  const { getProductIntelKbEntry } = getProductIntelKbStore();
+  if (typeof getProductIntelKbEntry !== 'function') return candidate;
+
+  let kbEntry = null;
+  try {
+    kbEntry = await getProductIntelKbEntry(`product:${productId}`);
+  } catch {
+    return candidate;
+  }
+
+  const bundle = extractDiscoveryProductIntelBundle(kbEntry);
+  if (!bundle) return candidate;
+
+  const shoppingCard = asPlainObject(bundle.shopping_card);
+  const searchCard = asPlainObject(bundle.search_card);
+  const marketSignalBadges = Array.isArray(bundle.market_signal_badges)
+    ? bundle.market_signal_badges
+    : undefined;
+
+  return {
+    ...candidate,
+    raw: {
+      ...raw,
+      product_intel: bundle,
+      ...(shoppingCard ? { shopping_card: shoppingCard } : {}),
+      ...(searchCard ? { search_card: searchCard } : {}),
+      ...(marketSignalBadges ? { market_signal_badges: marketSignalBadges } : {}),
+      ...(discoveryCardString(bundle.evidence_profile)
+        ? { evidence_profile: discoveryCardString(bundle.evidence_profile) }
+        : {}),
+      ...(discoveryCardString(shoppingCard?.title) ? { card_title: discoveryCardString(shoppingCard.title) } : {}),
+      ...(discoveryCardString(shoppingCard?.subtitle)
+        ? { card_subtitle: discoveryCardString(shoppingCard.subtitle) }
+        : {}),
+      ...(discoveryCardString(shoppingCard?.proof_badge)
+        ? { card_badge: discoveryCardString(shoppingCard.proof_badge) }
+        : {}),
+      ...(discoveryCardString(shoppingCard?.intro) ? { card_intro: discoveryCardString(shoppingCard.intro) } : {}),
+    },
+  };
+}
+
+async function hydrateDiscoveryCandidatesProductIntel(candidates, request) {
+  if (!Array.isArray(candidates) || !candidates.length) return candidates;
+  if (request?.response_detail !== 'card') return candidates;
+  return Promise.all(candidates.map((candidate) => hydrateDiscoveryCandidateProductIntel(candidate)));
+}
+
 function readDiscoveryConfiguredBadge(raw) {
   const attributes = raw?.attributes && typeof raw.attributes === 'object' ? raw.attributes : null;
   const merchandising =
@@ -5963,10 +6047,15 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       });
     }
 
+    const hydratedSelectedCandidates = await hydrateDiscoveryCandidatesProductIntel(
+      selectedEntries.map((entry) => entry.candidate),
+      request,
+    );
+
     const response = {
       status: 'success',
       success: true,
-      products: selectedEntries.map((entry) => formatDiscoveryResponseProduct(entry.candidate, request)),
+      products: hydratedSelectedCandidates.map((candidate) => formatDiscoveryResponseProduct(candidate, request)),
       total,
       page: request.page,
       page_size: selectedEntries.length,
@@ -6087,6 +6176,7 @@ module.exports = {
     resolveDiscoveryProductsSearchApiKeyConfig,
     resolveDiscoveryProductsSearchBaseUrlConfig,
     loadBrandScopedRecommendationFallback,
+    hydrateDiscoveryCandidateProductIntel,
     matchesQueryTextCandidate,
     matchesBrandScopeCandidate,
     normalizeDiscoveryRequest,
