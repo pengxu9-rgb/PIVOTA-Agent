@@ -239,6 +239,7 @@ const V1ChatRequestSchema = z
   .object({
     message: z.string().min(1).optional(),
     query: z.string().min(1).optional(),
+    profile: z.record(z.string(), z.any()).optional(),
     client_state: z
       .union([
         z.string().min(1),
