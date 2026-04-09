@@ -249,6 +249,28 @@ function buildPromptLiveSmokeFamilyDefaults(family) {
           },
         },
       };
+    case 'beauty_reco_grounded':
+      return {
+        correctness: {
+          expect_http_status: 200,
+          allow_null_assistant_message: true,
+          required_card_types: ['recommendations'],
+        },
+        observability: {
+          must_have_paths: [
+            'cards.0.type',
+            'cards.0.payload.mainline_status',
+            'cards.0.payload.recommendations.0.product_id',
+            'cards.0.payload.recommendation_meta.primary_target_id',
+            'cards.0.payload.recommendation_meta.ranked_targets.0.target_id',
+            'cards.0.payload.recommendation_meta.selected_target_ids.0',
+          ],
+          must_equal_paths: {
+            'cards.0.type': 'recommendations',
+            'cards.0.payload.mainline_status': 'grounded_success',
+          },
+        },
+      };
     default:
       return null;
   }

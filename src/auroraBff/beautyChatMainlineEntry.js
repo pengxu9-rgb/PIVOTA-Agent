@@ -248,7 +248,6 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
     mergeIngredientRecoContextValue,
     appendLatestRecoContextToSessionPatch,
     extractRecoFinalSelectionContract,
-    buildRouteAwareAssistantText,
     maybeRewriteRecoAssistantTextWithLlm,
     makeAssistantMessage,
     buildEnvelope,
@@ -666,16 +665,6 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
             updated_at_ms: Date.now(),
           }),
         );
-        const baseAssistantText =
-          buildRouteAwareAssistantText({
-            route: 'reco',
-            payload: hardPathPayloadBundle.payload,
-            language: ctx?.lang,
-            profile: assistantProfile,
-          }) ||
-          (ctx?.lang === 'CN'
-            ? '我已经把这轮候选收成结构化推荐卡片。'
-            : 'I summarized this pass into structured recommendation cards.');
         const assistantRewrite =
           typeof maybeRewriteRecoAssistantTextWithLlm === 'function'
             ? await (async () => {
@@ -685,7 +674,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
                   payload: hardPathPayloadBundle.payload,
                   language: ctx?.lang,
                   profile: assistantProfile,
-                  baseText: baseAssistantText,
+                  userRequestText: pickFirstTrimmed(recoRequestMessage, message),
                   allowLockedSelectionRewrite: true,
                   deadlineAtMs: hardPathBudget.deadlineAtMs,
                 });
@@ -693,8 +682,11 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
                 hardPathTiming.rewriteMs = elapsedBeautyChatStageMs(rewriteStartedAtMs);
               }
             })()
-            : { text: baseAssistantText, llm_used: false, reason: 'rewrite_unavailable' };
-        const assistantText = pickFirstTrimmed(assistantRewrite?.text, baseAssistantText);
+            : { text: '', llm_used: false, reason: 'rewrite_unavailable' };
+        const assistantText =
+          assistantRewrite?.llm_used === true
+            ? pickFirstTrimmed(assistantRewrite?.text)
+            : '';
         if (isPlainObject(hardPathPayloadBundle.payload?.recommendation_meta)) {
           hardPathPayloadBundle.payload.recommendation_meta.assistant_rewrite_llm_used =
             assistantRewrite?.llm_used === true;
@@ -726,7 +718,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
           }),
         );
         const envelope = buildEnvelope(ctx, {
-          assistant_message: makeAssistantMessage(assistantText),
+          assistant_message: assistantText ? makeAssistantMessage(assistantText) : null,
           suggested_chips: [],
           cards: [
             {

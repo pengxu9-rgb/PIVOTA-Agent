@@ -617,6 +617,8 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
     plannerDeadlineAtMs: null,
     handoffDeadlineAtMs: null,
     rewriteDeadlineAtMs: null,
+    rewriteBaseText: 'unset',
+    rewriteUserRequestText: null,
   };
   const runtime = createBeautyChatMainlineEntryRuntime({
     RECO_CATALOG_GROUNDED_ENABLED: true,
@@ -766,9 +768,11 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
         },
       };
     },
-    maybeRewriteRecoAssistantTextWithLlm: async ({ deadlineAtMs, baseText }) => {
+    maybeRewriteRecoAssistantTextWithLlm: async ({ deadlineAtMs, baseText, userRequestText }) => {
       observed.rewriteDeadlineAtMs = deadlineAtMs;
-      return { text: baseText, llm_used: false, reason: 'test_passthrough' };
+      observed.rewriteBaseText = baseText;
+      observed.rewriteUserRequestText = userRequestText;
+      return { text: '', llm_used: false, reason: 'test_passthrough' };
     },
     classifyBeautyMainlineHandoffFallback: () => ({
       reason: 'unreachable',
@@ -830,6 +834,174 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
   assert.equal(Number.isFinite(observed.rewriteDeadlineAtMs), true);
   assert.ok(observed.handoffDeadlineAtMs >= observed.plannerDeadlineAtMs);
   assert.equal(observed.rewriteDeadlineAtMs, observed.handoffDeadlineAtMs);
+  assert.equal(observed.rewriteBaseText, undefined);
+  assert.equal(observed.rewriteUserRequestText, 'im oily skin, what products should i use?');
+  assert.equal(result?.envelope?.assistant_message, null);
+  assert.equal(payload?.recommendation_meta?.assistant_rewrite_llm_used, false);
+  assert.equal(payload?.recommendation_meta?.assistant_rewrite_reason, 'test_passthrough');
+});
+
+test('beauty chat mainline entry returns only llm rewrite prose on successful rewrite', async () => {
+  const observed = {
+    rewriteBaseText: 'unset',
+    rewriteUserRequestText: null,
+  };
+  const runtime = createBeautyChatMainlineEntryRuntime({
+    RECO_CATALOG_GROUNDED_ENABLED: true,
+    RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS: 1000,
+    resolveRecommendationTargetContext: () => ({
+      entry_type: 'chat',
+      intent_mode: 'generic_concern',
+      step_aware_intent: false,
+      resolved_target_step: null,
+      primary_role_id: 'oil_control_treatment',
+      framework_roles: [
+        {
+          role_id: 'oil_control_treatment',
+          rank: 1,
+          preferred_step: 'treatment',
+          label: 'Oil-control treatment',
+        },
+      ],
+    }),
+    summarizeProfileForContext: (profile) => profile,
+    mergeIngredientRecoContextValue: (left, right) => ({ ...(left || {}), ...(right || {}) }),
+    appendLatestRecoContextToSessionPatch: (sessionPatch, recoContext) => {
+      sessionPatch.latest_reco_context = recoContext;
+    },
+    extractRecoFinalSelectionContract: () => ({
+      selection_owner: 'shopping_agent_beauty_mainline',
+    }),
+    makeAssistantMessage: (content) => ({ role: 'assistant', format: 'text', content }),
+    buildEnvelope: (_ctx, envelope) => envelope,
+    makeEvent: (_ctx, kind, data) => ({ kind, data }),
+    applyRecoContractToRecoRequestedEvents: (events) => ({ events }),
+    buildRecoRequestedEventData: ({ payload, source }) => ({ payload, source }),
+    normalizeRecoSourceDetail: (value) => value,
+    stateChangeAllowed: () => false,
+    handoffRecoToBeautyMainlineSearch: async (args) => ({
+      targetContext: args.targetContext,
+      recommendations: [
+        {
+          product_id: 'oily_pick_1',
+          display_name: 'GoalSkin Oil Control Serum',
+          matched_role_id: 'oil_control_treatment',
+        },
+      ],
+      searchResult: {
+        decision_owner: 'shopping_agent_beauty_mainline',
+        semantic_owner: 'shopping_agent_beauty_mainline',
+        metadata: {
+          contract_bridge: {
+            resolved_contract: 'agent_v1_search_beauty_mainline',
+          },
+          source_breakdown: {
+            source_tier_counts: { fresh_external: 1 },
+          },
+          search_stage_ledger: {
+            final_selection: {
+              selection_owner: 'shopping_agent_beauty_mainline',
+              selected_product_ids: ['oily_pick_1'],
+              selected_titles: ['GoalSkin Oil Control Serum'],
+              selection_signature: 'search_sel_oily_pick_1',
+              mainline_status: 'grounded_success',
+              source_tier_counts: { fresh_external: 1 },
+            },
+          },
+        },
+      },
+    }),
+    buildRecoPayloadFromBeautyMainlineHandoff: ({ basePayload }) => ({
+      payload: {
+        source: 'catalog_grounded_v1',
+        mainline_status: 'grounded_success',
+        recommendations: [
+          {
+            product_id: 'oily_pick_1',
+            display_name: 'GoalSkin Oil Control Serum',
+            matched_role_id: 'oil_control_treatment',
+          },
+        ],
+        recommendation_meta: {
+          ...(basePayload?.recommendation_meta || {}),
+          primary_target_id: 'oil_control_treatment',
+          ranked_targets: [
+            {
+              target_id: 'oil_control_treatment',
+              ingredient_query: 'Niacinamide',
+              resolved_target_step: 'treatment',
+            },
+          ],
+          selected_target_ids: ['oil_control_treatment'],
+        },
+        metadata: {},
+      },
+      contract: {
+        version: 'test_contract',
+      },
+    }),
+    maybeRewriteRecoAssistantTextWithLlm: async ({ baseText, userRequestText }) => {
+      observed.rewriteBaseText = baseText;
+      observed.rewriteUserRequestText = userRequestText;
+      return {
+        text: 'Start with GoalSkin Oil Control Serum for oil control, then keep the rest of your routine stable for 1-2 weeks.',
+        llm_used: true,
+        provider: 'test_provider',
+        model: 'test_model',
+        reason: null,
+      };
+    },
+    classifyBeautyMainlineHandoffFallback: () => ({
+      reason: 'unreachable',
+    }),
+    buildBeautyMainlineHandoffFallbackEnvelope: () => ({
+      cards: [],
+    }),
+    looksLikeRecommendationRequest: () => true,
+    sendChatEnvelope: async () => null,
+  });
+
+  const result = await runtime.maybeHandleBeautyOwnedChatReco({
+    ctx: {
+      request_id: 'req_llm_only_rewrite',
+      trace_id: 'trace_llm_only_rewrite',
+      lang: 'EN',
+      trigger_source: 'chat',
+    },
+    logger: null,
+    message: 'i am oily skin, what product should i use first?',
+    recoEntrySourceDetail: 'typed_reco',
+    profile: {
+      skinType: 'oily',
+      sensitivity: 'low',
+      barrierStatus: 'stable',
+      goals: ['oil control'],
+    },
+  });
+
+  assert.equal(result?.handled, true);
+  assert.equal(observed.rewriteBaseText, undefined);
+  assert.equal(observed.rewriteUserRequestText, 'i am oily skin, what product should i use first?');
+  assert.equal(
+    result?.envelope?.assistant_message?.content,
+    'Start with GoalSkin Oil Control Serum for oil control, then keep the rest of your routine stable for 1-2 weeks.',
+  );
+  assert.doesNotMatch(
+    String(result?.envelope?.assistant_message?.content || ''),
+    /Primary recommendation focus:|Products actually selected this time:/i,
+  );
+  assert.equal(
+    result?.envelope?.cards?.[0]?.payload?.recommendation_meta?.assistant_rewrite_llm_used,
+    true,
+  );
+  assert.equal(
+    result?.envelope?.cards?.[0]?.payload?.recommendation_meta?.assistant_rewrite_provider,
+    'test_provider',
+  );
+  assert.equal(
+    result?.envelope?.cards?.[0]?.payload?.recommendation_meta?.assistant_rewrite_model,
+    'test_model',
+  );
 });
 
 test('beauty chat mainline entry falls back to deterministic generic-concern target context when planner is untrusted', async () => {

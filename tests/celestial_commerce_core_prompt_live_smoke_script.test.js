@@ -599,4 +599,198 @@ describe('Celestial commerce-core prompt live smoke script', () => {
       await new Promise((resolve) => server.close(resolve));
     }
   });
+
+  test('allows null assistant_message when recommendations card is required and present', async () => {
+    const repoRoot = path.join(__dirname, '..');
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'commerce-core-prompt-smoke-null-assistant-'));
+    const casesPath = path.join(outDir, 'prompt-smoke-null-assistant.json');
+    const scriptPath = path.join(
+      repoRoot,
+      'scripts',
+      'probe_celestial_commerce_core_prompt_live_smoke.sh',
+    );
+
+    fs.writeFileSync(
+      casesPath,
+      JSON.stringify(
+        {
+          prompt_cases: [
+            {
+              id: 'beauty_reco_null_assistant',
+              family: 'beauty_reco_grounded',
+              request: {
+                message: 'im oily skin, what products should i use?',
+              },
+              correctness: {
+                expect_http_status: 200,
+                allow_null_assistant_message: true,
+                required_card_types: ['recommendations'],
+              },
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+
+    const server = http.createServer(async (req, res) => {
+      if (req.url !== '/v1/chat') {
+        res.statusCode = 404;
+        res.end('not found');
+        return;
+      }
+
+      await readJsonBody(req);
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(
+        JSON.stringify({
+          assistant_message: null,
+          cards: [
+            {
+              type: 'recommendations',
+              payload: {
+                mainline_status: 'grounded_success',
+                recommendations: [
+                  {
+                    product_id: 'oily_pick_1',
+                    display_name: 'GoalSkin Oil Control Serum',
+                  },
+                ],
+                recommendation_meta: {
+                  primary_target_id: 'oil_control_treatment',
+                  ranked_targets: [{ target_id: 'oil_control_treatment' }],
+                  selected_target_ids: ['oil_control_treatment'],
+                },
+              },
+            },
+          ],
+        }),
+      );
+    });
+
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+
+    try {
+      const { stdout } = await execFileAsync('bash', [scriptPath], {
+        cwd: repoRoot,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          BASE_URL: baseUrl,
+          ENDPOINT: '/v1/chat',
+          CASES_PATH: casesPath,
+          OUT_DIR: outDir,
+          TIMEOUT_MS: '5000',
+        },
+      });
+      const payload = JSON.parse(String(stdout || '').trim());
+      const report = JSON.parse(fs.readFileSync(payload.json_path, 'utf8'));
+
+      expect(payload.ok).toBe(true);
+      expect(report.summary.case_count).toBe(1);
+      expect(report.summary.pass_count).toBe(1);
+      expect(report.summary.fail_count).toBe(0);
+      expect(report.results[0]).toEqual(
+        expect.objectContaining({
+          id: 'beauty_reco_null_assistant',
+          verdict: 'pass',
+        }),
+      );
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+
+  test('fails when required recommendations card is missing even if null assistant_message is allowed', async () => {
+    const repoRoot = path.join(__dirname, '..');
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'commerce-core-prompt-smoke-missing-card-'));
+    const casesPath = path.join(outDir, 'prompt-smoke-missing-card.json');
+    const scriptPath = path.join(
+      repoRoot,
+      'scripts',
+      'probe_celestial_commerce_core_prompt_live_smoke.sh',
+    );
+
+    fs.writeFileSync(
+      casesPath,
+      JSON.stringify(
+        {
+          prompt_cases: [
+            {
+              id: 'beauty_reco_missing_card',
+              family: 'beauty_reco_grounded',
+              request: {
+                message: 'im oily skin, what products should i use?',
+              },
+              correctness: {
+                expect_http_status: 200,
+                allow_null_assistant_message: true,
+                required_card_types: ['recommendations'],
+              },
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+
+    const server = http.createServer(async (req, res) => {
+      if (req.url !== '/v1/chat') {
+        res.statusCode = 404;
+        res.end('not found');
+        return;
+      }
+
+      await readJsonBody(req);
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(
+        JSON.stringify({
+          assistant_message: null,
+          cards: [],
+        }),
+      );
+    });
+
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+
+    try {
+      let stdout = '';
+      try {
+        ({ stdout } = await execFileAsync('bash', [scriptPath], {
+          cwd: repoRoot,
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            BASE_URL: baseUrl,
+            ENDPOINT: '/v1/chat',
+            CASES_PATH: casesPath,
+            OUT_DIR: outDir,
+            TIMEOUT_MS: '5000',
+          },
+        }));
+      } catch (error) {
+        stdout = String(error?.stdout || '');
+      }
+      const payload = JSON.parse(String(stdout || '').trim());
+      const report = JSON.parse(fs.readFileSync(payload.json_path, 'utf8'));
+
+      expect(payload.ok).toBe(false);
+      expect(report.summary.case_count).toBe(1);
+      expect(report.summary.pass_count).toBe(0);
+      expect(report.summary.fail_count).toBe(1);
+      expect(report.results[0].reasons).toEqual(
+        expect.arrayContaining(['missing_card_type:recommendations']),
+      );
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
 });

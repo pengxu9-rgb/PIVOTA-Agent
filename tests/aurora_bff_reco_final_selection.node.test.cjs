@@ -11,6 +11,108 @@ function loadRouteInternals() {
   return { moduleId, __internal };
 }
 
+test('reco assistant rewrite prompt omits deterministic base text and carries request mode', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'oily_pick_1',
+            display_name: 'GoalSkin Oil Control Serum',
+            brand: 'GoalSkin',
+            category: 'Serum',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'treatment',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Niacinamide',
+        resolved_target_step: 'treatment',
+        primary_target_id: 'oil_control_treatment',
+        ranked_targets: [
+          {
+            target_id: 'oil_control_treatment',
+            ingredient_query: 'Niacinamide',
+            resolved_target_step: 'treatment',
+          },
+        ],
+        selected_target_ids: ['oil_control_treatment'],
+      },
+    );
+    const prompt = __internal.buildRecoAssistantRewritePrompt({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily', goals: ['oil control'] },
+      userRequestText: 'I am oily skin. What product should I buy?',
+      baseText: 'Primary recommendation focus: keep this pass centered on Niacinamide.',
+    });
+
+    assert.match(prompt, /"request_mode":"buy"/);
+    assert.match(prompt, /"user_request":"I am oily skin\. What product should I buy\?"/);
+    assert.match(prompt, /If request_mode is "buy", use shopping advice tone\./);
+    assert.match(prompt, /If request_mode is "use_first", use starting-point advice tone\./);
+    assert.doesNotMatch(prompt, /"base_text":/);
+    assert.doesNotMatch(
+      prompt,
+      /Primary recommendation focus: keep this pass centered on Niacinamide\./,
+    );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('reco assistant rewrite helper no longer requires base text before availability checks', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'oily_pick_1',
+            display_name: 'GoalSkin Oil Control Serum',
+            brand: 'GoalSkin',
+            category: 'Serum',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'treatment',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Niacinamide',
+        resolved_target_step: 'treatment',
+        primary_target_id: 'oil_control_treatment',
+        ranked_targets: [
+          {
+            target_id: 'oil_control_treatment',
+            ingredient_query: 'Niacinamide',
+            resolved_target_step: 'treatment',
+          },
+        ],
+        selected_target_ids: ['oil_control_treatment'],
+      },
+    );
+    const rewrite = await __internal.maybeRewriteRecoAssistantTextWithLlm({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily', goals: ['oil control'] },
+      userRequestText: 'What product should I use first?',
+      allowLockedSelectionRewrite: true,
+    });
+
+    assert.equal(rewrite.llm_used, false);
+    assert.equal(rewrite.reason, 'rewrite_disabled');
+    assert.equal(rewrite.text, '');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('beauty canonical ownership recomputes final selection from surfaced recommendations', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {

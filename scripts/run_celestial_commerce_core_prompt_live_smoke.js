@@ -130,10 +130,35 @@ function evaluateRules(body, rules = {}) {
     }
   }
 
+  const requiredCardTypes = Array.isArray(rules.required_card_types) ? rules.required_card_types : [];
+  if (requiredCardTypes.length > 0) {
+    const presentCardTypes = new Set(
+      (Array.isArray(body?.cards) ? body.cards : [])
+        .map((card) => String(card?.type || card?.card_type || '').trim().toLowerCase())
+        .filter(Boolean),
+    );
+    for (const rawType of requiredCardTypes) {
+      const cardType = String(rawType || '').trim().toLowerCase();
+      if (cardType && !presentCardTypes.has(cardType)) {
+        reasons.push(`missing_card_type:${cardType}`);
+      }
+    }
+  }
+
+  const hasAllowNullAssistantMessageRule =
+    Object.prototype.hasOwnProperty.call(rules || {}, 'allow_null_assistant_message');
+  const allowNullAssistantMessage = rules.allow_null_assistant_message === true;
+  const hasAssistantMessageField =
+    Object.prototype.hasOwnProperty.call(body || {}, 'assistant_message');
+  const assistantMessageIsNull = hasAssistantMessageField && body?.assistant_message === null;
+  if (assistantMessageIsNull && hasAllowNullAssistantMessageRule && !allowNullAssistantMessage) {
+    reasons.push('assistant_message_null_not_allowed');
+  }
+
   const minAssistantMessageLength = Number(rules.min_assistant_message_length || 0) || 0;
   if (minAssistantMessageLength > 0) {
     const assistantMessage = extractAssistantMessage(body);
-    if (assistantMessage.length < minAssistantMessageLength) {
+    if (!(allowNullAssistantMessage && assistantMessageIsNull) && assistantMessage.length < minAssistantMessageLength) {
       reasons.push(
         `assistant_message_too_short:expected>=${minAssistantMessageLength} actual=${assistantMessage.length}`,
       );

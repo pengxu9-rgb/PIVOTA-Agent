@@ -48414,7 +48414,31 @@ const RECO_ASSISTANT_REWRITE_JSON_SCHEMA = {
   },
 };
 
-function buildRecoAssistantRewritePrompt({ payload, language, profile, baseText } = {}) {
+function inferRecoAssistantRequestMode(userRequestText) {
+  const raw = String(userRequestText || '').trim().toLowerCase();
+  if (!raw) return 'generic';
+  if (
+    /\b(use\s+first|start\s+with|first\s+step|what\s+should\s+i\s+start\s+with)\b/i.test(raw)
+    || /(先用什么|先从什么开始|先上什么|先用哪个|先开始用什么)/i.test(raw)
+  ) {
+    return 'use_first';
+  }
+  if (
+    /\b(what\s+should\s+i\s+buy|which\s+product\s+should\s+i\s+buy|what\s+should\s+i\s+get|purchase|buy)\b/i.test(raw)
+    || /(买什么|买哪个|购买|入手|下单|推荐买)/i.test(raw)
+  ) {
+    return 'buy';
+  }
+  if (
+    /\b(what\s+should\s+i\s+use|what\s+products\s+should\s+i\s+use|should\s+i\s+use|use)\b/i.test(raw)
+    || /(用什么|该用什么|应该用什么|推荐用)/i.test(raw)
+  ) {
+    return 'use';
+  }
+  return 'generic';
+}
+
+function buildRecoAssistantRewritePrompt({ payload, language, profile, userRequestText } = {}) {
   const lang = language === 'CN' ? 'CN' : 'EN';
   const names = pickRecoNames(payload, 3);
   const { primaryTarget, secondaryTargets, selectionShiftReason } = pickRecoMetaTargets(payload);
@@ -48479,18 +48503,47 @@ function buildRecoAssistantRewritePrompt({ payload, language, profile, baseText 
         'medium',
       ),
     ).trim().toLowerCase(),
-    base_text: String(baseText || '').trim(),
+    user_request: pickFirstTrimmed(
+      userRequestText,
+      payload?.recommendation_meta?.request_text,
+      payload?.request_text,
+    ) || null,
+    request_mode: inferRecoAssistantRequestMode(
+      pickFirstTrimmed(
+        userRequestText,
+        payload?.recommendation_meta?.request_text,
+        payload?.request_text,
+      ),
+    ),
     primary_focus: normalizeRecoContextPrimaryFocus(payload?.recommendation_meta?.primary_focus),
     target_label: primaryTargetLabel || null,
+    selected_target_ids: Array.isArray(payload?.recommendation_meta?.selected_target_ids)
+      ? payload.recommendation_meta.selected_target_ids
+          .map((value) => String(value || '').trim())
+          .filter(Boolean)
+          .slice(0, 4)
+      : [],
+    ranked_target_ids: Array.isArray(payload?.recommendation_meta?.ranked_targets)
+      ? payload.recommendation_meta.ranked_targets
+          .map((target) => pickFirstTrimmed(target && target.target_id))
+          .filter(Boolean)
+          .slice(0, 4)
+      : [],
   };
   return [
     'Return strict JSON only.',
-    'Rewrite the recommendation explanation so it is natural, specific, concise, and aligned to the final payload.',
+    'Write one recommendation assistant message that is natural, specific, concise, and aligned to the final payload.',
+    'Address the user_request directly and respond to the user\'s real complaint first.',
+    'If request_mode is "buy", use shopping advice tone.',
+    'If request_mode is "use_first", use starting-point advice tone.',
+    'If request_mode is "use", use practical product guidance tone.',
     'Only mention targets, ingredients, steps, and product names that already exist in Context.',
+    'Do not invent products, targets, routines, claims, or benefits beyond Context.',
     'If there is one selected product, keep a single main direction.',
     'If secondary targets exist, mention them briefly and explicitly as secondary.',
     'If confidence_level is low, keep the wording conservative and non-definitive.',
     'Do not mention "Direction 1/2/3", generic shopping filler, or any product not in selected_products.',
+    'Do not use internal phrases or internal framing such as "Primary recommendation focus" or "Products actually selected this time".',
     'Schema: { "assistant_text": string }',
     `Context: ${JSON.stringify(context)}`,
   ].join('\n');
@@ -48501,11 +48554,11 @@ async function maybeRewriteRecoAssistantTextWithLlm({
   language,
   profile,
   baseText,
+  userRequestText,
   allowLockedSelectionRewrite = false,
   deadlineAtMs = 0,
 } = {}) {
   const fallbackText = String(baseText || '').trim();
-  if (!fallbackText) return { text: '', llm_used: false, reason: 'empty_base_text' };
   if (extractRecoFinalSelectionContract(payload)?.selection_signature && allowLockedSelectionRewrite !== true) {
     return { text: fallbackText, llm_used: false, reason: 'selection_contract_locked' };
   }
@@ -48539,7 +48592,7 @@ async function maybeRewriteRecoAssistantTextWithLlm({
         payload,
         language,
         profile,
-        baseText: fallbackText,
+        userRequestText,
       }),
       responseSchema: RECO_ASSISTANT_REWRITE_JSON_SCHEMA,
       timeoutMs: effectiveRewriteTimeoutMs,
@@ -48572,12 +48625,22 @@ async function maybeRewriteRecoAssistantTextWithLlm({
       pickFirstTrimmed(primaryTarget && primaryTarget.resolved_target_step),
     ]);
     const mentionsUnknownDirections = /(direction\s*[123]|方向\s*[123])/i.test(candidateText);
+    const usesInternalTemplatePhrases =
+      looksLikePayloadBoundRecoAssistantText(candidateText, language)
+      || /(primary recommendation focus|products actually selected this time|当前主推荐方向|本次实际选中的商品)/i.test(candidateText);
     const overconfident = confidenceLevel === 'low' && assistantTextUsesOverconfidentRecoLanguage(candidateText);
     const secondaryTargetsMentionedAsTooMany =
       secondaryTargets.length <= 1
       ? false
       : secondaryTargets.length > 2;
-    if (!mentionsSelectedProduct || !mentionsPrimaryTarget || mentionsUnknownDirections || overconfident || secondaryTargetsMentionedAsTooMany) {
+    if (
+      !mentionsSelectedProduct
+      || !mentionsPrimaryTarget
+      || mentionsUnknownDirections
+      || usesInternalTemplatePhrases
+      || overconfident
+      || secondaryTargetsMentionedAsTooMany
+    ) {
       return { text: fallbackText, llm_used: false, reason: 'rewrite_failed_alignment_guard' };
     }
     return {
@@ -81834,6 +81897,7 @@ const __internal = {
   applyRecoContentSpineToPayload,
   buildRouteAwareAssistantText,
   buildPayloadBoundRecoAssistantText,
+  buildRecoAssistantRewritePrompt,
   maybeRewriteRecoAssistantTextWithLlm,
   isSkincareCategory,
   isBlacklistedCategoryOrTitle,

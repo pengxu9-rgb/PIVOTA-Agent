@@ -282,12 +282,17 @@ describe('Commerce shared acceptance corpus', () => {
         family: 'beauty_reco_grounded',
         correctness: expect.objectContaining({
           expect_http_status: 200,
+          allow_null_assistant_message: true,
+          required_card_types: ['recommendations'],
         }),
         observability: expect.objectContaining({
           must_have_paths: expect.arrayContaining([
             'cards.0.type',
             'cards.0.payload.mainline_status',
             'cards.0.payload.recommendations.0.product_id',
+            'cards.0.payload.recommendation_meta.primary_target_id',
+            'cards.0.payload.recommendation_meta.ranked_targets.0.target_id',
+            'cards.0.payload.recommendation_meta.selected_target_ids.0',
           ]),
           must_equal_paths: expect.objectContaining({
             'cards.0.type': 'recommendations',
