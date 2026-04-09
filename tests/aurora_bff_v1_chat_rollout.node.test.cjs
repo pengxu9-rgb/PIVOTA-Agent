@@ -1422,6 +1422,56 @@ test('/v1/chat early-locks freeform beauty reco before identity resolution', asy
   });
 });
 
+test('/v1/chat exposes v1-mainline debug headers for beauty reco ingress when requested', async () => {
+  await withEnv({}, async () => {
+    const routes = require('../src/auroraBff/routes');
+    routes.__internal.__setRouteDependencyOverridesForTest({
+      resolveIdentity: () => new Promise(() => {}),
+      maybeHandleBeautyOwnedChatReco: async () => ({
+        handled: true,
+        envelope: {
+          assistant_message: { role: 'assistant', format: 'text', content: 'debug beauty lock' },
+          suggested_chips: [],
+          cards: [],
+          session_patch: {},
+          events: [],
+        },
+      }),
+    });
+    try {
+      const response = await supertest(createApp())
+        .post('/v1/chat')
+        .set({
+          ...buildHeaders(),
+          'X-Debug': '1',
+        })
+        .send({
+          message: 'im oily skin. what product should i buy?',
+          client_state: 'IDLE_CHAT',
+          session: { state: 'idle' },
+          context: {
+            locale: 'en',
+            profile: {
+              skinType: 'oily',
+              sensitivity: 'low',
+              barrierStatus: 'stable',
+              goals: ['oil control'],
+            },
+          },
+          language: 'EN',
+        })
+        .expect(200);
+
+      assert.equal(response.headers['x-aurora-chat-handler'], 'v1_mainline');
+      assert.equal(response.headers['x-aurora-chat-ingress-delegate-target'], 'beauty_mainline');
+      assert.equal(response.headers['x-aurora-chat-ingress-request-class'], 'beauty_discovery');
+      assert.equal(response.headers['x-aurora-chat-early-beauty-lock'], 'true');
+    } finally {
+      routes.__internal.__resetRouteDependencyOverridesForTest();
+    }
+  });
+});
+
 test('/v1/chat early-locks beauty reco action payload before identity resolution', async () => {
   await withEnv({}, async () => {
     const routes = require('../src/auroraBff/routes');
