@@ -368,10 +368,27 @@ function buildShoppingCardPayload(caseRow, bundle) {
   };
 }
 
+function normalizeSelectedReviewSummary(value) {
+  const source = value && typeof value === 'object' ? value : {};
+  const rating = Number(source.rating || source.average_rating || source.avg_rating || 0) || 0;
+  const reviewCount = Number(source.review_count || source.reviewCount || source.count || 0) || 0;
+  if (!rating && !reviewCount) return null;
+  return {
+    ...(rating ? { rating } : {}),
+    ...(reviewCount ? { review_count: reviewCount } : {}),
+  };
+}
+
 function attachShoppingCard(caseRow, bundle) {
+  const product = caseRow?.product && typeof caseRow.product === 'object' ? caseRow.product : {};
   const next = deepClone(bundle);
   const shoppingCard = buildShoppingCardPayload(caseRow, next);
   const proofBadge = asString(shoppingCard.proof_badge);
+  const reviewSummary = normalizeSelectedReviewSummary(product.review_summary);
+  const communitySignals =
+    product.community_signals && typeof product.community_signals === 'object'
+      ? deepClone(product.community_signals)
+      : null;
   next.shopping_card = shoppingCard;
   next.search_card = {
     title_candidate: shoppingCard.title,
@@ -381,6 +398,12 @@ function attachShoppingCard(caseRow, bundle) {
   };
   if (Array.isArray(shoppingCard.market_signal_badges) && shoppingCard.market_signal_badges.length) {
     next.market_signal_badges = shoppingCard.market_signal_badges;
+  }
+  if (reviewSummary) {
+    next.review_summary = reviewSummary;
+  }
+  if (communitySignals) {
+    next.community_signals = communitySignals;
   }
   return next;
 }
