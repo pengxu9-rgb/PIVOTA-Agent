@@ -460,7 +460,7 @@ function buildPublishedIntelKbKeys(product, canonicalProductRef = null) {
 
 async function hydrateProductWithPublishedIntel({ product, canonicalProductRef = null } = {}) {
   const sourceProduct = asPlainObject(product) || {};
-  if (readPublishedProductIntelBundle(sourceProduct, { canonicalProductRef })) return sourceProduct;
+  const embeddedBundle = readPublishedProductIntelBundle(sourceProduct, { canonicalProductRef });
 
   let getProductIntelKbEntry = null;
   let normalizeProductAnalysis = null;
@@ -551,6 +551,7 @@ async function hydrateProductWithPublishedIntel({ product, canonicalProductRef =
     };
   }
 
+  if (embeddedBundle) return sourceProduct;
   return sourceProduct;
 }
 
