@@ -37890,13 +37890,19 @@ function isInternalKbCitationId(raw) {
   return false;
 }
 
-function stripInternalRefsDeep(value, { parentKey } = {}) {
+function stripInternalRefsDeep(value, { parentKey, memo, stack } = {}) {
   if (typeof value === 'string') return stripInternalKbRefsFromText(value);
+  const cache = memo instanceof WeakMap ? memo : new WeakMap();
+  const active = stack instanceof WeakSet ? stack : new WeakSet();
   if (Array.isArray(value)) {
+    if (active.has(value)) return null;
+    if (cache.has(value)) return cache.get(value);
     const key = String(parentKey || '').trim().toLowerCase();
     const isCitationsField = key === 'citations' || key.endsWith('_citations') || key.endsWith('citations');
+    const out = [];
+    cache.set(value, out);
+    active.add(value);
     if (isCitationsField) {
-      const out = [];
       for (const item of value) {
         if (typeof item === 'string') {
           const t = item.trim();
@@ -37905,17 +37911,27 @@ function stripInternalRefsDeep(value, { parentKey } = {}) {
           out.push(t);
           continue;
         }
-        out.push(stripInternalRefsDeep(item));
+        out.push(stripInternalRefsDeep(item, { memo: cache, stack: active }));
       }
+      active.delete(value);
       return out;
     }
-    return value.map((v) => stripInternalRefsDeep(v));
+    for (const item of value) {
+      out.push(stripInternalRefsDeep(item, { memo: cache, stack: active }));
+    }
+    active.delete(value);
+    return out;
   }
   if (!isPlainObject(value)) return value;
+  if (active.has(value)) return null;
+  if (cache.has(value)) return cache.get(value);
   const out = {};
+  cache.set(value, out);
+  active.add(value);
   for (const [k, v] of Object.entries(value)) {
-    out[k] = stripInternalRefsDeep(v, { parentKey: k });
+    out[k] = stripInternalRefsDeep(v, { parentKey: k, memo: cache, stack: active });
   }
+  active.delete(value);
   return out;
 }
 
@@ -81987,6 +82003,7 @@ const __internal = {
       delete auroraRouteDependencyOverridesForTest[name];
     }
   },
+  stripInternalRefsDeep,
   shouldEarlyLockBeautyOwnedChatReco,
   shouldKeepTypedRecoRequestOnV1Mainline: shouldKeepTypedRecoRequestOnV1MainlinePolicy,
 };

@@ -119,6 +119,25 @@ test('extractPrimaryChatRequestMessage falls back to the last user message in me
   assert.equal(message, 'what sunscreen for oily skin?');
 });
 
+test('stripInternalRefsDeep sanitizes shared subtrees and breaks cycles without throwing', () => {
+  resetAuroraModules();
+  const { __internal } = require('../src/auroraBff/routes');
+  const shared = {
+    answer: 'See kb://internal/doc/123 for context.',
+    citations: ['kb://internal/doc/123', 'https://example.com/public-source'],
+  };
+  const payload = { primary: shared, secondary: shared };
+  payload.self = payload;
+
+  const sanitized = __internal.stripInternalRefsDeep(payload);
+
+  assert.equal(typeof sanitized, 'object');
+  assert.equal(sanitized.self, null);
+  assert.equal(typeof sanitized.primary.answer, 'string');
+  assert.deepEqual(sanitized.primary.citations, ['https://example.com/public-source']);
+  assert.equal(sanitized.primary, sanitized.secondary);
+});
+
 test('GET /v1/session/bootstrap degrades instead of hanging when profile storage read times out', async () => {
   await withEnv(
     {
