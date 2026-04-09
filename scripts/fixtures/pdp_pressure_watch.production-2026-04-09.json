@@ -1,0 +1,47 @@
+{
+  "cases": [
+    {
+      "id": "watch_ext6_unscoped",
+      "bucket": "pressure_watch_ext",
+      "product_id": "ext_6c540ac96c2c1ab33f1af31d",
+      "notes": "Known long-tail ext PDP. Earlier production probes oscillated between client timeout and HTTP 200, so keep it as the primary shared-pressure watch sample."
+    },
+    {
+      "id": "watch_ext3a_unscoped",
+      "bucket": "pressure_watch_ext",
+      "product_id": "ext_3a2d781fbce98aac40f16264",
+      "notes": "Appeared as a transient 502 during the 137-id core pressure sweep on 2026-04-09, but recovered to HTTP 200 under isolated repro."
+    },
+    {
+      "id": "watch_ext5f_unscoped",
+      "bucket": "pressure_watch_ext",
+      "product_id": "ext_5f2b49a6ab974adfd0b2c7af",
+      "notes": "Appeared as a transient 502 during the same shared-pressure sweep, but returned HTTP 200 when reprobed alone."
+    },
+    {
+      "id": "watch_ext603_unscoped",
+      "bucket": "pressure_watch_ext",
+      "product_id": "ext_603241fe0197ce40b0fccc93",
+      "notes": "Third transient 502 candidate from the shared-pressure sweep. Use it to distinguish single-product data issues from capacity jitter."
+    },
+    {
+      "id": "control_ext4_unscoped",
+      "bucket": "pressure_control_ext",
+      "product_id": "ext_4e155bb184ec35f3cd7827e3",
+      "notes": "Healthy canonical ext control that should stay HTTP 200 under pressure."
+    },
+    {
+      "id": "control_not_found_ext5a",
+      "bucket": "pressure_control_not_found",
+      "product_id": "ext_5a3f0ba2f0e0394b72018937",
+      "notes": "Stable true not-found control. This should stay PRODUCT_NOT_FOUND rather than drifting into transport failures."
+    },
+    {
+      "id": "control_shopify_9886500749640",
+      "bucket": "pressure_control_shopify",
+      "product_id": "9886500749640",
+      "merchant_id": "merch_efbc46b4619cfbdf",
+      "notes": "Stable shopify-backed PDP control."
+    }
+  ]
+}

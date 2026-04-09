@@ -1,0 +1,95 @@
+{
+  "cases": [
+    {
+      "id": "watch_ext6_unscoped",
+      "bucket": "pressure_watch_ext",
+      "product_id": "ext_6c540ac96c2c1ab33f1af31d",
+      "notes": "Known long-tail ext PDP canary."
+    },
+    {
+      "id": "watch_ext3a_unscoped",
+      "bucket": "pressure_watch_ext",
+      "product_id": "ext_3a2d781fbce98aac40f16264",
+      "notes": "Transient 502 candidate from the 137-id core pressure sweep."
+    },
+    {
+      "id": "watch_ext5f_unscoped",
+      "bucket": "pressure_watch_ext",
+      "product_id": "ext_5f2b49a6ab974adfd0b2c7af",
+      "notes": "Transient 502 candidate from the same sweep."
+    },
+    {
+      "id": "watch_ext603_unscoped",
+      "bucket": "pressure_watch_ext",
+      "product_id": "ext_603241fe0197ce40b0fccc93",
+      "notes": "Transient 502 candidate from the same sweep."
+    },
+    {
+      "id": "watch_abort_ext068_unscoped",
+      "bucket": "pressure_watch_abort_wave",
+      "product_id": "ext_06822551a824293d859b48fd",
+      "notes": "Appeared as AbortError in the first wave of the 137-id 8s core scan."
+    },
+    {
+      "id": "watch_abort_ext07c_unscoped",
+      "bucket": "pressure_watch_abort_wave",
+      "product_id": "ext_07c58c61909cb0ed6d722435",
+      "notes": "Appeared as AbortError in the first wave of the 137-id 8s core scan."
+    },
+    {
+      "id": "watch_abort_ext08d_unscoped",
+      "bucket": "pressure_watch_abort_wave",
+      "product_id": "ext_08df33cea92109bf245b362b",
+      "notes": "Appeared as AbortError in the first wave of the 137-id 8s core scan."
+    },
+    {
+      "id": "watch_abort_ext095_unscoped",
+      "bucket": "pressure_watch_abort_wave",
+      "product_id": "ext_095c6c8edcc67317c0b377a0",
+      "notes": "Appeared as AbortError in the first wave of the 137-id 8s core scan."
+    },
+    {
+      "id": "watch_abort_ext0af_unscoped",
+      "bucket": "pressure_watch_abort_wave",
+      "product_id": "ext_0af89de681736eca87e84c85",
+      "notes": "Appeared as AbortError in the first wave of the 137-id 8s core scan."
+    },
+    {
+      "id": "watch_abort_ext0d48_unscoped",
+      "bucket": "pressure_watch_abort_wave",
+      "product_id": "ext_0d4841481dc8ecb150e36de8",
+      "notes": "Appeared as AbortError in the first wave of the 137-id 8s core scan."
+    },
+    {
+      "id": "watch_abort_ext0d66_unscoped",
+      "bucket": "pressure_watch_abort_wave",
+      "product_id": "ext_0d66df451d429dfaa2f2c534",
+      "notes": "Appeared as AbortError in the first wave of the 137-id 8s core scan."
+    },
+    {
+      "id": "watch_abort_ext0f93_unscoped",
+      "bucket": "pressure_watch_abort_wave",
+      "product_id": "ext_0f93d0a93112d9e6e001fdd3",
+      "notes": "Appeared as AbortError in the first wave of the 137-id 8s core scan."
+    },
+    {
+      "id": "control_ext4_unscoped",
+      "bucket": "pressure_control_ext",
+      "product_id": "ext_4e155bb184ec35f3cd7827e3",
+      "notes": "Healthy canonical ext control."
+    },
+    {
+      "id": "control_not_found_ext5a",
+      "bucket": "pressure_control_not_found",
+      "product_id": "ext_5a3f0ba2f0e0394b72018937",
+      "notes": "Stable true not-found control."
+    },
+    {
+      "id": "control_shopify_9886500749640",
+      "bucket": "pressure_control_shopify",
+      "product_id": "9886500749640",
+      "merchant_id": "merch_efbc46b4619cfbdf",
+      "notes": "Stable shopify-backed PDP control."
+    }
+  ]
+}
