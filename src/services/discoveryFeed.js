@@ -5239,6 +5239,12 @@ async function hydrateDiscoveryCandidateProductIntel(candidate) {
   const marketSignalBadges = Array.isArray(bundle.market_signal_badges)
     ? bundle.market_signal_badges
     : undefined;
+  const reviewSummary =
+    bundle.review_summary && typeof bundle.review_summary === 'object' ? bundle.review_summary : undefined;
+  const communitySignals =
+    bundle.community_signals && typeof bundle.community_signals === 'object'
+      ? bundle.community_signals
+      : undefined;
 
   return {
     ...candidate,
@@ -5248,6 +5254,8 @@ async function hydrateDiscoveryCandidateProductIntel(candidate) {
       ...(shoppingCard ? { shopping_card: shoppingCard } : {}),
       ...(searchCard ? { search_card: searchCard } : {}),
       ...(marketSignalBadges ? { market_signal_badges: marketSignalBadges } : {}),
+      ...(reviewSummary ? { review_summary: reviewSummary } : {}),
+      ...(communitySignals ? { community_signals: communitySignals } : {}),
       ...(discoveryCardString(bundle.evidence_profile)
         ? { evidence_profile: discoveryCardString(bundle.evidence_profile) }
         : {}),

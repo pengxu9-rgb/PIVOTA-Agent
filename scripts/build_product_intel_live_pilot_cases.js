@@ -3,17 +3,48 @@
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
+const { query } = require('../src/db');
+const { buildExternalSeedProduct } = require('../src/services/externalSeedProducts');
+
+function buildGatewayHeaders() {
+  const apiKey = String(
+    process.env.PIVOTA_BACKEND_AGENT_API_KEY ||
+      process.env.SHOP_GATEWAY_AGENT_API_KEY ||
+      process.env.PIVOTA_AGENT_API_KEY ||
+      process.env.AGENT_API_KEY ||
+      process.env.PIVOTA_API_KEY ||
+      '',
+  ).trim();
+  const headers = {
+    'content-type': 'application/json',
+  };
+  if (apiKey) {
+    headers['X-Agent-API-Key'] = apiKey;
+    headers['X-API-Key'] = apiKey;
+    headers.Authorization = `Bearer ${apiKey}`;
+  }
+  return headers;
+}
 
 function parseArgs(argv) {
   const out = {
     gatewayUrl: process.env.PIVOTA_GATEWAY_URL || 'https://agent.pivota.cc/api/gateway',
     productIds: [],
     queries: [],
+    surface: '',
+    pages: 0,
+    frontendBaseUrl: 'https://agent.pivota.cc',
+    frontendPaths: [],
+    coveredReport: '',
     limit: 10,
     perQuery: 12,
     seed: String(process.env.PRODUCT_INTEL_PILOT_SEED || '20260408'),
     out: '',
     requireBadgeEvidence: false,
+    excludeCovered: false,
+    candidatePoolMultiplier: 4,
+    maxPerBrand: 3,
+    maxPerCategory: 4,
   };
 
   for (let i = 2; i < argv.length; i += 1) {
@@ -34,6 +65,24 @@ function parseArgs(argv) {
         .map((item) => item.trim())
         .filter(Boolean);
       i += 1;
+    } else if (token === '--surface' && next) {
+      out.surface = String(next).trim();
+      i += 1;
+    } else if (token === '--pages' && next) {
+      out.pages = Math.max(0, Number(next) || 0);
+      i += 1;
+    } else if (token === '--frontend-base-url' && next) {
+      out.frontendBaseUrl = String(next).trim().replace(/\/+$/, '');
+      i += 1;
+    } else if (token === '--frontend-paths' && next) {
+      out.frontendPaths = String(next)
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+      i += 1;
+    } else if (token === '--covered-report' && next) {
+      out.coveredReport = next;
+      i += 1;
     } else if (token === '--limit' && next) {
       out.limit = Math.max(1, Number(next) || 10);
       i += 1;
@@ -48,6 +97,17 @@ function parseArgs(argv) {
       i += 1;
     } else if (token === '--require-badge-evidence') {
       out.requireBadgeEvidence = true;
+    } else if (token === '--exclude-covered') {
+      out.excludeCovered = true;
+    } else if (token === '--candidate-pool-multiplier' && next) {
+      out.candidatePoolMultiplier = Math.max(1, Number(next) || 4);
+      i += 1;
+    } else if (token === '--max-per-brand' && next) {
+      out.maxPerBrand = Math.max(0, Number(next) || 0);
+      i += 1;
+    } else if (token === '--max-per-category' && next) {
+      out.maxPerCategory = Math.max(0, Number(next) || 0);
+      i += 1;
     }
   }
 
@@ -67,6 +127,10 @@ function ensureDir(filePath) {
 function writeJson(filePath, value) {
   ensureDir(filePath);
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+function readJson(filePath) {
+  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
 }
 
 function asString(value) {
@@ -110,6 +174,49 @@ function sampleWithoutReplacement(values, limit, seed) {
     [arr[i], arr[j]] = [arr[j], arr[i]];
   }
   return arr.slice(0, limit);
+}
+
+async function loadCoveredProductIdSet(productIds, queryFn = query) {
+  const ids = Array.from(new Set(asArray(productIds).map((item) => asString(item)).filter(Boolean)));
+  if (!ids.length || typeof queryFn !== 'function') return new Set();
+  const keys = ids.map((id) => `product:${id}`);
+  try {
+    const res = await queryFn(
+      `
+        SELECT kb_key
+        FROM aurora_product_intel_kb
+        WHERE kb_key = ANY($1::text[])
+      `,
+      [keys],
+    );
+    const rows = res && Array.isArray(res.rows) ? res.rows : [];
+    return new Set(
+      rows
+        .map((row) => asString(row.kb_key).replace(/^product:/, ''))
+        .filter(Boolean),
+    );
+  } catch (err) {
+    const code = asString(err?.code);
+    if (code === 'NO_DATABASE' || code === '42P01') return new Set();
+    throw err;
+  }
+}
+
+function loadCoveredProductIdSetFromReport(reportPath) {
+  if (!reportPath) return new Set();
+  const report = readJson(reportPath);
+  const rows = asArray(report?.rows);
+  return new Set(
+    rows
+      .map((row) =>
+        asString(
+          row?.selected?.bundle?.canonical_product_ref?.product_id ||
+            row?.baseline?.canonical_product_ref?.product_id ||
+            row?.canonical_product_ref?.product_id,
+        ),
+      )
+      .filter(Boolean),
+  );
 }
 
 function normalizeBrandName(rawBrand) {
@@ -309,6 +416,98 @@ function buildPilotCaseFromPdpResponse(response, seedCase) {
   };
 }
 
+function buildPilotCaseFromExternalSeedProduct(product, seedCase) {
+  if (!product || typeof product !== 'object') return null;
+  const productId = asString(product.id || product.product_id);
+  if (!productId) return null;
+  const seedProduct = seedCase?.product && typeof seedCase.product === 'object' ? seedCase.product : {};
+  const brand = normalizeBrandName(product.brand) || asString(seedProduct.brand);
+  const categoryPath = asArray(product.category_path).map((item) => asString(item)).filter(Boolean);
+  const category = categoryPath.length ? categoryPath.join('/') : asString(product.category || product.product_type || seedProduct.category);
+  const ingredients = asArray(product.ingredients_inci || product.ingredients)
+    .map((item) => asString(item?.inci || item))
+    .filter(Boolean);
+
+  return {
+    case_id: `live_${productId}`,
+    notes:
+      seedCase?.notes ||
+      `Live pilot case sampled from external product seeds (${brand || 'unknown brand'}).`,
+    canonical_product_ref: {
+      merchant_id: asString(product.merchant_id || seedCase?.canonical_product_ref?.merchant_id || 'external_seed'),
+      product_id: productId,
+    },
+    product: {
+      merchant_id: asString(product.merchant_id || seedCase?.canonical_product_ref?.merchant_id || 'external_seed'),
+      product_id: productId,
+      brand,
+      title: asString(product.title || product.name || seedProduct.title),
+      category,
+      description: asString(product.description || seedProduct.description),
+      tags: mergeLists(seedProduct.tags, categoryPath, product.alias_tokens, product.ingredient_tokens),
+      texture: asString(product.texture || seedProduct.texture),
+      finish: asString(product.finish || seedProduct.finish),
+      ingredients_inci: ingredients,
+      how_to_use: asString(product.how_to_use || product.usage || seedProduct.how_to_use),
+      review_summary:
+        normalizeReviewSummary(product.review_summary) ||
+        normalizeReviewSummary({
+          rating: product.rating,
+          review_count: product.review_count ?? product.reviewCount,
+        }) ||
+        normalizeReviewSummary(seedProduct.review_summary),
+      ...(normalizeCommunitySignals(seedProduct.community_signals)
+        ? { community_signals: normalizeCommunitySignals(seedProduct.community_signals) }
+        : {}),
+      ...(normalizeMarketSignalBadges(seedProduct.market_signal_badges).length
+        ? { market_signal_badges: normalizeMarketSignalBadges(seedProduct.market_signal_badges) }
+        : {}),
+      ...(asString(seedProduct.evidence_profile) ? { evidence_profile: asString(seedProduct.evidence_profile) } : {}),
+    },
+  };
+}
+
+async function fetchExternalSeedProduct(productId) {
+  const normalizedId = asString(productId);
+  if (!normalizedId) return null;
+  const res = await query(
+    `
+      SELECT
+        id,
+        external_product_id,
+        destination_url,
+        canonical_url,
+        domain,
+        title,
+        image_url,
+        price_amount,
+        price_currency,
+        availability,
+        seed_data,
+        status,
+        attached_product_key,
+        created_at,
+        updated_at
+      FROM external_product_seeds
+      WHERE status = 'active'
+        AND attached_product_key IS NULL
+        AND (
+          id::text = $1
+          OR external_product_id = $1
+          OR coalesce(seed_data->>'external_product_id', '') = $1
+          OR coalesce(seed_data->>'product_id', '') = $1
+          OR coalesce(seed_data->'snapshot'->>'product_id', '') = $1
+        )
+      ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+      LIMIT 1
+    `,
+    [normalizedId],
+  );
+  const row = res?.rows && res.rows[0] ? res.rows[0] : null;
+  if (!row) return null;
+  return buildExternalSeedProduct(row);
+}
+
 function hasBadgeEvidence(caseRow) {
   const product = caseRow?.product && typeof caseRow.product === 'object' ? caseRow.product : {};
   if (normalizeMarketSignalBadges(product.market_signal_badges).length > 0) return true;
@@ -320,6 +519,30 @@ function hasBadgeEvidence(caseRow) {
   if (Number(sourceCounts.editorial || 0) >= 3) return true;
   if (Number(sourceCounts.media || 0) >= 3) return true;
   return false;
+}
+
+function selectDiverseCases(cases, { limit, seed, maxPerBrand, maxPerCategory }) {
+  const rows = asArray(cases).filter((row) => row && !row.error);
+  if (!rows.length) return [];
+  const shuffled = sampleWithoutReplacement(rows.map((row) => JSON.stringify(row)), rows.length, seed)
+    .map((item) => JSON.parse(item));
+  const selected = [];
+  const brandCounts = new Map();
+  const categoryCounts = new Map();
+
+  for (const row of shuffled) {
+    if (selected.length >= limit) break;
+    const product = row.product && typeof row.product === 'object' ? row.product : {};
+    const brandKey = asString(product.brand).toLowerCase();
+    const categoryKey = asString(product.category).toLowerCase();
+    if (maxPerBrand > 0 && brandKey && (brandCounts.get(brandKey) || 0) >= maxPerBrand) continue;
+    if (maxPerCategory > 0 && categoryKey && (categoryCounts.get(categoryKey) || 0) >= maxPerCategory) continue;
+    selected.push(row);
+    if (brandKey) brandCounts.set(brandKey, (brandCounts.get(brandKey) || 0) + 1);
+    if (categoryKey) categoryCounts.set(categoryKey, (categoryCounts.get(categoryKey) || 0) + 1);
+  }
+
+  return selected;
 }
 
 async function fetchSearchCandidates(gatewayUrl, query, limit) {
@@ -339,11 +562,57 @@ async function fetchSearchCandidates(gatewayUrl, query, limit) {
 
   const response = await axios.post(gatewayUrl, body, {
     timeout: 30000,
-    headers: {
-      'content-type': 'application/json',
-    },
+    headers: buildGatewayHeaders(),
   });
   return asArray(response.data?.products);
+}
+
+async function fetchDiscoveryCandidates(gatewayUrl, surface, page, limit) {
+  const body = {
+    operation: 'get_discovery_feed',
+    payload: {
+      surface,
+      page,
+      limit,
+      response_detail: 'card',
+      context: {
+        locale: 'en-US',
+      },
+    },
+    metadata: {
+      source: 'product_intel_live_pilot_builder',
+    },
+  };
+
+  const response = await axios.post(gatewayUrl, body, {
+    timeout: 30000,
+    headers: buildGatewayHeaders(),
+  });
+  return asArray(response.data?.products);
+}
+
+function extractProductIdsFromFrontendHtml(html) {
+  const ids = new Set();
+  const source = asString(html);
+  const pattern = /\/products\/([^"'?#\s<]+)/g;
+  let match = pattern.exec(source);
+  while (match) {
+    const id = asString(match[1]);
+    if (id) ids.add(id);
+    match = pattern.exec(source);
+  }
+  return Array.from(ids);
+}
+
+async function fetchFrontendProductIds(baseUrl, pagePath) {
+  const url = `${String(baseUrl || '').replace(/\/+$/, '')}${pagePath.startsWith('/') ? pagePath : `/${pagePath}`}`;
+  const response = await axios.get(url, {
+    timeout: 30000,
+    headers: {
+      accept: 'text/html,application/xhtml+xml',
+    },
+  });
+  return extractProductIdsFromFrontendHtml(response.data);
 }
 
 async function fetchPdpResponse(gatewayUrl, productId) {
@@ -365,9 +634,7 @@ async function fetchPdpResponse(gatewayUrl, productId) {
 
   const response = await axios.post(gatewayUrl, body, {
     timeout: 20000,
-    headers: {
-      'content-type': 'application/json',
-    },
+    headers: buildGatewayHeaders(),
   });
   return response.data;
 }
@@ -378,26 +645,83 @@ async function main() {
   let selectedIds = sampleWithoutReplacement(args.productIds, args.limit, args.seed);
   let seedCases = [];
   const queryErrors = [];
+  let coveredProductIds = new Set();
+  const coveredReportPath = resolvePath(rootDir, args.coveredReport);
+  const reportCoveredProductIds = loadCoveredProductIdSetFromReport(coveredReportPath);
 
-  if (!selectedIds.length && args.queries.length) {
+  if (!selectedIds.length && (args.queries.length || (args.surface && args.pages > 0) || args.frontendPaths.length)) {
     const candidates = [];
-    for (const query of args.queries) {
-      try {
-        // eslint-disable-next-line no-await-in-loop
-        const rows = await fetchSearchCandidates(args.gatewayUrl, query, args.perQuery);
-        candidates.push(...rows);
-      } catch (err) {
-        queryErrors.push({
-          query,
-          error: asString(err?.message || err),
-        });
+    if (args.queries.length) {
+      for (const query of args.queries) {
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          const rows = await fetchSearchCandidates(args.gatewayUrl, query, args.perQuery);
+          candidates.push(...rows);
+        } catch (err) {
+          queryErrors.push({
+            query,
+            error: asString(err?.message || err),
+          });
+        }
       }
     }
-    const dedupedCases = candidates
-      .map((row) => buildPilotCaseFromSearchCandidate(row))
-      .filter(Boolean);
+    if (args.surface && args.pages > 0) {
+      for (let page = 1; page <= args.pages; page += 1) {
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          const rows = await fetchDiscoveryCandidates(args.gatewayUrl, args.surface, page, args.perQuery);
+          candidates.push(...rows);
+        } catch (err) {
+          queryErrors.push({
+            surface: args.surface,
+            page,
+            error: asString(err?.message || err),
+          });
+        }
+      }
+    }
+    const frontendSeedCases = [];
+    if (args.frontendPaths.length) {
+      for (const pagePath of args.frontendPaths) {
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          const ids = await fetchFrontendProductIds(args.frontendBaseUrl, pagePath);
+          for (const productId of ids) {
+            frontendSeedCases.push({
+              case_id: `live_${productId}`,
+              notes: `Live pilot case sampled from frontend route ${pagePath}.`,
+              canonical_product_ref: {
+                merchant_id: 'external_seed',
+                product_id: productId,
+              },
+              product: {
+                merchant_id: 'external_seed',
+                product_id: productId,
+              },
+            });
+          }
+        } catch (err) {
+          queryErrors.push({
+            frontend_path: pagePath,
+            error: asString(err?.message || err),
+          });
+        }
+      }
+    }
+    const dedupedCases = [
+      ...candidates.map((row) => buildPilotCaseFromSearchCandidate(row)).filter(Boolean),
+      ...frontendSeedCases,
+    ];
     const byProductId = new Map(dedupedCases.map((row) => [row.canonical_product_ref.product_id, row]));
-    selectedIds = sampleWithoutReplacement(Array.from(byProductId.keys()), args.limit, args.seed);
+    let candidateIds = Array.from(byProductId.keys());
+    if (args.excludeCovered) {
+      coveredProductIds = await loadCoveredProductIdSet(candidateIds).catch(() => new Set());
+      const allCovered = new Set([...coveredProductIds, ...reportCoveredProductIds]);
+      candidateIds = candidateIds.filter((id) => !allCovered.has(id));
+      coveredProductIds = allCovered;
+    }
+    const candidatePoolLimit = Math.max(args.limit, Math.trunc(args.limit * args.candidatePoolMultiplier));
+    selectedIds = sampleWithoutReplacement(candidateIds, candidatePoolLimit, args.seed);
     seedCases = selectedIds.map((id) => byProductId.get(id)).filter(Boolean);
   }
 
@@ -411,9 +735,40 @@ async function main() {
     try {
       // eslint-disable-next-line no-await-in-loop
       const response = await fetchPdpResponse(args.gatewayUrl, productId);
-      const row = buildPilotCaseFromPdpResponse(response, seedCase);
-      if (row) cases.push(row);
+      let row = buildPilotCaseFromPdpResponse(response, seedCase);
+      if (!row) {
+        // Fall back to external seed truth when invoke resolution is unavailable.
+        // eslint-disable-next-line no-await-in-loop
+        const externalSeedProduct = await fetchExternalSeedProduct(productId);
+        row = buildPilotCaseFromExternalSeedProduct(externalSeedProduct, seedCase);
+      }
+      if (row) {
+        cases.push(row);
+      } else {
+        cases.push({
+          ...(seedCase || {
+            case_id: `live_${productId}`,
+            canonical_product_ref: {
+              merchant_id: 'unknown',
+              product_id: productId,
+            },
+          }),
+          notes: `Pilot fetch returned no canonical product: ${productId}`,
+          error: 'missing_canonical_product',
+        });
+      }
     } catch (err) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const externalSeedProduct = await fetchExternalSeedProduct(productId);
+        const fallbackRow = buildPilotCaseFromExternalSeedProduct(externalSeedProduct, seedCase);
+        if (fallbackRow) {
+          cases.push(fallbackRow);
+          continue;
+        }
+      } catch {
+        // Keep original fetch error below when the DB fallback also fails.
+      }
       cases.push({
         ...(seedCase || {
           case_id: `live_${productId}`,
@@ -428,7 +783,13 @@ async function main() {
     }
   }
 
-  const finalCases = args.requireBadgeEvidence ? cases.filter((row) => hasBadgeEvidence(row)) : cases;
+  const eligibleCases = args.requireBadgeEvidence ? cases.filter((row) => hasBadgeEvidence(row)) : cases;
+  const finalCases = selectDiverseCases(eligibleCases, {
+    limit: args.limit,
+    seed: args.seed,
+    maxPerBrand: args.maxPerBrand,
+    maxPerCategory: args.maxPerCategory,
+  });
 
   const outputPath = resolvePath(
     rootDir,
@@ -440,10 +801,12 @@ async function main() {
     `${JSON.stringify({
       status: 'ok',
       requested: selectedIds.length,
-      built: finalCases.filter((row) => !row.error).length,
-      filtered_badge_cases: args.requireBadgeEvidence ? finalCases.length : undefined,
+      built: cases.filter((row) => !row.error).length,
+      selected: finalCases.length,
+      filtered_badge_cases: args.requireBadgeEvidence ? eligibleCases.length : undefined,
+      excluded_covered: args.excludeCovered ? coveredProductIds.size : 0,
       out: outputPath,
-      product_ids: selectedIds,
+      product_ids: finalCases.map((row) => row?.canonical_product_ref?.product_id).filter(Boolean),
       query_errors: queryErrors,
     })}\n`,
   );
@@ -459,6 +822,15 @@ if (require.main === module) {
 module.exports = {
   buildPilotCaseFromPdpResponse,
   buildPilotCaseFromSearchCandidate,
+  fetchDiscoveryCandidates,
+  fetchFrontendProductIds,
+  fetchSearchCandidates,
   hasBadgeEvidence,
+  loadCoveredProductIdSet,
+  loadCoveredProductIdSetFromReport,
   sampleWithoutReplacement,
+  selectDiverseCases,
+  extractProductIdsFromFrontendHtml,
+  buildPilotCaseFromExternalSeedProduct,
+  fetchExternalSeedProduct,
 };

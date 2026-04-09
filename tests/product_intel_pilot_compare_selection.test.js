@@ -526,4 +526,60 @@ describe('product_intel pilot compare selection', () => {
       evidence_profile: 'mixed',
     });
   });
+
+  test('selected bundle carries reviewed card evidence fields for downstream discovery surfaces', () => {
+    const caseRow = {
+      case_id: 'pilot_badge_ready',
+      canonical_product_ref: {
+        merchant_id: 'merch_demo',
+        product_id: 'prod_badge_ready',
+      },
+      product: {
+        merchant_id: 'merch_demo',
+        product_id: 'prod_badge_ready',
+        brand: 'Olehenriksen',
+        title: 'Banana Bright+ Vitamin CC Stick',
+        category: 'Eye Treatment',
+        review_summary: {
+          rating: 4.8,
+          review_count: 412,
+        },
+        community_signals: {
+          status: 'available',
+          source_counts: {
+            editorial: 4,
+          },
+        },
+      },
+    };
+
+    const baseline = buildProductIntelDraftBundle({
+      product: caseRow.product,
+      canonicalProductRef: caseRow.canonical_product_ref,
+    });
+    const selected = buildSelectedBundle(caseRow, baseline, null, null, 'gemini-test');
+
+    expect(selected.bundle.review_summary).toEqual({
+      rating: 4.8,
+      review_count: 412,
+    });
+    expect(selected.bundle.community_signals).toEqual({
+      status: 'available',
+      source_counts: {
+        editorial: 4,
+      },
+    });
+    expect(selected.bundle.shopping_card).toEqual(
+      expect.objectContaining({
+        contract_version: 'pivota.shopping_card.v1',
+        proof_badge: '4.8★ (412)',
+      }),
+    );
+    expect(selected.bundle.market_signal_badges).toEqual([
+      {
+        badge_type: 'review_signal',
+        badge_label: '4.8★ (412)',
+      },
+    ]);
+  });
 });

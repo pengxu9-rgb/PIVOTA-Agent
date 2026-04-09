@@ -148,7 +148,8 @@
     "photo:llm-review:baseline": "node scripts/build_product_intel_fallback_baseline.mjs",
     "deploy:verify:production": "bash scripts/verify_deployed_commit_matches.sh",
     "product-intel:pilot:compare": "node scripts/product_intel_pilot_compare.js",
-    "product-intel:pilot:publish": "node scripts/publish_product_intel_pilot_to_kb.js"
+    "product-intel:pilot:publish": "node scripts/publish_product_intel_pilot_to_kb.js",
+    "product-intel:coverage:prepare": "node scripts/pivota_insights_coverage_batch.js"
   },
   "keywords": [
     "pivota",

@@ -23,6 +23,7 @@ const OperationEnum = z.enum([
   'get_product_intel_v1',
   'get_product_feedback_v1',
   'get_product_recommendation_intents_v1',
+  'prepare_pivota_insights_coverage_v1',
   // Quote-first (locked pricing)
   'preview_quote',
   'create_order',

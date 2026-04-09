@@ -1426,16 +1426,34 @@ describe('discovery feed service', () => {
       analysis: {
         product_intel_v1: {
           evidence_profile: 'seller_only',
+          review_summary: {
+            rating: 4.9,
+            review_count: 128,
+          },
+          community_signals: {
+            status: 'available',
+            source_counts: {
+              editorial: 4,
+            },
+          },
+          market_signal_badges: [
+            {
+              badge_type: 'review_signal',
+              badge_label: '4.9★ (128)',
+            },
+          ],
           shopping_card: {
             contract_version: 'pivota.shopping_card.v1',
             title: 'Naturium Vitamin C Super Serum Plus - Jumbo',
             subtitle: 'Multi-Active Serum',
+            proof_badge: '4.9★ (128)',
             intro:
               'A multi-active treatment serum that combines vitamin C, retinol, niacinamide, hyaluronic acid, and salicylic acid.',
           },
           search_card: {
             title_candidate: 'Naturium Vitamin C Super Serum Plus - Jumbo',
             compact_candidate: 'Multi-Active Serum',
+            proof_badge_candidate: '4.9★ (128)',
             intro_candidate:
               'A multi-active treatment serum that combines vitamin C, retinol, niacinamide, hyaluronic acid, and salicylic acid.',
           },
@@ -1474,13 +1492,19 @@ describe('discovery feed service', () => {
     expect(response.products[0]).toEqual(
       expect.objectContaining({
         product_id: 'ext_13c520e764f9f7d7f23c611b',
+        review_summary: {
+          rating: 4.9,
+          review_count: 128,
+        },
         card_title: 'Naturium Vitamin C Super Serum Plus - Jumbo',
         card_subtitle: 'Multi-Active Serum',
+        card_badge: '4.9★ (128)',
         card_intro:
           'A multi-active treatment serum that combines vitamin C, retinol, niacinamide, hyaluronic acid, and salicylic acid.',
         search_card: expect.objectContaining({
           title_candidate: 'Naturium Vitamin C Super Serum Plus - Jumbo',
           compact_candidate: 'Multi-Active Serum',
+          proof_badge_candidate: '4.9★ (128)',
           intro_candidate:
             'A multi-active treatment serum that combines vitamin C, retinol, niacinamide, hyaluronic acid, and salicylic acid.',
         }),
@@ -1488,9 +1512,16 @@ describe('discovery feed service', () => {
           contract_version: 'pivota.shopping_card.v1',
           title: 'Naturium Vitamin C Super Serum Plus - Jumbo',
           subtitle: 'Multi-Active Serum',
+          proof_badge: '4.9★ (128)',
           intro:
             'A multi-active treatment serum that combines vitamin C, retinol, niacinamide, hyaluronic acid, and salicylic acid.',
         }),
+        market_signal_badges: [
+          {
+            badge_type: 'review_signal',
+            badge_label: '4.9★ (128)',
+          },
+        ],
       }),
     );
   });
