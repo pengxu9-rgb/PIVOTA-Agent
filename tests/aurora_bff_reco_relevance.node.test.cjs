@@ -7045,7 +7045,7 @@ test('/v1/chat: plain-text beauty reco with latest_reco_context still short-circ
         primary_transport_owner: 'internal_products_search_primitive',
         primary_endpoint_kind: 'internal_primitive',
       };
-      if (query === 'oil control treatment') {
+      if (query === 'oil control serum') {
         return {
           ...base,
           products: [
@@ -7173,7 +7173,7 @@ test('/v1/chat: exact oily free-text beauty reco carries parsed profile and cano
         primary_transport_owner: 'internal_products_search_primitive',
         primary_endpoint_kind: 'internal_primitive',
       };
-      if (query === 'oil control treatment') {
+      if (query === 'oil control serum') {
         return {
           ...base,
           products: [
@@ -7236,7 +7236,7 @@ test('/v1/chat: exact oily free-text beauty reco carries parsed profile and cano
     assert.equal(response.statusCode, 200);
     assert.equal(auroraChatCallCount, 0);
     assert.equal(observedInternalQueries.length > 0, true);
-    assert.ok(observedInternalQueries.includes('oil control treatment'));
+    assert.ok(observedInternalQueries.includes('oil control serum'));
 
     const payload = getRecommendationsPayload(response.body);
     assert.ok(payload);
@@ -7304,7 +7304,7 @@ test('/v1/chat: exact oily first-turn matrix keeps canonical target bundle and g
         primary_transport_owner: 'internal_products_search_primitive',
         primary_endpoint_kind: 'internal_primitive',
       };
-      if (query === 'oil control treatment') {
+      if (query === 'oil control serum') {
         return {
           ...base,
           products: [
@@ -7450,7 +7450,7 @@ test('/v1/chat: exact oily first-turn matrix keeps canonical target bundle and g
 
     assert.equal(auroraChatCallCount, 0);
     assert.equal(
-      observedInternalQueries.filter((query) => query === 'oil control treatment').length >= cases.length,
+      observedInternalQueries.filter((query) => query === 'oil control serum').length >= cases.length,
       true,
     );
   } finally {

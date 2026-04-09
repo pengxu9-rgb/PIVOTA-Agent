@@ -217,7 +217,7 @@ test('handoffRecoToBeautyMainlineSearch defaults to local beauty mainline over i
           primary_transport_owner: 'internal_products_search_primitive',
           primary_endpoint_kind: 'internal_primitive',
         };
-        if (normalizedQuery === 'oil control treatment') {
+        if (normalizedQuery === 'oil control serum') {
           return {
             ...base,
             products: [
@@ -264,10 +264,7 @@ test('handoffRecoToBeautyMainlineSearch defaults to local beauty mainline over i
       out.searchResult?.metadata?.contract_bridge?.resolved_contract,
       'agent_v1_search_beauty_mainline',
     );
-    assert.equal(
-      out.searchResult?.metadata?.primary_failure_stage,
-      undefined,
-    );
+    assert.equal(out.searchResult?.metadata?.primary_failure_stage, undefined);
     assert.deepEqual(
       out.searchResult?.metadata?.final_selection?.selected_product_ids,
       ['oil_control_serum_1'],
@@ -332,6 +329,75 @@ test('handoffRecoToBeautyMainlineSearch clamps local internal primitive timeout 
       assert.ok(row.timeoutMs <= 380);
       assert.ok(row.deadlineMs > 0);
     }
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+    delete require.cache[moduleId];
+  }
+});
+
+test('handoffRecoToBeautyMainlineSearch skips duplicate external-seed-only levels in local handoff and records ledger counts', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const captured = [];
+    __internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async (args) => {
+        captured.push({
+          query: String(args?.query || ''),
+          callerLane: String(args?.callerLane || ''),
+          allowExternalSeed: args?.allowExternalSeed === true,
+        });
+        return {
+          ok: true,
+          products: [],
+          attempted_internal_paths: ['/agent/internal/products/search'],
+          transport_hops: [],
+          transport_hop_count: 0,
+          nested_orchestrator_hops: 0,
+          primary_transport_owner: 'internal_products_search_primitive',
+          primary_endpoint_kind: 'internal_primitive',
+        };
+      },
+    });
+
+    const out = await __internal.handoffRecoToBeautyMainlineSearch({
+      ctx: { lang: 'EN', request_id: 'req_skip_duplicate_external_levels' },
+      primaryQuery: 'what products should i use for oily skin?',
+      fallbackMessage: 'what products should i use for oily skin?',
+      targetContext: resolveRecommendationTargetContext({
+        text: 'what products should i use for oily skin?',
+        focus: '',
+        entryType: 'chat',
+      }),
+      timeoutMs: 5000,
+      minTimeoutMs: 5000,
+    });
+
+    assert.deepEqual(
+      captured.map((row) => row.query),
+      [
+        'oil control serum',
+        'shine control serum',
+        'mattifying serum',
+        'lightweight moisturizer oily skin',
+        'gel cream oily skin',
+        'oil control sunscreen',
+        'lightweight sunscreen oily skin',
+      ],
+    );
+    assert.equal(captured.every((row) => row.callerLane === 'beauty_chat_handoff'), true);
+    assert.equal(captured.every((row) => row.allowExternalSeed !== true), true);
+    assert.equal(out.searchResult?.query_source, 'beauty_mainline_local_handoff');
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.planned_level_count, 6);
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_level_count, 3);
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.skipped_external_seed_level_count, 3);
+    assert.deepEqual(
+      out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.skipped_external_seed_levels,
+      [
+        'framework_stage_b_primary_external_seed',
+        'framework_stage_c_support_lightweight_moisturizer_external_seed',
+        'framework_stage_c_support_daily_sunscreen_external_seed',
+      ],
+    );
   } finally {
     __internal.__resetRouteDependencyOverridesForTest();
     delete require.cache[moduleId];
