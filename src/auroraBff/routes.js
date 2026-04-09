@@ -18117,6 +18117,64 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
   return scoreConcernRoleCandidatePolicy(row, role, { candidateStep, candidateText });
 }
 
+function buildRecoVisibleProductFields(picked) {
+  const row = isPlainObject(picked) ? picked : null;
+  if (!row) return {};
+  const imageUrl = pickFirstTrimmed(
+    row.image_url,
+    row.imageUrl,
+    row.sku?.image_url,
+    row.sku?.imageUrl,
+    row.product?.image_url,
+    row.product?.imageUrl,
+    row.subject?.image_url,
+    row.subject?.imageUrl,
+  );
+  const shortDescription = pickFirstTrimmed(
+    row.short_description,
+    row.shortDescription,
+    row.subtitle,
+    row.summary,
+    row.seed_description,
+    row.seedDescription,
+    row.sku?.short_description,
+    row.sku?.shortDescription,
+    row.product?.short_description,
+    row.product?.shortDescription,
+  );
+  const description = pickFirstTrimmed(
+    row.description,
+    row.sku?.description,
+    row.product?.description,
+  );
+  const directUrl = pickFirstTrimmed(
+    row.url,
+    row.pdp_url,
+    row.pdpUrl,
+    row.product_url,
+    row.productUrl,
+    row.purchase_path,
+    row.purchasePath,
+    row.canonical_pdp_url,
+    row.canonicalPdpUrl,
+    row.sku?.url,
+    row.sku?.pdp_url,
+    row.sku?.pdpUrl,
+    row.sku?.product_url,
+    row.sku?.productUrl,
+    row.sku?.purchase_path,
+    row.sku?.purchasePath,
+  );
+  const price = extractCatalogCandidatePrice(row);
+  return {
+    ...(imageUrl ? { image_url: imageUrl } : {}),
+    ...(price ? { price } : {}),
+    ...(shortDescription ? { short_description: shortDescription } : {}),
+    ...(description ? { description } : {}),
+    ...(directUrl ? { url: directUrl, pdp_url: directUrl, product_url: directUrl } : {}),
+  };
+}
+
 function buildConcernRecommendationsFromSelectedCandidates(selectedCandidates, {
   targetContext = null,
   language = 'EN',
@@ -18152,9 +18210,34 @@ function buildConcernRecommendationsFromSelectedCandidates(selectedCandidates, {
       score: Math.max(72, 95 - index * 3),
       product_id: productId,
       merchant_id: pickFirstString(picked?.merchant_id, picked?.merchantId),
-      brand: pickFirstString(picked?.brand, picked?.brand_name, picked?.brandName),
-      name: pickFirstString(picked?.name, picked?.title, picked?.display_name, picked?.displayName),
-      display_name: pickFirstString(picked?.display_name, picked?.displayName, picked?.name, picked?.title),
+      brand: pickFirstString(
+        picked?.brand,
+        picked?.brand_name,
+        picked?.brandName,
+        picked?.sku?.brand,
+        picked?.sku?.brand_name,
+        picked?.sku?.brandName,
+      ),
+      name: pickFirstString(
+        picked?.name,
+        picked?.title,
+        picked?.display_name,
+        picked?.displayName,
+        picked?.sku?.name,
+        picked?.sku?.title,
+        picked?.sku?.display_name,
+        picked?.sku?.displayName,
+      ),
+      display_name: pickFirstString(
+        picked?.display_name,
+        picked?.displayName,
+        picked?.name,
+        picked?.title,
+        picked?.sku?.display_name,
+        picked?.sku?.displayName,
+        picked?.sku?.name,
+        picked?.sku?.title,
+      ),
       category: pickFirstString(
         picked?.category,
         picked?.category_name,
@@ -18162,6 +18245,12 @@ function buildConcernRecommendationsFromSelectedCandidates(selectedCandidates, {
         picked?.product_type,
         picked?.productType,
         picked?.type,
+        picked?.sku?.category,
+        picked?.sku?.category_name,
+        picked?.sku?.categoryName,
+        picked?.sku?.product_type,
+        picked?.sku?.productType,
+        picked?.sku?.type,
         normalizedStep,
       ),
       retrieval_source: pickFirstString(picked?.retrieval_source, picked?.retrievalSource, 'catalog'),
@@ -18170,6 +18259,7 @@ function buildConcernRecommendationsFromSelectedCandidates(selectedCandidates, {
       ...(pickFirstString(picked?.canonical_pdp_url, picked?.canonicalPdpUrl) ? { canonical_pdp_url: pickFirstString(picked?.canonical_pdp_url, picked?.canonicalPdpUrl) } : {}),
       ...(pickFirstString(picked?.purchase_path, picked?.purchasePath) ? { purchase_path: pickFirstString(picked?.purchase_path, picked?.purchasePath) } : {}),
       ...(isPlainObject(picked?.pdp_open) ? { pdp_open: picked.pdp_open } : {}),
+      ...buildRecoVisibleProductFields(picked),
       matched_role_id: pickFirstTrimmed(picked?.matched_role_id, picked?.matchedRoleId) || null,
       matched_role_label: pickFirstTrimmed(picked?.matched_role_label, picked?.matchedRoleLabel) || null,
       matched_role_rank: Number.isFinite(Number(picked?.matched_role_rank)) ? Number(picked.matched_role_rank) : null,
@@ -18257,9 +18347,34 @@ function buildRecoRowsFromMainlineProducts(products, {
       score: Math.max(72, 95 - index * 3),
       product_id: pickFirstString(picked?.product_id, picked?.productId),
       merchant_id: pickFirstString(picked?.merchant_id, picked?.merchantId),
-      brand: pickFirstString(picked?.brand, picked?.brand_name, picked?.brandName),
-      name: pickFirstString(picked?.name, picked?.title, picked?.display_name, picked?.displayName),
-      display_name: pickFirstString(picked?.display_name, picked?.displayName, picked?.name, picked?.title),
+      brand: pickFirstString(
+        picked?.brand,
+        picked?.brand_name,
+        picked?.brandName,
+        picked?.sku?.brand,
+        picked?.sku?.brand_name,
+        picked?.sku?.brandName,
+      ),
+      name: pickFirstString(
+        picked?.name,
+        picked?.title,
+        picked?.display_name,
+        picked?.displayName,
+        picked?.sku?.name,
+        picked?.sku?.title,
+        picked?.sku?.display_name,
+        picked?.sku?.displayName,
+      ),
+      display_name: pickFirstString(
+        picked?.display_name,
+        picked?.displayName,
+        picked?.name,
+        picked?.title,
+        picked?.sku?.display_name,
+        picked?.sku?.displayName,
+        picked?.sku?.name,
+        picked?.sku?.title,
+      ),
       category: pickFirstString(
         picked?.category,
         picked?.category_name,
@@ -18267,6 +18382,12 @@ function buildRecoRowsFromMainlineProducts(products, {
         picked?.product_type,
         picked?.productType,
         picked?.type,
+        picked?.sku?.category,
+        picked?.sku?.category_name,
+        picked?.sku?.categoryName,
+        picked?.sku?.product_type,
+        picked?.sku?.productType,
+        picked?.sku?.type,
         normalizedStep,
       ),
       retrieval_source: pickFirstString(picked?.retrieval_source, picked?.retrievalSource, 'catalog'),
@@ -18279,6 +18400,7 @@ function buildRecoRowsFromMainlineProducts(products, {
       ...(pickFirstString(picked?.canonical_pdp_url, picked?.canonicalPdpUrl) ? { canonical_pdp_url: pickFirstString(picked?.canonical_pdp_url, picked?.canonicalPdpUrl) } : {}),
       ...(pickFirstString(picked?.purchase_path, picked?.purchasePath) ? { purchase_path: pickFirstString(picked?.purchase_path, picked?.purchasePath) } : {}),
       ...(isPlainObject(picked?.pdp_open) ? { pdp_open: picked.pdp_open } : {}),
+      ...buildRecoVisibleProductFields(picked),
       ...((pickFirstTrimmed(picked?.matched_role_id, picked?.matchedRoleId) || primaryFrameworkRole)
         ? {
             matched_role_id: pickFirstTrimmed(picked?.matched_role_id, picked?.matchedRoleId, primaryFrameworkRole?.role_id) || null,
@@ -48973,12 +49095,39 @@ function buildRecoAssistantRewritePrompt({ payload, language, profile, userReque
   const names = pickRecoNames(payload, 3);
   const { primaryTarget, secondaryTargets, selectionShiftReason } = pickRecoMetaTargets(payload);
   const frameworkSummary = isPlainObject(payload?.framework_summary) ? payload.framework_summary : null;
-  const frameworkRoles = Array.isArray(payload?.roles)
+  const selectedTargetIds = Array.isArray(payload?.recommendation_meta?.selected_target_ids)
+    ? payload.recommendation_meta.selected_target_ids
+        .map((value) => String(value || '').trim())
+        .filter(Boolean)
+        .slice(0, 4)
+    : [];
+  const relevantRoleIds = new Set(
+    [
+      ...selectedTargetIds,
+      pickFirstTrimmed(primaryTarget && primaryTarget.target_id),
+      ...secondaryTargets.map((target) => pickFirstTrimmed(target && target.target_id)).filter(Boolean),
+    ].filter(Boolean),
+  );
+  const allFrameworkRoles = Array.isArray(payload?.roles)
     ? payload.roles.filter((role) => isPlainObject(role)).slice(0, 4)
     : [];
+  const frameworkRoles =
+    relevantRoleIds.size > 0
+      ? (() => {
+          const filtered = allFrameworkRoles.filter((role) => relevantRoleIds.has(pickFirstTrimmed(role?.role_id)));
+          return filtered.length > 0 ? filtered : allFrameworkRoles.slice(0, 1);
+        })()
+      : allFrameworkRoles;
   const recommendations = Array.isArray(payload?.recommendations)
     ? payload.recommendations.filter((item) => isPlainObject(item)).slice(0, 4)
     : [];
+  const requestMode = inferRecoAssistantRequestMode(
+    pickFirstTrimmed(
+      userRequestText,
+      payload?.recommendation_meta?.request_text,
+      payload?.request_text,
+    ),
+  );
   const primaryTargetLabel = pickFirstTrimmed(
     primaryTarget && primaryTarget.ingredient_query,
     primaryTarget && primaryTarget.ingredient_id,
@@ -49007,6 +49156,15 @@ function buildRecoAssistantRewritePrompt({ payload, language, profile, userReque
       name: pickFirstTrimmed(item.display_name, item.displayName, item.name, item.title, item.sku?.display_name, item.sku?.name),
       brand: pickFirstTrimmed(item.brand, item.sku?.brand),
       category: pickFirstTrimmed(item.category, item.step, item.sku?.category, item.sku?.product_type),
+      price: extractCatalogCandidatePrice(item) || extractCatalogCandidatePrice(item.sku) || null,
+      short_description: pickFirstTrimmed(
+        item.short_description,
+        item.shortDescription,
+        item.description,
+        item.sku?.short_description,
+        item.sku?.shortDescription,
+        item.sku?.description,
+      ),
       matched_role_label: pickFirstTrimmed(item.matched_role_label, item.matchedRoleLabel),
       matched_role_id: pickFirstTrimmed(item.matched_role_id, item.matchedRoleId),
     })),
@@ -49038,21 +49196,10 @@ function buildRecoAssistantRewritePrompt({ payload, language, profile, userReque
       payload?.recommendation_meta?.request_text,
       payload?.request_text,
     ) || null,
-    request_mode: inferRecoAssistantRequestMode(
-      pickFirstTrimmed(
-        userRequestText,
-        payload?.recommendation_meta?.request_text,
-        payload?.request_text,
-      ),
-    ),
+    request_mode: requestMode,
     primary_focus: normalizeRecoContextPrimaryFocus(payload?.recommendation_meta?.primary_focus),
     target_label: primaryTargetLabel || null,
-    selected_target_ids: Array.isArray(payload?.recommendation_meta?.selected_target_ids)
-      ? payload.recommendation_meta.selected_target_ids
-          .map((value) => String(value || '').trim())
-          .filter(Boolean)
-          .slice(0, 4)
-      : [],
+    selected_target_ids: selectedTargetIds,
     ranked_target_ids: Array.isArray(payload?.recommendation_meta?.ranked_targets)
       ? payload.recommendation_meta.ranked_targets
           .map((target) => pickFirstTrimmed(target && target.target_id))
@@ -49064,19 +49211,51 @@ function buildRecoAssistantRewritePrompt({ payload, language, profile, userReque
     'Return strict JSON only.',
     'Write one recommendation assistant message that is natural, specific, concise, and aligned to the final payload.',
     'Address the user_request directly and respond to the user\'s real complaint first.',
-    'If request_mode is "buy", use shopping advice tone.',
+    'If request_mode is "buy", use direct shopping advice tone.',
+    'If request_mode is "buy", the first sentence must directly recommend the selected product by name.',
+    'Do not open with "start with" unless request_mode is "use_first".',
     'If request_mode is "use_first", use starting-point advice tone.',
     'If request_mode is "use", use practical product guidance tone.',
     'Only mention targets, ingredients, steps, and product names that already exist in Context.',
     'Do not invent products, targets, routines, claims, or benefits beyond Context.',
     'If there is one selected product, keep a single main direction.',
+    'If selected_target_ids has length 1 and secondary_targets is empty, do not add future routine-building suggestions or extra steps.',
     'If secondary targets exist, mention them briefly and explicitly as secondary.',
     'If confidence_level is low, keep the wording conservative and non-definitive.',
+    'Use plain shopper-facing skincare language. Avoid vague phrases like "surface activity".',
     'Do not mention "Direction 1/2/3", generic shopping filler, or any product not in selected_products.',
     'Do not use internal phrases or internal framing such as "Primary recommendation focus" or "Products actually selected this time".',
     'Schema: { "assistant_text": string }',
     `Context: ${JSON.stringify(context)}`,
   ].join('\n');
+}
+
+function extractRecoAssistantLeadSentence(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return '';
+  const match = raw.match(/^[\s\S]{1,240}?[.!?。！？](?:\s|$)/);
+  if (match && match[0]) return String(match[0]).trim();
+  return raw.slice(0, 240).trim();
+}
+
+function assistantTextUsesFutureRoutineUpsell(text) {
+  return /\b(eventually|later on|down the line|you may want to look for|you might want to look for|you may also want to look for|you may eventually want to look for|consider adding later)\b/i.test(
+    String(text || ''),
+  );
+}
+
+function assistantTextUsesVagueRecoBenefitLanguage(text) {
+  return /\bsurface activity\b/i.test(String(text || ''));
+}
+
+function assistantTextHasDirectBuyLead(text, names) {
+  const lead = String(text || '').trim();
+  if (!lead) return false;
+  const mentionsSelectedProduct = assistantTextMentionsAny(lead, names);
+  const usesBuyLanguage = /\b(buy|buying|pick|choose|get|go with|recommend|recommended)\b/i.test(lead)
+    || /(买|购买|入手|下单|推荐)/i.test(lead);
+  const opensWithUseFirstLanguage = /\b(start with|start\b)\b/i.test(lead) || /(先用|先从)/i.test(lead);
+  return mentionsSelectedProduct && usesBuyLanguage && !opensWithUseFirstLanguage;
 }
 
 function resolveRecoAssistantRewriteThinkingLevel({ llmProvider, llmModel } = {}) {
@@ -49096,6 +49275,7 @@ function validateRecoAssistantRewriteCandidate({
   primaryTarget,
   secondaryTargets,
   names,
+  requestMode,
 } = {}) {
   const text = String(candidateText || '').trim();
   if (!text) return { ok: false, reason: 'empty_rewrite' };
@@ -49120,6 +49300,7 @@ function validateRecoAssistantRewriteCandidate({
     primaryTargetLabel,
     pickFirstTrimmed(primaryTarget && primaryTarget.resolved_target_step),
   ]);
+  const leadSentence = extractRecoAssistantLeadSentence(text);
   const mentionsUnknownDirections = /(direction\s*[123]|方向\s*[123])/i.test(text);
   const usesInternalTemplatePhrases =
     looksLikePayloadBoundRecoAssistantText(text, language)
@@ -49129,6 +49310,9 @@ function validateRecoAssistantRewriteCandidate({
     secondaryTargets.length <= 1
       ? false
       : secondaryTargets.length > 2;
+  const buyLeadNotDirect = requestMode === 'buy' && !assistantTextHasDirectBuyLead(leadSentence, names);
+  const buyUsesRoutineUpsell = requestMode === 'buy' && secondaryTargets.length === 0 && assistantTextUsesFutureRoutineUpsell(text);
+  const usesVagueBenefitLanguage = assistantTextUsesVagueRecoBenefitLanguage(text);
   if (
     !mentionsSelectedProduct
     || !mentionsPrimaryTarget
@@ -49136,7 +49320,13 @@ function validateRecoAssistantRewriteCandidate({
     || usesInternalTemplatePhrases
     || overconfident
     || secondaryTargetsMentionedAsTooMany
+    || buyLeadNotDirect
+    || buyUsesRoutineUpsell
+    || usesVagueBenefitLanguage
   ) {
+    if (buyLeadNotDirect) return { ok: false, reason: 'rewrite_buy_lead_not_direct' };
+    if (buyUsesRoutineUpsell) return { ok: false, reason: 'rewrite_buy_addon_filler' };
+    if (usesVagueBenefitLanguage) return { ok: false, reason: 'rewrite_vague_benefit_language' };
     return { ok: false, reason: 'rewrite_failed_alignment_guard' };
   }
   return { ok: true, reason: null };
@@ -49162,6 +49352,13 @@ async function maybeRewriteRecoAssistantTextWithLlm({
   if (!recommendations.length) return { text: fallbackText, llm_used: false, reason: 'no_recommendations' };
   const names = pickRecoNames(payload, 3);
   const { primaryTarget, secondaryTargets } = pickRecoMetaTargets(payload);
+  const requestMode = inferRecoAssistantRequestMode(
+    pickFirstTrimmed(
+      userRequestText,
+      payload?.recommendation_meta?.request_text,
+      payload?.request_text,
+    ),
+  );
   if (!names.length || !primaryTarget) return { text: fallbackText, llm_used: false, reason: 'missing_primary_payload' };
 
   try {
@@ -49217,6 +49414,7 @@ async function maybeRewriteRecoAssistantTextWithLlm({
       primaryTarget,
       secondaryTargets,
       names,
+      requestMode,
     });
     if (!validation.ok) {
       return { text: fallbackText, llm_used: false, reason: validation.reason };
@@ -50303,7 +50501,14 @@ function pickRecoNames(payload, max = 3) {
       r.displayName,
       r.title,
     );
-    const title = [brand, name].filter(Boolean).join(' ').trim() || pickFirstTrimmed(r.title, r.use_case);
+    const title = (() => {
+      if (brand && name) {
+        const normalizedBrand = normalizeSemanticAuditText(brand);
+        const normalizedName = normalizeSemanticAuditText(name);
+        if (normalizedBrand && normalizedName.startsWith(normalizedBrand)) return name;
+      }
+      return [brand, name].filter(Boolean).join(' ').trim() || pickFirstTrimmed(r.title, r.use_case);
+    })();
     if (!title) continue;
     const key = title.toLowerCase();
     if (seen.has(key)) continue;
@@ -82527,6 +82732,7 @@ const __internal = {
   deriveBeautyMainlineHandoff,
   handoffRecoToBeautyMainlineSearch,
   buildRecoPayloadFromBeautyMainlineHandoff,
+  buildRecoRowsFromMainlineProducts,
   evaluateQualityContractForEnvelope,
   applyRecoContentSpineToPayload,
   buildRouteAwareAssistantText,
