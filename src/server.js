@@ -16,6 +16,11 @@ const { InvokeRequestSchema, OperationEnum } = require('./schema');
 const logger = require('./logger');
 const { runMigrations } = require('./db/migrate');
 const { query } = require('./db');
+const {
+  parseBooleanEnv,
+  parseSecretList,
+  resolveInvokeEmergencyAuthFallback,
+} = require('./api/gateway/access/invokeAuthEmergencyFallback');
 const { CREATOR_CONFIGS, getCreatorConfig } = require('./creatorConfig');
 const { mockProducts, searchProducts, getProductById } = require('./mockProducts');
 const {
@@ -9131,7 +9136,10 @@ async function fetchLegacyProductDetailFromUpstream(args) {
     method: 'GET',
     url,
     headers: {
-      ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
+      ...buildInvokeUpstreamAuthHeaders({
+        checkoutToken,
+        preferInternalFallback: true,
+      }),
     },
     timeout: getUpstreamTimeoutMs('get_product_detail'),
   };
@@ -9148,7 +9156,10 @@ async function fetchVariantDetailFromUpstream(args) {
     method: 'GET',
     url,
     headers: {
-      ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
+      ...buildInvokeUpstreamAuthHeaders({
+        checkoutToken,
+        preferInternalFallback: true,
+      }),
     },
     timeout: getUpstreamTimeoutMs('get_product_detail'),
   };
@@ -9163,7 +9174,10 @@ async function fetchProductGroupMembersFromUpstream(args) {
     method: 'GET',
     url,
     headers: {
-      ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
+      ...buildInvokeUpstreamAuthHeaders({
+        checkoutToken,
+        preferInternalFallback: true,
+      }),
     },
     timeout: getUpstreamTimeoutMs('find_products_multi'),
   };
@@ -9183,7 +9197,10 @@ async function resolveProductGroupFromUpstream(args) {
     method: 'GET',
     url,
     headers: {
-      ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
+      ...buildInvokeUpstreamAuthHeaders({
+        checkoutToken,
+        preferInternalFallback: true,
+      }),
     },
     timeout: getUpstreamTimeoutMs('find_products_multi'),
   };
@@ -9202,7 +9219,10 @@ async function resolveProductGroupByProductIdFromUpstream(args) {
     method: 'GET',
     url,
     headers: {
-      ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
+      ...buildInvokeUpstreamAuthHeaders({
+        checkoutToken,
+        preferInternalFallback: true,
+      }),
     },
     timeout: getUpstreamTimeoutMs('find_products_multi'),
   };
@@ -9689,10 +9709,83 @@ function extractInvokeAuthToken(req) {
 
 const INVOKE_EXTERNAL_API_KEY_PATTERN = /^ak_(live_)?[0-9a-f]{64}$/;
 const invokeAuthCache = new Map();
+const AGENT_AUTH_EMERGENCY_FALLBACK_ENABLED = parseBooleanEnv(
+  process.env.AGENT_AUTH_EMERGENCY_FALLBACK_ENABLED,
+  false,
+);
+const AGENT_AUTH_SERVICE_FALLBACK_AGENT_ID = String(
+  process.env.AGENT_AUTH_SERVICE_FALLBACK_AGENT_ID ||
+    'agent_service_fallback',
+).trim();
+const AGENT_AUTH_EMERGENCY_FALLBACK_AGENT_ID = String(
+  process.env.AGENT_AUTH_EMERGENCY_AGENT_ID ||
+    process.env.AGENT_AUTH_FALLBACK_AGENT_ID ||
+    'agent_emergency_fallback',
+).trim();
+const AGENT_AUTH_SERVICE_FALLBACK_KEYS = parseSecretList(
+  process.env.PIVOTA_API_KEY,
+  process.env.AGENT_API_KEY,
+  process.env.SHOP_GATEWAY_AGENT_API_KEY,
+  process.env.CREATOR_INVOKE_API_KEY,
+);
+const AGENT_AUTH_EMERGENCY_FALLBACK_KEYS = parseSecretList(
+  process.env.AGENT_AUTH_EMERGENCY_API_KEY,
+  process.env.AGENT_AUTH_EMERGENCY_FALLBACK_KEYS,
+);
 
 function getInvokeAuthSource(req) {
   const fromHeader = String(req?.header('X-Agent-API-Key') || req?.header('x-agent-api-key') || '').trim();
   return fromHeader ? 'x-agent-api-key' : 'authorization_bearer';
+}
+
+function adoptInvokeEmergencyAuthFallback({ req, provided, keyFingerprint, errorCode, reason }) {
+  const allowedErrorCodes = [
+    'AUTH_INTROSPECT_UNAVAILABLE',
+    'AUTH_INTROSPECT_ERROR_RESULT',
+  ];
+  const serviceFallback = resolveInvokeEmergencyAuthFallback({
+    apiKey: provided,
+    errorCode,
+    allowedErrorCodes,
+    enabled: true,
+    allowedApiKeys: AGENT_AUTH_SERVICE_FALLBACK_KEYS,
+    agentId: AGENT_AUTH_SERVICE_FALLBACK_AGENT_ID,
+  });
+  const fallback =
+    serviceFallback ||
+    resolveInvokeEmergencyAuthFallback({
+      apiKey: provided,
+      errorCode,
+      allowedErrorCodes,
+      enabled: AGENT_AUTH_EMERGENCY_FALLBACK_ENABLED,
+      allowedApiKeys: AGENT_AUTH_EMERGENCY_FALLBACK_KEYS,
+      agentId: AGENT_AUTH_EMERGENCY_FALLBACK_AGENT_ID,
+    });
+  if (!fallback) return null;
+
+  logger.warn(
+    {
+      path: req?.path || null,
+      key_fingerprint: keyFingerprint,
+      error_code: errorCode || null,
+      reason: reason || null,
+      fallback_agent_id: fallback.agent_id || null,
+    },
+    'invoke auth accepted via emergency fallback',
+  );
+
+  req.invokeAuth = {
+    key_fingerprint: keyFingerprint,
+    auth_source: getInvokeAuthSource(req),
+    auth_mode: 'api_key',
+    agent_id: fallback.agent_id || null,
+    raw_token: provided,
+    cache_hit: false,
+    introspect_auth_source: fallback.auth_source || null,
+    auth_degraded: fallback.auth_degraded === true,
+    auth_degraded_reason: fallback.auth_degraded_reason || null,
+  };
+  return fallback;
 }
 
 function shouldBypassInvokeAuthForTest() {
@@ -9871,6 +9964,14 @@ async function requireExternalInvokeAuth(req, res, next) {
   try {
     introspection = await introspectInvokeApiKey(provided);
   } catch (err) {
+    const fallback = adoptInvokeEmergencyAuthFallback({
+      req,
+      provided,
+      keyFingerprint,
+      errorCode: err?.code || 'AUTH_INTROSPECT_UNAVAILABLE',
+      reason: 'introspection_exception',
+    });
+    if (fallback) return next();
     logger.error(
       {
         path: req?.path || null,
@@ -9887,6 +9988,21 @@ async function requireExternalInvokeAuth(req, res, next) {
   }
 
   if (!introspection || introspection.valid !== true) {
+    const fallbackErrorCode =
+      introspection && introspection.auth_source === 'error'
+        ? 'AUTH_INTROSPECT_ERROR_RESULT'
+        : 'AUTH_INTROSPECT_INVALID';
+    const fallback = adoptInvokeEmergencyAuthFallback({
+      req,
+      provided,
+      keyFingerprint,
+      errorCode: fallbackErrorCode,
+      reason:
+        introspection?.auth_source === 'error'
+          ? 'introspection_error_result'
+          : 'introspection_invalid',
+    });
+    if (fallback) return next();
     logger.warn(
       {
         path: req?.path || null,
@@ -9915,6 +10031,8 @@ async function requireExternalInvokeAuth(req, res, next) {
     raw_token: provided,
     cache_hit: introspection.cache_hit === true,
     introspect_auth_source: introspection.auth_source || null,
+    auth_degraded: false,
+    auth_degraded_reason: null,
   };
   return next();
 }
@@ -9929,7 +10047,21 @@ function getInvokeAuthApiKey() {
   return key || null;
 }
 
-function buildInvokeUpstreamAuthHeaders({ checkoutToken, allowInternalFallback = true } = {}) {
+function shouldPreferInternalInvokeUpstreamAuth(preferInternalFallback = false) {
+  if (preferInternalFallback !== true) return false;
+  const store = getInvokeAuthContext();
+  return (
+    store?.auth_degraded === true ||
+    String(store?.introspect_auth_source || '').trim().toLowerCase() ===
+      'emergency_fallback'
+  );
+}
+
+function buildInvokeUpstreamAuthHeaders({
+  checkoutToken,
+  allowInternalFallback = true,
+  preferInternalFallback = false,
+} = {}) {
   const forwardedHeaders = pruneEmptyFields({
     'X-Agent-User-JWT': firstNonEmptyString(getInvokeAuthContext()?.agent_user_jwt),
     'X-Buyer-Ref': firstNonEmptyString(getInvokeAuthContext()?.buyer_ref),
@@ -9943,7 +10075,13 @@ function buildInvokeUpstreamAuthHeaders({ checkoutToken, allowInternalFallback =
   }
 
   const callerApiKey = getInvokeAuthApiKey();
-  if (callerApiKey) {
+  const shouldUseInternalFallback = shouldPreferInternalInvokeUpstreamAuth(
+    preferInternalFallback,
+  );
+  if (
+    callerApiKey &&
+    !(shouldUseInternalFallback && allowInternalFallback && PIVOTA_API_KEY)
+  ) {
     return {
       'X-API-Key': callerApiKey,
       Authorization: `Bearer ${callerApiKey}`,
@@ -17013,17 +17151,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      markPdpV2Phase('precheck_entry_product', precheckEntryProductStartedAt);
         entryPrecheckMissingCtx = precheckEntryProductMissing;
 
-        const shouldTreatRequestedMerchantAsAdvisory =
+        const shouldAttemptUnscopedExternalSeedResolve =
           precheckEntryProductMissing &&
           Boolean(requestedMerchantId) &&
-          isExternalSeedProductId(productId) &&
-          requestedMerchantId !== 'external_seed';
+          isExternalSeedProductId(productId);
 
 	      const resolveGroupCachedStartedAt = Date.now();
 	      if (!canonicalProductRef) {
 	        const resolvedGroup = await resolveProductGroupCached({
 		          productId,
-	          merchantId: shouldTreatRequestedMerchantAsAdvisory ? null : requestedMerchantId || null,
+	          merchantId: shouldAttemptUnscopedExternalSeedResolve ? null : requestedMerchantId || null,
           platform,
           checkoutToken,
           bypassCache,
@@ -17034,11 +17171,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         groupMembers = Array.isArray(resolvedGroup?.members) ? resolvedGroup.members : groupMembers;
 	        if (resolvedGroup?.canonical_product_ref) {
 	          canonicalProductRef = resolvedGroup.canonical_product_ref;
-            identityResolutionSource = shouldTreatRequestedMerchantAsAdvisory
+            identityResolutionSource = shouldAttemptUnscopedExternalSeedResolve
               ? 'product_group_unscoped'
               : 'product_group_scoped';
             if (
-              shouldTreatRequestedMerchantAsAdvisory &&
+              shouldAttemptUnscopedExternalSeedResolve &&
               String(canonicalProductRef?.merchant_id || '').trim() &&
               String(canonicalProductRef?.merchant_id || '').trim() !== requestedMerchantId
             ) {
@@ -17051,13 +17188,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
 	      if (!canonicalProductRef) {
 	        canonicalProductRef = {
-	          merchant_id: shouldTreatRequestedMerchantAsAdvisory
+	          merchant_id:
+              shouldAttemptUnscopedExternalSeedResolve &&
+              requestedMerchantId !== 'external_seed'
               ? 'external_seed'
               : requestedMerchantId || DEFAULT_MERCHANT_ID,
 	          product_id: productId,
           ...(platform ? { platform } : {}),
         };
-          if (shouldTreatRequestedMerchantAsAdvisory) {
+          if (
+            shouldAttemptUnscopedExternalSeedResolve &&
+            requestedMerchantId !== 'external_seed'
+          ) {
             canonicalizationApplied = true;
             canonicalizationReasonCode = 'PRODUCT_ROUTE_MERCHANT_MISMATCH';
             identityResolutionSource = 'external_seed_product_id_fallback';
@@ -20698,7 +20840,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       url: `${url}${queryString}`,
       headers: {
         ...(upstreamMethod !== 'GET' && { 'Content-Type': 'application/json' }),
-        ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
+        ...buildInvokeUpstreamAuthHeaders({
+          checkoutToken,
+          preferInternalFallback: operation === 'get_product_detail',
+        }),
         ...(searchPrimaryContract === 'internal_products_search_primitive'
           ? {
               'X-Internal-Search-Timeout-Ms': String(axiosTimeout),
@@ -23242,6 +23387,9 @@ function registerExternalInvokeRoute(path, clientChannel) {
         agent_id: req?.invokeAuth?.agent_id || null,
         auth_mode: req?.invokeAuth?.auth_mode || null,
         auth_source: req?.invokeAuth?.auth_source || null,
+        auth_degraded: req?.invokeAuth?.auth_degraded === true,
+        auth_degraded_reason: req?.invokeAuth?.auth_degraded_reason || null,
+        introspect_auth_source: req?.invokeAuth?.introspect_auth_source || null,
         agent_user_jwt: firstNonEmptyString(
           req?.header('X-Agent-User-JWT'),
           req?.header('x-agent-user-jwt'),
