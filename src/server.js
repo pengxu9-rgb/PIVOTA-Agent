@@ -47,6 +47,10 @@ const {
 const { mockProducts, searchProducts, getProductById } = require('./mockProducts');
 const { buildStructuredPdpIngredientModules } = require('./services/pdpIngredientAuthority');
 const {
+  buildCoverageCandidate,
+  buildCoverageReviewPacket,
+} = require('./services/pivotaInsightsCoverage');
+const {
   getAllPromotions,
   getPromotionById,
   upsertPromotion,
@@ -14784,6 +14788,56 @@ function normalizeCanonicalProductRefInput(value) {
   };
 }
 
+function normalizeCoverageProductRefs(payload) {
+  const source = payload && typeof payload === 'object' ? payload : {};
+  const explicitRefs = Array.isArray(source.product_refs)
+    ? source.product_refs
+    : Array.isArray(source.productRefs)
+      ? source.productRefs
+      : [];
+  const productIds = Array.isArray(source.product_ids)
+    ? source.product_ids
+    : Array.isArray(source.productIds)
+      ? source.productIds
+      : [];
+  const defaultMerchantId = String(source.merchant_id || source.merchantId || '').trim();
+  const refs = [];
+
+  for (const row of explicitRefs) {
+    if (!row || typeof row !== 'object') continue;
+    const productId = String(row.product_id || row.productId || '').trim();
+    if (!productId) continue;
+    const merchantId =
+      String(row.merchant_id || row.merchantId || '').trim() ||
+      defaultMerchantId ||
+      inferMerchantIdFromProductId(productId);
+    refs.push({
+      ...(merchantId ? { merchant_id: merchantId } : {}),
+      product_id: productId,
+    });
+  }
+
+  for (const rawId of productIds) {
+    const productId = String(rawId || '').trim();
+    if (!productId) continue;
+    const merchantId = defaultMerchantId || inferMerchantIdFromProductId(productId);
+    refs.push({
+      ...(merchantId ? { merchant_id: merchantId } : {}),
+      product_id: productId,
+    });
+  }
+
+  const deduped = [];
+  const seen = new Set();
+  for (const ref of refs) {
+    const key = `${String(ref.merchant_id || '').trim()}::${String(ref.product_id || '').trim()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(ref);
+  }
+  return deduped;
+}
+
 async function buildProductIntelTopLevelModuleData({
   product,
   relatedProducts = [],
@@ -17727,9 +17781,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        }
 
 	        case 'get_pdp_v2': {
+            const requestedProductId = payload.product?.product_id;
+            const requestedMerchantId =
+              payload.product?.merchant_id ||
+              inferMerchantIdFromProductId(requestedProductId) ||
+              DEFAULT_MERCHANT_ID;
 	          const product = getProductById(
-	            payload.product?.merchant_id || DEFAULT_MERCHANT_ID,
-	            payload.product?.product_id,
+	            requestedMerchantId,
+	            requestedProductId,
 	          );
 
 	          if (!product) {
@@ -17921,15 +17980,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           case 'get_product_intel_v1':
           case 'get_product_feedback_v1':
           case 'get_product_recommendation_intents_v1': {
-            const merchantId =
-              payload.product_ref?.merchant_id ||
-              payload.product?.merchant_id ||
-              payload.merchant_id ||
-              DEFAULT_MERCHANT_ID;
             const productId =
               payload.product_ref?.product_id ||
               payload.product?.product_id ||
               payload.product_id;
+            const merchantId =
+              payload.product_ref?.merchant_id ||
+              payload.product?.merchant_id ||
+              payload.merchant_id ||
+              inferMerchantIdFromProductId(productId) ||
+              DEFAULT_MERCHANT_ID;
             const product = getProductById(merchantId, productId);
 
             if (!product) {
@@ -18001,6 +18061,95 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   available: false,
                   reason: 'product_intel_unavailable',
                 };
+            break;
+          }
+
+          case 'prepare_pivota_insights_coverage_v1': {
+            const refs = normalizeCoverageProductRefs(payload).slice(
+              0,
+              Math.max(1, Number(payload.limit) || 25),
+            );
+            const rows = [];
+            const missing = [];
+
+            for (const ref of refs) {
+              const merchantId = ref.merchant_id || DEFAULT_MERCHANT_ID;
+              const productId = ref.product_id;
+              const product = getProductById(merchantId, productId);
+              if (!product) {
+                missing.push({
+                  product_ref: ref,
+                  reason: 'product_not_found',
+                });
+                continue;
+              }
+              const relatedProducts = searchProducts(merchantId, '', null, null, product.category)
+                .filter((item) => String(item.product_id || '') !== String(product.product_id || ''))
+                .slice(0, 6);
+              const offersData = {
+                offers_count: 1,
+                offers: annotateOffersWithCommerceMetadata([
+                  {
+                    offer_id: `of:mock:${merchantId}:${product.product_id}`,
+                    merchant_id: merchantId,
+                    merchant_name: product.merchant_name || product.store_name || undefined,
+                    price: normalizeOfferMoney(product.price, product.currency || 'USD'),
+                    purchase_route: 'internal_checkout',
+                  },
+                ]),
+                default_offer_id: `of:mock:${merchantId}:${product.product_id}`,
+                best_price_offer_id: `of:mock:${merchantId}:${product.product_id}`,
+              };
+              const productIntel = await buildProductIntelTopLevelModuleData({
+                product,
+                relatedProducts,
+                offersData,
+                canonicalProductRef: {
+                  merchant_id: merchantId,
+                  product_id: product.product_id,
+                },
+              });
+              if (!productIntel) {
+                missing.push({
+                  product_ref: {
+                    merchant_id: merchantId,
+                    product_id: product.product_id,
+                  },
+                  reason: 'product_intel_unavailable',
+                });
+                continue;
+              }
+              const candidate = buildCoverageCandidate({
+                canonicalProductRef: {
+                  merchant_id: merchantId,
+                  product_id: product.product_id,
+                },
+                productIntel,
+                product,
+              });
+              if (!candidate) {
+                missing.push({
+                  product_ref: {
+                    merchant_id: merchantId,
+                    product_id: product.product_id,
+                  },
+                  reason: 'coverage_candidate_unavailable',
+                });
+                continue;
+              }
+              rows.push(candidate);
+            }
+
+            mockResponse = {
+              status: 'success',
+              contract_version: 'pivota.pivota_insights_coverage.v1',
+              generated_at: new Date().toISOString(),
+              requested: refs.length,
+              ready: rows.length,
+              rows,
+              missing,
+              review_packet: buildCoverageReviewPacket(rows),
+            };
             break;
           }
 	        
@@ -19026,6 +19175,161 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       return res.status(statusCode).json({
         error: code || err?.code || 'GET_PRODUCT_INTEL_FAILED',
         message: message || err?.message || 'Failed to build product intel payload',
+        details: data || null,
+      });
+    }
+  }
+
+  if (operation === 'prepare_pivota_insights_coverage_v1') {
+    try {
+      const refs = normalizeCoverageProductRefs(payload).slice(
+        0,
+        Math.max(1, Number(payload.limit) || 25),
+      );
+      const rows = [];
+      const missing = [];
+
+      for (const ref of refs) {
+        try {
+          const context = await resolveProductIntelInvokeContext({
+            payload: {
+              product_ref: ref,
+              options: payload.options || {},
+            },
+            checkoutToken,
+            includeReviews: true,
+            includeRecommendations: true,
+          });
+
+          const fallbackProductGroupId =
+            context.productGroupId ||
+            (context.product.platform && context.product.platform_product_id
+              ? buildProductGroupId({
+                  platform: String(context.product.platform || '').trim(),
+                  platform_product_id: String(context.product.platform_product_id || '').trim(),
+                })
+              : null) ||
+            `pg:pid:${String(context.canonicalProductRef.product_id || '').trim()}`;
+
+          let offersData =
+            context.groupMembers.length > 0
+              ? await buildOffersFromGroupMembers({
+                  productGroupId: fallbackProductGroupId,
+                  members: context.groupMembers,
+                  checkoutToken,
+                  limit: payload?.offers?.limit || 10,
+                  preferredMerchantId: context.canonicalProductRef.merchant_id || null,
+                }).catch(() => null)
+              : null;
+
+          if (!offersData) {
+            const fallbackOfferId =
+              buildOfferId({
+                merchant_id: context.canonicalProductRef.merchant_id,
+                product_group_id: fallbackProductGroupId,
+                fulfillment_type: context.product.fulfillment_type || 'merchant',
+                tier: 'default',
+              }) ||
+              `of:v1:${context.canonicalProductRef.merchant_id}:${fallbackProductGroupId}:${context.product.fulfillment_type || 'merchant'}:default`;
+            offersData = {
+              status: 'success',
+              product_group_id: fallbackProductGroupId,
+              canonical_product_ref: context.canonicalProductRef,
+              offers_count: 1,
+              offers: [
+                {
+                  offer_id: fallbackOfferId,
+                  product_group_id: fallbackProductGroupId,
+                  product_id: context.canonicalProductRef.product_id,
+                  merchant_id: context.canonicalProductRef.merchant_id,
+                  merchant_name:
+                    context.product.merchant_name || context.product.store_name || undefined,
+                  price: normalizeOfferMoney(
+                    context.product.price,
+                    context.product.currency || 'USD',
+                  ),
+                  shipping: context.product.shipping || undefined,
+                  returns: context.product.returns || undefined,
+                  inventory: {
+                    in_stock:
+                      typeof context.product.in_stock === 'boolean'
+                        ? context.product.in_stock
+                        : undefined,
+                  },
+                  fulfillment_type: context.product.fulfillment_type || undefined,
+                  purchase_route: 'internal_checkout',
+                  risk_tier: 'standard',
+                },
+              ],
+              default_offer_id: fallbackOfferId,
+              best_price_offer_id: fallbackOfferId,
+            };
+          }
+
+          offersData = {
+            ...offersData,
+            offers: annotateOffersWithCommerceMetadata(
+              Array.isArray(offersData.offers) ? offersData.offers : [],
+            ),
+          };
+
+          const productIntel = await buildProductIntelTopLevelModuleData({
+            product: context.product,
+            relatedProducts: context.relatedProducts,
+            offersData,
+            canonicalProductRef: context.canonicalProductRef,
+            productGroupId: fallbackProductGroupId,
+          });
+
+          if (!productIntel) {
+            missing.push({
+              product_ref: context.canonicalProductRef || ref,
+              reason: 'product_intel_unavailable',
+            });
+            continue;
+          }
+
+          const candidate = buildCoverageCandidate({
+            canonicalProductRef: context.canonicalProductRef,
+            productGroupId: fallbackProductGroupId,
+            productIntel,
+            product: context.product,
+          });
+          if (!candidate) {
+            missing.push({
+              product_ref: context.canonicalProductRef || ref,
+              reason: 'coverage_candidate_unavailable',
+            });
+            continue;
+          }
+
+          rows.push(candidate);
+        } catch (err) {
+          const { code, message } = extractUpstreamErrorCode(err);
+          missing.push({
+            product_ref: ref,
+            reason: code || err?.code || 'coverage_prepare_failed',
+            message: message || err?.message || 'Failed to prepare coverage candidate',
+          });
+        }
+      }
+
+      return res.json({
+        status: 'success',
+        contract_version: 'pivota.pivota_insights_coverage.v1',
+        generated_at: new Date().toISOString(),
+        requested: refs.length,
+        ready: rows.length,
+        rows,
+        missing,
+        review_packet: buildCoverageReviewPacket(rows),
+      });
+    } catch (err) {
+      const { code, message, data } = extractUpstreamErrorCode(err);
+      const statusCode = err?.status || err?.response?.status || 502;
+      return res.status(statusCode).json({
+        error: code || err?.code || 'PREPARE_PIVOTA_INSIGHTS_COVERAGE_FAILED',
+        message: message || err?.message || 'Failed to prepare Pivota Insights coverage batch',
         details: data || null,
       });
     }

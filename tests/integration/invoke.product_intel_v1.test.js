@@ -236,4 +236,43 @@ describeIfRuntimeDeps('/agent/shop/v1/invoke product intel contracts', () => {
     expect(Array.isArray(intents.body.recommendation_intents.complementary)).toBe(true);
     expect(Array.isArray(intents.body.recommendation_intents.routine_pairing)).toBe(true);
   });
+
+  test('prepare_pivota_insights_coverage_v1 returns reviewable coverage rows', async () => {
+    const res = await invoke('prepare_pivota_insights_coverage_v1', {
+      product_refs: [
+        {
+          merchant_id: 'merch_208139f7600dbf42',
+          product_id: 'BOTTLE_001',
+        },
+        {
+          product_id: 'ext_mock_intel_1',
+        },
+      ],
+      limit: 2,
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('success');
+    expect(res.body.contract_version).toBe('pivota.pivota_insights_coverage.v1');
+    expect(Array.isArray(res.body.rows)).toBe(true);
+    expect(res.body.rows).toHaveLength(2);
+    expect(res.body.review_packet.meta.report_cases).toBe(2);
+    expect(res.body.rows[0]).toEqual(
+      expect.objectContaining({
+        case_id: expect.stringMatching(/^coverage_/),
+        shopping_card: expect.objectContaining({
+          title: expect.any(String),
+        }),
+        pivota_insights: expect.objectContaining({
+          what_it_is: expect.any(String),
+        }),
+      }),
+    );
+    expect(res.body.review_packet.rows[0]).toEqual(
+      expect.objectContaining({
+        review_status: 'pending',
+        decision: 'pending',
+      }),
+    );
+  });
 });
