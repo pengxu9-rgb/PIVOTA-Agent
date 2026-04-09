@@ -532,10 +532,43 @@ function resolveResponseContractMode() {
   return 'chatcards';
 }
 
-function buildLegacyEnvelopeView({ envelope, assistantText }) {
+function isBeautyMainlineLocalHandoffRecommendationsCard(card) {
+  if (!isPlainObject(card) || asString(card.type).trim().toLowerCase() !== 'recommendations') return false;
+  const payload = isPlainObject(card.payload) ? card.payload : {};
+  const meta = isPlainObject(payload.recommendation_meta) ? payload.recommendation_meta : {};
+  const payloadMeta = isPlainObject(payload.metadata) ? payload.metadata : {};
+  const querySource = asString(payload.query_source || meta.query_source || payloadMeta.query_source).trim();
+  const decisionOwner = asString(payload.decision_owner || meta.decision_owner || payloadMeta.decision_owner).trim();
+  const semanticOwner = asString(payload.semantic_owner || meta.semantic_owner || payloadMeta.semantic_owner).trim();
+  const sourceMode = asString(meta.source_mode || payloadMeta.source_mode || payload.source_mode).trim().toLowerCase();
+  return (
+    querySource === 'beauty_mainline_local_handoff' &&
+    decisionOwner === 'shopping_agent_beauty_mainline' &&
+    semanticOwner === 'shopping_agent_beauty_mainline' &&
+    (sourceMode === 'framework_mainline' || sourceMode === 'step_aware_mainline')
+  );
+}
+
+function shouldPreserveNullAssistantForBeautyMainlineReco(envelope) {
   const base = isPlainObject(envelope) ? envelope : {};
   const assistantMessage =
-    isPlainObject(base.assistant_message) && asString(base.assistant_message.content)
+    isPlainObject(base.assistant_message) && asString(base.assistant_message.content).trim()
+      ? base.assistant_message
+      : null;
+  if (assistantMessage) return false;
+  const cards = Array.isArray(base.cards) ? base.cards : [];
+  const recoCard =
+    cards.find((card) => asString(card && card.type).trim().toLowerCase() === 'recommendations') || null;
+  return isBeautyMainlineLocalHandoffRecommendationsCard(recoCard);
+}
+
+function buildLegacyEnvelopeView({ envelope, assistantText }) {
+  const base = isPlainObject(envelope) ? envelope : {};
+  const preserveNullAssistant = shouldPreserveNullAssistantForBeautyMainlineReco(base);
+  const assistantMessage =
+    preserveNullAssistant
+      ? null
+      : isPlainObject(base.assistant_message) && asString(base.assistant_message.content)
       ? base.assistant_message
       : {
           role: 'assistant',
@@ -572,14 +605,19 @@ function buildChatCardsResponse({
     ctx && ctx.language_resolution_source,
     languageMismatch ? 'mixed_override' : 'text_detected',
   );
+  const preserveNullAssistant = shouldPreserveNullAssistantForBeautyMainlineReco(base);
 
   const assistantText =
-    asString(base?.assistant_message?.content) ||
-    (uiLanguage === 'CN'
-      ? '我先给你一个低风险可执行建议，再按你的补充逐步细化。'
-      : 'I will start with a low-risk actionable suggestion, then refine with your context.');
+    preserveNullAssistant
+      ? ''
+      : asString(base?.assistant_message?.content) ||
+        (uiLanguage === 'CN'
+          ? '我先给你一个低风险可执行建议，再按你的补充逐步细化。'
+          : 'I will start with a low-risk actionable suggestion, then refine with your context.');
   const assistantMessage =
-    isPlainObject(base.assistant_message) && asString(base.assistant_message.content)
+    preserveNullAssistant
+      ? null
+      : isPlainObject(base.assistant_message) && asString(base.assistant_message.content)
       ? base.assistant_message
       : {
           role: 'assistant',

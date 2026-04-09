@@ -20994,7 +20994,11 @@ async function callGeminiJsonObjectViaRest({
     const gate = getGeminiGlobalGate();
     const startedAt = Date.now();
     let upstreamStartedAt = startedAt;
-    const response = await gate.withGate(route, async () => {
+    const totalTimeoutMs = Math.max(
+      1,
+      Number(timeoutBudget.queue_timeout_ms || 0) + Number(timeoutBudget.upstream_timeout_ms || 0),
+    );
+    const gatePromise = gate.withGate(route, async () => {
       upstreamStartedAt = Date.now();
       return await withTimeout(
         fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent`, {
@@ -21009,6 +21013,23 @@ async function callGeminiJsonObjectViaRest({
         'GEMINI_UPSTREAM_TIMEOUT',
       );
     });
+    let response;
+    try {
+      response = await withTimeout(gatePromise, totalTimeoutMs, 'GEMINI_TOTAL_TIMEOUT');
+    } catch (err) {
+      if (String(err?.code || '').trim().toUpperCase() === 'GEMINI_TOTAL_TIMEOUT') {
+        const now = Date.now();
+        const timedOutUpstream = upstreamStartedAt > startedAt;
+        err.code = timedOutUpstream ? 'GEMINI_UPSTREAM_TIMEOUT' : 'GEMINI_QUEUE_TIMEOUT';
+        err.timeout_stage = timedOutUpstream ? 'upstream' : 'queue';
+        err.meta = {
+          gate_wait_ms: timedOutUpstream ? Math.max(0, upstreamStartedAt - startedAt) : Math.max(0, now - startedAt),
+          upstream_ms: timedOutUpstream ? Math.max(0, now - upstreamStartedAt) : 0,
+          total_ms: Math.max(0, now - startedAt),
+        };
+      }
+      throw err;
+    }
     const finishedAt = Date.now();
     const totalMs = Math.max(0, finishedAt - startedAt);
     const upstreamMs = Math.max(0, finishedAt - upstreamStartedAt);

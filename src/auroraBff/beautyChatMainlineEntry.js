@@ -342,6 +342,11 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
       selectorMs: 0,
       rewriteMs: 0,
     };
+    const rewriteReserveMs = Math.max(
+      3000,
+      Math.min(4000, Math.trunc(hardPathBudget.budgetMs * 0.25)),
+    );
+    const handoffDeadlineAtMs = hardPathBudget.deadlineAtMs - rewriteReserveMs;
     const plannerReserveMs = Math.max(
       3000,
       Number.isFinite(Number(RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS))
@@ -478,7 +483,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
         targetContext: effectivePlannerTargetContext,
         fallbackFocus: hardPathRecoFocusForMainline,
         profileSummary,
-        deadlineAtMs: hardPathBudget.deadlineAtMs,
+        deadlineAtMs: handoffDeadlineAtMs,
         debug: debugUpstream,
         timeoutMs: RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
         minTimeoutMs: RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
@@ -533,7 +538,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
         typeof hardPathSelectorSemanticPlan === 'object' &&
         !Array.isArray(hardPathSelectorSemanticPlan) &&
         hardPathRecommendations.length > 1 &&
-        hardPathBudget.getRemainingMs(1200) > 350
+        hardPathBudget.getRemainingMs(rewriteReserveMs + 1200) > 350
       ) {
         const selectorStartedAtMs = Date.now();
         const selectorOut = await runConcernSelectorRace({
@@ -542,7 +547,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
           requestText: pickFirstTrimmed(recoRequestMessage, message),
           semanticPlan: hardPathSelectorSemanticPlan,
           recommendations: hardPathRecommendations,
-          deadlineAtMs: hardPathBudget.deadlineAtMs - 1200,
+          deadlineAtMs: handoffDeadlineAtMs - 1200,
         });
         hardPathSelectorTrace = {
           ...(selectorOut?.trace && typeof selectorOut.trace === 'object' ? selectorOut.trace : {}),

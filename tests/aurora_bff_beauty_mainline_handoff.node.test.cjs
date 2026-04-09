@@ -833,7 +833,7 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
   assert.equal(Number.isFinite(observed.handoffDeadlineAtMs), true);
   assert.equal(Number.isFinite(observed.rewriteDeadlineAtMs), true);
   assert.ok(observed.handoffDeadlineAtMs >= observed.plannerDeadlineAtMs);
-  assert.equal(observed.rewriteDeadlineAtMs, observed.handoffDeadlineAtMs);
+  assert.ok(observed.rewriteDeadlineAtMs > observed.handoffDeadlineAtMs);
   assert.equal(observed.rewriteBaseText, undefined);
   assert.equal(observed.rewriteUserRequestText, 'im oily skin, what products should i use?');
   assert.equal(result?.envelope?.assistant_message, null);
