@@ -5,6 +5,7 @@ const {
   normalizeCase,
   summarizeResults,
 } = require('../../scripts/pdp_stability_matrix');
+const { DEFAULT_PUBLIC_ENDPOINT } = require('../../scripts/lib/commerce_invoke_contract');
 
 describe('pdp_stability_matrix helpers', () => {
   it('normalizes raw cases into stable probe definitions', () => {
@@ -38,8 +39,8 @@ describe('pdp_stability_matrix helpers', () => {
   });
 
   it('builds same-origin and absolute endpoints safely', () => {
-    expect(buildEndpoint('https://agent.pivota.cc/', '/api/gateway')).toBe(
-      'https://agent.pivota.cc/api/gateway',
+    expect(buildEndpoint('https://agent.pivota.cc/', DEFAULT_PUBLIC_ENDPOINT)).toBe(
+      `https://agent.pivota.cc${DEFAULT_PUBLIC_ENDPOINT}`,
     );
     expect(buildEndpoint('https://agent.pivota.cc', 'https://edge.example.com/invoke')).toBe(
       'https://edge.example.com/invoke',

@@ -6,6 +6,7 @@ const {
   summarizeByBucket,
   summarizeByCase,
 } = require('../../scripts/pdp_pressure_watch');
+const { DEFAULT_PUBLIC_ENDPOINT } = require('../../scripts/lib/commerce_invoke_contract');
 
 describe('pdp_pressure_watch helpers', () => {
   it('normalizes watch cases with empty include by default', () => {
@@ -61,8 +62,8 @@ describe('pdp_pressure_watch helpers', () => {
   });
 
   it('builds same-origin and absolute endpoints safely', () => {
-    expect(buildEndpoint('https://agent.pivota.cc/', '/api/gateway')).toBe(
-      'https://agent.pivota.cc/api/gateway',
+    expect(buildEndpoint('https://agent.pivota.cc/', DEFAULT_PUBLIC_ENDPOINT)).toBe(
+      `https://agent.pivota.cc${DEFAULT_PUBLIC_ENDPOINT}`,
     );
     expect(buildEndpoint('https://agent.pivota.cc', 'https://edge.example.com/invoke')).toBe(
       'https://edge.example.com/invoke',

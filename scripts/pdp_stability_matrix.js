@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
+const { DEFAULT_PUBLIC_ENDPOINT } = require('./lib/commerce_invoke_contract');
 
 function timestamp() {
   const now = new Date();
@@ -18,7 +19,7 @@ function parsePositiveInt(value, fallback) {
 function parseArgs(argv) {
   const args = {
     baseUrl: process.env.PDP_STABILITY_BASE_URL || 'https://agent.pivota.cc',
-    endpoint: process.env.PDP_STABILITY_ENDPOINT || '/api/gateway',
+    endpoint: process.env.PDP_STABILITY_ENDPOINT || DEFAULT_PUBLIC_ENDPOINT,
     caseFile: process.env.PDP_STABILITY_CASE_FILE || '',
     outDir: process.env.PDP_STABILITY_OUT_DIR || 'reports',
     rounds: parsePositiveInt(process.env.PDP_STABILITY_ROUNDS, 1),
@@ -128,7 +129,7 @@ function loadCases(caseFile) {
 function buildEndpoint(baseUrl, endpoint) {
   const normalizedBase = String(baseUrl || '').trim().replace(/\/+$/, '');
   const normalizedEndpoint = String(endpoint || '').trim();
-  if (!normalizedBase) return normalizedEndpoint || '/api/gateway';
+  if (!normalizedBase) return normalizedEndpoint || DEFAULT_PUBLIC_ENDPOINT;
   if (!normalizedEndpoint) return normalizedBase;
   return normalizedEndpoint.startsWith('http')
     ? normalizedEndpoint
@@ -425,7 +426,7 @@ function buildMarkdownReport(args) {
   lines.push('## Node Chain');
   lines.push('');
   lines.push(
-    'Browser or probe -> Next `/api/gateway` -> backend `/agent/shop/v1/invoke` -> `get_pdp_v2` phases -> upstream detail/group/reviews/similar nodes.',
+    `Browser or probe -> Next \`${DEFAULT_PUBLIC_ENDPOINT}\` -> backend \`/agent/shop/v1/invoke\` -> \`get_pdp_v2\` phases -> upstream detail/group/reviews/similar nodes.`,
   );
   return `${lines.join('\n')}\n`;
 }
