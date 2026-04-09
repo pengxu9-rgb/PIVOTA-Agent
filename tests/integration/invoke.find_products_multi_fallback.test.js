@@ -63,7 +63,87 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
     }
   });
 
-  test('creator_agent can still use resolver-first legacy fallback', async () => {
+  test('creator_agent beauty mainline invoke no longer enters resolver-first owner switch by default', async () => {
+    const queryText = 'ipsa';
+    const productId = '9886500127048';
+    const merchantId = 'merch_efbc46b4619cfbdf';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY = 'false';
+
+    const resolveProductRef = jest.fn().mockResolvedValue({
+      resolved: true,
+      product_ref: {
+        merchant_id: 'resolver_merch_should_not_run',
+        product_id: 'resolver_prod_should_not_run',
+      },
+      confidence: 0.99,
+      reason: 'stable_alias_ref',
+      metadata: { latency_ms: 10 },
+    });
+    jest.doMock('../../src/services/productGroundingResolver', () => ({
+      resolveProductRef,
+    }));
+
+    const primaryScope = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            merchant_id: merchantId,
+            product_id: productId,
+            title: 'IPSA Time Reset Aqua',
+          },
+        ],
+        total: 1,
+        metadata: {
+          query_source: 'agent_products_search',
+        },
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: queryText,
+            limit: 10,
+            in_stock_only: false,
+          },
+        },
+        metadata: {
+          scope: { catalog: 'global', region: 'US', language: 'en-US' },
+          entry: 'home',
+          source: 'creator_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resolveProductRef).not.toHaveBeenCalled();
+    expect(primaryScope.isDone()).toBe(true);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: productId,
+        merchant_id: merchantId,
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        invoke_search_rail: 'legacy_internal',
+        legacy_contract: true,
+        primary_lane: 'beauty_discovery_mainline',
+        query_source: 'agent_products_search',
+      }),
+    );
+    expect(resp.body.metadata?.search_request_contract?.primary_lane).toBe('beauty_discovery_mainline');
+    expect(resp.body.metadata?.proxy_search_fallback?.applied).not.toBe(true);
+  });
+
+  test('creator_agent explicit legacy_contracts can still use resolver-first legacy fallback', async () => {
     const queryText = 'ipsa';
     const resolvedMerchantId = 'merch_efbc46b4619cfbdf';
     const resolvedProductId = '9886500127048';
@@ -109,6 +189,7 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
           scope: { catalog: 'global', region: 'US', language: 'en-US' },
           entry: 'home',
           source: 'creator_agent',
+          legacy_contracts: true,
         },
       });
 
@@ -131,6 +212,103 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
       }),
     );
     expect(primaryScope.isDone()).toBe(false);
+  });
+
+  test('creator_agent broad beauty mainline generic concern uses internal primitive transport instead of legacy GET search', async () => {
+    const queryText = 'i have oily skin, what products should i use';
+    let internalPrimitiveRequestBody = null;
+
+    const legacyScope = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            merchant_id: 'legacy_merch_should_not_run',
+            product_id: 'legacy_prod_should_not_run',
+            title: 'Legacy GET should not run',
+          },
+        ],
+        total: 1,
+      });
+
+    const primaryScope = nock('http://pivota.test')
+      .post('/agent/internal/products/search')
+      .reply(200, function replyInternalPrimitive(_, body) {
+        internalPrimitiveRequestBody = body;
+        return {
+          status: 'success',
+          success: true,
+          products: [
+            {
+              merchant_id: 'merch_generic_1',
+              product_id: 'prod_generic_1',
+              title: 'Oil Control Cleanser',
+            },
+            {
+              merchant_id: 'merch_generic_2',
+              product_id: 'prod_generic_2',
+              title: 'Lightweight Moisturizer',
+            },
+          ],
+          total: 2,
+          metadata: {
+            query_source: 'internal_products_search_primitive_cache',
+            transport_owner: 'internal_products_search_primitive',
+          },
+        };
+      })
+      ;
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: queryText,
+            catalog_surface: 'beauty',
+            commerce_surface: 'beauty',
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'creator_agent',
+          catalog_surface: 'beauty',
+          commerce_surface: 'beauty',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(primaryScope.isDone()).toBe(true);
+    expect(legacyScope.isDone()).toBe(false);
+    expect(internalPrimitiveRequestBody).toEqual(
+      expect.objectContaining({
+        query: 'oil control treatment',
+        catalog_surface: 'beauty',
+        search_all_merchants: true,
+        target_step_family: 'treatment',
+        semantic_family: 'oil_control',
+      }),
+    );
+    expect(typeof internalPrimitiveRequestBody?.trace_id).toBe('string');
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        invoke_search_rail: 'legacy_internal',
+        legacy_contract: true,
+        primary_lane: 'beauty_discovery_mainline',
+      }),
+    );
+    expect(resp.body.metadata?.search_request_contract?.primary_lane).toBe('beauty_discovery_mainline');
+    expect(resp.body.metadata?.search_request_contract?.request_class).toBe('beauty_discovery');
+    expect(resp.body.metadata?.search_request_contract?.semantic_contract?.request_class).toBe(
+      'generic_concern',
+    );
+    expect(resp.body.metadata?.search_trace?.expanded_query).toBe('oil control treatment');
   });
 
   test('shopping_agent explicit legacy_contracts is isolated as legacy_internal', async () => {
@@ -338,6 +516,83 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
           source: 'aurora-bff',
           catalog_surface: 'beauty',
           commerce_surface: 'beauty',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resolveProductRef).not.toHaveBeenCalled();
+    expect(primaryScope.isDone()).toBe(true);
+    expect(invokeFallbackScope.isDone()).toBe(false);
+    expect(resp.body.products).toEqual([]);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        invoke_search_rail: 'legacy_internal',
+        legacy_contract: true,
+        primary_lane: 'beauty_discovery_mainline',
+        strict_empty: true,
+        strict_empty_reason: 'beauty_discovery_mainline_exception',
+      }),
+    );
+    expect(resp.body.metadata?.search_request_contract?.primary_lane).toBe('beauty_discovery_mainline');
+    expect(resp.body.metadata?.proxy_search_fallback?.applied).not.toBe(true);
+  });
+
+  test('creator_agent beauty mainline primary exception skips resolver and invoke fallback owner switches', async () => {
+    const queryText = 'ipsa';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY = 'false';
+
+    const resolveProductRef = jest.fn().mockResolvedValue({
+      resolved: true,
+      product_ref: {
+        merchant_id: 'resolver_merch_should_not_run',
+        product_id: 'resolver_prod_should_not_run',
+      },
+      confidence: 0.99,
+      reason: 'stable_alias_ref',
+      metadata: { latency_ms: 10 },
+    });
+    jest.doMock('../../src/services/productGroundingResolver', () => ({
+      resolveProductRef,
+    }));
+
+    const primaryScope = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(502, {
+        error: 'UPSTREAM_UNAVAILABLE',
+        message: 'legacy search failed',
+      });
+
+    const invokeFallbackScope = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke', (body) => body && body.operation === 'find_products_multi')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'invoke_fallback_should_not_run',
+            merchant_id: 'fallback_merch',
+            title: 'Invoke fallback should not run',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: queryText,
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'creator_agent',
         },
       });
 
