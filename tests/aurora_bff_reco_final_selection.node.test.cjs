@@ -22,6 +22,22 @@ test('reco assistant rewrite prompt omits deterministic base text and carries re
             display_name: 'GoalSkin Oil Control Serum',
             brand: 'GoalSkin',
             category: 'Serum',
+            short_description: 'Helps reduce visible shine without feeling heavy.',
+            price: { amount: 12, currency: 'USD', unknown: false },
+          },
+        ],
+        roles: [
+          {
+            role_id: 'oil_control_treatment',
+            label: 'Oil-control treatment',
+            preferred_step: 'treatment',
+            why_this_role: 'Reduce excess sebum.',
+          },
+          {
+            role_id: 'lightweight_moisturizer',
+            label: 'Lightweight moisturizer',
+            preferred_step: 'moisturizer',
+            why_this_role: 'Support barrier without heaviness.',
           },
         ],
         recommendation_meta: {
@@ -53,8 +69,15 @@ test('reco assistant rewrite prompt omits deterministic base text and carries re
 
     assert.match(prompt, /"request_mode":"buy"/);
     assert.match(prompt, /"user_request":"I am oily skin\. What product should I buy\?"/);
-    assert.match(prompt, /If request_mode is "buy", use shopping advice tone\./);
+    assert.match(prompt, /If request_mode is "buy", use direct shopping advice tone\./);
+    assert.match(prompt, /If request_mode is "buy", the first sentence must directly recommend the selected product by name\./);
+    assert.match(prompt, /If selected_target_ids has length 1 and secondary_targets is empty, do not add future routine-building suggestions or extra steps\./);
+    assert.match(prompt, /Use plain shopper-facing skincare language\. Avoid vague phrases like "surface activity"\./);
     assert.match(prompt, /If request_mode is "use_first", use starting-point advice tone\./);
+    assert.match(prompt, /"short_description":"Helps reduce visible shine without feeling heavy\."/);
+    assert.match(prompt, /"price":\{"amount":12,"currency":"USD","unknown":false\}/);
+    assert.match(prompt, /"role_id":"oil_control_treatment"/);
+    assert.doesNotMatch(prompt, /"role_id":"lightweight_moisturizer"/);
     assert.doesNotMatch(prompt, /"base_text":/);
     assert.doesNotMatch(
       prompt,
@@ -256,6 +279,201 @@ test('reco assistant rewrite recovers truncated raw json when assistant_text is 
     else process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = prevProvider;
     if (prevModel === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
     else process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = prevModel;
+    delete require.cache[moduleId];
+  }
+});
+
+test('reco assistant rewrite rejects buy copy that opens without a direct product recommendation', async () => {
+  const prevMock = process.env.AURORA_BFF_USE_MOCK;
+  const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+  const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+  process.env.AURORA_BFF_USE_MOCK = 'false';
+  process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = 'gemini';
+  process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = 'gemini-3-flash-preview';
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'oily_pick_1',
+            display_name: 'GoalSkin Oil Control Serum',
+            brand: 'GoalSkin',
+            category: 'Serum',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'treatment',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Oil-control treatment',
+        resolved_target_step: 'treatment',
+        primary_target_id: 'oil_control_treatment',
+        ranked_targets: [
+          {
+            target_id: 'oil_control_treatment',
+            ingredient_query: 'Oil-control treatment',
+            resolved_target_step: 'treatment',
+          },
+        ],
+        selected_target_ids: ['oil_control_treatment'],
+      },
+    );
+    __internal.__setCallGeminiJsonObjectForTest(async () => ({
+      ok: true,
+      json: {
+        assistant_text:
+          'To address your oily skin and manage shine, you should start with a targeted oil-control treatment. I recommend buying GoalSkin Oil Control Serum.',
+      },
+      parse_status: 'parsed',
+      provider: 'gemini',
+      effective_model: 'gemini-3-flash-preview',
+    }));
+
+    const rewrite = await __internal.maybeRewriteRecoAssistantTextWithLlm({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily', goals: ['oil control'] },
+      userRequestText: 'What product should I buy?',
+      allowLockedSelectionRewrite: true,
+    });
+
+    assert.equal(rewrite.llm_used, false);
+    assert.equal(rewrite.reason, 'rewrite_buy_lead_not_direct');
+    assert.equal(rewrite.text, '');
+  } finally {
+    __internal.__resetCallGeminiJsonObjectForTest();
+    if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
+    else process.env.AURORA_BFF_USE_MOCK = prevMock;
+    if (prevProvider === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = prevProvider;
+    if (prevModel === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = prevModel;
+    delete require.cache[moduleId];
+  }
+});
+
+test('reco assistant rewrite rejects single-direction buy copy that adds future routine filler', async () => {
+  const prevMock = process.env.AURORA_BFF_USE_MOCK;
+  const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+  const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+  process.env.AURORA_BFF_USE_MOCK = 'false';
+  process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = 'gemini';
+  process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = 'gemini-3-flash-preview';
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'oily_pick_1',
+            display_name: 'GoalSkin Oil Control Serum',
+            brand: 'GoalSkin',
+            category: 'Serum',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'treatment',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Oil-control treatment',
+        resolved_target_step: 'treatment',
+        primary_target_id: 'oil_control_treatment',
+        ranked_targets: [
+          {
+            target_id: 'oil_control_treatment',
+            ingredient_query: 'Oil-control treatment',
+            resolved_target_step: 'treatment',
+          },
+        ],
+        selected_target_ids: ['oil_control_treatment'],
+      },
+    );
+    __internal.__setCallGeminiJsonObjectForTest(async () => ({
+      ok: true,
+      json: {
+        assistant_text:
+          'Buy GoalSkin Oil Control Serum for oily skin. You may eventually want to look for a lightweight moisturizer and a daily sunscreen later on.',
+      },
+      parse_status: 'parsed',
+      provider: 'gemini',
+      effective_model: 'gemini-3-flash-preview',
+    }));
+
+    const rewrite = await __internal.maybeRewriteRecoAssistantTextWithLlm({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily', goals: ['oil control'] },
+      userRequestText: 'What product should I buy?',
+      allowLockedSelectionRewrite: true,
+    });
+
+    assert.equal(rewrite.llm_used, false);
+    assert.equal(rewrite.reason, 'rewrite_buy_addon_filler');
+    assert.equal(rewrite.text, '');
+  } finally {
+    __internal.__resetCallGeminiJsonObjectForTest();
+    if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
+    else process.env.AURORA_BFF_USE_MOCK = prevMock;
+    if (prevProvider === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = prevProvider;
+    if (prevModel === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = prevModel;
+    delete require.cache[moduleId];
+  }
+});
+
+test('beauty mainline reco rows promote visible nested product fields to top level', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const rows = __internal.buildRecoRowsFromMainlineProducts(
+      [
+        {
+          product_id: '9886499864904',
+          merchant_id: 'merch_efbc46b4619cfbdf',
+          display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+          category: 'Serum',
+          purchase_path: 'https://agent.pivota.cc/products/9886499864904?merchant_id=merch_efbc46b4619cfbdf&entry=creator_agent',
+          sku: {
+            brand: 'The Ordinary',
+            image_url: 'https://cdn.shopify.com/s/files/1/0944/6998/0488/files/89K57102_S2.webp?v=1770439122',
+            short_description: 'Helps reduce visible shine without feeling heavy.',
+            description: 'Daily serum for oily skin that targets excess sebum.',
+            price: { amount: 12, currency: 'USD', unknown: false },
+          },
+        },
+      ],
+      {
+        targetContext: {
+          resolved_target_step: 'treatment',
+          primary_role_id: 'oil_control_treatment',
+          framework_roles: [
+            {
+              role_id: 'oil_control_treatment',
+              label: 'Oil-control treatment',
+              rank: 1,
+              preferred_step: 'treatment',
+            },
+          ],
+        },
+        language: 'EN',
+      },
+    );
+
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].brand, 'The Ordinary');
+    assert.equal(rows[0].image_url, 'https://cdn.shopify.com/s/files/1/0944/6998/0488/files/89K57102_S2.webp?v=1770439122');
+    assert.deepEqual(rows[0].price, { amount: 12, currency: 'USD', unknown: false });
+    assert.equal(rows[0].short_description, 'Helps reduce visible shine without feeling heavy.');
+    assert.equal(rows[0].description, 'Daily serum for oily skin that targets excess sebum.');
+    assert.equal(rows[0].url, 'https://agent.pivota.cc/products/9886499864904?merchant_id=merch_efbc46b4619cfbdf&entry=creator_agent');
+    assert.equal(rows[0].pdp_url, 'https://agent.pivota.cc/products/9886499864904?merchant_id=merch_efbc46b4619cfbdf&entry=creator_agent');
+    assert.equal(rows[0].product_url, 'https://agent.pivota.cc/products/9886499864904?merchant_id=merch_efbc46b4619cfbdf&entry=creator_agent');
+  } finally {
     delete require.cache[moduleId];
   }
 });
