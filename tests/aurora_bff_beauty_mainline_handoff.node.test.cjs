@@ -404,6 +404,192 @@ test('handoffRecoToBeautyMainlineSearch skips duplicate external-seed-only level
   }
 });
 
+test('handoffRecoToBeautyMainlineSearch rescues local framework strict-empty via proxy search', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const localCalls = [];
+    const proxyCalls = [];
+    __internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async (args) => {
+        localCalls.push({
+          query: String(args?.query || ''),
+          callerLane: String(args?.callerLane || ''),
+        });
+        return {
+          ok: true,
+          products: [],
+          attempted_internal_paths: ['/agent/internal/products/search'],
+          transport_hops: [],
+          transport_hop_count: 0,
+          nested_orchestrator_hops: 0,
+          primary_transport_owner: 'internal_products_search_primitive',
+          primary_endpoint_kind: 'internal_primitive',
+        };
+      },
+      searchPivotaBackendProducts: async (args) => {
+        proxyCalls.push({
+          query: String(args?.query || ''),
+          allowExternalSeed: args?.allowExternalSeed === true,
+          externalSeedStrategy: String(args?.externalSeedStrategy || ''),
+        });
+        return {
+          ok: true,
+          products: [
+            {
+              product_id: 'niacinamide_1',
+              merchant_id: 'merchant_proxy',
+              title: 'The Ordinary Niacinamide 10% + Zinc 1%',
+              display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+              category: 'Serum',
+              product_type: 'treatment',
+              candidate_step: 'treatment',
+              retrieval_source: 'external_seed',
+              canonical_pdp_url: 'https://example.com/products/niacinamide-1',
+            },
+          ],
+          decision_owner: 'shopping_agent_beauty_mainline',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+          query_source: 'agent_products_search',
+          final_selection: {
+            selection_owner: 'shopping_agent_beauty_mainline',
+            selected_product_ids: ['niacinamide_1'],
+            selected_titles: ['The Ordinary Niacinamide 10% + Zinc 1%'],
+            selection_signature: 'sel_proxy_niacinamide_1',
+            mainline_status: 'grounded_success',
+          },
+          search_stage_ledger: {
+            final_selection: {
+              selection_owner: 'shopping_agent_beauty_mainline',
+              selected_product_ids: ['niacinamide_1'],
+              selected_titles: ['The Ordinary Niacinamide 10% + Zinc 1%'],
+              selection_signature: 'sel_proxy_niacinamide_1',
+              mainline_status: 'grounded_success',
+            },
+          },
+          source_breakdown: {
+            source_tier_counts: { fresh_external: 1 },
+            top_candidate_provenance: { source_owner: 'external_seed' },
+          },
+          metadata: {
+            final_decision: 'products_returned',
+            search_stage_ledger: {
+              final_selection: {
+                selection_owner: 'shopping_agent_beauty_mainline',
+                selected_product_ids: ['niacinamide_1'],
+                selected_titles: ['The Ordinary Niacinamide 10% + Zinc 1%'],
+                selection_signature: 'sel_proxy_niacinamide_1',
+                mainline_status: 'grounded_success',
+              },
+            },
+          },
+        };
+      },
+    });
+
+    const out = await __internal.handoffRecoToBeautyMainlineSearch({
+      ctx: { lang: 'EN', request_id: 'req_proxy_rescue_after_local_empty' },
+      primaryQuery: 'what products should i use for oily skin?',
+      fallbackMessage: 'what products should i use for oily skin?',
+      targetContext: resolveRecommendationTargetContext({
+        text: 'what products should i use for oily skin?',
+        focus: '',
+        entryType: 'chat',
+      }),
+      timeoutMs: 5000,
+      minTimeoutMs: 5000,
+      deadlineAtMs: Date.now() + 15000,
+    });
+
+    assert.equal(localCalls.length > 0, true);
+    assert.equal(proxyCalls.length, 1);
+    assert.equal(proxyCalls[0]?.query, 'what products should i use for oily skin?');
+    assert.equal(proxyCalls[0]?.allowExternalSeed, true);
+    assert.equal(proxyCalls[0]?.externalSeedStrategy, 'unified_relevance');
+    assert.deepEqual(
+      out.recommendations.map((item) => item.display_name),
+      ['The Ordinary Niacinamide 10% + Zinc 1%'],
+    );
+    assert.equal(out.searchResult?.query_source, 'agent_products_search');
+    assert.equal(
+      out.searchResult?.metadata?.local_handoff_preflight?.query_source,
+      'beauty_mainline_local_handoff',
+    );
+    assert.equal(
+      out.searchResult?.metadata?.local_handoff_preflight?.final_decision,
+      'strict_empty',
+    );
+    assert.equal(
+      out.searchResult?.metadata?.local_handoff_preflight?.reason,
+      'empty',
+    );
+    assert.equal(
+      out.searchResult?.metadata?.local_handoff_preflight?.search_stage_ledger?.local_handoff?.planned_level_count,
+      6,
+    );
+    assert.equal(
+      out.searchResult?.metadata?.local_handoff_preflight?.search_stage_ledger?.local_handoff?.executed_level_count,
+      3,
+    );
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+    delete require.cache[moduleId];
+  }
+});
+
+test('handoffRecoToBeautyMainlineSearch preserves local empty result when proxy rescue fails', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const localCalls = [];
+    let proxyAttempts = 0;
+    __internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async (args) => {
+        localCalls.push({
+          query: String(args?.query || ''),
+          callerLane: String(args?.callerLane || ''),
+        });
+        return {
+          ok: true,
+          products: [],
+          attempted_internal_paths: ['/agent/internal/products/search'],
+          transport_hops: [],
+          transport_hop_count: 0,
+          nested_orchestrator_hops: 0,
+          primary_transport_owner: 'internal_products_search_primitive',
+          primary_endpoint_kind: 'internal_primitive',
+        };
+      },
+      searchPivotaBackendProducts: async () => {
+        proxyAttempts += 1;
+        throw new Error('proxy rescue failed');
+      },
+    });
+
+    const out = await __internal.handoffRecoToBeautyMainlineSearch({
+      ctx: { lang: 'EN', request_id: 'req_proxy_rescue_fails_preserve_local' },
+      primaryQuery: 'what products should i use for oily skin?',
+      fallbackMessage: 'what products should i use for oily skin?',
+      targetContext: resolveRecommendationTargetContext({
+        text: 'what products should i use for oily skin?',
+        focus: '',
+        entryType: 'chat',
+      }),
+      timeoutMs: 5000,
+      minTimeoutMs: 5000,
+      deadlineAtMs: Date.now() + 15000,
+    });
+
+    assert.equal(localCalls.length > 0, true);
+    assert.equal(proxyAttempts, 1);
+    assert.deepEqual(out.recommendations, []);
+    assert.equal(out.searchResult?.query_source, 'beauty_mainline_local_handoff');
+    assert.equal(out.searchResult?.metadata?.final_decision, 'strict_empty');
+    assert.equal(out.searchResult?.reason, 'empty');
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+    delete require.cache[moduleId];
+  }
+});
+
 test('handoffRecoToBeautyMainlineSearch builds reco rows from canonical final selection instead of raw mixed products', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {

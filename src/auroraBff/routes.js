@@ -18604,6 +18604,101 @@ function buildBeautyMainlineLocalSearchResult({
   };
 }
 
+function buildBeautyMainlineLocalHandoffPreflightSnapshot(searchResult = null) {
+  if (!isPlainObject(searchResult)) return null;
+  const metadata = isPlainObject(searchResult.metadata) ? searchResult.metadata : {};
+  const topLevelLedger = isPlainObject(searchResult.search_stage_ledger)
+    ? searchResult.search_stage_ledger
+    : {};
+  const metadataLedger = isPlainObject(metadata.search_stage_ledger)
+    ? metadata.search_stage_ledger
+    : {};
+  const combinedLedger = {
+    ...topLevelLedger,
+    ...metadataLedger,
+  };
+  const selectionContract = extractRecoFinalSelectionContract(searchResult);
+  return {
+    query_source:
+      pickFirstTrimmed(searchResult.query_source, metadata.query_source, 'beauty_mainline_local_handoff')
+      || 'beauty_mainline_local_handoff',
+    final_decision:
+      pickFirstTrimmed(
+        metadata.final_decision,
+        combinedLedger.final_decision,
+        Array.isArray(searchResult.products) && searchResult.products.length > 0
+          ? 'products_returned'
+          : 'strict_empty',
+      ) || 'strict_empty',
+    reason: pickFirstTrimmed(searchResult.reason) || null,
+    ...(isPlainObject(searchResult.source_breakdown)
+      ? { source_breakdown: searchResult.source_breakdown }
+      : {}),
+    ...(isPlainObject(selectionContract) ? { final_selection: selectionContract } : {}),
+    ...(isPlainObject(combinedLedger) && Object.keys(combinedLedger).length > 0
+      ? { search_stage_ledger: combinedLedger }
+      : {}),
+    ...(Array.isArray(metadata.semantic_owner_query_attempts) && metadata.semantic_owner_query_attempts.length
+      ? { semantic_owner_query_attempts: metadata.semantic_owner_query_attempts }
+      : {}),
+  };
+}
+
+function shouldAttemptBeautyMainlineProxyRescue({
+  localSearchResult = null,
+  deadlineAtMs = null,
+} = {}) {
+  if (!isPlainObject(localSearchResult)) return false;
+  const querySource = pickFirstTrimmed(
+    localSearchResult.query_source,
+    localSearchResult?.metadata?.query_source,
+    'beauty_mainline_local_handoff',
+  ).toLowerCase();
+  if (querySource && querySource !== 'beauty_mainline_local_handoff') return false;
+  const selectionContract = extractRecoFinalSelectionContract(localSearchResult);
+  const selectedProductIds = Array.isArray(selectionContract?.selected_product_ids)
+    ? selectionContract.selected_product_ids
+        .map((item) => String(item || '').trim())
+        .filter(Boolean)
+    : [];
+  if (selectedProductIds.length > 0) return false;
+  if (Array.isArray(localSearchResult.products) && localSearchResult.products.length > 0) return false;
+  if (Number.isFinite(Number(deadlineAtMs))) {
+    const remainingMs = Math.max(0, Number(deadlineAtMs) - Date.now());
+    if (remainingMs <= RECO_CATALOG_MAIN_PATH_TIMEOUT_FLOOR_MS) return false;
+  }
+  return true;
+}
+
+function attachBeautyMainlineLocalHandoffPreflight(searchResult = null, localSearchResult = null) {
+  if (!isPlainObject(searchResult)) return searchResult;
+  const preflight = buildBeautyMainlineLocalHandoffPreflightSnapshot(localSearchResult);
+  if (!isPlainObject(preflight)) return searchResult;
+  const metadata = isPlainObject(searchResult.metadata) ? searchResult.metadata : {};
+  const topLevelLedger = isPlainObject(searchResult.search_stage_ledger)
+    ? searchResult.search_stage_ledger
+    : {};
+  const metadataLedger = isPlainObject(metadata.search_stage_ledger)
+    ? metadata.search_stage_ledger
+    : {};
+  return {
+    ...searchResult,
+    local_handoff_preflight: preflight,
+    search_stage_ledger: {
+      ...topLevelLedger,
+      local_handoff_preflight: preflight,
+    },
+    metadata: {
+      ...metadata,
+      local_handoff_preflight: preflight,
+      search_stage_ledger: {
+        ...metadataLedger,
+        local_handoff_preflight: preflight,
+      },
+    },
+  };
+}
+
 async function runBeautyMainlineLocalHandoffSearch({
   ctx,
   logger,
@@ -18714,6 +18809,10 @@ async function handoffRecoToBeautyMainlineSearch({
     handoff?.targetContext && typeof handoff.targetContext === 'object' && !Array.isArray(handoff.targetContext)
       ? handoff.targetContext
       : targetContext;
+  const proxySearchFn = resolveAuroraRouteDependency(
+    'searchPivotaBackendProducts',
+    searchPivotaBackendProducts,
+  );
   const effectiveTimeoutMs = Math.max(
     RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
     RECO_CATALOG_MAIN_PATH_TIMEOUT_FLOOR_MS,
@@ -18773,8 +18872,9 @@ async function handoffRecoToBeautyMainlineSearch({
       authHeaders: authHeaders || ctx?.backend_auth_headers || null,
     });
   } else {
+    let localSearchResult = null;
     try {
-      searchResult = await runBeautyMainlineLocalHandoffSearch({
+      localSearchResult = await runBeautyMainlineLocalHandoffSearch({
         ctx,
         logger,
         targetContext: effectiveTargetContext,
@@ -18793,8 +18893,26 @@ async function handoffRecoToBeautyMainlineSearch({
         'aurora bff: local beauty handoff search failed; falling back to proxy search',
       );
     }
-    if (!searchResult) {
-      searchResult = await searchPivotaBackendProducts({
+    const shouldRescueLocalEmpty = shouldAttemptBeautyMainlineProxyRescue({
+      localSearchResult,
+      deadlineAtMs,
+    });
+    if (localSearchResult && !shouldRescueLocalEmpty) {
+      searchResult = localSearchResult;
+    } else {
+      if (shouldRescueLocalEmpty) {
+        logger?.info?.(
+          {
+            request_id: ctx?.request_id,
+            trace_id: ctx?.trace_id,
+            local_query_source: pickFirstTrimmed(localSearchResult?.query_source) || 'beauty_mainline_local_handoff',
+            local_reason: pickFirstTrimmed(localSearchResult?.reason) || 'empty',
+          },
+          'aurora bff: local beauty handoff returned empty; attempting proxy rescue',
+        );
+      }
+      try {
+        searchResult = await proxySearchFn({
         query,
         limit: 6,
         logger,
@@ -18815,7 +18933,22 @@ async function handoffRecoToBeautyMainlineSearch({
         semanticContract,
         traceId: pickFirstTrimmed(ctx?.trace_id, ctx?.request_id) || null,
         authHeaders: authHeaders || ctx?.backend_auth_headers || null,
-      });
+        });
+      } catch (err) {
+        if (!localSearchResult || !shouldRescueLocalEmpty) throw err;
+        logger?.warn?.(
+          {
+            request_id: ctx?.request_id,
+            trace_id: ctx?.trace_id,
+            err: err?.message || String(err),
+          },
+          'aurora bff: proxy rescue after local beauty handoff empty failed; preserving local empty result',
+        );
+        searchResult = localSearchResult;
+      }
+      if (searchResult && shouldRescueLocalEmpty && localSearchResult) {
+        searchResult = attachBeautyMainlineLocalHandoffPreflight(searchResult, localSearchResult);
+      }
     }
   }
   const canonicalSelection = extractRecoFinalSelectionContract(searchResult);
