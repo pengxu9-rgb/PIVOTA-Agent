@@ -965,7 +965,7 @@ async function recommend({
   const baseSemanticStrong = Number(baseSemantic?.signal_strength || 0) >= 2;
   const baseProductIsExternal = isExternalProduct(baseProduct);
   const effectiveExternalFetchTimeoutMs = baseProductIsExternal
-    ? Math.max(PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS, 2600)
+    ? Math.max(PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS, 5000)
     : PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS;
 
   const providedInternal = Array.isArray(options?.internal_candidates) ? options.internal_candidates : null;
