@@ -18846,6 +18846,25 @@ function shouldAttemptBeautyMainlineProxyRescue({
   return true;
 }
 
+function buildBeautyMainlineHandoffTransportPolicy({ mode } = {}) {
+  const basePolicy = buildRecoRecallTransportPolicy({ mode });
+  return {
+    ...basePolicy,
+    include_self_proxy: true,
+    prefer_self_proxy_first: true,
+    max_base_urls: Math.max(2, Number.isFinite(Number(basePolicy?.max_base_urls)) ? Number(basePolicy.max_base_urls) : 0),
+    max_paths: 1,
+    allow_secondary_base_failover: true,
+    allow_secondary_path_failover: false,
+    actual_http_attempt_limit_per_query: Math.max(
+      2,
+      Number.isFinite(Number(basePolicy?.actual_http_attempt_limit_per_query))
+        ? Number(basePolicy.actual_http_attempt_limit_per_query)
+        : 0,
+    ),
+  };
+}
+
 function attachBeautyMainlineLocalHandoffPreflight(searchResult = null, localSearchResult = null) {
   if (!isPlainObject(searchResult)) return searchResult;
   const preflight = buildBeautyMainlineLocalHandoffPreflightSnapshot(localSearchResult);
@@ -19017,7 +19036,7 @@ async function handoffRecoToBeautyMainlineSearch({
         : '';
   const shouldUseExternalSeedSupplement = Boolean(semanticContract);
   const shouldUseSunscreenRecallBudget = semanticTargetStepFamily === 'sunscreen';
-  const handoffTransportPolicy = buildRecoRecallTransportPolicy({
+  const handoffTransportPolicy = buildBeautyMainlineHandoffTransportPolicy({
     mode:
       String(semanticContract?.planner_mode || '').trim().toLowerCase() === 'step_aware'
         ? 'step_aware'
