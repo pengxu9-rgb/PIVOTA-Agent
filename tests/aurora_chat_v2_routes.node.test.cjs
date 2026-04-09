@@ -79,7 +79,6 @@ test('POST /v1/chat on standalone skill-router mount exposes proxy diagnostics f
   const app = createApp();
   const response = await request(app)
     .post('/v1/chat')
-    .set('X-Debug', '1')
     .send({
       message: 'im oily skin. what product should i buy?',
       client_state: 'IDLE_CHAT',
