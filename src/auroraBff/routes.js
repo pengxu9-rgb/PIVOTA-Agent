@@ -4943,6 +4943,19 @@ async function searchPivotaBackendProducts({
   if (!baseUrlCandidates.length) {
     return { ok: false, products: [], reason: 'pivota_backend_not_configured', latency_ms: 0 };
   }
+  const configuredHttpAttemptLimit = Number.isFinite(Number(effectiveTransportPolicy.actual_http_attempt_limit_per_query))
+    ? Math.max(1, Math.trunc(Number(effectiveTransportPolicy.actual_http_attempt_limit_per_query)))
+    : 0;
+  const effectiveBaseAttemptCount = Math.max(
+    1,
+    Math.min(
+      baseUrlCandidates.length,
+      maxConfiguredBaseUrls > 0 ? maxConfiguredBaseUrls : baseUrlCandidates.length,
+    ),
+  );
+  const attemptTimeoutBudgetDivisor = configuredHttpAttemptLimit > 0
+    ? Math.min(configuredHttpAttemptLimit, effectiveBaseAttemptCount)
+    : effectiveBaseAttemptCount;
   const allowSecondaryBaseFailover = effectiveTransportPolicy.allow_secondary_base_failover !== false;
   const allowSecondaryPathFailover = effectiveTransportPolicy.allow_secondary_path_failover !== false;
   const mapSearchFailureReason = ({ statusCode, errCode, errMessage } = {}) => {
@@ -5200,7 +5213,13 @@ async function searchPivotaBackendProducts({
       ? normalizedTimeout
       : Math.max(260, Math.min(normalizedTimeout, Math.trunc(normalizedTimeout * 0.66)));
     const remaining = getRemainingOverallMs();
-    const capped = Math.min(baseTimeout, Math.max(0, remaining - deadlineReserveMs));
+    const remainingBudget = Math.max(0, remaining - deadlineReserveMs);
+    const remainingAttemptSlots = Math.max(1, attemptTimeoutBudgetDivisor - index);
+    const reservedAttemptBudget =
+      attemptTimeoutBudgetDivisor > 1 && index < attemptTimeoutBudgetDivisor - 1
+        ? Math.max(260, Math.min(baseTimeout, Math.trunc(remainingBudget / remainingAttemptSlots)))
+        : baseTimeout;
+    const capped = Math.min(reservedAttemptBudget, remainingBudget);
     return Math.max(0, capped);
   };
   const shouldTrySecondaryReason = (reason) => {

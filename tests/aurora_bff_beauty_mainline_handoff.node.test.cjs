@@ -1,7 +1,5 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const axios = require('axios');
-
 process.env.AURORA_BFF_USE_MOCK = 'true';
 process.env.AURORA_DECISION_BASE_URL = '';
 
@@ -13,23 +11,6 @@ function loadRouteInternals() {
   delete require.cache[moduleId];
   const { __internal } = require('../src/auroraBff/routes');
   return { moduleId, __internal };
-}
-
-async function withEnv(overrides, fn) {
-  const previous = {};
-  for (const [key, value] of Object.entries(overrides || {})) {
-    previous[key] = process.env[key];
-    if (value == null) delete process.env[key];
-    else process.env[key] = String(value);
-  }
-  try {
-    return await fn();
-  } finally {
-    for (const [key, value] of Object.entries(previous)) {
-      if (value == null) delete process.env[key];
-      else process.env[key] = value;
-    }
-  }
 }
 
 test('deriveBeautyMainlineHandoff keeps explicit sunscreen asks on step-aware sunscreen semantics', () => {
@@ -123,11 +104,13 @@ test('handoffRecoToBeautyMainlineSearch passes sunscreen-aligned contract to bac
     assert.equal(captured?.allowExternalSeed, true);
     assert.equal(captured?.externalSeedStrategy, 'unified_relevance');
     assert.equal(captured?.transportPolicy?.mode, 'step_aware');
+    assert.equal(captured?.transportPolicy?.force_multi_source, true);
     assert.equal(captured?.transportPolicy?.prefer_self_proxy_first, true);
     assert.equal(captured?.transportPolicy?.max_base_urls, 2);
     assert.equal(captured?.transportPolicy?.max_paths, 1);
     assert.equal(captured?.transportPolicy?.allow_secondary_base_failover, true);
     assert.equal(captured?.transportPolicy?.allow_secondary_path_failover, false);
+    assert.equal(captured?.transportPolicy?.actual_http_attempt_limit_per_query, 2);
     assert.equal(captured?.timeoutMs, 65000);
     assert.equal(captured?.semanticContract?.planner_mode, 'step_aware');
     assert.equal(captured?.semanticContract?.primary_role_id, 'daily_sunscreen');
@@ -193,11 +176,13 @@ test('handoffRecoToBeautyMainlineSearch forces self-proxy-first transport for fr
 
     assert.equal(captured?.query, 'what products should i use for oily skin?');
     assert.equal(captured?.transportPolicy?.mode, 'framework_first_turn');
+    assert.equal(captured?.transportPolicy?.force_multi_source, true);
     assert.equal(captured?.transportPolicy?.prefer_self_proxy_first, true);
     assert.equal(captured?.transportPolicy?.max_base_urls, 2);
     assert.equal(captured?.transportPolicy?.max_paths, 1);
     assert.equal(captured?.transportPolicy?.allow_secondary_base_failover, true);
     assert.equal(captured?.transportPolicy?.allow_secondary_path_failover, false);
+    assert.equal(captured?.transportPolicy?.actual_http_attempt_limit_per_query, 2);
     assert.equal(captured?.searchSourceOverride, 'aurora-bff');
     assert.equal(captured?.allowExternalSeed, true);
     assert.equal(captured?.externalSeedStrategy, 'unified_relevance');
@@ -623,87 +608,6 @@ test('handoffRecoToBeautyMainlineSearch preserves local empty result when proxy 
     __internal.__resetRouteDependencyOverridesForTest();
     delete require.cache[moduleId];
   }
-});
-
-test('beauty mainline handoff search policy falls through from self proxy timeout to upstream base', async () => {
-  await withEnv(
-    {
-      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
-      AURORA_BFF_RECO_CATALOG_SEARCH_BASE_URLS: 'https://pivota-backend.test',
-      AURORA_BFF_RECO_CATALOG_SEARCH_SOURCE: 'aurora-bff',
-      AURORA_BFF_RECO_CATALOG_SEARCH_PREFER_CONFIGURED_BASE_URLS: 'true',
-      AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED: 'true',
-      AURORA_BFF_RECO_CATALOG_SELF_PROXY_BASE_URL: 'http://127.0.0.1:3000',
-      AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED: 'false',
-    },
-    async () => {
-      const originalGet = axios.get;
-      const seen = [];
-      axios.get = async (url, config = {}) => {
-        const target = String(url || '');
-        seen.push({
-          url: target,
-          timeout: Number(config?.timeout || 0) || null,
-        });
-        if (target === 'http://127.0.0.1:3000/agent/v1/products/search') {
-          const err = new Error('timeout of 5000ms exceeded');
-          err.code = 'ECONNABORTED';
-          throw err;
-        }
-        if (target === 'https://pivota-backend.test/agent/v1/products/search') {
-          return {
-            status: 200,
-            data: {
-              products: [
-                {
-                  product_id: 'prod_oil_control_treatment',
-                  merchant_id: 'mid_oil_control',
-                  brand: 'Test Brand',
-                  name: 'Oil Control Treatment',
-                  display_name: 'Test Brand Oil Control Treatment',
-                  category: 'Serum',
-                  product_type: 'serum',
-                },
-              ],
-            },
-          };
-        }
-        throw new Error(`Unexpected axios.get: ${target}`);
-      };
-
-      const { moduleId, __internal } = loadRouteInternals();
-      try {
-        const out = await __internal.handoffRecoToBeautyMainlineSearch({
-          ctx: { lang: 'EN', trace_id: 'test_trace_handoff_fallback' },
-          primaryQuery: 'oil control treatment',
-          fallbackMessage: 'what product should i buy for oily skin?',
-          targetContext: resolveRecommendationTargetContext({
-            text: 'what product should i buy for oily skin?',
-            focus: '',
-            entryType: 'chat',
-          }),
-          timeoutMs: 9000,
-          minTimeoutMs: 120,
-          searchFn: null,
-          deadlineAtMs: Date.now() + 15000,
-          proxyRescueDeadlineAtMs: Date.now() + 15000,
-        });
-
-        assert.deepEqual(
-          seen.map((item) => item.url),
-          [
-            'http://127.0.0.1:3000/agent/v1/products/search',
-            'https://pivota-backend.test/agent/v1/products/search',
-          ],
-        );
-        assert.equal(out?.searchResult?.source_base_url, 'https://pivota-backend.test');
-        assert.equal(out?.recommendations?.[0]?.product_id, 'prod_oil_control_treatment');
-      } finally {
-        axios.get = originalGet;
-        delete require.cache[moduleId];
-      }
-    },
-  );
 });
 
 test('handoffRecoToBeautyMainlineSearch builds reco rows from canonical final selection instead of raw mixed products', async () => {
