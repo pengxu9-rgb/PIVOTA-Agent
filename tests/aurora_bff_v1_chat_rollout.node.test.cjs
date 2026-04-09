@@ -851,6 +851,40 @@ test('buildChatIntentContract resolves beauty reco free-text before legacy ingre
   }
 });
 
+test('buildChatIntentContract locks greasy-by-noon product asks onto the beauty mainline', async () => {
+  resetAuroraModules();
+  const { __internal } = require('../src/auroraBff/routes');
+
+  const contract = await __internal.buildChatIntentContract({
+    message: 'My face gets greasy by noon. What skincare product should I use first?',
+    language: 'EN',
+    session: { state: 'idle' },
+  });
+
+  assert.equal(contract.contract_version, 'chat_intent_v1');
+  assert.equal(contract.ownership_domain, 'beauty_mainline');
+  assert.equal(contract.request_class, 'beauty_discovery');
+  assert.equal(contract.delegate_target, 'beauty_mainline');
+  assert.equal(contract.should_search, true);
+});
+
+test('buildChatIntentContract keeps buy-wording beauty reco asks on the beauty mainline', async () => {
+  resetAuroraModules();
+  const { __internal } = require('../src/auroraBff/routes');
+
+  const contract = await __internal.buildChatIntentContract({
+    message: "i'm oily skin. what product should i buy?",
+    language: 'EN',
+    session: { state: 'idle' },
+  });
+
+  assert.equal(contract.contract_version, 'chat_intent_v1');
+  assert.equal(contract.ownership_domain, 'beauty_mainline');
+  assert.equal(contract.request_class, 'beauty_discovery');
+  assert.equal(contract.delegate_target, 'beauty_mainline');
+  assert.equal(contract.should_search, true);
+});
+
 test('shouldEarlyLockBeautyOwnedChatReco locks current frontend beauty reco freeform payloads onto the bounded mainline path', async () => {
   resetAuroraModules();
   const { __internal } = require('../src/auroraBff/routes');

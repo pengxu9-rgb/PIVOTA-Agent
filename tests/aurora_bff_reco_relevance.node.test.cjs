@@ -7270,6 +7270,119 @@ test('/v1/chat: exact oily free-text beauty reco carries parsed profile and cano
   }
 });
 
+test('/v1/chat: greasy-by-noon free text stays on the beauty reco mainline instead of crashing in legacy guards', { concurrency: false }, async () => {
+  let auroraChatCallCount = 0;
+  const observedInternalQueries = [];
+  const harness = createAppWithPatchedAuroraChat({
+    auroraChatImpl: async () => {
+      auroraChatCallCount += 1;
+      return {
+        intent: 'recommend_products',
+        answer: '{"summary":"legacy planner should not run"}',
+        structured: {
+          recommendations: [
+            {
+              product_id: 'legacy_wrong_body',
+              display_name: 'Legacy Body Oil',
+            },
+          ],
+        },
+        context: {},
+      };
+    },
+  });
+  harness.routesMod.__internal.__setRouteDependencyOverridesForTest({
+    searchInternalProductsPrimitive: async (args = {}) => {
+      const query = String(args?.query || '').trim().toLowerCase();
+      observedInternalQueries.push(query);
+      const base = {
+        ok: true,
+        attempted_internal_paths: ['/agent/internal/products/search'],
+        transport_hops: [],
+        transport_hop_count: 0,
+        nested_orchestrator_hops: 0,
+        primary_transport_owner: 'internal_products_search_primitive',
+        primary_endpoint_kind: 'internal_primitive',
+      };
+      if (query === 'oil control serum') {
+        return {
+          ...base,
+          products: [
+            {
+              product_id: 'niacinamide_1',
+              merchant_id: 'mid_internal',
+              brand: 'The Ordinary',
+              name: 'Niacinamide 10% + Zinc 1%',
+              display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+              category: 'serum',
+              product_type: 'serum',
+              url: 'https://example.com/pdp/niacinamide-zinc',
+              candidate_step: 'treatment',
+              retrieval_source: 'internal_search',
+              retrieval_reason: 'internal_primitive_match',
+              short_description: 'A mattifying oil-control serum for oily skin.',
+              ingredient_tokens: ['niacinamide', 'zinc pca'],
+              matched_role_id: 'oil_control_treatment',
+            },
+          ],
+        };
+      }
+      return {
+        ...base,
+        products: [],
+      };
+    },
+  });
+
+  try {
+    const response = await harness.request
+      .post('/v1/chat')
+      .set({
+        'X-Aurora-UID': 'chat_greasy_by_noon_uid',
+        'X-Trace-ID': 'trace_chat_greasy_by_noon',
+        'X-Brief-ID': 'chat_greasy_by_noon_brief',
+      })
+      .send({
+        message: 'My face gets greasy by noon. What skincare product should I use first?',
+        client_state: 'IDLE_CHAT',
+        session: {
+          state: 'idle',
+        },
+        language: 'EN',
+      });
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(auroraChatCallCount, 0);
+    assert.equal(observedInternalQueries.length > 0, true);
+    assert.ok(observedInternalQueries.includes('oil control serum'));
+
+    const payload = getRecommendationsPayload(response.body);
+    assert.ok(payload);
+    assert.equal(payload.profile?.skinType, 'oily');
+    assert.equal(payload.recommendation_meta?.primary_target_id, 'oil_control_treatment');
+    assert.equal(Array.isArray(payload.recommendation_meta?.ranked_targets), true);
+    assert.equal(payload.recommendation_meta.ranked_targets.length > 0, true);
+    assert.deepEqual(payload.recommendation_meta?.selected_target_ids, ['oil_control_treatment']);
+
+    const latestRecoContext = response.body?.session_patch?.state?.latest_reco_context || null;
+    assert.ok(latestRecoContext);
+    assert.equal(latestRecoContext.primary_target_id, 'oil_control_treatment');
+    assert.equal(Array.isArray(latestRecoContext.ranked_targets), true);
+    assert.equal(latestRecoContext.ranked_targets.length > 0, true);
+    assert.deepEqual(latestRecoContext.selected_target_ids, ['oil_control_treatment']);
+
+    const assistantText = String(
+      response.body?.assistant_message?.content || response.body?.assistant_text || '',
+    );
+    assert.doesNotMatch(assistantText, /Failed to process chat\./i);
+    assert.match(assistantText, /oily/i);
+    assert.match(assistantText, /Goals:\s*oil control\./i);
+  } finally {
+    harness.routesMod.__internal.__resetRouteDependencyOverridesForTest();
+    harness.restore();
+  }
+});
+
 test('/v1/chat: exact oily first-turn matrix keeps canonical target bundle and green quality contract across bare, seeded, and action-patched paths', { concurrency: false }, async () => {
   let auroraChatCallCount = 0;
   const observedInternalQueries = [];
