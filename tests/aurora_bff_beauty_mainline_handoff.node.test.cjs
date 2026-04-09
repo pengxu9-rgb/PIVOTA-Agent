@@ -435,6 +435,7 @@ test('handoffRecoToBeautyMainlineSearch rescues local framework strict-empty via
           query: String(args?.query || ''),
           allowExternalSeed: args?.allowExternalSeed === true,
           externalSeedStrategy: String(args?.externalSeedStrategy || ''),
+          deadlineMs: Number(args?.deadlineMs || 0),
         });
         return {
           ok: true,
@@ -490,6 +491,8 @@ test('handoffRecoToBeautyMainlineSearch rescues local framework strict-empty via
       },
     });
 
+    const handoffDeadlineAtMs = Date.now() + 15000;
+    const proxyRescueDeadlineAtMs = handoffDeadlineAtMs + 3200;
     const out = await __internal.handoffRecoToBeautyMainlineSearch({
       ctx: { lang: 'EN', request_id: 'req_proxy_rescue_after_local_empty' },
       primaryQuery: 'what products should i use for oily skin?',
@@ -501,14 +504,16 @@ test('handoffRecoToBeautyMainlineSearch rescues local framework strict-empty via
       }),
       timeoutMs: 5000,
       minTimeoutMs: 5000,
-      deadlineAtMs: Date.now() + 15000,
+      deadlineAtMs: handoffDeadlineAtMs,
+      proxyRescueDeadlineAtMs,
     });
 
     assert.equal(localCalls.length > 0, true);
     assert.equal(proxyCalls.length, 1);
-    assert.equal(proxyCalls[0]?.query, 'what products should i use for oily skin?');
+    assert.equal(proxyCalls[0]?.query, 'oil control treatment');
     assert.equal(proxyCalls[0]?.allowExternalSeed, true);
     assert.equal(proxyCalls[0]?.externalSeedStrategy, 'unified_relevance');
+    assert.equal(proxyCalls[0]?.deadlineMs, proxyRescueDeadlineAtMs);
     assert.deepEqual(
       out.recommendations.map((item) => item.display_name),
       ['The Ordinary Niacinamide 10% + Zinc 1%'],
@@ -810,6 +815,7 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
     plannerMeta: null,
     plannerDeadlineAtMs: null,
     handoffDeadlineAtMs: null,
+    proxyRescueDeadlineAtMs: null,
     rewriteDeadlineAtMs: null,
     rewriteBaseText: 'unset',
     rewriteUserRequestText: null,
@@ -914,6 +920,7 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
     handoffRecoToBeautyMainlineSearch: async (args) => {
       observed.handoffTargetContext = args.targetContext;
       observed.handoffDeadlineAtMs = args.deadlineAtMs;
+      observed.proxyRescueDeadlineAtMs = args.proxyRescueDeadlineAtMs;
       return {
         targetContext: args.targetContext,
         recommendations: [
@@ -1025,9 +1032,12 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
   assert.ok(timingLedger?.total_elapsed_ms >= timingLedger?.handoff_ms);
   assert.equal(Number.isFinite(observed.plannerDeadlineAtMs), true);
   assert.equal(Number.isFinite(observed.handoffDeadlineAtMs), true);
+  assert.equal(Number.isFinite(observed.proxyRescueDeadlineAtMs), true);
   assert.equal(Number.isFinite(observed.rewriteDeadlineAtMs), true);
   assert.ok(observed.handoffDeadlineAtMs >= observed.plannerDeadlineAtMs);
+  assert.ok(observed.proxyRescueDeadlineAtMs > observed.handoffDeadlineAtMs);
   assert.ok(observed.rewriteDeadlineAtMs > observed.handoffDeadlineAtMs);
+  assert.ok(observed.rewriteDeadlineAtMs > observed.proxyRescueDeadlineAtMs);
   assert.equal(observed.rewriteBaseText, undefined);
   assert.equal(observed.rewriteUserRequestText, 'im oily skin, what products should i use?');
   assert.equal(result?.envelope?.assistant_message, null);
