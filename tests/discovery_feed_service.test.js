@@ -1303,11 +1303,118 @@ describe('discovery feed service', () => {
         review_summary: { rating: 4.9, review_count: 128 },
         tags: ['editorial: top pick'],
         attributes: { badge: 'Top Pick' },
+        card_title: 'Rose Prick Eau de Parfum',
+        card_subtitle: 'Perfume',
+        card_badge: '4.9★ (128)',
+        search_card: {
+          title_candidate: 'Rose Prick Eau de Parfum',
+          compact_candidate: 'Perfume',
+          proof_badge_candidate: '4.9★ (128)',
+        },
+        shopping_card: {
+          contract_version: 'pivota.shopping_card.v1',
+          title: 'Rose Prick Eau de Parfum',
+          subtitle: 'Perfume',
+          proof_badge: '4.9★ (128)',
+          market_signal_badges: [
+            { badge_type: 'review_signal', badge_label: '4.9★ (128)' },
+            { badge_type: 'configured_badge', badge_label: 'Top Pick' },
+            { badge_type: 'editorial_signal', badge_label: 'Top Pick' },
+          ],
+        },
+        market_signal_badges: [
+          { badge_type: 'review_signal', badge_label: '4.9★ (128)' },
+          { badge_type: 'configured_badge', badge_label: 'Top Pick' },
+          { badge_type: 'editorial_signal', badge_label: 'Top Pick' },
+        ],
       }),
     );
     expect(response.products[0]).not.toHaveProperty('variants');
     expect(response.products[0]).not.toHaveProperty('image_urls');
     expect(response.products[0]).not.toHaveProperty('raw_detail');
+  });
+
+  test('browse_products card response detail exposes explicit normalized shopping card fields when present', async () => {
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        response_detail: 'card',
+        scope: {
+          brand_names: ['Nike'],
+        },
+        context: {
+          locale: 'en-US',
+        },
+      },
+      {
+        candidateProducts: [
+          {
+            ...makeProduct({
+              merchant_id: 'm2',
+              product_id: 'air_max',
+              title: 'Air Max Special Edition',
+              brand: 'Nike',
+              category: 'Sneakers',
+              product_type: 'Running shoes',
+              price: 120,
+            }),
+            image_url: 'https://example.com/air-max.jpg',
+            card_title: 'Nike Air Max Running Shoes',
+            search_card: {
+              compact_candidate: 'Men’s black air-cushion sneaker',
+              proof_badge_candidate: 'Seen in 4 editor picks',
+              intro_candidate: 'Running shoe with visible air cushioning.',
+            },
+            market_signal_badges: [
+              {
+                badge_type: 'editorial_signal',
+                badge_label: 'Seen in 4 editor picks',
+              },
+            ],
+            evidence_profile: 'mixed',
+          },
+        ],
+      },
+    );
+
+    expect(response.products).toHaveLength(1);
+    expect(response.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'air_max',
+        card_title: 'Nike Air Max Running Shoes',
+        card_subtitle: 'Men’s black air-cushion sneaker',
+        card_badge: 'Seen in 4 editor picks',
+        card_intro: 'Running shoe with visible air cushioning.',
+        search_card: {
+          title_candidate: 'Nike Air Max Running Shoes',
+          compact_candidate: 'Men’s black air-cushion sneaker',
+          proof_badge_candidate: 'Seen in 4 editor picks',
+          intro_candidate: 'Running shoe with visible air cushioning.',
+        },
+        shopping_card: {
+          contract_version: 'pivota.shopping_card.v1',
+          title: 'Nike Air Max Running Shoes',
+          subtitle: 'Men’s black air-cushion sneaker',
+          proof_badge: 'Seen in 4 editor picks',
+          intro: 'Running shoe with visible air cushioning.',
+          market_signal_badges: [
+            {
+              badge_type: 'editorial_signal',
+              badge_label: 'Seen in 4 editor picks',
+            },
+          ],
+          evidence_profile: 'mixed',
+        },
+        market_signal_badges: [
+          {
+            badge_type: 'editorial_signal',
+            badge_label: 'Seen in 4 editor picks',
+          },
+        ],
+      }),
+    );
   });
 
   test('brand-scoped browse skips supplemental providers once products_search already has enough primary brand candidates', async () => {
