@@ -5273,15 +5273,26 @@ function hasExplicitLegacyInvokeContracts(metadata = null) {
   return metadata.legacy_contracts === true || metadata.legacy_contract === true;
 }
 
+function getSearchRequestContractFromMetadata(metadata = null) {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null;
+  return metadata.search_request_contract &&
+    typeof metadata.search_request_contract === 'object' &&
+    !Array.isArray(metadata.search_request_contract)
+    ? metadata.search_request_contract
+    : null;
+}
+
+function resolveSearchPrimaryLaneFromMetadata(metadata = null) {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return '';
+  const metadataPrimaryLane = String(metadata.primary_lane || '').trim();
+  if (metadataPrimaryLane) return metadataPrimaryLane;
+  return String(getSearchRequestContractFromMetadata(metadata)?.primary_lane || '').trim();
+}
+
 function isPublicBeautyMainlineSearchRoute(metadata = null) {
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return false;
   if (metadata.public_search_route !== true) return false;
-  const searchRequestContract =
-    metadata.search_request_contract &&
-    typeof metadata.search_request_contract === 'object' &&
-    !Array.isArray(metadata.search_request_contract)
-      ? metadata.search_request_contract
-      : null;
+  const searchRequestContract = getSearchRequestContractFromMetadata(metadata);
   if (!searchRequestContract) return false;
   return (
     String(searchRequestContract.surface || '').trim() === 'direct' &&
@@ -7750,11 +7761,85 @@ function shouldAllowSecondaryFallback(operation, { forceSecondaryFallback = fals
   return true;
 }
 
+function hasStrictInvokeCatalogSurface(search = null, metadata = null) {
+  const normalizedSearch =
+    search && typeof search === 'object' && !Array.isArray(search) ? search : {};
+  const normalizedMetadata =
+    metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {};
+  const catalogSurface = firstNonEmptyString(
+    normalizedSearch.catalog_surface,
+    normalizedSearch.catalogSurface,
+    normalizedMetadata.catalog_surface,
+    normalizedMetadata.catalogSurface,
+  );
+  const normalizedCatalogSurface = String(catalogSurface || '').trim().toLowerCase();
+  return ['agent_api', 'acp', 'ucp'].includes(normalizedCatalogSurface);
+}
+
+function attachInvokeSearchRequestContractMetadata({
+  operation = '',
+  payload = null,
+  metadata = null,
+  queryClass = null,
+} = {}) {
+  const nextMetadata =
+    metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+      ? { ...metadata }
+      : {};
+  if (!(operation === 'find_products' || operation === 'find_products_multi')) return nextMetadata;
+  const search =
+    payload?.search && typeof payload.search === 'object' && !Array.isArray(payload.search)
+      ? payload.search
+      : payload && typeof payload === 'object' && !Array.isArray(payload)
+        ? payload
+        : {};
+  const searchRequestContract =
+    getSearchRequestContractFromMetadata(nextMetadata) ||
+    buildFindProductsSearchRequestContract({
+      surface: 'gateway',
+      operation,
+      search,
+      metadata: nextMetadata,
+      queryClass,
+      strictConstraintQuery: hasStrictInvokeCatalogSurface(search, nextMetadata),
+    });
+  if (!searchRequestContract) return nextMetadata;
+  return {
+    ...nextMetadata,
+    search_request_contract: searchRequestContract,
+    primary_lane:
+      String(searchRequestContract.primary_lane || '').trim() ||
+      String(nextMetadata.primary_lane || '').trim() ||
+      null,
+    primary_retrieval_contract:
+      String(searchRequestContract.primary_retrieval_contract || '').trim() ||
+      String(nextMetadata.primary_retrieval_contract || '').trim() ||
+      null,
+    supplement_lanes: Array.isArray(searchRequestContract.supplement_lanes)
+      ? searchRequestContract.supplement_lanes
+      : [],
+  };
+}
+
 function isFallbackSuppressedSearchRail(searchRail = null) {
   const normalizedSearchRail = String(searchRail || '').trim().toLowerCase();
   return (
     normalizedSearchRail === 'authoritative_shopping' ||
     normalizedSearchRail === 'public_observability'
+  );
+}
+
+function isAuroraBeautyMainlineInvokeMetadata(metadata = null) {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return false;
+  if (hasExplicitLegacyInvokeContracts(metadata)) return false;
+  if (!isAuroraSource(metadata.source)) return false;
+  return resolveSearchPrimaryLaneFromMetadata(metadata).toLowerCase() === 'beauty_discovery_mainline';
+}
+
+function shouldSuppressLegacyOwnerSwitchFallback({ searchRail = null, metadata = null } = {}) {
+  return (
+    isFallbackSuppressedSearchRail(searchRail) ||
+    isAuroraBeautyMainlineInvokeMetadata(metadata)
   );
 }
 
@@ -7766,7 +7851,7 @@ function shouldAllowInvokeFallback(operation, { forceInvokeFallback = false, met
   )
     .trim()
     .toLowerCase();
-  if (isFallbackSuppressedSearchRail(searchRail)) {
+  if (shouldSuppressLegacyOwnerSwitchFallback({ searchRail, metadata })) {
     return false;
   }
   return PROXY_SEARCH_INVOKE_FALLBACK_ENABLED;
@@ -7779,7 +7864,7 @@ function shouldAllowResolverFallback(operation, { metadata = null } = {}) {
   )
     .trim()
     .toLowerCase();
-  if (isFallbackSuppressedSearchRail(searchRail)) {
+  if (shouldSuppressLegacyOwnerSwitchFallback({ searchRail, metadata })) {
     return false;
   }
   return PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED;
@@ -7863,7 +7948,7 @@ function shouldUseResolverFirstSearch({
   )
     .trim()
     .toLowerCase();
-  if (isFallbackSuppressedSearchRail(searchRail)) {
+  if (shouldSuppressLegacyOwnerSwitchFallback({ searchRail, metadata })) {
     return false;
   }
 
@@ -14780,10 +14865,41 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         )
           .trim()
           .toLowerCase();
+        const requestMetadata =
+          req?.body?.metadata &&
+          typeof req.body.metadata === 'object' &&
+          !Array.isArray(req.body.metadata)
+            ? req.body.metadata
+            : {};
+        const requestSearchContract = getSearchRequestContractFromMetadata(requestMetadata);
+        const requestPrimaryLane =
+          String(
+            debugRuntime.primaryLane ||
+              resolveSearchPrimaryLaneFromMetadata(requestMetadata) ||
+              '',
+          ).trim() || null;
+        const requestPrimaryRetrievalContract =
+          String(
+            requestMetadata.primary_retrieval_contract ||
+              requestSearchContract?.primary_retrieval_contract ||
+              '',
+          ).trim() || null;
         finalBody = {
           ...finalBody,
           metadata: {
             ...existingMeta,
+            ...(
+              requestSearchContract && !getSearchRequestContractFromMetadata(existingMeta)
+                ? { search_request_contract: requestSearchContract }
+                : {}
+            ),
+            ...(requestPrimaryLane && !String(existingMeta.primary_lane || '').trim()
+              ? { primary_lane: requestPrimaryLane }
+              : {}),
+            ...(requestPrimaryRetrievalContract &&
+            !String(existingMeta.primary_retrieval_contract || '').trim()
+              ? { primary_retrieval_contract: requestPrimaryRetrievalContract }
+              : {}),
             ...buildInvokeSearchRailMetadata(invokeSearchRail),
           },
         };
@@ -14814,14 +14930,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
     const { operation, payload } = parsed.data;
     debugRuntime.operation = String(operation || '').trim().toLowerCase();
-    const metadata = normalizeMetadata(req.body.metadata, payload);
-    const invokeSearchRail =
-      operation === 'find_products' || operation === 'find_products_multi'
-        ? resolveInvokeSearchRailFromMetadata(metadata)
-        : null;
-    debugRuntime.invokeSearchRail = invokeSearchRail;
-    const creatorId = extractCreatorId({ ...payload, metadata });
-    const now = new Date();
+    let metadata = normalizeMetadata(req.body.metadata, payload);
     let findProductsMultiCtx = null;
     if (operation === 'find_products_multi') {
       const nluStartedAtMs = Date.now();
@@ -14881,6 +14990,23 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       typeof findProductsExpansionMeta.association_plan === 'object'
         ? findProductsExpansionMeta.association_plan
         : null;
+    metadata = attachInvokeSearchRequestContractMetadata({
+      operation,
+      payload: effectivePayload,
+      metadata,
+      queryClass: traceQueryClass,
+    });
+    if (req.body && typeof req.body === 'object' && !Array.isArray(req.body)) {
+      req.body.metadata = metadata;
+    }
+    const invokeSearchRail =
+      operation === 'find_products' || operation === 'find_products_multi'
+        ? resolveInvokeSearchRailFromMetadata(metadata)
+        : null;
+    debugRuntime.invokeSearchRail = invokeSearchRail;
+    debugRuntime.primaryLane = resolveSearchPrimaryLaneFromMetadata(metadata) || null;
+    const creatorId = extractCreatorId({ ...payload, metadata });
+    const now = new Date();
     const traceFlagsSnapshotBase =
       findProductsExpansionMeta?.flags_snapshot &&
       typeof findProductsExpansionMeta.flags_snapshot === 'object'
@@ -19781,7 +19907,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     const legacySearchAxiosConfig =
       (operation === 'find_products' || operation === 'find_products_multi') &&
       searchPrimaryContract !== 'agent_v1' &&
-      !isFallbackSuppressedSearchRail(invokeSearchRail) &&
+      !shouldSuppressLegacyOwnerSwitchFallback({ searchRail: invokeSearchRail, metadata }) &&
       !shoppingFreshMainlineSearch &&
       !(strictCommerceFindProductsMulti && operation === 'find_products_multi')
         ? {
@@ -20182,6 +20308,31 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ),
           };
         }
+        if (
+          !response &&
+          operation === 'find_products_multi' &&
+          isAuroraBeautyMainlineInvokeMetadata(metadata)
+        ) {
+          const auroraBeautyMainlineReason =
+            err?.code === 'ECONNABORTED'
+              ? 'beauty_discovery_mainline_timeout'
+              : 'beauty_discovery_mainline_exception';
+          response = {
+            status: 200,
+            data: withStrictEmptyFallback({
+              body: null,
+              queryParams,
+              reason: auroraBeautyMainlineReason,
+              upstreamStatus,
+              upstreamCode: upstreamCode || err?.code || null,
+              upstreamMessage: upstreamMessage || err?.message || null,
+              route: 'beauty_discovery_mainline_primary_exception',
+              intent: effectiveIntent,
+              queryClass: traceQueryClass,
+              queryText,
+            }),
+          };
+        }
         if (!response && operation === 'find_products_multi' && strictCommerceFindProductsMulti) {
           response = {
             status: 200,
@@ -20223,7 +20374,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         const allowSecondaryFallback = shouldAllowSecondaryFallback(operation, {
           forceSecondaryFallback: auroraFallbackOverrides.forceSecondaryFallback,
         });
-        const hardDisableInvokeFallback = isFallbackSuppressedSearchRail(invokeSearchRail);
+        const hardDisableInvokeFallback = shouldSuppressLegacyOwnerSwitchFallback({
+          searchRail: invokeSearchRail,
+          metadata,
+        });
         const allowInvokeFallback = shouldAllowInvokeFallback(operation, {
           forceInvokeFallback: auroraFallbackOverrides.forceInvokeFallback,
           metadata: {
@@ -20523,7 +20677,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const allowSecondaryFallback = shouldAllowSecondaryFallback(operation, {
         forceSecondaryFallback: auroraFallbackOverrides.forceSecondaryFallback,
       });
-      const hardDisableInvokeFallback = isFallbackSuppressedSearchRail(invokeSearchRail);
+      const hardDisableInvokeFallback = shouldSuppressLegacyOwnerSwitchFallback({
+        searchRail: invokeSearchRail,
+        metadata,
+      });
       const allowInvokeFallback = shouldAllowInvokeFallback(operation, {
         forceInvokeFallback: auroraFallbackOverrides.forceInvokeFallback,
         metadata: {

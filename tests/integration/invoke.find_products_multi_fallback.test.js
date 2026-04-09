@@ -26,6 +26,8 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
       PROXY_SEARCH_RESOLVER_FIRST_ENABLED: process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED,
       PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY:
         process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY,
+      PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED:
+        process.env.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED,
       PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED:
         process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED,
       PROXY_SEARCH_INVOKE_FALLBACK_ENABLED: process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED,
@@ -39,6 +41,7 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
     process.env.PIVOTA_API_BASE = 'http://pivota.test';
     process.env.PIVOTA_API_KEY = 'test_key';
     process.env.API_MODE = 'REAL';
+    process.env.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED = 'true';
     process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'true';
     process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED = 'true';
     process.env.FIND_PRODUCTS_MULTI_EXPANSION_MODE = 'off';
@@ -276,5 +279,173 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
       }),
     );
     expect(resp.body.metadata?.proxy_search_fallback?.applied).not.toBe(true);
+  });
+
+  test('aurora beauty mainline invoke primary exception skips resolver and invoke fallback owner switches', async () => {
+    const queryText = 'best sunscreen for oily skin';
+    const resolveProductRef = jest.fn().mockResolvedValue({
+      resolved: true,
+      product_ref: {
+        merchant_id: 'resolver_merch_should_not_run',
+        product_id: 'resolver_prod_should_not_run',
+      },
+      confidence: 0.99,
+      reason: 'stable_alias_ref',
+      metadata: { latency_ms: 10 },
+    });
+    jest.doMock('../../src/services/productGroundingResolver', () => ({
+      resolveProductRef,
+    }));
+
+    const primaryScope = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(502, {
+        error: 'UPSTREAM_UNAVAILABLE',
+        message: 'legacy search failed',
+      });
+
+    const invokeFallbackScope = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke', (body) => body && body.operation === 'find_products_multi')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'invoke_fallback_should_not_run',
+            merchant_id: 'fallback_merch',
+            title: 'Invoke fallback should not run',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: queryText,
+            catalog_surface: 'beauty',
+            commerce_surface: 'beauty',
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'aurora-bff',
+          catalog_surface: 'beauty',
+          commerce_surface: 'beauty',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resolveProductRef).not.toHaveBeenCalled();
+    expect(primaryScope.isDone()).toBe(true);
+    expect(invokeFallbackScope.isDone()).toBe(false);
+    expect(resp.body.products).toEqual([]);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        invoke_search_rail: 'legacy_internal',
+        legacy_contract: true,
+        primary_lane: 'beauty_discovery_mainline',
+        strict_empty: true,
+        strict_empty_reason: 'beauty_discovery_mainline_exception',
+      }),
+    );
+    expect(resp.body.metadata?.search_request_contract?.primary_lane).toBe('beauty_discovery_mainline');
+    expect(resp.body.metadata?.proxy_search_fallback?.applied).not.toBe(true);
+  });
+
+  test('aurora beauty mainline primary miss does not enter resolver or invoke fallback owner switches', async () => {
+    const queryText = 'IPSA related products';
+    const resolveProductRef = jest.fn().mockResolvedValue({
+      resolved: true,
+      product_ref: {
+        merchant_id: 'resolver_merch_should_not_run',
+        product_id: 'resolver_prod_should_not_run',
+      },
+      confidence: 0.99,
+      reason: 'stable_alias_ref',
+      metadata: { latency_ms: 10 },
+    });
+    jest.doMock('../../src/services/productGroundingResolver', () => ({
+      resolveProductRef,
+    }));
+
+    const primaryScope = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '').includes(queryText))
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'irrelevant_brush_1',
+            merchant_id: 'merch_efbc46b4619cfbdf',
+            title: 'Round Powder Brush',
+          },
+        ],
+        total: 1,
+        metadata: {
+          query_source: 'agent_products_search',
+        },
+      });
+
+    const invokeFallbackScope = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke', (body) => body && body.operation === 'find_products_multi')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'invoke_fallback_should_not_run',
+            merchant_id: 'fallback_merch',
+            title: 'Invoke fallback should not run',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: queryText,
+            catalog_surface: 'beauty',
+            commerce_surface: 'beauty',
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'aurora-bff',
+          catalog_surface: 'beauty',
+          commerce_surface: 'beauty',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resolveProductRef).not.toHaveBeenCalled();
+    expect(primaryScope.isDone()).toBe(true);
+    expect(invokeFallbackScope.isDone()).toBe(false);
+    expect(resp.body.products).toEqual([]);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        invoke_search_rail: 'legacy_internal',
+        legacy_contract: true,
+        primary_lane: 'beauty_discovery_mainline',
+        query_source: 'agent_products_error_fallback',
+        proxy_search_fallback: expect.objectContaining({
+          reason: 'primary_irrelevant_no_fallback',
+        }),
+      }),
+    );
+    expect(resp.body.metadata?.search_request_contract?.primary_lane).toBe('beauty_discovery_mainline');
   });
 });
