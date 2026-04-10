@@ -163,6 +163,7 @@ describe('pdpIdentityGraph', () => {
       queries.push(String(sql));
       if (String(sql).includes('FROM products_cache')) {
         expect(String(sql)).not.toContain('created_at');
+        expect(String(sql)).not.toContain('updated_at');
         expect(params).toEqual(['external_seed', 10]);
         return {
           rows: [
@@ -170,7 +171,6 @@ describe('pdpIdentityGraph', () => {
               merchant_id: 'merch_krave',
               platform_product_id: '10008793153864',
               cached_at: '2026-04-10T00:00:00Z',
-              updated_at: '2026-04-10T00:00:00Z',
               product_data: {
                 product_id: '10008793153864',
                 title: 'KraveBeauty Great Barrier Relief',
