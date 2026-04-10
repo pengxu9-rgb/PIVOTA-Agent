@@ -3312,6 +3312,89 @@ function getOfferVariantSku(variant) {
   return firstNonEmptyString(variant?.sku_id, variant?.skuId, variant?.sku, variant?.sku_code);
 }
 
+function formatOfferVariantOptions(optionsRecord) {
+  return Object.entries(optionsRecord || {})
+    .map(([name, value]) => {
+      const normalizedName = String(name || '').trim();
+      const normalizedValue = String(value || '').trim();
+      if (!normalizedName || !normalizedValue) return null;
+      return {
+        name: normalizedName,
+        value: normalizedValue,
+      };
+    })
+    .filter(Boolean);
+}
+
+function buildOfferVariantsForPayload(product, fallbackCurrency) {
+  const variants = Array.isArray(product?.variants) ? product.variants : [];
+  if (!variants.length) return [];
+
+  return variants
+    .map((variant) => {
+      const variantId = getOfferVariantId(variant);
+      if (!variantId) return null;
+
+      const sku = getOfferVariantSku(variant);
+      const optionsRecord = extractVariantOptions(variant);
+      const options = formatOfferVariantOptions(optionsRecord);
+      const currency =
+        firstNonEmptyString(
+          variant?.currency,
+          variant?.price?.currency,
+          variant?.price?.current?.currency,
+          fallbackCurrency,
+          'USD',
+        ) || 'USD';
+      const rawVariantPrice =
+        variant?.price?.current?.amount ??
+        variant?.price?.amount ??
+        variant?.price_amount ??
+        variant?.price ??
+        0;
+      const availableQuantityRaw =
+        variant?.availability?.available_quantity ??
+        variant?.available_quantity ??
+        variant?.inventory_quantity ??
+        variant?.quantity ??
+        variant?.stock_quantity;
+      const availableQuantity =
+        availableQuantityRaw == null || availableQuantityRaw === ''
+          ? undefined
+          : Number.isFinite(Number(availableQuantityRaw))
+            ? Math.max(0, Math.floor(Number(availableQuantityRaw)))
+            : undefined;
+      const inStock =
+        typeof variant?.availability?.in_stock === 'boolean'
+          ? variant.availability.in_stock
+          : typeof variant?.in_stock === 'boolean'
+            ? variant.in_stock
+            : typeof variant?.available === 'boolean'
+              ? variant.available
+              : availableQuantity != null
+                ? availableQuantity > 0
+                : undefined;
+      const title = firstNonEmptyString(variant?.title, variant?.name);
+      const imageUrl = firstNonEmptyString(variant?.image_url, variant?.imageUrl);
+
+      return {
+        variant_id: variantId,
+        ...(sku ? { sku_id: sku, sku } : {}),
+        ...(title ? { title } : {}),
+        ...(options.length ? { options } : {}),
+        price: {
+          current: normalizeOfferMoney(rawVariantPrice, currency),
+        },
+        availability: {
+          ...(typeof inStock === 'boolean' ? { in_stock: inStock } : {}),
+          ...(availableQuantity != null ? { available_quantity: availableQuantity } : {}),
+        },
+        ...(imageUrl ? { image_url: imageUrl } : {}),
+      };
+    })
+    .filter(Boolean);
+}
+
 async function buildOffersFromGroupMembers(args) {
   const productGroupId = args?.productGroupId ? String(args.productGroupId).trim() : null;
   const groupMembers = Array.isArray(args?.members) ? args.members : [];
@@ -3426,6 +3509,7 @@ async function buildOffersFromGroupMembers(args) {
       Array.isArray(etaRaw) && etaRaw.length >= 2
         ? [Number(etaRaw[0]) || 0, Number(etaRaw[1]) || 0]
         : undefined;
+    const offerVariants = buildOfferVariantsForPayload(p, currency);
 
     return {
       offer_id:
@@ -3478,6 +3562,7 @@ async function buildOffersFromGroupMembers(args) {
       ...(selectedVariantSku ? { sku_id: selectedVariantSku, sku: selectedVariantSku } : {}),
       ...(Object.keys(selectedOptions).length ? { selected_options: selectedOptions } : {}),
       ...(selectedVariant?.title ? { variant_title: String(selectedVariant.title).trim() } : {}),
+      ...(offerVariants.length ? { variants: offerVariants } : {}),
       ...(member?.source_kind ? { source_kind: member.source_kind } : {}),
       ...(member?.source_tier ? { source_tier: member.source_tier } : {}),
       ...buildOfferPurchaseMetadataFromProduct(p),
@@ -19498,8 +19583,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      if (wantsOffers || wantsProductIntel) {
 	        const offersModuleStartedAt = Date.now();
 	        try {
-          const fallbackProductGroupId =
-            productGroupId ||
+	          const fallbackProductGroupId =
+	            productGroupId ||
             (canonicalProductForPdp.platform && canonicalProductForPdp.platform_product_id
               ? buildProductGroupId({
                   platform: String(canonicalProductForPdp.platform || '').trim(),
@@ -19508,10 +19593,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               : null) ||
             `pg:pid:${String(canonicalProductRef.product_id || productId).trim()}`;
 
-          offersData =
-            groupMembers.length > 0
-              ? await buildOffersFromGroupMembers({
-                  productGroupId,
+	          const fallbackOfferVariants = buildOfferVariantsForPayload(
+	            canonicalProductForPdp,
+	            canonicalProductForPdp.currency || 'USD',
+	          );
+	          offersData =
+	            groupMembers.length > 0
+	              ? await buildOffersFromGroupMembers({
+	                  productGroupId,
                   members: groupMembers,
                   checkoutToken,
                   limit: payload?.offers?.limit || 10,
@@ -19550,15 +19639,20 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                       ),
                       shipping: canonicalProductForPdp.shipping || undefined,
                       returns: canonicalProductForPdp.returns || undefined,
-                      inventory: {
-                        in_stock:
-                          typeof canonicalProductForPdp.in_stock === 'boolean'
-                            ? canonicalProductForPdp.in_stock
-                            : undefined,
-                      },
-	                      fulfillment_type: canonicalProductForPdp.fulfillment_type || undefined,
-                      ...buildOfferPurchaseMetadataFromProduct(canonicalProductForPdp),
-	                      risk_tier: 'standard',
+	                      inventory: {
+	                        in_stock:
+	                          typeof canonicalProductForPdp.in_stock === 'boolean'
+	                            ? canonicalProductForPdp.in_stock
+	                            : undefined,
+	                      },
+		                      fulfillment_type: canonicalProductForPdp.fulfillment_type || undefined,
+	                      ...(fallbackOfferVariants.length
+	                        ? {
+	                            variants: fallbackOfferVariants,
+	                          }
+	                        : {}),
+	                      ...buildOfferPurchaseMetadataFromProduct(canonicalProductForPdp),
+		                      risk_tier: 'standard',
 	                    },
 	                  ],
 	                  default_offer_id: null,

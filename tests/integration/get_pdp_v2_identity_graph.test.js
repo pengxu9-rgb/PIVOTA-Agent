@@ -428,6 +428,26 @@ describe('get_pdp_v2 identity graph live read', () => {
       }),
     );
     expect(internalOffer?.selected_options).toEqual({ size: 'standard - 45 ml' });
+    expect(internalOffer?.variants).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          variant_id: '52876964495688',
+          title: 'Standard - 45 mL',
+          price: {
+            current: { amount: 28, currency: 'EUR' },
+          },
+          options: [{ name: 'size', value: 'standard - 45 ml' }],
+        }),
+        expect.objectContaining({
+          variant_id: '52876964528456',
+          title: 'Jumbo - 100 mL',
+          price: {
+            current: { amount: 50, currency: 'EUR' },
+          },
+          options: [{ name: 'size', value: 'jumbo - 100 ml' }],
+        }),
+      ]),
+    );
     expect(productIntelModule).toEqual(
       expect.objectContaining({
         required: true,
