@@ -1950,6 +1950,8 @@ test('framework local beauty mainline uses direct-only recall for external seed 
   assert.deepEqual(backendQueries, ['oil control treatment']);
   assert.equal(supplementCalls.length, 1);
   assert.equal(supplementCalls[0].directOnly, true);
+  assert.equal(supplementCalls[0].queryParams?.external_seed_strategy, 'stage_planned');
+  assert.equal(supplementCalls[0].queryParams?.fast_mode, true);
   assert.equal(out.response.products?.[0]?.product_id, 'external_seed_treatment_1');
 });
 

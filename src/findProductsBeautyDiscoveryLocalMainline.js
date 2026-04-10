@@ -274,7 +274,12 @@ function clampLocalBeautyRecallAttemptTimeoutMs({
     return Math.min(remaining, Math.max(120, Math.min(primary, 4800)));
   }
   const capByFanout = normalizedQueryTotal > 6 ? 1800 : 2400;
-  const capBySource = normalizedSourceScope === 'external_seed' ? 2400 : capByFanout;
+  const capBySource =
+    normalizedSourceScope === 'external_seed' && normalizedPlannerMode === 'framework_generic'
+      ? 4800
+      : normalizedSourceScope === 'external_seed'
+        ? 2400
+        : capByFanout;
   return Math.min(remaining, Math.max(120, Math.min(primary, capBySource)));
 }
 
@@ -813,7 +818,7 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
     checkoutToken = null,
     neededCount = 0,
     source = '',
-    timeoutMs = 2400,
+    timeoutMs = 4800,
   } = {}) {
     if (typeof fetchExternalSeedSupplementFromBackend !== 'function') {
       return {
@@ -827,8 +832,8 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
       };
     }
     const externalSeedDirectTimeoutMs = Math.min(
-      Math.max(120, Number(timeoutMs || 0) || 2400),
-      2400,
+      Math.max(120, Number(timeoutMs || 0) || 4800),
+      4800,
     );
     let externalSeedDirectTimer = null;
     const supplementPromise = fetchExternalSeedSupplementFromBackend({
@@ -2189,8 +2194,8 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
               offset: 0,
               allow_external_seed: true,
               allow_stale_cache: false,
-              external_seed_strategy: 'supplement_internal_first',
-              fast_mode: false,
+              external_seed_strategy: 'stage_planned',
+              fast_mode: true,
               query_step_strength:
                 Number(entry?.role_rank || 99) <= 1
                   ? 'strong_goal_family'
