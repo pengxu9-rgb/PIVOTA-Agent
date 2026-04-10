@@ -125,7 +125,7 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
         operation: 'find_products_multi',
         payload: {
           search: {
-            query: 'niacinamide serum',
+            query: 'niacinamide serum under €30',
             limit: 10,
             in_stock_only: true,
           },
@@ -152,8 +152,16 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
         query_source: INGREDIENT_DIRECT_QUERY_SOURCE,
         ingredient_direct_resolution_variant: expect.any(String),
         strict_constraint_query: true,
-        strict_constraint_reason: 'ingredient',
+        strict_constraint_reason: expect.stringMatching(/ingredient|multi_constraint/),
         matched_ingredient_ids: expect.arrayContaining(['niacinamide']),
+        budget_fx_applied: true,
+        budget_fx_rate: expect.any(Number),
+        budget_fx_source: expect.any(String),
+        budget_fx_candidate_currency: 'USD',
+        budget_fx_unresolved: false,
+        service_version: expect.objectContaining({
+          build_id: expect.any(String),
+        }),
         route_health: expect.objectContaining({
           primary_path_used: 'ingredient_recall_direct',
           fallback_triggered: false,

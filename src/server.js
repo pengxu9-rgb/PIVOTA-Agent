@@ -73,6 +73,8 @@ const { recommendHandler } = require('./recommend/index');
 const {
   buildFindProductsMultiContext,
   applyFindProductsMultiPolicy,
+  getProductPriceCurrency,
+  resolveBudgetConstraintForCurrency,
 } = require('./findProductsMulti/policy');
 const {
   extractHumanApparelCategories,
@@ -13183,6 +13185,27 @@ function buildInvokeGatewayGovernanceAudit({
   return isPlainObject(audit) && audit.would_enforce === true ? audit : null;
 }
 
+function buildFindProductsMultiBudgetFxMetadataForDirectPath(
+  priceConstraint,
+  products = [],
+  fallbackProducts = [],
+) {
+  if (
+    !priceConstraint ||
+    (priceConstraint.min == null && priceConstraint.max == null)
+  ) {
+    return null;
+  }
+  const candidateProduct =
+    (Array.isArray(products) ? products : []).find((product) => getProductPriceCurrency(product, '')) ||
+    (Array.isArray(fallbackProducts) ? fallbackProducts : []).find((product) =>
+      getProductPriceCurrency(product, ''),
+    ) ||
+    null;
+  const candidateCurrency = getProductPriceCurrency(candidateProduct, 'USD');
+  return resolveBudgetConstraintForCurrency(priceConstraint, candidateCurrency).metadata || null;
+}
+
 const AURORA_CHATBOX_ORIGINS = new Set([
   'https://pivota-aurora-chatbox.vercel.app',
 ]);
@@ -20181,6 +20204,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           rawQueryText: rawUserQuery || queryText,
         });
         const pagedDirectProducts = directProducts.slice(safeOffset, safeOffset + safeLimit);
+        const directBudgetFxMetadata = buildFindProductsMultiBudgetFxMetadataForDirectPath(
+          effectiveIntent?.hard_constraints?.price || null,
+          pagedDirectProducts,
+          directProducts,
+        );
         const baseMetadata = {
           ...buildIngredientIntentDirectBaseMetadata({
             ingredientIntentDetected: ingredientIntentIds.length > 0,
@@ -20191,6 +20219,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           }),
           invoke_search_rail: 'authoritative_shopping',
           legacy_contract: false,
+          service_version: buildServiceVersionMetadata(),
+          ...(directBudgetFxMetadata || {}),
         };
         const directResponse =
           pagedDirectProducts.length > 0
