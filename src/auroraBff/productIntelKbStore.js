@@ -6,6 +6,12 @@ const MAX_IN_MEMORY_ENTRIES = (() => {
   return Math.max(80, Math.min(6000, v));
 })();
 
+const MEM_ENTRY_TTL_MS = (() => {
+  const n = Number(process.env.AURORA_PRODUCT_INTEL_KB_MEM_TTL_MS || 60 * 1000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 60 * 1000;
+  return Math.max(0, Math.min(60 * 60 * 1000, v));
+})();
+
 const state = {
   memIndex: new Map(),
   dbUnavailable: false,
@@ -18,14 +24,36 @@ function normalizeKey(value) {
   return s;
 }
 
+function wrapCacheEntry(entry, nowMs = Date.now()) {
+  return {
+    entry,
+    storedAtMs: nowMs,
+    expiresAtMs: nowMs + MEM_ENTRY_TTL_MS,
+  };
+}
+
 function touchLru(map, key, value) {
   map.delete(key);
-  map.set(key, value);
+  map.set(key, wrapCacheEntry(value));
   while (map.size > MAX_IN_MEMORY_ENTRIES) {
     const oldestKey = map.keys().next().value;
     if (!oldestKey) break;
     map.delete(oldestKey);
   }
+}
+
+function readFreshMemoryEntry(map, key, nowMs = Date.now()) {
+  const cached = map.get(key);
+  if (!cached) return null;
+  const entry = cached.entry || cached;
+  const expiresAtMs = Number(cached.expiresAtMs || 0);
+  if (!entry || (expiresAtMs && nowMs >= expiresAtMs)) {
+    map.delete(key);
+    return null;
+  }
+  map.delete(key);
+  map.set(key, cached);
+  return entry;
 }
 
 function coerceJson(value) {
@@ -176,7 +204,7 @@ async function getProductIntelKbEntry(kbKey) {
   const key = normalizeKey(kbKey);
   if (!key) return null;
 
-  const memHit = state.memIndex.get(key);
+  const memHit = readFreshMemoryEntry(state.memIndex, key);
   if (memHit) return memHit;
 
   const dbHit = await readFromDb(key);
@@ -211,6 +239,10 @@ module.exports = {
   upsertProductIntelKbEntry,
   mergeProductIntelKbAnalysis,
   __internal: {
+    MEM_ENTRY_TTL_MS,
+    clearMemoryCacheForTest: () => state.memIndex.clear(),
     deepMergeObjects,
+    readFreshMemoryEntry,
+    wrapCacheEntry,
   },
 };
