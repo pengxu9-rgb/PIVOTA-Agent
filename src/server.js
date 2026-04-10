@@ -15017,6 +15017,73 @@ async function buildCoverageProductIntelData({
   };
 }
 
+async function buildProductIntelOffersDataForContext({
+  context,
+  productGroupId,
+  checkoutToken,
+  limit = 10,
+}) {
+  if (!context?.canonicalProductRef || !context?.product) return null;
+  let offersData =
+    Array.isArray(context.groupMembers) && context.groupMembers.length > 0
+      ? await buildOffersFromGroupMembers({
+          productGroupId,
+          members: context.groupMembers,
+          checkoutToken,
+          limit,
+          preferredMerchantId: context.canonicalProductRef.merchant_id || null,
+        }).catch(() => null)
+      : null;
+
+  if (!offersData) {
+    const fallbackOfferId =
+      buildOfferId({
+        merchant_id: context.canonicalProductRef.merchant_id,
+        product_group_id: productGroupId,
+        fulfillment_type: context.product.fulfillment_type || 'merchant',
+        tier: 'default',
+      }) ||
+      `of:v1:${context.canonicalProductRef.merchant_id}:${productGroupId}:${context.product.fulfillment_type || 'merchant'}:default`;
+
+    offersData = {
+      status: 'success',
+      product_group_id: productGroupId,
+      canonical_product_ref: context.canonicalProductRef,
+      offers_count: 1,
+      offers: [
+        {
+          offer_id: fallbackOfferId,
+          product_group_id: productGroupId,
+          product_id: context.canonicalProductRef.product_id,
+          merchant_id: context.canonicalProductRef.merchant_id,
+          merchant_name: context.product.merchant_name || context.product.store_name || undefined,
+          price: normalizeOfferMoney(context.product.price, context.product.currency || 'USD'),
+          shipping: context.product.shipping || undefined,
+          returns: context.product.returns || undefined,
+          inventory: {
+            in_stock:
+              typeof context.product.in_stock === 'boolean'
+                ? context.product.in_stock
+                : undefined,
+          },
+          fulfillment_type: context.product.fulfillment_type || undefined,
+          purchase_route: 'internal_checkout',
+          risk_tier: 'standard',
+        },
+      ],
+      default_offer_id: fallbackOfferId,
+      best_price_offer_id: fallbackOfferId,
+    };
+  }
+
+  return {
+    ...offersData,
+    offers: annotateOffersWithCommerceMetadata(
+      Array.isArray(offersData.offers) ? offersData.offers : [],
+    ),
+  };
+}
+
 function findPdpPayloadModuleData(pdpPayload, type) {
   const modules = Array.isArray(pdpPayload?.modules) ? pdpPayload.modules : [];
   const match = modules.find((module) => module?.type === type);
@@ -16354,6 +16421,11 @@ app.post('/api/admin/catalog-sync/run', requireAdmin, async (req, res) => {
 
 // ---------------- Main invoke endpoint ----------------
 const CHECKOUT_TIMING_OPS = new Set(['preview_quote', 'create_order', 'submit_payment']);
+const PRODUCT_INTEL_AGENT_OPERATIONS = new Set([
+  'get_product_intel_v1',
+  'get_product_feedback_v1',
+  'get_product_recommendation_intents_v1',
+]);
 
 async function handleInvokeRequest(req, res, routeContext = {}) {
   const clientChannel = String(routeContext.client_channel || 'shop').trim().toLowerCase() || 'shop';
@@ -18828,6 +18900,115 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     }
   }
 
+  if (PRODUCT_INTEL_AGENT_OPERATIONS.has(operation)) {
+    try {
+      const context = await resolveProductIntelInvokeContext({
+        payload,
+        checkoutToken,
+        includeReviews: operation === 'get_product_feedback_v1',
+        includeRecommendations: operation === 'get_product_recommendation_intents_v1',
+      });
+
+      const productGroupId =
+        context.productGroupId ||
+        (context.product.platform && context.product.platform_product_id
+          ? buildProductGroupId({
+              platform: String(context.product.platform || '').trim(),
+              platform_product_id: String(context.product.platform_product_id || '').trim(),
+            })
+          : null) ||
+        `pg:pid:${String(context.canonicalProductRef.product_id || '').trim()}`;
+
+      const offersData = await buildProductIntelOffersDataForContext({
+        context,
+        productGroupId,
+        checkoutToken,
+        limit: payload?.offers?.limit || 10,
+      });
+      const productIntel = await buildProductIntelTopLevelModuleData({
+        product: context.product,
+        relatedProducts: context.relatedProducts,
+        offersData,
+        canonicalProductRef: context.canonicalProductRef,
+        productGroupId,
+      });
+
+      if (operation === 'get_product_feedback_v1') {
+        return res.json(
+          productIntel
+            ? buildProductFeedbackResponse({
+                productIntel,
+                canonicalProductRef: context.canonicalProductRef,
+                productGroupId,
+              })
+            : {
+                status: 'success',
+                contract_version: 'pivota.product_feedback.v1',
+                available: false,
+                canonical_product_ref: context.canonicalProductRef,
+                product_group_id: productGroupId,
+                reason: 'product_intel_unavailable',
+              },
+        );
+      }
+
+      if (operation === 'get_product_recommendation_intents_v1') {
+        return res.json(
+          productIntel
+            ? buildProductRecommendationIntentsResponse({
+                productIntel,
+                canonicalProductRef: context.canonicalProductRef,
+                productGroupId,
+              })
+            : {
+                status: 'success',
+                contract_version: 'pivota.product_recommendation_intents.v1',
+                available: false,
+                canonical_product_ref: context.canonicalProductRef,
+                product_group_id: productGroupId,
+                recommendation_intents: {
+                  similar: [],
+                  complementary: [],
+                  routine_pairing: [],
+                  underfill_reason: 'product_intel_unavailable',
+                  confidence: 'low',
+                },
+                offer_pointers: null,
+                reason: 'product_intel_unavailable',
+              },
+        );
+      }
+
+      return res.json(
+        productIntel
+          ? {
+              status: 'success',
+              contract_version: PRODUCT_INTEL_CONTRACT_VERSION,
+              ...productIntel,
+            }
+          : {
+              status: 'success',
+              contract_version: PRODUCT_INTEL_CONTRACT_VERSION,
+              available: false,
+              canonical_product_ref: context.canonicalProductRef,
+              product_group_id: productGroupId,
+              reason: 'product_intel_unavailable',
+            },
+      );
+    } catch (err) {
+      const { code, message, data } = extractUpstreamErrorCode(err);
+      const statusCode =
+        err?.response?.status ||
+        err?.status ||
+        (err?.code === 'ECONNABORTED' ? 504 : 502);
+      return res.status(statusCode).json({
+        error: code || err?.code || 'GET_PRODUCT_INTEL_FAILED',
+        message: message || err?.message || 'Failed to build product intel payload',
+        details: data || null,
+      });
+    }
+  }
+
   if (operation === 'prepare_pivota_insights_coverage_v1') {
     try {
       const refs = normalizeCoverageProductRefs(payload).slice(
@@ -18859,67 +19040,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               : null) ||
             `pg:pid:${String(context.canonicalProductRef.product_id || '').trim()}`;
 
-          let offersData =
-            context.groupMembers.length > 0
-              ? await buildOffersFromGroupMembers({
-                  productGroupId: fallbackProductGroupId,
-                  members: context.groupMembers,
-                  checkoutToken,
-                  limit: payload?.offers?.limit || 10,
-                  preferredMerchantId: context.canonicalProductRef.merchant_id || null,
-                }).catch(() => null)
-              : null;
-
-          if (!offersData) {
-            const fallbackOfferId =
-              buildOfferId({
-                merchant_id: context.canonicalProductRef.merchant_id,
-                product_group_id: fallbackProductGroupId,
-                fulfillment_type: context.product.fulfillment_type || 'merchant',
-                tier: 'default',
-              }) ||
-              `of:v1:${context.canonicalProductRef.merchant_id}:${fallbackProductGroupId}:${context.product.fulfillment_type || 'merchant'}:default`;
-            offersData = {
-              status: 'success',
-              product_group_id: fallbackProductGroupId,
-              canonical_product_ref: context.canonicalProductRef,
-              offers_count: 1,
-              offers: [
-                {
-                  offer_id: fallbackOfferId,
-                  product_group_id: fallbackProductGroupId,
-                  product_id: context.canonicalProductRef.product_id,
-                  merchant_id: context.canonicalProductRef.merchant_id,
-                  merchant_name:
-                    context.product.merchant_name || context.product.store_name || undefined,
-                  price: normalizeOfferMoney(
-                    context.product.price,
-                    context.product.currency || 'USD',
-                  ),
-                  shipping: context.product.shipping || undefined,
-                  returns: context.product.returns || undefined,
-                  inventory: {
-                    in_stock:
-                      typeof context.product.in_stock === 'boolean'
-                        ? context.product.in_stock
-                        : undefined,
-                  },
-                  fulfillment_type: context.product.fulfillment_type || undefined,
-                  purchase_route: 'internal_checkout',
-                  risk_tier: 'standard',
-                },
-              ],
-              default_offer_id: fallbackOfferId,
-              best_price_offer_id: fallbackOfferId,
-            };
-          }
-
-          offersData = {
-            ...offersData,
-            offers: annotateOffersWithCommerceMetadata(
-              Array.isArray(offersData.offers) ? offersData.offers : [],
-            ),
-          };
+          const offersData = await buildProductIntelOffersDataForContext({
+            context,
+            productGroupId: fallbackProductGroupId,
+            checkoutToken,
+            limit: payload?.offers?.limit || 10,
+          });
 
           const coverageIntel = await buildCoverageProductIntelData({
             product: context.product,

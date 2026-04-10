@@ -13,6 +13,9 @@ const EXACT_RESOLUTION_OPERATIONS = new Set([
   'get_product_detail',
   'get_pdp',
   'get_pdp_v2',
+  'get_product_intel_v1',
+  'get_product_feedback_v1',
+  'get_product_recommendation_intents_v1',
   'preview_quote',
 ]);
 
