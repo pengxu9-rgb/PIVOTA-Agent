@@ -461,6 +461,7 @@ describe('product_intel pilot compare selection', () => {
           evidence_strength: 'strong',
         },
       ],
+      external_highlight_review_status: 'rewrite',
       product_intel_core: {
         what_it_is: {
           headline: 'Treatment serum',

@@ -1708,6 +1708,82 @@ describe('discovery feed service', () => {
     );
   });
 
+  test('browse_products suppresses pending external highlight text from hydrated KB bundles', async () => {
+    const kbStore = require('../src/auroraBff/productIntelKbStore');
+    jest.spyOn(kbStore, 'getProductIntelKbEntry').mockResolvedValue({
+      kb_key: 'product:ext_pending_highlight_1',
+      analysis: {
+        product_intel_v1: {
+          evidence_profile: 'mixed',
+          provenance: {
+            external_highlight_review_status: 'pending',
+            external_evidence_generated_at: '2026-04-11T00:00:00.000Z',
+          },
+          external_highlight_signals: [
+            {
+              signal_id: 'sig_1',
+              source_type: 'verified_reviews',
+              claim_type: 'card_hook',
+              claim_text: 'Reviewers often mention the smooth, quick-drying finish.',
+              surface_text: 'Quick-drying smooth finish',
+              rating_summary: {
+                rating: 4.8,
+                review_count: 212,
+              },
+              evidence_strength: 'strong',
+              independence_count: 212,
+              surface_targets: ['shopping_card_highlight'],
+            },
+          ],
+          shopping_card: {
+            contract_version: 'pivota.shopping_card.v1',
+            title: 'Demo Brightening Serum',
+            subtitle: 'Vitamin C + retinol serum',
+            highlight: 'Quick-drying smooth finish',
+          },
+          search_card: {
+            title_candidate: 'Demo Brightening Serum',
+            compact_candidate: 'Vitamin C + retinol serum',
+            highlight_candidate: 'Quick-drying smooth finish',
+          },
+        },
+      },
+    });
+
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        response_detail: 'card',
+        context: {
+          locale: 'en-US',
+        },
+      },
+      {
+        candidateProducts: [
+          {
+            ...makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'ext_pending_highlight_1',
+              title: 'Demo Brightening Serum',
+              brand: 'Demo',
+              category: 'Serum',
+              product_type: 'Serum',
+              price: 28,
+            }),
+          },
+        ],
+      },
+    );
+
+    expect(response.products).toHaveLength(1);
+    expect(response.products[0].card_subtitle).toBe('Vitamin C + retinol serum');
+    expect(response.products[0].card_highlight).toBeUndefined();
+    expect(response.products[0].search_card.highlight_candidate).toBeUndefined();
+    expect(response.products[0].shopping_card.highlight).toBeUndefined();
+  });
+
   test('card response detail suppresses weak card fallbacks and overlong highlight text', async () => {
     const response = await getDiscoveryFeed(
       {
@@ -1758,6 +1834,51 @@ describe('discovery feed service', () => {
     expect(response.products[0].card_highlight).toBeUndefined();
     expect(response.products[0].search_card.compact_candidate).toBeUndefined();
     expect(response.products[0].search_card.highlight_candidate).toBeUndefined();
+  });
+
+  test('card response detail suppresses generic subtitle-like compact highlights', async () => {
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        response_detail: 'card',
+        context: {
+          locale: 'en-US',
+        },
+      },
+      {
+        candidateProducts: [
+          {
+            ...makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'ext_generic_highlight_gap',
+              title: 'Daily Shield Cream SPF 50',
+              brand: 'Demo',
+              category: 'Moisturizer',
+              product_type: 'Moisturizer',
+              price: 26,
+            }),
+            search_card: {
+              compact_candidate: 'SPF moisturizer',
+              highlight_candidate: 'SPF moisturizer',
+              intro_candidate: 'Daily moisturizer with SPF 50 for daytime wear.',
+            },
+          },
+        ],
+      },
+    );
+
+    expect(response.products).toHaveLength(1);
+    expect(response.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'ext_generic_highlight_gap',
+        card_subtitle: 'SPF moisturizer',
+      }),
+    );
+    expect(response.products[0].card_highlight).toBeUndefined();
+    expect(response.products[0].search_card.highlight_candidate).toBeUndefined();
+    expect(response.products[0].shopping_card.highlight).toBeUndefined();
   });
 
   test('brand-scoped browse skips supplemental providers once products_search already has enough primary brand candidates', async () => {
