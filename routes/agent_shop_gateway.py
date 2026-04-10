@@ -28,9 +28,7 @@ from pydantic import BaseModel, Field
 
 from services.product_query_service import get_products_hybrid
 from services.similarity_service import (
-    SimilarityService,
     SimilarityStrategy,
-    SimilarCandidate,
     similarity_service,
 )
 from services.similarity_config import get_similarity_scoring_weights
@@ -1422,7 +1420,6 @@ async def _handle_find_similar_products(
         overlap = len(title_tokens & q_tokens)
         return min(1.0, overlap / max(len(q_tokens), 1))
 
-    filtered: List[Dict[str, Any]] = []
     raw_products = []
     seen_ids: set[str] = set()
     candidate_ids = [c.productId for c in candidates if c.productId]

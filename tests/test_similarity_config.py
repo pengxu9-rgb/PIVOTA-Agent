@@ -1,4 +1,3 @@
-import os
 
 from services.similarity_config import (
     get_similarity_scoring_weights,
