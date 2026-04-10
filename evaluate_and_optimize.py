@@ -3,14 +3,13 @@
 import argparse
 import collections
 import json
-import math
 import os
 import random
 import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List
 
 import requests
 

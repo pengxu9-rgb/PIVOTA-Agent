@@ -62,9 +62,7 @@ def parse_logits(
     if payload.ndim != 4:
         raise ValueError(f"unexpected_logits_rank:{payload.shape}")
     dims = payload.shape
-    channels_first = False
     if 1 <= dims[1] <= 64:
-        channels_first = True
         channels = int(dims[1])
         h = int(dims[2])
         w = int(dims[3])

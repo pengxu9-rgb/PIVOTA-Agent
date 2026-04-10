@@ -322,8 +322,6 @@ def run_cases(cases_path: str = DEFAULT_CASES_PATH) -> None:
     print(desc)
 
     attempts = 3
-    last_error: Optional[str] = None
-
     for attempt in range(1, attempts + 1):
       started = time.perf_counter()
       try:
@@ -337,7 +335,6 @@ def run_cases(cases_path: str = DEFAULT_CASES_PATH) -> None:
         # Retry on transient 5xx errors (except on last attempt).
         if resp.status_code >= 500 and resp.status_code < 600 and attempt < attempts:
           print(f" -> HTTP {resp.status_code} on attempt {attempt}, retrying...")
-          last_error = f"HTTP {resp.status_code}"
           time.sleep(0.5 * attempt)
           continue
 
@@ -359,7 +356,6 @@ def run_cases(cases_path: str = DEFAULT_CASES_PATH) -> None:
           break
       except requests.exceptions.RequestException as e:
         latency_ms = (time.perf_counter() - started) * 1000.0
-        last_error = str(e)
         if attempt < attempts:
           print(f" -> ERROR attempt {attempt}/{attempts}: {e}; retrying...")
           time.sleep(0.5 * attempt)
