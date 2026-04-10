@@ -17894,6 +17894,9 @@ async function executeRecoRecallPlanEntry({
     queryTotal,
     authHeaders,
     productOnly: true,
+    role,
+    preferredStep: normalizedPreferredStep,
+    sourceScope,
   };
   if (sourceScope === 'external_seed') {
     runSearchParams.catalogSurface = 'beauty';
@@ -19634,6 +19637,10 @@ async function runBeautyMainlineLocalHandoffSearch({
     'searchInternalProductsPrimitive',
     searchInternalProductsPrimitive,
   );
+  const localExternalSeedSearchFn = resolveAuroraRouteDependency(
+    'searchLocalExternalSeedProducts',
+    searchLocalExternalSeedProducts,
+  );
   if (typeof internalSearchFn !== 'function') return null;
   const isFrameworkLocalHandoff =
     Array.isArray(targetContext?.framework_roles) && targetContext.framework_roles.length > 0;
@@ -19687,11 +19694,80 @@ async function runBeautyMainlineLocalHandoffSearch({
     externalSeedStrategy: 'supplement_internal_first',
     authHeaders,
     deadlineMs,
-    searchFn: async (args) =>
-      internalSearchFn({
+    searchFn: async (args = {}) => {
+      if (args?.allowExternalSeed === true && typeof localExternalSeedSearchFn === 'function') {
+        const startedAt = Date.now();
+        try {
+          const out = await localExternalSeedSearchFn({
+            query: args?.query,
+            limit: args?.limit,
+            logger,
+            transportPolicyMode: args?.transportPolicy?.mode || 'framework_first_turn',
+            role: args?.role || null,
+            preferredStep: args?.preferredStep || args?.targetStepFamily || '',
+          });
+          const reason = pickFirstTrimmed(out?.reason, out?.ok === true ? 'ok' : 'empty') || 'empty';
+          return {
+            ...(out && typeof out === 'object' && !Array.isArray(out) ? out : {}),
+            reason: out?.ok === true && Array.isArray(out?.products) && out.products.length > 0 ? null : reason,
+            endpoint_kind: 'local_external_seed',
+            primary_endpoint_kind: 'local_external_seed',
+            transport_owner: 'local_external_seed_search',
+            primary_transport_owner: 'local_external_seed_search',
+            transport_hops: [
+              {
+                caller_lane: 'beauty_chat_handoff',
+                target_base_url: null,
+                target_path: 'external_product_seeds',
+                endpoint_kind: 'local_external_seed',
+                transport_owner: 'local_external_seed_search',
+                latency_ms: Date.now() - startedAt,
+                result: reason,
+              },
+            ],
+            transport_hop_count: 1,
+            nested_orchestrator_hops: 0,
+          };
+        } catch (err) {
+          logger?.warn?.(
+            {
+              err: err?.message || String(err),
+              query: String(args?.query || '').slice(0, 120),
+            },
+            'aurora bff: local external seed handoff search failed',
+          );
+          return {
+            ok: false,
+            products: [],
+            reason: 'db_error',
+            actual_http_attempt_count: 0,
+            attempted_base_urls: [],
+            attempted_paths: [],
+            endpoint_kind: 'local_external_seed',
+            primary_endpoint_kind: 'local_external_seed',
+            transport_owner: 'local_external_seed_search',
+            primary_transport_owner: 'local_external_seed_search',
+            transport_hops: [
+              {
+                caller_lane: 'beauty_chat_handoff',
+                target_base_url: null,
+                target_path: 'external_product_seeds',
+                endpoint_kind: 'local_external_seed',
+                transport_owner: 'local_external_seed_search',
+                latency_ms: Date.now() - startedAt,
+                result: 'db_error',
+              },
+            ],
+            transport_hop_count: 1,
+            nested_orchestrator_hops: 0,
+          };
+        }
+      }
+      return internalSearchFn({
         ...args,
         callerLane: 'beauty_chat_handoff',
-      }),
+      });
+    },
   });
   const collected = {
     ...(collectedBase && typeof collectedBase === 'object' && !Array.isArray(collectedBase) ? collectedBase : {}),
