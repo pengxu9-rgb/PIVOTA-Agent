@@ -98,7 +98,10 @@ const {
   hasExplicitCategoryHint,
 } = require('./findProductsMulti/brandLexicon');
 const { buildClarification } = require('./findProductsMulti/clarification');
-const { buildExternalSeedProduct } = require('./services/externalSeedProducts');
+const {
+  EXTERNAL_SEED_MERCHANT_ID,
+  buildExternalSeedProduct,
+} = require('./services/externalSeedProducts');
 const {
   buildIngredientIntentDirectBaseMetadata,
   buildIngredientIntentDirectEmptyResponse,
@@ -2563,6 +2566,93 @@ async function fetchProductDetailFromProductsCache(args) {
   }
 }
 
+async function fetchExternalSeedProductDetailFromDb(args) {
+  if (!process.env.DATABASE_URL) return null;
+  const productId = String(args?.productId || '').trim();
+  if (!productId) return null;
+
+  const selectColumns = `
+    SELECT
+      id,
+      external_product_id,
+      destination_url,
+      canonical_url,
+      domain,
+      title,
+      image_url,
+      price_amount,
+      price_currency,
+      availability,
+      seed_data,
+      updated_at,
+      created_at,
+      status
+    FROM external_product_seeds
+    WHERE status = 'active'
+      AND %%MATCH_CLAUSE%%
+    ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+    LIMIT 1
+  `;
+
+  try {
+    let matchedVia = 'exact_key';
+    let res = await query(
+      selectColumns.replace(
+        '%%MATCH_CLAUSE%%',
+        `(
+          external_product_id = $1
+          OR id::text = $1
+        )`,
+      ),
+      [productId],
+    );
+    let row = Array.isArray(res?.rows) ? res.rows[0] : null;
+
+    if (!row) {
+      matchedVia = 'seed_json_product_id';
+      res = await query(
+        selectColumns.replace(
+          '%%MATCH_CLAUSE%%',
+          `(
+            seed_data->>'external_product_id' = $1
+            OR seed_data->>'product_id' = $1
+            OR seed_data->'snapshot'->>'product_id' = $1
+          )`,
+        ),
+        [productId],
+      );
+      row = Array.isArray(res?.rows) ? res.rows[0] : null;
+    }
+
+    if (!row) return null;
+    const hydratedProduct = buildExternalSeedProduct(row);
+    if (!hydratedProduct) return null;
+
+    return {
+      product: attachProductDetailSource(
+        normalizeProductDetailPrice(hydratedProduct),
+        'external_seed_db',
+      ),
+      matched_via: matchedVia,
+      external_seed_id: row.id ? String(row.id) : null,
+      updated_at: row.updated_at || null,
+    };
+  } catch (err) {
+    const message = String(err?.message || err || '');
+    if (
+      err?.code === 'NO_DATABASE' ||
+      (message.includes('external_product_seeds') && message.includes('does not exist'))
+    ) {
+      return null;
+    }
+    logger.warn(
+      { err: err?.message || String(err), productId },
+      'Failed to hydrate external seed product detail from DB',
+    );
+    return null;
+  }
+}
+
 function attachProductDetailSource(product, detailSource) {
   if (!product || typeof product !== 'object') return product;
   const source = String(detailSource || '').trim();
@@ -2585,6 +2675,7 @@ function inferDetailSourceFromQuerySource(querySource) {
   if (!source) return null;
   if (source === 'products_cache') return 'fresh_cache';
   if (source === 'products_cache_stale') return 'stale_cache';
+  if (source === 'external_seed_db') return 'external_seed_db';
   if (source === 'upstream') return 'upstream';
   return null;
 }
@@ -2600,6 +2691,7 @@ async function fetchProductDetailForOffers(args) {
   const productId = String(args?.productId || '').trim();
   const checkoutToken = args?.checkoutToken;
   const surfaceUpstreamErrors = args?.surfaceUpstreamErrors === true;
+  const bypassCache = args?.bypassCache === true;
   if (!merchantId || !productId) return null;
 
   const cacheKey = JSON.stringify({
@@ -2608,7 +2700,7 @@ async function fetchProductDetailForOffers(args) {
     hasCheckoutToken: Boolean(checkoutToken),
   });
 
-  if (PRODUCT_DETAIL_CACHE_ENABLED) {
+  if (PRODUCT_DETAIL_CACHE_ENABLED && !bypassCache) {
     const cachedEntry = getProductDetailCacheEntry(cacheKey);
     const cachedValue = cachedEntry?.value;
     const cachedProduct =
@@ -2630,12 +2722,32 @@ async function fetchProductDetailForOffers(args) {
     }
   }
 
-  const inflight = PRODUCT_DETAIL_INFLIGHT.get(cacheKey);
+  const inflight = bypassCache ? null : PRODUCT_DETAIL_INFLIGHT.get(cacheKey);
   if (inflight) {
     return inflight;
   }
 
   const loadPromise = (async () => {
+    if (process.env.DATABASE_URL && merchantId === EXTERNAL_SEED_MERCHANT_ID) {
+      const seedDetail = await fetchExternalSeedProductDetailFromDb({ productId });
+      if (seedDetail?.product) {
+        if (PRODUCT_DETAIL_CACHE_ENABLED) {
+          setProductDetailCache(cacheKey, {
+            status: 'success',
+            success: true,
+            product: seedDetail.product,
+            metadata: {
+              query_source: 'external_seed_db',
+              external_seed_id: seedDetail.external_seed_id || null,
+              matched_via: seedDetail.matched_via || null,
+              updated_at: seedDetail.updated_at || null,
+            },
+          });
+        }
+        return seedDetail.product;
+      }
+    }
+
     if (process.env.DATABASE_URL) {
       const fromDb = await fetchProductDetailFromProductsCache({
         merchantId,
@@ -2744,6 +2856,10 @@ async function fetchProductDetailForOffers(args) {
 
     return null;
   })();
+
+  if (bypassCache) {
+    return loadPromise;
+  }
 
   PRODUCT_DETAIL_INFLIGHT.set(cacheKey, loadPromise);
   try {
@@ -17753,10 +17869,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      markPdpV2Phase('precheck_entry_product', precheckEntryProductStartedAt);
         entryPrecheckMissingCtx = precheckEntryProductMissing;
 
-        const shouldAttemptUnscopedExternalSeedResolve =
-          precheckEntryProductMissing &&
-          Boolean(requestedMerchantId) &&
-          isExternalSeedProductId(productId);
+	        const externalSeedRouteProductId = isExternalSeedProductId(productId);
+	        const shouldAttemptUnscopedExternalSeedResolve =
+	          externalSeedRouteProductId &&
+	          (
+	            !requestedMerchantId ||
+	            precheckEntryProductMissing ||
+	            requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID
+	          );
 
 	      const resolveGroupCachedStartedAt = Date.now();
 	      if (!canonicalProductRef) {
@@ -17776,37 +17896,44 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             identityResolutionSource = shouldAttemptUnscopedExternalSeedResolve
               ? 'product_group_unscoped'
               : 'product_group_scoped';
-            if (
-              shouldAttemptUnscopedExternalSeedResolve &&
-              String(canonicalProductRef?.merchant_id || '').trim() &&
-              String(canonicalProductRef?.merchant_id || '').trim() !== requestedMerchantId
-            ) {
-              canonicalizationApplied = true;
-              canonicalizationReasonCode = 'PRODUCT_ROUTE_MERCHANT_MISMATCH';
-            }
-	        }
+	            if (
+	              shouldAttemptUnscopedExternalSeedResolve &&
+	              requestedMerchantId &&
+	              String(canonicalProductRef?.merchant_id || '').trim() &&
+	              String(canonicalProductRef?.merchant_id || '').trim() !== requestedMerchantId
+	            ) {
+	              canonicalizationApplied = true;
+	              canonicalizationReasonCode = 'PRODUCT_ROUTE_MERCHANT_MISMATCH';
+	            }
+		        }
 	      }
 	      markPdpV2Phase('resolve_group_cached', resolveGroupCachedStartedAt);
 
 	      if (!canonicalProductRef) {
+	        const shouldFallbackToExternalSeedProductRef = externalSeedRouteProductId;
 	        canonicalProductRef = {
 	          merchant_id:
-              shouldAttemptUnscopedExternalSeedResolve &&
-              requestedMerchantId !== 'external_seed'
-              ? 'external_seed'
-              : requestedMerchantId || DEFAULT_MERCHANT_ID,
+	              shouldFallbackToExternalSeedProductRef
+	              ? EXTERNAL_SEED_MERCHANT_ID
+	              : requestedMerchantId || DEFAULT_MERCHANT_ID,
 	          product_id: productId,
-          ...(platform ? { platform } : {}),
-        };
-          if (
-            shouldAttemptUnscopedExternalSeedResolve &&
-            requestedMerchantId !== 'external_seed'
-          ) {
-            canonicalizationApplied = true;
-            canonicalizationReasonCode = 'PRODUCT_ROUTE_MERCHANT_MISMATCH';
-            identityResolutionSource = 'external_seed_product_id_fallback';
-          }
-		      }
+	          ...(platform ? { platform } : {}),
+	        };
+	          if (shouldFallbackToExternalSeedProductRef) {
+	            identityResolutionSource =
+	              requestedMerchantId && requestedMerchantId !== EXTERNAL_SEED_MERCHANT_ID
+	                ? 'external_seed_product_id_fallback'
+	                : 'external_seed_product_id';
+	          }
+	          if (
+	            shouldFallbackToExternalSeedProductRef &&
+	            requestedMerchantId &&
+	            requestedMerchantId !== EXTERNAL_SEED_MERCHANT_ID
+	          ) {
+	            canonicalizationApplied = true;
+	            canonicalizationReasonCode = 'PRODUCT_ROUTE_MERCHANT_MISMATCH';
+	          }
+	      }
         resolvedProductIdCtx = canonicalProductRef?.product_id || null;
         resolvedMerchantIdCtx = canonicalProductRef?.merchant_id || null;
         canonicalizationAppliedCtx = canonicalizationApplied;
@@ -24330,6 +24457,8 @@ module.exports._debug = {
   loadCreatorSellableFromCache,
   searchCreatorSellableFromCache,
   searchCrossMerchantFromCache,
+  fetchProductDetailForOffers,
+  fetchExternalSeedProductDetailFromDb,
   applyFindProductsMultiSourceContract,
   applyShoppingCatalogQueryGuards,
   classifyInvokeSearchRail,

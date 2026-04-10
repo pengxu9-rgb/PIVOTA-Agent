@@ -1,23 +1,31 @@
+const nock = require('nock');
+const request = require('supertest');
+
 jest.mock('../src/db', () => ({
   query: jest.fn(),
 }));
 
 const ORIGINAL_ENV = process.env;
 
-function loadServerWithDb() {
+function loadServerWithDb(envOverrides = {}) {
   jest.resetModules();
   process.env = {
     ...ORIGINAL_ENV,
     NODE_ENV: 'test',
     DATABASE_URL: 'postgres://test',
+    ...envOverrides,
   };
   const db = require('../src/db');
   db.query.mockReset();
   const app = require('../src/server');
-  return { db, debug: app._debug };
+  return { app, db, debug: app._debug };
 }
 
 describe('external seed product detail hydration', () => {
+  afterEach(() => {
+    nock.cleanAll();
+  });
+
   afterAll(() => {
     process.env = ORIGINAL_ENV;
   });
@@ -240,5 +248,91 @@ describe('external seed product detail hydration', () => {
     expect(db.query).toHaveBeenCalledTimes(2);
     expect(cachedProduct.image_url).toContain('74c2dfd9');
     expect(refreshedProduct.image_url).toContain('1583bea5');
+  });
+
+  test('get_pdp_v2 rescues unscoped ext_* routes from external seed DB instead of defaulting to the legacy merchant', async () => {
+    const { app, db } = loadServerWithDb({
+      PIVOTA_API_BASE: 'https://backend.test',
+      PIVOTA_API_KEY: 'test-token',
+    });
+
+    db.query.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 'eps_seed_db_1',
+          external_product_id: 'ext_seed_db_1',
+          canonical_url: 'https://www.tomfordbeauty.com/products/noir-ext-seed-db-1',
+          destination_url: 'https://www.tomfordbeauty.com/products/noir-ext-seed-db-1',
+          title: 'Tom Ford Noir Extreme Parfum',
+          image_url: 'https://cdn.example.com/tom-ford-noir.jpg',
+          price_amount: '240.00',
+          price_currency: 'USD',
+          availability: 'In Stock',
+          seed_data: {
+            brand: 'Tom Ford Beauty',
+            description: 'Warm amber fragrance.',
+            snapshot: {
+              canonical_url: 'https://www.tomfordbeauty.com/products/noir-ext-seed-db-1',
+              product_id: 'ext_seed_db_1',
+              variants: [
+                {
+                  variant_id: 'tf-noir-default',
+                  price: '240.00',
+                  currency: 'USD',
+                  stock: 'In Stock',
+                },
+              ],
+            },
+          },
+        },
+      ],
+    });
+
+    nock('https://backend.test')
+      .get('/agent/v1/product-groups/resolve-by-product-id')
+      .query((query) => query && query.product_id === 'ext_seed_db_1')
+      .reply(404, { error: 'PRODUCT_NOT_FOUND', message: 'No product group' });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'get_pdp_v2',
+        payload: {
+          product_ref: {
+            product_id: 'ext_seed_db_1',
+          },
+        },
+      })
+      .expect(200);
+
+    expect(db.query).toHaveBeenCalledTimes(1);
+    expect(res.body.metadata.identity_resolution).toEqual(
+      expect.objectContaining({
+        requested_product_id: 'ext_seed_db_1',
+        requested_merchant_id: null,
+        resolved_product_id: 'ext_seed_db_1',
+        resolved_merchant_id: 'external_seed',
+        canonicalization_applied: false,
+        resolution_source: 'external_seed_product_id',
+      }),
+    );
+    expect(res.body.metadata.route_health).toEqual(
+      expect.objectContaining({
+        requested_product_id: 'ext_seed_db_1',
+        requested_merchant_id: null,
+        resolved_product_id: 'ext_seed_db_1',
+        resolved_merchant_id: 'external_seed',
+      }),
+    );
+    expect(res.body.metadata.detail_source).toBe('external_seed_db');
+    expect(
+      res.body.modules?.find((module) => module?.type === 'canonical')?.data?.pdp_payload?.product,
+    ).toEqual(
+      expect.objectContaining({
+        product_id: 'ext_seed_db_1',
+        merchant_id: 'external_seed',
+        title: 'Tom Ford Noir Extreme Parfum',
+      }),
+    );
   });
 });
