@@ -653,6 +653,137 @@ test('handoffRecoToBeautyMainlineSearch preserves horizontal comparison across i
   }
 });
 
+test('handoffRecoToBeautyMainlineSearch skips primary external seed when internal comparison coverage is already satisfied', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const internalCaptured = [];
+    const externalCaptured = [];
+    __internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async (args) => {
+        const query = String(args?.query || '').trim().toLowerCase();
+        internalCaptured.push(query);
+        if (query === 'niacinamide serum oily skin') {
+          return {
+            ok: true,
+            products: [
+              {
+                product_id: 'primary_compare_1',
+                merchant_id: 'merchant_internal_1',
+                title: 'Clarity Lab Oil Balance Serum',
+                display_name: 'Clarity Lab Oil Balance Serum',
+                category: 'serum',
+                product_type: 'serum',
+                candidate_step: 'treatment',
+                benefit_tags: ['oil control', 'shine control'],
+                short_description: 'A mattifying oil-control serum for oily skin.',
+                retrieval_source: 'catalog',
+              },
+            ],
+            attempted_internal_paths: ['/agent/internal/products/search'],
+            transport_hops: [],
+            transport_hop_count: 0,
+            nested_orchestrator_hops: 0,
+            primary_transport_owner: 'internal_products_search_primitive',
+            primary_endpoint_kind: 'internal_primitive',
+          };
+        }
+        if (query === 'oil control serum') {
+          return {
+            ok: true,
+            products: [
+              {
+                product_id: 'primary_compare_2',
+                merchant_id: 'merchant_internal_2',
+                title: 'Balance Co Shine Control Serum',
+                display_name: 'Balance Co Shine Control Serum',
+                category: 'serum',
+                product_type: 'serum',
+                candidate_step: 'treatment',
+                benefit_tags: ['oil control', 'shine control'],
+                short_description: 'A lightweight serum that helps manage visible oil through the day.',
+                retrieval_source: 'catalog',
+              },
+            ],
+            attempted_internal_paths: ['/agent/internal/products/search'],
+            transport_hops: [],
+            transport_hop_count: 0,
+            nested_orchestrator_hops: 0,
+            primary_transport_owner: 'internal_products_search_primitive',
+            primary_endpoint_kind: 'internal_primitive',
+          };
+        }
+        return {
+          ok: true,
+          products: [],
+          attempted_internal_paths: ['/agent/internal/products/search'],
+          transport_hops: [],
+          transport_hop_count: 0,
+          nested_orchestrator_hops: 0,
+          primary_transport_owner: 'internal_products_search_primitive',
+          primary_endpoint_kind: 'internal_primitive',
+        };
+      },
+      searchLocalExternalSeedProducts: async (args) => {
+        externalCaptured.push(String(args?.query || '').trim().toLowerCase());
+        return {
+          ok: false,
+          products: [],
+          reason: 'empty',
+          actual_http_attempt_count: 0,
+          attempted_base_urls: [],
+          attempted_paths: [],
+          transport_policy_mode: String(args?.transportPolicyMode || ''),
+        };
+      },
+    });
+
+    const out = await __internal.handoffRecoToBeautyMainlineSearch({
+      ctx: { lang: 'EN', request_id: 'req_skip_primary_external_when_internal_compare_ready' },
+      primaryQuery: 'what products should i use for oily skin?',
+      fallbackMessage: 'what products should i use for oily skin?',
+      targetContext: resolveRecommendationTargetContext({
+        text: 'what products should i use for oily skin?',
+        focus: '',
+        entryType: 'chat',
+      }),
+      timeoutMs: 5000,
+      minTimeoutMs: 5000,
+    });
+
+    assert.deepEqual(
+      internalCaptured,
+      [
+        'niacinamide serum oily skin',
+        'oil control serum',
+        'shine control serum',
+        'lightweight moisturizer oily skin',
+        'gel cream oily skin',
+      ],
+    );
+    assert.deepEqual(
+      externalCaptured,
+      [
+        'lightweight moisturizer oily skin',
+        'gel cream oily skin',
+      ],
+    );
+    const primaryExternalRows = out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
+      ?.filter((row) => row?.ladder_level === 'framework_stage_b_primary_external_seed') || [];
+    assert.equal(primaryExternalRows.length, 4);
+    assert.equal(
+      primaryExternalRows.every((row) => row?.reason === 'skipped_primary_already_satisfied'),
+      true,
+    );
+    assert.deepEqual(
+      out.recommendations.map((item) => item?.product_id).sort(),
+      ['primary_compare_1', 'primary_compare_2'],
+    );
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+    delete require.cache[moduleId];
+  }
+});
+
 test('handoffRecoToBeautyMainlineSearch exposes raw candidate pool sources when only the strong internal winner is selected', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {

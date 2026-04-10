@@ -20424,6 +20424,18 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
   };
 }
 
+function shouldSkipFrameworkPrimaryExternalSeedLevel(level, candidateState = null) {
+  const levelId = String(level?.ladder_level || level?.stage_id || '').trim().toLowerCase();
+  if (levelId !== 'framework_stage_b_primary_external_seed') return false;
+  if (!isPlainObject(candidateState) || candidateState.primary_role_matched !== true) return false;
+  const selectedCount = Number.isFinite(Number(candidateState?.selected_candidate_count))
+    ? Math.max(0, Math.trunc(Number(candidateState.selected_candidate_count)))
+    : Array.isArray(candidateState?.selected_recommendations)
+      ? candidateState.selected_recommendations.length
+      : 0;
+  return selectedCount >= 2;
+}
+
 async function collectRecoCandidatesFromQueryLevels({
   queryLevels,
   targetContext,
@@ -20470,6 +20482,33 @@ async function collectRecoCandidatesFromQueryLevels({
 
   for (const level of Array.isArray(queryLevels) ? queryLevels : []) {
     const queries = Array.isArray(level?.queries) ? level.queries : [];
+    if (shouldSkipFrameworkPrimaryExternalSeedLevel(level, candidateState)) {
+      for (const queryEntry of queries) {
+        const queryAllowExternalSeed =
+          allowExternalSeed === true
+          && queryEntry?.allow_external_seed === true;
+        searchResults.push({
+          ...queryEntry,
+          source_scope: queryAllowExternalSeed ? 'external_seed' : 'internal',
+          external_seed_strategy: queryAllowExternalSeed
+            ? String(
+                queryEntry?.external_seed_strategy
+                || externalSeedStrategy
+                || 'supplement_internal_first',
+              )
+                .trim()
+                .toLowerCase()
+            : 'on_empty_only',
+          ok: false,
+          products: [],
+          reason: 'skipped_primary_already_satisfied',
+          actual_http_attempt_count: 0,
+          attempted_request_timeouts_ms: [],
+          skipped_runtime: true,
+        });
+      }
+      continue;
+    }
     const levelResults = await mapWithConcurrency(
       queries,
       RECO_CATALOG_SEARCH_CONCURRENCY,
