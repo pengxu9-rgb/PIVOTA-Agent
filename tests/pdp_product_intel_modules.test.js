@@ -193,6 +193,72 @@ describe('pdp product intel bundle shaping', () => {
     expect(bundle.product_intel_core.what_it_is.body).not.toMatch(/in an 8-week clinical study/i);
   });
 
+  test('published bundles expose reviewed shopping and search card metadata', () => {
+    const bundle = normalizePublishedProductIntelBundle({
+      contract_version: 'pivota.product_intel.v1',
+      product_intel_core: {
+        what_it_is: {
+          headline: 'Foundation',
+          body: 'A soft-matte longwear foundation in shade #170.',
+        },
+        best_for: [{ tag: 'soft_matte', label: 'Soft-matte base makeup', confidence: 'moderate' }],
+        why_it_stands_out: [
+          {
+            headline: 'Allure award signal',
+            body: 'The seller states this foundation won a 2019 Allure Reader’s Choice Award.',
+          },
+        ],
+        routine_fit: { step: 'foundation', am_pm: ['am'], pairing_notes: [] },
+        watchouts: [],
+        confidence: { overall: 'moderate' },
+        freshness: { generated_at: '2026-04-10T12:00:00.000Z', source_version: 'manual_review_curated:test' },
+        quality_state: 'limited',
+        evidence_profile: 'seller_only',
+      },
+      shopping_card: {
+        contract_version: 'pivota.shopping_card.v1',
+        title: "Fenty Beauty Pro Filt'r Soft Matte Longwear Foundation - #170",
+        subtitle: 'Soft-matte foundation #170',
+        proof_badge: 'Allure Reader’s Choice',
+        intro: 'Allure-cited soft-matte foundation in shade #170.',
+      },
+      search_card: {
+        title_candidate: "Fenty Beauty Pro Filt'r Soft Matte Longwear Foundation - #170",
+        compact_candidate: 'Soft-matte foundation #170',
+        proof_badge_candidate: 'Allure Reader’s Choice',
+        intro_candidate: 'Allure-cited soft-matte foundation in shade #170.',
+      },
+      market_signal_badges: [
+        { badge_type: 'seller_cited_award', badge_label: '2019 Allure Reader’s Choice' },
+      ],
+      community_signals: {
+        status: 'unavailable',
+        unavailable_reason: 'insufficient_feedback',
+        confidence: 'low',
+        evidence_profile: 'seller_only',
+      },
+      quality_state: 'limited',
+      evidence_profile: 'seller_only',
+    });
+
+    expect(bundle.shopping_card).toEqual(
+      expect.objectContaining({
+        subtitle: 'Soft-matte foundation #170',
+        proof_badge: 'Allure Reader’s Choice',
+        intro: 'Allure-cited soft-matte foundation in shade #170.',
+      }),
+    );
+    expect(bundle.search_card).toEqual(
+      expect.objectContaining({
+        compact_candidate: 'Soft-matte foundation #170',
+        proof_badge_candidate: 'Allure Reader’s Choice',
+      }),
+    );
+    expect(bundle.market_signal_badges).toEqual([
+      { badge_type: 'seller_cited_award', badge_label: '2019 Allure Reader’s Choice' },
+    ]);
+  });
+
   test('published bundles suppress seller-only merchandising highlights at read time', () => {
     const bundle = normalizePublishedProductIntelBundle({
       contract_version: 'pivota.product_intel.v1',
