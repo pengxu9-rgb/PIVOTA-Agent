@@ -135,7 +135,6 @@ function buildSourceListingRef({ merchantId, productId }) {
 
 function buildGroupMember(row) {
   const payload = asPlainObject(row?.source_payload) || {};
-  const payloadBrand = asPlainObject(payload.brand);
   const variantAxes = asPlainObject(row?.variant_axes) || {};
   const merchantName = firstNonEmptyString(
     row?.merchant_name,
@@ -144,11 +143,10 @@ function buildGroupMember(row) {
     payload.merchantName,
     payload.store_name,
     payload.storeName,
-    payload.vendor,
-    payload.vendor_name,
-    payloadBrand?.name,
-    typeof payload.brand === 'string' ? payload.brand : null,
-    payload.brand_name,
+    payload.seller_name,
+    payload.sellerName,
+    payload.seller_of_record,
+    payload.sellerOfRecord,
   );
   return {
     source_listing_ref: asString(row?.source_listing_ref),

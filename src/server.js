@@ -707,6 +707,128 @@ function firstNonEmptyString(...values) {
   return null;
 }
 
+const RESPONSE_OWNED_PDP_CANONICAL_MODULE_TYPES = new Set([
+  'product_intel',
+  'recommendations',
+  'reviews_preview',
+  'similar',
+]);
+
+function stripResponseOwnedPdpModulesFromCanonicalPayload(pdpPayload) {
+  if (!pdpPayload || typeof pdpPayload !== 'object') return pdpPayload;
+  return {
+    ...pdpPayload,
+    modules: Array.isArray(pdpPayload.modules)
+      ? pdpPayload.modules.filter((module) => {
+          const type = String(module?.type || '').trim();
+          return !RESPONSE_OWNED_PDP_CANONICAL_MODULE_TYPES.has(type);
+        })
+      : [],
+  };
+}
+
+function looksLikeMerchantId(value) {
+  return /^merch_[a-z0-9_]+$/i.test(String(value || '').trim());
+}
+
+function normalizeOfferSellerNameCandidate(value, merchantId = '') {
+  const text = firstNonEmptyString(value);
+  if (!text) return null;
+  const normalized = text.toLowerCase();
+  const normalizedMerchantId = String(merchantId || '').trim().toLowerCase();
+  if (normalizedMerchantId && normalized === normalizedMerchantId) return null;
+  if (normalized === 'external_seed' || normalized === 'external seed') return null;
+  if (looksLikeMerchantId(normalized)) return null;
+  return text;
+}
+
+function resolveOfferSellerDisplayName({ product, member, merchantId }) {
+  const mid = String(merchantId || product?.merchant_id || member?.merchant_id || '').trim();
+  const candidates = [
+    product?.seller_of_record,
+    product?.sellerOfRecord,
+    product?.seller_name,
+    product?.sellerName,
+    product?.store_name,
+    product?.storeName,
+    product?.merchant_name,
+    product?.merchantName,
+    member?.seller_of_record,
+    member?.sellerOfRecord,
+    member?.seller_name,
+    member?.sellerName,
+    member?.store_name,
+    member?.storeName,
+    member?.merchant_name,
+    member?.merchantName,
+  ];
+  for (const candidate of candidates) {
+    const sellerName = normalizeOfferSellerNameCandidate(candidate, mid);
+    if (sellerName) return sellerName;
+  }
+  return undefined;
+}
+
+async function fetchMerchantDisplayNamesByIds(merchantIds) {
+  if (!process.env.DATABASE_URL) return new Map();
+  const ids = Array.from(
+    new Set(
+      (Array.isArray(merchantIds) ? merchantIds : [])
+        .map((value) => String(value || '').trim())
+        .filter((value) => value && value !== EXTERNAL_SEED_MERCHANT_ID),
+    ),
+  );
+  if (!ids.length) return new Map();
+
+  try {
+    const res = await query(
+      `
+        SELECT DISTINCT ON (merchant_id)
+          merchant_id,
+          merchant_name
+        FROM (
+          SELECT
+            merchant_id,
+            name AS merchant_name,
+            0 AS priority,
+            connected_at
+          FROM merchant_stores
+          WHERE merchant_id = ANY($1::text[])
+            AND COALESCE(NULLIF(trim(name), ''), '') <> ''
+            AND lower(COALESCE(platform, '')) = 'shopify'
+            AND lower(COALESCE(status, '')) IN ('active', 'connected')
+          UNION ALL
+          SELECT
+            merchant_id,
+            business_name AS merchant_name,
+            1 AS priority,
+            NULL::timestamptz AS connected_at
+          FROM merchant_onboarding
+          WHERE merchant_id = ANY($1::text[])
+            AND COALESCE(NULLIF(trim(business_name), ''), '') <> ''
+            AND COALESCE(status, '') NOT IN ('deleted', 'rejected')
+        ) candidates
+        ORDER BY merchant_id, priority ASC, connected_at DESC NULLS LAST
+      `,
+      [ids],
+    );
+    return new Map(
+      (Array.isArray(res?.rows) ? res.rows : [])
+        .map((row) => [
+          String(row?.merchant_id || '').trim(),
+          normalizeOfferSellerNameCandidate(row?.merchant_name, row?.merchant_id),
+        ])
+        .filter(([merchantId, merchantName]) => Boolean(merchantId) && Boolean(merchantName)),
+    );
+  } catch (err) {
+    logger.warn(
+      { err: err?.message || String(err), merchant_count: ids.length },
+      'Failed to load merchant display names for PDP offers',
+    );
+    return new Map();
+  }
+}
+
 function pruneEmptyFields(input = {}) {
   const output = {};
   for (const [key, value] of Object.entries(input || {})) {
@@ -2977,6 +3099,9 @@ async function resolveProductGroupCached(args) {
     .map((m) => ({
       merchant_id: String(m?.merchant_id || m?.merchantId || '').trim(),
       merchant_name: m?.merchant_name || m?.merchantName || undefined,
+      seller_name: m?.seller_name || m?.sellerName || undefined,
+      store_name: m?.store_name || m?.storeName || undefined,
+      seller_of_record: m?.seller_of_record || m?.sellerOfRecord || undefined,
       product_id: String(m?.product_id || m?.productId || '').trim(),
       platform: m?.platform ? String(m.platform).trim() : undefined,
       is_primary: Boolean(m?.is_primary || m?.isPrimary),
@@ -3225,6 +3350,9 @@ async function buildOffersFromGroupMembers(args) {
       .map((m) => [String(m.merchant_id || '').trim(), m.merchant_name])
       .filter(([mid, name]) => Boolean(mid) && Boolean(name)),
   );
+  const merchantProfileNameById = await fetchMerchantDisplayNamesByIds(
+    members.map((m) => m.merchant_id),
+  );
 
   const fetched = [];
   const chunkSize = 4;
@@ -3312,16 +3440,17 @@ async function buildOffersFromGroupMembers(args) {
       product_id: offerProductId,
       merchant_id: mid,
       merchant_name:
-        firstNonEmptyString(
-          p.merchant_name,
-          p.store_name,
-          p.vendor,
-          p.vendor_name,
-          p.brand?.name,
-          typeof p.brand === 'string' ? p.brand : null,
-          member?.merchant_name,
-          merchantNameById.get(mid),
-        ) || undefined,
+        resolveOfferSellerDisplayName({
+          product: p,
+          member: {
+            ...member,
+            merchant_name:
+              member?.merchant_name ||
+              merchantNameById.get(mid) ||
+              merchantProfileNameById.get(mid),
+          },
+          merchantId: mid,
+        }) || undefined,
       price: normalizeOfferMoney(selectedVariantPrice ?? p.price, currency),
       shipping:
         p.shipping || etaRange || shipCostAmount != null
@@ -18224,7 +18353,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            {
 	              type: 'canonical',
 	              required: true,
-	              data: { pdp_payload: pdpPayload },
+	              data: { pdp_payload: stripResponseOwnedPdpModulesFromCanonicalPayload(pdpPayload) },
 	            },
 	          ];
 
@@ -19325,14 +19454,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         structuredIngredientModules.ingredientsInciData ||
         null;
 
-      const canonicalPayload = {
-        ...pdpPayload,
-        modules: Array.isArray(pdpPayload.modules)
-          ? pdpPayload.modules.filter(
-              (m) => m?.type !== 'reviews_preview' && m?.type !== 'recommendations',
-            )
-          : [],
-      };
+      const canonicalPayload = stripResponseOwnedPdpModulesFromCanonicalPayload(pdpPayload);
 
       const modules = [
         {
@@ -19418,7 +19540,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	                      product_id: canonicalProductRef.product_id,
 	                      merchant_id: canonicalProductRef.merchant_id,
 	                      merchant_name:
-	                        canonicalProductForPdp.merchant_name || canonicalProductForPdp.store_name || undefined,
+	                        resolveOfferSellerDisplayName({
+	                          product: canonicalProductForPdp,
+	                          merchantId: canonicalProductRef.merchant_id,
+	                        }) || undefined,
                       price: normalizeOfferMoney(
                         canonicalProductForPdp.price,
                         canonicalProductForPdp.currency || 'USD',
@@ -25828,6 +25953,8 @@ module.exports._debug = {
   searchCrossMerchantFromCache,
   fetchProductDetailForOffers,
   fetchExternalSeedProductDetailFromDb,
+  stripResponseOwnedPdpModulesFromCanonicalPayload,
+  resolveOfferSellerDisplayName,
   applyFindProductsMultiSourceContract,
   applyShoppingCatalogQueryGuards,
   classifyInvokeSearchRail,

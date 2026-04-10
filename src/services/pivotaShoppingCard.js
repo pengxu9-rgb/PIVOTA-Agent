@@ -57,8 +57,19 @@ function compactText(value, maxChars) {
   return (boundary >= Math.floor(maxChars * 0.6) ? trimmed.slice(0, boundary) : trimmed).trim();
 }
 
+function cleanSentenceText(value) {
+  const clean = asString(value)
+    .replace(/\s+/g, ' ')
+    .replace(/\s+([,.;:!?])/g, '$1')
+    .replace(/([,;:])+\s*([.!?])$/g, '$2')
+    .replace(/[,\s;:]+$/g, '')
+    .trim();
+  if (!clean) return '';
+  return clean.replace(/^([a-z])/, (match) => match.toUpperCase());
+}
+
 function punctuate(text) {
-  const clean = asString(text).replace(/\s+/g, ' ').trim();
+  const clean = cleanSentenceText(text);
   if (!clean) return '';
   return /[.!?]$/.test(clean) ? clean : `${clean}.`;
 }
