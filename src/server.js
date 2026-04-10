@@ -87,6 +87,14 @@ const {
 const {
   createFindProductsSearchRouteEntryRuntime,
 } = require('./findProductsSearchRouteEntry');
+const { prepareGatewayGovernanceEnvelope } = require('./api/gateway/layerDispatcher');
+const { buildGatewayShadowAudit } = require('./api/gateway/access/buildGatewayShadowAudit');
+const {
+  buildInvokeIngressGatewayInput,
+} = require('./api/gateway/invocation/buildInvokeIngressGatewayInput');
+const {
+  applyGovernanceShadowRuntimeMetadata,
+} = require('./modules/policy/governanceShadowRuntime');
 const {
   buildBeautyQueryProfile,
   classifyBeautyBucketFromText: classifySharedBeautyBucketFromText,
@@ -13000,6 +13008,181 @@ function normalizeMetadata(rawMetadata = {}, payload = {}) {
   };
 }
 
+function shouldUseGatewayGovernanceShadowMode(routeContext = {}) {
+  const raw =
+    routeContext.gateway_governance_shadow_mode ??
+    routeContext.gatewayGovernanceShadowMode ??
+    process.env.PIVOTA_GATEWAY_GOVERNANCE_SHADOW_MODE;
+  return ['1', 'true', 'yes', 'on'].includes(String(raw || '').trim().toLowerCase());
+}
+
+function collectGatewayGovernanceReasonCodes(gatewayGovernanceAudit = null) {
+  if (!isPlainObject(gatewayGovernanceAudit)) return [];
+  return uniqueStrings([
+    ...(Array.isArray(gatewayGovernanceAudit.reason_codes)
+      ? gatewayGovernanceAudit.reason_codes
+      : []),
+    ...(Array.isArray(gatewayGovernanceAudit.query_governance?.reason_codes)
+      ? gatewayGovernanceAudit.query_governance.reason_codes
+      : []),
+    ...(Array.isArray(gatewayGovernanceAudit.rate_limit?.reason_codes)
+      ? gatewayGovernanceAudit.rate_limit.reason_codes
+      : []),
+  ]);
+}
+
+function mergeInvokeGatewayAuditMetadata(body, gatewayGovernanceAudit = null) {
+  if (!isPlainObject(body) || !isPlainObject(gatewayGovernanceAudit)) return body;
+  const existingMeta = isPlainObject(body.metadata) ? body.metadata : {};
+  const existingInvocation = isPlainObject(existingMeta.gateway_invocation)
+    ? existingMeta.gateway_invocation
+    : {};
+  const existingGovernance = isPlainObject(existingMeta.gateway_governance)
+    ? existingMeta.gateway_governance
+    : {};
+  const governanceReasonCodes = collectGatewayGovernanceReasonCodes(gatewayGovernanceAudit);
+  const responseReasonCodes = Array.isArray(body.reason_codes)
+    ? body.reason_codes
+    : body.reason_codes
+      ? [body.reason_codes]
+      : [];
+  const mergedReasonCodes = uniqueStrings([...responseReasonCodes, ...governanceReasonCodes]);
+
+  return {
+    ...body,
+    ...(mergedReasonCodes.length ? { reason_codes: mergedReasonCodes } : {}),
+    metadata: {
+      ...existingMeta,
+      gateway_invocation: {
+        ...existingInvocation,
+        ...(isPlainObject(gatewayGovernanceAudit.invocation)
+          ? gatewayGovernanceAudit.invocation
+          : {}),
+      },
+      gateway_governance: {
+        ...existingGovernance,
+        mode: gatewayGovernanceAudit.mode || existingGovernance.mode || null,
+        source: gatewayGovernanceAudit.source || existingGovernance.source || null,
+        entry_layer: gatewayGovernanceAudit.entry_layer || existingGovernance.entry_layer || null,
+        task_type: gatewayGovernanceAudit.task_type || existingGovernance.task_type || null,
+        effective_action:
+          gatewayGovernanceAudit.effective_action || existingGovernance.effective_action || null,
+        observed_phase:
+          gatewayGovernanceAudit.observed_phase || existingGovernance.observed_phase || null,
+        observed_action:
+          gatewayGovernanceAudit.observed_action || existingGovernance.observed_action || null,
+        would_enforce: gatewayGovernanceAudit.would_enforce === true,
+        reason_codes: governanceReasonCodes,
+        access: isPlainObject(gatewayGovernanceAudit.access)
+          ? gatewayGovernanceAudit.access
+          : existingGovernance.access || {},
+        rate_limit: isPlainObject(gatewayGovernanceAudit.rate_limit)
+          ? gatewayGovernanceAudit.rate_limit
+          : existingGovernance.rate_limit || {},
+        query_governance: isPlainObject(gatewayGovernanceAudit.query_governance)
+          ? gatewayGovernanceAudit.query_governance
+          : existingGovernance.query_governance || {},
+      },
+    },
+  };
+}
+
+function normalizeGovernanceShadowBlockContract(body) {
+  if (!isPlainObject(body) || !isPlainObject(body.metadata)) return body;
+  const metadata = body.metadata;
+  const gatewayGovernance = isPlainObject(metadata.gateway_governance)
+    ? metadata.gateway_governance
+    : {};
+  const mode = String(gatewayGovernance.mode || '').trim().toLowerCase();
+  const observedAction = String(gatewayGovernance.observed_action || '').trim().toLowerCase();
+  if (mode !== 'shadow' || observedAction !== 'block' || gatewayGovernance.would_enforce !== true) {
+    return body;
+  }
+
+  const governanceReasonCodes = uniqueStrings([
+    ...(Array.isArray(gatewayGovernance.reason_codes) ? gatewayGovernance.reason_codes : []),
+    ...(Array.isArray(gatewayGovernance.query_governance?.reason_codes)
+      ? gatewayGovernance.query_governance.reason_codes
+      : []),
+    ...(Array.isArray(gatewayGovernance.rate_limit?.reason_codes)
+      ? gatewayGovernance.rate_limit.reason_codes
+      : []),
+  ]);
+  const primaryReason = governanceReasonCodes[0] || 'gateway_governance';
+  const existingSearchDecision = isPlainObject(metadata.search_decision)
+    ? metadata.search_decision
+    : {};
+  const existingRouteHealth = isPlainObject(metadata.route_health) ? metadata.route_health : {};
+  const existingShadowContract = isPlainObject(metadata.governance_shadow_contract)
+    ? metadata.governance_shadow_contract
+    : {};
+  const responseReasonCodes = Array.isArray(body.reason_codes)
+    ? body.reason_codes
+    : body.reason_codes
+      ? [body.reason_codes]
+      : [];
+  const querySource = String(metadata.query_source || '').trim() || null;
+  const finalDecision = String(existingSearchDecision.final_decision || '').trim() || null;
+
+  return {
+    ...body,
+    reason_codes: uniqueStrings([...responseReasonCodes, ...governanceReasonCodes]),
+    metadata: {
+      ...metadata,
+      search_decision: {
+        ...existingSearchDecision,
+        ...(querySource && !existingSearchDecision.decision_authority
+          ? { decision_authority: querySource }
+          : {}),
+      },
+      route_health: {
+        ...existingRouteHealth,
+        observer_nodes: uniqueStrings([
+          ...(Array.isArray(existingRouteHealth.observer_nodes)
+            ? existingRouteHealth.observer_nodes
+            : []),
+          'governance_shadow_block_observed',
+        ]),
+      },
+      governance_shadow_contract: {
+        ...existingShadowContract,
+        normalized: false,
+        observer_only: true,
+        recovery_reason: `${primaryReason}_shadow_block`,
+        original_query_source: querySource,
+        original_final_decision: finalDecision,
+        governance_reason_codes: governanceReasonCodes,
+      },
+    },
+  };
+}
+
+function buildInvokeGatewayGovernanceAudit({
+  req,
+  routeContext = {},
+  operation,
+  payload,
+  metadata,
+  gatewayRequestId,
+} = {}) {
+  const normalizedOperation = String(operation || '').trim().toLowerCase();
+  if (!['find_products', 'find_products_multi'].includes(normalizedOperation)) return null;
+  if (!shouldUseGatewayGovernanceShadowMode(routeContext)) return null;
+
+  const envelope = prepareGatewayGovernanceEnvelope(
+    buildInvokeIngressGatewayInput({
+      req,
+      routeContext,
+      operation: normalizedOperation,
+      payload,
+      metadata,
+      request_id: gatewayRequestId,
+    }),
+  );
+  const audit = buildGatewayShadowAudit(envelope, { shadow_mode: true });
+  return isPlainObject(audit) && audit.would_enforce === true ? audit : null;
+}
+
 const AURORA_CHATBOX_ORIGINS = new Set([
   'https://pivota-aurora-chatbox.vercel.app',
 ]);
@@ -16513,6 +16696,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   };
   let upstreamElapsedMs = 0;
   let gatewayRetryCount = 0;
+  let gatewayGovernanceAudit = null;
   const setInvokePerfHeaders = (operationOverride = null) => {
     const op = String(operationOverride || debugRuntime.operation || '').trim().toLowerCase();
     if (!CHECKOUT_TIMING_OPS.has(op)) return;
@@ -16599,6 +16783,26 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         },
         'failed to build/emit debug bundle',
       );
+    }
+    if (gatewayGovernanceAudit) {
+      finalBody = mergeInvokeGatewayAuditMetadata(finalBody, gatewayGovernanceAudit);
+      finalBody = normalizeGovernanceShadowBlockContract(finalBody);
+      res.setHeader(
+        'X-Gateway-Invocation-Surface',
+        String(gatewayGovernanceAudit.invocation?.surface || 'unknown'),
+      );
+      res.setHeader('X-Gateway-Governance-Mode', String(gatewayGovernanceAudit.mode || 'shadow'));
+      res.setHeader(
+        'X-Gateway-Governance-Observed-Action',
+        String(gatewayGovernanceAudit.observed_action || 'allow'),
+      );
+      res.setHeader(
+        'X-Gateway-Governance-Effective-Action',
+        String(gatewayGovernanceAudit.effective_action || 'allow'),
+      );
+      if (gatewayGovernanceAudit.would_enforce === true) {
+        res.setHeader('X-Gateway-Governance-Would-Enforce', 'true');
+      }
     }
     try {
       const operation = String(debugRuntime.operation || req?.body?.operation || '')
@@ -16759,6 +16963,31 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     const { operation, payload } = parsed.data;
     debugRuntime.operation = String(operation || '').trim().toLowerCase();
     let metadata = normalizeMetadata(req.body.metadata, payload);
+    try {
+      gatewayGovernanceAudit = buildInvokeGatewayGovernanceAudit({
+        req,
+        routeContext,
+        operation,
+        payload,
+        metadata,
+        gatewayRequestId,
+      });
+      metadata = applyGovernanceShadowRuntimeMetadata({
+        metadata,
+        gatewayGovernanceAudit,
+        operation,
+      });
+    } catch (gatewayGovernanceErr) {
+      logger.warn(
+        {
+          gateway_request_id: gatewayRequestId,
+          err: gatewayGovernanceErr?.message || String(gatewayGovernanceErr),
+          operation,
+        },
+        'failed to prepare gateway governance audit for invoke ingress',
+      );
+      gatewayGovernanceAudit = null;
+    }
     let findProductsMultiCtx = null;
     if (operation === 'find_products_multi') {
       const nluStartedAtMs = Date.now();
@@ -25099,6 +25328,8 @@ module.exports._debug = {
   buildServiceVersionMetadata,
   buildCacheStageDiagnosticBundle,
   buildCacheStageSnapshot,
+  mergeInvokeGatewayAuditMetadata,
+  normalizeGovernanceShadowBlockContract,
   uiChatBuildLoopBreakRetryArgs,
   decideGenericSkincareCachePreference,
   collapseNearDuplicateSearchProducts,
