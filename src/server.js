@@ -98,12 +98,17 @@ const {
   detectBrandEntities,
   buildBrandQueryVariants,
   hasExplicitCategoryHint,
+  normalizeBrandText,
 } = require('./findProductsMulti/brandLexicon');
 const { buildClarification } = require('./findProductsMulti/clarification');
 const {
   EXTERNAL_SEED_MERCHANT_ID,
   buildExternalSeedProduct,
+  buildExternalSeedBrandSearchProduct,
 } = require('./services/externalSeedProducts');
+const {
+  runExternalSeedBrandMainlineFastpath,
+} = require('./findProductsExternalSeedBrandFastpath');
 const {
   buildIngredientIntentDirectBaseMetadata,
   buildIngredientIntentDirectEmptyResponse,
@@ -7459,7 +7464,86 @@ const agentProductsSearchRouteEntryRuntime = createFindProductsSearchRouteEntryR
   searchIngredientIntentProductsDirect: async () => null,
 });
 
-async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutToken, neededCount, source }) {
+async function searchExternalSeedBrandCandidatesLocally({
+  queryText,
+  neededCount,
+  inStockOnly = true,
+} = {}) {
+  const normalizedQueryText = String(queryText || '').trim();
+  if (!process.env.DATABASE_URL || !normalizedQueryText) return null;
+
+  const brandDetection = detectBrandEntities(normalizedQueryText, { candidateProducts: [] });
+  if (!brandDetection?.brand_like) return null;
+
+  const requestedCount = Math.max(1, Number(neededCount || 1));
+  const retrievalLimit = Math.min(Math.max(requestedCount * 3, 24), SEARCH_LIMIT_MAX);
+  const market =
+    String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
+  const brandTerms = Array.isArray(brandDetection?.brands)
+    ? brandDetection.brands.map((item) => normalizeSearchTextForMatch(item)).filter(Boolean)
+    : [];
+
+  const directResponse = await runExternalSeedBrandMainlineFastpath({
+    relevanceQueryText: normalizedQueryText,
+    market,
+    tool: 'creator_agents',
+    inStockOnly,
+    safePage: 1,
+    safeLimit: retrievalLimit,
+    safeOffset: 0,
+    deps: {
+      detectBrandEntities,
+      normalizeSearchTextForMatch,
+      buildBrandQueryVariants,
+      normalizeBrandText,
+      buildExternalSeedBrandSearchProduct,
+      buildSearchProductKey,
+      query,
+      logger,
+    },
+  });
+  if (!directResponse || !Array.isArray(directResponse.products)) return null;
+
+  const normalizedQuery = normalizeSearchTextForMatch(normalizedQueryText);
+  const anchorTokens = extractSearchAnchorTokens(normalizedQueryText);
+  const queryTokens = Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
+  const relevantProducts = directResponse.products.filter((product) =>
+    isSupplementCandidateRelevant(product, normalizedQueryText, {
+      normalizedQuery,
+      anchorTokens,
+      queryTokens,
+      brandTerms,
+    }),
+  );
+  const pagedProducts = relevantProducts.slice(0, requestedCount);
+
+  return {
+    ...directResponse,
+    products: pagedProducts,
+    total: relevantProducts.length,
+    page: 1,
+    page_size: pagedProducts.length,
+    metadata: {
+      ...(directResponse.metadata && typeof directResponse.metadata === 'object'
+        ? directResponse.metadata
+        : {}),
+      external_seed_brand_relevant_count: relevantProducts.length,
+      external_seed_brand_filtered_out_count: Math.max(
+        0,
+        (Array.isArray(directResponse.products) ? directResponse.products.length : 0) -
+          relevantProducts.length,
+      ),
+    },
+  };
+}
+
+async function fetchExternalSeedSupplementFromBackend({
+  queryParams,
+  checkoutToken,
+  neededCount,
+  source,
+  directOnly = false,
+}) {
   const query = queryParams && typeof queryParams === 'object' ? queryParams : {};
   const queryText = extractSearchQueryText(query);
   if (!queryText) {
@@ -7471,6 +7555,105 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
 
   const requestedCount = Math.max(1, Number(neededCount || 1));
   const limit = Math.min(Math.max(requestedCount * 6, 48), 320);
+  const localBrandDirectResponse = await searchExternalSeedBrandCandidatesLocally({
+    queryText,
+    neededCount: requestedCount,
+    inStockOnly: parseQueryBoolean(query.in_stock_only ?? query.inStockOnly) !== false,
+  });
+  if (localBrandDirectResponse && Array.isArray(localBrandDirectResponse.products)) {
+    const directProducts = localBrandDirectResponse.products.filter((product) =>
+      isExternalSeedProduct(product),
+    );
+    const directMeta =
+      localBrandDirectResponse.metadata &&
+      typeof localBrandDirectResponse.metadata === 'object' &&
+      !Array.isArray(localBrandDirectResponse.metadata)
+        ? localBrandDirectResponse.metadata
+        : {};
+    const directBrandTerms = Array.isArray(directMeta.search_decision?.retrieval_query_variants)
+      ? Array.from(
+          new Set(
+            directMeta.search_decision.retrieval_query_variants
+              .map((item) => String(item || '').trim())
+              .filter(Boolean),
+          ),
+        )
+      : [];
+    if (directProducts.length > 0) {
+      return {
+        products: directProducts,
+        metadata: {
+          attempted: true,
+          applied: true,
+          reason: 'external_seed_direct_local_hit',
+          requested_count: requestedCount,
+          fetched_count: directProducts.length,
+          fetched_raw_count:
+            Number(
+              directMeta.external_seed_brand_relevant_count ||
+                directMeta.external_seed_rows_built ||
+                directProducts.length,
+            ) || directProducts.length,
+          fetched_variant_count:
+            Number(directMeta.retrieval_query_variant_count || directMeta.query_variants?.length || 0) || 0,
+          upstream_calls: 0,
+          brand_query_detected: true,
+          brand_entities: directBrandTerms,
+          brand_scope: hasExplicitCategoryHint(queryText, null) ? 'category_scoped' : 'broad',
+          filtered_out_irrelevant_count:
+            Number(directMeta.external_seed_brand_filtered_out_count || 0) || 0,
+          query_variants: Array.isArray(directMeta.retrieval_query_variants)
+            ? directMeta.retrieval_query_variants
+            : [queryText],
+          upstream_status: 200,
+          retrieval_mode: 'direct_local_brand_mainline',
+          external_seed_rows_raw:
+            Number(directMeta.raw_result_count || directMeta.external_seed_rows_fetched || directProducts.length) ||
+            directProducts.length,
+          external_seed_rows_relevant:
+            Number(directMeta.external_seed_brand_relevant_count || directProducts.length) || directProducts.length,
+        },
+      };
+    }
+    if (directOnly) {
+      return {
+        products: [],
+        metadata: {
+          attempted: true,
+          applied: false,
+          reason: 'external_seed_direct_local_empty',
+          requested_count: requestedCount,
+          fetched_count: 0,
+          fetched_raw_count:
+            Number(directMeta.raw_result_count || directMeta.external_seed_rows_fetched || 0) || 0,
+          fetched_variant_count:
+            Number(directMeta.retrieval_query_variant_count || directMeta.query_variants?.length || 0) || 0,
+          upstream_calls: 0,
+          upstream_status: 200,
+          query_variants: Array.isArray(directMeta.retrieval_query_variants)
+            ? directMeta.retrieval_query_variants
+            : [queryText],
+        },
+      };
+    }
+  }
+  if (directOnly) {
+    return {
+      products: [],
+      metadata: {
+        attempted: false,
+        applied: false,
+        reason: 'external_seed_direct_local_unavailable',
+        requested_count: requestedCount,
+        fetched_count: 0,
+        fetched_raw_count: 0,
+        fetched_variant_count: 0,
+        upstream_calls: 0,
+        upstream_status: 0,
+        query_variants: [queryText],
+      },
+    };
+  }
   const hardBudgetMs = Math.max(
     800,
     Number(process.env.PROXY_SEARCH_EXTERNAL_SEED_SUPPLEMENT_BUDGET_MS || 4400),
@@ -7601,6 +7784,170 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
       supplement_budget_exhausted: budgetExhausted,
     },
   };
+}
+
+async function maybeRescueBrandLikeSearchFromLocalExternalSeed({
+  operation,
+  upstreamData,
+  queryText,
+  queryParams,
+  source,
+  checkoutToken,
+  upstreamStatus = null,
+} = {}) {
+  if (
+    (operation !== 'find_products' && operation !== 'find_products_multi') ||
+    !upstreamData ||
+    typeof upstreamData !== 'object' ||
+    Array.isArray(upstreamData)
+  ) {
+    return upstreamData;
+  }
+
+  const normalizedQueryText = String(queryText || '').trim();
+  if (!normalizedQueryText || !process.env.DATABASE_URL) return upstreamData;
+
+  const upstreamMeta =
+    upstreamData.metadata && typeof upstreamData.metadata === 'object' && !Array.isArray(upstreamData.metadata)
+      ? upstreamData.metadata
+      : {};
+  const existingProducts = Array.isArray(upstreamData.products) ? upstreamData.products : [];
+  const hasClarification = Boolean(upstreamData?.clarification?.question);
+  if (existingProducts.length > 0 || hasClarification) return upstreamData;
+
+  const requestedMerchantId = String(
+    firstQueryParamValue(queryParams?.merchant_id || queryParams?.merchantId || ''),
+  ).trim();
+  if (requestedMerchantId) return upstreamData;
+
+  const routeHealth =
+    upstreamMeta.route_health &&
+    typeof upstreamMeta.route_health === 'object' &&
+    !Array.isArray(upstreamMeta.route_health)
+      ? upstreamMeta.route_health
+      : {};
+  const externalSeedSkipReason = String(
+    routeHealth.external_seed_skip_reason || upstreamMeta.external_seed_skip_reason || '',
+  )
+    .trim()
+    .toLowerCase();
+  if (externalSeedSkipReason !== 'seed_loader_error') return upstreamData;
+
+  const brandDetection = detectBrandEntities(normalizedQueryText, { candidateProducts: [] });
+  if (!brandDetection?.brand_like) return upstreamData;
+
+  const requestedLimit = Math.min(
+    Math.max(1, Number(queryParams?.limit || queryParams?.page_size || 20) || 20),
+    SEARCH_LIMIT_MAX,
+  );
+  const requestedOffset = Math.max(0, Number(queryParams?.offset || 0) || 0);
+  const requestedPageFromQuery = Math.max(0, Number(queryParams?.page || 0) || 0);
+  const requestedPage =
+    requestedPageFromQuery > 0
+      ? requestedPageFromQuery
+      : Math.floor(requestedOffset / Math.max(1, requestedLimit)) + 1;
+
+  const localSupplement = await fetchExternalSeedSupplementFromBackend({
+    queryParams: {
+      ...(queryParams && typeof queryParams === 'object' && !Array.isArray(queryParams)
+        ? queryParams
+        : {}),
+      query: normalizedQueryText,
+    },
+    checkoutToken,
+    neededCount: requestedLimit + requestedOffset,
+    source,
+    directOnly: true,
+  });
+
+  const rescuedProducts = Array.isArray(localSupplement?.products) ? localSupplement.products : [];
+  if (rescuedProducts.length === 0) return upstreamData;
+
+  const rescueMeta =
+    localSupplement?.metadata &&
+    typeof localSupplement.metadata === 'object' &&
+    !Array.isArray(localSupplement.metadata)
+      ? localSupplement.metadata
+      : {};
+  const existingRouteDebug =
+    upstreamMeta.route_debug &&
+    typeof upstreamMeta.route_debug === 'object' &&
+    !Array.isArray(upstreamMeta.route_debug)
+      ? upstreamMeta.route_debug
+      : {};
+
+  return normalizeAgentProductsListResponse(
+    {
+      status: 'success',
+      success: true,
+      products: rescuedProducts,
+      total: Math.max(
+        rescuedProducts.length,
+        Number(rescueMeta.external_seed_rows_relevant || rescueMeta.fetched_count || 0) || 0,
+      ),
+      page: requestedPage,
+      page_size: rescuedProducts.length,
+      reply: null,
+      metadata: {
+        ...upstreamMeta,
+        query_source: 'agent_products_external_seed_direct',
+        strict_empty: false,
+        strict_empty_reason: null,
+        search_decision: {
+          ...(upstreamMeta.search_decision &&
+          typeof upstreamMeta.search_decision === 'object' &&
+          !Array.isArray(upstreamMeta.search_decision)
+            ? upstreamMeta.search_decision
+            : {}),
+          final_decision: 'products_returned',
+          execution_mode: 'external_seed_brand_rescue',
+          products_returned_count: rescuedProducts.length,
+          brand_search_mainline_query: true,
+        },
+        source_breakdown: {
+          internal_count: 0,
+          external_seed_count: rescuedProducts.length,
+          stale_cache_used: false,
+          strategy_applied: 'brand_search_external_seed_mainline_rescue',
+        },
+        external_seed_skip_reason: externalSeedSkipReason,
+        external_seed_rows_fetched:
+          Number(rescueMeta.external_seed_rows_raw || rescueMeta.fetched_raw_count || rescuedProducts.length) ||
+          rescuedProducts.length,
+        external_seed_rows_built:
+          Number(rescueMeta.external_seed_rows_relevant || rescueMeta.fetched_count || rescuedProducts.length) ||
+          rescuedProducts.length,
+        external_seed_returned_count: rescuedProducts.length,
+        external_seed_brand_rescue_applied: true,
+        external_seed_brand_rescue_reason: 'upstream_seed_loader_error_strict_empty',
+        external_seed_brand_rescue_upstream_query_source:
+          String(upstreamMeta.query_source || '').trim() || null,
+        external_seed_brand_rescue_skip_reason: externalSeedSkipReason,
+        external_seed_brand_rescue_upstream_status:
+          Number(upstreamMeta.upstream_status || upstreamStatus || 0) || null,
+        route_health: {
+          ...routeHealth,
+          external_seed_rescue_applied: true,
+          external_seed_rescue_reason: 'upstream_seed_loader_error_strict_empty',
+          external_seed_skip_reason: externalSeedSkipReason,
+        },
+        route_debug: {
+          ...existingRouteDebug,
+          external_seed_brand_rescue: {
+            applied: true,
+            reason: 'upstream_seed_loader_error_strict_empty',
+            upstream_query_source: String(upstreamMeta.query_source || '').trim() || null,
+            local_rescue_reason: String(rescueMeta.reason || '').trim() || null,
+            brand_entities: Array.isArray(brandDetection.brands) ? brandDetection.brands : [],
+          },
+        },
+      },
+    },
+    {
+      limit: queryParams?.limit,
+      offset: queryParams?.offset,
+    },
+  );
 }
 
 function buildAuroraPrimaryIrrelevantSemanticRetryQueries(baseQueryText) {
@@ -23746,6 +24093,21 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           },
         };
       }
+    }
+
+    if (
+      (operation === 'find_products' || operation === 'find_products_multi') &&
+      !strictCommerceFindProductsMulti
+    ) {
+      upstreamData = await maybeRescueBrandLikeSearchFromLocalExternalSeed({
+        operation,
+        upstreamData,
+        queryText: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim(),
+        queryParams,
+        source: metadata?.source,
+        checkoutToken,
+        upstreamStatus: response?.status || null,
+      });
     }
 
     let maybePolicy = upstreamData;

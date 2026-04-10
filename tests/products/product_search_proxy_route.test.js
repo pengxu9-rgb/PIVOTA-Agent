@@ -5984,4 +5984,162 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
   });
 
+  test('invoke brand-like shopping queries rescue local external seeds after upstream seed loader strict-empty', async () => {
+    const queryText = 'Tom Ford Beauty fragrance';
+    process.env.DATABASE_URL = 'postgres://brand-rescue-live-query-test';
+
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) {
+          return { rows: [{ total: 0 }] };
+        }
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return { rows: [] };
+        }
+        if (text.includes('FROM external_product_seeds')) {
+          return {
+            rows: [
+              {
+                id: 'seed_tom_ford_1',
+                external_product_id: 'ext_tom_ford_noir',
+                destination_url: 'https://brand.example.com/products/noir-extreme',
+                canonical_url: 'https://brand.example.com/products/noir-extreme',
+                domain: 'brand.example.com',
+                title: 'Tom Ford Noir Extreme Parfum',
+                image_url: 'https://cdn.example.com/tom-ford-noir.jpg',
+                price_amount: '240',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_brand: 'Tom Ford Beauty',
+                seed_category: 'Fragrance',
+                seed_data: {
+                  brand: 'Tom Ford Beauty',
+                  category: 'Fragrance',
+                  merchant_display_name: 'Tom Ford Beauty',
+                  snapshot: {
+                    title: 'Tom Ford Noir Extreme Parfum',
+                    brand: 'Tom Ford Beauty',
+                    category: 'Fragrance',
+                    canonical_url: 'https://brand.example.com/products/noir-extreme',
+                    destination_url: 'https://brand.example.com/products/noir-extreme',
+                  },
+                },
+                total_rows: 2,
+                updated_at: new Date().toISOString(),
+                created_at: new Date().toISOString(),
+              },
+              {
+                id: 'seed_tom_ford_2',
+                external_product_id: 'ext_tom_ford_cherry',
+                destination_url: 'https://brand.example.com/products/lost-cherry',
+                canonical_url: 'https://brand.example.com/products/lost-cherry',
+                domain: 'brand.example.com',
+                title: 'Tom Ford Lost Cherry Eau de Parfum',
+                image_url: 'https://cdn.example.com/tom-ford-cherry.jpg',
+                price_amount: '260',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_brand: 'Tom Ford Beauty',
+                seed_category: 'Fragrance',
+                seed_data: {
+                  brand: 'Tom Ford Beauty',
+                  category: 'Fragrance',
+                  merchant_display_name: 'Tom Ford Beauty',
+                  snapshot: {
+                    title: 'Tom Ford Lost Cherry Eau de Parfum',
+                    brand: 'Tom Ford Beauty',
+                    category: 'Fragrance',
+                    canonical_url: 'https://brand.example.com/products/lost-cherry',
+                    destination_url: 'https://brand.example.com/products/lost-cherry',
+                  },
+                },
+                total_rows: 2,
+                updated_at: new Date().toISOString(),
+                created_at: new Date().toISOString(),
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      }),
+    }));
+
+    const v2SearchScope = nock('http://pivota.test')
+      .post('/agent/v2/products/search')
+      .query((q) => String(q.query || '').includes(queryText))
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+        metadata: {
+          query_source: 'agent_products_search',
+          strict_empty: true,
+          strict_empty_reason: 'no_candidates',
+          route_health: {
+            external_seed_executed: false,
+            external_seed_skip_reason: 'seed_loader_error',
+            supplement_attempted: false,
+          },
+        },
+      });
+    const legacySearchScope = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: queryText,
+            limit: 12,
+            page: 1,
+            allow_external_seed: true,
+            allow_stale_cache: false,
+            external_seed_strategy: 'unified_relevance',
+            search_all_merchants: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      })
+      .expect(200);
+
+    expect(v2SearchScope.isDone()).toBe(true);
+    expect(legacySearchScope.isDone()).toBe(false);
+    expect(resp.body.metadata?.query_source).toBe('agent_products_external_seed_direct');
+    expect(resp.body.metadata?.external_seed_brand_rescue_applied).toBe(true);
+    expect(resp.body.metadata?.external_seed_brand_rescue_reason).toBe(
+      'upstream_seed_loader_error_strict_empty',
+    );
+    expect(resp.body.metadata?.external_seed_skip_reason).toBe('seed_loader_error');
+    expect(resp.body.metadata?.search_trace?.final_decision).toBe('products_returned');
+    expect(resp.body.metadata?.route_health?.external_seed_rescue_applied).toBe(true);
+    expect(resp.body.metadata?.route_debug?.external_seed_brand_rescue).toEqual(
+      expect.objectContaining({
+        applied: true,
+        reason: 'upstream_seed_loader_error_strict_empty',
+      }),
+    );
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products.map((row) => row.title)).toEqual(
+      expect.arrayContaining([
+        'Tom Ford Noir Extreme Parfum',
+        'Tom Ford Lost Cherry Eau de Parfum',
+      ]),
+    );
+    expect(resp.body.products.every((row) => String(row.merchant_id || '') === 'external_seed')).toBe(true);
+  });
+
 });
