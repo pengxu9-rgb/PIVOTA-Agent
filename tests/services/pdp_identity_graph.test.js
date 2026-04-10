@@ -1,0 +1,158 @@
+describe('pdpIdentityGraph', () => {
+  const ORIGINAL_ENV = process.env;
+
+  beforeEach(() => {
+    jest.resetModules();
+    process.env = {
+      ...ORIGINAL_ENV,
+      NODE_ENV: 'test',
+    };
+  });
+
+  afterAll(() => {
+    process.env = ORIGINAL_ENV;
+  });
+
+  test('buildIdentityListingFromProduct groups exact items by strong evidence and separates sibling sizes into product lines', () => {
+    const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
+
+    const baseProduct = {
+      title: 'KraveBeauty Great Barrier Relief 45 mL',
+      brand: 'KraveBeauty',
+      source_url: 'https://kravebeauty.com/products/great-barrier-relief',
+      gtin: '850000111222',
+      price: { amount: 28, currency: 'EUR' },
+      variants: [
+        {
+          variant_id: 'v_45',
+          title: 'Standard - 45 mL',
+          option1: '45 mL',
+          price: { amount: 28, currency: 'EUR' },
+        },
+      ],
+    };
+
+    const externalListing = buildIdentityListingFromProduct({
+      merchantId: 'external_seed',
+      productId: 'ext_krave_gbr_45',
+      product: baseProduct,
+      sourceKind: 'external_seed',
+    });
+    const internalListing = buildIdentityListingFromProduct({
+      merchantId: 'merch_krave',
+      productId: '10008793153864',
+      product: {
+        ...baseProduct,
+        vendor: 'KraveBeauty',
+      },
+      sourceKind: 'internal',
+    });
+    const jumboListing = buildIdentityListingFromProduct({
+      merchantId: 'external_seed',
+      productId: 'ext_krave_gbr_100',
+      product: {
+        ...baseProduct,
+        title: 'KraveBeauty Great Barrier Relief 100 mL',
+        gtin: '850000111333',
+        variants: [
+          {
+            variant_id: 'v_100',
+            title: 'Jumbo - 100 mL',
+            option1: '100 mL',
+            price: { amount: 50, currency: 'EUR' },
+          },
+        ],
+      },
+      sourceKind: 'external_seed',
+    });
+
+    expect(externalListing.identity_status).toBe('approved');
+    expect(externalListing.matched_by_rule).toBe('strong_gtin');
+    expect(externalListing.sellable_item_group_id).toBe(internalListing.sellable_item_group_id);
+    expect(externalListing.product_line_id).toBe(internalListing.product_line_id);
+    expect(jumboListing.sellable_item_group_id).not.toBe(externalListing.sellable_item_group_id);
+    expect(jumboListing.product_line_id).toBe(externalListing.product_line_id);
+  });
+
+  test('composeSyntheticCanonicalProduct keeps exact-item gallery separate from product-line preview and aggregates review scope', () => {
+    const { composeSyntheticCanonicalProduct } = require('../../src/services/pdpIdentityGraph');
+
+    const requestedListing = {
+      merchant_id: 'external_seed',
+      product_id: 'ext_krave_gbr_45',
+      source_kind: 'external_seed',
+      source_tier: 'brand',
+      sellable_item_group_id: 'sig_exact_45',
+      product_line_id: 'pl_krave_gbr',
+      review_family_id: 'rf_krave_gbr',
+      identity_confidence: 0.93,
+      source_payload: {
+        title: 'Great Barrier Relief',
+        brand: 'KraveBeauty',
+        description: 'Barrier support serum.',
+        images: [{ url: 'https://cdn.example.com/gbr-45-main.jpg' }],
+      },
+      review_summary: {
+        rating: 4.5,
+        review_count: 12,
+      },
+    };
+    const siblingListing = {
+      merchant_id: 'external_seed',
+      product_id: 'ext_krave_gbr_100',
+      source_kind: 'external_seed',
+      source_tier: 'brand',
+      sellable_item_group_id: 'sig_exact_100',
+      product_line_id: 'pl_krave_gbr',
+      review_family_id: 'rf_krave_gbr',
+      identity_confidence: 0.91,
+      source_payload: {
+        title: 'Great Barrier Relief Jumbo',
+        brand: 'KraveBeauty',
+        images: [{ url: 'https://cdn.example.com/gbr-100-main.jpg' }],
+      },
+      review_summary: {
+        rating: 4.8,
+        review_count: 30,
+      },
+    };
+
+    const composed = composeSyntheticCanonicalProduct({
+      requestedListing,
+      exactListings: [requestedListing],
+      lineListings: [requestedListing, siblingListing],
+    });
+
+    expect(composed.product.canonical_scope).toBe('synthetic');
+    expect(composed.product.gallery_scope).toBe('exact_item');
+    expect(composed.product.preview_scope).toBe('product_line');
+    expect(composed.product.images).toEqual([
+      expect.objectContaining({
+        url: 'https://cdn.example.com/gbr-45-main.jpg',
+        source_kind: 'external_seed',
+        source_scope: 'exact_item',
+      }),
+    ]);
+    expect(composed.product.line_preview_images).toEqual([
+      expect.objectContaining({
+        url: 'https://cdn.example.com/gbr-100-main.jpg',
+        source_scope: 'product_line_preview',
+      }),
+    ]);
+    expect(composed.product.review_summary).toEqual(
+      expect.objectContaining({
+        aggregation_scope: 'product_line',
+        exact_item_review_count: 12,
+        product_line_review_count: 42,
+        scoped_summaries: expect.objectContaining({
+          product_line: expect.objectContaining({
+            review_count: 42,
+          }),
+          exact_item: expect.objectContaining({
+            review_count: 12,
+          }),
+        }),
+      }),
+    );
+  });
+});

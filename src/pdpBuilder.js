@@ -797,6 +797,9 @@ function buildMediaItems(product, variants) {
       thumbnail_url: m.thumbnail_url || m.thumbnail,
       alt_text: m.alt_text || product.title,
       source: m.source,
+      source_scope: m.source_scope,
+      source_tier: m.source_tier,
+      source_kind: m.source_kind,
       duration_ms: m.duration_ms,
     });
   });
@@ -809,6 +812,9 @@ function buildMediaItems(product, variants) {
       url,
       alt_text: typeof img === 'object' ? img.alt_text : product.title,
       source: typeof img === 'object' ? img.source : undefined,
+      source_scope: typeof img === 'object' ? img.source_scope : undefined,
+      source_tier: typeof img === 'object' ? img.source_tier : undefined,
+      source_kind: typeof img === 'object' ? img.source_kind : undefined,
       thumbnail_url: typeof img === 'object' ? img.thumbnail_url : undefined,
     });
   });
@@ -1071,10 +1077,142 @@ function buildReviewsPreview(product, options = {}) {
     return hasAny ? rows : undefined;
   })();
 
+  const normalizeScopedSummary = (rawSummary) => {
+    if (!rawSummary || typeof rawSummary !== 'object') return null;
+    const nestedScale = Number(rawSummary.scale || rawSummary.rating_scale || scale) || scale;
+    const nestedRating =
+      Number(rawSummary.rating || rawSummary.average_rating || rawSummary.avg_rating || 0) || 0;
+    const nestedReviewCount =
+      Number(rawSummary.review_count || rawSummary.count || rawSummary.total || 0) || 0;
+    const nestedPreviewItems = Array.isArray(rawSummary.preview_items)
+      ? rawSummary.preview_items
+      : Array.isArray(rawSummary.snippets)
+        ? rawSummary.snippets
+        : [];
+    const nestedDistributionRaw =
+      rawSummary.rating_distribution ||
+      rawSummary.star_distribution ||
+      rawSummary.ratingDistribution ||
+      rawSummary.starDistribution ||
+      rawSummary.distribution ||
+      null;
+    const nestedRatingDistribution = (() => {
+      if (!nestedDistributionRaw) return undefined;
+      const map = new Map();
+      if (Array.isArray(nestedDistributionRaw)) {
+        nestedDistributionRaw.forEach((item) => {
+          const stars = Number(item?.stars ?? item?.star ?? item?.rating ?? item?.score);
+          if (!Number.isFinite(stars) || stars < 1 || stars > 5) return;
+          const count = Number(item?.count ?? item?.n ?? item?.value);
+          const percent = Number(
+            item?.percent ?? item?.ratio ?? item?.pct ?? item?.percentage ?? item?.share,
+          );
+          map.set(stars, {
+            stars,
+            ...(Number.isFinite(count) ? { count } : {}),
+            ...(Number.isFinite(percent) ? { percent } : {}),
+          });
+        });
+      } else if (typeof nestedDistributionRaw === 'object') {
+        Object.entries(nestedDistributionRaw).forEach(([k, v]) => {
+          const stars = Number(k);
+          if (!Number.isFinite(stars) || stars < 1 || stars > 5) return;
+          const value = Number(v);
+          if (!Number.isFinite(value)) return;
+          map.set(stars, { stars, value });
+        });
+      }
+      const rows = [];
+      for (let stars = 5; stars >= 1; stars -= 1) {
+        const item = map.get(stars) || {};
+        let count = Number.isFinite(item.count) ? item.count : undefined;
+        let percent = Number.isFinite(item.percent) ? item.percent : undefined;
+        if (count == null && Number.isFinite(item.value)) {
+          const v = item.value;
+          if (nestedReviewCount && v > 1 && v <= nestedReviewCount) {
+            count = v;
+          } else if (v > 1) {
+            percent = v / 100;
+          } else {
+            percent = v;
+          }
+        }
+        if (count != null && nestedReviewCount > 0) {
+          percent = count / nestedReviewCount;
+        }
+        if (percent != null && Number.isFinite(percent)) {
+          percent = Math.max(0, Math.min(1, percent));
+        } else {
+          percent = undefined;
+        }
+        rows.push({
+          stars,
+          ...(count != null ? { count } : {}),
+          ...(percent != null ? { percent } : {}),
+        });
+      }
+      const hasAny = rows.some(
+        (row) => (row.count != null && row.count > 0) || (row.percent != null && row.percent > 0),
+      );
+      return hasAny ? rows : undefined;
+    })();
+
+    return {
+      scale: nestedScale,
+      rating: nestedRating,
+      review_count: nestedReviewCount,
+      ...(typeof rawSummary.scope_label === 'string' && rawSummary.scope_label.trim()
+        ? { scope_label: rawSummary.scope_label.trim() }
+        : {}),
+      ...(nestedRatingDistribution
+        ? {
+            star_distribution: nestedRatingDistribution,
+            rating_distribution: nestedRatingDistribution,
+          }
+        : {}),
+      preview_items: nestedPreviewItems.slice(0, 6).map((item, idx) => ({
+        review_id: String(item.review_id || item.id || idx),
+        rating: Number(item.rating || item.score || nestedScale) || nestedScale,
+        author_label: item.author_label || item.author || item.user,
+        title: item.title ? String(item.title) : undefined,
+        text_snippet: String(item.text_snippet || item.text || item.body || item.title || ''),
+        media: Array.isArray(item.media)
+          ? item.media.map((m) => ({
+              type: m.type || 'image',
+              url: m.url || m.image_url,
+              thumbnail_url: m.thumbnail_url,
+            }))
+          : undefined,
+      })),
+      ...(rawSummary?.brand_card && typeof rawSummary.brand_card === 'object'
+        ? { brand_card: rawSummary.brand_card }
+        : {}),
+    };
+  };
+  const scopedSummaries =
+    summary?.scoped_summaries && typeof summary.scoped_summaries === 'object'
+      ? Object.entries(summary.scoped_summaries).reduce((acc, [key, value]) => {
+          const normalized = normalizeScopedSummary(value);
+          if (normalized) acc[key] = normalized;
+          return acc;
+        }, {})
+      : undefined;
+
   return {
     scale,
     rating,
     review_count: reviewCount,
+    aggregation_scope:
+      typeof summary?.aggregation_scope === 'string' ? summary.aggregation_scope : undefined,
+    exact_item_review_count:
+      Number.isFinite(Number(summary?.exact_item_review_count))
+        ? Number(summary.exact_item_review_count)
+        : undefined,
+    product_line_review_count:
+      Number.isFinite(Number(summary?.product_line_review_count))
+        ? Number(summary.product_line_review_count)
+        : undefined,
+    scope_label: summary?.scope_label ? String(summary.scope_label) : undefined,
     ...(brandCardName
       ? {
           brand_card: {
@@ -1100,6 +1238,35 @@ function buildReviewsPreview(product, options = {}) {
           }))
         : undefined,
     })),
+    filters: Array.isArray(summary?.filters)
+      ? summary.filters
+          .map((item) =>
+            item && typeof item === 'object'
+              ? {
+                  id: String(item.id || '').trim(),
+                  label: String(item.label || item.name || '').trim(),
+                  count: Number(item.count || 0) || 0,
+                }
+              : null,
+          )
+          .filter((item) => item && item.id && item.label)
+      : undefined,
+    tabs: Array.isArray(summary?.tabs)
+      ? summary.tabs
+          .map((item) =>
+            item && typeof item === 'object'
+              ? {
+                  id: String(item.id || '').trim(),
+                  label: String(item.label || item.name || '').trim(),
+                  count: Number(item.count || 0) || 0,
+                  default: item.default === true,
+                }
+              : null,
+          )
+          .filter((item) => item && item.id && item.label)
+      : undefined,
+    scoped_summaries:
+      scopedSummaries && Object.keys(scopedSummaries).length > 0 ? scopedSummaries : undefined,
     entry_points: {
       open_reviews: {
         action_type: 'open_embed',
@@ -1158,6 +1325,31 @@ function buildPdpPayload(args) {
   const variants = buildVariants(product);
   const defaultVariant = variants[0];
   const mediaItems = buildMediaItems(product, variants);
+  const previewItems = Array.isArray(product.line_preview_images)
+    ? product.line_preview_images
+        .map((item) => {
+          const url = normalizePdpImageUrl(
+            typeof item === 'string' ? item : item?.url || item?.image_url || item?.src,
+          );
+          if (!url) return null;
+          return {
+            type: 'image',
+            url,
+            alt_text: typeof item === 'object' ? item.alt_text || product.title : product.title,
+            source: typeof item === 'object' ? item.source : undefined,
+            source_scope: typeof item === 'object' ? item.source_scope : undefined,
+            source_tier: typeof item === 'object' ? item.source_tier : undefined,
+            source_kind:
+              typeof item === 'object'
+                ? item.source_kind || 'product_line_preview'
+                : 'product_line_preview',
+            thumbnail_url: typeof item === 'object' ? item.thumbnail_url : undefined,
+            merchant_id: typeof item === 'object' ? item.merchant_id : undefined,
+            product_id: typeof item === 'object' ? item.product_id : undefined,
+          };
+        })
+        .filter(Boolean)
+    : [];
   const details = buildDetailSections(product);
   const productFacts = buildProductFactsSections(product);
   const ingredientsInci = buildIngredientsInci(product);
@@ -1183,7 +1375,12 @@ function buildPdpPayload(args) {
       module_id: 'm_media',
       type: 'media_gallery',
       priority: 100,
-      data: { items: mediaItems },
+      data: {
+        items: mediaItems,
+        gallery_scope: typeof product.gallery_scope === 'string' ? product.gallery_scope : undefined,
+        preview_scope: typeof product.preview_scope === 'string' ? product.preview_scope : undefined,
+        preview_items: previewItems.length ? previewItems : undefined,
+      },
     });
   }
   if (variants.length > 1) {
