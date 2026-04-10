@@ -12,6 +12,8 @@ describe('get_pdp_v2 stability semantics', () => {
   });
 
   it('auto-corrects ext_* merchant mismatches to the external_seed canonical product', async () => {
+    const merchantUrl = 'https://merchant.example/products/ext-seed-1';
+
     nock(process.env.PIVOTA_API_BASE)
       .get('/agent/v1/products/merch_wrong/ext_seed_1')
       .reply(404, { error: 'PRODUCT_NOT_FOUND', message: 'Product not found' });
@@ -34,6 +36,7 @@ describe('get_pdp_v2 stability semantics', () => {
 
     nock(process.env.PIVOTA_API_BASE)
       .get('/agent/v1/products/external_seed/ext_seed_1')
+      .twice()
       .reply(200, {
         product: {
           merchant_id: 'external_seed',
@@ -49,6 +52,8 @@ describe('get_pdp_v2 stability semantics', () => {
             currency: 'USD',
           },
           image_url: 'https://example.com/ext_seed_1.jpg',
+          destination_url: merchantUrl,
+          canonical_url: merchantUrl,
           platform: 'external',
           platform_product_id: 'ext_seed_1',
         },
@@ -59,6 +64,7 @@ describe('get_pdp_v2 stability semantics', () => {
       .send({
         operation: 'get_pdp_v2',
         payload: {
+          include: ['offers'],
           product_ref: {
             merchant_id: 'merch_wrong',
             product_id: 'ext_seed_1',
@@ -85,6 +91,33 @@ describe('get_pdp_v2 stability semantics', () => {
         resolved_product_id: 'ext_seed_1',
         resolved_merchant_id: 'external_seed',
         canonicalization_applied: true,
+      }),
+    );
+
+    const canonicalModule = res.body.modules.find((module) => module.type === 'canonical');
+    const offersModule = res.body.modules.find((module) => module.type === 'offers');
+    expect(canonicalModule?.data?.pdp_payload?.product).toEqual(
+      expect.objectContaining({
+        source: 'external_seed',
+        external_redirect_url: merchantUrl,
+        destination_url: merchantUrl,
+        canonical_url: merchantUrl,
+      }),
+    );
+    expect(offersModule?.data?.offers?.[0]).toEqual(
+      expect.objectContaining({
+        merchant_id: 'external_seed',
+        product_id: 'ext_seed_1',
+        purchase_route: 'affiliate_outbound',
+        commerce_mode: 'links_out',
+        checkout_handoff: 'redirect',
+        external_redirect_url: merchantUrl,
+        merchant_checkout_url: merchantUrl,
+        url: merchantUrl,
+        action: {
+          type: 'redirect_url',
+          url: merchantUrl,
+        },
       }),
     );
   });

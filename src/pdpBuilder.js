@@ -76,6 +76,80 @@ function resolveProductBrandLabel(product) {
   return null;
 }
 
+function normalizePdpHttpUrl(value) {
+  const str = stripHtml(value);
+  if (!str) return '';
+  if (!/^https?:\/\//i.test(str)) return '';
+  return str;
+}
+
+function isExternalSeedLikeProduct(product) {
+  if (!product || typeof product !== 'object') return false;
+  const merchantId = stripHtml(product.merchant_id || product.merchantId || product.merchant?.id)
+    .toLowerCase();
+  const source = stripHtml(
+    product.source ||
+      product.product_source ||
+      product.productSource ||
+      product.detail_source ||
+      product.query_source,
+  ).toLowerCase();
+  const platform = stripHtml(product.platform || product.source_platform).toLowerCase();
+  const purchaseRoute = stripHtml(product.purchase_route || product.purchaseRoute).toLowerCase();
+  const commerceMode = stripHtml(product.commerce_mode || product.commerceMode).toLowerCase();
+  return (
+    merchantId === 'external_seed' ||
+    source === 'external_seed' ||
+    source === 'external_product_seeds' ||
+    source === 'external_seed_db' ||
+    platform === 'external' ||
+    ['affiliate_outbound', 'merchant_site', 'external_redirect', 'links_out'].includes(purchaseRoute) ||
+    ['links_out', 'affiliate_outbound', 'merchant_site'].includes(commerceMode)
+  );
+}
+
+function resolveProductExternalRedirectUrl(product) {
+  if (!product || typeof product !== 'object') return '';
+
+  const explicit = [
+    product.external_redirect_url,
+    product.externalRedirectUrl,
+    product.affiliate_url,
+    product.affiliateUrl,
+    product.external_url,
+    product.externalUrl,
+    product.redirect_url,
+    product.redirectUrl,
+  ]
+    .map(normalizePdpHttpUrl)
+    .find(Boolean);
+  if (explicit) return explicit;
+
+  if (!isExternalSeedLikeProduct(product)) return '';
+
+  return (
+    [
+      product.destination_url,
+      product.destinationUrl,
+      product.canonical_url,
+      product.canonicalUrl,
+      product.source_url,
+      product.sourceUrl,
+      product.url,
+      product.product_url,
+      product.productUrl,
+      product.raw?.destination_url,
+      product.raw?.canonical_url,
+      product.raw_detail?.destination_url,
+      product.raw_detail?.canonical_url,
+      product.seed_data?.destination_url,
+      product.seed_data?.canonical_url,
+    ]
+      .map(normalizePdpHttpUrl)
+      .find(Boolean) || ''
+  );
+}
+
 function detectTemplateHint(product) {
   const category = String(product.category || product.product_type || '').toLowerCase();
   const title = String(product.title || product.name || '').toLowerCase();
@@ -1093,6 +1167,15 @@ function buildPdpPayload(args) {
   const recommendations = args.relatedProducts?.length
     ? buildRecommendations(args.relatedProducts, currency)
     : null;
+  const productSource = stripHtml(product.source || product.product_source || product.productSource);
+  const productPurchaseRoute = stripHtml(product.purchase_route || product.purchaseRoute);
+  const productCommerceMode = stripHtml(product.commerce_mode || product.commerceMode);
+  const productCheckoutHandoff = stripHtml(product.checkout_handoff || product.checkoutHandoff);
+  const externalRedirectUrl = resolveProductExternalRedirectUrl(product);
+  const productUrl = normalizePdpHttpUrl(product.url || product.product_url || product.productUrl);
+  const canonicalUrl = normalizePdpHttpUrl(product.canonical_url || product.canonicalUrl);
+  const destinationUrl = normalizePdpHttpUrl(product.destination_url || product.destinationUrl);
+  const sourceUrl = normalizePdpHttpUrl(product.source_url || product.sourceUrl);
 
   const modules = [];
   if (mediaItems.length) {
@@ -1212,6 +1295,15 @@ function buildPdpPayload(args) {
       image_url: normalizePdpImageUrl(product.image_url || product.image) || undefined,
       tags: Array.isArray(product.tags) ? product.tags : undefined,
       department: product.department || undefined,
+      source: productSource || undefined,
+      purchase_route: productPurchaseRoute || undefined,
+      commerce_mode: productCommerceMode || undefined,
+      checkout_handoff: productCheckoutHandoff || undefined,
+      external_redirect_url: externalRedirectUrl || undefined,
+      url: productUrl || undefined,
+      canonical_url: canonicalUrl || undefined,
+      destination_url: destinationUrl || undefined,
+      source_url: sourceUrl || undefined,
       default_variant_id: defaultVariant.variant_id,
       variants,
       price: defaultVariant.price,
@@ -1239,4 +1331,7 @@ function buildPdpPayload(args) {
 module.exports = {
   buildPdpPayload,
   detectTemplateHint,
+  isExternalSeedLikeProduct,
+  normalizePdpHttpUrl,
+  resolveProductExternalRedirectUrl,
 };

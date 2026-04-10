@@ -33,7 +33,11 @@ const {
   prioritizeOffersResolveResponse,
   annotateOffersWithCommerceMetadata,
 } = require('./offers/offersPriority');
-const { buildPdpPayload } = require('./pdpBuilder');
+const {
+  buildPdpPayload,
+  isExternalSeedLikeProduct,
+  resolveProductExternalRedirectUrl,
+} = require('./pdpBuilder');
 const { buildPdpCorePrewarmRequestBody } = require('./pdpConfig');
 const {
   PRODUCT_INTEL_CONTRACT_VERSION,
@@ -3032,6 +3036,25 @@ function computeOfferTotal(offer) {
   return Number(offer?.price?.amount || 0) + Number(offer?.shipping?.cost?.amount || 0);
 }
 
+function buildOfferPurchaseMetadataFromProduct(product) {
+  const redirectUrl = resolveProductExternalRedirectUrl(product);
+  const externalLike = isExternalSeedLikeProduct(product);
+  if (redirectUrl) {
+    return {
+      purchase_route: 'affiliate_outbound',
+      external_redirect_url: redirectUrl,
+      url: redirectUrl,
+      action: {
+        type: 'redirect_url',
+        url: redirectUrl,
+      },
+    };
+  }
+  return {
+    purchase_route: externalLike ? 'affiliate_outbound' : 'internal_checkout',
+  };
+}
+
 async function buildOffersFromGroupMembers(args) {
   const productGroupId = args?.productGroupId ? String(args.productGroupId).trim() : null;
   const groupMembers = Array.isArray(args?.members) ? args.members : [];
@@ -3157,6 +3180,7 @@ async function buildOffersFromGroupMembers(args) {
         in_stock: typeof p.in_stock === 'boolean' ? p.in_stock : undefined,
       },
       fulfillment_type: p.fulfillment_type || undefined,
+      ...buildOfferPurchaseMetadataFromProduct(p),
       risk_tier: 'standard',
     };
   });
@@ -15359,7 +15383,7 @@ async function buildProductIntelOffersDataForContext({
                 : undefined,
           },
           fulfillment_type: context.product.fulfillment_type || undefined,
-          purchase_route: 'internal_checkout',
+          ...buildOfferPurchaseMetadataFromProduct(context.product),
           risk_tier: 'standard',
         },
       ],
@@ -17898,7 +17922,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	                merchant_id: product.merchant_id || DEFAULT_MERCHANT_ID,
 	                merchant_name: product.merchant_name || product.store_name || undefined,
 	                price: normalizeOfferMoney(product.price, product.currency || 'USD'),
-	                purchase_route: 'internal_checkout',
+	                ...buildOfferPurchaseMetadataFromProduct(product),
 	              },
 	            ]),
 	            default_offer_id: fallbackOfferId,
@@ -18046,7 +18070,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   merchant_id: merchantId,
                   merchant_name: product.merchant_name || product.store_name || undefined,
                   price: normalizeOfferMoney(product.price, product.currency || 'USD'),
-                  purchase_route: 'internal_checkout',
+                  ...buildOfferPurchaseMetadataFromProduct(product),
                 },
               ]),
               default_offer_id: `of:mock:${merchantId}:${product.product_id}`,
@@ -18130,7 +18154,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     merchant_id: merchantId,
                     merchant_name: product.merchant_name || product.store_name || undefined,
                     price: normalizeOfferMoney(product.price, product.currency || 'USD'),
-                    purchase_route: 'internal_checkout',
+                    ...buildOfferPurchaseMetadataFromProduct(product),
                   },
                 ]),
                 default_offer_id: `of:mock:${merchantId}:${product.product_id}`,
@@ -19011,6 +19035,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                         in_stock: typeof canonicalProduct.in_stock === 'boolean' ? canonicalProduct.in_stock : undefined,
                       },
 	                      fulfillment_type: canonicalProduct.fulfillment_type || undefined,
+                      ...buildOfferPurchaseMetadataFromProduct(canonicalProduct),
 	                      risk_tier: 'standard',
 	                    },
 	                  ],
@@ -19022,6 +19047,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         }
 
         if (offersData) {
+          offersData = {
+            ...offersData,
+            offers: annotateOffersWithCommerceMetadata(
+              Array.isArray(offersData.offers) ? offersData.offers : [],
+            ),
+          };
           const offers = Array.isArray(offersData.offers) ? offersData.offers : [];
           const fallbackOfferId = offers[0]?.offer_id || null;
           if (fallbackOfferId) {

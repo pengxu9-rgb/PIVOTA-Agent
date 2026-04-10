@@ -6,8 +6,10 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
       product: {
         product_id: 'ext_123',
         merchant_id: 'external_seed',
+        source: 'external_seed',
         title: 'Barrier Cream',
         description: 'A restorative cream for dry skin.',
+        canonical_url: 'https://merchant.example/products/barrier-cream',
         image_url: 'https://example.com/hero.png',
         product_options: [
           { name: 'Color' },
@@ -110,5 +112,8 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     );
     expect(ingredientsInci?.data?.items).toEqual(['Water', 'Glycerin', 'Ceramide NP']);
     expect(howToUse?.data?.steps).toEqual(['Apply after cleansing.', 'Use SPF in the morning.']);
+    expect(payload.product.source).toBe('external_seed');
+    expect(payload.product.external_redirect_url).toBe('https://merchant.example/products/barrier-cream');
+    expect(payload.product.canonical_url).toBe('https://merchant.example/products/barrier-cream');
   });
 });
