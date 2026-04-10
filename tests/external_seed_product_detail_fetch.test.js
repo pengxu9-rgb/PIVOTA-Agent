@@ -250,6 +250,80 @@ describe('external seed product detail hydration', () => {
     expect(refreshedProduct.image_url).toContain('1583bea5');
   });
 
+  test('fetchProductDetailForOffers does not reuse in-memory cache for external_seed detail reads', async () => {
+    const { db, debug } = loadServerWithDb();
+
+    db.query.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 'eps_tf_live_1',
+          external_product_id: 'ext_tf_live_1',
+          canonical_url: 'https://www.tomfordbeauty.com/products/traceless-soft-matte-concealer',
+          destination_url: 'https://www.tomfordbeauty.com/products/traceless-soft-matte-concealer',
+          title: 'Traceless Soft Matte Concealer',
+          image_url:
+            'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tfb_sku_TC7Y09_2000x2000_0_74c2dfd9-3f5f-4832-af13-85e0ec7891c9.png?v=1774387551',
+          price_amount: '60.00',
+          price_currency: 'USD',
+          availability: 'In Stock',
+          seed_data: {
+            brand: 'Tom Ford Beauty',
+            snapshot: {
+              canonical_url: 'https://www.tomfordbeauty.com/products/traceless-soft-matte-concealer',
+              image_url:
+                'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tfb_sku_TC7Y09_2000x2000_0_74c2dfd9-3f5f-4832-af13-85e0ec7891c9.png?v=1774387551',
+              image_urls: [
+                'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tfb_sku_TC7Y09_2000x2000_0_74c2dfd9-3f5f-4832-af13-85e0ec7891c9.png?v=1774387551',
+              ],
+            },
+          },
+        },
+      ],
+    });
+
+    const firstProduct = await debug.fetchProductDetailForOffers({
+      merchantId: 'external_seed',
+      productId: 'ext_tf_live_1',
+    });
+
+    db.query.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 'eps_tf_live_1',
+          external_product_id: 'ext_tf_live_1',
+          canonical_url: 'https://www.tomfordbeauty.com/products/traceless-soft-matte-concealer',
+          destination_url: 'https://www.tomfordbeauty.com/products/traceless-soft-matte-concealer',
+          title: 'Traceless Soft Matte Concealer',
+          image_url:
+            'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tfb_sku_TC7Y09_2000x2000_0_ca69ecf4-7cbf-47cc-b6ce-1662f55ad6ec.png?v=1775807537',
+          price_amount: '60.00',
+          price_currency: 'USD',
+          availability: 'In Stock',
+          seed_data: {
+            brand: 'Tom Ford Beauty',
+            snapshot: {
+              canonical_url: 'https://www.tomfordbeauty.com/products/traceless-soft-matte-concealer',
+              image_url:
+                'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tfb_sku_TC7Y09_2000x2000_0_ca69ecf4-7cbf-47cc-b6ce-1662f55ad6ec.png?v=1775807537',
+              image_urls: [
+                'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tfb_sku_TC7Y09_2000x2000_0_ca69ecf4-7cbf-47cc-b6ce-1662f55ad6ec.png?v=1775807537',
+              ],
+            },
+          },
+        },
+      ],
+    });
+
+    const secondProduct = await debug.fetchProductDetailForOffers({
+      merchantId: 'external_seed',
+      productId: 'ext_tf_live_1',
+    });
+
+    expect(db.query).toHaveBeenCalledTimes(2);
+    expect(firstProduct.image_url).toContain('74c2dfd9');
+    expect(secondProduct.image_url).toContain('ca69ecf4');
+  });
+
   test('get_pdp_v2 rescues unscoped ext_* routes from external seed DB instead of defaulting to the legacy merchant', async () => {
     const { app, db } = loadServerWithDb({
       PIVOTA_API_BASE: 'https://backend.test',

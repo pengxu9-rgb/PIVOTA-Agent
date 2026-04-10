@@ -2845,6 +2845,10 @@ async function fetchProductDetailForOffers(args) {
   const checkoutToken = args?.checkoutToken;
   const surfaceUpstreamErrors = args?.surfaceUpstreamErrors === true;
   const bypassCache = args?.bypassCache === true;
+  const useMemoryCache =
+    PRODUCT_DETAIL_CACHE_ENABLED &&
+    !bypassCache &&
+    merchantId !== EXTERNAL_SEED_MERCHANT_ID;
   if (!merchantId || !productId) return null;
 
   const cacheKey = JSON.stringify({
@@ -2853,7 +2857,11 @@ async function fetchProductDetailForOffers(args) {
     hasCheckoutToken: Boolean(checkoutToken),
   });
 
-  if (PRODUCT_DETAIL_CACHE_ENABLED && !bypassCache) {
+  if (PRODUCT_DETAIL_CACHE_ENABLED && !bypassCache && !useMemoryCache) {
+    PRODUCT_DETAIL_CACHE_METRICS.bypasses += 1;
+  }
+
+  if (useMemoryCache) {
     const cachedEntry = getProductDetailCacheEntry(cacheKey);
     const cachedValue = cachedEntry?.value;
     const cachedProduct =
@@ -2875,7 +2883,7 @@ async function fetchProductDetailForOffers(args) {
     }
   }
 
-  const inflight = bypassCache ? null : PRODUCT_DETAIL_INFLIGHT.get(cacheKey);
+  const inflight = useMemoryCache ? PRODUCT_DETAIL_INFLIGHT.get(cacheKey) : null;
   if (inflight) {
     return inflight;
   }
@@ -2884,7 +2892,7 @@ async function fetchProductDetailForOffers(args) {
     if (process.env.DATABASE_URL && merchantId === EXTERNAL_SEED_MERCHANT_ID) {
       const seedDetail = await fetchExternalSeedProductDetailFromDb({ productId });
       if (seedDetail?.product) {
-        if (PRODUCT_DETAIL_CACHE_ENABLED) {
+        if (useMemoryCache) {
           setProductDetailCache(cacheKey, {
             status: 'success',
             success: true,
@@ -2912,7 +2920,7 @@ async function fetchProductDetailForOffers(args) {
           normalizeProductDetailPrice(fromDb.product),
           'fresh_cache',
         );
-        if (PRODUCT_DETAIL_CACHE_ENABLED) {
+        if (useMemoryCache) {
           setProductDetailCache(cacheKey, {
             status: 'success',
             success: true,
@@ -2927,14 +2935,14 @@ async function fetchProductDetailForOffers(args) {
       }
     }
 
-    if (process.env.DATABASE_URL && merchantId === 'external_seed') {
+    if (process.env.DATABASE_URL && merchantId === EXTERNAL_SEED_MERCHANT_ID) {
       const fromExternalSeeds = await findExternalSeedProductById({ productId }).catch(() => null);
       if (fromExternalSeeds) {
         const normalizedExternalSeed = attachProductDetailSource(
           normalizeProductDetailPrice(fromExternalSeeds),
           'external_seed_db',
         );
-        if (PRODUCT_DETAIL_CACHE_ENABLED) {
+        if (useMemoryCache) {
           setProductDetailCache(cacheKey, {
             status: 'success',
             success: true,
@@ -2973,7 +2981,7 @@ async function fetchProductDetailForOffers(args) {
         'upstream',
       );
 
-      if (PRODUCT_DETAIL_CACHE_ENABLED) {
+      if (useMemoryCache) {
         setProductDetailCache(cacheKey, {
           status: 'success',
           success: true,
@@ -2996,7 +3004,7 @@ async function fetchProductDetailForOffers(args) {
           normalizeProductDetailPrice(staleFromDb.product),
           'stale_cache',
         );
-        if (PRODUCT_DETAIL_CACHE_ENABLED) {
+        if (useMemoryCache) {
           setProductDetailCache(cacheKey, {
             status: 'success',
             success: true,
@@ -3031,7 +3039,7 @@ async function fetchProductDetailForOffers(args) {
     return null;
   })();
 
-  if (bypassCache) {
+  if (!useMemoryCache) {
     return loadPromise;
   }
 
