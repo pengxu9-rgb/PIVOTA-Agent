@@ -1012,6 +1012,41 @@ async function maybeBuildLiveSyntheticPdp({
   }
 }
 
+async function listLivePdpIdentityRowsForRefs({
+  sourceListingRefs = [],
+  queryFn = query,
+} = {}) {
+  if (!PDP_IDENTITY_GRAPH_ENABLED || !process.env.DATABASE_URL || typeof queryFn !== 'function') {
+    return [];
+  }
+  const refs = uniqueStrings(sourceListingRefs, 500);
+  if (!refs.length) return [];
+
+  try {
+    const result = await queryFn(
+      `
+        SELECT *
+        FROM pdp_identity_listing
+        WHERE source_listing_ref = ANY($1::text[])
+          AND identity_status = 'approved'
+          AND live_read_enabled = true
+      `,
+      [refs],
+    );
+    return normalizeIdentityRows(result?.rows);
+  } catch (err) {
+    if (looksLikeRelationMissing(err)) return [];
+    logger.warn(
+      {
+        err: err?.message || String(err),
+        refs_count: refs.length,
+      },
+      'PDP identity graph discovery listing read failed',
+    );
+    return [];
+  }
+}
+
 async function fetchBackfillProducts({ limit = 500, brandFilter = null, queryFn = query } = {}) {
   const normalizedLimit = Math.max(1, Math.min(5000, Number(limit) || 500));
   const normalizedBrandFilter = normalizeBrandToken(brandFilter);
@@ -1559,6 +1594,7 @@ module.exports = {
   buildIdentityListingFromProduct,
   composeSyntheticCanonicalProduct,
   maybeBuildLiveSyntheticPdp,
+  listLivePdpIdentityRowsForRefs,
   backfillPdpIdentityGraph,
   listPdpIdentityShadowRows,
   listPdpIdentityReviewQueue,
