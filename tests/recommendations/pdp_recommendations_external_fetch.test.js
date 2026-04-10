@@ -243,6 +243,51 @@ describe('RecommendationEngine external candidate fetch', () => {
     ).toBe(true);
   });
 
+  test('prefers same-domain seed lookup and skips broad brand/category scans when domain yields enough rows', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryMock = jest.fn(async (sql, params) => {
+      const sqlText = String(sql);
+      if (sqlText.includes("lower(coalesce(domain, '')) = ANY($4)")) {
+        expect(params?.[3]).toEqual(['kravebeauty.com']);
+        return {
+          rows: Array.from({ length: 6 }).map((_, index) =>
+            ({
+              ...makeExternalRow({
+                id: `eps_domain_${index}`,
+                external_product_id: `ext_domain_${index}`,
+                title: `KraveBeauty Domain Product ${index}`,
+              }),
+              seed_data: undefined,
+            }),
+          ),
+        };
+      }
+      throw new Error(`unexpected broad external query: ${sqlText}`);
+    });
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchExternalCandidates({
+      brandHint: 'KraveBeauty',
+      categoryHint: 'Serum',
+      domainHints: ['https://kravebeauty.com/products/great-barrier-relief'],
+      limit: 12,
+    });
+
+    expect(products).toHaveLength(6);
+    expect(
+      products.every(
+        (product) =>
+          product.merchant_id === 'external_seed' &&
+          String(product.canonical_url || product.destination_url || '').includes('kravebeauty.com'),
+      ),
+    ).toBe(true);
+    expect(queryMock).toHaveBeenCalledTimes(1);
+  });
+
   test('recommend fetches internal and external pools in parallel instead of serially stacking source latency', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 
@@ -319,5 +364,125 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(result.metadata.similar_status).toBe('ready');
     expect(result.items).toHaveLength(2);
     expect(elapsedMs).toBeLessThan(520);
+  });
+
+  test('recommend uses same-domain external seeds for external PDPs before broad scans and keeps similar non-empty', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryMock = jest.fn((sql, params) => {
+      const sqlText = String(sql);
+      if (sqlText.includes('FROM products_cache')) {
+        return Promise.resolve({
+          rows: Array.from({ length: 12 }).map((_, index) => ({
+            merchant_id: `merch_other_${index}`,
+            product_data: {
+              merchant_id: `merch_other_${index}`,
+              product_id: `internal_other_${index}`,
+              title: `Other Brand Serum ${index}`,
+              brand: 'OtherBrand',
+              category_path: ['Beauty', 'Serum'],
+              price: 28 + index,
+              inventory_quantity: 10,
+              status: 'active',
+            },
+          })),
+        });
+      }
+      if (sqlText.includes("lower(coalesce(domain, '')) = ANY($4)")) {
+        expect(params?.[3]).toEqual(['kravebeauty.com']);
+        return Promise.resolve({
+          rows: [
+            {
+              ...makeExternalRow({
+                id: 'eps_matcha',
+                external_product_id: 'ext_matcha',
+                title: 'Matcha Hemp Hydrating Cleanser',
+                category: 'Cleanser',
+              }),
+              seed_data: undefined,
+            },
+            {
+              ...makeExternalRow({
+                id: 'eps_oat',
+                external_product_id: 'ext_oat',
+                title: 'Oat So Simple Water Cream',
+                category: 'Moisturizer',
+              }),
+              seed_data: undefined,
+            },
+            {
+              ...makeExternalRow({
+                id: 'eps_oil',
+                external_product_id: 'ext_oil',
+                title: 'Oil La La',
+                category: 'Oil',
+              }),
+              seed_data: undefined,
+            },
+            {
+              ...makeExternalRow({
+                id: 'eps_plum',
+                external_product_id: 'ext_plum',
+                title: 'Plumptuous Lip Jelly',
+                category: 'Lip Care',
+              }),
+              seed_data: undefined,
+            },
+            {
+              ...makeExternalRow({
+                id: 'eps_pore',
+                external_product_id: 'ext_pore',
+                title: 'Pore Refiner',
+                category: 'Serum',
+              }),
+              seed_data: undefined,
+            },
+            {
+              ...makeExternalRow({
+                id: 'eps_clean',
+                external_product_id: 'ext_clean',
+                title: 'Makeup Re-Wined',
+                category: 'Cleanser',
+              }),
+              seed_data: undefined,
+            },
+          ],
+        });
+      }
+      throw new Error(`unexpected broad external query: ${sqlText}`);
+    });
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { recommend, _internals } = require('../../src/services/RecommendationEngine');
+    _internals.resetCache();
+    const result = await recommend({
+      pdp_product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_gbr',
+        title: 'Great Barrier Relief',
+        brand: { name: 'KraveBeauty' },
+        category_path: ['Beauty', 'Serum'],
+        canonical_url: 'https://kravebeauty.com/products/great-barrier-relief',
+        source: 'external_seed',
+        price: { current: { amount: 28, currency: 'USD' } },
+        inventory_quantity: 10,
+        status: 'active',
+      },
+      k: 6,
+      options: { debug: true, no_cache: true },
+    });
+
+    expect(result.metadata.similar_status).toBe('ready');
+    expect(result.items.length).toBeGreaterThan(0);
+    expect(result.items.every((item) => item.merchant_id === 'external_seed')).toBe(true);
+    expect(result.debug?.fetch_strategy?.external_timed_out).toBe(false);
+    expect(queryMock.mock.calls.some(([sql]) => String(sql).includes("lower(coalesce(domain, '')) = ANY($4)"))).toBe(true);
+    expect(
+      queryMock.mock.calls.every(
+        ([sql]) => !String(sql).includes("seed_data->>'brand'") && !String(sql).includes("seed_data->>'category'"),
+      ),
+    ).toBe(true);
   });
 });
