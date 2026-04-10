@@ -19357,11 +19357,9 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
   const keptLevels = [];
   const skippedExternalSeedLevels = [];
   const skippedSupportLevels = [];
-  const executedSupportLevels = [];
   const executedSupportExternalSeedLevels = [];
-  const executedSupportLevelBaseIds = new Set();
   const stagedLevels = [];
-  const maxRoutineSupportLevels = 1;
+  const maxRoutineSupportExternalSeedLevels = 2;
   for (const level of levels) {
     const queries = Array.isArray(level?.queries) ? level.queries : [];
     const levelId = String(level?.ladder_level || level?.stage_id || '').trim().toLowerCase();
@@ -19398,20 +19396,23 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
         keptLevels.push(level);
         continue;
       }
-      const isInternalSupportLevel = levelId.startsWith('framework_stage_c_support_');
-      const supportLevelBaseId = levelId.replace(/_external_seed$/, '');
-      if (isInternalSupportLevel && !allowExternalSeedOnly && executedSupportLevels.length < maxRoutineSupportLevels) {
-        keptLevels.push(level);
-        executedSupportLevels.push(
-          String(level?.ladder_level || level?.stage_id || '').trim() || `level_${executedSupportLevels.length + 1}`,
-        );
-        if (supportLevelBaseId) executedSupportLevelBaseIds.add(supportLevelBaseId);
+      const isSupportLevel = levelId.startsWith('framework_stage_c_support_');
+      if (isSupportLevel && allowExternalSeedOnly) {
+        if (executedSupportExternalSeedLevels.length < maxRoutineSupportExternalSeedLevels) {
+          keptLevels.push(level);
+          executedSupportExternalSeedLevels.push(
+            String(level?.ladder_level || level?.stage_id || '').trim() || `level_${executedSupportExternalSeedLevels.length + 1}`,
+          );
+        } else {
+          skippedExternalSeedLevels.push(
+            String(level?.ladder_level || level?.stage_id || '').trim() || `level_${skippedExternalSeedLevels.length + 1}`,
+          );
+        }
         continue;
       }
-      if (isInternalSupportLevel && allowExternalSeedOnly && executedSupportLevelBaseIds.has(supportLevelBaseId)) {
-        keptLevels.push(level);
-        executedSupportExternalSeedLevels.push(
-          String(level?.ladder_level || level?.stage_id || '').trim() || `level_${executedSupportExternalSeedLevels.length + 1}`,
+      if (isSupportLevel) {
+        skippedSupportLevels.push(
+          String(level?.ladder_level || level?.stage_id || '').trim() || `level_${skippedSupportLevels.length + 1}`,
         );
         continue;
       }
@@ -19444,17 +19445,9 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
       planned_level_count: levels.length,
       executed_level_count: keptLevels.length,
       skipped_external_seed_level_count: skippedExternalSeedLevels.length,
-      ...(executedSupportLevels.length
-        ? {
-            routine_support_strategy: executedSupportExternalSeedLevels.length
-              ? 'primary_plus_first_internal_and_external_support'
-              : 'primary_plus_first_internal_support',
-            executed_support_level_count: executedSupportLevels.length,
-            executed_support_levels: executedSupportLevels,
-          }
-        : {}),
       ...(executedSupportExternalSeedLevels.length
         ? {
+            routine_support_strategy: 'primary_plus_external_support',
             executed_support_external_seed_level_count: executedSupportExternalSeedLevels.length,
             executed_support_external_seed_levels: executedSupportExternalSeedLevels,
           }

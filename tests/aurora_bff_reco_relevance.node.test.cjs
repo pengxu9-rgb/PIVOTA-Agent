@@ -3497,17 +3497,15 @@ test('__internal: framework recall planner emits role-aware primary and support 
   assert.equal(plan.mode, 'framework_generic');
   assert.equal(plan.version, 'aurora_reco_recall_plan_v1');
   assert.ok(Array.isArray(plan.stages));
-  assert.equal(plan.stages.length, 6);
+  assert.equal(plan.stages.length, 4);
   assert.ok(Array.isArray(plan.entries));
-  assert.equal(plan.entries.length, 15);
+  assert.equal(plan.entries.length, 11);
   assert.deepEqual(
     plan.stages.map((stage) => [stage.stage_id, stage.source_scope, stage.role_id, stage.entries.length]),
     [
       ['framework_stage_a_primary_internal', 'internal', 'oil_control_treatment', 3],
       ['framework_stage_b_primary_external_seed', 'external_seed', 'oil_control_treatment', 4],
-      ['framework_stage_c_support_lightweight_moisturizer', 'internal', 'lightweight_moisturizer', 2],
       ['framework_stage_c_support_lightweight_moisturizer_external_seed', 'external_seed', 'lightweight_moisturizer', 2],
-      ['framework_stage_c_support_daily_sunscreen', 'internal', 'daily_sunscreen', 2],
       ['framework_stage_c_support_daily_sunscreen_external_seed', 'external_seed', 'daily_sunscreen', 2],
     ],
   );
@@ -3526,7 +3524,7 @@ test('__internal: framework recall planner emits role-aware primary and support 
     'lightweight moisturizer',
     'gel cream',
   ]);
-  assert.deepEqual(plan.stages[4]?.entries?.map((entry) => entry?.query), [
+  assert.deepEqual(plan.stages[3]?.entries?.map((entry) => entry?.query), [
     'daily sunscreen',
     'lightweight sunscreen',
   ]);
@@ -4206,8 +4204,8 @@ test('__internal: framework recall skips support stages when primary external st
       usePurchasableFallback: false,
     });
 
-    assert.equal(out.executedQueryCount, 6);
-    assert.equal(out.actualHttpAttemptCount, 6);
+    assert.equal(out.executedQueryCount, 7);
+    assert.equal(out.actualHttpAttemptCount, 7);
     assert.ok(['', 'transient_timeout'].includes(out.primaryStageTimeoutClass));
     assert.ok(['plan_exhausted', 'primary_transient_timeout'].includes(out.plannerStopReason));
     assert.ok(['no_recall_from_planned_sources', 'upstream_timeout_primary_role'].includes(out.candidateDropStage));

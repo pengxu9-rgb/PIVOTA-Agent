@@ -380,20 +380,6 @@ function buildBeautyMainlineRecallPlan({ mode, semanticContract = null, rawQuery
         const supportPreferredStep = normalizeSemanticStepFamily(role?.preferred_step);
         return [
           buildStage({
-            stageId: buildFrameworkSupportStageId(role?.role_id, 'internal'),
-            roleId: role?.role_id || null,
-            roleRank: Number.isFinite(Number(role?.rank)) ? Number(role.rank) : null,
-            sourceScope: 'internal',
-            queries: supportQueries,
-            concurrency: 1,
-            maxAttemptsForStage: Math.min(supportQueries.length || 1, 2),
-            stopOnViableMatch: true,
-            reasonForInclusion: 'framework_support_internal',
-            runIf: 'if_role_unfilled_after_primary',
-            preferredStep: supportPreferredStep,
-            slot: inferBeautyMainlineSlot(supportPreferredStep),
-          }),
-          buildStage({
             stageId: buildFrameworkSupportStageId(role?.role_id, 'external_seed'),
             roleId: role?.role_id || null,
             roleRank: Number.isFinite(Number(role?.rank)) ? Number(role.rank) : null,
