@@ -305,16 +305,27 @@ function buildBeautyMainlineRecallPlan({ mode, semanticContract = null, rawQuery
         allowConcernFallback = false,
         preferProductLedInternal = false,
         allowDefaultTreatmentIngredientFallback = false,
+        includeIngredientAlternates = false,
+        maxQueriesOverride = null,
       } = {},
     ) => {
+      const hasMaxQueriesOverride =
+        maxQueriesOverride !== null &&
+        maxQueriesOverride !== undefined &&
+        Number.isFinite(Number(maxQueriesOverride)) &&
+        Number(maxQueriesOverride) > 0;
+      const maxQueries = hasMaxQueriesOverride
+        ? Math.max(1, Math.trunc(Number(maxQueriesOverride)))
+        : (allowConcernFallback ? 3 : 2);
       const queries = buildFrameworkRoleQueries(
         role,
         rawQuery,
-        allowConcernFallback ? 3 : 2,
+        maxQueries,
         {
           allowConcernFallback,
           preferProductLedInternal,
           allowDefaultTreatmentIngredientFallback,
+          includeIngredientAlternates,
         },
       );
       return queries.length > 0
@@ -331,6 +342,8 @@ function buildBeautyMainlineRecallPlan({ mode, semanticContract = null, rawQuery
     const primaryExternalQueries = buildRoleStageQueries(primaryRole, {
       allowConcernFallback: true,
       allowDefaultTreatmentIngredientFallback: true,
+      includeIngredientAlternates: true,
+      maxQueriesOverride: 4,
     });
     const primaryPreferredStep = normalizeSemanticStepFamily(primaryRole?.preferred_step || contract.target_step_family);
     stages = [
@@ -355,7 +368,7 @@ function buildBeautyMainlineRecallPlan({ mode, semanticContract = null, rawQuery
         sourceScope: 'external_seed',
         queries: primaryExternalQueries,
         concurrency: 1,
-        maxAttemptsForStage: Math.min(primaryExternalQueries.length || 1, 3),
+        maxAttemptsForStage: Math.min(primaryExternalQueries.length || 1, 4),
         stopOnViableMatch: true,
         reasonForInclusion: 'framework_primary_external_seed',
         runIf: 'if_surface_count_below_target',
@@ -455,9 +468,12 @@ function buildPrimaryTreatmentIngredientQueryCandidateScore(value, semanticFamil
   return scoreTreatmentIngredientHypothesis(normalized);
 }
 
-function buildPrimaryTreatmentIngredientQuery(role, { allowDefaultFamilyFallback = false } = {}) {
+function buildPrimaryTreatmentIngredientQueries(role, {
+  allowDefaultFamilyFallback = false,
+  maxQueries = 2,
+} = {}) {
   const roleObj = role && typeof role === 'object' && !Array.isArray(role) ? role : null;
-  if (!roleObj) return '';
+  if (!roleObj) return [];
   const semanticFamily = deriveSemanticFamilyFromRole(roleObj);
   const explicitCandidates = uniqueCaseInsensitiveStrings(
     Array.isArray(roleObj.ingredient_hypotheses) ? roleObj.ingredient_hypotheses : [],
@@ -477,14 +493,26 @@ function buildPrimaryTreatmentIngredientQuery(role, { allowDefaultFamilyFallback
       buildPrimaryTreatmentIngredientQueryCandidateScore(right, semanticFamily)
       - buildPrimaryTreatmentIngredientQueryCandidateScore(left, semanticFamily),
   );
-  const picked = candidates[0] || '';
-  if (!picked) return '';
+  const out = [];
   if (semanticFamily === 'oil_control') {
-    if (/\b(niacinamide|zinc|zinc pca)\b/i.test(picked)) return 'niacinamide serum oily skin';
-    if (/\b(salicylic|bha|acid|exfoliant)\b/i.test(picked)) return 'salicylic acid serum oily skin';
+    for (const picked of candidates) {
+      if (/\b(niacinamide|zinc|zinc pca)\b/i.test(picked)) out.push('niacinamide serum oily skin');
+      else if (/\b(salicylic|bha|acid|exfoliant)\b/i.test(picked)) out.push('salicylic acid serum oily skin');
+    }
+    return uniqueCaseInsensitiveStrings(out, Math.max(1, Number(maxQueries) || 1));
   }
-  if (scoreTreatmentIngredientHypothesis(picked) < 3) return '';
-  return normalizeConcernQueryToken(`${picked} treatment`);
+  for (const picked of candidates) {
+    if (scoreTreatmentIngredientHypothesis(picked) < 3) continue;
+    out.push(normalizeConcernQueryToken(`${picked} treatment`));
+  }
+  return uniqueCaseInsensitiveStrings(out, Math.max(1, Number(maxQueries) || 1));
+}
+
+function buildPrimaryTreatmentIngredientQuery(role, { allowDefaultFamilyFallback = false } = {}) {
+  return buildPrimaryTreatmentIngredientQueries(role, {
+    allowDefaultFamilyFallback,
+    maxQueries: 1,
+  })[0] || '';
 }
 
 function buildPrimaryTreatmentAnchorQuery(role) {
@@ -597,6 +625,7 @@ function buildFrameworkRoleQueries(
     allowConcernFallback = false,
     preferProductLedInternal = false,
     allowDefaultTreatmentIngredientFallback = false,
+    includeIngredientAlternates = false,
   } = {},
 ) {
   const roleObj = role && typeof role === 'object' && !Array.isArray(role) ? role : null;
@@ -607,11 +636,13 @@ function buildFrameworkRoleQueries(
   const isTreatmentPrimary =
     allowConcernFallback && String(preferredStep).trim().toLowerCase() === 'treatment';
   const anchorQuery = isTreatmentPrimary ? buildPrimaryTreatmentAnchorQuery(roleObj) : '';
-  const ingredientLedQuery = isTreatmentPrimary
-    ? buildPrimaryTreatmentIngredientQuery(roleObj, {
+  const ingredientLedQueries = isTreatmentPrimary
+    ? buildPrimaryTreatmentIngredientQueries(roleObj, {
         allowDefaultFamilyFallback: allowDefaultTreatmentIngredientFallback,
+        maxQueries: includeIngredientAlternates ? 3 : 1,
       })
-    : '';
+    : [];
+  const ingredientLedQuery = ingredientLedQueries[0] || '';
   const semanticQueries = isTreatmentPrimary ? buildPrimaryTreatmentSemanticQueries(roleObj) : [];
   if (isTreatmentPrimary) {
     if (preferProductLedInternal) {
@@ -622,7 +653,8 @@ function buildFrameworkRoleQueries(
       if (anchorQuery) out.push(anchorQuery);
     } else {
       if (anchorQuery) out.push(anchorQuery);
-      if (ingredientLedQuery) out.push(ingredientLedQuery);
+      if (includeIngredientAlternates) out.push(...ingredientLedQueries);
+      else if (ingredientLedQuery) out.push(ingredientLedQuery);
       if (roleQueries.length > 0) out.push(roleQueries[0]);
       out.push(...semanticQueries);
       out.push(...roleQueries.slice(1));

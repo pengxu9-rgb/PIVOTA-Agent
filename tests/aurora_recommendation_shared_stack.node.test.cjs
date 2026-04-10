@@ -85,6 +85,8 @@ test('generic single-product chat asks resolve into a framework-first role plan 
   assert.ok(primaryRole.query_terms.includes('shine control serum'));
   assert.ok(primaryRole.fit_keywords.includes('oil control'));
   assert.ok(primaryRole.fit_keywords.includes('mattifying'));
+  assert.ok(primaryRole.fit_keywords.includes('acne'));
+  assert.ok(primaryRole.ingredient_hypotheses.includes('Salicylic acid'));
 });
 
 test('generic single-product concern helper canonicalizes singular broad asks to plural wording', () => {

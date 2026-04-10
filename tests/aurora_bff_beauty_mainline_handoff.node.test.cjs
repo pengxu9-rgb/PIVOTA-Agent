@@ -56,7 +56,7 @@ test('deriveBeautyMainlineHandoff preserves explicit treatment semantics for oil
     assert.equal(out.semanticContract?.target_step_family, 'treatment');
     assert.equal(out.semanticContract?.primary_role_id, 'oil_control_treatment');
     assert.equal(out.semanticContract?.semantic_family, 'oil_control');
-    assert.deepEqual(out.semanticContract?.ingredient_hypotheses, ['Niacinamide', 'Zinc PCA']);
+    assert.deepEqual(out.semanticContract?.ingredient_hypotheses, ['Niacinamide', 'Zinc PCA', 'Salicylic acid']);
   } finally {
     delete require.cache[moduleId];
   }
@@ -390,6 +390,7 @@ test('handoffRecoToBeautyMainlineSearch keeps primary internal plus primary exte
         'shine control serum',
         'oil control treatment',
         'niacinamide serum oily skin',
+        'salicylic acid serum oily skin',
         'oil control serum',
       ],
     );

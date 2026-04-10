@@ -85,17 +85,13 @@ function buildConcernCandidateText(row) {
     buildConcernCandidateAnchorText(candidate),
     ...(Array.isArray(candidate.ingredient_tokens) ? candidate.ingredient_tokens : []),
     ...(Array.isArray(candidate.skin_type_tags) ? candidate.skin_type_tags : []),
+    pickFirstTrimmed(candidate.short_description, candidate.shortDescription, candidate.description),
+    ...(Array.isArray(candidate.benefit_tags) ? candidate.benefit_tags : []),
+    ...(Array.isArray(candidate.benefit_tokens) ? candidate.benefit_tokens : []),
+    ...(Array.isArray(candidate.description_tokens) ? candidate.description_tokens : []),
+    ...(Array.isArray(candidate.tags) ? candidate.tags : []),
+    ...(Array.isArray(candidate.tag_tokens) ? candidate.tag_tokens : []),
   ];
-  if (!isConcernExternalSeedCandidate(candidate)) {
-    textParts.push(
-      pickFirstTrimmed(candidate.short_description, candidate.shortDescription, candidate.description),
-      ...(Array.isArray(candidate.benefit_tags) ? candidate.benefit_tags : []),
-      ...(Array.isArray(candidate.benefit_tokens) ? candidate.benefit_tokens : []),
-      ...(Array.isArray(candidate.description_tokens) ? candidate.description_tokens : []),
-      ...(Array.isArray(candidate.tags) ? candidate.tags : []),
-      ...(Array.isArray(candidate.tag_tokens) ? candidate.tag_tokens : []),
-    );
-  }
   return textParts
     .map((item) => normalizeConcernQueryToken(item).toLowerCase())
     .filter(Boolean)

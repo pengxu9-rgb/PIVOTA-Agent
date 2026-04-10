@@ -3499,12 +3499,12 @@ test('__internal: framework recall planner emits role-aware primary and support 
   assert.ok(Array.isArray(plan.stages));
   assert.equal(plan.stages.length, 6);
   assert.ok(Array.isArray(plan.entries));
-  assert.equal(plan.entries.length, 14);
+  assert.equal(plan.entries.length, 15);
   assert.deepEqual(
     plan.stages.map((stage) => [stage.stage_id, stage.source_scope, stage.role_id, stage.entries.length]),
     [
       ['framework_stage_a_primary_internal', 'internal', 'oil_control_treatment', 3],
-      ['framework_stage_b_primary_external_seed', 'external_seed', 'oil_control_treatment', 3],
+      ['framework_stage_b_primary_external_seed', 'external_seed', 'oil_control_treatment', 4],
       ['framework_stage_c_support_lightweight_moisturizer', 'internal', 'lightweight_moisturizer', 2],
       ['framework_stage_c_support_lightweight_moisturizer_external_seed', 'external_seed', 'lightweight_moisturizer', 2],
       ['framework_stage_c_support_daily_sunscreen', 'internal', 'daily_sunscreen', 2],
@@ -3519,6 +3519,7 @@ test('__internal: framework recall planner emits role-aware primary and support 
   assert.deepEqual(plan.stages[1]?.entries?.map((entry) => entry?.query), [
     'oil control treatment',
     'niacinamide serum oily skin',
+    'salicylic acid serum oily skin',
     'oil control serum',
   ]);
   assert.deepEqual(plan.stages[2]?.entries?.map((entry) => entry?.query), [
@@ -3560,6 +3561,7 @@ test('__internal: framework recall planner prefers oil-control ingredient-led se
   assert.deepEqual(plan.stages[1]?.entries?.map((entry) => entry?.query), [
     'oil control treatment',
     'niacinamide serum oily skin',
+    'salicylic acid serum oily skin',
     'oil control serum',
   ]);
 });
