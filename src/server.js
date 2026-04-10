@@ -3063,6 +3063,130 @@ function buildOfferPurchaseMetadataFromProduct(product) {
   };
 }
 
+function normalizeOfferVariantAxisValue(value) {
+  if (value == null || typeof value === 'boolean') return '';
+  return String(value || '')
+    .toLowerCase()
+    .replace(/&nbsp;/g, ' ')
+    .replace(/[^\p{L}\p{N}.\s-]+/gu, ' ')
+    .replace(/[-_/]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function compactOfferVariantAxisValue(value) {
+  return normalizeOfferVariantAxisValue(value).replace(/\s+/g, '');
+}
+
+function extractOfferVariantUnitTokens(compactValue) {
+  const compact = String(compactValue || '').toLowerCase();
+  const tokens = new Set();
+  const re = /(\d+(?:\.\d+)?)(fl(?:uid)?oz|floz|oz|ml|l|g|mg|kg)/g;
+  let match = re.exec(compact);
+  while (match) {
+    const unit = String(match[2] || '').replace(/^fl(?:uid)?oz$/, 'floz');
+    tokens.add(`${match[1]}${unit}`);
+    match = re.exec(compact);
+  }
+  return tokens;
+}
+
+function offerVariantTextMatchesAxis(text, axisValue) {
+  const normalizedText = normalizeOfferVariantAxisValue(text);
+  const normalizedAxis = normalizeOfferVariantAxisValue(axisValue);
+  if (!normalizedText || !normalizedAxis) return false;
+  if (normalizedText === normalizedAxis) return true;
+
+  const textCompact = compactOfferVariantAxisValue(text);
+  const axisCompact = compactOfferVariantAxisValue(axisValue);
+  if (!textCompact || !axisCompact) return false;
+  if (textCompact === axisCompact) return true;
+
+  const axisUnitTokens = extractOfferVariantUnitTokens(axisCompact);
+  if (axisUnitTokens.size > 0) {
+    const textUnitTokens = extractOfferVariantUnitTokens(textCompact);
+    for (const token of axisUnitTokens) {
+      if (textUnitTokens.has(token)) return true;
+    }
+    return false;
+  }
+
+  return axisCompact.length >= 4 && (textCompact.includes(axisCompact) || axisCompact.includes(textCompact));
+}
+
+function collectOfferVariantMatchTexts(variant) {
+  if (!variant || typeof variant !== 'object') return [];
+  const out = [];
+  const push = (value) => {
+    const text = String(value || '').trim();
+    if (text) out.push(text);
+  };
+
+  push(variant.title);
+  push(variant.name);
+  push(variant.display_name);
+  push(variant.displayName);
+  push(variant.option1);
+  push(variant.option2);
+  push(variant.option3);
+
+  const optionSources = [variant.options, variant.selected_options, variant.selectedOptions];
+  for (const raw of optionSources) {
+    if (!raw) continue;
+    if (Array.isArray(raw)) {
+      for (const option of raw) {
+        if (!option || typeof option !== 'object') continue;
+        const name = option.name || option.option || option.key || option.label;
+        const value = option.value || option.text;
+        push(name);
+        push(value);
+        if (name && value) push(`${name} ${value}`);
+      }
+      continue;
+    }
+    if (typeof raw === 'object') {
+      for (const [name, value] of Object.entries(raw)) {
+        push(name);
+        push(value);
+        if (name && value) push(`${name} ${value}`);
+      }
+    }
+  }
+
+  return Array.from(new Set(out));
+}
+
+function findOfferVariantForAxes(product, axes) {
+  const variants = Array.isArray(product?.variants) ? product.variants : [];
+  if (!variants.length) return null;
+
+  const axisEntries = Object.entries(axes && typeof axes === 'object' ? axes : {})
+    .filter(([key, value]) => {
+      const normalizedKey = String(key || '').trim().toLowerCase();
+      if (!normalizedKey || normalizedKey === 'multi_variant' || normalizedKey === 'variant_count') return false;
+      return Boolean(normalizeOfferVariantAxisValue(value));
+    });
+  if (!axisEntries.length) return variants.length === 1 ? variants[0] : null;
+
+  for (const variant of variants) {
+    const texts = collectOfferVariantMatchTexts(variant);
+    const matchedAllAxes = axisEntries.every(([, axisValue]) =>
+      texts.some((text) => offerVariantTextMatchesAxis(text, axisValue)),
+    );
+    if (matchedAllAxes) return variant;
+  }
+
+  return variants.length === 1 ? variants[0] : null;
+}
+
+function getOfferVariantId(variant) {
+  return firstNonEmptyString(variant?.variant_id, variant?.variantId, variant?.id);
+}
+
+function getOfferVariantSku(variant) {
+  return firstNonEmptyString(variant?.sku_id, variant?.skuId, variant?.sku, variant?.sku_code);
+}
+
 async function buildOffersFromGroupMembers(args) {
   const productGroupId = args?.productGroupId ? String(args.productGroupId).trim() : null;
   const groupMembers = Array.isArray(args?.members) ? args.members : [];
@@ -3078,6 +3202,10 @@ async function buildOffersFromGroupMembers(args) {
       merchant_name: m?.merchant_name || m?.merchantName || undefined,
       product_id: String(m?.product_id || m?.productId || '').trim(),
       platform: m?.platform ? String(m.platform).trim() : undefined,
+      source_listing_ref: m?.source_listing_ref || m?.sourceListingRef || undefined,
+      source_kind: m?.source_kind || m?.sourceKind || undefined,
+      source_tier: m?.source_tier || m?.sourceTier || undefined,
+      variant_axes: m?.variant_axes && typeof m.variant_axes === 'object' ? m.variant_axes : undefined,
       is_primary: Boolean(m?.is_primary || m?.isPrimary),
     }))
     .filter((m) => Boolean(m.merchant_id) && Boolean(m.product_id))
@@ -3095,7 +3223,7 @@ async function buildOffersFromGroupMembers(args) {
   const merchantNameById = new Map(
     members
       .map((m) => [String(m.merchant_id || '').trim(), m.merchant_name])
-      .filter(([mid]) => Boolean(mid)),
+      .filter(([mid, name]) => Boolean(mid) && Boolean(name)),
   );
 
   const fetched = [];
@@ -3104,18 +3232,19 @@ async function buildOffersFromGroupMembers(args) {
     const chunk = members.slice(i, i + chunkSize);
     // eslint-disable-next-line no-await-in-loop
     const results = await Promise.all(
-      chunk.map(async (m) =>
-        fetchProductDetailForOffers({
+      chunk.map(async (m) => {
+        const product = await fetchProductDetailForOffers({
           merchantId: m.merchant_id,
           productId: m.product_id,
           checkoutToken,
-        }).catch(() => null),
-      ),
+        }).catch(() => null);
+        return product ? { member: m, product } : null;
+      }),
     );
-    fetched.push(...results);
+    fetched.push(...results.filter(Boolean));
   }
 
-  const products = fetched.filter(Boolean);
+  const products = fetched.map((entry) => entry.product).filter(Boolean);
   if (!products.length) return null;
 
   const resolvedProductGroupId =
@@ -3136,10 +3265,25 @@ async function buildOffersFromGroupMembers(args) {
       : null) ||
     `pg:pid:${String(canonicalProductRef?.product_id || products[0]?.product_id || products[0]?.id || '').trim()}`;
 
-  const offers = products.map((p) => {
+  const offers = fetched.map(({ member, product: p }) => {
     const mid = String(p.merchant_id || '').trim();
     const offerProductId = String(p.product_id || '').trim() || undefined;
-    const currency = p.currency || 'USD';
+    const selectedVariant = findOfferVariantForAxes(p, member?.variant_axes);
+    const selectedVariantId = selectedVariant ? getOfferVariantId(selectedVariant) : null;
+    const selectedVariantSku = selectedVariant ? getOfferVariantSku(selectedVariant) : null;
+    const selectedOptions = selectedVariant ? extractVariantOptions(selectedVariant) : {};
+    const selectedVariantPrice =
+      selectedVariant?.price ?? selectedVariant?.price_amount ?? selectedVariant?.priceAmount ?? null;
+    const currency =
+      firstNonEmptyString(
+        selectedVariant?.currency,
+        selectedVariant?.price?.currency,
+        selectedVariant?.price?.current?.currency,
+        p.currency,
+        p.price?.currency,
+        p.price?.current?.currency,
+        'USD',
+      ) || 'USD';
     const shipCost = p.shipping?.cost || p.shipping_cost || null;
     const shipCostAmount =
       shipCost == null
@@ -3168,11 +3312,17 @@ async function buildOffersFromGroupMembers(args) {
       product_id: offerProductId,
       merchant_id: mid,
       merchant_name:
-        p.merchant_name ||
-        p.store_name ||
-        merchantNameById.get(mid) ||
-        undefined,
-      price: normalizeOfferMoney(p.price, currency),
+        firstNonEmptyString(
+          p.merchant_name,
+          p.store_name,
+          p.vendor,
+          p.vendor_name,
+          p.brand?.name,
+          typeof p.brand === 'string' ? p.brand : null,
+          member?.merchant_name,
+          merchantNameById.get(mid),
+        ) || undefined,
+      price: normalizeOfferMoney(selectedVariantPrice ?? p.price, currency),
       shipping:
         p.shipping || etaRange || shipCostAmount != null
           ? {
@@ -3185,9 +3335,22 @@ async function buildOffersFromGroupMembers(args) {
           : undefined,
       returns: p.returns || undefined,
       inventory: {
-        in_stock: typeof p.in_stock === 'boolean' ? p.in_stock : undefined,
+        in_stock:
+          typeof selectedVariant?.in_stock === 'boolean'
+            ? selectedVariant.in_stock
+            : typeof selectedVariant?.available === 'boolean'
+              ? selectedVariant.available
+              : typeof p.in_stock === 'boolean'
+                ? p.in_stock
+                : undefined,
       },
       fulfillment_type: p.fulfillment_type || undefined,
+      ...(selectedVariantId ? { variant_id: selectedVariantId, selected_variant_id: selectedVariantId } : {}),
+      ...(selectedVariantSku ? { sku_id: selectedVariantSku, sku: selectedVariantSku } : {}),
+      ...(Object.keys(selectedOptions).length ? { selected_options: selectedOptions } : {}),
+      ...(selectedVariant?.title ? { variant_title: String(selectedVariant.title).trim() } : {}),
+      ...(member?.source_kind ? { source_kind: member.source_kind } : {}),
+      ...(member?.source_tier ? { source_tier: member.source_tier } : {}),
       ...buildOfferPurchaseMetadataFromProduct(p),
       risk_tier: 'standard',
     };
@@ -10152,7 +10315,15 @@ async function fetchSimilarProductsDeduped(args = {}) {
   const inflightKey = buildPdpSimilarInflightKey(args);
   const runOnce = async () => {
     const rec = await recommendPdpProducts(args);
-    return Array.isArray(rec?.items) ? rec.items : [];
+    const items = Array.isArray(rec?.items) ? rec.items : [];
+    return {
+      status: rec?.status || (items.length > 0 ? 'success' : 'empty'),
+      strategy: rec?.strategy || 'related_products',
+      items,
+      metadata: rec?.metadata && typeof rec.metadata === 'object' ? rec.metadata : {},
+      ...(rec?.debug ? { debug: rec.debug } : {}),
+      ...(rec?.cache ? { cache: rec.cache } : {}),
+    };
   };
 
   if (!inflightKey) return runOnce();
@@ -17957,11 +18128,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          const wantsActiveIngredients = includeAll || includeList.includes('active_ingredients');
 	          const wantsIngredientsInci = includeAll || includeList.includes('ingredients_inci');
 
-	          const pdpOptions = getPdpOptions(payload);
-	          let relatedProducts = [];
-	          if (wantsSimilar) {
-	            const bypassCache =
-	              payload?.options?.no_cache === true ||
+		          const pdpOptions = getPdpOptions(payload);
+		          let relatedProducts = [];
+		          let relatedProductsEnvelope = null;
+		          if (wantsSimilar) {
+		            const bypassCache =
+		              payload?.options?.no_cache === true ||
 	              payload?.options?.cache_bypass === true ||
 	              payload?.options?.bypass_cache === true;
 	            try {
@@ -17976,13 +18148,24 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	                  cache_bypass: bypassCache,
 	                  bypass_cache: bypassCache,
 	                },
-	              });
-	              relatedProducts = Array.isArray(rec?.items) ? rec.items : [];
-	            } catch {
-	              // non-blocking
-	              relatedProducts = [];
-	            }
-	          }
+		              });
+		              relatedProducts = Array.isArray(rec?.items) ? rec.items : [];
+		              relatedProductsEnvelope = {
+		                status: rec?.status || (relatedProducts.length > 0 ? 'success' : 'empty'),
+		                strategy: rec?.strategy || 'related_products',
+		                items: relatedProducts,
+		                metadata: rec?.metadata && typeof rec.metadata === 'object' ? rec.metadata : {},
+		              };
+		            } catch {
+		              relatedProducts = [];
+		              relatedProductsEnvelope = {
+		                status: 'unavailable',
+		                strategy: 'related_products',
+		                items: [],
+		                metadata: { similar_status: 'unavailable' },
+		              };
+		            }
+		          }
 
 	          const pdpPayload = buildPdpPayload({
 	            product,
@@ -18089,21 +18272,42 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            });
 	          }
 
-	          if (wantsSimilar) {
-	            modules.push({
-	              type: 'similar',
-	              required: false,
-	              data: recModule?.data || null,
-	              ...(recModule?.data ? {} : { reason: 'unavailable' }),
-	            });
-	          }
+		          if (wantsSimilar) {
+		            const similarData =
+		              recModule?.data ||
+		              (relatedProductsEnvelope?.metadata?.similar_status === 'empty' ||
+		              relatedProductsEnvelope?.status === 'empty'
+		                ? {
+		                    status: 'empty',
+		                    strategy: relatedProductsEnvelope?.strategy || 'related_products',
+		                    items: [],
+		                    metadata:
+		                      relatedProductsEnvelope?.metadata && typeof relatedProductsEnvelope.metadata === 'object'
+		                        ? relatedProductsEnvelope.metadata
+		                        : { similar_status: 'empty' },
+		                  }
+		                : null);
+		            modules.push({
+		              type: 'similar',
+		              required: false,
+		              data: similarData,
+		              ...(similarData ? {} : { reason: 'unavailable' }),
+		            });
+		          }
 
 	          const missing = [];
 	          if (wantsProductIntel && !productIntel) missing.push({ type: 'product_intel', reason: 'unavailable' });
 	          if (wantsActiveIngredients && !activeIngredientsData) missing.push({ type: 'active_ingredients', reason: 'unavailable' });
 	          if (wantsIngredientsInci && !ingredientsInciData) missing.push({ type: 'ingredients_inci', reason: 'unavailable' });
 	          if (wantsReviews && !reviewsModule?.data) missing.push({ type: 'reviews_preview', reason: 'unavailable' });
-	          if (wantsSimilar && !recModule?.data) missing.push({ type: 'similar', reason: 'unavailable' });
+		          if (
+		            wantsSimilar &&
+		            !recModule?.data &&
+		            relatedProductsEnvelope?.metadata?.similar_status !== 'empty' &&
+		            relatedProductsEnvelope?.status !== 'empty'
+		          ) {
+		            missing.push({ type: 'similar', reason: 'unavailable' });
+		          }
 
 	          mockResponse = {
 	            status: 'success',
@@ -18116,8 +18320,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            modules,
 	            warnings: [],
 	            missing,
-              metadata: {
-                detail_source: 'mock',
+	              metadata: {
+	                similar_status:
+	                  wantsSimilar
+	                    ? relatedProductsEnvelope?.metadata?.similar_status ||
+	                      (relatedProductsEnvelope?.status === 'unavailable'
+	                        ? 'unavailable'
+	                        : relatedProducts.length > 0
+	                          ? 'ready'
+	                          : 'empty')
+	                    : undefined,
+	                detail_source: 'mock',
                 normalized_pdp:
                   productIntel?.normalized_pdp ||
                   buildNormalizedPdpMetadata({ productIntel, offersData }),
@@ -19048,10 +19261,32 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      }
 
 	      let relatedProducts = [];
+	      let relatedProductsEnvelope = null;
 	      if (relatedProductsResult.status === 'fulfilled') {
-	        relatedProducts = Array.isArray(relatedProductsResult.value)
-	          ? relatedProductsResult.value
-	          : [];
+	        if (Array.isArray(relatedProductsResult.value)) {
+	          relatedProducts = relatedProductsResult.value;
+	          relatedProductsEnvelope = {
+	            status: relatedProducts.length > 0 ? 'success' : 'empty',
+	            strategy: 'related_products',
+	            items: relatedProducts,
+	            metadata: {
+	              similar_status: relatedProducts.length > 0 ? 'ready' : 'empty',
+	            },
+	          };
+	        } else if (relatedProductsResult.value && typeof relatedProductsResult.value === 'object') {
+	          relatedProductsEnvelope = relatedProductsResult.value;
+	          relatedProducts = Array.isArray(relatedProductsEnvelope.items)
+	            ? relatedProductsEnvelope.items
+	            : [];
+	        } else {
+	          relatedProducts = [];
+	          relatedProductsEnvelope = {
+	            status: 'empty',
+	            strategy: 'related_products',
+	            items: [],
+	            metadata: { similar_status: 'empty' },
+	          };
+	        }
 	      } else if (wantsSimilar) {
 	        logger.warn(
 	          {
@@ -19125,9 +19360,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const missing = [];
       const reviewsMissingReason =
         wantsReviewsPreview && !reviewsModule?.data ? 'no_results' : null;
+      const similarUnavailable =
+        relatedProductsEnvelope?.metadata?.similar_status === 'unavailable' ||
+        relatedProductsEnvelope?.status === 'unavailable';
       const similarMissingReason =
         wantsSimilar && !recModule?.data
-          ? relatedProductsResult.status === 'rejected'
+          ? similarUnavailable
+            ? 'unavailable'
+            : relatedProductsResult.status === 'rejected'
             ? (extractUpstreamErrorCode(relatedProductsResult.reason).code || 'unavailable').toLowerCase()
             : 'no_results'
           : null;
@@ -19291,10 +19531,23 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
 
       if (wantsSimilar) {
-        const data = recModule?.data || null;
-        modules.push({
-          type: 'similar',
-          required: false,
+	        const data =
+            recModule?.data ||
+            (relatedProductsEnvelope?.metadata?.similar_status === 'empty' ||
+            relatedProductsEnvelope?.status === 'empty'
+              ? {
+                  status: 'empty',
+                  strategy: relatedProductsEnvelope?.strategy || 'related_products',
+                  items: [],
+                  metadata:
+                    relatedProductsEnvelope?.metadata && typeof relatedProductsEnvelope.metadata === 'object'
+                      ? relatedProductsEnvelope.metadata
+                      : { similar_status: 'empty' },
+                }
+              : null);
+	        modules.push({
+	          type: 'similar',
+	          required: false,
           data,
           ...(data ? {} : { reason: similarMissingReason || 'unavailable' }),
         });
@@ -19327,8 +19580,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        modules,
 	        warnings: debug ? [] : [],
 	        missing,
-          metadata: {
-            detail_source: getProductDetailSource(canonicalProductForPdp) || null,
+	          metadata: {
+            similar_status:
+              wantsSimilar
+                ? relatedProductsEnvelope?.metadata?.similar_status ||
+                  (relatedProductsEnvelope?.status === 'unavailable'
+                    ? 'unavailable'
+                    : relatedProducts.length > 0
+                      ? 'ready'
+                      : 'empty')
+                : undefined,
+	            detail_source: getProductDetailSource(canonicalProductForPdp) || null,
             normalized_pdp:
               productIntel?.normalized_pdp ||
               buildNormalizedPdpMetadata({ productIntel, offersData }),
@@ -22403,7 +22665,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               status: 'success',
               strategy: 'related_products',
               products,
-              metadata: rec?.metadata || null,
+              metadata: {
+                route: 'find_similar_products_mainline_wrapper',
+                ...(rec?.metadata && typeof rec.metadata === 'object' ? rec.metadata : {}),
+              },
               total: products.length,
               page: 1,
               page_size: products.length,
@@ -22420,43 +22685,20 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         } catch (err) {
           logger.warn(
             { err: err?.message || String(err), product_id: payload?.similar?.product_id || payload?.product_id },
-            'find_similar_products: local recommendations failed; falling back to upstream',
+            'find_similar_products: local recommendations failed',
           );
+          return res.status(503).json({
+            status: 'error',
+            error: 'SIMILAR_MAINLINE_UNAVAILABLE',
+            message: 'Similar products mainline is unavailable',
+          });
         }
 
-        // Delegate to backend shopping gateway which owns the similarity logic.
-        // Accept both the legacy nested shape (payload.similar) and the
-        // flat shape (payload.product_id, payload.merchant_id, etc.).
-        const sim = payload.similar || {};
-        const normalizedPayload = {
-          product_id: sim.product_id || payload.product_id,
-          merchant_id: sim.merchant_id || payload.merchant_id,
-          limit: sim.limit || payload.limit,
-          strategy: sim.strategy || payload.strategy,
-          ...(excludeItems.length > 0 ? { exclude_items: excludeItems } : {}),
-          ...(recentViews.length > 0
-            ? {
-                context: {
-                  ...(payloadContext || {}),
-                  ...(simContext || {}),
-                  recent_views: recentViews,
-                },
-              }
-            : {}),
-          user: sim.user || payload.user,
-          creator_id:
-            payload.creator_id ||
-            sim.creator_id ||
-            metadata.creator_id ||
-            undefined,
-          metadata,
-        };
-        requestBody = {
-          operation,
-          payload: normalizedPayload,
-          metadata,
-        };
-        break;
+        return res.status(400).json({
+          status: 'error',
+          error: 'MISSING_PARAMETERS',
+          message: 'product_id is required for find_similar_products',
+        });
       }
       
       case 'get_product_detail': {
