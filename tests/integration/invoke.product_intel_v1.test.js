@@ -89,6 +89,50 @@ describeIfRuntimeDeps('/agent/shop/v1/invoke product intel contracts', () => {
             risk_for_groups: [],
           },
         },
+        product_intel: {
+          contract_version: 'pivota.product_intel.v1',
+          product_intel_core: {
+            what_it_is: {
+              headline: 'Pivota Insights',
+              body: 'A daily SPF moisturizer with invisible-wear positioning.',
+            },
+            best_for: [{ tag: 'daily_spf', label: 'Daily SPF moisturizer', confidence: 'moderate' }],
+            why_it_stands_out: [
+              {
+                headline: 'Invisible-wear SPF',
+                body: 'Combines moisturizer and broad spectrum SPF 30 in a format positioned for invisible wear under makeup.',
+              },
+            ],
+            routine_fit: { step: 'sunscreen', am_pm: ['am'], pairing_notes: [] },
+            watchouts: [],
+            confidence: { overall: 'moderate' },
+            freshness: { generated_at: '2026-04-10T12:00:00.000Z', source_version: 'test' },
+            quality_state: 'limited',
+            evidence_profile: 'seller_only',
+          },
+          shopping_card: {
+            contract_version: 'pivota.shopping_card.v1',
+            title: 'Hydra Vizor Invisible Moisturizer SPF 30',
+            subtitle: 'Invisible SPF moisturizer',
+            proof_badge: 'SPF 30',
+            intro: 'Invisible-wear SPF moisturizer.',
+          },
+          search_card: {
+            title_candidate: 'Hydra Vizor Invisible Moisturizer SPF 30',
+            compact_candidate: 'Invisible SPF moisturizer',
+            proof_badge_candidate: 'SPF 30',
+            intro_candidate: 'Invisible-wear SPF moisturizer.',
+          },
+          market_signal_badges: [{ badge_type: 'spf_signal', badge_label: 'SPF 30' }],
+          community_signals: {
+            status: 'unavailable',
+            unavailable_reason: 'insufficient_feedback',
+            confidence: 'low',
+            evidence_profile: 'seller_only',
+          },
+          quality_state: 'limited',
+          evidence_profile: 'seller_only',
+        },
       },
       {
         product_id: 'ext_mock_draft_1',
@@ -186,6 +230,18 @@ describeIfRuntimeDeps('/agent/shop/v1/invoke product intel contracts', () => {
     );
     expect(res.body.display_name).toBe('Pivota Insights');
     expect(res.body.offer_pointers.commerce_modes).toContain('merchant_embedded_checkout');
+    expect(res.body.shopping_card).toEqual(
+      expect.objectContaining({
+        subtitle: 'Invisible SPF moisturizer',
+        proof_badge: 'SPF 30',
+      }),
+    );
+    expect(res.body.search_card).toEqual(
+      expect.objectContaining({
+        compact_candidate: 'Invisible SPF moisturizer',
+        proof_badge_candidate: 'SPF 30',
+      }),
+    );
   });
 
   test('get_pdp_v2 exposes pure ingredient modules and suppresses polluted fragments', async () => {
