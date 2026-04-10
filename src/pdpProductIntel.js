@@ -335,6 +335,9 @@ function normalizePublishedProductIntelBundle(bundle, {
     buildRecommendationIntents(relatedProducts);
   const offers = Array.isArray(offersData?.offers) ? offersData.offers : [];
   const commerceModes = uniqueStrings(offers.map((offer) => asString(offer?.commerce_mode)));
+  const shoppingCard = asPlainObject(source.shopping_card);
+  const searchCard = asPlainObject(source.search_card);
+  const marketSignalBadges = asArray(source.market_signal_badges).map(asPlainObject).filter(Boolean);
   const coreEvidenceProfile =
     asString(core.evidence_profile) || asString(source.evidence_profile) || 'seller_only';
   const normalizedCore = {
@@ -404,6 +407,9 @@ function normalizePublishedProductIntelBundle(bundle, {
       asPlainObject(source.freshness) ||
       asPlainObject(core.freshness) ||
       buildFreshness({}),
+    ...(shoppingCard ? { shopping_card: shoppingCard } : {}),
+    ...(searchCard ? { search_card: searchCard } : {}),
+    ...(marketSignalBadges.length ? { market_signal_badges: marketSignalBadges } : {}),
     offer_pointers: {
       ...(asPlainObject(source.offer_pointers) || {}),
       offers_count: offers.length,
