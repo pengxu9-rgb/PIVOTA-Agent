@@ -542,6 +542,60 @@ describe('product_intel pilot compare selection', () => {
     });
   });
 
+  test('manual override can inject reviewed card highlights without external signals', () => {
+    const selected = {
+      bundle: {
+        canonical_product_ref: {
+          merchant_id: 'external_seed',
+          product_id: 'ext_manual_card_1',
+        },
+        product_intel_core: {
+          what_it_is: {
+            headline: 'Brightening moisturizer',
+            body: 'A daily moisturizer that combines vitamin C and niacinamide with a hydration-first cream step for brightness and glow.',
+          },
+          routine_fit: {
+            step: 'moisturizer',
+          },
+        },
+      },
+      field_sources: {},
+      selected_field_count: 0,
+      selected_mode: 'baseline_only',
+    };
+
+    const overridden = applyManualOverrideToSelected(
+      {
+        product: {
+          merchant_id: 'external_seed',
+          product_id: 'ext_manual_card_1',
+          brand: 'Naturium',
+          title: 'Vitamin C Complex Cream',
+          category: 'Moisturizer',
+          description: 'A daily moisturizer with vitamin C and niacinamide.',
+        },
+      },
+      selected,
+      {
+        notes: 'manual reviewed card highlight',
+        shopping_card: {
+          highlight: 'Brightening actives in a cream step',
+        },
+        search_card: {
+          highlight_candidate: 'Brightening actives in a cream step',
+        },
+        external_highlight_review_status: 'rewrite',
+        external_review_batch: 'manual_card_highlight_2026_04_10',
+      },
+    );
+
+    expect(overridden.selected_mode).toBe('manual_override');
+    expect(overridden.bundle.shopping_card.highlight).toBe('Brightening actives in a cream step');
+    expect(overridden.bundle.search_card.highlight_candidate).toBe('Brightening actives in a cream step');
+    expect(overridden.bundle.provenance.external_highlight_review_status).toBe('rewrite');
+    expect(overridden.bundle.provenance.external_review_batch).toBe('manual_card_highlight_2026_04_10');
+  });
+
   test('selected bundle carries reviewed card evidence fields for downstream discovery surfaces', () => {
     const caseRow = {
       case_id: 'pilot_badge_ready',

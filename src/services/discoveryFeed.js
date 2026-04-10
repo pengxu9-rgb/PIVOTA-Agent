@@ -5287,7 +5287,8 @@ async function hydrateDiscoveryCandidateProductIntel(candidate) {
 
 async function hydrateDiscoveryCandidatesProductIntel(candidates, request) {
   if (!Array.isArray(candidates) || !candidates.length) return candidates;
-  if (request?.response_detail !== 'card') return candidates;
+  const responseDetail = String(request?.response_detail || '').trim().toLowerCase();
+  if (responseDetail && responseDetail !== 'card' && responseDetail !== 'full') return candidates;
   return Promise.all(candidates.map((candidate) => hydrateDiscoveryCandidateProductIntel(candidate)));
 }
 
@@ -5529,6 +5530,22 @@ function formatDiscoveryResponseProduct(candidate, request = null) {
     };
   }
 
+  const shoppingCard = buildDiscoveryCardPayload(raw, candidate);
+  const marketSignalBadges = normalizeDiscoveryMarketSignalBadges(shoppingCard.market_signal_badges);
+  const searchCard = {
+    title_candidate: shoppingCard.title,
+    ...(shoppingCard.subtitle ? { compact_candidate: shoppingCard.subtitle } : {}),
+    ...(shoppingCard.highlight ? { highlight_candidate: shoppingCard.highlight } : {}),
+    ...(shoppingCard.proof_badge ? { proof_badge_candidate: shoppingCard.proof_badge } : {}),
+    ...(shoppingCard.intro ? { intro_candidate: shoppingCard.intro } : {}),
+  };
+  const hasNormalizedCardFields =
+    Boolean(shoppingCard.title) ||
+    Boolean(shoppingCard.subtitle) ||
+    Boolean(shoppingCard.highlight) ||
+    Boolean(shoppingCard.proof_badge) ||
+    Boolean(shoppingCard.intro);
+
   return {
     ...raw,
     id: raw.id || candidate.productId,
@@ -5537,6 +5554,14 @@ function formatDiscoveryResponseProduct(candidate, request = null) {
     ...(raw.brand ? {} : candidate.brand ? { brand: candidate.brand } : {}),
     ...(raw.category ? {} : candidate.category ? { category: candidate.category } : {}),
     ...(raw.product_type || !candidate.category ? {} : { product_type: candidate.category }),
+    ...(hasNormalizedCardFields ? { card_title: shoppingCard.title } : {}),
+    ...(shoppingCard.subtitle ? { card_subtitle: shoppingCard.subtitle } : {}),
+    ...(shoppingCard.proof_badge ? { card_badge: shoppingCard.proof_badge } : {}),
+    ...(shoppingCard.highlight ? { card_highlight: shoppingCard.highlight } : {}),
+    ...(shoppingCard.intro ? { card_intro: shoppingCard.intro } : {}),
+    ...(hasNormalizedCardFields ? { search_card: searchCard } : {}),
+    ...(hasNormalizedCardFields ? { shopping_card: shoppingCard } : {}),
+    ...(marketSignalBadges.length ? { market_signal_badges: marketSignalBadges } : {}),
   };
 }
 

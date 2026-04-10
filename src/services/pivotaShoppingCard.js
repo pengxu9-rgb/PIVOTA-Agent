@@ -247,6 +247,9 @@ function buildCompactSubtitle({ product, bundle }) {
   const stepLabel = inferRoutineLabel(core?.routine_fit?.step, safeProduct.category || safeProduct.product_type);
   const whatBody = asString(core?.what_it_is?.body).toLowerCase();
 
+  if (stepLabel === 'serum' && whatBody.includes('vitamin c') && whatBody.includes('retinol')) {
+    return 'Vitamin C + retinol serum';
+  }
   if (whatBody.includes('multi-active') && stepLabel) {
     return toHeadlineCase(`multi-active ${stepLabel}`);
   }
