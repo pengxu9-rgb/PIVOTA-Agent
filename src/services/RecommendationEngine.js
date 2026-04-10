@@ -138,6 +138,18 @@ function normalizeText(input) {
     .trim();
 }
 
+function buildNormalizedAliases(input) {
+  const normalized = normalizeText(input);
+  if (!normalized) return [];
+  return uniqueByKey(
+    [
+      normalized,
+      normalized.replace(/\s+/g, ''),
+    ],
+    (value) => value,
+  );
+}
+
 const STOPWORDS = new Set([
   'a',
   'an',
@@ -544,6 +556,13 @@ function classifyConfidenceLevel(base, candidate, layerId) {
     if (base.vertical !== candidate.features.vertical) return 'low';
   }
 
+  if (layerId === 'L2E' && base.isExternal && candidate.brandMatch) {
+    if (base.vertical !== UNKNOWN_VERTICAL && candidate.features.vertical !== UNKNOWN_VERTICAL) {
+      return base.vertical === candidate.features.vertical ? 'medium' : 'low';
+    }
+    return candidate.features.isExternal ? 'medium' : 'low';
+  }
+
   if (layerId === 'L4' && candidate.tokenOverlap >= 0.24) return 'medium';
   return 'low';
 }
@@ -625,6 +644,23 @@ function pickLayeredRecommendations({
       predicate: (c) => c.brandMatch && c.parentMatch && nearPriceLoose(c.relDiff),
     },
     {
+      id: 'L2E',
+      name: 'same_brand_external_synthetic',
+      priority: 2.5,
+      predicate: (c, features, baseFeatures) =>
+        baseFeatures.isExternal &&
+        c.brandMatch &&
+        (
+          features.isExternal ||
+          c.leafMatch ||
+          c.parentMatch ||
+          c.tokenOverlap >= 0.05 ||
+          baseFeatures.vertical === UNKNOWN_VERTICAL ||
+          features.vertical === UNKNOWN_VERTICAL ||
+          baseFeatures.vertical === features.vertical
+        ),
+    },
+    {
       id: 'L3',
       name: 'leaf_category+near_price',
       priority: 3,
@@ -659,7 +695,7 @@ function pickLayeredRecommendations({
       const features = buildCandidateFeatures(p, base.currency);
       const source = features.isExternal ? 'external' : 'internal';
       const scoreDetail = scoreCandidate(base, features);
-      const matchedLayer = layers.find((layer) => layer.predicate(scoreDetail)) || null;
+      const matchedLayer = layers.find((layer) => layer.predicate(scoreDetail, features, base)) || null;
 
       if (base.vertical === 'fragrance') {
         const candidateVertical = features.vertical;
@@ -901,6 +937,9 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit }) {
 
   const brand = normalizeText(brandHint);
   const category = normalizeText(categoryHint);
+  const brandAliases = buildNormalizedAliases(brandHint);
+  const compactBrand = brandAliases.find((value) => !/\s/.test(value)) || brand.replace(/\s+/g, '');
+  const categoryAliases = buildNormalizedAliases(categoryHint);
 
   async function runQuery(whereSql, params, cap, queryName) {
     try {
@@ -922,7 +961,6 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit }) {
             created_at
           FROM external_product_seeds
           WHERE status = 'active'
-            AND attached_product_key IS NULL
             AND market = $1
             AND (tool = '*' OR tool = $2)
             ${whereSql}
@@ -949,16 +987,34 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit }) {
   const [brandMatches, categoryMatches] = await Promise.all([
     brand
       ? runQuery(
-          `AND lower(coalesce(seed_data->>'brand','')) = $4`,
-          [brand],
+          `AND (
+            lower(coalesce(seed_data->>'brand','')) = ANY($4)
+            OR lower(coalesce(seed_data->>'brand_name','')) = ANY($4)
+            OR lower(coalesce(seed_data->>'vendor','')) = ANY($4)
+            OR lower(coalesce(seed_data->>'vendor_name','')) = ANY($4)
+            OR lower(coalesce(seed_data->'snapshot'->>'brand','')) = ANY($4)
+            OR lower(coalesce(seed_data->'snapshot'->>'vendor','')) = ANY($4)
+            OR regexp_replace(lower(coalesce(seed_data->>'brand','')), '[^a-z0-9]+', '', 'g') = ANY($4)
+            OR regexp_replace(lower(coalesce(seed_data->>'vendor','')), '[^a-z0-9]+', '', 'g') = ANY($4)
+            OR regexp_replace(lower(coalesce(seed_data->'snapshot'->>'title','')), '[^a-z0-9]+', '', 'g') LIKE '%' || $5 || '%'
+          )`,
+          [brandAliases, compactBrand],
           Math.min(120, safeLimit),
           'external_brand',
         )
       : Promise.resolve([]),
     category
       ? runQuery(
-          `AND lower(coalesce(seed_data->>'category','')) = $4`,
-          [category],
+          `AND (
+            lower(coalesce(seed_data->>'category','')) = ANY($4)
+            OR lower(coalesce(seed_data->>'product_type','')) = ANY($4)
+            OR lower(coalesce(seed_data->>'productType','')) = ANY($4)
+            OR lower(coalesce(seed_data->'product'->>'category','')) = ANY($4)
+            OR lower(coalesce(seed_data->'snapshot'->>'category','')) = ANY($4)
+            OR lower(coalesce(seed_data->'snapshot'->>'product_type','')) = ANY($4)
+            OR lower(coalesce(seed_data->'snapshot'->>'productType','')) = ANY($4)
+          )`,
+          [categoryAliases],
           Math.min(120, safeLimit),
           'external_category',
         )
@@ -966,8 +1022,8 @@ async function fetchExternalCandidates({ brandHint, categoryHint, limit }) {
   ]);
 
   const out = [...brandMatches, ...categoryMatches];
-  const enoughFocusedCandidates = out.length >= Math.max(safeLimit, 80);
-  if (!enoughFocusedCandidates) {
+  const hasFocusedCandidates = out.length > 0;
+  if (!hasFocusedCandidates) {
     const recent = await runQuery('', [], Math.min(240, safeLimit), 'external_recent');
     out.push(...recent);
   }
@@ -1066,8 +1122,19 @@ async function enrichExternalBaseProduct(baseProduct) {
   const rescueFields = [];
   const seedRecord = await loadExternalSeedSemanticRecord(baseProduct);
   const seedData = ensureJsonObject(seedRecord?.seed_data);
+  const snapshot = ensureJsonObject(seedData?.snapshot);
 
-  const seedBrand = String(seedData?.brand || seedData?.snapshot?.brand || '').trim();
+  const seedBrand = String(
+    seedData?.brand ||
+      seedData?.brand_name ||
+      seedData?.vendor ||
+      seedData?.vendor_name ||
+      snapshot?.brand ||
+      snapshot?.brand_name ||
+      snapshot?.vendor ||
+      snapshot?.vendor_name ||
+      '',
+  ).trim();
   if (!getBrandName(enriched) && seedBrand) {
     if (!String(enriched.brand || '').trim()) enriched.brand = seedBrand;
     if (!String(enriched.vendor || '').trim()) enriched.vendor = seedBrand;
@@ -1075,7 +1142,14 @@ async function enrichExternalBaseProduct(baseProduct) {
   }
 
   const seedCategory = String(
-    seedData?.category || seedData?.product?.category || seedData?.snapshot?.category || '',
+    seedData?.category ||
+      seedData?.product?.category ||
+      seedData?.product_type ||
+      seedData?.productType ||
+      snapshot?.category ||
+      snapshot?.product_type ||
+      snapshot?.productType ||
+      '',
   ).trim();
   if (!getLeafCategory(enriched) && seedCategory) {
     if (!String(enriched.category || '').trim()) enriched.category = seedCategory;
@@ -1089,7 +1163,7 @@ async function enrichExternalBaseProduct(baseProduct) {
     rescueFields.push('title');
   }
 
-  const seedDescription = String(seedData?.description || seedData?.snapshot?.description || '').trim();
+  const seedDescription = String(seedData?.description || snapshot?.description || '').trim();
   if (!String(enriched.description || '').trim() && seedDescription) {
     enriched.description = seedDescription;
     rescueFields.push('description');
@@ -1189,7 +1263,7 @@ async function recommend({
 
   let internalTimedOut = false;
   let externalTimedOut = false;
-  const internalCandidates = await withSoftTimeout(
+  const internalCandidatesTask = withSoftTimeout(
     providedInternal
       ? Promise.resolve(providedInternal)
       : fetchInternalCandidates({
@@ -1210,6 +1284,34 @@ async function recommend({
       );
     },
   );
+  const externalCandidatesTask = withSoftTimeout(
+    providedExternal
+      ? Promise.resolve(providedExternal)
+      : fetchExternalCandidates({
+          brandHint: baseBrand,
+          categoryHint: baseLeaf,
+          limit: Math.max(120, safeK * 15),
+        }),
+    effectiveExternalFetchTimeoutMs,
+    [],
+    () => {
+      externalTimedOut = true;
+      logger.warn(
+        {
+          product_id: baseProductId,
+          timeout_ms: effectiveExternalFetchTimeoutMs,
+        },
+        'PDP recommendations external candidate fetch timed out',
+      );
+    },
+  ).catch((err) => {
+    logger.warn(
+      { err: err?.message || String(err), product_id: baseProductId },
+      'PDP recommendations external candidate fetch failed',
+    );
+    return [];
+  });
+  const internalCandidates = await internalCandidatesTask;
 
   const internalCount = Array.isArray(internalCandidates) ? internalCandidates.length : 0;
   const skipExternalMin = Math.max(
@@ -1224,27 +1326,7 @@ async function recommend({
 
   const externalCandidates = shouldSkipExternal
     ? []
-      : await withSoftTimeout(
-        providedExternal
-          ? Promise.resolve(providedExternal)
-          : fetchExternalCandidates({
-              brandHint: baseBrand,
-              categoryHint: baseLeaf,
-              limit: Math.max(120, safeK * 15),
-            }),
-        effectiveExternalFetchTimeoutMs,
-        [],
-        () => {
-          externalTimedOut = true;
-          logger.warn(
-            {
-              product_id: baseProductId,
-              timeout_ms: effectiveExternalFetchTimeoutMs,
-            },
-            'PDP recommendations external candidate fetch timed out',
-          );
-        },
-      );
+    : await externalCandidatesTask;
 
   const filteredInternalCandidates = filterCandidateCollection(internalCandidates, excludedCandidates);
   const filteredExternalCandidates = filterCandidateCollection(externalCandidates, excludedCandidates);
@@ -1331,6 +1413,7 @@ async function recommend({
     retrieval_mix: finalSourceCounts,
     underfill: Math.max(0, safeK - finalItems.length),
     low_confidence: Boolean(picked?.metadata?.low_confidence),
+    similar_status: finalItems.length > 0 ? 'ready' : internalTimedOut || externalTimedOut ? 'unavailable' : 'empty',
   };
 
   if (historyFallbackDebug.used) {
@@ -1413,5 +1496,7 @@ module.exports = {
     getLeafCategory,
     getParentCategory,
     isExternalProduct,
+    fetchExternalCandidates,
+    enrichExternalBaseProduct,
   },
 };

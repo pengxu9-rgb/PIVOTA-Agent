@@ -62,7 +62,7 @@ describe('get_pdp_v2 identity graph live read', () => {
               match_basis: ['official_url:https://kravebeauty.com/products/great-barrier-relief', 'variant_axes:volume:45ml'],
               strong_identity: {},
               soft_identity: {},
-              variant_axes: { volume: '45ml' },
+              variant_axes: { size: 'standard 45 ml', volume: '45ml', multi_variant: true },
               source_payload: {
                 product_id: 'ext_krave_gbr_45',
                 merchant_id: 'external_seed',
@@ -119,7 +119,7 @@ describe('get_pdp_v2 identity graph live read', () => {
               match_basis: ['official_url:https://kravebeauty.com/products/great-barrier-relief', 'variant_axes:volume:45ml'],
               strong_identity: {},
               soft_identity: {},
-              variant_axes: { volume: '45ml' },
+              variant_axes: { size: 'standard 45 ml', volume: '45ml', multi_variant: true },
               source_payload: {
                 product_id: 'ext_krave_gbr_45',
                 merchant_id: 'external_seed',
@@ -148,7 +148,7 @@ describe('get_pdp_v2 identity graph live read', () => {
               match_basis: ['brand:kravebeauty', 'title_core:great barrier relief', 'variant_axes:volume:45ml'],
               strong_identity: {},
               soft_identity: {},
-              variant_axes: { volume: '45ml' },
+              variant_axes: { size: 'standard 45 ml', volume: '45ml', multi_variant: true },
               source_payload: {
                 product_id: '10008793153864',
                 merchant_id: 'merch_krave',
@@ -182,7 +182,7 @@ describe('get_pdp_v2 identity graph live read', () => {
               match_basis: ['official_url:https://kravebeauty.com/products/great-barrier-relief', 'variant_axes:volume:45ml'],
               strong_identity: {},
               soft_identity: {},
-              variant_axes: { volume: '45ml' },
+              variant_axes: { size: 'standard 45 ml', volume: '45ml', multi_variant: true },
               source_payload: {
                 product_id: 'ext_krave_gbr_45',
                 merchant_id: 'external_seed',
@@ -233,7 +233,7 @@ describe('get_pdp_v2 identity graph live read', () => {
               match_basis: ['official_url:https://kravebeauty.com/products/great-barrier-relief', 'variant_axes:volume:100ml'],
               strong_identity: {},
               soft_identity: {},
-              variant_axes: { volume: '100ml' },
+              variant_axes: { size: 'jumbo 100 ml', volume: '100ml', multi_variant: true },
               source_payload: {
                 product_id: 'ext_krave_gbr_100',
                 merchant_id: 'external_seed',
@@ -267,6 +267,20 @@ describe('get_pdp_v2 identity graph live read', () => {
           image_url: 'https://cdn.example.com/gbr-upstream.jpg',
           platform: 'external',
           platform_product_id: 'ext_krave_gbr_45',
+          variants: [
+            {
+              variant_id: '13760798457931',
+              title: 'Standard - 45 mL',
+              options: [{ name: 'Size', value: 'Standard - 45 mL' }],
+              price: { amount: 28, currency: 'EUR' },
+            },
+            {
+              variant_id: '40160623329355',
+              title: 'Jumbo - 100 mL',
+              options: [{ name: 'Size', value: 'Jumbo - 100 mL' }],
+              price: { amount: 50, currency: 'EUR' },
+            },
+          ],
         },
       });
 
@@ -282,6 +296,22 @@ describe('get_pdp_v2 identity graph live read', () => {
           price: { amount: 30, currency: 'EUR' },
           platform: 'shopify',
           platform_product_id: '10008793153864',
+          variants: [
+            {
+              id: '52876964495688',
+              title: 'Standard - 45 mL',
+              options: { Size: 'Standard - 45 mL' },
+              price: { amount: 28, currency: 'EUR' },
+              sku: 'GBR-45',
+            },
+            {
+              id: '52876964528456',
+              title: 'Jumbo - 100 mL',
+              options: { Size: 'Jumbo - 100 mL' },
+              price: { amount: 50, currency: 'EUR' },
+              sku: 'GBR-100',
+            },
+          ],
         },
       });
 
@@ -360,6 +390,17 @@ describe('get_pdp_v2 identity graph live read', () => {
     expect(offersModule?.data?.product_group_id).toBe('sig_krave_45');
     expect(Array.isArray(offersModule?.data?.offers)).toBe(true);
     expect(offersModule.data.offers).toHaveLength(2);
+    const internalOffer = offersModule.data.offers.find((offer) => offer.merchant_id === 'merch_krave');
+    expect(internalOffer).toEqual(
+      expect.objectContaining({
+        merchant_name: 'KraveBeauty',
+        variant_id: '52876964495688',
+        selected_variant_id: '52876964495688',
+        sku_id: 'GBR-45',
+        price: { amount: 28, currency: 'EUR' },
+      }),
+    );
+    expect(internalOffer?.selected_options).toEqual({ size: 'standard - 45 ml' });
     expect(productIntelModule).toEqual(
       expect.objectContaining({
         required: true,
