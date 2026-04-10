@@ -411,8 +411,8 @@ async function runSmoke(options = {}) {
     minProducts: 4,
     requireRankDebug: true,
     requiredRecallLabels: [
-      ['interest_pool', 'external_seed_pool_fastpath'],
-      ['expansion_pool', 'external_seed_pool_fastpath'],
+      ['interest_pool', 'external_seed_pool_fastpath', 'beauty_interest_mainline'],
+      ['expansion_pool', 'external_seed_pool_fastpath', 'beauty_interest_mainline'],
     ],
     excludeProductKeys: [suppressedKey],
   });

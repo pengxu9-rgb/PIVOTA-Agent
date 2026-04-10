@@ -73,8 +73,10 @@ const { recommendHandler } = require('./recommend/index');
 const {
   buildFindProductsMultiContext,
   applyFindProductsMultiPolicy,
+  getProductPriceMajor,
   getProductPriceCurrency,
   resolveBudgetConstraintForCurrency,
+  isWithinPriceConstraint,
 } = require('./findProductsMulti/policy');
 const {
   extractHumanApparelCategories,
@@ -13185,7 +13187,7 @@ function buildInvokeGatewayGovernanceAudit({
   return isPlainObject(audit) && audit.would_enforce === true ? audit : null;
 }
 
-function buildFindProductsMultiBudgetFxMetadataForDirectPath(
+function resolveFindProductsMultiBudgetConstraintForDirectPath(
   priceConstraint,
   products = [],
   fallbackProducts = [],
@@ -13194,7 +13196,7 @@ function buildFindProductsMultiBudgetFxMetadataForDirectPath(
     !priceConstraint ||
     (priceConstraint.min == null && priceConstraint.max == null)
   ) {
-    return null;
+    return { constraint: null, metadata: null };
   }
   const candidateProduct =
     (Array.isArray(products) ? products : []).find((product) => getProductPriceCurrency(product, '')) ||
@@ -13203,7 +13205,30 @@ function buildFindProductsMultiBudgetFxMetadataForDirectPath(
     ) ||
     null;
   const candidateCurrency = getProductPriceCurrency(candidateProduct, 'USD');
-  return resolveBudgetConstraintForCurrency(priceConstraint, candidateCurrency).metadata || null;
+  return resolveBudgetConstraintForCurrency(priceConstraint, candidateCurrency);
+}
+
+function filterFindProductsMultiDirectProductsByBudget(priceConstraint, products = []) {
+  const list = Array.isArray(products) ? products : [];
+  const resolution = resolveFindProductsMultiBudgetConstraintForDirectPath(
+    priceConstraint,
+    list,
+    list,
+  );
+  if (!priceConstraint || (priceConstraint.min == null && priceConstraint.max == null)) {
+    return { products: list, resolution, filteredOut: 0 };
+  }
+  if (!resolution.constraint) {
+    return { products: [], resolution, filteredOut: list.length };
+  }
+  const filtered = list.filter((product) =>
+    isWithinPriceConstraint(getProductPriceMajor(product), resolution.constraint),
+  );
+  return {
+    products: filtered,
+    resolution,
+    filteredOut: Math.max(0, list.length - filtered.length),
+  };
 }
 
 const AURORA_CHATBOX_ORIGINS = new Set([
@@ -20203,30 +20228,33 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           strictInvokeDecision: strictFindProductsMultiDecision,
           rawQueryText: rawUserQuery || queryText,
         });
-        const pagedDirectProducts = directProducts.slice(safeOffset, safeOffset + safeLimit);
-        const directBudgetFxMetadata = buildFindProductsMultiBudgetFxMetadataForDirectPath(
+        const directBudgetFilter = filterFindProductsMultiDirectProductsByBudget(
           effectiveIntent?.hard_constraints?.price || null,
-          pagedDirectProducts,
           directProducts,
         );
+        const filteredDirectProducts = directBudgetFilter.products;
+        const pagedDirectProducts = filteredDirectProducts.slice(safeOffset, safeOffset + safeLimit);
+        const directBudgetFxMetadata = directBudgetFilter.resolution?.metadata || null;
         const baseMetadata = {
           ...buildIngredientIntentDirectBaseMetadata({
             ingredientIntentDetected: ingredientIntentIds.length > 0,
             ingredientIntentIds,
             strictConstraintReason: strictFindProductsMultiDecision?.strictConstraintReason,
-            mergedRecalledProducts: directProducts,
-            directServiceProducts: directProducts,
+            mergedRecalledProducts: filteredDirectProducts,
+            directServiceProducts: filteredDirectProducts,
           }),
           invoke_search_rail: 'authoritative_shopping',
           legacy_contract: false,
           service_version: buildServiceVersionMetadata(),
+          ingredient_direct_budget_filter_applied: Boolean(directBudgetFxMetadata),
+          ingredient_direct_budget_filtered_out_count: directBudgetFilter.filteredOut,
           ...(directBudgetFxMetadata || {}),
         };
         const directResponse =
           pagedDirectProducts.length > 0
             ? buildIngredientIntentDirectHitResponse({
                 responseProducts: pagedDirectProducts,
-                mergedRecalledProducts: directProducts,
+                mergedRecalledProducts: filteredDirectProducts,
                 safePage,
                 baseMetadata,
                 ingredientIntentIds,

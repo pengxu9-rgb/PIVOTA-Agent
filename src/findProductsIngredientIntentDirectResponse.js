@@ -18,6 +18,12 @@ function buildIngredientIntentDirectBaseMetadata({
 } = {}) {
   return {
     fetched_at: new Date().toISOString(),
+    contract_bridge: {
+      attempted_contract: 'shop_invoke_strict',
+      resolved_contract: 'shop_invoke_strict',
+      legacy_fallback: false,
+    },
+    resolved_contract: 'shop_invoke_strict',
     strict_constraint_query: ingredientIntentIds.length > 0,
     strict_constraint_reason: strictConstraintReason,
     ...(ingredientIntentIds.length > 0 ? { ingredient_intents: ingredientIntentIds } : {}),

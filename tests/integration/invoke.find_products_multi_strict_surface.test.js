@@ -106,7 +106,25 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
 
   test('strict ingredient queries return external seed hits through one ingredient direct authority', async () => {
     const capturedSql = { value: '', all: [] };
-    mockDbRows([seedRow()], capturedSql);
+    mockDbRows(
+      [
+        seedRow(),
+        seedRow({
+          id: 'seed_over_budget_niacinamide',
+          external_product_id: 'seed_over_budget_niacinamide_product',
+          destination_url: 'https://fentybeauty.com/products/over-budget-niacinamide-serum',
+          canonical_url: 'https://fentybeauty.com/products/over-budget-niacinamide-serum',
+          title: 'Over Budget Niacinamide Serum',
+          price_amount: 58,
+          seed_data: {
+            ...seedRow().seed_data,
+            title: 'Over Budget Niacinamide Serum',
+            price_amount: 58,
+          },
+        }),
+      ],
+      capturedSql,
+    );
 
     const legacyInvoke = nock('http://pivota.test')
       .post('/agent/shop/v1/invoke')
@@ -149,8 +167,16 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
       expect.objectContaining({
         invoke_search_rail: 'authoritative_shopping',
         legacy_contract: false,
+        contract_bridge: expect.objectContaining({
+          attempted_contract: 'shop_invoke_strict',
+          resolved_contract: 'shop_invoke_strict',
+          legacy_fallback: false,
+        }),
+        resolved_contract: 'shop_invoke_strict',
         query_source: INGREDIENT_DIRECT_QUERY_SOURCE,
         ingredient_direct_resolution_variant: expect.any(String),
+        ingredient_direct_budget_filter_applied: true,
+        ingredient_direct_budget_filtered_out_count: 1,
         strict_constraint_query: true,
         strict_constraint_reason: expect.stringMatching(/ingredient|multi_constraint/),
         matched_ingredient_ids: expect.arrayContaining(['niacinamide']),
@@ -218,6 +244,12 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
       expect.objectContaining({
         invoke_search_rail: 'authoritative_shopping',
         legacy_contract: false,
+        contract_bridge: expect.objectContaining({
+          attempted_contract: 'shop_invoke_strict',
+          resolved_contract: 'shop_invoke_strict',
+          legacy_fallback: false,
+        }),
+        resolved_contract: 'shop_invoke_strict',
         query_source: INGREDIENT_DIRECT_QUERY_SOURCE,
         ingredient_direct_resolution_variant: 'direct_empty',
         strict_empty: true,

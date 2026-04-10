@@ -188,6 +188,49 @@ describe('run_discovery_feed_smoke helpers', () => {
     expect(summary.productCount).toBe(2);
   });
 
+  test('accepts personalized beauty interest mainline recall without legacy interest labels', () => {
+    const summary = validateDiscoveryResponse(
+      {
+        products: [
+          {
+            merchant_id: 'external_seed',
+            product_id: 'p2',
+            title: 'Vitamin C Serum',
+          },
+          {
+            merchant_id: 'external_seed',
+            product_id: 'p3',
+            title: 'Niacinamide Serum',
+          },
+        ],
+        metadata: {
+          candidate_source: 'beauty_interest_mainline',
+          provider_breakdown: [{ provider: 'external_seeds', successful: true, returned: 12 }],
+          discovery_strategy: 'personalized_interest',
+          personalization_source: 'account_history',
+          rank_debug: {
+            recall_summary: [{ label: 'beauty_interest_mainline', status: 200, returned: 12 }],
+          },
+        },
+      },
+      {
+        discoveryStrategy: 'personalized_interest',
+        personalizationSource: 'account_history',
+        candidateSource: ['beauty_interest_mainline', 'multi_provider'],
+        requireRankDebug: true,
+        requiredRecallLabels: [
+          ['interest_pool', 'external_seed_pool_fastpath', 'beauty_interest_mainline'],
+          ['expansion_pool', 'external_seed_pool_fastpath', 'beauty_interest_mainline'],
+        ],
+        minProducts: 2,
+      },
+    );
+
+    expect(summary.recallSummary).toEqual([
+      expect.objectContaining({ label: 'beauty_interest_mainline' }),
+    ]);
+  });
+
   test('rejects disallowed cold-start titles in the top rows', () => {
     expect(() =>
       validateDiscoveryResponse(

@@ -506,6 +506,8 @@ function getProductPriceMajor(product) {
   if (!product) return NaN;
 
   const majorCandidates = [
+    product.price?.amount,
+    product.price?.value,
     product.price,
     product.price_amount,
     product.priceAmount,
@@ -5887,6 +5889,7 @@ module.exports = {
   buildFindProductsMultiContext,
   applyFindProductsMultiPolicy,
   buildFashionConstraintMetadata,
+  getProductPriceMajor,
   getProductPriceCurrency,
   resolveBudgetConstraintForCurrency,
   isWithinPriceConstraint,
