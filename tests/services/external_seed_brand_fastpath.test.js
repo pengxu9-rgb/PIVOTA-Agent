@@ -60,6 +60,10 @@ describe('runExternalSeedBrandMainlineFastpath', () => {
     expect(queries[0].sql).toContain('COUNT(*) OVER()::int AS total_rows');
     expect(queries[0].sql).not.toContain('tool = ANY');
     expect(queries[0].params[1]).toEqual(['fenty']);
+    expect(queries[0].params[2]).toBe(24);
+    expect(queries[0].params[3]).toBe(0);
+    expect(queries[0].sql).toContain('LIMIT $3');
+    expect(queries[0].sql).toContain('OFFSET $4');
     expect(queries[0].sql).not.toContain('SELECT COUNT(*)::int AS total');
   });
 
@@ -95,6 +99,10 @@ describe('runExternalSeedBrandMainlineFastpath', () => {
     expect(queries[0].sql).toContain('tool = ANY($2::text[])');
     expect(queries[0].params[1]).toEqual(['creator_agents', '*']);
     expect(queries[0].params[2]).toEqual(['fenty']);
+    expect(queries[0].params[3]).toBe(24);
+    expect(queries[0].params[4]).toBe(0);
+    expect(queries[0].sql).toContain('LIMIT $4');
+    expect(queries[0].sql).toContain('OFFSET $5');
   });
 
   test('can include attached seeds and match brand evidence inside seed data for rescue scope', async () => {

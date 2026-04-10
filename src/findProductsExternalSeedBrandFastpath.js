@@ -187,11 +187,16 @@ async function runExternalSeedBrandMainlineFastpath({
     };
   };
 
-  const exactSqlParams = allToolsRequested
+  const exactWhereSqlParams = allToolsRequested
     ? [market, exactBrandCompactVariants]
     : [market, brandToolValues, exactBrandCompactVariants];
-  const exactBrandBind = `$${exactSqlParams.length}`;
+  const exactBrandBind = `$${exactWhereSqlParams.length}`;
   const exactToolScopeClause = buildToolScopeClause('$2');
+  const exactPageSqlParams = [...exactWhereSqlParams];
+  exactPageSqlParams.push(safeLimit);
+  const exactLimitBind = `$${exactPageSqlParams.length}`;
+  exactPageSqlParams.push(safeOffset);
+  const exactOffsetBind = `$${exactPageSqlParams.length}`;
 
   try {
     const exactPageStartedAt = Date.now();
@@ -211,10 +216,10 @@ async function runExternalSeedBrandMainlineFastpath({
         FROM external_product_seeds
         WHERE ${exactWhereClause}
         ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
-        LIMIT $4
-        OFFSET $5
+        LIMIT ${exactLimitBind}
+        OFFSET ${exactOffsetBind}
       `,
-      [...exactSqlParams, safeLimit, safeOffset],
+      exactPageSqlParams,
     );
     const exactDurationMs = Math.max(0, Date.now() - exactPageStartedAt);
 
@@ -227,7 +232,7 @@ async function runExternalSeedBrandMainlineFastpath({
           FROM external_product_seeds
           WHERE ${exactWhereClause}
         `,
-        exactSqlParams,
+        exactWhereSqlParams,
       );
       exactTotalRows = Math.max(0, Number(exactCountRes?.rows?.[0]?.total || 0) || 0);
       if (exactTotalRows > 0 && safeOffset >= exactTotalRows) {
