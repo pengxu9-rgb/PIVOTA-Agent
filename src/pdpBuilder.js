@@ -797,6 +797,9 @@ function buildMediaItems(product, variants) {
       thumbnail_url: m.thumbnail_url || m.thumbnail,
       alt_text: m.alt_text || product.title,
       source: m.source,
+      source_scope: m.source_scope,
+      source_tier: m.source_tier,
+      source_kind: m.source_kind,
       duration_ms: m.duration_ms,
     });
   });
@@ -809,6 +812,9 @@ function buildMediaItems(product, variants) {
       url,
       alt_text: typeof img === 'object' ? img.alt_text : product.title,
       source: typeof img === 'object' ? img.source : undefined,
+      source_scope: typeof img === 'object' ? img.source_scope : undefined,
+      source_tier: typeof img === 'object' ? img.source_tier : undefined,
+      source_kind: typeof img === 'object' ? img.source_kind : undefined,
       thumbnail_url: typeof img === 'object' ? img.thumbnail_url : undefined,
     });
   });
@@ -1075,6 +1081,17 @@ function buildReviewsPreview(product, options = {}) {
     scale,
     rating,
     review_count: reviewCount,
+    aggregation_scope:
+      typeof summary?.aggregation_scope === 'string' ? summary.aggregation_scope : undefined,
+    exact_item_review_count:
+      Number.isFinite(Number(summary?.exact_item_review_count))
+        ? Number(summary.exact_item_review_count)
+        : undefined,
+    product_line_review_count:
+      Number.isFinite(Number(summary?.product_line_review_count))
+        ? Number(summary.product_line_review_count)
+        : undefined,
+    scope_label: summary?.scope_label ? String(summary.scope_label) : undefined,
     ...(brandCardName
       ? {
           brand_card: {
@@ -1100,6 +1117,33 @@ function buildReviewsPreview(product, options = {}) {
           }))
         : undefined,
     })),
+    filters: Array.isArray(summary?.filters)
+      ? summary.filters
+          .map((item) =>
+            item && typeof item === 'object'
+              ? {
+                  id: String(item.id || '').trim(),
+                  label: String(item.label || item.name || '').trim(),
+                  count: Number(item.count || 0) || 0,
+                }
+              : null,
+          )
+          .filter((item) => item && item.id && item.label)
+      : undefined,
+    tabs: Array.isArray(summary?.tabs)
+      ? summary.tabs
+          .map((item) =>
+            item && typeof item === 'object'
+              ? {
+                  id: String(item.id || '').trim(),
+                  label: String(item.label || item.name || '').trim(),
+                  count: Number(item.count || 0) || 0,
+                  default: item.default === true,
+                }
+              : null,
+          )
+          .filter((item) => item && item.id && item.label)
+      : undefined,
     entry_points: {
       open_reviews: {
         action_type: 'open_embed',
@@ -1158,6 +1202,31 @@ function buildPdpPayload(args) {
   const variants = buildVariants(product);
   const defaultVariant = variants[0];
   const mediaItems = buildMediaItems(product, variants);
+  const previewItems = Array.isArray(product.line_preview_images)
+    ? product.line_preview_images
+        .map((item) => {
+          const url = normalizePdpImageUrl(
+            typeof item === 'string' ? item : item?.url || item?.image_url || item?.src,
+          );
+          if (!url) return null;
+          return {
+            type: 'image',
+            url,
+            alt_text: typeof item === 'object' ? item.alt_text || product.title : product.title,
+            source: typeof item === 'object' ? item.source : undefined,
+            source_scope: typeof item === 'object' ? item.source_scope : undefined,
+            source_tier: typeof item === 'object' ? item.source_tier : undefined,
+            source_kind:
+              typeof item === 'object'
+                ? item.source_kind || 'product_line_preview'
+                : 'product_line_preview',
+            thumbnail_url: typeof item === 'object' ? item.thumbnail_url : undefined,
+            merchant_id: typeof item === 'object' ? item.merchant_id : undefined,
+            product_id: typeof item === 'object' ? item.product_id : undefined,
+          };
+        })
+        .filter(Boolean)
+    : [];
   const details = buildDetailSections(product);
   const productFacts = buildProductFactsSections(product);
   const ingredientsInci = buildIngredientsInci(product);
@@ -1183,7 +1252,12 @@ function buildPdpPayload(args) {
       module_id: 'm_media',
       type: 'media_gallery',
       priority: 100,
-      data: { items: mediaItems },
+      data: {
+        items: mediaItems,
+        gallery_scope: typeof product.gallery_scope === 'string' ? product.gallery_scope : undefined,
+        preview_scope: typeof product.preview_scope === 'string' ? product.preview_scope : undefined,
+        preview_items: previewItems.length ? previewItems : undefined,
+      },
     });
   }
   if (variants.length > 1) {

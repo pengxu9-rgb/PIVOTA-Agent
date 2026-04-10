@@ -59,4 +59,80 @@ describe('pdpBuilder reviews preview media', () => {
     ]);
     expect(previewItems[5].review_id).toBe('r_6');
   });
+
+  test('preserves review scope metadata and product-line preview media', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'p_scope_1',
+        merchant_id: 'external_seed',
+        title: 'Scope Product',
+        vendor: 'KraveBeauty',
+        image_url: 'https://cdn.example.com/hero.jpg',
+        images: [
+          {
+            url: 'https://cdn.example.com/exact-main.jpg',
+            source_scope: 'exact_item',
+            source_tier: 'brand',
+            source_kind: 'external_seed',
+          },
+        ],
+        line_preview_images: [
+          {
+            url: 'https://cdn.example.com/line-preview.jpg',
+            source_scope: 'product_line_preview',
+            source_tier: 'brand',
+            source_kind: 'external_seed',
+          },
+        ],
+        gallery_scope: 'exact_item',
+        preview_scope: 'product_line',
+        price: { amount: 28, currency: 'EUR' },
+        review_summary: {
+          scale: 5,
+          rating: 4.7,
+          review_count: 42,
+          aggregation_scope: 'product_line',
+          exact_item_review_count: 12,
+          product_line_review_count: 42,
+          scope_label: 'Based on product-line reviews (42)',
+          tabs: [
+            { id: 'product_line', label: 'Product line', count: 42, default: true },
+            { id: 'exact_item', label: 'Exact item', count: 12 },
+          ],
+        },
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const mediaModule = payload.modules.find((m) => m?.type === 'media_gallery');
+    const reviewsModule = payload.modules.find((m) => m?.type === 'reviews_preview');
+
+    expect(mediaModule?.data).toEqual(
+      expect.objectContaining({
+        gallery_scope: 'exact_item',
+        preview_scope: 'product_line',
+        preview_items: [
+          expect.objectContaining({
+            url: 'https://cdn.example.com/line-preview.jpg',
+            source_scope: 'product_line_preview',
+            source_tier: 'brand',
+            source_kind: 'external_seed',
+          }),
+        ],
+      }),
+    );
+    expect(reviewsModule?.data).toEqual(
+      expect.objectContaining({
+        aggregation_scope: 'product_line',
+        exact_item_review_count: 12,
+        product_line_review_count: 42,
+        scope_label: 'Based on product-line reviews (42)',
+        tabs: [
+          expect.objectContaining({ id: 'product_line', label: 'Product line', count: 42, default: true }),
+          expect.objectContaining({ id: 'exact_item', label: 'Exact item', count: 12 }),
+        ],
+      }),
+    );
+  });
 });
