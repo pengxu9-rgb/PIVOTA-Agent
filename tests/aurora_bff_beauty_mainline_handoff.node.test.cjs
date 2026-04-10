@@ -385,12 +385,12 @@ test('handoffRecoToBeautyMainlineSearch keeps primary internal plus primary exte
     assert.deepEqual(
       captured.map((row) => row.query),
       [
+        'niacinamide serum oily skin',
         'oil control serum',
         'shine control serum',
-        'mattifying serum',
         'oil control treatment',
+        'niacinamide serum oily skin',
         'oil control serum',
-        'shine control serum',
       ],
     );
     assert.equal(captured.every((row) => row.callerLane === 'beauty_chat_handoff'), true);

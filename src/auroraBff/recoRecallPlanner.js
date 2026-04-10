@@ -304,6 +304,7 @@ function buildBeautyMainlineRecallPlan({ mode, semanticContract = null, rawQuery
       {
         allowConcernFallback = false,
         preferProductLedInternal = false,
+        allowDefaultTreatmentIngredientFallback = false,
       } = {},
     ) => {
       const queries = buildFrameworkRoleQueries(
@@ -313,6 +314,7 @@ function buildBeautyMainlineRecallPlan({ mode, semanticContract = null, rawQuery
         {
           allowConcernFallback,
           preferProductLedInternal,
+          allowDefaultTreatmentIngredientFallback,
         },
       );
       return queries.length > 0
@@ -328,6 +330,7 @@ function buildBeautyMainlineRecallPlan({ mode, semanticContract = null, rawQuery
     });
     const primaryExternalQueries = buildRoleStageQueries(primaryRole, {
       allowConcernFallback: true,
+      allowDefaultTreatmentIngredientFallback: true,
     });
     const primaryPreferredStep = normalizeSemanticStepFamily(primaryRole?.preferred_step || contract.target_step_family);
     stages = [
@@ -442,18 +445,45 @@ function scoreTreatmentIngredientHypothesis(value) {
   return 1;
 }
 
-function buildPrimaryTreatmentIngredientQuery(role) {
+function buildPrimaryTreatmentIngredientQueryCandidateScore(value, semanticFamily = '') {
+  const normalized = normalizeConcernQueryToken(value).toLowerCase();
+  if (!normalized) return 0;
+  if (String(semanticFamily || '').trim().toLowerCase() === 'oil_control') {
+    if (/\b(niacinamide|zinc|zinc pca)\b/.test(normalized)) return 4;
+    if (/\b(salicylic|bha|acid|exfoliant)\b/.test(normalized)) return 3;
+  }
+  return scoreTreatmentIngredientHypothesis(normalized);
+}
+
+function buildPrimaryTreatmentIngredientQuery(role, { allowDefaultFamilyFallback = false } = {}) {
   const roleObj = role && typeof role === 'object' && !Array.isArray(role) ? role : null;
   if (!roleObj) return '';
-  const candidates = uniqueCaseInsensitiveStrings(
+  const semanticFamily = deriveSemanticFamilyFromRole(roleObj);
+  const explicitCandidates = uniqueCaseInsensitiveStrings(
     Array.isArray(roleObj.ingredient_hypotheses) ? roleObj.ingredient_hypotheses : [],
     8,
   )
     .map((value) => normalizeConcernQueryToken(value))
-    .filter(Boolean)
-    .sort((left, right) => scoreTreatmentIngredientHypothesis(right) - scoreTreatmentIngredientHypothesis(left));
+    .filter(Boolean);
+  const fallbackCandidates =
+    allowDefaultFamilyFallback === true && explicitCandidates.length === 0 && semanticFamily === 'oil_control'
+      ? ['Niacinamide', 'Salicylic acid']
+      : [];
+  const candidates = uniqueCaseInsensitiveStrings(
+    [...explicitCandidates, ...fallbackCandidates],
+    8,
+  ).sort(
+    (left, right) =>
+      buildPrimaryTreatmentIngredientQueryCandidateScore(right, semanticFamily)
+      - buildPrimaryTreatmentIngredientQueryCandidateScore(left, semanticFamily),
+  );
   const picked = candidates[0] || '';
-  if (!picked || scoreTreatmentIngredientHypothesis(picked) < 3) return '';
+  if (!picked) return '';
+  if (semanticFamily === 'oil_control') {
+    if (/\b(niacinamide|zinc|zinc pca)\b/i.test(picked)) return 'niacinamide serum oily skin';
+    if (/\b(salicylic|bha|acid|exfoliant)\b/i.test(picked)) return 'salicylic acid serum oily skin';
+  }
+  if (scoreTreatmentIngredientHypothesis(picked) < 3) return '';
   return normalizeConcernQueryToken(`${picked} treatment`);
 }
 
@@ -566,6 +596,7 @@ function buildFrameworkRoleQueries(
   {
     allowConcernFallback = false,
     preferProductLedInternal = false,
+    allowDefaultTreatmentIngredientFallback = false,
   } = {},
 ) {
   const roleObj = role && typeof role === 'object' && !Array.isArray(role) ? role : null;
@@ -576,7 +607,11 @@ function buildFrameworkRoleQueries(
   const isTreatmentPrimary =
     allowConcernFallback && String(preferredStep).trim().toLowerCase() === 'treatment';
   const anchorQuery = isTreatmentPrimary ? buildPrimaryTreatmentAnchorQuery(roleObj) : '';
-  const ingredientLedQuery = isTreatmentPrimary ? buildPrimaryTreatmentIngredientQuery(roleObj) : '';
+  const ingredientLedQuery = isTreatmentPrimary
+    ? buildPrimaryTreatmentIngredientQuery(roleObj, {
+        allowDefaultFamilyFallback: allowDefaultTreatmentIngredientFallback,
+      })
+    : '';
   const semanticQueries = isTreatmentPrimary ? buildPrimaryTreatmentSemanticQueries(roleObj) : [];
   if (isTreatmentPrimary) {
     if (preferProductLedInternal) {

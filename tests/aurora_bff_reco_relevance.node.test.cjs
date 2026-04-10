@@ -3518,8 +3518,8 @@ test('__internal: framework recall planner emits role-aware primary and support 
   ]);
   assert.deepEqual(plan.stages[1]?.entries?.map((entry) => entry?.query), [
     'oil control treatment',
+    'niacinamide serum oily skin',
     'oil control serum',
-    'shine control serum',
   ]);
   assert.deepEqual(plan.stages[2]?.entries?.map((entry) => entry?.query), [
     'lightweight moisturizer',
@@ -3531,7 +3531,7 @@ test('__internal: framework recall planner emits role-aware primary and support 
   ]);
 });
 
-test('__internal: framework recall planner prefers ingredient-led treatment query when a treatment-strength active is available', () => {
+test('__internal: framework recall planner prefers oil-control ingredient-led serum query when active hints are available', () => {
   const { __internal } = loadRoutesFresh();
   const plan = __internal.buildRecoRecallPlan({
     mode: 'framework_generic',
@@ -3553,13 +3553,13 @@ test('__internal: framework recall planner prefers ingredient-led treatment quer
   });
 
   assert.deepEqual(plan.stages[0]?.entries?.map((entry) => entry?.query), [
-    'Salicylic acid treatment',
+    'niacinamide serum oily skin',
     'oil control serum',
     'shine control serum',
   ]);
   assert.deepEqual(plan.stages[1]?.entries?.map((entry) => entry?.query), [
     'oil control treatment',
-    'Salicylic acid treatment',
+    'niacinamide serum oily skin',
     'oil control serum',
   ]);
 });
