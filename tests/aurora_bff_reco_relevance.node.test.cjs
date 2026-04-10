@@ -4104,6 +4104,81 @@ test('__internal: local external seed support-role patterns avoid bare fit keywo
   assert.equal(patterns.includes('%oil free moisturizer%'), true);
 });
 
+test('__internal: local external seed support-role search uses staged category fastpath before broad text recall', async () => {
+  const { __internal } = loadRoutesFresh();
+  const observedQueries = [];
+  const makeRow = (id, title, price) => ({
+    id,
+    external_product_id: `ext_support_moisturizer_${id}`,
+    destination_url: `https://example.com/products/support-moisturizer-${id}`,
+    canonical_url: `https://example.com/products/support-moisturizer-${id}`,
+    domain: 'example.com',
+    title,
+    image_url: `https://example.com/products/support-moisturizer-${id}.jpg`,
+    price_amount: price,
+    price_currency: 'USD',
+    availability: 'in_stock',
+    match_stage: 'support_category_exact',
+    match_score: 56,
+    seed_data: {
+      derived: {
+        recall: {
+          retrieval_title: title,
+          retrieval_summary: 'A lightweight moisturizer for oily skin and breathable hydration.',
+          category: 'moisturizer',
+          vertical: 'skincare',
+          alias_tokens: ['lightweight moisturizer', 'gel cream'],
+        },
+      },
+      snapshot: {
+        title,
+        description: 'Oil-free gel cream texture for oily skin.',
+        category: 'Moisturizer',
+      },
+      benefit_tags: ['lightweight', 'oil-free hydration'],
+      skin_type_tags: ['oily'],
+    },
+    updated_at: new Date().toISOString(),
+    created_at: new Date().toISOString(),
+  });
+
+  const out = await __internal.searchLocalExternalSeedProducts({
+    query: 'lightweight moisturizer oily skin',
+    limit: 2,
+    role: {
+      role_id: 'lightweight_moisturizer',
+      rank: 2,
+      preferred_step: 'moisturizer',
+      query_terms: ['lightweight moisturizer', 'gel cream'],
+      fit_keywords: ['lightweight', 'oil free', 'breathable hydration'],
+      product_type_hypotheses: ['moisturizer'],
+    },
+    preferredStep: 'moisturizer',
+    queryFn: async (sql, params) => {
+      observedQueries.push({ sql: String(sql || ''), params });
+      return {
+        rows: [
+          makeRow('101', 'Cloud Weight Oil-Free Gel Cream', 18),
+          makeRow('102', 'Balance Water Cream', 24),
+        ],
+      };
+    },
+  });
+
+  assert.equal(out.ok, true);
+  assert.equal(out.local_external_seed_search_mode, 'staged_support_fastpath');
+  assert.equal(observedQueries.length, 1);
+  assert.match(observedQueries[0].sql, /support_category_exact/);
+  assert.match(observedQueries[0].sql, /seed_data->'derived'->'recall'->>'category'/);
+  assert.doesNotMatch(observedQueries[0].sql, /seed_data::text/i);
+  assert.doesNotMatch(observedQueries[0].sql, /retrieval_summary/i);
+  assert.deepEqual(observedQueries[0].params[2].slice(0, 2), ['moisturizer', 'moisturiser']);
+  assert.equal(out.local_external_seed_stage_debug[0]?.stage, 'support_category_exact');
+  assert.equal(out.products.length, 2);
+  assert.equal(out.products[0].retrieval_match_stage, 'support_category_exact');
+  assert.match(out.products[0].retrieval_reason, /support_category_exact/);
+});
+
 test('__internal: framework recall exhausts primary planned sources before support stages when mock recall never yields a candidate', async () => {
   const { __internal } = loadRoutesFresh();
   const originalGet = axios.get;

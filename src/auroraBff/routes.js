@@ -4155,6 +4155,15 @@ function normalizeRecoCatalogProduct(raw) {
     (typeof base.retrieval_reason === 'string' && base.retrieval_reason) ||
     (typeof base.retrievalReason === 'string' && base.retrievalReason) ||
     '';
+  const retrievalMatchStageRaw =
+    (typeof base.retrieval_match_stage === 'string' && base.retrieval_match_stage) ||
+    (typeof base.retrievalMatchStage === 'string' && base.retrievalMatchStage) ||
+    '';
+  const retrievalMatchScoreRaw = Number.isFinite(Number(base.retrieval_match_score))
+    ? Number(base.retrieval_match_score)
+    : Number.isFinite(Number(base.retrievalMatchScore))
+      ? Number(base.retrievalMatchScore)
+      : null;
   const retrievalStepRaw =
     (typeof base.retrieval_step === 'string' && base.retrieval_step) ||
     (typeof base.retrievalStep === 'string' && base.retrievalStep) ||
@@ -4301,6 +4310,8 @@ function normalizeRecoCatalogProduct(raw) {
     ...(String(sourceToken || '').trim() ? { source: String(sourceToken).trim() } : {}),
     ...(normalizedRetrievalSource ? { retrieval_source: normalizedRetrievalSource } : {}),
     ...(String(retrievalReasonRaw || '').trim() ? { retrieval_reason: String(retrievalReasonRaw).trim() } : {}),
+    ...(String(retrievalMatchStageRaw || '').trim() ? { retrieval_match_stage: String(retrievalMatchStageRaw).trim() } : {}),
+    ...(retrievalMatchScoreRaw != null ? { retrieval_match_score: retrievalMatchScoreRaw } : {}),
     ...(String(retrievalStepRaw || '').trim() ? { retrieval_step: String(retrievalStepRaw).trim() } : {}),
     ...(String(retrievalRoleIdRaw || '').trim() ? { retrieval_role_id: String(retrievalRoleIdRaw).trim() } : {}),
     ...(retrievalRoleRankRaw != null ? { retrieval_role_rank: retrievalRoleRankRaw } : {}),
@@ -7962,6 +7973,218 @@ function buildLocalExternalSeedSearchPredicate(bind, { lean = false } = {}) {
   )`;
 }
 
+const LOCAL_EXTERNAL_SEED_SELECT_FIELDS = `
+  id,
+  external_product_id,
+  destination_url,
+  canonical_url,
+  domain,
+  title,
+  image_url,
+  price_amount,
+  price_currency,
+  availability,
+  seed_data,
+  updated_at,
+  created_at
+`;
+const LOCAL_EXTERNAL_SEED_DIRECT_RECALL_CATEGORY_FIELD =
+  "lower(coalesce(seed_data->'derived'->'recall'->>'category', ''))";
+
+function buildLocalExternalSeedStageRowKey(row) {
+  const id = String(row?.id ?? '').trim();
+  if (id) return `id:${id}`;
+  const externalId = String(row?.external_product_id ?? '').trim();
+  if (externalId) return `external:${externalId}`;
+  const url = pickFirstTrimmed(row?.canonical_url, row?.destination_url);
+  if (url) return `url:${url.toLowerCase()}`;
+  const title = String(row?.title || '').trim();
+  if (title) return `title:${title.toLowerCase()}`;
+  return '';
+}
+
+function buildLocalExternalSeedStageSqlId(row) {
+  const id = String(row?.id ?? '').trim();
+  return id || null;
+}
+
+function buildLocalExternalSeedSupportCategoryTerms({ role = null, preferredStep = '', query = '' } = {}) {
+  const step = normalizeRecoTargetStep(preferredStep || role?.preferred_step);
+  const haystack = [
+    query,
+    role?.role_id,
+    role?.label,
+    role?.preferred_step,
+    ...(Array.isArray(role?.query_terms) ? role.query_terms : []),
+    ...(Array.isArray(role?.fit_keywords) ? role.fit_keywords : []),
+    ...(Array.isArray(role?.product_type_hypotheses) ? role.product_type_hypotheses : []),
+  ]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+  const terms = [];
+  const add = (...values) => {
+    for (const value of values) {
+      const normalized = String(value || '').trim().toLowerCase();
+      if (normalized) terms.push(normalized);
+    }
+  };
+
+  if (step === 'moisturizer' || /\b(moisturi[sz]er|gel[-\s]?cream|cream|lotion|emulsion|hydration|barrier)\b/.test(haystack)) {
+    add('moisturizer', 'moisturiser', 'cream', 'gel cream', 'gel-cream', 'lotion', 'emulsion');
+  }
+  if (step === 'sunscreen' || /\b(sunscreen|spf|sun care|sun protection|uv)\b/.test(haystack)) {
+    add('sunscreen', 'spf', 'sun care', 'sun protection', 'uv protection');
+  }
+  if (step === 'cleanser' || /\b(cleanser|cleansing|wash)\b/.test(haystack)) {
+    add('cleanser', 'cleansing', 'face wash');
+  }
+  if (step === 'treatment' || /\b(serum|treatment|ampoule|essence)\b/.test(haystack)) {
+    add('serum', 'treatment', 'ampoule', 'essence');
+  }
+
+  return uniqCaseInsensitiveStrings(terms, 10);
+}
+
+function buildLocalExternalSeedSupportStageDefinitions({
+  patterns = [],
+  categoryTerms = [],
+  safeLimit = 6,
+} = {}) {
+  const stageCap = Math.max(safeLimit, Math.min(safeLimit * 3, 36));
+  const stages = [];
+  if (categoryTerms.length > 0) {
+    stages.push({
+      stage: 'support_category_exact',
+      score: 56,
+      cap: stageCap,
+      buildWhereSql: (stageBind) => `(
+        ${LOCAL_EXTERNAL_SEED_DIRECT_RECALL_CATEGORY_FIELD} = ANY(${stageBind(categoryTerms)}::text[])
+      )`,
+    });
+  }
+  if (patterns.length > 0) {
+    stages.push({
+      stage: 'support_recall_title',
+      score: 48,
+      cap: stageCap,
+      buildWhereSql: (stageBind) =>
+        `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${stageBind(patterns)}::text[])`,
+    });
+    stages.push({
+      stage: 'support_alias_tokens',
+      score: 42,
+      cap: stageCap,
+      buildWhereSql: (stageBind) =>
+        `${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY(${stageBind(patterns)}::text[])`,
+    });
+    stages.push({
+      stage: 'support_ingredient_tokens',
+      score: 38,
+      cap: stageCap,
+      buildWhereSql: (stageBind) =>
+        `${EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokens} LIKE ANY(${stageBind(patterns)}::text[])`,
+    });
+    stages.push({
+      stage: 'support_recall_summary',
+      score: 28,
+      cap: Math.max(safeLimit, Math.min(safeLimit * 2, 24)),
+      buildWhereSql: (stageBind) =>
+        `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${stageBind(patterns)}::text[])`,
+    });
+  }
+  return stages;
+}
+
+async function searchLocalExternalSeedProductsViaSupportStages({
+  runQuery,
+  q,
+  patterns = [],
+  role = null,
+  preferredStep = '',
+  safeLimit = 6,
+  market,
+  tool,
+} = {}) {
+  const categoryTerms = buildLocalExternalSeedSupportCategoryTerms({ role, preferredStep, query: q });
+  const stageDefinitions = buildLocalExternalSeedSupportStageDefinitions({
+    patterns,
+    categoryTerms,
+    safeLimit,
+  });
+  const stagedRows = [];
+  const seenRowKeys = new Set();
+  const seenSqlIds = new Set();
+  const stageDebug = [];
+  const baseWhereSql = `
+    status = 'active'
+      AND attached_product_key IS NULL
+      AND market = $1
+      AND (tool = '*' OR tool = $2)
+  `;
+  const appendRows = (rows = []) => {
+    for (const row of Array.isArray(rows) ? rows : []) {
+      const rowKey = buildLocalExternalSeedStageRowKey(row);
+      if (!rowKey || seenRowKeys.has(rowKey)) continue;
+      seenRowKeys.add(rowKey);
+      const sqlId = buildLocalExternalSeedStageSqlId(row);
+      if (sqlId) seenSqlIds.add(sqlId);
+      stagedRows.push(row);
+      if (stagedRows.length >= safeLimit) break;
+    }
+  };
+
+  for (const stageDefinition of stageDefinitions) {
+    if (stagedRows.length >= safeLimit) break;
+    const startedAt = Date.now();
+    const stageParams = [market, tool];
+    const stageBind = (value) => {
+      stageParams.push(value);
+      return `$${stageParams.length}`;
+    };
+    const stageWhereSql = typeof stageDefinition.buildWhereSql === 'function'
+      ? stageDefinition.buildWhereSql(stageBind)
+      : '';
+    if (!stageWhereSql) continue;
+    let sql = `
+      SELECT
+        ${LOCAL_EXTERNAL_SEED_SELECT_FIELDS},
+        ${Number(stageDefinition.score || 0)}::int AS match_score,
+        '${stageDefinition.stage}'::text AS match_stage
+      FROM external_product_seeds
+      WHERE ${baseWhereSql}
+        AND ${stageWhereSql}
+    `;
+    if (seenSqlIds.size > 0) {
+      const excludedIdsBind = stageBind(Array.from(seenSqlIds));
+      sql += `
+        AND NOT (id::text = ANY(${excludedIdsBind}::text[]))
+      `;
+    }
+    const limitBind = stageBind(Math.max(safeLimit, Math.min(36, Number(stageDefinition.cap || safeLimit))));
+    sql += `
+      ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
+      LIMIT ${limitBind}
+    `;
+    const res = await runQuery(sql, stageParams);
+    const rows = Array.isArray(res?.rows) ? res.rows : [];
+    appendRows(rows);
+    stageDebug.push({
+      stage: String(stageDefinition.stage || '').trim() || 'unknown',
+      row_count: rows.length,
+      cumulative_row_count: stagedRows.length,
+      duration_ms: Math.max(0, Date.now() - startedAt),
+      cap: Math.max(safeLimit, Math.min(36, Number(stageDefinition.cap || safeLimit))),
+    });
+  }
+
+  return {
+    rows: stagedRows.slice(0, safeLimit),
+    stageDebug,
+    categoryTerms,
+  };
+}
+
 function buildLocalExternalSeedSearchPatterns(query, {
   role = null,
   preferredStep = '',
@@ -8069,7 +8292,11 @@ function buildLocalExternalSeedSurfacingCandidate(row) {
     ...baseProduct,
     source: 'external_seed',
     retrieval_source: 'external_seed',
-    retrieval_reason: 'external_seed_local_search',
+    retrieval_reason: pickFirstTrimmed(row?.match_stage)
+      ? `external_seed_local_search:${pickFirstTrimmed(row.match_stage)}`
+      : 'external_seed_local_search',
+    ...(pickFirstTrimmed(row?.match_stage) ? { retrieval_match_stage: pickFirstTrimmed(row.match_stage) } : {}),
+    ...(Number.isFinite(Number(row?.match_score)) ? { retrieval_match_score: Number(row.match_score) } : {}),
     ...(searchAliases.length ? { search_aliases: searchAliases } : {}),
     ...(benefitTags.length ? { benefit_tags: benefitTags } : {}),
     ...(skinTypeTags.length ? { skin_type_tags: skinTypeTags } : {}),
@@ -8136,22 +8363,45 @@ async function searchLocalExternalSeedProducts({
   const tool = 'creator_agents';
 
   try {
+    if (leanSql) {
+      const staged = await searchLocalExternalSeedProductsViaSupportStages({
+        runQuery,
+        q,
+        patterns,
+        role,
+        preferredStep,
+        safeLimit,
+        market,
+        tool,
+      });
+      const rows = Array.isArray(staged?.rows) ? staged.rows : [];
+      const ranked = rankPurchasableRecoveryCandidates(
+        rows
+          .map((row) => buildLocalExternalSeedSurfacingCandidate(row))
+          .filter(Boolean),
+        q,
+      ).slice(0, safeLimit);
+      return {
+        ok: ranked.length > 0,
+        products: ranked,
+        reason: ranked.length > 0 ? null : 'empty',
+        selected_source: ranked.length > 0 ? 'external_seed' : 'none',
+        actual_http_attempt_count: 0,
+        attempted_base_urls: [],
+        attempted_paths: [],
+        transport_policy_mode: transportPolicyMode,
+        local_external_seed_search_mode: 'staged_support_fastpath',
+        local_external_seed_stage_debug: Array.isArray(staged?.stageDebug) ? staged.stageDebug : [],
+        ...(Array.isArray(staged?.categoryTerms) && staged.categoryTerms.length
+          ? { local_external_seed_category_terms: staged.categoryTerms }
+          : {}),
+      };
+    }
+
     const res = await runQuery(
       `
         SELECT
-          id,
-          external_product_id,
-          destination_url,
-          canonical_url,
-          domain,
-          title,
-          image_url,
-          price_amount,
-          price_currency,
-          availability,
-          seed_data,
-          updated_at,
-          created_at
+          ${LOCAL_EXTERNAL_SEED_SELECT_FIELDS}
         FROM external_product_seeds
         WHERE status = 'active'
           AND attached_product_key IS NULL
@@ -8180,6 +8430,7 @@ async function searchLocalExternalSeedProducts({
       attempted_base_urls: [],
       attempted_paths: [],
       transport_policy_mode: transportPolicyMode,
+      local_external_seed_search_mode: 'single_query',
     };
   } catch (error) {
     const message = String(error?.message || error || '');
