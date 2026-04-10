@@ -1055,10 +1055,10 @@ async function fetchBackfillProducts({ limit = 500, brandFilter = null, queryFn 
 
   const internalRes = await queryFn(
     `
-      SELECT merchant_id, platform_product_id, product_data, cached_at, created_at, updated_at
+      SELECT merchant_id, platform_product_id, product_data, cached_at, updated_at
       FROM products_cache
       WHERE merchant_id <> $1
-      ORDER BY cached_at DESC NULLS LAST, created_at DESC NULLS LAST
+      ORDER BY cached_at DESC NULLS LAST, updated_at DESC NULLS LAST
       LIMIT $2
     `,
     [EXTERNAL_SEED_MERCHANT_ID, normalizedLimit],
