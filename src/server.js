@@ -49,6 +49,7 @@ const {
   buildCoverageCandidate,
   buildCoverageReviewPacket,
 } = require('./services/pivotaInsightsCoverage');
+const { findExternalSeedProductById } = require('./services/externalSeedDetail');
 const {
   getAllPromotions,
   getPromotionById,
@@ -2771,6 +2772,27 @@ async function fetchProductDetailForOffers(args) {
           });
         }
         return normalizedDb;
+      }
+    }
+
+    if (process.env.DATABASE_URL && merchantId === 'external_seed') {
+      const fromExternalSeeds = await findExternalSeedProductById({ productId }).catch(() => null);
+      if (fromExternalSeeds) {
+        const normalizedExternalSeed = attachProductDetailSource(
+          normalizeProductDetailPrice(fromExternalSeeds),
+          'external_seed_db',
+        );
+        if (PRODUCT_DETAIL_CACHE_ENABLED) {
+          setProductDetailCache(cacheKey, {
+            status: 'success',
+            success: true,
+            product: normalizedExternalSeed,
+            metadata: {
+              query_source: 'external_product_seeds',
+            },
+          });
+        }
+        return normalizedExternalSeed;
       }
     }
 
