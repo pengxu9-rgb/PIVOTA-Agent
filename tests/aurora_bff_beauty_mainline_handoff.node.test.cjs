@@ -111,6 +111,7 @@ test('handoffRecoToBeautyMainlineSearch passes sunscreen-aligned contract to bac
     assert.equal(captured?.transportPolicy?.allow_secondary_base_failover, true);
     assert.equal(captured?.transportPolicy?.allow_secondary_path_failover, false);
     assert.equal(captured?.transportPolicy?.actual_http_attempt_limit_per_query, 2);
+    assert.equal(captured?.transportPolicy?.primary_attempt_timeout_cap_ms, 2500);
     assert.equal(captured?.timeoutMs, 65000);
     assert.equal(captured?.semanticContract?.planner_mode, 'step_aware');
     assert.equal(captured?.semanticContract?.primary_role_id, 'daily_sunscreen');
@@ -183,6 +184,7 @@ test('handoffRecoToBeautyMainlineSearch forces self-proxy-first transport for fr
     assert.equal(captured?.transportPolicy?.allow_secondary_base_failover, true);
     assert.equal(captured?.transportPolicy?.allow_secondary_path_failover, false);
     assert.equal(captured?.transportPolicy?.actual_http_attempt_limit_per_query, 2);
+    assert.equal(captured?.transportPolicy?.primary_attempt_timeout_cap_ms, 2500);
     assert.equal(captured?.searchSourceOverride, 'aurora-bff');
     assert.equal(captured?.allowExternalSeed, true);
     assert.equal(captured?.externalSeedStrategy, 'unified_relevance');

@@ -5219,7 +5219,14 @@ async function searchPivotaBackendProducts({
       attemptTimeoutBudgetDivisor > 1 && index < attemptTimeoutBudgetDivisor - 1
         ? Math.max(260, Math.min(baseTimeout, Math.trunc(remainingBudget / remainingAttemptSlots)))
         : baseTimeout;
-    const capped = Math.min(reservedAttemptBudget, remainingBudget);
+    const primaryAttemptTimeoutCapMs = Number.isFinite(Number(effectiveTransportPolicy.primary_attempt_timeout_cap_ms))
+      ? Math.max(0, Math.trunc(Number(effectiveTransportPolicy.primary_attempt_timeout_cap_ms)))
+      : 0;
+    const requestScopedCapMs =
+      index === 0 && primaryAttemptTimeoutCapMs > 0
+        ? Math.min(reservedAttemptBudget, primaryAttemptTimeoutCapMs)
+        : reservedAttemptBudget;
+    const capped = Math.min(requestScopedCapMs, remainingBudget);
     return Math.max(0, capped);
   };
   const shouldTrySecondaryReason = (reason) => {
@@ -18889,6 +18896,7 @@ function buildBeautyMainlineHandoffTransportPolicy({ mode } = {}) {
         ? Number(basePolicy.actual_http_attempt_limit_per_query)
         : 0,
     ),
+    primary_attempt_timeout_cap_ms: 2500,
   };
 }
 
