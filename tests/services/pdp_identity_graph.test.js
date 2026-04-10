@@ -74,6 +74,73 @@ describe('pdpIdentityGraph', () => {
     expect(jumboListing.product_line_id).toBe(externalListing.product_line_id);
   });
 
+  test('clusterIdentityListings bridges official seed and Shopify product variant axes without mixing sibling variants', () => {
+    const { buildIdentityListingFromProduct, _internals } = require('../../src/services/pdpIdentityGraph');
+
+    const externalStandard = buildIdentityListingFromProduct({
+      merchantId: 'external_seed',
+      productId: 'ext_krave_gbr_45',
+      sourceKind: 'external_seed',
+      product: {
+        title: 'Great Barrier Relief',
+        brand: 'KraveBeauty',
+        source_url: 'https://kravebeauty.com/products/great-barrier-relief',
+        variants: [
+          {
+            variant_id: 'seed-standard',
+            title: 'Standard 45 mL',
+            options: [{ name: 'Size', value: 'Standard 45 mL' }],
+          },
+        ],
+      },
+    });
+    const internalShopifyProduct = buildIdentityListingFromProduct({
+      merchantId: 'merch_krave',
+      productId: '10008793153864',
+      sourceKind: 'internal',
+      product: {
+        title: 'KraveBeauty Great Barrier Relief',
+        vendor: 'KraveBeauty',
+        variants: [
+          {
+            id: '52876964495688',
+            variant_id: '52876964495688',
+            title: 'Standard - 45 mL',
+            price: 28,
+            options: { size: 'Standard - 45 mL' },
+          },
+          {
+            id: '52876964528456',
+            variant_id: '52876964528456',
+            title: 'Jumbo - 100 mL',
+            price: 50,
+            options: { size: 'Jumbo - 100 mL' },
+          },
+        ],
+      },
+    });
+
+    expect(internalShopifyProduct.variant_axes).toEqual({
+      size: 'standard 45 ml',
+      volume: '45ml',
+      multi_variant: true,
+    });
+
+    const [clusteredExternal, clusteredInternal] = _internals.clusterIdentityListings([
+      externalStandard,
+      internalShopifyProduct,
+    ]);
+
+    expect(clusteredExternal.sellable_item_group_id).toBe(clusteredInternal.sellable_item_group_id);
+    expect(clusteredExternal.product_line_id).toBe(clusteredInternal.product_line_id);
+    expect(clusteredExternal.review_family_id).toBe(clusteredInternal.review_family_id);
+    expect(clusteredExternal.matched_by_rule).toBe('official_url_soft_exact_cluster');
+    expect(clusteredInternal.matched_by_rule).toBe('soft_exact_cluster');
+    expect(clusteredExternal.match_basis).toContain(
+      'soft_exact_cluster:kravebeauty|great barrier relief|size:standard 45 ml|volume:45ml',
+    );
+  });
+
   test('composeSyntheticCanonicalProduct keeps exact-item gallery separate from product-line preview and aggregates review scope', () => {
     const { composeSyntheticCanonicalProduct } = require('../../src/services/pdpIdentityGraph');
 
