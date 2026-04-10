@@ -57,6 +57,133 @@ function compactText(value, maxChars) {
   return (boundary >= Math.floor(maxChars * 0.6) ? trimmed.slice(0, boundary) : trimmed).trim();
 }
 
+function punctuate(text) {
+  const clean = asString(text).replace(/\s+/g, ' ').trim();
+  if (!clean) return '';
+  return /[.!?]$/.test(clean) ? clean : `${clean}.`;
+}
+
+function firstCompleteShortSentence(value, maxChars) {
+  const text = asString(value).replace(/\s+/g, ' ').trim();
+  if (!text || !Number.isFinite(maxChars) || maxChars <= 0) return '';
+  if (text.length <= maxChars) return punctuate(text);
+  const sentences = text.match(/[^.!?]+[.!?]?/g) || [];
+  for (const sentence of sentences) {
+    const candidate = punctuate(sentence);
+    if (candidate.length >= 24 && candidate.length <= maxChars) return candidate;
+  }
+  return '';
+}
+
+function compactIngredientList(ingredients) {
+  const items = ingredients.map((item) => asString(item)).filter(Boolean);
+  if (!items.length) return '';
+  if (items.length === 1) return items[0];
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(', ')}, and ${items[items.length - 1]}`;
+}
+
+function buildHeuristicIntroCandidate(value, maxChars) {
+  const text = asString(value).replace(/\s+/g, ' ').trim();
+  const lower = text.toLowerCase();
+  if (!text) return '';
+
+  const has = (token) => lower.includes(token);
+  if ((has('multi-active') || has('multi-benefit')) && has('serum')) {
+    if (
+      has('vitamin c') &&
+      has('retinol') &&
+      has('niacinamide') &&
+      has('hyaluronic acid') &&
+      has('salicylic acid')
+    ) {
+      const candidate =
+        'Multi-active serum with vitamin C, retinol, niacinamide, hyaluronic and salicylic acids.';
+      if (candidate.length <= maxChars) return candidate;
+    }
+    const ingredients = [];
+    if (has('vitamin c')) ingredients.push('vitamin C');
+    if (has('retinol')) ingredients.push('retinol');
+    if (has('niacinamide')) ingredients.push('niacinamide');
+    const acidPhrase =
+      has('hyaluronic acid') && has('salicylic acid')
+        ? 'hyaluronic and salicylic acids'
+        : has('hyaluronic acid')
+          ? 'hyaluronic acid'
+          : has('salicylic acid')
+            ? 'salicylic acid'
+            : '';
+    if (acidPhrase) ingredients.push(acidPhrase);
+    const ingredientText = compactIngredientList(ingredients);
+    const candidate = ingredientText
+      ? `Multi-active serum with ${ingredientText}.`
+      : 'Multi-active serum for tone, texture, and early-aging concerns.';
+    if (candidate.length <= maxChars) return candidate;
+  }
+
+  if (has('vitamin c') && has('niacinamide') && (has('moisturizer') || has('cream'))) {
+    const candidate = 'Vitamin C + niacinamide moisturizer for brighter-looking tone.';
+    if (candidate.length <= maxChars) return candidate;
+  }
+  if (has('color-correcting') && has('eye')) {
+    const candidate = 'Color-correcting eye stick for dark circles and hydration.';
+    if (candidate.length <= maxChars) return candidate;
+  }
+  if (has('vitamin c') && has('eye serum')) {
+    const candidate = 'Vitamin C eye serum for dullness and early fine-line care.';
+    if (candidate.length <= maxChars) return candidate;
+  }
+  if (has('night cream') && (has('oatmeal') || has('niacinamide'))) {
+    const candidate = 'Rich night cream with oatmeal and niacinamide support.';
+    if (candidate.length <= maxChars) return candidate;
+  }
+  if (has('cleansing cloth')) {
+    const candidate = has('vitamin c')
+      ? 'Vitamin C cleansing cloths for makeup, dirt, and oil.'
+      : 'Cleansing cloths for makeup, dirt, and oil.';
+    if (candidate.length <= maxChars) return candidate;
+  }
+  if (has('body wash')) {
+    const candidate = has('multi-vitamin') || has('multivitamin')
+      ? 'Multi-vitamin body wash for daily body cleansing.'
+      : 'Daily body wash for body cleansing.';
+    if (candidate.length <= maxChars) return candidate;
+  }
+  if (has('niacinamide') && (has('cleanser') || has('cleansing'))) {
+    const candidate = has('3%')
+      ? '3% niacinamide cleanser for makeup, oil, and impurities.'
+      : 'Niacinamide cleanser for makeup, oil, and impurities.';
+    if (candidate.length <= maxChars) return candidate;
+  }
+  if (has('vitamin c') && has('ferulic')) {
+    const candidate = 'Vitamin C + ferulic serum for antioxidant brightening.';
+    if (candidate.length <= maxChars) return candidate;
+  }
+  if (has('dark spot') || has('post-acne')) {
+    const candidate = has('niacinamide')
+      ? 'Niacinamide-led serum for dark spots and uneven tone.'
+      : 'Serum for dark spots and uneven tone.';
+    if (candidate.length <= maxChars) return candidate;
+  }
+
+  const leadingClause = text
+    .replace(/^(an?|the)\s+/i, '')
+    .split(/\s+(?:with|while|rather than|instead of|supported by|aimed at|made to|built for)\s+/i)[0];
+  const clause = punctuate(leadingClause);
+  if (clause.length >= 24 && clause.length <= maxChars) return clause;
+  return '';
+}
+
+function normalizeCardIntroCandidate(value, { fallback = '', maxChars = 90 } = {}) {
+  const direct = firstCompleteShortSentence(value, maxChars);
+  if (direct) return direct;
+  const heuristic = buildHeuristicIntroCandidate(value, maxChars);
+  if (heuristic) return heuristic;
+  const fallbackDirect = firstCompleteShortSentence(fallback, maxChars);
+  if (fallbackDirect) return fallbackDirect;
+  return buildHeuristicIntroCandidate(fallback, maxChars);
+}
+
 function inferRoutineLabel(step, fallbackCategory) {
   const stepText = asString(step).toLowerCase();
   if (stepText === 'serum') return 'serum';
@@ -159,12 +286,24 @@ function buildCardIntro({ bundle }) {
   const explicitIntro = asString(
     bundle?.search_card?.intro_candidate || bundle?.shopping_card?.intro,
   );
-  if (explicitIntro) return compactText(explicitIntro, 90);
+  if (explicitIntro) {
+    return normalizeCardIntroCandidate(explicitIntro, {
+      fallback: bundle?.product_intel_core?.what_it_is?.body,
+      maxChars: 90,
+    });
+  }
   const signal = pickSurfaceableExternalHighlightSignal(bundle?.external_highlight_signals, {
     surfaceTarget: 'search_card_intro',
   });
-  if (signal?.claim_text) return compactText(signal.claim_text, 90);
-  return asString(bundle?.product_intel_core?.what_it_is?.body);
+  if (signal?.claim_text) {
+    return normalizeCardIntroCandidate(signal.claim_text, {
+      fallback: bundle?.product_intel_core?.what_it_is?.body,
+      maxChars: 90,
+    });
+  }
+  return normalizeCardIntroCandidate(bundle?.product_intel_core?.what_it_is?.body, {
+    maxChars: 90,
+  });
 }
 
 function buildCardHighlight({ bundle }) {
@@ -223,12 +362,18 @@ function buildShoppingCardPayload({ product, bundle }) {
 
 function buildSearchCardPayload({ product, bundle }) {
   const shoppingCard = buildShoppingCardPayload({ product, bundle });
+  const introCandidate = shoppingCard.intro
+    ? normalizeCardIntroCandidate(shoppingCard.intro, {
+        fallback: bundle?.product_intel_core?.what_it_is?.body,
+        maxChars: 90,
+      })
+    : '';
   return {
     title_candidate: shoppingCard.title,
     ...(shoppingCard.subtitle ? { compact_candidate: shoppingCard.subtitle } : {}),
     ...(shoppingCard.highlight ? { highlight_candidate: compactText(shoppingCard.highlight, 40) } : {}),
     ...(shoppingCard.proof_badge ? { proof_badge_candidate: shoppingCard.proof_badge } : {}),
-    ...(shoppingCard.intro ? { intro_candidate: compactText(shoppingCard.intro, 90) } : {}),
+    ...(introCandidate ? { intro_candidate: introCandidate } : {}),
   };
 }
 
@@ -240,6 +385,7 @@ module.exports = {
   buildSearchCardPayload,
   buildShoppingCardPayload,
   buildTitleCandidate,
+  normalizeCardIntroCandidate,
   normalizeBadgeCandidates,
   normalizeHighlightCandidates,
 };

@@ -37,11 +37,13 @@ const {
   filterDisplayableMarketSignalBadges,
   normalizeMarketSignalBadges,
   normalizeReviewSummary: normalizeEvidenceReviewSummary,
+  normalizeSurfaceText,
 } = require('./pivotaEvidenceSignals');
 const {
   buildSourceListingRef,
   listLivePdpIdentityRowsForRefs,
 } = require('./pdpIdentityGraph');
+const { normalizeCardIntroCandidate } = require('./pivotaShoppingCard');
 let productIntelKbStore = null;
 
 const SCORING_VERSION = 'discovery_v2';
@@ -5381,18 +5383,20 @@ function buildDiscoveryCardSubtitle(raw, candidate) {
   );
   if (!category) return '';
   const formatted = formatDiscoveryCategoryLabel(category);
-  if (!formatted || /^General$/i.test(formatted)) return '';
+  if (!formatted || /^(General|External)$/i.test(formatted)) return '';
   return formatted.slice(0, 48);
 }
 
 function buildDiscoveryCardHighlight(raw) {
-  return firstDiscoveryCardString(
-    raw?.card_highlight,
-    raw?.search_card?.highlight_candidate,
-    raw?.searchCard?.highlight_candidate,
-    raw?.search_card_highlight_candidate,
-    raw?.shopping_card?.highlight,
-    raw?.shoppingCard?.highlight,
+  return normalizeSurfaceText(
+    firstDiscoveryCardString(
+      raw?.card_highlight,
+      raw?.search_card?.highlight_candidate,
+      raw?.searchCard?.highlight_candidate,
+      raw?.search_card_highlight_candidate,
+      raw?.shopping_card?.highlight,
+      raw?.shoppingCard?.highlight,
+    ),
   );
 }
 
@@ -5412,13 +5416,23 @@ function buildDiscoveryCardPayload(raw, candidate) {
   const subtitle = buildDiscoveryCardSubtitle(raw, candidate);
   const highlight = buildDiscoveryCardHighlight(raw);
   const proofBadge = firstDiscoveryCardString(marketSignalBadges[0]?.badge_label);
-  const intro = firstDiscoveryCardString(
-    raw?.card_intro,
-    raw?.search_card?.intro_candidate,
-    raw?.searchCard?.intro_candidate,
-    raw?.search_card_intro_candidate,
-    raw?.shopping_card?.intro,
-    raw?.shoppingCard?.intro,
+  const intro = normalizeCardIntroCandidate(
+    firstDiscoveryCardString(
+      raw?.search_card?.intro_candidate,
+      raw?.searchCard?.intro_candidate,
+      raw?.search_card_intro_candidate,
+      raw?.card_intro,
+      raw?.shopping_card?.intro,
+      raw?.shoppingCard?.intro,
+    ),
+    {
+      fallback: firstDiscoveryCardString(
+        raw?.product_intel?.product_intel_core?.what_it_is?.body,
+        raw?.productIntel?.product_intel_core?.what_it_is?.body,
+        raw?.description,
+        raw?.summary,
+      ),
+    },
   );
   const evidenceProfile = firstDiscoveryCardString(
     raw?.evidence_profile,

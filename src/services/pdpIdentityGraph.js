@@ -134,11 +134,30 @@ function buildSourceListingRef({ merchantId, productId }) {
 }
 
 function buildGroupMember(row) {
+  const payload = asPlainObject(row?.source_payload) || {};
+  const payloadBrand = asPlainObject(payload.brand);
+  const variantAxes = asPlainObject(row?.variant_axes) || {};
+  const merchantName = firstNonEmptyString(
+    row?.merchant_name,
+    row?.merchantName,
+    payload.merchant_name,
+    payload.merchantName,
+    payload.store_name,
+    payload.storeName,
+    payload.vendor,
+    payload.vendor_name,
+    payloadBrand?.name,
+    typeof payload.brand === 'string' ? payload.brand : null,
+    payload.brand_name,
+  );
   return {
+    source_listing_ref: asString(row?.source_listing_ref),
     merchant_id: asString(row?.merchant_id),
     product_id: asString(row?.product_id),
     source_kind: asString(row?.source_kind),
     source_tier: asString(row?.source_tier),
+    ...(merchantName ? { merchant_name: merchantName } : {}),
+    ...(Object.keys(variantAxes).length ? { variant_axes: variantAxes } : {}),
     is_primary: row?.is_primary === true,
   };
 }
