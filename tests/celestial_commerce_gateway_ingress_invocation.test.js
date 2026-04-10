@@ -6,7 +6,7 @@ const { buildGatewayShadowAudit } = require('../src/api/gateway/access/buildGate
 
 describe('Celestial gateway invoke ingress modeling', () => {
   test('maps exact-resolution invoke operations to execution-facing governance input', () => {
-    const input = buildInvokeIngressGatewayInput({
+    const buildInput = (operation) => buildInvokeIngressGatewayInput({
       req: {
         path: '/agent/shop/v1/invoke',
         method: 'POST',
@@ -26,7 +26,7 @@ describe('Celestial gateway invoke ingress modeling', () => {
         orchestrator_path: 'external_invoke_route',
         invocation_surface: 'direct_api',
       },
-      operation: 'get_pdp_v2',
+      operation,
       payload: {
         product: {
           merchant_id: 'merchant_demo',
@@ -39,10 +39,24 @@ describe('Celestial gateway invoke ingress modeling', () => {
       },
       request_id: 'req_exact_1',
     });
+    const input = buildInput('get_pdp_v2');
 
     expect(input.requested_layer).toBe('execution_facing');
     expect(input.task_type).toBe('exact_product');
     expect(input.invocation_surface).toBe('direct_api');
+
+    for (const operation of [
+      'get_product_intel_v1',
+      'get_product_feedback_v1',
+      'get_product_recommendation_intents_v1',
+    ]) {
+      expect(buildInput(operation)).toEqual(
+        expect.objectContaining({
+          requested_layer: 'execution_facing',
+          task_type: 'exact_product',
+        }),
+      );
+    }
 
     const envelope = prepareGatewayGovernanceEnvelope(input);
     const audit = buildGatewayShadowAudit(envelope, { shadow_mode: true });
