@@ -524,6 +524,29 @@ test('beauty mainline reco rows derive stable brand and shopper fields when sour
   }
 });
 
+test('beauty mainline final selection titles stay de-duplicated when display name already includes brand', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const selection = __internal.buildRecoFinalSelectionContract({
+      payload: {
+        recommendations: [
+          {
+            product_id: '9886499864904',
+            merchant_id: 'merch_efbc46b4619cfbdf',
+            brand: 'The Ordinary',
+            display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+            category: 'Serum',
+          },
+        ],
+      },
+    });
+
+    assert.deepEqual(selection.selected_titles, ['The Ordinary Niacinamide 10% + Zinc 1%']);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('beauty canonical ownership recomputes final selection from surfaced recommendations', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {

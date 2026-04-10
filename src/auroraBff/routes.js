@@ -48815,6 +48815,13 @@ function extractRecoSelectionTitle(row) {
     sku?.name,
     sku?.title,
   );
+  if (brand && name) {
+    const normalizedBrand = normalizeSemanticAuditText(brand);
+    const normalizedName = normalizeSemanticAuditText(name);
+    if (normalizedBrand && normalizedName.startsWith(normalizedBrand)) {
+      return name;
+    }
+  }
   return [brand, name].filter(Boolean).join(' ').trim() || pickFirstTrimmed(row.use_case) || '';
 }
 
@@ -83240,6 +83247,7 @@ const __internal = {
   handoffRecoToBeautyMainlineSearch,
   buildRecoPayloadFromBeautyMainlineHandoff,
   buildRecoRowsFromMainlineProducts,
+  buildRecoFinalSelectionContract,
   evaluateQualityContractForEnvelope,
   applyRecoContentSpineToPayload,
   buildRouteAwareAssistantText,
