@@ -5303,12 +5303,16 @@ async function searchPivotaBackendProducts({
       const remainingBudgetMs = timeoutForAttemptMs - elapsedMs;
       const remainingOverallMs = Math.max(0, getRemainingOverallMs() - deadlineReserveMs);
       const requestTimeoutMs = Math.trunc(Math.max(0, Math.min(remainingBudgetMs, remainingOverallMs)));
-        const requestTimeoutFloorMs = isSelfProxyBase
-          ? selfProxyTimeoutFloorMs
-          : normalizedMinTimeout;
-        const effectiveRequestTimeoutMs =
-          isSelfProxyBase && normalizedDeadlineMs <= 0
-            ? Math.max(requestTimeoutFloorMs, requestTimeoutMs)
+      const requestTimeoutFloorMs = isSelfProxyBase
+        ? (
+          effectiveTransportPolicy.force_multi_source === true && attemptTimeoutBudgetDivisor > 1
+            ? Math.min(selfProxyTimeoutFloorMs, RECO_CATALOG_MAIN_PATH_TIMEOUT_FLOOR_MS)
+            : selfProxyTimeoutFloorMs
+        )
+        : normalizedMinTimeout;
+      const effectiveRequestTimeoutMs =
+        isSelfProxyBase && normalizedDeadlineMs <= 0
+          ? Math.max(requestTimeoutFloorMs, requestTimeoutMs)
           : requestTimeoutMs;
       if (
         !Number.isFinite(effectiveRequestTimeoutMs) ||
