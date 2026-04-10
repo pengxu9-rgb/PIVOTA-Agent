@@ -17828,6 +17828,14 @@ async function executeRecoRecallPlanEntry({
       transportPolicyMode,
       role,
       preferredStep: entry?.preferred_step,
+      semanticFamily: pickFirstTrimmed(entry?.semantic_family, role?.semantic_family, role?.semanticFamily, role?.role_id) || '',
+      queryStepStrength:
+        role && Number.isFinite(Number(role?.rank)) && Number(role.rank) <= 1
+          ? 'strong_goal_family'
+          : role
+            ? 'supportive_family'
+            : '',
+      authHeaders,
     });
   }
   const runSearch = typeof searchFn === 'function' ? searchFn : searchPivotaBackendProducts;
@@ -20900,6 +20908,9 @@ async function buildPurchasableFallbackCandidates({
   transportPolicyMode = '',
   role = null,
   preferredStep = '',
+  semanticFamily = '',
+  queryStepStrength = '',
+  authHeaders = null,
 } = {}) {
   const runSearch = typeof searchFn === 'function' ? searchFn : searchPivotaBackendProducts;
   const runExternalSeedSearch = typeof externalSeedSearchFn === 'function'
@@ -20910,6 +20921,36 @@ async function buildPurchasableFallbackCandidates({
   if (!q) return { ok: false, products: [], reason: 'query_missing', selected_source: 'none', stages: {} };
   const normalizedSourceScope = String(sourceScope || 'hybrid').trim().toLowerCase();
   const normalizedExternalSeedStrategy = String(externalSeedStrategy || '').trim().toLowerCase();
+  const normalizedPreferredStep = normalizeRecoTargetStep(preferredStep || role?.preferred_step);
+  const normalizedSemanticFamily = (() => {
+    const raw = pickFirstTrimmed(
+      semanticFamily,
+      role?.semantic_family,
+      role?.semanticFamily,
+      role?.family,
+      role?.role_family,
+      role?.roleFamily,
+      role?.role_id,
+    );
+    const token = String(raw || '').trim().toLowerCase();
+    if (!token) return '';
+    if (token.includes('oil_control') || token.includes('shine_control') || token.includes('mattify')) {
+      return 'oil_control';
+    }
+    if (token.includes('sunscreen') || token.includes('spf')) return 'sunscreen';
+    if (token.includes('moisturizer') || token.includes('barrier')) return 'moisturizer';
+    return token.replace(/_treatment$/, '').replace(/_moisturizer$/, '').replace(/_sunscreen$/, '');
+  })();
+  const normalizedQueryStepStrength = String(
+    pickFirstTrimmed(
+      queryStepStrength,
+      role && Number.isFinite(Number(role?.rank)) && Number(role.rank) <= 1
+        ? 'strong_goal_family'
+        : role
+          ? 'supportive_family'
+          : '',
+    ) || '',
+  ).trim().toLowerCase();
   if (normalizedSourceScope === 'internal') {
     const catalogStage = await runSearch({
       query: q,
@@ -21014,9 +21055,15 @@ async function buildPurchasableFallbackCandidates({
         logger,
         timeoutMs,
         deadlineMs,
+        catalogSurface: 'beauty',
         allowExternalSeed: true,
         externalSeedStrategy: normalizedExternalSeedStrategy || 'supplement_internal_first',
         fastMode: true,
+        queryStepStrength: normalizedQueryStepStrength || undefined,
+        targetStepFamily: normalizedPreferredStep || undefined,
+        semanticFamily: normalizedSemanticFamily || undefined,
+        productOnly: true,
+        authHeaders,
         transportPolicy: effectiveTransportPolicy,
       });
       rankedExternal = rankExternalSeedProducts(backendExternalStage?.products);

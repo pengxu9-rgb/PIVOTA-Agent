@@ -191,6 +191,76 @@ test('purchasable fallback: explicit external sourceScope falls back to backend 
   assert.equal(out.stages.external_seed_backend.products.length, 2);
 });
 
+test('purchasable fallback: role-aware external backend fallback carries strict ingredient-intent search params', async () => {
+  const calls = [];
+  const out = await __internal.buildPurchasableFallbackCandidates({
+    query: 'niacinamide serum oily skin',
+    sourceScope: 'external_seed',
+    preferredStep: 'treatment',
+    semanticFamily: 'oil_control',
+    queryStepStrength: 'strong_goal_family',
+    role: {
+      role_id: 'oil_control_treatment',
+      rank: 1,
+      preferred_step: 'treatment',
+      semantic_family: 'oil_control',
+    },
+    searchFn: async (params) => {
+      calls.push({
+        allowExternalSeed: params.allowExternalSeed === true,
+        fastMode: params.fastMode === true,
+        externalSeedStrategy: params.externalSeedStrategy,
+        catalogSurface: params.catalogSurface,
+        productOnly: params.productOnly === true,
+        targetStepFamily: params.targetStepFamily,
+        semanticFamily: params.semanticFamily,
+        queryStepStrength: params.queryStepStrength,
+      });
+      return {
+        ok: true,
+        products: [
+          {
+            product_id: 'prod_backend_external_niacinamide',
+            merchant_id: 'external_seed',
+            name: 'Backend External Niacinamide Serum',
+            canonical_pdp_url: 'https://example.com/pdp/backend-niacinamide',
+            source: 'external_seed',
+            retrieval_source: 'external_seed',
+          },
+        ],
+      };
+    },
+    externalSeedSearchFn: async ({ query, transportPolicyMode }) => {
+      calls.push({
+        externalSeedQuery: query,
+        transportPolicyMode,
+      });
+      return {
+        ok: true,
+        products: [],
+        reason: 'empty',
+      };
+    },
+  });
+
+  assert.deepEqual(calls, [
+    { externalSeedQuery: 'niacinamide serum oily skin', transportPolicyMode: 'default' },
+    {
+      allowExternalSeed: true,
+      fastMode: true,
+      externalSeedStrategy: 'supplement_internal_first',
+      catalogSurface: 'beauty',
+      productOnly: true,
+      targetStepFamily: 'treatment',
+      semanticFamily: 'oil_control',
+      queryStepStrength: 'strong_goal_family',
+    },
+  ]);
+  assert.equal(out.selected_source, 'external_seed');
+  assert.equal(out.products.length, 1);
+  assert.equal(out.products[0].product_id, 'prod_backend_external_niacinamide');
+});
+
 test('purchasable fallback: supplements from external seed when catalog is empty', async () => {
   const calls = [];
   const out = await __internal.buildPurchasableFallbackCandidates({
