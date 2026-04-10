@@ -57,7 +57,6 @@ describe('pivotaInsightsCoverage', () => {
         contract_version: 'pivota.shopping_card.v1',
         title: 'Naturium Vitamin C Super Serum Plus',
         subtitle: 'Multi-Active Serum',
-        highlight: 'Creators: lightweight finish',
         proof_badge: '4.7★ (228)',
       }),
     );
@@ -65,10 +64,11 @@ describe('pivotaInsightsCoverage', () => {
       expect.objectContaining({
         title_candidate: 'Naturium Vitamin C Super Serum Plus',
         compact_candidate: 'Multi-Active Serum',
-        highlight_candidate: 'Creators: lightweight finish',
         proof_badge_candidate: '4.7★ (228)',
       }),
     );
+    expect(candidate.shopping_card.highlight).toBeUndefined();
+    expect(candidate.search_card.highlight_candidate).toBeUndefined();
     expect(candidate.external_highlight_preview).toEqual([
       expect.objectContaining({
         signal_id: 'creator_1',

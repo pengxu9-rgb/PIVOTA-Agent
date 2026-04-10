@@ -89,8 +89,8 @@ describe('pivota external highlights pipeline', () => {
         }),
       ]),
     );
-    expect(generated.shopping_card.highlight).toBe('Lightweight finish under makeup');
-    expect(generated.search_card.highlight_candidate).toBe('Lightweight finish under makeup');
+    expect(generated.shopping_card.highlight).toBeUndefined();
+    expect(generated.search_card.highlight_candidate).toBeUndefined();
     expect(generated.provenance.external_highlight_review_status).toBe('pending');
   });
 
@@ -144,12 +144,8 @@ describe('pivota external highlights pipeline', () => {
       ],
     });
 
-    expect(generatedWithSurfaceText.shopping_card.highlight).toBe(
-      'Reviewers: quick, non-sticky finish',
-    );
-    expect(generatedWithSurfaceText.search_card.highlight_candidate).toBe(
-      'Reviewers: quick, non-sticky finish',
-    );
+    expect(generatedWithSurfaceText.shopping_card.highlight).toBeUndefined();
+    expect(generatedWithSurfaceText.search_card.highlight_candidate).toBeUndefined();
   });
 
   test('reject_external strips visible external highlights back out of the bundle', () => {

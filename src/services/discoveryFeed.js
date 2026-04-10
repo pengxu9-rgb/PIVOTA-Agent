@@ -43,7 +43,10 @@ const {
   buildSourceListingRef,
   listLivePdpIdentityRowsForRefs,
 } = require('./pdpIdentityGraph');
-const { normalizeCardIntroCandidate } = require('./pivotaShoppingCard');
+const {
+  normalizeCardIntroCandidate,
+  resolveDisplayableCompactHighlight,
+} = require('./pivotaShoppingCard');
 let productIntelKbStore = null;
 
 const SCORING_VERSION = 'discovery_v2';
@@ -5389,7 +5392,7 @@ function buildDiscoveryCardSubtitle(raw, candidate) {
 }
 
 function buildDiscoveryCardHighlight(raw) {
-  return normalizeSurfaceText(
+  const explicit = normalizeSurfaceText(
     firstDiscoveryCardString(
       raw?.card_highlight,
       raw?.search_card?.highlight_candidate,
@@ -5399,6 +5402,25 @@ function buildDiscoveryCardHighlight(raw) {
       raw?.shoppingCard?.highlight,
     ),
   );
+  return resolveDisplayableCompactHighlight(explicit, {
+    bundle: raw?.product_intel || raw?.productIntel || null,
+    title: firstDiscoveryCardString(
+      raw?.card_title,
+      raw?.search_card?.title_candidate,
+      raw?.searchCard?.title_candidate,
+      raw?.shopping_card?.title,
+      raw?.shoppingCard?.title,
+      raw?.title,
+      raw?.name,
+    ),
+    subtitle: firstDiscoveryCardString(
+      raw?.card_subtitle,
+      raw?.search_card?.compact_candidate,
+      raw?.searchCard?.compact_candidate,
+      raw?.shopping_card?.subtitle,
+      raw?.shoppingCard?.subtitle,
+    ),
+  });
 }
 
 function buildDiscoveryCardPayload(raw, candidate) {
