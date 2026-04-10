@@ -154,6 +154,8 @@ function buildReviewPacket(compareReport) {
       review_status: 'pending',
       reviewer: '',
       decision: 'pending',
+      review_decision: 'pending',
+      rejection_reason: '',
       notes: '',
       selected_mode: asString(row?.selected?.selected_mode),
       field_sources: row?.selected?.field_sources || {},
@@ -162,8 +164,33 @@ function buildReviewPacket(compareReport) {
       shopping_card: {
         title: asString(shoppingCard.title),
         subtitle: asString(shoppingCard.subtitle),
+        highlight: asString(shoppingCard.highlight),
         proof_badge: asString(shoppingCard.proof_badge),
       },
+      search_card: {
+        compact_candidate: asString(bundle?.search_card?.compact_candidate),
+        highlight_candidate: asString(bundle?.search_card?.highlight_candidate),
+        proof_badge_candidate: asString(bundle?.search_card?.proof_badge_candidate),
+        intro_candidate: asString(bundle?.search_card?.intro_candidate),
+      },
+      external_highlight_preview: toList(bundle?.external_highlight_signals).map((item) => ({
+        signal_id: asString(item?.signal_id),
+        source_type: asString(item?.source_type),
+        claim_type: asString(item?.claim_type),
+        claim_text: asString(item?.claim_text),
+        stance: asString(item?.stance),
+        evidence_strength: asString(item?.evidence_strength),
+        surfaceable: item?.surfaceable === true,
+        surface_targets: toList(item?.surface_targets).map((target) => asString(target)),
+      })),
+      highlight_sources_summary: toList(bundle?.external_highlight_signals).map((item) => ({
+        signal_id: asString(item?.signal_id),
+        source_type: asString(item?.source_type),
+        claim_type: asString(item?.claim_type),
+        evidence_strength: asString(item?.evidence_strength),
+        independence_count: Number(item?.independence_count || 0) || 0,
+        sponsorship_status: asString(item?.sponsorship_status),
+      })),
       pivota_insights: {
         what_it_is: asString(core?.what_it_is?.body),
         why_it_stands_out: toList(core?.why_it_stands_out).map((item) => ({

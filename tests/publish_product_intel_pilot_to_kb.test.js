@@ -27,6 +27,12 @@ describe('publish_product_intel_pilot_to_kb', () => {
           },
           quality_state: 'limited',
           evidence_profile: 'seller_plus_formula',
+          provenance: {
+            external_highlight_review_status: 'rewrite',
+            external_evidence_generated_at: '2026-04-10T12:00:00.000Z',
+            external_evidence_model: 'external_highlight_pipeline_v1',
+            external_review_batch: 'batch_demo',
+          },
         },
       },
     };
@@ -38,6 +44,8 @@ describe('publish_product_intel_pilot_to_kb', () => {
     expect(entries[0].analysis.product_intel_v1.contract_version).toBe('pivota.product_intel.v1');
     expect(entries[0].source).toBe('pivota_product_intel_pilot_selected');
     expect(entries[0].source_meta.selected_mode).toBe('hybrid_gemini');
+    expect(entries[0].source_meta.external_highlight_review_status).toBe('rewrite');
+    expect(entries[0].source_meta.external_review_batch).toBe('batch_demo');
   });
 
   test('fails fast when the KB write preflight query fails', async () => {

@@ -3,6 +3,16 @@ const PRODUCT_FEEDBACK_CONTRACT_VERSION = 'pivota.product_feedback.v1';
 const PRODUCT_RECOMMENDATION_INTENTS_CONTRACT_VERSION = 'pivota.product_recommendation_intents.v1';
 const PIVOTA_INSIGHTS_DISPLAY_NAME = 'Pivota Insights';
 const { buildAuthoritativeIngredientView } = require('./services/pdpIngredientAuthority');
+const {
+  buildSearchCardPayload,
+  buildShoppingCardPayload,
+} = require('./services/pivotaShoppingCard');
+const {
+  filterDisplayableMarketSignalBadges,
+  normalizeExternalHighlightSignals,
+  normalizeMarketSignalBadges,
+  normalizeReviewSummary,
+} = require('./services/pivotaEvidenceSignals');
 const PRODUCT_INTEL_ALLOWLIST = new Set(
   String(process.env.PDP_PRODUCT_INTEL_ALLOWLIST || '')
     .split(',')
@@ -366,6 +376,19 @@ function normalizePublishedProductIntelBundle(bundle, {
         };
       }),
   };
+  const reviewSummary = normalizeReviewSummary(source.review_summary || source.reviewSummary);
+  const normalizedMarketSignalBadges = filterDisplayableMarketSignalBadges(
+    source.market_signal_badges || source.marketSignalBadges,
+    {
+      review_summary: reviewSummary,
+      community_signals: asPlainObject(source.community_signals) || null,
+    },
+  );
+  const externalHighlightSignals = normalizeExternalHighlightSignals(
+    source.external_highlight_signals || source.externalHighlightSignals,
+  );
+  const shoppingCardSource = asPlainObject(source.shopping_card) || asPlainObject(source.shoppingCard) || null;
+  const searchCardSource = asPlainObject(source.search_card) || asPlainObject(source.searchCard) || null;
 
   return {
     contract_version: PRODUCT_INTEL_CONTRACT_VERSION,
@@ -392,6 +415,48 @@ function normalizePublishedProductIntelBundle(bundle, {
       evidence_profile: asString(source.evidence_profile) || 'seller_only',
     },
     recommendation_intents: recommendationIntents,
+    ...(reviewSummary ? { review_summary: reviewSummary } : {}),
+    ...(normalizedMarketSignalBadges.length ? { market_signal_badges: normalizedMarketSignalBadges } : {}),
+    external_highlight_signals: externalHighlightSignals,
+    ...(shoppingCardSource
+      ? {
+          shopping_card: {
+            contract_version: asString(shoppingCardSource.contract_version) || 'pivota.shopping_card.v1',
+            ...(asString(shoppingCardSource.title) ? { title: asString(shoppingCardSource.title) } : {}),
+            ...(asString(shoppingCardSource.subtitle) ? { subtitle: asString(shoppingCardSource.subtitle) } : {}),
+            ...(asString(shoppingCardSource.highlight) ? { highlight: asString(shoppingCardSource.highlight) } : {}),
+            ...(asString(shoppingCardSource.proof_badge) ? { proof_badge: asString(shoppingCardSource.proof_badge) } : {}),
+            ...(asString(shoppingCardSource.intro) ? { intro: asString(shoppingCardSource.intro) } : {}),
+            ...(Array.isArray(shoppingCardSource.market_signal_badges)
+              ? { market_signal_badges: normalizeMarketSignalBadges(shoppingCardSource.market_signal_badges) }
+              : {}),
+            ...(asString(shoppingCardSource.evidence_profile)
+              ? { evidence_profile: asString(shoppingCardSource.evidence_profile) }
+              : {}),
+          },
+        }
+      : {}),
+    ...(searchCardSource
+      ? {
+          search_card: {
+            ...(asString(searchCardSource.title_candidate)
+              ? { title_candidate: asString(searchCardSource.title_candidate) }
+              : {}),
+            ...(asString(searchCardSource.compact_candidate)
+              ? { compact_candidate: asString(searchCardSource.compact_candidate) }
+              : {}),
+            ...(asString(searchCardSource.highlight_candidate)
+              ? { highlight_candidate: asString(searchCardSource.highlight_candidate) }
+              : {}),
+            ...(asString(searchCardSource.proof_badge_candidate)
+              ? { proof_badge_candidate: asString(searchCardSource.proof_badge_candidate) }
+              : {}),
+            ...(asString(searchCardSource.intro_candidate)
+              ? { intro_candidate: asString(searchCardSource.intro_candidate) }
+              : {}),
+          },
+        }
+      : {}),
     quality_state: asString(source.quality_state) || asString(core.quality_state) || 'limited',
     evidence_profile:
       asString(source.evidence_profile) || asString(core.evidence_profile) || 'seller_only',
@@ -1327,8 +1392,8 @@ function buildProductIntelBundleInternal({
   const recommendationIntents = buildRecommendationIntents(relatedProducts);
   const offers = Array.isArray(offersData?.offers) ? offersData.offers : [];
   const commerceModes = uniqueStrings(offers.map((offer) => asString(offer?.commerce_mode)));
-
-  return {
+  const reviewSummary = normalizeReviewSummary(normalizedProduct.review_summary);
+  const bundle = {
     contract_version: PRODUCT_INTEL_CONTRACT_VERSION,
     display_name: PIVOTA_INSIGHTS_DISPLAY_NAME,
     canonical_product_ref: canonicalProductRef || null,
@@ -1337,6 +1402,14 @@ function buildProductIntelBundleInternal({
     texture_finish: textureFinish,
     community_signals: communitySignals,
     recommendation_intents: recommendationIntents,
+    ...(reviewSummary ? { review_summary: reviewSummary } : {}),
+    market_signal_badges: filterDisplayableMarketSignalBadges(normalizedProduct.market_signal_badges, {
+      review_summary: reviewSummary,
+      community_signals: communitySignals,
+    }),
+    external_highlight_signals: normalizeExternalHighlightSignals(
+      normalizedProduct.external_highlight_signals || normalizedProduct.externalHighlightSignals,
+    ),
     quality_state: qualityState,
     evidence_profile: evidenceProfile,
     source_coverage: sourceCoverage,
@@ -1349,6 +1422,17 @@ function buildProductIntelBundleInternal({
       commerce_modes: commerceModes,
     },
     provenance,
+  };
+
+  const shoppingCard = buildShoppingCardPayload({ product: normalizedProduct, bundle });
+  const searchCard = buildSearchCardPayload({ product: normalizedProduct, bundle });
+  return {
+    ...bundle,
+    ...(Array.isArray(shoppingCard.market_signal_badges) && shoppingCard.market_signal_badges.length
+      ? { market_signal_badges: shoppingCard.market_signal_badges }
+      : {}),
+    shopping_card: shoppingCard,
+    search_card: searchCard,
   };
 }
 

@@ -141,6 +141,28 @@ describe('pdpProductIntel KB hydration', () => {
                 confidence: 'low',
                 evidence_profile: 'seller_plus_formula',
               },
+              external_highlight_signals: [
+                {
+                  signal_id: 'creator_1',
+                  source_type: 'creator_social_consensus',
+                  claim_type: 'card_hook',
+                  claim_text: 'Creators often point to the lightweight finish.',
+                  independence_count: 4,
+                  sponsorship_status: 'organic',
+                  evidence_strength: 'strong',
+                },
+              ],
+              shopping_card: {
+                contract_version: 'pivota.shopping_card.v1',
+                title: 'Cloud Barrier Cream',
+                subtitle: 'Daily Moisturizer',
+                highlight: 'Creators often point to the lightweight',
+              },
+              search_card: {
+                title_candidate: 'Cloud Barrier Cream',
+                compact_candidate: 'Daily Moisturizer',
+                highlight_candidate: 'Creators often point to the lightweight',
+              },
               quality_state: 'limited',
               evidence_profile: 'seller_plus_formula',
               source_coverage: {
@@ -203,6 +225,14 @@ describe('pdpProductIntel KB hydration', () => {
     expect(bundle).toBeTruthy();
     expect(bundle.product_intel_core.what_it_is.body).toMatch(/hydration and barrier comfort/i);
     expect(bundle.evidence_profile).toBe('seller_plus_formula');
+    expect(bundle.external_highlight_signals).toEqual([
+      expect.objectContaining({
+        signal_id: 'creator_1',
+        surfaceable: true,
+      }),
+    ]);
+    expect(bundle.shopping_card.highlight).toBe('Creators often point to the lightweight');
+    expect(bundle.search_card.highlight_candidate).toBe('Creators often point to the lightweight');
   });
 
   test('prefers direct product_intel_v1 bundle from aurora_product_intel_kb over stale legacy assessment', async () => {

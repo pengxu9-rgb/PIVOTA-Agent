@@ -5,6 +5,13 @@ const path = require('path');
 const axios = require('axios');
 const { query } = require('../src/db');
 const { buildExternalSeedProduct } = require('../src/services/externalSeedProducts');
+const {
+  filterDisplayableMarketSignalBadges,
+  hasDisplayableBadgeEvidence,
+  normalizeCommunitySignals: normalizeEvidenceCommunitySignals,
+  normalizeMarketSignalBadges: normalizeEvidenceMarketSignalBadges,
+  normalizeReviewSummary: normalizeEvidenceReviewSummary,
+} = require('../src/services/pivotaEvidenceSignals');
 
 function buildGatewayHeaders() {
   const apiKey = String(
@@ -233,44 +240,15 @@ function findModule(modules, type) {
 }
 
 function normalizeReviewSummary(value) {
-  const source = value && typeof value === 'object' ? value : {};
-  const rating = toFiniteNumber(
-    source.rating ?? source.rating_value ?? source.average_rating ?? source.value,
-  );
-  const reviewCount = toFiniteNumber(
-    source.review_count ?? source.reviewCount ?? source.count ?? source.total,
-  );
-  if (rating == null && reviewCount == null) return undefined;
-  return {
-    rating,
-    review_count: reviewCount,
-  };
+  return normalizeEvidenceReviewSummary(value) || undefined;
 }
 
 function normalizeCommunitySignals(value) {
-  const source = value && typeof value === 'object' ? value : {};
-  const status = asString(source.status || source.state || source.availability);
-  const sourceCounts =
-    source.source_counts && typeof source.source_counts === 'object' ? source.source_counts : {};
-  if (!status && !Object.keys(sourceCounts).length) return undefined;
-  return {
-    ...(status ? { status } : {}),
-    ...(Object.keys(sourceCounts).length ? { source_counts: sourceCounts } : {}),
-  };
+  return normalizeEvidenceCommunitySignals(value) || undefined;
 }
 
 function normalizeMarketSignalBadges(value) {
-  return asArray(value)
-    .map((item) => {
-      const row = item && typeof item === 'object' ? item : null;
-      const label = asString(row?.badge_label || row?.label || item);
-      if (!label) return null;
-      return {
-        badge_type: asString(row?.badge_type || row?.type),
-        badge_label: label,
-      };
-    })
-    .filter(Boolean);
+  return normalizeEvidenceMarketSignalBadges(value);
 }
 
 function mergeLists(...values) {
@@ -297,6 +275,22 @@ function extractDetailsText(detailsModule, pattern) {
 function extractCanonicalProduct(response) {
   const canonicalModule = findModule(response?.modules, 'canonical');
   return canonicalModule?.data?.pdp_payload?.product || canonicalModule?.data?.product || null;
+}
+
+function extractReviewsPreviewSummary(response) {
+  const reviewsPreviewModule = findModule(response?.modules, 'reviews_preview');
+  const data = reviewsPreviewModule?.data || null;
+  if (!data || typeof data !== 'object') return undefined;
+  const summary = normalizeReviewSummary({
+    rating: data.rating,
+    review_count: data.review_count ?? data.reviewCount,
+    scale: data.scale,
+  });
+  if (!summary) return undefined;
+  const rating = Number(summary.rating || 0) || 0;
+  const reviewCount = Number(summary.review_count || 0) || 0;
+  if (rating <= 0 && reviewCount <= 0) return undefined;
+  return summary;
 }
 
 function buildPilotCaseFromSearchCandidate(candidate) {
@@ -354,6 +348,7 @@ function buildPilotCaseFromPdpResponse(response, seedCase) {
   const ingredientsModule = findModule(response?.modules, 'ingredients_inci');
   const intelModule = findModule(response?.modules, 'product_intel');
   const productIntel = intelModule?.data || {};
+  const reviewsPreviewSummary = extractReviewsPreviewSummary(response);
   const seedProduct = seedCase?.product && typeof seedCase.product === 'object' ? seedCase.product : {};
 
   const brand = normalizeBrandName(product.brand);
@@ -369,6 +364,26 @@ function buildPilotCaseFromPdpResponse(response, seedCase) {
   )
     .map((item) => asString(item?.inci || item))
     .filter(Boolean);
+  const normalizedReviewSummary =
+    normalizeReviewSummary(productIntel.review_summary) ||
+    reviewsPreviewSummary ||
+    normalizeReviewSummary(seedProduct.review_summary) ||
+    normalizeReviewSummary({
+      rating: product.rating,
+      review_count: product.review_count ?? product.reviewCount,
+    });
+  const normalizedCommunitySignals =
+    normalizeCommunitySignals(productIntel.community_signals) || seedProduct.community_signals;
+  const displayableBadges = filterDisplayableMarketSignalBadges(
+    [
+      ...normalizeMarketSignalBadges(productIntel.market_signal_badges),
+      ...normalizeMarketSignalBadges(seedProduct.market_signal_badges),
+    ],
+    {
+      review_summary: normalizedReviewSummary,
+      community_signals: normalizedCommunitySignals,
+    },
+  );
 
   return {
     case_id: `live_${canonicalRef.product_id}`,
@@ -388,25 +403,9 @@ function buildPilotCaseFromPdpResponse(response, seedCase) {
       finish: asString(product.finish),
       ingredients_inci: ingredients,
       how_to_use: howToUse,
-      review_summary:
-        normalizeReviewSummary(seedProduct.review_summary) ||
-        normalizeReviewSummary({
-          rating: product.rating,
-          review_count: product.review_count ?? product.reviewCount,
-        }),
-      ...(normalizeCommunitySignals(productIntel.community_signals) || seedProduct.community_signals
-        ? {
-            community_signals:
-              normalizeCommunitySignals(productIntel.community_signals) || seedProduct.community_signals,
-          }
-        : {}),
-      ...((normalizeMarketSignalBadges(productIntel.market_signal_badges) || seedProduct.market_signal_badges || [])
-        .length
-        ? {
-            market_signal_badges:
-              normalizeMarketSignalBadges(productIntel.market_signal_badges) || seedProduct.market_signal_badges,
-          }
-        : {}),
+      review_summary: normalizedReviewSummary,
+      ...(normalizedCommunitySignals ? { community_signals: normalizedCommunitySignals } : {}),
+      ...(displayableBadges.length ? { market_signal_badges: displayableBadges } : {}),
       ...(asString(productIntel.evidence_profile || seedProduct.evidence_profile)
         ? {
             evidence_profile: asString(productIntel.evidence_profile || seedProduct.evidence_profile),
@@ -427,6 +426,21 @@ function buildPilotCaseFromExternalSeedProduct(product, seedCase) {
   const ingredients = asArray(product.ingredients_inci || product.ingredients)
     .map((item) => asString(item?.inci || item))
     .filter(Boolean);
+  const normalizedReviewSummary =
+    normalizeReviewSummary(product.review_summary) ||
+    normalizeReviewSummary({
+      rating: product.rating,
+      review_count: product.review_count ?? product.reviewCount,
+    }) ||
+    normalizeReviewSummary(seedProduct.review_summary);
+  const normalizedCommunitySignals = normalizeCommunitySignals(seedProduct.community_signals);
+  const displayableBadges = filterDisplayableMarketSignalBadges(
+    normalizeMarketSignalBadges(seedProduct.market_signal_badges),
+    {
+      review_summary: normalizedReviewSummary,
+      community_signals: normalizedCommunitySignals,
+    },
+  );
 
   return {
     case_id: `live_${productId}`,
@@ -449,19 +463,9 @@ function buildPilotCaseFromExternalSeedProduct(product, seedCase) {
       finish: asString(product.finish || seedProduct.finish),
       ingredients_inci: ingredients,
       how_to_use: asString(product.how_to_use || product.usage || seedProduct.how_to_use),
-      review_summary:
-        normalizeReviewSummary(product.review_summary) ||
-        normalizeReviewSummary({
-          rating: product.rating,
-          review_count: product.review_count ?? product.reviewCount,
-        }) ||
-        normalizeReviewSummary(seedProduct.review_summary),
-      ...(normalizeCommunitySignals(seedProduct.community_signals)
-        ? { community_signals: normalizeCommunitySignals(seedProduct.community_signals) }
-        : {}),
-      ...(normalizeMarketSignalBadges(seedProduct.market_signal_badges).length
-        ? { market_signal_badges: normalizeMarketSignalBadges(seedProduct.market_signal_badges) }
-        : {}),
+      review_summary: normalizedReviewSummary,
+      ...(normalizedCommunitySignals ? { community_signals: normalizedCommunitySignals } : {}),
+      ...(displayableBadges.length ? { market_signal_badges: displayableBadges } : {}),
       ...(asString(seedProduct.evidence_profile) ? { evidence_profile: asString(seedProduct.evidence_profile) } : {}),
     },
   };
@@ -510,15 +514,11 @@ async function fetchExternalSeedProduct(productId) {
 
 function hasBadgeEvidence(caseRow) {
   const product = caseRow?.product && typeof caseRow.product === 'object' ? caseRow.product : {};
-  if (normalizeMarketSignalBadges(product.market_signal_badges).length > 0) return true;
-  const review = normalizeReviewSummary(product.review_summary);
-  if (Number(review?.rating || 0) >= 4.5 && Number(review?.review_count || 0) >= 100) return true;
-  const community = normalizeCommunitySignals(product.community_signals);
-  const sourceCounts = community?.source_counts || {};
-  if (Number(sourceCounts.creator_mentions || 0) >= 8) return true;
-  if (Number(sourceCounts.editorial || 0) >= 3) return true;
-  if (Number(sourceCounts.media || 0) >= 3) return true;
-  return false;
+  return hasDisplayableBadgeEvidence({
+    market_signal_badges: normalizeMarketSignalBadges(product.market_signal_badges),
+    review_summary: normalizeReviewSummary(product.review_summary),
+    community_signals: normalizeCommunitySignals(product.community_signals),
+  });
 }
 
 function selectDiverseCases(cases, { limit, seed, maxPerBrand, maxPerCategory }) {
@@ -622,7 +622,7 @@ async function fetchPdpResponse(gatewayUrl, productId) {
       product_ref: {
         product_id: productId,
       },
-      include: ['canonical', 'product_details', 'ingredients_inci', 'product_intel', 'offers'],
+      include: ['canonical', 'product_details', 'ingredients_inci', 'product_intel', 'reviews_preview', 'offers'],
       options: {
         debug: false,
       },
@@ -822,8 +822,10 @@ if (require.main === module) {
 module.exports = {
   buildPilotCaseFromPdpResponse,
   buildPilotCaseFromSearchCandidate,
+  extractReviewsPreviewSummary,
   fetchDiscoveryCandidates,
   fetchFrontendProductIds,
+  fetchPdpResponse,
   fetchSearchCandidates,
   hasBadgeEvidence,
   loadCoveredProductIdSet,

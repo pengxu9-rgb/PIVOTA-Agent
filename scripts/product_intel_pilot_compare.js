@@ -9,6 +9,15 @@ const {
   PRODUCT_INTEL_CONTRACT_VERSION,
   PIVOTA_INSIGHTS_DISPLAY_NAME,
 } = require('../src/pdpProductIntel');
+const {
+  buildDisplayableProofBadge,
+  filterDisplayableMarketSignalBadges,
+  normalizeMarketSignalBadges,
+} = require('../src/services/pivotaEvidenceSignals');
+const {
+  buildSearchCardPayload: buildServiceSearchCardPayload,
+  buildShoppingCardPayload: buildServiceShoppingCardPayload,
+} = require('../src/services/pivotaShoppingCard');
 
 function parseArgs(argv) {
   const out = {
@@ -281,62 +290,22 @@ function buildCompactSubtitle(caseRow, bundle) {
 }
 
 function normalizeBadgeCandidates(value) {
-  return toList(value)
-    .map((item) => {
-      const row = item && typeof item === 'object' ? item : null;
-      const badgeLabel = asString(row?.badge_label || row?.label || item);
-      if (!badgeLabel) return null;
-      return {
-        badge_type: asString(row?.badge_type || row?.type),
-        badge_label: badgeLabel,
-      };
-    })
-    .filter(Boolean);
+  return normalizeMarketSignalBadges(toList(value)).map((badge) => ({
+    badge_type: asString(badge.badge_type),
+    badge_label: asString(badge.badge_label),
+  }));
 }
 
 function buildProofBadge(caseRow, bundle) {
   const product = caseRow?.product && typeof caseRow.product === 'object' ? caseRow.product : {};
-  const explicit = normalizeBadgeCandidates(
-    bundle?.market_signal_badges || product.market_signal_badges,
+  return buildDisplayableProofBadge(
+    {
+      market_signal_badges: bundle?.market_signal_badges || product.market_signal_badges,
+      review_summary: bundle?.review_summary || product.review_summary,
+      community_signals: bundle?.community_signals || product.community_signals,
+    },
+    { formatCompactCount },
   );
-  if (explicit.length) return explicit[0];
-
-  const review = product.review_summary && typeof product.review_summary === 'object' ? product.review_summary : {};
-  const rating = Number(review.rating || review.average_rating || 0) || 0;
-  const reviewCount = Number(review.review_count || review.reviewCount || 0) || 0;
-  if (rating >= 4.5 && reviewCount >= 100) {
-    return {
-      badge_type: 'review_signal',
-      badge_label: `${rating.toFixed(1)}★ (${formatCompactCount(reviewCount)})`,
-    };
-  }
-
-  const counts =
-    product.community_signals && typeof product.community_signals === 'object'
-      ? product.community_signals.source_counts || {}
-      : {};
-  const editorial = Number(counts.editorial || 0) || 0;
-  const creatorMentions = Number(counts.creator_mentions || counts.creatorMentions || 0) || 0;
-  const media = Number(counts.media || 0) || 0;
-  if (editorial >= 3) {
-    return {
-      badge_type: 'editorial_signal',
-      badge_label: `Seen in ${editorial} editor picks`,
-    };
-  }
-  if (creatorMentions >= 8) {
-    return {
-      badge_type: 'creator_signal',
-      badge_label: `Seen in ${creatorMentions} creator mentions`,
-    };
-  }
-  if (media >= 3) {
-    return {
-      badge_type: 'media_signal',
-      badge_label: `Seen in ${media} media mentions`,
-    };
-  }
-  return null;
 }
 
 function buildTitleCandidate(caseRow) {
@@ -349,23 +318,10 @@ function buildTitleCandidate(caseRow) {
 }
 
 function buildShoppingCardPayload(caseRow, bundle) {
-  const title = buildTitleCandidate(caseRow);
-  const subtitle = buildCompactSubtitle(caseRow, bundle);
-  const proofBadge = buildProofBadge(caseRow, bundle);
-  const intro = asString(bundle?.product_intel_core?.what_it_is?.body);
-  const marketSignalBadges = normalizeBadgeCandidates(
-    bundle?.market_signal_badges || (proofBadge ? [proofBadge] : []),
-  );
-
-  return {
-    contract_version: 'pivota.shopping_card.v1',
-    title,
-    ...(subtitle ? { subtitle } : {}),
-    ...(proofBadge?.badge_label ? { proof_badge: proofBadge.badge_label } : {}),
-    ...(intro ? { intro } : {}),
-    ...(marketSignalBadges.length ? { market_signal_badges: marketSignalBadges } : {}),
-    ...(asString(bundle?.evidence_profile) ? { evidence_profile: asString(bundle.evidence_profile) } : {}),
-  };
+  return buildServiceShoppingCardPayload({
+    product: caseRow?.product,
+    bundle,
+  });
 }
 
 function normalizeSelectedReviewSummary(value) {
@@ -383,19 +339,16 @@ function attachShoppingCard(caseRow, bundle) {
   const product = caseRow?.product && typeof caseRow.product === 'object' ? caseRow.product : {};
   const next = deepClone(bundle);
   const shoppingCard = buildShoppingCardPayload(caseRow, next);
-  const proofBadge = asString(shoppingCard.proof_badge);
   const reviewSummary = normalizeSelectedReviewSummary(product.review_summary);
   const communitySignals =
     product.community_signals && typeof product.community_signals === 'object'
       ? deepClone(product.community_signals)
       : null;
   next.shopping_card = shoppingCard;
-  next.search_card = {
-    title_candidate: shoppingCard.title,
-    ...(shoppingCard.subtitle ? { compact_candidate: shoppingCard.subtitle } : {}),
-    ...(proofBadge ? { proof_badge_candidate: proofBadge } : {}),
-    ...(shoppingCard.intro ? { intro_candidate: shoppingCard.intro } : {}),
-  };
+  next.search_card = buildServiceSearchCardPayload({
+    product: caseRow?.product,
+    bundle: next,
+  });
   if (Array.isArray(shoppingCard.market_signal_badges) && shoppingCard.market_signal_badges.length) {
     next.market_signal_badges = shoppingCard.market_signal_badges;
   }
@@ -1086,6 +1039,26 @@ function applyManualOverrideToSelected(caseRow, selectedResult, manualOverride) 
     manualFieldCount += 1;
   }
 
+  if (Array.isArray(manualOverride.external_highlight_signals)) {
+    bundle.external_highlight_signals = deepClone(manualOverride.external_highlight_signals);
+    fieldSources.external_highlight_signals = 'manual';
+    manualFieldCount += 1;
+  }
+
+  if (manualOverride.shopping_card && typeof manualOverride.shopping_card === 'object') {
+    bundle.shopping_card = {
+      ...(bundle.shopping_card || {}),
+      ...deepClone(manualOverride.shopping_card),
+    };
+  }
+
+  if (manualOverride.search_card && typeof manualOverride.search_card === 'object') {
+    bundle.search_card = {
+      ...(bundle.search_card || {}),
+      ...deepClone(manualOverride.search_card),
+    };
+  }
+
   bundle.product_intel_core = core;
   bundle.provenance = {
     ...(bundle.provenance || {}),
@@ -1093,6 +1066,18 @@ function applyManualOverrideToSelected(caseRow, selectedResult, manualOverride) 
     generator: 'curated_override',
     selection_strategy: 'curated_override',
     override_reason: asString(manualOverride.notes) || 'manual_quality_override',
+    ...(asString(manualOverride.external_highlight_review_status)
+      ? { external_highlight_review_status: asString(manualOverride.external_highlight_review_status) }
+      : {}),
+    ...(asString(manualOverride.external_evidence_generated_at)
+      ? { external_evidence_generated_at: asString(manualOverride.external_evidence_generated_at) }
+      : {}),
+    ...(asString(manualOverride.external_evidence_model)
+      ? { external_evidence_model: asString(manualOverride.external_evidence_model) }
+      : {}),
+    ...(asString(manualOverride.external_review_batch)
+      ? { external_review_batch: asString(manualOverride.external_review_batch) }
+      : {}),
   };
 
   selected.bundle = attachShoppingCard(caseRow, bundle);
