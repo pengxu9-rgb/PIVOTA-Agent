@@ -58,7 +58,15 @@
           "severity": "medium"
         }
       ]
-    }
+    },
+    "shopping_card": {
+      "highlight": "Five actives in one serum step"
+    },
+    "search_card": {
+      "highlight_candidate": "Five actives in one serum step"
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_card_highlight_2026_04_10"
   },
   "product:ext_13c520e764f9f7d7f23c611b": {
     "notes": "Curated seller-only rewrite to replace low-signal jumbo-size merchandising copy with product-substance highlights.",
@@ -119,7 +127,15 @@
           "severity": "medium"
         }
       ]
-    }
+    },
+    "shopping_card": {
+      "highlight": "Five actives in one serum step"
+    },
+    "search_card": {
+      "highlight_candidate": "Five actives in one serum step"
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_card_highlight_2026_04_10"
   },
   "live_ext_8d735b108c0f01151b80797b": {
     "notes": "Curated seller-only rewrite to keep the brightening reason specific and formula-led.",
@@ -174,7 +190,15 @@
           "severity": "medium"
         }
       ]
-    }
+    },
+    "shopping_card": {
+      "highlight": "Amla-led brightening for dark spots"
+    },
+    "search_card": {
+      "highlight_candidate": "Amla-led brightening for dark spots"
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_card_highlight_2026_04_10"
   },
   "live_ext_4e155bb184ec35f3cd7827e3": {
     "notes": "Curated seller-only rewrite to keep the moisturizer explanation concrete and step-specific.",
@@ -218,7 +242,15 @@
         ]
       },
       "watchouts": []
-    }
+    },
+    "shopping_card": {
+      "highlight": "Brightening actives in a cream step"
+    },
+    "search_card": {
+      "highlight_candidate": "Brightening actives in a cream step"
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_card_highlight_2026_04_10"
   },
   "live_ext_7036139f48c84539ff819d8d": {
     "notes": "Curated seller-only rewrite to stress the brightening-plus-hydration blend instead of generic texture claims.",
@@ -262,7 +294,15 @@
         ]
       },
       "watchouts": []
-    }
+    },
+    "shopping_card": {
+      "highlight": "Brightening with plumping hydration"
+    },
+    "search_card": {
+      "highlight_candidate": "Brightening with plumping hydration"
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_card_highlight_2026_04_10"
   },
   "live_ext_f22e924478be64d4c3a1b918": {
     "notes": "Curated seller-only rewrite to avoid generic night-cream texture filler.",
@@ -311,7 +351,15 @@
           "severity": "medium"
         }
       ]
-    }
+    },
+    "shopping_card": {
+      "highlight": "Oatmeal + niacinamide night cream"
+    },
+    "search_card": {
+      "highlight_candidate": "Oatmeal + niacinamide night cream"
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_card_highlight_2026_04_10"
   },
   "live_ext_f326aabff0f8a4a698aa192c": {
     "notes": "Curated seller-only rewrite to keep the SPF moisturizer explanation crisp and practical.",
@@ -361,7 +409,15 @@
           "severity": "medium"
         }
       ]
-    }
+    },
+    "shopping_card": {
+      "highlight": "SPF 30 + moisturizer in one step"
+    },
+    "search_card": {
+      "highlight_candidate": "SPF 30 + moisturizer in one step"
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_card_highlight_2026_04_10"
   },
   "live_ext_1d9e01e4c3a8800a0c22b175": {
     "notes": "Curated seller-only rewrite to remove the inaccurate niacinamide-resurfacing framing.",
@@ -411,7 +467,15 @@
           "severity": "medium"
         }
       ]
-    }
+    },
+    "shopping_card": {
+      "highlight": "2% niacinamide + ceramide support"
+    },
+    "search_card": {
+      "highlight_candidate": "2% niacinamide + ceramide support"
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_card_highlight_2026_04_10"
   },
   "live_ext_6c540ac96c2c1ab33f1af31d": {
     "notes": "Curated seller-only rewrite to keep the under-eye explanation specific instead of convenience-led.",
@@ -455,7 +519,15 @@
         ]
       },
       "watchouts": []
-    }
+    },
+    "shopping_card": {
+      "highlight": "Banana-tone eye correction + vitamin C"
+    },
+    "search_card": {
+      "highlight_candidate": "Banana-tone eye correction + vitamin C"
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_card_highlight_2026_04_10"
   },
   "live_ext_aa93bbb9dbe9e3529030408b": {
     "notes": "Curated seller-only rewrite to keep the moisturizer explanation concrete and less generic.",
@@ -499,7 +571,15 @@
         ]
       },
       "watchouts": []
-    }
+    },
+    "shopping_card": {
+      "highlight": "Vitamin C in a lightweight gel-cream"
+    },
+    "search_card": {
+      "highlight_candidate": "Vitamin C in a lightweight gel-cream"
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_card_highlight_2026_04_10"
   },
   "live_ext_7c4b0a2885131b08d1cda84a": {
     "notes": "Curated seller-only rewrite to make the discoloration explanation more specific and treatment-led.",
@@ -549,6 +629,14 @@
           "severity": "medium"
         }
       ]
-    }
+    },
+    "shopping_card": {
+      "highlight": "Niacinamide-led dark spot serum"
+    },
+    "search_card": {
+      "highlight_candidate": "Niacinamide-led dark spot serum"
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_card_highlight_2026_04_10"
   }
 }

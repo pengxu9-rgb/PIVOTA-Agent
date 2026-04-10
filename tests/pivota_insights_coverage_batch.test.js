@@ -48,8 +48,14 @@ describe('pivota_insights_coverage_batch', () => {
               quality_state: 'limited',
               shopping_card: {
                 title: 'Naturium Vitamin C Super Serum Plus - Jumbo',
-                subtitle: 'Multi-Active Serum',
+                subtitle: 'Vitamin C + retinol serum',
+                highlight: 'Five actives in one serum step',
                 proof_badge: '',
+              },
+              search_card: {
+                compact_candidate: 'Vitamin C + retinol serum',
+                highlight_candidate: 'Five actives in one serum step',
+                intro_candidate: 'Multi-active serum with vitamin C, retinol, niacinamide, hyaluronic and salicylic acids.',
               },
               product_intel_core: {
                 what_it_is: {
@@ -85,10 +91,21 @@ describe('pivota_insights_coverage_batch', () => {
       },
       evidence_profile: 'seller_only',
       quality_state: 'limited',
+      review_decision: 'pending',
+      rejection_reason: '',
+      external_highlight_preview: [],
+      highlight_sources_summary: [],
       shopping_card: {
         title: 'Naturium Vitamin C Super Serum Plus - Jumbo',
-        subtitle: 'Multi-Active Serum',
+        subtitle: 'Vitamin C + retinol serum',
+        highlight: 'Five actives in one serum step',
         proof_badge: '',
+      },
+      search_card: {
+        compact_candidate: 'Vitamin C + retinol serum',
+        highlight_candidate: 'Five actives in one serum step',
+        intro_candidate: 'Multi-active serum with vitamin C, retinol, niacinamide, hyaluronic and salicylic acids.',
+        proof_badge_candidate: '',
       },
       pivota_insights: {
         what_it_is: 'A multi-active treatment serum for tone and texture.',

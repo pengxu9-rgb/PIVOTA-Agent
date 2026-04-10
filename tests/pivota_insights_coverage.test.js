@@ -90,12 +90,12 @@ describe('pivotaInsightsCoverage', () => {
         quality_state: 'limited',
         shopping_card: {
           title: 'Naturium Vitamin C Super Serum Plus',
-          subtitle: 'Multi-Active Serum',
+          subtitle: 'Vitamin C + retinol serum',
           highlight: 'Creators often point to the lightweight',
           proof_badge: '',
         },
         search_card: {
-          compact_candidate: 'Multi-Active Serum',
+          compact_candidate: 'Vitamin C + retinol serum',
           highlight_candidate: 'Creators often point to the lightweight',
         },
         external_highlight_preview: [
@@ -143,7 +143,7 @@ describe('pivotaInsightsCoverage', () => {
         review_decision: 'pending',
         shopping_card: expect.objectContaining({
           title: 'Naturium Vitamin C Super Serum Plus',
-          subtitle: 'Multi-Active Serum',
+          subtitle: 'Vitamin C + retinol serum',
           highlight: 'Creators often point to the lightweight',
         }),
       }),
