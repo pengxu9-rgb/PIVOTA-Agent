@@ -71,6 +71,9 @@ test('framework external-seed recall entry uses strict ingredient-intent search 
         queryStepStrength: String(params.queryStepStrength || ''),
         semanticContract: params.semanticContract ?? null,
         transportPolicyMode: params.transportPolicy?.mode || null,
+        transportForceGenericOnly: params.transportPolicy?.force_generic_only === true,
+        transportIncludeSelfProxy: params.transportPolicy?.include_self_proxy === true,
+        transportPreferSelfProxyFirst: params.transportPolicy?.prefer_self_proxy_first === true,
       });
       return {
         ok: true,
@@ -101,6 +104,9 @@ test('framework external-seed recall entry uses strict ingredient-intent search 
       queryStepStrength: 'strong_goal_family',
       semanticContract: null,
       transportPolicyMode: 'framework_first_turn',
+      transportForceGenericOnly: true,
+      transportIncludeSelfProxy: false,
+      transportPreferSelfProxyFirst: false,
     },
   ]);
 });

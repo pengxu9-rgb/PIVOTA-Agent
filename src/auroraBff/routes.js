@@ -17871,6 +17871,10 @@ async function executeRecoRecallPlanEntry({
     });
   }
   const runSearch = typeof searchFn === 'function' ? searchFn : searchPivotaBackendProducts;
+  const effectiveTransportPolicy =
+    sourceScope === 'external_seed'
+      ? buildExternalSeedDirectSearchTransportPolicy({ mode: transportPolicyMode })
+      : buildRecoRecallTransportPolicy({ mode: transportPolicyMode });
   const runSearchParams = {
     query: entry?.query,
     limit,
@@ -17879,7 +17883,7 @@ async function executeRecoRecallPlanEntry({
     allowExternalSeed: sourceScope !== 'internal',
     externalSeedStrategy: normalizedExternalSeedStrategy || 'on_empty_only',
     fastMode: sourceScope === 'external_seed' ? true : sourceScope !== 'external_seed',
-    transportPolicy: buildRecoRecallTransportPolicy({ mode: transportPolicyMode }),
+    transportPolicy: effectiveTransportPolicy,
     traceId,
     queryIndex,
     queryTotal,
@@ -17984,6 +17988,22 @@ function deriveRecoCandidateDropStage({
     return 'upstream_timeout';
   }
   return 'no_recall_from_planned_sources';
+}
+
+function buildExternalSeedDirectSearchTransportPolicy({ mode = '' } = {}) {
+  const basePolicy = buildRecoRecallTransportPolicy({ mode });
+  return {
+    ...basePolicy,
+    include_local_fallback: false,
+    include_self_proxy: false,
+    prefer_self_proxy_first: false,
+    max_base_urls: 1,
+    max_paths: 1,
+    allow_secondary_base_failover: false,
+    allow_secondary_path_failover: false,
+    actual_http_attempt_limit_per_query: 1,
+    force_generic_only: true,
+  };
 }
 
 async function collectRecoCandidatesFromRecallPlan({
@@ -21092,6 +21112,9 @@ async function buildPurchasableFallbackCandidates({
     const shouldFallbackToBackendExternal = !hasRoleAlignedExternalSeedCandidate(rankedExternal);
     if (shouldFallbackToBackendExternal) {
       rankedExternal = [];
+      const backendExternalTransportPolicy = buildExternalSeedDirectSearchTransportPolicy({
+        mode: effectiveTransportPolicy.mode,
+      });
       backendExternalStage = await runSearch({
         query: q,
         limit,
@@ -21107,7 +21130,7 @@ async function buildPurchasableFallbackCandidates({
         semanticFamily: normalizedSemanticFamily || undefined,
         productOnly: true,
         authHeaders,
-        transportPolicy: effectiveTransportPolicy,
+        transportPolicy: backendExternalTransportPolicy,
       });
       rankedExternal = rankExternalSeedProducts(backendExternalStage?.products);
     }

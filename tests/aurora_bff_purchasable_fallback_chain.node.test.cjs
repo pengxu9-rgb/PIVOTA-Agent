@@ -215,6 +215,10 @@ test('purchasable fallback: role-aware external backend fallback carries strict 
         targetStepFamily: params.targetStepFamily,
         semanticFamily: params.semanticFamily,
         queryStepStrength: params.queryStepStrength,
+        transportPolicyMode: params.transportPolicy?.mode || null,
+        transportForceGenericOnly: params.transportPolicy?.force_generic_only === true,
+        transportIncludeSelfProxy: params.transportPolicy?.include_self_proxy === true,
+        transportPreferSelfProxyFirst: params.transportPolicy?.prefer_self_proxy_first === true,
       });
       return {
         ok: true,
@@ -254,6 +258,10 @@ test('purchasable fallback: role-aware external backend fallback carries strict 
       targetStepFamily: 'treatment',
       semanticFamily: 'oil_control',
       queryStepStrength: 'strong_goal_family',
+      transportPolicyMode: 'default',
+      transportForceGenericOnly: true,
+      transportIncludeSelfProxy: false,
+      transportPreferSelfProxyFirst: false,
     },
   ]);
   assert.equal(out.selected_source, 'external_seed');
