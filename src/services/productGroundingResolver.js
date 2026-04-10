@@ -66,6 +66,10 @@ const BUILTIN_STABLE_PRODUCT_REFS = [
       product_id: '9886499864904',
       merchant_id: 'merch_efbc46b4619cfbdf',
     },
+    brand: 'The Ordinary',
+    name: 'Niacinamide 10% + Zinc 1%',
+    display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+    category: 'serum',
     title: 'The Ordinary Niacinamide 10% + Zinc 1%',
     aliases: [
       'The Ordinary Niacinamide 10% + Zinc 1%',

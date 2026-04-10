@@ -71,10 +71,14 @@ test('reco assistant rewrite prompt omits deterministic base text and carries re
     assert.match(prompt, /"user_request":"I am oily skin\. What product should I buy\?"/);
     assert.match(prompt, /If request_mode is "buy", use direct shopping advice tone\./);
     assert.match(prompt, /If request_mode is "buy", the first sentence must directly recommend the selected product by name\./);
+    assert.match(prompt, /If request_mode is "buy" and there is one selected product with no secondary targets, use exactly 2 sentences\./);
     assert.match(prompt, /If selected_target_ids has length 1 and secondary_targets is empty, do not add future routine-building suggestions or extra steps\./);
     assert.match(prompt, /Use plain shopper-facing skincare language\. Avoid vague phrases like "surface activity"\./);
+    assert.match(prompt, /Avoid generic filler like "great choice", "balanced complexion", or "solution for oiliness"\./);
+    assert.match(prompt, /Use selected_product_details\.why_this_one, selected_product_details\.best_for, and selected_product_details\.key_features as the concrete reason layer when available\./);
     assert.match(prompt, /If request_mode is "use_first", use starting-point advice tone\./);
     assert.match(prompt, /"short_description":"Helps reduce visible shine without feeling heavy\."/);
+    assert.match(prompt, /"key_features":\[\]/);
     assert.match(prompt, /"price":\{"amount":12,"currency":"USD","unknown":false\}/);
     assert.match(prompt, /"role_id":"oil_control_treatment"/);
     assert.doesNotMatch(prompt, /"role_id":"lightweight_moisturizer"/);
@@ -473,6 +477,48 @@ test('beauty mainline reco rows promote visible nested product fields to top lev
     assert.equal(rows[0].url, 'https://agent.pivota.cc/products/9886499864904?merchant_id=merch_efbc46b4619cfbdf&entry=creator_agent');
     assert.equal(rows[0].pdp_url, 'https://agent.pivota.cc/products/9886499864904?merchant_id=merch_efbc46b4619cfbdf&entry=creator_agent');
     assert.equal(rows[0].product_url, 'https://agent.pivota.cc/products/9886499864904?merchant_id=merch_efbc46b4619cfbdf&entry=creator_agent');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('beauty mainline reco rows derive stable brand and shopper fields when source row is sparse', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const rows = __internal.buildRecoRowsFromMainlineProducts(
+      [
+        {
+          product_id: '9886499864904',
+          merchant_id: 'merch_efbc46b4619cfbdf',
+          display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+          category: 'Serum',
+        },
+      ],
+      {
+        targetContext: {
+          resolved_target_step: 'treatment',
+          primary_role_id: 'oil_control_treatment',
+          framework_roles: [
+            {
+              role_id: 'oil_control_treatment',
+              label: 'Oil-control treatment',
+              rank: 1,
+              preferred_step: 'treatment',
+              why_this_role: 'Reduce excess sebum and visible shine first.',
+            },
+          ],
+        },
+        language: 'EN',
+      },
+    );
+
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].brand, 'The Ordinary');
+    assert.equal(rows[0].name, 'The Ordinary Niacinamide 10% + Zinc 1%');
+    assert.match(String(rows[0].best_for || ''), /excess oil|mid-day shine/i);
+    assert.match(String(rows[0].why_this_one || ''), /lightweight|shine/i);
+    assert.deepEqual(rows[0].key_features, ['Niacinamide 10%', 'Zinc 1%', 'Oil-control support', 'Lightweight serum']);
+    assert.equal(rows[0].short_description, rows[0].why_this_one);
   } finally {
     delete require.cache[moduleId];
   }

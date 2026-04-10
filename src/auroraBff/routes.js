@@ -18155,9 +18155,241 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
   return scoreConcernRoleCandidatePolicy(row, role, { candidateStep, candidateText });
 }
 
-function buildRecoVisibleProductFields(picked) {
+function resolveRecoStableAnchorProduct(picked) {
+  const row = isPlainObject(picked) ? picked : null;
+  if (!row) return null;
+  const candidateRef = normalizeCanonicalProductRef(
+    {
+      product_id: pickFirstString(
+        row.product_id,
+        row.productId,
+        row.sku?.product_id,
+        row.sku?.productId,
+        row.product?.product_id,
+        row.product?.productId,
+      ),
+      merchant_id: pickFirstString(
+        row.merchant_id,
+        row.merchantId,
+        row.sku?.merchant_id,
+        row.sku?.merchantId,
+        row.product?.merchant_id,
+        row.product?.merchantId,
+      ),
+    },
+    { requireMerchant: true, allowOpaqueProductId: false },
+  );
+  const brand = pickFirstTrimmed(
+    row.brand,
+    row.brand_name,
+    row.brandName,
+    row.sku?.brand,
+    row.sku?.brand_name,
+    row.sku?.brandName,
+    row.product?.brand,
+    row.product?.brand_name,
+    row.product?.brandName,
+  );
+  const displayName = pickFirstTrimmed(
+    row.display_name,
+    row.displayName,
+    row.name,
+    row.title,
+    row.sku?.display_name,
+    row.sku?.displayName,
+    row.sku?.name,
+    row.sku?.title,
+    row.product?.display_name,
+    row.product?.displayName,
+    row.product?.name,
+    row.product?.title,
+  );
+  const name = pickFirstTrimmed(
+    row.name,
+    row.title,
+    row.display_name,
+    row.displayName,
+    row.sku?.name,
+    row.sku?.title,
+    row.sku?.display_name,
+    row.sku?.displayName,
+    row.product?.name,
+    row.product?.title,
+    row.product?.display_name,
+    row.product?.displayName,
+  );
+  const queries = uniqCaseInsensitiveStrings(
+    [
+      brand && displayName ? joinBrandAndName(brand, displayName) : '',
+      brand && name ? joinBrandAndName(brand, name) : '',
+      displayName,
+      name,
+    ],
+    4,
+  );
+  for (const queryText of queries) {
+    const match = resolveRecoStableAliasRefByQuery(queryText);
+    if (!match?.stableAnchorProduct || !isPlainObject(match.stableAnchorProduct)) continue;
+    const stableAnchorProduct = match.stableAnchorProduct;
+    const stableRef = normalizeCanonicalProductRef(
+      stableAnchorProduct.canonical_product_ref || match.canonicalProductRef,
+      { requireMerchant: true, allowOpaqueProductId: false },
+    );
+    if (
+      candidateRef &&
+      stableRef &&
+      (stableRef.product_id !== candidateRef.product_id || stableRef.merchant_id !== candidateRef.merchant_id)
+    ) {
+      continue;
+    }
+    return stableAnchorProduct;
+  }
+  return null;
+}
+
+function buildRecoDerivedFeatureTokens({
+  roleText = '',
+  productName = '',
+  productType = '',
+  providedFeatures = [],
+  language = 'EN',
+} = {}) {
+  const isCn = String(language || '').trim().toUpperCase() === 'CN';
+  const out = [];
+  const seen = new Set();
+  const push = (value) => {
+    const token = String(value || '').trim();
+    if (!token) return;
+    const key = token.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(token);
+  };
+  for (const value of asStringArray(providedFeatures, 6)) push(value);
+  const cleanName = String(productName || '').trim();
+  if (cleanName) {
+    for (const rawPart of cleanName.split(/\s*\+\s*/)) {
+      const part = String(rawPart || '').trim();
+      if (!part) continue;
+      if (/[0-9]+(?:\.[0-9]+)?%/.test(part)) push(part);
+    }
+  }
+  const roleHaystack = `${String(roleText || '')} ${cleanName}`.toLowerCase();
+  if (/\boil|shine|sebum\b/i.test(roleHaystack)) push(isCn ? '控油护理' : 'Oil-control support');
+  if (/\bserum\b/i.test(String(productType || '').trim()) || /\bserum\b/i.test(cleanName)) {
+    push(isCn ? '轻薄精华' : 'Lightweight serum');
+  }
+  return out.slice(0, 4);
+}
+
+function buildRecoDerivedShopperCopy({
+  role = null,
+  row = null,
+  stableAnchorProduct = null,
+  language = 'EN',
+} = {}) {
+  const isCn = String(language || '').trim().toUpperCase() === 'CN';
+  const roleObj = isPlainObject(role) ? role : null;
+  const rawRow = isPlainObject(row) ? row : null;
+  const roleLabel = pickFirstTrimmed(roleObj?.label, rawRow?.matched_role_label, rawRow?.matchedRoleLabel);
+  const roleWhy = pickFirstTrimmed(roleObj?.why_this_role);
+  const roleText = `${roleLabel} ${roleWhy}`.trim().toLowerCase();
+  const existingBestFor = pickFirstTrimmed(rawRow?.best_for, rawRow?.bestFor);
+  const existingWhy = pickFirstTrimmed(rawRow?.why_this_one, rawRow?.whyThisOne, rawRow?.reason);
+  const productType = pickFirstTrimmed(
+    rawRow?.category,
+    rawRow?.product_type,
+    rawRow?.productType,
+    rawRow?.type,
+    rawRow?.sku?.category,
+    rawRow?.sku?.product_type,
+    stableAnchorProduct?.category,
+  );
+  const productName = pickFirstTrimmed(
+    stableAnchorProduct?.name,
+    stableAnchorProduct?.display_name,
+    rawRow?.name,
+    rawRow?.title,
+    rawRow?.display_name,
+    rawRow?.displayName,
+    rawRow?.sku?.name,
+    rawRow?.sku?.title,
+    rawRow?.sku?.display_name,
+  );
+  const bestFor = existingBestFor || (() => {
+    if (/\boil|shine|sebum\b/i.test(roleText)) {
+      return isCn ? '适合出油和午后泛油光' : 'Best for excess oil and mid-day shine';
+    }
+    if (/\bmoist|hydrat|barrier\b/i.test(roleText)) {
+      return isCn ? '适合需要轻薄保湿又不想闷肤的时候' : 'Best for lightweight hydration without a greasy finish';
+    }
+    if (/\bspf|sun|uv\b/i.test(roleText)) {
+      return isCn ? '适合每天早上做日常防晒' : 'Best for daily UV protection you will actually wear';
+    }
+    if (/\bcleanser|wash|cleanse\b/i.test(roleText)) {
+      return isCn ? '适合需要温和清洁的时候' : 'Best for a gentle cleanse without a stripped feel';
+    }
+    return isCn
+      ? `适合放进当前的${humanizeRecoProductType(productType || 'other', 'CN')}`
+      : `Best as your ${humanizeRecoProductType(productType || 'other', 'EN').toLowerCase()} step`;
+  })();
+  const whyThisOne = existingWhy || (() => {
+    if (/\boil|shine|sebum\b/i.test(roleText)) {
+      return isCn
+        ? '这是一支更轻薄的控油精华，适合把出油问题先压下来。'
+        : 'A lightweight treatment pick that helps take down excess shine without making the routine feel heavier.';
+    }
+    if (/\bmoist|hydrat|barrier\b/i.test(roleText)) {
+      return isCn
+        ? '补水感更轻，不容易把偏油皮肤推向闷重。'
+        : 'It adds breathable hydration without pushing oily skin into a heavy finish.';
+    }
+    if (/\bspf|sun|uv\b/i.test(roleText)) {
+      return isCn
+        ? '更适合作为每天都愿意坚持的白天防晒步骤。'
+        : 'It keeps your daytime protection step easier to wear every morning.';
+    }
+    if (/\bcleanser|wash|cleanse\b/i.test(roleText)) {
+      return isCn
+        ? '更适合作为日常基础清洁，不容易一下子洗得太狠。'
+        : 'It works as a simple daily cleanse without feeling overly aggressive.';
+    }
+    return isCn
+      ? '这是当前主推荐方向里最直接的一支。'
+      : 'It is the clearest match for the main recommendation direction.';
+  })();
+  const keyFeatures = buildRecoDerivedFeatureTokens({
+    roleText,
+    productName,
+    productType,
+    providedFeatures: [
+      ...(Array.isArray(rawRow?.key_features) ? rawRow.key_features : []),
+      ...(Array.isArray(rawRow?.keyFeatures) ? rawRow.keyFeatures : []),
+      ...(Array.isArray(rawRow?.actives) ? rawRow.actives : []),
+      ...(Array.isArray(rawRow?.key_ingredients) ? rawRow.key_ingredients : []),
+      ...(Array.isArray(rawRow?.keyIngredients) ? rawRow.keyIngredients : []),
+      ...(Array.isArray(rawRow?.benefit_tags) ? rawRow.benefit_tags : []),
+      ...(Array.isArray(rawRow?.benefitTags) ? rawRow.benefitTags : []),
+      ...(Array.isArray(rawRow?.tags) ? rawRow.tags : []),
+      ...(Array.isArray(rawRow?.sku?.key_features) ? rawRow.sku.key_features : []),
+      ...(Array.isArray(rawRow?.sku?.actives) ? rawRow.sku.actives : []),
+      ...(Array.isArray(rawRow?.sku?.key_ingredients) ? rawRow.sku.key_ingredients : []),
+      ...(Array.isArray(stableAnchorProduct?.active_ingredients) ? stableAnchorProduct.active_ingredients : []),
+      ...(Array.isArray(stableAnchorProduct?.key_ingredients) ? stableAnchorProduct.key_ingredients : []),
+    ],
+    language,
+  });
+  return {
+    best_for: bestFor,
+    why_this_one: whyThisOne,
+    key_features: keyFeatures,
+  };
+}
+
+function buildRecoVisibleProductFields(picked, { role = null, language = 'EN' } = {}) {
   const row = isPlainObject(picked) ? picked : null;
   if (!row) return {};
+  const stableAnchorProduct = resolveRecoStableAnchorProduct(row);
   const imageUrl = pickFirstTrimmed(
     row.image_url,
     row.imageUrl,
@@ -18180,6 +18412,12 @@ function buildRecoVisibleProductFields(picked) {
     row.product?.short_description,
     row.product?.shortDescription,
   );
+  const derivedShopperCopy = buildRecoDerivedShopperCopy({
+    role,
+    row,
+    stableAnchorProduct,
+    language,
+  });
   const description = pickFirstTrimmed(
     row.description,
     row.sku?.description,
@@ -18205,10 +18443,108 @@ function buildRecoVisibleProductFields(picked) {
   );
   const price = extractCatalogCandidatePrice(row);
   return {
+    ...(pickFirstTrimmed(
+      row.brand,
+      row.brand_name,
+      row.brandName,
+      row.sku?.brand,
+      row.sku?.brand_name,
+      row.sku?.brandName,
+      row.product?.brand,
+      row.product?.brand_name,
+      row.product?.brandName,
+      stableAnchorProduct?.brand,
+    ) ? {
+      brand: pickFirstTrimmed(
+        row.brand,
+        row.brand_name,
+        row.brandName,
+        row.sku?.brand,
+        row.sku?.brand_name,
+        row.sku?.brandName,
+        row.product?.brand,
+        row.product?.brand_name,
+        row.product?.brandName,
+        stableAnchorProduct?.brand,
+      ),
+    } : {}),
+    ...(pickFirstTrimmed(
+      row.name,
+      row.title,
+      row.display_name,
+      row.displayName,
+      row.sku?.name,
+      row.sku?.title,
+      row.sku?.display_name,
+      row.sku?.displayName,
+      row.product?.name,
+      row.product?.title,
+      row.product?.display_name,
+      row.product?.displayName,
+      stableAnchorProduct?.name,
+      stableAnchorProduct?.display_name,
+    ) ? {
+      name: pickFirstTrimmed(
+        row.name,
+        row.title,
+        row.display_name,
+        row.displayName,
+        row.sku?.name,
+        row.sku?.title,
+        row.sku?.display_name,
+        row.sku?.displayName,
+        row.product?.name,
+        row.product?.title,
+        row.product?.display_name,
+        row.product?.displayName,
+        stableAnchorProduct?.name,
+        stableAnchorProduct?.display_name,
+      ),
+    } : {}),
+    ...(pickFirstTrimmed(
+      row.display_name,
+      row.displayName,
+      row.name,
+      row.title,
+      row.sku?.display_name,
+      row.sku?.displayName,
+      row.sku?.name,
+      row.sku?.title,
+      row.product?.display_name,
+      row.product?.displayName,
+      row.product?.name,
+      row.product?.title,
+      stableAnchorProduct?.display_name,
+      stableAnchorProduct?.name,
+    ) ? {
+      display_name: pickFirstTrimmed(
+        row.display_name,
+        row.displayName,
+        row.name,
+        row.title,
+        row.sku?.display_name,
+        row.sku?.displayName,
+        row.sku?.name,
+        row.sku?.title,
+        row.product?.display_name,
+        row.product?.displayName,
+        row.product?.name,
+        row.product?.title,
+        stableAnchorProduct?.display_name,
+        stableAnchorProduct?.name,
+      ),
+    } : {}),
     ...(imageUrl ? { image_url: imageUrl } : {}),
     ...(price ? { price } : {}),
-    ...(shortDescription ? { short_description: shortDescription } : {}),
+    ...((shortDescription || derivedShopperCopy.why_this_one)
+      ? { short_description: shortDescription || derivedShopperCopy.why_this_one }
+      : {}),
     ...(description ? { description } : {}),
+    ...(derivedShopperCopy.best_for ? { best_for: derivedShopperCopy.best_for } : {}),
+    ...(derivedShopperCopy.why_this_one ? { why_this_one: derivedShopperCopy.why_this_one } : {}),
+    ...(Array.isArray(derivedShopperCopy.key_features) && derivedShopperCopy.key_features.length
+      ? { key_features: derivedShopperCopy.key_features }
+      : {}),
     ...(directUrl ? { url: directUrl, pdp_url: directUrl, product_url: directUrl } : {}),
   };
 }
@@ -18297,7 +18633,10 @@ function buildConcernRecommendationsFromSelectedCandidates(selectedCandidates, {
       ...(pickFirstString(picked?.canonical_pdp_url, picked?.canonicalPdpUrl) ? { canonical_pdp_url: pickFirstString(picked?.canonical_pdp_url, picked?.canonicalPdpUrl) } : {}),
       ...(pickFirstString(picked?.purchase_path, picked?.purchasePath) ? { purchase_path: pickFirstString(picked?.purchase_path, picked?.purchasePath) } : {}),
       ...(isPlainObject(picked?.pdp_open) ? { pdp_open: picked.pdp_open } : {}),
-      ...buildRecoVisibleProductFields(picked),
+      ...buildRecoVisibleProductFields(picked, {
+        role: matchedRole,
+        language,
+      }),
       matched_role_id: pickFirstTrimmed(picked?.matched_role_id, picked?.matchedRoleId) || null,
       matched_role_label: pickFirstTrimmed(picked?.matched_role_label, picked?.matchedRoleLabel) || null,
       matched_role_rank: Number.isFinite(Number(picked?.matched_role_rank)) ? Number(picked.matched_role_rank) : null,
@@ -18438,7 +18777,12 @@ function buildRecoRowsFromMainlineProducts(products, {
       ...(pickFirstString(picked?.canonical_pdp_url, picked?.canonicalPdpUrl) ? { canonical_pdp_url: pickFirstString(picked?.canonical_pdp_url, picked?.canonicalPdpUrl) } : {}),
       ...(pickFirstString(picked?.purchase_path, picked?.purchasePath) ? { purchase_path: pickFirstString(picked?.purchase_path, picked?.purchasePath) } : {}),
       ...(isPlainObject(picked?.pdp_open) ? { pdp_open: picked.pdp_open } : {}),
-      ...buildRecoVisibleProductFields(picked),
+      ...buildRecoVisibleProductFields(picked, {
+        role: targetContext?.framework_roles?.find((role) => (
+          String(role?.role_id || '').trim() === String(pickFirstTrimmed(picked?.matched_role_id, picked?.matchedRoleId, primaryFrameworkRole?.role_id)).trim()
+        )) || primaryFrameworkRole,
+        language,
+      }),
       ...((pickFirstTrimmed(picked?.matched_role_id, picked?.matchedRoleId) || primaryFrameworkRole)
         ? {
             matched_role_id: pickFirstTrimmed(picked?.matched_role_id, picked?.matchedRoleId, primaryFrameworkRole?.role_id) || null,
@@ -49264,6 +49608,17 @@ function buildRecoAssistantRewritePrompt({ payload, language, profile, userReque
         item.sku?.shortDescription,
         item.sku?.description,
       ),
+      best_for: pickFirstTrimmed(item.best_for, item.bestFor),
+      why_this_one: pickFirstTrimmed(item.why_this_one, item.whyThisOne, item.reason),
+      key_features: asStringArray(
+        [
+          ...(Array.isArray(item.key_features) ? item.key_features : []),
+          ...(Array.isArray(item.keyFeatures) ? item.keyFeatures : []),
+          ...(Array.isArray(item.actives) ? item.actives : []),
+          ...(Array.isArray(item.key_ingredients) ? item.key_ingredients : []),
+        ],
+        4,
+      ),
       matched_role_label: pickFirstTrimmed(item.matched_role_label, item.matchedRoleLabel),
       matched_role_id: pickFirstTrimmed(item.matched_role_id, item.matchedRoleId),
     })),
@@ -49312,9 +49667,14 @@ function buildRecoAssistantRewritePrompt({ payload, language, profile, userReque
     'Address the user_request directly and respond to the user\'s real complaint first.',
     'If request_mode is "buy", use direct shopping advice tone.',
     'If request_mode is "buy", the first sentence must directly recommend the selected product by name.',
+    'If request_mode is "buy" and there is one selected product with no secondary targets, use exactly 2 sentences.',
     'Do not open with "start with" unless request_mode is "use_first".',
     'If request_mode is "use_first", use starting-point advice tone.',
+    'If request_mode is "use_first" and there is one selected product with no secondary targets, use exactly 2 sentences.',
     'If request_mode is "use", use practical product guidance tone.',
+    'If request_mode is "use" and there is one selected product with no secondary targets, use exactly 2 sentences.',
+    'Use selected_product_details.why_this_one, selected_product_details.best_for, and selected_product_details.key_features as the concrete reason layer when available.',
+    'For single-direction answers, sentence 2 should explain the fit in shopper-facing language instead of repeating the question.',
     'Only mention targets, ingredients, steps, and product names that already exist in Context.',
     'Do not invent products, targets, routines, claims, or benefits beyond Context.',
     'If there is one selected product, keep a single main direction.',
@@ -49322,6 +49682,8 @@ function buildRecoAssistantRewritePrompt({ payload, language, profile, userReque
     'If secondary targets exist, mention them briefly and explicitly as secondary.',
     'If confidence_level is low, keep the wording conservative and non-definitive.',
     'Use plain shopper-facing skincare language. Avoid vague phrases like "surface activity".',
+    'Avoid generic filler like "great choice", "balanced complexion", or "solution for oiliness".',
+    'Do not add unsupported benefits like pore-minimizing unless they already appear in Context.',
     'Do not mention "Direction 1/2/3", generic shopping filler, or any product not in selected_products.',
     'Do not use internal phrases or internal framing such as "Primary recommendation focus" or "Products actually selected this time".',
     'Schema: { "assistant_text": string }',
@@ -49345,6 +49707,29 @@ function assistantTextUsesFutureRoutineUpsell(text) {
 
 function assistantTextUsesVagueRecoBenefitLanguage(text) {
   return /\bsurface activity\b/i.test(String(text || ''));
+}
+
+function splitRecoAssistantSentences(text, max = 6) {
+  const matches = String(text || '')
+    .trim()
+    .match(/[^.!?。！？]+[.!?。！？]?/g);
+  return (Array.isArray(matches) ? matches : [])
+    .map((part) => String(part || '').trim())
+    .filter(Boolean)
+    .slice(0, Math.max(1, max));
+}
+
+function compactSingleDirectionRecoAssistantText(text, {
+  names = [],
+  secondaryTargets = [],
+} = {}) {
+  const raw = String(text || '').trim();
+  if (!raw) return '';
+  if ((Array.isArray(names) ? names : []).length !== 1) return raw;
+  if (Array.isArray(secondaryTargets) && secondaryTargets.length > 0) return raw;
+  const sentences = splitRecoAssistantSentences(raw, 6);
+  if (sentences.length <= 2) return raw;
+  return sentences.slice(0, 2).join(' ').trim();
 }
 
 function assistantTextHasDirectBuyLead(text, names) {
@@ -49503,6 +49888,10 @@ async function maybeRewriteRecoAssistantTextWithLlm({
         parseStatus = parseStatus ? `recovered_${parseStatus}` : 'recovered_raw_text';
       }
     }
+    candidateText = compactSingleDirectionRecoAssistantText(candidateText, {
+      names,
+      secondaryTargets,
+    });
     if (!candidateText) {
       return { text: fallbackText, llm_used: false, reason: result && result.failure_reason ? result.failure_reason : 'empty_rewrite' };
     }
