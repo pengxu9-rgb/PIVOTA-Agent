@@ -44,9 +44,14 @@ async function runExternalSeedBrandMainlineFastpath({
   const queryPatterns = Array.from(
     new Set(queryVariants.map((value) => `%${value}%`).filter(Boolean)),
   ).slice(0, 12);
-  const brandToolValues = Array.from(
-    new Set([tool, '*'].map((value) => String(value || '').trim()).filter(Boolean)),
-  );
+  const normalizedTool = String(tool || '').trim();
+  const allToolsRequested =
+    !normalizedTool || normalizedTool === '*' || normalizedTool.toLowerCase() === 'all_tools';
+  const brandToolValues = allToolsRequested
+    ? []
+    : Array.from(new Set([normalizedTool, '*', ''].map((value) => String(value || '').trim()).filter(Boolean)));
+  const buildToolScopeClause = (bind) =>
+    allToolsRequested ? '' : `AND (tool = ANY(${bind}::text[]) OR tool IS NULL OR tool = '')`;
   const availabilityFilter = inStockOnly
     ? `AND coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')`
     : '';
@@ -141,21 +146,23 @@ async function runExternalSeedBrandMainlineFastpath({
       page: safePage,
       page_size: products.length,
       reply: null,
-        metadata: {
-          query_source: 'agent_products_external_seed_direct',
-          fetched_at: new Date().toISOString(),
-          source_breakdown: {
-            internal_count: 0,
-            external_seed_count: products.length,
-            stale_cache_used: false,
-            strategy_applied: strategyApplied,
-          },
-          external_seed_only_requested: true,
-          external_seed_rows_fetched: rows.length,
-          external_seed_rows_built: products.length,
-          external_seed_returned_count: products.length,
-          raw_result_count: totalRows,
-          brand_search_mainline_query: true,
+      metadata: {
+        query_source: 'agent_products_external_seed_direct',
+        fetched_at: new Date().toISOString(),
+        source_breakdown: {
+          internal_count: 0,
+          external_seed_count: products.length,
+          stale_cache_used: false,
+          strategy_applied: strategyApplied,
+        },
+        external_seed_only_requested: true,
+        external_seed_rows_fetched: rows.length,
+        external_seed_rows_built: products.length,
+        external_seed_returned_count: products.length,
+        raw_result_count: totalRows,
+        brand_search_mainline_query: true,
+        retrieval_tool_scope: allToolsRequested ? 'all_tools' : 'preferred_tool',
+        retrieval_tool: allToolsRequested ? null : normalizedTool,
         retrieval_query_variants: queryVariants,
         retrieval_query_variant_count: queryVariants.length,
         retrieval_query_debug: retrievalDebug,
@@ -177,7 +184,11 @@ async function runExternalSeedBrandMainlineFastpath({
     };
   };
 
-  const exactSqlParams = [market, brandToolValues, exactBrandCompactVariants];
+  const exactSqlParams = allToolsRequested
+    ? [market, exactBrandCompactVariants]
+    : [market, brandToolValues, exactBrandCompactVariants];
+  const exactBrandBind = `$${exactSqlParams.length}`;
+  const exactToolScopeClause = buildToolScopeClause('$2');
 
   try {
     const exactPageStartedAt = Date.now();
@@ -185,9 +196,9 @@ async function runExternalSeedBrandMainlineFastpath({
       status = 'active'
         AND attached_product_key IS NULL
         AND market = $1
-        AND tool = ANY($2::text[])
+        ${exactToolScopeClause}
         ${availabilityFilter}
-        AND ${brandMatchExpr} = ANY($3::text[])
+        AND ${brandMatchExpr} = ANY(${exactBrandBind}::text[])
     `;
     const exactRes = await query(
       `
@@ -258,7 +269,19 @@ async function runExternalSeedBrandMainlineFastpath({
       });
     }
 
-    const broadSqlParams = [market, brandToolValues, brandTerms, queryPatterns, safeLimit, safeOffset];
+    const broadSqlParams = [market];
+    const broadToolScopeClause = allToolsRequested
+      ? ''
+      : (() => {
+          broadSqlParams.push(brandToolValues);
+          return buildToolScopeClause(`$${broadSqlParams.length}`);
+        })();
+    broadSqlParams.push(queryPatterns);
+    const broadQueryPatternsBind = `$${broadSqlParams.length}`;
+    broadSqlParams.push(safeLimit);
+    const broadLimitBind = `$${broadSqlParams.length}`;
+    broadSqlParams.push(safeOffset);
+    const broadOffsetBind = `$${broadSqlParams.length}`;
     const broadStartedAt = Date.now();
     const broadRes = await query(
       `
@@ -266,11 +289,11 @@ async function runExternalSeedBrandMainlineFastpath({
           SELECT
             ${brandFastpathSelect},
             CASE
-              WHEN lower(coalesce(title, '')) LIKE ANY($4::text[]) THEN 3
+              WHEN lower(coalesce(title, '')) LIKE ANY(${broadQueryPatternsBind}::text[]) THEN 3
               WHEN (
-                lower(coalesce(domain, '')) LIKE ANY($4::text[])
-                OR lower(coalesce(canonical_url, '')) LIKE ANY($4::text[])
-                OR lower(coalesce(destination_url, '')) LIKE ANY($4::text[])
+                lower(coalesce(domain, '')) LIKE ANY(${broadQueryPatternsBind}::text[])
+                OR lower(coalesce(canonical_url, '')) LIKE ANY(${broadQueryPatternsBind}::text[])
+                OR lower(coalesce(destination_url, '')) LIKE ANY(${broadQueryPatternsBind}::text[])
               ) THEN 2
               ELSE 1
             END AS brand_match_rank
@@ -278,13 +301,13 @@ async function runExternalSeedBrandMainlineFastpath({
           WHERE status = 'active'
             AND attached_product_key IS NULL
             AND market = $1
-            AND tool = ANY($2::text[])
+            ${broadToolScopeClause}
             ${availabilityFilter}
             AND (
-              lower(coalesce(title, '')) LIKE ANY($4::text[])
-              OR lower(coalesce(domain, '')) LIKE ANY($4::text[])
-              OR lower(coalesce(canonical_url, '')) LIKE ANY($4::text[])
-              OR lower(coalesce(destination_url, '')) LIKE ANY($4::text[])
+              lower(coalesce(title, '')) LIKE ANY(${broadQueryPatternsBind}::text[])
+              OR lower(coalesce(domain, '')) LIKE ANY(${broadQueryPatternsBind}::text[])
+              OR lower(coalesce(canonical_url, '')) LIKE ANY(${broadQueryPatternsBind}::text[])
+              OR lower(coalesce(destination_url, '')) LIKE ANY(${broadQueryPatternsBind}::text[])
             )
         ),
         paged AS (
@@ -293,8 +316,8 @@ async function runExternalSeedBrandMainlineFastpath({
             COUNT(*) OVER() AS total_rows
           FROM candidates
           ORDER BY brand_match_rank DESC, updated_at DESC NULLS LAST, created_at DESC NULLS LAST
-          LIMIT $5
-          OFFSET $6
+          LIMIT ${broadLimitBind}
+          OFFSET ${broadOffsetBind}
         )
         SELECT
           *

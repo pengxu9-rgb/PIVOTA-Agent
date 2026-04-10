@@ -58,7 +58,43 @@ describe('runExternalSeedBrandMainlineFastpath', () => {
     expect(response?.products).toHaveLength(1);
     expect(deps.query).toHaveBeenCalledTimes(1);
     expect(queries[0].sql).toContain('COUNT(*) OVER()::int AS total_rows');
+    expect(queries[0].sql).not.toContain('tool = ANY');
+    expect(queries[0].params[1]).toEqual(['fenty']);
     expect(queries[0].sql).not.toContain('SELECT COUNT(*)::int AS total');
+  });
+
+  test('scopes exact-brand query to preferred seed tools when a concrete tool is supplied', async () => {
+    const queries = [];
+    const deps = buildDeps({
+      query: jest.fn(async (sql, params) => {
+        queries.push({ sql: String(sql), params });
+        return {
+          rows: [
+            {
+              id: 'seed_1',
+              external_product_id: 'fenty_1',
+              title: 'Fenty Product',
+              total_rows: 1,
+            },
+          ],
+        };
+      }),
+    });
+
+    await runExternalSeedBrandMainlineFastpath({
+      relevanceQueryText: 'fenty',
+      market: 'US',
+      tool: 'creator_agents',
+      inStockOnly: true,
+      safePage: 1,
+      safeLimit: 24,
+      safeOffset: 0,
+      deps,
+    });
+
+    expect(queries[0].sql).toContain('tool = ANY($2::text[])');
+    expect(queries[0].params[1]).toEqual(['creator_agents', '*']);
+    expect(queries[0].params[2]).toEqual(['fenty']);
   });
 });
 

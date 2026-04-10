@@ -7486,7 +7486,7 @@ async function searchExternalSeedBrandCandidatesLocally({
   const directResponse = await runExternalSeedBrandMainlineFastpath({
     relevanceQueryText: normalizedQueryText,
     market,
-    tool: 'creator_agents',
+    tool: '*',
     inStockOnly,
     safePage: 1,
     safeLimit: retrievalLimit,
