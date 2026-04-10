@@ -151,6 +151,13 @@ function normalizeTitleToken(value) {
   return normalizeResolverText(value).replace(/\s+/g, ' ').trim();
 }
 
+function normalizeAxisValue(value) {
+  return normalizeResolverText(value)
+    .replace(/[^\p{L}\p{N}.]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function collectDeepStrings(value, out = []) {
   if (value == null) return out;
   if (typeof value === 'string' || typeof value === 'number') {
@@ -191,19 +198,68 @@ function parsePackToken(text) {
   return '';
 }
 
-function parseNamedAxisFromOptions(product, names) {
-  const defaultVariantId = firstNonEmptyString(product?.default_variant_id, product?.defaultVariantId);
+function pickIdentityVariant(product) {
+  const defaultVariantId = firstNonEmptyString(
+    product?.default_variant_id,
+    product?.defaultVariantId,
+    product?.selected_variant_id,
+    product?.selectedVariantId,
+  );
   const variants = asArray(product?.variants);
-  const variant =
+  return (
     variants.find((item) => firstNonEmptyString(item?.variant_id, item?.id) === defaultVariantId) ||
     variants[0] ||
-    null;
-  const options = asArray(variant?.options);
-  for (const option of options) {
+    null
+  );
+}
+
+function collectVariantOptionEntries(value) {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => ({
+        name: firstNonEmptyString(item?.name, item?.label, item?.key),
+        value: firstNonEmptyString(item?.value, item?.text, item?.option, item?.name),
+      }))
+      .filter((item) => item.name || item.value);
+  }
+  const objectValue = asPlainObject(value);
+  if (!objectValue) return [];
+  return Object.entries(objectValue)
+    .map(([name, optionValue]) => ({
+      name,
+      value: firstNonEmptyString(optionValue?.value, optionValue?.text, optionValue),
+    }))
+    .filter((item) => item.name || item.value);
+}
+
+function collectVariantOptionTexts(variant) {
+  if (!variant) return [];
+  return uniqueStrings(
+    [
+      variant?.title,
+      variant?.option1,
+      variant?.option2,
+      variant?.option3,
+      ...collectVariantOptionEntries(variant?.options).map((item) => item.value),
+      ...collectVariantOptionEntries(variant?.selected_options).map((item) => item.value),
+      ...collectVariantOptionEntries(variant?.selectedOptions).map((item) => item.value),
+    ],
+    16,
+  );
+}
+
+function parseNamedAxisFromOptions(product, names) {
+  const variant = pickIdentityVariant(product);
+  const optionEntries = [
+    ...collectVariantOptionEntries(variant?.options),
+    ...collectVariantOptionEntries(variant?.selected_options),
+    ...collectVariantOptionEntries(variant?.selectedOptions),
+  ];
+  for (const option of optionEntries) {
     const name = normalizeResolverText(option?.name);
     if (!name) continue;
     if (!names.some((candidate) => name.includes(candidate))) continue;
-    const value = normalizeResolverText(option?.value);
+    const value = normalizeAxisValue(option?.value);
     if (value) return value;
   }
   const flatCandidates = [
@@ -218,7 +274,7 @@ function parseNamedAxisFromOptions(product, names) {
     variant?.option3,
   ];
   for (const candidate of flatCandidates) {
-    const value = normalizeResolverText(candidate);
+    const value = normalizeAxisValue(candidate);
     if (!value) continue;
     return value;
   }
@@ -227,6 +283,7 @@ function parseNamedAxisFromOptions(product, names) {
 
 function extractVariantAxes(product) {
   const variants = asArray(product?.variants);
+  const identityVariant = pickIdentityVariant(product);
   const texts = uniqueStrings(
     collectDeepStrings([
       product?.title,
@@ -235,7 +292,7 @@ function extractVariantAxes(product) {
       product?.subtitle,
       product?.variant_title,
       product?.product_type,
-      variants.slice(0, 3).map((item) => [item?.title, item?.option1, item?.option2, item?.option3]),
+      collectVariantOptionTexts(identityVariant),
     ]),
     32,
   );
@@ -267,7 +324,7 @@ function extractVariantAxes(product) {
 function serializeVariantAxes(axes) {
   const source = asPlainObject(axes) || {};
   const pairs = ['size', 'volume', 'pack', 'shade', 'color']
-    .map((key) => [key, normalizeResolverText(source[key])])
+    .map((key) => [key, normalizeAxisValue(source[key])])
     .filter(([, value]) => Boolean(value));
   if (!pairs.length) return '';
   return pairs.map(([key, value]) => `${key}:${value}`).join('|');
@@ -549,6 +606,95 @@ function buildIdentityListingFromProduct({
     review_summary: reviewSummary,
     source_meta: asPlainObject(sourceMeta) || {},
   };
+}
+
+function buildSoftExactClusterKey(listing) {
+  const brand = asString(listing?.soft_identity?.brand_norm || listing?.brand_norm);
+  const titleCore = asString(listing?.soft_identity?.title_core_norm || listing?.title_core_norm);
+  const axisSignature = serializeVariantAxes(listing?.variant_axes);
+  if (!brand || !titleCore || !axisSignature) return '';
+  return `${brand}|${titleCore}|${axisSignature}`;
+}
+
+function findStrongIdentityConflict(listings) {
+  const officialUrls = new Set();
+  const gtins = new Set();
+  for (const listing of listings || []) {
+    const strong = asPlainObject(listing?.strong_identity) || {};
+    const officialUrl = asString(strong.official_url);
+    if (officialUrl) officialUrls.add(officialUrl);
+    asArray(strong.gtins).forEach((item) => {
+      const gtin = asString(item).replace(/[^0-9]/g, '');
+      if (gtin) gtins.add(gtin);
+    });
+  }
+  if (officialUrls.size > 1) return 'conflicting_official_url';
+  if (gtins.size > 1) return 'conflicting_gtin';
+  return '';
+}
+
+function clusterIdentityListings(listings) {
+  const safeListings = Array.isArray(listings) ? listings : [];
+  const groups = new Map();
+  for (const listing of safeListings) {
+    const key = buildSoftExactClusterKey(listing);
+    if (!key || listing?.identity_status === 'review_required') continue;
+    const current = groups.get(key) || [];
+    current.push(listing);
+    groups.set(key, current);
+  }
+
+  const decisions = new Map();
+  for (const [key, group] of groups.entries()) {
+    if (group.length < 2) continue;
+    const conflict = findStrongIdentityConflict(group);
+    if (conflict) {
+      decisions.set(key, { conflict });
+      continue;
+    }
+    const [brand, titleCore] = key.split('|');
+    const lineKey = `${brand}|${titleCore}`;
+    decisions.set(key, {
+      sellable_item_group_id: stableHash('sig', [`soft_exact_cluster:${key}`]),
+      product_line_id: stableHash('pl', [`soft_line_cluster:${lineKey}`]),
+      review_family_id: stableHash('rf', [`soft_line_cluster:${lineKey}`]),
+    });
+  }
+
+  if (!decisions.size) return safeListings;
+  return safeListings.map((listing) => {
+    const key = buildSoftExactClusterKey(listing);
+    const decision = decisions.get(key);
+    if (!decision) return listing;
+    if (decision.conflict) {
+      return {
+        ...listing,
+        identity_status: 'review_required',
+        live_read_enabled: false,
+        review_required: true,
+        review_reason_codes: uniqueStrings([
+          ...asArray(listing.review_reason_codes),
+          decision.conflict,
+        ]),
+      };
+    }
+    return {
+      ...listing,
+      sellable_item_group_id: decision.sellable_item_group_id,
+      product_line_id: decision.product_line_id || listing.product_line_id,
+      review_family_id: decision.review_family_id || listing.review_family_id,
+      matched_by_rule:
+        listing.matched_by_rule === 'official_url_axes'
+          ? 'official_url_soft_exact_cluster'
+          : listing.matched_by_rule === 'soft_brand_title_axes'
+            ? 'soft_exact_cluster'
+            : listing.matched_by_rule,
+      match_basis: uniqueStrings([
+        ...asArray(listing.match_basis),
+        `soft_exact_cluster:${key}`,
+      ]),
+    };
+  });
 }
 
 function parseIdentityRow(row) {
@@ -1446,17 +1592,19 @@ async function backfillPdpIdentityGraph({
     if (looksLikeRelationMissing(err)) return [];
     throw err;
   });
-  const listings = sourceRows
-    .map((row) =>
-      buildIdentityListingFromProduct({
-        merchantId: row.merchant_id,
-        productId: row.product_id,
-        product: row.product,
-        sourceKind: row.source_kind,
-        sourceMeta: row.source_meta,
-      }),
-    )
-    .filter(Boolean)
+  const listings = clusterIdentityListings(
+    sourceRows
+      .map((row) =>
+        buildIdentityListingFromProduct({
+          merchantId: row.merchant_id,
+          productId: row.product_id,
+          product: row.product,
+          sourceKind: row.source_kind,
+          sourceMeta: row.source_meta,
+        }),
+      )
+      .filter(Boolean),
+  )
     .map((listing) => applyIdentityOverrides(listing, overrides));
 
   const reviewQueueEntries = buildReviewQueueEntries(listings);
@@ -1656,6 +1804,7 @@ module.exports = {
     buildReviewScopeMetadata,
     aggregateReviewSummary,
     applyIdentityOverrides,
+    clusterIdentityListings,
     fetchBackfillProducts,
   },
 };
