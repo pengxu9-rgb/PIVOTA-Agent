@@ -3,8 +3,22 @@ const {
   buildProductIntelDraftBundle,
   normalizePublishedProductIntelBundle,
 } = require('../src/pdpProductIntel');
+const { normalizeCardIntroCandidate } = require('../src/services/pivotaShoppingCard');
 
 describe('pdp product intel bundle shaping', () => {
+  test('card intro normalization fixes sentence casing and trailing punctuation', () => {
+    expect(
+      normalizeCardIntroCandidate(
+        'vitamin C facial serum for dullness, uneven tone, texture, and early fine-line concerns,',
+      ),
+    ).toBe(
+      'Vitamin C facial serum for dullness, uneven tone, texture, and early fine-line concerns.',
+    );
+    expect(
+      normalizeCardIntroCandidate('richer moisturizer for visibly stressed or dry-looking skin,.'),
+    ).toBe('Richer moisturizer for visibly stressed or dry-looking skin.');
+  });
+
   test('buildProductIntelBundle returns structured insights with texture and community signals', () => {
     const bundle = buildProductIntelBundle({
       product: {
