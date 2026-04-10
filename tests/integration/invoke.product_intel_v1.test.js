@@ -241,7 +241,7 @@ describeIfRuntimeDeps('/agent/shop/v1/invoke product intel contracts', () => {
       }),
     );
     expect(res.body.display_name).toBe('Pivota Insights');
-    expect(res.body.offer_pointers.commerce_modes).toContain('merchant_embedded_checkout');
+    expect(res.body.offer_pointers.commerce_modes).toContain('links_out');
     expect(res.body.shopping_card).toEqual(
       expect.objectContaining({
         subtitle: 'Invisible SPF moisturizer',
