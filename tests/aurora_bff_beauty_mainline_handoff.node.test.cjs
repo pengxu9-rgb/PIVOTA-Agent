@@ -409,6 +409,8 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
         'oil control serum',
         'lightweight moisturizer oily skin',
         'gel cream oily skin',
+        'lightweight moisturizer oily skin',
+        'gel cream oily skin',
       ],
     );
     assert.equal(captured.every((row) => row.callerLane === 'beauty_chat_handoff'), true);
@@ -422,8 +424,12 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
       [true, true, true, true],
     );
     assert.deepEqual(
-      captured.slice(7).map((row) => row.allowExternalSeed),
+      captured.slice(7, 9).map((row) => row.allowExternalSeed),
       [false, false],
+    );
+    assert.deepEqual(
+      captured.slice(9).map((row) => row.allowExternalSeed),
+      [true, true],
     );
     assert.equal(
       captured.slice(0, 3).every((row) =>
@@ -449,28 +455,48 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
       true,
     );
     assert.equal(
-      captured.slice(7).every((row) =>
+      captured.slice(7, 9).every((row) =>
         row.targetStepFamily === 'moisturizer'
         && row.semanticFamily === 'lightweight_moisturizer'
         && row.queryStepStrength === 'supportive_family'
         && row.productOnly === true),
       true,
     );
+    assert.equal(
+      captured.slice(9).every((row) =>
+        row.targetStepFamily === 'moisturizer'
+        && row.semanticFamily === 'moisturizer'
+        && row.queryStepStrength === 'supportive_family'
+        && row.productOnly === true
+        && row.transportPolicy.mode === 'framework_first_turn'
+        && row.transportPolicy.includeSelfProxy === false
+        && row.transportPolicy.includeLocalFallback === false
+        && row.transportPolicy.forceGenericOnly === true
+        && row.transportPolicy.maxBaseUrls === 1
+        && row.transportPolicy.maxPaths === 1
+        && row.transportPolicy.actualHttpAttemptLimitPerQuery === 1),
+      true,
+    );
     assert.equal(out.searchResult?.query_source, 'beauty_mainline_local_handoff');
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.planned_level_count, 6);
-    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_level_count, 3);
-    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_query_count, 9);
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_level_count, 4);
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_query_count, 11);
     assert.equal(
       out.searchResult?.metadata?.search_stage_ledger?.primary_search?.execution_lane,
       'beauty_mainline_local_handoff',
     );
-    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.skipped_external_seed_level_count, 2);
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.skipped_external_seed_level_count, 1);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_support_level_count, 1);
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_support_levels,
       ['framework_stage_c_support_lightweight_moisturizer'],
     );
-    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.routine_support_strategy, 'primary_plus_first_internal_support');
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_support_external_seed_level_count, 1);
+    assert.deepEqual(
+      out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_support_external_seed_levels,
+      ['framework_stage_c_support_lightweight_moisturizer_external_seed'],
+    );
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.routine_support_strategy, 'primary_plus_first_internal_and_external_support');
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.skipped_support_level_count, 1);
     assert.equal(
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.transport_policy_mode,
@@ -478,16 +504,15 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
     );
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts?.map((row) => row?.source_scope),
-      ['internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal'],
+      ['internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed'],
     );
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts?.map((row) => row?.source_scope),
-      ['internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal'],
+      ['internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed'],
     );
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.skipped_external_seed_levels,
       [
-        'framework_stage_c_support_lightweight_moisturizer_external_seed',
         'framework_stage_c_support_daily_sunscreen_external_seed',
       ],
     );

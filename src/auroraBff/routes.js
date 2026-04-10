@@ -19355,7 +19355,9 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
   const skippedExternalSeedLevels = [];
   const skippedSupportLevels = [];
   const executedSupportLevels = [];
-  const internalLevels = [];
+  const executedSupportExternalSeedLevels = [];
+  const executedSupportLevelBaseIds = new Set();
+  const stagedLevels = [];
   const maxRoutineSupportLevels = 1;
   for (const level of levels) {
     const queries = Array.isArray(level?.queries) ? level.queries : [];
@@ -19364,44 +19366,64 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
       queries.length > 0 &&
       queries.every((query) => query && query.allow_external_seed === true);
     const keepPrimaryExternalSupplement = levelId === 'framework_stage_b_primary_external_seed';
-    if (allowExternalSeedOnly && !keepPrimaryExternalSupplement) {
+    const keepEligibleSupportExternalSeed = levelId.startsWith('framework_stage_c_support_');
+    if (allowExternalSeedOnly && !keepPrimaryExternalSupplement && !keepEligibleSupportExternalSeed) {
       skippedExternalSeedLevels.push(
         String(level?.ladder_level || level?.stage_id || '').trim() || `level_${skippedExternalSeedLevels.length + 1}`,
       );
       continue;
     }
-    internalLevels.push(level);
+    stagedLevels.push(level);
   }
-  const isFrameworkLocalHandoff = internalLevels.some((level) =>
+  const isFrameworkLocalHandoff = stagedLevels.some((level) =>
     String(level?.ladder_level || level?.stage_id || '').trim().toLowerCase().startsWith('framework_stage_'),
   );
-  if (isFrameworkLocalHandoff && internalLevels.length > 0) {
+  if (isFrameworkLocalHandoff && stagedLevels.length > 0) {
     const primaryInternalLevel =
-      internalLevels.find((level) =>
+      stagedLevels.find((level) =>
         String(level?.ladder_level || level?.stage_id || '').trim().toLowerCase() === 'framework_stage_a_primary_internal',
-      ) || internalLevels[0];
+      ) || stagedLevels[0];
     keptLevels.push(primaryInternalLevel);
-    for (const level of internalLevels) {
+    for (const level of stagedLevels) {
       if (level === primaryInternalLevel) continue;
       const levelId = String(level?.ladder_level || level?.stage_id || '').trim().toLowerCase();
+      const queries = Array.isArray(level?.queries) ? level.queries : [];
+      const allowExternalSeedOnly =
+        queries.length > 0 &&
+        queries.every((query) => query && query.allow_external_seed === true);
       if (levelId === 'framework_stage_b_primary_external_seed') {
         keptLevels.push(level);
         continue;
       }
       const isInternalSupportLevel = levelId.startsWith('framework_stage_c_support_');
-      if (isInternalSupportLevel && executedSupportLevels.length < maxRoutineSupportLevels) {
+      const supportLevelBaseId = levelId.replace(/_external_seed$/, '');
+      if (isInternalSupportLevel && !allowExternalSeedOnly && executedSupportLevels.length < maxRoutineSupportLevels) {
         keptLevels.push(level);
         executedSupportLevels.push(
           String(level?.ladder_level || level?.stage_id || '').trim() || `level_${executedSupportLevels.length + 1}`,
         );
+        if (supportLevelBaseId) executedSupportLevelBaseIds.add(supportLevelBaseId);
         continue;
       }
-      skippedSupportLevels.push(
-        String(level?.ladder_level || level?.stage_id || '').trim() || `level_${skippedSupportLevels.length + 1}`,
-      );
+      if (isInternalSupportLevel && allowExternalSeedOnly && executedSupportLevelBaseIds.has(supportLevelBaseId)) {
+        keptLevels.push(level);
+        executedSupportExternalSeedLevels.push(
+          String(level?.ladder_level || level?.stage_id || '').trim() || `level_${executedSupportExternalSeedLevels.length + 1}`,
+        );
+        continue;
+      }
+      if (allowExternalSeedOnly) {
+        skippedExternalSeedLevels.push(
+          String(level?.ladder_level || level?.stage_id || '').trim() || `level_${skippedExternalSeedLevels.length + 1}`,
+        );
+      } else {
+        skippedSupportLevels.push(
+          String(level?.ladder_level || level?.stage_id || '').trim() || `level_${skippedSupportLevels.length + 1}`,
+        );
+      }
     }
   } else {
-    keptLevels.push(...internalLevels);
+    keptLevels.push(...stagedLevels);
   }
   if (keptLevels.length === 0) {
     return {
@@ -19421,9 +19443,17 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
       skipped_external_seed_level_count: skippedExternalSeedLevels.length,
       ...(executedSupportLevels.length
         ? {
-            routine_support_strategy: 'primary_plus_first_internal_support',
+            routine_support_strategy: executedSupportExternalSeedLevels.length
+              ? 'primary_plus_first_internal_and_external_support'
+              : 'primary_plus_first_internal_support',
             executed_support_level_count: executedSupportLevels.length,
             executed_support_levels: executedSupportLevels,
+          }
+        : {}),
+      ...(executedSupportExternalSeedLevels.length
+        ? {
+            executed_support_external_seed_level_count: executedSupportExternalSeedLevels.length,
+            executed_support_external_seed_levels: executedSupportExternalSeedLevels,
           }
         : {}),
       ...(skippedSupportLevels.length
