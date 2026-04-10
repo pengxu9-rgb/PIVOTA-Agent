@@ -6,12 +6,14 @@ const { buildAuthoritativeIngredientView } = require('./services/pdpIngredientAu
 const {
   buildSearchCardPayload,
   buildShoppingCardPayload,
+  normalizeCardIntroCandidate,
 } = require('./services/pivotaShoppingCard');
 const {
   filterDisplayableMarketSignalBadges,
   normalizeExternalHighlightSignals,
   normalizeMarketSignalBadges,
   normalizeReviewSummary,
+  normalizeSurfaceText,
 } = require('./services/pivotaEvidenceSignals');
 const PRODUCT_INTEL_ALLOWLIST = new Set(
   String(process.env.PDP_PRODUCT_INTEL_ALLOWLIST || '')
@@ -345,8 +347,6 @@ function normalizePublishedProductIntelBundle(bundle, {
     buildRecommendationIntents(relatedProducts);
   const offers = Array.isArray(offersData?.offers) ? offersData.offers : [];
   const commerceModes = uniqueStrings(offers.map((offer) => asString(offer?.commerce_mode)));
-  const shoppingCard = asPlainObject(source.shopping_card);
-  const searchCard = asPlainObject(source.search_card);
   const marketSignalBadges = asArray(source.market_signal_badges).map(asPlainObject).filter(Boolean);
   const coreEvidenceProfile =
     asString(core.evidence_profile) || asString(source.evidence_profile) || 'seller_only';
@@ -389,6 +389,20 @@ function normalizePublishedProductIntelBundle(bundle, {
   );
   const shoppingCardSource = asPlainObject(source.shopping_card) || asPlainObject(source.shoppingCard) || null;
   const searchCardSource = asPlainObject(source.search_card) || asPlainObject(source.searchCard) || null;
+  const shoppingCardHighlight = normalizeSurfaceText(
+    firstNonEmptyString(shoppingCardSource?.highlight, searchCardSource?.highlight_candidate),
+  );
+  const searchCardHighlight = normalizeSurfaceText(
+    firstNonEmptyString(searchCardSource?.highlight_candidate, shoppingCardSource?.highlight),
+  );
+  const shoppingCardIntro = normalizeCardIntroCandidate(
+    firstNonEmptyString(shoppingCardSource?.intro, searchCardSource?.intro_candidate),
+    { fallback: normalizedCore.what_it_is?.body },
+  );
+  const searchCardIntro = normalizeCardIntroCandidate(
+    firstNonEmptyString(searchCardSource?.intro_candidate, shoppingCardSource?.intro),
+    { fallback: normalizedCore.what_it_is?.body },
+  );
 
   return {
     contract_version: PRODUCT_INTEL_CONTRACT_VERSION,
@@ -424,9 +438,9 @@ function normalizePublishedProductIntelBundle(bundle, {
             contract_version: asString(shoppingCardSource.contract_version) || 'pivota.shopping_card.v1',
             ...(asString(shoppingCardSource.title) ? { title: asString(shoppingCardSource.title) } : {}),
             ...(asString(shoppingCardSource.subtitle) ? { subtitle: asString(shoppingCardSource.subtitle) } : {}),
-            ...(asString(shoppingCardSource.highlight) ? { highlight: asString(shoppingCardSource.highlight) } : {}),
+            ...(shoppingCardHighlight ? { highlight: shoppingCardHighlight } : {}),
             ...(asString(shoppingCardSource.proof_badge) ? { proof_badge: asString(shoppingCardSource.proof_badge) } : {}),
-            ...(asString(shoppingCardSource.intro) ? { intro: asString(shoppingCardSource.intro) } : {}),
+            ...(shoppingCardIntro ? { intro: shoppingCardIntro } : {}),
             ...(Array.isArray(shoppingCardSource.market_signal_badges)
               ? { market_signal_badges: normalizeMarketSignalBadges(shoppingCardSource.market_signal_badges) }
               : {}),
@@ -445,15 +459,11 @@ function normalizePublishedProductIntelBundle(bundle, {
             ...(asString(searchCardSource.compact_candidate)
               ? { compact_candidate: asString(searchCardSource.compact_candidate) }
               : {}),
-            ...(asString(searchCardSource.highlight_candidate)
-              ? { highlight_candidate: asString(searchCardSource.highlight_candidate) }
-              : {}),
+            ...(searchCardHighlight ? { highlight_candidate: searchCardHighlight } : {}),
             ...(asString(searchCardSource.proof_badge_candidate)
               ? { proof_badge_candidate: asString(searchCardSource.proof_badge_candidate) }
               : {}),
-            ...(asString(searchCardSource.intro_candidate)
-              ? { intro_candidate: asString(searchCardSource.intro_candidate) }
-              : {}),
+            ...(searchCardIntro ? { intro_candidate: searchCardIntro } : {}),
           },
         }
       : {}),
@@ -472,8 +482,6 @@ function normalizePublishedProductIntelBundle(bundle, {
       asPlainObject(source.freshness) ||
       asPlainObject(core.freshness) ||
       buildFreshness({}),
-    ...(shoppingCard ? { shopping_card: shoppingCard } : {}),
-    ...(searchCard ? { search_card: searchCard } : {}),
     ...(marketSignalBadges.length ? { market_signal_badges: marketSignalBadges } : {}),
     offer_pointers: {
       ...(asPlainObject(source.offer_pointers) || {}),

@@ -1550,7 +1550,7 @@ describe('discovery feed service', () => {
             contract_version: 'pivota.shopping_card.v1',
             title: 'Naturium Vitamin C Super Serum Plus - Jumbo',
             subtitle: 'Multi-Active Serum',
-            highlight: 'Creators often point to the smooth finish',
+            highlight: 'Creator-noted smooth finish',
             proof_badge: '4.9★ (128)',
             intro:
               'A multi-active treatment serum that combines vitamin C, retinol, niacinamide, hyaluronic acid, and salicylic acid.',
@@ -1558,7 +1558,7 @@ describe('discovery feed service', () => {
           search_card: {
             title_candidate: 'Naturium Vitamin C Super Serum Plus - Jumbo',
             compact_candidate: 'Multi-Active Serum',
-            highlight_candidate: 'Creators often point to the smooth finish',
+            highlight_candidate: 'Creator-noted smooth finish',
             proof_badge_candidate: '4.9★ (128)',
             intro_candidate:
               'A multi-active treatment serum that combines vitamin C, retinol, niacinamide, hyaluronic acid, and salicylic acid.',
@@ -1604,26 +1604,26 @@ describe('discovery feed service', () => {
         },
         card_title: 'Naturium Vitamin C Super Serum Plus - Jumbo',
         card_subtitle: 'Multi-Active Serum',
-        card_highlight: 'Creators often point to the smooth finish',
+        card_highlight: 'Creator-noted smooth finish',
         card_badge: '4.9★ (128)',
         card_intro:
-          'A multi-active treatment serum that combines vitamin C, retinol, niacinamide, hyaluronic acid, and salicylic acid.',
+          'Multi-active serum with vitamin C, retinol, niacinamide, hyaluronic and salicylic acids.',
         search_card: expect.objectContaining({
           title_candidate: 'Naturium Vitamin C Super Serum Plus - Jumbo',
           compact_candidate: 'Multi-Active Serum',
-          highlight_candidate: 'Creators often point to the smooth finish',
+          highlight_candidate: 'Creator-noted smooth finish',
           proof_badge_candidate: '4.9★ (128)',
           intro_candidate:
-            'A multi-active treatment serum that combines vitamin C, retinol, niacinamide, hyaluronic acid, and salicylic acid.',
+            'Multi-active serum with vitamin C, retinol, niacinamide, hyaluronic and salicylic acids.',
         }),
         shopping_card: expect.objectContaining({
           contract_version: 'pivota.shopping_card.v1',
           title: 'Naturium Vitamin C Super Serum Plus - Jumbo',
           subtitle: 'Multi-Active Serum',
-          highlight: 'Creators often point to the smooth finish',
+          highlight: 'Creator-noted smooth finish',
           proof_badge: '4.9★ (128)',
           intro:
-            'A multi-active treatment serum that combines vitamin C, retinol, niacinamide, hyaluronic acid, and salicylic acid.',
+            'Multi-active serum with vitamin C, retinol, niacinamide, hyaluronic and salicylic acids.',
         }),
         market_signal_badges: [
           {
@@ -1633,6 +1633,58 @@ describe('discovery feed service', () => {
         ],
       }),
     );
+  });
+
+  test('card response detail suppresses weak card fallbacks and overlong highlight text', async () => {
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        response_detail: 'card',
+        context: {
+          locale: 'en-US',
+        },
+      },
+      {
+        candidateProducts: [
+          {
+            ...makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'ext_uncovered_card_gap',
+              title: 'Vitamin-C Serum',
+              brand: 'Pixi',
+              category: 'External',
+              product_type: 'External',
+              price: 24,
+            }),
+            search_card: {
+              highlight_candidate:
+                'This highlight is too long to safely fit into the compact shopping card slot.',
+              intro_candidate:
+                'A vitamin C facial serum with antioxidant brightening focus, supported by seller-listed ferulic acid, citrus extracts, and aloe.',
+            },
+          },
+        ],
+      },
+    );
+
+    expect(response.products).toHaveLength(1);
+    expect(response.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'ext_uncovered_card_gap',
+        card_title: 'Vitamin-C Serum',
+        card_intro: 'Vitamin C + ferulic serum for antioxidant brightening.',
+        search_card: expect.objectContaining({
+          title_candidate: 'Vitamin-C Serum',
+          intro_candidate: 'Vitamin C + ferulic serum for antioxidant brightening.',
+        }),
+      }),
+    );
+    expect(response.products[0].card_subtitle).toBeUndefined();
+    expect(response.products[0].card_highlight).toBeUndefined();
+    expect(response.products[0].search_card.compact_candidate).toBeUndefined();
+    expect(response.products[0].search_card.highlight_candidate).toBeUndefined();
   });
 
   test('brand-scoped browse skips supplemental providers once products_search already has enough primary brand candidates', async () => {
