@@ -24150,8 +24150,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     }
 
     if (
-      (operation === 'find_products' || operation === 'find_products_multi') &&
-      !strictCommerceFindProductsMulti
+      operation === 'find_products' ||
+      operation === 'find_products_multi'
     ) {
       upstreamData = await maybeRescueBrandLikeSearchFromLocalExternalSeed({
         operation,
