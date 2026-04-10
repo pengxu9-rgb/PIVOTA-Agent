@@ -17816,6 +17816,43 @@ async function executeRecoRecallPlanEntry({
   const role = Array.isArray(targetContext?.framework_roles)
     ? targetContext.framework_roles.find((item) => String(item?.role_id || '').trim() === roleId) || null
     : null;
+  const normalizedPreferredStep = normalizeRecoTargetStep(entry?.preferred_step || role?.preferred_step);
+  const normalizedSemanticFamily = (() => {
+    const raw = pickFirstTrimmed(
+      entry?.semantic_family,
+      role?.semantic_family,
+      role?.semanticFamily,
+      role?.family,
+      role?.role_family,
+      role?.roleFamily,
+      role?.role_id,
+    );
+    const token = String(raw || '').trim().toLowerCase();
+    if (!token) return '';
+    if (token.includes('oil_control') || token.includes('shine_control') || token.includes('mattify')) {
+      return 'oil_control';
+    }
+    if (token.includes('sunscreen') || token.includes('spf')) return 'sunscreen';
+    if (token.includes('moisturizer') || token.includes('barrier')) return 'moisturizer';
+    return token.replace(/_treatment$/, '').replace(/_moisturizer$/, '').replace(/_sunscreen$/, '');
+  })();
+  const normalizedQueryStepStrength = String(
+    pickFirstTrimmed(
+      entry?.query_step_strength,
+      entry?.queryStepStrength,
+      role && Number.isFinite(Number(role?.rank)) && Number(role.rank) <= 1
+        ? 'strong_goal_family'
+        : role
+          ? 'supportive_family'
+          : '',
+    ) || '',
+  ).trim().toLowerCase();
+  const normalizedExternalSeedStrategy = String(
+    pickFirstTrimmed(
+      entry?.external_seed_strategy,
+      sourceScope === 'internal' ? 'on_empty_only' : 'supplement_internal_first',
+    ) || '',
+  ).trim().toLowerCase();
   if (usePurchasableFallback) {
     return buildPurchasableFallbackCandidates({
       query: entry?.query,
@@ -17823,37 +17860,41 @@ async function executeRecoRecallPlanEntry({
       logger,
       timeoutMs,
       allowExternalSeed: sourceScope !== 'internal',
-      externalSeedStrategy: sourceScope === 'internal' ? 'on_empty_only' : 'supplement_internal_first',
+      externalSeedStrategy: normalizedExternalSeedStrategy || 'on_empty_only',
       sourceScope,
       transportPolicyMode,
       role,
-      preferredStep: entry?.preferred_step,
-      semanticFamily: pickFirstTrimmed(entry?.semantic_family, role?.semantic_family, role?.semanticFamily, role?.role_id) || '',
-      queryStepStrength:
-        role && Number.isFinite(Number(role?.rank)) && Number(role.rank) <= 1
-          ? 'strong_goal_family'
-          : role
-            ? 'supportive_family'
-            : '',
+      preferredStep: normalizedPreferredStep,
+      semanticFamily: normalizedSemanticFamily,
+      queryStepStrength: normalizedQueryStepStrength,
       authHeaders,
     });
   }
   const runSearch = typeof searchFn === 'function' ? searchFn : searchPivotaBackendProducts;
-  return runSearch({
+  const runSearchParams = {
     query: entry?.query,
     limit,
     logger,
     timeoutMs,
     allowExternalSeed: sourceScope !== 'internal',
-    externalSeedStrategy: sourceScope === 'internal' ? 'on_empty_only' : 'supplement_internal_first',
-    fastMode: sourceScope !== 'external_seed',
+    externalSeedStrategy: normalizedExternalSeedStrategy || 'on_empty_only',
+    fastMode: sourceScope === 'external_seed' ? true : sourceScope !== 'external_seed',
     transportPolicy: buildRecoRecallTransportPolicy({ mode: transportPolicyMode }),
-    semanticContract,
     traceId,
     queryIndex,
     queryTotal,
     authHeaders,
-  });
+  };
+  if (sourceScope === 'external_seed') {
+    runSearchParams.catalogSurface = 'beauty';
+    runSearchParams.productOnly = true;
+    if (normalizedPreferredStep) runSearchParams.targetStepFamily = normalizedPreferredStep;
+    if (normalizedSemanticFamily) runSearchParams.semanticFamily = normalizedSemanticFamily;
+    if (normalizedQueryStepStrength) runSearchParams.queryStepStrength = normalizedQueryStepStrength;
+  } else if (semanticContract) {
+    runSearchParams.semanticContract = semanticContract;
+  }
+  return runSearch(runSearchParams);
 }
 
 function deriveRecoPrimaryStageTimeoutClass(stageResults = [], candidateState = null, { transportPolicyMode = '' } = {}) {
@@ -17956,6 +17997,7 @@ async function collectRecoCandidatesFromRecallPlan({
   semanticContract = null,
   traceId = null,
   authHeaders = null,
+  searchFn = null,
 } = {}) {
   const rawCandidates = [];
   const searchResults = [];
@@ -18027,6 +18069,7 @@ async function collectRecoCandidatesFromRecallPlan({
           queryIndex: plannerQueryIndex,
           queryTotal: Array.isArray(recallPlan?.entries) ? recallPlan.entries.length : null,
           authHeaders,
+          searchFn,
         }),
       });
       },
