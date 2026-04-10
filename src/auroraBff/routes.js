@@ -49716,6 +49716,37 @@ function assistantTextUsesVagueRecoBenefitLanguage(text) {
   return /\bsurface activity\b/i.test(String(text || ''));
 }
 
+function assistantTextMentionsRecoTargetSemantics(text, primaryTarget) {
+  const haystack = String(text || '').trim().toLowerCase();
+  if (!haystack) return false;
+  const targetText = [
+    primaryTarget && primaryTarget.target_id,
+    primaryTarget && primaryTarget.ingredient_query,
+    primaryTarget && primaryTarget.ingredient_id,
+    primaryTarget && primaryTarget.resolved_target_step,
+  ]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+  if (!targetText) return false;
+  if (/\b(oil|oily|shine|sebum|mattif)/i.test(targetText)) {
+    return /\b(oil|oily|shine|sebum|mattif)/i.test(haystack);
+  }
+  if (/\b(moistur|hydrat|barrier)/i.test(targetText)) {
+    return /\b(moistur|hydrat|barrier|lightweight|breathable)/i.test(haystack);
+  }
+  if (/\b(spf|sun|sunscreen|uv)/i.test(targetText)) {
+    return /\b(spf|sun|sunscreen|uv|daytime protection)/i.test(haystack);
+  }
+  if (/\b(cleanser|cleanse|wash)/i.test(targetText)) {
+    return /\b(cleanser|cleanse|wash)/i.test(haystack);
+  }
+  if (/\b(redness|sensitive|soothing|calm)/i.test(targetText)) {
+    return /\b(redness|sensitive|soothing|calm|comfort)/i.test(haystack);
+  }
+  return false;
+}
+
 function splitRecoAssistantSentences(text, max = 6) {
   const matches = String(text || '')
     .trim()
@@ -49790,7 +49821,7 @@ function validateRecoAssistantRewriteCandidate({
   const mentionsPrimaryTarget = !primaryTargetLabel || assistantTextMentionsAny(text, [
     primaryTargetLabel,
     pickFirstTrimmed(primaryTarget && primaryTarget.resolved_target_step),
-  ]);
+  ]) || assistantTextMentionsRecoTargetSemantics(text, primaryTarget);
   const leadSentence = extractRecoAssistantLeadSentence(text);
   const mentionsUnknownDirections = /(direction\s*[123]|方向\s*[123])/i.test(text);
   const usesInternalTemplatePhrases =
