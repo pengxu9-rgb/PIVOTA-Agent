@@ -6123,6 +6123,8 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     expect(resp.body.metadata?.external_seed_brand_rescue_reason).toBe(
       'upstream_seed_loader_error_strict_empty',
     );
+    expect(resp.body.metadata?.external_seed_brand_rescue_tool_scope).toBe('all_tools');
+    expect(resp.body.metadata?.external_seed_brand_rescue_include_attached).toBe(true);
     expect(resp.body.metadata?.external_seed_skip_reason).toBe('seed_loader_error');
     expect(resp.body.metadata?.search_trace?.final_decision).toBe('products_returned');
     expect(resp.body.metadata?.route_health?.external_seed_rescue_applied).toBe(true);
@@ -6130,6 +6132,8 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       expect.objectContaining({
         applied: true,
         reason: 'upstream_seed_loader_error_strict_empty',
+        retrieval_tool_scope: 'all_tools',
+        retrieval_include_attached: true,
       }),
     );
     expect(Array.isArray(resp.body.products)).toBe(true);

@@ -96,6 +96,47 @@ describe('runExternalSeedBrandMainlineFastpath', () => {
     expect(queries[0].params[1]).toEqual(['creator_agents', '*']);
     expect(queries[0].params[2]).toEqual(['fenty']);
   });
+
+  test('can include attached seeds and match brand evidence inside seed data for rescue scope', async () => {
+    const queries = [];
+    const deps = buildDeps({
+      query: jest.fn(async (sql, params) => {
+        queries.push({ sql: String(sql), params });
+        if (queries.length === 1) {
+          return { rows: [] };
+        }
+        return {
+          rows: [
+            {
+              id: 'seed_1',
+              external_product_id: 'fenty_1',
+              title: 'Gloss Bomb Universal Lip Luminizer',
+              seed_data: { brand: 'Fenty Beauty' },
+              total_rows: 1,
+            },
+          ],
+        };
+      }),
+    });
+
+    const response = await runExternalSeedBrandMainlineFastpath({
+      relevanceQueryText: 'fenty beauty gloss',
+      market: 'US',
+      tool: '*',
+      inStockOnly: true,
+      includeAttached: true,
+      safePage: 1,
+      safeLimit: 24,
+      safeOffset: 0,
+      deps,
+    });
+
+    expect(response?.products).toHaveLength(1);
+    expect(response?.metadata?.retrieval_include_attached).toBe(true);
+    expect(queries[0].sql).not.toContain('attached_product_key IS NULL');
+    expect(queries[1].sql).toContain('seed_data::text');
+    expect(queries[1].sql).not.toContain('attached_product_key IS NULL');
+  });
 });
 
 describe('prepareExternalSeedDirectSearchPlan brand fastpath', () => {

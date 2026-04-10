@@ -7488,6 +7488,7 @@ async function searchExternalSeedBrandCandidatesLocally({
     market,
     tool: '*',
     inStockOnly,
+    includeAttached: true,
     safePage: 1,
     safeLimit: retrievalLimit,
     safeOffset: 0,
@@ -7607,6 +7608,8 @@ async function fetchExternalSeedSupplementFromBackend({
             : [queryText],
           upstream_status: 200,
           retrieval_mode: 'direct_local_brand_mainline',
+          retrieval_tool_scope: directMeta.retrieval_tool_scope || null,
+          retrieval_include_attached: directMeta.retrieval_include_attached === true,
           external_seed_rows_raw:
             Number(directMeta.raw_result_count || directMeta.external_seed_rows_fetched || directProducts.length) ||
             directProducts.length,
@@ -7630,6 +7633,8 @@ async function fetchExternalSeedSupplementFromBackend({
             Number(directMeta.retrieval_query_variant_count || directMeta.query_variants?.length || 0) || 0,
           upstream_calls: 0,
           upstream_status: 200,
+          retrieval_tool_scope: directMeta.retrieval_tool_scope || null,
+          retrieval_include_attached: directMeta.retrieval_include_attached === true,
           query_variants: Array.isArray(directMeta.retrieval_query_variants)
             ? directMeta.retrieval_query_variants
             : [queryText],
@@ -7861,8 +7866,6 @@ async function maybeRescueBrandLikeSearchFromLocalExternalSeed({
   });
 
   const rescuedProducts = Array.isArray(localSupplement?.products) ? localSupplement.products : [];
-  if (rescuedProducts.length === 0) return upstreamData;
-
   const rescueMeta =
     localSupplement?.metadata &&
     typeof localSupplement.metadata === 'object' &&
@@ -7875,6 +7878,52 @@ async function maybeRescueBrandLikeSearchFromLocalExternalSeed({
     !Array.isArray(upstreamMeta.route_debug)
       ? upstreamMeta.route_debug
       : {};
+
+  if (rescuedProducts.length === 0) {
+    const localRescueReason = String(rescueMeta.reason || 'external_seed_direct_local_empty').trim();
+    return {
+      ...upstreamData,
+      metadata: {
+        ...upstreamMeta,
+        external_seed_brand_rescue_attempted: Boolean(rescueMeta.attempted),
+        external_seed_brand_rescue_applied: false,
+        external_seed_brand_rescue_reason: localRescueReason,
+        external_seed_brand_rescue_upstream_query_source:
+          String(upstreamMeta.query_source || '').trim() || null,
+        external_seed_brand_rescue_skip_reason: externalSeedSkipReason,
+        external_seed_brand_rescue_rows_fetched:
+          Number(rescueMeta.fetched_raw_count || rescueMeta.external_seed_rows_raw || 0) || 0,
+        external_seed_brand_rescue_rows_built:
+          Number(rescueMeta.fetched_count || rescueMeta.external_seed_rows_relevant || 0) || 0,
+        external_seed_brand_rescue_tool_scope: rescueMeta.retrieval_tool_scope || null,
+        external_seed_brand_rescue_include_attached:
+          rescueMeta.retrieval_include_attached === true,
+        route_health: {
+          ...routeHealth,
+          external_seed_rescue_attempted: Boolean(rescueMeta.attempted),
+          external_seed_rescue_applied: false,
+          external_seed_rescue_reason: localRescueReason,
+          external_seed_skip_reason: externalSeedSkipReason,
+        },
+        route_debug: {
+          ...existingRouteDebug,
+          external_seed_brand_rescue: {
+            attempted: Boolean(rescueMeta.attempted),
+            applied: false,
+            reason: localRescueReason,
+            upstream_query_source: String(upstreamMeta.query_source || '').trim() || null,
+            upstream_skip_reason: externalSeedSkipReason,
+            local_rescue_reason: localRescueReason,
+            fetched_raw_count: Number(rescueMeta.fetched_raw_count || 0) || 0,
+            fetched_count: Number(rescueMeta.fetched_count || 0) || 0,
+            retrieval_tool_scope: rescueMeta.retrieval_tool_scope || null,
+            retrieval_include_attached: rescueMeta.retrieval_include_attached === true,
+            brand_entities: Array.isArray(brandDetection.brands) ? brandDetection.brands : [],
+          },
+        },
+      },
+    };
+  }
 
   return normalizeAgentProductsListResponse(
     {
@@ -7925,6 +7974,9 @@ async function maybeRescueBrandLikeSearchFromLocalExternalSeed({
         external_seed_brand_rescue_skip_reason: externalSeedSkipReason,
         external_seed_brand_rescue_upstream_status:
           Number(upstreamMeta.upstream_status || upstreamStatus || 0) || null,
+        external_seed_brand_rescue_tool_scope: rescueMeta.retrieval_tool_scope || null,
+        external_seed_brand_rescue_include_attached:
+          rescueMeta.retrieval_include_attached === true,
         route_health: {
           ...routeHealth,
           external_seed_rescue_applied: true,
@@ -7938,6 +7990,8 @@ async function maybeRescueBrandLikeSearchFromLocalExternalSeed({
             reason: 'upstream_seed_loader_error_strict_empty',
             upstream_query_source: String(upstreamMeta.query_source || '').trim() || null,
             local_rescue_reason: String(rescueMeta.reason || '').trim() || null,
+            retrieval_tool_scope: rescueMeta.retrieval_tool_scope || null,
+            retrieval_include_attached: rescueMeta.retrieval_include_attached === true,
             brand_entities: Array.isArray(brandDetection.brands) ? brandDetection.brands : [],
           },
         },

@@ -3,6 +3,7 @@ async function runExternalSeedBrandMainlineFastpath({
   market = 'US',
   tool = '*',
   inStockOnly = false,
+  includeAttached = false,
   safePage = 1,
   safeLimit = 20,
   safeOffset = 0,
@@ -55,6 +56,7 @@ async function runExternalSeedBrandMainlineFastpath({
   const availabilityFilter = inStockOnly
     ? `AND coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')`
     : '';
+  const attachedFilter = includeAttached ? '' : 'AND attached_product_key IS NULL';
   const brandMatchExpr = `
     lower(
       regexp_replace(
@@ -163,6 +165,7 @@ async function runExternalSeedBrandMainlineFastpath({
         brand_search_mainline_query: true,
         retrieval_tool_scope: allToolsRequested ? 'all_tools' : 'preferred_tool',
         retrieval_tool: allToolsRequested ? null : normalizedTool,
+        retrieval_include_attached: Boolean(includeAttached),
         retrieval_query_variants: queryVariants,
         retrieval_query_variant_count: queryVariants.length,
         retrieval_query_debug: retrievalDebug,
@@ -194,7 +197,7 @@ async function runExternalSeedBrandMainlineFastpath({
     const exactPageStartedAt = Date.now();
     const exactWhereClause = `
       status = 'active'
-        AND attached_product_key IS NULL
+        ${attachedFilter}
         AND market = $1
         ${exactToolScopeClause}
         ${availabilityFilter}
@@ -294,12 +297,13 @@ async function runExternalSeedBrandMainlineFastpath({
                 lower(coalesce(domain, '')) LIKE ANY(${broadQueryPatternsBind}::text[])
                 OR lower(coalesce(canonical_url, '')) LIKE ANY(${broadQueryPatternsBind}::text[])
                 OR lower(coalesce(destination_url, '')) LIKE ANY(${broadQueryPatternsBind}::text[])
+                OR lower(coalesce(seed_data::text, '')) LIKE ANY(${broadQueryPatternsBind}::text[])
               ) THEN 2
               ELSE 1
             END AS brand_match_rank
           FROM external_product_seeds
           WHERE status = 'active'
-            AND attached_product_key IS NULL
+            ${attachedFilter}
             AND market = $1
             ${broadToolScopeClause}
             ${availabilityFilter}
@@ -308,6 +312,7 @@ async function runExternalSeedBrandMainlineFastpath({
               OR lower(coalesce(domain, '')) LIKE ANY(${broadQueryPatternsBind}::text[])
               OR lower(coalesce(canonical_url, '')) LIKE ANY(${broadQueryPatternsBind}::text[])
               OR lower(coalesce(destination_url, '')) LIKE ANY(${broadQueryPatternsBind}::text[])
+              OR lower(coalesce(seed_data::text, '')) LIKE ANY(${broadQueryPatternsBind}::text[])
             )
         ),
         paged AS (
