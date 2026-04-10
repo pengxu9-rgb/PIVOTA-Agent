@@ -37,6 +37,10 @@ const PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS = Math.max(
   300,
   parseTimeoutMs(process.env.PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS, 1200),
 );
+const PDP_RECS_EXTERNAL_BASE_FETCH_TIMEOUT_MS = Math.max(
+  PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS,
+  parseTimeoutMs(process.env.PDP_RECS_EXTERNAL_BASE_FETCH_TIMEOUT_MS, 5000),
+);
 const PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_MULTIPLIER = Math.max(
   1,
   Math.min(
@@ -155,6 +159,18 @@ function buildNormalizedAliases(input) {
     [
       normalized,
       normalized.replace(/\s+/g, ''),
+    ],
+    (value) => value,
+  );
+}
+
+function buildDomainLookupAliases(input) {
+  const host = normalizeHostname(input);
+  if (!host) return [];
+  return uniqueByKey(
+    [
+      host,
+      host.startsWith('www.') ? host.replace(/^www\./, '') : `www.${host}`,
     ],
     (value) => value,
   );
@@ -1151,7 +1167,7 @@ async function fetchExternalCandidates({ brandHint, categoryHint, domainHints = 
   const category = normalizeText(categoryHint);
   const normalizedDomainHints = uniqueByKey(
     (Array.isArray(domainHints) ? domainHints : [domainHints])
-      .map((value) => normalizeHostname(value))
+      .flatMap((value) => buildDomainLookupAliases(value))
       .filter(Boolean),
     (value) => value,
   );
@@ -1174,7 +1190,6 @@ async function fetchExternalCandidates({ brandHint, categoryHint, domainHints = 
             price_amount,
             price_currency,
             availability,
-            seed_data,
             updated_at,
             created_at
           FROM external_product_seeds
@@ -1218,6 +1233,7 @@ async function fetchExternalCandidates({ brandHint, categoryHint, domainHints = 
             price_amount,
             price_currency,
             availability,
+            seed_data,
             updated_at,
             created_at
           FROM external_product_seeds
@@ -1234,7 +1250,6 @@ async function fetchExternalCandidates({ brandHint, categoryHint, domainHints = 
       for (const row of res.rows || []) {
         const p = buildExternalSeedRecommendationCandidate(row, {
           fallbackBrand: brandHint,
-          fallbackCategory: categoryHint,
         });
         if (p) products.push(p);
       }
@@ -1531,22 +1546,25 @@ async function recommend({
   const baseSemanticStrong = Number(baseSemantic?.signal_strength || 0) >= 2;
   const baseProductIsExternal = isExternalProduct(baseProduct);
   const effectiveExternalFetchTimeoutMs = baseProductIsExternal
-    ? Math.max(PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS, 2600)
+    ? PDP_RECS_EXTERNAL_BASE_FETCH_TIMEOUT_MS
     : PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS;
 
   const providedInternal = Array.isArray(options?.internal_candidates) ? options.internal_candidates : null;
   const providedExternal = Array.isArray(options?.external_candidates) ? options.external_candidates : null;
+  const shouldFetchInternalCandidates = Boolean(providedInternal) || !baseProductIsExternal;
 
   let internalTimedOut = false;
   let externalTimedOut = false;
   const internalCandidatesTask = withSoftTimeout(
     providedInternal
       ? Promise.resolve(providedInternal)
-      : fetchInternalCandidates({
-          merchantId: getMerchantId(baseProduct),
-          limit: Math.max(60, safeK * 10),
-          excludeMerchantId: getMerchantId(baseProduct),
-        }),
+      : shouldFetchInternalCandidates
+        ? fetchInternalCandidates({
+            merchantId: getMerchantId(baseProduct),
+            limit: Math.max(60, safeK * 10),
+            excludeMerchantId: getMerchantId(baseProduct),
+          })
+        : Promise.resolve([]),
     PDP_RECS_INTERNAL_FETCH_TIMEOUT_MS,
     [],
     () => {
