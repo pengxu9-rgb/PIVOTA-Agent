@@ -90,6 +90,20 @@ describeIfRuntimeDeps('/agent/shop/v1/invoke product intel contracts', () => {
           },
         },
       },
+      {
+        product_id: 'ext_mock_draft_1',
+        merchant_id: 'external_seed',
+        title: 'Vitamin C Super Eye Cream Plus',
+        description:
+          'A vitamin C eye cream for daily brightening support and lightweight hydration around the eye area.',
+        category: 'Skincare/Eye Treatment',
+        product_type: 'Eye Treatment',
+        brand: 'Naturium',
+        price: 26,
+        currency: 'USD',
+        in_stock: true,
+        tags: ['vitamin c', 'eye cream', 'brightening'],
+      },
     ];
     app = require('../../src/server');
     server = app.listen(0);
@@ -274,5 +288,33 @@ describeIfRuntimeDeps('/agent/shop/v1/invoke product intel contracts', () => {
         decision: 'pending',
       }),
     );
+  });
+
+  test('prepare_pivota_insights_coverage_v1 builds a draft candidate when published intel is absent', async () => {
+    const res = await invoke('prepare_pivota_insights_coverage_v1', {
+      product_refs: [
+        {
+          product_id: 'ext_mock_draft_1',
+        },
+      ],
+      limit: 1,
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ready).toBe(1);
+    expect(res.body.missing).toEqual([]);
+    expect(res.body.rows[0]).toEqual(
+      expect.objectContaining({
+        selected_mode: 'service_draft',
+        evidence_profile: 'seller_only',
+        shopping_card: expect.objectContaining({
+          title: expect.stringContaining('Naturium'),
+        }),
+        pivota_insights: expect.objectContaining({
+          what_it_is: expect.stringMatching(/vitamin c|eye cream|eye treatment/i),
+        }),
+      }),
+    );
+    expect(res.body.review_packet.meta.report_cases).toBe(1);
   });
 });
