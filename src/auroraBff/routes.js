@@ -3867,6 +3867,173 @@ function extractCandidateSocialReference(base) {
   };
 }
 
+function pickRecoProductIntelBundle(row) {
+  const base = isPlainObject(row) ? row : {};
+  const analysis = isPlainObject(base.analysis) ? base.analysis : {};
+  const candidates = [
+    base.product_intel_v1,
+    base.productIntelV1,
+    base.product_intel,
+    base.productIntel,
+    base.sku?.product_intel_v1,
+    base.sku?.productIntelV1,
+    base.sku?.product_intel,
+    base.sku?.productIntel,
+    base.product?.product_intel_v1,
+    base.product?.productIntelV1,
+    base.product?.product_intel,
+    base.product?.productIntel,
+    analysis.product_intel_v1,
+    analysis.productIntelV1,
+    analysis.product_intel,
+    analysis.productIntel,
+    base.bundle,
+  ];
+  return candidates.find((item) => isPlainObject(item) && isPlainObject(item.product_intel_core)) || null;
+}
+
+function normalizeRecoInsightHighlight(item) {
+  if (!item) return null;
+  if (typeof item === 'string') {
+    const body = pickFirstTrimmed(item);
+    return body ? { body } : null;
+  }
+  if (!isPlainObject(item)) return null;
+  const headline = pickFirstTrimmed(item.headline, item.title, item.label);
+  const body = pickFirstTrimmed(item.body, item.text, item.description, headline);
+  if (!headline && !body) return null;
+  return {
+    ...(headline ? { headline } : {}),
+    body,
+    ...(pickFirstTrimmed(item.evidence_strength, item.evidenceStrength)
+      ? { evidence_strength: pickFirstTrimmed(item.evidence_strength, item.evidenceStrength) }
+      : {}),
+  };
+}
+
+function normalizeRecoPivotaInsights(raw, productIntel = null) {
+  const explicit = isPlainObject(raw) ? raw : null;
+  const intel = productIntel && isPlainObject(productIntel) ? productIntel : null;
+  const core = isPlainObject(intel?.product_intel_core) ? intel.product_intel_core : null;
+  const whatItIs = pickFirstTrimmed(
+    explicit?.what_it_is,
+    explicit?.whatItIs,
+    explicit?.what_it_is?.body,
+    explicit?.whatItIs?.body,
+    core?.what_it_is?.body,
+    core?.whatItIs?.body,
+  );
+  const whyRaw = Array.isArray(explicit?.why_it_stands_out)
+    ? explicit.why_it_stands_out
+    : Array.isArray(explicit?.whyItStandsOut)
+      ? explicit.whyItStandsOut
+      : Array.isArray(core?.why_it_stands_out)
+        ? core.why_it_stands_out
+        : Array.isArray(core?.whyItStandsOut)
+          ? core.whyItStandsOut
+          : [];
+  const whyItStandsOut = whyRaw
+    .map(normalizeRecoInsightHighlight)
+    .filter(Boolean)
+    .slice(0, 4);
+  const bestForRaw = Array.isArray(explicit?.best_for)
+    ? explicit.best_for
+    : Array.isArray(explicit?.bestFor)
+      ? explicit.bestFor
+      : Array.isArray(core?.best_for)
+        ? core.best_for
+        : Array.isArray(core?.bestFor)
+          ? core.bestFor
+          : [];
+  const bestFor = uniqCaseInsensitiveStrings(
+    bestForRaw
+      .map((item) => (isPlainObject(item) ? pickFirstTrimmed(item.label, item.tag) : pickFirstTrimmed(item)))
+      .filter(Boolean),
+    4,
+  );
+  if (!whatItIs && whyItStandsOut.length === 0 && bestFor.length === 0) return null;
+  return {
+    ...(whatItIs ? { what_it_is: whatItIs } : {}),
+    ...(whyItStandsOut.length ? { why_it_stands_out: whyItStandsOut } : {}),
+    ...(bestFor.length ? { best_for: bestFor } : {}),
+  };
+}
+
+function pickRecoPivotaInsights(row) {
+  const base = isPlainObject(row) ? row : {};
+  const productIntel = pickRecoProductIntelBundle(base);
+  return normalizeRecoPivotaInsights(
+    base.pivota_insights ||
+      base.pivotaInsights ||
+      base.sku?.pivota_insights ||
+      base.sku?.pivotaInsights ||
+      base.product?.pivota_insights ||
+      base.product?.pivotaInsights,
+    productIntel,
+  );
+}
+
+function pickRecoShoppingCardPayload(row) {
+  const base = isPlainObject(row) ? row : {};
+  const productIntel = pickRecoProductIntelBundle(base);
+  const candidates = [
+    base.shopping_card,
+    base.shoppingCard,
+    base.sku?.shopping_card,
+    base.sku?.shoppingCard,
+    base.product?.shopping_card,
+    base.product?.shoppingCard,
+    productIntel?.shopping_card,
+    productIntel?.shoppingCard,
+  ];
+  return candidates.find((item) => isPlainObject(item) && pickFirstTrimmed(item.title, item.subtitle, item.intro)) || null;
+}
+
+function pickRecoSearchCardPayload(row) {
+  const base = isPlainObject(row) ? row : {};
+  const productIntel = pickRecoProductIntelBundle(base);
+  const candidates = [
+    base.search_card,
+    base.searchCard,
+    base.sku?.search_card,
+    base.sku?.searchCard,
+    base.product?.search_card,
+    base.product?.searchCard,
+    productIntel?.search_card,
+    productIntel?.searchCard,
+  ];
+  return candidates.find((item) => isPlainObject(item) && pickFirstTrimmed(item.title_candidate, item.compact_candidate, item.intro_candidate)) || null;
+}
+
+function buildRecoCompareHighlightsFromInsightFields({
+  row = null,
+  pivotaInsights = null,
+  shoppingCard = null,
+} = {}) {
+  const base = isPlainObject(row) ? row : {};
+  const insightObj = isPlainObject(pivotaInsights) ? pivotaInsights : null;
+  const shoppingObj = isPlainObject(shoppingCard) ? shoppingCard : null;
+  const explicit = [
+    ...(Array.isArray(base.compare_highlights) ? base.compare_highlights : []),
+    ...(Array.isArray(base.compareHighlights) ? base.compareHighlights : []),
+  ];
+  const insightHighlights = Array.isArray(insightObj?.why_it_stands_out)
+    ? insightObj.why_it_stands_out
+    : [];
+  return uniqCaseInsensitiveStrings(
+    [
+      ...explicit.map((item) => (isPlainObject(item)
+        ? pickFirstTrimmed(item.body, item.text, item.description, item.headline, item.title, item.label)
+        : pickFirstTrimmed(item))),
+      ...insightHighlights.map((item) => pickFirstTrimmed(item?.body, item?.headline)),
+      ...(Array.isArray(insightObj?.best_for) ? insightObj.best_for.map((item) => `Best for ${item}`) : []),
+      pickFirstTrimmed(shoppingObj?.subtitle),
+      pickFirstTrimmed(shoppingObj?.intro),
+    ].filter(Boolean),
+    3,
+  );
+}
+
 function normalizeRecoCatalogProduct(raw) {
   const base = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
 
@@ -3954,6 +4121,10 @@ function normalizeRecoCatalogProduct(raw) {
       ? base.subject.category
       : '') ||
     '';
+  const productType =
+    (typeof base.product_type === 'string' && base.product_type) ||
+    (typeof base.productType === 'string' && base.productType) ||
+    '';
   const sourceToken =
     (typeof base.source === 'string' && base.source) ||
     (base.source && typeof base.source === 'object' && !Array.isArray(base.source) && typeof base.source.type === 'string'
@@ -3970,6 +4141,19 @@ function normalizeRecoCatalogProduct(raw) {
     (typeof base.retrieval_reason === 'string' && base.retrieval_reason) ||
     (typeof base.retrievalReason === 'string' && base.retrievalReason) ||
     '';
+  const retrievalStepRaw =
+    (typeof base.retrieval_step === 'string' && base.retrieval_step) ||
+    (typeof base.retrievalStep === 'string' && base.retrievalStep) ||
+    '';
+  const retrievalRoleIdRaw =
+    (typeof base.retrieval_role_id === 'string' && base.retrieval_role_id) ||
+    (typeof base.retrievalRoleId === 'string' && base.retrievalRoleId) ||
+    '';
+  const retrievalRoleRankRaw = Number.isFinite(Number(base.retrieval_role_rank))
+    ? Number(base.retrieval_role_rank)
+    : Number.isFinite(Number(base.retrievalRoleRank))
+      ? Number(base.retrievalRoleRank)
+      : null;
   const normalizedRetrievalSource = (() => {
     const token = String(retrievalSourceRaw || '').trim().toLowerCase();
     if (token === 'catalog' || token === 'external_seed' || token === 'llm_fallback') return token;
@@ -4049,6 +4233,45 @@ function normalizeRecoCatalogProduct(raw) {
   );
   const socialRef = extractCandidateSocialReference(base);
   const price = extractCatalogCandidatePrice(base);
+  const shortDescription = pickFirstTrimmed(
+    base.short_description,
+    base.shortDescription,
+    base.subtitle,
+    base.summary,
+    base.seed_description,
+    base.seedDescription,
+  );
+  const description = pickFirstTrimmed(base.description);
+  const bestFor = pickFirstTrimmed(base.best_for, base.bestFor);
+  const whyThisOne = pickFirstTrimmed(base.why_this_one, base.whyThisOne, base.reason);
+  const keyFeatures = asStringArray(
+    [
+      ...(Array.isArray(base.key_features) ? base.key_features : []),
+      ...(Array.isArray(base.keyFeatures) ? base.keyFeatures : []),
+      ...(Array.isArray(base.actives) ? base.actives : []),
+      ...(Array.isArray(base.key_ingredients) ? base.key_ingredients : []),
+      ...(Array.isArray(base.keyIngredients) ? base.keyIngredients : []),
+    ],
+    8,
+  );
+  const compareHighlights = uniqCaseInsensitiveStrings(
+    [
+      ...(Array.isArray(base.compare_highlights) ? base.compare_highlights : []),
+      ...(Array.isArray(base.compareHighlights) ? base.compareHighlights : []),
+      ...(Array.isArray(base.highlights) ? base.highlights : []),
+      ...(Array.isArray(base.highlight_bullets) ? base.highlight_bullets : []),
+      ...(Array.isArray(base.highlightBullets) ? base.highlightBullets : []),
+    ]
+      .map((item) => (isPlainObject(item)
+        ? pickFirstTrimmed(item.body, item.text, item.description, item.headline, item.title, item.label)
+        : pickFirstTrimmed(item)))
+      .filter(Boolean),
+    6,
+  );
+  const productIntel = pickRecoProductIntelBundle(base);
+  const shoppingCard = pickRecoShoppingCardPayload({ ...base, product_intel: productIntel });
+  const searchCard = pickRecoSearchCardPayload({ ...base, product_intel: productIntel });
+  const pivotaInsights = pickRecoPivotaInsights({ ...base, product_intel: productIntel });
 
   const out = {
     product_id: String(productId || '').trim(),
@@ -4060,9 +4283,13 @@ function normalizeRecoCatalogProduct(raw) {
     ...(String(displayName || '').trim() ? { display_name: String(displayName).trim() } : {}),
     ...(String(imageUrl || '').trim() ? { image_url: String(imageUrl).trim() } : {}),
     ...(String(category || '').trim() ? { category: String(category).trim() } : {}),
+    ...(String(productType || '').trim() ? { product_type: String(productType).trim() } : {}),
     ...(String(sourceToken || '').trim() ? { source: String(sourceToken).trim() } : {}),
     ...(normalizedRetrievalSource ? { retrieval_source: normalizedRetrievalSource } : {}),
     ...(String(retrievalReasonRaw || '').trim() ? { retrieval_reason: String(retrievalReasonRaw).trim() } : {}),
+    ...(String(retrievalStepRaw || '').trim() ? { retrieval_step: String(retrievalStepRaw).trim() } : {}),
+    ...(String(retrievalRoleIdRaw || '').trim() ? { retrieval_role_id: String(retrievalRoleIdRaw).trim() } : {}),
+    ...(retrievalRoleRankRaw != null ? { retrieval_role_rank: retrievalRoleRankRaw } : {}),
     ...(directUrl ? { url: directUrl, pdp_url: directUrl } : {}),
     ...(purchasePath ? { purchase_path: purchasePath } : {}),
     ...(openContract ? { open_contract: openContract } : {}),
@@ -4077,6 +4304,16 @@ function normalizeRecoCatalogProduct(raw) {
     ...(socialRef.score != null ? { social_ref_score: Number(socialRef.score.toFixed(3)) } : {}),
     ...(socialRef.support_count != null ? { social_ref_support_count: Math.trunc(socialRef.support_count) } : {}),
     ...(socialRef.social_raw ? { social_raw: socialRef.social_raw } : {}),
+    ...(shortDescription ? { short_description: shortDescription } : {}),
+    ...(description ? { description } : {}),
+    ...(bestFor ? { best_for: bestFor } : {}),
+    ...(whyThisOne ? { why_this_one: whyThisOne } : {}),
+    ...(keyFeatures.length ? { key_features: keyFeatures } : {}),
+    ...(compareHighlights.length ? { compare_highlights: compareHighlights } : {}),
+    ...(productIntel ? { product_intel: productIntel } : {}),
+    ...(shoppingCard ? { shopping_card: shoppingCard } : {}),
+    ...(searchCard ? { search_card: searchCard } : {}),
+    ...(pivotaInsights ? { pivota_insights: pivotaInsights } : {}),
   };
 
   const canonicalProductRef = normalizeCanonicalProductRef(
@@ -18390,6 +18627,14 @@ function buildRecoVisibleProductFields(picked, { role = null, language = 'EN' } 
   const row = isPlainObject(picked) ? picked : null;
   if (!row) return {};
   const stableAnchorProduct = resolveRecoStableAnchorProduct(row);
+  const pivotaInsights = pickRecoPivotaInsights(row);
+  const shoppingCard = pickRecoShoppingCardPayload(row);
+  const searchCard = pickRecoSearchCardPayload(row);
+  const compareHighlights = buildRecoCompareHighlightsFromInsightFields({
+    row,
+    pivotaInsights,
+    shoppingCard,
+  });
   const imageUrl = pickFirstTrimmed(
     row.image_url,
     row.imageUrl,
@@ -18409,6 +18654,10 @@ function buildRecoVisibleProductFields(picked, { role = null, language = 'EN' } 
     row.seedDescription,
     row.sku?.short_description,
     row.sku?.shortDescription,
+    row.sku?.subtitle,
+    row.sku?.summary,
+    shoppingCard?.intro,
+    pivotaInsights?.what_it_is,
     row.product?.short_description,
     row.product?.shortDescription,
   );
@@ -18545,6 +18794,10 @@ function buildRecoVisibleProductFields(picked, { role = null, language = 'EN' } 
     ...(Array.isArray(derivedShopperCopy.key_features) && derivedShopperCopy.key_features.length
       ? { key_features: derivedShopperCopy.key_features }
       : {}),
+    ...(compareHighlights.length ? { compare_highlights: compareHighlights } : {}),
+    ...(pivotaInsights ? { pivota_insights: pivotaInsights } : {}),
+    ...(shoppingCard ? { shopping_card: shoppingCard } : {}),
+    ...(searchCard ? { search_card: searchCard } : {}),
     ...(directUrl ? { url: directUrl, pdp_url: directUrl, product_url: directUrl } : {}),
   };
 }
@@ -19825,9 +20078,27 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
   }
 
   const orderedRoles = [...roles].sort((left, right) => Number(left?.rank || 99) - Number(right?.rank || 99));
+  const primaryRoleId = String(targetContext?.primary_role_id || '').trim();
   const usedProductIds = new Set();
   const selected = [];
+  const addSelectedCandidate = (item) => {
+    const productId = pickFirstString(item?.product_id, item?.productId, item?.id);
+    if (!productId || usedProductIds.has(productId)) return false;
+    usedProductIds.add(productId);
+    selected.push(item);
+    return true;
+  };
+
+  const primaryBucket = primaryRoleId ? (roleBuckets.get(primaryRoleId) || []) : [];
+  for (const item of primaryBucket) {
+    addSelectedCandidate(item);
+    if (selected.length >= 3) break;
+  }
+
   for (const role of orderedRoles) {
+    if (selected.length >= 3) break;
+    const roleId = String(role?.role_id || '').trim();
+    if (roleId && roleId === primaryRoleId) continue;
     const bucket = roleBuckets.get(String(role?.role_id || '').trim()) || [];
     const picked = bucket.find((item) => {
       const productId = pickFirstString(item.product_id, item.productId, item.id);
@@ -19835,14 +20106,12 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
       return true;
     });
     if (!picked) continue;
-    usedProductIds.add(pickFirstString(picked.product_id, picked.productId, picked.id));
-    selected.push(picked);
-    if (selected.length >= 3) break;
+    addSelectedCandidate(picked);
   }
 
-  const primaryRoleId = String(targetContext?.primary_role_id || '').trim();
   const primaryRoleMatched = selected.some((item) => String(item.matched_role_id || '').trim() === primaryRoleId);
   const primaryRecommendation = selected.find((item) => String(item.matched_role_id || '').trim() === primaryRoleId) || null;
+  const primarySelectedRecommendations = selected.filter((item) => String(item.matched_role_id || '').trim() === primaryRoleId);
   const bestAvailableRecommendation = selected[0] || null;
   const surfacedRecommendations = primaryRoleMatched ? selected : [];
   const rawSourceCounts = summarizeConcernFrameworkSourceCounts(deduped);
@@ -19872,7 +20141,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     viable_source_counts: viableSourceCounts,
     selected_source_counts: selectedSourceCounts,
     external_seed_used_count: externalSeedUsedCount,
-    exact_step_viable_count: primaryRoleMatched ? 1 : 0,
+    exact_step_viable_count: primaryRoleMatched ? primarySelectedRecommendations.length : 0,
     same_family_viable_count: viable.length,
     soft_mismatch_count: softMismatch.length,
     hard_reject_count: hardReject.length,
@@ -19887,7 +20156,9 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     weak_viable_pool: selected.length > 0 && !primaryRoleMatched,
     family_match_type: primaryRoleMatched ? 'framework_exact' : selected.length > 0 ? 'framework_partial' : 'framework_failed',
     item_target_fidelity: surfacedRecommendations.map((item) => Number(item.framework_score || 0)),
-    group_target_fidelity: primaryRecommendation ? [Number(primaryRecommendation.framework_score || 0)] : [],
+    group_target_fidelity: primarySelectedRecommendations.length
+      ? primarySelectedRecommendations.map((item) => Number(item.framework_score || 0))
+      : [],
     target_fidelity_level: primaryRoleMatched ? 'satisfied' : selected.length > 0 ? 'partial' : 'failed',
     overall_target_fidelity_satisfied: primaryRoleMatched,
     target_fidelity_satisfied: primaryRoleMatched,
@@ -49626,6 +49897,26 @@ function buildRecoAssistantRewritePrompt({ payload, language, profile, userReque
         ],
         4,
       ),
+      compare_highlights: asStringArray(
+        [
+          ...(Array.isArray(item.compare_highlights) ? item.compare_highlights : []),
+          ...(Array.isArray(item.compareHighlights) ? item.compareHighlights : []),
+        ],
+        3,
+      ),
+      pivota_insights: (() => {
+        const insights = pickRecoPivotaInsights(item);
+        if (!insights) return null;
+        return {
+          what_it_is: pickFirstTrimmed(insights.what_it_is),
+          why_it_stands_out: Array.isArray(insights.why_it_stands_out)
+            ? insights.why_it_stands_out.map((row) => ({
+                headline: pickFirstTrimmed(row?.headline),
+                body: pickFirstTrimmed(row?.body),
+              })).filter((row) => row.headline || row.body).slice(0, 3)
+            : [],
+        };
+      })(),
       matched_role_label: pickFirstTrimmed(item.matched_role_label, item.matchedRoleLabel),
       matched_role_id: pickFirstTrimmed(item.matched_role_id, item.matchedRoleId),
     })),
@@ -49673,14 +49964,18 @@ function buildRecoAssistantRewritePrompt({ payload, language, profile, userReque
     'Write one recommendation assistant message that is natural, specific, concise, and aligned to the final payload.',
     'Address the user_request directly and respond to the user\'s real complaint first.',
     'If request_mode is "buy", use direct shopping advice tone.',
-    'If request_mode is "buy", the first sentence must directly recommend the selected product by name.',
+    'If request_mode is "buy" and there is one selected product, the first sentence must directly recommend that product by name.',
+    'If request_mode is "buy" and there are multiple selected products, the first sentence must name the best first buy and signal that the remaining selected products are comparison options.',
     'If request_mode is "buy" and there is one selected product with no secondary targets, use exactly 2 sentences.',
+    'If there are multiple selected products, present them as a concise horizontal comparison and name each selected product exactly once if space allows.',
+    'For multiple selected products, choose one best first buy when the context supports it, then use compare_highlights or pivota_insights to explain tradeoffs.',
     'Do not open with "start with" unless request_mode is "use_first".',
     'If request_mode is "use_first", use starting-point advice tone.',
     'If request_mode is "use_first" and there is one selected product with no secondary targets, use exactly 2 sentences.',
     'If request_mode is "use", use practical product guidance tone.',
     'If request_mode is "use" and there is one selected product with no secondary targets, use exactly 2 sentences.',
     'Use selected_product_details.why_this_one, selected_product_details.best_for, and selected_product_details.key_features as the concrete reason layer when available.',
+    'Use selected_product_details.compare_highlights and selected_product_details.pivota_insights when available; do not invent highlights that are absent from Context.',
     'For single-direction answers, sentence 2 should explain the fit in shopper-facing language instead of repeating the question.',
     'Only mention targets, ingredients, steps, and product names that already exist in Context.',
     'Do not invent products, targets, routines, claims, or benefits beyond Context.',

@@ -4531,6 +4531,114 @@ test('__internal: framework pool rescues an exact-step lightweight moisturizer s
   assert.ok(Number(state.role_pool_stats?.lightweight_moisturizer?.top_score || 0) >= 0.58);
 });
 
+test('__internal: framework pool surfaces multiple primary-role products before support fillers for horizontal comparison', async () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'catalog_oil_compare_1',
+        merchant_id: 'merchant_catalog_oil_compare_1',
+        brand: 'Clarity Lab',
+        name: 'Oil Balance Serum',
+        display_name: 'Clarity Lab Oil Balance Serum',
+        category: 'serum',
+        product_type: 'serum',
+        retrieval_source: 'catalog',
+        retrieval_query: 'oil control serum',
+        retrieval_step: 'treatment',
+        retrieval_role_id: 'oil_control_treatment',
+        benefit_tags: ['oil control', 'shine control'],
+        short_description: 'A mattifying oil-control serum for oily skin.',
+      },
+      {
+        product_id: 'catalog_oil_compare_2',
+        merchant_id: 'merchant_catalog_oil_compare_2',
+        brand: 'Balance Co',
+        name: 'Shine Control Serum',
+        display_name: 'Balance Co Shine Control Serum',
+        category: 'serum',
+        product_type: 'serum',
+        retrieval_source: 'catalog',
+        retrieval_query: 'shine control serum',
+        retrieval_step: 'treatment',
+        retrieval_role_id: 'oil_control_treatment',
+        benefit_tags: ['shine control', 'sebum balance'],
+        short_description: 'A lightweight serum that helps manage sebum and visible shine.',
+      },
+      {
+        product_id: 'catalog_oil_compare_3',
+        merchant_id: 'merchant_catalog_oil_compare_3',
+        brand: 'Matte Studio',
+        name: 'Sebum Reset Serum',
+        display_name: 'Matte Studio Sebum Reset Serum',
+        category: 'serum',
+        product_type: 'serum',
+        retrieval_source: 'external_seed',
+        retrieval_query: 'mattifying serum',
+        retrieval_step: 'treatment',
+        retrieval_role_id: 'oil_control_treatment',
+        search_aliases: ['oil control serum', 'shine control serum'],
+        benefit_tags: ['oil control', 'shine control', 'mattifying', 'sebum'],
+        short_description: 'A mattifying oil-control serum that helps manage sebum and shine for oily skin.',
+      },
+      {
+        product_id: 'catalog_oil_support_moisturizer',
+        merchant_id: 'merchant_catalog_oil_support_moisturizer',
+        brand: 'LightLab',
+        name: 'Daily Balance Lotion',
+        display_name: 'LightLab Daily Balance Lotion',
+        category: 'moisturizer',
+        product_type: 'moisturizer',
+        retrieval_source: 'catalog',
+        retrieval_query: 'lightweight moisturizer',
+        retrieval_step: 'moisturizer',
+        retrieval_role_id: 'lightweight_moisturizer',
+        short_description: 'A breathable gel lotion for oily skin.',
+      },
+    ],
+    {
+      targetContext: {
+        framework_id: 'recofw_test_oily_horizontal_compare',
+        primary_role_id: 'oil_control_treatment',
+        framework_roles: [
+          {
+            role_id: 'oil_control_treatment',
+            rank: 1,
+            preferred_step: 'treatment',
+            alternate_steps: ['serum'],
+            label: 'Oil-control treatment',
+            query_terms: ['oil control serum', 'shine control serum', 'mattifying serum', 'balancing serum oily skin'],
+            fit_keywords: ['oil control', 'shine control', 'mattifying', 'mattify', 'sebum', 'balancing', 'anti-shine', 'blemish'],
+            ingredient_hypotheses: ['Niacinamide', 'Zinc PCA'],
+            product_type_hypotheses: ['treatment', 'serum'],
+          },
+          {
+            role_id: 'lightweight_moisturizer',
+            rank: 2,
+            preferred_step: 'moisturizer',
+            label: 'Lightweight moisturizer',
+            query_terms: ['lightweight moisturizer', 'gel cream', 'barrier lotion'],
+            fit_keywords: ['lightweight', 'gel cream', 'water gel', 'breathable', 'barrier lotion', 'oil-free'],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.equal(state.selected_candidate_count, 3);
+  assert.deepEqual(
+    state.selected_recommendations.map((item) => item?.matched_role_id),
+    ['oil_control_treatment', 'oil_control_treatment', 'oil_control_treatment'],
+  );
+  assert.equal(
+    state.selected_recommendations.some((item) => item?.product_id === 'catalog_oil_support_moisturizer'),
+    false,
+  );
+  assert.equal(state.exact_step_viable_count, 3);
+  assert.equal(state.group_target_fidelity.length, 3);
+});
+
 test('__internal: framework pool rejects explicit SPF sunscreen serum from the oil-control treatment primary slot', async () => {
   const { __internal } = loadRoutesFresh();
   const state = __internal.finalizeConcernFrameworkCandidatePools(

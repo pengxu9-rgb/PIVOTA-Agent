@@ -70,7 +70,10 @@ test('reco assistant rewrite prompt omits deterministic base text and carries re
     assert.match(prompt, /"request_mode":"buy"/);
     assert.match(prompt, /"user_request":"I am oily skin\. What product should I buy\?"/);
     assert.match(prompt, /If request_mode is "buy", use direct shopping advice tone\./);
-    assert.match(prompt, /If request_mode is "buy", the first sentence must directly recommend the selected product by name\./);
+    assert.match(prompt, /If request_mode is "buy" and there is one selected product, the first sentence must directly recommend that product by name\./);
+    assert.match(prompt, /If request_mode is "buy" and there are multiple selected products, the first sentence must name the best first buy and signal that the remaining selected products are comparison options\./);
+    assert.match(prompt, /If there are multiple selected products, present them as a concise horizontal comparison and name each selected product exactly once if space allows\./);
+    assert.match(prompt, /Use selected_product_details\.compare_highlights and selected_product_details\.pivota_insights when available; do not invent highlights that are absent from Context\./);
     assert.match(prompt, /If request_mode is "buy" and there is one selected product with no secondary targets, use exactly 2 sentences\./);
     assert.match(prompt, /If selected_target_ids has length 1 and secondary_targets is empty, do not add future routine-building suggestions or extra steps\./);
     assert.match(prompt, /Use plain shopper-facing skincare language\. Avoid vague phrases like "surface activity"\./);
@@ -524,6 +527,30 @@ test('beauty mainline reco rows promote visible nested product fields to top lev
             short_description: 'Helps reduce visible shine without feeling heavy.',
             description: 'Daily serum for oily skin that targets excess sebum.',
             price: { amount: 12, currency: 'USD', unknown: false },
+            product_intel: {
+              product_intel_core: {
+                what_it_is: {
+                  body: 'A lightweight niacinamide serum for visible shine and excess oil.',
+                },
+                why_it_stands_out: [
+                  {
+                    headline: 'Oil-control formula',
+                    body: 'Pairs niacinamide with zinc for a focused oil-control serum step.',
+                  },
+                ],
+                best_for: [
+                  {
+                    label: 'Oily or combination skin',
+                  },
+                ],
+              },
+              shopping_card: {
+                contract_version: 'pivota.shopping_card.v1',
+                title: 'The Ordinary Niacinamide 10% + Zinc 1%',
+                subtitle: 'Oil-control serum',
+                intro: 'A lightweight niacinamide serum for visible shine and excess oil.',
+              },
+            },
           },
         },
       ],
@@ -553,6 +580,19 @@ test('beauty mainline reco rows promote visible nested product fields to top lev
     assert.equal(rows[0].url, 'https://agent.pivota.cc/products/9886499864904?merchant_id=merch_efbc46b4619cfbdf&entry=creator_agent');
     assert.equal(rows[0].pdp_url, 'https://agent.pivota.cc/products/9886499864904?merchant_id=merch_efbc46b4619cfbdf&entry=creator_agent');
     assert.equal(rows[0].product_url, 'https://agent.pivota.cc/products/9886499864904?merchant_id=merch_efbc46b4619cfbdf&entry=creator_agent');
+    assert.equal(rows[0].pivota_insights.what_it_is, 'A lightweight niacinamide serum for visible shine and excess oil.');
+    assert.deepEqual(rows[0].pivota_insights.why_it_stands_out, [
+      {
+        headline: 'Oil-control formula',
+        body: 'Pairs niacinamide with zinc for a focused oil-control serum step.',
+      },
+    ]);
+    assert.deepEqual(rows[0].compare_highlights, [
+      'Pairs niacinamide with zinc for a focused oil-control serum step.',
+      'Best for Oily or combination skin',
+      'Oil-control serum',
+    ]);
+    assert.equal(rows[0].shopping_card.title, 'The Ordinary Niacinamide 10% + Zinc 1%');
   } finally {
     delete require.cache[moduleId];
   }
