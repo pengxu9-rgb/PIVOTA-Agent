@@ -716,17 +716,53 @@ function buildReviewScopeMetadata(exactSummary, lineSummary) {
   const exactCount = Number(exactSummary?.review_count || 0) || 0;
   const lineCount = Number(lineSummary?.review_count || 0) || 0;
   const aggregationScope = lineCount > exactCount ? 'product_line' : 'exact_item';
-  const active = aggregationScope === 'product_line' ? lineSummary || exactSummary : exactSummary || lineSummary;
+  const fallbackScale =
+    Number(lineSummary?.scale || exactSummary?.scale || lineSummary?.rating_scale || exactSummary?.rating_scale || 5) ||
+    5;
+  const buildScopedSummary = (scope, summary, count) => {
+    const src = asPlainObject(summary) || {};
+    const reviewCount = Number.isFinite(Number(count))
+      ? Math.max(0, Number(count))
+      : Number(src.review_count || src.count || src.total || 0) || 0;
+    const previewItems = Array.isArray(src.preview_items)
+      ? src.preview_items
+      : Array.isArray(src.snippets)
+        ? src.snippets
+        : [];
+    const distribution = Array.isArray(src.star_distribution)
+      ? src.star_distribution
+      : Array.isArray(src.rating_distribution)
+        ? src.rating_distribution
+        : undefined;
+    return {
+      scale: Number(src.scale || src.rating_scale || fallbackScale) || fallbackScale,
+      rating: Number(src.rating || src.average_rating || src.avg_rating || 0) || 0,
+      review_count: reviewCount,
+      ...(distribution ? { star_distribution: distribution, rating_distribution: distribution } : {}),
+      ...(previewItems.length ? { preview_items: previewItems } : { preview_items: [] }),
+      ...(asPlainObject(src.brand_card) ? { brand_card: src.brand_card } : {}),
+      scope_label:
+        scope === 'product_line'
+          ? `Based on product-line reviews (${reviewCount})`
+          : `Based on exact-item reviews (${reviewCount})`,
+    };
+  };
+  const scopedSummaries = {
+    product_line: buildScopedSummary('product_line', lineSummary || exactSummary, lineCount || exactCount),
+    exact_item: buildScopedSummary('exact_item', exactSummary, exactCount),
+  };
+  const active =
+    aggregationScope === 'product_line'
+      ? scopedSummaries.product_line || scopedSummaries.exact_item
+      : scopedSummaries.exact_item || scopedSummaries.product_line;
   if (!active) return null;
   return {
     ...active,
     aggregation_scope: aggregationScope,
     exact_item_review_count: exactCount,
     product_line_review_count: lineCount || exactCount,
-    scope_label:
-      aggregationScope === 'product_line'
-        ? `Based on product-line reviews (${lineCount || exactCount})`
-        : `Based on exact-item reviews (${exactCount})`,
+    scoped_summaries: scopedSummaries,
+    scope_label: active.scope_label,
     filters: [
       { id: 'product_line', label: 'Product line', count: lineCount || exactCount },
       { id: 'exact_item', label: 'Exact item', count: exactCount || 0 },

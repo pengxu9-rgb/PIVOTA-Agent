@@ -144,6 +144,14 @@ describe('pdpIdentityGraph', () => {
         aggregation_scope: 'product_line',
         exact_item_review_count: 12,
         product_line_review_count: 42,
+        scoped_summaries: expect.objectContaining({
+          product_line: expect.objectContaining({
+            review_count: 42,
+          }),
+          exact_item: expect.objectContaining({
+            review_count: 12,
+          }),
+        }),
       }),
     );
   });

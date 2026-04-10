@@ -18927,6 +18927,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      const pdpOptions = getPdpOptions(payload);
 	      let canonicalProductForPdp = canonicalProduct;
 	      let identityGraphLive = null;
+	      let identityGraphPublishedIntel = null;
 	      const identityGraphLiveStartedAt = Date.now();
 	      identityGraphLive = await maybeBuildLiveSyntheticPdp({
           merchantId: requestedMerchantId || canonicalProductRef?.merchant_id,
@@ -18935,6 +18936,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         }).catch(() => null);
 	      markPdpV2Phase('identity_graph_live', identityGraphLiveStartedAt);
 	      if (identityGraphLive?.synthetic_product) {
+	        const identityGraphIntelGateStartedAt = Date.now();
+	        identityGraphPublishedIntel = await buildProductIntelTopLevelModuleData({
+            product: identityGraphLive.synthetic_product,
+            canonicalProductRef: identityGraphLive.canonical_product_ref || canonicalProductRef,
+            productGroupId: identityGraphLive.sellable_item_group_id || null,
+          }).catch(() => null);
+	        markPdpV2Phase('identity_graph_product_intel_gate', identityGraphIntelGateStartedAt);
+	      }
+	      if (identityGraphLive?.synthetic_product && identityGraphPublishedIntel) {
 	        canonicalProductForPdp = identityGraphLive.synthetic_product;
 	        if (identityGraphLive.canonical_product_ref) {
 	          canonicalProductRef = {
@@ -18952,6 +18962,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           resolvedProductIdCtx = canonicalProductRef?.product_id || null;
           resolvedMerchantIdCtx = canonicalProductRef?.merchant_id || null;
           identityResolutionSourceCtx = identityResolutionSource;
+	      } else {
+          identityGraphLive = null;
+          identityGraphPublishedIntel = null;
 	      }
 	      const reviewSummaryPromise = wantsReviewsPreview
 	        ? (async () => {
@@ -19225,17 +19238,21 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      }
 
       let productIntel = null;
-      if (wantsProductIntel) {
-        productIntel = await buildProductIntelTopLevelModuleData({
-          product: canonicalProductForPdp,
-          relatedProducts,
-          offersData,
-          canonicalProductRef,
-          productGroupId,
-        });
+      const requiresProductIntelModule =
+        wantsProductIntel || Boolean(identityGraphLive?.synthetic_product);
+      if (requiresProductIntelModule) {
+        productIntel =
+          (await buildProductIntelTopLevelModuleData({
+            product: canonicalProductForPdp,
+            relatedProducts,
+            offersData,
+            canonicalProductRef,
+            productGroupId,
+          })) ||
+          identityGraphPublishedIntel;
         modules.push({
           type: 'product_intel',
-          required: false,
+          required: Boolean(identityGraphLive?.synthetic_product),
           data: productIntel,
           ...(productIntel ? {} : { reason: 'unavailable' }),
         });

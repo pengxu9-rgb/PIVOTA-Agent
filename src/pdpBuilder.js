@@ -1077,6 +1077,127 @@ function buildReviewsPreview(product, options = {}) {
     return hasAny ? rows : undefined;
   })();
 
+  const normalizeScopedSummary = (rawSummary) => {
+    if (!rawSummary || typeof rawSummary !== 'object') return null;
+    const nestedScale = Number(rawSummary.scale || rawSummary.rating_scale || scale) || scale;
+    const nestedRating =
+      Number(rawSummary.rating || rawSummary.average_rating || rawSummary.avg_rating || 0) || 0;
+    const nestedReviewCount =
+      Number(rawSummary.review_count || rawSummary.count || rawSummary.total || 0) || 0;
+    const nestedPreviewItems = Array.isArray(rawSummary.preview_items)
+      ? rawSummary.preview_items
+      : Array.isArray(rawSummary.snippets)
+        ? rawSummary.snippets
+        : [];
+    const nestedDistributionRaw =
+      rawSummary.rating_distribution ||
+      rawSummary.star_distribution ||
+      rawSummary.ratingDistribution ||
+      rawSummary.starDistribution ||
+      rawSummary.distribution ||
+      null;
+    const nestedRatingDistribution = (() => {
+      if (!nestedDistributionRaw) return undefined;
+      const map = new Map();
+      if (Array.isArray(nestedDistributionRaw)) {
+        nestedDistributionRaw.forEach((item) => {
+          const stars = Number(item?.stars ?? item?.star ?? item?.rating ?? item?.score);
+          if (!Number.isFinite(stars) || stars < 1 || stars > 5) return;
+          const count = Number(item?.count ?? item?.n ?? item?.value);
+          const percent = Number(
+            item?.percent ?? item?.ratio ?? item?.pct ?? item?.percentage ?? item?.share,
+          );
+          map.set(stars, {
+            stars,
+            ...(Number.isFinite(count) ? { count } : {}),
+            ...(Number.isFinite(percent) ? { percent } : {}),
+          });
+        });
+      } else if (typeof nestedDistributionRaw === 'object') {
+        Object.entries(nestedDistributionRaw).forEach(([k, v]) => {
+          const stars = Number(k);
+          if (!Number.isFinite(stars) || stars < 1 || stars > 5) return;
+          const value = Number(v);
+          if (!Number.isFinite(value)) return;
+          map.set(stars, { stars, value });
+        });
+      }
+      const rows = [];
+      for (let stars = 5; stars >= 1; stars -= 1) {
+        const item = map.get(stars) || {};
+        let count = Number.isFinite(item.count) ? item.count : undefined;
+        let percent = Number.isFinite(item.percent) ? item.percent : undefined;
+        if (count == null && Number.isFinite(item.value)) {
+          const v = item.value;
+          if (nestedReviewCount && v > 1 && v <= nestedReviewCount) {
+            count = v;
+          } else if (v > 1) {
+            percent = v / 100;
+          } else {
+            percent = v;
+          }
+        }
+        if (count != null && nestedReviewCount > 0) {
+          percent = count / nestedReviewCount;
+        }
+        if (percent != null && Number.isFinite(percent)) {
+          percent = Math.max(0, Math.min(1, percent));
+        } else {
+          percent = undefined;
+        }
+        rows.push({
+          stars,
+          ...(count != null ? { count } : {}),
+          ...(percent != null ? { percent } : {}),
+        });
+      }
+      const hasAny = rows.some(
+        (row) => (row.count != null && row.count > 0) || (row.percent != null && row.percent > 0),
+      );
+      return hasAny ? rows : undefined;
+    })();
+
+    return {
+      scale: nestedScale,
+      rating: nestedRating,
+      review_count: nestedReviewCount,
+      ...(typeof rawSummary.scope_label === 'string' && rawSummary.scope_label.trim()
+        ? { scope_label: rawSummary.scope_label.trim() }
+        : {}),
+      ...(nestedRatingDistribution
+        ? {
+            star_distribution: nestedRatingDistribution,
+            rating_distribution: nestedRatingDistribution,
+          }
+        : {}),
+      preview_items: nestedPreviewItems.slice(0, 6).map((item, idx) => ({
+        review_id: String(item.review_id || item.id || idx),
+        rating: Number(item.rating || item.score || nestedScale) || nestedScale,
+        author_label: item.author_label || item.author || item.user,
+        title: item.title ? String(item.title) : undefined,
+        text_snippet: String(item.text_snippet || item.text || item.body || item.title || ''),
+        media: Array.isArray(item.media)
+          ? item.media.map((m) => ({
+              type: m.type || 'image',
+              url: m.url || m.image_url,
+              thumbnail_url: m.thumbnail_url,
+            }))
+          : undefined,
+      })),
+      ...(rawSummary?.brand_card && typeof rawSummary.brand_card === 'object'
+        ? { brand_card: rawSummary.brand_card }
+        : {}),
+    };
+  };
+  const scopedSummaries =
+    summary?.scoped_summaries && typeof summary.scoped_summaries === 'object'
+      ? Object.entries(summary.scoped_summaries).reduce((acc, [key, value]) => {
+          const normalized = normalizeScopedSummary(value);
+          if (normalized) acc[key] = normalized;
+          return acc;
+        }, {})
+      : undefined;
+
   return {
     scale,
     rating,
@@ -1144,6 +1265,8 @@ function buildReviewsPreview(product, options = {}) {
           )
           .filter((item) => item && item.id && item.label)
       : undefined,
+    scoped_summaries:
+      scopedSummaries && Object.keys(scopedSummaries).length > 0 ? scopedSummaries : undefined,
     entry_points: {
       open_reviews: {
         action_type: 'open_embed',

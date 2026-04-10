@@ -95,6 +95,22 @@ describe('pdpBuilder reviews preview media', () => {
           exact_item_review_count: 12,
           product_line_review_count: 42,
           scope_label: 'Based on product-line reviews (42)',
+          scoped_summaries: {
+            product_line: {
+              scale: 5,
+              rating: 4.7,
+              review_count: 42,
+              scope_label: 'Based on product-line reviews (42)',
+              preview_items: [],
+            },
+            exact_item: {
+              scale: 5,
+              rating: 4.4,
+              review_count: 12,
+              scope_label: 'Based on exact-item reviews (12)',
+              preview_items: [],
+            },
+          },
           tabs: [
             { id: 'product_line', label: 'Product line', count: 42, default: true },
             { id: 'exact_item', label: 'Exact item', count: 12 },
@@ -128,6 +144,16 @@ describe('pdpBuilder reviews preview media', () => {
         exact_item_review_count: 12,
         product_line_review_count: 42,
         scope_label: 'Based on product-line reviews (42)',
+        scoped_summaries: expect.objectContaining({
+          product_line: expect.objectContaining({
+            review_count: 42,
+            scope_label: 'Based on product-line reviews (42)',
+          }),
+          exact_item: expect.objectContaining({
+            review_count: 12,
+            scope_label: 'Based on exact-item reviews (12)',
+          }),
+        }),
         tabs: [
           expect.objectContaining({ id: 'product_line', label: 'Product line', count: 42, default: true }),
           expect.objectContaining({ id: 'exact_item', label: 'Exact item', count: 12 }),

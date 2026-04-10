@@ -70,6 +70,28 @@ describe('get_pdp_v2 identity graph live read', () => {
                 brand: 'KraveBeauty',
                 description: 'Barrier support serum.',
                 images: [{ url: 'https://cdn.example.com/gbr-45-main.jpg' }],
+                product_intel: {
+                  contract_version: 'pivota.product_intel.v1',
+                  quality_state: 'verified',
+                  evidence_profile: 'pivota_reviewed',
+                  freshness: { generated_at: '2026-04-10T00:00:00.000Z' },
+                  provenance: { source: 'aurora_product_intel_kb' },
+                  product_intel_core: {
+                    what_it_is: {
+                      body: 'Pivota-reviewed barrier support serum for compromised skin.',
+                    },
+                    why_it_stands_out: [
+                      {
+                        headline: 'Barrier-first support',
+                        body: 'Reviewed and normalized by Pivota.',
+                      },
+                    ],
+                    confidence: { overall: 'high' },
+                    freshness: { generated_at: '2026-04-10T00:00:00.000Z' },
+                    quality_state: 'verified',
+                    evidence_profile: 'pivota_reviewed',
+                  },
+                },
               },
               review_summary: {
                 rating: 4.5,
@@ -168,6 +190,28 @@ describe('get_pdp_v2 identity graph live read', () => {
                 brand: 'KraveBeauty',
                 description: 'Barrier support serum.',
                 images: [{ url: 'https://cdn.example.com/gbr-45-main.jpg' }],
+                product_intel: {
+                  contract_version: 'pivota.product_intel.v1',
+                  quality_state: 'verified',
+                  evidence_profile: 'pivota_reviewed',
+                  freshness: { generated_at: '2026-04-10T00:00:00.000Z' },
+                  provenance: { source: 'aurora_product_intel_kb' },
+                  product_intel_core: {
+                    what_it_is: {
+                      body: 'Pivota-reviewed barrier support serum for compromised skin.',
+                    },
+                    why_it_stands_out: [
+                      {
+                        headline: 'Barrier-first support',
+                        body: 'Reviewed and normalized by Pivota.',
+                      },
+                    ],
+                    confidence: { overall: 'high' },
+                    freshness: { generated_at: '2026-04-10T00:00:00.000Z' },
+                    quality_state: 'verified',
+                    evidence_profile: 'pivota_reviewed',
+                  },
+                },
               },
               review_summary: {
                 rating: 4.5,
@@ -251,7 +295,7 @@ describe('get_pdp_v2 identity graph live read', () => {
       .send({
         operation: 'get_pdp_v2',
         payload: {
-          include: ['offers', 'reviews_preview'],
+          include: ['offers', 'reviews_preview', 'product_intel'],
           product_ref: {
             merchant_id: 'external_seed',
             product_id: 'ext_krave_gbr_45',
@@ -263,6 +307,7 @@ describe('get_pdp_v2 identity graph live read', () => {
     const canonicalModule = res.body.modules.find((module) => module.type === 'canonical');
     const reviewsModule = res.body.modules.find((module) => module.type === 'reviews_preview');
     const offersModule = res.body.modules.find((module) => module.type === 'offers');
+    const productIntelModule = res.body.modules.find((module) => module.type === 'product_intel');
 
     expect(res.body.metadata.identity_resolution).toEqual(
       expect.objectContaining({
@@ -302,10 +347,30 @@ describe('get_pdp_v2 identity graph live read', () => {
         aggregation_scope: 'product_line',
         exact_item_review_count: 16,
         product_line_review_count: 42,
+        scoped_summaries: expect.objectContaining({
+          product_line: expect.objectContaining({
+            review_count: 42,
+          }),
+          exact_item: expect.objectContaining({
+            review_count: 16,
+          }),
+        }),
       }),
     );
     expect(offersModule?.data?.product_group_id).toBe('sig_krave_45');
     expect(Array.isArray(offersModule?.data?.offers)).toBe(true);
     expect(offersModule.data.offers).toHaveLength(2);
+    expect(productIntelModule).toEqual(
+      expect.objectContaining({
+        required: true,
+        data: expect.objectContaining({
+          display_name: 'Pivota Insights',
+          evidence_profile: 'pivota_reviewed',
+          provenance: expect.objectContaining({
+            source: 'aurora_product_intel_kb',
+          }),
+        }),
+      }),
+    );
   });
 });
