@@ -930,6 +930,126 @@ describe('discovery feed service', () => {
     ]);
   });
 
+  test('brand-scoped discovery collapses approved identity graph exact-item duplicates across internal and external listings', async () => {
+    const identityResolver = jest.fn(async ({ sourceListingRefs }) => {
+      expect(sourceListingRefs).toEqual(
+        expect.arrayContaining([
+          'merch_krave:gbr_internal',
+          'external_seed:gbr_external',
+        ]),
+      );
+      return [
+        {
+          source_listing_ref: 'merch_krave:gbr_internal',
+          merchant_id: 'merch_krave',
+          product_id: 'gbr_internal',
+          source_kind: 'internal_product',
+          source_tier: 'merchant',
+          sellable_item_group_id: 'sig_krave_gbr_45ml',
+          product_line_id: 'pl_krave_gbr',
+          review_family_id: 'rf_krave_gbr',
+          identity_confidence: 0.86,
+          match_basis: ['brand:kravebeauty', 'title_core:great barrier relief', 'axis:volume:45ml'],
+        },
+        {
+          source_listing_ref: 'external_seed:gbr_external',
+          merchant_id: 'external_seed',
+          product_id: 'gbr_external',
+          source_kind: 'external_seed',
+          source_tier: 'brand',
+          sellable_item_group_id: 'sig_krave_gbr_45ml',
+          product_line_id: 'pl_krave_gbr',
+          review_family_id: 'rf_krave_gbr',
+          identity_confidence: 0.94,
+          match_basis: ['official_url:https://kravebeauty.com/products/great-barrier-relief', 'axis:volume:45ml'],
+        },
+      ];
+    });
+
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        sort: 'popular',
+        source_product_ref: {
+          merchant_id: 'external_seed',
+          product_id: 'gbr_external',
+        },
+        scope: {
+          brand_names: ['KraveBeauty'],
+        },
+        context: {
+          locale: 'en-US',
+        },
+      },
+      {
+        candidateProducts: [
+          makeProduct({
+            merchant_id: 'merch_krave',
+            product_id: 'gbr_internal',
+            title: 'KraveBeauty Great Barrier Relief',
+            brand: 'KraveBeauty',
+            category: 'Serum',
+            product_type: 'Serum',
+            price: 28,
+            canonical_url: 'https://shopify-preview.test/products/gbr-preview',
+          }),
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'gbr_external',
+            title: 'Great Barrier Relief',
+            brand: 'KraveBeauty',
+            category: 'Serum',
+            product_type: 'Barrier-repair serum',
+            price: 28,
+            canonical_url: 'https://kravebeauty.com/products/great-barrier-relief',
+          }),
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'oat_cream',
+            title: 'Oat So Simple Water Cream',
+            brand: 'KraveBeauty',
+            category: 'Moisturizer',
+            product_type: 'Moisturizer',
+            price: 28,
+          }),
+        ],
+        identityGraphRowsResolverFn: identityResolver,
+      },
+    );
+
+    expect(response.products.map((product) => product.product_id)).toEqual([
+      'gbr_external',
+      'oat_cream',
+    ]);
+    expect(response.products[0]).toEqual(
+      expect.objectContaining({
+        merchant_id: 'external_seed',
+        product_id: 'gbr_external',
+        sellable_item_group_id: 'sig_krave_gbr_45ml',
+        product_line_id: 'pl_krave_gbr',
+        review_family_id: 'rf_krave_gbr',
+        canonical_scope: 'synthetic',
+      }),
+    );
+    expect(response.products[0].group_members).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ merchant_id: 'merch_krave', product_id: 'gbr_internal' }),
+        expect.objectContaining({ merchant_id: 'external_seed', product_id: 'gbr_external' }),
+      ]),
+    );
+    expect(response.metadata.identity_graph).toEqual(
+      expect.objectContaining({
+        applied: true,
+        matched_candidates: 2,
+        groups_collapsed: 1,
+        duplicate_candidates_dropped: 1,
+      }),
+    );
+    expect(response.metadata.candidate_counts.identity_graph_deduped).toBe(1);
+  });
+
   test('brand-scoped discovery falls back to source-product recommendations when brand pool is empty', async () => {
     let recommendCalls = 0;
     let capturedRecommendArgs = null;

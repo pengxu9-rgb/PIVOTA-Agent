@@ -38,6 +38,10 @@ const {
   normalizeMarketSignalBadges,
   normalizeReviewSummary: normalizeEvidenceReviewSummary,
 } = require('./pivotaEvidenceSignals');
+const {
+  buildSourceListingRef,
+  listLivePdpIdentityRowsForRefs,
+} = require('./pdpIdentityGraph');
 let productIntelKbStore = null;
 
 const SCORING_VERSION = 'discovery_v2';
@@ -5473,6 +5477,16 @@ function formatDiscoveryResponseProduct(candidate, request = null) {
       ...(raw.variant_id ? { variant_id: raw.variant_id } : {}),
       ...(raw.sku_id ? { sku_id: raw.sku_id } : {}),
       ...(raw.sku ? { sku: raw.sku } : {}),
+      ...(raw.sellable_item_group_id ? { sellable_item_group_id: raw.sellable_item_group_id } : {}),
+      ...(raw.product_line_id ? { product_line_id: raw.product_line_id } : {}),
+      ...(raw.review_family_id ? { review_family_id: raw.review_family_id } : {}),
+      ...(raw.identity_confidence != null ? { identity_confidence: raw.identity_confidence } : {}),
+      ...(Array.isArray(raw.match_basis) ? { match_basis: raw.match_basis } : {}),
+      ...(raw.canonical_scope ? { canonical_scope: raw.canonical_scope } : {}),
+      ...(raw.identity_graph && typeof raw.identity_graph === 'object'
+        ? { identity_graph: raw.identity_graph }
+        : {}),
+      ...(Array.isArray(raw.group_members) ? { group_members: raw.group_members } : {}),
       title: title || candidate.productId,
       price,
       currency: raw.currency || 'USD',
@@ -5553,6 +5567,222 @@ function buildNormalizedCandidateSemanticKey(candidate) {
   });
 }
 
+function buildCandidateSourceListingRef(candidate) {
+  return buildSourceListingRef({
+    merchantId: candidate?.raw?.merchant_id || candidate?.merchantId,
+    productId: candidate?.raw?.product_id || candidate?.productId,
+  });
+}
+
+function normalizeIdentityGraphRowForDiscovery(row) {
+  if (!row || typeof row !== 'object') return null;
+  const sourceListingRef = String(row.source_listing_ref || '').trim();
+  const sellableItemGroupId = String(row.sellable_item_group_id || '').trim();
+  if (!sourceListingRef || !sellableItemGroupId) return null;
+  return {
+    ...row,
+    source_listing_ref: sourceListingRef,
+    sellable_item_group_id: sellableItemGroupId,
+    product_line_id: String(row.product_line_id || '').trim() || null,
+    review_family_id: String(row.review_family_id || '').trim() || null,
+    merchant_id: String(row.merchant_id || '').trim(),
+    product_id: String(row.product_id || '').trim(),
+    source_kind: String(row.source_kind || '').trim(),
+    source_tier: String(row.source_tier || '').trim(),
+    identity_confidence: Number(row.identity_confidence || 0) || 0,
+    match_basis: Array.isArray(row.match_basis) ? row.match_basis : [],
+  };
+}
+
+function scoreIdentityDiscoveryCanonicalCandidate(candidate, row, { requestedSourceRef = '', index = 0 } = {}) {
+  let score = 0;
+  if (row?.source_tier === 'brand') score += 100;
+  if (row?.source_kind === 'external_seed') score += 25;
+  if (row?.source_listing_ref && requestedSourceRef && row.source_listing_ref === requestedSourceRef) score += 5;
+  if (candidate?.raw?.external_redirect_url || candidate?.raw?.canonical_url || candidate?.raw?.destination_url) {
+    score += 4;
+  }
+  if (candidate?.raw?.image_url || candidate?.raw?.imageUrl) score += 2;
+  if (Number.isFinite(Number(candidate?.priceAmount)) && Number(candidate.priceAmount) > 0) score += 1;
+  score += Math.min(10, Number(row?.identity_confidence || 0) * 10);
+  score -= index / 1000;
+  return score;
+}
+
+function annotateIdentityDiscoveryCandidate(candidate, row, groupMembers) {
+  if (!candidate || !row) return candidate;
+  const safeGroupMembers = Array.isArray(groupMembers) ? groupMembers : [];
+  return {
+    ...candidate,
+    raw: {
+      ...(candidate.raw || {}),
+      sellable_item_group_id: row.sellable_item_group_id,
+      product_line_id: row.product_line_id,
+      review_family_id: row.review_family_id,
+      identity_confidence: row.identity_confidence,
+      match_basis: row.match_basis,
+      canonical_scope: 'synthetic',
+      identity_graph: {
+        source_listing_ref: row.source_listing_ref,
+        sellable_item_group_id: row.sellable_item_group_id,
+        product_line_id: row.product_line_id,
+        review_family_id: row.review_family_id,
+        grouped_candidate_count: safeGroupMembers.length,
+      },
+      group_members: safeGroupMembers,
+    },
+  };
+}
+
+async function applyIdentityGraphDiscoveryDedupe(candidates, {
+  request = null,
+  identityGraphRowsResolverFn = listLivePdpIdentityRowsForRefs,
+} = {}) {
+  if (!Array.isArray(candidates) || candidates.length < 1 || typeof identityGraphRowsResolverFn !== 'function') {
+    return {
+      candidates,
+      stats: {
+        applied: false,
+        matched_candidates: 0,
+        groups_collapsed: 0,
+        duplicate_candidates_dropped: 0,
+      },
+    };
+  }
+
+  const sourceRefs = candidates.map((candidate) => buildCandidateSourceListingRef(candidate)).filter(Boolean);
+  const uniqueSourceRefs = uniqStrings(sourceRefs, 500);
+  if (!uniqueSourceRefs.length) {
+    return {
+      candidates,
+      stats: {
+        applied: false,
+        matched_candidates: 0,
+        groups_collapsed: 0,
+        duplicate_candidates_dropped: 0,
+      },
+    };
+  }
+
+  let rows = [];
+  try {
+    rows = await identityGraphRowsResolverFn({ sourceListingRefs: uniqueSourceRefs });
+  } catch (err) {
+    logger.warn(
+      {
+        err: err?.message || String(err),
+        refs_count: uniqueSourceRefs.length,
+      },
+      'PDP identity graph discovery dedupe skipped after resolver failure',
+    );
+    return {
+      candidates,
+      stats: {
+        applied: false,
+        matched_candidates: 0,
+        groups_collapsed: 0,
+        duplicate_candidates_dropped: 0,
+        error: err?.code || err?.name || 'IDENTITY_GRAPH_DISCOVERY_RESOLVER_FAILED',
+      },
+    };
+  }
+
+  const rowsByRef = new Map();
+  for (const rawRow of rows || []) {
+    const row = normalizeIdentityGraphRowForDiscovery(rawRow);
+    if (!row) continue;
+    rowsByRef.set(row.source_listing_ref, row);
+  }
+  if (!rowsByRef.size) {
+    return {
+      candidates,
+      stats: {
+        applied: false,
+        matched_candidates: 0,
+        groups_collapsed: 0,
+        duplicate_candidates_dropped: 0,
+      },
+    };
+  }
+
+  const requestedSourceRef = buildSourceListingRef({
+    merchantId: request?.source_product_ref?.merchant_id,
+    productId: request?.source_product_ref?.product_id,
+  });
+  const buckets = [];
+  const groupedBuckets = new Map();
+  for (let index = 0; index < candidates.length; index += 1) {
+    const candidate = candidates[index];
+    const sourceRef = buildCandidateSourceListingRef(candidate);
+    const row = rowsByRef.get(sourceRef) || null;
+    if (!row?.sellable_item_group_id) {
+      buckets.push({ key: `candidate:${index}`, entries: [{ candidate, row: null, index }] });
+      continue;
+    }
+    const key = `sellable:${row.sellable_item_group_id}`;
+    let bucket = groupedBuckets.get(key);
+    if (!bucket) {
+      bucket = { key, entries: [] };
+      groupedBuckets.set(key, bucket);
+      buckets.push(bucket);
+    }
+    bucket.entries.push({ candidate, row, index });
+  }
+
+  let matchedCandidates = 0;
+  let groupsCollapsed = 0;
+  let duplicateCandidatesDropped = 0;
+  const deduped = [];
+  for (const bucket of buckets) {
+    const entries = Array.isArray(bucket.entries) ? bucket.entries : [];
+    const identityEntries = entries.filter((entry) => entry.row?.sellable_item_group_id);
+    matchedCandidates += identityEntries.length;
+    if (!identityEntries.length) {
+      deduped.push(entries[0]?.candidate);
+      continue;
+    }
+
+    const groupMembers = identityEntries.map(({ row }) => ({
+      merchant_id: row.merchant_id,
+      product_id: row.product_id,
+      source_kind: row.source_kind,
+      source_tier: row.source_tier,
+      source_listing_ref: row.source_listing_ref,
+    }));
+    let best = identityEntries[0];
+    let bestScore = scoreIdentityDiscoveryCanonicalCandidate(best.candidate, best.row, {
+      requestedSourceRef,
+      index: best.index,
+    });
+    for (const entry of identityEntries.slice(1)) {
+      const score = scoreIdentityDiscoveryCanonicalCandidate(entry.candidate, entry.row, {
+        requestedSourceRef,
+        index: entry.index,
+      });
+      if (score > bestScore) {
+        best = entry;
+        bestScore = score;
+      }
+    }
+
+    if (identityEntries.length > 1) {
+      groupsCollapsed += 1;
+      duplicateCandidatesDropped += identityEntries.length - 1;
+    }
+    deduped.push(annotateIdentityDiscoveryCandidate(best.candidate, best.row, groupMembers));
+  }
+
+  return {
+    candidates: deduped.filter(Boolean),
+    stats: {
+      applied: true,
+      matched_candidates: matchedCandidates,
+      groups_collapsed: groupsCollapsed,
+      duplicate_candidates_dropped: duplicateCandidatesDropped,
+    },
+  };
+}
+
 function buildCandidateCounts({
   raw,
   normalized,
@@ -5561,6 +5791,7 @@ function buildCandidateCounts({
   returned,
   sameDomain,
   semanticDeduped,
+  identityGraphDeduped,
 } = {}) {
   return {
     raw: Number(raw || 0),
@@ -5570,6 +5801,7 @@ function buildCandidateCounts({
     returned: Number(returned || 0),
     ...(sameDomain != null ? { same_domain: Number(sameDomain || 0) } : {}),
     ...(semanticDeduped != null ? { semantic_deduped: Number(semanticDeduped || 0) } : {}),
+    ...(identityGraphDeduped != null ? { identity_graph_deduped: Number(identityGraphDeduped || 0) } : {}),
   };
 }
 
@@ -5808,6 +6040,12 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
     const seenSemanticKeys = new Set();
     const brandScoped = brandScopeAliases.length > 0;
     let semanticDeduped = 0;
+    let identityGraphDedupeStats = {
+      applied: false,
+      matched_candidates: 0,
+      groups_collapsed: 0,
+      duplicate_candidates_dropped: 0,
+    };
     for (let idx = 0; idx < effectiveRawCandidates.length; idx += 1) {
       const normalized = normalizeCandidateProduct(effectiveRawCandidates[idx], idx);
       if (!normalized) continue;
@@ -5919,6 +6157,12 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
     if (brandScopeAliases.length > 0 && scopedCandidates.length === 0 && catalogUnavailableError) {
       throw catalogUnavailableError;
     }
+    const identityGraphDedupe = await applyIdentityGraphDiscoveryDedupe(scopedCandidates, {
+      request,
+      identityGraphRowsResolverFn: options.identityGraphRowsResolverFn,
+    });
+    scopedCandidates = identityGraphDedupe.candidates;
+    identityGraphDedupeStats = identityGraphDedupe.stats;
     observeDiscoveryCandidateCount({
       surface: request.surface,
       stage: 'normalized',
@@ -6004,6 +6248,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       returned: selectedEntries.length,
       sameDomain: countSameDomainCandidates(scopedCandidates, profile),
       semanticDeduped,
+      identityGraphDeduped: identityGraphDedupeStats?.duplicate_candidates_dropped,
     });
 
     observeDiscoveryCandidateCount({
@@ -6064,6 +6309,11 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
         final_decision: selectedEntries.length > 0 ? 'products_returned' : 'empty',
       },
       ...(profile.dominantDomain ? { dominant_domain: profile.dominantDomain } : {}),
+      ...(identityGraphDedupeStats?.applied
+        ? {
+            identity_graph: identityGraphDedupeStats,
+          }
+        : {}),
     };
 
     if (request.debug.enabled) {
@@ -6213,6 +6463,7 @@ module.exports = {
     matchesBrandScopeCandidate,
     normalizeDiscoveryRequest,
     normalizeCandidateProduct,
+    applyIdentityGraphDiscoveryDedupe,
     resolveDiscoveryCandidateLimit,
     scoreCandidate,
     selectBrowseProducts,
