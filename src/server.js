@@ -7810,12 +7810,18 @@ async function maybeRescueBrandLikeSearchFromLocalExternalSeed({
   }
 
   const normalizedQueryText = String(queryText || '').trim();
-  if (!normalizedQueryText || !process.env.DATABASE_URL) return upstreamData;
+  if (!normalizedQueryText) return upstreamData;
 
   const upstreamMeta =
     upstreamData.metadata && typeof upstreamData.metadata === 'object' && !Array.isArray(upstreamData.metadata)
       ? upstreamData.metadata
       : {};
+  if (
+    Object.prototype.hasOwnProperty.call(upstreamMeta, 'external_seed_brand_rescue_attempted') ||
+    Object.prototype.hasOwnProperty.call(upstreamMeta, 'external_seed_brand_rescue_applied')
+  ) {
+    return upstreamData;
+  }
   const existingProducts = Array.isArray(upstreamData.products) ? upstreamData.products : [];
   const hasClarification = Boolean(upstreamData?.clarification?.question);
   if (existingProducts.length > 0 || hasClarification) return upstreamData;
@@ -7967,6 +7973,7 @@ async function maybeRescueBrandLikeSearchFromLocalExternalSeed({
           Number(rescueMeta.external_seed_rows_relevant || rescueMeta.fetched_count || rescuedProducts.length) ||
           rescuedProducts.length,
         external_seed_returned_count: rescuedProducts.length,
+        external_seed_brand_rescue_attempted: true,
         external_seed_brand_rescue_applied: true,
         external_seed_brand_rescue_reason: 'upstream_seed_loader_error_strict_empty',
         external_seed_brand_rescue_upstream_query_source:
@@ -7979,6 +7986,7 @@ async function maybeRescueBrandLikeSearchFromLocalExternalSeed({
           rescueMeta.retrieval_include_attached === true,
         route_health: {
           ...routeHealth,
+          external_seed_rescue_attempted: true,
           external_seed_rescue_applied: true,
           external_seed_rescue_reason: 'upstream_seed_loader_error_strict_empty',
           external_seed_skip_reason: externalSeedSkipReason,
@@ -7986,6 +7994,7 @@ async function maybeRescueBrandLikeSearchFromLocalExternalSeed({
         route_debug: {
           ...existingRouteDebug,
           external_seed_brand_rescue: {
+            attempted: true,
             applied: true,
             reason: 'upstream_seed_loader_error_strict_empty',
             upstream_query_source: String(upstreamMeta.query_source || '').trim() || null,
@@ -24392,6 +24401,21 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           );
         }
       }
+    }
+
+    if (
+      operation === 'find_products' ||
+      operation === 'find_products_multi'
+    ) {
+      maybePolicy = await maybeRescueBrandLikeSearchFromLocalExternalSeed({
+        operation,
+        upstreamData: maybePolicy,
+        queryText: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim(),
+        queryParams,
+        source: metadata?.source,
+        checkoutToken,
+        upstreamStatus: response?.status || null,
+      });
     }
 
     if (operation === 'find_products_multi') {
