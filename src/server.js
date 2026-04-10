@@ -7014,20 +7014,18 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
   if (!candidateText) return false;
 
   const hasFragranceSearch = hasFragranceSearchSignal(queryText);
+  const candidateBeautyBucket = hasFragranceSearch ? classifyBeautyBucketFromText(candidateText) : null;
   const hasFragranceCandidateSignal =
     /\b(perfume|fragrance|parfum|cologne|body mist|eau de parfum|eau de toilette|scent|aroma)\b/i.test(
       candidateText,
-    ) ||
-    /\b(tom ford|jo malone|byredo|dior|chanel|ysl|guerlain|diptyque|le labo|creed|kilian|armani|versace|prada)\b/i.test(
-      candidateText,
-    );
+    ) || candidateBeautyBucket === 'fragrance';
   const isBeautyToolLikeCandidate = /\b(brush|brushes|blender|sponge|powder puff|puff|applicator|eyelash curler|tool kit|makeup tool)\b/i.test(
     candidateText,
   );
 
   if (hasFragranceSearch) {
-    if (!hasFragranceCandidateSignal && !SEARCH_EXTERNAL_HARD_RULE_PRUNE) return false;
-    if (isBeautyToolLikeCandidate && !SEARCH_EXTERNAL_HARD_RULE_PRUNE) return false;
+    if (!hasFragranceCandidateSignal) return false;
+    if (isBeautyToolLikeCandidate) return false;
     // Recall-first for fragrance supplement: skip hard lexical overlap gates.
     return true;
   }
