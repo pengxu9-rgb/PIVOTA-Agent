@@ -691,6 +691,7 @@ function pickLayeredRecommendations({
 
   let filteredByVertical = 0;
   let filteredByConfidence = 0;
+  let filteredByExternalBrandAuthority = 0;
 
   const rawCandidates = [
     ...(Array.isArray(internalCandidates) ? internalCandidates : []),
@@ -708,6 +709,17 @@ function pickLayeredRecommendations({
       const features = buildCandidateFeatures(p, base.currency);
       const source = features.isExternal ? 'external' : 'internal';
       const scoreDetail = scoreCandidate(base, features);
+
+      if (
+        base.isExternal &&
+        base.brand &&
+        source === 'internal' &&
+        !scoreDetail.brandMatch
+      ) {
+        filteredByExternalBrandAuthority += 1;
+        return null;
+      }
+
       const matchedLayer = layers.find((layer) => layer.predicate(scoreDetail, features, base)) || null;
 
       if (base.vertical === 'fragrance') {
@@ -814,6 +826,9 @@ function pickLayeredRecommendations({
   const lowConfidenceReasonCodes = [];
   if (!baseSemanticStrong) lowConfidenceReasonCodes.push('BASE_SEMANTIC_WEAK');
   if (filteredByVertical > 0) lowConfidenceReasonCodes.push('CATEGORY_MISMATCH_FILTERED');
+  if (filteredByExternalBrandAuthority > 0) {
+    lowConfidenceReasonCodes.push('EXTERNAL_BASE_BLOCKED_OTHER_BRAND_INTERNAL');
+  }
   if (selected.length < K) lowConfidenceReasonCodes.push('UNDERFILL_FOR_QUALITY');
   if (!lowConfidenceReasonCodes.length && lowConfidence) lowConfidenceReasonCodes.push('INSUFFICIENT_HIGH_CONFIDENCE');
 
@@ -853,6 +868,7 @@ function pickLayeredRecommendations({
       filters: {
         by_vertical: filteredByVertical,
         by_confidence: filteredByConfidence,
+        by_external_brand_authority: filteredByExternalBrandAuthority,
       },
     },
   };

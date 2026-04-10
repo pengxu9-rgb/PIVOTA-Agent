@@ -566,7 +566,7 @@ describe('RecommendationEngine (PDP)', () => {
     expect(out.metadata?.retrieval_mix).toEqual({ internal: 0, external: 2 });
   });
 
-  test('o) external synthetic PDP ranks same-brand external seeds before other-brand internal category fills', () => {
+  test('o) external synthetic PDP rejects other-brand internal category fills', () => {
     const base = makeProduct({
       merchant_id: 'external_seed',
       product_id: 'ext_krave_gbr_45',
@@ -620,6 +620,44 @@ describe('RecommendationEngine (PDP)', () => {
       'ext_krave_barrier_renew',
       'ext_krave_barrier_rescue',
     ]);
-    expect(out.items.map((item) => item.product_id)).toContain('internal_winona_serum');
+    expect(out.items.map((item) => item.product_id)).not.toContain('internal_winona_serum');
+    expect(out.debug?.filters?.by_external_brand_authority).toBe(1);
+    expect(out.metadata?.low_confidence_reason_codes).toEqual(
+      expect.arrayContaining(['EXTERNAL_BASE_BLOCKED_OTHER_BRAND_INTERNAL']),
+    );
+  });
+
+  test('p) external synthetic PDP returns empty instead of other-brand internal fallback when external pool is unavailable', () => {
+    const base = makeProduct({
+      merchant_id: 'external_seed',
+      product_id: 'ext_krave_gbr_45',
+      title: 'Great Barrier Relief',
+      vendor: 'KraveBeauty',
+      category_path: ['Beauty', 'Serum'],
+      source: 'external_seed',
+      price: 28,
+    });
+
+    const internal = [
+      makeProduct({
+        merchant_id: 'merch_winona',
+        product_id: 'internal_winona_serum',
+        title: 'Winona Soothing Repair Serum',
+        vendor: 'Winona',
+        category_path: ['Beauty', 'Serum'],
+        price: 28,
+      }),
+    ];
+
+    const out = pickLayeredRecommendations({
+      baseProduct: base,
+      internalCandidates: internal,
+      externalCandidates: [],
+      k: 3,
+    });
+
+    expect(out.items).toEqual([]);
+    expect(out.debug?.filters?.by_external_brand_authority).toBe(1);
+    expect(out.metadata?.retrieval_mix).toEqual({ internal: 0, external: 0 });
   });
 });
