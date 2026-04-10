@@ -155,4 +155,51 @@ describe('pdpIdentityGraph', () => {
       }),
     );
   });
+
+  test('backfill product fetch does not depend on products_cache created_at column', async () => {
+    const { _internals } = require('../../src/services/pdpIdentityGraph');
+    const queries = [];
+    const queryFn = jest.fn(async (sql, params) => {
+      queries.push(String(sql));
+      if (String(sql).includes('FROM products_cache')) {
+        expect(String(sql)).not.toContain('created_at');
+        expect(params).toEqual(['external_seed', 10]);
+        return {
+          rows: [
+            {
+              merchant_id: 'merch_krave',
+              platform_product_id: '10008793153864',
+              cached_at: '2026-04-10T00:00:00Z',
+              updated_at: '2026-04-10T00:00:00Z',
+              product_data: {
+                product_id: '10008793153864',
+                title: 'KraveBeauty Great Barrier Relief',
+                brand: { name: 'KraveBeauty' },
+              },
+            },
+          ],
+        };
+      }
+      if (String(sql).includes('FROM external_product_seeds')) {
+        return { rows: [] };
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    });
+
+    const rows = await _internals.fetchBackfillProducts({
+      limit: 10,
+      brandFilter: 'KraveBeauty',
+      queryFn,
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual(
+      expect.objectContaining({
+        merchant_id: 'merch_krave',
+        product_id: '10008793153864',
+        source_kind: 'internal',
+      }),
+    );
+    expect(queries).toHaveLength(2);
+  });
 });
