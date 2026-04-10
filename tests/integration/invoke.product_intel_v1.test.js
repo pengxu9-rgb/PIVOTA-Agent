@@ -188,6 +188,7 @@ describeIfRuntimeDeps('/agent/shop/v1/invoke product intel contracts', () => {
     expect(productIntelModule.data.display_name).toBe('Pivota Insights');
     expect(productIntelModule.data.product_intel_core).toBeTruthy();
     expect(productIntelModule.data.quality_state).toBeTruthy();
+    expect(Array.isArray(productIntelModule.data.external_highlight_signals)).toBe(true);
     expect(offersModule.data.offers[0].commerce_mode).toBe('merchant_embedded_checkout');
     expect(offersModule.data.offers[0].seller_of_record).toBe('merchant');
     expect(res.body.metadata.normalized_pdp).toEqual(
@@ -211,6 +212,17 @@ describeIfRuntimeDeps('/agent/shop/v1/invoke product intel contracts', () => {
     expect(res.body.contract_version).toBe('pivota.product_intel.v1');
     expect(res.body.display_name).toBe('Pivota Insights');
     expect(res.body.offer_pointers.commerce_modes).toContain('merchant_embedded_checkout');
+    expect(res.body.shopping_card).toEqual(
+      expect.objectContaining({
+        contract_version: 'pivota.shopping_card.v1',
+      }),
+    );
+    expect(res.body.search_card).toEqual(
+      expect.objectContaining({
+        title_candidate: expect.any(String),
+      }),
+    );
+    expect(Array.isArray(res.body.external_highlight_signals)).toBe(true);
   });
 
   test('get_product_intel_v1 resolves external seed product_id without merchant_id', async () => {
@@ -229,7 +241,7 @@ describeIfRuntimeDeps('/agent/shop/v1/invoke product intel contracts', () => {
       }),
     );
     expect(res.body.display_name).toBe('Pivota Insights');
-    expect(res.body.offer_pointers.commerce_modes).toContain('merchant_embedded_checkout');
+    expect(res.body.offer_pointers.commerce_modes).toContain('links_out');
     expect(res.body.shopping_card).toEqual(
       expect.objectContaining({
         subtitle: 'Invisible SPF moisturizer',
@@ -333,6 +345,9 @@ describeIfRuntimeDeps('/agent/shop/v1/invoke product intel contracts', () => {
         shopping_card: expect.objectContaining({
           title: expect.any(String),
         }),
+        search_card: expect.objectContaining({
+          compact_candidate: expect.any(String),
+        }),
         pivota_insights: expect.objectContaining({
           what_it_is: expect.any(String),
         }),
@@ -342,6 +357,7 @@ describeIfRuntimeDeps('/agent/shop/v1/invoke product intel contracts', () => {
       expect.objectContaining({
         review_status: 'pending',
         decision: 'pending',
+        review_decision: 'pending',
       }),
     );
   });

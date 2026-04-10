@@ -32,6 +32,12 @@ const {
   detectBrandEntities,
   normalizeBrandText,
 } = require('../findProductsMulti/brandLexicon');
+const {
+  buildDisplayableProofBadge,
+  filterDisplayableMarketSignalBadges,
+  normalizeMarketSignalBadges,
+  normalizeReviewSummary: normalizeEvidenceReviewSummary,
+} = require('./pivotaEvidenceSignals');
 let productIntelKbStore = null;
 
 const SCORING_VERSION = 'discovery_v2';
@@ -5151,13 +5157,12 @@ function normalizeDiscoveryReviewSummary(value) {
 }
 
 function buildDiscoveryReviewBadge(reviewSummary) {
-  const review = normalizeDiscoveryReviewSummary(reviewSummary);
-  if (!review) return null;
-  if (Number(review.rating || 0) < 4.5 || Number(review.review_count || 0) < 100) return null;
-  return {
-    badge_type: 'review_signal',
-    badge_label: `${review.rating.toFixed(1)}★ (${formatDiscoveryCompactCount(review.review_count)})`,
-  };
+  return buildDisplayableProofBadge(
+    {
+      review_summary: normalizeDiscoveryReviewSummary(reviewSummary),
+    },
+    { formatCompactCount: formatDiscoveryCompactCount },
+  );
 }
 
 function normalizeDiscoveryBadgeLabel(value) {
@@ -5174,9 +5179,9 @@ function normalizeDiscoveryBadgeLabel(value) {
 function normalizeDiscoveryMarketSignalBadges(value) {
   const seen = new Set();
   const out = [];
-  for (const item of discoveryCardArray(value)) {
+  for (const item of normalizeMarketSignalBadges(discoveryCardArray(value))) {
     const row = item && typeof item === 'object' ? item : null;
-    const label = firstDiscoveryCardString(row?.badge_label, row?.label, item);
+    const label = firstDiscoveryCardString(row?.badge_label, row?.label);
     if (!label) continue;
     const badge = {
       badge_type: discoveryCardString(row?.badge_type || row?.type),
@@ -5266,6 +5271,9 @@ async function hydrateDiscoveryCandidateProductIntel(candidate) {
       ...(discoveryCardString(shoppingCard?.proof_badge)
         ? { card_badge: discoveryCardString(shoppingCard.proof_badge) }
         : {}),
+      ...(discoveryCardString(shoppingCard?.highlight)
+        ? { card_highlight: discoveryCardString(shoppingCard.highlight) }
+        : {}),
       ...(discoveryCardString(shoppingCard?.intro) ? { card_intro: discoveryCardString(shoppingCard.intro) } : {}),
     },
   };
@@ -5321,21 +5329,30 @@ function readDiscoveryBadgeFromTags(tags) {
 }
 
 function buildDiscoveryMarketSignalBadges(raw, candidate) {
+  const reviewSummary = normalizeEvidenceReviewSummary(raw?.review_summary || candidate?.raw?.review_summary);
+  const communitySignals =
+    raw?.community_signals ||
+    raw?.communitySignals ||
+    raw?.shopping_card?.community_signals ||
+    raw?.shoppingCard?.community_signals ||
+    candidate?.raw?.community_signals;
   const explicit = normalizeDiscoveryMarketSignalBadges(
-    raw?.market_signal_badges ||
-      raw?.marketSignalBadges ||
-      raw?.shopping_card?.market_signal_badges ||
-      raw?.shoppingCard?.marketSignalBadges,
+    filterDisplayableMarketSignalBadges(
+      raw?.market_signal_badges ||
+        raw?.marketSignalBadges ||
+        raw?.shopping_card?.market_signal_badges ||
+        raw?.shoppingCard?.marketSignalBadges,
+      {
+        review_summary: reviewSummary,
+        community_signals: communitySignals,
+      },
+    ),
   );
   if (explicit.length) return explicit;
 
   const synthetic = [];
-  const reviewBadge = buildDiscoveryReviewBadge(raw?.review_summary);
+  const reviewBadge = buildDiscoveryReviewBadge(reviewSummary);
   if (reviewBadge) synthetic.push(reviewBadge);
-  const configuredBadge = readDiscoveryConfiguredBadge(raw);
-  if (configuredBadge) synthetic.push(configuredBadge);
-  const taggedBadge = readDiscoveryBadgeFromTags(raw?.tags || candidate?.raw?.tags);
-  if (taggedBadge) synthetic.push(taggedBadge);
   return normalizeDiscoveryMarketSignalBadges(synthetic);
 }
 
@@ -5364,6 +5381,17 @@ function buildDiscoveryCardSubtitle(raw, candidate) {
   return formatted.slice(0, 48);
 }
 
+function buildDiscoveryCardHighlight(raw) {
+  return firstDiscoveryCardString(
+    raw?.card_highlight,
+    raw?.search_card?.highlight_candidate,
+    raw?.searchCard?.highlight_candidate,
+    raw?.search_card_highlight_candidate,
+    raw?.shopping_card?.highlight,
+    raw?.shoppingCard?.highlight,
+  );
+}
+
 function buildDiscoveryCardPayload(raw, candidate) {
   const marketSignalBadges = buildDiscoveryMarketSignalBadges(raw, candidate);
   const title = firstDiscoveryCardString(
@@ -5378,15 +5406,8 @@ function buildDiscoveryCardPayload(raw, candidate) {
     candidate?.productId,
   );
   const subtitle = buildDiscoveryCardSubtitle(raw, candidate);
-  const proofBadge = firstDiscoveryCardString(
-    raw?.card_badge,
-    raw?.search_card?.proof_badge_candidate,
-    raw?.searchCard?.proof_badge_candidate,
-    raw?.search_card_proof_badge_candidate,
-    raw?.shopping_card?.proof_badge,
-    raw?.shoppingCard?.proof_badge,
-    marketSignalBadges[0]?.badge_label,
-  );
+  const highlight = buildDiscoveryCardHighlight(raw);
+  const proofBadge = firstDiscoveryCardString(marketSignalBadges[0]?.badge_label);
   const intro = firstDiscoveryCardString(
     raw?.card_intro,
     raw?.search_card?.intro_candidate,
@@ -5405,6 +5426,7 @@ function buildDiscoveryCardPayload(raw, candidate) {
     contract_version: SHOPPING_CARD_CONTRACT_VERSION,
     title,
     ...(subtitle ? { subtitle } : {}),
+    ...(highlight ? { highlight } : {}),
     ...(proofBadge ? { proof_badge: proofBadge } : {}),
     ...(intro ? { intro } : {}),
     ...(marketSignalBadges.length ? { market_signal_badges: marketSignalBadges } : {}),
@@ -5432,6 +5454,7 @@ function formatDiscoveryResponseProduct(candidate, request = null) {
     const searchCard = {
       title_candidate: shoppingCard.title,
       ...(shoppingCard.subtitle ? { compact_candidate: shoppingCard.subtitle } : {}),
+      ...(shoppingCard.highlight ? { highlight_candidate: shoppingCard.highlight } : {}),
       ...(shoppingCard.proof_badge ? { proof_badge_candidate: shoppingCard.proof_badge } : {}),
       ...(shoppingCard.intro ? { intro_candidate: shoppingCard.intro } : {}),
     };
@@ -5469,6 +5492,7 @@ function formatDiscoveryResponseProduct(candidate, request = null) {
         : {}),
       card_title: shoppingCard.title,
       ...(shoppingCard.subtitle ? { card_subtitle: shoppingCard.subtitle } : {}),
+      ...(shoppingCard.highlight ? { card_highlight: shoppingCard.highlight } : {}),
       ...(shoppingCard.proof_badge ? { card_badge: shoppingCard.proof_badge } : {}),
       ...(shoppingCard.intro ? { card_intro: shoppingCard.intro } : {}),
       search_card: searchCard,

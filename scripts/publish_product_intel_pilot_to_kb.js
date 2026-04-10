@@ -70,6 +70,17 @@ function buildKbEntriesForRow(row) {
     field_sources: row?.selected?.field_sources || {},
     evidence_profile: asString(selectedBundle?.evidence_profile || ''),
     quality_state: asString(selectedBundle?.quality_state || ''),
+    external_highlight_review_status: asString(
+      selectedBundle?.provenance?.external_highlight_review_status ||
+        row?.review_decision ||
+        row?.decision ||
+        '',
+    ),
+    external_evidence_generated_at: asString(
+      selectedBundle?.provenance?.external_evidence_generated_at || '',
+    ),
+    external_evidence_model: asString(selectedBundle?.provenance?.external_evidence_model || ''),
+    external_review_batch: asString(selectedBundle?.provenance?.external_review_batch || ''),
   };
 
   const analysis = {

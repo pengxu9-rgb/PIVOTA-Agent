@@ -449,6 +449,18 @@ describe('product_intel pilot compare selection', () => {
       selected,
       {
       notes: 'curated rewrite',
+      external_highlight_signals: [
+        {
+          signal_id: 'creator_1',
+          source_type: 'creator_social_consensus',
+          claim_type: 'card_hook',
+          claim_text: 'Creators often point to the smooth finish.',
+          surface_text: 'Creators: smooth finish',
+          independence_count: 4,
+          sponsorship_status: 'organic',
+          evidence_strength: 'strong',
+        },
+      ],
       product_intel_core: {
         what_it_is: {
           headline: 'Treatment serum',
@@ -479,8 +491,11 @@ describe('product_intel pilot compare selection', () => {
       expect.objectContaining({
         title_candidate: 'Naturium Vitamin C Super Serum Plus - Jumbo',
         compact_candidate: 'Multi-Active Serum',
+        highlight_candidate: 'Creators: smooth finish',
       }),
     );
+    expect(overridden.bundle.shopping_card.highlight).toBe('Creators: smooth finish');
+    expect(overridden.field_sources.external_highlight_signals).toBe('manual');
   });
 
   test('builds shopping card payload from selected bundle and hard evidence', () => {

@@ -23,6 +23,18 @@ describe('pivotaInsightsCoverage', () => {
       productIntel: {
         evidence_profile: 'seller_only',
         quality_state: 'limited',
+        external_highlight_signals: [
+          {
+            signal_id: 'creator_1',
+            source_type: 'creator_social_consensus',
+            claim_type: 'card_hook',
+            claim_text: 'Creators often point to the lightweight finish.',
+            surface_text: 'Creators: lightweight finish',
+            independence_count: 4,
+            sponsorship_status: 'organic',
+            evidence_strength: 'strong',
+          },
+        ],
         product_intel_core: {
           what_it_is: {
             body: 'A multi-active treatment serum that targets tone and texture.',
@@ -45,6 +57,7 @@ describe('pivotaInsightsCoverage', () => {
         contract_version: 'pivota.shopping_card.v1',
         title: 'Naturium Vitamin C Super Serum Plus',
         subtitle: 'Multi-Active Serum',
+        highlight: 'Creators: lightweight finish',
         proof_badge: '4.7★ (228)',
       }),
     );
@@ -52,9 +65,16 @@ describe('pivotaInsightsCoverage', () => {
       expect.objectContaining({
         title_candidate: 'Naturium Vitamin C Super Serum Plus',
         compact_candidate: 'Multi-Active Serum',
+        highlight_candidate: 'Creators: lightweight finish',
         proof_badge_candidate: '4.7★ (228)',
       }),
     );
+    expect(candidate.external_highlight_preview).toEqual([
+      expect.objectContaining({
+        signal_id: 'creator_1',
+        surfaceable: true,
+      }),
+    ]);
   });
 
   test('builds a review packet from coverage candidates', () => {
@@ -71,8 +91,37 @@ describe('pivotaInsightsCoverage', () => {
         shopping_card: {
           title: 'Naturium Vitamin C Super Serum Plus',
           subtitle: 'Multi-Active Serum',
+          highlight: 'Creators often point to the lightweight',
           proof_badge: '',
         },
+        search_card: {
+          compact_candidate: 'Multi-Active Serum',
+          highlight_candidate: 'Creators often point to the lightweight',
+        },
+        external_highlight_preview: [
+          {
+            signal_id: 'creator_1',
+            source_type: 'creator_social_consensus',
+            claim_type: 'card_hook',
+            claim_text: 'Creators often point to the lightweight finish.',
+            stance: 'positive',
+            evidence_strength: 'strong',
+            surfaceable: true,
+            surface_targets: ['shopping_card_highlight', 'search_card_intro'],
+          },
+        ],
+        highlight_sources_summary: [
+          {
+            signal_id: 'creator_1',
+            source_type: 'creator_social_consensus',
+            claim_type: 'card_hook',
+            evidence_strength: 'strong',
+            independence_count: 4,
+            sponsorship_status: 'organic',
+            surfaceable: true,
+            source_labels: [],
+          },
+        ],
         pivota_insights: {
           what_it_is: 'A multi-active treatment serum that targets tone and texture.',
           why_it_stands_out: [
@@ -91,9 +140,11 @@ describe('pivotaInsightsCoverage', () => {
         case_id: 'coverage_ext_demo_1',
         review_status: 'pending',
         decision: 'pending',
+        review_decision: 'pending',
         shopping_card: expect.objectContaining({
           title: 'Naturium Vitamin C Super Serum Plus',
           subtitle: 'Multi-Active Serum',
+          highlight: 'Creators often point to the lightweight',
         }),
       }),
     );

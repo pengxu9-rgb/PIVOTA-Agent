@@ -1320,14 +1320,10 @@ describe('discovery feed service', () => {
           proof_badge: '4.9★ (128)',
           market_signal_badges: [
             { badge_type: 'review_signal', badge_label: '4.9★ (128)' },
-            { badge_type: 'configured_badge', badge_label: 'Top Pick' },
-            { badge_type: 'editorial_signal', badge_label: 'Top Pick' },
           ],
         },
         market_signal_badges: [
           { badge_type: 'review_signal', badge_label: '4.9★ (128)' },
-          { badge_type: 'configured_badge', badge_label: 'Top Pick' },
-          { badge_type: 'editorial_signal', badge_label: 'Top Pick' },
         ],
       }),
     );
@@ -1366,7 +1362,7 @@ describe('discovery feed service', () => {
             card_title: 'Nike Air Max Running Shoes',
             search_card: {
               compact_candidate: 'Men’s black air-cushion sneaker',
-              proof_badge_candidate: 'Seen in 4 editor picks',
+              highlight_candidate: 'Visible air cushioning',
               intro_candidate: 'Running shoe with visible air cushioning.',
             },
             market_signal_badges: [
@@ -1387,34 +1383,22 @@ describe('discovery feed service', () => {
         product_id: 'air_max',
         card_title: 'Nike Air Max Running Shoes',
         card_subtitle: 'Men’s black air-cushion sneaker',
-        card_badge: 'Seen in 4 editor picks',
+        card_highlight: 'Visible air cushioning',
         card_intro: 'Running shoe with visible air cushioning.',
         search_card: {
           title_candidate: 'Nike Air Max Running Shoes',
           compact_candidate: 'Men’s black air-cushion sneaker',
-          proof_badge_candidate: 'Seen in 4 editor picks',
+          highlight_candidate: 'Visible air cushioning',
           intro_candidate: 'Running shoe with visible air cushioning.',
         },
         shopping_card: {
           contract_version: 'pivota.shopping_card.v1',
           title: 'Nike Air Max Running Shoes',
           subtitle: 'Men’s black air-cushion sneaker',
-          proof_badge: 'Seen in 4 editor picks',
+          highlight: 'Visible air cushioning',
           intro: 'Running shoe with visible air cushioning.',
-          market_signal_badges: [
-            {
-              badge_type: 'editorial_signal',
-              badge_label: 'Seen in 4 editor picks',
-            },
-          ],
           evidence_profile: 'mixed',
         },
-        market_signal_badges: [
-          {
-            badge_type: 'editorial_signal',
-            badge_label: 'Seen in 4 editor picks',
-          },
-        ],
       }),
     );
   });
@@ -1446,6 +1430,7 @@ describe('discovery feed service', () => {
             contract_version: 'pivota.shopping_card.v1',
             title: 'Naturium Vitamin C Super Serum Plus - Jumbo',
             subtitle: 'Multi-Active Serum',
+            highlight: 'Creators often point to the smooth finish',
             proof_badge: '4.9★ (128)',
             intro:
               'A multi-active treatment serum that combines vitamin C, retinol, niacinamide, hyaluronic acid, and salicylic acid.',
@@ -1453,6 +1438,7 @@ describe('discovery feed service', () => {
           search_card: {
             title_candidate: 'Naturium Vitamin C Super Serum Plus - Jumbo',
             compact_candidate: 'Multi-Active Serum',
+            highlight_candidate: 'Creators often point to the smooth finish',
             proof_badge_candidate: '4.9★ (128)',
             intro_candidate:
               'A multi-active treatment serum that combines vitamin C, retinol, niacinamide, hyaluronic acid, and salicylic acid.',
@@ -1498,12 +1484,14 @@ describe('discovery feed service', () => {
         },
         card_title: 'Naturium Vitamin C Super Serum Plus - Jumbo',
         card_subtitle: 'Multi-Active Serum',
+        card_highlight: 'Creators often point to the smooth finish',
         card_badge: '4.9★ (128)',
         card_intro:
           'A multi-active treatment serum that combines vitamin C, retinol, niacinamide, hyaluronic acid, and salicylic acid.',
         search_card: expect.objectContaining({
           title_candidate: 'Naturium Vitamin C Super Serum Plus - Jumbo',
           compact_candidate: 'Multi-Active Serum',
+          highlight_candidate: 'Creators often point to the smooth finish',
           proof_badge_candidate: '4.9★ (128)',
           intro_candidate:
             'A multi-active treatment serum that combines vitamin C, retinol, niacinamide, hyaluronic acid, and salicylic acid.',
@@ -1512,6 +1500,7 @@ describe('discovery feed service', () => {
           contract_version: 'pivota.shopping_card.v1',
           title: 'Naturium Vitamin C Super Serum Plus - Jumbo',
           subtitle: 'Multi-Active Serum',
+          highlight: 'Creators often point to the smooth finish',
           proof_badge: '4.9★ (128)',
           intro:
             'A multi-active treatment serum that combines vitamin C, retinol, niacinamide, hyaluronic acid, and salicylic acid.',

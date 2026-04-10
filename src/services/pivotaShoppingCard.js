@@ -1,3 +1,13 @@
+const {
+  filterSurfaceableExternalHighlightSignals,
+  normalizeExternalHighlightSignals,
+  pickSurfaceableExternalHighlightSignal,
+  buildDisplayableProofBadge,
+  filterDisplayableMarketSignalBadges,
+  normalizeMarketSignalBadges,
+  normalizeSurfaceText,
+} = require('./pivotaEvidenceSignals');
+
 function asString(value) {
   if (typeof value === 'string') return value.trim();
   if (value == null) return '';
@@ -38,6 +48,15 @@ function toHeadlineCase(value) {
     .join(' ');
 }
 
+function compactText(value, maxChars) {
+  const text = asString(value).replace(/\s+/g, ' ').trim();
+  if (!text || !Number.isFinite(maxChars) || maxChars <= 0) return '';
+  if (text.length <= maxChars) return text;
+  const trimmed = text.slice(0, maxChars);
+  const boundary = trimmed.lastIndexOf(' ');
+  return (boundary >= Math.floor(maxChars * 0.6) ? trimmed.slice(0, boundary) : trimmed).trim();
+}
+
 function inferRoutineLabel(step, fallbackCategory) {
   const stepText = asString(step).toLowerCase();
   if (stepText === 'serum') return 'serum';
@@ -62,17 +81,26 @@ function compactWhatItIsHeadline(headline) {
 }
 
 function normalizeBadgeCandidates(value) {
-  return toList(value)
-    .map((item) => {
-      const row = item && typeof item === 'object' ? item : null;
-      const badgeLabel = asString(row?.badge_label || row?.label || item);
-      if (!badgeLabel) return null;
-      return {
-        badge_type: asString(row?.badge_type || row?.type),
-        badge_label: badgeLabel,
-      };
-    })
-    .filter(Boolean);
+  return normalizeMarketSignalBadges(toList(value)).map((badge) => ({
+    badge_type: asString(badge.badge_type),
+    badge_label: asString(badge.badge_label),
+  }));
+}
+
+function normalizeHighlightCandidates(value) {
+  return normalizeExternalHighlightSignals(value).map((signal) => ({
+    signal_id: asString(signal.signal_id),
+    source_type: asString(signal.source_type),
+    claim_type: asString(signal.claim_type),
+    claim_text: asString(signal.claim_text),
+    ...(asString(signal.surface_text) ? { surface_text: asString(signal.surface_text) } : {}),
+    stance: asString(signal.stance),
+    evidence_strength: asString(signal.evidence_strength),
+    sponsorship_status: asString(signal.sponsorship_status),
+    independence_count: Number(signal.independence_count || 0) || 0,
+    surfaceable: signal.surfaceable === true,
+    surface_targets: toList(signal.surface_targets),
+  }));
 }
 
 function buildCompactSubtitle({ product, bundle }) {
@@ -108,50 +136,14 @@ function buildCompactSubtitle({ product, bundle }) {
 
 function buildProofBadge({ product, bundle }) {
   const safeProduct = product && typeof product === 'object' ? product : {};
-  const explicit = normalizeBadgeCandidates(
-    bundle?.market_signal_badges || safeProduct.market_signal_badges,
+  return buildDisplayableProofBadge(
+    {
+      market_signal_badges: bundle?.market_signal_badges || safeProduct.market_signal_badges,
+      review_summary: bundle?.review_summary || safeProduct.review_summary,
+      community_signals: bundle?.community_signals || safeProduct.community_signals,
+    },
+    { formatCompactCount },
   );
-  if (explicit.length) return explicit[0];
-
-  const review =
-    safeProduct.review_summary && typeof safeProduct.review_summary === 'object'
-      ? safeProduct.review_summary
-      : {};
-  const rating = Number(review.rating || review.average_rating || 0) || 0;
-  const reviewCount = Number(review.review_count || review.reviewCount || 0) || 0;
-  if (rating >= 4.5 && reviewCount >= 100) {
-    return {
-      badge_type: 'review_signal',
-      badge_label: `${rating.toFixed(1)}★ (${formatCompactCount(reviewCount)})`,
-    };
-  }
-
-  const counts =
-    safeProduct.community_signals && typeof safeProduct.community_signals === 'object'
-      ? safeProduct.community_signals.source_counts || {}
-      : {};
-  const editorial = Number(counts.editorial || 0) || 0;
-  const creatorMentions = Number(counts.creator_mentions || counts.creatorMentions || 0) || 0;
-  const media = Number(counts.media || 0) || 0;
-  if (editorial >= 3) {
-    return {
-      badge_type: 'editorial_signal',
-      badge_label: `Seen in ${editorial} editor picks`,
-    };
-  }
-  if (creatorMentions >= 8) {
-    return {
-      badge_type: 'creator_signal',
-      badge_label: `Seen in ${creatorMentions} creator mentions`,
-    };
-  }
-  if (media >= 3) {
-    return {
-      badge_type: 'media_signal',
-      badge_label: `Seen in ${media} media mentions`,
-    };
-  }
-  return null;
 }
 
 function buildTitleCandidate(product) {
@@ -163,13 +155,55 @@ function buildTitleCandidate(product) {
   return `${brand} ${title}`.trim();
 }
 
+function buildCardIntro({ bundle }) {
+  const explicitIntro = asString(
+    bundle?.search_card?.intro_candidate || bundle?.shopping_card?.intro,
+  );
+  if (explicitIntro) return compactText(explicitIntro, 90);
+  const signal = pickSurfaceableExternalHighlightSignal(bundle?.external_highlight_signals, {
+    surfaceTarget: 'search_card_intro',
+  });
+  if (signal?.claim_text) return compactText(signal.claim_text, 90);
+  return asString(bundle?.product_intel_core?.what_it_is?.body);
+}
+
+function buildCardHighlight({ bundle }) {
+  const explicitHighlight = asString(
+    bundle?.search_card?.highlight_candidate || bundle?.shopping_card?.highlight,
+  );
+  if (explicitHighlight) return normalizeSurfaceText(explicitHighlight);
+  const signal = pickSurfaceableExternalHighlightSignal(bundle?.external_highlight_signals, {
+    surfaceTarget: 'shopping_card_highlight',
+  });
+  return normalizeSurfaceText(signal?.surface_text) || normalizeSurfaceText(signal?.claim_text);
+}
+
 function buildShoppingCardPayload({ product, bundle }) {
   const title = buildTitleCandidate(product);
   const subtitle = buildCompactSubtitle({ product, bundle });
   const proofBadge = buildProofBadge({ product, bundle });
-  const intro = asString(bundle?.product_intel_core?.what_it_is?.body);
-  const marketSignalBadges = normalizeBadgeCandidates(
-    bundle?.market_signal_badges || (proofBadge ? [proofBadge] : []),
+  const highlight = buildCardHighlight({ bundle });
+  const intro = buildCardIntro({ bundle });
+  const explicitBadges =
+    Array.isArray(bundle?.market_signal_badges) && bundle.market_signal_badges.length
+      ? bundle.market_signal_badges
+      : proofBadge
+        ? [proofBadge]
+        : [];
+  const evidenceContext = {
+    market_signal_badges: bundle?.market_signal_badges || product?.market_signal_badges,
+    review_summary: bundle?.review_summary || product?.review_summary,
+    community_signals: bundle?.community_signals || product?.community_signals,
+  };
+  const marketSignalBadges = filterDisplayableMarketSignalBadges(
+    explicitBadges,
+    evidenceContext,
+  ).map((badge) => ({
+    badge_type: asString(badge.badge_type),
+    badge_label: asString(badge.badge_label),
+  }));
+  const visibleExternalHighlights = filterSurfaceableExternalHighlightSignals(
+    bundle?.external_highlight_signals,
   );
 
   return {
@@ -177,8 +211,12 @@ function buildShoppingCardPayload({ product, bundle }) {
     title,
     ...(subtitle ? { subtitle } : {}),
     ...(proofBadge?.badge_label ? { proof_badge: proofBadge.badge_label } : {}),
+    ...(highlight ? { highlight } : {}),
     ...(intro ? { intro } : {}),
     ...(marketSignalBadges.length ? { market_signal_badges: marketSignalBadges } : {}),
+    ...(visibleExternalHighlights.length
+      ? { external_highlight_signals: normalizeHighlightCandidates(visibleExternalHighlights) }
+      : {}),
     ...(asString(bundle?.evidence_profile) ? { evidence_profile: asString(bundle.evidence_profile) } : {}),
   };
 }
@@ -188,16 +226,20 @@ function buildSearchCardPayload({ product, bundle }) {
   return {
     title_candidate: shoppingCard.title,
     ...(shoppingCard.subtitle ? { compact_candidate: shoppingCard.subtitle } : {}),
+    ...(shoppingCard.highlight ? { highlight_candidate: compactText(shoppingCard.highlight, 40) } : {}),
     ...(shoppingCard.proof_badge ? { proof_badge_candidate: shoppingCard.proof_badge } : {}),
-    ...(shoppingCard.intro ? { intro_candidate: shoppingCard.intro } : {}),
+    ...(shoppingCard.intro ? { intro_candidate: compactText(shoppingCard.intro, 90) } : {}),
   };
 }
 
 module.exports = {
   buildCompactSubtitle,
+  buildCardHighlight,
+  buildCardIntro,
   buildProofBadge,
   buildSearchCardPayload,
   buildShoppingCardPayload,
   buildTitleCandidate,
   normalizeBadgeCandidates,
+  normalizeHighlightCandidates,
 };

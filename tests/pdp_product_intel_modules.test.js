@@ -62,6 +62,17 @@ describe('pdp product intel bundle shaping', () => {
     expect(bundle.product_intel_core.what_it_is.body).toMatch(/daily gel-cream moisturizer/i);
     expect(bundle.texture_finish.texture).toBe('gel-cream');
     expect(bundle.community_signals.status).toBe('available');
+    expect(bundle.external_highlight_signals).toEqual([]);
+    expect(bundle.shopping_card).toEqual(
+      expect.objectContaining({
+        contract_version: 'pivota.shopping_card.v1',
+      }),
+    );
+    expect(bundle.search_card).toEqual(
+      expect.objectContaining({
+        title_candidate: expect.any(String),
+      }),
+    );
   });
 
   test('seller-only bundles keep community signals unavailable', () => {
@@ -98,6 +109,7 @@ describe('pdp product intel bundle shaping', () => {
     expect(bundle.evidence_profile).toBe('seller_only');
     expect(bundle.product_intel_core.confidence.overall).toBe('moderate');
     expect(bundle.community_signals.status).toBe('unavailable');
+    expect(bundle.external_highlight_signals).toEqual([]);
   });
 
   test('draft intel bundle stays offline-only and does not unlock runtime modules by itself', () => {
@@ -121,6 +133,8 @@ describe('pdp product intel bundle shaping', () => {
     expect(draft.product_intel_core.what_it_is.body).toMatch(/sunscreen/i);
     expect(draft.evidence_profile).toBe('seller_plus_formula');
     expect(draft.community_signals.status).toBe('unavailable');
+    expect(draft.shopping_card.contract_version).toBe('pivota.shopping_card.v1');
+    expect(draft.search_card.title_candidate).toBeTruthy();
   });
 
   test('seller-only drafts compact overlong what_it_is narrative', () => {
@@ -184,6 +198,26 @@ describe('pdp product intel bundle shaping', () => {
         confidence: 'low',
         evidence_profile: 'seller_only',
       },
+      external_highlight_signals: [
+        {
+          signal_id: 'creator_1',
+          source_type: 'creator_social_consensus',
+          claim_type: 'card_hook',
+          claim_text: 'Creators often point to the lightweight finish.',
+          independence_count: 4,
+          sponsorship_status: 'organic',
+          evidence_strength: 'strong',
+        },
+      ],
+      shopping_card: {
+        contract_version: 'pivota.shopping_card.v1',
+        title: 'Demo product',
+        highlight: 'Creators often point to the lightweight',
+      },
+      search_card: {
+        title_candidate: 'Demo product',
+        highlight_candidate: 'Creators often point to the lightweight',
+      },
       quality_state: 'limited',
       evidence_profile: 'seller_only',
     });
@@ -191,6 +225,14 @@ describe('pdp product intel bundle shaping', () => {
     expect(bundle.product_intel_core.what_it_is.body.length).toBeLessThanOrEqual(320);
     expect(bundle.product_intel_core.what_it_is.body).not.toMatch(/^Double up and save with/i);
     expect(bundle.product_intel_core.what_it_is.body).not.toMatch(/in an 8-week clinical study/i);
+    expect(bundle.external_highlight_signals).toEqual([
+      expect.objectContaining({
+        signal_id: 'creator_1',
+        surfaceable: true,
+      }),
+    ]);
+    expect(bundle.shopping_card.highlight).toBe('Creators often point to the lightweight');
+    expect(bundle.search_card.highlight_candidate).toBe('Creators often point to the lightweight');
   });
 
   test('published bundles expose reviewed shopping and search card metadata', () => {

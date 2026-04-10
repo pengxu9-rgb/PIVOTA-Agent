@@ -6,8 +6,10 @@ const {
   buildPilotCaseFromExternalSeedProduct,
   buildPilotCaseFromPdpResponse,
   buildPilotCaseFromSearchCandidate,
+  extractReviewsPreviewSummary,
   extractProductIdsFromFrontendHtml,
   fetchDiscoveryCandidates,
+  fetchPdpResponse,
   hasBadgeEvidence,
   loadCoveredProductIdSet,
   loadCoveredProductIdSetFromReport,
@@ -152,6 +154,82 @@ describe('build_product_intel_live_pilot_cases', () => {
     });
   });
 
+  test('extracts review summary from reviews_preview module', () => {
+    expect(
+      extractReviewsPreviewSummary({
+        modules: [
+          {
+            type: 'reviews_preview',
+            data: {
+              scale: 5,
+              rating: 4.7,
+              review_count: 182,
+            },
+          },
+        ],
+      }),
+    ).toEqual({
+      rating: 4.7,
+      review_count: 182,
+    });
+
+    expect(
+      extractReviewsPreviewSummary({
+        modules: [
+          {
+            type: 'reviews_preview',
+            data: {
+              scale: 5,
+              rating: 0,
+              review_count: 0,
+            },
+          },
+        ],
+      }),
+    ).toBeUndefined();
+  });
+
+  test('uses reviews_preview review summary when live PDP exposes review aggregate', () => {
+    const response = {
+      subject: {
+        canonical_product_ref: {
+          merchant_id: 'external_seed',
+          product_id: 'ext_reviewed123',
+        },
+      },
+      modules: [
+        {
+          type: 'canonical',
+          data: {
+            pdp_payload: {
+              product: {
+                title: 'Hydra Barrier Cream',
+                brand: { name: 'Byoma' },
+                category_path: ['Skincare', 'Moisturizer'],
+                description: 'A barrier cream for dry, reactive skin.',
+              },
+            },
+          },
+        },
+        {
+          type: 'reviews_preview',
+          data: {
+            scale: 5,
+            rating: 4.7,
+            review_count: 182,
+            preview_items: [],
+          },
+        },
+      ],
+    };
+
+    const row = buildPilotCaseFromPdpResponse(response);
+    expect(row.product.review_summary).toEqual({
+      rating: 4.7,
+      review_count: 182,
+    });
+  });
+
   test('builds a live pilot case from external seed product fallback', () => {
     expect(
       buildPilotCaseFromExternalSeedProduct({
@@ -214,6 +292,32 @@ describe('build_product_intel_live_pilot_cases', () => {
           page: 2,
           limit: 24,
           response_detail: 'card',
+        }),
+      }),
+      expect.any(Object),
+    );
+  });
+
+  test('requests reviews_preview when fetching live PDP responses', async () => {
+    axios.post.mockResolvedValueOnce({
+      data: {
+        status: 'success',
+      },
+    });
+
+    await expect(fetchPdpResponse('https://agent.pivota.cc/api/gateway', 'ext_demo')).resolves.toEqual({
+      status: 'success',
+    });
+
+    expect(axios.post).toHaveBeenCalledWith(
+      'https://agent.pivota.cc/api/gateway',
+      expect.objectContaining({
+        operation: 'get_pdp_v2',
+        payload: expect.objectContaining({
+          product_ref: {
+            product_id: 'ext_demo',
+          },
+          include: expect.arrayContaining(['canonical', 'product_intel', 'reviews_preview']),
         }),
       }),
       expect.any(Object),
@@ -378,6 +482,23 @@ describe('build_product_intel_live_pilot_cases', () => {
               creator_mentions: 12,
             },
           },
+        },
+      }),
+    ).toBe(false);
+
+    expect(
+      hasBadgeEvidence({
+        product: {
+          market_signal_badges: [
+            {
+              badge_type: 'creator_signal',
+              badge_label: 'Seen across creator routines',
+              source_type: 'creator_consensus',
+              sponsorship_status: 'organic',
+              evidence_strength: 'strong',
+              independence_count: 3,
+            },
+          ],
         },
       }),
     ).toBe(true);
