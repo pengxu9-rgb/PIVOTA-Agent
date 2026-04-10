@@ -19265,10 +19265,12 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
   const internalLevels = [];
   for (const level of levels) {
     const queries = Array.isArray(level?.queries) ? level.queries : [];
+    const levelId = String(level?.ladder_level || level?.stage_id || '').trim().toLowerCase();
     const allowExternalSeedOnly =
       queries.length > 0 &&
       queries.every((query) => query && query.allow_external_seed === true);
-    if (allowExternalSeedOnly) {
+    const keepPrimaryExternalSupplement = levelId === 'framework_stage_b_primary_external_seed';
+    if (allowExternalSeedOnly && !keepPrimaryExternalSupplement) {
       skippedExternalSeedLevels.push(
         String(level?.ladder_level || level?.stage_id || '').trim() || `level_${skippedExternalSeedLevels.length + 1}`,
       );
@@ -19287,6 +19289,11 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
     keptLevels.push(primaryInternalLevel);
     for (const level of internalLevels) {
       if (level === primaryInternalLevel) continue;
+      const levelId = String(level?.ladder_level || level?.stage_id || '').trim().toLowerCase();
+      if (levelId === 'framework_stage_b_primary_external_seed') {
+        keptLevels.push(level);
+        continue;
+      }
       skippedSupportLevels.push(
         String(level?.ladder_level || level?.stage_id || '').trim() || `level_${skippedSupportLevels.length + 1}`,
       );

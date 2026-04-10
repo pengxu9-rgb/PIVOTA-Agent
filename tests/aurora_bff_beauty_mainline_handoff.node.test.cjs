@@ -344,7 +344,7 @@ test('handoffRecoToBeautyMainlineSearch clamps local internal primitive timeout 
   }
 });
 
-test('handoffRecoToBeautyMainlineSearch trims framework local handoff to primary internal preflight and records skipped levels', async () => {
+test('handoffRecoToBeautyMainlineSearch keeps primary internal plus primary external supplement and records skipped support levels', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     const captured = [];
@@ -388,6 +388,9 @@ test('handoffRecoToBeautyMainlineSearch trims framework local handoff to primary
         'oil control serum',
         'shine control serum',
         'mattifying serum',
+        'oil control treatment',
+        'oil control serum',
+        'shine control serum',
       ],
     );
     assert.equal(captured.every((row) => row.callerLane === 'beauty_chat_handoff'), true);
@@ -395,13 +398,12 @@ test('handoffRecoToBeautyMainlineSearch trims framework local handoff to primary
     assert.equal(captured.every((row) => row.timeoutMs === 4800), true);
     assert.equal(out.searchResult?.query_source, 'beauty_mainline_local_handoff');
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.planned_level_count, 6);
-    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_level_count, 1);
-    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.skipped_external_seed_level_count, 3);
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_level_count, 2);
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.skipped_external_seed_level_count, 2);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.skipped_support_level_count, 2);
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.skipped_external_seed_levels,
       [
-        'framework_stage_b_primary_external_seed',
         'framework_stage_c_support_lightweight_moisturizer_external_seed',
         'framework_stage_c_support_daily_sunscreen_external_seed',
       ],
@@ -548,7 +550,7 @@ test('handoffRecoToBeautyMainlineSearch rescues local framework strict-empty via
     );
     assert.equal(
       out.searchResult?.metadata?.local_handoff_preflight?.search_stage_ledger?.local_handoff?.executed_level_count,
-      1,
+      2,
     );
     assert.equal(
       out.searchResult?.metadata?.local_handoff_preflight?.search_stage_ledger?.local_handoff?.skipped_support_level_count,

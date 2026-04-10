@@ -355,7 +355,7 @@ function buildBeautyMainlineRecallPlan({ mode, semanticContract = null, rawQuery
         maxAttemptsForStage: Math.min(primaryExternalQueries.length || 1, 3),
         stopOnViableMatch: true,
         reasonForInclusion: 'framework_primary_external_seed',
-        runIf: 'if_no_primary_viable_or_transient_only',
+        runIf: 'if_surface_count_below_target',
         preferredStep: primaryPreferredStep,
         slot: inferBeautyMainlineSlot(primaryPreferredStep),
       }),
