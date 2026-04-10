@@ -71,11 +71,14 @@ test('reco assistant rewrite prompt omits deterministic base text and carries re
     assert.match(prompt, /"user_request":"I am oily skin\. What product should I buy\?"/);
     assert.match(prompt, /If request_mode is "buy", use direct shopping advice tone\./);
     assert.match(prompt, /If request_mode is "buy" and there is one selected product, the first sentence must directly recommend that product by name\./);
-    assert.match(prompt, /If request_mode is "buy" and there are multiple selected products, the first sentence must name the best first buy and signal that the remaining selected products are comparison options\./);
-    assert.match(prompt, /If there are multiple selected products, present them as a concise horizontal comparison and name each selected product exactly once if space allows\./);
+    assert.match(prompt, /If request_mode is "buy" and selected_product_role_mix is "same_role_comparison", the first sentence must name the best first buy and signal that the remaining selected products are same-slot comparison options\./);
+    assert.match(prompt, /If request_mode is "buy" and selected_product_role_mix is "routine_mix", the first sentence must name the best first buy and frame selected products from different roles as routine add-ons; only same-role products may be same-slot alternatives\./);
+    assert.match(prompt, /If selected_product_role_mix is "same_role_comparison", present a concise horizontal comparison and name each selected product exactly once if space allows\./);
+    assert.match(prompt, /If selected_product_role_mix is "routine_mix", present a basic routine by role or step, and do not imply products from different roles are interchangeable\./);
+    assert.match(prompt, /If known_price_count is 2 or more, compare price\/value or ROI in plain shopper terms using only listed prices; do not compute per-use ROI, percentages, or size-normalized value unless Context provides size and usage data\./);
     assert.match(prompt, /Use selected_product_details\.compare_highlights and selected_product_details\.pivota_insights when available; do not invent highlights that are absent from Context\./);
     assert.match(prompt, /If request_mode is "buy" and there is one selected product with no secondary targets, use exactly 2 sentences\./);
-    assert.match(prompt, /If selected_target_ids has length 1 and secondary_targets is empty, do not add future routine-building suggestions or extra steps\./);
+    assert.match(prompt, /If selected_target_ids has length 1, secondary_targets is empty, and selected_product_role_mix is not "routine_mix", do not add future routine-building suggestions or extra steps\./);
     assert.match(prompt, /Use plain shopper-facing skincare language\. Avoid vague phrases like "surface activity"\./);
     assert.match(prompt, /Avoid generic filler like "great choice", "balanced complexion", or "solution for oiliness"\./);
     assert.match(prompt, /Use selected_product_details\.why_this_one, selected_product_details\.best_for, and selected_product_details\.key_features as the concrete reason layer when available\./);
@@ -83,6 +86,8 @@ test('reco assistant rewrite prompt omits deterministic base text and carries re
     assert.match(prompt, /"short_description":"Helps reduce visible shine without feeling heavy\."/);
     assert.match(prompt, /"key_features":\[\]/);
     assert.match(prompt, /"price":\{"amount":12,"currency":"USD","unknown":false\}/);
+    assert.match(prompt, /"selected_product_role_mix":"single_product"/);
+    assert.match(prompt, /"known_price_count":1/);
     assert.match(prompt, /"role_id":"oil_control_treatment"/);
     assert.doesNotMatch(prompt, /"role_id":"lightweight_moisturizer"/);
     assert.doesNotMatch(prompt, /"base_text":/);
@@ -90,6 +95,88 @@ test('reco assistant rewrite prompt omits deterministic base text and carries re
       prompt,
       /Primary recommendation focus: keep this pass centered on Niacinamide\./,
     );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('reco assistant rewrite prompt frames multi-role selections as routine mix with price ROI guard', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'oily_pick_1',
+            display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+            brand: 'The Ordinary',
+            category: 'Serum',
+            short_description: 'A lightweight oil-control serum for visible shine.',
+            price: { amount: 12, currency: 'USD', unknown: false },
+            matched_role_id: 'oil_control_treatment',
+            matched_role_label: 'Oil-control treatment',
+          },
+          {
+            product_id: 'routine_support_1',
+            display_name: 'LightLab Oil-Free Gel Cream',
+            brand: 'LightLab',
+            category: 'Moisturizer',
+            short_description: 'A lightweight gel cream moisturizer for oily skin.',
+            price: { amount: 28, currency: 'USD', unknown: false },
+            matched_role_id: 'lightweight_moisturizer',
+            matched_role_label: 'Lightweight moisturizer',
+          },
+        ],
+        roles: [
+          {
+            role_id: 'oil_control_treatment',
+            label: 'Oil-control treatment',
+            preferred_step: 'treatment',
+            why_this_role: 'Reduce excess sebum.',
+          },
+          {
+            role_id: 'lightweight_moisturizer',
+            label: 'Lightweight moisturizer',
+            preferred_step: 'moisturizer',
+            why_this_role: 'Support barrier without heaviness.',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'treatment',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Niacinamide',
+        resolved_target_step: 'treatment',
+        primary_target_id: 'oil_control_treatment',
+        ranked_targets: [
+          {
+            target_id: 'oil_control_treatment',
+            ingredient_query: 'Niacinamide',
+            resolved_target_step: 'treatment',
+          },
+        ],
+        selected_target_ids: ['oil_control_treatment'],
+      },
+    );
+    const prompt = __internal.buildRecoAssistantRewritePrompt({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily', goals: ['oil control'] },
+      userRequestText: 'im oily skin. what product should i buy?',
+    });
+
+    assert.match(prompt, /"selected_products":\["The Ordinary Niacinamide 10% \+ Zinc 1%","LightLab Oil-Free Gel Cream"\]/);
+    assert.match(prompt, /"selected_product_role_ids":\["oil_control_treatment","lightweight_moisturizer"\]/);
+    assert.match(prompt, /"selected_product_role_mix":"routine_mix"/);
+    assert.match(prompt, /"known_price_count":2/);
+    assert.match(prompt, /"price":\{"amount":12,"currency":"USD","unknown":false\}/);
+    assert.match(prompt, /"price":\{"amount":28,"currency":"USD","unknown":false\}/);
+    assert.match(prompt, /selected products from different roles as routine add-ons; only same-role products may be same-slot alternatives/);
+    assert.match(prompt, /present a basic routine by role or step, and do not imply products from different roles are interchangeable/);
+    assert.match(prompt, /compare price\/value or ROI in plain shopper terms using only listed prices/);
+    assert.match(prompt, /do not compute per-use ROI, percentages, or size-normalized value unless Context provides size and usage data/);
   } finally {
     delete require.cache[moduleId];
   }

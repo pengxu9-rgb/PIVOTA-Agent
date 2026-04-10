@@ -4641,6 +4641,99 @@ test('__internal: framework pool surfaces multiple primary-role products before 
   assert.equal(state.group_target_fidelity.length, 3);
 });
 
+test('__internal: framework pool prioritizes routine support before same-role soft comparison when primary coverage is thin', async () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'routine_primary_oil_1',
+        merchant_id: 'merchant_routine_primary_oil_1',
+        brand: 'Strong',
+        name: 'Oil Control Serum',
+        display_name: 'Strong Oil Control Serum',
+        category: 'serum',
+        product_type: 'serum',
+        retrieval_source: 'catalog',
+        retrieval_query: 'oil control serum',
+        retrieval_step: 'treatment',
+        retrieval_role_id: 'oil_control_treatment',
+        benefit_tags: ['oil control', 'shine control', 'mattifying'],
+        search_aliases: ['shine control serum'],
+        short_description: 'A mattifying oil-control serum for oily skin.',
+      },
+      {
+        product_id: 'routine_support_moisturizer_1',
+        merchant_id: 'merchant_routine_support_moisturizer_1',
+        brand: 'LightLab',
+        name: 'Oil-Free Gel Cream',
+        display_name: 'LightLab Oil-Free Gel Cream',
+        category: 'moisturizer',
+        product_type: 'moisturizer',
+        retrieval_source: 'catalog',
+        retrieval_query: 'lightweight moisturizer',
+        retrieval_step: 'moisturizer',
+        retrieval_role_id: 'lightweight_moisturizer',
+        benefit_tags: ['lightweight', 'gel cream', 'oil-free'],
+        short_description: 'A lightweight oil-free gel cream moisturizer for oily skin.',
+      },
+      {
+        product_id: 'routine_soft_compare_oil_1',
+        merchant_id: 'merchant_routine_soft_compare_oil_1',
+        brand: 'Alt',
+        name: 'Balancing Serum',
+        display_name: 'Alt Balancing Serum',
+        category: 'serum',
+        product_type: 'serum',
+        retrieval_source: 'external_seed',
+        retrieval_query: 'balancing serum oily skin',
+        retrieval_step: 'treatment',
+        retrieval_role_id: 'oil_control_treatment',
+        short_description: 'A balancing serum for oily skin.',
+      },
+    ],
+    {
+      targetContext: {
+        framework_id: 'recofw_test_oily_routine_before_soft_compare',
+        primary_role_id: 'oil_control_treatment',
+        framework_roles: [
+          {
+            role_id: 'oil_control_treatment',
+            rank: 1,
+            preferred_step: 'treatment',
+            alternate_steps: ['serum'],
+            label: 'Oil-control treatment',
+            query_terms: ['oil control serum', 'shine control serum', 'mattifying serum', 'balancing serum oily skin'],
+            fit_keywords: ['oil control', 'shine control', 'mattifying', 'mattify', 'sebum', 'balancing', 'anti-shine', 'blemish'],
+          },
+          {
+            role_id: 'lightweight_moisturizer',
+            rank: 2,
+            preferred_step: 'moisturizer',
+            label: 'Lightweight moisturizer',
+            query_terms: ['lightweight moisturizer', 'gel cream', 'barrier lotion'],
+            fit_keywords: ['lightweight', 'gel cream', 'water gel', 'breathable', 'barrier lotion', 'oil-free'],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.equal(state.selected_candidate_count, 3);
+  assert.deepEqual(
+    state.selected_recommendations.map((item) => item?.product_id),
+    ['routine_primary_oil_1', 'routine_support_moisturizer_1', 'routine_soft_compare_oil_1'],
+  );
+  assert.deepEqual(
+    state.selected_recommendations.map((item) => item?.matched_role_id),
+    ['oil_control_treatment', 'lightweight_moisturizer', 'oil_control_treatment'],
+  );
+  assert.equal(state.routine_support_fill_applied, true);
+  assert.equal(state.routine_support_fill_count, 1);
+  assert.equal(state.comparison_fill_applied, true);
+  assert.equal(state.comparison_fill_count, 1);
+});
+
 test('__internal: framework pool backfills same-role soft matches for comparison once a strong primary winner exists', async () => {
   const { __internal } = loadRoutesFresh();
   const state = __internal.finalizeConcernFrameworkCandidatePools(

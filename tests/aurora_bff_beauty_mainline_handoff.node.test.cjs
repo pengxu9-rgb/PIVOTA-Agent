@@ -344,7 +344,7 @@ test('handoffRecoToBeautyMainlineSearch clamps local internal primitive timeout 
   }
 });
 
-test('handoffRecoToBeautyMainlineSearch executes primary external supplement with external-stage runtime contract and records skipped support levels', async () => {
+test('handoffRecoToBeautyMainlineSearch executes primary external supplement and planned routine support with runtime contract ledger', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     const captured = [];
@@ -407,6 +407,8 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement wit
         'niacinamide serum oily skin',
         'salicylic acid serum oily skin',
         'oil control serum',
+        'lightweight moisturizer oily skin',
+        'gel cream oily skin',
       ],
     );
     assert.equal(captured.every((row) => row.callerLane === 'beauty_chat_handoff'), true);
@@ -416,8 +418,12 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement wit
       [false, false, false],
     );
     assert.deepEqual(
-      captured.slice(3).map((row) => row.allowExternalSeed),
+      captured.slice(3, 7).map((row) => row.allowExternalSeed),
       [true, true, true, true],
+    );
+    assert.deepEqual(
+      captured.slice(7).map((row) => row.allowExternalSeed),
+      [false, false],
     );
     assert.equal(
       captured.slice(0, 3).every((row) =>
@@ -428,7 +434,7 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement wit
       true,
     );
     assert.equal(
-      captured.slice(3).every((row) =>
+      captured.slice(3, 7).every((row) =>
         row.targetStepFamily === 'treatment'
         && row.semanticFamily === 'oil_control'
         && row.queryStepStrength === 'strong_goal_family'
@@ -442,27 +448,41 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement wit
         && row.transportPolicy.actualHttpAttemptLimitPerQuery === 1),
       true,
     );
+    assert.equal(
+      captured.slice(7).every((row) =>
+        row.targetStepFamily === 'moisturizer'
+        && row.semanticFamily === 'lightweight_moisturizer'
+        && row.queryStepStrength === 'supportive_family'
+        && row.productOnly === true),
+      true,
+    );
     assert.equal(out.searchResult?.query_source, 'beauty_mainline_local_handoff');
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.planned_level_count, 6);
-    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_level_count, 2);
-    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_query_count, 7);
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_level_count, 3);
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_query_count, 9);
     assert.equal(
       out.searchResult?.metadata?.search_stage_ledger?.primary_search?.execution_lane,
       'beauty_mainline_local_handoff',
     );
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.skipped_external_seed_level_count, 2);
-    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.skipped_support_level_count, 2);
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_support_level_count, 1);
+    assert.deepEqual(
+      out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_support_levels,
+      ['framework_stage_c_support_lightweight_moisturizer'],
+    );
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.routine_support_strategy, 'primary_plus_first_internal_support');
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.skipped_support_level_count, 1);
     assert.equal(
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.transport_policy_mode,
       'framework_first_turn',
     );
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts?.map((row) => row?.source_scope),
-      ['internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed'],
+      ['internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal'],
     );
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts?.map((row) => row?.source_scope),
-      ['internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed'],
+      ['internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal'],
     );
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.skipped_external_seed_levels,
@@ -474,7 +494,6 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement wit
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.skipped_support_levels,
       [
-        'framework_stage_c_support_lightweight_moisturizer',
         'framework_stage_c_support_daily_sunscreen',
       ],
     );
