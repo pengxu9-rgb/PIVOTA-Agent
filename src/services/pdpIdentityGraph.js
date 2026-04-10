@@ -1052,16 +1052,41 @@ async function fetchBackfillProducts({ limit = 500, brandFilter = null, queryFn 
   const normalizedBrandFilter = normalizeBrandToken(brandFilter);
   const internalRows = [];
   const externalRows = [];
+  const titleBrandPattern = normalizedBrandFilter ? `%${normalizedBrandFilter}%` : null;
+
+  const internalParams = [EXTERNAL_SEED_MERCHANT_ID];
+  const internalWhere = ['merchant_id <> $1'];
+  if (normalizedBrandFilter) {
+    internalParams.push(normalizedBrandFilter);
+    const brandParam = `$${internalParams.length}`;
+    internalParams.push(titleBrandPattern);
+    const titleParam = `$${internalParams.length}`;
+    internalWhere.push(`
+      (
+        lower(trim(coalesce(
+          product_data #>> '{brand,name}',
+          product_data->>'brand',
+          product_data->>'brand_name',
+          product_data->>'vendor',
+          product_data->>'vendor_name',
+          ''
+        ))) = ${brandParam}
+        OR lower(coalesce(product_data->>'title', product_data->>'name', '')) LIKE ${titleParam}
+      )
+    `);
+  }
+  internalParams.push(normalizedLimit);
+  const internalLimitParam = `$${internalParams.length}`;
 
   const internalRes = await queryFn(
     `
       SELECT merchant_id, platform_product_id, product_data, cached_at
       FROM products_cache
-      WHERE merchant_id <> $1
+      WHERE ${internalWhere.join(' AND ')}
       ORDER BY cached_at DESC NULLS LAST
-      LIMIT $2
+      LIMIT ${internalLimitParam}
     `,
-    [EXTERNAL_SEED_MERCHANT_ID, normalizedLimit],
+    internalParams,
   );
   const seenInternal = new Set();
   for (const row of internalRes?.rows || []) {
@@ -1084,6 +1109,30 @@ async function fetchBackfillProducts({ limit = 500, brandFilter = null, queryFn 
     });
   }
 
+  const externalParams = [];
+  const externalWhere = [`status = 'active'`];
+  if (normalizedBrandFilter) {
+    externalParams.push(normalizedBrandFilter);
+    const brandParam = `$${externalParams.length}`;
+    externalParams.push(titleBrandPattern);
+    const titleParam = `$${externalParams.length}`;
+    externalWhere.push(`
+      (
+        lower(trim(coalesce(
+          seed_data #>> '{brand,name}',
+          seed_data->>'brand',
+          seed_data->>'brand_name',
+          seed_data->>'vendor',
+          seed_data->>'vendor_name',
+          ''
+        ))) = ${brandParam}
+        OR lower(coalesce(title, seed_data->>'title', seed_data->>'name', '')) LIKE ${titleParam}
+      )
+    `);
+  }
+  externalParams.push(normalizedLimit);
+  const externalLimitParam = `$${externalParams.length}`;
+
   const externalRes = await queryFn(
     `
       SELECT
@@ -1103,11 +1152,11 @@ async function fetchBackfillProducts({ limit = 500, brandFilter = null, queryFn 
         created_at,
         updated_at
       FROM external_product_seeds
-      WHERE status = 'active'
+      WHERE ${externalWhere.join(' AND ')}
       ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
-      LIMIT $1
+      LIMIT ${externalLimitParam}
     `,
-    [normalizedLimit],
+    externalParams,
   );
   const seenExternal = new Set();
   for (const row of externalRes?.rows || []) {
