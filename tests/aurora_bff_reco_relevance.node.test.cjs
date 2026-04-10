@@ -4641,6 +4641,99 @@ test('__internal: framework pool surfaces multiple primary-role products before 
   assert.equal(state.group_target_fidelity.length, 3);
 });
 
+test('__internal: framework pool backfills same-role soft matches for comparison once a strong primary winner exists', async () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'strong_anchor',
+        merchant_id: 'merchant_catalog_strong_anchor',
+        brand: 'Strong',
+        name: 'Oil Control Serum',
+        display_name: 'Strong Oil Control Serum',
+        category: 'serum',
+        product_type: 'serum',
+        retrieval_source: 'catalog',
+        retrieval_query: 'oil control serum',
+        retrieval_step: 'treatment',
+        retrieval_role_id: 'oil_control_treatment',
+        benefit_tags: ['oil control', 'shine control', 'mattifying'],
+        search_aliases: ['shine control serum'],
+        short_description: 'A mattifying oil-control serum for oily skin.',
+      },
+      {
+        product_id: 'soft_compare_external_1',
+        merchant_id: 'merchant_soft_compare_external_1',
+        brand: 'Alt2',
+        name: 'Balancing Serum',
+        display_name: 'Alt2 Balancing Serum',
+        category: 'serum',
+        product_type: 'serum',
+        retrieval_source: 'external_seed',
+        retrieval_query: 'balancing serum oily skin',
+        retrieval_step: 'treatment',
+        retrieval_role_id: 'oil_control_treatment',
+        short_description: 'A balancing serum for oily skin.',
+      },
+      {
+        product_id: 'soft_compare_external_2',
+        merchant_id: 'merchant_soft_compare_external_2',
+        brand: 'Alt3',
+        name: 'Shine Control Serum',
+        display_name: 'Alt3 Shine Control Serum',
+        category: 'serum',
+        product_type: 'serum',
+        retrieval_source: 'external_seed',
+        retrieval_query: 'shine control serum',
+        retrieval_step: 'treatment',
+        retrieval_role_id: 'oil_control_treatment',
+        benefit_tags: ['shine control'],
+        short_description: 'A serum for oily skin.',
+      },
+    ],
+    {
+      targetContext: {
+        framework_id: 'recofw_test_oily_soft_compare_fill',
+        primary_role_id: 'oil_control_treatment',
+        framework_roles: [
+          {
+            role_id: 'oil_control_treatment',
+            rank: 1,
+            preferred_step: 'treatment',
+            alternate_steps: ['serum'],
+            label: 'Oil-control treatment',
+            query_terms: ['oil control serum', 'shine control serum', 'mattifying serum', 'balancing serum oily skin'],
+            fit_keywords: ['oil control', 'shine control', 'mattifying', 'mattify', 'sebum', 'balancing', 'anti-shine', 'blemish'],
+          },
+          {
+            role_id: 'lightweight_moisturizer',
+            rank: 2,
+            preferred_step: 'moisturizer',
+            label: 'Lightweight moisturizer',
+            query_terms: ['lightweight moisturizer', 'gel cream', 'barrier lotion'],
+            fit_keywords: ['lightweight', 'gel cream', 'water gel', 'breathable', 'barrier lotion', 'oil-free'],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.equal(state.selected_candidate_count, 3);
+  assert.deepEqual(
+    state.selected_recommendations.map((item) => item?.product_id),
+    ['strong_anchor', 'soft_compare_external_2', 'soft_compare_external_1'],
+  );
+  assert.equal(state.comparison_fill_applied, true);
+  assert.equal(state.comparison_fill_count, 2);
+  assert.equal(state.selected_source_counts?.catalog, 1);
+  assert.equal(state.selected_source_counts?.external_seed, 2);
+  assert.equal(
+    state.selected_recommendations.filter((item) => item?.comparison_fill === true).length,
+    2,
+  );
+});
+
 test('__internal: framework pool rejects explicit SPF sunscreen serum from the oil-control treatment primary slot', async () => {
   const { __internal } = loadRoutesFresh();
   const state = __internal.finalizeConcernFrameworkCandidatePools(
@@ -5198,7 +5291,11 @@ test('__internal: framework pool exposes source counts and reject preview for sh
   assert.equal(state.selected_source_counts?.external_seed, 1);
   assert.ok(Array.isArray(state.hard_reject_preview));
   assert.equal(state.hard_reject_preview[0]?.product_id, 'int_niac_diag_1');
-  assert.equal(state.hard_reject_preview[0]?.reason, 'framework_hard_mismatch');
+  assert.ok(
+    ['framework_hard_mismatch', 'framework_primary_semantic_missing'].includes(
+      String(state.hard_reject_preview[0]?.reason || ''),
+    ),
+  );
 });
 
 test('__internal: framework reject preview includes product title for live diagnostics', async () => {

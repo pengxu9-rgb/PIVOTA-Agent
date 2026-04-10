@@ -347,11 +347,6 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
       Math.min(4000, Math.trunc(hardPathBudget.budgetMs * 0.25)),
     );
     const handoffDeadlineAtMs = hardPathBudget.deadlineAtMs - rewriteReserveMs;
-    const proxyRescueRewriteFloorMs = Math.max(
-      1200,
-      Math.min(2000, Math.trunc(rewriteReserveMs * 0.5)),
-    );
-    const proxyRescueDeadlineAtMs = hardPathBudget.deadlineAtMs - proxyRescueRewriteFloorMs;
     const plannerReserveMs = Math.max(
       3000,
       Number.isFinite(Number(RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS))
@@ -489,7 +484,6 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
         fallbackFocus: hardPathRecoFocusForMainline,
         profileSummary,
         deadlineAtMs: handoffDeadlineAtMs,
-        proxyRescueDeadlineAtMs,
         debug: debugUpstream,
         timeoutMs: RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
         minTimeoutMs: RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,

@@ -19144,27 +19144,6 @@ function buildRecoRowsFromMainlineProducts(products, {
   });
 }
 
-function buildBeautyMainlineProxyRescueQueries({
-  rawQuery = '',
-  semanticContract = null,
-} = {}) {
-  const literalQuery = String(rawQuery || '').trim();
-  const semanticQueryPack = buildBeautyDiscoveryQueryPackFromContract({
-    rawQuery: literalQuery,
-    semanticContract,
-  });
-  const semanticQueries = Array.isArray(semanticQueryPack) ? semanticQueryPack : [];
-  return uniqCaseInsensitiveStrings(
-    [
-      ...semanticQueries,
-      literalQuery,
-    ]
-      .map((value) => String(value || '').trim())
-      .filter(Boolean),
-    4,
-  );
-}
-
 function deriveBeautyMainlineHandoff({
   primaryQuery = '',
   fallbackMessage = '',
@@ -19267,17 +19246,10 @@ function deriveBeautyMainlineHandoff({
     }
     return null;
   })();
-  const proxyQueries = buildBeautyMainlineProxyRescueQueries({
-    rawQuery: handoffText,
-    semanticContract,
-  });
-  const proxyQuery = pickFirstTrimmed(proxyQueries[0], handoffText);
   const query = handoffText || '';
 
   return {
     query,
-    proxy_query: proxyQuery || null,
-    proxy_queries: proxyQueries,
     semanticContract,
     targetContext: stepAlignedTargetContext,
   };
@@ -19306,6 +19278,41 @@ function buildBeautyMainlineLocalSourceBreakdown(products = []) {
           first?.source,
         ) || null,
     },
+  };
+}
+
+function buildBeautyMainlineLocalCandidatePoolSummary({
+  candidateState = null,
+  rawCandidates = [],
+  selectedProducts = [],
+} = {}) {
+  const rawSourceCounts =
+    isPlainObject(candidateState?.raw_source_counts)
+      ? candidateState.raw_source_counts
+      : summarizeConcernFrameworkSourceCounts(rawCandidates);
+  const viableSourceCounts =
+    isPlainObject(candidateState?.viable_source_counts)
+      ? candidateState.viable_source_counts
+      : summarizeConcernFrameworkSourceCounts(candidateState?.viable_candidate_pool || []);
+  const selectedSourceCounts =
+    isPlainObject(candidateState?.selected_source_counts)
+      ? candidateState.selected_source_counts
+      : summarizeConcernFrameworkSourceCounts(selectedProducts);
+  return {
+    raw_candidate_count: Number(candidateState?.raw_candidate_count || 0),
+    viable_candidate_count: Number(candidateState?.viable_candidate_count || 0),
+    selected_candidate_count: Number(candidateState?.selected_candidate_count || 0),
+    hard_reject_count: Number(candidateState?.hard_reject_count || 0),
+    soft_mismatch_count: Number(candidateState?.soft_mismatch_count || 0),
+    comparison_fill_applied: candidateState?.comparison_fill_applied === true,
+    comparison_fill_count: Number(candidateState?.comparison_fill_count || 0),
+    raw_source_counts: rawSourceCounts,
+    viable_source_counts: viableSourceCounts,
+    selected_source_counts: selectedSourceCounts,
+    raw_source_tier_counts: summarizeConcernFrameworkSourceTierCounts(rawSourceCounts),
+    viable_source_tier_counts: summarizeConcernFrameworkSourceTierCounts(viableSourceCounts),
+    selected_source_tier_counts: summarizeConcernFrameworkSourceTierCounts(selectedSourceCounts),
+    hard_reject_preview: buildConcernFrameworkRejectPreview(candidateState?.hard_reject),
   };
 }
 
@@ -19458,9 +19465,20 @@ function buildBeautyMainlineLocalSearchResult({
     selectedProducts: selected,
     mainlineStatus,
   });
-  const sourceBreakdown = buildBeautyMainlineLocalSourceBreakdown(
-    selected.length > 0 ? selected : Array.isArray(collected?.rawCandidates) ? collected.rawCandidates : [],
-  );
+  const candidatePoolSummary = buildBeautyMainlineLocalCandidatePoolSummary({
+    candidateState: collected?.candidateState,
+    rawCandidates: collected?.rawCandidates,
+    selectedProducts: selected,
+  });
+  const sourceBreakdown = {
+    ...buildBeautyMainlineLocalSourceBreakdown(selected),
+    raw_source_counts: candidatePoolSummary.raw_source_counts,
+    viable_source_counts: candidatePoolSummary.viable_source_counts,
+    selected_source_counts: candidatePoolSummary.selected_source_counts,
+    raw_source_tier_counts: candidatePoolSummary.raw_source_tier_counts,
+    viable_source_tier_counts: candidatePoolSummary.viable_source_tier_counts,
+    selected_source_tier_counts: candidatePoolSummary.selected_source_tier_counts,
+  };
   const primaryFailureStage =
     selected.length > 0 ? null : buildBeautyMainlineLocalFailureStage(collected);
   const localHandoffStageSummary =
@@ -19503,11 +19521,13 @@ function buildBeautyMainlineLocalSearchResult({
       final_selection: selectionContract,
       ...(primarySearchLedger ? { primary_search: primarySearchLedger } : {}),
       ...(Object.keys(localHandoffLedger).length > 0 ? { local_handoff: localHandoffLedger } : {}),
+      candidate_pool_summary: candidatePoolSummary,
       ...(primaryFailureStage ? { primary_failure_stage: primaryFailureStage } : {}),
       ...(pickFirstTrimmed(collected?.candidateDropStage)
         ? { candidate_drop_stage: pickFirstTrimmed(collected.candidateDropStage) }
         : {}),
     },
+    candidate_pool_summary: candidatePoolSummary,
     ...(semanticOwnerQueryAttempts.length
       ? { semantic_owner_query_attempts: semanticOwnerQueryAttempts }
       : {}),
@@ -19533,72 +19553,6 @@ function buildBeautyMainlineLocalSearchResult({
   };
 }
 
-function buildBeautyMainlineLocalHandoffPreflightSnapshot(searchResult = null) {
-  if (!isPlainObject(searchResult)) return null;
-  const metadata = isPlainObject(searchResult.metadata) ? searchResult.metadata : {};
-  const topLevelLedger = isPlainObject(searchResult.search_stage_ledger)
-    ? searchResult.search_stage_ledger
-    : {};
-  const metadataLedger = isPlainObject(metadata.search_stage_ledger)
-    ? metadata.search_stage_ledger
-    : {};
-  const combinedLedger = {
-    ...topLevelLedger,
-    ...metadataLedger,
-  };
-  const selectionContract = extractRecoFinalSelectionContract(searchResult);
-  return {
-    query_source:
-      pickFirstTrimmed(searchResult.query_source, metadata.query_source, 'beauty_mainline_local_handoff')
-      || 'beauty_mainline_local_handoff',
-    final_decision:
-      pickFirstTrimmed(
-        metadata.final_decision,
-        combinedLedger.final_decision,
-        Array.isArray(searchResult.products) && searchResult.products.length > 0
-          ? 'products_returned'
-          : 'strict_empty',
-      ) || 'strict_empty',
-    reason: pickFirstTrimmed(searchResult.reason) || null,
-    ...(isPlainObject(searchResult.source_breakdown)
-      ? { source_breakdown: searchResult.source_breakdown }
-      : {}),
-    ...(isPlainObject(selectionContract) ? { final_selection: selectionContract } : {}),
-    ...(isPlainObject(combinedLedger) && Object.keys(combinedLedger).length > 0
-      ? { search_stage_ledger: combinedLedger }
-      : {}),
-    ...(Array.isArray(metadata.semantic_owner_query_attempts) && metadata.semantic_owner_query_attempts.length
-      ? { semantic_owner_query_attempts: metadata.semantic_owner_query_attempts }
-      : {}),
-  };
-}
-
-function shouldAttemptBeautyMainlineProxyRescue({
-  localSearchResult = null,
-  deadlineAtMs = null,
-} = {}) {
-  if (!isPlainObject(localSearchResult)) return false;
-  const querySource = pickFirstTrimmed(
-    localSearchResult.query_source,
-    localSearchResult?.metadata?.query_source,
-    'beauty_mainline_local_handoff',
-  ).toLowerCase();
-  if (querySource && querySource !== 'beauty_mainline_local_handoff') return false;
-  const selectionContract = extractRecoFinalSelectionContract(localSearchResult);
-  const selectedProductIds = Array.isArray(selectionContract?.selected_product_ids)
-    ? selectionContract.selected_product_ids
-        .map((item) => String(item || '').trim())
-        .filter(Boolean)
-    : [];
-  if (selectedProductIds.length > 0) return false;
-  if (Array.isArray(localSearchResult.products) && localSearchResult.products.length > 0) return false;
-  if (Number.isFinite(Number(deadlineAtMs))) {
-    const remainingMs = Math.max(0, Number(deadlineAtMs) - Date.now());
-    if (remainingMs <= RECO_CATALOG_MAIN_PATH_TIMEOUT_FLOOR_MS) return false;
-  }
-  return true;
-}
-
 function buildBeautyMainlineHandoffTransportPolicy({ mode } = {}) {
   const basePolicy = buildRecoRecallTransportPolicy({ mode });
   return {
@@ -19617,35 +19571,6 @@ function buildBeautyMainlineHandoffTransportPolicy({ mode } = {}) {
         : 0,
     ),
     primary_attempt_timeout_cap_ms: 2500,
-  };
-}
-
-function attachBeautyMainlineLocalHandoffPreflight(searchResult = null, localSearchResult = null) {
-  if (!isPlainObject(searchResult)) return searchResult;
-  const preflight = buildBeautyMainlineLocalHandoffPreflightSnapshot(localSearchResult);
-  if (!isPlainObject(preflight)) return searchResult;
-  const metadata = isPlainObject(searchResult.metadata) ? searchResult.metadata : {};
-  const topLevelLedger = isPlainObject(searchResult.search_stage_ledger)
-    ? searchResult.search_stage_ledger
-    : {};
-  const metadataLedger = isPlainObject(metadata.search_stage_ledger)
-    ? metadata.search_stage_ledger
-    : {};
-  return {
-    ...searchResult,
-    local_handoff_preflight: preflight,
-    search_stage_ledger: {
-      ...topLevelLedger,
-      local_handoff_preflight: preflight,
-    },
-    metadata: {
-      ...metadata,
-      local_handoff_preflight: preflight,
-      search_stage_ledger: {
-        ...metadataLedger,
-        local_handoff_preflight: preflight,
-      },
-    },
   };
 }
 
@@ -19747,7 +19672,6 @@ async function handoffRecoToBeautyMainlineSearch({
   authHeaders = null,
   timeoutMs = 0,
   minTimeoutMs = 0,
-  proxyRescueDeadlineAtMs = null,
   searchFn = null,
 } = {}) {
   const handoff = deriveBeautyMainlineHandoff({
@@ -19758,7 +19682,6 @@ async function handoffRecoToBeautyMainlineSearch({
     fallbackFocus,
   });
   const query = String(handoff?.query || '').trim();
-  const proxyRescueQuery = pickFirstTrimmed(handoff?.proxy_query, query);
   const semanticContract =
     handoff?.semanticContract && typeof handoff.semanticContract === 'object' && !Array.isArray(handoff.semanticContract)
       ? handoff.semanticContract
@@ -19767,10 +19690,6 @@ async function handoffRecoToBeautyMainlineSearch({
     handoff?.targetContext && typeof handoff.targetContext === 'object' && !Array.isArray(handoff.targetContext)
       ? handoff.targetContext
       : targetContext;
-  const proxySearchFn = resolveAuroraRouteDependency(
-    'searchPivotaBackendProducts',
-    searchPivotaBackendProducts,
-  );
   const effectiveTimeoutMs = Math.max(
     RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
     RECO_CATALOG_MAIN_PATH_TIMEOUT_FLOOR_MS,
@@ -19800,13 +19719,6 @@ async function handoffRecoToBeautyMainlineSearch({
   const normalizedDeadlineAtMs = Number.isFinite(Number(deadlineAtMs))
     ? Math.trunc(Number(deadlineAtMs))
     : 0;
-  const normalizedProxyRescueDeadlineAtMs = Number.isFinite(Number(proxyRescueDeadlineAtMs))
-    ? Math.trunc(Number(proxyRescueDeadlineAtMs))
-    : 0;
-  const effectiveProxyRescueDeadlineAtMs = Math.max(
-    normalizedDeadlineAtMs,
-    normalizedProxyRescueDeadlineAtMs,
-  );
   const handoffSearchTimeoutMs = shouldUseSunscreenRecallBudget
     ? Math.max(effectiveTimeoutMs, RECO_CATALOG_SUNSCREEN_HANDOFF_TIMEOUT_MS)
     : shouldUseExternalSeedSupplement
@@ -19852,72 +19764,38 @@ async function handoffRecoToBeautyMainlineSearch({
         authHeaders: authHeaders || ctx?.backend_auth_headers || null,
       });
     } catch (err) {
+      const upstreamFailureCode = classifyRecoUpstreamFailureCode(err);
+      const transientFailure = isTransientRecoUpstreamFailureCode(upstreamFailureCode);
       logger?.warn?.(
         {
           request_id: ctx?.request_id,
           trace_id: ctx?.trace_id,
+          upstream_failure_code: upstreamFailureCode || null,
           err: err?.message || String(err),
         },
-        'aurora bff: local beauty handoff search failed; falling back to proxy search',
+        'aurora bff: local beauty handoff search failed; failing closed',
       );
+      localSearchResult = buildBeautyMainlineLocalSearchResult({
+        collected: {
+          rawCandidates: [],
+          searchResults: [],
+          candidateState: null,
+          candidateDropStage: transientFailure ? 'upstream_timeout_primary_role' : 'local_handoff_exception',
+          primaryStageTimeoutClass: transientFailure ? 'transient_timeout' : '',
+        },
+        selectedProducts: [],
+      });
     }
-    const shouldRescueLocalEmpty = shouldAttemptBeautyMainlineProxyRescue({
-      localSearchResult,
-      deadlineAtMs,
+    searchResult = localSearchResult || buildBeautyMainlineLocalSearchResult({
+      collected: {
+        rawCandidates: [],
+        searchResults: [],
+        candidateState: null,
+        candidateDropStage: 'local_handoff_unavailable',
+        primaryStageTimeoutClass: '',
+      },
+      selectedProducts: [],
     });
-    if (localSearchResult && !shouldRescueLocalEmpty) {
-      searchResult = localSearchResult;
-    } else {
-      if (shouldRescueLocalEmpty) {
-        logger?.info?.(
-          {
-            request_id: ctx?.request_id,
-            trace_id: ctx?.trace_id,
-            local_query_source: pickFirstTrimmed(localSearchResult?.query_source) || 'beauty_mainline_local_handoff',
-            local_reason: pickFirstTrimmed(localSearchResult?.reason) || 'empty',
-          },
-          'aurora bff: local beauty handoff returned empty; attempting proxy rescue',
-        );
-      }
-      try {
-        searchResult = await proxySearchFn({
-        query: proxyRescueQuery || query,
-        limit: 6,
-        logger,
-        timeoutMs: handoffSearchTimeoutMs,
-        minTimeoutMs: handoffSearchMinTimeoutMs,
-        mode: 'main_path',
-        searchAllMerchants: true,
-        catalogSurface: 'beauty',
-        deadlineMs: effectiveProxyRescueDeadlineAtMs,
-        searchSourceOverride: 'aurora-bff',
-        allowExternalSeed: shouldUseExternalSeedSupplement,
-        externalSeedStrategy: shouldUseExternalSeedSupplement ? 'unified_relevance' : '',
-        fastMode: undefined,
-        transportPolicy: handoffTransportPolicy,
-        queryStepStrength,
-        targetStepFamily: semanticTargetStepFamily,
-        semanticFamily,
-        semanticContract,
-        traceId: pickFirstTrimmed(ctx?.trace_id, ctx?.request_id) || null,
-        authHeaders: authHeaders || ctx?.backend_auth_headers || null,
-        });
-      } catch (err) {
-        if (!localSearchResult || !shouldRescueLocalEmpty) throw err;
-        logger?.warn?.(
-          {
-            request_id: ctx?.request_id,
-            trace_id: ctx?.trace_id,
-            err: err?.message || String(err),
-          },
-          'aurora bff: proxy rescue after local beauty handoff empty failed; preserving local empty result',
-        );
-        searchResult = localSearchResult;
-      }
-      if (searchResult && shouldRescueLocalEmpty && localSearchResult) {
-        searchResult = attachBeautyMainlineLocalHandoffPreflight(searchResult, localSearchResult);
-      }
-    }
   }
   const canonicalSelection = extractRecoFinalSelectionContract(searchResult);
   const recommendations = buildRecoRowsFromMainlineProducts(searchResult?.products, {
@@ -20010,6 +19888,91 @@ function summarizeConcernFrameworkSourceCounts(items = []) {
   return out;
 }
 
+function summarizeConcernFrameworkSourceTierCounts(sourceCounts = {}) {
+  const out = {};
+  const entries =
+    sourceCounts && typeof sourceCounts === 'object' && !Array.isArray(sourceCounts)
+      ? Object.entries(sourceCounts)
+      : [];
+  for (const [sourceKey, rawCount] of entries) {
+    const numericCount = Number.isFinite(Number(rawCount)) ? Math.max(0, Math.trunc(Number(rawCount))) : 0;
+    if (numericCount <= 0) continue;
+    const normalizedSource = String(sourceKey || '').trim().toLowerCase();
+    const tierKey = normalizedSource === 'external_seed' ? 'fresh_external' : 'fresh_internal';
+    out[tierKey] = Number(out[tierKey] || 0) + numericCount;
+  }
+  return out;
+}
+
+function compareConcernFrameworkCandidates(left, right) {
+  const leftRoleAligned = String(left?.retrieval_role_id || '').trim() === String(left?.matched_role_id || '').trim();
+  const rightRoleAligned = String(right?.retrieval_role_id || '').trim() === String(right?.matched_role_id || '').trim();
+  if (leftRoleAligned !== rightRoleAligned) return rightRoleAligned ? 1 : -1;
+  const scoreDiff = Number(right?.framework_score || 0) - Number(left?.framework_score || 0);
+  if (scoreDiff !== 0) return scoreDiff;
+  const tieBreakDiff = Number(right?.framework_tiebreak_score || 0) - Number(left?.framework_tiebreak_score || 0);
+  if (tieBreakDiff !== 0) return tieBreakDiff;
+  const leftName = String(pickFirstTrimmed(left?.display_name, left?.displayName, left?.name, left?.title) || '').trim().toLowerCase();
+  const rightName = String(pickFirstTrimmed(right?.display_name, right?.displayName, right?.name, right?.title) || '').trim().toLowerCase();
+  return leftName.localeCompare(rightName);
+}
+
+function isConcernRoleStepCompatible(candidateStep, role = null) {
+  const normalizedCandidateStep = normalizeRecoTargetStep(candidateStep);
+  if (!normalizedCandidateStep) return false;
+  const normalizedPreferredStep = normalizeRecoTargetStep(role?.preferred_step || role?.step);
+  const normalizedAlternateSteps = Array.from(
+    new Set(
+      (Array.isArray(role?.alternate_steps) ? role.alternate_steps : [])
+        .map((value) => normalizeRecoTargetStep(value))
+        .filter(Boolean),
+    ),
+  );
+  const allowedSteps = new Set(
+    [
+      normalizedPreferredStep,
+      ...normalizedAlternateSteps,
+      normalizedPreferredStep === 'treatment' ? 'serum' : '',
+    ].filter(Boolean),
+  );
+  return allowedSteps.has(normalizedCandidateStep);
+}
+
+function isConcernFrameworkStrongViableCandidate(candidate, role = null) {
+  const product = isPlainObject(candidate) ? candidate : null;
+  if (!product) return false;
+  const roleObj = isPlainObject(role) ? role : null;
+  const preferredStep = normalizeRecoTargetStep(roleObj?.preferred_step);
+  const candidateStep = normalizeRecoTargetStep(product?.candidate_step);
+  const score = Number(product?.framework_score || 0);
+  const semanticFit = product?.framework_semantic_fit === true;
+  if (
+    score >= 0.58 &&
+    (
+      semanticFit ||
+      (
+        candidateStep &&
+        candidateStep === preferredStep &&
+        preferredStep !== 'treatment'
+      )
+    )
+  ) {
+    return true;
+  }
+  // External or generic skincare rows often land just below the old 0.58 gate
+  // despite carrying explicit role semantics and the right serum/treatment shape.
+  // Allow that narrow band through without reopening ingredient-only treatment noise.
+  if (
+    preferredStep === 'treatment' &&
+    semanticFit &&
+    isConcernRoleStepCompatible(candidateStep, roleObj) &&
+    score >= 0.56
+  ) {
+    return true;
+  }
+  return false;
+}
+
 function buildConcernFrameworkRejectPreview(entries = [], max = 5) {
   return (Array.isArray(entries) ? entries : [])
     .slice(0, Math.max(1, Number(max) || 5))
@@ -20033,6 +19996,35 @@ function buildConcernFrameworkRejectPreview(entries = [], max = 5) {
         reason: String(entry?.reason || '').trim() || 'unknown',
       };
     });
+}
+
+function buildConcernFrameworkComparisonFillCandidates({
+  softMismatch = [],
+  primaryRoleId = '',
+  primaryRole = null,
+  usedProductIds = null,
+  minScore = 0.42,
+} = {}) {
+  const usedIds = usedProductIds instanceof Set ? usedProductIds : new Set();
+  return (Array.isArray(softMismatch) ? softMismatch : [])
+    .map((entry) => (isPlainObject(entry?.product) ? entry.product : null))
+    .filter(Boolean)
+    .filter((product) => String(product?.matched_role_id || '').trim() === String(primaryRoleId || '').trim())
+    .filter((product) => {
+      const productId = pickFirstString(product?.product_id, product?.productId, product?.id);
+      return Boolean(productId) && !usedIds.has(productId);
+    })
+    .filter((product) => Number(product?.framework_score || 0) >= minScore)
+    .filter((product) => (
+      product?.framework_semantic_fit === true ||
+      isConcernRoleStepCompatible(product?.candidate_step, primaryRole)
+    ))
+    .sort(compareConcernFrameworkCandidates)
+    .map((product) => ({
+      ...product,
+      comparison_fill: true,
+      comparison_fill_reason: 'same_role_soft_mismatch',
+    }));
 }
 
 function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext } = {}) {
@@ -20159,17 +20151,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
       viable_count: Number(rolePoolStats[annotated.matched_role_id]?.viable_count || 0),
       top_score: Math.max(Number(rolePoolStats[annotated.matched_role_id]?.top_score || 0), Number(annotated.framework_score || 0)),
     };
-    if (
-      annotated.framework_score >= 0.58
-      && (
-        annotated.framework_semantic_fit
-        || (
-          annotated.candidate_step
-          && annotated.candidate_step === normalizeRecoTargetStep(bestRole.preferred_step)
-          && normalizeRecoTargetStep(bestRole.preferred_step) !== 'treatment'
-        )
-      )
-    ) {
+    if (isConcernFrameworkStrongViableCandidate(annotated, bestRole)) {
       viable.push(annotated);
       rolePoolStats[annotated.matched_role_id].viable_count += 1;
       roleBuckets.get(annotated.matched_role_id)?.push(annotated);
@@ -20181,22 +20163,12 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
   }
 
   for (const bucket of roleBuckets.values()) {
-    bucket.sort((left, right) => {
-      const leftRoleAligned = String(left?.retrieval_role_id || '').trim() === String(left?.matched_role_id || '').trim();
-      const rightRoleAligned = String(right?.retrieval_role_id || '').trim() === String(right?.matched_role_id || '').trim();
-      if (leftRoleAligned !== rightRoleAligned) return rightRoleAligned ? 1 : -1;
-      const scoreDiff = Number(right.framework_score || 0) - Number(left.framework_score || 0);
-      if (scoreDiff !== 0) return scoreDiff;
-      const tieBreakDiff = Number(right.framework_tiebreak_score || 0) - Number(left.framework_tiebreak_score || 0);
-      if (tieBreakDiff !== 0) return tieBreakDiff;
-      const leftName = String(pickFirstTrimmed(left.display_name, left.displayName, left.name, left.title) || '').trim().toLowerCase();
-      const rightName = String(pickFirstTrimmed(right.display_name, right.displayName, right.name, right.title) || '').trim().toLowerCase();
-      return leftName.localeCompare(rightName);
-    });
+    bucket.sort(compareConcernFrameworkCandidates);
   }
 
   const orderedRoles = [...roles].sort((left, right) => Number(left?.rank || 99) - Number(right?.rank || 99));
   const primaryRoleId = String(targetContext?.primary_role_id || '').trim();
+  const primaryRole = orderedRoles.find((role) => String(role?.role_id || '').trim() === primaryRoleId) || null;
   const usedProductIds = new Set();
   const selected = [];
   const addSelectedCandidate = (item) => {
@@ -20212,6 +20184,20 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     addSelectedCandidate(item);
     if (selected.length >= 3) break;
   }
+  const strictPrimarySelectedCount = selected.length;
+  const comparisonFillCandidates = strictPrimarySelectedCount > 0 && selected.length < 3
+    ? buildConcernFrameworkComparisonFillCandidates({
+        softMismatch,
+        primaryRoleId,
+        primaryRole,
+        usedProductIds,
+      })
+    : [];
+  for (const item of comparisonFillCandidates) {
+    addSelectedCandidate(item);
+    if (selected.length >= 3) break;
+  }
+  const comparisonFillCount = Math.max(0, selected.length - strictPrimarySelectedCount);
 
   for (const role of orderedRoles) {
     if (selected.length >= 3) break;
@@ -20259,6 +20245,8 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     viable_source_counts: viableSourceCounts,
     selected_source_counts: selectedSourceCounts,
     external_seed_used_count: externalSeedUsedCount,
+    comparison_fill_applied: comparisonFillCount > 0,
+    comparison_fill_count: comparisonFillCount,
     exact_step_viable_count: primaryRoleMatched ? primarySelectedRecommendations.length : 0,
     same_family_viable_count: viable.length,
     soft_mismatch_count: softMismatch.length,
@@ -49500,6 +49488,20 @@ function buildRecoFinalSelectionContract({
     orderedRecommendations.map((row) => extractRecoSelectionTitle(row)),
     12,
   );
+  const payloadMeta = isPlainObject(payloadObj.recommendation_meta) ? payloadObj.recommendation_meta : {};
+  const payloadMetadata = isPlainObject(payloadObj.metadata) ? payloadObj.metadata : {};
+  const selectedSourceTierCounts = [
+    normalizedFallback?.source_tier_counts,
+    payloadMeta.source_tier_counts,
+    payloadMetadata.source_tier_counts,
+    payloadMetadata.source_breakdown?.selected_source_tier_counts,
+    payloadMetadata.source_breakdown?.source_tier_counts,
+  ].find((value) => isPlainObject(value) && Object.keys(value).length > 0) || {};
+  const sourceTierCounts = selectedProductIds.length > 0 ? selectedSourceTierCounts : {};
+  const topCandidateProvenance =
+    (isPlainObject(normalizedFallback?.top_candidate_provenance) ? normalizedFallback.top_candidate_provenance : null) ||
+    (isPlainObject(payloadMeta.top_candidate_provenance) ? payloadMeta.top_candidate_provenance : null) ||
+    (isPlainObject(payloadMetadata.source_breakdown?.top_candidate_provenance) ? payloadMetadata.source_breakdown.top_candidate_provenance : null);
   const mainlineStatus = selectedProductIds.length > 0
     ? 'grounded_success'
     : pickFirstTrimmed(
@@ -49548,14 +49550,8 @@ function buildRecoFinalSelectionContract({
     mainline_status: mainlineStatus,
     context_warning: contextWarning,
     selection_reason_codes: selectionReasonCodes,
-    source_tier_counts:
-      normalizedFallback?.source_tier_counts && isPlainObject(normalizedFallback.source_tier_counts)
-        ? normalizedFallback.source_tier_counts
-        : {},
-    top_candidate_provenance:
-      normalizedFallback?.top_candidate_provenance && isPlainObject(normalizedFallback.top_candidate_provenance)
-        ? normalizedFallback.top_candidate_provenance
-        : null,
+    source_tier_counts: sourceTierCounts,
+    top_candidate_provenance: topCandidateProvenance,
   };
 }
 
@@ -49743,11 +49739,21 @@ function applyRecoCanonicalSearchResultToPayload(payload, searchResult, { select
     };
   }
   if (snapshot.sourceBreakdown) {
+    const selectedSourceTierCounts = [
+      snapshot.sourceBreakdown.selected_source_tier_counts,
+      snapshot.sourceBreakdown.source_tier_counts,
+      recommendationMeta.source_tier_counts,
+    ].find((value) => isPlainObject(value) && Object.keys(value).length > 0) || null;
+    const effectiveSourceTierCounts =
+      Array.isArray(nextSelection?.selected_product_ids) && nextSelection.selected_product_ids.length > 0
+        ? selectedSourceTierCounts
+        : null;
     payloadMeta.source_breakdown = {
       ...snapshot.sourceBreakdown,
+      ...(effectiveSourceTierCounts ? { source_tier_counts: effectiveSourceTierCounts } : {}),
     };
-    if (isPlainObject(snapshot.sourceBreakdown.source_tier_counts)) {
-      recommendationMeta.source_tier_counts = snapshot.sourceBreakdown.source_tier_counts;
+    if (effectiveSourceTierCounts) {
+      recommendationMeta.source_tier_counts = effectiveSourceTierCounts;
     }
     if (isPlainObject(snapshot.sourceBreakdown.top_candidate_provenance)) {
       recommendationMeta.top_candidate_provenance = snapshot.sourceBreakdown.top_candidate_provenance;
