@@ -242,6 +242,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
     RECO_CATALOG_GROUNDED_ENABLED = false,
     RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS = 0,
     AURORA_BFF_CHAT_RECO_BUDGET_MS = 13000,
+    AURORA_RECO_ASSISTANT_REWRITE_TIMEOUT_MS = 4500,
     BEAUTY_DISCOVERY_MAINLINE_OWNER = 'shopping_agent_beauty_mainline',
     resolveRecommendationTargetContext,
     summarizeProfileForContext,
@@ -343,12 +344,21 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
       rewriteMs: 0,
     };
     const rewriteReserveMs = Math.max(
-      3000,
-      Math.min(4000, Math.trunc(hardPathBudget.budgetMs * 0.25)),
+      3500,
+      Math.min(
+        5500,
+        Math.max(
+          Math.trunc(hardPathBudget.budgetMs * 0.3),
+          Number.isFinite(Number(AURORA_RECO_ASSISTANT_REWRITE_TIMEOUT_MS))
+            ? Math.trunc(Number(AURORA_RECO_ASSISTANT_REWRITE_TIMEOUT_MS)) + 500
+            : 0,
+        ),
+      ),
     );
     const handoffDeadlineAtMs = hardPathBudget.deadlineAtMs - rewriteReserveMs;
     const plannerReserveMs = Math.max(
       3000,
+      rewriteReserveMs,
       Number.isFinite(Number(RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS))
         ? Math.trunc(Number(RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS))
         : 0,

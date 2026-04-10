@@ -4082,6 +4082,28 @@ test('__internal: local external seed search patterns expand with framework role
   assert.equal(patterns.includes('%balancing serum%') || patterns.includes('%balancing treatment%'), true);
 });
 
+test('__internal: local external seed support-role patterns avoid bare fit keyword noise', async () => {
+  const { __internal } = loadRoutesFresh();
+  const patterns = __internal.buildLocalExternalSeedSearchPatterns('lightweight moisturizer oily skin', {
+    role: {
+      role_id: 'lightweight_moisturizer',
+      rank: 2,
+      preferred_step: 'moisturizer',
+      query_terms: ['lightweight moisturizer', 'gel cream'],
+      fit_keywords: ['lightweight', 'oil free', 'breathable hydration'],
+    },
+    preferredStep: 'moisturizer',
+  });
+  assert.equal(patterns.includes('%lightweight%'), false);
+  assert.equal(patterns.includes('%oil free%'), false);
+  assert.equal(patterns.includes('%breathable hydration%'), false);
+  assert.equal(patterns.includes('%moisturizer oily%'), false);
+  assert.equal(patterns.includes('%lightweight moisturizer oily skin%'), true);
+  assert.equal(patterns.includes('%lightweight moisturizer%'), true);
+  assert.equal(patterns.includes('%gel cream%'), true);
+  assert.equal(patterns.includes('%oil free moisturizer%'), true);
+});
+
 test('__internal: framework recall exhausts primary planned sources before support stages when mock recall never yields a candidate', async () => {
   const { __internal } = loadRoutesFresh();
   const originalGet = axios.get;
@@ -5624,6 +5646,77 @@ test('__internal: collectRecoCandidatesFromQueryLevels hard-stops wall clock whe
     assert.equal(row.reason, 'upstream_timeout');
     assert.equal(row.timeout_guard, 'caller_wall_clock');
     assert.deepEqual(row.products, []);
+  }
+});
+
+test('__internal: collectRecoCandidatesFromQueryLevels caps support external seed timeout below stage wall clock budget', async () => {
+  const originalSupportTimeout = process.env.AURORA_BFF_RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS;
+  process.env.AURORA_BFF_RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS = '80';
+  try {
+    const { __internal } = loadRoutesFresh();
+    const observedTimeouts = [];
+    const targetContext = {
+      framework_id: 'framework_oily_skin_v1',
+      primary_role_id: 'oil_control_treatment',
+      framework_roles: [
+        {
+          role_id: 'oil_control_treatment',
+          rank: 1,
+          preferred_step: 'treatment',
+        },
+        {
+          role_id: 'lightweight_moisturizer',
+          rank: 2,
+          preferred_step: 'moisturizer',
+        },
+      ],
+      framework_owner_source: 'generic_concern_framework_resolver',
+      framework_owner_state: 'trusted',
+    };
+    const queryLevels = [
+      {
+        level_index: 0,
+        ladder_level: 'framework_stage_c_support_lightweight_moisturizer_external_seed',
+        queries: [
+          {
+            query: 'lightweight moisturizer oily skin',
+            step: 'moisturizer',
+            slot: 'moisturizer',
+            ladder_level: 'framework_stage_c_support_lightweight_moisturizer_external_seed',
+            role_id: 'lightweight_moisturizer',
+            role_rank: 2,
+            preferred_step: 'moisturizer',
+            allow_external_seed: true,
+            external_seed_strategy: 'stage_planned',
+          },
+        ],
+      },
+    ];
+
+    const out = await __internal.collectRecoCandidatesFromQueryLevels({
+      queryLevels,
+      targetContext,
+      recommendationTaskContext: null,
+      logger: null,
+      timeoutMs: 5000,
+      limit: 6,
+      usePurchasableFallback: false,
+      allowExternalSeed: true,
+      searchFn: async (args = {}) => {
+        observedTimeouts.push(Number(args?.timeoutMs || 0));
+        return new Promise(() => {});
+      },
+    });
+
+    assert.equal(observedTimeouts.length, 1);
+    assert.ok(observedTimeouts[0] > 0);
+    assert.ok(observedTimeouts[0] <= 80);
+    assert.equal(out.searchResults[0]?.reason, 'upstream_timeout');
+    assert.equal(out.searchResults[0]?.timeout_guard, 'caller_wall_clock');
+  } finally {
+    if (originalSupportTimeout == null) delete process.env.AURORA_BFF_RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS;
+    else process.env.AURORA_BFF_RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS = originalSupportTimeout;
+    loadRoutesFresh();
   }
 });
 

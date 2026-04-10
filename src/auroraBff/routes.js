@@ -12,7 +12,10 @@ const {
   buildExternalSeedProduct,
   ensureJsonObject,
 } = require('../services/externalSeedProducts');
-const { buildExternalSeedRecallLikePredicate } = require('../services/externalSeedRecall');
+const {
+  buildExternalSeedRecallLikePredicate,
+  EXTERNAL_SEED_RECALL_SQL_FIELDS,
+} = require('../services/externalSeedRecall');
 const {
   deduplicateCandidates: dedupeDupeCandidatesV2,
   filterSelfReferences: filterDupeSelfReferencesV2,
@@ -1312,6 +1315,16 @@ const RECO_CATALOG_FRAMEWORK_LOCAL_HANDOFF_TIMEOUT_MS = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 4800;
   return Math.max(2400, Math.min(7000, v));
 })();
+const RECO_CATALOG_PRIMARY_EXTERNAL_SEED_QUERY_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_PRIMARY_EXTERNAL_SEED_QUERY_TIMEOUT_MS || 2600);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 2600;
+  return Math.max(800, Math.min(4800, v));
+})();
+const RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS || 1600);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1600;
+  return Math.max(50, Math.min(3200, v));
+})();
 const {
   classifyBeautyMainlineHandoffFallback,
   buildBeautyMainlineHandoffFallbackEnvelope,
@@ -1344,6 +1357,7 @@ const {
   RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
   AURORA_BFF_CHAT_RECO_BUDGET_MS:
     Number(process.env.AURORA_BFF_CHAT_RECO_BUDGET_MS || 13000),
+  AURORA_RECO_ASSISTANT_REWRITE_TIMEOUT_MS,
   BEAUTY_DISCOVERY_MAINLINE_OWNER,
   resolveRecommendationTargetContext,
   summarizeProfileForContext,
@@ -7899,19 +7913,53 @@ function buildLocalExternalSeedRoleSearchPhrases({ role = null, preferredStep = 
   const roleObj = isPlainObject(role) ? role : null;
   if (!roleObj) return [];
   const step = normalizeRecoTargetStep(preferredStep || roleObj.preferred_step);
+  const supportLeanSearch = Number.isFinite(Number(roleObj.rank)) && Number(roleObj.rank) > 1;
   const roleTerms = uniqCaseInsensitiveStrings([
     ...(Array.isArray(roleObj.query_terms) ? roleObj.query_terms : []),
     ...(Array.isArray(roleObj.fit_keywords) ? roleObj.fit_keywords : []).flatMap((keyword) => {
       const token = String(keyword || '').trim();
       if (!token) return [];
-      if (!step) return [token];
-      if (step === 'treatment') return [token, `${token} serum`, `${token} treatment`];
-      if (step === 'moisturizer') return [token, `${token} moisturizer`, `${token} gel cream`];
-      if (step === 'sunscreen') return [token, `${token} sunscreen`, `${token} spf`];
-      return [token, `${token} ${step}`];
+      if (!step) return supportLeanSearch ? [] : [token];
+      if (step === 'treatment') {
+        return supportLeanSearch
+          ? [`${token} serum`, `${token} treatment`]
+          : [token, `${token} serum`, `${token} treatment`];
+      }
+      if (step === 'moisturizer') {
+        return supportLeanSearch
+          ? [`${token} moisturizer`, `${token} gel cream`]
+          : [token, `${token} moisturizer`, `${token} gel cream`];
+      }
+      if (step === 'sunscreen') {
+        return supportLeanSearch
+          ? [`${token} sunscreen`, `${token} spf`]
+          : [token, `${token} sunscreen`, `${token} spf`];
+      }
+      return supportLeanSearch ? [`${token} ${step}`] : [token, `${token} ${step}`];
     }),
-  ], 12);
+  ], supportLeanSearch ? 8 : 12);
   return roleTerms.filter((value) => String(value || '').trim().length >= 5);
+}
+
+function shouldUseLeanLocalExternalSeedPatternPack({ role = null } = {}) {
+  return Number.isFinite(Number(role?.rank)) && Number(role.rank) > 1;
+}
+
+function shouldUseLeanLocalExternalSeedSql({ role = null } = {}) {
+  return Number.isFinite(Number(role?.rank)) && Number(role.rank) > 1;
+}
+
+function buildLocalExternalSeedSearchPredicate(bind, { lean = false } = {}) {
+  if (lean !== true) {
+    return buildExternalSeedRecallLikePredicate(bind, { includeLegacyFallback: true });
+  }
+  return `(
+    ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${bind}::text[])
+    OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${bind}::text[])
+    OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} LIKE ANY(${bind}::text[])
+    OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokens} LIKE ANY(${bind}::text[])
+    OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY(${bind}::text[])
+  )`;
 }
 
 function buildLocalExternalSeedSearchPatterns(query, {
@@ -7919,17 +7967,20 @@ function buildLocalExternalSeedSearchPatterns(query, {
   preferredStep = '',
 } = {}) {
   const raw = String(query || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const supportLeanSearch = shouldUseLeanLocalExternalSeedPatternPack({ role, preferredStep });
   const tokens = tokenizeSurfacingSearchText(query, { max: 10, dropStopwords: true }).length > 0
     ? tokenizeSurfacingSearchText(query, { max: 10, dropStopwords: true })
     : tokenizeSurfacingSearchText(query, { max: 10, dropStopwords: false });
   const bigrams = [];
-  for (let index = 0; index < tokens.length - 1; index += 1) {
-    const left = String(tokens[index] || '').trim();
-    const right = String(tokens[index + 1] || '').trim();
-    if (left && right) bigrams.push(`${left} ${right}`);
+  if (!supportLeanSearch) {
+    for (let index = 0; index < tokens.length - 1; index += 1) {
+      const left = String(tokens[index] || '').trim();
+      const right = String(tokens[index + 1] || '').trim();
+      if (left && right) bigrams.push(`${left} ${right}`);
+    }
   }
   const rolePhrases = buildLocalExternalSeedRoleSearchPhrases({ role, preferredStep });
-  const singletonTokens = tokens.length <= 2
+  const singletonTokens = !supportLeanSearch && tokens.length <= 2
     ? tokens.filter((value) => String(value || '').trim().length >= 4)
     : [];
   const phrases = uniqCaseInsensitiveStrings(
@@ -7939,7 +7990,7 @@ function buildLocalExternalSeedSearchPatterns(query, {
       ...singletonTokens,
       ...rolePhrases,
     ].map((value) => String(value || '').trim()).filter((value) => value.length >= 3),
-    14,
+    supportLeanSearch ? 8 : 14,
   );
   return phrases.map((value) => `%${value}%`);
 }
@@ -8066,6 +8117,7 @@ async function searchLocalExternalSeedProducts({
     role,
     preferredStep,
   });
+  const leanSql = shouldUseLeanLocalExternalSeedSql({ role, preferredStep });
   if (!patterns.length) {
     return {
       ok: false,
@@ -8105,7 +8157,7 @@ async function searchLocalExternalSeedProducts({
           AND attached_product_key IS NULL
           AND market = $1
           AND (tool = '*' OR tool = $2)
-          AND ${buildExternalSeedRecallLikePredicate('$3', { includeLegacyFallback: true })}
+          AND ${buildLocalExternalSeedSearchPredicate('$3', { lean: leanSql })}
         ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
         LIMIT $4
       `,
@@ -20429,6 +20481,22 @@ function shouldSkipFrameworkPrimaryExternalSeedLevel(level, candidateState = nul
   return selectedCount >= 2;
 }
 
+function resolveRecoQueryEntryTimeoutMs(queryEntry = null, effectiveTimeoutMs = 0) {
+  const normalizedTimeoutMs = Number.isFinite(Number(effectiveTimeoutMs))
+    ? Math.max(0, Math.trunc(Number(effectiveTimeoutMs)))
+    : 0;
+  if (normalizedTimeoutMs <= 0) return normalizedTimeoutMs;
+  const sourceScope = String(queryEntry?.source_scope || queryEntry?.sourceScope || '').trim().toLowerCase();
+  if (sourceScope !== 'external_seed') return normalizedTimeoutMs;
+  const roleRank = Number.isFinite(Number(queryEntry?.role_rank || queryEntry?.roleRank))
+    ? Number(queryEntry.role_rank || queryEntry.roleRank)
+    : null;
+  if (roleRank != null && roleRank > 1) {
+    return Math.min(normalizedTimeoutMs, RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS);
+  }
+  return Math.min(normalizedTimeoutMs, RECO_CATALOG_PRIMARY_EXTERNAL_SEED_QUERY_TIMEOUT_MS);
+}
+
 async function collectRecoCandidatesFromQueryLevels({
   queryLevels,
   targetContext,
@@ -20532,7 +20600,8 @@ async function collectRecoCandidatesFromQueryLevels({
               ),
             )
           : timeoutMs;
-        if (Number.isFinite(remainingDeadlineMs) && effectiveTimeoutMs < 120) {
+        const queryTimeoutMs = resolveRecoQueryEntryTimeoutMs(normalizedQueryEntry, effectiveTimeoutMs);
+        if (Number.isFinite(remainingDeadlineMs) && queryTimeoutMs < 120) {
           return {
             queryEntry,
             out: {
@@ -20541,8 +20610,8 @@ async function collectRecoCandidatesFromQueryLevels({
               reason: 'budget_exhausted',
               actual_http_attempt_count: 0,
               attempted_request_timeouts_ms:
-                Number.isFinite(Number(effectiveTimeoutMs)) && Number(effectiveTimeoutMs) >= 0
-                  ? [Math.trunc(Number(effectiveTimeoutMs))]
+                Number.isFinite(Number(queryTimeoutMs)) && Number(queryTimeoutMs) >= 0
+                  ? [Math.trunc(Number(queryTimeoutMs))]
                   : [],
             },
           };
@@ -20554,7 +20623,7 @@ async function collectRecoCandidatesFromQueryLevels({
               executeRecoRecallPlanEntry({
                 entry: normalizedQueryEntry,
                 logger,
-                timeoutMs: effectiveTimeoutMs,
+                timeoutMs: queryTimeoutMs,
                 deadlineMs: normalizedDeadlineMs,
                 limit,
                 usePurchasableFallback,
@@ -20566,7 +20635,7 @@ async function collectRecoCandidatesFromQueryLevels({
                 searchFn,
               }),
             ),
-            effectiveTimeoutMs,
+            queryTimeoutMs,
             'RECO_RECALL_WALL_CLOCK_TIMEOUT',
           );
         } catch (err) {
@@ -20577,8 +20646,8 @@ async function collectRecoCandidatesFromQueryLevels({
             reason: timeoutTriggered ? 'upstream_timeout' : 'upstream_error',
             actual_http_attempt_count: 0,
             attempted_request_timeouts_ms:
-              Number.isFinite(Number(effectiveTimeoutMs)) && Number(effectiveTimeoutMs) >= 0
-                ? [Math.trunc(Number(effectiveTimeoutMs))]
+              Number.isFinite(Number(queryTimeoutMs)) && Number(queryTimeoutMs) >= 0
+                ? [Math.trunc(Number(queryTimeoutMs))]
                 : [],
             error: err?.message || String(err),
             ...(timeoutTriggered ? { timeout_guard: 'caller_wall_clock' } : {}),
