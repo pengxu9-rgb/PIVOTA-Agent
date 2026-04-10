@@ -38,6 +38,7 @@ const { buildPdpCorePrewarmRequestBody } = require('./pdpConfig');
 const {
   PRODUCT_INTEL_CONTRACT_VERSION,
   buildProductIntelBundle,
+  buildProductIntelDraftBundle,
   hydrateProductWithPublishedIntel,
   buildNormalizedPdpMetadata,
   buildProductFeedbackResponse,
@@ -14628,6 +14629,47 @@ async function buildProductIntelTopLevelModuleData({
   });
 }
 
+async function buildCoverageProductIntelData({
+  product,
+  relatedProducts = [],
+  offersData = null,
+  canonicalProductRef = null,
+  productGroupId = null,
+}) {
+  const productWithIntel = await hydrateProductWithPublishedIntel({
+    product,
+    canonicalProductRef,
+  });
+
+  const publishedBundle = buildProductIntelBundle({
+    product: productWithIntel,
+    relatedProducts,
+    offersData,
+    canonicalProductRef,
+    productGroupId,
+  });
+  if (publishedBundle) {
+    return {
+      productIntel: publishedBundle,
+      selectedMode: 'published_bundle',
+    };
+  }
+
+  const draftBundle = buildProductIntelDraftBundle({
+    product: productWithIntel,
+    relatedProducts,
+    offersData,
+    canonicalProductRef,
+    productGroupId,
+  });
+  if (!draftBundle) return null;
+
+  return {
+    productIntel: draftBundle,
+    selectedMode: 'service_draft',
+  };
+}
+
 function findPdpPayloadModuleData(pdpPayload, type) {
   const modules = Array.isArray(pdpPayload?.modules) ? pdpPayload.modules : [];
   const match = modules.find((module) => module?.type === type);
@@ -17337,7 +17379,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 default_offer_id: `of:mock:${merchantId}:${product.product_id}`,
                 best_price_offer_id: `of:mock:${merchantId}:${product.product_id}`,
               };
-              const productIntel = await buildProductIntelTopLevelModuleData({
+              const coverageIntel = await buildCoverageProductIntelData({
                 product,
                 relatedProducts,
                 offersData,
@@ -17346,6 +17388,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   product_id: product.product_id,
                 },
               });
+              const productIntel = coverageIntel?.productIntel || null;
               if (!productIntel) {
                 missing.push({
                   product_ref: {
@@ -17363,6 +17406,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 },
                 productIntel,
                 product,
+                selectedMode: coverageIntel?.selectedMode || 'service_draft',
               });
               if (!candidate) {
                 missing.push({
@@ -18530,13 +18574,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ),
           };
 
-          const productIntel = await buildProductIntelTopLevelModuleData({
+          const coverageIntel = await buildCoverageProductIntelData({
             product: context.product,
             relatedProducts: context.relatedProducts,
             offersData,
             canonicalProductRef: context.canonicalProductRef,
             productGroupId: fallbackProductGroupId,
           });
+          const productIntel = coverageIntel?.productIntel || null;
 
           if (!productIntel) {
             missing.push({
@@ -18551,6 +18596,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             productGroupId: fallbackProductGroupId,
             productIntel,
             product: context.product,
+            selectedMode: coverageIntel?.selectedMode || 'service_draft',
           });
           if (!candidate) {
             missing.push({
