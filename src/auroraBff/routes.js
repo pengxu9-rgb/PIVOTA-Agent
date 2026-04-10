@@ -1307,6 +1307,11 @@ const RECO_CATALOG_EXTERNAL_SEED_HANDOFF_TIMEOUT_MS = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 30000;
   return Math.max(12000, Math.min(45000, v));
 })();
+const RECO_CATALOG_FRAMEWORK_LOCAL_HANDOFF_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_FRAMEWORK_LOCAL_HANDOFF_TIMEOUT_MS || 4800);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 4800;
+  return Math.max(2400, Math.min(7000, v));
+})();
 const {
   classifyBeautyMainlineHandoffFallback,
   buildBeautyMainlineHandoffFallbackEnvelope,
@@ -18983,7 +18988,7 @@ async function runBeautyMainlineLocalHandoffSearch({
       Math.min(
         Number.isFinite(Number(timeoutMs)) ? Math.trunc(Number(timeoutMs)) : 5000,
         isFrameworkLocalHandoff
-          ? 2400
+          ? RECO_CATALOG_FRAMEWORK_LOCAL_HANDOFF_TIMEOUT_MS
           : normalizeRecoTargetStep(targetContext?.resolved_target_step) === 'sunscreen'
             ? 6500
             : 5000,

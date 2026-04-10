@@ -354,6 +354,7 @@ test('handoffRecoToBeautyMainlineSearch trims framework local handoff to primary
           query: String(args?.query || ''),
           callerLane: String(args?.callerLane || ''),
           allowExternalSeed: args?.allowExternalSeed === true,
+          timeoutMs: Number(args?.timeoutMs || 0),
         });
         return {
           ok: true,
@@ -391,6 +392,7 @@ test('handoffRecoToBeautyMainlineSearch trims framework local handoff to primary
     );
     assert.equal(captured.every((row) => row.callerLane === 'beauty_chat_handoff'), true);
     assert.equal(captured.every((row) => row.allowExternalSeed !== true), true);
+    assert.equal(captured.every((row) => row.timeoutMs === 4800), true);
     assert.equal(out.searchResult?.query_source, 'beauty_mainline_local_handoff');
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.planned_level_count, 6);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_level_count, 1);
