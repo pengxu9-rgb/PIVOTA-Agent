@@ -249,6 +249,16 @@ describe('get_pdp_v2 identity graph live read', () => {
           ],
         };
       }
+      if (normalizedSql.includes('FROM merchant_stores') && normalizedSql.includes('merchant_onboarding')) {
+        return {
+          rows: [
+            {
+              merchant_id: 'merch_krave',
+              merchant_name: 'Pivota Market',
+            },
+          ],
+        };
+      }
       return { rows: [] };
     });
 
@@ -372,6 +382,23 @@ describe('get_pdp_v2 identity graph live read', () => {
           ],
         }),
       );
+    const canonicalPayloadModuleTypes = (canonicalModule?.data?.pdp_payload?.modules || []).map(
+      (module) => module.type,
+    );
+    expect(canonicalPayloadModuleTypes).not.toEqual(
+      expect.arrayContaining(['product_intel', 'recommendations', 'reviews_preview', 'similar']),
+    );
+    expect(
+      app._debug.stripResponseOwnedPdpModulesFromCanonicalPayload({
+        modules: [
+          { type: 'media_gallery' },
+          { type: 'product_intel' },
+          { type: 'recommendations' },
+          { type: 'reviews_preview' },
+          { type: 'similar' },
+        ],
+      }).modules,
+    ).toEqual([{ type: 'media_gallery' }]);
     expect(reviewsModule?.data).toEqual(
       expect.objectContaining({
         aggregation_scope: 'product_line',
@@ -393,7 +420,7 @@ describe('get_pdp_v2 identity graph live read', () => {
     const internalOffer = offersModule.data.offers.find((offer) => offer.merchant_id === 'merch_krave');
     expect(internalOffer).toEqual(
       expect.objectContaining({
-        merchant_name: 'KraveBeauty',
+        merchant_name: 'Pivota Market',
         variant_id: '52876964495688',
         selected_variant_id: '52876964495688',
         sku_id: 'GBR-45',
