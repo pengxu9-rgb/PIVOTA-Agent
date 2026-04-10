@@ -330,6 +330,17 @@ test('handoffRecoToBeautyMainlineSearch clamps local internal primitive timeout 
           attempted_base_urls: [],
           attempted_paths: [],
           transport_policy_mode: String(args?.transportPolicyMode || ''),
+          local_external_seed_search_mode: 'staged_support_fastpath',
+          local_external_seed_category_terms: ['moisturizer', 'sunscreen'],
+          local_external_seed_stage_debug: [
+            {
+              stage: 'support_category_exact',
+              row_count: 0,
+              cumulative_row_count: 0,
+              duration_ms: 12,
+              cap: 6,
+            },
+          ],
         };
       },
     });
@@ -416,6 +427,17 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
           attempted_base_urls: [],
           attempted_paths: [],
           transport_policy_mode: String(args?.transportPolicyMode || ''),
+          local_external_seed_search_mode: 'staged_support_fastpath',
+          local_external_seed_category_terms: ['moisturizer', 'sunscreen'],
+          local_external_seed_stage_debug: [
+            {
+              stage: 'support_category_exact',
+              row_count: 0,
+              cumulative_row_count: 0,
+              duration_ms: 12,
+              cap: 6,
+            },
+          ],
         };
       },
     });
@@ -455,7 +477,7 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
       ],
     );
     assert.equal(captured.every((row) => row.callerLane === 'beauty_chat_handoff'), true);
-    assert.equal(captured.every((row) => row.timeoutMs === 4800), true);
+    assert.equal(captured.every((row) => row.timeoutMs === 6200), true);
     assert.equal(captured.every((row) => row.allowExternalSeed === false), true);
     assert.equal(
       captured.slice(0, 3).every((row) =>
@@ -518,6 +540,18 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
       out.searchResult?.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts?.map((row) => row?.source_scope),
       ['internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'external_seed'],
     );
+    const firstSupportExternalAttempt =
+      out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
+        ?.find((row) =>
+          row?.ladder_level === 'framework_stage_c_support_lightweight_moisturizer_external_seed'
+          && row?.local_external_seed_search_mode)
+      || out.searchResult?.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts
+        ?.find((row) =>
+          row?.ladder_level === 'framework_stage_c_support_lightweight_moisturizer_external_seed'
+          && row?.local_external_seed_search_mode);
+    assert.equal(firstSupportExternalAttempt?.local_external_seed_search_mode, 'staged_support_fastpath');
+    assert.deepEqual(firstSupportExternalAttempt?.local_external_seed_category_terms, ['moisturizer', 'sunscreen']);
+    assert.equal(firstSupportExternalAttempt?.local_external_seed_stage_debug?.[0]?.stage, 'support_category_exact');
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.skipped_external_seed_levels, undefined);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.skipped_support_levels, undefined);
   } finally {

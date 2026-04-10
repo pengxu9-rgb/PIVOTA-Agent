@@ -727,6 +727,65 @@ test('beauty mainline reco rows derive stable brand and shopper fields when sour
   }
 });
 
+test('beauty mainline reco rows surface support retrieval stage and preserve sunscreen display step', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const rows = __internal.buildRecoRowsFromMainlineProducts(
+      [
+        {
+          product_id: 'ext_support_spf_1',
+          merchant_id: 'external_seed',
+          display_name: 'UV Filters SPF 45 Serum',
+          category: 'Serum',
+          product_type: 'Serum',
+          matched_role_id: 'daily_sunscreen',
+          matched_role_label: 'Daily sunscreen',
+          matched_role_rank: 3,
+          retrieval_source: 'external_seed',
+          retrieval_reason: 'external_seed_local_search:support_recall_title',
+          retrieval_match_stage: 'support_recall_title',
+          retrieval_match_score: 48,
+          sku: {
+            brand: 'The Ordinary',
+            price: { amount: 19, currency: 'USD', unknown: false },
+            retrieval_match_stage: 'support_recall_title',
+          },
+        },
+      ],
+      {
+        targetContext: {
+          resolved_target_step: 'treatment',
+          primary_role_id: 'oil_control_treatment',
+          framework_roles: [
+            {
+              role_id: 'oil_control_treatment',
+              label: 'Oil-control treatment',
+              rank: 1,
+              preferred_step: 'treatment',
+            },
+            {
+              role_id: 'daily_sunscreen',
+              label: 'Daily sunscreen',
+              rank: 3,
+              preferred_step: 'sunscreen',
+            },
+          ],
+        },
+        language: 'EN',
+      },
+    );
+
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].matched_role_id, 'daily_sunscreen');
+    assert.equal(rows[0].retrieval_match_stage, 'support_recall_title');
+    assert.equal(rows[0].retrieval_match_score, 48);
+    assert.equal(rows[0].category, 'sunscreen');
+    assert.equal(rows[0].product_type, 'sunscreen');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('beauty mainline final selection titles stay de-duplicated when display name already includes brand', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {

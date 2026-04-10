@@ -1311,9 +1311,9 @@ const RECO_CATALOG_EXTERNAL_SEED_HANDOFF_TIMEOUT_MS = (() => {
   return Math.max(12000, Math.min(45000, v));
 })();
 const RECO_CATALOG_FRAMEWORK_LOCAL_HANDOFF_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_FRAMEWORK_LOCAL_HANDOFF_TIMEOUT_MS || 4800);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 4800;
-  return Math.max(2400, Math.min(7000, v));
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_FRAMEWORK_LOCAL_HANDOFF_TIMEOUT_MS || 6200);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 6200;
+  return Math.max(2400, Math.min(8500, v));
 })();
 const RECO_CATALOG_PRIMARY_EXTERNAL_SEED_QUERY_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_CATALOG_PRIMARY_EXTERNAL_SEED_QUERY_TIMEOUT_MS || 2600);
@@ -1321,9 +1321,9 @@ const RECO_CATALOG_PRIMARY_EXTERNAL_SEED_QUERY_TIMEOUT_MS = (() => {
   return Math.max(800, Math.min(4800, v));
 })();
 const RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS || 1600);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 1600;
-  return Math.max(50, Math.min(3200, v));
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS || 2200);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 2200;
+  return Math.max(50, Math.min(4000, v));
 })();
 const {
   classifyBeautyMainlineHandoffFallback,
@@ -19222,6 +19222,7 @@ function buildConcernRecommendationsFromSelectedCandidates(selectedCandidates, {
     const selectionNotes = isPlainObject(selectionNotesByProductId) && productId
       ? asStringArray(selectionNotesByProductId[productId], 3)
       : [];
+    const displayProductType = resolveFrameworkRecoDisplayProductType(picked, normalizedStep);
     return {
       slot: inferSlotForStep(normalizedStep),
       step: humanizeRecoProductType(normalizedStep, language),
@@ -19257,22 +19258,19 @@ function buildConcernRecommendationsFromSelectedCandidates(selectedCandidates, {
         picked?.sku?.title,
       ),
       category: pickFirstString(
-        picked?.category,
-        picked?.category_name,
-        picked?.categoryName,
-        picked?.product_type,
-        picked?.productType,
-        picked?.type,
-        picked?.sku?.category,
-        picked?.sku?.category_name,
-        picked?.sku?.categoryName,
-        picked?.sku?.product_type,
-        picked?.sku?.productType,
-        picked?.sku?.type,
+        displayProductType,
         normalizedStep,
       ),
       retrieval_source: pickFirstString(picked?.retrieval_source, picked?.retrievalSource, 'catalog'),
       retrieval_reason: pickFirstString(picked?.retrieval_reason, picked?.retrievalReason, 'catalog_search_match'),
+      ...(pickFirstTrimmed(picked?.retrieval_match_stage, picked?.retrievalMatchStage)
+        ? { retrieval_match_stage: pickFirstTrimmed(picked?.retrieval_match_stage, picked?.retrievalMatchStage) }
+        : {}),
+      ...(Number.isFinite(Number(picked?.retrieval_match_score))
+        ? { retrieval_match_score: Number(picked.retrieval_match_score) }
+        : Number.isFinite(Number(picked?.retrievalMatchScore))
+          ? { retrieval_match_score: Number(picked.retrievalMatchScore) }
+          : {}),
       ...(canonicalRef ? { canonical_product_ref: canonicalRef } : {}),
       ...(pickFirstString(picked?.canonical_pdp_url, picked?.canonicalPdpUrl) ? { canonical_pdp_url: pickFirstString(picked?.canonical_pdp_url, picked?.canonicalPdpUrl) } : {}),
       ...(pickFirstString(picked?.purchase_path, picked?.purchasePath) ? { purchase_path: pickFirstString(picked?.purchase_path, picked?.purchasePath) } : {}),
@@ -19281,6 +19279,7 @@ function buildConcernRecommendationsFromSelectedCandidates(selectedCandidates, {
         role: matchedRole,
         language,
       }),
+      ...(displayProductType ? { product_type: displayProductType, category: displayProductType } : {}),
       matched_role_id: pickFirstTrimmed(picked?.matched_role_id, picked?.matchedRoleId) || null,
       matched_role_label: pickFirstTrimmed(picked?.matched_role_label, picked?.matchedRoleLabel) || null,
       matched_role_rank: Number.isFinite(Number(picked?.matched_role_rank)) ? Number(picked.matched_role_rank) : null,
@@ -19300,6 +19299,32 @@ function buildConcernRecommendationsFromSelectedCandidates(selectedCandidates, {
       ].filter(Boolean),
     };
   });
+}
+
+function resolveFrameworkRecoDisplayProductType(picked, normalizedStep = 'other') {
+  const step = normalizeRecoTargetStep(normalizedStep);
+  const rawProductType = pickFirstString(
+    picked?.product_type,
+    picked?.productType,
+    picked?.category,
+    picked?.category_name,
+    picked?.categoryName,
+    picked?.type,
+    picked?.sku?.product_type,
+    picked?.sku?.productType,
+    picked?.sku?.category,
+    picked?.sku?.category_name,
+    picked?.sku?.categoryName,
+    picked?.sku?.type,
+  );
+  const rawToken = normalizeRecoTargetStep(rawProductType);
+  if (
+    (step === 'sunscreen' || step === 'moisturizer' || step === 'cleanser')
+    && (!rawToken || rawToken === 'serum' || rawToken === 'treatment' || rawToken === 'other')
+  ) {
+    return step;
+  }
+  return rawProductType || (step && step !== 'other' ? step : '');
 }
 
 function buildRecoRowsFromMainlineProducts(products, {
@@ -19346,7 +19371,14 @@ function buildRecoRowsFromMainlineProducts(products, {
       targetContext?.resolved_target_step,
   );
   return mainlineRows.map((picked, index) => {
+    const matchedFrameworkRole = Array.isArray(targetContext?.framework_roles)
+      ? targetContext.framework_roles.find((role) => (
+        String(role?.role_id || '').trim()
+          === String(pickFirstTrimmed(picked?.matched_role_id, picked?.matchedRoleId)).trim()
+      )) || null
+      : null;
     const stepToken = pickFirstTrimmed(
+      matchedFrameworkRole?.preferred_step,
       picked?.candidate_step,
       primaryFrameworkStep,
       targetContext?.resolved_target_step,
@@ -19362,6 +19394,7 @@ function buildRecoRowsFromMainlineProducts(products, {
       },
       { requireMerchant: true, allowOpaqueProductId: false },
     );
+    const displayProductType = resolveFrameworkRecoDisplayProductType(picked, normalizedStep);
     return {
       slot: inferSlotForStep(normalizedStep),
       step: humanizeRecoProductType(normalizedStep, language),
@@ -19397,18 +19430,7 @@ function buildRecoRowsFromMainlineProducts(products, {
         picked?.sku?.title,
       ),
       category: pickFirstString(
-        picked?.category,
-        picked?.category_name,
-        picked?.categoryName,
-        picked?.product_type,
-        picked?.productType,
-        picked?.type,
-        picked?.sku?.category,
-        picked?.sku?.category_name,
-        picked?.sku?.categoryName,
-        picked?.sku?.product_type,
-        picked?.sku?.productType,
-        picked?.sku?.type,
+        displayProductType,
         normalizedStep,
       ),
       retrieval_source: pickFirstString(picked?.retrieval_source, picked?.retrievalSource, 'catalog'),
@@ -19417,16 +19439,23 @@ function buildRecoRowsFromMainlineProducts(products, {
         picked?.retrievalReason,
         'shopping_agent_beauty_mainline',
       ),
+      ...(pickFirstTrimmed(picked?.retrieval_match_stage, picked?.retrievalMatchStage)
+        ? { retrieval_match_stage: pickFirstTrimmed(picked?.retrieval_match_stage, picked?.retrievalMatchStage) }
+        : {}),
+      ...(Number.isFinite(Number(picked?.retrieval_match_score))
+        ? { retrieval_match_score: Number(picked.retrieval_match_score) }
+        : Number.isFinite(Number(picked?.retrievalMatchScore))
+          ? { retrieval_match_score: Number(picked.retrievalMatchScore) }
+          : {}),
       ...(canonicalRef ? { canonical_product_ref: canonicalRef } : {}),
       ...(pickFirstString(picked?.canonical_pdp_url, picked?.canonicalPdpUrl) ? { canonical_pdp_url: pickFirstString(picked?.canonical_pdp_url, picked?.canonicalPdpUrl) } : {}),
       ...(pickFirstString(picked?.purchase_path, picked?.purchasePath) ? { purchase_path: pickFirstString(picked?.purchase_path, picked?.purchasePath) } : {}),
       ...(isPlainObject(picked?.pdp_open) ? { pdp_open: picked.pdp_open } : {}),
       ...buildRecoVisibleProductFields(picked, {
-        role: targetContext?.framework_roles?.find((role) => (
-          String(role?.role_id || '').trim() === String(pickFirstTrimmed(picked?.matched_role_id, picked?.matchedRoleId, primaryFrameworkRole?.role_id)).trim()
-        )) || primaryFrameworkRole,
+        role: matchedFrameworkRole || primaryFrameworkRole,
         language,
       }),
+      ...(displayProductType ? { product_type: displayProductType, category: displayProductType } : {}),
       ...((pickFirstTrimmed(picked?.matched_role_id, picked?.matchedRoleId) || primaryFrameworkRole)
         ? {
             matched_role_id: pickFirstTrimmed(picked?.matched_role_id, picked?.matchedRoleId, primaryFrameworkRole?.role_id) || null,
@@ -19798,6 +19827,21 @@ function buildBeautyMainlineLocalQueryAttempts(searchResults = []) {
     ...(pickFirstTrimmed(row?.upstream_error_message)
       ? { upstream_error_message: pickFirstTrimmed(row.upstream_error_message) }
       : {}),
+    ...(pickFirstTrimmed(row?.timeout_guard)
+      ? { timeout_guard: pickFirstTrimmed(row.timeout_guard) }
+      : {}),
+    ...(Array.isArray(row?.attempted_request_timeouts_ms)
+      ? { attempted_request_timeouts_ms: row.attempted_request_timeouts_ms }
+      : {}),
+    ...(pickFirstTrimmed(row?.local_external_seed_search_mode)
+      ? { local_external_seed_search_mode: pickFirstTrimmed(row.local_external_seed_search_mode) }
+      : {}),
+    ...(Array.isArray(row?.local_external_seed_stage_debug)
+      ? { local_external_seed_stage_debug: row.local_external_seed_stage_debug }
+      : {}),
+    ...(Array.isArray(row?.local_external_seed_category_terms)
+      ? { local_external_seed_category_terms: row.local_external_seed_category_terms }
+      : {}),
   }));
 }
 
@@ -20129,6 +20173,8 @@ async function handoffRecoToBeautyMainlineSearch({
         : '';
   const shouldUseExternalSeedSupplement = Boolean(semanticContract);
   const shouldUseSunscreenRecallBudget = semanticTargetStepFamily === 'sunscreen';
+  const shouldUseFrameworkLocalRecallBudget =
+    String(semanticContract?.planner_mode || '').trim().toLowerCase() === 'framework_generic';
   const handoffTransportPolicy = buildBeautyMainlineHandoffTransportPolicy({
     mode:
       String(semanticContract?.planner_mode || '').trim().toLowerCase() === 'step_aware'
@@ -20145,6 +20191,8 @@ async function handoffRecoToBeautyMainlineSearch({
     : effectiveTimeoutMs;
   const handoffSearchMinTimeoutMs = shouldUseSunscreenRecallBudget
     ? Math.max(effectiveMinTimeoutMs, 5000)
+    : shouldUseFrameworkLocalRecallBudget
+      ? Math.max(effectiveMinTimeoutMs, RECO_CATALOG_FRAMEWORK_LOCAL_HANDOFF_TIMEOUT_MS)
     : effectiveMinTimeoutMs;
   let searchResult = null;
   if (typeof searchFn === 'function') {
