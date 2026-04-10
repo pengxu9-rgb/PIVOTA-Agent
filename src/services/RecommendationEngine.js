@@ -580,6 +580,23 @@ function pickBalancedCandidates(candidates, k, baseIsExternal) {
   const selected = [];
   const used = new Set();
 
+  const appendCandidate = (candidate) => {
+    if (!candidate || selected.length >= K) return false;
+    const key = `${candidate.features.merchantId}::${candidate.features.productId}`;
+    if (used.has(key)) return false;
+    used.add(key);
+    selected.push(candidate);
+    return true;
+  };
+
+  if (baseIsExternal) {
+    for (const candidate of candidates) {
+      if (selected.length >= K) break;
+      if (candidate.source !== 'external' || !candidate.brandMatch) continue;
+      appendCandidate(candidate);
+    }
+  }
+
   const nextFromSource = (source) => {
     const queue = source === 'internal' ? internalQueue : externalQueue;
     while (pointers[source] < queue.length) {
@@ -587,7 +604,6 @@ function pickBalancedCandidates(candidates, k, baseIsExternal) {
       pointers[source] += 1;
       const key = `${candidate.features.merchantId}::${candidate.features.productId}`;
       if (used.has(key)) continue;
-      used.add(key);
       return candidate;
     }
     return null;
@@ -599,7 +615,7 @@ function pickBalancedCandidates(candidates, k, baseIsExternal) {
       if (selected.length >= K) break;
       const next = nextFromSource(source);
       if (!next) continue;
-      selected.push(next);
+      appendCandidate(next);
       progress = true;
     }
     if (!progress) break;
@@ -608,10 +624,7 @@ function pickBalancedCandidates(candidates, k, baseIsExternal) {
   if (selected.length < K) {
     for (const candidate of candidates) {
       if (selected.length >= K) break;
-      const key = `${candidate.features.merchantId}::${candidate.features.productId}`;
-      if (used.has(key)) continue;
-      used.add(key);
-      selected.push(candidate);
+      appendCandidate(candidate);
     }
   }
 

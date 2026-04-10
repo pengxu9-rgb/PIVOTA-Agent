@@ -565,4 +565,61 @@ describe('RecommendationEngine (PDP)', () => {
     expect(out.items.every((item) => item.reason === 'L2E:external:same_brand_external_synthetic')).toBe(true);
     expect(out.metadata?.retrieval_mix).toEqual({ internal: 0, external: 2 });
   });
+
+  test('o) external synthetic PDP ranks same-brand external seeds before other-brand internal category fills', () => {
+    const base = makeProduct({
+      merchant_id: 'external_seed',
+      product_id: 'ext_krave_gbr_45',
+      title: 'Great Barrier Relief',
+      vendor: 'KraveBeauty',
+      category_path: ['Beauty', 'Serum'],
+      source: 'external_seed',
+      price: 28,
+    });
+
+    const internal = [
+      makeProduct({
+        merchant_id: 'merch_winona',
+        product_id: 'internal_winona_serum',
+        title: 'Winona Soothing Repair Serum',
+        vendor: 'Winona',
+        category_path: ['Beauty', 'Serum'],
+        price: 28,
+      }),
+    ];
+
+    const external = [
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_krave_barrier_renew',
+        title: 'Barrier Renew',
+        vendor: 'KraveBeauty',
+        category_path: ['Beauty', 'Cream'],
+        source: 'external_seed',
+        price: 30,
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_krave_barrier_rescue',
+        title: 'Barrier Rescue',
+        vendor: 'KraveBeauty',
+        category_path: ['Beauty', 'Cream'],
+        source: 'external_seed',
+        price: 32,
+      }),
+    ];
+
+    const out = pickLayeredRecommendations({
+      baseProduct: base,
+      internalCandidates: internal,
+      externalCandidates: external,
+      k: 3,
+    });
+
+    expect(out.items.slice(0, 2).map((item) => item.product_id)).toEqual([
+      'ext_krave_barrier_renew',
+      'ext_krave_barrier_rescue',
+    ]);
+    expect(out.items.map((item) => item.product_id)).toContain('internal_winona_serum');
+  });
 });
