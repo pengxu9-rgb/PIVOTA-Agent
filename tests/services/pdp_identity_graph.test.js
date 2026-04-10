@@ -164,7 +164,9 @@ describe('pdpIdentityGraph', () => {
       if (String(sql).includes('FROM products_cache')) {
         expect(String(sql)).not.toContain('created_at');
         expect(String(sql)).not.toContain('updated_at');
-        expect(params).toEqual(['external_seed', 10]);
+        expect(String(sql)).toContain("product_data->>'vendor'");
+        expect(String(sql)).toContain("product_data->>'title'");
+        expect(params).toEqual(['external_seed', 'kravebeauty', '%kravebeauty%', 10]);
         return {
           rows: [
             {
@@ -181,6 +183,9 @@ describe('pdpIdentityGraph', () => {
         };
       }
       if (String(sql).includes('FROM external_product_seeds')) {
+        expect(String(sql)).toContain("seed_data->>'vendor'");
+        expect(String(sql)).toContain('lower(coalesce(title');
+        expect(params).toEqual(['kravebeauty', '%kravebeauty%', 10]);
         return { rows: [] };
       }
       throw new Error(`unexpected query: ${sql}`);
