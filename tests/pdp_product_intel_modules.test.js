@@ -213,10 +213,14 @@ describe('pdp product intel bundle shaping', () => {
         contract_version: 'pivota.shopping_card.v1',
         title: 'Demo product',
         highlight: 'Creators often point to the lightweight',
+        intro:
+          'A multi-active treatment serum that combines vitamin C, retinol, niacinamide, hyaluronic acid, and salicylic acid to target tone, texture, and early signs of aging in one step.',
       },
       search_card: {
         title_candidate: 'Demo product',
         highlight_candidate: 'Creators often point to the lightweight',
+        intro_candidate:
+          'A multi-active treatment serum that combines vitamin C, retinol, niacinamide, hyaluronic acid, and salicylic acid to target tone, texture, and early signs of aging in one step.',
       },
       quality_state: 'limited',
       evidence_profile: 'seller_only',
@@ -233,6 +237,13 @@ describe('pdp product intel bundle shaping', () => {
     ]);
     expect(bundle.shopping_card.highlight).toBe('Creators often point to the lightweight');
     expect(bundle.search_card.highlight_candidate).toBe('Creators often point to the lightweight');
+    expect(bundle.shopping_card.intro).toBe(
+      'Multi-active serum with vitamin C, retinol, niacinamide, hyaluronic and salicylic acids.',
+    );
+    expect(bundle.search_card.intro_candidate).toBe(
+      'Multi-active serum with vitamin C, retinol, niacinamide, hyaluronic and salicylic acids.',
+    );
+    expect(bundle.search_card.intro_candidate.length).toBeLessThanOrEqual(90);
   });
 
   test('published bundles expose reviewed shopping and search card metadata', () => {
