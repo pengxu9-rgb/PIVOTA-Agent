@@ -344,7 +344,7 @@ test('handoffRecoToBeautyMainlineSearch clamps local internal primitive timeout 
   }
 });
 
-test('handoffRecoToBeautyMainlineSearch keeps primary internal plus primary external supplement and records skipped support levels', async () => {
+test('handoffRecoToBeautyMainlineSearch executes primary external supplement with external-stage runtime contract and records skipped support levels', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     const captured = [];
@@ -355,6 +355,21 @@ test('handoffRecoToBeautyMainlineSearch keeps primary internal plus primary exte
           callerLane: String(args?.callerLane || ''),
           allowExternalSeed: args?.allowExternalSeed === true,
           timeoutMs: Number(args?.timeoutMs || 0),
+          targetStepFamily: String(args?.targetStepFamily || ''),
+          semanticFamily: String(args?.semanticFamily || ''),
+          queryStepStrength: String(args?.queryStepStrength || ''),
+          productOnly: args?.productOnly === true,
+          transportPolicy: {
+            mode: String(args?.transportPolicy?.mode || ''),
+            includeSelfProxy: args?.transportPolicy?.include_self_proxy === true,
+            includeLocalFallback: args?.transportPolicy?.include_local_fallback === true,
+            forceGenericOnly: args?.transportPolicy?.force_generic_only === true,
+            maxBaseUrls: Number(args?.transportPolicy?.max_base_urls || 0),
+            maxPaths: Number(args?.transportPolicy?.max_paths || 0),
+            actualHttpAttemptLimitPerQuery: Number(
+              args?.transportPolicy?.actual_http_attempt_limit_per_query || 0,
+            ),
+          },
         });
         return {
           ok: true,
@@ -395,13 +410,60 @@ test('handoffRecoToBeautyMainlineSearch keeps primary internal plus primary exte
       ],
     );
     assert.equal(captured.every((row) => row.callerLane === 'beauty_chat_handoff'), true);
-    assert.equal(captured.every((row) => row.allowExternalSeed !== true), true);
     assert.equal(captured.every((row) => row.timeoutMs === 4800), true);
+    assert.deepEqual(
+      captured.slice(0, 3).map((row) => row.allowExternalSeed),
+      [false, false, false],
+    );
+    assert.deepEqual(
+      captured.slice(3).map((row) => row.allowExternalSeed),
+      [true, true, true, true],
+    );
+    assert.equal(
+      captured.slice(0, 3).every((row) =>
+        row.targetStepFamily === 'serum'
+        && row.semanticFamily === 'oil_control_treatment'
+        && row.queryStepStrength === 'strong_goal_family'
+        && row.productOnly === true),
+      true,
+    );
+    assert.equal(
+      captured.slice(3).every((row) =>
+        row.targetStepFamily === 'treatment'
+        && row.semanticFamily === 'oil_control'
+        && row.queryStepStrength === 'strong_goal_family'
+        && row.productOnly === true
+        && row.transportPolicy.mode === 'framework_first_turn'
+        && row.transportPolicy.includeSelfProxy === false
+        && row.transportPolicy.includeLocalFallback === false
+        && row.transportPolicy.forceGenericOnly === true
+        && row.transportPolicy.maxBaseUrls === 1
+        && row.transportPolicy.maxPaths === 1
+        && row.transportPolicy.actualHttpAttemptLimitPerQuery === 1),
+      true,
+    );
     assert.equal(out.searchResult?.query_source, 'beauty_mainline_local_handoff');
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.planned_level_count, 6);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_level_count, 2);
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_query_count, 7);
+    assert.equal(
+      out.searchResult?.metadata?.search_stage_ledger?.primary_search?.execution_lane,
+      'beauty_mainline_local_handoff',
+    );
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.skipped_external_seed_level_count, 2);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.skipped_support_level_count, 2);
+    assert.equal(
+      out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.transport_policy_mode,
+      'framework_first_turn',
+    );
+    assert.deepEqual(
+      out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts?.map((row) => row?.source_scope),
+      ['internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed'],
+    );
+    assert.deepEqual(
+      out.searchResult?.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts?.map((row) => row?.source_scope),
+      ['internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed'],
+    );
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.skipped_external_seed_levels,
       [
@@ -415,6 +477,112 @@ test('handoffRecoToBeautyMainlineSearch keeps primary internal plus primary exte
         'framework_stage_c_support_lightweight_moisturizer',
         'framework_stage_c_support_daily_sunscreen',
       ],
+    );
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+    delete require.cache[moduleId];
+  }
+});
+
+test('handoffRecoToBeautyMainlineSearch preserves horizontal comparison across internal and external primary-role candidates', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    __internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async (args) => {
+        const query = String(args?.query || '').trim().toLowerCase();
+        const allowExternalSeed = args?.allowExternalSeed === true;
+        if (!allowExternalSeed && query === 'niacinamide serum oily skin') {
+          return {
+            ok: true,
+            products: [
+              {
+                product_id: 'oil_control_internal_1',
+                merchant_id: 'merchant_internal',
+                title: 'GoalSkin Oil Control Niacinamide Serum',
+                display_name: 'GoalSkin Oil Control Niacinamide Serum',
+                category: 'Treatment',
+                product_type: 'serum',
+                candidate_step: 'treatment',
+                description: 'Niacinamide serum for oil control and shine reduction.',
+                source: 'internal_search',
+              },
+            ],
+            attempted_internal_paths: ['/agent/internal/products/search'],
+            transport_hops: [],
+            transport_hop_count: 0,
+            nested_orchestrator_hops: 0,
+            primary_transport_owner: 'internal_products_search_primitive',
+            primary_endpoint_kind: 'internal_primitive',
+          };
+        }
+        if (allowExternalSeed && query === 'oil control treatment') {
+          return {
+            ok: true,
+            products: [
+              {
+                product_id: 'oil_control_external_1',
+                merchant_id: 'merchant_external',
+                title: 'ClearLab Oil Control Sebum Serum',
+                display_name: 'ClearLab Oil Control Sebum Serum',
+                category: 'Treatment',
+                product_type: 'serum',
+                candidate_step: 'treatment',
+                description: 'Oil control treatment serum for oily skin and visible shine.',
+                source: 'external_seed',
+              },
+            ],
+            attempted_internal_paths: ['/agent/internal/products/search'],
+            transport_hops: [],
+            transport_hop_count: 0,
+            nested_orchestrator_hops: 0,
+            primary_transport_owner: 'internal_products_search_primitive',
+            primary_endpoint_kind: 'internal_primitive',
+          };
+        }
+        return {
+          ok: true,
+          products: [],
+          attempted_internal_paths: ['/agent/internal/products/search'],
+          transport_hops: [],
+          transport_hop_count: 0,
+          nested_orchestrator_hops: 0,
+          primary_transport_owner: 'internal_products_search_primitive',
+          primary_endpoint_kind: 'internal_primitive',
+        };
+      },
+    });
+
+    const out = await __internal.handoffRecoToBeautyMainlineSearch({
+      ctx: { lang: 'EN', request_id: 'req_multi_source_primary_role_compare' },
+      primaryQuery: 'what products should i use for oily skin?',
+      fallbackMessage: 'what products should i use for oily skin?',
+      targetContext: resolveRecommendationTargetContext({
+        text: 'what products should i use for oily skin?',
+        focus: '',
+        entryType: 'chat',
+      }),
+      timeoutMs: 5000,
+      minTimeoutMs: 5000,
+    });
+
+    assert.equal(out.searchResult?.query_source, 'beauty_mainline_local_handoff');
+    assert.equal(out.recommendations.length, 2);
+    assert.deepEqual(
+      out.recommendations.map((item) => item?.product_id).sort(),
+      ['oil_control_external_1', 'oil_control_internal_1'],
+    );
+    assert.deepEqual(
+      out.searchResult?.metadata?.final_selection?.selected_product_ids?.slice().sort(),
+      ['oil_control_external_1', 'oil_control_internal_1'],
+    );
+    assert.deepEqual(
+      out.searchResult?.metadata?.source_breakdown?.source_tier_counts,
+      { fresh_internal: 1, fresh_external: 1 },
+    );
+    assert.equal(
+      out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts?.some((row) =>
+        row?.source_scope === 'external_seed' && row?.result_count === 1),
+      true,
     );
   } finally {
     __internal.__resetRouteDependencyOverridesForTest();

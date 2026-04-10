@@ -17795,6 +17795,7 @@ async function executeRecoRecallPlanEntry({
   entry,
   logger,
   timeoutMs,
+  deadlineMs = 0,
   limit = 6,
   usePurchasableFallback = false,
   transportPolicyMode = '',
@@ -17817,6 +17818,9 @@ async function executeRecoRecallPlanEntry({
     ? targetContext.framework_roles.find((item) => String(item?.role_id || '').trim() === roleId) || null
     : null;
   const normalizedPreferredStep = normalizeRecoTargetStep(entry?.preferred_step || role?.preferred_step);
+  const normalizedTargetStepFamily = normalizedPreferredStep === 'treatment'
+    ? 'serum'
+    : normalizedPreferredStep;
   const normalizedSemanticFamily = (() => {
     const raw = pickFirstTrimmed(
       entry?.semantic_family,
@@ -17880,6 +17884,7 @@ async function executeRecoRecallPlanEntry({
     limit,
     logger,
     timeoutMs,
+    deadlineMs,
     allowExternalSeed: sourceScope !== 'internal',
     externalSeedStrategy: normalizedExternalSeedStrategy || 'on_empty_only',
     fastMode: sourceScope === 'external_seed' ? true : sourceScope !== 'external_seed',
@@ -17888,15 +17893,22 @@ async function executeRecoRecallPlanEntry({
     queryIndex,
     queryTotal,
     authHeaders,
+    productOnly: true,
   };
   if (sourceScope === 'external_seed') {
     runSearchParams.catalogSurface = 'beauty';
-    runSearchParams.productOnly = true;
     if (normalizedPreferredStep) runSearchParams.targetStepFamily = normalizedPreferredStep;
     if (normalizedSemanticFamily) runSearchParams.semanticFamily = normalizedSemanticFamily;
     if (normalizedQueryStepStrength) runSearchParams.queryStepStrength = normalizedQueryStepStrength;
-  } else if (semanticContract) {
-    runSearchParams.semanticContract = semanticContract;
+  } else {
+    if (normalizedTargetStepFamily) runSearchParams.targetStepFamily = normalizedTargetStepFamily;
+    if (roleId || normalizedSemanticFamily) {
+      runSearchParams.semanticFamily = roleId || normalizedSemanticFamily;
+    }
+    if (normalizedQueryStepStrength) runSearchParams.queryStepStrength = normalizedQueryStepStrength;
+    if (semanticContract) {
+      runSearchParams.semanticContract = semanticContract;
+    }
   }
   return runSearch(runSearchParams);
 }
@@ -18012,6 +18024,7 @@ async function collectRecoCandidatesFromRecallPlan({
   recommendationTaskContext = null,
   logger,
   timeoutMs,
+  deadlineMs = 0,
   limit = 6,
   usePurchasableFallback = false,
   semanticContract = null,
@@ -18080,6 +18093,7 @@ async function collectRecoCandidatesFromRecallPlan({
           entry,
           logger,
           timeoutMs,
+          deadlineMs,
           limit,
           usePurchasableFallback,
           transportPolicyMode,
@@ -19401,31 +19415,14 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
   };
 }
 
-function buildBeautyMainlineLocalSearchResult({
-  collected = null,
-  selectedProducts = [],
-} = {}) {
-  const selected = Array.isArray(selectedProducts) ? selectedProducts : [];
-  const mainlineStatus = selected.length > 0 ? 'grounded_success' : 'empty_structured';
-  const selectionContract = buildBeautyMainlineLocalSelectionContract({
-    selectedProducts: selected,
-    mainlineStatus,
-  });
-  const sourceBreakdown = buildBeautyMainlineLocalSourceBreakdown(
-    selected.length > 0 ? selected : Array.isArray(collected?.rawCandidates) ? collected.rawCandidates : [],
-  );
-  const primaryFailureStage =
-    selected.length > 0 ? null : buildBeautyMainlineLocalFailureStage(collected);
-  const localHandoffStageSummary =
-    collected?.localHandoffStageSummary &&
-    typeof collected.localHandoffStageSummary === 'object' &&
-    !Array.isArray(collected.localHandoffStageSummary)
-      ? collected.localHandoffStageSummary
-      : null;
-  const semanticOwnerQueryAttempts = (Array.isArray(collected?.searchResults) ? collected.searchResults : []).map((row) => ({
+function buildBeautyMainlineLocalQueryAttempts(searchResults = []) {
+  return (Array.isArray(searchResults) ? searchResults : []).map((row) => ({
     query: pickFirstTrimmed(row?.query) || null,
+    query_index: Number.isFinite(Number(row?.query_index)) ? Number(row.query_index) : null,
+    ladder_level: pickFirstTrimmed(row?.ladder_level, row?.stage_id) || null,
     role_id: pickFirstTrimmed(row?.role_id) || null,
     role_rank: Number.isFinite(Number(row?.role_rank)) ? Number(row.role_rank) : null,
+    preferred_step: pickFirstTrimmed(row?.step, row?.preferred_step) || null,
     source_scope: pickFirstTrimmed(row?.source_scope) || null,
     result_count: Array.isArray(row?.products) ? row.products.length : 0,
     reason: pickFirstTrimmed(row?.reason) || null,
@@ -19449,6 +19446,48 @@ function buildBeautyMainlineLocalSearchResult({
       ? { upstream_error_message: pickFirstTrimmed(row.upstream_error_message) }
       : {}),
   }));
+}
+
+function buildBeautyMainlineLocalSearchResult({
+  collected = null,
+  selectedProducts = [],
+} = {}) {
+  const selected = Array.isArray(selectedProducts) ? selectedProducts : [];
+  const mainlineStatus = selected.length > 0 ? 'grounded_success' : 'empty_structured';
+  const selectionContract = buildBeautyMainlineLocalSelectionContract({
+    selectedProducts: selected,
+    mainlineStatus,
+  });
+  const sourceBreakdown = buildBeautyMainlineLocalSourceBreakdown(
+    selected.length > 0 ? selected : Array.isArray(collected?.rawCandidates) ? collected.rawCandidates : [],
+  );
+  const primaryFailureStage =
+    selected.length > 0 ? null : buildBeautyMainlineLocalFailureStage(collected);
+  const localHandoffStageSummary =
+    collected?.localHandoffStageSummary &&
+    typeof collected.localHandoffStageSummary === 'object' &&
+    !Array.isArray(collected.localHandoffStageSummary)
+      ? collected.localHandoffStageSummary
+      : null;
+  const semanticOwnerQueryAttempts = buildBeautyMainlineLocalQueryAttempts(collected?.searchResults);
+  const localHandoffLedger = {
+    ...(localHandoffStageSummary ? localHandoffStageSummary : {}),
+    ...(semanticOwnerQueryAttempts.length
+      ? {
+          executed_query_count: semanticOwnerQueryAttempts.length,
+          query_pack_attempts: semanticOwnerQueryAttempts,
+        }
+      : {}),
+    ...(pickFirstTrimmed(collected?.transportPolicyMode)
+      ? { transport_policy_mode: pickFirstTrimmed(collected.transportPolicyMode) }
+      : {}),
+  };
+  const primarySearchLedger = Object.keys(localHandoffLedger).length > 0
+    ? {
+        ...localHandoffLedger,
+        execution_lane: 'beauty_mainline_local_handoff',
+      }
+    : null;
   const metadata = {
     query_source: 'beauty_mainline_local_handoff',
     decision_owner: BEAUTY_DISCOVERY_MAINLINE_OWNER,
@@ -19462,7 +19501,8 @@ function buildBeautyMainlineLocalSearchResult({
     final_selection: selectionContract,
     search_stage_ledger: {
       final_selection: selectionContract,
-      ...(localHandoffStageSummary ? { local_handoff: localHandoffStageSummary } : {}),
+      ...(primarySearchLedger ? { primary_search: primarySearchLedger } : {}),
+      ...(Object.keys(localHandoffLedger).length > 0 ? { local_handoff: localHandoffLedger } : {}),
       ...(primaryFailureStage ? { primary_failure_stage: primaryFailureStage } : {}),
       ...(pickFirstTrimmed(collected?.candidateDropStage)
         ? { candidate_drop_stage: pickFirstTrimmed(collected.candidateDropStage) }
@@ -20275,7 +20315,25 @@ async function collectRecoCandidatesFromQueryLevels({
 } = {}) {
   const rawCandidates = [];
   const searchResults = [];
-  let candidateState = finalizeRecommendationCandidatePools([], { targetContext, recoContext: recommendationTaskContext });
+  const hasFrameworkTargetContext =
+    Array.isArray(targetContext?.framework_roles) && targetContext.framework_roles.length > 0;
+  const transportPolicyMode = resolveRecoRecallTransportModeForPlannerMode(
+    hasFrameworkTargetContext
+      ? 'framework_generic'
+      : targetContext?.step_aware_intent
+        ? 'step_aware'
+        : '',
+  );
+  const flattenedQueryEntries = (Array.isArray(queryLevels) ? queryLevels : []).flatMap((level) =>
+    Array.isArray(level?.queries) ? level.queries : [],
+  );
+  const flattenedQueryIndexes = new Map(
+    flattenedQueryEntries.map((queryEntry, index) => [queryEntry, index]),
+  );
+  let candidateState = buildRecoCandidateStateFromRawCandidates([], {
+    targetContext,
+    recommendationTaskContext,
+  });
   let stopLevel = null;
   const normalizedDeadlineMs = Number.isFinite(Number(deadlineMs))
     ? Math.trunc(Number(deadlineMs))
@@ -20294,19 +20352,19 @@ async function collectRecoCandidatesFromQueryLevels({
         const queryAllowExternalSeed =
           allowExternalSeed === true
           && queryEntry?.allow_external_seed === true;
-        const queryExternalSeedStrategy = queryAllowExternalSeed
-          ? String(queryEntry?.external_seed_strategy || externalSeedStrategy || 'supplement_internal_first').trim().toLowerCase()
-          : 'on_empty_only';
-        const normalizedPreferredStep = normalizeRecoTargetStep(queryEntry?.preferred_step || queryEntry?.step);
-        const targetStepFamily = normalizedPreferredStep === 'treatment'
-          ? 'serum'
-          : normalizedPreferredStep;
-        const isPrimaryRoleQuery = String(queryEntry?.role_id || '').trim() !== ''
-          && String(queryEntry?.role_id || '').trim() === String(targetContext?.primary_role_id || '').trim();
-        const queryStepStrength = isPrimaryRoleQuery || Number(queryEntry?.role_rank || 99) <= 1
-          ? 'strong_goal_family'
-          : 'supportive_family';
-        const runSearch = typeof searchFn === 'function' ? searchFn : searchPivotaBackendProducts;
+        const normalizedQueryEntry = {
+          ...queryEntry,
+          source_scope: queryAllowExternalSeed ? 'external_seed' : 'internal',
+          external_seed_strategy: queryAllowExternalSeed
+            ? String(
+                queryEntry?.external_seed_strategy
+                || externalSeedStrategy
+                || 'supplement_internal_first',
+              )
+                .trim()
+                .toLowerCase()
+            : 'on_empty_only',
+        };
         const remainingDeadlineMs = computeRemainingDeadlineMs();
         const effectiveTimeoutMs = Number.isFinite(remainingDeadlineMs)
           ? Math.max(
@@ -20336,31 +20394,20 @@ async function collectRecoCandidatesFromQueryLevels({
         try {
           out = await withTimeout(
             Promise.resolve().then(() =>
-              usePurchasableFallback
-                ? buildPurchasableFallbackCandidates({
-                    query: queryEntry.query,
-                    limit,
-                    logger,
-                    timeoutMs: effectiveTimeoutMs,
-                    allowExternalSeed: queryAllowExternalSeed,
-                    externalSeedStrategy: queryExternalSeedStrategy,
-                    transportPolicyMode: 'step_aware',
-                  })
-                : runSearch({
-                    query: queryEntry.query,
-                    limit,
-                    logger,
-                    timeoutMs: effectiveTimeoutMs,
-                    deadlineMs: normalizedDeadlineMs,
-                    allowExternalSeed: false,
-                    fastMode: true,
-                    transportPolicy: buildRecoRecallTransportPolicy({ mode: 'step_aware' }),
-                    queryStepStrength,
-                    targetStepFamily,
-                    semanticFamily: queryEntry?.role_id || '',
-                    productOnly: true,
-                    authHeaders,
-                  }),
+              executeRecoRecallPlanEntry({
+                entry: normalizedQueryEntry,
+                logger,
+                timeoutMs: effectiveTimeoutMs,
+                deadlineMs: normalizedDeadlineMs,
+                limit,
+                usePurchasableFallback,
+                transportPolicyMode,
+                targetContext,
+                queryIndex: flattenedQueryIndexes.get(queryEntry),
+                queryTotal: flattenedQueryEntries.length,
+                authHeaders,
+                searchFn,
+              }),
             ),
             effectiveTimeoutMs,
             'RECO_RECALL_WALL_CLOCK_TIMEOUT',
@@ -20381,7 +20428,7 @@ async function collectRecoCandidatesFromQueryLevels({
           };
         }
         return {
-          queryEntry,
+          queryEntry: normalizedQueryEntry,
           out,
         };
       },
@@ -20408,15 +20455,10 @@ async function collectRecoCandidatesFromQueryLevels({
         });
       }
     }
-    candidateState =
-      targetContext && Array.isArray(targetContext.framework_roles) && targetContext.framework_roles.length > 0
-        ? finalizeConcernFrameworkCandidatePools(rawCandidates, {
-            targetContext,
-          })
-        : finalizeRecommendationCandidatePools(rawCandidates, {
-            targetContext,
-            recoContext: recommendationTaskContext,
-          });
+    candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
+      targetContext,
+      recommendationTaskContext,
+    });
     if (shouldStopStepAwareBroadening(candidateState, { targetContext })) {
       stopLevel = String(level?.ladder_level || '').trim() || null;
       break;
@@ -20428,6 +20470,7 @@ async function collectRecoCandidatesFromQueryLevels({
     searchResults,
     candidateState,
     stopLevel,
+    transportPolicyMode,
   };
 }
 
