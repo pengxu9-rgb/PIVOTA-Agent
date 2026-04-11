@@ -149,9 +149,12 @@ const RecommendationMetaSchema = z
       'upstream_fallback',
       'rules_only',
       'catalog_grounded',
+      'framework_mainline',
+      'step_aware_mainline',
       'catalog_transient_fallback',
       'bridge_error',
       'llm_catalog_hybrid',
+      'travel_handoff',
     ]),
     used_recent_logs: z.boolean(),
     used_itinerary: z.boolean(),
@@ -615,6 +618,8 @@ const RecoAlternativesRequestSchema = z
     ingredient_context: z.record(z.string(), z.any()).optional(),
     anchor_product_id: z.string().min(1).max(180).optional(),
     max_total: z.number().int().min(1).max(8).optional(),
+    recommendation_mode: z.enum(['pool_only', 'hybrid_fallback', 'open_world_only']).optional(),
+    disable_synthetic_local_fallback: z.boolean().optional(),
     include_debug: z.boolean().optional(),
   })
   .strict();

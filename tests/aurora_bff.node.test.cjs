@@ -5870,6 +5870,60 @@ test('/v1/reco/alternatives: structured candidate pool returns selector_grounded
   );
 });
 
+test('/v1/reco/alternatives: aurora product-card surface can disable synthetic local fallback', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_CHAT_RECO_BUDGET_MS: '9000',
+      AURORA_BFF_RECO_ALTERNATIVES_TIMEOUT_MS: '6500',
+      AURORA_BFF_RECO_ALTERNATIVES_OVERHEAD_MS: '2000',
+    },
+    async () => {
+      resetVisionMetrics();
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { mountAuroraBffRoutes, __internal } = routeModule;
+        let geminiCalls = 0;
+        __internal.__setCallGeminiJsonObjectForTest(async () => {
+          geminiCalls += 1;
+          return { ok: true, json: { products: [{ id: 'fake_1', why: 'should_not_happen' }] } };
+        });
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/reco/alternatives')
+          .set({
+            'X-Aurora-UID': 'test_uid_alt_disable_synth',
+            'X-Trace-ID': 'test_trace_alt_disable_synth',
+            'X-Brief-ID': 'test_brief_alt_disable_synth',
+            'X-Lang': 'EN',
+          })
+          .send({
+            product_input: 'unknown product text with no structured candidate',
+            max_total: 3,
+            disable_synthetic_local_fallback: true,
+          });
+
+        assert.equal(resp.status, 200);
+        assert.equal(Array.isArray(resp.body?.alternatives), true);
+        assert.equal(resp.body.alternatives.length, 0);
+        assert.equal(resp.body?.failure_class, 'anchor_missing_precheck');
+        assert.equal(geminiCalls, 0);
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
 test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and uses local Gemini', async () => {
   return withEnv(
     {

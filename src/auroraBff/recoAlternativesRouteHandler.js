@@ -77,6 +77,10 @@ function createRecoAlternativesRouteHandlerRuntime(deps = {}) {
           maxTotal,
           debug: includeDebug,
           logger,
+          options: {
+            recommendation_mode: parsed.data.recommendation_mode,
+            disable_synthetic_local_fallback: parsed.data.disable_synthetic_local_fallback === true,
+          },
         });
 
       return res.json({
