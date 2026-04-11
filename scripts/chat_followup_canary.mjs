@@ -26,6 +26,10 @@ function nowStamp() {
   return `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}_${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}${ms}`;
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -113,6 +117,8 @@ function buildMarkdown(summary) {
   lines.push(`- request_status: ${summary.request_status}`);
   lines.push(`- uid: ${summary.uid}`);
   lines.push(`- message: ${summary.message}`);
+  lines.push(`- request_attempts: ${summary.request_attempts}`);
+  lines.push(`- retry_events: ${summary.retry_events.map((event) => event.detail).join(' | ') || 'none'}`);
   lines.push('');
   lines.push('## Card Checks');
   lines.push('');
@@ -138,6 +144,35 @@ function buildMarkdown(summary) {
   return `${lines.join('\n')}\n`;
 }
 
+async function requestChatOnce({ base, message, uid, lang, timeoutMs }) {
+  const response = await fetchWithTimeout(
+    `${base}/v1/chat`,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-aurora-uid': uid,
+        'x-lang': lang,
+      },
+      body: JSON.stringify({ message, session: { state: 'S0' } }),
+    },
+    timeoutMs,
+  );
+
+  const raw = await response.text();
+  let json = {};
+  try {
+    json = raw ? JSON.parse(raw) : {};
+  } catch (_err) {
+    json = {};
+  }
+
+  return {
+    status: response.status,
+    json,
+  };
+}
+
 async function main() {
   const args = parseArgs(process.argv);
   const base = String(args.base || process.env.BASE || 'https://pivota-agent-production.up.railway.app').replace(/\/+$/, '');
@@ -145,6 +180,14 @@ async function main() {
   const lang = String(args.lang || 'CN');
   const uid = String(args.uid || `canary_${Date.now()}`);
   const timeoutMs = Number(args.timeout_ms || 20000);
+  const maxAttempts = Math.max(1, Number(args.max_attempts || 3));
+  const retrySleepMs = Math.max(0, Number(args.retry_sleep_ms || 2000));
+  const retryableStatuses = new Set(
+    String(args.retry_statuses || '429,502,503,504')
+      .split(',')
+      .map((value) => Number(String(value || '').trim()))
+      .filter((value) => Number.isFinite(value) && value > 0),
+  );
   const outPath = String(args.out || path.join('reports', `chat_followup_canary_${nowStamp()}.md`));
 
   const metricsBeforeResp = await fetchWithTimeout(`${base}/metrics`, {}, timeoutMs);
@@ -160,34 +203,39 @@ async function main() {
     },
   );
 
-  const chatResp = await fetchWithTimeout(
-    `${base}/v1/chat`,
-    {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-aurora-uid': uid,
-        'x-lang': lang,
-      },
-      body: JSON.stringify({ message, session: { state: 'S0' } }),
-    },
-    timeoutMs,
-  );
+  const retryEvents = [];
+  let chatResult = { status: 0, json: {} };
+  let requestAttempts = 0;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    requestAttempts = attempt;
+    try {
+      chatResult = await requestChatOnce({ base, message, uid, lang, timeoutMs });
+    } catch (error) {
+      const detail = error?.name === 'AbortError' ? 'timeout' : 'network_error';
+      retryEvents.push({ attempt, detail });
+      if (attempt >= maxAttempts) {
+        chatResult = { status: 0, json: {} };
+        break;
+      }
+      await sleep(retrySleepMs);
+      continue;
+    }
 
-  let chatJson = {};
-  try {
-    chatJson = await chatResp.json();
-  } catch (_err) {
-    chatJson = {};
+    if (!retryableStatuses.has(chatResult.status) || attempt >= maxAttempts) {
+      break;
+    }
+
+    retryEvents.push({ attempt, detail: `status=${chatResult.status}` });
+    await sleep(retrySleepMs);
   }
-  const responseCards = Array.isArray(chatJson.cards)
-    ? chatJson.cards
-    : Array.isArray(chatJson.cards_chatcards)
-      ? chatJson.cards_chatcards
+  const responseCards = Array.isArray(chatResult.json.cards)
+    ? chatResult.json.cards
+    : Array.isArray(chatResult.json.cards_chatcards)
+      ? chatResult.json.cards_chatcards
       : [];
   const cardTypes = responseCards.map((c) => c?.type).filter(Boolean);
   const groundedProductResult = extractGroundedProductResult(responseCards);
-  const assistantText = String(chatJson?.assistant_message?.content || chatJson?.assistant_text || '');
+  const assistantText = String(chatResult.json?.assistant_message?.content || chatResult.json?.assistant_text || '');
 
   const metricsAfterResp = await fetchWithTimeout(`${base}/metrics`, {}, timeoutMs);
   const metricsAfter = await metricsAfterResp.text();
@@ -205,8 +253,8 @@ async function main() {
   const gates = [
     {
       name: 'chat_status_200',
-      pass: chatResp.status === 200,
-      detail: `status=${chatResp.status}`,
+      pass: chatResult.status === 200,
+      detail: `status=${chatResult.status}`,
     },
     {
       name: 'cards_include_grounded_product_results',
@@ -245,7 +293,9 @@ async function main() {
     base,
     uid,
     message,
-    request_status: chatResp.status,
+    request_status: chatResult.status,
+    request_attempts: requestAttempts,
+    retry_events: retryEvents,
     pass: gates.every((g) => g.pass),
     card_checks: {
       has_product_parse: cardTypes.includes('product_parse'),

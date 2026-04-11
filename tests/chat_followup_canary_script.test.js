@@ -15,8 +15,9 @@ function buildMetricsBody({ catalog = 0, repeatedSkinType = 0, claims = 0 } = {}
   ].join('\n');
 }
 
-function createCanaryServer({ chatPayload, metricsBodies }) {
+function createCanaryServer({ chatPayload, chatResponses, metricsBodies }) {
   let metricsIndex = 0;
+  let chatIndex = 0;
   const server = http.createServer((req, res) => {
     if (req.method === 'GET' && req.url === '/metrics') {
       const body = metricsBodies[Math.min(metricsIndex, metricsBodies.length - 1)] || '';
@@ -27,9 +28,13 @@ function createCanaryServer({ chatPayload, metricsBodies }) {
       return;
     }
     if (req.method === 'POST' && req.url === '/v1/chat') {
-      res.statusCode = 200;
+      const responseConfig = Array.isArray(chatResponses)
+        ? chatResponses[Math.min(chatIndex, chatResponses.length - 1)] || {}
+        : { status: 200, payload: chatPayload };
+      chatIndex += 1;
+      res.statusCode = Number(responseConfig.status || 200);
       res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify(chatPayload));
+      res.end(JSON.stringify(responseConfig.payload || {}));
       return;
     }
     res.statusCode = 404;
@@ -121,5 +126,44 @@ describe('chat_followup_canary.mjs', () => {
     expect(result.summary.card_checks.has_product_parse).toBe(true);
     expect(result.summary.card_checks.has_offers_resolved).toBe(true);
     expect(result.summary.card_checks.recommendations_count).toBe(0);
+  });
+
+  test('retries transient 429 responses and passes once grounded recommendations arrive', async () => {
+    const server = createCanaryServer({
+      metricsBodies: [
+        buildMetricsBody({ catalog: 30, repeatedSkinType: 0, claims: 0 }),
+        buildMetricsBody({ catalog: 31, repeatedSkinType: 0, claims: 0 }),
+      ],
+      chatResponses: [
+        {
+          status: 429,
+          payload: {},
+        },
+        {
+          status: 200,
+          payload: {
+            assistant_message: { content: '有，这里有几款薇诺娜产品。' },
+            cards: [
+              {
+                type: 'recommendations',
+                payload: {
+                  recommendations: [{ product_id: 'winona_retry_1' }],
+                },
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    const result = await runCanary(server);
+    expect(result.summary.pass).toBe(true);
+    expect(result.summary.request_status).toBe(200);
+    expect(result.summary.request_attempts).toBe(2);
+    expect(result.summary.retry_events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ attempt: 1, detail: 'status=429' }),
+      ]),
+    );
   });
 });
