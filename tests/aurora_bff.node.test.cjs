@@ -6802,6 +6802,10 @@ test('/v1/reco/alternatives: external_seed product-card rows use mixed compare p
         assert.equal(resp.body?.llm_trace?.provider_result_reason, 'gemini_call_exception');
         assert.equal(geminiRequest?.model, 'gemini-3-flash-preview');
         assert.equal(geminiRequest?.maxOutputTokens, 2048);
+        assert.equal(geminiRequest?.responseJsonSchema?.properties?.alternatives?.items?.properties?.product_type?.type, 'string');
+        assert.equal(geminiRequest?.responseJsonSchema?.properties?.alternatives?.items?.properties?.product_type?.nullable, true);
+        assert.equal(geminiRequest?.responseJsonSchema?.properties?.alternatives?.items?.properties?.similarity_score?.type, 'number');
+        assert.equal(geminiRequest?.responseJsonSchema?.properties?.alternatives?.items?.properties?.similarity_score?.nullable, true);
         assert.ok(Number(resp.body?.compare_meta?.pool_selected_count || 0) >= 2);
         const names = resp.body.alternatives.map((alt) => String(alt?.product?.name || alt?.name || ''));
         assert.equal(names.some((name) => /Hydrating Dewy Gel Cream/i.test(name)), false);

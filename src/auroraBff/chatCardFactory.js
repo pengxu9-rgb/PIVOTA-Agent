@@ -429,19 +429,19 @@ function normalizeRecommendationProductCard(raw, options = {}) {
 function buildRecommendationCardContext(payload, recommendations) {
   const roleLabelById = new Map();
   const recommendationMeta = isPlainObject(payload.recommendation_meta) ? payload.recommendation_meta : {};
-  const roles = Array.isArray(payload.roles)
-    ? payload.roles
-    : Array.isArray(payload.framework_summary && payload.framework_summary.prioritized_roles)
+  const roles = [
+    ...(Array.isArray(payload.roles) ? payload.roles : []),
+    ...(Array.isArray(payload.framework_summary && payload.framework_summary.prioritized_roles)
       ? payload.framework_summary.prioritized_roles
-      : Array.isArray(recommendationMeta.ranked_targets)
-        ? recommendationMeta.ranked_targets
-        : [];
+      : []),
+    ...(Array.isArray(recommendationMeta.ranked_targets) ? recommendationMeta.ranked_targets : []),
+  ];
   for (const rawRole of roles) {
     if (!isPlainObject(rawRole)) continue;
     const roleId = asString(rawRole.role_id || rawRole.roleId || rawRole.target_id || rawRole.targetId || rawRole.id);
     const label = asString(rawRole.label || rawRole.target_label || rawRole.targetLabel);
     if (!roleId || !label) continue;
-    roleLabelById.set(roleId, label);
+    if (!roleLabelById.has(roleId)) roleLabelById.set(roleId, label);
   }
 
   const selectedTargetIds = Array.isArray(recommendationMeta.selected_target_ids)

@@ -327,6 +327,18 @@ describe('aurora chatCardFactory structured sections for adapter inputs', () => 
               },
             ],
           },
+          roles: [
+            {
+              role_id: 'oil_control_treatment',
+              label: 'Oil-control treatment',
+              preferred_step: 'targeted treatment',
+            },
+            {
+              role_id: 'daily_sunscreen',
+              label: 'Daily sunscreen',
+              preferred_step: 'sunscreen',
+            },
+          ],
           recommendations: [
             {
               product_id: 'prod_oil_balance',

@@ -64383,8 +64383,8 @@ function buildExternalSeedOpenWorldSchema() {
           properties: {
             brand: { type: 'string' },
             name: { type: 'string' },
-            product_type: { type: ['string', 'null'] },
-            similarity_score: { type: ['number', 'null'] },
+            product_type: { type: 'string', nullable: true },
+            similarity_score: { type: 'number', nullable: true },
             reasons: {
               type: 'array',
               minItems: 1,
@@ -64397,7 +64397,7 @@ function buildExternalSeedOpenWorldSchema() {
               maxItems: 3,
               items: { type: 'string' },
             },
-            best_use: { type: ['string', 'null'] },
+            best_use: { type: 'string', nullable: true },
           },
           required: ['brand', 'name', 'reasons', 'tradeoff_notes'],
         },
