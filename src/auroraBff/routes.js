@@ -18393,9 +18393,7 @@ async function collectRecoCandidatesFromRecallPlan({
       async (entry) => {
         const plannerQueryIndex = plannerEntryCursor;
         plannerEntryCursor += 1;
-        return ({
-        queryEntry: entry,
-        out: await executeRecoRecallPlanEntry({
+        return executeRecoRecallPlanEntryWithWallClockGuard({
           entry,
           logger,
           timeoutMs,
@@ -18410,8 +18408,7 @@ async function collectRecoCandidatesFromRecallPlan({
           queryTotal: Array.isArray(recallPlan?.entries) ? recallPlan.entries.length : null,
           authHeaders,
           searchFn,
-        }),
-      });
+        });
       },
     );
 
@@ -19689,9 +19686,10 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
   const keptLevels = [];
   const skippedExternalSeedLevels = [];
   const skippedSupportLevels = [];
+  const executedSupportInternalLevels = [];
   const executedSupportExternalSeedLevels = [];
   const stagedLevels = [];
-  const maxRoutineSupportExternalSeedLevels = 2;
+  const maxRoutineSupportRoles = 2;
   for (const level of levels) {
     const queries = Array.isArray(level?.queries) ? level.queries : [];
     const levelId = String(level?.ladder_level || level?.stage_id || '').trim().toLowerCase();
@@ -19699,8 +19697,8 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
       queries.length > 0 &&
       queries.every((query) => query && query.allow_external_seed === true);
     const keepPrimaryExternalSupplement = levelId === 'framework_stage_b_primary_external_seed';
-    const keepEligibleSupportExternalSeed = levelId.startsWith('framework_stage_c_support_');
-    if (allowExternalSeedOnly && !keepPrimaryExternalSupplement && !keepEligibleSupportExternalSeed) {
+    const isSupportLevel = levelId.startsWith('framework_stage_c_support_');
+    if (allowExternalSeedOnly && !keepPrimaryExternalSupplement && !isSupportLevel) {
       skippedExternalSeedLevels.push(
         String(level?.ladder_level || level?.stage_id || '').trim() || `level_${skippedExternalSeedLevels.length + 1}`,
       );
@@ -19717,6 +19715,7 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
         String(level?.ladder_level || level?.stage_id || '').trim().toLowerCase() === 'framework_stage_a_primary_internal',
       ) || stagedLevels[0];
     keptLevels.push(primaryInternalLevel);
+    const keptSupportRoleIds = new Set();
     for (const level of stagedLevels) {
       if (level === primaryInternalLevel) continue;
       const levelId = String(level?.ladder_level || level?.stage_id || '').trim().toLowerCase();
@@ -19729,23 +19728,20 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
         continue;
       }
       const isSupportLevel = levelId.startsWith('framework_stage_c_support_');
-      if (isSupportLevel && allowExternalSeedOnly) {
-        if (executedSupportExternalSeedLevels.length < maxRoutineSupportExternalSeedLevels) {
-          keptLevels.push(level);
-          executedSupportExternalSeedLevels.push(
-            String(level?.ladder_level || level?.stage_id || '').trim() || `level_${executedSupportExternalSeedLevels.length + 1}`,
-          );
-        } else {
-          skippedExternalSeedLevels.push(
-            String(level?.ladder_level || level?.stage_id || '').trim() || `level_${skippedExternalSeedLevels.length + 1}`,
-          );
-        }
-        continue;
-      }
       if (isSupportLevel) {
-        skippedSupportLevels.push(
-          String(level?.ladder_level || level?.stage_id || '').trim() || `level_${skippedSupportLevels.length + 1}`,
-        );
+        const supportRoleId = levelId.replace(/_external_seed$/, '');
+        const supportLevelLabel =
+          String(level?.ladder_level || level?.stage_id || '').trim()
+          || `level_${keptSupportRoleIds.size + 1}`;
+        if (!keptSupportRoleIds.has(supportRoleId) && keptSupportRoleIds.size >= maxRoutineSupportRoles) {
+          if (allowExternalSeedOnly) skippedExternalSeedLevels.push(supportLevelLabel);
+          else skippedSupportLevels.push(supportLevelLabel);
+          continue;
+        }
+        keptSupportRoleIds.add(supportRoleId);
+        keptLevels.push(level);
+        if (allowExternalSeedOnly) executedSupportExternalSeedLevels.push(supportLevelLabel);
+        else executedSupportInternalLevels.push(supportLevelLabel);
         continue;
       }
       if (allowExternalSeedOnly) {
@@ -19777,9 +19773,30 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
       planned_level_count: levels.length,
       executed_level_count: keptLevels.length,
       skipped_external_seed_level_count: skippedExternalSeedLevels.length,
+      ...((executedSupportInternalLevels.length || executedSupportExternalSeedLevels.length)
+        ? {
+            routine_support_strategy:
+              executedSupportInternalLevels.length && executedSupportExternalSeedLevels.length
+                ? 'primary_plus_internal_then_external_support'
+                : executedSupportInternalLevels.length
+                  ? 'primary_plus_internal_support'
+                  : 'primary_plus_external_support',
+            executed_support_level_count:
+              executedSupportInternalLevels.length + executedSupportExternalSeedLevels.length,
+            executed_support_levels: [
+              ...executedSupportInternalLevels,
+              ...executedSupportExternalSeedLevels,
+            ],
+          }
+        : {}),
+      ...(executedSupportInternalLevels.length
+        ? {
+            executed_support_internal_level_count: executedSupportInternalLevels.length,
+            executed_support_internal_levels: executedSupportInternalLevels,
+          }
+        : {}),
       ...(executedSupportExternalSeedLevels.length
         ? {
-            routine_support_strategy: 'primary_plus_external_support',
             executed_support_external_seed_level_count: executedSupportExternalSeedLevels.length,
             executed_support_external_seed_levels: executedSupportExternalSeedLevels,
           }
@@ -19885,6 +19902,12 @@ function buildBeautyMainlineLocalSearchResult({
           executed_query_count: semanticOwnerQueryAttempts.length,
           query_pack_attempts: semanticOwnerQueryAttempts,
         }
+      : {}),
+    ...(pickFirstTrimmed(collected?.plannerStopReason)
+      ? { planner_stop_reason: pickFirstTrimmed(collected.plannerStopReason) }
+      : {}),
+    ...(pickFirstTrimmed(collected?.primaryStageTimeoutClass)
+      ? { primary_stage_timeout_class: pickFirstTrimmed(collected.primaryStageTimeoutClass) }
       : {}),
     ...(pickFirstTrimmed(collected?.transportPolicyMode)
       ? { transport_policy_mode: pickFirstTrimmed(collected.transportPolicyMode) }
@@ -20796,6 +20819,109 @@ function resolveRecoQueryEntryTimeoutMs(queryEntry = null, effectiveTimeoutMs = 
   return Math.min(normalizedTimeoutMs, RECO_CATALOG_PRIMARY_EXTERNAL_SEED_QUERY_TIMEOUT_MS);
 }
 
+function resolveRecoWallClockTimeoutBudget(queryEntry = null, { timeoutMs = 0, deadlineMs = 0 } = {}) {
+  const normalizedDeadlineMs = Number.isFinite(Number(deadlineMs))
+    ? Math.trunc(Number(deadlineMs))
+    : 0;
+  const remainingDeadlineMs = normalizedDeadlineMs > 0
+    ? Math.max(0, normalizedDeadlineMs - Date.now() - 20)
+    : null;
+  const effectiveTimeoutMs = Number.isFinite(remainingDeadlineMs)
+    ? Math.max(
+        0,
+        Math.min(
+          Number.isFinite(Number(timeoutMs)) ? Math.trunc(Number(timeoutMs)) : 0,
+          Math.trunc(remainingDeadlineMs),
+        ),
+      )
+    : (Number.isFinite(Number(timeoutMs)) ? Math.max(0, Math.trunc(Number(timeoutMs))) : 0);
+  return {
+    remainingDeadlineMs,
+    queryTimeoutMs: resolveRecoQueryEntryTimeoutMs(queryEntry, effectiveTimeoutMs),
+    normalizedDeadlineMs,
+  };
+}
+
+async function executeRecoRecallPlanEntryWithWallClockGuard({
+  entry,
+  logger,
+  timeoutMs,
+  deadlineMs = 0,
+  limit = 6,
+  usePurchasableFallback = false,
+  transportPolicyMode = '',
+  targetContext = null,
+  semanticContract = null,
+  traceId = null,
+  queryIndex = null,
+  queryTotal = null,
+  authHeaders = null,
+  searchFn = null,
+} = {}) {
+  const { remainingDeadlineMs, queryTimeoutMs, normalizedDeadlineMs } = resolveRecoWallClockTimeoutBudget(
+    entry,
+    { timeoutMs, deadlineMs },
+  );
+  if (Number.isFinite(remainingDeadlineMs) && queryTimeoutMs < 120) {
+    return {
+      queryEntry: entry,
+      out: {
+        ok: false,
+        products: [],
+        reason: 'budget_exhausted',
+        actual_http_attempt_count: 0,
+        attempted_request_timeouts_ms:
+          Number.isFinite(Number(queryTimeoutMs)) && Number(queryTimeoutMs) >= 0
+            ? [Math.trunc(Number(queryTimeoutMs))]
+            : [],
+      },
+    };
+  }
+  let out = null;
+  try {
+    out = await withTimeout(
+      Promise.resolve().then(() =>
+        executeRecoRecallPlanEntry({
+          entry,
+          logger,
+          timeoutMs: queryTimeoutMs,
+          deadlineMs: normalizedDeadlineMs,
+          limit,
+          usePurchasableFallback,
+          transportPolicyMode,
+          targetContext,
+          semanticContract,
+          traceId,
+          queryIndex,
+          queryTotal,
+          authHeaders,
+          searchFn,
+        }),
+      ),
+      queryTimeoutMs,
+      'RECO_RECALL_WALL_CLOCK_TIMEOUT',
+    );
+  } catch (err) {
+    const timeoutTriggered = String(err?.code || '').trim() === 'RECO_RECALL_WALL_CLOCK_TIMEOUT';
+    out = {
+      ok: false,
+      products: [],
+      reason: timeoutTriggered ? 'upstream_timeout' : 'upstream_error',
+      actual_http_attempt_count: 0,
+      attempted_request_timeouts_ms:
+        Number.isFinite(Number(queryTimeoutMs)) && Number(queryTimeoutMs) >= 0
+          ? [Math.trunc(Number(queryTimeoutMs))]
+          : [],
+      error: err?.message || String(err),
+      ...(timeoutTriggered ? { timeout_guard: 'caller_wall_clock' } : {}),
+    };
+  }
+  return {
+    queryEntry: entry,
+    out,
+  };
+}
+
 async function collectRecoCandidatesFromQueryLevels({
   queryLevels,
   targetContext,
@@ -20832,13 +20958,6 @@ async function collectRecoCandidatesFromQueryLevels({
     recommendationTaskContext,
   });
   let stopLevel = null;
-  const normalizedDeadlineMs = Number.isFinite(Number(deadlineMs))
-    ? Math.trunc(Number(deadlineMs))
-    : 0;
-  const computeRemainingDeadlineMs = () =>
-    normalizedDeadlineMs > 0
-      ? Math.max(0, normalizedDeadlineMs - Date.now() - 20)
-      : null;
 
   for (const level of Array.isArray(queryLevels) ? queryLevels : []) {
     const queries = Array.isArray(level?.queries) ? level.queries : [];
@@ -20889,73 +21008,20 @@ async function collectRecoCandidatesFromQueryLevels({
                 .toLowerCase()
             : 'on_empty_only',
         };
-        const remainingDeadlineMs = computeRemainingDeadlineMs();
-        const effectiveTimeoutMs = Number.isFinite(remainingDeadlineMs)
-          ? Math.max(
-              0,
-              Math.min(
-                Number.isFinite(Number(timeoutMs)) ? Math.trunc(Number(timeoutMs)) : 0,
-                Math.trunc(remainingDeadlineMs),
-              ),
-            )
-          : timeoutMs;
-        const queryTimeoutMs = resolveRecoQueryEntryTimeoutMs(normalizedQueryEntry, effectiveTimeoutMs);
-        if (Number.isFinite(remainingDeadlineMs) && queryTimeoutMs < 120) {
-          return {
-            queryEntry,
-            out: {
-              ok: false,
-              products: [],
-              reason: 'budget_exhausted',
-              actual_http_attempt_count: 0,
-              attempted_request_timeouts_ms:
-                Number.isFinite(Number(queryTimeoutMs)) && Number(queryTimeoutMs) >= 0
-                  ? [Math.trunc(Number(queryTimeoutMs))]
-                  : [],
-            },
-          };
-        }
-        let out = null;
-        try {
-          out = await withTimeout(
-            Promise.resolve().then(() =>
-              executeRecoRecallPlanEntry({
-                entry: normalizedQueryEntry,
-                logger,
-                timeoutMs: queryTimeoutMs,
-                deadlineMs: normalizedDeadlineMs,
-                limit,
-                usePurchasableFallback,
-                transportPolicyMode,
-                targetContext,
-                queryIndex: flattenedQueryIndexes.get(queryEntry),
-                queryTotal: flattenedQueryEntries.length,
-                authHeaders,
-                searchFn,
-              }),
-            ),
-            queryTimeoutMs,
-            'RECO_RECALL_WALL_CLOCK_TIMEOUT',
-          );
-        } catch (err) {
-          const timeoutTriggered = String(err?.code || '').trim() === 'RECO_RECALL_WALL_CLOCK_TIMEOUT';
-          out = {
-            ok: false,
-            products: [],
-            reason: timeoutTriggered ? 'upstream_timeout' : 'upstream_error',
-            actual_http_attempt_count: 0,
-            attempted_request_timeouts_ms:
-              Number.isFinite(Number(queryTimeoutMs)) && Number(queryTimeoutMs) >= 0
-                ? [Math.trunc(Number(queryTimeoutMs))]
-                : [],
-            error: err?.message || String(err),
-            ...(timeoutTriggered ? { timeout_guard: 'caller_wall_clock' } : {}),
-          };
-        }
-        return {
-          queryEntry: normalizedQueryEntry,
-          out,
-        };
+        return executeRecoRecallPlanEntryWithWallClockGuard({
+          entry: normalizedQueryEntry,
+          logger,
+          timeoutMs,
+          deadlineMs,
+          limit,
+          usePurchasableFallback,
+          transportPolicyMode,
+          targetContext,
+          queryIndex: flattenedQueryIndexes.get(queryEntry),
+          queryTotal: flattenedQueryEntries.length,
+          authHeaders,
+          searchFn,
+        });
       },
     );
     for (const row of levelResults) {

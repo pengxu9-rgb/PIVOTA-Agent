@@ -461,6 +461,8 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
         'niacinamide serum oily skin',
         'oil control serum',
         'shine control serum',
+        'lightweight moisturizer oily skin',
+        'oil control sunscreen',
       ],
     );
     assert.deepEqual(
@@ -509,14 +511,22 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
       true,
     );
     assert.equal(out.searchResult?.query_source, 'beauty_mainline_local_handoff');
-    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.planned_level_count, 4);
-    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_level_count, 4);
-    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_query_count, 11);
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.planned_level_count, 6);
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_level_count, 6);
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_query_count, 13);
     assert.equal(
       out.searchResult?.metadata?.search_stage_ledger?.primary_search?.execution_lane,
       'beauty_mainline_local_handoff',
     );
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.skipped_external_seed_level_count, 0);
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_support_internal_level_count, 2);
+    assert.deepEqual(
+      out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_support_internal_levels,
+      [
+        'framework_stage_c_support_lightweight_moisturizer',
+        'framework_stage_c_support_daily_sunscreen',
+      ],
+    );
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_support_external_seed_level_count, 2);
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_support_external_seed_levels,
@@ -525,8 +535,20 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
         'framework_stage_c_support_daily_sunscreen_external_seed',
       ],
     );
-    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.routine_support_strategy, 'primary_plus_external_support');
-    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_support_level_count, undefined);
+    assert.equal(
+      out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.routine_support_strategy,
+      'primary_plus_internal_then_external_support',
+    );
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_support_level_count, 4);
+    assert.deepEqual(
+      out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_support_levels,
+      [
+        'framework_stage_c_support_lightweight_moisturizer',
+        'framework_stage_c_support_daily_sunscreen',
+        'framework_stage_c_support_lightweight_moisturizer_external_seed',
+        'framework_stage_c_support_daily_sunscreen_external_seed',
+      ],
+    );
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.skipped_support_level_count, undefined);
     assert.equal(
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.transport_policy_mode,
@@ -534,11 +556,11 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
     );
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts?.map((row) => row?.source_scope),
-      ['internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'external_seed'],
+      ['internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'internal', 'external_seed', 'external_seed', 'internal', 'external_seed', 'external_seed'],
     );
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts?.map((row) => row?.source_scope),
-      ['internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'external_seed'],
+      ['internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'internal', 'external_seed', 'external_seed', 'internal', 'external_seed', 'external_seed'],
     );
     const firstSupportExternalAttempt =
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
@@ -778,6 +800,8 @@ test('handoffRecoToBeautyMainlineSearch skips primary external seed when interna
         'niacinamide serum oily skin',
         'oil control serum',
         'shine control serum',
+        'lightweight moisturizer oily skin',
+        'oil control sunscreen',
       ],
     );
     assert.deepEqual(

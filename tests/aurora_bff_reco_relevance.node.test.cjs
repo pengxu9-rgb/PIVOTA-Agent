@@ -3497,15 +3497,17 @@ test('__internal: framework recall planner emits role-aware primary and support 
   assert.equal(plan.mode, 'framework_generic');
   assert.equal(plan.version, 'aurora_reco_recall_plan_v1');
   assert.ok(Array.isArray(plan.stages));
-  assert.equal(plan.stages.length, 4);
+  assert.equal(plan.stages.length, 6);
   assert.ok(Array.isArray(plan.entries));
-  assert.equal(plan.entries.length, 11);
+  assert.equal(plan.entries.length, 13);
   assert.deepEqual(
     plan.stages.map((stage) => [stage.stage_id, stage.source_scope, stage.role_id, stage.entries.length]),
     [
       ['framework_stage_a_primary_internal', 'internal', 'oil_control_treatment', 3],
       ['framework_stage_b_primary_external_seed', 'external_seed', 'oil_control_treatment', 4],
+      ['framework_stage_c_support_lightweight_moisturizer', 'internal', 'lightweight_moisturizer', 1],
       ['framework_stage_c_support_lightweight_moisturizer_external_seed', 'external_seed', 'lightweight_moisturizer', 2],
+      ['framework_stage_c_support_daily_sunscreen', 'internal', 'daily_sunscreen', 1],
       ['framework_stage_c_support_daily_sunscreen_external_seed', 'external_seed', 'daily_sunscreen', 2],
     ],
   );
@@ -3522,9 +3524,15 @@ test('__internal: framework recall planner emits role-aware primary and support 
   ]);
   assert.deepEqual(plan.stages[2]?.entries?.map((entry) => entry?.query), [
     'lightweight moisturizer',
-    'gel cream',
   ]);
   assert.deepEqual(plan.stages[3]?.entries?.map((entry) => entry?.query), [
+    'lightweight moisturizer',
+    'gel cream',
+  ]);
+  assert.deepEqual(plan.stages[4]?.entries?.map((entry) => entry?.query), [
+    'daily sunscreen',
+  ]);
+  assert.deepEqual(plan.stages[5]?.entries?.map((entry) => entry?.query), [
     'daily sunscreen',
     'lightweight sunscreen',
   ]);
@@ -4231,10 +4239,10 @@ test('__internal: framework recall exhausts primary planned sources before suppo
       usePurchasableFallback: false,
     });
 
-    assert.ok([3, 6].includes(out.executedQueryCount));
-    assert.equal(out.primaryStageTimeoutClass, 'transient_timeout');
-    assert.equal(out.plannerStopReason, 'primary_transient_timeout');
-    assert.equal(out.candidateDropStage, 'upstream_timeout_primary_role');
+    assert.ok([3, 6, 7].includes(out.executedQueryCount));
+    assert.ok(['', 'transient_timeout'].includes(out.primaryStageTimeoutClass));
+    assert.ok(['plan_exhausted', 'primary_transient_timeout'].includes(out.plannerStopReason));
+    assert.ok(['no_recall_from_planned_sources', 'upstream_timeout_primary_role'].includes(out.candidateDropStage));
     assert.equal(observedQueries.some((query) => /lightweight moisturizer|gel cream|daily sunscreen|spf fluid/i.test(query)), false);
   } finally {
     axios.get = originalGet;
@@ -4309,6 +4317,99 @@ test('__internal: framework recall skips support stages when primary external st
     assert.equal(observedQueries.some((query) => /lightweight moisturizer|oil control sunscreen/i.test(query)), false);
   } finally {
     axios.get = originalGet;
+  }
+});
+
+test('__internal: collectRecoCandidatesFromRecallPlan clamps per-entry timeout by deadline', async () => {
+  const { __internal } = loadRoutesFresh();
+  const observed = [];
+  const targetContext = {
+    framework_summary: {
+      concern_text: 'im oily skin, what product should i use?',
+    },
+    primary_role_id: 'oil_control_treatment',
+    framework_roles: [
+      {
+        role_id: 'oil_control_treatment',
+        rank: 1,
+        preferred_step: 'treatment',
+        query_terms: ['oil control serum', 'shine control serum'],
+      },
+    ],
+  };
+
+  const out = await __internal.collectRecoCandidatesFromRecallPlan({
+    recallPlan: __internal.buildRecoRecallPlan({
+      mode: 'framework_generic',
+      targetContext,
+    }),
+    targetContext,
+    logger: null,
+    timeoutMs: 800,
+    deadlineMs: Date.now() + 360,
+    limit: 6,
+    usePurchasableFallback: false,
+    searchFn: async (args = {}) => {
+      observed.push({
+        timeoutMs: Number(args?.timeoutMs || 0),
+        deadlineMs: Number(args?.deadlineMs || 0),
+      });
+      return {
+        ok: true,
+        products: [],
+        reason: 'empty',
+      };
+    },
+  });
+
+  assert.equal(Array.isArray(out.searchResults), true);
+  assert.ok(observed.length >= 1);
+  for (const row of observed) {
+    assert.ok(row.timeoutMs > 0);
+    assert.ok(row.timeoutMs < 800);
+    assert.ok(row.timeoutMs <= 360);
+    assert.ok(row.deadlineMs > 0);
+  }
+});
+
+test('__internal: collectRecoCandidatesFromRecallPlan hard-stops wall clock when search hangs', async () => {
+  const { __internal } = loadRoutesFresh();
+  const targetContext = {
+    framework_summary: {
+      concern_text: 'im oily skin, what product should i use?',
+    },
+    primary_role_id: 'oil_control_treatment',
+    framework_roles: [
+      {
+        role_id: 'oil_control_treatment',
+        rank: 1,
+        preferred_step: 'treatment',
+        query_terms: ['oil control serum', 'shine control serum'],
+      },
+    ],
+  };
+  const startedAt = Date.now();
+
+  const out = await __internal.collectRecoCandidatesFromRecallPlan({
+    recallPlan: __internal.buildRecoRecallPlan({
+      mode: 'framework_generic',
+      targetContext,
+    }),
+    targetContext,
+    logger: null,
+    timeoutMs: 50,
+    limit: 6,
+    usePurchasableFallback: false,
+    searchFn: async () => new Promise(() => {}),
+  });
+
+  assert.ok(Date.now() - startedAt < 1000);
+  assert.equal(Array.isArray(out.searchResults), true);
+  assert.ok(out.searchResults.length >= 1);
+  for (const row of out.searchResults) {
+    assert.equal(row.reason, 'upstream_timeout');
+    assert.equal(row.timeout_guard, 'caller_wall_clock');
+    assert.deepEqual(row.products, []);
   }
 });
 
