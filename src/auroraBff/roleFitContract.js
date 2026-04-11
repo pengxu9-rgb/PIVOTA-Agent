@@ -129,7 +129,7 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
   if (treatmentSerumActiveSemanticRescueApplied && !treatmentSerumIngredientRescueApplied) score += 0.08;
   // For routine-ready support slots, keep exact-step moisturizer/sunscreen matches viable
   // when the catalog only gives us the role-matched product shape, without loosening treatment rules.
-  if (supportStepRescueApplied) score += 0.1;
+  if (supportStepRescueApplied) score += 0.16;
   if (preferredStep === 'treatment' && candidateStep === 'serum' && !semanticFitMatched) {
     score = Math.min(score, 0.34);
   }

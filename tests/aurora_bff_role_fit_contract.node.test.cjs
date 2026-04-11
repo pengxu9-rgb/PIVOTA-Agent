@@ -16,6 +16,18 @@ function buildOilControlTreatmentRole() {
   };
 }
 
+function buildDailySunscreenRole() {
+  return {
+    role_id: 'daily_sunscreen',
+    rank: 3,
+    preferred_step: 'sunscreen',
+    fit_keywords: ['spf', 'lightweight', 'uv filters', 'non-greasy'],
+    query_terms: ['oil control sunscreen', 'lightweight sunscreen oily skin'],
+    ingredient_hypotheses: ['UV filters'],
+    product_type_hypotheses: ['sunscreen'],
+  };
+}
+
 test('treatment role rescues serum candidate with paired oil-control actives', () => {
   const score = scoreConcernRoleCandidate(
     {
@@ -91,4 +103,26 @@ test('treatment role keeps generic soothing serum below viability threshold', ()
   assert.equal(score?.treatment_serum_ingredient_rescue_applied, false);
   assert.equal(score?.ingredient_matches, 0);
   assert.ok(Number(score?.score || 0) < 0.42);
+});
+
+test('support sunscreen role rescues exact-step role-matched candidate with weak title semantics', () => {
+  const score = scoreConcernRoleCandidate(
+    {
+      title: 'Daily Protect',
+      retrieval_role_id: 'daily_sunscreen',
+    },
+    buildDailySunscreenRole(),
+    {
+      candidateStep: 'sunscreen',
+      candidateText: 'Daily Protect sunscreen',
+    },
+  );
+
+  assert.ok(score);
+  assert.equal(score?.support_step_rescue_applied, true);
+  assert.equal(score?.fit_keyword_matches, 0);
+  assert.equal(score?.query_term_matches, 0);
+  assert.equal(score?.ingredient_matches, 0);
+  assert.equal(score?.product_type_matches, 1);
+  assert.ok(Number(score?.score || 0) >= 0.58);
 });
