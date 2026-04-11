@@ -6563,6 +6563,135 @@ test('/v1/reco/alternatives: hybrid supplements thin grounded pool with Gemini 3
   );
 });
 
+test('/v1/reco/alternatives: hybrid does not let weak same-step pool rows outrank strong open-world alternatives', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      GEMINI_API_KEY: 'test_gemini_key',
+      AURORA_DIAG_FORCE_GEMINI: 'true',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED: 'false',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      axios.get = async (url) => {
+        if (!isProductsSearchUrl(url)) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: '9886499864904',
+                merchant_id: 'merch_ordinary',
+                brand: 'The Ordinary',
+                name: 'Niacinamide 10% + Zinc 1%',
+                display_name: 'Niacinamide 10% + Zinc 1%',
+                product_type: 'serum',
+                category: 'Serum',
+              },
+              {
+                product_id: 'weak_same_step_serum',
+                merchant_id: 'merch_pool',
+                brand: 'Winona',
+                name: 'Soothing Repair Serum',
+                display_name: 'Soothing Repair Serum',
+                product_type: 'serum',
+                category: 'Serum',
+              },
+            ],
+          },
+        };
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { mountAuroraBffRoutes, __internal } = routeModule;
+        __internal.__setCallGeminiJsonObjectForTest(async () => ({
+          ok: true,
+          json: {
+            alternatives: [
+              {
+                brand: 'The Inkey List',
+                name: 'Niacinamide Serum',
+                product_type: 'serum',
+                similarity_score: 82,
+                reasons: ['Niacinamide-led serum role overlaps with the anchor for oil control.'],
+                tradeoff_notes: ['Does not include the same zinc support.'],
+              },
+              {
+                brand: 'Good Molecules',
+                name: 'Niacinamide Serum',
+                product_type: 'serum',
+                similarity_score: 80,
+                reasons: ['Targets oiliness and uneven tone with the same hero active.'],
+                tradeoff_notes: ['Formula concentration differs from the anchor.'],
+              },
+              {
+                brand: "Paula's Choice",
+                name: '10% Niacinamide Booster',
+                product_type: 'serum',
+                similarity_score: 78,
+                reasons: ['Same 10% niacinamide concentration for pores and shine.'],
+                tradeoff_notes: ['Higher price and booster-style usage.'],
+              },
+            ],
+          },
+        }));
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/reco/alternatives')
+          .set({
+            'X-Aurora-UID': 'test_uid_alt_weak_pool',
+            'X-Trace-ID': 'test_trace_alt_weak_pool',
+            'X-Brief-ID': 'test_brief_alt_weak_pool',
+            'X-Lang': 'EN',
+          })
+          .send({
+            product_input: 'The Ordinary Niacinamide 10% + Zinc 1%',
+            max_total: 6,
+            recommendation_mode: 'hybrid_fallback',
+            disable_synthetic_local_fallback: true,
+            product: {
+              product_id: '9886499864904',
+              merchant_id: 'merch_ordinary',
+              brand: 'The Ordinary',
+              name: 'Niacinamide 10% + Zinc 1%',
+              product_type: 'serum',
+              category: 'Serum',
+              ingredients: ['Niacinamide', 'Zinc PCA'],
+              claims: ['oil control', 'pore care'],
+            },
+          });
+
+        assert.equal(resp.status, 200);
+        assert.equal(resp.body?.source_mode, 'hybrid_fallback');
+        assert.equal(resp.body?.compare_meta?.open_world_status, 'success');
+        assert.equal(resp.body?.alternatives?.length, 3);
+        const names = resp.body.alternatives.map((alt) => String(alt?.product?.name || alt?.name || ''));
+        assert.equal(names.some((name) => /soothing repair serum/i.test(name)), false);
+        assert.equal(resp.body.alternatives.every((alt) => String(alt?.candidate_origin || '') === 'open_world'), true);
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        axios.get = originalGet;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
 test('/v1/reco/alternatives: external llm_seed compare returns deterministic pool results when open-world provider fails', async () => {
   return withEnv(
     {

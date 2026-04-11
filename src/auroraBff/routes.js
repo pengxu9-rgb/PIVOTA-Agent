@@ -64087,24 +64087,56 @@ function mergeRecoAlternativeDuplicateRows(existing, incoming) {
   return next;
 }
 
+function isRecoAlternativeWeakPoolOnly(row) {
+  const item = row && typeof row === 'object' && !Array.isArray(row) ? row : {};
+  const origin = String(item.candidate_origin || '').trim().toLowerCase();
+  if (origin !== 'pool' && origin !== 'catalog') return false;
+  const metadata = item.metadata && typeof item.metadata === 'object' && !Array.isArray(item.metadata) ? item.metadata : {};
+  const mergedOrigins = Array.isArray(metadata.merged_candidate_origins) ? metadata.merged_candidate_origins : [];
+  if (mergedOrigins.some((value) => String(value || '').trim().toLowerCase() === 'open_world')) return false;
+  const reasonsText = [
+    ...asStringArray(item.reasons, 5),
+    ...asStringArray(item.tradeoff_notes, 5),
+    ...asStringArray(item.tradeoffs, 5),
+  ]
+    .join(' ')
+    .toLowerCase();
+  if (!reasonsText) return false;
+  const hasAnchorSpecificSignal =
+    /\b(?:ingredient|active|claim|texture|overlap|matches key|niacinamide|zinc|hyaluronic|ceramide|spf|uv|oil control|sebum|pore|hydration|barrier|lightweight|gel|dewy|matte)\b/i.test(
+      reasonsText,
+    );
+  if (hasAnchorSpecificSignal) return false;
+  const rawScore = Number.isFinite(Number(item._mixed_score))
+    ? Number(item._mixed_score)
+    : Number.isFinite(Number(item.similarity_score))
+      ? Number(item.similarity_score) / 100
+      : 0;
+  return rawScore > 0 && rawScore < 0.68;
+}
+
 function finalizeRecoAlternativesForCompetitiveQuality(rows, { maxTotal = 3 } = {}) {
   const limit = Math.max(1, Math.min(8, Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 3));
   const list = (Array.isArray(rows) ? rows : []).filter((row) => row && typeof row === 'object' && !Array.isArray(row));
   const nonVariantCoreKeys = new Set();
   let nonVariantCount = 0;
+  let strongNonVariantCount = 0;
   for (const row of list) {
     if (isRecoAlternativePackagingVariant(row)) continue;
     nonVariantCount += 1;
+    if (!isRecoAlternativeWeakPoolOnly(row)) strongNonVariantCount += 1;
     const coreKey = getRecoAlternativeComparableCoreKey(row);
     if (coreKey) nonVariantCoreKeys.add(coreKey);
   }
   const out = [];
   const sufficientNonVariantCount = nonVariantCount >= Math.min(3, limit);
+  const sufficientStrongNonVariantCount = strongNonVariantCount >= Math.min(3, limit);
   for (const row of list) {
     if (isRecoAlternativePackagingVariant(row)) {
       const coreKey = getRecoAlternativeComparableCoreKey(row);
       if ((coreKey && nonVariantCoreKeys.has(coreKey)) || sufficientNonVariantCount) continue;
     }
+    if (sufficientStrongNonVariantCount && isRecoAlternativeWeakPoolOnly(row)) continue;
     out.push(row);
     if (out.length >= limit) break;
   }
