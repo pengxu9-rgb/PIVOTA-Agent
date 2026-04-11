@@ -64747,25 +64747,19 @@ function mapCatalogGroundedOpenWorldAlternative(openWorldRow, catalogRow, { matc
 async function groundOpenWorldAlternativesToCatalog(rows, { logger } = {}) {
   const list = Array.isArray(rows) ? rows : [];
   if (!list.length) return { alternatives: [], grounded_count: 0, attempted_count: 0 };
-  let groundedCount = 0;
-  let attemptedCount = 0;
-  const enriched = [];
-  for (const row of list) {
+  const groundOne = async (row) => {
     const origin = String(row?.candidate_origin || '').trim().toLowerCase();
     const grounding = String(row?.grounding_status || '').trim().toLowerCase();
     if (origin !== 'open_world' || grounding === 'catalog_verified') {
-      enriched.push(row);
-      continue;
+      return { row, grounded: false, attempted: false };
     }
     const product = getRecoAlternativeProductObject(row);
     const brand = pickFirstTrimmed(product.brand, row?.brand);
     const name = pickFirstTrimmed(product.name, row?.name);
     const query = joinBrandAndName(brand, name);
     if (!brand || !name || !query) {
-      enriched.push(row);
-      continue;
+      return { row, grounded: false, attempted: false };
     }
-    attemptedCount += 1;
     let best = null;
     try {
       const searched = await searchPivotaBackendProducts({
@@ -64788,11 +64782,24 @@ async function groundOpenWorldAlternativesToCatalog(rows, { logger } = {}) {
       logger?.warn?.({ err: err?.message || String(err), query }, 'aurora bff: alternatives catalog grounding failed');
     }
     if (best?.candidate) {
-      groundedCount += 1;
-      enriched.push(mapCatalogGroundedOpenWorldAlternative(row, best.candidate, { matchScore: best.score, query }));
-    } else {
-      enriched.push(row);
+      return {
+        row: mapCatalogGroundedOpenWorldAlternative(row, best.candidate, { matchScore: best.score, query }),
+        grounded: true,
+        attempted: true,
+      };
     }
+    return { row, grounded: false, attempted: true };
+  };
+  const settled = await Promise.allSettled(list.map((row) => groundOne(row)));
+  const enriched = [];
+  let groundedCount = 0;
+  let attemptedCount = 0;
+  for (let i = 0; i < settled.length; i += 1) {
+    const result = settled[i];
+    const value = result.status === 'fulfilled' ? result.value : { row: list[i], grounded: false, attempted: false };
+    if (value.grounded) groundedCount += 1;
+    if (value.attempted) attemptedCount += 1;
+    enriched.push(value.row || list[i]);
   }
   return { alternatives: enriched, grounded_count: groundedCount, attempted_count: attemptedCount };
 }
