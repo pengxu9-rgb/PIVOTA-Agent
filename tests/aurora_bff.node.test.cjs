@@ -6027,8 +6027,9 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
         assert.equal(out.alternatives[0]?.product?.brand, 'Good Molecules');
         assert.equal(out.alternatives[0]?.product?.name, 'Niacinamide Serum');
         assert.deepEqual(out.alternatives[0]?.tradeoff_notes, ['Formula overlap remains uncertain.']);
-        assert.equal(geminiRequest?.maxOutputTokens, 2048);
+        assert.equal(geminiRequest?.maxOutputTokens, 3072);
         assert.equal(geminiRequest?.timeoutMs, 12000);
+        assert.equal(geminiRequest?.responseJsonSchema?.properties?.alternatives?.maxItems, 3);
         const payload = JSON.parse(geminiRequest?.userPrompt || '{}');
         assert.equal(payload?.task?.max_alternatives, 3);
         assert.match(String(payload?.task?.selection_rule || ''), /distinct real skincare alternatives/i);
@@ -6390,6 +6391,106 @@ test('fetchRecoAlternativesForProduct: open_world_only recovers complete alterna
         assert.equal(out.alternatives[0]?.product?.name, 'Niacinamide Serum');
         assert.equal(out?.llm_trace?.finish_reason, 'MAX_TOKENS');
         assert.equal(out?.llm_trace?.parse_status, 'parse_truncated');
+        assert.equal(out?.llm_trace?.recovered_from_truncated_raw, true);
+        assert.equal(out?.llm_trace?.recovered_row_count, 1);
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('fetchRecoAlternativesForProduct: open_world_only recovers pretty alternatives array from truncated raw JSON', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      GEMINI_API_KEY: 'test_gemini_key',
+      AURORA_DIAG_FORCE_GEMINI: 'true',
+      AURORA_DIAG_FORCE_GEMINI_MODEL: 'gemini-3-flash-preview',
+      AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL: 'gemini-2.5-flash',
+      AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS: '2048',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { __internal } = routeModule;
+        __internal.__setCallGeminiJsonObjectForTest(async () => ({
+          ok: false,
+          reason: 'PARSE_TRUNCATED_JSON',
+          detail: 'finish_reason=MAX_TOKENS',
+          raw_text: `{
+  "alternatives": [
+    {
+      "brand": "Good Molecules",
+      "name": "Niacinamide Serum",
+      "product_type": "serum",
+      "similarity_score": 0.74,
+      "reasons": [
+        "Niacinamide-led serum role overlaps with the anchor."
+      ],
+      "tradeoff_notes": [
+        "Zinc support is less explicit than the anchor."
+      ]
+    },
+    {
+      "brand": "The INKEY List",
+      "name": "Niacinamide Serum",
+      "product_type": "serum",
+      "similarity_score": 0.7,
+      "reasons": [
+        "Same lightweight oil-control serum role."
+      ],
+      "tradeoff_notes": [
+        "Hydration and texture may feel different."
+      ]
+    }`,
+          finish_reason: 'MAX_TOKENS',
+          parse_status: 'parse_truncated',
+          meta: { result_reason: 'gemini_json_max_tokens' },
+        }));
+
+        const out = await __internal.fetchRecoAlternativesForProduct({
+          ctx: { lang: 'EN', request_id: 'req_open_world_pretty_trunc', trace_id: 'trace_open_world_pretty_trunc' },
+          profileSummary: null,
+          recentLogs: [],
+          productInput: 'The Ordinary Niacinamide 10% + Zinc 1%',
+          productObj: {
+            brand: 'The Ordinary',
+            name: 'Niacinamide 10% + Zinc 1%',
+            product_type: 'serum',
+            category: 'Serum',
+            ingredients: ['Niacinamide', 'Zinc PCA'],
+            claims: ['oil control'],
+          },
+          anchorId: '',
+          maxTotal: 3,
+          candidatePool: [],
+          logger: null,
+          options: {
+            recommendation_mode: 'open_world_only',
+            profile_mode: 'anchor_only',
+            disable_fallback: true,
+            disable_synthetic_local_fallback: true,
+            ignore_selector_candidates: true,
+            skip_anchor_precheck: true,
+          },
+        });
+
+        assert.equal(out?.ok, true);
+        assert.equal(out?.failure_class, null);
+        assert.equal(Array.isArray(out?.alternatives), true);
+        assert.equal(out.alternatives.length, 2);
+        assert.deepEqual(out.alternatives.map((alt) => alt?.product?.brand), ['Good Molecules', 'The INKEY List']);
+        assert.equal(out?.llm_trace?.finish_reason, 'MAX_TOKENS');
+        assert.equal(out?.llm_trace?.parse_status, 'parse_truncated');
+        assert.equal(out?.llm_trace?.recovered_from_truncated_raw, true);
+        assert.equal(out?.llm_trace?.recovered_row_count, 2);
       } finally {
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
         loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
@@ -7073,8 +7174,9 @@ test('/v1/reco/alternatives: external_seed product-card rows use mixed compare p
         assert.equal(resp.body?.llm_trace?.provider_reason, 'provider_error');
         assert.equal(resp.body?.llm_trace?.provider_result_reason, 'gemini_call_exception');
         assert.equal(geminiRequest?.model, 'gemini-3-flash-preview');
-        assert.equal(geminiRequest?.maxOutputTokens, 2048);
+        assert.equal(geminiRequest?.maxOutputTokens, 3072);
         assert.equal(geminiRequest?.timeoutMs, 12000);
+        assert.equal(geminiRequest?.responseJsonSchema?.properties?.alternatives?.maxItems, 3);
         assert.equal(geminiRequest?.responseJsonSchema?.properties?.alternatives?.items?.properties?.product_type?.type, 'string');
         assert.equal(geminiRequest?.responseJsonSchema?.properties?.alternatives?.items?.properties?.product_type?.nullable, true);
         assert.equal(geminiRequest?.responseJsonSchema?.properties?.alternatives?.items?.properties?.similarity_score?.type, 'number');
@@ -7084,6 +7186,131 @@ test('/v1/reco/alternatives: external_seed product-card rows use mixed compare p
         assert.equal(names.some((name) => /Hydrating Dewy Gel Cream/i.test(name)), false);
         assert.equal(names.some((name) => /brush/i.test(name)), false);
         assert.ok(names.some((name) => /Water Cream|Moisturizer/i.test(name)));
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        axios.get = originalGet;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('/v1/reco/alternatives: external_seed mixed compare recovers pretty truncated open-world rows', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED: 'false',
+      GEMINI_API_KEY: 'test_gemini_key',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      axios.get = async (url) => {
+        if (!isProductsSearchUrl(url)) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: 'ext_anchor_moist',
+                merchant_id: 'external_seed',
+                brand: 'First Aid Beauty',
+                name: 'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+                display_name: 'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+                product_type: 'moisturizer',
+                category: 'Moisturizer',
+              },
+            ],
+          },
+        };
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { mountAuroraBffRoutes, __internal } = routeModule;
+        __internal.__setCallGeminiJsonObjectForTest(async () => ({
+          ok: false,
+          reason: 'PARSE_TRUNCATED_JSON',
+          detail: 'finish_reason=MAX_TOKENS',
+          raw_text: `{
+  "alternatives": [
+    {
+      "brand": "Belif",
+      "name": "The True Cream Aqua Bomb",
+      "product_type": "moisturizer",
+      "similarity_score": 0.74,
+      "reasons": [
+        "Lightweight gel-cream role fits the same breathable moisturizer step."
+      ],
+      "tradeoff_notes": [
+        "Barrier-support ingredients may differ from the anchor."
+      ]
+    },
+    {
+      "brand": "Neutrogena",
+      "name": "Hydro Boost Water Gel",
+      "product_type": "moisturizer",
+      "similarity_score": 0.69,
+      "reasons": [
+        "Water-gel texture is a similar lightweight hydration role."
+      ],
+      "tradeoff_notes": [
+        "Formula feel and ceramide support are not guaranteed to match."
+      ]
+    }`,
+          finish_reason: 'MAX_TOKENS',
+          parse_status: 'parse_truncated',
+          meta: { result_reason: 'gemini_json_max_tokens' },
+        }));
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/reco/alternatives')
+          .set({
+            'X-Aurora-UID': 'test_uid_alt_external_seed_trunc',
+            'X-Trace-ID': 'test_trace_alt_external_seed_trunc',
+            'X-Brief-ID': 'test_brief_alt_external_seed_trunc',
+            'X-Lang': 'EN',
+          })
+          .send({
+            product_input: 'First Aid Beauty Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+            max_total: 3,
+            recommendation_mode: 'hybrid_fallback',
+            disable_synthetic_local_fallback: true,
+            product: {
+              product_id: 'ext_anchor_moist',
+              merchant_id: 'external_seed',
+              brand: 'First Aid Beauty',
+              name: 'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+              product_type: 'Moisturizer',
+              category: 'Moisturizer',
+            },
+          });
+
+        assert.equal(resp.status, 200);
+        assert.equal(resp.body?.source_mode, 'pool_open_world_mixed');
+        assert.equal(resp.body?.failure_class, null);
+        assert.equal(resp.body?.compare_meta?.open_world_status, 'success');
+        assert.equal(resp.body?.llm_trace?.finish_reason, 'MAX_TOKENS');
+        assert.equal(resp.body?.llm_trace?.parse_status, 'parse_truncated');
+        assert.equal(resp.body?.llm_trace?.recovered_from_truncated_raw, true);
+        assert.equal(resp.body?.llm_trace?.recovered_row_count, 2);
+        assert.equal(Array.isArray(resp.body?.alternatives), true);
+        assert.equal(resp.body.alternatives.length, 2);
+        const brands = resp.body.alternatives.map((alt) => alt?.product?.brand).sort();
+        assert.deepEqual(brands, ['Belif', 'Neutrogena']);
       } finally {
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
         loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();

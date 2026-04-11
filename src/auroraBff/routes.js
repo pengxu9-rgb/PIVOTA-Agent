@@ -64557,7 +64557,7 @@ function buildExternalSeedOpenWorldSchema() {
       alternatives: {
         type: 'array',
         minItems: 0,
-        maxItems: 6,
+        maxItems: 3,
         items: {
           type: 'object',
           additionalProperties: false,
@@ -64569,13 +64569,13 @@ function buildExternalSeedOpenWorldSchema() {
             reasons: {
               type: 'array',
               minItems: 1,
-              maxItems: 3,
+              maxItems: 2,
               items: { type: 'string' },
             },
             tradeoff_notes: {
               type: 'array',
               minItems: 1,
-              maxItems: 3,
+              maxItems: 2,
               items: { type: 'string' },
             },
             best_use: { type: 'string', nullable: true },
@@ -64825,8 +64825,8 @@ function getRecoAlternativesOpenWorldModel() {
 
 function getRecoAlternativesOpenWorldMaxOutputTokens() {
   const raw = Number(process.env.AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS);
-  if (!Number.isFinite(raw)) return 2048;
-  return Math.max(256, Math.min(4096, Math.trunc(raw)));
+  if (!Number.isFinite(raw)) return 3072;
+  return Math.max(3072, Math.min(4096, Math.trunc(raw)));
 }
 
 function getRecoAlternativesOpenWorldTimeoutMs() {
@@ -64909,19 +64909,73 @@ function recoverRecoAlternativesOpenWorldRowsFromTruncatedText(rawText) {
   const text = String(rawText || '');
   if (!text) return [];
   const rows = [];
-  const pattern =
-    /\{"brand":"([^"]+)","name":"([^"]+)"(?:,"product_type":"([^"]*)")?(?:,"similarity_score":([0-9.]+))?(?:,"reason":"([^"]+)")?(?:,"tradeoff_note":"([^"]+)")?/g;
-  for (const match of text.matchAll(pattern)) {
-    const brand = String(match[1] || '').trim();
-    const name = String(match[2] || '').trim();
+  const seen = new Set();
+  const decodeJsonString = (value) => {
+    const raw = String(value || '');
+    if (!raw) return '';
+    try {
+      return JSON.parse(`"${raw.replace(/\n/g, '\\n').replace(/\r/g, '\\r')}"`);
+    } catch {
+      return raw.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+    }
+  };
+  const extractStringProp = (chunk, key) => {
+    const pattern = new RegExp(`"${key}"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"`, 'i');
+    const match = pattern.exec(chunk);
+    return match ? decodeJsonString(match[1]).trim() : '';
+  };
+  const extractNumberProp = (chunk, key) => {
+    const pattern = new RegExp(`"${key}"\\s*:\\s*([0-9]+(?:\\.[0-9]+)?)`, 'i');
+    const match = pattern.exec(chunk);
+    const parsed = match ? Number(match[1]) : NaN;
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  const extractArrayStrings = (chunk, key, maxItems = 2) => {
+    const pattern = new RegExp(`"${key}"\\s*:\\s*\\[([\\s\\S]*?)(?:\\]|$)`, 'i');
+    const match = pattern.exec(chunk);
+    if (!match) return [];
+    const values = [];
+    const stringPattern = /"((?:\\.|[^"\\])*)"/g;
+    for (const item of match[1].matchAll(stringPattern)) {
+      const decoded = decodeJsonString(item[1]).trim();
+      if (decoded) values.push(decoded);
+      if (values.length >= maxItems) break;
+    }
+    return values;
+  };
+  const brandMatches = Array.from(text.matchAll(/"brand"\s*:\s*"((?:\\.|[^"\\])*)"/gi));
+  for (let i = 0; i < brandMatches.length; i += 1) {
+    const match = brandMatches[i];
+    const matchIndex = Number(match.index || 0);
+    const objectStart = Math.max(0, text.lastIndexOf('{', matchIndex));
+    const nextMatchIndex = brandMatches[i + 1] ? Number(brandMatches[i + 1].index || text.length) : text.length;
+    const nextObjectStart = brandMatches[i + 1] ? Math.max(matchIndex + 1, text.lastIndexOf('{', nextMatchIndex)) : text.length;
+    let objectEnd = text.indexOf('}', matchIndex);
+    if (objectEnd < 0 || objectEnd > nextObjectStart) objectEnd = nextObjectStart - 1;
+    const chunk = text.slice(objectStart, Math.max(objectStart + 1, objectEnd + 1));
+    const brand = decodeJsonString(match[1]).trim();
+    const name = extractStringProp(chunk, 'name');
     if (!brand || !name) continue;
+    const dedupeKey = `${brand}:${name}`.toLowerCase();
+    if (seen.has(dedupeKey)) continue;
+    const reasons = extractArrayStrings(chunk, 'reasons', 2);
+    const reason = extractStringProp(chunk, 'reason');
+    const tradeoffNotes = extractArrayStrings(chunk, 'tradeoff_notes', 2);
+    const tradeoffNote = extractStringProp(chunk, 'tradeoff_note');
+    if (!reasons.length && !reason) continue;
+    seen.add(dedupeKey);
+    const productType = extractStringProp(chunk, 'product_type');
+    const similarityScore = extractNumberProp(chunk, 'similarity_score');
     rows.push({
       brand,
       name,
-      ...(match[3] ? { product_type: String(match[3]).trim() || null } : {}),
-      ...(match[4] ? { similarity_score: Number(match[4]) } : {}),
-      ...(match[5] ? { reasons: [String(match[5]).trim()] } : {}),
-      tradeoff_notes: [String(match[6] || 'Formula overlap remains uncertain.').trim()],
+      ...(productType ? { product_type: productType } : {}),
+      ...(similarityScore != null ? { similarity_score: similarityScore } : {}),
+      reasons: reasons.length ? reasons : [reason],
+      tradeoff_notes: tradeoffNotes.length
+        ? tradeoffNotes
+        : [tradeoffNote || 'Formula overlap remains uncertain.'],
+      ...(extractStringProp(chunk, 'best_use') ? { best_use: extractStringProp(chunk, 'best_use') } : {}),
     });
     if (rows.length >= 3) break;
   }
@@ -64945,6 +64999,7 @@ async function fetchRecoAlternativesForLocalGeminiOpenWorld({
     'Return real skincare alternatives only. No makeup, tools, or placeholders.',
     'Do not invent URLs, product IDs, exact INCI lists, or internal references.',
     'Keep each reason grounded to the anchor product role and actives.',
+    'Return at most 3 alternatives. Use 1 concise reason and 1 concise tradeoff note per item.',
   ].join('\n');
   const userPayload = buildRecoAlternativesOpenWorldUserPayload({ ctx, productInput, productObj, maxTotal });
   const startedAt = Date.now();
@@ -65026,6 +65081,8 @@ async function fetchRecoAlternativesForLocalGeminiOpenWorld({
     const grounded = await groundOpenWorldAlternativesToCatalog(recoveredRows, { logger });
     llmTrace.catalog_grounding_attempted_count = grounded.attempted_count;
     llmTrace.catalog_grounded_count = grounded.grounded_count;
+    llmTrace.recovered_from_truncated_raw = true;
+    llmTrace.recovered_row_count = recoveredRows.length;
     return {
       ok: true,
       alternatives: grounded.alternatives.slice(0, Math.max(1, Math.min(6, Number(maxTotal) || 1))),
@@ -65129,6 +65186,7 @@ async function fetchRecoAlternativesForExternalSeedProduct({
     'Never invent URLs, product IDs, SKUs, exact INCI lists, or internal catalog references.',
     'Each alternative must include a real brand, a real product name, anchor-linked reasons, and at least one concrete tradeoff or uncertainty.',
     'Reject makeup, tools, fragrance, body-only items, haircare, and placeholder products.',
+    'Return at most 3 alternatives. Use 1 concise reason and 1 concise tradeoff note per item.',
   ].join('\n');
   const userPayload = {
     lang: normalizeRecoPromptLanguage(ctx?.lang || 'EN'),
@@ -65192,8 +65250,14 @@ async function fetchRecoAlternativesForExternalSeedProduct({
         latency_ms: Math.max(0, Date.now() - startedAt),
         error_class: resp?.ok === true ? null : classifyAlternativesFailureCode(resp?.reason),
       };
-      if (resp?.ok === true && isPlainObject(resp.json) && Array.isArray(resp.json.alternatives)) {
-        openWorldRows = resp.json.alternatives
+      const recoveredRawRows = resp?.ok === false
+        ? recoverRecoAlternativesOpenWorldRowsFromTruncatedText(resp?.raw_text)
+        : [];
+      const rawOpenWorldRows = resp?.ok === true && isPlainObject(resp.json) && Array.isArray(resp.json.alternatives)
+        ? resp.json.alternatives
+        : recoveredRawRows;
+      if (Array.isArray(rawOpenWorldRows) && rawOpenWorldRows.length) {
+        openWorldRows = rawOpenWorldRows
           .map((row) => normalizeOpenWorldAlternativeRow(row, {
             targetSignals,
             anchorLabel: pool.identity.anchorLabel,
@@ -65210,6 +65274,10 @@ async function fetchRecoAlternativesForExternalSeedProduct({
           openWorldGroundedCount = grounded.grounded_count;
           llmTrace.catalog_grounding_attempted_count = grounded.attempted_count;
           llmTrace.catalog_grounded_count = grounded.grounded_count;
+        }
+        if (recoveredRawRows.length) {
+          llmTrace.recovered_from_truncated_raw = true;
+          llmTrace.recovered_row_count = openWorldRows.length;
         }
         openWorldStatus = openWorldRows.length ? 'success' : 'empty';
       } else {
