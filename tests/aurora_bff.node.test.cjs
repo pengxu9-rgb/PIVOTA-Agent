@@ -6487,6 +6487,26 @@ test('/v1/reco/alternatives: catalog product-card hybrid uses grounded search po
                 url: 'https://example.com/ole-niacinamide',
               },
               {
+                product_id: 'gm_niac_duo',
+                merchant_id: 'merch_alt',
+                brand: 'Good Molecules',
+                name: 'Niacinamide Serum Duo',
+                display_name: 'Niacinamide Serum Duo',
+                product_type: 'serum',
+                category: 'Serum',
+                url: 'https://example.com/good-molecules-niacinamide-duo',
+              },
+              {
+                product_id: 'inkey_niac_jumbo',
+                merchant_id: 'merch_alt',
+                brand: 'The Inkey List',
+                name: 'Niacinamide Serum Jumbo',
+                display_name: 'Niacinamide Serum Jumbo',
+                product_type: 'serum',
+                category: 'Serum',
+                url: 'https://example.com/inkey-niacinamide-jumbo',
+              },
+              {
                 product_id: 'bad_cleanser',
                 merchant_id: 'merch_bad',
                 brand: 'Fenty Beauty',
@@ -6554,6 +6574,7 @@ test('/v1/reco/alternatives: catalog product-card hybrid uses grounded search po
         const names = resp.body.alternatives.map((alt) => String(alt?.product?.name || alt?.name || ''));
         assert.equal(names.some((name) => /cherry dub|cleanser/i.test(name)), false);
         assert.equal(names.some((name) => /niacinamide 10% \+ zinc/i.test(name)), false);
+        assert.equal(names.some((name) => /\bduo\b|\bjumbo\b/i.test(name)), false);
         assert.ok(names.some((name) => /niacinamide serum/i.test(name)));
       } finally {
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;

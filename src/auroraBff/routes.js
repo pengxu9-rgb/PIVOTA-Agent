@@ -64009,6 +64009,7 @@ function getRecoAlternativeComparableCoreKey(row) {
     .replace(/\brefill(?:\s+(?:pouch|pack|pod|cartridge|bottle))?\b/g, ' ')
     .replace(/\b(?:pouch|pack|pod|cartridge|bottle)\s+refill\b/g, ' ')
     .replace(/\breplacement\s+(?:pouch|pack|pod|cartridge|bottle)\b/g, ' ')
+    .replace(/\b(?:duo|bundle|kit|set\s+of\s+\d+|value\s+set|jumbo|mini|travel\s+size)\b/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
   return brand || name ? `${brand}::${name}` : '';
@@ -64033,7 +64034,7 @@ function isRecoAlternativePackagingVariant(row) {
     .filter(Boolean)
     .join(' ');
   if (!text) return false;
-  return /\b(?:refill(?:\s+(?:pouch|pack|pod|cartridge|bottle))?|(?:pouch|pack|pod|cartridge|bottle)\s+refill|replacement\s+(?:pouch|pack|pod|cartridge|bottle))\b/i.test(text);
+  return /\b(?:refill(?:\s+(?:pouch|pack|pod|cartridge|bottle))?|(?:pouch|pack|pod|cartridge|bottle)\s+refill|replacement\s+(?:pouch|pack|pod|cartridge|bottle)|duo|bundle|kit|set\s+of\s+\d+|value\s+set|jumbo|mini|travel\s+size)\b/i.test(text);
 }
 
 function mergeRecoAlternativeDuplicateRows(existing, incoming) {
