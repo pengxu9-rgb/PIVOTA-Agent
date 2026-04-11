@@ -6824,7 +6824,7 @@ test('/v1/reco/alternatives: external_seed product-card rows use mixed compare p
   );
 });
 
-test('/v1/reco/alternatives: external_seed product-card rows preserve embedded same-role candidates when provider fails', async () => {
+test('/v1/reco/alternatives: external_seed rows preserve full-product candidates and drop refill variants when provider fails', async () => {
   return withEnv(
     {
       AURORA_BFF_RETENTION_DAYS: '0',
@@ -6921,11 +6921,154 @@ test('/v1/reco/alternatives: external_seed product-card rows preserve embedded s
         assert.equal(resp.body?.source_mode, 'pool_open_world_mixed');
         assert.equal(resp.body?.failure_class, null);
         assert.equal(resp.body?.compare_meta?.embedded_candidate_count, 2);
-        assert.equal(resp.body?.compare_meta?.pool_selected_count, 2);
+        assert.equal(resp.body?.compare_meta?.pool_selected_count, 1);
         assert.equal(resp.body?.compare_meta?.open_world_status, 'provider_error');
         const names = resp.body.alternatives.map((alt) => String(alt?.product?.name || alt?.name || ''));
-        assert.deepEqual(names, ['Oat So Simple Water Cream', 'Oat So Simple Water Cream Refill Pouch']);
+        assert.deepEqual(names, ['Oat So Simple Water Cream']);
         assert.equal(resp.body.alternatives.every((alt) => String(alt?.candidate_origin || '') === 'pool'), true);
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        axios.get = originalGet;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('/v1/reco/alternatives: external_seed hybrid merges open-world duplicates into catalog rows and removes refill variants', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED: 'false',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      axios.get = async (url) => {
+        if (!isProductsSearchUrl(url)) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: 'ext_anchor_moist',
+                merchant_id: 'external_seed',
+                brand: 'First Aid Beauty',
+                name: 'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+                display_name: 'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+                product_type: 'moisturizer',
+                category: 'Moisturizer',
+              },
+            ],
+          },
+        };
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { mountAuroraBffRoutes, __internal } = routeModule;
+        __internal.__setCallGeminiJsonObjectForTest(async () => ({
+          ok: true,
+          json: {
+            alternatives: [
+              {
+                brand: 'KraveBeauty',
+                name: 'Oat So Simple Water Cream',
+                product_type: 'Moisturizer',
+                similarity_score: 84,
+                reasons: ['Features a lightweight water-cream texture close to the anchor.'],
+                tradeoff_notes: ['Does not provide the same explicit ceramide support.'],
+              },
+              {
+                brand: 'Belif',
+                name: 'The True Cream Aqua Bomb',
+                product_type: 'Moisturizer',
+                similarity_score: 78,
+                reasons: ['Gel-cream hydration with a dewy finish.'],
+                tradeoff_notes: ['Contains fragrance, which can be a sensitivity tradeoff.'],
+              },
+              {
+                brand: 'Neutrogena',
+                name: 'Hydro Boost Water Gel',
+                product_type: 'Moisturizer',
+                similarity_score: 74,
+                reasons: ['Oil-free water-gel hydration for lightweight routines.'],
+                tradeoff_notes: ['Less barrier-focused than the anchor.'],
+              },
+            ],
+          },
+        }));
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/reco/alternatives')
+          .set({
+            'X-Aurora-UID': 'test_uid_alt_external_seed_dedupe',
+            'X-Trace-ID': 'test_trace_alt_external_seed_dedupe',
+            'X-Brief-ID': 'test_brief_alt_external_seed_dedupe',
+            'X-Lang': 'EN',
+          })
+          .send({
+            product_input: 'First Aid Beauty Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+            max_total: 6,
+            recommendation_mode: 'hybrid_fallback',
+            disable_synthetic_local_fallback: true,
+            product: {
+              product_id: 'ext_anchor_moist',
+              merchant_id: 'external_seed',
+              brand: 'First Aid Beauty',
+              name: 'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+              product_type: 'Moisturizer',
+              category: 'Moisturizer',
+              product_candidates: [
+                {
+                  product_id: 'ext_oat_water',
+                  merchant_id: 'external_seed',
+                  brand: 'KraveBeauty',
+                  name: 'Oat So Simple Water Cream',
+                  category: 'Moisturizer',
+                  url: 'https://kravebeauty.com/products/oat-so-simple-water-cream',
+                },
+                {
+                  product_id: 'ext_oat_refill',
+                  merchant_id: 'external_seed',
+                  brand: 'KraveBeauty',
+                  name: 'Oat So Simple Water Cream Refill Pouch',
+                  category: 'Moisturizer',
+                  url: 'https://kravebeauty.com/products/oat-so-simple-refill',
+                },
+              ],
+              canonical_product_ref: {
+                product_id: 'ext_anchor_moist',
+                merchant_id: 'external_seed',
+              },
+            },
+          });
+
+        assert.equal(resp.status, 200);
+        assert.equal(resp.body?.source_mode, 'pool_open_world_mixed');
+        assert.equal(resp.body?.compare_meta?.open_world_status, 'success');
+        assert.equal(resp.body?.alternatives?.length, 3);
+        const names = resp.body.alternatives.map((alt) => String(alt?.product?.name || alt?.name || ''));
+        assert.equal(names.filter((name) => name === 'Oat So Simple Water Cream').length, 1);
+        assert.equal(names.some((name) => /refill/i.test(name)), false);
+        const krave = resp.body.alternatives.find((alt) => String(alt?.product?.name || '') === 'Oat So Simple Water Cream');
+        assert.equal(krave?.product?.product_id, 'ext_oat_water');
+        assert.equal(krave?.grounding_status, 'catalog_verified');
+        assert.equal(Array.isArray(krave?.metadata?.merged_candidate_origins), true);
+        assert.ok((krave?.reasons || []).some((reason) => /water-cream texture/i.test(String(reason))));
       } finally {
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
         loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();

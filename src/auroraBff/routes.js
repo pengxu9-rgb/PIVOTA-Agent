@@ -63963,38 +63963,186 @@ function mapSelectorCandidatesToAlternatives(candidates, { maxTotal = 3, lang = 
   return mapAuroraAlternativesToRecoAlternatives(raw, { lang, maxTotal });
 }
 
-function mergeRecoAlternativesForHybrid(primary, fallback, { maxTotal = 3 } = {}) {
-  const limit = Math.max(1, Math.min(8, Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 3));
-  const out = [];
-  const seen = new Set();
-  const pushOne = (item) => {
-    const row = item && typeof item === 'object' && !Array.isArray(item) ? item : null;
-    if (!row) return;
-    const product = row.product && typeof row.product === 'object' && !Array.isArray(row.product) ? row.product : {};
-    const key = pickFirstTrimmed(
-      product.product_id,
-      product.productId,
-      product.sku_id,
-      product.skuId,
-      row.product_id,
-      row.sku_id,
-      product.brand && product.name ? `${product.brand}:${product.name}` : null,
-      product.name,
-    );
-    const stableKey = String(key || '').trim().toLowerCase();
-    if (!stableKey || seen.has(stableKey)) return;
-    seen.add(stableKey);
-    out.push(row);
+function getRecoAlternativeProductObject(row) {
+  const item = row && typeof row === 'object' && !Array.isArray(row) ? row : {};
+  return item.product && typeof item.product === 'object' && !Array.isArray(item.product) ? item.product : {};
+}
+
+function getRecoAlternativeIdentityKeys(row) {
+  const item = row && typeof row === 'object' && !Array.isArray(row) ? row : {};
+  const product = getRecoAlternativeProductObject(item);
+  const keys = [];
+  const push = (kind, raw) => {
+    const token = kind === 'url' ? normalizeRecoUrlToken(raw) : normalizeRecoNameToken(raw);
+    if (!token) return;
+    keys.push(`${kind}:${token}`);
   };
-  for (const row of Array.isArray(primary) ? primary : []) {
-    pushOne(row);
-    if (out.length >= limit) return out.slice(0, limit);
+  push('pid', pickFirstTrimmed(product.product_id, product.productId, item.product_id, item.productId));
+  push('sku', pickFirstTrimmed(product.sku_id, product.skuId, item.sku_id, item.skuId));
+  push(
+    'url',
+    pickFirstTrimmed(
+      product.pdp_url,
+      product.url,
+      product.product_url,
+      item.pdp_url,
+      item.url,
+      item.product_url,
+      extractCandidateOpenUrl(item),
+      extractCandidateOpenUrl(product),
+    ),
+  );
+  const brand = pickFirstTrimmed(product.brand, item.brand);
+  const name = pickFirstTrimmed(product.display_name, product.displayName, product.name, item.display_name, item.displayName, item.name);
+  if (brand || name) push('name', `${brand || ''}::${name || ''}`);
+  return uniqCaseInsensitiveStrings(keys, 8);
+}
+
+function getRecoAlternativeComparableCoreKey(row) {
+  const item = row && typeof row === 'object' && !Array.isArray(row) ? row : {};
+  const product = getRecoAlternativeProductObject(item);
+  const brand = normalizeRecoNameToken(pickFirstTrimmed(product.brand, item.brand));
+  let name = normalizeRecoNameToken(
+    pickFirstTrimmed(product.display_name, product.displayName, product.name, item.display_name, item.displayName, item.name),
+  );
+  name = name
+    .replace(/\brefill(?:\s+(?:pouch|pack|pod|cartridge|bottle))?\b/g, ' ')
+    .replace(/\b(?:pouch|pack|pod|cartridge|bottle)\s+refill\b/g, ' ')
+    .replace(/\breplacement\s+(?:pouch|pack|pod|cartridge|bottle)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return brand || name ? `${brand}::${name}` : '';
+}
+
+function isRecoAlternativePackagingVariant(row) {
+  const item = row && typeof row === 'object' && !Array.isArray(row) ? row : {};
+  const product = getRecoAlternativeProductObject(item);
+  const text = [
+    product.name,
+    product.display_name,
+    product.displayName,
+    item.name,
+    item.display_name,
+    item.displayName,
+    product.category,
+    item.category,
+    product.product_type,
+    item.product_type,
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+  if (!text) return false;
+  return /\b(?:refill(?:\s+(?:pouch|pack|pod|cartridge|bottle))?|(?:pouch|pack|pod|cartridge|bottle)\s+refill|replacement\s+(?:pouch|pack|pod|cartridge|bottle))\b/i.test(text);
+}
+
+function mergeRecoAlternativeDuplicateRows(existing, incoming) {
+  const left = existing && typeof existing === 'object' && !Array.isArray(existing) ? existing : {};
+  const right = incoming && typeof incoming === 'object' && !Array.isArray(incoming) ? incoming : {};
+  const leftProduct = getRecoAlternativeProductObject(left);
+  const rightProduct = getRecoAlternativeProductObject(right);
+  const leftCatalog =
+    String(left.grounding_status || '').trim() === 'catalog_verified' ||
+    Boolean(pickFirstTrimmed(leftProduct.product_id, leftProduct.sku_id, leftProduct.pdp_url, leftProduct.url, left.pdp_open));
+  const rightCatalog =
+    String(right.grounding_status || '').trim() === 'catalog_verified' ||
+    Boolean(pickFirstTrimmed(rightProduct.product_id, rightProduct.sku_id, rightProduct.pdp_url, rightProduct.url, right.pdp_open));
+  const base = rightCatalog && !leftCatalog ? right : left;
+  const support = base === right ? left : right;
+  const baseProduct = getRecoAlternativeProductObject(base);
+  const supportProduct = getRecoAlternativeProductObject(support);
+  const openWorldFirst = String(left.candidate_origin || '') === 'open_world' ? [left, right] : [right, left];
+  const reasons = uniqCaseInsensitiveStrings(openWorldFirst.flatMap((row) => asStringArray(row?.reasons, 3)), 3);
+  const tradeoffNotes = uniqCaseInsensitiveStrings(
+    openWorldFirst.flatMap((row) => [
+      ...asStringArray(row?.tradeoff_notes, 3),
+      ...asStringArray(row?.tradeoffs, 3),
+    ]),
+    3,
+  );
+  const origins = uniqCaseInsensitiveStrings([left.candidate_origin, right.candidate_origin].filter(Boolean), 3);
+  const next = {
+    ...support,
+    ...base,
+    product: {
+      ...supportProduct,
+      ...baseProduct,
+      brand: pickFirstTrimmed(baseProduct.brand, supportProduct.brand) || undefined,
+      name: pickFirstTrimmed(baseProduct.name, supportProduct.name) || undefined,
+      category: pickFirstTrimmed(baseProduct.category, supportProduct.category) || undefined,
+    },
+    candidate_origin: rightCatalog || leftCatalog ? 'pool' : pickFirstTrimmed(base.candidate_origin, support.candidate_origin),
+    grounding_status: rightCatalog || leftCatalog ? 'catalog_verified' : pickFirstTrimmed(base.grounding_status, support.grounding_status),
+    ...(reasons.length ? { reasons } : {}),
+    ...(tradeoffNotes.length ? { tradeoff_notes: tradeoffNotes } : {}),
+    similarity_score: Math.max(Number(left.similarity_score) || 0, Number(right.similarity_score) || 0) || undefined,
+    pdp_open: base.pdp_open || support.pdp_open,
+    metadata: {
+      ...(support.metadata && typeof support.metadata === 'object' && !Array.isArray(support.metadata) ? support.metadata : {}),
+      ...(base.metadata && typeof base.metadata === 'object' && !Array.isArray(base.metadata) ? base.metadata : {}),
+      ...(origins.length > 1 ? { merged_candidate_origins: origins } : {}),
+    },
+    _mixed_score: Math.max(Number(left._mixed_score) || 0, Number(right._mixed_score) || 0) || undefined,
+  };
+  return next;
+}
+
+function finalizeRecoAlternativesForCompetitiveQuality(rows, { maxTotal = 3 } = {}) {
+  const limit = Math.max(1, Math.min(8, Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 3));
+  const list = (Array.isArray(rows) ? rows : []).filter((row) => row && typeof row === 'object' && !Array.isArray(row));
+  const nonVariantCoreKeys = new Set();
+  let nonVariantCount = 0;
+  for (const row of list) {
+    if (isRecoAlternativePackagingVariant(row)) continue;
+    nonVariantCount += 1;
+    const coreKey = getRecoAlternativeComparableCoreKey(row);
+    if (coreKey) nonVariantCoreKeys.add(coreKey);
   }
-  for (const row of Array.isArray(fallback) ? fallback : []) {
-    pushOne(row);
+  const out = [];
+  const sufficientNonVariantCount = nonVariantCount >= Math.min(3, limit);
+  for (const row of list) {
+    if (isRecoAlternativePackagingVariant(row)) {
+      const coreKey = getRecoAlternativeComparableCoreKey(row);
+      if ((coreKey && nonVariantCoreKeys.has(coreKey)) || sufficientNonVariantCount) continue;
+    }
+    out.push(row);
     if (out.length >= limit) break;
   }
   return out.slice(0, limit);
+}
+
+function mergeRecoAlternativesForHybrid(primary, fallback, { maxTotal = 3, preferBestScore = false } = {}) {
+  const limit = Math.max(1, Math.min(8, Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 3));
+  const ordered = [
+    ...(Array.isArray(primary) ? primary : []),
+    ...(Array.isArray(fallback) ? fallback : []),
+  ].filter((row) => row && typeof row === 'object' && !Array.isArray(row));
+  if (preferBestScore) {
+    ordered.sort((left, right) => {
+      const scoreDiff = Number(right?._mixed_score || 0) - Number(left?._mixed_score || 0);
+      if (scoreDiff !== 0) return scoreDiff;
+      if (String(left?.candidate_origin || '') !== String(right?.candidate_origin || '')) {
+        return String(left?.candidate_origin || '') === 'pool' ? -1 : 1;
+      }
+      return String(left?.product?.name || '').localeCompare(String(right?.product?.name || ''));
+    });
+  }
+  const out = [];
+  const keyToIndex = new Map();
+  for (const row of ordered) {
+    const keys = getRecoAlternativeIdentityKeys(row);
+    if (!keys.length) continue;
+    const duplicateIndex = keys.map((key) => keyToIndex.get(key)).find((idx) => Number.isInteger(idx));
+    if (Number.isInteger(duplicateIndex)) {
+      out[duplicateIndex] = mergeRecoAlternativeDuplicateRows(out[duplicateIndex], row);
+      for (const key of getRecoAlternativeIdentityKeys(out[duplicateIndex])) keyToIndex.set(key, duplicateIndex);
+      continue;
+    }
+    const nextIndex = out.length;
+    out.push(row);
+    for (const key of keys) keyToIndex.set(key, nextIndex);
+  }
+  return finalizeRecoAlternativesForCompetitiveQuality(out, { maxTotal: limit });
 }
 
 function isExternalRecoAlternativesSeedProduct(product) {
@@ -64906,27 +65054,10 @@ async function fetchRecoAlternativesForExternalSeedProduct({
     }
   }
 
-  const merged = [];
-  const seen = new Set();
-  for (const row of [...poolCandidates, ...openWorldRows].sort((left, right) => {
-    const scoreDiff = Number(right?._mixed_score || 0) - Number(left?._mixed_score || 0);
-    if (scoreDiff !== 0) return scoreDiff;
-    if (String(left?.candidate_origin || '') !== String(right?.candidate_origin || '')) {
-      return String(left?.candidate_origin || '') === 'pool' ? -1 : 1;
-    }
-    return String(left?.product?.name || '').localeCompare(String(right?.product?.name || ''));
-  })) {
-    const product = isPlainObject(row.product) ? row.product : {};
-    const key = pickFirstTrimmed(
-      product.product_id,
-      product.sku_id,
-      product.brand && product.name ? `${product.brand}:${product.name}` : product.name,
-    ).toLowerCase();
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    merged.push(row);
-    if (merged.length >= limit) break;
-  }
+  const merged = mergeRecoAlternativesForHybrid(poolCandidates, openWorldRows, {
+    maxTotal: limit,
+    preferBestScore: true,
+  });
 
   const cleanedAlternatives = merged.map((row) => {
     const next = { ...(row || {}) };
