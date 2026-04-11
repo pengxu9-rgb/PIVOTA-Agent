@@ -64508,7 +64508,7 @@ function getRecoAlternativesOpenWorldModel() {
 
 function getRecoAlternativesOpenWorldMaxOutputTokens() {
   const raw = Number(process.env.AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS);
-  if (!Number.isFinite(raw)) return 1200;
+  if (!Number.isFinite(raw)) return 2048;
   return Math.max(256, Math.min(4096, Math.trunc(raw)));
 }
 
@@ -64739,7 +64739,9 @@ async function fetchRecoAlternativesForExternalSeedProduct({
   maxTotal = 3,
   logger,
 } = {}) {
-  const limit = Math.max(1, Math.min(3, Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 3));
+  const limit = Math.max(1, Math.min(6, Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 3));
+  const openWorldModel = getRecoAlternativesOpenWorldModel();
+  const maxOutputTokens = getRecoAlternativesOpenWorldMaxOutputTokens();
   const pool = await collectExternalSeedPoolAlternatives({
     ctx,
     productInput,
@@ -64796,18 +64798,29 @@ async function fetchRecoAlternativesForExternalSeedProduct({
   try {
     const startedAt = Date.now();
     const resp = await callGeminiJsonObjectImpl({
-      model: getRecoAlternativesOpenWorldModel(),
+      model: openWorldModel,
       systemPrompt,
       userPrompt: JSON.stringify(userPayload, null, 2),
       timeoutMs: 6000,
       temperature: 0.2,
-      maxOutputTokens: 1200,
+      maxOutputTokens,
       responseJsonSchema: buildExternalSeedOpenWorldSchema(),
       route: 'aurora_reco_alternatives_open_world',
       ignoreForceModel: true,
     });
     llmTrace = {
       template_id: 'reco_alternatives_open_world_v1',
+      source_mode: 'local_gemini_open_world',
+      provider_route: 'aurora_reco_alternatives_open_world',
+      provider_model: openWorldModel,
+      provider_reason: resp?.ok === false ? resp.reason || null : null,
+      provider_detail: resp?.ok === false ? resp.detail || null : null,
+      provider_timeout_stage: resp?.ok === false ? resp.timeout_stage || null : null,
+      provider_total_ms: resp?.ok === false && Number.isFinite(Number(resp.total_ms)) ? Number(resp.total_ms) : null,
+      provider_upstream_ms: resp?.ok === false && Number.isFinite(Number(resp.upstream_ms)) ? Number(resp.upstream_ms) : null,
+      provider_result_reason: resp?.meta?.result_reason || null,
+      finish_reason: resp?.finish_reason || null,
+      parse_status: resp?.parse_status || null,
       latency_ms: Math.max(0, Date.now() - startedAt),
       error_class: resp?.ok === true ? null : classifyAlternativesFailureCode(resp?.reason),
     };
@@ -64833,6 +64846,17 @@ async function fetchRecoAlternativesForExternalSeedProduct({
     );
     llmTrace = {
       template_id: 'reco_alternatives_open_world_v1',
+      source_mode: 'local_gemini_open_world',
+      provider_route: 'aurora_reco_alternatives_open_world',
+      provider_model: openWorldModel,
+      provider_reason: err?.code || 'provider_error',
+      provider_detail: err?.message || String(err),
+      provider_timeout_stage: null,
+      provider_total_ms: null,
+      provider_upstream_ms: null,
+      provider_result_reason: 'gemini_call_exception',
+      finish_reason: null,
+      parse_status: null,
       latency_ms: 0,
       error_class: classifyAlternativesFailureCode(err?.code || err?.message),
     };

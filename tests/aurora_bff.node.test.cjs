@@ -6755,7 +6755,9 @@ test('/v1/reco/alternatives: external_seed product-card rows use mixed compare p
       try {
         const routeModule = require('../src/auroraBff/routes');
         const { mountAuroraBffRoutes, __internal } = routeModule;
-        __internal.__setCallGeminiJsonObjectForTest(async () => {
+        let geminiRequest = null;
+        __internal.__setCallGeminiJsonObjectForTest(async (args = {}) => {
+          geminiRequest = args;
           throw new Error('provider down');
         });
 
@@ -6793,6 +6795,13 @@ test('/v1/reco/alternatives: external_seed product-card rows use mixed compare p
         assert.equal(resp.status, 200);
         assert.equal(resp.body?.source_mode, 'pool_open_world_mixed');
         assert.equal(resp.body?.compare_meta?.open_world_status, 'provider_error');
+        assert.equal(resp.body?.llm_trace?.source_mode, 'local_gemini_open_world');
+        assert.equal(resp.body?.llm_trace?.provider_model, 'gemini-3-flash-preview');
+        assert.equal(resp.body?.llm_trace?.provider_route, 'aurora_reco_alternatives_open_world');
+        assert.equal(resp.body?.llm_trace?.provider_reason, 'provider_error');
+        assert.equal(resp.body?.llm_trace?.provider_result_reason, 'gemini_call_exception');
+        assert.equal(geminiRequest?.model, 'gemini-3-flash-preview');
+        assert.equal(geminiRequest?.maxOutputTokens, 2048);
         assert.ok(Number(resp.body?.compare_meta?.pool_selected_count || 0) >= 2);
         const names = resp.body.alternatives.map((alt) => String(alt?.product?.name || alt?.name || ''));
         assert.equal(names.some((name) => /Hydrating Dewy Gel Cream/i.test(name)), false);

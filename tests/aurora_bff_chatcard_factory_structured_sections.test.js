@@ -287,6 +287,45 @@ describe('aurora chatCardFactory structured sections for adapter inputs', () => 
         payload: {
           recommendation_meta: {
             selected_target_ids: ['oil_control_treatment', 'daily_sunscreen'],
+            ranked_targets: [
+              {
+                target_id: 'oil_control_treatment',
+                target_label: 'Oil-control treatment',
+                product_candidates: [
+                  {
+                    product_id: 'prod_oil_balance',
+                    merchant_id: 'merchant_oil_balance',
+                    brand: 'Clear Lab',
+                    name: 'Oil Balance Serum',
+                  },
+                  {
+                    brand: 'Clear Lab',
+                    name: 'Oil Balance Serum',
+                  },
+                  {
+                    product_id: 'prod_budget_balance',
+                    merchant_id: 'merchant_budget_balance',
+                    brand: 'Budget Lab',
+                    name: 'Budget Balance Serum',
+                    price: { amount: 9, currency: 'USD', unknown: false },
+                    category: 'treatment',
+                    similarity_score: 0.82,
+                  },
+                ],
+              },
+              {
+                target_id: 'daily_sunscreen',
+                target_label: 'Daily sunscreen',
+                product_candidates: [
+                  {
+                    product_id: 'prod_daily_spf',
+                    merchant_id: 'merchant_daily_spf',
+                    brand: 'Solaris',
+                    name: 'Daily UV Fluid SPF 50',
+                  },
+                ],
+              },
+            ],
           },
           recommendations: [
             {
@@ -355,12 +394,34 @@ describe('aurora chatCardFactory structured sections for adapter inputs', () => 
         rating: 4.7,
         review_count: 128,
       },
+      product_candidates: [
+        {
+          product_id: 'prod_budget_balance',
+          merchant_id: 'merchant_budget_balance',
+          brand: 'Budget Lab',
+          name: 'Budget Balance Serum',
+        },
+      ],
+      alternative_candidates: [
+        {
+          product_id: 'prod_budget_balance',
+          merchant_id: 'merchant_budget_balance',
+          brand: 'Budget Lab',
+          name: 'Budget Balance Serum',
+        },
+      ],
+      same_role_candidate_count: 1,
     });
+    expect(section.products[0].product_candidates.map((row) => row.product_id || row.name)).toEqual([
+      'prod_budget_balance',
+    ]);
     expect(cards[0].payload.sections[0].products[0]).toMatchObject({
       product_id: 'prod_oil_balance',
       image_url: 'https://example.com/oil-balance.jpg',
       why_this_one: 'Directly targets excess shine without feeling heavy.',
+      same_role_candidate_count: 1,
     });
+    expect(cards[0].payload.sections[0].products[0].alternative_candidates).toHaveLength(1);
     expect(() => ChatCardSchema.parse(cards[0])).not.toThrow();
   });
 

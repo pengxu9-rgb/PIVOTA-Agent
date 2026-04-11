@@ -233,8 +233,68 @@ function flattenRecommendationProductSource(raw) {
   };
 }
 
+function recommendationProductIdentityKey(raw) {
+  const keys = recommendationProductIdentityKeys(raw);
+  return keys.length ? keys[0] : '';
+}
+
+function recommendationProductIdentityKeys(raw) {
+  const { row, sku, product, canonicalProductRef, directProductRef } = flattenRecommendationProductSource(raw);
+  const productId =
+    asString(row.product_id) ||
+    asString(row.productId) ||
+    asString(product.product_id) ||
+    asString(product.productId) ||
+    asString(sku.product_id) ||
+    asString(sku.productId) ||
+    asString(canonicalProductRef && canonicalProductRef.product_id) ||
+    asString(directProductRef && directProductRef.product_id);
+  const merchantId =
+    asString(row.merchant_id) ||
+    asString(row.merchantId) ||
+    asString(product.merchant_id) ||
+    asString(product.merchantId) ||
+    asString(sku.merchant_id) ||
+    asString(sku.merchantId) ||
+    asString(canonicalProductRef && canonicalProductRef.merchant_id) ||
+    asString(directProductRef && directProductRef.merchant_id);
+  const brand = asString(row.brand) || asString(product.brand) || asString(sku.brand);
+  const name =
+    asString(row.product_name) ||
+    asString(row.productName) ||
+    asString(row.name) ||
+    asString(row.display_name) ||
+    asString(row.displayName) ||
+    asString(product.product_name) ||
+    asString(product.productName) ||
+    asString(product.name) ||
+    asString(product.display_name) ||
+    asString(product.displayName) ||
+    asString(sku.product_name) ||
+    asString(sku.productName) ||
+    asString(sku.name) ||
+    asString(sku.display_name) ||
+    asString(sku.displayName);
+  const label = [brand, name].map((value) => String(value || '').trim().toLowerCase()).filter(Boolean).join('::');
+  return [
+    productId ? `id:${merchantId}:${productId}`.toLowerCase() : '',
+    label ? `name:${label}` : '',
+  ].filter(Boolean);
+}
+
+function recommendationProductsShareIdentity(left, right) {
+  const leftKeys = new Set(recommendationProductIdentityKeys(left));
+  if (!leftKeys.size) return false;
+  return recommendationProductIdentityKeys(right).some((key) => leftKeys.has(key));
+}
+
 function normalizeRecommendationProductCard(raw, options = {}) {
-  const { defaultComparisonMode = '', peerCountByRoleId = new Map(), roleLabelById = new Map() } = options;
+  const {
+    defaultComparisonMode = '',
+    peerCountByRoleId = new Map(),
+    roleLabelById = new Map(),
+    peerCandidatesByRoleId = new Map(),
+  } = options;
   const {
     row,
     sku,
@@ -307,6 +367,13 @@ function normalizeRecommendationProductCard(raw, options = {}) {
     asString(row.matchedRoleLabel) ||
     asString(roleLabelById.get(matchedRoleId)) ||
     humanizeRoleId(matchedRoleId);
+  const selfKey = recommendationProductIdentityKey(row);
+  const sameRoleCandidates = matchedRoleId
+    ? asRecordArray(peerCandidatesByRoleId.get(matchedRoleId), 12).filter((candidate) => {
+        const candidateKey = recommendationProductIdentityKey(candidate);
+        return !selfKey || !candidateKey || !recommendationProductsShareIdentity(row, candidate);
+      })
+    : [];
   const normalized = {
     ...row,
     category:
@@ -351,6 +418,9 @@ function normalizeRecommendationProductCard(raw, options = {}) {
     ...(productGroupId ? { product_group_id: productGroupId } : {}),
     ...(Object.keys(pdpOpen).length > 0 ? { pdp_open: pdpOpen } : {}),
     ...(Array.isArray(row.alternatives) ? { alternatives: asRecordArray(row.alternatives, 9) } : {}),
+    ...(sameRoleCandidates.length ? { product_candidates: sameRoleCandidates.slice(0, 8) } : {}),
+    ...(sameRoleCandidates.length ? { alternative_candidates: sameRoleCandidates.slice(0, 8) } : {}),
+    ...(sameRoleCandidates.length ? { same_role_candidate_count: sameRoleCandidates.length } : {}),
     alternatives_count: Array.isArray(row.alternatives) ? row.alternatives.length : Number(row.alternatives_count || row.alternativesCount || 0),
   };
   return normalized;
@@ -368,7 +438,7 @@ function buildRecommendationCardContext(payload, recommendations) {
         : [];
   for (const rawRole of roles) {
     if (!isPlainObject(rawRole)) continue;
-    const roleId = asString(rawRole.role_id || rawRole.target_id);
+    const roleId = asString(rawRole.role_id || rawRole.roleId || rawRole.target_id || rawRole.targetId || rawRole.id);
     const label = asString(rawRole.label || rawRole.target_label || rawRole.targetLabel);
     if (!roleId || !label) continue;
     roleLabelById.set(roleId, label);
@@ -385,6 +455,19 @@ function buildRecommendationCardContext(payload, recommendations) {
         ? 'same_role_comparison'
         : '';
   const peerCountByRoleId = new Map();
+  const peerCandidatesByRoleId = new Map();
+  for (const rawRole of roles) {
+    if (!isPlainObject(rawRole)) continue;
+    const roleId = asString(rawRole.role_id || rawRole.roleId || rawRole.target_id || rawRole.targetId || rawRole.id);
+    if (!roleId || peerCandidatesByRoleId.has(roleId)) continue;
+    const candidates = asRecordArray(
+      rawRole.product_candidates ||
+        rawRole.productCandidates ||
+        rawRole.candidates,
+      16,
+    );
+    if (candidates.length) peerCandidatesByRoleId.set(roleId, candidates);
+  }
   for (const raw of recommendations) {
     if (!isPlainObject(raw)) continue;
     const matchedRoleId =
@@ -400,6 +483,7 @@ function buildRecommendationCardContext(payload, recommendations) {
     defaultComparisonMode,
     peerCountByRoleId,
     roleLabelById,
+    peerCandidatesByRoleId,
   };
 }
 
