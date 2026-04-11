@@ -180,6 +180,9 @@ const {
   isConcernFrameworkOutOfScopeArea: isConcernFrameworkOutOfScopeAreaPolicy,
 } = require('./productScopeClassifier');
 const {
+  classifyBeautyCoarseCandidate,
+} = require('../shared/beautyRecoCoarseClassifier');
+const {
   scoreConcernRoleCandidate: scoreConcernRoleCandidatePolicy,
 } = require('./roleFitContract');
 const {
@@ -20574,6 +20577,35 @@ function buildConcernFrameworkComparisonFillCandidates({
     }));
 }
 
+function classifyConcernFrameworkNegativeAuthority(product, role = null) {
+  const roleObj = isPlainObject(role) ? role : null;
+  const queryText = uniqCaseInsensitiveStrings([
+    String(roleObj?.label || '').trim(),
+    String(roleObj?.why_this_role || '').trim(),
+    ...(Array.isArray(roleObj?.query_terms) ? roleObj.query_terms : []),
+    ...(Array.isArray(roleObj?.fit_keywords) ? roleObj.fit_keywords : []),
+  ], 12).join(' ');
+  return classifyBeautyCoarseCandidate(product, {
+    queryTargetStepFamily: normalizeRecoTargetStep(roleObj?.preferred_step),
+    queryText,
+    guidanceOnlyDiscovery: true,
+    queryStepStrength: Number(roleObj?.rank || 99) <= 1 ? 'strong_goal_family' : 'supportive_family',
+  });
+}
+
+function isConcernFrameworkNegativeAuthority(coarse = null) {
+  if (!isPlainObject(coarse)) return false;
+  const targetRelevanceClass = String(coarse?.target_relevance_class || '').trim().toLowerCase();
+  const noiseReason = String(coarse?.noise_reason || '').trim().toLowerCase();
+  if (
+    targetRelevanceClass === 'hard_invalid'
+    && new Set(['service', 'tool', 'hair', 'cleanser', 'peel', 'body', 'makeup', 'spf', 'tint']).has(noiseReason)
+  ) {
+    return true;
+  }
+  return targetRelevanceClass === 'adjacent_noise' && noiseReason === 'bundle';
+}
+
 function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext } = {}) {
   const roles = Array.isArray(targetContext?.framework_roles) ? targetContext.framework_roles : [];
   const deduped = [];
@@ -20652,6 +20684,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     }
     const bestRole = bestRoleScore.role;
     const bestPreferredStep = normalizeRecoTargetStep(bestRole?.preferred_step);
+    const coarseAuthority = classifyConcernFrameworkNegativeAuthority(row, bestRole);
     const annotatedBase = {
       ...row,
       matched_role_id: String(bestRole.role_id || '').trim() || null,
@@ -20662,7 +20695,24 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
       candidate_step: candidateStep || null,
       candidate_step_source: stepResolution?.candidate_step_source || 'none',
       candidate_step_confidence: stepResolution?.candidate_step_confidence || 'none',
+      coarse_offer_type: String(coarseAuthority?.offer_type || '').trim() || null,
+      coarse_target_relevance_class: String(coarseAuthority?.target_relevance_class || '').trim() || null,
+      coarse_noise_reason: String(coarseAuthority?.noise_reason || '').trim() || null,
     };
+    if (isConcernFrameworkNegativeAuthority(coarseAuthority)) {
+      const coarseNoiseReason = String(coarseAuthority?.noise_reason || '').trim().toLowerCase();
+      hardReject.push({
+        product: annotatedBase,
+        reason:
+          bestPreferredStep === 'treatment' && coarseNoiseReason === 'spf'
+            ? 'framework_primary_sunscreen_conflict'
+            : String(coarseAuthority?.target_relevance_class || '').trim().toLowerCase() === 'adjacent_noise'
+          && coarseNoiseReason === 'bundle'
+            ? 'framework_bundle_offer_shape'
+            : `framework_coarse_invalid_${String(coarseAuthority?.noise_reason || 'wrong_scope').trim().toLowerCase()}`,
+      });
+      continue;
+    }
     if (bestPreferredStep === 'treatment' && hasConcernSunscreenSignal(row, candidateText)) {
       hardReject.push({
         product: annotatedBase,

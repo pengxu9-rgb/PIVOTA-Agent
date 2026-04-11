@@ -4915,6 +4915,126 @@ test('__internal: framework pool rescues exact-step sunscreen support from role-
   assert.equal(state.role_pool_stats?.daily_sunscreen?.viable_count, 1);
 });
 
+test('__internal: framework pool rejects cross-step cleanser-plus-spf bundles from the sunscreen support pool', async () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'catalog_oil_balance_support_anchor_bundle_1',
+        merchant_id: 'merchant_catalog_oil_balance_support_anchor_bundle',
+        brand: 'Clarity Lab',
+        name: 'Oil Balance Serum',
+        display_name: 'Clarity Lab Oil Balance Serum',
+        category: 'serum',
+        product_type: 'serum',
+        retrieval_source: 'catalog',
+        retrieval_query: 'oil control serum',
+        retrieval_step: 'treatment',
+        retrieval_role_id: 'oil_control_treatment',
+        search_aliases: ['Oil Control Serum'],
+        benefit_tags: ['oil control', 'shine control'],
+        short_description: 'A mattifying oil-control serum for oily skin.',
+      },
+      {
+        product_id: 'external_seed_moisturizer_support_bundle_1',
+        merchant_id: 'external_seed',
+        brand: 'LightLab',
+        name: 'Daily Balance Gel Cream',
+        display_name: 'LightLab Daily Balance Gel Cream',
+        category: 'moisturizer',
+        product_type: 'moisturizer',
+        retrieval_source: 'external_seed',
+        retrieval_query: 'lightweight moisturizer',
+        retrieval_step: 'moisturizer',
+        retrieval_role_id: 'lightweight_moisturizer',
+        short_description: 'A breathable gel cream for oily skin.',
+      },
+      {
+        product_id: 'external_seed_sunscreen_support_valid_1',
+        merchant_id: 'external_seed',
+        brand: 'SunGuard',
+        name: 'Daily Protect',
+        display_name: 'SunGuard Daily Protect',
+        category: 'sunscreen',
+        product_type: 'sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_query: 'lightweight sunscreen oily skin',
+        retrieval_step: 'sunscreen',
+        retrieval_role_id: 'daily_sunscreen',
+        short_description: 'A daily face product.',
+      },
+      {
+        product_id: 'external_seed_cross_step_bundle_1',
+        merchant_id: 'external_seed',
+        brand: 'KraveBeauty',
+        name: 'Barrier Protector',
+        display_name: 'Barrier Protector',
+        category: 'cleanser',
+        product_type: 'cleanser',
+        retrieval_source: 'external_seed',
+        retrieval_query: 'lightweight sunscreen oily skin',
+        retrieval_step: 'sunscreen',
+        retrieval_role_id: 'daily_sunscreen',
+        short_description: 'A hydrating cleanser paired with a lightweight SPF that protects against UV rays without a white cast, irritation, or heaviness.',
+        description: 'Your AM routine, bookended by the best. This hydrating duo features Matcha Hemp Hydrating Cleanser and Beet The Sun SPF 40. Includes 1 full-size cleanser and 1 full-size sunscreen.',
+      },
+    ],
+    {
+      targetContext: {
+        framework_id: 'recofw_test_oily_support_sunscreen_bundle_reject',
+        primary_role_id: 'oil_control_treatment',
+        framework_roles: [
+          {
+            role_id: 'oil_control_treatment',
+            rank: 1,
+            preferred_step: 'treatment',
+            alternate_steps: ['serum'],
+            label: 'Oil-control treatment',
+            query_terms: ['oil control serum', 'shine control serum', 'mattifying serum', 'balancing serum oily skin'],
+            fit_keywords: ['oil control', 'shine control', 'mattifying', 'mattify', 'sebum', 'balancing', 'anti-shine', 'blemish'],
+            ingredient_hypotheses: ['Niacinamide', 'Zinc PCA'],
+            product_type_hypotheses: ['treatment', 'serum'],
+          },
+          {
+            role_id: 'lightweight_moisturizer',
+            rank: 2,
+            preferred_step: 'moisturizer',
+            label: 'Lightweight moisturizer',
+            query_terms: ['lightweight moisturizer', 'gel cream', 'barrier lotion'],
+            fit_keywords: ['lightweight', 'gel cream', 'water gel', 'breathable', 'barrier lotion', 'oil-free'],
+            ingredient_hypotheses: ['Glycerin', 'Ceramide NP', 'Panthenol'],
+            product_type_hypotheses: ['moisturizer'],
+          },
+          {
+            role_id: 'daily_sunscreen',
+            rank: 3,
+            preferred_step: 'sunscreen',
+            label: 'Daily sunscreen',
+            query_terms: ['oil control sunscreen', 'lightweight sunscreen oily skin'],
+            fit_keywords: ['spf', 'lightweight', 'uv filters', 'non-greasy'],
+            ingredient_hypotheses: ['UV filters'],
+            product_type_hypotheses: ['sunscreen'],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.equal(state.role_pool_stats?.daily_sunscreen?.viable_count, 1);
+  assert.equal(
+    state.viable_candidate_pool.some((item) => item?.product_id === 'external_seed_cross_step_bundle_1'),
+    false,
+  );
+  const reject = (Array.isArray(state.hard_reject) ? state.hard_reject : [])
+    .find((entry) => entry?.product?.product_id === 'external_seed_cross_step_bundle_1') || null;
+  assert.ok(reject);
+  assert.equal(reject?.reason, 'framework_coarse_invalid_cleanser');
+  const sunscreen = state.selected_recommendations.find((item) => item?.matched_role_id === 'daily_sunscreen') || null;
+  assert.ok(sunscreen);
+  assert.equal(sunscreen?.product_id, 'external_seed_sunscreen_support_valid_1');
+});
+
 test('__internal: framework pool keeps exact-step sunscreen support viable when only retrieval-step plus weak support semantics are present', async () => {
   const { __internal } = loadRoutesFresh();
   const state = __internal.finalizeConcernFrameworkCandidatePools(
