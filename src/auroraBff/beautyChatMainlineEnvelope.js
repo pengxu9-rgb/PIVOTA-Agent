@@ -230,10 +230,60 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
     };
   }
 
+  function compareFrameworkRecoContextCandidateRows(left, right) {
+    const scoreDiff = Number(right?.framework_score || 0) - Number(left?.framework_score || 0);
+    if (Math.abs(scoreDiff) > 1e-6) return scoreDiff;
+    const tiebreakDiff = Number(right?.framework_tiebreak_score || 0) - Number(left?.framework_tiebreak_score || 0);
+    if (Math.abs(tiebreakDiff) > 1e-6) return tiebreakDiff;
+    const rightSelectedBoost = right?.comparison_fill === true ? 0 : 1;
+    const leftSelectedBoost = left?.comparison_fill === true ? 0 : 1;
+    if (rightSelectedBoost !== leftSelectedBoost) return rightSelectedBoost - leftSelectedBoost;
+    const leftName = pickFirstTrimmed(left?.display_name, left?.displayName, left?.name, left?.title);
+    const rightName = pickFirstTrimmed(right?.display_name, right?.displayName, right?.name, right?.title);
+    return leftName.localeCompare(rightName);
+  }
+
+  function buildFrameworkRecoContextCandidatesByRoleId({
+    recommendations = [],
+    candidateState = null,
+  } = {}) {
+    const out = new Map();
+    const seenByRole = new Map();
+    const addCandidate = (roleId, row) => {
+      const normalizedRoleId = String(roleId || '').trim();
+      const candidate = buildRecoContextProductCandidateFromRecommendation(row);
+      if (!normalizedRoleId || !candidate) return;
+      const dedupeKey = [
+        pickFirstTrimmed(candidate?.product_id, candidate?.productId),
+        pickFirstTrimmed(candidate?.merchant_id, candidate?.merchantId),
+        pickFirstTrimmed(candidate?.display_name, candidate?.displayName, candidate?.name, candidate?.title),
+      ].join('::').toLowerCase();
+      if (!dedupeKey || dedupeKey === '::::') return;
+      const seen = seenByRole.get(normalizedRoleId) || new Set();
+      if (seen.has(dedupeKey)) return;
+      seen.add(dedupeKey);
+      seenByRole.set(normalizedRoleId, seen);
+      const current = out.get(normalizedRoleId) || [];
+      out.set(normalizedRoleId, [...current, candidate].slice(0, 4));
+    };
+
+    const viableCandidates = Array.isArray(candidateState?.viable_candidate_pool)
+      ? candidateState.viable_candidate_pool.slice().sort(compareFrameworkRecoContextCandidateRows)
+      : [];
+    for (const row of viableCandidates) {
+      addCandidate(pickFirstTrimmed(row?.matched_role_id, row?.matchedRoleId), row);
+    }
+    for (const row of Array.isArray(recommendations) ? recommendations : []) {
+      addCandidate(pickFirstTrimmed(row?.matched_role_id, row?.matchedRoleId), row);
+    }
+    return out;
+  }
+
   function buildFrameworkRecoContextPatch({
     recoContext = null,
     targetContext = null,
     recommendations = [],
+    candidateState = null,
   } = {}) {
     const frameworkRoles = Array.isArray(targetContext?.framework_roles)
       ? targetContext.framework_roles.filter((role) => isPlainObject(role))
@@ -248,23 +298,10 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
       frameworkRoles.find((role) => pickFirstTrimmed(role?.role_id) === primaryRoleId)
       || frameworkRoles[0]
       || null;
-    const candidatesByRoleId = new Map();
-
-    for (const row of Array.isArray(recommendations) ? recommendations : []) {
-      const roleId = pickFirstTrimmed(row?.matched_role_id, row?.matchedRoleId);
-      const candidate = buildRecoContextProductCandidateFromRecommendation(row);
-      if (!roleId || !candidate) continue;
-      const current = candidatesByRoleId.get(roleId) || [];
-      if (
-        current.some((item) =>
-          pickFirstTrimmed(item?.product_id, item?.productId) ===
-            pickFirstTrimmed(candidate?.product_id, candidate?.productId),
-        )
-      ) {
-        continue;
-      }
-      candidatesByRoleId.set(roleId, [...current, candidate].slice(0, 4));
-    }
+    const candidatesByRoleId = buildFrameworkRecoContextCandidatesByRoleId({
+      recommendations,
+      candidateState,
+    });
 
     const rankedTargets = frameworkRoles.slice(0, 4).map((role, index) => {
       const roleId = pickFirstTrimmed(role?.role_id);
@@ -273,6 +310,9 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
         role?.preferred_step,
         targetContext?.resolved_target_step,
       );
+      const roleCandidates = Array.isArray(candidatesByRoleId.get(roleId))
+        ? candidatesByRoleId.get(roleId)
+        : [];
       if (!roleId && !roleLabel && !preferredStep) return null;
       return {
         ...(roleId ? { target_id: roleId } : {}),
@@ -288,8 +328,11 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
         ...(preferredStep ? { resolved_target_step: preferredStep } : {}),
         target_confidence: index === 0 ? 'high' : 'medium',
         source: 'beauty_mainline_handoff',
-        ...(Array.isArray(candidatesByRoleId.get(roleId)) && candidatesByRoleId.get(roleId).length
-          ? { product_candidates: candidatesByRoleId.get(roleId) }
+        ...(roleCandidates.length
+          ? {
+              verified_product_count: roleCandidates.length,
+              product_candidates: roleCandidates,
+            }
           : {}),
       };
     }).filter(Boolean);
@@ -429,6 +472,16 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
       recoContext,
       targetContext,
       recommendations: canonicalRecommendations,
+      candidateState:
+        searchResult?.candidate_state &&
+        typeof searchResult.candidate_state === 'object' &&
+        !Array.isArray(searchResult.candidate_state)
+          ? searchResult.candidate_state
+          : searchResult?.candidateState &&
+              typeof searchResult.candidateState === 'object' &&
+              !Array.isArray(searchResult.candidateState)
+            ? searchResult.candidateState
+            : null,
     });
     const effectiveRecoContext = frameworkRecoContextPatch
       ? {

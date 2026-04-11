@@ -19663,6 +19663,9 @@ function buildBeautyMainlineLocalCandidatePoolSummary({
     raw_source_tier_counts: summarizeConcernFrameworkSourceTierCounts(rawSourceCounts),
     viable_source_tier_counts: summarizeConcernFrameworkSourceTierCounts(viableSourceCounts),
     selected_source_tier_counts: summarizeConcernFrameworkSourceTierCounts(selectedSourceCounts),
+    role_pool_stats: isPlainObject(candidateState?.role_pool_stats)
+      ? candidateState.role_pool_stats
+      : {},
     hard_reject_preview: buildConcernFrameworkRejectPreview(candidateState?.hard_reject),
   };
 }
@@ -19999,6 +20002,12 @@ function buildBeautyMainlineLocalSearchResult({
     source_breakdown: sourceBreakdown,
     contract_bridge: metadata.contract_bridge,
     metadata,
+    candidate_state:
+      collected?.candidateState &&
+      typeof collected.candidateState === 'object' &&
+      !Array.isArray(collected.candidateState)
+        ? collected.candidateState
+        : null,
   };
 }
 
@@ -20710,6 +20719,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
   const usedProductIds = new Set();
   const selected = [];
   const addSelectedCandidate = (item) => {
+    if (selected.length >= 3) return false;
     const productId = pickFirstString(item?.product_id, item?.productId, item?.id);
     if (!productId || usedProductIds.has(productId)) return false;
     usedProductIds.add(productId);
@@ -20733,6 +20743,20 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     }
     return added;
   };
+  const countRemainingSupportRoleOptions = () => {
+    let count = 0;
+    for (const role of orderedRoles) {
+      const roleId = String(role?.role_id || '').trim();
+      if (!roleId || roleId === primaryRoleId) continue;
+      const bucket = roleBuckets.get(roleId) || [];
+      const hasUnusedCandidate = bucket.some((item) => {
+        const productId = pickFirstString(item?.product_id, item?.productId, item?.id);
+        return Boolean(productId) && !usedProductIds.has(productId);
+      });
+      if (hasUnusedCandidate) count += 1;
+    }
+    return count;
+  };
 
   const primaryBucket = primaryRoleId ? (roleBuckets.get(primaryRoleId) || []) : [];
   for (const item of primaryBucket) {
@@ -20748,9 +20772,12 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
         usedProductIds,
       })
     : [];
+  const remainingCardBudgetAfterPrimary = Math.max(0, 3 - selected.length);
+  const remainingSupportRoleOptions = countRemainingSupportRoleOptions();
   const reserveComparisonSlot =
     strictPrimarySelectedCount === 1
-    && comparisonFillCandidates.length > 0;
+    && comparisonFillCandidates.length > 0
+    && remainingSupportRoleOptions < remainingCardBudgetAfterPrimary;
   if (strictPrimarySelectedCount > 0 && strictPrimarySelectedCount < 3 && selected.length < 3) {
     addRoutineSupportCandidates(reserveComparisonSlot ? 1 : Number.POSITIVE_INFINITY);
   }

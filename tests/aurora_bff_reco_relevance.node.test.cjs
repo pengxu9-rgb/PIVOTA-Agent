@@ -5188,7 +5188,7 @@ test('__internal: framework pool prioritizes routine support before same-role so
   assert.equal(state.comparison_fill_count, 1);
 });
 
-test('__internal: framework pool reserves one comparison slot when multiple support roles would otherwise crowd out same-role comparison', async () => {
+test('__internal: framework pool prioritizes a complete core routine over same-role soft comparison when both support roles fit the card budget', async () => {
   const { __internal } = loadRoutesFresh();
   const state = __internal.finalizeConcernFrameworkCandidatePools(
     [
@@ -5292,21 +5292,21 @@ test('__internal: framework pool reserves one comparison slot when multiple supp
   assert.equal(state.selected_candidate_count, 3);
   assert.deepEqual(
     state.selected_recommendations.map((item) => item?.product_id),
-    ['reserve_primary_oil_1', 'reserve_support_moisturizer_1', 'reserve_soft_compare_oil_1'],
+    ['reserve_primary_oil_1', 'reserve_support_moisturizer_1', 'reserve_support_sunscreen_1'],
   );
   assert.deepEqual(
     state.selected_recommendations.map((item) => item?.matched_role_id),
-    ['oil_control_treatment', 'lightweight_moisturizer', 'oil_control_treatment'],
+    ['oil_control_treatment', 'lightweight_moisturizer', 'daily_sunscreen'],
   );
   assert.equal(
-    state.selected_recommendations.some((item) => item?.product_id === 'reserve_support_sunscreen_1'),
+    state.selected_recommendations.some((item) => item?.product_id === 'reserve_soft_compare_oil_1'),
     false,
   );
-  assert.equal(state.comparison_slot_reserved, true);
+  assert.equal(state.comparison_slot_reserved, false);
   assert.equal(state.routine_support_fill_applied, true);
-  assert.equal(state.routine_support_fill_count, 1);
-  assert.equal(state.comparison_fill_applied, true);
-  assert.equal(state.comparison_fill_count, 1);
+  assert.equal(state.routine_support_fill_count, 2);
+  assert.equal(state.comparison_fill_applied, false);
+  assert.equal(state.comparison_fill_count, 0);
 });
 
 test('__internal: framework pool backfills same-role soft matches for comparison once a strong primary winner exists', async () => {
@@ -5400,6 +5400,179 @@ test('__internal: framework pool backfills same-role soft matches for comparison
     state.selected_recommendations.filter((item) => item?.comparison_fill === true).length,
     2,
   );
+});
+
+test('__internal: beauty mainline handoff payload preserves viable support role candidates in ranked targets even when they are not selected', async () => {
+  const { __internal } = loadRoutesFresh();
+  const semanticPlan = buildConcernSemanticPlanFixture();
+  const targetContext = {
+    framework_id: 'recofw_test_handoff_role_candidate_persistence',
+    primary_role_id: 'oil_control_treatment',
+    framework_roles: semanticPlan.core_roles,
+    semantic_plan: semanticPlan,
+  };
+  const selectedRecommendations = [
+    {
+      product_id: 'handoff_primary_oil_1',
+      merchant_id: 'merchant_handoff_primary_oil_1',
+      brand: 'Strong',
+      name: 'Oil Control Serum',
+      display_name: 'Strong Oil Control Serum',
+      category: 'serum',
+      product_type: 'serum',
+      retrieval_source: 'catalog',
+      matched_role_id: 'oil_control_treatment',
+      framework_score: 0.91,
+      framework_tiebreak_score: 0.41,
+    },
+    {
+      product_id: 'handoff_support_moisturizer_1',
+      merchant_id: 'external_seed',
+      brand: 'LightLab',
+      name: 'Oil-Free Gel Cream',
+      display_name: 'LightLab Oil-Free Gel Cream',
+      category: 'moisturizer',
+      product_type: 'moisturizer',
+      retrieval_source: 'external_seed',
+      matched_role_id: 'lightweight_moisturizer',
+      framework_score: 0.72,
+      framework_tiebreak_score: 0.23,
+    },
+    {
+      product_id: 'handoff_soft_compare_oil_1',
+      merchant_id: 'merchant_handoff_soft_compare_oil_1',
+      brand: 'Alt',
+      name: 'Balancing Serum',
+      display_name: 'Alt Balancing Serum',
+      category: 'serum',
+      product_type: 'serum',
+      retrieval_source: 'catalog',
+      matched_role_id: 'oil_control_treatment',
+      framework_score: 0.49,
+      framework_tiebreak_score: 0.12,
+      comparison_fill: true,
+      comparison_fill_reason: 'same_role_soft_mismatch',
+    },
+  ];
+  const viableDailySunscreen = {
+    product_id: 'handoff_sunscreen_viable_1',
+    merchant_id: 'external_seed',
+    brand: 'SunGuard',
+    name: 'Matte UV Fluid SPF 50',
+    display_name: 'SunGuard Matte UV Fluid SPF 50',
+    category: 'sunscreen',
+    product_type: 'sunscreen',
+    retrieval_source: 'external_seed',
+    matched_role_id: 'daily_sunscreen',
+    framework_score: 0.66,
+    framework_tiebreak_score: 0.31,
+  };
+  const selectionContract = {
+    selection_owner: 'shopping_agent_beauty_mainline',
+    selected_product_ids: selectedRecommendations.map((item) => item.product_id),
+    selected_titles: selectedRecommendations.map((item) => item.display_name),
+    selection_signature: 'reco_sel_handoff_role_candidate_persistence',
+    mainline_status: 'grounded_success',
+    source_tier_counts: {
+      fresh_internal: 2,
+      fresh_external: 1,
+    },
+    top_candidate_provenance: {
+      source_owner: 'catalog',
+    },
+  };
+  const handoff = {
+    searchResult: {
+      decision_owner: 'shopping_agent_beauty_mainline',
+      semantic_owner: 'shopping_agent_beauty_mainline',
+      contract_bridge: {
+        attempted_contract: 'agent_v1_search_beauty_mainline',
+        resolved_contract: 'agent_v1_search_beauty_mainline',
+      },
+      source_breakdown: {
+        source_tier_counts: {
+          fresh_internal: 2,
+          fresh_external: 1,
+        },
+      },
+      final_selection: selectionContract,
+      search_stage_ledger: {
+        final_selection: selectionContract,
+        candidate_pool_summary: {
+          comparison_slot_reserved: true,
+        },
+      },
+      candidate_state: {
+        viable_candidate_pool: [
+          selectedRecommendations[0],
+          selectedRecommendations[1],
+          viableDailySunscreen,
+        ],
+      },
+      metadata: {
+        decision_owner: 'shopping_agent_beauty_mainline',
+        semantic_owner: 'shopping_agent_beauty_mainline',
+        contract_bridge: {
+          attempted_contract: 'agent_v1_search_beauty_mainline',
+          resolved_contract: 'agent_v1_search_beauty_mainline',
+        },
+        source_breakdown: {
+          source_tier_counts: {
+            fresh_internal: 2,
+            fresh_external: 1,
+          },
+        },
+        final_selection: selectionContract,
+        search_stage_ledger: {
+          final_selection: selectionContract,
+        },
+      },
+    },
+    recommendations: selectedRecommendations,
+  };
+
+  const bundle = __internal.buildRecoPayloadFromBeautyMainlineHandoff({
+    handoff,
+    profile: { skinType: 'oily', goals: ['oil control'] },
+    targetContext,
+    recoContext: {
+      resolved_target_step: 'treatment',
+      ingredient_query: 'oil control',
+    },
+    taskMode: 'goal_based_products',
+    triggerSource: 'typed_reco',
+    sourceMode: 'framework_mainline',
+    basePayload: {
+      recommendation_confidence_score: 0.61,
+      recommendation_confidence_level: 'medium',
+      recommendation_meta: {
+        used_recent_logs: false,
+        used_safety_flags: false,
+      },
+    },
+    selectionOwner: 'shopping_agent_beauty_mainline',
+    entryType: 'chat',
+    language: 'EN',
+  });
+
+  assert.ok(bundle?.payload);
+  const rankedTargets = Array.isArray(bundle.payload?.recommendation_meta?.ranked_targets)
+    ? bundle.payload.recommendation_meta.ranked_targets
+    : [];
+  const sunscreenTarget = rankedTargets.find((item) => item?.target_id === 'daily_sunscreen') || null;
+  assert.ok(sunscreenTarget);
+  assert.equal(sunscreenTarget?.verified_product_count, 1);
+  assert.equal(sunscreenTarget?.product_candidates?.[0]?.product_id, 'handoff_sunscreen_viable_1');
+  assert.deepEqual(bundle.payload?.recommendation_meta?.selected_target_ids, [
+    'oil_control_treatment',
+    'lightweight_moisturizer',
+  ]);
+
+  const persistedSunscreenTarget = (Array.isArray(bundle.recoContext?.ranked_targets) ? bundle.recoContext.ranked_targets : [])
+    .find((item) => item?.target_id === 'daily_sunscreen') || null;
+  assert.ok(persistedSunscreenTarget);
+  assert.equal(persistedSunscreenTarget?.verified_product_count, 1);
+  assert.equal(persistedSunscreenTarget?.product_candidates?.[0]?.product_id, 'handoff_sunscreen_viable_1');
 });
 
 function extractRecoRewritePromptContext(prompt) {
