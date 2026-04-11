@@ -61,6 +61,32 @@ function mustContainCards(cardTypes, required) {
   return required.every((card) => cardTypes.includes(card));
 }
 
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function findCardByTypes(cards, types) {
+  for (const card of asArray(cards)) {
+    const type = String(card?.type || '').trim();
+    if (type && types.includes(type)) return card;
+  }
+  return null;
+}
+
+function extractGroundedProductResult(cards) {
+  const cardTypes = asArray(cards).map((card) => String(card?.type || '').trim()).filter(Boolean);
+  const legacyPass = mustContainCards(cardTypes, ['product_parse', 'offers_resolved']);
+  const recoCard = findCardByTypes(cards, ['recommendations', 'product_picks']);
+  const recoPayload = recoCard && typeof recoCard === 'object' ? recoCard.payload : null;
+  const recommendationsCount = asArray(recoPayload?.recommendations).length;
+  return {
+    legacyPass,
+    hasRecommendations: recommendationsCount > 0,
+    recommendationsCount,
+    pass: legacyPass || recommendationsCount > 0,
+  };
+}
+
 function asksIntakeProfile(text) {
   const content = String(text || '');
   const patterns = [
@@ -92,6 +118,8 @@ function buildMarkdown(summary) {
   lines.push('');
   lines.push(`- has_product_parse: ${summary.card_checks.has_product_parse}`);
   lines.push(`- has_offers_resolved: ${summary.card_checks.has_offers_resolved}`);
+  lines.push(`- has_recommendations: ${summary.card_checks.has_recommendations}`);
+  lines.push(`- recommendations_count: ${summary.card_checks.recommendations_count}`);
   lines.push(`- has_diagnosis_gate: ${summary.card_checks.has_diagnosis_gate}`);
   lines.push(`- asks_profile_intake: ${summary.card_checks.asks_profile_intake}`);
   lines.push('');
@@ -158,6 +186,7 @@ async function main() {
       ? chatJson.cards_chatcards
       : [];
   const cardTypes = responseCards.map((c) => c?.type).filter(Boolean);
+  const groundedProductResult = extractGroundedProductResult(responseCards);
   const assistantText = String(chatJson?.assistant_message?.content || chatJson?.assistant_text || '');
 
   const metricsAfterResp = await fetchWithTimeout(`${base}/metrics`, {}, timeoutMs);
@@ -180,9 +209,9 @@ async function main() {
       detail: `status=${chatResp.status}`,
     },
     {
-      name: 'cards_include_product_parse_offers_resolved',
-      pass: mustContainCards(cardTypes, ['product_parse', 'offers_resolved']),
-      detail: `cards=${cardTypes.join(',') || 'none'}`,
+      name: 'cards_include_grounded_product_results',
+      pass: groundedProductResult.pass,
+      detail: `cards=${cardTypes.join(',') || 'none'} recommendations=${groundedProductResult.recommendationsCount}`,
     },
     {
       name: 'no_diagnosis_gate_card',
@@ -221,6 +250,8 @@ async function main() {
     card_checks: {
       has_product_parse: cardTypes.includes('product_parse'),
       has_offers_resolved: cardTypes.includes('offers_resolved'),
+      has_recommendations: groundedProductResult.hasRecommendations,
+      recommendations_count: groundedProductResult.recommendationsCount,
       has_diagnosis_gate: cardTypes.includes('diagnosis_gate'),
       asks_profile_intake: asksIntakeProfile(assistantText),
     },

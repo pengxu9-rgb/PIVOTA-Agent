@@ -7,7 +7,7 @@ on:
         description: "Retry briefly before declaring production drift"
         type: boolean
         required: false
-        default: false
+        default: true
   schedule:
     - cron: "*/15 * * * *"
 
@@ -23,7 +23,7 @@ jobs:
     env:
       BASE_URL: ${{ vars.PIVOTA_AGENT_PUBLIC_BASE_URL || vars.AGENT_PUBLIC_BASE_URL || 'https://agent.pivota.cc' }}
       PROD_SMOKE_BASE_URL: ${{ vars.PIVOTA_AGENT_PROD_INVOKE_BASE_URL || vars.COMMERCE_CORE_PROD_SMOKE_BASE_URL || 'https://pivota-agent-production.up.railway.app' }}
-      WAIT_FOR_COMMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.wait_for_commit || false }}
+      WAIT_FOR_COMMIT: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.wait_for_commit) }}
       ROLLBACK_WEBHOOK_URL: ${{ secrets.RAILWAY_ROLLBACK_WEBHOOK_URL }}
       ROLLBACK_REASON: production_deploy_drift_guard_failed
       FAILED_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

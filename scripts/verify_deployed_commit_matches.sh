@@ -125,7 +125,9 @@ for i in $(seq 1 "$MAX_ATTEMPTS"); do
     echo "PASS: deployed commit matches target."
     exit 0
   fi
-  sleep "$SLEEP_SECONDS"
+  if [ "$i" -lt "$MAX_ATTEMPTS" ] && [ "$SLEEP_SECONDS" -gt 0 ]; then
+    sleep "$SLEEP_SECONDS"
+  fi
 done
 
 echo "FAIL: deployment commit mismatch."

@@ -207,4 +207,55 @@ describe('verify_deployed_commit_matches.sh', () => {
       await new Promise((resolve) => server.close(resolve));
     }
   });
+
+  test('retries until the target commit becomes visible', async () => {
+    const repoRoot = path.join(__dirname, '..');
+    const scriptPath = path.join(repoRoot, 'scripts', 'verify_deployed_commit_matches.sh');
+    const targetCommit = 'abc123def456';
+    let requestCount = 0;
+
+    const server = http.createServer(async (req, res) => {
+      if (req.method === 'GET' && req.url === '/version') {
+        requestCount += 1;
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(
+          JSON.stringify({
+            service: 'PIVOTA-Agent',
+            commit: requestCount >= 3 ? targetCommit : 'stalecommit000',
+          }),
+        );
+        return;
+      }
+
+      res.statusCode = 404;
+      res.end('not found');
+    });
+
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+
+    try {
+      const { stdout } = await execFileAsync('bash', [scriptPath], {
+        cwd: repoRoot,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          BASE_URL: baseUrl,
+          INVOKE_BASE_URL: baseUrl,
+          TARGET_COMMIT: targetCommit,
+          MAX_ATTEMPTS: '4',
+          SLEEP_SECONDS: '0',
+        },
+      });
+
+      expect(requestCount).toBeGreaterThanOrEqual(3);
+      expect(stdout).toContain('1/4 deployed_commit=stalecommit000');
+      expect(stdout).toContain(`3/4 deployed_commit=${targetCommit}`);
+      expect(stdout).toContain('PASS: deployed commit matches target.');
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
 });
