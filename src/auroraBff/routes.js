@@ -64512,6 +64512,12 @@ function getRecoAlternativesOpenWorldMaxOutputTokens() {
   return Math.max(256, Math.min(4096, Math.trunc(raw)));
 }
 
+function getRecoAlternativesOpenWorldTimeoutMs() {
+  const raw = Number(process.env.AURORA_RECO_ALTERNATIVES_OPEN_WORLD_TIMEOUT_MS);
+  if (!Number.isFinite(raw)) return 12000;
+  return Math.max(3000, Math.min(20000, Math.trunc(raw)));
+}
+
 function buildRecoAlternativesOpenWorldUserPayload({ ctx, productInput, productObj, maxTotal } = {}) {
   const langCode = normalizeRecoPromptLanguage(ctx?.lang || 'EN');
   const targetSignals = buildRecoAlternativesTargetSignals(productObj, {
@@ -64614,6 +64620,7 @@ async function fetchRecoAlternativesForLocalGeminiOpenWorld({
 } = {}) {
   const model = getRecoAlternativesOpenWorldModel();
   const maxOutputTokens = getRecoAlternativesOpenWorldMaxOutputTokens();
+  const timeoutMs = getRecoAlternativesOpenWorldTimeoutMs();
   const systemPrompt = [
     'You are a strict skincare alternatives selector.',
     'Output STRICT JSON only.',
@@ -64629,9 +64636,10 @@ async function fetchRecoAlternativesForLocalGeminiOpenWorld({
       model,
       systemPrompt,
       userPrompt: JSON.stringify(userPayload, null, 2),
-      timeoutMs: 6000,
+      timeoutMs,
       temperature: 0.2,
       maxOutputTokens,
+      responseJsonSchema: buildExternalSeedOpenWorldSchema(),
       route: 'aurora_reco_alternatives_open_world',
       ignoreForceModel: true,
     });
@@ -64742,6 +64750,7 @@ async function fetchRecoAlternativesForExternalSeedProduct({
   const limit = Math.max(1, Math.min(6, Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 3));
   const openWorldModel = getRecoAlternativesOpenWorldModel();
   const maxOutputTokens = getRecoAlternativesOpenWorldMaxOutputTokens();
+  const timeoutMs = getRecoAlternativesOpenWorldTimeoutMs();
   const pool = await collectExternalSeedPoolAlternatives({
     ctx,
     productInput,
@@ -64834,7 +64843,7 @@ async function fetchRecoAlternativesForExternalSeedProduct({
         model: openWorldModel,
         systemPrompt,
         userPrompt: JSON.stringify(userPayload, null, 2),
-        timeoutMs: 6000,
+        timeoutMs,
         temperature: 0.2,
         maxOutputTokens,
         responseJsonSchema: buildExternalSeedOpenWorldSchema(),

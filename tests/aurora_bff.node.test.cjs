@@ -5960,7 +5960,8 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
           assert.equal(args.route, 'aurora_reco_alternatives_open_world');
           assert.equal(args.ignoreForceModel, true);
           assert.equal(args.model, 'gemini-3-flash-preview');
-          assert.equal(Object.prototype.hasOwnProperty.call(args, 'responseJsonSchema'), false);
+          assert.equal(args.responseJsonSchema?.properties?.alternatives?.items?.properties?.product_type?.type, 'string');
+          assert.equal(args.responseJsonSchema?.properties?.alternatives?.items?.properties?.product_type?.nullable, true);
           assert.equal(Object.prototype.hasOwnProperty.call(args, 'responseSchema'), false);
           return {
             ok: true,
@@ -6027,6 +6028,7 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
         assert.equal(out.alternatives[0]?.product?.name, 'Niacinamide Serum');
         assert.deepEqual(out.alternatives[0]?.tradeoff_notes, ['Formula overlap remains uncertain.']);
         assert.equal(geminiRequest?.maxOutputTokens, 2048);
+        assert.equal(geminiRequest?.timeoutMs, 12000);
         const payload = JSON.parse(geminiRequest?.userPrompt || '{}');
         assert.equal(payload?.task?.max_alternatives, 3);
         assert.match(String(payload?.task?.selection_rule || ''), /distinct real skincare alternatives/i);
@@ -6802,6 +6804,7 @@ test('/v1/reco/alternatives: external_seed product-card rows use mixed compare p
         assert.equal(resp.body?.llm_trace?.provider_result_reason, 'gemini_call_exception');
         assert.equal(geminiRequest?.model, 'gemini-3-flash-preview');
         assert.equal(geminiRequest?.maxOutputTokens, 2048);
+        assert.equal(geminiRequest?.timeoutMs, 12000);
         assert.equal(geminiRequest?.responseJsonSchema?.properties?.alternatives?.items?.properties?.product_type?.type, 'string');
         assert.equal(geminiRequest?.responseJsonSchema?.properties?.alternatives?.items?.properties?.product_type?.nullable, true);
         assert.equal(geminiRequest?.responseJsonSchema?.properties?.alternatives?.items?.properties?.similarity_score?.type, 'number');
