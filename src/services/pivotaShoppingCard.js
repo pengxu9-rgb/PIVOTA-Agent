@@ -218,6 +218,77 @@ function compactWhatItIsHeadline(headline) {
   return text.length <= 42 ? text : '';
 }
 
+function normalizeCompactComparisonText(value) {
+  return asString(value)
+    .toLowerCase()
+    .replace(/[–—]/g, '-')
+    .replace(/[^\w%+ -]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isApprovedExternalHighlightReviewStatus(value) {
+  const status = asString(value).toLowerCase();
+  return status === 'pass' || status === 'rewrite';
+}
+
+function bundleHasUnreviewedExternalHighlightWork(bundle) {
+  const status = asString(bundle?.provenance?.external_highlight_review_status).toLowerCase();
+  if (status) return !isApprovedExternalHighlightReviewStatus(status);
+  if (toList(bundle?.external_highlight_signals).length) return true;
+  if (asString(bundle?.provenance?.external_evidence_generated_at)) return true;
+  return false;
+}
+
+function looksLikeEntityStyleCompactHighlight(value) {
+  const text = normalizeCompactComparisonText(value);
+  if (!text) return true;
+  if (text.split(' ').length <= 1) return true;
+  if (
+    /^(?:\d+%?\s+)?(?:niacinamide|vitamin c|retinol|peptide|azelaic acid(?: derivative)?|salicylic acid|hyaluronic acid)\s+(?:serum|moisturizer|cream|cleanser|lotion)$/i.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+  if (
+    /^(?:spf(?:\s+\d+\+?)?|multi-active|amla brightening|brightening|hydrating|gentle|daily|color-correcting|multi-vitamin)\s+(?:serum|moisturizer|cream|cleanser|lotion|toner|sunscreen|body wash|mask|balm)$/i.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+  if (/^(?:color-correcting|brightening|hydrating)\s+eye\s+(?:stick|serum|cream)$/i.test(text)) {
+    return true;
+  }
+  if (
+    /\b(serum|moisturizer|cream|cleanser|lotion|toner|mask|balm|sunscreen|body wash|eye stick|eye serum|eye cream|lip balm)$/.test(
+      text,
+    ) &&
+    !/\b(with|for|under|over|against|without|in|from|instead|versus|vs)\b/.test(text) &&
+    text.split(' ').length <= 4
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function resolveDisplayableCompactHighlight(value, { bundle = null, title = '', subtitle = '' } = {}) {
+  const normalized = normalizeSurfaceText(value);
+  if (!normalized) return '';
+  if (bundleHasUnreviewedExternalHighlightWork(bundle)) return '';
+
+  const normalizedHighlight = normalizeCompactComparisonText(normalized);
+  const normalizedSubtitle = normalizeCompactComparisonText(subtitle);
+  const normalizedTitle = normalizeCompactComparisonText(title);
+
+  if (normalizedSubtitle && normalizedHighlight === normalizedSubtitle) return '';
+  if (normalizedTitle && normalizedHighlight === normalizedTitle) return '';
+  if (looksLikeEntityStyleCompactHighlight(normalized)) return '';
+
+  return normalized;
+}
+
 function normalizeBadgeCandidates(value) {
   return normalizeMarketSignalBadges(toList(value)).map((badge) => ({
     badge_type: asString(badge.badge_type),
@@ -324,11 +395,24 @@ function buildCardHighlight({ bundle }) {
   const explicitHighlight = asString(
     bundle?.search_card?.highlight_candidate || bundle?.shopping_card?.highlight,
   );
-  if (explicitHighlight) return normalizeSurfaceText(explicitHighlight);
+  if (explicitHighlight) {
+    return resolveDisplayableCompactHighlight(explicitHighlight, {
+      bundle,
+      title: bundle?.shopping_card?.title || bundle?.search_card?.title_candidate,
+      subtitle: bundle?.shopping_card?.subtitle || bundle?.search_card?.compact_candidate,
+    });
+  }
   const signal = pickSurfaceableExternalHighlightSignal(bundle?.external_highlight_signals, {
     surfaceTarget: 'shopping_card_highlight',
   });
-  return normalizeSurfaceText(signal?.surface_text) || normalizeSurfaceText(signal?.claim_text);
+  return resolveDisplayableCompactHighlight(
+    normalizeSurfaceText(signal?.surface_text) || normalizeSurfaceText(signal?.claim_text),
+    {
+      bundle,
+      title: bundle?.shopping_card?.title || bundle?.search_card?.title_candidate,
+      subtitle: bundle?.shopping_card?.subtitle || bundle?.search_card?.compact_candidate,
+    },
+  );
 }
 
 function buildShoppingCardPayload({ product, bundle }) {
@@ -399,6 +483,9 @@ module.exports = {
   buildSearchCardPayload,
   buildShoppingCardPayload,
   buildTitleCandidate,
+  bundleHasUnreviewedExternalHighlightWork,
+  isApprovedExternalHighlightReviewStatus,
+  resolveDisplayableCompactHighlight,
   normalizeCardIntroCandidate,
   normalizeBadgeCandidates,
   normalizeHighlightCandidates,
