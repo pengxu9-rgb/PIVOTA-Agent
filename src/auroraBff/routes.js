@@ -64524,7 +64524,7 @@ function buildRecoAlternativesOpenWorldUserPayload({ ctx, productInput, productO
     productInput,
     lang: langCode,
   });
-  const limit = Math.max(2, Math.min(6, Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 3));
+  const limit = Math.max(2, Math.min(3, Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 3));
   return {
     lang: langCode,
     anchor: {
@@ -64799,7 +64799,7 @@ async function fetchRecoAlternativesForExternalSeedProduct({
   const systemPrompt = [
     'You are a strict skincare compare assistant.',
     'Output STRICT JSON only that matches the schema.',
-    'Suggest 3 to 6 real skincare alternatives for the anchor product.',
+    'Suggest 2 to 3 real skincare alternatives for the anchor product.',
     'Never invent URLs, product IDs, SKUs, exact INCI lists, or internal catalog references.',
     'Each alternative must include a real brand, a real product name, anchor-linked reasons, and at least one concrete tradeoff or uncertainty.',
     'Reject makeup, tools, fragrance, body-only items, haircare, and placeholder products.',
@@ -64820,7 +64820,7 @@ async function fetchRecoAlternativesForExternalSeedProduct({
     },
     pool_summary: poolSummary,
     task: {
-      max_alternatives: Math.max(3, limit),
+      max_alternatives: Math.max(2, Math.min(3, limit - poolCandidates.length > 0 ? limit - poolCandidates.length : 3)),
       selection_rule: 'Prefer Pivota product-pool candidates when they are already strong, then use open-world suggestions to fill the remaining best-score slots.',
     },
   };
