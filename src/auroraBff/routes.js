@@ -20472,6 +20472,9 @@ function isConcernFrameworkStrongViableCandidate(candidate, role = null) {
   const candidateStep = normalizeRecoTargetStep(product?.candidate_step);
   const score = Number(product?.framework_score || 0);
   const semanticFit = product?.framework_semantic_fit === true;
+  const retrievalRoleMatched =
+    String(product?.retrieval_role_id || '').trim() !== ''
+    && String(product?.retrieval_role_id || '').trim() === String(product?.matched_role_id || '').trim();
   if (
     score >= 0.58 &&
     (
@@ -20482,6 +20485,15 @@ function isConcernFrameworkStrongViableCandidate(candidate, role = null) {
         preferredStep !== 'treatment'
       )
     )
+  ) {
+    return true;
+  }
+  if (
+    preferredStep &&
+    preferredStep !== 'treatment' &&
+    candidateStep === preferredStep &&
+    retrievalRoleMatched &&
+    score >= 0.52
   ) {
     return true;
   }

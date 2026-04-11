@@ -4915,6 +4915,78 @@ test('__internal: framework pool rescues exact-step sunscreen support from role-
   assert.equal(state.role_pool_stats?.daily_sunscreen?.viable_count, 1);
 });
 
+test('__internal: framework pool keeps exact-step sunscreen support viable when only retrieval-step plus weak support semantics are present', async () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'retrieval_step_anchor_oil_1',
+        merchant_id: 'merchant_retrieval_step_anchor_oil_1',
+        brand: 'Clarity Lab',
+        name: 'Oil Balance Serum',
+        display_name: 'Clarity Lab Oil Balance Serum',
+        category: 'serum',
+        product_type: 'serum',
+        retrieval_source: 'catalog',
+        retrieval_query: 'oil control serum',
+        retrieval_step: 'treatment',
+        retrieval_role_id: 'oil_control_treatment',
+        benefit_tags: ['oil control', 'shine control'],
+        short_description: 'A mattifying oil-control serum for oily skin.',
+      },
+      {
+        product_id: 'retrieval_step_sunscreen_support_1',
+        merchant_id: 'external_seed',
+        brand: 'SunGuard',
+        name: 'Daily Protect',
+        display_name: 'SunGuard Daily Protect',
+        retrieval_source: 'external_seed',
+        retrieval_query: 'lightweight sunscreen oily skin',
+        retrieval_step: 'sunscreen',
+        retrieval_role_id: 'daily_sunscreen',
+        short_description: 'A lightweight face product.',
+      },
+    ],
+    {
+      targetContext: {
+        framework_id: 'recofw_test_oily_support_sunscreen_retrieval_step_rescue',
+        primary_role_id: 'oil_control_treatment',
+        framework_roles: [
+          {
+            role_id: 'oil_control_treatment',
+            rank: 1,
+            preferred_step: 'treatment',
+            alternate_steps: ['serum'],
+            label: 'Oil-control treatment',
+            query_terms: ['oil control serum', 'shine control serum', 'mattifying serum', 'balancing serum oily skin'],
+            fit_keywords: ['oil control', 'shine control', 'mattifying', 'mattify', 'sebum', 'balancing', 'anti-shine', 'blemish'],
+            ingredient_hypotheses: ['Niacinamide', 'Zinc PCA'],
+            product_type_hypotheses: ['treatment', 'serum'],
+          },
+          {
+            role_id: 'daily_sunscreen',
+            rank: 3,
+            preferred_step: 'sunscreen',
+            label: 'Daily sunscreen',
+            query_terms: ['oil control sunscreen', 'lightweight sunscreen oily skin'],
+            fit_keywords: ['spf', 'lightweight', 'uv filters', 'non-greasy'],
+            ingredient_hypotheses: ['UV filters'],
+            product_type_hypotheses: ['sunscreen'],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  const sunscreen = state.selected_recommendations.find((item) => item?.matched_role_id === 'daily_sunscreen') || null;
+  assert.ok(sunscreen);
+  assert.equal(sunscreen?.candidate_step, 'sunscreen');
+  assert.equal(sunscreen?.candidate_step_source, 'retrieval_step');
+  assert.ok(Number(sunscreen?.framework_score || 0) >= 0.52);
+  assert.equal(state.role_pool_stats?.daily_sunscreen?.viable_count, 1);
+});
+
 test('__internal: framework pool surfaces multiple primary-role products before support fillers for horizontal comparison', async () => {
   const { __internal } = loadRoutesFresh();
   const state = __internal.finalizeConcernFrameworkCandidatePools(
