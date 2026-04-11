@@ -64751,7 +64751,28 @@ async function fetchRecoAlternativesForExternalSeedProduct({
     logger,
   });
   const targetSignals = pool.identity.targetSignals;
-  const poolCandidates = Array.isArray(pool.candidates) ? pool.candidates : [];
+  const embeddedSelectorPool = buildRecoAlternativesCandidatePool({
+    productObj,
+    anchorId,
+    maxCandidates: Math.max(8, limit * 3),
+  });
+  const embeddedPoolCandidates = mapSelectorCandidatesToAlternatives(embeddedSelectorPool, {
+    maxTotal: limit,
+    lang: ctx.lang,
+    reasonLine: ctx.lang === 'CN'
+      ? '基于本次推荐已召回的同角色候选。'
+      : 'Grounded alternative from the same-role candidate pool already recalled for this recommendation.',
+  }).map((row) => ({
+    ...row,
+    candidate_origin: 'pool',
+    grounding_status: row?.grounding_status || 'catalog_verified',
+  }));
+  const searchedPoolCandidates = Array.isArray(pool.candidates) ? pool.candidates : [];
+  const poolCandidates = mergeRecoAlternativesForHybrid(
+    embeddedPoolCandidates,
+    searchedPoolCandidates,
+    { maxTotal: limit },
+  );
   let openWorldRows = [];
   let openWorldStatus = 'empty';
   let llmTrace = null;
@@ -64795,72 +64816,85 @@ async function fetchRecoAlternativesForExternalSeedProduct({
     },
   };
 
-  try {
-    const startedAt = Date.now();
-    const resp = await callGeminiJsonObjectImpl({
-      model: openWorldModel,
-      systemPrompt,
-      userPrompt: JSON.stringify(userPayload, null, 2),
-      timeoutMs: 6000,
-      temperature: 0.2,
-      maxOutputTokens,
-      responseJsonSchema: buildExternalSeedOpenWorldSchema(),
-      route: 'aurora_reco_alternatives_open_world',
-      ignoreForceModel: true,
-    });
+  if (poolCandidates.length >= Math.min(3, limit)) {
+    openWorldStatus = 'skipped_sufficient_pool';
     llmTrace = {
-      template_id: 'reco_alternatives_open_world_v1',
-      source_mode: 'local_gemini_open_world',
-      provider_route: 'aurora_reco_alternatives_open_world',
-      provider_model: openWorldModel,
-      provider_reason: resp?.ok === false ? resp.reason || null : null,
-      provider_detail: resp?.ok === false ? resp.detail || null : null,
-      provider_timeout_stage: resp?.ok === false ? resp.timeout_stage || null : null,
-      provider_total_ms: resp?.ok === false && Number.isFinite(Number(resp.total_ms)) ? Number(resp.total_ms) : null,
-      provider_upstream_ms: resp?.ok === false && Number.isFinite(Number(resp.upstream_ms)) ? Number(resp.upstream_ms) : null,
-      provider_result_reason: resp?.meta?.result_reason || null,
-      finish_reason: resp?.finish_reason || null,
-      parse_status: resp?.parse_status || null,
-      latency_ms: Math.max(0, Date.now() - startedAt),
-      error_class: resp?.ok === true ? null : classifyAlternativesFailureCode(resp?.reason),
-    };
-    if (resp?.ok === true && isPlainObject(resp.json) && Array.isArray(resp.json.alternatives)) {
-      openWorldRows = resp.json.alternatives
-        .map((row) => normalizeOpenWorldAlternativeRow(row, {
-          targetSignals,
-          anchorLabel: pool.identity.anchorLabel,
-          anchorNameTokens: pool.identity.anchorNameTokens,
-          ingredientTokens: pool.identity.ingredientTokens,
-          claimTokens: pool.identity.claimTokens,
-          textureTokens: pool.identity.textureTokens,
-        }))
-        .filter(Boolean);
-      openWorldStatus = openWorldRows.length ? 'success' : 'empty';
-    } else {
-      openWorldStatus = resp?.ok === false ? 'provider_error' : 'empty';
-    }
-  } catch (err) {
-    logger?.warn?.(
-      { err: err?.message || String(err), request_id: ctx?.request_id, trace_id: ctx?.trace_id },
-      'aurora bff: external seed compare open-world stage failed',
-    );
-    llmTrace = {
-      template_id: 'reco_alternatives_open_world_v1',
-      source_mode: 'local_gemini_open_world',
-      provider_route: 'aurora_reco_alternatives_open_world',
-      provider_model: openWorldModel,
-      provider_reason: err?.code || 'provider_error',
-      provider_detail: err?.message || String(err),
-      provider_timeout_stage: null,
-      provider_total_ms: null,
-      provider_upstream_ms: null,
-      provider_result_reason: 'gemini_call_exception',
-      finish_reason: null,
-      parse_status: null,
+      template_id: 'reco_alternatives_grounded_pool_v1',
+      source_mode: 'grounded_pool',
+      provider_route: null,
+      provider_model: null,
       latency_ms: 0,
-      error_class: classifyAlternativesFailureCode(err?.code || err?.message),
+      error_class: null,
+      cache_hit: false,
     };
-    openWorldStatus = 'provider_error';
+  } else {
+    try {
+      const startedAt = Date.now();
+      const resp = await callGeminiJsonObjectImpl({
+        model: openWorldModel,
+        systemPrompt,
+        userPrompt: JSON.stringify(userPayload, null, 2),
+        timeoutMs: 6000,
+        temperature: 0.2,
+        maxOutputTokens,
+        responseJsonSchema: buildExternalSeedOpenWorldSchema(),
+        route: 'aurora_reco_alternatives_open_world',
+        ignoreForceModel: true,
+      });
+      llmTrace = {
+        template_id: 'reco_alternatives_open_world_v1',
+        source_mode: 'local_gemini_open_world',
+        provider_route: 'aurora_reco_alternatives_open_world',
+        provider_model: openWorldModel,
+        provider_reason: resp?.ok === false ? resp.reason || null : null,
+        provider_detail: resp?.ok === false ? resp.detail || null : null,
+        provider_timeout_stage: resp?.ok === false ? resp.timeout_stage || null : null,
+        provider_total_ms: resp?.ok === false && Number.isFinite(Number(resp.total_ms)) ? Number(resp.total_ms) : null,
+        provider_upstream_ms: resp?.ok === false && Number.isFinite(Number(resp.upstream_ms)) ? Number(resp.upstream_ms) : null,
+        provider_result_reason: resp?.meta?.result_reason || null,
+        finish_reason: resp?.finish_reason || null,
+        parse_status: resp?.parse_status || null,
+        latency_ms: Math.max(0, Date.now() - startedAt),
+        error_class: resp?.ok === true ? null : classifyAlternativesFailureCode(resp?.reason),
+      };
+      if (resp?.ok === true && isPlainObject(resp.json) && Array.isArray(resp.json.alternatives)) {
+        openWorldRows = resp.json.alternatives
+          .map((row) => normalizeOpenWorldAlternativeRow(row, {
+            targetSignals,
+            anchorLabel: pool.identity.anchorLabel,
+            anchorNameTokens: pool.identity.anchorNameTokens,
+            ingredientTokens: pool.identity.ingredientTokens,
+            claimTokens: pool.identity.claimTokens,
+            textureTokens: pool.identity.textureTokens,
+          }))
+          .filter(Boolean);
+        openWorldStatus = openWorldRows.length ? 'success' : 'empty';
+      } else {
+        openWorldStatus = resp?.ok === false ? 'provider_error' : 'empty';
+      }
+    } catch (err) {
+      logger?.warn?.(
+        { err: err?.message || String(err), request_id: ctx?.request_id, trace_id: ctx?.trace_id },
+        'aurora bff: external seed compare open-world stage failed',
+      );
+      llmTrace = {
+        template_id: 'reco_alternatives_open_world_v1',
+        source_mode: 'local_gemini_open_world',
+        provider_route: 'aurora_reco_alternatives_open_world',
+        provider_model: openWorldModel,
+        provider_reason: err?.code || 'provider_error',
+        provider_detail: err?.message || String(err),
+        provider_timeout_stage: null,
+        provider_total_ms: null,
+        provider_upstream_ms: null,
+        provider_result_reason: 'gemini_call_exception',
+        finish_reason: null,
+        parse_status: null,
+        latency_ms: 0,
+        error_class: classifyAlternativesFailureCode(err?.code || err?.message),
+      };
+      openWorldStatus = 'provider_error';
+    }
   }
 
   const merged = [];
@@ -64893,6 +64927,7 @@ async function fetchRecoAlternativesForExternalSeedProduct({
   const poolSelectedCount = cleanedAlternatives.filter((row) => String(row?.candidate_origin || '') === 'pool').length;
   const openWorldSelectedCount = cleanedAlternatives.filter((row) => String(row?.candidate_origin || '') === 'open_world').length;
   const compareMeta = {
+    embedded_candidate_count: embeddedPoolCandidates.length,
     pool_candidate_count: poolCandidates.length,
     pool_selected_count: poolSelectedCount,
     open_world_candidate_count: openWorldRows.length,

@@ -6670,7 +6670,7 @@ test('/v1/reco/alternatives: external llm_seed compare returns deterministic poo
         assert.equal(resp.status, 200);
         assert.equal(resp.body?.source_mode, 'pool_open_world_mixed');
         assert.equal(resp.body?.fallback_source, null);
-        assert.equal(resp.body?.compare_meta?.open_world_status, 'provider_error');
+        assert.equal(resp.body?.compare_meta?.open_world_status, 'skipped_sufficient_pool');
         assert.ok(Number(resp.body?.compare_meta?.pool_selected_count || 0) >= 3);
         assert.equal(Array.isArray(resp.body?.alternatives), true);
         assert.equal(resp.body.alternatives.length, 3);
@@ -6811,6 +6811,118 @@ test('/v1/reco/alternatives: external_seed product-card rows use mixed compare p
         assert.equal(names.some((name) => /Hydrating Dewy Gel Cream/i.test(name)), false);
         assert.equal(names.some((name) => /brush/i.test(name)), false);
         assert.ok(names.some((name) => /Water Cream|Moisturizer/i.test(name)));
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        axios.get = originalGet;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('/v1/reco/alternatives: external_seed product-card rows preserve embedded same-role candidates when provider fails', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED: 'false',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      axios.get = async (url) => {
+        if (!isProductsSearchUrl(url)) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: 'ext_anchor_moist',
+                merchant_id: 'external_seed',
+                brand: 'First Aid Beauty',
+                name: 'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+                display_name: 'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+                product_type: 'moisturizer',
+                category: 'Moisturizer',
+              },
+            ],
+          },
+        };
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { mountAuroraBffRoutes, __internal } = routeModule;
+        __internal.__setCallGeminiJsonObjectForTest(async () => {
+          throw new Error('provider down');
+        });
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/reco/alternatives')
+          .set({
+            'X-Aurora-UID': 'test_uid_alt_external_seed_embedded',
+            'X-Trace-ID': 'test_trace_alt_external_seed_embedded',
+            'X-Brief-ID': 'test_brief_alt_external_seed_embedded',
+            'X-Lang': 'EN',
+          })
+          .send({
+            product_input: 'First Aid Beauty Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+            max_total: 6,
+            recommendation_mode: 'hybrid_fallback',
+            disable_synthetic_local_fallback: true,
+            product: {
+              product_id: 'ext_anchor_moist',
+              merchant_id: 'external_seed',
+              brand: 'First Aid Beauty',
+              name: 'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+              product_type: 'Moisturizer',
+              category: 'Moisturizer',
+              product_candidates: [
+                {
+                  product_id: 'ext_oat_water',
+                  merchant_id: 'external_seed',
+                  brand: 'KraveBeauty',
+                  name: 'Oat So Simple Water Cream',
+                  category: 'Moisturizer',
+                  price: { amount: 30, currency: 'USD', unknown: false },
+                },
+                {
+                  product_id: 'ext_oat_refill',
+                  merchant_id: 'external_seed',
+                  brand: 'KraveBeauty',
+                  name: 'Oat So Simple Water Cream Refill Pouch',
+                  category: 'Moisturizer',
+                  price: { amount: 25, currency: 'USD', unknown: false },
+                },
+              ],
+              canonical_product_ref: {
+                product_id: 'ext_anchor_moist',
+                merchant_id: 'external_seed',
+              },
+            },
+          });
+
+        assert.equal(resp.status, 200);
+        assert.equal(resp.body?.source_mode, 'pool_open_world_mixed');
+        assert.equal(resp.body?.failure_class, null);
+        assert.equal(resp.body?.compare_meta?.embedded_candidate_count, 2);
+        assert.equal(resp.body?.compare_meta?.pool_selected_count, 2);
+        assert.equal(resp.body?.compare_meta?.open_world_status, 'provider_error');
+        const names = resp.body.alternatives.map((alt) => String(alt?.product?.name || alt?.name || ''));
+        assert.deepEqual(names, ['Oat So Simple Water Cream', 'Oat So Simple Water Cream Refill Pouch']);
+        assert.equal(resp.body.alternatives.every((alt) => String(alt?.candidate_origin || '') === 'pool'), true);
       } finally {
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
         loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
