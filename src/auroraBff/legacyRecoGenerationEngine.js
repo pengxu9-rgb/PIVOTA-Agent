@@ -338,6 +338,7 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
       debug,
       logger,
       ctx,
+      entryType,
       userAsk,
       prefix,
       recentLogs,

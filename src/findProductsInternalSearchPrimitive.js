@@ -254,6 +254,180 @@ function sliceInternalSearchProducts(products, offset, limit) {
   return normalizedProducts.slice(safeOffset, safeOffset + safeLimit);
 }
 
+function normalizeBeautyStepFamily(value) {
+  const normalized = firstNonEmptyString(value).toLowerCase();
+  if (!normalized) return '';
+  if (normalized === 'treatment') return 'serum';
+  if (/(serum|essence|ampoule|booster|concentrate)/.test(normalized)) return 'serum';
+  if (/(moistur|cream|lotion|gel)/.test(normalized)) return 'moisturizer';
+  if (/(sunscreen|spf|uv|sunblock)/.test(normalized)) return 'sunscreen';
+  if (/(cleanser|cleanse|face wash|wash|foam|cleansing balm)/.test(normalized)) return 'cleanser';
+  return normalized;
+}
+
+function normalizeBeautySemanticFamily(value) {
+  const normalized = firstNonEmptyString(value).toLowerCase();
+  if (!normalized) return '';
+  if (/(oil_control|shine_control|mattif|sebum|anti-shine|oil[- ]?control|oil[- ]?balance)/.test(normalized)) {
+    return 'oil_control';
+  }
+  if (/(moistur|barrier|hydrat|gel cream|lightweight_moisturizer|ceramide)/.test(normalized)) {
+    return 'moisturizer';
+  }
+  if (/(sunscreen|spf|uv|daily_sunscreen)/.test(normalized)) return 'sunscreen';
+  if (/(cleanser|cleanse|face wash)/.test(normalized)) return 'cleanser';
+  return normalized;
+}
+
+function buildInternalBeautyCandidateText(product) {
+  if (!isPlainObject(product)) return '';
+  return [
+    product.title,
+    product.name,
+    product.display_name,
+    product.description,
+    product.short_description,
+    product.product_type,
+    product.productType,
+    product.category,
+    product.category_name,
+    product.vendor,
+    product.brand,
+    ...(Array.isArray(product.tags) ? product.tags : []),
+  ]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+}
+
+function hasBeautyHardExclusionSignal(text, { excludeBeautyTools = false } = {}) {
+  const haystack = String(text || '');
+  if (!haystack) return true;
+  const crossDomainHit =
+    /\b(lingerie|underwear|bra|panties|bodysuit|overall|overalls|dress|jacket|coat|hoodie|pet|dog|dogs|cat|cats|puppy|kitten|harness|leash|collar|toy|toys|doll|plush|costume)\b/i.test(
+      haystack,
+    )
+    || /内衣|文胸|胸罩|下着|ランジェリー|宠物|寵物|狗|猫|犬|项圈|項圈|牵引|牽引|玩具|娃娃/.test(haystack)
+  ;
+  if (crossDomainHit) return true;
+  if (!excludeBeautyTools) return false;
+  return /\b(brush|brushes|beauty tool|tool kit|applicator|blender|sponge|powder puff|puff|eyelash curler)\b/i.test(
+      haystack,
+    );
+}
+
+function hasBeautyDomainSignal(product, text) {
+  const domain = firstNonEmptyString(
+    product?.attributes?.pivota?.domain,
+    product?.domain,
+    product?.category_domain,
+  ).toLowerCase();
+  if (domain) return domain === 'beauty';
+  const haystack = String(text || '');
+  return /\b(serum|essence|ampoule|booster|concentrate|moisturizer|cream|lotion|gel cream|water gel|cleanser|face wash|sunscreen|spf|uv|skincare|skin care|beauty|cosmetic|cosmetics|niacinamide|salicylic|ceramide|hyaluronic|retinol|face|facial)\b/i.test(
+    haystack,
+  );
+}
+
+function matchesBeautyStepFamily(text, stepFamily) {
+  const haystack = String(text || '');
+  const normalizedStepFamily = normalizeBeautyStepFamily(stepFamily);
+  if (!normalizedStepFamily) return true;
+  if (normalizedStepFamily === 'serum') {
+    return /\b(serum|essence|ampoule|booster|concentrate|treatment)\b/i.test(haystack)
+      && !/\b(sunscreen|spf|uv filters?)\b/i.test(haystack);
+  }
+  if (normalizedStepFamily === 'moisturizer') {
+    return /\b(moisturizer|moisturiser|cream|gel cream|water gel|lotion|emulsion)\b/i.test(haystack)
+      && !/\b(hand cream|body cream|body lotion|foot cream)\b/i.test(haystack);
+  }
+  if (normalizedStepFamily === 'sunscreen') {
+    return /\b(sunscreen|spf|uv|sunblock|broad spectrum)\b/i.test(haystack);
+  }
+  if (normalizedStepFamily === 'cleanser') {
+    return /\b(cleanser|cleanse|face wash|cleansing balm|washing foam|foam cleanser)\b/i.test(haystack);
+  }
+  return true;
+}
+
+function matchesBeautySemanticFamily(text, semanticFamily) {
+  const haystack = String(text || '');
+  const normalizedSemanticFamily = normalizeBeautySemanticFamily(semanticFamily);
+  if (!normalizedSemanticFamily) return true;
+  if (normalizedSemanticFamily === 'oil_control') {
+    return /\b(oil|oily|shine|sebum|mattif|anti-shine|niacinamide|salicylic|blemish|acne)\b/i.test(haystack);
+  }
+  if (normalizedSemanticFamily === 'moisturizer') {
+    return /\b(moistur|hydrat|gel cream|water gel|barrier|ceramide|glycerin|panthenol|oil-free|lightweight)\b/i.test(
+      haystack,
+    );
+  }
+  if (normalizedSemanticFamily === 'sunscreen') {
+    return /\b(sunscreen|spf|uv|sunblock|broad spectrum)\b/i.test(haystack);
+  }
+  if (normalizedSemanticFamily === 'cleanser') {
+    return /\b(cleanser|cleanse|face wash|cleansing balm|foam cleanser)\b/i.test(haystack);
+  }
+  return true;
+}
+
+function filterInternalBeautySearchProducts(products, search) {
+  const list = Array.isArray(products) ? products : [];
+  const catalogSurface = firstNonEmptyString(search?.catalog_surface).toLowerCase();
+  const stepFamily = normalizeBeautyStepFamily(search?.target_step_family);
+  const semanticFamily = normalizeBeautySemanticFamily(search?.semantic_family);
+  const queryStepStrength = firstNonEmptyString(search?.query_step_strength).toLowerCase();
+  const enabled = catalogSurface === 'beauty' || Boolean(stepFamily) || Boolean(semanticFamily);
+  if (!enabled || list.length === 0) {
+    return {
+      products: list,
+      applied: false,
+      rejected_count: 0,
+      target_step_family: stepFamily || null,
+      semantic_family: semanticFamily || null,
+      query_step_strength: queryStepStrength || null,
+    };
+  }
+
+  const filtered = [];
+  let rejectedCount = 0;
+  const requireSemanticMatch = queryStepStrength === 'strong_goal_family' && Boolean(semanticFamily);
+  const excludeBeautyTools = Boolean(stepFamily) || Boolean(semanticFamily);
+  for (const product of list) {
+    const candidateText = buildInternalBeautyCandidateText(product);
+    if (!candidateText) {
+      rejectedCount += 1;
+      continue;
+    }
+    if (hasBeautyHardExclusionSignal(candidateText, { excludeBeautyTools })) {
+      rejectedCount += 1;
+      continue;
+    }
+    if (!hasBeautyDomainSignal(product, candidateText)) {
+      rejectedCount += 1;
+      continue;
+    }
+    if (!matchesBeautyStepFamily(candidateText, stepFamily)) {
+      rejectedCount += 1;
+      continue;
+    }
+    if (requireSemanticMatch && !matchesBeautySemanticFamily(candidateText, semanticFamily)) {
+      rejectedCount += 1;
+      continue;
+    }
+    filtered.push(product);
+  }
+
+  return {
+    products: filtered,
+    applied: true,
+    rejected_count: rejectedCount,
+    target_step_family: stepFamily || null,
+    semantic_family: semanticFamily || null,
+    query_step_strength: queryStepStrength || null,
+  };
+}
+
 function createFindProductsInternalSearchPrimitiveRuntime(deps = {}) {
   const normalizeAgentProductsListResponse =
     typeof deps.normalizeAgentProductsListResponse === 'function'
@@ -351,7 +525,9 @@ function createFindProductsInternalSearchPrimitiveRuntime(deps = {}) {
     const allProducts = (Array.isArray(localResult?.products) ? localResult.products : []).filter((product) =>
       matchesMerchantScope(product, merchantScope),
     );
-    const products = sliceInternalSearchProducts(allProducts, offset, limit);
+    const beautyFiltered = filterInternalBeautySearchProducts(allProducts, validation.search);
+    const filteredProducts = Array.isArray(beautyFiltered.products) ? beautyFiltered.products : allProducts;
+    const products = sliceInternalSearchProducts(filteredProducts, offset, limit);
     const normalizedBody = normalizeAgentProductsListResponse(
       {
         status: 'success',
@@ -359,8 +535,10 @@ function createFindProductsInternalSearchPrimitiveRuntime(deps = {}) {
         products,
         total:
           merchantScope.size > 0
-            ? allProducts.length
-            : Number(localResult?.total || 0) || allProducts.length,
+            ? filteredProducts.length
+            : beautyFiltered.applied
+              ? filteredProducts.length
+              : Number(localResult?.total || 0) || filteredProducts.length,
         page,
         page_size: products.length,
         reply: null,
@@ -390,6 +568,15 @@ function createFindProductsInternalSearchPrimitiveRuntime(deps = {}) {
             : {}),
           ...(firstNonEmptyString(localResult?.beauty_query_bucket)
             ? { beauty_query_bucket: firstNonEmptyString(localResult.beauty_query_bucket) }
+            : {}),
+          ...(beautyFiltered.applied
+            ? {
+                post_filter_applied: true,
+                post_filter_rejected_count: Number(beautyFiltered.rejected_count || 0),
+                post_filter_target_step_family: beautyFiltered.target_step_family,
+                post_filter_semantic_family: beautyFiltered.semantic_family,
+                post_filter_query_step_strength: beautyFiltered.query_step_strength,
+              }
             : {}),
         },
       },

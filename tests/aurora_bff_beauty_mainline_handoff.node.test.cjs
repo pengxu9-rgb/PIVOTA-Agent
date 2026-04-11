@@ -4,6 +4,7 @@ process.env.AURORA_BFF_USE_MOCK = 'true';
 process.env.AURORA_DECISION_BASE_URL = '';
 
 const { createBeautyChatMainlineEntryRuntime } = require('../src/auroraBff/beautyChatMainlineEntry');
+const { createBeautyChatMainlineEnvelopeRuntime } = require('../src/auroraBff/beautyChatMainlineEnvelope');
 const { resolveRecommendationTargetContext } = require('../src/auroraBff/recommendationSharedStack');
 
 function loadRouteInternals() {
@@ -60,6 +61,33 @@ test('deriveBeautyMainlineHandoff preserves explicit treatment semantics for oil
   } finally {
     delete require.cache[moduleId];
   }
+});
+
+test('classifyBeautyMainlineHandoffFallback preserves weak viable pool reason from local handoff metadata', () => {
+  const runtime = createBeautyChatMainlineEnvelopeRuntime({
+    classifyRecoUpstreamFailureCode: () => '',
+    isTransientRecoUpstreamFailureCode: () => false,
+  });
+  const fallback = runtime.classifyBeautyMainlineHandoffFallback({
+    handoff: {
+      attempted: true,
+      searchResult: {
+        metadata: {
+          search_stage_ledger: {
+            candidate_drop_stage: 'weak_viable_pool',
+            candidate_pool_summary: {
+              weak_viable_pool: true,
+              viable_pool_strength: 'weak',
+            },
+          },
+        },
+      },
+    },
+  });
+
+  assert.equal(fallback.notice_reason, 'weak_viable_pool');
+  assert.equal(fallback.products_empty_reason, 'weak_viable_pool');
+  assert.equal(fallback.telemetry_failure_reason, 'weak_viable_pool');
 });
 
 test('handoffRecoToBeautyMainlineSearch passes sunscreen-aligned contract to backend search', async () => {
@@ -997,6 +1025,97 @@ test('handoffRecoToBeautyMainlineSearch preserves local empty result without pro
     assert.equal(out.searchResult?.query_source, 'beauty_mainline_local_handoff');
     assert.equal(out.searchResult?.metadata?.final_decision, 'strict_empty');
     assert.equal(out.searchResult?.reason, 'empty');
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+    delete require.cache[moduleId];
+  }
+});
+
+test('handoffRecoToBeautyMainlineSearch marks support-only viable pools as weak viable instead of no-recall empty', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    __internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async (args) => {
+        const query = String(args?.query || '').trim().toLowerCase();
+        const base = {
+          ok: true,
+          attempted_internal_paths: ['/agent/internal/products/search'],
+          transport_hops: [],
+          transport_hop_count: 0,
+          nested_orchestrator_hops: 0,
+          primary_transport_owner: 'internal_products_search_primitive',
+          primary_endpoint_kind: 'internal_primitive',
+        };
+        if (query.includes('sunscreen') || query.includes('spf')) {
+          return {
+            ...base,
+            products: [
+              {
+                product_id: 'support_spf_1',
+                merchant_id: 'mid_support_spf',
+                brand: 'SunGuard',
+                name: 'Daily UV Fluid SPF 50',
+                display_name: 'Daily UV Fluid SPF 50',
+                category: 'sunscreen',
+                product_type: 'sunscreen',
+              },
+            ],
+          };
+        }
+        if (query.includes('moisturizer') || query.includes('gel cream') || query.includes('lotion')) {
+          return {
+            ...base,
+            products: [
+              {
+                product_id: 'support_moist_1',
+                merchant_id: 'mid_support_moist',
+                brand: 'LightLab',
+                name: 'Air Gel Cream',
+                display_name: 'Air Gel Cream',
+                category: 'moisturizer',
+                product_type: 'gel cream',
+              },
+            ],
+          };
+        }
+        return {
+          ...base,
+          products: [],
+        };
+      },
+    });
+
+    const out = await __internal.handoffRecoToBeautyMainlineSearch({
+      ctx: { lang: 'EN', request_id: 'req_support_only_weak_pool' },
+      primaryQuery: 'what products should i use for oily skin?',
+      fallbackMessage: 'what products should i use for oily skin?',
+      targetContext: resolveRecommendationTargetContext({
+        text: 'what products should i use for oily skin?',
+        focus: '',
+        entryType: 'chat',
+      }),
+      timeoutMs: 5000,
+      minTimeoutMs: 5000,
+      deadlineAtMs: Date.now() + 15000,
+    });
+
+    assert.deepEqual(out.recommendations, []);
+    assert.equal(
+      out.searchResult?.metadata?.candidate_pool_summary?.weak_viable_pool,
+      true,
+    );
+    assert.equal(
+      out.searchResult?.metadata?.candidate_pool_summary?.viable_pool_strength,
+      'weak',
+    );
+    assert.equal(
+      out.searchResult?.metadata?.search_stage_ledger?.candidate_drop_stage,
+      'weak_viable_pool',
+    );
+    assert.equal(
+      out.searchResult?.metadata?.search_stage_ledger?.primary_failure_stage,
+      'weak_viable_pool',
+    );
   } finally {
     __internal.__resetRouteDependencyOverridesForTest();
     delete require.cache[moduleId];

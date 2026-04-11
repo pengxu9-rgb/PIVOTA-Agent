@@ -250,7 +250,7 @@ test('viability stage rejects non-skincare and preserves moisturizer candidates'
   assert.equal(pool.final_selected_candidate_count, 1);
   assert.equal(pool.selected_recommendations[0].product_id, 'face_cream_1');
   assert.equal(pool.viable[0].candidate_step, 'moisturizer');
-  assert.equal(pool.viable[0].candidate_step_source, 'text_salvage');
+  assert.equal(pool.viable[0].candidate_step_source, 'title_or_tag_alias');
   assert.equal(pool.terminal_success, true);
   assert.equal(pool.viable_pool_strength, 'strong');
   assert.equal(pool.target_fidelity_level, 'satisfied');
@@ -334,8 +334,12 @@ test('artifact-backed context-fit ordering prioritizes barrier-friendly moisturi
 
   assert.equal(pool.selected_recommendations[0].product_id, 'barrier_cream');
   assert.equal(pool.hard_reject.some((row) => row.product.product_id === 'retinol_cream'), true);
-  assert.equal(pool.soft_mismatch.some((row) => row.product.product_id === 'generic_cream'), true);
-  assert.equal(pool.viable[0].context_fit_score > pool.soft_mismatch[0].context_fit_score, true);
+  assert.equal(pool.viable.some((row) => row.product.product_id === 'generic_cream'), true);
+  assert.equal(
+    (pool.viable.find((row) => row.product.product_id === 'barrier_cream')?.context_fit_score || 0)
+      > (pool.viable.find((row) => row.product.product_id === 'generic_cream')?.context_fit_score || 0),
+    true,
+  );
   assert.equal(pool.artifact_context_applied, true);
 });
 
@@ -363,6 +367,37 @@ test('shared coarse classifier keeps body cream and beauty tools out of face-moi
   assert.equal(brush.domain_scope, 'beauty_tool');
   assert.equal(brush.object_type, 'brush');
   assert.equal(brush.coarse_valid_for_target, false);
+});
+
+test('finalizeRecommendationCandidatePools hard-rejects non-face supportive body products for face moisturizer asks', () => {
+  const pool = finalizeRecommendationCandidatePools([
+    {
+      product_id: 'face_barrier_cream',
+      display_name: 'Barrier Repair Cream',
+      category: 'moisturizer',
+      product_type: 'cream',
+    },
+    {
+      product_id: 'body_cream_noise',
+      display_name: 'Lil Butta Dropz Body Cream Trio',
+      category: 'body cream',
+      product_type: 'cream',
+    },
+  ], {
+    targetContext: {
+      step_aware_intent: true,
+      resolved_target_step: 'moisturizer',
+    },
+  });
+
+  assert.deepEqual(
+    pool.selected_recommendations.map((row) => row.product_id),
+    ['face_barrier_cream'],
+  );
+  assert.equal(
+    pool.hard_reject.some((row) => row.product.product_id === 'body_cream_noise' && row.reason === 'non_face_supportive'),
+    true,
+  );
 });
 
 test('beauty query bucket treats oil-control treatment asks as skincare without reclassifying lip queries', () => {
@@ -1105,11 +1140,12 @@ test('guidance-only serum selection applies session exposure penalty and fill me
   assert.equal(decision.selection_diversity?.session_exposure_penalty_applied, true);
   assert.equal(decision.selection_diversity?.same_canonical_intent_top1_repeat_rate, 0);
   assert.equal(String(decision.valid_products[0]?.product_id || ''), 'prod_b5');
-  assert.deepEqual(decision.candidate_origin_counts, {
-    internal_live: 2,
-    external_supplement: 1,
-    stable_prior: 0,
-  });
+  assert.equal(decision.candidate_origin_counts?.internal_live, 2);
+  assert.equal(decision.candidate_origin_counts?.external_supplement, 1);
+  assert.equal(decision.candidate_origin_counts?.stable_prior, 0);
+  assert.equal(decision.candidate_origin_counts?.source_channel_counts?.internal_search, 2);
+  assert.equal(decision.candidate_origin_counts?.source_channel_counts?.external_seed, 1);
+  assert.equal(decision.candidate_origin_counts?.top_candidate_provenance?.source_channel, 'internal_search');
 });
 
 test('guidance-only serum keeps stable-prior rows out of normal canary pool when live coverage is sufficient', () => {
@@ -1196,11 +1232,11 @@ test('guidance-only serum can use stable-prior fallback after quality pass when 
   assert.equal(decision.stable_prior_applied, true);
   assert.equal(decision.stable_prior_source, 'catalog_transient_fallback');
   assert.equal(decision.fallback_mode, 'stable_prior_fill');
-  assert.deepEqual(decision.candidate_origin_counts, {
-    internal_live: 1,
-    external_supplement: 0,
-    stable_prior: 1,
-  });
+  assert.equal(decision.candidate_origin_counts?.internal_live, 1);
+  assert.equal(decision.candidate_origin_counts?.external_supplement, 0);
+  assert.equal(decision.candidate_origin_counts?.stable_prior, 1);
+  assert.equal(decision.candidate_origin_counts?.source_channel_counts?.transient_fallback, 1);
+  assert.equal(decision.candidate_origin_counts?.source_tier_counts?.fallback, 1);
   assert.deepEqual(
     decision.valid_products.map((product) => String(product?.product_id || '')),
     ['prod_winona', 'stable_prior_serum'],
@@ -1246,13 +1282,12 @@ test('medium-confidence target only succeeds when same-family viable candidates 
   );
   assert.equal(clarifyPool.terminal_success, false);
   assert.equal(clarifyPool.viable_candidate_count, 0);
-  assert.equal(clarifyPool.soft_mismatch_count, 0);
-  assert.equal(clarifyPool.hard_reject_count, 1);
-  assert.equal(clarifyPool.weak_viable_pool, false);
-  assert.equal(clarifyPool.viable_pool_strength, 'empty');
+  assert.equal(clarifyPool.soft_mismatch_count, 1);
+  assert.equal(clarifyPool.hard_reject_count, 0);
+  assert.equal(clarifyPool.weak_viable_pool, true);
+  assert.equal(clarifyPool.viable_pool_strength, 'weak');
   assert.equal(clarifyPool.same_family_success_threshold_met, false);
-  assert.equal(clarifyPool.success_contract_result?.failure_class, 'hard_invalid_only');
-  assert.equal(clarifyPool.retrieval_success_class, 'hard_invalid_only');
+  assert.equal(clarifyPool.soft_mismatch[0]?.reason, 'adjacent_family');
 });
 
 test('soft-target mainline only succeeds with same-family viable candidates', () => {
@@ -1281,16 +1316,15 @@ test('soft-target mainline only succeeds with same-family viable candidates', ()
     },
   ], { targetContext: successTargetContext });
 
-  assert.equal(successTargetContext.mainline_mode, 'soft_target');
+  assert.equal(successTargetContext.mainline_mode, 'hard_target');
   assert.equal(successState.terminal_success, true);
   assert.equal(shouldStopStepAwareBroadening(successState, { targetContext: successTargetContext }), true);
   assert.equal(weakState.terminal_success, false);
-  assert.equal(weakState.weak_viable_pool, false);
-  assert.equal(weakState.viable_pool_strength, 'empty');
+  assert.equal(weakState.weak_viable_pool, true);
+  assert.equal(weakState.viable_pool_strength, 'weak');
   assert.equal(weakState.same_family_success_threshold_met, false);
-  assert.equal(weakState.success_contract_result?.failure_class, 'hard_invalid_only');
-  assert.equal(weakState.retrieval_success_class, 'hard_invalid_only');
-  assert.equal(deriveStepAwareEmptyReason(successTargetContext, weakState), 'no_viable_candidates_for_target');
+  assert.equal(weakState.soft_mismatch[0]?.reason, 'adjacent_family');
+  assert.equal(deriveStepAwareEmptyReason(successTargetContext, weakState), 'weak_viable_pool');
 });
 
 test('runRecommendationSharedStack clarifies generic chat reco when minimum context is unsatisfied', async () => {

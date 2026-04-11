@@ -10,6 +10,44 @@ function pickFirstTrimmed(...values) {
   return '';
 }
 
+function coerceBoolean(value) {
+  if (typeof value === 'boolean') return value;
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) return false;
+  if (['1', 'true', 'yes', 'y', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'n', 'off'].includes(normalized)) return false;
+  return Boolean(value);
+}
+
+function buildDirectRecoDebugPayload({
+  upstreamDebug = null,
+  envelope = null,
+  recoPayload = null,
+  recoContract = null,
+} = {}) {
+  const topMeta = isPlainObject(envelope?.meta) ? envelope.meta : null;
+  const analysisMeta = isPlainObject(envelope?.analysis_meta) ? envelope.analysis_meta : null;
+  const next = isPlainObject(upstreamDebug) ? { ...upstreamDebug } : {};
+
+  if (isPlainObject(topMeta?.canonical_ownership)) {
+    next.canonical_ownership = topMeta.canonical_ownership;
+  }
+  if (isPlainObject(topMeta?.quality_contract)) {
+    next.quality_contract = topMeta.quality_contract;
+  }
+  if (isPlainObject(analysisMeta) && Object.keys(analysisMeta).length > 0) {
+    next.analysis_meta = analysisMeta;
+  }
+  if (isPlainObject(recoPayload?.recommendation_meta)) {
+    next.recommendation_meta = recoPayload.recommendation_meta;
+  }
+  if (isPlainObject(recoContract)) {
+    next.reco_contract = recoContract;
+  }
+
+  return Object.keys(next).length > 0 ? next : null;
+}
+
 function createDirectRecoGenerateHandlerRuntime(deps = {}) {
   const {
     buildRequestContext,
@@ -90,6 +128,38 @@ function createDirectRecoGenerateHandlerRuntime(deps = {}) {
     });
   }
 
+  function finalizeDirectRecoEnvelope({
+    envelope,
+    includeDebug = false,
+    upstreamDebug = null,
+    recoPayload = null,
+    recoContract = null,
+    route = 'reco_generate',
+    assistantText = '',
+    policyMeta = null,
+    profile = null,
+  } = {}) {
+    const finalized = applyBeautyCanonicalOwnershipToEnvelope({
+      envelope,
+      route,
+      assistantText,
+      policyMeta,
+      profile,
+    });
+    if (!includeDebug) return finalized;
+    const debugPayload = buildDirectRecoDebugPayload({
+      upstreamDebug,
+      envelope: finalized,
+      recoPayload,
+      recoContract,
+    });
+    if (!isPlainObject(debugPayload)) return finalized;
+    return {
+      ...finalized,
+      debug: debugPayload,
+    };
+  }
+
   async function handleDirectRecoGenerateRoute(req, res) {
     const ctx = buildRequestContext(req, {});
     try {
@@ -98,6 +168,9 @@ function createDirectRecoGenerateHandlerRuntime(deps = {}) {
       if (!parsed.success) {
         return res.status(400).json(buildBadRequestEnvelope(ctx, parsed.error.format()));
       }
+      const debugHeaderRaw = req.get('X-Debug') ?? req.get('X-Aurora-Debug');
+      const includeDebugFromHeader = debugHeaderRaw == null || debugHeaderRaw === '' ? null : coerceBoolean(debugHeaderRaw);
+      const includeDebug = includeDebugFromHeader == null ? Boolean(parsed.data.include_debug) : includeDebugFromHeader;
 
       const identity = await resolveIdentity(req, ctx);
       const storedProfile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }).catch(() => null);
@@ -241,6 +314,7 @@ function createDirectRecoGenerateHandlerRuntime(deps = {}) {
         analysisContextSnapshot,
         requestOverride: requestProfileOverlay,
         includeAlternatives: false,
+        debug: includeDebug,
         logger,
         recoTriggerSource: 'typed_reco',
         entryType: 'direct',
@@ -550,9 +624,12 @@ function createDirectRecoGenerateHandlerRuntime(deps = {}) {
               ...(isPlainObject(envelope.session_patch) ? envelope.session_patch : {}),
             },
           };
-          return res.json(applyBeautyCanonicalOwnershipToEnvelope({
+          return res.json(finalizeDirectRecoEnvelope({
             envelope: noRecoEnvelope,
-            route: 'reco_generate',
+            includeDebug,
+            upstreamDebug: upstreamReco?.upstreamDebug,
+            recoPayload: payload,
+            recoContract: finalDirectContract,
             assistantText:
               isPlainObject(noRecoEnvelope.assistant_message) && typeof noRecoEnvelope.assistant_message.content === 'string'
                 ? noRecoEnvelope.assistant_message.content
@@ -561,9 +638,12 @@ function createDirectRecoGenerateHandlerRuntime(deps = {}) {
             profile,
           }));
         }
-        return res.json(applyBeautyCanonicalOwnershipToEnvelope({
+        return res.json(finalizeDirectRecoEnvelope({
           envelope,
-          route: 'reco_generate',
+          includeDebug,
+          upstreamDebug: upstreamReco?.upstreamDebug,
+          recoPayload: payload,
+          recoContract: finalDirectContract,
           assistantText:
             isPlainObject(envelope.assistant_message) && typeof envelope.assistant_message.content === 'string'
               ? envelope.assistant_message.content
@@ -731,9 +811,12 @@ function createDirectRecoGenerateHandlerRuntime(deps = {}) {
         }),
       }).events;
       guardedEnvelope.session_patch = nextSessionPatch;
-      return res.json(applyBeautyCanonicalOwnershipToEnvelope({
+      return res.json(finalizeDirectRecoEnvelope({
         envelope: guardedEnvelope,
-        route: 'reco_generate',
+        includeDebug,
+        upstreamDebug: upstreamReco?.upstreamDebug,
+        recoPayload: guardedRecoCard?.payload,
+        recoContract: finalContract,
         assistantText:
           isPlainObject(guardedEnvelope.assistant_message) && typeof guardedEnvelope.assistant_message.content === 'string'
             ? guardedEnvelope.assistant_message.content

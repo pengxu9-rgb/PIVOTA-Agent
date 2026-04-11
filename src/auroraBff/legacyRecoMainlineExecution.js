@@ -32,6 +32,7 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
     debug = false,
     logger,
     ctx,
+    entryType = 'chat',
     userAsk = '',
     prefix = '',
     recentLogs = [],
@@ -128,6 +129,7 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
         recommendationTaskContext,
         targetContext,
         externalSeedStrategyOverride: catalogExternalSeedStrategy,
+        allowStepAwareAdjacentFamilyFallback: String(entryType || '').trim().toLowerCase() === 'chat',
         debug,
         logger,
       });
@@ -319,6 +321,7 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
           recommendationTaskContext,
           targetContext,
           externalSeedStrategyOverride: catalogExternalSeedStrategy,
+          allowStepAwareAdjacentFamilyFallback: String(entryType || '').trim().toLowerCase() === 'chat',
           debug,
           logger,
         });

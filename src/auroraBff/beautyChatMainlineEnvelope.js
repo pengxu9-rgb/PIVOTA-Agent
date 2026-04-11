@@ -56,6 +56,40 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
     );
   }
 
+  function inferBeautyMainlineHandoffNoticeReason(handoff = null) {
+    const searchResult = isPlainObject(handoff?.searchResult) ? handoff.searchResult : {};
+    const metadata = isPlainObject(searchResult?.metadata) ? searchResult.metadata : {};
+    const searchStageLedger = isPlainObject(metadata?.search_stage_ledger)
+      ? metadata.search_stage_ledger
+      : isPlainObject(searchResult?.search_stage_ledger)
+        ? searchResult.search_stage_ledger
+        : {};
+    const candidatePoolSummary = isPlainObject(searchStageLedger?.candidate_pool_summary)
+      ? searchStageLedger.candidate_pool_summary
+      : isPlainObject(metadata?.candidate_pool_summary)
+        ? metadata.candidate_pool_summary
+        : {};
+    const candidateDropStage = pickFirstTrimmed(
+      searchStageLedger?.candidate_drop_stage,
+      metadata?.candidate_drop_stage,
+      searchResult?.candidate_drop_stage,
+    ).toLowerCase();
+    if (candidateDropStage === 'weak_viable_pool' || candidateDropStage === 'filtered_after_recall') {
+      return 'weak_viable_pool';
+    }
+    if (candidateDropStage === 'no_recall_from_planned_sources') {
+      return 'no_recall_from_planned_sources';
+    }
+    if (candidateDropStage === 'upstream_timeout_primary_role' || candidateDropStage === 'upstream_timeout') {
+      return 'upstream_timeout_primary_role';
+    }
+    const viablePoolStrength = String(candidatePoolSummary?.viable_pool_strength || '').trim().toLowerCase();
+    if (candidatePoolSummary?.weak_viable_pool === true || viablePoolStrength === 'weak') {
+      return 'weak_viable_pool';
+    }
+    return '';
+  }
+
   function classifyBeautyMainlineHandoffFallback({ handoff = null, err = null } = {}) {
     const transientCode =
       typeof classifyRecoUpstreamFailureCode === 'function' && err
@@ -73,9 +107,13 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
       };
     }
     if (handoff?.attempted === true) {
+      const inferredNoticeReason =
+        inferBeautyMainlineHandoffNoticeReason(handoff) || 'upstream_empty_recommendations';
       return {
         fallback_reason: 'beauty_mainline_handoff_empty',
-        notice_reason: 'upstream_empty_recommendations',
+        notice_reason: inferredNoticeReason,
+        products_empty_reason: inferredNoticeReason,
+        telemetry_failure_reason: inferredNoticeReason,
         mainline_status: 'needs_more_context',
         upstream_failure_code: transientCode || null,
       };

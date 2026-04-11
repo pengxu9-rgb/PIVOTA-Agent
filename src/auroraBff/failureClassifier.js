@@ -31,6 +31,12 @@ function deriveConcernCatalogFailure(catalogDebug) {
       failure_origin: 'user_input',
     };
   }
+  if (candidateDropStage === 'no_valid_catalog_hit_for_target') {
+    return {
+      effective_failure_class: 'no_valid_catalog_hit_for_target',
+      failure_origin: 'upstream_dependency',
+    };
+  }
   if (candidateDropStage === 'filtered_after_recall' || candidateDropStage === 'weak_viable_pool') {
     return {
       effective_failure_class: 'weak_viable_pool',

@@ -31,9 +31,11 @@ const RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1 = 'recommendation_viable_thresho
 const RECOMMENDATION_RECO_POLICY_V1 = 'recommendation_step_aware_reco_policy_v1';
 const CONCERN_FRAMEWORK_POLICY_V1 = 'recommendation_concern_framework_policy_v1';
 const CONCERN_SEMANTIC_PLAN_VERSION = 'concern_semantic_plan_v1';
+const REQUEST_CONTEXT_SIGNATURE_VERSION = 'request_context_signature_v1';
 const CANDIDATE_POOL_SIGNATURE_VERSION = 'recommendation_viable_pool_signature_v1';
 const RAW_CANDIDATE_POOL_DEBUG_SIGNATURE_VERSION = 'recommendation_raw_pool_debug_signature_v1';
 const GROUP_SEMANTICS_VERSION = 'recommendation_group_semantics_v1';
+const MINIMUM_RECOMMENDATION_CONTEXT_RULE_VERSION = 'minimum_recommendation_context_v1';
 
 const STEP_QUERY_ALIASES = Object.freeze({
   cleanser: Object.freeze(['cleanser', 'face wash', 'cleansing gel', 'cleansing foam', 'gentle cleanser', '洁面', '洗面奶']),
@@ -1017,7 +1019,13 @@ function normalizeCandidateStep(product, { targetContext } = {}) {
       row.retrievalSlotStep,
     ),
   );
-  if (retrievalStep && !stepAwareIntent) {
+  if (
+    retrievalStep
+    && (
+      !stepAwareIntent
+      || retrievalStep === normalizeRecoTargetStep(targetContext?.resolved_target_step)
+    )
+  ) {
     return {
       candidate_step: retrievalStep,
       candidate_step_source: 'retrieval_step',
@@ -1221,7 +1229,9 @@ function classifyRecommendationCandidate(product, { targetContext, recoContext }
   const row = isPlainObject(product) ? product : null;
   if (!row) return null;
   const skincareDomainClass = classifySkincareCandidateDomain(row);
-  const skincare = skincareDomainClass !== 'explicit_non_skincare';
+  const facialSkincareCandidate =
+    skincareDomainClass !== 'explicit_non_skincare'
+    && skincareDomainClass !== 'explicit_non_face_supportive';
   const domainPenalty = skincareDomainClass === 'ambiguous' ? 0.08 : 0;
   const stepResolution = normalizeCandidateStep(row, { targetContext });
   const candidateStep = stepResolution.candidate_step;
@@ -1244,9 +1254,12 @@ function classifyRecommendationCandidate(product, { targetContext, recoContext }
 
   let bucket = 'viable';
   let reason = 'generic_viable';
-  if (!skincare) {
+  if (!facialSkincareCandidate) {
     bucket = 'hard_reject';
-    reason = 'non_skincare_or_blacklisted';
+    reason =
+      skincareDomainClass === 'explicit_non_face_supportive'
+        ? 'non_face_supportive'
+        : 'non_skincare_or_blacklisted';
   } else if (contextSignals.constraint_conflict) {
     bucket = 'hard_reject';
     reason = 'hard_constraint_conflict';
@@ -1433,7 +1446,160 @@ function deriveStepAwareEmptyReason(targetContext, poolState) {
   return 'upstream_missing_or_empty';
 }
 
+function buildSharedRecommendationRequestContext({ entryType = 'chat', message = '', profile = null } = {}) {
+  const profileObj = isPlainObject(profile) ? profile : {};
+  const activeGoals = normalizeStringArray(
+    [
+      ...(Array.isArray(profileObj.goals) ? profileObj.goals : []),
+      ...(Array.isArray(profileObj.active_goals) ? profileObj.active_goals : []),
+      pickFirstTrimmed(profileObj.goal),
+    ],
+    8,
+  );
+  const skinType = pickFirstTrimmed(profileObj.skinType, profileObj.skin_type);
+  const sensitivity = pickFirstTrimmed(profileObj.sensitivity);
+  const barrierStatus = pickFirstTrimmed(profileObj.barrierStatus, profileObj.barrier_status);
+  const hardContextFieldsUsed = [];
+  if (activeGoals.length > 0) hardContextFieldsUsed.push('active_goals');
+  if (skinType) hardContextFieldsUsed.push('skin_type');
+  if (sensitivity) hardContextFieldsUsed.push('sensitivity');
+  if (barrierStatus) hardContextFieldsUsed.push('barrier_status');
+  const analysisContextAvailable = hardContextFieldsUsed.length > 0;
+  const supportCount = [skinType, sensitivity, barrierStatus].filter(Boolean).length;
+  const minimumRecommendationContextSatisfied = activeGoals.length > 0 && supportCount >= 1;
+  const requestContextSignature = makeSignature('reqctx', {
+    version: REQUEST_CONTEXT_SIGNATURE_VERSION,
+    entry_type: String(entryType || '').trim().toLowerCase() || 'chat',
+    message: normalizeQueryToken(message),
+    active_goals: activeGoals,
+    skin_type: skinType || null,
+    sensitivity: sensitivity || null,
+    barrier_status: barrierStatus || null,
+  });
+  const candidatePoolSignature = makeSignature('sharedpool', {
+    version: CANDIDATE_POOL_SIGNATURE_VERSION,
+    request_context_signature: requestContextSignature,
+    entry_type: String(entryType || '').trim().toLowerCase() || 'chat',
+  });
+  const requestContext = {
+    snapshot_present: false,
+    context_source_mode: analysisContextAvailable ? 'explicit_only' : 'none',
+    analysis_context_available: analysisContextAvailable,
+    snapshot_fields_used: [],
+    hard_context_fields_used: hardContextFieldsUsed,
+    soft_context_fields_used: [],
+    explicit_override_applied: false,
+    context_mode: analysisContextAvailable ? 'explicit_only' : 'no_context',
+    adapter_version: 'shared_request_context_v1',
+    request_context_signature: requestContextSignature,
+    request_context_signature_version: REQUEST_CONTEXT_SIGNATURE_VERSION,
+    minimum_recommendation_context_satisfied: minimumRecommendationContextSatisfied,
+  };
+  const contextUsage = {
+    ...requestContext,
+    candidate_pool_signature: candidatePoolSignature,
+    candidate_pool_signature_version: CANDIDATE_POOL_SIGNATURE_VERSION,
+    strictness_source: 'entry_default',
+    min_context_rule_version: MINIMUM_RECOMMENDATION_CONTEXT_RULE_VERSION,
+  };
+  return {
+    request_context: requestContext,
+    context_usage: contextUsage,
+    request_context_signature: requestContextSignature,
+    request_context_signature_version: REQUEST_CONTEXT_SIGNATURE_VERSION,
+    candidate_pool_signature: candidatePoolSignature,
+    candidate_pool_signature_version: CANDIDATE_POOL_SIGNATURE_VERSION,
+    minimum_recommendation_context_satisfied: minimumRecommendationContextSatisfied,
+  };
+}
+
+async function runRecommendationSharedStack({
+  entryType = 'chat',
+  message = '',
+  profile = null,
+  coreRunner = null,
+  coreInput = null,
+} = {}) {
+  const sharedRequestContext = buildSharedRecommendationRequestContext({
+    entryType,
+    message,
+    profile,
+  });
+  const candidatePool = {
+    candidate_pool_signature: sharedRequestContext.candidate_pool_signature,
+    candidate_pool_signature_version: sharedRequestContext.candidate_pool_signature_version,
+  };
+  if (
+    String(entryType || '').trim().toLowerCase() === 'chat'
+    && sharedRequestContext.minimum_recommendation_context_satisfied !== true
+  ) {
+    return {
+      needs_more_context: true,
+      request_context: sharedRequestContext.request_context,
+      candidate_pool: candidatePool,
+      core_result: {
+        fallback_mode: 'chat_clarify_needed_for_missing_target_need',
+        debug_meta: {
+          mainline_status: 'needs_more_context',
+        },
+      },
+      raw: {
+        norm: {
+          payload: {
+            recommendation_meta: {
+              analysis_context_usage: sharedRequestContext.context_usage,
+            },
+          },
+        },
+      },
+    };
+  }
+  const runnerInput = {
+    ...(isPlainObject(coreInput) ? coreInput : {}),
+    sharedRequestContext: {
+      ...sharedRequestContext.request_context,
+      context_usage: sharedRequestContext.context_usage,
+      candidate_pool_signature: sharedRequestContext.candidate_pool_signature,
+      candidate_pool_signature_version: sharedRequestContext.candidate_pool_signature_version,
+      minimum_recommendation_context_satisfied:
+        sharedRequestContext.minimum_recommendation_context_satisfied,
+    },
+  };
+  const raw = typeof coreRunner === 'function' ? await coreRunner(runnerInput) : null;
+  if (isPlainObject(raw?.norm?.payload)) {
+    const payloadMeta = isPlainObject(raw.norm.payload.recommendation_meta)
+      ? raw.norm.payload.recommendation_meta
+      : {};
+    raw.norm.payload.recommendation_meta = {
+      ...payloadMeta,
+      analysis_context_usage: isPlainObject(payloadMeta.analysis_context_usage)
+        ? payloadMeta.analysis_context_usage
+        : sharedRequestContext.context_usage,
+    };
+  }
+  return {
+    needs_more_context: false,
+    request_context: sharedRequestContext.request_context,
+    candidate_pool: {
+      ...candidatePool,
+      pool_source: pickFirstTrimmed(raw?.poolSource) || null,
+    },
+    core_result: {
+      fallback_mode: pickFirstTrimmed(raw?.fallbackMode) || 'executed',
+      debug_meta: {
+        mainline_status:
+          pickFirstTrimmed(
+            raw?.mainlineStatus,
+            raw?.norm?.payload?.recommendation_meta?.mainline_status,
+          ) || null,
+      },
+    },
+    raw,
+  };
+}
+
 module.exports = {
+  REQUEST_CONTEXT_SIGNATURE_VERSION,
   RECOMMENDATION_STEP_RESOLUTION_RULES_V1,
   RECOMMENDATION_STEP_QUERY_POLICY_V1,
   RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1,
@@ -1454,6 +1620,7 @@ module.exports = {
   buildConcernFrameworkRoles,
   buildSameFamilyQueryLevels,
   finalizeRecommendationCandidatePools,
+  runRecommendationSharedStack,
   shouldStopStepAwareBroadening,
   deriveStepAwareEmptyReason,
   inferSlotForStep,

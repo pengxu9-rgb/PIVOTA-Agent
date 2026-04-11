@@ -83,6 +83,158 @@ test('internal products search primitive uses local cache retrieval instead of u
   assert.equal(responseBody.products.length, 2);
 });
 
+test('internal products search primitive applies beauty step and semantic filters to noisy cache results', async () => {
+  const runtime = createFindProductsInternalSearchPrimitiveRuntime({
+    normalizeAgentProductsListResponse: (body) => body,
+    searchCrossMerchantFromCache: async () => ({
+      products: [
+        {
+          product_id: 'p_keep',
+          title: 'Oil Control Serum',
+          description: 'A mattifying niacinamide serum for oily skin.',
+          product_type: 'Serum',
+          merchant_id: 'm1',
+        },
+        {
+          product_id: 'p_drop_lingerie',
+          title: 'Sweet Lace lingerie set 4020',
+          description: 'Soft lace set against skin.',
+          product_type: 'Apparel',
+          merchant_id: 'm2',
+        },
+        {
+          product_id: 'p_drop_pet',
+          title: 'Warm Fall Utility Overalls for Dogs & Cats',
+          description: 'Pet outfit for cold weather.',
+          product_type: 'Pet Apparel',
+          merchant_id: 'm3',
+        },
+        {
+          product_id: 'p_drop_wrong_semantic',
+          title: 'Soothing Repair Serum',
+          description: 'A calming serum for barrier support.',
+          product_type: 'Serum',
+          merchant_id: 'm4',
+        },
+        {
+          product_id: 'p_drop_wrong_step',
+          title: 'Oil-Free Gel Cream',
+          description: 'A lightweight moisturizer for oily skin.',
+          product_type: 'Moisturizer',
+          merchant_id: 'm5',
+        },
+      ],
+      total: 5,
+      retrieval_sources: [{ source: 'lexical_cache', used: true, count: 5 }],
+      query_terms: ['oil', 'control', 'serum'],
+      beauty_query_bucket: 'skincare',
+    }),
+    getDefaultTimeoutMs: () => 4800,
+  });
+
+  const req = {
+    body: {
+      query: 'oil control serum',
+      limit: 6,
+      catalog_surface: 'beauty',
+      target_step_family: 'serum',
+      semantic_family: 'oil_control_treatment',
+      query_step_strength: 'strong_goal_family',
+    },
+    header() {
+      return null;
+    },
+  };
+  let statusCode = 200;
+  let responseBody = null;
+  const res = {
+    status(code) {
+      statusCode = code;
+      return this;
+    },
+    json(body) {
+      responseBody = body;
+      return body;
+    },
+  };
+
+  await runtime.handleInternalProductsSearch(req, res);
+
+  assert.equal(statusCode, 200);
+  assert.deepEqual(
+    responseBody.products.map((row) => row.product_id),
+    ['p_keep'],
+  );
+  assert.equal(responseBody.total, 1);
+  assert.equal(responseBody.metadata.post_filter_applied, true);
+  assert.equal(responseBody.metadata.post_filter_rejected_count, 4);
+  assert.equal(responseBody.metadata.post_filter_target_step_family, 'serum');
+  assert.equal(responseBody.metadata.post_filter_semantic_family, 'oil_control');
+  assert.equal(responseBody.metadata.post_filter_query_step_strength, 'strong_goal_family');
+});
+
+test('internal products search primitive does not drop beauty tools for generic beauty queries without step or semantic gating', async () => {
+  const runtime = createFindProductsInternalSearchPrimitiveRuntime({
+    normalizeAgentProductsListResponse: (body) => body,
+    searchCrossMerchantFromCache: async () => ({
+      products: [
+        {
+          product_id: 'tool_keep',
+          title: 'Foundation Brush',
+          description: 'A beauty tool for liquid foundation application.',
+          product_type: 'Beauty Tool',
+          merchant_id: 'm_tool',
+        },
+        {
+          product_id: 'noise_drop',
+          title: 'Sweet Lace lingerie set 4020',
+          description: 'Soft lace set.',
+          product_type: 'Apparel',
+          merchant_id: 'm_noise',
+        },
+      ],
+      total: 2,
+      retrieval_sources: [{ source: 'lexical_cache', used: true, count: 2 }],
+      query_terms: ['foundation', 'brush'],
+      beauty_query_bucket: 'base_makeup',
+    }),
+    getDefaultTimeoutMs: () => 4800,
+  });
+
+  const req = {
+    body: {
+      query: 'foundation brush',
+      limit: 6,
+      catalog_surface: 'beauty',
+    },
+    header() {
+      return null;
+    },
+  };
+  let statusCode = 200;
+  let responseBody = null;
+  const res = {
+    status(code) {
+      statusCode = code;
+      return this;
+    },
+    json(body) {
+      responseBody = body;
+      return body;
+    },
+  };
+
+  await runtime.handleInternalProductsSearch(req, res);
+
+  assert.equal(statusCode, 200);
+  assert.deepEqual(
+    responseBody.products.map((row) => row.product_id),
+    ['tool_keep'],
+  );
+  assert.equal(responseBody.metadata.post_filter_applied, true);
+  assert.equal(responseBody.metadata.post_filter_rejected_count, 1);
+});
+
 test('internal products search primitive surfaces local cache failure details', async () => {
   const runtime = createFindProductsInternalSearchPrimitiveRuntime({
     normalizeAgentProductsListResponse: (body) => body,
