@@ -17226,11 +17226,102 @@ app.post('/api/admin/pdp-identity/overrides', requireAdmin, async (req, res) => 
 
 // ---------------- Main invoke endpoint ----------------
 const CHECKOUT_TIMING_OPS = new Set(['preview_quote', 'create_order', 'submit_payment']);
+const CHECKOUT_SERVER_TIMING_STAGE_MAP = [
+  ['upstream_primary_ms', 'upprimary'],
+  ['item_rewrite_ms', 'rewrite'],
+  ['compat_wrapper_retry_ms', 'wrapretry'],
+  ['requote_preview_ms', 'requote'],
+  ['create_order_retry_ms', 'recreate'],
+  ['submit_payment_retry_ms', 'payretry'],
+  ['order_lines_build_ms', 'lines'],
+  ['response_normalize_ms', 'normalize'],
+];
 const PRODUCT_INTEL_AGENT_OPERATIONS = new Set([
   'get_product_intel_v1',
   'get_product_feedback_v1',
   'get_product_recommendation_intents_v1',
 ]);
+
+function addCheckoutTimingSpan(checkoutRuntime, spanKey, durationMs) {
+  if (!checkoutRuntime || typeof spanKey !== 'string') return;
+  const normalizedKey = String(spanKey || '').trim();
+  if (!normalizedKey) return;
+  const normalizedDuration = Math.max(0, Math.round(Number(durationMs || 0) || 0));
+  if (!Number.isFinite(normalizedDuration)) return;
+  const spans =
+    checkoutRuntime.timingSpansMs && typeof checkoutRuntime.timingSpansMs === 'object'
+      ? checkoutRuntime.timingSpansMs
+      : {};
+  spans[normalizedKey] = Math.max(0, Number(spans[normalizedKey] || 0) || 0) + normalizedDuration;
+  checkoutRuntime.timingSpansMs = spans;
+}
+
+function cloneCheckoutTimingSpans(checkoutRuntime) {
+  const spans =
+    checkoutRuntime?.timingSpansMs && typeof checkoutRuntime.timingSpansMs === 'object'
+      ? checkoutRuntime.timingSpansMs
+      : null;
+  if (!spans) return {};
+  return Object.fromEntries(
+    Object.entries(spans)
+      .map(([key, value]) => [
+        String(key || '').trim(),
+        Math.max(0, Math.round(Number(value || 0) || 0)),
+      ])
+      .filter(([key, value]) => key && Number.isFinite(value) && value >= 0)
+      .sort(([a], [b]) => a.localeCompare(b)),
+  );
+}
+
+function withCheckoutTimingSpan(checkoutRuntime, spanKey, work) {
+  const startedAt = Date.now();
+  const finish = () => {
+    addCheckoutTimingSpan(checkoutRuntime, spanKey, Math.max(0, Date.now() - startedAt));
+  };
+  try {
+    const result = typeof work === 'function' ? work() : undefined;
+    if (result && typeof result.then === 'function') {
+      return result.then(
+        (value) => {
+          finish();
+          return value;
+        },
+        (err) => {
+          finish();
+          throw err;
+        },
+      );
+    }
+    finish();
+    return result;
+  } catch (err) {
+    finish();
+    throw err;
+  }
+}
+
+function buildCheckoutServerTimingHeader({ totalMs, upstreamMs, checkoutRuntime }) {
+  const gatewayMs = Math.max(0, Math.round(Number(totalMs || 0) || 0));
+  const upstreamDurationMs = Math.max(0, Math.round(Number(upstreamMs || 0) || 0));
+  const proxyMs = Math.max(0, gatewayMs - upstreamDurationMs);
+  const metrics = [
+    `upstream;dur=${upstreamDurationMs}`,
+    `proxy;dur=${proxyMs}`,
+    `gateway;dur=${gatewayMs}`,
+  ];
+  const spans = cloneCheckoutTimingSpans(checkoutRuntime);
+  for (const [spanKey, metricToken] of CHECKOUT_SERVER_TIMING_STAGE_MAP) {
+    const value = Number(spans[spanKey]);
+    if (
+      Object.prototype.hasOwnProperty.call(spans, spanKey) &&
+      Number.isFinite(value) &&
+      value >= 0
+    ) {
+      metrics.push(`${metricToken};dur=${Math.max(0, Math.round(value))}`);
+    }
+  }
+  return metrics.join(', ');
+}
 
 async function handleInvokeRequest(req, res, routeContext = {}) {
   const clientChannel = String(routeContext.client_channel || 'shop').trim().toLowerCase() || 'shop';
@@ -17254,6 +17345,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     paymentStatus: null,
     confirmationOwner: null,
     requiresClientConfirmation: null,
+    timingSpansMs: {},
   };
   let upstreamElapsedMs = 0;
   let gatewayRetryCount = 0;
@@ -17262,16 +17354,21 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     const op = String(operationOverride || debugRuntime.operation || '').trim().toLowerCase();
     if (!CHECKOUT_TIMING_OPS.has(op)) return;
     const totalMs = Math.max(0, Date.now() - invokeStartedAtMs);
-    const upstreamMs = Math.max(0, Math.round(upstreamElapsedMs));
-    const proxyMs = Math.max(0, totalMs - upstreamMs);
-    res.setHeader('Server-Timing', [
-      `upstream;dur=${upstreamMs}`,
-      `proxy;dur=${proxyMs}`,
-      `gateway;dur=${totalMs}`,
-    ].join(', '));
+    res.setHeader(
+      'Server-Timing',
+      buildCheckoutServerTimingHeader({
+        totalMs,
+        upstreamMs: upstreamElapsedMs,
+        checkoutRuntime,
+      }),
+    );
     res.setHeader('x-gateway-retries', String(Math.max(0, gatewayRetryCount)));
   };
   res.on('finish', () => {
+    const isCheckoutOperation = CHECKOUT_TIMING_OPS.has(
+      String(debugRuntime.operation || '').trim().toLowerCase(),
+    );
+    const checkoutTimingSpansMs = cloneCheckoutTimingSpans(checkoutRuntime);
     logger.info(
       {
         gateway_request_id: gatewayRequestId,
@@ -17282,9 +17379,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         latency_ms: Math.max(0, Date.now() - invokeStartedAtMs),
         upstream_ms: Math.max(0, Math.round(upstreamElapsedMs)),
         gateway_retries: Math.max(0, gatewayRetryCount),
-        ...(debugRuntime.operation === 'submit_payment'
+        ...(isCheckoutOperation
           ? {
               checkout_trace_id: checkoutRuntime.checkoutTraceId || gatewayRequestId,
+              ...(Object.keys(checkoutTimingSpansMs).length > 0
+                ? { checkout_timing_spans_ms: checkoutTimingSpansMs }
+                : {}),
+            }
+          : {}),
+        ...(debugRuntime.operation === 'submit_payment'
+          ? {
               payment_status: checkoutRuntime.paymentStatus,
               confirmation_owner: checkoutRuntime.confirmationOwner,
               requires_client_confirmation: checkoutRuntime.requiresClientConfirmation,
@@ -17523,6 +17627,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
     const { operation, payload } = parsed.data;
     debugRuntime.operation = String(operation || '').trim().toLowerCase();
+    if (CHECKOUT_TIMING_OPS.has(debugRuntime.operation)) {
+      checkoutRuntime.checkoutTraceId = gatewayRequestId;
+    }
     let metadata = normalizeMetadata(req.body.metadata, payload);
     try {
       gatewayGovernanceAudit = buildInvokeGatewayGovernanceAudit({
@@ -22989,12 +23096,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
 	        if (offerId) {
 	          try {
-	            const rewritten = await rewriteCheckoutItemsForOfferSelection({
-	              offerId,
-	              merchantId: effectiveMerchantId,
-	              items: normalizedQuote.items,
-	              checkoutToken,
-	            });
+	            const rewritten = await withCheckoutTimingSpan(
+	              checkoutRuntime,
+	              'item_rewrite_ms',
+	              () =>
+	                rewriteCheckoutItemsForOfferSelection({
+	                  offerId,
+	                  merchantId: effectiveMerchantId,
+	                  items: normalizedQuote.items,
+	                  checkoutToken,
+	                }),
+	            );
 	            if (Array.isArray(rewritten?.items) && rewritten.items.length > 0) {
 	              normalizedQuote.items = rewritten.items;
 	            }
@@ -23050,12 +23162,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        let rewrittenItems = items;
 	        if (offerId && Array.isArray(items) && items.length > 0) {
 	          try {
-	            const rewritten = await rewriteCheckoutItemsForOfferSelection({
-	              offerId,
-	              merchantId: merchant_id,
-	              items,
-	              checkoutToken,
-	            });
+	            const rewritten = await withCheckoutTimingSpan(
+	              checkoutRuntime,
+	              'item_rewrite_ms',
+	              () =>
+	                rewriteCheckoutItemsForOfferSelection({
+	                  offerId,
+	                  merchantId: merchant_id,
+	                  items,
+	                  checkoutToken,
+	                }),
+	            );
 	            if (Array.isArray(rewritten?.items) && rewritten.items.length > 0) {
 	              rewrittenItems = rewritten.items;
 	            }
@@ -23467,7 +23584,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             timeout: axiosConfig.timeout,
           }
         : null;
-    const callTrackedUpstream = async (op, config) => {
+    const callTrackedUpstream = async (op, config, options = {}) => {
       const normalizedOp = String(op || '').trim().toLowerCase();
       const measureCheckout = CHECKOUT_TIMING_OPS.has(normalizedOp);
       const startedAt = measureCheckout ? Date.now() : 0;
@@ -23479,7 +23596,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         });
       } finally {
         if (measureCheckout) {
-          upstreamElapsedMs += Math.max(0, Date.now() - startedAt);
+          const elapsedMs = Math.max(0, Date.now() - startedAt);
+          upstreamElapsedMs += elapsedMs;
+          if (options?.spanKey) {
+            addCheckoutTimingSpan(checkoutRuntime, options.spanKey, elapsedMs);
+          }
         }
       }
     };
@@ -23680,7 +23801,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
       if (!response) {
         try {
-          response = await callTrackedUpstream(operation, axiosConfig);
+          response = await callTrackedUpstream(operation, axiosConfig, {
+            spanKey: 'upstream_primary_ms',
+          });
           if (operation === 'find_products' || operation === 'find_products_multi') {
             searchContractBridgeMeta =
               operation === 'find_products_multi' && strictCommerceFindProductsMulti
@@ -23741,7 +23864,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       ) {
         try {
           axiosConfig.data = { order_request: requestBody };
-          response = await callTrackedUpstream(operation, axiosConfig);
+          response = await callTrackedUpstream(operation, axiosConfig, {
+            spanKey: 'compat_wrapper_retry_ms',
+          });
         } catch (wrappedErr) {
           err = wrappedErr;
         }
@@ -23801,6 +23926,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               },
               timeout: getUpstreamTimeoutMs('preview_quote'),
               data: quoteBody,
+            }, {
+              spanKey: 'requote_preview_ms',
             });
 
             const newQuoteId = extractCanonicalQuoteId(
@@ -23812,7 +23939,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 createOrderBody && createOrderBody.order_request
                   ? { order_request: normalizedOrderRequest }
                   : normalizedOrderRequest;
-              response = await callTrackedUpstream(operation, axiosConfig);
+              response = await callTrackedUpstream(operation, axiosConfig, {
+                spanKey: 'create_order_retry_ms',
+              });
             }
           } catch (_) {
             // Fall through and surface the original upstream error.
@@ -23833,7 +23962,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           );
           gatewayRetryCount += 1;
           await new Promise((resolve) => setTimeout(resolve, quickRetryDelayMs));
-          response = await callTrackedUpstream(operation, axiosConfig);
+          response = await callTrackedUpstream(operation, axiosConfig, {
+            spanKey: 'submit_payment_retry_ms',
+          });
         }
       }
 
@@ -24954,11 +25085,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           ? requestBody.order_request
           : requestBody;
       if (normalizedOrderRequest && !upstreamData.order_lines) {
-        const orderLines = buildOrderLineSnapshots(normalizedOrderRequest, {
-          orderId: upstreamData.order_id || upstreamData.orderId || null,
-          resolvedOfferId,
-          resolvedMerchantId,
-        });
+        const orderLines = withCheckoutTimingSpan(checkoutRuntime, 'order_lines_build_ms', () =>
+          buildOrderLineSnapshots(normalizedOrderRequest, {
+            orderId: upstreamData.order_id || upstreamData.orderId || null,
+            resolvedOfferId,
+            resolvedMerchantId,
+          }),
+        );
         if (orderLines.length) {
           upstreamData = {
             ...upstreamData,
@@ -24969,11 +25102,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     }
 
     if (operation === 'preview_quote') {
-      upstreamData = normalizePreviewQuoteCompat(upstreamData);
+      upstreamData = withCheckoutTimingSpan(checkoutRuntime, 'response_normalize_ms', () =>
+        normalizePreviewQuoteCompat(upstreamData),
+      );
     }
 
     if (operation === 'create_order') {
-      upstreamData = normalizeCreateOrderCompat(upstreamData);
+      upstreamData = withCheckoutTimingSpan(checkoutRuntime, 'response_normalize_ms', () =>
+        normalizeCreateOrderCompat(upstreamData),
+      );
     }
 
     if (
@@ -25011,116 +25148,120 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     // Normalize submit_payment responses so frontends always see a unified
     // payment object with PSP + payment_action, regardless of PSP type.
     if (operation === 'submit_payment') {
-      const p = upstreamData || {};
-      const checkoutSession =
-        p.checkout_session && typeof p.checkout_session === 'object' && !Array.isArray(p.checkout_session)
-          ? p.checkout_session
-          : null;
-      const paymentObj =
-        p.payment && typeof p.payment === 'object' && !Array.isArray(p.payment)
-          ? p.payment
-          : {};
-      const psp =
-        p.psp ||
-        p.psp_used ||
-        paymentObj.psp ||
-        paymentObj.psp_used ||
-        checkoutSession?.provider ||
-        null;
+      const wrapped = withCheckoutTimingSpan(checkoutRuntime, 'response_normalize_ms', () => {
+        const p = upstreamData || {};
+        const checkoutSession =
+          p.checkout_session && typeof p.checkout_session === 'object' && !Array.isArray(p.checkout_session)
+            ? p.checkout_session
+            : null;
+        const paymentObj =
+          p.payment && typeof p.payment === 'object' && !Array.isArray(p.payment)
+            ? p.payment
+            : {};
+        const psp =
+          p.psp ||
+          p.psp_used ||
+          paymentObj.psp ||
+          paymentObj.psp_used ||
+          checkoutSession?.provider ||
+          null;
 
-      let paymentAction =
-        p.payment_action ||
-        paymentObj.payment_action ||
-        null;
+        let paymentAction =
+          p.payment_action ||
+          paymentObj.payment_action ||
+          null;
 
-      // Derive payment_action when backend only returns flat fields
-      if (!paymentAction) {
-        if (psp === 'adyen' && p.client_secret) {
-          paymentAction = {
-            type: 'adyen_session',
-            client_secret: p.client_secret,
-            url: null,
-            raw: null,
-          };
-        } else if (psp === 'stripe' && p.client_secret) {
-          paymentAction = {
-            type: 'stripe_client_secret',
-            client_secret: p.client_secret,
-            url: null,
-            raw: null,
-          };
-        } else if (p.next_action && p.next_action.redirect_url) {
-          paymentAction = {
-            type: 'redirect_url',
-            client_secret: p.client_secret || null,
-            url: p.next_action.redirect_url,
-            raw: null,
-          };
-        } else if (checkoutSession?.hosted_url) {
-          paymentAction = {
-            type: 'redirect_url',
-            client_secret: null,
-            url: checkoutSession.hosted_url,
-            raw: null,
-          };
+        // Derive payment_action when backend only returns flat fields
+        if (!paymentAction) {
+          if (psp === 'adyen' && p.client_secret) {
+            paymentAction = {
+              type: 'adyen_session',
+              client_secret: p.client_secret,
+              url: null,
+              raw: null,
+            };
+          } else if (psp === 'stripe' && p.client_secret) {
+            paymentAction = {
+              type: 'stripe_client_secret',
+              client_secret: p.client_secret,
+              url: null,
+              raw: null,
+            };
+          } else if (p.next_action && p.next_action.redirect_url) {
+            paymentAction = {
+              type: 'redirect_url',
+              client_secret: p.client_secret || null,
+              url: p.next_action.redirect_url,
+              raw: null,
+            };
+          } else if (checkoutSession?.hosted_url) {
+            paymentAction = {
+              type: 'redirect_url',
+              client_secret: null,
+              url: checkoutSession.hosted_url,
+              raw: null,
+            };
+          }
         }
-      }
 
-      const paymentStatusSource =
-        checkoutSession && !p.payment_status && !p?.payment?.payment_status
-          ? { ...p, payment_status: 'requires_action' }
-          : p;
-      const paymentContract = resolveSubmitPaymentContract(paymentStatusSource);
-      checkoutRuntime.checkoutTraceId = gatewayRequestId;
-      checkoutRuntime.paymentStatus = paymentContract.payment_status;
-      checkoutRuntime.confirmationOwner = paymentContract.confirmation_owner;
-      checkoutRuntime.requiresClientConfirmation = paymentContract.requires_client_confirmation;
+        const paymentStatusSource =
+          checkoutSession && !p.payment_status && !p?.payment?.payment_status
+            ? { ...p, payment_status: 'requires_action' }
+            : p;
+        const paymentContract = resolveSubmitPaymentContract(paymentStatusSource);
+        checkoutRuntime.checkoutTraceId = gatewayRequestId;
+        checkoutRuntime.paymentStatus = paymentContract.payment_status;
+        checkoutRuntime.confirmationOwner = paymentContract.confirmation_owner;
+        checkoutRuntime.requiresClientConfirmation = paymentContract.requires_client_confirmation;
 
-      const wrapped = {
-        ...p,
-        ...(checkoutSession && p.status === 'success'
-          ? { upstream_status: p.status, status: paymentContract.payment_status }
-          : {}),
-        payment_status: paymentContract.payment_status,
-        confirmation_owner: paymentContract.confirmation_owner,
-        requires_client_confirmation: paymentContract.requires_client_confirmation,
-        ...(paymentContract.payment_status_raw
-          ? { payment_status_raw: paymentContract.payment_status_raw }
-          : {}),
-        psp: psp || null,
-        payment_action: paymentAction || null,
-        checkout_session: checkoutSession || null,
-        checkout_session_id: checkoutSession?.checkout_session_id || null,
-        checkout_url: checkoutSession?.hosted_url || null,
-        payment: {
-          ...paymentObj,
-          psp: psp || null,
-          client_secret: p.client_secret || paymentObj.client_secret || null,
-          payment_intent_id: p.payment_intent_id || paymentObj.payment_intent_id || null,
-          checkout_session_id:
-            checkoutSession?.checkout_session_id || paymentObj.checkout_session_id || null,
-          checkout_token: checkoutSession?.checkout_token || paymentObj.checkout_token || null,
-          hosted_url: checkoutSession?.hosted_url || paymentObj.hosted_url || null,
-          payment_action: paymentAction || null,
+        const wrappedResponse = {
+          ...p,
+          ...(checkoutSession && p.status === 'success'
+            ? { upstream_status: p.status, status: paymentContract.payment_status }
+            : {}),
           payment_status: paymentContract.payment_status,
           confirmation_owner: paymentContract.confirmation_owner,
           requires_client_confirmation: paymentContract.requires_client_confirmation,
           ...(paymentContract.payment_status_raw
             ? { payment_status_raw: paymentContract.payment_status_raw }
             : {}),
-        },
-      };
+          psp: psp || null,
+          payment_action: paymentAction || null,
+          checkout_session: checkoutSession || null,
+          checkout_session_id: checkoutSession?.checkout_session_id || null,
+          checkout_url: checkoutSession?.hosted_url || null,
+          payment: {
+            ...paymentObj,
+            psp: psp || null,
+            client_secret: p.client_secret || paymentObj.client_secret || null,
+            payment_intent_id: p.payment_intent_id || paymentObj.payment_intent_id || null,
+            checkout_session_id:
+              checkoutSession?.checkout_session_id || paymentObj.checkout_session_id || null,
+            checkout_token: checkoutSession?.checkout_token || paymentObj.checkout_token || null,
+            hosted_url: checkoutSession?.hosted_url || paymentObj.hosted_url || null,
+            payment_action: paymentAction || null,
+            payment_status: paymentContract.payment_status,
+            confirmation_owner: paymentContract.confirmation_owner,
+            requires_client_confirmation: paymentContract.requires_client_confirmation,
+            ...(paymentContract.payment_status_raw
+              ? { payment_status_raw: paymentContract.payment_status_raw }
+              : {}),
+          },
+        };
 
-      logger.info(
-        {
-          gateway_request_id: gatewayRequestId,
-          checkout_trace_id: gatewayRequestId,
-          payment_status: paymentContract.payment_status,
-          confirmation_owner: paymentContract.confirmation_owner,
-          requires_client_confirmation: paymentContract.requires_client_confirmation,
-        },
-        'submit_payment contract normalized',
-      );
+        logger.info(
+          {
+            gateway_request_id: gatewayRequestId,
+            checkout_trace_id: gatewayRequestId,
+            payment_status: paymentContract.payment_status,
+            confirmation_owner: paymentContract.confirmation_owner,
+            requires_client_confirmation: paymentContract.requires_client_confirmation,
+          },
+          'submit_payment contract normalized',
+        );
+
+        return wrappedResponse;
+      });
       return res.status(response.status).json(wrapped);
     }
 
