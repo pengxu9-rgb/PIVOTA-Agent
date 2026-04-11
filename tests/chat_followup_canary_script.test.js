@@ -128,6 +128,39 @@ describe('chat_followup_canary.mjs', () => {
     expect(result.summary.card_checks.recommendations_count).toBe(0);
   });
 
+  test('passes when grounded recommendations are carried through structured sections.products', async () => {
+    const server = createCanaryServer({
+      metricsBodies: [
+        buildMetricsBody({ catalog: 12, repeatedSkinType: 0, claims: 0 }),
+        buildMetricsBody({ catalog: 13, repeatedSkinType: 0, claims: 0 }),
+      ],
+      chatPayload: {
+        assistant_message: { content: '有，这里有几款薇诺娜产品。' },
+        cards: [
+          {
+            type: 'recommendations',
+            payload: {
+              sections: [
+                {
+                  title: 'Products',
+                  products: [
+                    { product_id: 'winona_section_1' },
+                    { product_id: 'winona_section_2' },
+                  ],
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    const result = await runCanary(server);
+    expect(result.summary.pass).toBe(true);
+    expect(result.summary.card_checks.has_recommendations).toBe(true);
+    expect(result.summary.card_checks.recommendations_count).toBe(2);
+  });
+
   test('retries transient 429 responses and passes once grounded recommendations arrive', async () => {
     const server = createCanaryServer({
       metricsBodies: [

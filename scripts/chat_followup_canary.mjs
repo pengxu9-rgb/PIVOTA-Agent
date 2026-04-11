@@ -83,11 +83,16 @@ function extractGroundedProductResult(cards) {
   const recoCard = findCardByTypes(cards, ['recommendations', 'product_picks']);
   const recoPayload = recoCard && typeof recoCard === 'object' ? recoCard.payload : null;
   const recommendationsCount = asArray(recoPayload?.recommendations).length;
+  const sectionProductCount = asArray(recoPayload?.sections).reduce((total, section) => {
+    if (!section || typeof section !== 'object') return total;
+    return total + asArray(section.products).length;
+  }, 0);
+  const groundedCount = Math.max(recommendationsCount, sectionProductCount);
   return {
     legacyPass,
-    hasRecommendations: recommendationsCount > 0,
-    recommendationsCount,
-    pass: legacyPass || recommendationsCount > 0,
+    hasRecommendations: groundedCount > 0,
+    recommendationsCount: groundedCount,
+    pass: legacyPass || groundedCount > 0,
   };
 }
 
