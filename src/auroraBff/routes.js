@@ -64668,6 +64668,135 @@ function normalizeOpenWorldAlternativeRow(candidate, {
   };
 }
 
+function scoreRecoAlternativeCatalogGroundingMatch(openWorldRow, catalogRow) {
+  const openProduct = getRecoAlternativeProductObject(openWorldRow);
+  const candidate = normalizeRecoCatalogProduct(catalogRow);
+  if (!candidate) return { ok: false, score: 0 };
+  if (!isSkincareCategory(candidate) || isBlacklistedCategoryOrTitle(candidate) || isExternalSeedPlaceholderCandidate(candidate)) {
+    return { ok: false, score: 0 };
+  }
+  const openBrand = normalizeRecoNameToken(pickFirstTrimmed(openProduct.brand, openWorldRow?.brand));
+  const openName = normalizeRecoNameToken(pickFirstTrimmed(openProduct.name, openWorldRow?.name));
+  const candidateBrand = normalizeRecoNameToken(candidate.brand);
+  const candidateName = normalizeRecoNameToken(pickFirstTrimmed(candidate.display_name, candidate.name));
+  if (!openBrand || !openName || !candidateBrand || !candidateName) return { ok: false, score: 0 };
+  if (openBrand !== candidateBrand) return { ok: false, score: 0 };
+  const openTokens = tokenizeProductTextForSimilarity(openName);
+  const candidateTokens = tokenizeProductTextForSimilarity(candidateName);
+  const tokenScore = computeTokenJaccardScore(openTokens, candidateTokens) || 0;
+  const exactName = openName === candidateName;
+  const containsName = openName.length >= 8 && candidateName.length >= 8 && (openName.includes(candidateName) || candidateName.includes(openName));
+  const ok = exactName || (containsName && tokenScore >= 0.72) || tokenScore >= 0.84;
+  return {
+    ok,
+    score: exactName ? 1 : containsName ? Math.max(0.86, tokenScore) : tokenScore,
+    candidate,
+  };
+}
+
+function mapCatalogGroundedOpenWorldAlternative(openWorldRow, catalogRow, { matchScore = 0, query = '' } = {}) {
+  const normalized = normalizeRecoCatalogProduct(catalogRow);
+  if (!normalized) return openWorldRow;
+  const productId = pickFirstTrimmed(normalized.product_id, normalized.sku_id);
+  const candidateLabel = joinBrandAndName(normalized.brand, pickFirstTrimmed(normalized.display_name, normalized.name));
+  const pdpUrl = extractCandidateOpenUrl(normalized);
+  const pdpOpen = normalized.canonical_product_ref
+    ? { path: 'ref', product_ref: normalized.canonical_product_ref }
+    : normalized.product_group_id
+      ? { path: 'group', product_group_id: normalized.product_group_id }
+      : pdpUrl
+        ? { path: 'external', external: { url: pdpUrl, query: candidateLabel } }
+        : productId
+          ? {
+              path: 'resolve',
+              product_ref: {
+                product_id: normalized.product_id,
+                ...(normalized.merchant_id ? { merchant_id: normalized.merchant_id } : {}),
+              },
+              external: { query: candidateLabel },
+            }
+          : { path: 'external', external: { query: candidateLabel } };
+  return {
+    ...openWorldRow,
+    candidate_origin: 'pool',
+    grounding_status: 'catalog_verified',
+    product: {
+      ...(normalized.product_id ? { product_id: normalized.product_id } : {}),
+      ...(normalized.merchant_id ? { merchant_id: normalized.merchant_id } : {}),
+      ...(normalized.product_group_id ? { product_group_id: normalized.product_group_id } : {}),
+      ...(normalized.sku_id ? { sku_id: normalized.sku_id } : {}),
+      ...(normalized.brand ? { brand: normalized.brand } : {}),
+      name: pickFirstTrimmed(normalized.display_name, normalized.name),
+      ...(normalized.category ? { category: normalized.category } : {}),
+      ...(pdpUrl ? { pdp_url: pdpUrl, url: pdpUrl } : {}),
+      ...(normalized.price && typeof normalized.price === 'object' ? { price: normalized.price } : {}),
+    },
+    ...(normalized.brand ? { brand: normalized.brand } : {}),
+    name: pickFirstTrimmed(normalized.display_name, normalized.name),
+    pdp_open: pdpOpen,
+    metadata: {
+      ...(openWorldRow?.metadata && typeof openWorldRow.metadata === 'object' && !Array.isArray(openWorldRow.metadata) ? openWorldRow.metadata : {}),
+      compare_stage: 'open_world_grounded_catalog',
+      catalog_grounding_query: String(query || '').trim() || null,
+      catalog_grounding_score: Number(matchScore.toFixed(3)),
+      merged_candidate_origins: ['open_world', 'pool'],
+    },
+  };
+}
+
+async function groundOpenWorldAlternativesToCatalog(rows, { logger } = {}) {
+  const list = Array.isArray(rows) ? rows : [];
+  if (!list.length) return { alternatives: [], grounded_count: 0, attempted_count: 0 };
+  let groundedCount = 0;
+  let attemptedCount = 0;
+  const enriched = [];
+  for (const row of list) {
+    const origin = String(row?.candidate_origin || '').trim().toLowerCase();
+    const grounding = String(row?.grounding_status || '').trim().toLowerCase();
+    if (origin !== 'open_world' || grounding === 'catalog_verified') {
+      enriched.push(row);
+      continue;
+    }
+    const product = getRecoAlternativeProductObject(row);
+    const brand = pickFirstTrimmed(product.brand, row?.brand);
+    const name = pickFirstTrimmed(product.name, row?.name);
+    const query = joinBrandAndName(brand, name);
+    if (!brand || !name || !query) {
+      enriched.push(row);
+      continue;
+    }
+    attemptedCount += 1;
+    let best = null;
+    try {
+      const searched = await searchPivotaBackendProducts({
+        query,
+        limit: 5,
+        logger,
+        timeoutMs: 1100,
+        minTimeoutMs: 220,
+        mode: 'main_path',
+        allowExternalSeed: true,
+        externalSeedStrategy: 'supplement_internal_first',
+        fastMode: true,
+      });
+      for (const candidate of Array.isArray(searched?.products) ? searched.products : []) {
+        const scored = scoreRecoAlternativeCatalogGroundingMatch(row, candidate);
+        if (!scored.ok) continue;
+        if (!best || scored.score > best.score) best = { ...scored, raw: candidate };
+      }
+    } catch (err) {
+      logger?.warn?.({ err: err?.message || String(err), query }, 'aurora bff: alternatives catalog grounding failed');
+    }
+    if (best?.candidate) {
+      groundedCount += 1;
+      enriched.push(mapCatalogGroundedOpenWorldAlternative(row, best.candidate, { matchScore: best.score, query }));
+    } else {
+      enriched.push(row);
+    }
+  }
+  return { alternatives: enriched, grounded_count: groundedCount, attempted_count: attemptedCount };
+}
+
 function normalizeRecoAlternativesOpenWorldModel(raw) {
   const model = pickFirstTrimmed(raw);
   const lower = String(model || '').trim().toLowerCase();
@@ -64797,6 +64926,7 @@ async function fetchRecoAlternativesForLocalGeminiOpenWorld({
   productObj,
   maxTotal,
   profileMode,
+  logger,
 } = {}) {
   const model = getRecoAlternativesOpenWorldModel();
   const maxOutputTokens = getRecoAlternativesOpenWorldMaxOutputTokens();
@@ -64857,9 +64987,12 @@ async function fetchRecoAlternativesForLocalGeminiOpenWorld({
     maxTotal,
   });
   if (normalizedRows.length) {
+    const grounded = await groundOpenWorldAlternativesToCatalog(normalizedRows, { logger });
+    llmTrace.catalog_grounding_attempted_count = grounded.attempted_count;
+    llmTrace.catalog_grounded_count = grounded.grounded_count;
     return {
       ok: true,
-      alternatives: normalizedRows.slice(0, Math.max(1, Math.min(6, Number(maxTotal) || 1))),
+      alternatives: grounded.alternatives.slice(0, Math.max(1, Math.min(6, Number(maxTotal) || 1))),
       field_missing: [],
       source_mode: 'open_world_only',
       fallback_source: null,
@@ -64882,9 +65015,12 @@ async function fetchRecoAlternativesForLocalGeminiOpenWorld({
       )
     : [];
   if (recoveredRows.length) {
+    const grounded = await groundOpenWorldAlternativesToCatalog(recoveredRows, { logger });
+    llmTrace.catalog_grounding_attempted_count = grounded.attempted_count;
+    llmTrace.catalog_grounded_count = grounded.grounded_count;
     return {
       ok: true,
-      alternatives: recoveredRows.slice(0, Math.max(1, Math.min(6, Number(maxTotal) || 1))),
+      alternatives: grounded.alternatives.slice(0, Math.max(1, Math.min(6, Number(maxTotal) || 1))),
       field_missing: [],
       source_mode: 'open_world_only',
       fallback_source: null,
@@ -64964,6 +65100,8 @@ async function fetchRecoAlternativesForExternalSeedProduct({
   );
   let openWorldRows = [];
   let openWorldStatus = 'empty';
+  let openWorldGroundingAttemptedCount = 0;
+  let openWorldGroundedCount = 0;
   let llmTrace = null;
 
   const poolSummary = poolCandidates.slice(0, 4).map((row) => {
@@ -65057,6 +65195,14 @@ async function fetchRecoAlternativesForExternalSeedProduct({
             textureTokens: pool.identity.textureTokens,
           }))
           .filter(Boolean);
+        if (openWorldRows.length) {
+          const grounded = await groundOpenWorldAlternativesToCatalog(openWorldRows, { logger });
+          openWorldRows = grounded.alternatives;
+          openWorldGroundingAttemptedCount = grounded.attempted_count;
+          openWorldGroundedCount = grounded.grounded_count;
+          llmTrace.catalog_grounding_attempted_count = grounded.attempted_count;
+          llmTrace.catalog_grounded_count = grounded.grounded_count;
+        }
         openWorldStatus = openWorldRows.length ? 'success' : 'empty';
       } else {
         openWorldStatus = resp?.ok === false ? 'provider_error' : 'empty';
@@ -65104,6 +65250,8 @@ async function fetchRecoAlternativesForExternalSeedProduct({
     pool_selected_count: poolSelectedCount,
     open_world_candidate_count: openWorldRows.length,
     open_world_selected_count: openWorldSelectedCount,
+    open_world_grounding_attempted_count: openWorldGroundingAttemptedCount,
+    open_world_grounded_count: openWorldGroundedCount,
     ranking_mode: 'best_score_mixed',
     pool_recall_status: poolCandidates.length >= 3 ? 'full' : poolCandidates.length > 0 ? 'partial' : 'empty',
     open_world_status: openWorldStatus,
@@ -65629,6 +65777,7 @@ async function fetchRecoAlternativesForProduct({
         productObj,
         maxTotal: Math.max(1, limit - groundedPoolAlternatives.length),
         profileMode,
+        logger,
       });
     } catch (err) {
       openWorldOut = {
@@ -65691,6 +65840,8 @@ async function fetchRecoAlternativesForProduct({
         pool_selected_count: alternatives.filter((row) => String(row?.candidate_origin || '') === 'pool').length,
         open_world_candidate_count: openWorldAlternatives.length,
         open_world_selected_count: alternatives.filter((row) => String(row?.candidate_origin || '') === 'open_world').length,
+        open_world_grounding_attempted_count: Number(openWorldOut?.llm_trace?.catalog_grounding_attempted_count || 0),
+        open_world_grounded_count: Number(openWorldOut?.llm_trace?.catalog_grounded_count || 0),
         open_world_status: openWorldStatus,
         ranking_mode: 'grounded_pool_then_local_open_world',
       },
@@ -65704,6 +65855,7 @@ async function fetchRecoAlternativesForProduct({
       productObj,
       maxTotal,
       profileMode,
+      logger,
     });
   }
   const prefix = buildContextPrefix({

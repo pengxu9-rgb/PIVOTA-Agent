@@ -6049,6 +6049,126 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
   );
 });
 
+test('fetchRecoAlternativesForProduct: open_world_only grounds exact catalog hits without changing provider source', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      GEMINI_API_KEY: 'test_gemini_key',
+      AURORA_DIAG_FORCE_GEMINI: 'true',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED: 'false',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      axios.get = async (url) => {
+        if (!isProductsSearchUrl(url)) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: 'inkey_niacinamide_catalog',
+                merchant_id: 'merchant_inkey',
+                brand: 'The Inkey List',
+                name: 'Niacinamide Serum',
+                display_name: 'Niacinamide Serum',
+                product_type: 'serum',
+                category: 'Serum',
+                url: 'https://www.theinkeylist.com/products/niacinamide-serum',
+                price: { amount: 9.99, currency: 'USD', unknown: false },
+              },
+              {
+                product_id: 'wrong_brand_niac',
+                merchant_id: 'merchant_wrong',
+                brand: 'Other Brand',
+                name: 'Niacinamide Serum',
+                product_type: 'serum',
+                category: 'Serum',
+              },
+            ],
+          },
+        };
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { __internal } = routeModule;
+        __internal.__setCallGeminiJsonObjectForTest(async () => ({
+          ok: true,
+          json: {
+            alternatives: [
+              {
+                brand: 'The Inkey List',
+                name: 'Niacinamide Serum',
+                product_type: 'serum',
+                similarity_score: 82,
+                reasons: ['Niacinamide-led serum role overlaps with the anchor for oil control.'],
+                tradeoff_notes: ['Does not include the same zinc support.'],
+              },
+            ],
+          },
+        }));
+
+        const out = await __internal.fetchRecoAlternativesForProduct({
+          ctx: {
+            lang: 'EN',
+            request_id: 'req_open_world_grounded',
+            trace_id: 'trace_open_world_grounded',
+          },
+          profileSummary: null,
+          recentLogs: [],
+          productInput: 'The Ordinary Niacinamide 10% + Zinc 1%',
+          productObj: {
+            brand: 'The Ordinary',
+            name: 'Niacinamide 10% + Zinc 1%',
+            product_type: 'serum',
+            category: 'Serum',
+            ingredients: ['Niacinamide', 'Zinc PCA'],
+            claims: ['oil control', 'pore care'],
+          },
+          anchorId: '',
+          maxTotal: 3,
+          candidatePool: [],
+          logger: null,
+          options: {
+            recommendation_mode: 'open_world_only',
+            profile_mode: 'anchor_only',
+            disable_fallback: true,
+            disable_synthetic_local_fallback: true,
+            ignore_selector_candidates: true,
+            skip_anchor_precheck: true,
+          },
+        });
+
+        assert.equal(out?.source_mode, 'open_world_only');
+        assert.equal(out?.llm_trace?.source_mode, 'local_gemini_open_world');
+        assert.equal(out?.llm_trace?.catalog_grounding_attempted_count, 1);
+        assert.equal(out?.llm_trace?.catalog_grounded_count, 1);
+        assert.equal(out?.alternatives?.length, 1);
+        assert.equal(out.alternatives[0]?.candidate_origin, 'pool');
+        assert.equal(out.alternatives[0]?.grounding_status, 'catalog_verified');
+        assert.equal(out.alternatives[0]?.product?.product_id, 'inkey_niacinamide_catalog');
+        assert.equal(out.alternatives[0]?.product?.pdp_url, 'https://www.theinkeylist.com/products/niacinamide-serum');
+        assert.equal(out.alternatives[0]?.metadata?.compare_stage, 'open_world_grounded_catalog');
+        assert.deepEqual(out.alternatives[0]?.metadata?.merged_candidate_origins, ['open_world', 'pool']);
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        axios.get = originalGet;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
 test('fetchRecoAlternativesForProduct: open_world_only surfaces local Gemini failure details in trace', async () => {
   return withEnv(
     {
