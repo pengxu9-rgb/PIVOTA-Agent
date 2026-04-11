@@ -249,7 +249,7 @@ describe('RecommendationEngine external candidate fetch', () => {
     const queryMock = jest.fn(async (sql, params) => {
       const sqlText = String(sql);
       if (sqlText.includes("lower(coalesce(domain, '')) = ANY($4)")) {
-        expect(params?.[3]).toEqual(['kravebeauty.com']);
+        expect(params?.[3]).toEqual(['kravebeauty.com', 'www.kravebeauty.com']);
         return {
           rows: Array.from({ length: 6 }).map((_, index) =>
             ({
@@ -285,6 +285,45 @@ describe('RecommendationEngine external candidate fetch', () => {
           String(product.canonical_url || product.destination_url || '').includes('kravebeauty.com'),
       ),
     ).toBe(true);
+    expect(queryMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('same-domain seed lookup includes www and bare host aliases before broad scans', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryMock = jest.fn(async (sql, params) => {
+      const sqlText = String(sql);
+      if (sqlText.includes("lower(coalesce(domain, '')) = ANY($4)")) {
+        expect(params?.[3]).toEqual(['tomfordbeauty.com', 'www.tomfordbeauty.com']);
+        return {
+          rows: Array.from({ length: 6 }).map((_, index) =>
+            makeExternalRow({
+              id: `eps_tf_${index}`,
+              external_product_id: `ext_tf_${index}`,
+              title: `Tom Ford Beauty Product ${index}`,
+              brand: 'Tom Ford Beauty',
+              category: 'Makeup',
+              domain: 'www.tomfordbeauty.com',
+            }),
+          ),
+        };
+      }
+      throw new Error(`unexpected broad external query: ${sqlText}`);
+    });
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchExternalCandidates({
+      brandHint: 'Tom Ford Beauty',
+      categoryHint: 'Concealer',
+      domainHints: ['https://www.tomfordbeauty.com/products/traceless-soft-matte-concealer'],
+      limit: 12,
+    });
+
+    expect(products).toHaveLength(6);
+    expect(products.every((product) => product.domain === 'www.tomfordbeauty.com')).toBe(true);
     expect(queryMock).toHaveBeenCalledTimes(1);
   });
 
@@ -389,7 +428,7 @@ describe('RecommendationEngine external candidate fetch', () => {
         });
       }
       if (sqlText.includes("lower(coalesce(domain, '')) = ANY($4)")) {
-        expect(params?.[3]).toEqual(['kravebeauty.com']);
+        expect(params?.[3]).toEqual(['kravebeauty.com', 'www.kravebeauty.com']);
         return Promise.resolve({
           rows: [
             {
@@ -478,6 +517,8 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(result.items.length).toBeGreaterThan(0);
     expect(result.items.every((item) => item.merchant_id === 'external_seed')).toBe(true);
     expect(result.debug?.fetch_strategy?.external_timed_out).toBe(false);
+    expect(result.debug?.fetch_strategy?.internal_count).toBe(0);
+    expect(queryMock.mock.calls.every(([sql]) => !String(sql).includes('FROM products_cache'))).toBe(true);
     expect(queryMock.mock.calls.some(([sql]) => String(sql).includes("lower(coalesce(domain, '')) = ANY($4)"))).toBe(true);
     expect(
       queryMock.mock.calls.every(

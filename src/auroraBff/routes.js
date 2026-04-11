@@ -1311,9 +1311,9 @@ const RECO_CATALOG_EXTERNAL_SEED_HANDOFF_TIMEOUT_MS = (() => {
   return Math.max(12000, Math.min(45000, v));
 })();
 const RECO_CATALOG_FRAMEWORK_LOCAL_HANDOFF_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_FRAMEWORK_LOCAL_HANDOFF_TIMEOUT_MS || 4800);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 4800;
-  return Math.max(2400, Math.min(7000, v));
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_FRAMEWORK_LOCAL_HANDOFF_TIMEOUT_MS || 6200);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 6200;
+  return Math.max(2400, Math.min(8500, v));
 })();
 const RECO_CATALOG_PRIMARY_EXTERNAL_SEED_QUERY_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_CATALOG_PRIMARY_EXTERNAL_SEED_QUERY_TIMEOUT_MS || 2600);
@@ -1321,9 +1321,9 @@ const RECO_CATALOG_PRIMARY_EXTERNAL_SEED_QUERY_TIMEOUT_MS = (() => {
   return Math.max(800, Math.min(4800, v));
 })();
 const RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS || 1600);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 1600;
-  return Math.max(50, Math.min(3200, v));
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS || 2200);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 2200;
+  return Math.max(50, Math.min(4000, v));
 })();
 const {
   classifyBeautyMainlineHandoffFallback,
@@ -4155,6 +4155,15 @@ function normalizeRecoCatalogProduct(raw) {
     (typeof base.retrieval_reason === 'string' && base.retrieval_reason) ||
     (typeof base.retrievalReason === 'string' && base.retrievalReason) ||
     '';
+  const retrievalMatchStageRaw =
+    (typeof base.retrieval_match_stage === 'string' && base.retrieval_match_stage) ||
+    (typeof base.retrievalMatchStage === 'string' && base.retrievalMatchStage) ||
+    '';
+  const retrievalMatchScoreRaw = Number.isFinite(Number(base.retrieval_match_score))
+    ? Number(base.retrieval_match_score)
+    : Number.isFinite(Number(base.retrievalMatchScore))
+      ? Number(base.retrievalMatchScore)
+      : null;
   const retrievalStepRaw =
     (typeof base.retrieval_step === 'string' && base.retrieval_step) ||
     (typeof base.retrievalStep === 'string' && base.retrievalStep) ||
@@ -4301,6 +4310,8 @@ function normalizeRecoCatalogProduct(raw) {
     ...(String(sourceToken || '').trim() ? { source: String(sourceToken).trim() } : {}),
     ...(normalizedRetrievalSource ? { retrieval_source: normalizedRetrievalSource } : {}),
     ...(String(retrievalReasonRaw || '').trim() ? { retrieval_reason: String(retrievalReasonRaw).trim() } : {}),
+    ...(String(retrievalMatchStageRaw || '').trim() ? { retrieval_match_stage: String(retrievalMatchStageRaw).trim() } : {}),
+    ...(retrievalMatchScoreRaw != null ? { retrieval_match_score: retrievalMatchScoreRaw } : {}),
     ...(String(retrievalStepRaw || '').trim() ? { retrieval_step: String(retrievalStepRaw).trim() } : {}),
     ...(String(retrievalRoleIdRaw || '').trim() ? { retrieval_role_id: String(retrievalRoleIdRaw).trim() } : {}),
     ...(retrievalRoleRankRaw != null ? { retrieval_role_rank: retrievalRoleRankRaw } : {}),
@@ -7962,6 +7973,218 @@ function buildLocalExternalSeedSearchPredicate(bind, { lean = false } = {}) {
   )`;
 }
 
+const LOCAL_EXTERNAL_SEED_SELECT_FIELDS = `
+  id,
+  external_product_id,
+  destination_url,
+  canonical_url,
+  domain,
+  title,
+  image_url,
+  price_amount,
+  price_currency,
+  availability,
+  seed_data,
+  updated_at,
+  created_at
+`;
+const LOCAL_EXTERNAL_SEED_DIRECT_RECALL_CATEGORY_FIELD =
+  "lower(coalesce(seed_data->'derived'->'recall'->>'category', ''))";
+
+function buildLocalExternalSeedStageRowKey(row) {
+  const id = String(row?.id ?? '').trim();
+  if (id) return `id:${id}`;
+  const externalId = String(row?.external_product_id ?? '').trim();
+  if (externalId) return `external:${externalId}`;
+  const url = pickFirstTrimmed(row?.canonical_url, row?.destination_url);
+  if (url) return `url:${url.toLowerCase()}`;
+  const title = String(row?.title || '').trim();
+  if (title) return `title:${title.toLowerCase()}`;
+  return '';
+}
+
+function buildLocalExternalSeedStageSqlId(row) {
+  const id = String(row?.id ?? '').trim();
+  return id || null;
+}
+
+function buildLocalExternalSeedSupportCategoryTerms({ role = null, preferredStep = '', query = '' } = {}) {
+  const step = normalizeRecoTargetStep(preferredStep || role?.preferred_step);
+  const haystack = [
+    query,
+    role?.role_id,
+    role?.label,
+    role?.preferred_step,
+    ...(Array.isArray(role?.query_terms) ? role.query_terms : []),
+    ...(Array.isArray(role?.fit_keywords) ? role.fit_keywords : []),
+    ...(Array.isArray(role?.product_type_hypotheses) ? role.product_type_hypotheses : []),
+  ]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+  const terms = [];
+  const add = (...values) => {
+    for (const value of values) {
+      const normalized = String(value || '').trim().toLowerCase();
+      if (normalized) terms.push(normalized);
+    }
+  };
+
+  if (step === 'moisturizer' || /\b(moisturi[sz]er|gel[-\s]?cream|cream|lotion|emulsion|hydration|barrier)\b/.test(haystack)) {
+    add('moisturizer', 'moisturiser', 'cream', 'gel cream', 'gel-cream', 'lotion', 'emulsion');
+  }
+  if (step === 'sunscreen' || /\b(sunscreen|spf|sun care|sun protection|uv)\b/.test(haystack)) {
+    add('sunscreen', 'spf', 'sun care', 'sun protection', 'uv protection');
+  }
+  if (step === 'cleanser' || /\b(cleanser|cleansing|wash)\b/.test(haystack)) {
+    add('cleanser', 'cleansing', 'face wash');
+  }
+  if (step === 'treatment' || /\b(serum|treatment|ampoule|essence)\b/.test(haystack)) {
+    add('serum', 'treatment', 'ampoule', 'essence');
+  }
+
+  return uniqCaseInsensitiveStrings(terms, 10);
+}
+
+function buildLocalExternalSeedSupportStageDefinitions({
+  patterns = [],
+  categoryTerms = [],
+  safeLimit = 6,
+} = {}) {
+  const stageCap = Math.max(safeLimit, Math.min(safeLimit * 3, 36));
+  const stages = [];
+  if (categoryTerms.length > 0) {
+    stages.push({
+      stage: 'support_category_exact',
+      score: 56,
+      cap: stageCap,
+      buildWhereSql: (stageBind) => `(
+        ${LOCAL_EXTERNAL_SEED_DIRECT_RECALL_CATEGORY_FIELD} = ANY(${stageBind(categoryTerms)}::text[])
+      )`,
+    });
+  }
+  if (patterns.length > 0) {
+    stages.push({
+      stage: 'support_recall_title',
+      score: 48,
+      cap: stageCap,
+      buildWhereSql: (stageBind) =>
+        `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${stageBind(patterns)}::text[])`,
+    });
+    stages.push({
+      stage: 'support_alias_tokens',
+      score: 42,
+      cap: stageCap,
+      buildWhereSql: (stageBind) =>
+        `${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY(${stageBind(patterns)}::text[])`,
+    });
+    stages.push({
+      stage: 'support_ingredient_tokens',
+      score: 38,
+      cap: stageCap,
+      buildWhereSql: (stageBind) =>
+        `${EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokens} LIKE ANY(${stageBind(patterns)}::text[])`,
+    });
+    stages.push({
+      stage: 'support_recall_summary',
+      score: 28,
+      cap: Math.max(safeLimit, Math.min(safeLimit * 2, 24)),
+      buildWhereSql: (stageBind) =>
+        `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${stageBind(patterns)}::text[])`,
+    });
+  }
+  return stages;
+}
+
+async function searchLocalExternalSeedProductsViaSupportStages({
+  runQuery,
+  q,
+  patterns = [],
+  role = null,
+  preferredStep = '',
+  safeLimit = 6,
+  market,
+  tool,
+} = {}) {
+  const categoryTerms = buildLocalExternalSeedSupportCategoryTerms({ role, preferredStep, query: q });
+  const stageDefinitions = buildLocalExternalSeedSupportStageDefinitions({
+    patterns,
+    categoryTerms,
+    safeLimit,
+  });
+  const stagedRows = [];
+  const seenRowKeys = new Set();
+  const seenSqlIds = new Set();
+  const stageDebug = [];
+  const baseWhereSql = `
+    status = 'active'
+      AND attached_product_key IS NULL
+      AND market = $1
+      AND (tool = '*' OR tool = $2)
+  `;
+  const appendRows = (rows = []) => {
+    for (const row of Array.isArray(rows) ? rows : []) {
+      const rowKey = buildLocalExternalSeedStageRowKey(row);
+      if (!rowKey || seenRowKeys.has(rowKey)) continue;
+      seenRowKeys.add(rowKey);
+      const sqlId = buildLocalExternalSeedStageSqlId(row);
+      if (sqlId) seenSqlIds.add(sqlId);
+      stagedRows.push(row);
+      if (stagedRows.length >= safeLimit) break;
+    }
+  };
+
+  for (const stageDefinition of stageDefinitions) {
+    if (stagedRows.length >= safeLimit) break;
+    const startedAt = Date.now();
+    const stageParams = [market, tool];
+    const stageBind = (value) => {
+      stageParams.push(value);
+      return `$${stageParams.length}`;
+    };
+    const stageWhereSql = typeof stageDefinition.buildWhereSql === 'function'
+      ? stageDefinition.buildWhereSql(stageBind)
+      : '';
+    if (!stageWhereSql) continue;
+    let sql = `
+      SELECT
+        ${LOCAL_EXTERNAL_SEED_SELECT_FIELDS},
+        ${Number(stageDefinition.score || 0)}::int AS match_score,
+        '${stageDefinition.stage}'::text AS match_stage
+      FROM external_product_seeds
+      WHERE ${baseWhereSql}
+        AND ${stageWhereSql}
+    `;
+    if (seenSqlIds.size > 0) {
+      const excludedIdsBind = stageBind(Array.from(seenSqlIds));
+      sql += `
+        AND NOT (id::text = ANY(${excludedIdsBind}::text[]))
+      `;
+    }
+    const limitBind = stageBind(Math.max(safeLimit, Math.min(36, Number(stageDefinition.cap || safeLimit))));
+    sql += `
+      ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
+      LIMIT ${limitBind}
+    `;
+    const res = await runQuery(sql, stageParams);
+    const rows = Array.isArray(res?.rows) ? res.rows : [];
+    appendRows(rows);
+    stageDebug.push({
+      stage: String(stageDefinition.stage || '').trim() || 'unknown',
+      row_count: rows.length,
+      cumulative_row_count: stagedRows.length,
+      duration_ms: Math.max(0, Date.now() - startedAt),
+      cap: Math.max(safeLimit, Math.min(36, Number(stageDefinition.cap || safeLimit))),
+    });
+  }
+
+  return {
+    rows: stagedRows.slice(0, safeLimit),
+    stageDebug,
+    categoryTerms,
+  };
+}
+
 function buildLocalExternalSeedSearchPatterns(query, {
   role = null,
   preferredStep = '',
@@ -8069,7 +8292,11 @@ function buildLocalExternalSeedSurfacingCandidate(row) {
     ...baseProduct,
     source: 'external_seed',
     retrieval_source: 'external_seed',
-    retrieval_reason: 'external_seed_local_search',
+    retrieval_reason: pickFirstTrimmed(row?.match_stage)
+      ? `external_seed_local_search:${pickFirstTrimmed(row.match_stage)}`
+      : 'external_seed_local_search',
+    ...(pickFirstTrimmed(row?.match_stage) ? { retrieval_match_stage: pickFirstTrimmed(row.match_stage) } : {}),
+    ...(Number.isFinite(Number(row?.match_score)) ? { retrieval_match_score: Number(row.match_score) } : {}),
     ...(searchAliases.length ? { search_aliases: searchAliases } : {}),
     ...(benefitTags.length ? { benefit_tags: benefitTags } : {}),
     ...(skinTypeTags.length ? { skin_type_tags: skinTypeTags } : {}),
@@ -8136,22 +8363,45 @@ async function searchLocalExternalSeedProducts({
   const tool = 'creator_agents';
 
   try {
+    if (leanSql) {
+      const staged = await searchLocalExternalSeedProductsViaSupportStages({
+        runQuery,
+        q,
+        patterns,
+        role,
+        preferredStep,
+        safeLimit,
+        market,
+        tool,
+      });
+      const rows = Array.isArray(staged?.rows) ? staged.rows : [];
+      const ranked = rankPurchasableRecoveryCandidates(
+        rows
+          .map((row) => buildLocalExternalSeedSurfacingCandidate(row))
+          .filter(Boolean),
+        q,
+      ).slice(0, safeLimit);
+      return {
+        ok: ranked.length > 0,
+        products: ranked,
+        reason: ranked.length > 0 ? null : 'empty',
+        selected_source: ranked.length > 0 ? 'external_seed' : 'none',
+        actual_http_attempt_count: 0,
+        attempted_base_urls: [],
+        attempted_paths: [],
+        transport_policy_mode: transportPolicyMode,
+        local_external_seed_search_mode: 'staged_support_fastpath',
+        local_external_seed_stage_debug: Array.isArray(staged?.stageDebug) ? staged.stageDebug : [],
+        ...(Array.isArray(staged?.categoryTerms) && staged.categoryTerms.length
+          ? { local_external_seed_category_terms: staged.categoryTerms }
+          : {}),
+      };
+    }
+
     const res = await runQuery(
       `
         SELECT
-          id,
-          external_product_id,
-          destination_url,
-          canonical_url,
-          domain,
-          title,
-          image_url,
-          price_amount,
-          price_currency,
-          availability,
-          seed_data,
-          updated_at,
-          created_at
+          ${LOCAL_EXTERNAL_SEED_SELECT_FIELDS}
         FROM external_product_seeds
         WHERE status = 'active'
           AND attached_product_key IS NULL
@@ -8180,6 +8430,7 @@ async function searchLocalExternalSeedProducts({
       attempted_base_urls: [],
       attempted_paths: [],
       transport_policy_mode: transportPolicyMode,
+      local_external_seed_search_mode: 'single_query',
     };
   } catch (error) {
     const message = String(error?.message || error || '');
@@ -18142,9 +18393,7 @@ async function collectRecoCandidatesFromRecallPlan({
       async (entry) => {
         const plannerQueryIndex = plannerEntryCursor;
         plannerEntryCursor += 1;
-        return ({
-        queryEntry: entry,
-        out: await executeRecoRecallPlanEntry({
+        return executeRecoRecallPlanEntryWithWallClockGuard({
           entry,
           logger,
           timeoutMs,
@@ -18159,8 +18408,7 @@ async function collectRecoCandidatesFromRecallPlan({
           queryTotal: Array.isArray(recallPlan?.entries) ? recallPlan.entries.length : null,
           authHeaders,
           searchFn,
-        }),
-      });
+        });
       },
     );
 
@@ -18971,6 +19219,7 @@ function buildConcernRecommendationsFromSelectedCandidates(selectedCandidates, {
     const selectionNotes = isPlainObject(selectionNotesByProductId) && productId
       ? asStringArray(selectionNotesByProductId[productId], 3)
       : [];
+    const displayProductType = resolveFrameworkRecoDisplayProductType(picked, normalizedStep);
     return {
       slot: inferSlotForStep(normalizedStep),
       step: humanizeRecoProductType(normalizedStep, language),
@@ -19006,22 +19255,19 @@ function buildConcernRecommendationsFromSelectedCandidates(selectedCandidates, {
         picked?.sku?.title,
       ),
       category: pickFirstString(
-        picked?.category,
-        picked?.category_name,
-        picked?.categoryName,
-        picked?.product_type,
-        picked?.productType,
-        picked?.type,
-        picked?.sku?.category,
-        picked?.sku?.category_name,
-        picked?.sku?.categoryName,
-        picked?.sku?.product_type,
-        picked?.sku?.productType,
-        picked?.sku?.type,
+        displayProductType,
         normalizedStep,
       ),
       retrieval_source: pickFirstString(picked?.retrieval_source, picked?.retrievalSource, 'catalog'),
       retrieval_reason: pickFirstString(picked?.retrieval_reason, picked?.retrievalReason, 'catalog_search_match'),
+      ...(pickFirstTrimmed(picked?.retrieval_match_stage, picked?.retrievalMatchStage)
+        ? { retrieval_match_stage: pickFirstTrimmed(picked?.retrieval_match_stage, picked?.retrievalMatchStage) }
+        : {}),
+      ...(Number.isFinite(Number(picked?.retrieval_match_score))
+        ? { retrieval_match_score: Number(picked.retrieval_match_score) }
+        : Number.isFinite(Number(picked?.retrievalMatchScore))
+          ? { retrieval_match_score: Number(picked.retrievalMatchScore) }
+          : {}),
       ...(canonicalRef ? { canonical_product_ref: canonicalRef } : {}),
       ...(pickFirstString(picked?.canonical_pdp_url, picked?.canonicalPdpUrl) ? { canonical_pdp_url: pickFirstString(picked?.canonical_pdp_url, picked?.canonicalPdpUrl) } : {}),
       ...(pickFirstString(picked?.purchase_path, picked?.purchasePath) ? { purchase_path: pickFirstString(picked?.purchase_path, picked?.purchasePath) } : {}),
@@ -19030,6 +19276,7 @@ function buildConcernRecommendationsFromSelectedCandidates(selectedCandidates, {
         role: matchedRole,
         language,
       }),
+      ...(displayProductType ? { product_type: displayProductType, category: displayProductType } : {}),
       matched_role_id: pickFirstTrimmed(picked?.matched_role_id, picked?.matchedRoleId) || null,
       matched_role_label: pickFirstTrimmed(picked?.matched_role_label, picked?.matchedRoleLabel) || null,
       matched_role_rank: Number.isFinite(Number(picked?.matched_role_rank)) ? Number(picked.matched_role_rank) : null,
@@ -19049,6 +19296,32 @@ function buildConcernRecommendationsFromSelectedCandidates(selectedCandidates, {
       ].filter(Boolean),
     };
   });
+}
+
+function resolveFrameworkRecoDisplayProductType(picked, normalizedStep = 'other') {
+  const step = normalizeRecoTargetStep(normalizedStep);
+  const rawProductType = pickFirstString(
+    picked?.product_type,
+    picked?.productType,
+    picked?.category,
+    picked?.category_name,
+    picked?.categoryName,
+    picked?.type,
+    picked?.sku?.product_type,
+    picked?.sku?.productType,
+    picked?.sku?.category,
+    picked?.sku?.category_name,
+    picked?.sku?.categoryName,
+    picked?.sku?.type,
+  );
+  const rawToken = normalizeRecoTargetStep(rawProductType);
+  if (
+    (step === 'sunscreen' || step === 'moisturizer' || step === 'cleanser')
+    && (!rawToken || rawToken === 'serum' || rawToken === 'treatment' || rawToken === 'other')
+  ) {
+    return step;
+  }
+  return rawProductType || (step && step !== 'other' ? step : '');
 }
 
 function buildRecoRowsFromMainlineProducts(products, {
@@ -19095,7 +19368,14 @@ function buildRecoRowsFromMainlineProducts(products, {
       targetContext?.resolved_target_step,
   );
   return mainlineRows.map((picked, index) => {
+    const matchedFrameworkRole = Array.isArray(targetContext?.framework_roles)
+      ? targetContext.framework_roles.find((role) => (
+        String(role?.role_id || '').trim()
+          === String(pickFirstTrimmed(picked?.matched_role_id, picked?.matchedRoleId)).trim()
+      )) || null
+      : null;
     const stepToken = pickFirstTrimmed(
+      matchedFrameworkRole?.preferred_step,
       picked?.candidate_step,
       primaryFrameworkStep,
       targetContext?.resolved_target_step,
@@ -19111,6 +19391,7 @@ function buildRecoRowsFromMainlineProducts(products, {
       },
       { requireMerchant: true, allowOpaqueProductId: false },
     );
+    const displayProductType = resolveFrameworkRecoDisplayProductType(picked, normalizedStep);
     return {
       slot: inferSlotForStep(normalizedStep),
       step: humanizeRecoProductType(normalizedStep, language),
@@ -19146,18 +19427,7 @@ function buildRecoRowsFromMainlineProducts(products, {
         picked?.sku?.title,
       ),
       category: pickFirstString(
-        picked?.category,
-        picked?.category_name,
-        picked?.categoryName,
-        picked?.product_type,
-        picked?.productType,
-        picked?.type,
-        picked?.sku?.category,
-        picked?.sku?.category_name,
-        picked?.sku?.categoryName,
-        picked?.sku?.product_type,
-        picked?.sku?.productType,
-        picked?.sku?.type,
+        displayProductType,
         normalizedStep,
       ),
       retrieval_source: pickFirstString(picked?.retrieval_source, picked?.retrievalSource, 'catalog'),
@@ -19166,16 +19436,23 @@ function buildRecoRowsFromMainlineProducts(products, {
         picked?.retrievalReason,
         'shopping_agent_beauty_mainline',
       ),
+      ...(pickFirstTrimmed(picked?.retrieval_match_stage, picked?.retrievalMatchStage)
+        ? { retrieval_match_stage: pickFirstTrimmed(picked?.retrieval_match_stage, picked?.retrievalMatchStage) }
+        : {}),
+      ...(Number.isFinite(Number(picked?.retrieval_match_score))
+        ? { retrieval_match_score: Number(picked.retrieval_match_score) }
+        : Number.isFinite(Number(picked?.retrievalMatchScore))
+          ? { retrieval_match_score: Number(picked.retrievalMatchScore) }
+          : {}),
       ...(canonicalRef ? { canonical_product_ref: canonicalRef } : {}),
       ...(pickFirstString(picked?.canonical_pdp_url, picked?.canonicalPdpUrl) ? { canonical_pdp_url: pickFirstString(picked?.canonical_pdp_url, picked?.canonicalPdpUrl) } : {}),
       ...(pickFirstString(picked?.purchase_path, picked?.purchasePath) ? { purchase_path: pickFirstString(picked?.purchase_path, picked?.purchasePath) } : {}),
       ...(isPlainObject(picked?.pdp_open) ? { pdp_open: picked.pdp_open } : {}),
       ...buildRecoVisibleProductFields(picked, {
-        role: targetContext?.framework_roles?.find((role) => (
-          String(role?.role_id || '').trim() === String(pickFirstTrimmed(picked?.matched_role_id, picked?.matchedRoleId, primaryFrameworkRole?.role_id)).trim()
-        )) || primaryFrameworkRole,
+        role: matchedFrameworkRole || primaryFrameworkRole,
         language,
       }),
+      ...(displayProductType ? { product_type: displayProductType, category: displayProductType } : {}),
       ...((pickFirstTrimmed(picked?.matched_role_id, picked?.matchedRoleId) || primaryFrameworkRole)
         ? {
             matched_role_id: pickFirstTrimmed(picked?.matched_role_id, picked?.matchedRoleId, primaryFrameworkRole?.role_id) || null,
@@ -19409,9 +19686,10 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
   const keptLevels = [];
   const skippedExternalSeedLevels = [];
   const skippedSupportLevels = [];
+  const executedSupportInternalLevels = [];
   const executedSupportExternalSeedLevels = [];
   const stagedLevels = [];
-  const maxRoutineSupportExternalSeedLevels = 2;
+  const maxRoutineSupportRoles = 2;
   for (const level of levels) {
     const queries = Array.isArray(level?.queries) ? level.queries : [];
     const levelId = String(level?.ladder_level || level?.stage_id || '').trim().toLowerCase();
@@ -19419,8 +19697,8 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
       queries.length > 0 &&
       queries.every((query) => query && query.allow_external_seed === true);
     const keepPrimaryExternalSupplement = levelId === 'framework_stage_b_primary_external_seed';
-    const keepEligibleSupportExternalSeed = levelId.startsWith('framework_stage_c_support_');
-    if (allowExternalSeedOnly && !keepPrimaryExternalSupplement && !keepEligibleSupportExternalSeed) {
+    const isSupportLevel = levelId.startsWith('framework_stage_c_support_');
+    if (allowExternalSeedOnly && !keepPrimaryExternalSupplement && !isSupportLevel) {
       skippedExternalSeedLevels.push(
         String(level?.ladder_level || level?.stage_id || '').trim() || `level_${skippedExternalSeedLevels.length + 1}`,
       );
@@ -19437,6 +19715,7 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
         String(level?.ladder_level || level?.stage_id || '').trim().toLowerCase() === 'framework_stage_a_primary_internal',
       ) || stagedLevels[0];
     keptLevels.push(primaryInternalLevel);
+    const keptSupportRoleIds = new Set();
     for (const level of stagedLevels) {
       if (level === primaryInternalLevel) continue;
       const levelId = String(level?.ladder_level || level?.stage_id || '').trim().toLowerCase();
@@ -19449,23 +19728,20 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
         continue;
       }
       const isSupportLevel = levelId.startsWith('framework_stage_c_support_');
-      if (isSupportLevel && allowExternalSeedOnly) {
-        if (executedSupportExternalSeedLevels.length < maxRoutineSupportExternalSeedLevels) {
-          keptLevels.push(level);
-          executedSupportExternalSeedLevels.push(
-            String(level?.ladder_level || level?.stage_id || '').trim() || `level_${executedSupportExternalSeedLevels.length + 1}`,
-          );
-        } else {
-          skippedExternalSeedLevels.push(
-            String(level?.ladder_level || level?.stage_id || '').trim() || `level_${skippedExternalSeedLevels.length + 1}`,
-          );
-        }
-        continue;
-      }
       if (isSupportLevel) {
-        skippedSupportLevels.push(
-          String(level?.ladder_level || level?.stage_id || '').trim() || `level_${skippedSupportLevels.length + 1}`,
-        );
+        const supportRoleId = levelId.replace(/_external_seed$/, '');
+        const supportLevelLabel =
+          String(level?.ladder_level || level?.stage_id || '').trim()
+          || `level_${keptSupportRoleIds.size + 1}`;
+        if (!keptSupportRoleIds.has(supportRoleId) && keptSupportRoleIds.size >= maxRoutineSupportRoles) {
+          if (allowExternalSeedOnly) skippedExternalSeedLevels.push(supportLevelLabel);
+          else skippedSupportLevels.push(supportLevelLabel);
+          continue;
+        }
+        keptSupportRoleIds.add(supportRoleId);
+        keptLevels.push(level);
+        if (allowExternalSeedOnly) executedSupportExternalSeedLevels.push(supportLevelLabel);
+        else executedSupportInternalLevels.push(supportLevelLabel);
         continue;
       }
       if (allowExternalSeedOnly) {
@@ -19497,9 +19773,30 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
       planned_level_count: levels.length,
       executed_level_count: keptLevels.length,
       skipped_external_seed_level_count: skippedExternalSeedLevels.length,
+      ...((executedSupportInternalLevels.length || executedSupportExternalSeedLevels.length)
+        ? {
+            routine_support_strategy:
+              executedSupportInternalLevels.length && executedSupportExternalSeedLevels.length
+                ? 'primary_plus_internal_then_external_support'
+                : executedSupportInternalLevels.length
+                  ? 'primary_plus_internal_support'
+                  : 'primary_plus_external_support',
+            executed_support_level_count:
+              executedSupportInternalLevels.length + executedSupportExternalSeedLevels.length,
+            executed_support_levels: [
+              ...executedSupportInternalLevels,
+              ...executedSupportExternalSeedLevels,
+            ],
+          }
+        : {}),
+      ...(executedSupportInternalLevels.length
+        ? {
+            executed_support_internal_level_count: executedSupportInternalLevels.length,
+            executed_support_internal_levels: executedSupportInternalLevels,
+          }
+        : {}),
       ...(executedSupportExternalSeedLevels.length
         ? {
-            routine_support_strategy: 'primary_plus_external_support',
             executed_support_external_seed_level_count: executedSupportExternalSeedLevels.length,
             executed_support_external_seed_levels: executedSupportExternalSeedLevels,
           }
@@ -19547,6 +19844,21 @@ function buildBeautyMainlineLocalQueryAttempts(searchResults = []) {
     ...(pickFirstTrimmed(row?.upstream_error_message)
       ? { upstream_error_message: pickFirstTrimmed(row.upstream_error_message) }
       : {}),
+    ...(pickFirstTrimmed(row?.timeout_guard)
+      ? { timeout_guard: pickFirstTrimmed(row.timeout_guard) }
+      : {}),
+    ...(Array.isArray(row?.attempted_request_timeouts_ms)
+      ? { attempted_request_timeouts_ms: row.attempted_request_timeouts_ms }
+      : {}),
+    ...(pickFirstTrimmed(row?.local_external_seed_search_mode)
+      ? { local_external_seed_search_mode: pickFirstTrimmed(row.local_external_seed_search_mode) }
+      : {}),
+    ...(Array.isArray(row?.local_external_seed_stage_debug)
+      ? { local_external_seed_stage_debug: row.local_external_seed_stage_debug }
+      : {}),
+    ...(Array.isArray(row?.local_external_seed_category_terms)
+      ? { local_external_seed_category_terms: row.local_external_seed_category_terms }
+      : {}),
   }));
 }
 
@@ -19590,6 +19902,12 @@ function buildBeautyMainlineLocalSearchResult({
           executed_query_count: semanticOwnerQueryAttempts.length,
           query_pack_attempts: semanticOwnerQueryAttempts,
         }
+      : {}),
+    ...(pickFirstTrimmed(collected?.plannerStopReason)
+      ? { planner_stop_reason: pickFirstTrimmed(collected.plannerStopReason) }
+      : {}),
+    ...(pickFirstTrimmed(collected?.primaryStageTimeoutClass)
+      ? { primary_stage_timeout_class: pickFirstTrimmed(collected.primaryStageTimeoutClass) }
       : {}),
     ...(pickFirstTrimmed(collected?.transportPolicyMode)
       ? { transport_policy_mode: pickFirstTrimmed(collected.transportPolicyMode) }
@@ -19878,6 +20196,8 @@ async function handoffRecoToBeautyMainlineSearch({
         : '';
   const shouldUseExternalSeedSupplement = Boolean(semanticContract);
   const shouldUseSunscreenRecallBudget = semanticTargetStepFamily === 'sunscreen';
+  const shouldUseFrameworkLocalRecallBudget =
+    String(semanticContract?.planner_mode || '').trim().toLowerCase() === 'framework_generic';
   const handoffTransportPolicy = buildBeautyMainlineHandoffTransportPolicy({
     mode:
       String(semanticContract?.planner_mode || '').trim().toLowerCase() === 'step_aware'
@@ -19894,6 +20214,8 @@ async function handoffRecoToBeautyMainlineSearch({
     : effectiveTimeoutMs;
   const handoffSearchMinTimeoutMs = shouldUseSunscreenRecallBudget
     ? Math.max(effectiveMinTimeoutMs, 5000)
+    : shouldUseFrameworkLocalRecallBudget
+      ? Math.max(effectiveMinTimeoutMs, RECO_CATALOG_FRAMEWORK_LOCAL_HANDOFF_TIMEOUT_MS)
     : effectiveMinTimeoutMs;
   let searchResult = null;
   if (typeof searchFn === 'function') {
@@ -20497,6 +20819,109 @@ function resolveRecoQueryEntryTimeoutMs(queryEntry = null, effectiveTimeoutMs = 
   return Math.min(normalizedTimeoutMs, RECO_CATALOG_PRIMARY_EXTERNAL_SEED_QUERY_TIMEOUT_MS);
 }
 
+function resolveRecoWallClockTimeoutBudget(queryEntry = null, { timeoutMs = 0, deadlineMs = 0 } = {}) {
+  const normalizedDeadlineMs = Number.isFinite(Number(deadlineMs))
+    ? Math.trunc(Number(deadlineMs))
+    : 0;
+  const remainingDeadlineMs = normalizedDeadlineMs > 0
+    ? Math.max(0, normalizedDeadlineMs - Date.now() - 20)
+    : null;
+  const effectiveTimeoutMs = Number.isFinite(remainingDeadlineMs)
+    ? Math.max(
+        0,
+        Math.min(
+          Number.isFinite(Number(timeoutMs)) ? Math.trunc(Number(timeoutMs)) : 0,
+          Math.trunc(remainingDeadlineMs),
+        ),
+      )
+    : (Number.isFinite(Number(timeoutMs)) ? Math.max(0, Math.trunc(Number(timeoutMs))) : 0);
+  return {
+    remainingDeadlineMs,
+    queryTimeoutMs: resolveRecoQueryEntryTimeoutMs(queryEntry, effectiveTimeoutMs),
+    normalizedDeadlineMs,
+  };
+}
+
+async function executeRecoRecallPlanEntryWithWallClockGuard({
+  entry,
+  logger,
+  timeoutMs,
+  deadlineMs = 0,
+  limit = 6,
+  usePurchasableFallback = false,
+  transportPolicyMode = '',
+  targetContext = null,
+  semanticContract = null,
+  traceId = null,
+  queryIndex = null,
+  queryTotal = null,
+  authHeaders = null,
+  searchFn = null,
+} = {}) {
+  const { remainingDeadlineMs, queryTimeoutMs, normalizedDeadlineMs } = resolveRecoWallClockTimeoutBudget(
+    entry,
+    { timeoutMs, deadlineMs },
+  );
+  if (Number.isFinite(remainingDeadlineMs) && queryTimeoutMs < 120) {
+    return {
+      queryEntry: entry,
+      out: {
+        ok: false,
+        products: [],
+        reason: 'budget_exhausted',
+        actual_http_attempt_count: 0,
+        attempted_request_timeouts_ms:
+          Number.isFinite(Number(queryTimeoutMs)) && Number(queryTimeoutMs) >= 0
+            ? [Math.trunc(Number(queryTimeoutMs))]
+            : [],
+      },
+    };
+  }
+  let out = null;
+  try {
+    out = await withTimeout(
+      Promise.resolve().then(() =>
+        executeRecoRecallPlanEntry({
+          entry,
+          logger,
+          timeoutMs: queryTimeoutMs,
+          deadlineMs: normalizedDeadlineMs,
+          limit,
+          usePurchasableFallback,
+          transportPolicyMode,
+          targetContext,
+          semanticContract,
+          traceId,
+          queryIndex,
+          queryTotal,
+          authHeaders,
+          searchFn,
+        }),
+      ),
+      queryTimeoutMs,
+      'RECO_RECALL_WALL_CLOCK_TIMEOUT',
+    );
+  } catch (err) {
+    const timeoutTriggered = String(err?.code || '').trim() === 'RECO_RECALL_WALL_CLOCK_TIMEOUT';
+    out = {
+      ok: false,
+      products: [],
+      reason: timeoutTriggered ? 'upstream_timeout' : 'upstream_error',
+      actual_http_attempt_count: 0,
+      attempted_request_timeouts_ms:
+        Number.isFinite(Number(queryTimeoutMs)) && Number(queryTimeoutMs) >= 0
+          ? [Math.trunc(Number(queryTimeoutMs))]
+          : [],
+      error: err?.message || String(err),
+      ...(timeoutTriggered ? { timeout_guard: 'caller_wall_clock' } : {}),
+    };
+  }
+  return {
+    queryEntry: entry,
+    out,
+  };
+}
+
 async function collectRecoCandidatesFromQueryLevels({
   queryLevels,
   targetContext,
@@ -20533,13 +20958,6 @@ async function collectRecoCandidatesFromQueryLevels({
     recommendationTaskContext,
   });
   let stopLevel = null;
-  const normalizedDeadlineMs = Number.isFinite(Number(deadlineMs))
-    ? Math.trunc(Number(deadlineMs))
-    : 0;
-  const computeRemainingDeadlineMs = () =>
-    normalizedDeadlineMs > 0
-      ? Math.max(0, normalizedDeadlineMs - Date.now() - 20)
-      : null;
 
   for (const level of Array.isArray(queryLevels) ? queryLevels : []) {
     const queries = Array.isArray(level?.queries) ? level.queries : [];
@@ -20590,73 +21008,20 @@ async function collectRecoCandidatesFromQueryLevels({
                 .toLowerCase()
             : 'on_empty_only',
         };
-        const remainingDeadlineMs = computeRemainingDeadlineMs();
-        const effectiveTimeoutMs = Number.isFinite(remainingDeadlineMs)
-          ? Math.max(
-              0,
-              Math.min(
-                Number.isFinite(Number(timeoutMs)) ? Math.trunc(Number(timeoutMs)) : 0,
-                Math.trunc(remainingDeadlineMs),
-              ),
-            )
-          : timeoutMs;
-        const queryTimeoutMs = resolveRecoQueryEntryTimeoutMs(normalizedQueryEntry, effectiveTimeoutMs);
-        if (Number.isFinite(remainingDeadlineMs) && queryTimeoutMs < 120) {
-          return {
-            queryEntry,
-            out: {
-              ok: false,
-              products: [],
-              reason: 'budget_exhausted',
-              actual_http_attempt_count: 0,
-              attempted_request_timeouts_ms:
-                Number.isFinite(Number(queryTimeoutMs)) && Number(queryTimeoutMs) >= 0
-                  ? [Math.trunc(Number(queryTimeoutMs))]
-                  : [],
-            },
-          };
-        }
-        let out = null;
-        try {
-          out = await withTimeout(
-            Promise.resolve().then(() =>
-              executeRecoRecallPlanEntry({
-                entry: normalizedQueryEntry,
-                logger,
-                timeoutMs: queryTimeoutMs,
-                deadlineMs: normalizedDeadlineMs,
-                limit,
-                usePurchasableFallback,
-                transportPolicyMode,
-                targetContext,
-                queryIndex: flattenedQueryIndexes.get(queryEntry),
-                queryTotal: flattenedQueryEntries.length,
-                authHeaders,
-                searchFn,
-              }),
-            ),
-            queryTimeoutMs,
-            'RECO_RECALL_WALL_CLOCK_TIMEOUT',
-          );
-        } catch (err) {
-          const timeoutTriggered = String(err?.code || '').trim() === 'RECO_RECALL_WALL_CLOCK_TIMEOUT';
-          out = {
-            ok: false,
-            products: [],
-            reason: timeoutTriggered ? 'upstream_timeout' : 'upstream_error',
-            actual_http_attempt_count: 0,
-            attempted_request_timeouts_ms:
-              Number.isFinite(Number(queryTimeoutMs)) && Number(queryTimeoutMs) >= 0
-                ? [Math.trunc(Number(queryTimeoutMs))]
-                : [],
-            error: err?.message || String(err),
-            ...(timeoutTriggered ? { timeout_guard: 'caller_wall_clock' } : {}),
-          };
-        }
-        return {
-          queryEntry: normalizedQueryEntry,
-          out,
-        };
+        return executeRecoRecallPlanEntryWithWallClockGuard({
+          entry: normalizedQueryEntry,
+          logger,
+          timeoutMs,
+          deadlineMs,
+          limit,
+          usePurchasableFallback,
+          transportPolicyMode,
+          targetContext,
+          queryIndex: flattenedQueryIndexes.get(queryEntry),
+          queryTotal: flattenedQueryEntries.length,
+          authHeaders,
+          searchFn,
+        });
       },
     );
     for (const row of levelResults) {
