@@ -64001,9 +64001,31 @@ function isExternalRecoAlternativesSeedProduct(product) {
   const row = isPlainObject(product) ? product : {};
   const metadata = isPlainObject(row.metadata) ? row.metadata : {};
   const pdpOpen = isPlainObject(row.pdp_open) ? row.pdp_open : isPlainObject(row.pdpOpen) ? row.pdpOpen : {};
+  const sku = isPlainObject(row.sku) ? row.sku : {};
+  const canonicalRef = isPlainObject(row.canonical_product_ref)
+    ? row.canonical_product_ref
+    : isPlainObject(row.canonicalProductRef)
+      ? row.canonicalProductRef
+      : {};
   const matchState = String(metadata.match_state || metadata.matchState || '').trim().toLowerCase();
   const pdpPath = String(pdpOpen.path || '').trim().toLowerCase();
-  return matchState === 'llm_seed' || pdpPath === 'external';
+  const merchantId = pickFirstTrimmed(
+    row.merchant_id,
+    row.merchantId,
+    sku.merchant_id,
+    sku.merchantId,
+    canonicalRef.merchant_id,
+    canonicalRef.merchantId,
+  );
+  const productId = pickFirstTrimmed(row.product_id, row.productId, sku.product_id, sku.productId, canonicalRef.product_id, canonicalRef.productId);
+  const source = String(pickFirstTrimmed(row.retrieval_source, row.source, sku.retrieval_source, sku.source) || '').trim().toLowerCase();
+  return (
+    matchState === 'llm_seed' ||
+    pdpPath === 'external' ||
+    merchantId === EXTERNAL_SEED_MERCHANT_ID ||
+    source === 'external_seed' ||
+    String(productId || '').trim().toLowerCase().startsWith('ext_')
+  );
 }
 
 function buildExternalSeedCompareIdentity(productObj, productInput) {
@@ -64288,19 +64310,22 @@ async function collectExternalSeedPoolAlternatives({
   });
   for (const row of embeddedPool) candidateRows.push(row);
 
-  for (const query of queryPlan) {
-    // eslint-disable-next-line no-await-in-loop
-    const searched = await searchPivotaBackendProducts({
+  const queriesToRun = queryPlan.slice(0, Math.max(2, Math.min(4, normalizedLimit)));
+  const searchResults = await Promise.allSettled(
+    queriesToRun.map((query) => searchPivotaBackendProducts({
       query,
       limit: 8,
       logger,
-      timeoutMs: 1400,
-      minTimeoutMs: 240,
+      timeoutMs: 1100,
+      minTimeoutMs: 220,
       mode: 'main_path',
       allowExternalSeed: true,
       externalSeedStrategy: 'supplement_internal_first',
       fastMode: true,
-    });
+    })),
+  );
+  for (const result of searchResults) {
+    const searched = result.status === 'fulfilled' ? result.value : null;
     const list = Array.isArray(searched?.products) ? searched.products : [];
     for (const row of list) candidateRows.push(row);
   }
@@ -64338,6 +64363,7 @@ async function collectExternalSeedPoolAlternatives({
   return {
     identity,
     queries: queryPlan,
+    executed_queries: queriesToRun,
     candidates: deduped.slice(0, Math.max(normalizedLimit, 6)),
   };
 }
@@ -64462,13 +64488,22 @@ function normalizeOpenWorldAlternativeRow(candidate, {
   };
 }
 
+function normalizeRecoAlternativesOpenWorldModel(raw) {
+  const model = pickFirstTrimmed(raw);
+  const lower = String(model || '').trim().toLowerCase();
+  if (!lower) return 'gemini-3-flash-preview';
+  if (!lower.startsWith('gemini-')) return 'gemini-3-flash-preview';
+  if (/^gemini-(?:1|2)(?:[.\-_]|$)/.test(lower)) return 'gemini-3-flash-preview';
+  return model;
+}
+
 function getRecoAlternativesOpenWorldModel() {
-  return pickFirstTrimmed(
+  return normalizeRecoAlternativesOpenWorldModel(pickFirstTrimmed(
     process.env.AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL,
     process.env.AURORA_RUNTIME_QA_GEMINI_MODEL,
     ANALYSIS_STORY_MODEL_GEMINI,
     'gemini-3-flash-preview',
-  );
+  ));
 }
 
 function getRecoAlternativesOpenWorldMaxOutputTokens() {
@@ -64477,12 +64512,13 @@ function getRecoAlternativesOpenWorldMaxOutputTokens() {
   return Math.max(256, Math.min(4096, Math.trunc(raw)));
 }
 
-function buildRecoAlternativesOpenWorldUserPayload({ ctx, productInput, productObj } = {}) {
+function buildRecoAlternativesOpenWorldUserPayload({ ctx, productInput, productObj, maxTotal } = {}) {
   const langCode = normalizeRecoPromptLanguage(ctx?.lang || 'EN');
   const targetSignals = buildRecoAlternativesTargetSignals(productObj, {
     productInput,
     lang: langCode,
   });
+  const limit = Math.max(2, Math.min(6, Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 3));
   return {
     lang: langCode,
     anchor: {
@@ -64497,18 +64533,19 @@ function buildRecoAlternativesOpenWorldUserPayload({ ctx, productInput, productO
       texture_hints: Array.isArray(targetSignals.textureHints) ? targetSignals.textureHints.slice(0, 1) : [],
     },
     task: {
-      max_alternatives: 1,
-      selection_rule: 'Return the single best real skincare alternative anchored to the product context.',
+      max_alternatives: limit,
+      selection_rule: 'Return distinct real skincare alternatives anchored to the product context; prefer the same product role and clear tradeoffs.',
     },
   };
 }
 
-function normalizeRecoAlternativesOpenWorldRows(rows, { productInput, productObj, ctx } = {}) {
+function normalizeRecoAlternativesOpenWorldRows(rows, { productInput, productObj, ctx, maxTotal } = {}) {
   const langCode = normalizeRecoPromptLanguage(ctx?.lang || 'EN');
   const targetSignals = buildRecoAlternativesTargetSignals(productObj, {
     productInput,
     lang: langCode,
   });
+  const limit = Math.max(1, Math.min(6, Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 3));
   const anchorLabel = joinBrandAndName(targetSignals.brand, targetSignals.name || String(productInput || '').trim());
   const anchorNameTokens = tokenizeProductTextForSimilarity(anchorLabel);
   const ingredientTokens = uniqCaseInsensitiveStrings(
@@ -64542,7 +64579,7 @@ function normalizeRecoAlternativesOpenWorldRows(rows, { productInput, productObj
       });
     })
     .filter(Boolean)
-    .slice(0, 1);
+    .slice(0, limit);
 }
 
 function recoverRecoAlternativesOpenWorldRowsFromTruncatedText(rawText) {
@@ -64584,18 +64621,28 @@ async function fetchRecoAlternativesForLocalGeminiOpenWorld({
     'Do not invent URLs, product IDs, exact INCI lists, or internal references.',
     'Keep each reason grounded to the anchor product role and actives.',
   ].join('\n');
-  const userPayload = buildRecoAlternativesOpenWorldUserPayload({ ctx, productInput, productObj });
+  const userPayload = buildRecoAlternativesOpenWorldUserPayload({ ctx, productInput, productObj, maxTotal });
   const startedAt = Date.now();
-  const resp = await callGeminiJsonObjectImpl({
-    model,
-    systemPrompt,
-    userPrompt: JSON.stringify(userPayload, null, 2),
-    timeoutMs: 6000,
-    temperature: 0.2,
-    maxOutputTokens,
-    route: 'aurora_reco_alternatives_open_world',
-    ignoreForceModel: true,
-  });
+  let resp = null;
+  try {
+    resp = await callGeminiJsonObjectImpl({
+      model,
+      systemPrompt,
+      userPrompt: JSON.stringify(userPayload, null, 2),
+      timeoutMs: 6000,
+      temperature: 0.2,
+      maxOutputTokens,
+      route: 'aurora_reco_alternatives_open_world',
+      ignoreForceModel: true,
+    });
+  } catch (err) {
+    resp = {
+      ok: false,
+      reason: err?.code || 'provider_error',
+      detail: err?.message || String(err),
+      meta: { result_reason: 'gemini_call_exception' },
+    };
+  }
 
   const llmTrace = {
     template_id: 'reco_alternatives_open_world_v1',
@@ -64619,6 +64666,7 @@ async function fetchRecoAlternativesForLocalGeminiOpenWorld({
     productInput,
     productObj,
     ctx,
+    maxTotal,
   });
   if (normalizedRows.length) {
     return {
@@ -64642,7 +64690,7 @@ async function fetchRecoAlternativesForLocalGeminiOpenWorld({
   const recoveredRows = resp?.ok === false
     ? normalizeRecoAlternativesOpenWorldRows(
         recoverRecoAlternativesOpenWorldRowsFromTruncatedText(resp?.raw_text),
-        { productInput, productObj, ctx },
+        { productInput, productObj, ctx, maxTotal },
       )
     : [];
   if (recoveredRows.length) {
@@ -64748,7 +64796,7 @@ async function fetchRecoAlternativesForExternalSeedProduct({
   try {
     const startedAt = Date.now();
     const resp = await callGeminiJsonObjectImpl({
-      model: ANALYSIS_STORY_MODEL_GEMINI,
+      model: getRecoAlternativesOpenWorldModel(),
       systemPrompt,
       userPrompt: JSON.stringify(userPayload, null, 2),
       timeoutMs: 6000,
@@ -64756,6 +64804,7 @@ async function fetchRecoAlternativesForExternalSeedProduct({
       maxOutputTokens: 1200,
       responseJsonSchema: buildExternalSeedOpenWorldSchema(),
       route: 'aurora_reco_alternatives_open_world',
+      ignoreForceModel: true,
     });
     llmTrace = {
       template_id: 'reco_alternatives_open_world_v1',
@@ -65266,6 +65315,157 @@ async function fetchRecoAlternativesForProduct({
   const profileSnapshot = buildAlternativesProfileSnapshot(
     profileSummary && typeof profileSummary === 'object' && !Array.isArray(profileSummary) ? profileSummary : {},
   );
+  let groundedPoolAlternatives = selectorGroundedAlternatives;
+  let groundedPoolMeta = null;
+  if (recommendationMode === 'hybrid_fallback' && !ignoreSelectorCandidates) {
+    try {
+      const pool = await collectExternalSeedPoolAlternatives({
+        ctx,
+        productInput: bestInput,
+        productObj,
+        maxTotal,
+        anchorId: anchor,
+        logger,
+      });
+      const searchedPoolAlternatives = Array.isArray(pool?.candidates) ? pool.candidates : [];
+      groundedPoolAlternatives = mergeRecoAlternativesForHybrid(
+        selectorGroundedAlternatives,
+        searchedPoolAlternatives,
+        { maxTotal: Math.max(1, Math.min(8, Number(maxTotal) || 6)) },
+      );
+      groundedPoolMeta = {
+        selector_candidate_count: selectorCandidatePool.length,
+        selector_grounded_count: selectorGroundedAlternatives.length,
+        search_query_count: Array.isArray(pool?.queries) ? pool.queries.length : 0,
+        executed_query_count: Array.isArray(pool?.executed_queries) ? pool.executed_queries.length : 0,
+        searched_pool_candidate_count: searchedPoolAlternatives.length,
+        pool_recall_status: searchedPoolAlternatives.length >= 3 ? 'full' : searchedPoolAlternatives.length > 0 ? 'partial' : 'empty',
+      };
+    } catch (err) {
+      groundedPoolMeta = {
+        selector_candidate_count: selectorCandidatePool.length,
+        selector_grounded_count: selectorGroundedAlternatives.length,
+        search_query_count: 0,
+        executed_query_count: 0,
+        searched_pool_candidate_count: 0,
+        pool_recall_status: selectorGroundedAlternatives.length > 0 ? 'embedded_only' : 'search_error',
+        search_error: err?.message || String(err),
+      };
+    }
+  }
+  if (recommendationMode === 'hybrid_fallback') {
+    const limit = Math.max(1, Math.min(8, Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 6));
+    const sufficientGroundedCount = Math.min(3, limit);
+    if (groundedPoolAlternatives.length >= sufficientGroundedCount) {
+      return {
+        ok: true,
+        alternatives: groundedPoolAlternatives.slice(0, limit),
+        field_missing: [],
+        source_mode: 'hybrid_fallback',
+        fallback_source: null,
+        refresh_pending: false,
+        refresh_after_ms: 0,
+        failure_class: null,
+        attempt_count: 0,
+        recommendation_mode: recommendationMode,
+        profile_mode: profileMode,
+        template_id: 'reco_alternatives_grounded_pool_v1',
+        raw_output_summary: emptyRawOutputSummary,
+        llm_trace: {
+          template_id: 'reco_alternatives_grounded_pool_v1',
+          source_mode: 'grounded_pool',
+          latency_ms: 0,
+          cache_hit: false,
+          error_class: null,
+        },
+        compare_meta: {
+          ...(groundedPoolMeta || {}),
+          pool_selected_count: Math.min(groundedPoolAlternatives.length, limit),
+          open_world_candidate_count: 0,
+          open_world_selected_count: 0,
+          open_world_status: 'skipped_sufficient_pool',
+          ranking_mode: 'grounded_pool_first',
+        },
+        ...(debug ? { debug: { anchor_precheck: anchorPrecheck, grounded_pool: groundedPoolMeta } } : {}),
+      };
+    }
+
+    let openWorldOut = null;
+    try {
+      openWorldOut = await fetchRecoAlternativesForLocalGeminiOpenWorld({
+        ctx,
+        productInput: bestInput,
+        productObj,
+        maxTotal: Math.max(1, limit - groundedPoolAlternatives.length),
+        profileMode,
+      });
+    } catch (err) {
+      openWorldOut = {
+        ok: true,
+        alternatives: [],
+        field_missing: [{ field: 'alternatives', reason: 'upstream_error' }],
+        source_mode: 'open_world_only',
+        fallback_source: 'none',
+        failure_class: classifyAlternativesFailureCode(err?.code || err?.message),
+        attempt_count: 1,
+        no_result_reason: 'open_world_provider_exception',
+        template_id: 'reco_alternatives_open_world_v1',
+        raw_output_summary: emptyRawOutputSummary,
+        llm_trace: {
+          template_id: 'reco_alternatives_open_world_v1',
+          source_mode: 'local_gemini_open_world',
+          provider_route: 'aurora_reco_alternatives_open_world',
+          provider_model: getRecoAlternativesOpenWorldModel(),
+          provider_reason: err?.code || 'provider_error',
+          provider_detail: err?.message || String(err),
+          latency_ms: 0,
+          cache_hit: false,
+          error_class: classifyAlternativesFailureCode(err?.code || err?.message),
+        },
+      };
+    }
+    const openWorldAlternatives = Array.isArray(openWorldOut?.alternatives) ? openWorldOut.alternatives : [];
+    const alternatives = mergeRecoAlternativesForHybrid(
+      groundedPoolAlternatives,
+      openWorldAlternatives,
+      { maxTotal: limit },
+    );
+    const openWorldStatus = openWorldAlternatives.length
+      ? 'success'
+      : openWorldOut?.failure_class
+        ? 'provider_error'
+        : 'empty';
+    return {
+      ok: true,
+      alternatives,
+      field_missing: alternatives.length
+        ? []
+        : mergeFieldMissing(openWorldOut?.field_missing, [{ field: 'alternatives', reason: 'no_viable_compare_candidates' }]),
+      source_mode: 'hybrid_fallback',
+      fallback_source: alternatives.length ? null : 'none',
+      refresh_pending: false,
+      refresh_after_ms: 0,
+      failure_class: alternatives.length ? null : (openWorldOut?.failure_class || 'empty_structured'),
+      attempt_count: Math.max(1, Number(openWorldOut?.attempt_count) || 1),
+      no_result_reason: alternatives.length
+        ? null
+        : (openWorldOut?.no_result_reason || 'pool_and_open_world_empty'),
+      recommendation_mode: recommendationMode,
+      profile_mode: profileMode,
+      template_id: 'reco_alternatives_hybrid_v1',
+      raw_output_summary: openWorldOut?.raw_output_summary || emptyRawOutputSummary,
+      llm_trace: openWorldOut?.llm_trace || null,
+      compare_meta: {
+        ...(groundedPoolMeta || {}),
+        pool_selected_count: alternatives.filter((row) => String(row?.candidate_origin || '') === 'pool').length,
+        open_world_candidate_count: openWorldAlternatives.length,
+        open_world_selected_count: alternatives.filter((row) => String(row?.candidate_origin || '') === 'open_world').length,
+        open_world_status: openWorldStatus,
+        ranking_mode: 'grounded_pool_then_local_open_world',
+      },
+      ...(debug ? { debug: { anchor_precheck: anchorPrecheck, grounded_pool: groundedPoolMeta } } : {}),
+    };
+  }
   if (recommendationMode === 'open_world_only') {
     return fetchRecoAlternativesForLocalGeminiOpenWorld({
       ctx,

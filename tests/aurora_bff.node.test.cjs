@@ -5959,7 +5959,7 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
           geminiRequest = args;
           assert.equal(args.route, 'aurora_reco_alternatives_open_world');
           assert.equal(args.ignoreForceModel, true);
-          assert.equal(args.model, 'gemini-2.5-flash');
+          assert.equal(args.model, 'gemini-3-flash-preview');
           assert.equal(Object.prototype.hasOwnProperty.call(args, 'responseJsonSchema'), false);
           assert.equal(Object.prototype.hasOwnProperty.call(args, 'responseSchema'), false);
           return {
@@ -6018,7 +6018,7 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
         assert.equal(out?.template_id, 'reco_alternatives_open_world_v1');
         assert.equal(out?.source_mode, 'open_world_only');
         assert.equal(out?.llm_trace?.source_mode, 'local_gemini_open_world');
-        assert.equal(out?.llm_trace?.provider_model, 'gemini-2.5-flash');
+        assert.equal(out?.llm_trace?.provider_model, 'gemini-3-flash-preview');
         assert.equal(Array.isArray(out?.alternatives), true);
         assert.equal(out.alternatives.length, 1);
         assert.equal(out.alternatives[0]?.candidate_origin, 'open_world');
@@ -6028,8 +6028,8 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
         assert.deepEqual(out.alternatives[0]?.tradeoff_notes, ['Formula overlap remains uncertain.']);
         assert.equal(geminiRequest?.maxOutputTokens, 2048);
         const payload = JSON.parse(geminiRequest?.userPrompt || '{}');
-        assert.equal(payload?.task?.max_alternatives, 1);
-        assert.match(String(payload?.task?.selection_rule || ''), /single best real skincare alternative/i);
+        assert.equal(payload?.task?.max_alternatives, 3);
+        assert.match(String(payload?.task?.selection_rule || ''), /distinct real skincare alternatives/i);
         assert.ok(Array.isArray(payload?.anchor?.hero_ingredients ?? []));
         assert.ok((payload?.anchor?.hero_ingredients ?? []).length <= 2);
         assert.deepEqual(payload?.anchor?.known_actives ?? [], ['Niacinamide', 'Zinc PCA']);
@@ -6123,7 +6123,7 @@ test('fetchRecoAlternativesForProduct: open_world_only surfaces local Gemini fai
         assert.equal(out?.llm_trace?.provider_reason, 'gemini_client_unavailable');
         assert.equal(out?.llm_trace?.provider_detail, 'missing api key');
         assert.equal(out?.llm_trace?.provider_route, 'aurora_reco_alternatives_open_world');
-        assert.equal(out?.llm_trace?.provider_model, 'gemini-2.5-flash');
+        assert.equal(out?.llm_trace?.provider_model, 'gemini-3-flash-preview');
         assert.equal(out?.llm_trace?.provider_timeout_stage, 'queue');
         assert.equal(out?.llm_trace?.provider_total_ms, 321);
         assert.equal(out?.llm_trace?.provider_upstream_ms, 0);
@@ -6303,6 +6303,264 @@ test('buildExternalSeedCompareSearchQueries: avoids duplicate role queries and p
   }
 });
 
+test('/v1/reco/alternatives: catalog product-card hybrid uses grounded search pool before provider', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED: 'false',
+      AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL: 'gemini-2.0-flash',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      axios.get = async (url) => {
+        if (!isProductsSearchUrl(url)) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: '9886499864904',
+                merchant_id: 'merch_ordinary',
+                brand: 'The Ordinary',
+                name: 'Niacinamide 10% + Zinc 1%',
+                display_name: 'Niacinamide 10% + Zinc 1%',
+                product_type: 'serum',
+                category: 'Serum',
+              },
+              {
+                product_id: 'gm_niac',
+                merchant_id: 'merch_alt',
+                brand: 'Good Molecules',
+                name: 'Niacinamide Serum',
+                display_name: 'Niacinamide Serum',
+                product_type: 'serum',
+                category: 'Serum',
+                url: 'https://example.com/good-molecules-niacinamide',
+              },
+              {
+                product_id: 'inkey_niac',
+                merchant_id: 'merch_alt',
+                brand: 'The Inkey List',
+                name: 'Niacinamide Serum',
+                display_name: 'Niacinamide Serum',
+                product_type: 'serum',
+                category: 'Serum',
+                url: 'https://example.com/inkey-niacinamide',
+              },
+              {
+                product_id: 'ole_niac',
+                merchant_id: 'merch_alt',
+                brand: 'Olehenriksen',
+                name: 'Peach Glaze Glow Niacinamide Serum',
+                display_name: 'Peach Glaze Glow Niacinamide Serum',
+                product_type: 'serum',
+                category: 'Serum',
+                url: 'https://example.com/ole-niacinamide',
+              },
+              {
+                product_id: 'bad_cleanser',
+                merchant_id: 'merch_bad',
+                brand: 'Fenty Beauty',
+                name: "Cherry Dub Pore Purify'r Gel Cleanser with Niacinamide",
+                display_name: "Cherry Dub Pore Purify'r Gel Cleanser with Niacinamide",
+                product_type: 'cleanser',
+                category: 'Cleanser',
+              },
+            ],
+          },
+        };
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { mountAuroraBffRoutes, __internal } = routeModule;
+        let geminiCalls = 0;
+        __internal.__setCallGeminiJsonObjectForTest(async () => {
+          geminiCalls += 1;
+          throw new Error('provider should not be called when the grounded pool is sufficient');
+        });
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/reco/alternatives')
+          .set({
+            'X-Aurora-UID': 'test_uid_alt_catalog_pool_first',
+            'X-Trace-ID': 'test_trace_alt_catalog_pool_first',
+            'X-Brief-ID': 'test_brief_alt_catalog_pool_first',
+            'X-Lang': 'EN',
+          })
+          .send({
+            product_input: 'The Ordinary Niacinamide 10% + Zinc 1%',
+            max_total: 6,
+            recommendation_mode: 'hybrid_fallback',
+            disable_synthetic_local_fallback: true,
+            product: {
+              product_id: '9886499864904',
+              merchant_id: 'merch_ordinary',
+              brand: 'The Ordinary',
+              name: 'Niacinamide 10% + Zinc 1%',
+              product_type: 'serum',
+              category: 'Serum',
+              ingredients: ['Niacinamide', 'Zinc PCA'],
+              claims: ['oil control', 'pore care'],
+              canonical_product_ref: {
+                product_id: '9886499864904',
+                merchant_id: 'merch_ordinary',
+              },
+            },
+          });
+
+        assert.equal(resp.status, 200);
+        assert.equal(resp.body?.source_mode, 'hybrid_fallback');
+        assert.equal(resp.body?.fallback_source, null);
+        assert.equal(resp.body?.failure_class, null);
+        assert.equal(resp.body?.compare_meta?.open_world_status, 'skipped_sufficient_pool');
+        assert.ok(Number(resp.body?.compare_meta?.pool_selected_count || 0) >= 3);
+        assert.equal(geminiCalls, 0);
+        const names = resp.body.alternatives.map((alt) => String(alt?.product?.name || alt?.name || ''));
+        assert.equal(names.some((name) => /cherry dub|cleanser/i.test(name)), false);
+        assert.equal(names.some((name) => /niacinamide 10% \+ zinc/i.test(name)), false);
+        assert.ok(names.some((name) => /niacinamide serum/i.test(name)));
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        axios.get = originalGet;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('/v1/reco/alternatives: hybrid supplements thin grounded pool with Gemini 3 open-world', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      GEMINI_API_KEY: 'test_gemini_key',
+      AURORA_DIAG_FORCE_GEMINI: 'true',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED: 'false',
+      AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL: 'gemini-2.0-flash',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      axios.get = async (url) => {
+        if (!isProductsSearchUrl(url)) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: '9886499864904',
+                merchant_id: 'merch_ordinary',
+                brand: 'The Ordinary',
+                name: 'Niacinamide 10% + Zinc 1%',
+                display_name: 'Niacinamide 10% + Zinc 1%',
+                product_type: 'serum',
+                category: 'Serum',
+              },
+            ],
+          },
+        };
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { mountAuroraBffRoutes, __internal } = routeModule;
+        let geminiRequest = null;
+        __internal.__setCallGeminiJsonObjectForTest(async (args = {}) => {
+          geminiRequest = args;
+          return {
+            ok: true,
+            json: {
+              alternatives: [
+                {
+                  brand: 'Good Molecules',
+                  name: 'Niacinamide Serum',
+                  product_type: 'serum',
+                  similarity_score: 72,
+                  reasons: ['Niacinamide-led serum role overlaps with the anchor.'],
+                  tradeoff_notes: ['Zinc support is less explicit than the anchor.'],
+                },
+                {
+                  brand: 'The Inkey List',
+                  name: 'Niacinamide Serum',
+                  product_type: 'serum',
+                  similarity_score: 70,
+                  reasons: ['Same lightweight niacinamide serum role.'],
+                  tradeoff_notes: ['Exact concentration and texture are not confirmed here.'],
+                },
+              ],
+            },
+          };
+        });
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/reco/alternatives')
+          .set({
+            'X-Aurora-UID': 'test_uid_alt_catalog_gemini_supplement',
+            'X-Trace-ID': 'test_trace_alt_catalog_gemini_supplement',
+            'X-Brief-ID': 'test_brief_alt_catalog_gemini_supplement',
+            'X-Lang': 'EN',
+          })
+          .send({
+            product_input: 'The Ordinary Niacinamide 10% + Zinc 1%',
+            max_total: 6,
+            recommendation_mode: 'hybrid_fallback',
+            disable_synthetic_local_fallback: true,
+            product: {
+              product_id: '9886499864904',
+              merchant_id: 'merch_ordinary',
+              brand: 'The Ordinary',
+              name: 'Niacinamide 10% + Zinc 1%',
+              product_type: 'serum',
+              category: 'Serum',
+              ingredients: ['Niacinamide', 'Zinc PCA'],
+              claims: ['oil control', 'pore care'],
+            },
+          });
+
+        assert.equal(resp.status, 200);
+        assert.equal(resp.body?.source_mode, 'hybrid_fallback');
+        assert.equal(resp.body?.failure_class, null);
+        assert.equal(resp.body?.compare_meta?.open_world_status, 'success');
+        assert.equal(resp.body?.llm_trace?.provider_model, 'gemini-3-flash-preview');
+        assert.equal(geminiRequest?.model, 'gemini-3-flash-preview');
+        assert.ok(Number(resp.body?.compare_meta?.open_world_selected_count || 0) >= 2);
+        assert.ok(resp.body.alternatives.every((alt) => String(alt?.candidate_origin || '') === 'open_world'));
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        axios.get = originalGet;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
 test('/v1/reco/alternatives: external llm_seed compare returns deterministic pool results when open-world provider fails', async () => {
   return withEnv(
     {
@@ -6420,6 +6678,126 @@ test('/v1/reco/alternatives: external llm_seed compare returns deterministic poo
         assert.equal(labels.some((name) => /water sleeping mask/i.test(name)), false);
         assert.equal(labels.some((name) => /eyeshadow brush/i.test(name)), false);
         assert.equal(resp.body.alternatives.every((alt) => String(alt?.candidate_origin || '') === 'pool'), true);
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        axios.get = originalGet;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('/v1/reco/alternatives: external_seed product-card rows use mixed compare path without legacy marker', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED: 'false',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      axios.get = async (url) => {
+        if (!isProductsSearchUrl(url)) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: 'ext_anchor_moist',
+                merchant_id: 'external_seed',
+                brand: 'First Aid Beauty',
+                name: 'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+                display_name: 'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+                product_type: 'moisturizer',
+                category: 'Moisturizer',
+              },
+              {
+                product_id: 'ext_oat_water',
+                merchant_id: 'external_seed',
+                brand: 'KraveBeauty',
+                name: 'Oat So Simple Water Cream',
+                display_name: 'Oat So Simple Water Cream',
+                product_type: 'moisturizer',
+                category: 'Moisturizer',
+              },
+              {
+                product_id: 'ext_cloud_cream',
+                merchant_id: 'external_seed',
+                brand: 'Bubble',
+                name: 'Cloud Surf Water Cream Moisturizer',
+                display_name: 'Cloud Surf Water Cream Moisturizer',
+                product_type: 'moisturizer',
+                category: 'Moisturizer',
+              },
+              {
+                product_id: 'bad_tool',
+                merchant_id: 'external_seed',
+                brand: 'Random',
+                name: 'Silicone Face Brush',
+                display_name: 'Silicone Face Brush',
+                product_type: 'tool',
+                category: 'Tool',
+              },
+            ],
+          },
+        };
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { mountAuroraBffRoutes, __internal } = routeModule;
+        __internal.__setCallGeminiJsonObjectForTest(async () => {
+          throw new Error('provider down');
+        });
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/reco/alternatives')
+          .set({
+            'X-Aurora-UID': 'test_uid_alt_external_seed_row',
+            'X-Trace-ID': 'test_trace_alt_external_seed_row',
+            'X-Brief-ID': 'test_brief_alt_external_seed_row',
+            'X-Lang': 'EN',
+          })
+          .send({
+            product_input: 'First Aid Beauty Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+            max_total: 6,
+            recommendation_mode: 'hybrid_fallback',
+            disable_synthetic_local_fallback: true,
+            product: {
+              product_id: 'ext_anchor_moist',
+              merchant_id: 'external_seed',
+              brand: 'First Aid Beauty',
+              name: 'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+              product_type: 'Moisturizer',
+              category: 'Moisturizer',
+              canonical_product_ref: {
+                product_id: 'ext_anchor_moist',
+                merchant_id: 'external_seed',
+              },
+            },
+          });
+
+        assert.equal(resp.status, 200);
+        assert.equal(resp.body?.source_mode, 'pool_open_world_mixed');
+        assert.equal(resp.body?.compare_meta?.open_world_status, 'provider_error');
+        assert.ok(Number(resp.body?.compare_meta?.pool_selected_count || 0) >= 2);
+        const names = resp.body.alternatives.map((alt) => String(alt?.product?.name || alt?.name || ''));
+        assert.equal(names.some((name) => /Hydrating Dewy Gel Cream/i.test(name)), false);
+        assert.equal(names.some((name) => /brush/i.test(name)), false);
+        assert.ok(names.some((name) => /Water Cream|Moisturizer/i.test(name)));
       } finally {
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
         loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
