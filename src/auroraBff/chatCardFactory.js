@@ -30,6 +30,16 @@ function asRecordArray(value, max = 8) {
   return out;
 }
 
+function asNumber(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (isPlainObject(value)) {
+    const amount = Number(value.amount);
+    return Number.isFinite(amount) ? amount : null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function normalizeCardId(value, fallbackPrefix, requestId, idx) {
   const fromRaw = asString(value);
   if (fromRaw) return fromRaw.slice(0, 120);
@@ -55,6 +65,351 @@ function inferRoutineCategory(raw) {
     return 'treatment';
   }
   return 'treatment';
+}
+
+function normalizeRef(value) {
+  const row = isPlainObject(value) ? value : {};
+  const productId = asString(row.product_id || row.productId);
+  const merchantId = asString(row.merchant_id || row.merchantId);
+  if (!productId && !merchantId) return null;
+  return {
+    ...(productId ? { product_id: productId } : {}),
+    ...(merchantId ? { merchant_id: merchantId } : {}),
+  };
+}
+
+function normalizeStringList(value, max = 6) {
+  const out = [];
+  const seen = new Set();
+  const source = Array.isArray(value) ? value : value == null ? [] : [value];
+  for (const item of source) {
+    let text = '';
+    if (typeof item === 'string') {
+      text = asString(item);
+    } else if (isPlainObject(item)) {
+      text =
+        asString(item.label) ||
+        asString(item.name) ||
+        asString(item.title) ||
+        asString(item.value) ||
+        asString(item.tag);
+    }
+    if (!text) continue;
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(text);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+function normalizePrice(value, fallbackCurrency = '') {
+  if (isPlainObject(value)) {
+    const amount = asNumber(value.amount);
+    const currency = asString(value.currency) || fallbackCurrency || 'USD';
+    const unknown = value.unknown === true || amount == null;
+    if (unknown) {
+      return { amount: null, currency, unknown: true };
+    }
+    return {
+      amount,
+      currency,
+      unknown: false,
+    };
+  }
+  const amount = asNumber(value);
+  if (amount == null) return null;
+  return {
+    amount,
+    currency: fallbackCurrency || 'USD',
+    unknown: false,
+  };
+}
+
+function formatPriceLabel(price) {
+  if (!isPlainObject(price)) return '';
+  if (price.unknown === true || price.amount == null) return 'Price unavailable';
+  const amount = Number(price.amount);
+  if (!Number.isFinite(amount)) return 'Price unavailable';
+  const currency = asString(price.currency).toUpperCase();
+  const symbol =
+    currency === 'CNY' || currency === 'RMB'
+      ? '¥'
+      : currency === 'EUR'
+        ? '€'
+        : currency === 'GBP'
+          ? '£'
+          : '$';
+  const rounded = Math.round(amount * 100) / 100;
+  return `${symbol}${rounded}`;
+}
+
+function inferPriceTierFromAmount(amount) {
+  if (!Number.isFinite(amount)) return 'mid';
+  if (amount < 20) return 'budget';
+  if (amount >= 45) return 'premium';
+  return 'mid';
+}
+
+function normalizeSocialProof(raw) {
+  const row = isPlainObject(raw) ? raw : {};
+  const rating = asNumber(row.rating ?? row.rating_value ?? row.ratingValue);
+  const reviewCount = asNumber(row.review_count ?? row.reviewCount ?? row.rating_count ?? row.ratingCount);
+  const summary = asString(row.summary);
+  if (rating == null && reviewCount == null && !summary) return null;
+  return {
+    ...(rating != null ? { rating } : {}),
+    ...(reviewCount != null ? { review_count: reviewCount } : {}),
+    ...(summary ? { summary } : {}),
+  };
+}
+
+function humanizeRoleId(raw) {
+  const token = asString(raw);
+  if (!token) return '';
+  return token
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function buildRecommendationComparisonMode({ row, defaultComparisonMode = '', peerCount = 0 }) {
+  const explicit =
+    asString(row.comparison_mode) ||
+    asString(row.comparisonMode) ||
+    asString((row.metadata || {}).comparison_mode) ||
+    asString((row.metadata || {}).comparisonMode);
+  if (explicit) return explicit;
+  if (row.comparison_fill === true || asString(row.comparison_fill_reason)) return 'same_role_comparison';
+  if (defaultComparisonMode) return defaultComparisonMode;
+  if (peerCount > 1) return 'same_role_comparison';
+  return 'routine_mix';
+}
+
+function flattenRecommendationProductSource(raw) {
+  const row = isPlainObject(raw) ? raw : {};
+  const sku = isPlainObject(row.sku) ? row.sku : {};
+  const product = isPlainObject(row.product) ? row.product : {};
+  const socialProof =
+    normalizeSocialProof(row.social_proof) ||
+    normalizeSocialProof(product.social_proof) ||
+    normalizeSocialProof({
+      rating: row.rating_value || product.rating_value,
+      review_count: row.rating_count || product.rating_count,
+    });
+  const canonicalProductRef =
+    normalizeRef(row.canonical_product_ref) ||
+    normalizeRef(row.canonicalProductRef) ||
+    normalizeRef(product.canonical_product_ref) ||
+    normalizeRef(product.canonicalProductRef);
+  const directProductRef =
+    normalizeRef(row.product_ref) ||
+    normalizeRef(row.productRef) ||
+    normalizeRef(sku.product_ref) ||
+    normalizeRef(sku.productRef);
+  const subject = isPlainObject(row.subject) ? row.subject : {};
+  const pdpOpen = isPlainObject(row.pdp_open)
+    ? row.pdp_open
+    : isPlainObject(row.pdpOpen)
+      ? row.pdpOpen
+      : {};
+  const productGroupId =
+    asString(subject.product_group_id) ||
+    asString(subject.productGroupId) ||
+    asString(row.product_group_id) ||
+    asString(row.productGroupId) ||
+    asString(sku.product_group_id) ||
+    asString(sku.productGroupId) ||
+    '';
+  return {
+    row,
+    sku,
+    product,
+    socialProof,
+    canonicalProductRef,
+    directProductRef,
+    productGroupId,
+    pdpOpen,
+  };
+}
+
+function normalizeRecommendationProductCard(raw, options = {}) {
+  const { defaultComparisonMode = '', peerCountByRoleId = new Map(), roleLabelById = new Map() } = options;
+  const {
+    row,
+    sku,
+    product,
+    socialProof,
+    canonicalProductRef,
+    directProductRef,
+    productGroupId,
+    pdpOpen,
+  } = flattenRecommendationProductSource(raw);
+  const name =
+    asString(row.product_name) ||
+    asString(row.name) ||
+    asString(row.display_name) ||
+    asString(row.displayName) ||
+    asString(product.display_name) ||
+    asString(product.displayName) ||
+    asString(product.name) ||
+    asString(product.title) ||
+    asString(sku.display_name) ||
+    asString(sku.displayName) ||
+    asString(sku.name);
+  const brand =
+    asString(row.brand) ||
+    asString(product.brand) ||
+    asString(product.vendor) ||
+    asString(sku.brand) ||
+    asString(sku.Brand);
+  if (!name && !brand) return null;
+
+  const matchedRoleId =
+    asString(row.matched_role_id) ||
+    asString(row.matchedRoleId) ||
+    asString(row.selected_target_id) ||
+    asString(row.selectedTargetId) ||
+    asString(row.role_scope) ||
+    '';
+  const peerCount = matchedRoleId ? Number(peerCountByRoleId.get(matchedRoleId) || 0) : 0;
+  const price =
+    normalizePrice(row.price, asString(row.currency || product.currency || sku.currency)) ||
+    normalizePrice(product.price, asString(product.currency || row.currency)) ||
+    normalizePrice(sku.price, asString(sku.currency || row.currency));
+  const priceTierRaw = asString(row.price_tier) || asString(row.priceTier) || asString(row.item_type);
+  const priceTier =
+    ['budget', 'mid', 'premium'].includes(priceTierRaw)
+      ? priceTierRaw
+      : price && price.unknown !== true && Number.isFinite(Number(price.amount))
+        ? inferPriceTierFromAmount(Number(price.amount))
+        : 'mid';
+  const bestFor = normalizeStringList(
+    row.best_for || row.bestFor || row.best_for_tags || row.bestForTags || row.use_cases || row.useCases,
+    4,
+  );
+  const keyFeatures = normalizeStringList(
+    row.key_features || row.keyFeatures || row.actives || row.key_ingredients || row.keyIngredients,
+    6,
+  );
+  const whyThisOne =
+    asString(row.why_this_one) ||
+    asString(row.reason) ||
+    asString(row.short_description) ||
+    asString(row.shortDescription);
+  const comparisonMode = buildRecommendationComparisonMode({
+    row,
+    defaultComparisonMode,
+    peerCount,
+  });
+  const matchedRoleLabel =
+    asString(row.matched_role_label) ||
+    asString(row.matchedRoleLabel) ||
+    asString(roleLabelById.get(matchedRoleId)) ||
+    humanizeRoleId(matchedRoleId);
+  const normalized = {
+    ...row,
+    category:
+      asString(row.category) ||
+      asString(row.routine_slot) ||
+      asString(row.step) ||
+      inferRoutineCategory(name),
+    step:
+      asString(row.step) ||
+      asString(row.category) ||
+      asString(row.routine_slot) ||
+      inferRoutineCategory(name),
+    routine_slot:
+      asString(row.routine_slot) ||
+      asString(row.step) ||
+      inferRoutineCategory(name),
+    name,
+    display_name: asString(row.display_name) || asString(row.displayName) || name,
+    brand,
+    best_for: bestFor,
+    key_features: keyFeatures,
+    price_tier: priceTier,
+    why_this_one: whyThisOne,
+    short_description: asString(row.short_description) || asString(row.shortDescription) || whyThisOne,
+    see_more: row.see_more !== false,
+    ...(asString(row.image_url) || asString(product.image_url) || asString(sku.image_url)
+      ? { image_url: asString(row.image_url) || asString(product.image_url) || asString(sku.image_url) }
+      : {}),
+    ...(price ? { price } : {}),
+    ...(asString(row.price_label) ? { price_label: asString(row.price_label) } : {}),
+    ...(!asString(row.price_label) && price ? { price_label: formatPriceLabel(price) } : {}),
+    ...(asString(row.price_position) ? { price_position: asString(row.price_position) } : {}),
+    ...(socialProof ? { social_proof: socialProof } : {}),
+    ...(matchedRoleId ? { matched_role_id: matchedRoleId } : {}),
+    ...(matchedRoleLabel ? { matched_role_label: matchedRoleLabel } : {}),
+    ...(matchedRoleId ? { role_scope: matchedRoleId } : {}),
+    ...(matchedRoleId ? { selected_target_id: matchedRoleId } : {}),
+    ...(comparisonMode ? { comparison_mode: comparisonMode } : {}),
+    ...(peerCount > 0 ? { same_role_peer_count: peerCount } : {}),
+    ...(directProductRef ? { product_ref: directProductRef } : {}),
+    ...(canonicalProductRef ? { canonical_product_ref: canonicalProductRef } : {}),
+    ...(productGroupId ? { product_group_id: productGroupId } : {}),
+    ...(Object.keys(pdpOpen).length > 0 ? { pdp_open: pdpOpen } : {}),
+    ...(Array.isArray(row.alternatives) ? { alternatives: asRecordArray(row.alternatives, 9) } : {}),
+    alternatives_count: Array.isArray(row.alternatives) ? row.alternatives.length : Number(row.alternatives_count || row.alternativesCount || 0),
+  };
+  return normalized;
+}
+
+function buildRecommendationCardContext(payload, recommendations) {
+  const roleLabelById = new Map();
+  const recommendationMeta = isPlainObject(payload.recommendation_meta) ? payload.recommendation_meta : {};
+  const roles = Array.isArray(payload.roles)
+    ? payload.roles
+    : Array.isArray(payload.framework_summary && payload.framework_summary.prioritized_roles)
+      ? payload.framework_summary.prioritized_roles
+      : Array.isArray(recommendationMeta.ranked_targets)
+        ? recommendationMeta.ranked_targets
+        : [];
+  for (const rawRole of roles) {
+    if (!isPlainObject(rawRole)) continue;
+    const roleId = asString(rawRole.role_id || rawRole.target_id);
+    const label = asString(rawRole.label || rawRole.target_label || rawRole.targetLabel);
+    if (!roleId || !label) continue;
+    roleLabelById.set(roleId, label);
+  }
+
+  const selectedTargetIds = Array.isArray(recommendationMeta.selected_target_ids)
+    ? recommendationMeta.selected_target_ids.map((item) => asString(item)).filter(Boolean)
+    : [];
+  const uniqueSelectedTargetIds = Array.from(new Set(selectedTargetIds));
+  const defaultComparisonMode =
+    uniqueSelectedTargetIds.length > 1
+      ? 'routine_mix'
+      : recommendations.some((row) => row && (row.comparison_fill === true || asString(row.comparison_fill_reason)))
+        ? 'same_role_comparison'
+        : '';
+  const peerCountByRoleId = new Map();
+  for (const raw of recommendations) {
+    if (!isPlainObject(raw)) continue;
+    const matchedRoleId =
+      asString(raw.matched_role_id) ||
+      asString(raw.matchedRoleId) ||
+      asString(raw.selected_target_id) ||
+      asString(raw.selectedTargetId) ||
+      asString(raw.role_scope);
+    if (!matchedRoleId) continue;
+    peerCountByRoleId.set(matchedRoleId, Number(peerCountByRoleId.get(matchedRoleId) || 0) + 1);
+  }
+  return {
+    defaultComparisonMode,
+    peerCountByRoleId,
+    roleLabelById,
+  };
+}
+
+function buildProductCardSections(products) {
+  return [
+    {
+      kind: 'product_cards',
+      products: products.slice(0, 8),
+    },
+  ];
 }
 
 function buildStructuredRoutineSteps(steps) {
@@ -521,44 +876,20 @@ function buildPassthroughCard({ card, requestId, index, language = 'EN', fallbac
   };
 }
 
-function normalizeProductCard(raw, language) {
-  const p = isPlainObject(raw) ? raw : {};
-  const category = asString(p.category) || asString(p.routine_slot) || inferRoutineCategory(p.product_name || p.name || '');
-  const name = asString(p.product_name) || asString(p.name);
-  const brand = asString(p.brand) || asString(p.product_brand);
-  const bestFor = asString(p.best_for) || asString(p.why_this_one) || '';
-  const keyFeatures = asStringArray(p.key_features || p.actives || p.key_ingredients, 6);
-  const priceTier = asString(p.price_tier) || asString(p.item_type) || 'mid';
-  const whyThisOne = asString(p.why_this_one) || asString(p.reason) || '';
-  const seeMore = p.see_more !== false;
-  return {
-    category,
-    name,
-    brand,
-    best_for: bestFor,
-    key_features: keyFeatures,
-    price_tier: ['budget', 'mid', 'premium'].includes(priceTier) ? priceTier : 'mid',
-    why_this_one: whyThisOne,
-    see_more: seeMore,
-    ...(p.alternatives ? { alternatives: asRecordArray(p.alternatives, 9).map((alt) => ({
-      name: asString(alt.name) || asString(alt.product_name),
-      brand: asString(alt.brand),
-      differentiator: asString(alt.differentiator) || asString(alt.reason),
-      price_tier: asString(alt.price_tier) || 'mid',
-      suitability_flags: asStringArray(alt.suitability_flags || alt.flags, 4),
-    })) } : {}),
-    ...(p.user_product_action ? {
-      user_product_action: asString(p.user_product_action),
-    } : {}),
-  };
-}
-
 function buildRecommendationsCard({ card, requestId, index, language = 'EN' }) {
   const payload = isPlainObject(card && card.payload) ? card.payload : {};
   const recommendations = Array.isArray(payload.recommendations) ? payload.recommendations : [];
-  const products = recommendations.map((r) => normalizeProductCard(r, language)).filter((p) => p.name);
-  const amProducts = products.filter((p) => p.category === 'cleanser' || p.category === 'sunscreen' || p.category === 'moisturizer');
-  const pmProducts = products.filter((p) => p.category === 'treatment' || (p.category === 'moisturizer' && !amProducts.includes(p)));
+  const cardContext = buildRecommendationCardContext(payload, recommendations);
+  const products = recommendations
+    .map((row) => normalizeRecommendationProductCard(row, cardContext))
+    .filter((product) => product && product.name);
+  const sections = buildProductCardSections(products);
+  const nextPayload = {
+    ...payload,
+    source_card_type: 'recommendations',
+    products,
+    sections,
+  };
 
   return {
     id: normalizeCardId(card && card.card_id, 'recommendations', requestId, index),
@@ -566,17 +897,12 @@ function buildRecommendationsCard({ card, requestId, index, language = 'EN' }) {
     priority: 1,
     title: language === 'CN' ? '产品推荐' : 'Product Recommendations',
     tags: [],
-    sections: [
-      {
-        kind: 'product_cards',
-        products: products.slice(0, 8),
-      },
-    ],
+    sections,
     actions: [
       { type: 'see_more_alternatives', label: language === 'CN' ? '查看更多替代品' : 'See more alternatives' },
       { type: 'optimize_existing_products', label: language === 'CN' ? '优化现有产品' : 'Optimize my current products' },
     ],
-    payload,
+    payload: nextPayload,
   };
 }
 
@@ -584,39 +910,33 @@ function normalizeOffersResolvedProduct(raw) {
   const item = isPlainObject(raw) ? raw : {};
   const product = isPlainObject(item.product) ? item.product : {};
   const metadata = isPlainObject(item.metadata) ? item.metadata : {};
-  const pdpOpen = isPlainObject(item.pdp_open) ? item.pdp_open : {};
-  const canonicalProductRef = isPlainObject(product.canonical_product_ref) ? product.canonical_product_ref : {};
-  const directProductRef = isPlainObject(pdpOpen.product_ref) ? pdpOpen.product_ref : {};
-  const productRef =
-    Object.keys(directProductRef).length > 0
-      ? directProductRef
-      : Object.keys(canonicalProductRef).length > 0
-        ? canonicalProductRef
-        : undefined;
-  const displayName =
-    asString(product.display_name) ||
-    asString(product.name) ||
-    asString(product.title);
-  if (!displayName) return null;
-
-  return {
-    category: inferRoutineCategory(displayName),
-    name: displayName,
+  const mapped = normalizeRecommendationProductCard({
+    ...item,
+    product_id: asString(product.product_id) || asString(item.product_id),
+    merchant_id: asString(product.merchant_id) || asString(item.merchant_id),
     brand: asString(product.brand) || asString(product.vendor),
-    best_for: asString(product.product_type) || asString(product.category),
-    key_features: asStringArray(product.tags, 4),
-    price_tier: 'mid',
+    name: asString(product.display_name) || asString(product.name) || asString(product.title),
+    display_name: asString(product.display_name) || asString(product.name) || asString(product.title),
+    category: asString(product.product_type) || asString(product.category),
+    step: inferRoutineCategory(asString(product.product_type) || asString(product.category) || asString(product.display_name) || asString(product.name)),
+    image_url: asString(product.image_url),
+    product_ref: normalizeRef(item.product_ref),
+    canonical_product_ref: normalizeRef(product.canonical_product_ref),
+    pdp_open: isPlainObject(item.pdp_open) ? item.pdp_open : {},
     why_this_one:
       asString(metadata.pdp_open_path) === 'internal'
         ? 'Open product details'
         : 'Open merchant page',
-    see_more: true,
-    ...(asString(product.image_url) ? { image_url: asString(product.image_url) } : {}),
-    ...(productRef ? { product_ref: productRef } : {}),
-    ...(Object.keys(pdpOpen).length > 0 ? { pdp_open: pdpOpen } : {}),
-    ...(asString(product.product_id) ? { product_id: asString(product.product_id) } : {}),
-    ...(asString(product.merchant_id) ? { merchant_id: asString(product.merchant_id) } : {}),
-  };
+    key_features: asStringArray(product.tags, 4),
+    best_for: normalizeStringList([product.product_type, product.category], 2),
+    price: normalizePrice(product.price, asString(product.currency)),
+    social_proof: normalizeSocialProof(product.social_proof),
+    role_scope: 'resolved_offer',
+    selected_target_id: 'resolved_offer',
+    comparison_mode: 'direct_offer_lookup',
+  });
+  if (!mapped) return null;
+  return mapped;
 }
 
 function buildOffersResolvedCard({ card, requestId, index, language = 'EN' }) {
@@ -624,6 +944,7 @@ function buildOffersResolvedCard({ card, requestId, index, language = 'EN' }) {
   const items = asRecordArray(payload.items, 8);
   const products = items.map((item) => normalizeOffersResolvedProduct(item)).filter((item) => item && item.name);
   if (products.length === 0) return null;
+  const sections = buildProductCardSections(products);
 
   return {
     id: normalizeCardId(card && card.card_id, 'offers_resolved', requestId, index),
@@ -631,17 +952,13 @@ function buildOffersResolvedCard({ card, requestId, index, language = 'EN' }) {
     priority: 1,
     title: language === 'CN' ? '找到的商品' : 'Items Found',
     tags: [],
-    sections: [
-      {
-        kind: 'product_cards',
-        products,
-      },
-    ],
+    sections,
     actions: [],
     payload: {
       source_card_type: 'offers_resolved',
       items,
       products,
+      sections,
       ...(asString(payload.market) ? { market: asString(payload.market) } : {}),
       ...(isPlainObject(payload.metadata) ? { metadata: payload.metadata } : {}),
     },

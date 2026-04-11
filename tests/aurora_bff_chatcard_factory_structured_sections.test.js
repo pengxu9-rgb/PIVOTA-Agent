@@ -279,6 +279,154 @@ describe('aurora chatCardFactory structured sections for adapter inputs', () => 
     expect(() => ChatCardSchema.parse(cards[0])).not.toThrow();
   });
 
+  test('recommendations cards expose rich product rows under payload.sections and preserve PDP contract fields', () => {
+    const cards = mapLegacyCardToSpecCards(
+      {
+        type: 'recommendations',
+        card_id: 'legacy_recommendations_rich',
+        payload: {
+          recommendation_meta: {
+            selected_target_ids: ['oil_control_treatment', 'daily_sunscreen'],
+          },
+          recommendations: [
+            {
+              product_id: 'prod_oil_balance',
+              merchant_id: 'merchant_oil_balance',
+              brand: 'Clear Lab',
+              name: 'Oil Balance Serum',
+              image_url: 'https://example.com/oil-balance.jpg',
+              matched_role_id: 'oil_control_treatment',
+              why_this_one: 'Directly targets excess shine without feeling heavy.',
+              best_for: ['Excess oil', 'Mid-day shine'],
+              key_features: ['Niacinamide 10%', 'Zinc 1%'],
+              price: { amount: 12, currency: 'USD', unknown: false },
+              canonical_product_ref: {
+                product_id: 'prod_oil_balance',
+                merchant_id: 'merchant_oil_balance',
+              },
+              pdp_open: {
+                path: 'ref',
+                product_ref: {
+                  product_id: 'prod_oil_balance',
+                  merchant_id: 'merchant_oil_balance',
+                },
+              },
+              alternatives: [
+                {
+                  kind: 'dupe',
+                  name: 'Budget Balance Serum',
+                  brand: 'Budget Lab',
+                },
+              ],
+              social_proof: {
+                rating: 4.7,
+                review_count: 128,
+              },
+            },
+          ],
+        },
+      },
+      { requestId: 'req_card_factory', language: 'EN', index: 0 },
+    );
+
+    expect(cards).toHaveLength(1);
+    expect(cards[0].type).toBe('recommendations');
+    const section = cards[0].sections.find((entry) => entry && entry.kind === 'product_cards');
+    expect(section).toBeTruthy();
+    expect(section.products[0]).toMatchObject({
+      product_id: 'prod_oil_balance',
+      merchant_id: 'merchant_oil_balance',
+      name: 'Oil Balance Serum',
+      brand: 'Clear Lab',
+      matched_role_id: 'oil_control_treatment',
+      role_scope: 'oil_control_treatment',
+      selected_target_id: 'oil_control_treatment',
+      comparison_mode: 'routine_mix',
+      price_label: '$12',
+      alternatives_count: 1,
+      canonical_product_ref: {
+        product_id: 'prod_oil_balance',
+        merchant_id: 'merchant_oil_balance',
+      },
+      pdp_open: {
+        path: 'ref',
+      },
+      social_proof: {
+        rating: 4.7,
+        review_count: 128,
+      },
+    });
+    expect(cards[0].payload.sections[0].products[0]).toMatchObject({
+      product_id: 'prod_oil_balance',
+      image_url: 'https://example.com/oil-balance.jpg',
+      why_this_one: 'Directly targets excess shine without feeling heavy.',
+    });
+    expect(() => ChatCardSchema.parse(cards[0])).not.toThrow();
+  });
+
+  test('offers_resolved shares the rich product row contract and mirrors it into payload.sections', () => {
+    const cards = mapLegacyCardToSpecCards(
+      {
+        type: 'offers_resolved',
+        card_id: 'legacy_offers_resolved_rich',
+        payload: {
+          items: [
+            {
+              product: {
+                product_id: 'prod_solar_fluid',
+                merchant_id: 'merchant_solar',
+                brand: 'Solaris',
+                display_name: 'Daily UV Fluid SPF 50',
+                image_url: 'https://example.com/uv-fluid.jpg',
+                price: {
+                  amount: 19,
+                  currency: 'USD',
+                  unknown: false,
+                },
+                social_proof: {
+                  rating: 4.8,
+                  review_count: 240,
+                },
+              },
+              metadata: {
+                pdp_open_path: 'internal',
+              },
+              pdp_open: {
+                path: 'ref',
+                product_ref: {
+                  product_id: 'prod_solar_fluid',
+                  merchant_id: 'merchant_solar',
+                },
+              },
+            },
+          ],
+        },
+      },
+      { requestId: 'req_card_factory', language: 'EN', index: 0 },
+    );
+
+    const section = cards[0].sections.find((entry) => entry && entry.kind === 'product_cards');
+    expect(section.products[0]).toMatchObject({
+      product_id: 'prod_solar_fluid',
+      merchant_id: 'merchant_solar',
+      name: 'Daily UV Fluid SPF 50',
+      price_label: '$19',
+      role_scope: 'resolved_offer',
+      selected_target_id: 'resolved_offer',
+      comparison_mode: 'direct_offer_lookup',
+      social_proof: {
+        rating: 4.8,
+        review_count: 240,
+      },
+    });
+    expect(cards[0].payload.sections[0].products[0]).toMatchObject({
+      product_id: 'prod_solar_fluid',
+      pdp_open: {
+        path: 'ref',
+      },
+    });
+  });
+
   test('product_parse does not degrade into a fallback nudge card', () => {
     const cards = mapLegacyCardToSpecCards(
       {
