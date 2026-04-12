@@ -1785,6 +1785,86 @@ describe('discovery feed service', () => {
     expect(response.products[0].shopping_card.highlight).toBeUndefined();
   });
 
+  test('browse_products falls back to approved external highlight when explicit card highlight duplicates subtitle', async () => {
+    const kbStore = require('../src/auroraBff/productIntelKbStore');
+    jest.spyOn(kbStore, 'getProductIntelKbEntry').mockResolvedValue({
+      kb_key: 'product:ext_duplicate_highlight_1',
+      analysis: {
+        product_intel_v1: {
+          evidence_profile: 'mixed',
+          provenance: {
+            external_highlight_review_status: 'rewrite',
+            external_evidence_generated_at: '2026-04-11T00:00:00.000Z',
+          },
+          external_highlight_signals: [
+            {
+              signal_id: 'sig_verified_1',
+              source_type: 'verified_reviews',
+              claim_type: 'card_hook',
+              claim_text: 'Reviewers often call out the quick-absorbing, makeup-friendly finish.',
+              surface_text: 'Quick-absorbing under makeup',
+              rating_summary: {
+                rating: 4.7,
+                review_count: 318,
+              },
+              evidence_strength: 'strong',
+              independence_count: 318,
+              surface_targets: ['shopping_card_highlight'],
+            },
+          ],
+          shopping_card: {
+            contract_version: 'pivota.shopping_card.v1',
+            title: 'Demo Barrier Cream',
+            subtitle: 'Barrier-support cream',
+            highlight: 'Barrier-support cream',
+          },
+          search_card: {
+            title_candidate: 'Demo Barrier Cream',
+            compact_candidate: 'Barrier-support cream',
+            highlight_candidate: 'Barrier-support cream',
+          },
+        },
+      },
+    });
+
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        response_detail: 'card',
+        context: {
+          locale: 'en-US',
+        },
+      },
+      {
+        candidateProducts: [
+          {
+            ...makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'ext_duplicate_highlight_1',
+              title: 'Demo Barrier Cream',
+              brand: 'Demo',
+              category: 'Moisturizer',
+              product_type: 'Moisturizer',
+              price: 32,
+            }),
+          },
+        ],
+      },
+    );
+
+    expect(response.products).toHaveLength(1);
+    expect(response.products[0].card_subtitle).toBe('Barrier-support cream');
+    expect(response.products[0].card_highlight).toBe('Quick-absorbing under makeup');
+    expect(response.products[0].search_card.highlight_candidate).toBe(
+      'Quick-absorbing under makeup',
+    );
+    expect(response.products[0].shopping_card.highlight).toBe(
+      'Quick-absorbing under makeup',
+    );
+  });
+
   test('card response detail suppresses weak card fallbacks and overlong highlight text', async () => {
     const response = await getDiscoveryFeed(
       {

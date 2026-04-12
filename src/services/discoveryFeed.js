@@ -37,6 +37,7 @@ const {
   filterDisplayableMarketSignalBadges,
   normalizeMarketSignalBadges,
   normalizeReviewSummary: normalizeEvidenceReviewSummary,
+  pickSurfaceableExternalHighlightSignal,
   normalizeSurfaceText,
 } = require('./pivotaEvidenceSignals');
 const {
@@ -5742,6 +5743,23 @@ function buildDiscoveryCardSubtitle(raw, candidate) {
 }
 
 function buildDiscoveryCardHighlight(raw) {
+  const bundle = raw?.product_intel || raw?.productIntel || null;
+  const title = firstDiscoveryCardString(
+    raw?.card_title,
+    raw?.search_card?.title_candidate,
+    raw?.searchCard?.title_candidate,
+    raw?.shopping_card?.title,
+    raw?.shoppingCard?.title,
+    raw?.title,
+    raw?.name,
+  );
+  const subtitle = firstDiscoveryCardString(
+    raw?.card_subtitle,
+    raw?.search_card?.compact_candidate,
+    raw?.searchCard?.compact_candidate,
+    raw?.shopping_card?.subtitle,
+    raw?.shoppingCard?.subtitle,
+  );
   const explicit = normalizeSurfaceText(
     firstDiscoveryCardString(
       raw?.card_highlight,
@@ -5752,25 +5770,30 @@ function buildDiscoveryCardHighlight(raw) {
       raw?.shoppingCard?.highlight,
     ),
   );
-  return resolveDisplayableCompactHighlight(explicit, {
-    bundle: raw?.product_intel || raw?.productIntel || null,
-    title: firstDiscoveryCardString(
-      raw?.card_title,
-      raw?.search_card?.title_candidate,
-      raw?.searchCard?.title_candidate,
-      raw?.shopping_card?.title,
-      raw?.shoppingCard?.title,
-      raw?.title,
-      raw?.name,
-    ),
-    subtitle: firstDiscoveryCardString(
-      raw?.card_subtitle,
-      raw?.search_card?.compact_candidate,
-      raw?.searchCard?.compact_candidate,
-      raw?.shopping_card?.subtitle,
-      raw?.shoppingCard?.subtitle,
-    ),
+  const resolvedExplicit = resolveDisplayableCompactHighlight(explicit, {
+    bundle,
+    title,
+    subtitle,
   });
+  if (resolvedExplicit) return resolvedExplicit;
+
+  const signal = pickSurfaceableExternalHighlightSignal(
+    bundle?.external_highlight_signals ||
+      raw?.shopping_card?.external_highlight_signals ||
+      raw?.shoppingCard?.external_highlight_signals,
+    {
+      surfaceTarget: 'shopping_card_highlight',
+    },
+  );
+
+  return resolveDisplayableCompactHighlight(
+    normalizeSurfaceText(signal?.surface_text) || normalizeSurfaceText(signal?.claim_text),
+    {
+      bundle,
+      title,
+      subtitle,
+    },
+  );
 }
 
 function buildDiscoveryCardPayload(raw, candidate) {
