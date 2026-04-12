@@ -55,6 +55,7 @@ const MAX_RECENT_VIEWS = 50;
 const MAX_RECENT_QUERIES = 8;
 const MAX_ANCHORS = 5;
 const MAX_CANDIDATE_FETCH = 120;
+const DEFAULT_MAX_BROWSE_CANDIDATE_FETCH = 720;
 const DEFAULT_DEBUG_TOP_CANDIDATES = 10;
 const PRODUCTS_SEARCH_PAGE_SIZE = 60;
 const MAX_PRODUCTS_SEARCH_CALLS = 2;
@@ -310,6 +311,16 @@ function clampInt(value, fallback, min, max) {
   const num = Number(value);
   if (!Number.isFinite(num)) return fallback;
   return Math.max(min, Math.min(max, Math.floor(num)));
+}
+
+function getDiscoveryCandidateFetchCap(request) {
+  if (request?.surface !== 'browse_products') return MAX_CANDIDATE_FETCH;
+  return clampInt(
+    process.env.DISCOVERY_BROWSE_MAX_CANDIDATE_FETCH,
+    DEFAULT_MAX_BROWSE_CANDIDATE_FETCH,
+    MAX_CANDIDATE_FETCH,
+    2400,
+  );
 }
 
 function uniqStrings(values, limit) {
@@ -1227,7 +1238,12 @@ async function countStableBrowseCatalogTotal(request, { queryFn = query, useCach
 }
 
 function resolveBrandDirectCandidateLimit(request, limit) {
-  const safeLimit = clampInt(limit, resolveDiscoveryCandidateLimit(request), 24, MAX_CANDIDATE_FETCH);
+  const safeLimit = clampInt(
+    limit,
+    resolveDiscoveryCandidateLimit(request),
+    24,
+    getDiscoveryCandidateFetchCap(request),
+  );
   const pageNeed = Math.max(
     request?.page * request?.limit + request?.limit * 3,
     safeLimit * 3,
@@ -2157,15 +2173,16 @@ function prioritizeDiscoveryRecallQueries(queries = []) {
 }
 
 function resolveDiscoveryCandidateLimit(request) {
+  const fetchCap = getDiscoveryCandidateFetchCap(request);
   if (request?.surface === 'browse_products') {
     const pageNeed = request.page * request.limit + Math.max(request.limit, 24);
     if (hasBrandScope(request)) {
-      return clampInt(Math.max(pageNeed, 48), 72, 48, MAX_CANDIDATE_FETCH);
+      return clampInt(Math.max(pageNeed, 48), 72, 48, fetchCap);
     }
-    return clampInt(pageNeed, 72, 24, MAX_CANDIDATE_FETCH);
+    return clampInt(pageNeed, 72, 24, fetchCap);
   }
   const homeNeed = Math.max(request?.limit * 4, 48);
-  return clampInt(homeNeed, 48, 24, MAX_CANDIDATE_FETCH);
+  return clampInt(homeNeed, 48, 24, fetchCap);
 }
 
 function buildDiscoveryContextCacheKey(request) {
@@ -2227,7 +2244,12 @@ function setBrowsePoolCache(request, products, recallSummary) {
 }
 
 function buildDiscoveryRecallPlan(request, profile, limit) {
-  const safeLimit = clampInt(limit, resolveDiscoveryCandidateLimit(request), 24, MAX_CANDIDATE_FETCH);
+  const safeLimit = clampInt(
+    limit,
+    resolveDiscoveryCandidateLimit(request),
+    24,
+    getDiscoveryCandidateFetchCap(request),
+  );
   const hasBrandScope = Array.isArray(request?.scope?.brand_names) && request.scope.brand_names.length > 0;
   if (hasBrandScope) {
     const brandQuery = buildDiscoveryBrandScopedQuery(request);
@@ -2403,7 +2425,12 @@ function shouldUseBrandDirectPoolAsPrimary(request) {
 
 function shouldSkipBrandDirectPool(scopedCandidates = [], { request, limit } = {}) {
   if (request?.surface !== 'browse_products' || !hasBrandScope(request)) return false;
-  const safeLimit = clampInt(limit, resolveDiscoveryCandidateLimit(request), 24, MAX_CANDIDATE_FETCH);
+  const safeLimit = clampInt(
+    limit,
+    resolveDiscoveryCandidateLimit(request),
+    24,
+    getDiscoveryCandidateFetchCap(request),
+  );
   const enoughThreshold = getRecallEnoughThreshold(request, safeLimit);
   return Array.isArray(scopedCandidates) && scopedCandidates.length >= enoughThreshold;
 }
@@ -2590,7 +2617,12 @@ async function fetchDiscoveryRecallStep({
 }
 
 async function loadProductsSearchCandidates({ request, profile, limit = MAX_CANDIDATE_FETCH } = {}) {
-  const safeLimit = clampInt(limit, resolveDiscoveryCandidateLimit(request), 24, MAX_CANDIDATE_FETCH);
+  const safeLimit = clampInt(
+    limit,
+    resolveDiscoveryCandidateLimit(request),
+    24,
+    getDiscoveryCandidateFetchCap(request),
+  );
   const provider = 'products_search';
   if (request?.surface === 'browse_products') {
     const cacheEntry = getBrowsePoolCache(request, safeLimit);
@@ -3573,7 +3605,7 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
 } = {}) {
   const provider = String(providerName || 'external_seeds').trim() || 'external_seeds';
   const stepStartedAt = Date.now();
-  const safeLimit = clampInt(limit, Math.max(limit, 24), 12, MAX_CANDIDATE_FETCH);
+  const safeLimit = clampInt(limit, Math.max(limit, 24), 12, getDiscoveryCandidateFetchCap(request));
   const recallTerms = buildBeautyInterestRecallTerms(request, profile, queries);
   const marketConfig = resolveDiscoveryExternalSeedMarketConfig();
   const market = marketConfig.market;
@@ -4035,7 +4067,8 @@ function hasSufficientProviderCandidates(products = [], { request, profile, enou
 }
 
 function resolveExternalSeedProviderLimit(request, safeLimit) {
-  const cappedSafeLimit = clampInt(safeLimit, MAX_CANDIDATE_FETCH, 12, MAX_CANDIDATE_FETCH);
+  const fetchCap = getDiscoveryCandidateFetchCap(request);
+  const cappedSafeLimit = clampInt(safeLimit, fetchCap, 12, fetchCap);
   if (request?.surface === 'browse_products') {
     const browseNeed = Math.max((request?.page || 1) * (request?.limit || 0) + (request?.limit || 0), 18);
     return clampInt(browseNeed, Math.min(cappedSafeLimit, 48), 12, cappedSafeLimit);
@@ -4067,7 +4100,12 @@ async function loadCatalogCandidates({
   limit = MAX_CANDIDATE_FETCH,
   providerOverrides = null,
 } = {}) {
-  const safeLimit = clampInt(limit, resolveDiscoveryCandidateLimit(request), 24, MAX_CANDIDATE_FETCH);
+  const safeLimit = clampInt(
+    limit,
+    resolveDiscoveryCandidateLimit(request),
+    24,
+    getDiscoveryCandidateFetchCap(request),
+  );
   const providerQueries = buildDiscoveryProviderQueries(request, profile);
   const enoughThreshold = getRecallEnoughThreshold(request, safeLimit);
   const qualityThreshold = getProviderQualityThreshold(request);
@@ -4499,7 +4537,12 @@ function buildBrandDirectPrimaryCandidateResult({
   limit = MAX_CANDIDATE_FETCH,
   directLoadResult = null,
 } = {}) {
-  const safeLimit = clampInt(limit, resolveDiscoveryCandidateLimit(request), 24, MAX_CANDIDATE_FETCH);
+  const safeLimit = clampInt(
+    limit,
+    resolveDiscoveryCandidateLimit(request),
+    24,
+    getDiscoveryCandidateFetchCap(request),
+  );
   const providerQueries = buildDiscoveryProviderQueries(request, profile);
   const externalProviderQueries = buildExternalSeedProviderQueries(request, profile, providerQueries);
   const internalProviderLimit = Math.min(safeLimit, 72);
