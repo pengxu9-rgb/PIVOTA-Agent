@@ -1,0 +1,5667 @@
+{
+  "meta": {
+    "generated_at": "2026-04-12T23:44:15.191Z",
+    "contract_version": "pivota.product_intel.v1",
+    "gemini_model": "gemini-3-flash-preview",
+    "gemini_completed": 0,
+    "gemini_skipped": 12,
+    "hybrid_selected": 0,
+    "baseline_only": 12
+  },
+  "rows": [
+    {
+      "case_id": "live_ext_cd9e4645dd98f9b8693406ab",
+      "notes": "Live pilot case sampled from public /products listing (Murad).",
+      "manual_override_applied": true,
+      "baseline": {
+        "contract_version": "pivota.product_intel.v1",
+        "display_name": "Pivota Insights",
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_cd9e4645dd98f9b8693406ab"
+        },
+        "product_group_id": null,
+        "product_intel_core": {
+          "display_name": "Pivota Insights",
+          "what_it_is": {
+            "headline": "Product",
+            "body": "Product presented through merchant product data."
+          },
+          "best_for": [
+            {
+              "tag": "external",
+              "label": "external shoppers",
+              "confidence": "low"
+            }
+          ],
+          "why_it_stands_out": [],
+          "routine_fit": {
+            "step": "product",
+            "am_pm": [],
+            "pairing_notes": []
+          },
+          "watchouts": [],
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-12T23:44:15.177Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          }
+        },
+        "texture_finish": null,
+        "community_signals": {
+          "status": "unavailable",
+          "unavailable_reason": "insufficient_feedback",
+          "confidence": "low",
+          "evidence_profile": "seller_only"
+        },
+        "recommendation_intents": {
+          "similar": [],
+          "complementary": [],
+          "routine_pairing": [],
+          "underfill_reason": null,
+          "confidence": "low"
+        },
+        "market_signal_badges": [],
+        "external_highlight_signals": [],
+        "quality_state": "limited",
+        "evidence_profile": "seller_only",
+        "source_coverage": {
+          "seller": {
+            "available": true
+          },
+          "formula": {
+            "available": false
+          },
+          "reviews": {
+            "available": false,
+            "count": 0
+          },
+          "creator": {
+            "available": false,
+            "count": 0
+          },
+          "editorial": {
+            "available": false,
+            "count": 0
+          }
+        },
+        "confidence": {
+          "overall": "moderate",
+          "fields": {
+            "what_it_is": "high",
+            "best_for": "moderate",
+            "why_it_stands_out": "moderate",
+            "routine_fit": "moderate",
+            "watchouts": "moderate"
+          }
+        },
+        "freshness": {
+          "generated_at": "2026-04-12T23:44:15.177Z",
+          "source_version": "pivota.product_intel.v1"
+        },
+        "offer_pointers": {
+          "offers_count": 0,
+          "default_offer_id": null,
+          "best_price_offer_id": null,
+          "commerce_modes": []
+        },
+        "provenance": null,
+        "shopping_card": {
+          "contract_version": "pivota.shopping_card.v1",
+          "title": "Murad Retexturizing Body Pads",
+          "subtitle": "Product",
+          "intro": "Product presented through merchant product data.",
+          "evidence_profile": "seller_only"
+        },
+        "search_card": {
+          "title_candidate": "Murad Retexturizing Body Pads",
+          "compact_candidate": "Product",
+          "intro_candidate": "Product presented through merchant product data."
+        }
+      },
+      "gemini": {
+        "skipped": true,
+        "reason": "skip_gemini_flag"
+      },
+      "manual_override": {
+        "notes": "Strict human QA override: reviewed after strict batch audit because Murad Retexturizing Body Pads still carried a generic Product card despite usable body-exfoliation signal.",
+        "product_intel_core": {
+          "what_it_is": {
+            "headline": "Body exfoliation pads",
+            "body": "Pre-soaked body pads made to exfoliate and smooth rough, uneven skin texture."
+          },
+          "best_for": [
+            {
+              "tag": "texture_tone",
+              "label": "Rough or uneven body texture",
+              "confidence": "moderate"
+            },
+            {
+              "tag": "body_care",
+              "label": "Body exfoliation routines",
+              "confidence": "moderate"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Pre-soaked pad format",
+              "body": "Puts body exfoliation into an easy wipe-on pad instead of a scrub or body wash step.",
+              "evidence_strength": "seller_grounded"
+            },
+            {
+              "headline": "Texture-smoothing body care",
+              "body": "Keeps retexturizing and smoothing body skin at the center of the product role.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "body_treatment",
+            "am_pm": [
+              "pm"
+            ],
+            "pairing_notes": [
+              "Swipe over rough body areas, then follow with body moisturizer."
+            ]
+          },
+          "watchouts": [
+            {
+              "type": "sun",
+              "label": "Use sunscreen on treated areas because exfoliating products can increase sun sensitivity.",
+              "severity": "medium"
+            }
+          ]
+        },
+        "texture_finish": {
+          "texture": "pre-soaked pads",
+          "finish": "",
+          "sensory_notes": [],
+          "layering_notes": [
+            "Swipe over rough body areas, then follow with body moisturizer."
+          ],
+          "confidence": "moderate",
+          "evidence_profile": "seller_only"
+        },
+        "shopping_card": {
+          "subtitle": "Body exfoliation pads",
+          "highlight": "Body exfoliation in pad form",
+          "intro": "Pre-soaked body pads for rough, uneven texture."
+        },
+        "search_card": {
+          "compact_candidate": "Body exfoliation pads",
+          "highlight_candidate": "Body exfoliation in pad form",
+          "intro_candidate": "Pre-soaked body pads for rough, uneven texture."
+        },
+        "external_highlight_review_status": "rewrite",
+        "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+      },
+      "quality_gate": {
+        "candidate_available": false,
+        "overall_pass": false,
+        "quality_score": 0,
+        "fail_reasons": [
+          "missing_candidate"
+        ],
+        "field_decisions": {}
+      },
+      "selected": {
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_cd9e4645dd98f9b8693406ab"
+          },
+          "product_group_id": null,
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Body exfoliation pads",
+              "body": "Pre-soaked body pads made to exfoliate and smooth rough, uneven skin texture."
+            },
+            "best_for": [
+              {
+                "tag": "texture_tone",
+                "label": "Rough or uneven body texture",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "body_care",
+                "label": "Body exfoliation routines",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Pre-soaked pad format",
+                "body": "Puts body exfoliation into an easy wipe-on pad instead of a scrub or body wash step.",
+                "evidence_strength": "seller_grounded"
+              },
+              {
+                "headline": "Texture-smoothing body care",
+                "body": "Keeps retexturizing and smoothing body skin at the center of the product role.",
+                "evidence_strength": "seller_grounded"
+              }
+            ],
+            "routine_fit": {
+              "step": "body_treatment",
+              "am_pm": [
+                "pm"
+              ],
+              "pairing_notes": [
+                "Swipe over rough body areas, then follow with body moisturizer."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "sun",
+                "label": "Use sunscreen on treated areas because exfoliating products can increase sun sensitivity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-04-12T23:44:15.177Z",
+              "source_version": "pivota.product_intel.v1"
+            },
+            "quality_state": "limited",
+            "evidence_profile": "seller_only",
+            "source_coverage": {
+              "seller": {
+                "available": true
+              },
+              "formula": {
+                "available": false
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "texture": "pre-soaked pads",
+            "finish": "",
+            "sensory_notes": [],
+            "layering_notes": [
+              "Swipe over rough body areas, then follow with body moisturizer."
+            ],
+            "confidence": "moderate",
+            "evidence_profile": "seller_only"
+          },
+          "community_signals": {
+            "status": "unavailable"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-12T23:44:15.177Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "product_intel_pilot_compare",
+            "generator": "curated_override",
+            "selection_strategy": "curated_override",
+            "gemini_model": null,
+            "field_sources": {
+              "what_it_is": "baseline",
+              "best_for": "baseline",
+              "why_it_stands_out": "baseline",
+              "routine_fit": "baseline",
+              "watchouts": "baseline",
+              "texture_finish": "baseline",
+              "community_signals": "baseline"
+            },
+            "gemini_quality_gate": {
+              "candidate_available": false,
+              "overall_pass": false,
+              "quality_score": 0,
+              "fail_reasons": [
+                "missing_candidate"
+              ],
+              "field_decisions": {}
+            },
+            "override_reason": "Strict human QA override: reviewed after strict batch audit because Murad Retexturizing Body Pads still carried a generic Product card despite usable body-exfoliation signal.",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Murad Retexturizing Body Pads",
+            "subtitle": "Body Exfoliation Pads",
+            "highlight": "Body exfoliation in pad form",
+            "intro": "Pre-soaked body pads for rough, uneven texture.",
+            "evidence_profile": "seller_only"
+          },
+          "search_card": {
+            "title_candidate": "Murad Retexturizing Body Pads",
+            "compact_candidate": "Body Exfoliation Pads",
+            "highlight_candidate": "Body exfoliation in pad form",
+            "intro_candidate": "Pre-soaked body pads for rough, uneven texture."
+          }
+        },
+        "field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "manual",
+          "community_signals": "baseline"
+        },
+        "selected_field_count": 6,
+        "selected_mode": "manual_override"
+      },
+      "comparison": {
+        "compared": false,
+        "best_for_overlap": 0,
+        "watchout_overlap": 1,
+        "baseline_highlight_count": 0,
+        "gemini_highlight_count": 0,
+        "gemini_quality": {
+          "candidate_available": false,
+          "overall_pass": false,
+          "quality_score": 0,
+          "fail_reasons": [
+            "missing_candidate"
+          ],
+          "field_decisions": {}
+        },
+        "selected_mode": "manual_override",
+        "selected_field_count": 6,
+        "selected_field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "manual",
+          "community_signals": "baseline"
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_edd8a7c8824da40e28d289d4",
+      "notes": "Live pilot case sampled from public /products listing (Murad).",
+      "manual_override_applied": true,
+      "baseline": {
+        "contract_version": "pivota.product_intel.v1",
+        "display_name": "Pivota Insights",
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_edd8a7c8824da40e28d289d4"
+        },
+        "product_group_id": null,
+        "product_intel_core": {
+          "display_name": "Pivota Insights",
+          "what_it_is": {
+            "headline": "Product",
+            "body": "Product presented through merchant product data."
+          },
+          "best_for": [
+            {
+              "tag": "external",
+              "label": "external shoppers",
+              "confidence": "low"
+            }
+          ],
+          "why_it_stands_out": [],
+          "routine_fit": {
+            "step": "product",
+            "am_pm": [],
+            "pairing_notes": []
+          },
+          "watchouts": [],
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-12T23:44:15.181Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          }
+        },
+        "texture_finish": null,
+        "community_signals": {
+          "status": "unavailable",
+          "unavailable_reason": "insufficient_feedback",
+          "confidence": "low",
+          "evidence_profile": "seller_only"
+        },
+        "recommendation_intents": {
+          "similar": [],
+          "complementary": [],
+          "routine_pairing": [],
+          "underfill_reason": null,
+          "confidence": "low"
+        },
+        "market_signal_badges": [],
+        "external_highlight_signals": [],
+        "quality_state": "limited",
+        "evidence_profile": "seller_only",
+        "source_coverage": {
+          "seller": {
+            "available": true
+          },
+          "formula": {
+            "available": false
+          },
+          "reviews": {
+            "available": false,
+            "count": 0
+          },
+          "creator": {
+            "available": false,
+            "count": 0
+          },
+          "editorial": {
+            "available": false,
+            "count": 0
+          }
+        },
+        "confidence": {
+          "overall": "moderate",
+          "fields": {
+            "what_it_is": "high",
+            "best_for": "moderate",
+            "why_it_stands_out": "moderate",
+            "routine_fit": "moderate",
+            "watchouts": "moderate"
+          }
+        },
+        "freshness": {
+          "generated_at": "2026-04-12T23:44:15.181Z",
+          "source_version": "pivota.product_intel.v1"
+        },
+        "offer_pointers": {
+          "offers_count": 0,
+          "default_offer_id": null,
+          "best_price_offer_id": null,
+          "commerce_modes": []
+        },
+        "provenance": null,
+        "shopping_card": {
+          "contract_version": "pivota.shopping_card.v1",
+          "title": "Murad Targeted Pore Corrector",
+          "subtitle": "Product",
+          "intro": "Product presented through merchant product data.",
+          "evidence_profile": "seller_only"
+        },
+        "search_card": {
+          "title_candidate": "Murad Targeted Pore Corrector",
+          "compact_candidate": "Product",
+          "intro_candidate": "Product presented through merchant product data."
+        }
+      },
+      "gemini": {
+        "skipped": true,
+        "reason": "skip_gemini_flag"
+      },
+      "manual_override": {
+        "notes": "Strict human QA override: title-only seller metadata left Murad Targeted Pore Corrector as a generic product, so the rewrite tightens it into a pore-targeting treatment definition.",
+        "product_intel_core": {
+          "what_it_is": {
+            "headline": "Targeted pore treatment",
+            "body": "A targeted treatment made for areas where enlarged pores and excess oil are most visible."
+          },
+          "best_for": [
+            {
+              "tag": "pore_visibility",
+              "label": "Visible pores or uneven texture",
+              "confidence": "moderate"
+            },
+            {
+              "tag": "blemish_oil",
+              "label": "Oily or combination skin zones",
+              "confidence": "moderate"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Localized pore care",
+              "body": "Built for targeted application instead of a full-face cleanser or moisturizer step.",
+              "evidence_strength": "seller_grounded"
+            },
+            {
+              "headline": "Pore-and-shine focus",
+              "body": "Keeps visible pores and oily-zone refinement at the center of the treatment.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "serum",
+            "am_pm": [
+              "am",
+              "pm"
+            ],
+            "pairing_notes": [
+              "Use on pore-prone areas before moisturizer."
+            ]
+          },
+          "watchouts": []
+        },
+        "texture_finish": {
+          "texture": "",
+          "finish": "",
+          "sensory_notes": [],
+          "layering_notes": [
+            "Use on pore-prone areas before moisturizer."
+          ],
+          "confidence": "moderate",
+          "evidence_profile": "seller_only"
+        },
+        "shopping_card": {
+          "subtitle": "Targeted pore treatment",
+          "highlight": "Localized pore + shine care",
+          "intro": "A targeted treatment for visible pores and oily zones."
+        },
+        "search_card": {
+          "compact_candidate": "Targeted pore treatment",
+          "highlight_candidate": "Localized pore + shine care",
+          "intro_candidate": "A targeted treatment for visible pores and oily zones."
+        },
+        "external_highlight_review_status": "rewrite",
+        "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+      },
+      "quality_gate": {
+        "candidate_available": false,
+        "overall_pass": false,
+        "quality_score": 0,
+        "fail_reasons": [
+          "missing_candidate"
+        ],
+        "field_decisions": {}
+      },
+      "selected": {
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_edd8a7c8824da40e28d289d4"
+          },
+          "product_group_id": null,
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Targeted pore treatment",
+              "body": "A targeted treatment made for areas where enlarged pores and excess oil are most visible."
+            },
+            "best_for": [
+              {
+                "tag": "pore_visibility",
+                "label": "Visible pores or uneven texture",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "blemish_oil",
+                "label": "Oily or combination skin zones",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Localized pore care",
+                "body": "Built for targeted application instead of a full-face cleanser or moisturizer step.",
+                "evidence_strength": "seller_grounded"
+              },
+              {
+                "headline": "Pore-and-shine focus",
+                "body": "Keeps visible pores and oily-zone refinement at the center of the treatment.",
+                "evidence_strength": "seller_grounded"
+              }
+            ],
+            "routine_fit": {
+              "step": "serum",
+              "am_pm": [
+                "am",
+                "pm"
+              ],
+              "pairing_notes": [
+                "Use on pore-prone areas before moisturizer."
+              ]
+            },
+            "watchouts": [],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-04-12T23:44:15.181Z",
+              "source_version": "pivota.product_intel.v1"
+            },
+            "quality_state": "limited",
+            "evidence_profile": "seller_only",
+            "source_coverage": {
+              "seller": {
+                "available": true
+              },
+              "formula": {
+                "available": false
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "texture": "",
+            "finish": "",
+            "sensory_notes": [],
+            "layering_notes": [
+              "Use on pore-prone areas before moisturizer."
+            ],
+            "confidence": "moderate",
+            "evidence_profile": "seller_only"
+          },
+          "community_signals": {
+            "status": "unavailable"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-12T23:44:15.181Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "product_intel_pilot_compare",
+            "generator": "curated_override",
+            "selection_strategy": "curated_override",
+            "gemini_model": null,
+            "field_sources": {
+              "what_it_is": "baseline",
+              "best_for": "baseline",
+              "why_it_stands_out": "baseline",
+              "routine_fit": "baseline",
+              "watchouts": "baseline",
+              "texture_finish": "baseline",
+              "community_signals": "baseline"
+            },
+            "gemini_quality_gate": {
+              "candidate_available": false,
+              "overall_pass": false,
+              "quality_score": 0,
+              "fail_reasons": [
+                "missing_candidate"
+              ],
+              "field_decisions": {}
+            },
+            "override_reason": "Strict human QA override: title-only seller metadata left Murad Targeted Pore Corrector as a generic product, so the rewrite tightens it into a pore-targeting treatment definition.",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Murad Targeted Pore Corrector",
+            "subtitle": "Targeted Pore Treatment",
+            "highlight": "Localized pore + shine care",
+            "intro": "A targeted treatment for visible pores and oily zones.",
+            "evidence_profile": "seller_only"
+          },
+          "search_card": {
+            "title_candidate": "Murad Targeted Pore Corrector",
+            "compact_candidate": "Targeted Pore Treatment",
+            "highlight_candidate": "Localized pore + shine care",
+            "intro_candidate": "A targeted treatment for visible pores and oily zones."
+          }
+        },
+        "field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "manual",
+          "community_signals": "baseline"
+        },
+        "selected_field_count": 6,
+        "selected_mode": "manual_override"
+      },
+      "comparison": {
+        "compared": false,
+        "best_for_overlap": 0,
+        "watchout_overlap": 1,
+        "baseline_highlight_count": 0,
+        "gemini_highlight_count": 0,
+        "gemini_quality": {
+          "candidate_available": false,
+          "overall_pass": false,
+          "quality_score": 0,
+          "fail_reasons": [
+            "missing_candidate"
+          ],
+          "field_decisions": {}
+        },
+        "selected_mode": "manual_override",
+        "selected_field_count": 6,
+        "selected_field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "manual",
+          "community_signals": "baseline"
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_3a99798960160df9c8769d94",
+      "notes": "Live pilot case sampled from public /products listing (Naturium).",
+      "manual_override_applied": true,
+      "baseline": {
+        "contract_version": "pivota.product_intel.v1",
+        "display_name": "Pivota Insights",
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_3a99798960160df9c8769d94"
+        },
+        "product_group_id": null,
+        "product_intel_core": {
+          "display_name": "Pivota Insights",
+          "what_it_is": {
+            "headline": "Treatment serum",
+            "body": "50 ML / 1.7 FL OZ We all know retinal is effective, but the greatest setback to formulating and producing a product with this material is its oxidative instability. To ensure that our product maintains its potency through its shelf life we assayed the retinal under accelerated conditions."
+          },
+          "best_for": [
+            {
+              "tag": "serum",
+              "label": "Serum shoppers",
+              "confidence": "low"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Formula angle",
+              "body": "7 FL OZ We all know retinal is effective, but the greatest setback to formulating and producing a product with this material is its oxidative instability.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "serum",
+            "am_pm": [
+              "am",
+              "pm"
+            ],
+            "pairing_notes": [
+              "Apply before moisturizer; follow with SPF if used in the morning."
+            ]
+          },
+          "watchouts": [
+            {
+              "type": "retinoid",
+              "label": "Start slowly if your skin is sensitive to retinoids.",
+              "severity": "high"
+            }
+          ],
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-12T23:44:15.183Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          }
+        },
+        "texture_finish": {
+          "texture": "cream",
+          "finish": "",
+          "sensory_notes": [],
+          "layering_notes": [],
+          "confidence": "moderate",
+          "evidence_profile": "seller_only"
+        },
+        "community_signals": {
+          "status": "unavailable",
+          "unavailable_reason": "insufficient_feedback",
+          "confidence": "low",
+          "evidence_profile": "seller_only"
+        },
+        "recommendation_intents": {
+          "similar": [],
+          "complementary": [],
+          "routine_pairing": [],
+          "underfill_reason": null,
+          "confidence": "low"
+        },
+        "market_signal_badges": [],
+        "external_highlight_signals": [],
+        "quality_state": "limited",
+        "evidence_profile": "seller_only",
+        "source_coverage": {
+          "seller": {
+            "available": true
+          },
+          "formula": {
+            "available": false
+          },
+          "reviews": {
+            "available": false,
+            "count": 0
+          },
+          "creator": {
+            "available": false,
+            "count": 0
+          },
+          "editorial": {
+            "available": false,
+            "count": 0
+          }
+        },
+        "confidence": {
+          "overall": "moderate",
+          "fields": {
+            "what_it_is": "high",
+            "best_for": "moderate",
+            "why_it_stands_out": "moderate",
+            "routine_fit": "moderate",
+            "watchouts": "moderate"
+          }
+        },
+        "freshness": {
+          "generated_at": "2026-04-12T23:44:15.183Z",
+          "source_version": "pivota.product_intel.v1"
+        },
+        "offer_pointers": {
+          "offers_count": 0,
+          "default_offer_id": null,
+          "best_price_offer_id": null,
+          "commerce_modes": []
+        },
+        "provenance": null,
+        "shopping_card": {
+          "contract_version": "pivota.shopping_card.v1",
+          "title": "Naturium Retinaldehyde Cream Serum 0.05%",
+          "subtitle": "Treatment Serum",
+          "evidence_profile": "seller_only"
+        },
+        "search_card": {
+          "title_candidate": "Naturium Retinaldehyde Cream Serum 0.05%",
+          "compact_candidate": "Treatment Serum"
+        }
+      },
+      "gemini": {
+        "skipped": true,
+        "reason": "skip_gemini_flag"
+      },
+      "manual_override": {
+        "notes": "Strict human QA override: reviewed from both Gemini passes and seller copy, then tightened into a stabilized retinaldehyde cream-serum definition.",
+        "product_intel_core": {
+          "what_it_is": {
+            "headline": "Retinal cream serum",
+            "body": "A 0.05% retinaldehyde cream serum built to keep the retinoid active more stable through shelf life."
+          },
+          "best_for": [
+            {
+              "tag": "fine_lines_wrinkles",
+              "label": "Fine lines or early age-support routines",
+              "confidence": "moderate"
+            },
+            {
+              "tag": "texture_tone",
+              "label": "Texture or uneven-looking skin",
+              "confidence": "moderate"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "0.05% retinaldehyde delivery",
+              "body": "Uses 0.05% retinaldehyde in a cream-serum format instead of a heavier night cream.",
+              "evidence_strength": "seller_grounded"
+            },
+            {
+              "headline": "Stability-focused formula",
+              "body": "Seller copy emphasizes accelerated-condition testing to help maintain retinal potency over shelf life.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "serum",
+            "am_pm": [
+              "pm"
+            ],
+            "pairing_notes": [
+              "Use at night before moisturizer and build frequency gradually."
+            ]
+          },
+          "watchouts": [
+            {
+              "type": "retinoid",
+              "label": "Retinoids can feel too active if you're new to them or stacking other exfoliants.",
+              "severity": "high"
+            }
+          ]
+        },
+        "texture_finish": {
+          "texture": "cream serum",
+          "finish": "",
+          "sensory_notes": [],
+          "layering_notes": [
+            "Use at night before moisturizer and build frequency gradually."
+          ],
+          "confidence": "moderate",
+          "evidence_profile": "seller_only"
+        },
+        "shopping_card": {
+          "subtitle": "Retinal cream serum",
+          "highlight": "0.05% retinaldehyde + stability",
+          "intro": "A retinal cream serum with stability-focused delivery."
+        },
+        "search_card": {
+          "compact_candidate": "Retinal cream serum",
+          "highlight_candidate": "0.05% retinaldehyde + stability",
+          "intro_candidate": "A retinal cream serum with stability-focused delivery."
+        },
+        "external_highlight_review_status": "rewrite",
+        "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+      },
+      "quality_gate": {
+        "candidate_available": false,
+        "overall_pass": false,
+        "quality_score": 0,
+        "fail_reasons": [
+          "missing_candidate"
+        ],
+        "field_decisions": {}
+      },
+      "selected": {
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_3a99798960160df9c8769d94"
+          },
+          "product_group_id": null,
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Retinal cream serum",
+              "body": "A 0.05% retinaldehyde cream serum built to keep the retinoid active more stable through shelf life."
+            },
+            "best_for": [
+              {
+                "tag": "fine_lines_wrinkles",
+                "label": "Fine lines or early age-support routines",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "texture_tone",
+                "label": "Texture or uneven-looking skin",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "0.05% retinaldehyde delivery",
+                "body": "Uses 0.05% retinaldehyde in a cream-serum format instead of a heavier night cream.",
+                "evidence_strength": "seller_grounded"
+              },
+              {
+                "headline": "Stability-focused formula",
+                "body": "Seller copy emphasizes accelerated-condition testing to help maintain retinal potency over shelf life.",
+                "evidence_strength": "seller_grounded"
+              }
+            ],
+            "routine_fit": {
+              "step": "serum",
+              "am_pm": [
+                "pm"
+              ],
+              "pairing_notes": [
+                "Use at night before moisturizer and build frequency gradually."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "retinoid",
+                "label": "Retinoids can feel too active if you're new to them or stacking other exfoliants.",
+                "severity": "high"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-04-12T23:44:15.183Z",
+              "source_version": "pivota.product_intel.v1"
+            },
+            "quality_state": "limited",
+            "evidence_profile": "seller_only",
+            "source_coverage": {
+              "seller": {
+                "available": true
+              },
+              "formula": {
+                "available": false
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "texture": "cream serum",
+            "finish": "",
+            "sensory_notes": [],
+            "layering_notes": [
+              "Use at night before moisturizer and build frequency gradually."
+            ],
+            "confidence": "moderate",
+            "evidence_profile": "seller_only"
+          },
+          "community_signals": {
+            "status": "unavailable"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-12T23:44:15.183Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "product_intel_pilot_compare",
+            "generator": "curated_override",
+            "selection_strategy": "curated_override",
+            "gemini_model": null,
+            "field_sources": {
+              "what_it_is": "baseline",
+              "best_for": "baseline",
+              "why_it_stands_out": "baseline",
+              "routine_fit": "baseline",
+              "watchouts": "baseline",
+              "texture_finish": "baseline",
+              "community_signals": "baseline"
+            },
+            "gemini_quality_gate": {
+              "candidate_available": false,
+              "overall_pass": false,
+              "quality_score": 0,
+              "fail_reasons": [
+                "missing_candidate"
+              ],
+              "field_decisions": {}
+            },
+            "override_reason": "Strict human QA override: reviewed from both Gemini passes and seller copy, then tightened into a stabilized retinaldehyde cream-serum definition.",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Naturium Retinaldehyde Cream Serum 0.05%",
+            "subtitle": "Retinal Cream Serum",
+            "highlight": "0.05% retinaldehyde + stability",
+            "intro": "A retinal cream serum with stability-focused delivery.",
+            "evidence_profile": "seller_only"
+          },
+          "search_card": {
+            "title_candidate": "Naturium Retinaldehyde Cream Serum 0.05%",
+            "compact_candidate": "Retinal Cream Serum",
+            "highlight_candidate": "0.05% retinaldehyde + stability",
+            "intro_candidate": "A retinal cream serum with stability-focused delivery."
+          }
+        },
+        "field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "manual",
+          "community_signals": "baseline"
+        },
+        "selected_field_count": 6,
+        "selected_mode": "manual_override"
+      },
+      "comparison": {
+        "compared": false,
+        "best_for_overlap": 0,
+        "watchout_overlap": 0,
+        "baseline_highlight_count": 1,
+        "gemini_highlight_count": 0,
+        "gemini_quality": {
+          "candidate_available": false,
+          "overall_pass": false,
+          "quality_score": 0,
+          "fail_reasons": [
+            "missing_candidate"
+          ],
+          "field_decisions": {}
+        },
+        "selected_mode": "manual_override",
+        "selected_field_count": 6,
+        "selected_field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "manual",
+          "community_signals": "baseline"
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_e7c55a62fa5f3084a7d4f100",
+      "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+      "manual_override_applied": true,
+      "baseline": {
+        "contract_version": "pivota.product_intel.v1",
+        "display_name": "Pivota Insights",
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_e7c55a62fa5f3084a7d4f100"
+        },
+        "product_group_id": null,
+        "product_intel_core": {
+          "display_name": "Pivota Insights",
+          "what_it_is": {
+            "headline": "Product",
+            "body": "Product presented through merchant product data."
+          },
+          "best_for": [
+            {
+              "tag": "external",
+              "label": "external shoppers",
+              "confidence": "low"
+            }
+          ],
+          "why_it_stands_out": [],
+          "routine_fit": {
+            "step": "product",
+            "am_pm": [],
+            "pairing_notes": []
+          },
+          "watchouts": [],
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-12T23:44:15.184Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          }
+        },
+        "texture_finish": null,
+        "community_signals": {
+          "status": "unavailable",
+          "unavailable_reason": "insufficient_feedback",
+          "confidence": "low",
+          "evidence_profile": "seller_only"
+        },
+        "recommendation_intents": {
+          "similar": [],
+          "complementary": [],
+          "routine_pairing": [],
+          "underfill_reason": null,
+          "confidence": "low"
+        },
+        "market_signal_badges": [],
+        "external_highlight_signals": [],
+        "quality_state": "limited",
+        "evidence_profile": "seller_only",
+        "source_coverage": {
+          "seller": {
+            "available": true
+          },
+          "formula": {
+            "available": false
+          },
+          "reviews": {
+            "available": false,
+            "count": 0
+          },
+          "creator": {
+            "available": false,
+            "count": 0
+          },
+          "editorial": {
+            "available": false,
+            "count": 0
+          }
+        },
+        "confidence": {
+          "overall": "moderate",
+          "fields": {
+            "what_it_is": "high",
+            "best_for": "moderate",
+            "why_it_stands_out": "moderate",
+            "routine_fit": "moderate",
+            "watchouts": "moderate"
+          }
+        },
+        "freshness": {
+          "generated_at": "2026-04-12T23:44:15.184Z",
+          "source_version": "pivota.product_intel.v1"
+        },
+        "offer_pointers": {
+          "offers_count": 0,
+          "default_offer_id": null,
+          "best_price_offer_id": null,
+          "commerce_modes": []
+        },
+        "provenance": null,
+        "shopping_card": {
+          "contract_version": "pivota.shopping_card.v1",
+          "title": "Olehenriksen Balance+ Bundle-Europe",
+          "subtitle": "Product",
+          "intro": "Product presented through merchant product data.",
+          "evidence_profile": "seller_only"
+        },
+        "search_card": {
+          "title_candidate": "Olehenriksen Balance+ Bundle-Europe",
+          "compact_candidate": "Product",
+          "intro_candidate": "Product presented through merchant product data."
+        }
+      },
+      "gemini": {
+        "skipped": true,
+        "reason": "skip_gemini_flag"
+      },
+      "manual_override": {
+        "notes": "Strict human QA override: title-only seller metadata and unrelated imported bundle text made Balance+ Bundle-Europe unreliable, so the rewrite stays conservative and title-grounded.",
+        "product_intel_core": {
+          "what_it_is": {
+            "headline": "Balancing skincare set",
+            "body": "A multi-step skincare set grouped under the Balance+ line for a balance-focused routine."
+          },
+          "best_for": [
+            {
+              "tag": "routine_simplification",
+              "label": "Routine simplification",
+              "confidence": "moderate"
+            },
+            {
+              "tag": "blemish_oil",
+              "label": "Oilier or easily congested routines",
+              "confidence": "moderate"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Multi-step bundle format",
+              "body": "Packages more than one step into a single set instead of a standalone SKU.",
+              "evidence_strength": "seller_grounded"
+            },
+            {
+              "headline": "Balance-focused positioning",
+              "body": "The Balance+ naming keeps the routine aimed at a more even, controlled feel.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "routine set",
+            "am_pm": [
+              "am",
+              "pm"
+            ],
+            "pairing_notes": [
+              "Use the included steps in the order listed by the brand."
+            ]
+          },
+          "watchouts": [
+            {
+              "type": "format",
+              "label": "This is a multi-step set, not a single treatment product.",
+              "severity": "low"
+            }
+          ]
+        },
+        "texture_finish": {
+          "texture": "",
+          "finish": "",
+          "sensory_notes": [],
+          "layering_notes": [
+            "Use the included steps in the order listed by the brand."
+          ],
+          "confidence": "moderate",
+          "evidence_profile": "seller_only"
+        },
+        "shopping_card": {
+          "subtitle": "Balancing skincare set",
+          "highlight": "Balance-focused multi-step set",
+          "intro": "A multi-step Balance+ set for a streamlined routine."
+        },
+        "search_card": {
+          "compact_candidate": "Balancing skincare set",
+          "highlight_candidate": "Balance-focused multi-step set",
+          "intro_candidate": "A multi-step Balance+ set for a streamlined routine."
+        },
+        "external_highlight_review_status": "rewrite",
+        "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+      },
+      "quality_gate": {
+        "candidate_available": false,
+        "overall_pass": false,
+        "quality_score": 0,
+        "fail_reasons": [
+          "missing_candidate"
+        ],
+        "field_decisions": {}
+      },
+      "selected": {
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_e7c55a62fa5f3084a7d4f100"
+          },
+          "product_group_id": null,
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Balancing skincare set",
+              "body": "A multi-step skincare set grouped under the Balance+ line for a balance-focused routine."
+            },
+            "best_for": [
+              {
+                "tag": "routine_simplification",
+                "label": "Routine simplification",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "blemish_oil",
+                "label": "Oilier or easily congested routines",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Multi-step bundle format",
+                "body": "Packages more than one step into a single set instead of a standalone SKU.",
+                "evidence_strength": "seller_grounded"
+              },
+              {
+                "headline": "Balance-focused positioning",
+                "body": "The Balance+ naming keeps the routine aimed at a more even, controlled feel.",
+                "evidence_strength": "seller_grounded"
+              }
+            ],
+            "routine_fit": {
+              "step": "routine set",
+              "am_pm": [
+                "am",
+                "pm"
+              ],
+              "pairing_notes": [
+                "Use the included steps in the order listed by the brand."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "format",
+                "label": "This is a multi-step set, not a single treatment product.",
+                "severity": "low"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-04-12T23:44:15.184Z",
+              "source_version": "pivota.product_intel.v1"
+            },
+            "quality_state": "limited",
+            "evidence_profile": "seller_only",
+            "source_coverage": {
+              "seller": {
+                "available": true
+              },
+              "formula": {
+                "available": false
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "texture": "",
+            "finish": "",
+            "sensory_notes": [],
+            "layering_notes": [
+              "Use the included steps in the order listed by the brand."
+            ],
+            "confidence": "moderate",
+            "evidence_profile": "seller_only"
+          },
+          "community_signals": {
+            "status": "unavailable"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-12T23:44:15.184Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "product_intel_pilot_compare",
+            "generator": "curated_override",
+            "selection_strategy": "curated_override",
+            "gemini_model": null,
+            "field_sources": {
+              "what_it_is": "baseline",
+              "best_for": "baseline",
+              "why_it_stands_out": "baseline",
+              "routine_fit": "baseline",
+              "watchouts": "baseline",
+              "texture_finish": "baseline",
+              "community_signals": "baseline"
+            },
+            "gemini_quality_gate": {
+              "candidate_available": false,
+              "overall_pass": false,
+              "quality_score": 0,
+              "fail_reasons": [
+                "missing_candidate"
+              ],
+              "field_decisions": {}
+            },
+            "override_reason": "Strict human QA override: title-only seller metadata and unrelated imported bundle text made Balance+ Bundle-Europe unreliable, so the rewrite stays conservative and title-grounded.",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Olehenriksen Balance+ Bundle-Europe",
+            "subtitle": "Balancing Skincare Set",
+            "highlight": "Balance-focused multi-step set",
+            "intro": "A multi-step Balance+ set for a streamlined routine.",
+            "evidence_profile": "seller_only"
+          },
+          "search_card": {
+            "title_candidate": "Olehenriksen Balance+ Bundle-Europe",
+            "compact_candidate": "Balancing Skincare Set",
+            "highlight_candidate": "Balance-focused multi-step set",
+            "intro_candidate": "A multi-step Balance+ set for a streamlined routine."
+          }
+        },
+        "field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "manual",
+          "community_signals": "baseline"
+        },
+        "selected_field_count": 6,
+        "selected_mode": "manual_override"
+      },
+      "comparison": {
+        "compared": false,
+        "best_for_overlap": 0,
+        "watchout_overlap": 1,
+        "baseline_highlight_count": 0,
+        "gemini_highlight_count": 0,
+        "gemini_quality": {
+          "candidate_available": false,
+          "overall_pass": false,
+          "quality_score": 0,
+          "fail_reasons": [
+            "missing_candidate"
+          ],
+          "field_decisions": {}
+        },
+        "selected_mode": "manual_override",
+        "selected_field_count": 6,
+        "selected_field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "manual",
+          "community_signals": "baseline"
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_0cfa56c35dd9a64ef9b6fe0a",
+      "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+      "manual_override_applied": true,
+      "baseline": {
+        "contract_version": "pivota.product_intel.v1",
+        "display_name": "Pivota Insights",
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_0cfa56c35dd9a64ef9b6fe0a"
+        },
+        "product_group_id": null,
+        "product_intel_core": {
+          "display_name": "Pivota Insights",
+          "what_it_is": {
+            "headline": "Product",
+            "body": "Product presented through merchant product data."
+          },
+          "best_for": [
+            {
+              "tag": "external",
+              "label": "external shoppers",
+              "confidence": "low"
+            }
+          ],
+          "why_it_stands_out": [],
+          "routine_fit": {
+            "step": "product",
+            "am_pm": [],
+            "pairing_notes": []
+          },
+          "watchouts": [],
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-12T23:44:15.184Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          }
+        },
+        "texture_finish": null,
+        "community_signals": {
+          "status": "unavailable",
+          "unavailable_reason": "insufficient_feedback",
+          "confidence": "low",
+          "evidence_profile": "seller_only"
+        },
+        "recommendation_intents": {
+          "similar": [],
+          "complementary": [],
+          "routine_pairing": [],
+          "underfill_reason": null,
+          "confidence": "low"
+        },
+        "market_signal_badges": [],
+        "external_highlight_signals": [],
+        "quality_state": "limited",
+        "evidence_profile": "seller_only",
+        "source_coverage": {
+          "seller": {
+            "available": true
+          },
+          "formula": {
+            "available": false
+          },
+          "reviews": {
+            "available": false,
+            "count": 0
+          },
+          "creator": {
+            "available": false,
+            "count": 0
+          },
+          "editorial": {
+            "available": false,
+            "count": 0
+          }
+        },
+        "confidence": {
+          "overall": "moderate",
+          "fields": {
+            "what_it_is": "high",
+            "best_for": "moderate",
+            "why_it_stands_out": "moderate",
+            "routine_fit": "moderate",
+            "watchouts": "moderate"
+          }
+        },
+        "freshness": {
+          "generated_at": "2026-04-12T23:44:15.184Z",
+          "source_version": "pivota.product_intel.v1"
+        },
+        "offer_pointers": {
+          "offers_count": 0,
+          "default_offer_id": null,
+          "best_price_offer_id": null,
+          "commerce_modes": []
+        },
+        "provenance": null,
+        "shopping_card": {
+          "contract_version": "pivota.shopping_card.v1",
+          "title": "Olehenriksen After-Party Peptides Skin Strengthening Set",
+          "subtitle": "Product",
+          "intro": "Product presented through merchant product data.",
+          "evidence_profile": "seller_only"
+        },
+        "search_card": {
+          "title_candidate": "Olehenriksen After-Party Peptides Skin Strengthening Set",
+          "compact_candidate": "Product",
+          "intro_candidate": "Product presented through merchant product data."
+        }
+      },
+      "gemini": {
+        "skipped": true,
+        "reason": "skip_gemini_flag"
+      },
+      "manual_override": {
+        "notes": "Strict human QA override: title-only seller metadata left this set too generic, so the rewrite keeps it to a conservative peptide-led skin-strengthening set definition.",
+        "product_intel_core": {
+          "what_it_is": {
+            "headline": "Peptide skincare set",
+            "body": "A multi-step skincare set centered on peptides and a skin-strengthening routine."
+          },
+          "best_for": [
+            {
+              "tag": "routine_simplification",
+              "label": "Routine simplification",
+              "confidence": "moderate"
+            },
+            {
+              "tag": "dryness_barrier",
+              "label": "Skin needing barrier support",
+              "confidence": "moderate"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Peptide-led set",
+              "body": "Frames peptides as the anchor of the routine instead of a single serum-only step.",
+              "evidence_strength": "seller_grounded"
+            },
+            {
+              "headline": "Skin-strengthening focus",
+              "body": "The title positions the set around supporting stronger-feeling skin across multiple steps.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "routine set",
+            "am_pm": [
+              "am",
+              "pm"
+            ],
+            "pairing_notes": [
+              "Use the included steps in the order listed by the brand."
+            ]
+          },
+          "watchouts": [
+            {
+              "type": "format",
+              "label": "This is a multi-step set, not a single peptide serum.",
+              "severity": "low"
+            }
+          ]
+        },
+        "texture_finish": {
+          "texture": "",
+          "finish": "",
+          "sensory_notes": [],
+          "layering_notes": [
+            "Use the included steps in the order listed by the brand."
+          ],
+          "confidence": "moderate",
+          "evidence_profile": "seller_only"
+        },
+        "shopping_card": {
+          "subtitle": "Peptide skincare set",
+          "highlight": "Peptide-led skin-strength set",
+          "intro": "A peptide-focused set for a richer skin-strengthening routine."
+        },
+        "search_card": {
+          "compact_candidate": "Peptide skincare set",
+          "highlight_candidate": "Peptide-led skin-strength set",
+          "intro_candidate": "A peptide-focused set for a richer skin-strengthening routine."
+        },
+        "external_highlight_review_status": "rewrite",
+        "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+      },
+      "quality_gate": {
+        "candidate_available": false,
+        "overall_pass": false,
+        "quality_score": 0,
+        "fail_reasons": [
+          "missing_candidate"
+        ],
+        "field_decisions": {}
+      },
+      "selected": {
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_0cfa56c35dd9a64ef9b6fe0a"
+          },
+          "product_group_id": null,
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Peptide skincare set",
+              "body": "A multi-step skincare set centered on peptides and a skin-strengthening routine."
+            },
+            "best_for": [
+              {
+                "tag": "routine_simplification",
+                "label": "Routine simplification",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "dryness_barrier",
+                "label": "Skin needing barrier support",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Peptide-led set",
+                "body": "Frames peptides as the anchor of the routine instead of a single serum-only step.",
+                "evidence_strength": "seller_grounded"
+              },
+              {
+                "headline": "Skin-strengthening focus",
+                "body": "The title positions the set around supporting stronger-feeling skin across multiple steps.",
+                "evidence_strength": "seller_grounded"
+              }
+            ],
+            "routine_fit": {
+              "step": "routine set",
+              "am_pm": [
+                "am",
+                "pm"
+              ],
+              "pairing_notes": [
+                "Use the included steps in the order listed by the brand."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "format",
+                "label": "This is a multi-step set, not a single peptide serum.",
+                "severity": "low"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-04-12T23:44:15.184Z",
+              "source_version": "pivota.product_intel.v1"
+            },
+            "quality_state": "limited",
+            "evidence_profile": "seller_only",
+            "source_coverage": {
+              "seller": {
+                "available": true
+              },
+              "formula": {
+                "available": false
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "texture": "",
+            "finish": "",
+            "sensory_notes": [],
+            "layering_notes": [
+              "Use the included steps in the order listed by the brand."
+            ],
+            "confidence": "moderate",
+            "evidence_profile": "seller_only"
+          },
+          "community_signals": {
+            "status": "unavailable"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-12T23:44:15.184Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "product_intel_pilot_compare",
+            "generator": "curated_override",
+            "selection_strategy": "curated_override",
+            "gemini_model": null,
+            "field_sources": {
+              "what_it_is": "baseline",
+              "best_for": "baseline",
+              "why_it_stands_out": "baseline",
+              "routine_fit": "baseline",
+              "watchouts": "baseline",
+              "texture_finish": "baseline",
+              "community_signals": "baseline"
+            },
+            "gemini_quality_gate": {
+              "candidate_available": false,
+              "overall_pass": false,
+              "quality_score": 0,
+              "fail_reasons": [
+                "missing_candidate"
+              ],
+              "field_decisions": {}
+            },
+            "override_reason": "Strict human QA override: title-only seller metadata left this set too generic, so the rewrite keeps it to a conservative peptide-led skin-strengthening set definition.",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Olehenriksen After-Party Peptides Skin Strengthening Set",
+            "subtitle": "Peptide Skincare Set",
+            "highlight": "Peptide-led skin-strength set",
+            "intro": "A peptide-focused set for a richer skin-strengthening routine.",
+            "evidence_profile": "seller_only"
+          },
+          "search_card": {
+            "title_candidate": "Olehenriksen After-Party Peptides Skin Strengthening Set",
+            "compact_candidate": "Peptide Skincare Set",
+            "highlight_candidate": "Peptide-led skin-strength set",
+            "intro_candidate": "A peptide-focused set for a richer skin-strengthening routine."
+          }
+        },
+        "field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "manual",
+          "community_signals": "baseline"
+        },
+        "selected_field_count": 6,
+        "selected_mode": "manual_override"
+      },
+      "comparison": {
+        "compared": false,
+        "best_for_overlap": 0,
+        "watchout_overlap": 1,
+        "baseline_highlight_count": 0,
+        "gemini_highlight_count": 0,
+        "gemini_quality": {
+          "candidate_available": false,
+          "overall_pass": false,
+          "quality_score": 0,
+          "fail_reasons": [
+            "missing_candidate"
+          ],
+          "field_decisions": {}
+        },
+        "selected_mode": "manual_override",
+        "selected_field_count": 6,
+        "selected_field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "manual",
+          "community_signals": "baseline"
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_aea0be48bb20adf3ea960742",
+      "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+      "manual_override_applied": true,
+      "baseline": {
+        "contract_version": "pivota.product_intel.v1",
+        "display_name": "Pivota Insights",
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_aea0be48bb20adf3ea960742"
+        },
+        "product_group_id": null,
+        "product_intel_core": {
+          "display_name": "Pivota Insights",
+          "what_it_is": {
+            "headline": "Makeup product",
+            "body": "A refreshing ly fruity duo complete juicy AHA exfoliation for your face and a luscious peptide dip for your lips ."
+          },
+          "best_for": [
+            {
+              "tag": "external",
+              "label": "external shoppers",
+              "confidence": "low"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Formula angle",
+              "body": "A refreshing ly fruity duo complete juicy AHA exfoliation for your face and a luscious peptide dip for your lips .",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "makeup",
+            "am_pm": [],
+            "pairing_notes": []
+          },
+          "watchouts": [
+            {
+              "type": "acid",
+              "label": "May be too active for very sensitive or over-exfoliated skin.",
+              "severity": "high"
+            }
+          ],
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-12T23:44:15.185Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          }
+        },
+        "texture_finish": null,
+        "community_signals": {
+          "status": "unavailable",
+          "unavailable_reason": "insufficient_feedback",
+          "confidence": "low",
+          "evidence_profile": "seller_only"
+        },
+        "recommendation_intents": {
+          "similar": [],
+          "complementary": [],
+          "routine_pairing": [],
+          "underfill_reason": null,
+          "confidence": "low"
+        },
+        "market_signal_badges": [],
+        "external_highlight_signals": [],
+        "quality_state": "limited",
+        "evidence_profile": "seller_only",
+        "source_coverage": {
+          "seller": {
+            "available": true
+          },
+          "formula": {
+            "available": false
+          },
+          "reviews": {
+            "available": false,
+            "count": 0
+          },
+          "creator": {
+            "available": false,
+            "count": 0
+          },
+          "editorial": {
+            "available": false,
+            "count": 0
+          }
+        },
+        "confidence": {
+          "overall": "moderate",
+          "fields": {
+            "what_it_is": "high",
+            "best_for": "moderate",
+            "why_it_stands_out": "moderate",
+            "routine_fit": "moderate",
+            "watchouts": "moderate"
+          }
+        },
+        "freshness": {
+          "generated_at": "2026-04-12T23:44:15.185Z",
+          "source_version": "pivota.product_intel.v1"
+        },
+        "offer_pointers": {
+          "offers_count": 0,
+          "default_offer_id": null,
+          "best_price_offer_id": null,
+          "commerce_modes": []
+        },
+        "provenance": null,
+        "shopping_card": {
+          "contract_version": "pivota.shopping_card.v1",
+          "title": "Olehenriksen Strawberry Skincare Set Smoothing Scrub + Pout Preserve Glimmer Duo",
+          "subtitle": "Makeup Product",
+          "evidence_profile": "seller_only"
+        },
+        "search_card": {
+          "title_candidate": "Olehenriksen Strawberry Skincare Set Smoothing Scrub + Pout Preserve Glimmer Duo",
+          "compact_candidate": "Makeup Product"
+        }
+      },
+      "gemini": {
+        "skipped": true,
+        "reason": "skip_gemini_flag"
+      },
+      "manual_override": {
+        "notes": "Strict human QA override: imported copy for this set was garbled, so the rewrite reclassifies it as a conservative face-scrub plus lip-treatment duo.",
+        "product_intel_core": {
+          "what_it_is": {
+            "headline": "Face scrub + lip duo",
+            "body": "A mixed set that pairs an exfoliating face scrub with a Pout Preserve lip treatment."
+          },
+          "best_for": [
+            {
+              "tag": "texture_tone",
+              "label": "Texture or dullness routines",
+              "confidence": "moderate"
+            },
+            {
+              "tag": "lip_care",
+              "label": "Lip care routines",
+              "confidence": "moderate"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Face plus lip pairing",
+              "body": "Combines a smoothing scrub and a lip treatment in one set instead of a single-category product.",
+              "evidence_strength": "seller_grounded"
+            },
+            {
+              "headline": "Exfoliation plus lip care",
+              "body": "The title points to exfoliating face care alongside a cushioning Pout Preserve lip step.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "routine set",
+            "am_pm": [
+              "am",
+              "pm"
+            ],
+            "pairing_notes": [
+              "Use the scrub on face as directed, then use the lip treatment separately as needed."
+            ]
+          },
+          "watchouts": [
+            {
+              "type": "acid",
+              "label": "The scrub side may feel too active if your skin is already over-exfoliated.",
+              "severity": "high"
+            }
+          ]
+        },
+        "texture_finish": {
+          "texture": "",
+          "finish": "",
+          "sensory_notes": [],
+          "layering_notes": [
+            "Use the scrub on face as directed, then use the lip treatment separately as needed."
+          ],
+          "confidence": "moderate",
+          "evidence_profile": "seller_only"
+        },
+        "shopping_card": {
+          "subtitle": "Face scrub + lip duo",
+          "highlight": "Face exfoliation + lip care",
+          "intro": "A mixed set pairing a face scrub with Pout Preserve lip care."
+        },
+        "search_card": {
+          "compact_candidate": "Face scrub + lip duo",
+          "highlight_candidate": "Face exfoliation + lip care",
+          "intro_candidate": "A mixed set pairing a face scrub with Pout Preserve lip care."
+        },
+        "external_highlight_review_status": "rewrite",
+        "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+      },
+      "quality_gate": {
+        "candidate_available": false,
+        "overall_pass": false,
+        "quality_score": 0,
+        "fail_reasons": [
+          "missing_candidate"
+        ],
+        "field_decisions": {}
+      },
+      "selected": {
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_aea0be48bb20adf3ea960742"
+          },
+          "product_group_id": null,
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Face scrub + lip duo",
+              "body": "A mixed set that pairs an exfoliating face scrub with a Pout Preserve lip treatment."
+            },
+            "best_for": [
+              {
+                "tag": "texture_tone",
+                "label": "Texture or dullness routines",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "lip_care",
+                "label": "Lip care routines",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Face plus lip pairing",
+                "body": "Combines a smoothing scrub and a lip treatment in one set instead of a single-category product.",
+                "evidence_strength": "seller_grounded"
+              },
+              {
+                "headline": "Exfoliation plus lip care",
+                "body": "The title points to exfoliating face care alongside a cushioning Pout Preserve lip step.",
+                "evidence_strength": "seller_grounded"
+              }
+            ],
+            "routine_fit": {
+              "step": "routine set",
+              "am_pm": [
+                "am",
+                "pm"
+              ],
+              "pairing_notes": [
+                "Use the scrub on face as directed, then use the lip treatment separately as needed."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "acid",
+                "label": "The scrub side may feel too active if your skin is already over-exfoliated.",
+                "severity": "high"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-04-12T23:44:15.185Z",
+              "source_version": "pivota.product_intel.v1"
+            },
+            "quality_state": "limited",
+            "evidence_profile": "seller_only",
+            "source_coverage": {
+              "seller": {
+                "available": true
+              },
+              "formula": {
+                "available": false
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "texture": "",
+            "finish": "",
+            "sensory_notes": [],
+            "layering_notes": [
+              "Use the scrub on face as directed, then use the lip treatment separately as needed."
+            ],
+            "confidence": "moderate",
+            "evidence_profile": "seller_only"
+          },
+          "community_signals": {
+            "status": "unavailable"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-12T23:44:15.185Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "product_intel_pilot_compare",
+            "generator": "curated_override",
+            "selection_strategy": "curated_override",
+            "gemini_model": null,
+            "field_sources": {
+              "what_it_is": "baseline",
+              "best_for": "baseline",
+              "why_it_stands_out": "baseline",
+              "routine_fit": "baseline",
+              "watchouts": "baseline",
+              "texture_finish": "baseline",
+              "community_signals": "baseline"
+            },
+            "gemini_quality_gate": {
+              "candidate_available": false,
+              "overall_pass": false,
+              "quality_score": 0,
+              "fail_reasons": [
+                "missing_candidate"
+              ],
+              "field_decisions": {}
+            },
+            "override_reason": "Strict human QA override: imported copy for this set was garbled, so the rewrite reclassifies it as a conservative face-scrub plus lip-treatment duo.",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Olehenriksen Strawberry Skincare Set Smoothing Scrub + Pout Preserve Glimmer Duo",
+            "subtitle": "Face Scrub + Lip Duo",
+            "highlight": "Face exfoliation + lip care",
+            "intro": "A mixed set pairing a face scrub with Pout Preserve lip care.",
+            "evidence_profile": "seller_only"
+          },
+          "search_card": {
+            "title_candidate": "Olehenriksen Strawberry Skincare Set Smoothing Scrub + Pout Preserve Glimmer Duo",
+            "compact_candidate": "Face Scrub + Lip Duo",
+            "highlight_candidate": "Face exfoliation + lip care",
+            "intro_candidate": "A mixed set pairing a face scrub with Pout Preserve lip care."
+          }
+        },
+        "field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "manual",
+          "community_signals": "baseline"
+        },
+        "selected_field_count": 6,
+        "selected_mode": "manual_override"
+      },
+      "comparison": {
+        "compared": false,
+        "best_for_overlap": 0,
+        "watchout_overlap": 0,
+        "baseline_highlight_count": 1,
+        "gemini_highlight_count": 0,
+        "gemini_quality": {
+          "candidate_available": false,
+          "overall_pass": false,
+          "quality_score": 0,
+          "fail_reasons": [
+            "missing_candidate"
+          ],
+          "field_decisions": {}
+        },
+        "selected_mode": "manual_override",
+        "selected_field_count": 6,
+        "selected_field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "manual",
+          "community_signals": "baseline"
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_27ecddfd70b28613b9cdd8a7",
+      "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+      "manual_override_applied": true,
+      "baseline": {
+        "contract_version": "pivota.product_intel.v1",
+        "display_name": "Pivota Insights",
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_27ecddfd70b28613b9cdd8a7"
+        },
+        "product_group_id": null,
+        "product_intel_core": {
+          "display_name": "Pivota Insights",
+          "what_it_is": {
+            "headline": "Product",
+            "body": "Product presented through merchant product data."
+          },
+          "best_for": [
+            {
+              "tag": "external",
+              "label": "external shoppers",
+              "confidence": "low"
+            }
+          ],
+          "why_it_stands_out": [],
+          "routine_fit": {
+            "step": "product",
+            "am_pm": [],
+            "pairing_notes": []
+          },
+          "watchouts": [],
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-12T23:44:15.185Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          }
+        },
+        "texture_finish": null,
+        "community_signals": {
+          "status": "unavailable",
+          "unavailable_reason": "insufficient_feedback",
+          "confidence": "low",
+          "evidence_profile": "seller_only"
+        },
+        "recommendation_intents": {
+          "similar": [],
+          "complementary": [],
+          "routine_pairing": [],
+          "underfill_reason": null,
+          "confidence": "low"
+        },
+        "market_signal_badges": [],
+        "external_highlight_signals": [],
+        "quality_state": "limited",
+        "evidence_profile": "seller_only",
+        "source_coverage": {
+          "seller": {
+            "available": true
+          },
+          "formula": {
+            "available": false
+          },
+          "reviews": {
+            "available": false,
+            "count": 0
+          },
+          "creator": {
+            "available": false,
+            "count": 0
+          },
+          "editorial": {
+            "available": false,
+            "count": 0
+          }
+        },
+        "confidence": {
+          "overall": "moderate",
+          "fields": {
+            "what_it_is": "high",
+            "best_for": "moderate",
+            "why_it_stands_out": "moderate",
+            "routine_fit": "moderate",
+            "watchouts": "moderate"
+          }
+        },
+        "freshness": {
+          "generated_at": "2026-04-12T23:44:15.185Z",
+          "source_version": "pivota.product_intel.v1"
+        },
+        "offer_pointers": {
+          "offers_count": 0,
+          "default_offer_id": null,
+          "best_price_offer_id": null,
+          "commerce_modes": []
+        },
+        "provenance": null,
+        "shopping_card": {
+          "contract_version": "pivota.shopping_card.v1",
+          "title": "Olehenriksen Pore-Balance Facial Sauna Scrub",
+          "subtitle": "Product",
+          "intro": "Product presented through merchant product data.",
+          "evidence_profile": "seller_only"
+        },
+        "search_card": {
+          "title_candidate": "Olehenriksen Pore-Balance Facial Sauna Scrub",
+          "compact_candidate": "Product",
+          "intro_candidate": "Product presented through merchant product data."
+        }
+      },
+      "gemini": {
+        "skipped": true,
+        "reason": "skip_gemini_flag"
+      },
+      "manual_override": {
+        "notes": "Strict human QA override: title-only seller metadata and broken Gemini highlights left this scrub too generic, so the rewrite narrows it to a warming pore-focused exfoliating step.",
+        "product_intel_core": {
+          "what_it_is": {
+            "headline": "Warming facial scrub",
+            "body": "A facial scrub built around pore-focused exfoliation with a warming, sauna-style feel."
+          },
+          "best_for": [
+            {
+              "tag": "pore_visibility",
+              "label": "Visible pores or rough texture",
+              "confidence": "moderate"
+            },
+            {
+              "tag": "blemish_oil",
+              "label": "Oilier or congested skin",
+              "confidence": "moderate"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Pore-focused scrub step",
+              "body": "Targets pore-prone texture in a rinse-off exfoliating step rather than a leave-on serum.",
+              "evidence_strength": "seller_grounded"
+            },
+            {
+              "headline": "Sauna-style feel",
+              "body": "The sauna naming signals a scrub with a warmer, more stimulating cleansing feel.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "exfoliant",
+            "am_pm": [
+              "pm"
+            ],
+            "pairing_notes": [
+              "Use a few times weekly, then follow with soothing hydration."
+            ]
+          },
+          "watchouts": [
+            {
+              "type": "texture",
+              "label": "The scrub can feel too intense if your skin is already sensitized or over-exfoliated.",
+              "severity": "medium"
+            }
+          ]
+        },
+        "texture_finish": {
+          "texture": "scrub",
+          "finish": "",
+          "sensory_notes": [],
+          "layering_notes": [
+            "Use a few times weekly, then follow with soothing hydration."
+          ],
+          "confidence": "moderate",
+          "evidence_profile": "seller_only"
+        },
+        "shopping_card": {
+          "subtitle": "Warming facial scrub",
+          "highlight": "Pore-focused warming exfoliation",
+          "intro": "A warming facial scrub for pore-prone texture."
+        },
+        "search_card": {
+          "compact_candidate": "Warming facial scrub",
+          "highlight_candidate": "Pore-focused warming exfoliation",
+          "intro_candidate": "A warming facial scrub for pore-prone texture."
+        },
+        "external_highlight_review_status": "rewrite",
+        "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+      },
+      "quality_gate": {
+        "candidate_available": false,
+        "overall_pass": false,
+        "quality_score": 0,
+        "fail_reasons": [
+          "missing_candidate"
+        ],
+        "field_decisions": {}
+      },
+      "selected": {
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_27ecddfd70b28613b9cdd8a7"
+          },
+          "product_group_id": null,
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Warming facial scrub",
+              "body": "A facial scrub built around pore-focused exfoliation with a warming, sauna-style feel."
+            },
+            "best_for": [
+              {
+                "tag": "pore_visibility",
+                "label": "Visible pores or rough texture",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "blemish_oil",
+                "label": "Oilier or congested skin",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Pore-focused scrub step",
+                "body": "Targets pore-prone texture in a rinse-off exfoliating step rather than a leave-on serum.",
+                "evidence_strength": "seller_grounded"
+              },
+              {
+                "headline": "Sauna-style feel",
+                "body": "The sauna naming signals a scrub with a warmer, more stimulating cleansing feel.",
+                "evidence_strength": "seller_grounded"
+              }
+            ],
+            "routine_fit": {
+              "step": "exfoliant",
+              "am_pm": [
+                "pm"
+              ],
+              "pairing_notes": [
+                "Use a few times weekly, then follow with soothing hydration."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "texture",
+                "label": "The scrub can feel too intense if your skin is already sensitized or over-exfoliated.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-04-12T23:44:15.185Z",
+              "source_version": "pivota.product_intel.v1"
+            },
+            "quality_state": "limited",
+            "evidence_profile": "seller_only",
+            "source_coverage": {
+              "seller": {
+                "available": true
+              },
+              "formula": {
+                "available": false
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "texture": "scrub",
+            "finish": "",
+            "sensory_notes": [],
+            "layering_notes": [
+              "Use a few times weekly, then follow with soothing hydration."
+            ],
+            "confidence": "moderate",
+            "evidence_profile": "seller_only"
+          },
+          "community_signals": {
+            "status": "unavailable"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-12T23:44:15.185Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "product_intel_pilot_compare",
+            "generator": "curated_override",
+            "selection_strategy": "curated_override",
+            "gemini_model": null,
+            "field_sources": {
+              "what_it_is": "baseline",
+              "best_for": "baseline",
+              "why_it_stands_out": "baseline",
+              "routine_fit": "baseline",
+              "watchouts": "baseline",
+              "texture_finish": "baseline",
+              "community_signals": "baseline"
+            },
+            "gemini_quality_gate": {
+              "candidate_available": false,
+              "overall_pass": false,
+              "quality_score": 0,
+              "fail_reasons": [
+                "missing_candidate"
+              ],
+              "field_decisions": {}
+            },
+            "override_reason": "Strict human QA override: title-only seller metadata and broken Gemini highlights left this scrub too generic, so the rewrite narrows it to a warming pore-focused exfoliating step.",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Olehenriksen Pore-Balance Facial Sauna Scrub",
+            "subtitle": "Warming Facial Scrub",
+            "highlight": "Pore-focused warming exfoliation",
+            "intro": "A warming facial scrub for pore-prone texture.",
+            "evidence_profile": "seller_only"
+          },
+          "search_card": {
+            "title_candidate": "Olehenriksen Pore-Balance Facial Sauna Scrub",
+            "compact_candidate": "Warming Facial Scrub",
+            "highlight_candidate": "Pore-focused warming exfoliation",
+            "intro_candidate": "A warming facial scrub for pore-prone texture."
+          }
+        },
+        "field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "manual",
+          "community_signals": "baseline"
+        },
+        "selected_field_count": 6,
+        "selected_mode": "manual_override"
+      },
+      "comparison": {
+        "compared": false,
+        "best_for_overlap": 0,
+        "watchout_overlap": 1,
+        "baseline_highlight_count": 0,
+        "gemini_highlight_count": 0,
+        "gemini_quality": {
+          "candidate_available": false,
+          "overall_pass": false,
+          "quality_score": 0,
+          "fail_reasons": [
+            "missing_candidate"
+          ],
+          "field_decisions": {}
+        },
+        "selected_mode": "manual_override",
+        "selected_field_count": 6,
+        "selected_field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "manual",
+          "community_signals": "baseline"
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_50024e49227406f6c14b1f95",
+      "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+      "manual_override_applied": true,
+      "baseline": {
+        "contract_version": "pivota.product_intel.v1",
+        "display_name": "Pivota Insights",
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_50024e49227406f6c14b1f95"
+        },
+        "product_group_id": null,
+        "product_intel_core": {
+          "display_name": "Pivota Insights",
+          "what_it_is": {
+            "headline": "Daily moisturizer",
+            "body": "Hydrate and illuminate your undereyes with this vitamin C - powdered, fragrance - free eye duo , featuring a brightening eye cream and a color correcting eye cream stick."
+          },
+          "best_for": [
+            {
+              "tag": "uneven_tone",
+              "label": "Uneven tone concerns",
+              "confidence": "moderate"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Formula angle",
+              "body": "Hydrate and illuminate your undereyes with this vitamin C - powdered, fragrance - free eye duo , featuring a brightening eye cream and a color correcting eye cream stick.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "moisturizer",
+            "am_pm": [
+              "am",
+              "pm"
+            ],
+            "pairing_notes": [
+              "Layer after watery treatments and before SPF in the daytime."
+            ]
+          },
+          "watchouts": [
+            {
+              "type": "fragrance",
+              "label": "Contains fragrance or fragrance-like positioning.",
+              "severity": "medium"
+            }
+          ],
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-12T23:44:15.186Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          }
+        },
+        "texture_finish": {
+          "texture": "cream",
+          "finish": "",
+          "sensory_notes": [],
+          "layering_notes": [
+            "Usually layers after serums and before daytime SPF."
+          ],
+          "confidence": "moderate",
+          "evidence_profile": "seller_only"
+        },
+        "community_signals": {
+          "status": "unavailable",
+          "unavailable_reason": "insufficient_feedback",
+          "confidence": "low",
+          "evidence_profile": "seller_only"
+        },
+        "recommendation_intents": {
+          "similar": [],
+          "complementary": [],
+          "routine_pairing": [],
+          "underfill_reason": null,
+          "confidence": "low"
+        },
+        "market_signal_badges": [],
+        "external_highlight_signals": [],
+        "quality_state": "limited",
+        "evidence_profile": "seller_only",
+        "source_coverage": {
+          "seller": {
+            "available": true
+          },
+          "formula": {
+            "available": false
+          },
+          "reviews": {
+            "available": false,
+            "count": 0
+          },
+          "creator": {
+            "available": false,
+            "count": 0
+          },
+          "editorial": {
+            "available": false,
+            "count": 0
+          }
+        },
+        "confidence": {
+          "overall": "moderate",
+          "fields": {
+            "what_it_is": "high",
+            "best_for": "moderate",
+            "why_it_stands_out": "moderate",
+            "routine_fit": "moderate",
+            "watchouts": "moderate"
+          }
+        },
+        "freshness": {
+          "generated_at": "2026-04-12T23:44:15.186Z",
+          "source_version": "pivota.product_intel.v1"
+        },
+        "offer_pointers": {
+          "offers_count": 0,
+          "default_offer_id": null,
+          "best_price_offer_id": null,
+          "commerce_modes": []
+        },
+        "provenance": null,
+        "shopping_card": {
+          "contract_version": "pivota.shopping_card.v1",
+          "title": "Olehenriksen Banana Bright Illuminating Eye Duo",
+          "subtitle": "Daily Moisturizer",
+          "intro": "Hydrate and illuminate your undereyes.",
+          "evidence_profile": "seller_only"
+        },
+        "search_card": {
+          "title_candidate": "Olehenriksen Banana Bright Illuminating Eye Duo",
+          "compact_candidate": "Daily Moisturizer",
+          "intro_candidate": "Hydrate and illuminate your undereyes."
+        }
+      },
+      "gemini": {
+        "skipped": true,
+        "reason": "skip_gemini_flag"
+      },
+      "manual_override": {
+        "notes": "Strict human QA override: reviewed from gemini-3.1-pro-preview and corrected from moisturizer framing into a brightening eye-duo definition.",
+        "product_intel_core": {
+          "what_it_is": {
+            "headline": "Brightening eye duo",
+            "body": "An eye duo that pairs a vitamin C eye cream with a color-correcting eye stick for the undereye area."
+          },
+          "best_for": [
+            {
+              "tag": "brightness_tone",
+              "label": "Undereye dullness or uneven tone",
+              "confidence": "moderate"
+            },
+            {
+              "tag": "routine_simplification",
+              "label": "Eye care plus color correction",
+              "confidence": "moderate"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Cream plus stick pairing",
+              "body": "Combines a standard eye cream with a targeted color-correcting stick in one set.",
+              "evidence_strength": "seller_grounded"
+            },
+            {
+              "headline": "Vitamin C eye-care angle",
+              "body": "Keeps brightening eye care at the center instead of misclassifying the duo as a face cream.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "eye_care",
+            "am_pm": [
+              "am",
+              "pm"
+            ],
+            "pairing_notes": [
+              "Use the eye cream first, then tap on the stick where you want extra brightening."
+            ]
+          },
+          "watchouts": []
+        },
+        "texture_finish": {
+          "texture": "cream + stick",
+          "finish": "brightening",
+          "sensory_notes": [],
+          "layering_notes": [
+            "Use the eye cream first, then tap on the stick where you want extra brightening."
+          ],
+          "confidence": "moderate",
+          "evidence_profile": "seller_only"
+        },
+        "shopping_card": {
+          "subtitle": "Brightening eye duo",
+          "highlight": "Vitamin C + color-correcting duo",
+          "intro": "An eye duo for brightening and color-correcting undereyes."
+        },
+        "search_card": {
+          "compact_candidate": "Brightening eye duo",
+          "highlight_candidate": "Vitamin C + color-correcting duo",
+          "intro_candidate": "An eye duo for brightening and color-correcting undereyes."
+        },
+        "external_highlight_review_status": "rewrite",
+        "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+      },
+      "quality_gate": {
+        "candidate_available": false,
+        "overall_pass": false,
+        "quality_score": 0,
+        "fail_reasons": [
+          "missing_candidate"
+        ],
+        "field_decisions": {}
+      },
+      "selected": {
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_50024e49227406f6c14b1f95"
+          },
+          "product_group_id": null,
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Brightening eye duo",
+              "body": "An eye duo that pairs a vitamin C eye cream with a color-correcting eye stick for the undereye area."
+            },
+            "best_for": [
+              {
+                "tag": "brightness_tone",
+                "label": "Undereye dullness or uneven tone",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "routine_simplification",
+                "label": "Eye care plus color correction",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Cream plus stick pairing",
+                "body": "Combines a standard eye cream with a targeted color-correcting stick in one set.",
+                "evidence_strength": "seller_grounded"
+              },
+              {
+                "headline": "Vitamin C eye-care angle",
+                "body": "Keeps brightening eye care at the center instead of misclassifying the duo as a face cream.",
+                "evidence_strength": "seller_grounded"
+              }
+            ],
+            "routine_fit": {
+              "step": "eye_care",
+              "am_pm": [
+                "am",
+                "pm"
+              ],
+              "pairing_notes": [
+                "Use the eye cream first, then tap on the stick where you want extra brightening."
+              ]
+            },
+            "watchouts": [],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-04-12T23:44:15.186Z",
+              "source_version": "pivota.product_intel.v1"
+            },
+            "quality_state": "limited",
+            "evidence_profile": "seller_only",
+            "source_coverage": {
+              "seller": {
+                "available": true
+              },
+              "formula": {
+                "available": false
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "texture": "cream + stick",
+            "finish": "brightening",
+            "sensory_notes": [],
+            "layering_notes": [
+              "Use the eye cream first, then tap on the stick where you want extra brightening."
+            ],
+            "confidence": "moderate",
+            "evidence_profile": "seller_only"
+          },
+          "community_signals": {
+            "status": "unavailable"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-12T23:44:15.186Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "product_intel_pilot_compare",
+            "generator": "curated_override",
+            "selection_strategy": "curated_override",
+            "gemini_model": null,
+            "field_sources": {
+              "what_it_is": "baseline",
+              "best_for": "baseline",
+              "why_it_stands_out": "baseline",
+              "routine_fit": "baseline",
+              "watchouts": "baseline",
+              "texture_finish": "baseline",
+              "community_signals": "baseline"
+            },
+            "gemini_quality_gate": {
+              "candidate_available": false,
+              "overall_pass": false,
+              "quality_score": 0,
+              "fail_reasons": [
+                "missing_candidate"
+              ],
+              "field_decisions": {}
+            },
+            "override_reason": "Strict human QA override: reviewed from gemini-3.1-pro-preview and corrected from moisturizer framing into a brightening eye-duo definition.",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Olehenriksen Banana Bright Illuminating Eye Duo",
+            "subtitle": "Brightening Eye Duo",
+            "highlight": "Vitamin C + color-correcting duo",
+            "intro": "An eye duo for brightening and color-correcting undereyes.",
+            "evidence_profile": "seller_only"
+          },
+          "search_card": {
+            "title_candidate": "Olehenriksen Banana Bright Illuminating Eye Duo",
+            "compact_candidate": "Brightening Eye Duo",
+            "highlight_candidate": "Vitamin C + color-correcting duo",
+            "intro_candidate": "An eye duo for brightening and color-correcting undereyes."
+          }
+        },
+        "field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "manual",
+          "community_signals": "baseline"
+        },
+        "selected_field_count": 6,
+        "selected_mode": "manual_override"
+      },
+      "comparison": {
+        "compared": false,
+        "best_for_overlap": 0,
+        "watchout_overlap": 0,
+        "baseline_highlight_count": 1,
+        "gemini_highlight_count": 0,
+        "gemini_quality": {
+          "candidate_available": false,
+          "overall_pass": false,
+          "quality_score": 0,
+          "fail_reasons": [
+            "missing_candidate"
+          ],
+          "field_decisions": {}
+        },
+        "selected_mode": "manual_override",
+        "selected_field_count": 6,
+        "selected_field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "manual",
+          "community_signals": "baseline"
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_3fe128d1441a94c26364da2b",
+      "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+      "manual_override_applied": true,
+      "baseline": {
+        "contract_version": "pivota.product_intel.v1",
+        "display_name": "Pivota Insights",
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_3fe128d1441a94c26364da2b"
+        },
+        "product_group_id": null,
+        "product_intel_core": {
+          "display_name": "Pivota Insights",
+          "what_it_is": {
+            "headline": "Makeup product",
+            "body": "An advanced lip treatment, with skin - strengthening peptides and kokum butter, that instantly plumps lip with hydration and smoothes fine lines. Award winner for 2023 PEOPLE's Beauty Awards: Best Lip Treatment."
+          },
+          "best_for": [
+            {
+              "tag": "lip_balm",
+              "label": "Lip Balm shoppers",
+              "confidence": "low"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Formula angle",
+              "body": "An advanced lip treatment, with skin - strengthening peptides and kokum butter, that instantly plumps lip with hydration and smoothes fine lines.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "makeup",
+            "am_pm": [],
+            "pairing_notes": []
+          },
+          "watchouts": [],
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-12T23:44:15.186Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          }
+        },
+        "texture_finish": {
+          "texture": "balm",
+          "finish": "",
+          "sensory_notes": [],
+          "layering_notes": [],
+          "confidence": "moderate",
+          "evidence_profile": "seller_only"
+        },
+        "community_signals": {
+          "status": "unavailable",
+          "unavailable_reason": "insufficient_feedback",
+          "confidence": "low",
+          "evidence_profile": "seller_only"
+        },
+        "recommendation_intents": {
+          "similar": [],
+          "complementary": [],
+          "routine_pairing": [],
+          "underfill_reason": null,
+          "confidence": "low"
+        },
+        "market_signal_badges": [],
+        "external_highlight_signals": [],
+        "quality_state": "limited",
+        "evidence_profile": "seller_only",
+        "source_coverage": {
+          "seller": {
+            "available": true
+          },
+          "formula": {
+            "available": false
+          },
+          "reviews": {
+            "available": false,
+            "count": 0
+          },
+          "creator": {
+            "available": false,
+            "count": 0
+          },
+          "editorial": {
+            "available": false,
+            "count": 0
+          }
+        },
+        "confidence": {
+          "overall": "moderate",
+          "fields": {
+            "what_it_is": "high",
+            "best_for": "moderate",
+            "why_it_stands_out": "moderate",
+            "routine_fit": "moderate",
+            "watchouts": "moderate"
+          }
+        },
+        "freshness": {
+          "generated_at": "2026-04-12T23:44:15.186Z",
+          "source_version": "pivota.product_intel.v1"
+        },
+        "offer_pointers": {
+          "offers_count": 0,
+          "default_offer_id": null,
+          "best_price_offer_id": null,
+          "commerce_modes": []
+        },
+        "provenance": null,
+        "shopping_card": {
+          "contract_version": "pivota.shopping_card.v1",
+          "title": "Olehenriksen Pout Preserve Peptide Lip Treatment",
+          "subtitle": "Makeup Product",
+          "intro": "Award winner for 2023 PEOPLE's Beauty Awards: Best Lip Treatment.",
+          "evidence_profile": "seller_only"
+        },
+        "search_card": {
+          "title_candidate": "Olehenriksen Pout Preserve Peptide Lip Treatment",
+          "compact_candidate": "Makeup Product",
+          "intro_candidate": "Award winner for 2023 PEOPLE's Beauty Awards: Best Lip Treatment."
+        }
+      },
+      "gemini": {
+        "skipped": true,
+        "reason": "skip_gemini_flag"
+      },
+      "manual_override": {
+        "notes": "Strict human QA override: reviewed from both Gemini passes and stripped out award-led copy so the product stays a seller-grounded peptide lip treatment.",
+        "product_intel_core": {
+          "what_it_is": {
+            "headline": "Peptide lip treatment",
+            "body": "A peptide-led lip treatment that hydrates, cushions, and smooths the look of lip lines."
+          },
+          "best_for": [
+            {
+              "tag": "dry_lips",
+              "label": "Dry lips needing extra moisture",
+              "confidence": "moderate"
+            },
+            {
+              "tag": "lip_lines",
+              "label": "Lip lines or rough lip texture",
+              "confidence": "moderate"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Peptides plus kokum butter",
+              "body": "Pairs peptides with richer lip-conditioning support instead of reading like a simple gloss.",
+              "evidence_strength": "seller_grounded"
+            },
+            {
+              "headline": "Treatment-first lip care",
+              "body": "Built as a care step for softer, fuller-looking lips rather than color payoff.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "lip_balm",
+            "am_pm": [
+              "am",
+              "pm"
+            ],
+            "pairing_notes": [
+              "Use whenever lips need moisture or a smoothing treatment layer."
+            ]
+          },
+          "watchouts": []
+        },
+        "texture_finish": {
+          "texture": "balm",
+          "finish": "glossy",
+          "sensory_notes": [],
+          "layering_notes": [
+            "Use whenever lips need moisture or a smoothing treatment layer."
+          ],
+          "confidence": "moderate",
+          "evidence_profile": "seller_only"
+        },
+        "shopping_card": {
+          "subtitle": "Peptide lip treatment",
+          "highlight": "Peptides + cushioned lip care",
+          "intro": "A peptide lip treatment for hydration and smoother-looking lips."
+        },
+        "search_card": {
+          "compact_candidate": "Peptide lip treatment",
+          "highlight_candidate": "Peptides + cushioned lip care",
+          "intro_candidate": "A peptide lip treatment for hydration and smoother-looking lips."
+        },
+        "external_highlight_review_status": "rewrite",
+        "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+      },
+      "quality_gate": {
+        "candidate_available": false,
+        "overall_pass": false,
+        "quality_score": 0,
+        "fail_reasons": [
+          "missing_candidate"
+        ],
+        "field_decisions": {}
+      },
+      "selected": {
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_3fe128d1441a94c26364da2b"
+          },
+          "product_group_id": null,
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Peptide lip treatment",
+              "body": "A peptide-led lip treatment that hydrates, cushions, and smooths the look of lip lines."
+            },
+            "best_for": [
+              {
+                "tag": "dry_lips",
+                "label": "Dry lips needing extra moisture",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "lip_lines",
+                "label": "Lip lines or rough lip texture",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Peptides plus kokum butter",
+                "body": "Pairs peptides with richer lip-conditioning support instead of reading like a simple gloss.",
+                "evidence_strength": "seller_grounded"
+              },
+              {
+                "headline": "Treatment-first lip care",
+                "body": "Built as a care step for softer, fuller-looking lips rather than color payoff.",
+                "evidence_strength": "seller_grounded"
+              }
+            ],
+            "routine_fit": {
+              "step": "lip_balm",
+              "am_pm": [
+                "am",
+                "pm"
+              ],
+              "pairing_notes": [
+                "Use whenever lips need moisture or a smoothing treatment layer."
+              ]
+            },
+            "watchouts": [],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-04-12T23:44:15.186Z",
+              "source_version": "pivota.product_intel.v1"
+            },
+            "quality_state": "limited",
+            "evidence_profile": "seller_only",
+            "source_coverage": {
+              "seller": {
+                "available": true
+              },
+              "formula": {
+                "available": false
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "texture": "balm",
+            "finish": "glossy",
+            "sensory_notes": [],
+            "layering_notes": [
+              "Use whenever lips need moisture or a smoothing treatment layer."
+            ],
+            "confidence": "moderate",
+            "evidence_profile": "seller_only"
+          },
+          "community_signals": {
+            "status": "unavailable"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-12T23:44:15.186Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "product_intel_pilot_compare",
+            "generator": "curated_override",
+            "selection_strategy": "curated_override",
+            "gemini_model": null,
+            "field_sources": {
+              "what_it_is": "baseline",
+              "best_for": "baseline",
+              "why_it_stands_out": "baseline",
+              "routine_fit": "baseline",
+              "watchouts": "baseline",
+              "texture_finish": "baseline",
+              "community_signals": "baseline"
+            },
+            "gemini_quality_gate": {
+              "candidate_available": false,
+              "overall_pass": false,
+              "quality_score": 0,
+              "fail_reasons": [
+                "missing_candidate"
+              ],
+              "field_decisions": {}
+            },
+            "override_reason": "Strict human QA override: reviewed from both Gemini passes and stripped out award-led copy so the product stays a seller-grounded peptide lip treatment.",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Olehenriksen Pout Preserve Peptide Lip Treatment",
+            "subtitle": "Peptide Lip Treatment",
+            "highlight": "Peptides + cushioned lip care",
+            "intro": "A peptide lip treatment for hydration and smoother-looking lips.",
+            "evidence_profile": "seller_only"
+          },
+          "search_card": {
+            "title_candidate": "Olehenriksen Pout Preserve Peptide Lip Treatment",
+            "compact_candidate": "Peptide Lip Treatment",
+            "highlight_candidate": "Peptides + cushioned lip care",
+            "intro_candidate": "A peptide lip treatment for hydration and smoother-looking lips."
+          }
+        },
+        "field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "manual",
+          "community_signals": "baseline"
+        },
+        "selected_field_count": 6,
+        "selected_mode": "manual_override"
+      },
+      "comparison": {
+        "compared": false,
+        "best_for_overlap": 0,
+        "watchout_overlap": 1,
+        "baseline_highlight_count": 1,
+        "gemini_highlight_count": 0,
+        "gemini_quality": {
+          "candidate_available": false,
+          "overall_pass": false,
+          "quality_score": 0,
+          "fail_reasons": [
+            "missing_candidate"
+          ],
+          "field_decisions": {}
+        },
+        "selected_mode": "manual_override",
+        "selected_field_count": 6,
+        "selected_field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "manual",
+          "community_signals": "baseline"
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_a8f18bb1963155e5ce08466e",
+      "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+      "manual_override_applied": true,
+      "baseline": {
+        "contract_version": "pivota.product_intel.v1",
+        "display_name": "Pivota Insights",
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_a8f18bb1963155e5ce08466e"
+        },
+        "product_group_id": null,
+        "product_intel_core": {
+          "display_name": "Pivota Insights",
+          "what_it_is": {
+            "headline": "Daily sunscreen",
+            "body": "The Experience This daily sunscreen looks good, feels good AND smells good - it has a fresh, naturally derived citrus scent (no sunscreen smell here) and soft-matte finish (never greasy). Mineral sunscreen takes longer to absorb into skin vs. chemical sunscreen."
+          },
+          "best_for": [
+            {
+              "tag": "oil_control",
+              "label": "Oily or combination skin",
+              "confidence": "moderate"
+            },
+            {
+              "tag": "daytime_use",
+              "label": "Daytime wear",
+              "confidence": "high"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Formula angle",
+              "body": "The Experience This daily sunscreen looks good, feels good AND smells good - it has a fresh, naturally derived citrus scent (no sunscreen smell here) and soft-matte finish (never greasy).",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "sunscreen",
+            "am_pm": [
+              "am"
+            ],
+            "pairing_notes": [
+              "Use as the last skincare step before makeup in the daytime."
+            ]
+          },
+          "watchouts": [
+            {
+              "type": "fragrance",
+              "label": "Contains fragrance or fragrance-like positioning.",
+              "severity": "medium"
+            },
+            {
+              "type": "spf",
+              "label": "Reapplication still matters for daytime UV protection.",
+              "severity": "medium"
+            }
+          ],
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-12T23:44:15.188Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          }
+        },
+        "texture_finish": {
+          "texture": "",
+          "finish": "matte",
+          "sensory_notes": [],
+          "layering_notes": [
+            "Best used as the last skincare step before makeup."
+          ],
+          "confidence": "moderate",
+          "evidence_profile": "seller_only"
+        },
+        "community_signals": {
+          "status": "unavailable",
+          "unavailable_reason": "insufficient_feedback",
+          "confidence": "low",
+          "evidence_profile": "seller_only"
+        },
+        "recommendation_intents": {
+          "similar": [],
+          "complementary": [],
+          "routine_pairing": [],
+          "underfill_reason": null,
+          "confidence": "low"
+        },
+        "market_signal_badges": [],
+        "external_highlight_signals": [],
+        "quality_state": "limited",
+        "evidence_profile": "seller_only",
+        "source_coverage": {
+          "seller": {
+            "available": true
+          },
+          "formula": {
+            "available": false
+          },
+          "reviews": {
+            "available": false,
+            "count": 0
+          },
+          "creator": {
+            "available": false,
+            "count": 0
+          },
+          "editorial": {
+            "available": false,
+            "count": 0
+          }
+        },
+        "confidence": {
+          "overall": "moderate",
+          "fields": {
+            "what_it_is": "high",
+            "best_for": "moderate",
+            "why_it_stands_out": "moderate",
+            "routine_fit": "moderate",
+            "watchouts": "moderate"
+          }
+        },
+        "freshness": {
+          "generated_at": "2026-04-12T23:44:15.188Z",
+          "source_version": "pivota.product_intel.v1"
+        },
+        "offer_pointers": {
+          "offers_count": 0,
+          "default_offer_id": null,
+          "best_price_offer_id": null,
+          "commerce_modes": []
+        },
+        "provenance": null,
+        "shopping_card": {
+          "contract_version": "pivota.shopping_card.v1",
+          "title": "Olehenriksen Banana Bright Mineral Sunscreen SPF 30",
+          "subtitle": "Daily Sunscreen",
+          "intro": "Mineral sunscreen takes longer to absorb into skin vs.",
+          "evidence_profile": "seller_only"
+        },
+        "search_card": {
+          "title_candidate": "Olehenriksen Banana Bright Mineral Sunscreen SPF 30",
+          "compact_candidate": "Daily Sunscreen",
+          "intro_candidate": "Mineral sunscreen takes longer to absorb into skin vs."
+        }
+      },
+      "gemini": {
+        "skipped": true,
+        "reason": "skip_gemini_flag"
+      },
+      "manual_override": {
+        "notes": "Strict human QA override: reviewed from both Gemini passes and tightened from scent-led sunscreen copy into a seller-grounded mineral SPF definition.",
+        "product_intel_core": {
+          "what_it_is": {
+            "headline": "Mineral sunscreen",
+            "body": "A mineral SPF 30 sunscreen made for daily wear with a soft-matte finish."
+          },
+          "best_for": [
+            {
+              "tag": "daily_spf",
+              "label": "Daily sun-protection routines",
+              "confidence": "moderate"
+            },
+            {
+              "tag": "blemish_oil",
+              "label": "Those preferring a softer matte finish",
+              "confidence": "moderate"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Soft-matte mineral wear",
+              "body": "Keeps the finish more soft-matte and less greasy than a dewier sunscreen step.",
+              "evidence_strength": "seller_grounded"
+            },
+            {
+              "headline": "Daily mineral SPF 30",
+              "body": "Puts mineral UV protection into an everyday daytime step rather than a makeup-only product.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "sunscreen",
+            "am_pm": [
+              "am"
+            ],
+            "pairing_notes": [
+              "Use as the last skincare step before makeup in the morning."
+            ]
+          },
+          "watchouts": [
+            {
+              "type": "spf",
+              "label": "Mineral formulas can take longer to blend and still need full application for coverage.",
+              "severity": "medium"
+            }
+          ]
+        },
+        "texture_finish": {
+          "texture": "cream",
+          "finish": "soft-matte",
+          "sensory_notes": [],
+          "layering_notes": [
+            "Use as the last skincare step before makeup in the morning."
+          ],
+          "confidence": "moderate",
+          "evidence_profile": "seller_only"
+        },
+        "shopping_card": {
+          "subtitle": "Mineral sunscreen",
+          "highlight": "Soft-matte mineral SPF 30",
+          "intro": "A daily mineral sunscreen with a soft-matte finish."
+        },
+        "search_card": {
+          "compact_candidate": "Mineral sunscreen",
+          "highlight_candidate": "Soft-matte mineral SPF 30",
+          "intro_candidate": "A daily mineral sunscreen with a soft-matte finish."
+        },
+        "external_highlight_review_status": "rewrite",
+        "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+      },
+      "quality_gate": {
+        "candidate_available": false,
+        "overall_pass": false,
+        "quality_score": 0,
+        "fail_reasons": [
+          "missing_candidate"
+        ],
+        "field_decisions": {}
+      },
+      "selected": {
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_a8f18bb1963155e5ce08466e"
+          },
+          "product_group_id": null,
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Mineral sunscreen",
+              "body": "A mineral SPF 30 sunscreen made for daily wear with a soft-matte finish."
+            },
+            "best_for": [
+              {
+                "tag": "daily_spf",
+                "label": "Daily sun-protection routines",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "blemish_oil",
+                "label": "Those preferring a softer matte finish",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Soft-matte mineral wear",
+                "body": "Keeps the finish more soft-matte and less greasy than a dewier sunscreen step.",
+                "evidence_strength": "seller_grounded"
+              },
+              {
+                "headline": "Daily mineral SPF 30",
+                "body": "Puts mineral UV protection into an everyday daytime step rather than a makeup-only product.",
+                "evidence_strength": "seller_grounded"
+              }
+            ],
+            "routine_fit": {
+              "step": "sunscreen",
+              "am_pm": [
+                "am"
+              ],
+              "pairing_notes": [
+                "Use as the last skincare step before makeup in the morning."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "spf",
+                "label": "Mineral formulas can take longer to blend and still need full application for coverage.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-04-12T23:44:15.188Z",
+              "source_version": "pivota.product_intel.v1"
+            },
+            "quality_state": "limited",
+            "evidence_profile": "seller_only",
+            "source_coverage": {
+              "seller": {
+                "available": true
+              },
+              "formula": {
+                "available": false
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "texture": "cream",
+            "finish": "soft-matte",
+            "sensory_notes": [],
+            "layering_notes": [
+              "Use as the last skincare step before makeup in the morning."
+            ],
+            "confidence": "moderate",
+            "evidence_profile": "seller_only"
+          },
+          "community_signals": {
+            "status": "unavailable"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-12T23:44:15.188Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "product_intel_pilot_compare",
+            "generator": "curated_override",
+            "selection_strategy": "curated_override",
+            "gemini_model": null,
+            "field_sources": {
+              "what_it_is": "baseline",
+              "best_for": "baseline",
+              "why_it_stands_out": "baseline",
+              "routine_fit": "baseline",
+              "watchouts": "baseline",
+              "texture_finish": "baseline",
+              "community_signals": "baseline"
+            },
+            "gemini_quality_gate": {
+              "candidate_available": false,
+              "overall_pass": false,
+              "quality_score": 0,
+              "fail_reasons": [
+                "missing_candidate"
+              ],
+              "field_decisions": {}
+            },
+            "override_reason": "Strict human QA override: reviewed from both Gemini passes and tightened from scent-led sunscreen copy into a seller-grounded mineral SPF definition.",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Olehenriksen Banana Bright Mineral Sunscreen SPF 30",
+            "subtitle": "Mineral Sunscreen",
+            "highlight": "Soft-matte mineral SPF 30",
+            "intro": "A daily mineral sunscreen with a soft-matte finish.",
+            "evidence_profile": "seller_only"
+          },
+          "search_card": {
+            "title_candidate": "Olehenriksen Banana Bright Mineral Sunscreen SPF 30",
+            "compact_candidate": "Mineral Sunscreen",
+            "highlight_candidate": "Soft-matte mineral SPF 30",
+            "intro_candidate": "A daily mineral sunscreen with a soft-matte finish."
+          }
+        },
+        "field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "manual",
+          "community_signals": "baseline"
+        },
+        "selected_field_count": 6,
+        "selected_mode": "manual_override"
+      },
+      "comparison": {
+        "compared": false,
+        "best_for_overlap": 0,
+        "watchout_overlap": 0,
+        "baseline_highlight_count": 1,
+        "gemini_highlight_count": 0,
+        "gemini_quality": {
+          "candidate_available": false,
+          "overall_pass": false,
+          "quality_score": 0,
+          "fail_reasons": [
+            "missing_candidate"
+          ],
+          "field_decisions": {}
+        },
+        "selected_mode": "manual_override",
+        "selected_field_count": 6,
+        "selected_field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "manual",
+          "community_signals": "baseline"
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_906f8e7c7685d563a502787b",
+      "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+      "manual_override_applied": true,
+      "baseline": {
+        "contract_version": "pivota.product_intel.v1",
+        "display_name": "Pivota Insights",
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_906f8e7c7685d563a502787b"
+        },
+        "product_group_id": null,
+        "product_intel_core": {
+          "display_name": "Pivota Insights",
+          "what_it_is": {
+            "headline": "Product",
+            "body": "Ein Regimen mit Multipeptidformulierungen zur gezielten Bekämpfung von Anzeichen der Hautalterung. A regimen including multi-peptide formulations to target signs of aging."
+          },
+          "best_for": [
+            {
+              "tag": "external",
+              "label": "external shoppers",
+              "confidence": "low"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Formula angle",
+              "body": "Ein Regimen mit Multipeptidformulierungen zur gezielten Bekämpfung von Anzeichen der Hautalterung.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "product",
+            "am_pm": [],
+            "pairing_notes": []
+          },
+          "watchouts": [],
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-12T23:44:15.190Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          }
+        },
+        "texture_finish": null,
+        "community_signals": {
+          "status": "unavailable",
+          "unavailable_reason": "insufficient_feedback",
+          "confidence": "low",
+          "evidence_profile": "seller_only"
+        },
+        "recommendation_intents": {
+          "similar": [],
+          "complementary": [],
+          "routine_pairing": [],
+          "underfill_reason": null,
+          "confidence": "low"
+        },
+        "market_signal_badges": [],
+        "external_highlight_signals": [],
+        "quality_state": "limited",
+        "evidence_profile": "seller_only",
+        "source_coverage": {
+          "seller": {
+            "available": true
+          },
+          "formula": {
+            "available": false
+          },
+          "reviews": {
+            "available": false,
+            "count": 0
+          },
+          "creator": {
+            "available": false,
+            "count": 0
+          },
+          "editorial": {
+            "available": false,
+            "count": 0
+          }
+        },
+        "confidence": {
+          "overall": "moderate",
+          "fields": {
+            "what_it_is": "high",
+            "best_for": "moderate",
+            "why_it_stands_out": "moderate",
+            "routine_fit": "moderate",
+            "watchouts": "moderate"
+          }
+        },
+        "freshness": {
+          "generated_at": "2026-04-12T23:44:15.190Z",
+          "source_version": "pivota.product_intel.v1"
+        },
+        "offer_pointers": {
+          "offers_count": 0,
+          "default_offer_id": null,
+          "best_price_offer_id": null,
+          "commerce_modes": []
+        },
+        "provenance": null,
+        "shopping_card": {
+          "contract_version": "pivota.shopping_card.v1",
+          "title": "the ordinary The Age Support Set",
+          "subtitle": "Product",
+          "intro": "A regimen including multi-peptide formulations to target signs of aging.",
+          "evidence_profile": "seller_only"
+        },
+        "search_card": {
+          "title_candidate": "the ordinary The Age Support Set",
+          "compact_candidate": "Product",
+          "intro_candidate": "A regimen including multi-peptide formulations to target signs of aging."
+        }
+      },
+      "gemini": {
+        "skipped": true,
+        "reason": "skip_gemini_flag"
+      },
+      "manual_override": {
+        "notes": "Strict human QA override: reviewed from both Gemini passes and tightened from a generic product card into a multi-peptide age-support set definition.",
+        "product_intel_core": {
+          "what_it_is": {
+            "headline": "Age-support skincare set",
+            "body": "A multi-step skincare set that uses multi-peptide products to support visible signs of aging."
+          },
+          "best_for": [
+            {
+              "tag": "fine_lines_wrinkles",
+              "label": "Fine lines or wrinkle-focused routines",
+              "confidence": "moderate"
+            },
+            {
+              "tag": "routine_simplification",
+              "label": "A coordinated age-support routine",
+              "confidence": "moderate"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Multi-peptide routine",
+              "body": "Groups multi-peptide products into one coordinated age-support set.",
+              "evidence_strength": "seller_grounded"
+            },
+            {
+              "headline": "Set format over single SKU",
+              "body": "Designed as a routine bundle instead of asking one product to do the full job.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "routine set",
+            "am_pm": [
+              "am",
+              "pm"
+            ],
+            "pairing_notes": [
+              "Use the included products in the order directed by the brand."
+            ]
+          },
+          "watchouts": [
+            {
+              "type": "format",
+              "label": "This is a multi-step set, not a single peptide serum.",
+              "severity": "low"
+            }
+          ]
+        },
+        "texture_finish": {
+          "texture": "",
+          "finish": "",
+          "sensory_notes": [],
+          "layering_notes": [
+            "Use the included products in the order directed by the brand."
+          ],
+          "confidence": "moderate",
+          "evidence_profile": "seller_only"
+        },
+        "shopping_card": {
+          "subtitle": "Age-support skincare set",
+          "highlight": "Multi-peptide age-support set",
+          "intro": "A multi-step set built around age-support peptides."
+        },
+        "search_card": {
+          "compact_candidate": "Age-support skincare set",
+          "highlight_candidate": "Multi-peptide age-support set",
+          "intro_candidate": "A multi-step set built around age-support peptides."
+        },
+        "external_highlight_review_status": "rewrite",
+        "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+      },
+      "quality_gate": {
+        "candidate_available": false,
+        "overall_pass": false,
+        "quality_score": 0,
+        "fail_reasons": [
+          "missing_candidate"
+        ],
+        "field_decisions": {}
+      },
+      "selected": {
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_906f8e7c7685d563a502787b"
+          },
+          "product_group_id": null,
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Age-support skincare set",
+              "body": "A multi-step skincare set that uses multi-peptide products to support visible signs of aging."
+            },
+            "best_for": [
+              {
+                "tag": "fine_lines_wrinkles",
+                "label": "Fine lines or wrinkle-focused routines",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "routine_simplification",
+                "label": "A coordinated age-support routine",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Multi-peptide routine",
+                "body": "Groups multi-peptide products into one coordinated age-support set.",
+                "evidence_strength": "seller_grounded"
+              },
+              {
+                "headline": "Set format over single SKU",
+                "body": "Designed as a routine bundle instead of asking one product to do the full job.",
+                "evidence_strength": "seller_grounded"
+              }
+            ],
+            "routine_fit": {
+              "step": "routine set",
+              "am_pm": [
+                "am",
+                "pm"
+              ],
+              "pairing_notes": [
+                "Use the included products in the order directed by the brand."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "format",
+                "label": "This is a multi-step set, not a single peptide serum.",
+                "severity": "low"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-04-12T23:44:15.190Z",
+              "source_version": "pivota.product_intel.v1"
+            },
+            "quality_state": "limited",
+            "evidence_profile": "seller_only",
+            "source_coverage": {
+              "seller": {
+                "available": true
+              },
+              "formula": {
+                "available": false
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "texture": "",
+            "finish": "",
+            "sensory_notes": [],
+            "layering_notes": [
+              "Use the included products in the order directed by the brand."
+            ],
+            "confidence": "moderate",
+            "evidence_profile": "seller_only"
+          },
+          "community_signals": {
+            "status": "unavailable"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-12T23:44:15.190Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "product_intel_pilot_compare",
+            "generator": "curated_override",
+            "selection_strategy": "curated_override",
+            "gemini_model": null,
+            "field_sources": {
+              "what_it_is": "baseline",
+              "best_for": "baseline",
+              "why_it_stands_out": "baseline",
+              "routine_fit": "baseline",
+              "watchouts": "baseline",
+              "texture_finish": "baseline",
+              "community_signals": "baseline"
+            },
+            "gemini_quality_gate": {
+              "candidate_available": false,
+              "overall_pass": false,
+              "quality_score": 0,
+              "fail_reasons": [
+                "missing_candidate"
+              ],
+              "field_decisions": {}
+            },
+            "override_reason": "Strict human QA override: reviewed from both Gemini passes and tightened from a generic product card into a multi-peptide age-support set definition.",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "the ordinary The Age Support Set",
+            "subtitle": "Age-Support Skincare Set",
+            "highlight": "Multi-peptide age-support set",
+            "intro": "A multi-step set built around age-support peptides.",
+            "evidence_profile": "seller_only"
+          },
+          "search_card": {
+            "title_candidate": "the ordinary The Age Support Set",
+            "compact_candidate": "Age-Support Skincare Set",
+            "highlight_candidate": "Multi-peptide age-support set",
+            "intro_candidate": "A multi-step set built around age-support peptides."
+          }
+        },
+        "field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "manual",
+          "community_signals": "baseline"
+        },
+        "selected_field_count": 6,
+        "selected_mode": "manual_override"
+      },
+      "comparison": {
+        "compared": false,
+        "best_for_overlap": 0,
+        "watchout_overlap": 1,
+        "baseline_highlight_count": 1,
+        "gemini_highlight_count": 0,
+        "gemini_quality": {
+          "candidate_available": false,
+          "overall_pass": false,
+          "quality_score": 0,
+          "fail_reasons": [
+            "missing_candidate"
+          ],
+          "field_decisions": {}
+        },
+        "selected_mode": "manual_override",
+        "selected_field_count": 6,
+        "selected_field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "manual",
+          "community_signals": "baseline"
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_af05377689d7e39f5740d5f2",
+      "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+      "manual_override_applied": true,
+      "baseline": {
+        "contract_version": "pivota.product_intel.v1",
+        "display_name": "Pivota Insights",
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_af05377689d7e39f5740d5f2"
+        },
+        "product_group_id": null,
+        "product_intel_core": {
+          "display_name": "Pivota Insights",
+          "what_it_is": {
+            "headline": "Product",
+            "body": "A regimen that includes products designed to rebuild and strengthen the skin barrier."
+          },
+          "best_for": [
+            {
+              "tag": "dryness",
+              "label": "Dry or dehydrated skin",
+              "confidence": "moderate"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Formula angle",
+              "body": "A regimen that includes products designed to rebuild and strengthen the skin barrier.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "product",
+            "am_pm": [],
+            "pairing_notes": []
+          },
+          "watchouts": [],
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-12T23:44:15.190Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          }
+        },
+        "texture_finish": null,
+        "community_signals": {
+          "status": "unavailable",
+          "unavailable_reason": "insufficient_feedback",
+          "confidence": "low",
+          "evidence_profile": "seller_only"
+        },
+        "recommendation_intents": {
+          "similar": [],
+          "complementary": [],
+          "routine_pairing": [],
+          "underfill_reason": null,
+          "confidence": "low"
+        },
+        "market_signal_badges": [],
+        "external_highlight_signals": [],
+        "quality_state": "limited",
+        "evidence_profile": "seller_only",
+        "source_coverage": {
+          "seller": {
+            "available": true
+          },
+          "formula": {
+            "available": false
+          },
+          "reviews": {
+            "available": false,
+            "count": 0
+          },
+          "creator": {
+            "available": false,
+            "count": 0
+          },
+          "editorial": {
+            "available": false,
+            "count": 0
+          }
+        },
+        "confidence": {
+          "overall": "moderate",
+          "fields": {
+            "what_it_is": "high",
+            "best_for": "moderate",
+            "why_it_stands_out": "moderate",
+            "routine_fit": "moderate",
+            "watchouts": "moderate"
+          }
+        },
+        "freshness": {
+          "generated_at": "2026-04-12T23:44:15.190Z",
+          "source_version": "pivota.product_intel.v1"
+        },
+        "offer_pointers": {
+          "offers_count": 0,
+          "default_offer_id": null,
+          "best_price_offer_id": null,
+          "commerce_modes": []
+        },
+        "provenance": null,
+        "shopping_card": {
+          "contract_version": "pivota.shopping_card.v1",
+          "title": "the ordinary The Barrier Support Collection",
+          "subtitle": "Product",
+          "intro": "A regimen that includes products designed to rebuild and strengthen the skin barrier.",
+          "evidence_profile": "seller_only"
+        },
+        "search_card": {
+          "title_candidate": "the ordinary The Barrier Support Collection",
+          "compact_candidate": "Product",
+          "intro_candidate": "A regimen that includes products designed to rebuild and strengthen the skin barrier."
+        }
+      },
+      "gemini": {
+        "skipped": true,
+        "reason": "skip_gemini_flag"
+      },
+      "manual_override": {
+        "notes": "Strict human QA override: reviewed from both Gemini passes and tightened from a generic product card into a barrier-support routine set definition.",
+        "product_intel_core": {
+          "what_it_is": {
+            "headline": "Barrier-support skincare set",
+            "body": "A multi-step collection designed to help support and rebuild the skin barrier."
+          },
+          "best_for": [
+            {
+              "tag": "dryness_barrier",
+              "label": "Dryness or barrier-repair routines",
+              "confidence": "moderate"
+            },
+            {
+              "tag": "sensitive_skin",
+              "label": "Skin that feels easily stressed",
+              "confidence": "moderate"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Barrier-first routine",
+              "body": "Keeps barrier repair at the center of the collection instead of a single moisturizer step.",
+              "evidence_strength": "seller_grounded"
+            },
+            {
+              "headline": "Multi-step support",
+              "body": "Bundles several supportive steps for a fuller barrier routine.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "routine set",
+            "am_pm": [
+              "am",
+              "pm"
+            ],
+            "pairing_notes": [
+              "Use the included products in the order directed by the brand."
+            ]
+          },
+          "watchouts": [
+            {
+              "type": "format",
+              "label": "This is a collection of steps, not a single barrier cream.",
+              "severity": "low"
+            }
+          ]
+        },
+        "texture_finish": {
+          "texture": "",
+          "finish": "",
+          "sensory_notes": [],
+          "layering_notes": [
+            "Use the included products in the order directed by the brand."
+          ],
+          "confidence": "moderate",
+          "evidence_profile": "seller_only"
+        },
+        "shopping_card": {
+          "subtitle": "Barrier-support skincare set",
+          "highlight": "Barrier-focused routine set",
+          "intro": "A multi-step collection for barrier support and recovery."
+        },
+        "search_card": {
+          "compact_candidate": "Barrier-support skincare set",
+          "highlight_candidate": "Barrier-focused routine set",
+          "intro_candidate": "A multi-step collection for barrier support and recovery."
+        },
+        "external_highlight_review_status": "rewrite",
+        "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+      },
+      "quality_gate": {
+        "candidate_available": false,
+        "overall_pass": false,
+        "quality_score": 0,
+        "fail_reasons": [
+          "missing_candidate"
+        ],
+        "field_decisions": {}
+      },
+      "selected": {
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_af05377689d7e39f5740d5f2"
+          },
+          "product_group_id": null,
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Barrier-support skincare set",
+              "body": "A multi-step collection designed to help support and rebuild the skin barrier."
+            },
+            "best_for": [
+              {
+                "tag": "dryness_barrier",
+                "label": "Dryness or barrier-repair routines",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "sensitive_skin",
+                "label": "Skin that feels easily stressed",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Barrier-first routine",
+                "body": "Keeps barrier repair at the center of the collection instead of a single moisturizer step.",
+                "evidence_strength": "seller_grounded"
+              },
+              {
+                "headline": "Multi-step support",
+                "body": "Bundles several supportive steps for a fuller barrier routine.",
+                "evidence_strength": "seller_grounded"
+              }
+            ],
+            "routine_fit": {
+              "step": "routine set",
+              "am_pm": [
+                "am",
+                "pm"
+              ],
+              "pairing_notes": [
+                "Use the included products in the order directed by the brand."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "format",
+                "label": "This is a collection of steps, not a single barrier cream.",
+                "severity": "low"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-04-12T23:44:15.190Z",
+              "source_version": "pivota.product_intel.v1"
+            },
+            "quality_state": "limited",
+            "evidence_profile": "seller_only",
+            "source_coverage": {
+              "seller": {
+                "available": true
+              },
+              "formula": {
+                "available": false
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "texture": "",
+            "finish": "",
+            "sensory_notes": [],
+            "layering_notes": [
+              "Use the included products in the order directed by the brand."
+            ],
+            "confidence": "moderate",
+            "evidence_profile": "seller_only"
+          },
+          "community_signals": {
+            "status": "unavailable"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-12T23:44:15.190Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "product_intel_pilot_compare",
+            "generator": "curated_override",
+            "selection_strategy": "curated_override",
+            "gemini_model": null,
+            "field_sources": {
+              "what_it_is": "baseline",
+              "best_for": "baseline",
+              "why_it_stands_out": "baseline",
+              "routine_fit": "baseline",
+              "watchouts": "baseline",
+              "texture_finish": "baseline",
+              "community_signals": "baseline"
+            },
+            "gemini_quality_gate": {
+              "candidate_available": false,
+              "overall_pass": false,
+              "quality_score": 0,
+              "fail_reasons": [
+                "missing_candidate"
+              ],
+              "field_decisions": {}
+            },
+            "override_reason": "Strict human QA override: reviewed from both Gemini passes and tightened from a generic product card into a barrier-support routine set definition.",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "the ordinary The Barrier Support Collection",
+            "subtitle": "Barrier-Support Skincare Set",
+            "highlight": "Barrier-focused routine set",
+            "intro": "A multi-step collection for barrier support and recovery.",
+            "evidence_profile": "seller_only"
+          },
+          "search_card": {
+            "title_candidate": "the ordinary The Barrier Support Collection",
+            "compact_candidate": "Barrier-Support Skincare Set",
+            "highlight_candidate": "Barrier-focused routine set",
+            "intro_candidate": "A multi-step collection for barrier support and recovery."
+          }
+        },
+        "field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "manual",
+          "community_signals": "baseline"
+        },
+        "selected_field_count": 6,
+        "selected_mode": "manual_override"
+      },
+      "comparison": {
+        "compared": false,
+        "best_for_overlap": 0,
+        "watchout_overlap": 1,
+        "baseline_highlight_count": 1,
+        "gemini_highlight_count": 0,
+        "gemini_quality": {
+          "candidate_available": false,
+          "overall_pass": false,
+          "quality_score": 0,
+          "fail_reasons": [
+            "missing_candidate"
+          ],
+          "field_decisions": {}
+        },
+        "selected_mode": "manual_override",
+        "selected_field_count": 6,
+        "selected_field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "manual",
+          "community_signals": "baseline"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,5402 @@
+[
+  {
+    "case_id": "live_ext_dd263984bcd37d64e0cdb0e3",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_dd263984bcd37d64e0cdb0e3"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_dd263984bcd37d64e0cdb0e3",
+      "brand": "Murad",
+      "title": "Retinol Youth Renewal Eye Mask",
+      "category": "external",
+      "description": "This premium extra-large eye mask delivers an instant boost of retinol to virtually erase lines, visibly firm and leave eyes looking ultra-refreshed. Water/Aqua/Eau, Butylene Glycol, Glycerin, Urea, Yeast Amino Acids, Trehalose, Inositol, Taurine, Betaine, Glycine Soja (Soybean) Extract, Prunus Persica (Peach) Resin E…",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_2ab5a4d4419004d908367910",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_2ab5a4d4419004d908367910"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_2ab5a4d4419004d908367910",
+      "brand": "Murad",
+      "title": "Retinol Youth Renewal Night Cream Travel Size",
+      "category": "Moisturizer",
+      "description": "Improves the look of wrinkles while intensely hydrating. Water/Aqua/Eau, Isostearyl Hydroxystearate, Caprylic/Capric Triglyceride, Propanediol, Butylene Glycol, C14-22 Alcohols, Cetyl Alcohol, Dimethicone, Polymethylsilsesquioxane, Niacinamide, Hydrolyzed Yeast Extract, Retinol, Retinyl Propionate, Oleyl Alcohol, Sodi…",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_fcfdf2e5a9af4b6cc6f47194",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_fcfdf2e5a9af4b6cc6f47194"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_fcfdf2e5a9af4b6cc6f47194",
+      "brand": "Murad",
+      "title": "Essential-C Cleanser Travel Size",
+      "category": "Cleanser",
+      "description": "Vitamin-rich, energising cleanser washes away impurities without over-drying skin. Water/Aqua/Eau, Cocamidopropyl Betaine, Disodium Laureth Sulfosuccinate, Glycerin, Butylene Glycol, Aminomethyl Propanol, Polysorbate 20, Acrylates/C10-30 Alkyl Acrylate Crosspolymer, Panthenol, Phospholipids, Tocopheryl Acetate, Retiny…",
+      "tags": [
+        "Cleanser"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_d30d2215534fb32e63111ded",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_d30d2215534fb32e63111ded"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_d30d2215534fb32e63111ded",
+      "brand": "Murad",
+      "title": "Renewing Cleansing Cream",
+      "category": "Cleanser",
+      "description": "Silky, creamy cleanser transforms into a rich lather to remove impurities and refresh without over-drying Water/Aqua/Eau, Sodium Cocoyl Isethionate, Glyceryl Stearate SE, Glycerin, Stearic Acid, Cetyl Alcohol, Prunus Armeniaca (Apricot) Kernel Oil, Palmitoyl Tripeptide-5, Butyrospermum Parkii (Shea) Butter Extract, Co…",
+      "tags": [
+        "Cleanser"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_3e7fd389512ea4e9657c6be2",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3e7fd389512ea4e9657c6be2"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3e7fd389512ea4e9657c6be2",
+      "brand": "Murad",
+      "title": "Clarifying Cleanser Value Size",
+      "category": "Cleanser",
+      "description": "Cleanses, clears pores and treats acne—even after rinsing. ($70.00 value) Active ingredient: Salicylic Acid 1.5% Inactive ingredients: Water (Aqua), Sodium C14-16 Olefin Sulfonate, Cocamidopropyl Betaine, Citric Acid, Urea, Yeast Amino Acids, Trehalose, Inositol, Taurine, Betaine, Camellia Sinensis Leaf Extract, Menth…",
+      "tags": [
+        "Cleanser"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_7870d8d2a7921656453e0d27",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_7870d8d2a7921656453e0d27"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_7870d8d2a7921656453e0d27",
+      "brand": "Murad",
+      "title": "Retinol Youth Renewal Serum Travel Size",
+      "category": "Serum",
+      "description": "Fast-acting serum combines 3 retinol technologies & hyaluronic acid to reduce the look of wrinkles in just 2 weeks. Water/Aqua/Eau, Dimethicone, C9-12 Alkane, Isopropyl Palmitate, C14-22 Alcohols, Polymethylsilsesquioxane, Dicaprylyl Carbonate, Glyceryl Stearate, PEG-100 Stearate, Propanediol, Retinol, Hydroxypinacolo…",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_6baee48692d04597a677a61d",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_6baee48692d04597a677a61d"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_6baee48692d04597a677a61d",
+      "brand": "Murad",
+      "title": "Hydrating Toner",
+      "category": "Toner",
+      "description": "Alcohol-free toner restores moisture balance and softens Water/Aqua/Eau, Butylene Glycol, Hamamelis Virginiana (Witch Hazel) Water, Urea, Yeast Amino Acids, Trehalose, Inositol, Taurine, Betaine, Chondrus Crispus (Carrageenan) Extract, Prunus Persica (Peach) Fruit Extract, Anthemis Nobilis Flower Extract, Sodium PCA,…",
+      "tags": [
+        "Toner"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_6a8e37e153efa928fed0bc91",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_6a8e37e153efa928fed0bc91"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_6a8e37e153efa928fed0bc91",
+      "brand": "Murad",
+      "title": "Vita-C Glycolic Serum Travel Size",
+      "category": "Serum",
+      "description": "Now available in a travel size! Gold-stabilized vitamin C and glycolic acid serum for dramatically brighter, healthier-looking skin.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_e6211db9d5c7de633c40fecc",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_e6211db9d5c7de633c40fecc"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_e6211db9d5c7de633c40fecc",
+      "brand": "Murad",
+      "title": "Vita-C Glycolic Serum Refill",
+      "category": "Serum",
+      "description": "Refill tube of our gold-stabilized vitamin C and glycolic acid serum for dramatically brighter, healthier-looking skin Water/Aqua/Eau, Glycerin, Caprylic/Capric Triglyceride, Glycolic Acid, Dimethicone, HDI/Trimethylol Hexyllactone Crosspolymer, Diisopropyl Sebacate, C13-16 Isoparaffin, Sodium Hydroxide, Polyacrylate…",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_dc6ca74c3de7a63fd326ebe8",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_dc6ca74c3de7a63fd326ebe8"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_dc6ca74c3de7a63fd326ebe8",
+      "brand": "Murad",
+      "title": "Revitalixir Recovery Serum",
+      "category": "Serum",
+      "description": "Sphere-infused serum for the face and eyes combats signs of stress-induced aging Water/Aqua/Eau, Glycerin, Propanediol, Prunus Armeniaca (Apricot) Kernel Oil, Niacinamide, Pentylene Glycol, Caprylic/Capric Triglyceride, Alcohol Denat., 1,2-Hexanediol, Cannabis Sativa Seed Oil, Sodium Hyaluronate, Acetyl Hexapeptide-8,…",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_ab1462dbc82c9e8b0126cb45",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_ab1462dbc82c9e8b0126cb45"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_ab1462dbc82c9e8b0126cb45",
+      "brand": "Murad",
+      "title": "Retinol Youth Renewal Serum Deluxe Travel Size",
+      "category": "Serum",
+      "description": "Fast-acting serum combines 3 retinol technologies & hyaluronic acid to reduce the look of wrinkles in just 2 weeks. Water/Aqua/Eau, Dimethicone, C9-12 Alkane, Isopropyl Palmitate, C14-22 Alcohols, Polymethylsilsesquioxane, Dicaprylyl Carbonate, Glyceryl Stearate, PEG-100 Stearate, Propanediol, Retinol, Hydroxypinacolo…",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_578df41c596f55c3b8cbd216",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_578df41c596f55c3b8cbd216"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_578df41c596f55c3b8cbd216",
+      "brand": "Murad",
+      "title": "Soothing Oat and Peptide Cleanser",
+      "category": "Cleanser",
+      "description": "Formulated to cleanse – not strip – over-dry and eczema-prone skin, this creamy, ultra-gentle micellar cleanser safely cleanses away dirt, oil and makeup while curbing irritation and leaving beneficial moisture intact Water/Aqua/Eau, Glycerin, Propanediol, Dicaprylyl Carbonate, Hydroxyethyl Acrylate/Sodium Acryloyldim…",
+      "tags": [
+        "Cleanser"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_b61c6774eb9f83b91d7416e5",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_b61c6774eb9f83b91d7416e5"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_b61c6774eb9f83b91d7416e5",
+      "brand": "Murad",
+      "title": "AHA/BHA Exfoliating Cleanser Travel Size",
+      "category": "Cleanser",
+      "description": "Travel size, creamy exfoliating cleanser helps reveal smoother skin Water/Aqua/Eau, Sodium Laureth Sulfate, Cocamidopropyl Betaine, Jojoba Esters, Acrylates Copolymer, Glycol Stearate, Butylene Glycol, Sodium PCA, Dipotassium Glycyrrhizate, Sodium Ascorbyl Phosphate, Glycolic Acid, Lactic Acid, Salicylic Acid, Polyqua…",
+      "tags": [
+        "Cleanser"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_2159bb00549af13da98b994c",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_2159bb00549af13da98b994c"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_2159bb00549af13da98b994c",
+      "brand": "Murad",
+      "title": "Replenishing Multi-Acid Peel",
+      "category": "external",
+      "description": "Daily bi-phase peel accelerates cell renewal by 33% in 7 days while nourishing skin to prevent dryness and reduce irritation. Water/Aqua/Eau, Caprylic/Capric Triglyceride, C13-16 Isoparaffin, Glycolic Acid, Simmondsia Chinensis (Jojoba) Seed Oil, Triolein, Glycerin, Sodium Hydroxide, Propylene Glycol Caprylate, Lactic…",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_8cde34ba000f5bf3f617a134",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_8cde34ba000f5bf3f617a134"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_8cde34ba000f5bf3f617a134",
+      "brand": "Murad",
+      "title": "InvisiScar Resurfacing Treatment Larger Size",
+      "category": "external",
+      "description": "",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_1d10072b87051485a849242d",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_1d10072b87051485a849242d"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_1d10072b87051485a849242d",
+      "brand": "Murad",
+      "title": "Retinol Youth Renewal Eye Serum",
+      "category": "Serum",
+      "description": "Prevents + reduces visible wrinkles all around the eyes (including lids!) Water/Aqua/Eau, Glycerin, Butylene Glycol, Imperata Cylindrica Root Extract, Dimethyl Isosorbide, Meadowfoam Delta-Lactone, Retinyl Propionate, Retinol, Swertia Chirata Extract, Urea, Yeast Amino Acids, Trehalose, Inositol, Taurine, Betaine, Fuc…",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_3154a9c3f5118eef18d71287",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3154a9c3f5118eef18d71287"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3154a9c3f5118eef18d71287",
+      "brand": "Murad",
+      "title": "Superactive Moisturizer SPF 50: Wrinkle-Fighting",
+      "category": "Moisturizer",
+      "description": "",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_b73598e90b8e54de0695bae1",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_b73598e90b8e54de0695bae1"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_b73598e90b8e54de0695bae1",
+      "brand": "Murad",
+      "title": "Retinol Youth Renewal Serum Larger Size",
+      "category": "Serum",
+      "description": "Bigger = definitely better. Our cult-favorite, clinically-proven retinol serum is now available in a larger size ($156.00 value).",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_3dff116110320f71e1171d79",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3dff116110320f71e1171d79"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3dff116110320f71e1171d79",
+      "brand": "Murad",
+      "title": "Clarifying Cleanser Travel Size",
+      "category": "Cleanser",
+      "description": "Our travel size face cleanser clears pores and treats acne—even after rinsing. Active ingredient: Salicylic Acid 1.5% Inactive ingredients: Water (Aqua), Sodium C14-16 Olefin Sulfonate, Cocamidopropyl Betaine, Citric Acid, Urea, Yeast Amino Acids, Trehalose, Inositol, Taurine, Betaine, Camellia Sinensis Leaf Extract,…",
+      "tags": [
+        "Cleanser"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_283d4894d2f08c255f122ad9",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_283d4894d2f08c255f122ad9"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_283d4894d2f08c255f122ad9",
+      "brand": "Murad",
+      "title": "Targeted Wrinkle Corrector",
+      "category": "external",
+      "description": "",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_a1d3656c30f556a2996cb32a",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_a1d3656c30f556a2996cb32a"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_a1d3656c30f556a2996cb32a",
+      "brand": "Murad",
+      "title": "Superactive Moisturizer SPF 50: Brightening Travel Size",
+      "category": "Moisturizer",
+      "description": "Delivers all-day, glowy hydration, supercharged with potent vitamin C and SPF 50 Active",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_7f1ca662450522b2009b0f1b",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_7f1ca662450522b2009b0f1b"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_7f1ca662450522b2009b0f1b",
+      "brand": "Murad",
+      "title": "Clarifying Cleanser Larger Size",
+      "category": "Cleanser",
+      "description": "Get 2x more! Our clear skin bestseller is now available in a larger size ($68.00 value).",
+      "tags": [
+        "Cleanser"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_c8c5f931fd748960e303968f",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_c8c5f931fd748960e303968f"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_c8c5f931fd748960e303968f",
+      "brand": "Murad",
+      "title": "Retinal ReSculpt Overnight Treatment",
+      "category": "external",
+      "description": "",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_5ebc614b454f09a16c82ffaa",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_5ebc614b454f09a16c82ffaa"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_5ebc614b454f09a16c82ffaa",
+      "brand": "Murad",
+      "title": "Targeted Eye Depuffer",
+      "category": "external",
+      "description": "",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_8aa4ac2e1bbbbd38e0670e3c",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_8aa4ac2e1bbbbd38e0670e3c"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_8aa4ac2e1bbbbd38e0670e3c",
+      "brand": "Murad",
+      "title": "Vita-C Glycolic Serum Deluxe Travel Size",
+      "category": "Serum",
+      "description": "C the difference with this deluxe travel-sized version of our gold-stabilized vitamin C and glycolic acid serum. Water/Aqua/Eau, Glycerin, Caprylic/Capric Triglyceride, Glycolic Acid, Dimethicone, HDI/Trimethylol Hexyllactone Crosspolymer, Diisopropyl Sebacate, C13-16 Isoparaffin, Sodium Hydroxide, Polyacrylate Crossp…",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_cd9e4645dd98f9b8693406ab",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_cd9e4645dd98f9b8693406ab"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_cd9e4645dd98f9b8693406ab",
+      "brand": "Murad",
+      "title": "Retexturizing Body Pads",
+      "category": "external",
+      "description": "",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_9c5dac902bb95588ab43815a",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_9c5dac902bb95588ab43815a"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_9c5dac902bb95588ab43815a",
+      "brand": "Murad",
+      "title": "Renewing Cleansing Cream Travel Size",
+      "category": "Cleanser",
+      "description": "Creamy cleanser removes impurities and gently exfoliates without over-drying skin. Water/Aqua/Eau, Sodium Cocoyl Isethionate, Glyceryl Stearate SE, Glycerin, Stearic Acid, Cetyl Alcohol, Prunus Armeniaca (Apricot) Kernel Oil, Palmitoyl Tripeptide-5, Butyrospermum Parkii (Shea) Butter Extract, Cocamidopropyl Dimethylam…",
+      "tags": [
+        "Cleanser"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_ee92e216566360f7bb66de3e",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_ee92e216566360f7bb66de3e"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_ee92e216566360f7bb66de3e",
+      "brand": "Murad",
+      "title": "Vita-C Eyes Dark Circle Corrector",
+      "category": "external",
+      "description": "",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_0f13aaa14336e28276890db0",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_0f13aaa14336e28276890db0"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_0f13aaa14336e28276890db0",
+      "brand": "Murad",
+      "title": "Superactive Moisturizer SPF 50: Brightening",
+      "category": "Moisturizer",
+      "description": "",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_fe11029fc99a75c5fb8e5db3",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_fe11029fc99a75c5fb8e5db3"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_fe11029fc99a75c5fb8e5db3",
+      "brand": "Murad",
+      "title": "Retinal ReSculpt Body Treatment",
+      "category": "external",
+      "description": "",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_e205349c0d5f38dfa83c6be4",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_e205349c0d5f38dfa83c6be4"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_e205349c0d5f38dfa83c6be4",
+      "brand": "Murad",
+      "title": "AHA/BHA Exfoliating Cleanser Value Size",
+      "category": "Cleanser",
+      "description": "The benefits of exfoliation in the convenience of a cleanser! Creamy exfoliating cleanser helps reveal smoother skin. ($100.00 value) Water/Aqua/Eau, Sodium Laureth Sulfate, Cocamidopropyl Betaine, Jojoba Esters, Acrylates Copolymer, Glycol Stearate, Butylene Glycol, Sodium PCA, Dipotassium Glycyrrhizate, Sodium Ascor…",
+      "tags": [
+        "Cleanser"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_6c7de77555d3d57ee61e8ac7",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_6c7de77555d3d57ee61e8ac7"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_6c7de77555d3d57ee61e8ac7",
+      "brand": "Murad",
+      "title": "Cellular Hydration Barrier Repair Serum Refill",
+      "category": "Serum",
+      "description": "",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_faed7c6dedc22d6eee73c696",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_faed7c6dedc22d6eee73c696"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_faed7c6dedc22d6eee73c696",
+      "brand": "Murad",
+      "title": "Rapid Dark Spot Correcting Serum Travel Size",
+      "category": "Serum",
+      "description": "A travel size of our intensive serum that promotes surface cell turnover for brighter, more even skin. Water/Aqua/Eau, Alcohol, Glycolic Acid, Butylene Glycol, Glycerin, Methyl Gluceth-20, Tranexamic Acid, 4-Ethylresorcinol, Hexapeptide-2, Rice Amino Acids, Urea, Yeast Amino Acids, Trehalose, Inositol, Taurine, Betain…",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_8fe2637e9276a176957434f1",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_8fe2637e9276a176957434f1"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_8fe2637e9276a176957434f1",
+      "brand": "Murad",
+      "title": "Cellular Hydration Barrier Repair Sleep Mask",
+      "category": "external",
+      "description": "",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_801131347efca5b3e1c6bd3f",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_801131347efca5b3e1c6bd3f"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_801131347efca5b3e1c6bd3f",
+      "brand": "Murad",
+      "title": "Clarifying Body Spray",
+      "category": "external",
+      "description": "",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_99ad98d92c9115b49e16a2b4",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_99ad98d92c9115b49e16a2b4"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_99ad98d92c9115b49e16a2b4",
+      "brand": "Murad",
+      "title": "Essential-C Cleanser Value Size",
+      "category": "Cleanser",
+      "description": "Vitamin-rich, energizing cleanser washes away impurities without over-drying skin. ($98.00 value) Water/Aqua/Eau, Cocamidopropyl Betaine, Disodium Laureth Sulfosuccinate, Glycerin, Butylene Glycol, Aminomethyl Propanol, Polysorbate 20, Acrylates/C10-30 Alkyl Acrylate Crosspolymer, Panthenol, Phospholipids, Tocopheryl…",
+      "tags": [
+        "Cleanser"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_51c85862b5dd464bdbb336ad",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_51c85862b5dd464bdbb336ad"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_51c85862b5dd464bdbb336ad",
+      "brand": "Murad",
+      "title": "Deep Relief Acne Treatment",
+      "category": "Treatment",
+      "description": "Powerful phytosteroid treatment heals deep, uncomfortable acne—without the side effects of steroid shots or prescription pills. Active ingredient: Salicylic Acid 2.0% Inactive ingredients: Water/Aqua/Eau, Propanediol, Glycerin, Pentylene Glycol, Salicylic Acid, Dicarprylyl Carbonate, Behenyl Alcohol, Dimethyl Isosorbi…",
+      "tags": [
+        "Treatment"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_a0f334d2d4838bfb3ceb7963",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_a0f334d2d4838bfb3ceb7963"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_a0f334d2d4838bfb3ceb7963",
+      "brand": "Murad",
+      "title": "Rapid Relief Acne Sulfur Mask",
+      "category": "Treatment",
+      "description": "Tri-active mask with sulfur, salicylic acid and Austrian peat instantly reduces oil and fast tracks pimple and blackhead reduction in 3 uses. Active Ingredient: Sulfur 5.0% Inactive",
+      "tags": [
+        "Treatment"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_7529e3fe6a5160a764fec203",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_7529e3fe6a5160a764fec203"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_7529e3fe6a5160a764fec203",
+      "brand": "Murad",
+      "title": "Heartleaf Soothing Body Cleansing Wash for Sensitive and Eczema-Prone Skin",
+      "category": "Cleanser",
+      "description": "",
+      "tags": [
+        "Cleanser"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_edd8a7c8824da40e28d289d4",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_edd8a7c8824da40e28d289d4"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_edd8a7c8824da40e28d289d4",
+      "brand": "Murad",
+      "title": "Targeted Pore Corrector",
+      "category": "external",
+      "description": "",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_4f6d97dfa08f4e797c4c0b7a",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_4f6d97dfa08f4e797c4c0b7a"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_4f6d97dfa08f4e797c4c0b7a",
+      "brand": "Naturium",
+      "title": "Phyto-Glow Lip Balm Latte",
+      "category": "Lip Balm",
+      "description": "Our intensely nourishing sheer muted dusty rose lip balm is formulated with phyto-derived esters, shea butter, cupuaçu butter and plant squalane to moisturize and cushion lips, leaving them feeling silky, soft and smooth. Adds a glowy finish with a sheer wash of color.",
+      "tags": [
+        "Lip Balm"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_afb3365ab2fbf150b3885341",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_afb3365ab2fbf150b3885341"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_afb3365ab2fbf150b3885341",
+      "brand": "Naturium",
+      "title": "Phyto-Glow Lip Balm Strawberry",
+      "category": "Lip Balm",
+      "description": "Our intensely nourishing juicy red lip balm is formulated with phyto-derived esters, shea butter, cupuaçu butter and plant squalane to moisturize and cushion lips, leaving them feeling silky, soft and smooth. Adds a pop of color and a glowy finish with a fresh strawberry scent.",
+      "tags": [
+        "Lip Balm"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_653b8842c86f547e69d87af3",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_653b8842c86f547e69d87af3"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_653b8842c86f547e69d87af3",
+      "brand": "Naturium",
+      "title": "Multi-Bright Advanced Serum",
+      "category": "Serum",
+      "description": "Our advanced brightening serum is formulated with complexes of lactic and glycolic acid, combined with L-arginine, to provide gentle yet effective exfoliation. This antioxidant-rich formula features a superfood complex and naturally derived fruit extracts to help boost radiance, improve texture and renew skin tone.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_3a99798960160df9c8769d94",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3a99798960160df9c8769d94"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3a99798960160df9c8769d94",
+      "brand": "Naturium",
+      "title": "Retinaldehyde Cream Serum 0.05%",
+      "category": "Serum",
+      "description": "50 ML / 1.7 FL OZ We all know retinal is effective, but the greatest setback to formulating and producing a product with this material is its oxidative instability. To ensure that our product maintains its potency through its shelf life we assayed the retinal under accelerated conditions.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_f688c72c11bd4c65e37e9b05",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_f688c72c11bd4c65e37e9b05"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_f688c72c11bd4c65e37e9b05",
+      "brand": "Naturium",
+      "title": "Plant Ceramide Rich Moisture Cream - Jumbo",
+      "category": "Moisturizer",
+      "description": "Double up and save with this jumbo size of our nourishing, rich moisture ceramide cream formulated with plant-derived ceramides, that help restore and support skin’s natural moisture barrier to relieve dry, dull skin.Our Plant Ceramide Rich Moisture Cream is clinically proven to provide immediate and all-day hydration…",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_475775959e4133a324123caa",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_475775959e4133a324123caa"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_475775959e4133a324123caa",
+      "brand": "Naturium",
+      "title": "BHA Liquid Exfoliant 2%",
+      "category": "external",
+      "description": "Our leave-on BHA exfoliant is formulated with an efficacious level of encapsulated salicylic acid, plus bioactive fruit acids, and is clinically proven to reduce the appearance of pores, smooth and even skin tone, revealing more radiant, brighter looking skin.**In an 8-week clinical study on subjects, representation a…",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_f1f66cc132f0671f7908b820",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_f1f66cc132f0671f7908b820"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_f1f66cc132f0671f7908b820",
+      "brand": "Naturium",
+      "title": "Fermented Rice Enzyme Cleanser",
+      "category": "Cleanser",
+      "description": "Our gentle, yet effective exfoliating face wash is formulated with fermented rice filtrate, fruit enzymes and natural, biodegradable micro-powders to cleanse, polish and brighten the appearance of skin. Ideal for most skin types and pH-appropriate to keep skin soft and balanced.",
+      "tags": [
+        "Cleanser"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_5c634da2326260ce48d05eb9",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_5c634da2326260ce48d05eb9"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_5c634da2326260ce48d05eb9",
+      "brand": "Naturium",
+      "title": "Phyto-Glow Lip Balm Midnight",
+      "category": "Lip Balm",
+      "description": "Our intensely nourishing deep amethyst lip balm is formulated with phyto-derived esters, shea butter, cupuaçu butter and plant squalane to moisturize and cushion lips, leaving them feeling silky, soft and smooth. Adds a glowy finish with a sheer wash of color.",
+      "tags": [
+        "Lip Balm"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_7273f6ed399b9d7de1eaf483",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_7273f6ed399b9d7de1eaf483"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_7273f6ed399b9d7de1eaf483",
+      "brand": "Naturium",
+      "title": "Multi-Peptide Eye Cream",
+      "category": "Moisturizer",
+      "description": "15 ML / 0.5 FL OZ This peptide eye cream is packed with our multi-peptide blend featuring Argireline® Amplified peptide and vegan squalane to nourish the delicate eye area and target the visible signs of aging. Argireline® is a trademark of Lubrizol Advanced Materials, Inc., or its affiliates.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_70ffd0ca955163bb1d72eb89",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_70ffd0ca955163bb1d72eb89"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_70ffd0ca955163bb1d72eb89",
+      "brand": "Naturium",
+      "title": "Retinaldehyde Cream Serum 0.10%",
+      "category": "Serum",
+      "description": "Our results-driven serum is formulated with an increased level of sustained-release retinaldehyde at 0.10%. This potent next-gen retinol directly converts to retinoic acid, which visibly addresses the look of fine lines, uneven tone and texture.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_0d657e9a48960fb8c9112f53",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_0d657e9a48960fb8c9112f53"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_0d657e9a48960fb8c9112f53",
+      "brand": "Naturium",
+      "title": "Dew-Glow Moisturizer SPF 50",
+      "category": "Moisturizer",
+      "description": "Our daily moisturizing sunscreen is formulated with organic/chemical sunscreen filters that apply invisibly on all skin tones to provide broad spectrum SPF 50 PA++++ protection while leaving a dewy, radiant finish. Niacinamide and ethyl ascorbic acid are included to help visibly improve the look of the complexion.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_1c42c60776b3cf6edf39b919",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_1c42c60776b3cf6edf39b919"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_1c42c60776b3cf6edf39b919",
+      "brand": "Naturium",
+      "title": "Plant Ceramide Rich Moisture Cream",
+      "category": "Moisturizer",
+      "description": "Our nourishing, rich moisture ceramide cream is formulated with plant-derived ceramides, that help restore and support skin’s natural moisture barrier to relieve dry, dull skin.Our Plant Ceramide Rich Moisture Cream is clinically proven to provide immediate and all-day hydration, plus improve skin firmness and the loo…",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_bd18e7593f9d096c0ffbd17f",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_bd18e7593f9d096c0ffbd17f"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_bd18e7593f9d096c0ffbd17f",
+      "brand": "Naturium",
+      "title": "Phyto-Glow Lip Balm Petal",
+      "category": "Lip Balm",
+      "description": "Our intensely nourishing sheer rosy nude lip balm is formulated with phyto-derived esters, shea butter, cupuaçu butter and plant squalane to moisturize and cushion lips, leaving them feeling silky, soft and smooth. Adds a glowy finish with a sheer wash of color.",
+      "tags": [
+        "Lip Balm"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_41d5709dfbd54380bc7b3199",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_41d5709dfbd54380bc7b3199"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_41d5709dfbd54380bc7b3199",
+      "brand": "Naturium",
+      "title": "Phyto-Glow Lip Balm Jam",
+      "category": "Lip Balm",
+      "description": "Our intensely nourishing sheer berry lip balm is formulated with phyto-derived esters, shea butter, cupuaçu butter and plant squalane to moisturize and cushion lips, leaving them feeling silky, soft and smooth. Adds a glowy finish with a sheer wash of color.",
+      "tags": [
+        "Lip Balm"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_36e5f666f2ac8d197c235e3e",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_36e5f666f2ac8d197c235e3e"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_36e5f666f2ac8d197c235e3e",
+      "brand": "Naturium",
+      "title": "Phyto-Glow Lip Balm SPF 45 Clear",
+      "category": "Lip Balm",
+      "description": "Our intensely nourishing lip balm provides broad spectrum UVA/UVB protection. Formulated with a sweet mint flavor plus phyto-derived esters, shea butter, cupuaçu butter & plant squalane leaving lips soft, smooth & protected.",
+      "tags": [
+        "Lip Balm"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_7de77dff6aad93a94d1f13dd",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_7de77dff6aad93a94d1f13dd"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_7de77dff6aad93a94d1f13dd",
+      "brand": "Naturium",
+      "title": "Phyto-Glow Lip Balm Shimmer Orbit",
+      "category": "Lip Balm",
+      "description": "Our nourishing gleaming nude mauve lip balm is formulated with shea, cupuaçu butter, plant squalane and geodiamond pearls leaving lips soft and shimmering. This high-shine formula adds a sheer wash of color with a luminous finish.",
+      "tags": [
+        "Lip Balm"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_b67e9173c1d0353889386fc0",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_b67e9173c1d0353889386fc0"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_b67e9173c1d0353889386fc0",
+      "brand": "Naturium",
+      "title": "The Multi-Peptide Advanced Body Wash",
+      "category": "Cleanser",
+      "description": "Our rich, creamy body wash supports the skin's moisture barrier for healthy-looking skin. Formulated with peptides, a rice amino acid complex, vitamin E, and antioxidants, this luxurious cleanser helps improve the feel of skin roughness by helping to smooth and soften skin's surface.",
+      "tags": [
+        "Cleanser"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_4daddf23a568fac79b919f44",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_4daddf23a568fac79b919f44"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_4daddf23a568fac79b919f44",
+      "brand": "Naturium",
+      "title": "Quadruple Hyaluronic Acid Serum 5%",
+      "category": "Serum",
+      "description": "30 ML / 1.0 FL OZ This hyaluronic acid serum is formulated with four different molecular weights of skin compatible hyaluronic acid to hydrate and help balance the lipid barrier. Apply an even layer onto face, neck and chest morning and night.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_210a63e67324e01db26f9945",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_210a63e67324e01db26f9945"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_210a63e67324e01db26f9945",
+      "brand": "Naturium",
+      "title": "Phyto-Glow Lip Balm Shimmer Eclipse",
+      "category": "Lip Balm",
+      "description": "Our nourishing glimmering baby fuscia lip balm is formulated with shea, cupuaçu butter, plant squalane and geodiamond pearls leaving lips soft and shimmering. This high-shine formula adds a sheer wash of color with a luminous finish.",
+      "tags": [
+        "Lip Balm"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_f2313783ac53032795ea516e",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_f2313783ac53032795ea516e"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_f2313783ac53032795ea516e",
+      "brand": "Naturium",
+      "title": "Phyto-Glow Lip Balm Watermelon",
+      "category": "Lip Balm",
+      "description": "Our intensely nourishing pink sugar lip balm is formulated with phyto-derived esters, shea butter, cupuaçu butter and plant squalane to moisturize and cushion lips, leaving them feeling silky, soft and smooth. Adds a pop of color and a glowy finish with a fresh watermelon scent.",
+      "tags": [
+        "Lip Balm"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_939edab07e5dc3a3403bb9f5",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_939edab07e5dc3a3403bb9f5"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_939edab07e5dc3a3403bb9f5",
+      "brand": "Naturium",
+      "title": "Azelaic Acid Emulsion 10%",
+      "category": "external",
+      "description": "Our creamy, lightweight azelaic acid emulsion is formulated with a potent level of pure azelaic acid, a bioactive brightening complex, bio-retinol and niacinamide to help calm skin while minimizing the look of uneven tone and texture. Appropriate for those with sensitive skin, though a patch test prior to use is advis…",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_a69b1c2c9f642dc30b8dae4d",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_a69b1c2c9f642dc30b8dae4d"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_a69b1c2c9f642dc30b8dae4d",
+      "brand": "Naturium",
+      "title": "Phyto-Glow Lip Balm Crimson",
+      "category": "Lip Balm",
+      "description": "Our intensely nourishing black cherry lip balm is formulated with phyto-derived esters, shea butter, cupuaçu butter and plant squalane to moisturize and cushion lips, leaving them feeling silky, soft and smooth. Adds a glowy finish with a sheer wash of color.",
+      "tags": [
+        "Lip Balm"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_d03b0aedf6912aaf25f6c908",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_d03b0aedf6912aaf25f6c908"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_d03b0aedf6912aaf25f6c908",
+      "brand": "Naturium",
+      "title": "Phyto-Glow Lip Balm SPF 45 Escape",
+      "category": "Lip Balm",
+      "description": "Our intensely nourishing warm mulberry lip balm provides broad spectrum UVA/UVB protection. Formulated with a sweet mint flavor plus phyto-derived esters, shea butter, cupuaçu butter & plant squalane leaving lips soft, smooth & protected.",
+      "tags": [
+        "Lip Balm"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_1c12835bab42c6dbd38cf71c",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_1c12835bab42c6dbd38cf71c"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_1c12835bab42c6dbd38cf71c",
+      "brand": "Naturium",
+      "title": "Skin-Renewing Retinol Body Lotion - Jumbo",
+      "category": "Moisturizer",
+      "description": "Go jumbo with our retinol body lotion, now in our iconic pump bottle, that works to improve the appearance of skin texture, tone, and firmness. Formulated with an encapsulated stabilized pure retinol complex and skin soothing allantoin, this lotion leaves skin feeling soft, supple, and nourished while also minimizing…",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_4fdb1119b1bd3ca7592b96de",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_4fdb1119b1bd3ca7592b96de"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_4fdb1119b1bd3ca7592b96de",
+      "brand": "Naturium",
+      "title": "The Glow Getter Multi-Oil Body Butter - Travel Size",
+      "category": "Fragrance",
+      "description": "Our whipped, multi-oil body butter intensely moisturizes, nourishes, and soothes skin. Formulated with a blend of linoleic-rich botanical oils, shea butter, glycerin, squalane, and plant-based peptides that help firm skin's appearance for a healthy, hydrated glow.",
+      "tags": [
+        "Fragrance"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_d89d6518cc0e50c62ba54447",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_d89d6518cc0e50c62ba54447"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_d89d6518cc0e50c62ba54447",
+      "brand": "Naturium",
+      "title": "Fermented Camellia Creamy Cleansing Oil",
+      "category": "Cleanser",
+      "description": "Our innovative creamy cleansing oil is formulated with fermented camellia oil, camellia extract and a nourishing blend of linoleic-rich oils that helps dissolve makeup, oil, sunscreen and other impurities. Developed for all skin types.",
+      "tags": [
+        "Cleanser"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_7c16584140ae865fbd24b0a3",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_7c16584140ae865fbd24b0a3"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_7c16584140ae865fbd24b0a3",
+      "brand": "Naturium",
+      "title": "Phyto-Glow Lip Balm Mango",
+      "category": "Lip Balm",
+      "description": "Our intensely nourishing orange balm lip balm is formulated with phyto-derived esters, shea butter, cupuaçu butter and plant squalane to moisturize and cushion lips, leaving them feeling silky, soft and smooth. Adds a pop of color and a glowy finish with a fresh mango scent.",
+      "tags": [
+        "Lip Balm"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_92c01381c14e1218fd441ab3",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_92c01381c14e1218fd441ab3"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_92c01381c14e1218fd441ab3",
+      "brand": "Naturium",
+      "title": "Phyto-Glow Lip Balm Chai",
+      "category": "Lip Balm",
+      "description": "Our intensely nourishing sheer neutral light brown lip balm is formulated with phyto-derived esters, shea butter, cupuaçu butter and plant squalane to moisturize and cushion lips, leaving them feeling silky, soft and smooth. Adds a glowy finish with a sheer wash of color.",
+      "tags": [
+        "Lip Balm"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_2040df46d1c7c3621eaa0786",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_2040df46d1c7c3621eaa0786"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_2040df46d1c7c3621eaa0786",
+      "brand": "Naturium",
+      "title": "Dew-Glow Moisturizer SPF 50 - Travel Size",
+      "category": "Moisturizer",
+      "description": "A miniature version of our daily moisturizing sunscreen, formulated with organic/chemical sunscreen filters that apply invisibly on all skin tones to provide broad spectrum SPF 50 PA++++ protection while leaving a dewy, radiant finish. Niacinamide and ethyl ascorbic acid are included to help visibly improve the look o…",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_d9eed37837c9a7d5de2a5bda",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_d9eed37837c9a7d5de2a5bda"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_d9eed37837c9a7d5de2a5bda",
+      "brand": "Naturium",
+      "title": "The Glow Getter Multi-Oil Body Scrub",
+      "category": "Fragrance",
+      "description": "Our multi-oil body scrub gently exfoliates to reveal radiant skin. Formulated with linoleic-rich botanical oils, sugar crystals, 20% glycerin, and squalane, this scrub helps leave skin ultra smooth and soft, with a hydrated and healthy-looking glow.",
+      "tags": [
+        "Fragrance"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_f6240f1b6be576a26ee488f5",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_f6240f1b6be576a26ee488f5"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_f6240f1b6be576a26ee488f5",
+      "brand": "Naturium",
+      "title": "Mandelic Topical Acid 12%",
+      "category": "Fragrance",
+      "description": "30 ML / 1.0 FL OZ Contains a high concentration of mandelic and natural fruit extracts to gently exfoliate for a brighter-looking complexion and improve signs of aging. Perfect for those with sensitive skin and who may be sensitive to BHA.",
+      "tags": [
+        "Fragrance"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_3eb4652442a4a66294797729",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3eb4652442a4a66294797729"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3eb4652442a4a66294797729",
+      "brand": "Naturium",
+      "title": "Alpha Arbutin Serum 2%",
+      "category": "Serum",
+      "description": "30 ML / 1.0 FL OZ This serum combines a highly efficacious level of alpha arbutin along with niacinamide to target and fade the look of dark spots. Great for all skin types and tones.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_d02991027e0a0ce673fdd7fc",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_d02991027e0a0ce673fdd7fc"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_d02991027e0a0ce673fdd7fc",
+      "brand": "Naturium",
+      "title": "Phyto-Glow Lip Balm Shimmer Solar",
+      "category": "Lip Balm",
+      "description": "Our nourishing lip balm is formulated with shea, cupuaçu butter, plant squalane and geodiamond pearls leaving lips soft and shimmering. This high-shine formula adds a sheer wash of color with a luminous finish.",
+      "tags": [
+        "Lip Balm"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_f28c43ed71b23b1b0736b4be",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_f28c43ed71b23b1b0736b4be"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_f28c43ed71b23b1b0736b4be",
+      "brand": "Naturium",
+      "title": "Phyto-Glow Lip Balm Lychee",
+      "category": "Lip Balm",
+      "description": "Our intensely nourishing sheer cherry lip balm is formulated with phyto-derived esters, shea butter, cupuaçu butter and plant squalane to moisturize and cushion lips, leaving them feeling silky, soft and smooth. Adds a glowy finish with a sheer wash of color.",
+      "tags": [
+        "Lip Balm"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_db511f8205a2fe5dcdd72381",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_db511f8205a2fe5dcdd72381"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_db511f8205a2fe5dcdd72381",
+      "brand": "Naturium",
+      "title": "Multi-Peptide Advanced Serum - Jumbo",
+      "category": "Serum",
+      "description": "Double up & save with this jumbo size of our powerful serum formulated with an advanced multi-peptide blend, including encapsulated copper peptides and Argireline® Amplified peptide, to improve texture and reduce the appearance of fine lines and wrinkles. Plus, encapsulated ferulic acid and collagen help firm skin's a…",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_464543e17ebe5540b7ca685d",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_464543e17ebe5540b7ca685d"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_464543e17ebe5540b7ca685d",
+      "brand": "Naturium",
+      "title": "Glycolic Acid Resurfacing Gel 10%",
+      "category": "external",
+      "description": "Our AHA exfoliating gel is formulated with 10% high-purity glycolic and natural fruit acids that resurface skin to improve the look of fine lines, wrinkles, pores and uneven skin tone, revealing a brighter, more radiant looking complexion. Cruelty Free Paraben Free Vegan Gluten Free Fragrance Free Dermatologist Tested…",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_77a99e29aef73c9d0c32094e",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_77a99e29aef73c9d0c32094e"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_77a99e29aef73c9d0c32094e",
+      "brand": "Naturium",
+      "title": "Phyto-Glow Lip Balm SPF 45 Paradise",
+      "category": "Lip Balm",
+      "description": "Our intensely nourishing coral pink lip balm provides broad spectrum UVA/UVB protection. Formulated with a sweet mint flavor plus phyto-derived esters, shea butter, cupuaçu butter & plant squalane leaving lips soft, smooth & protected.",
+      "tags": [
+        "Lip Balm"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_4c88ec1c374363c063e2f1dc",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_4c88ec1c374363c063e2f1dc"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_4c88ec1c374363c063e2f1dc",
+      "brand": "Naturium",
+      "title": "Phyto-Glow Lip Balm Camellia",
+      "category": "Lip Balm",
+      "description": "Our intensely nourishing sheer poppy pink lip balm is formulated with phyto-derived esters, shea butter, cupuaçu butter and plant squalane to moisturize and cushion lips, leaving them feeling silky, soft and smooth. Adds a glowy finish with a sheer wash of color.",
+      "tags": [
+        "Lip Balm"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_839cfe58796fdf449087f7f3",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_839cfe58796fdf449087f7f3"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_839cfe58796fdf449087f7f3",
+      "brand": "Naturium",
+      "title": "Phyto-Glow Lip Balm Ruby",
+      "category": "Lip Balm",
+      "description": "Our intensely nourishing ruby red lip balm is formulated with phyto-derived esters, shea butter, cupuaçu butter and plant squalane to moisturize and cushion lips, leaving them feeling silky, soft and smooth. Adds a glowy finish with a sheer wash of color.",
+      "tags": [
+        "Lip Balm"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_e069552e82874d2983aaa13f",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_e069552e82874d2983aaa13f"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_e069552e82874d2983aaa13f",
+      "brand": "Naturium",
+      "title": "Intense Overnight Sleeping Cream",
+      "category": "Moisturizer",
+      "description": "Our intensive sleeping cream is formulated with nutrient-rich ingredients and lipids to deliver essential moisture while you sleep. Formulated with plant squalane, kakadu plum and a specialized blend of plant-based triglycerides, it delivers hydration for brighter and plumper-looking skin.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_d711519e2337ab545c05a005",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_d711519e2337ab545c05a005"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_d711519e2337ab545c05a005",
+      "brand": "Olehenriksen",
+      "title": "Pout Preserve Peptide Lip Treatment Grape Fizz",
+      "category": "Lip Balm",
+      "description": "GET STARTED",
+      "tags": [
+        "Lip Balm"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_fffd8a0b6f800708dbf69758",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_fffd8a0b6f800708dbf69758"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_fffd8a0b6f800708dbf69758",
+      "brand": "Olehenriksen",
+      "title": "Hunt for Hydration Full-Size Moisturizer & Eye Crème Duo",
+      "category": "Moisturizer",
+      "description": "The hunt for your dewiest skin is over. Instantly double hydration and strengthen skin's barrier with our universal daily moisturizer, then visibly diminish dark circles and crow’s feet with our bestselling brightening eye cream featuring gold - complexed vitamin C.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_0d5bf002df9e9a55b20a418f",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_0d5bf002df9e9a55b20a418f"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_0d5bf002df9e9a55b20a418f",
+      "brand": "Olehenriksen",
+      "title": "Partners in Peptides Hydrating Duo",
+      "category": "external",
+      "description": "This peptide - packed duo delivers plumping hydration for strong, bouncy skin and smooth, juicy lips.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_31f5bbbe614c7d20bb5c7172",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_31f5bbbe614c7d20bb5c7172"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_31f5bbbe614c7d20bb5c7172",
+      "brand": "Olehenriksen",
+      "title": "Glow Even Brighter Banana Bright Makeup Prep Set",
+      "category": "external",
+      "description": "A trio of radiance revealers: This daily morning routine brightens, smoothes + preps skin for makeup.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_a3cd0190cc691515a1f2e87c",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_a3cd0190cc691515a1f2e87c"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_a3cd0190cc691515a1f2e87c",
+      "brand": "Olehenriksen",
+      "title": "Glow2OH Exfoliating Dark Spot Toner with Glycolic & Lactic Acid",
+      "category": "Toner",
+      "description": "A gentle, exfoliating daily toner with glycolic and lactic acid, clinically shown to reduce the look of dark spots in seven days.",
+      "tags": [
+        "Toner"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_f7c6ceb555d34426941a97e5",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_f7c6ceb555d34426941a97e5"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_f7c6ceb555d34426941a97e5",
+      "brand": "Olehenriksen",
+      "title": "Strength Trainer Peptide Boost Moisturizer Duo",
+      "category": "Moisturizer",
+      "description": "Double up on the daily moisturizer that’s clinically tested to instantly double hydration, boost elasticity , improve the look of fine lines and wrinkles and strengthen skin's barrier. While the second jar would make a glowing gift, w e’re betting on you keeping it !",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_35b321dde624f955996315cb",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_35b321dde624f955996315cb"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_35b321dde624f955996315cb",
+      "brand": "Olehenriksen",
+      "title": "Detox Drops 2% Salicylic Acid Toner",
+      "category": "Toner",
+      "description": "THIS DETOX WORKS Instantly improve the look of pores and improve blemishes in just 1 week with this potent, clinically crafted salicylic acid toner. Gentle enough for daily use, this non-stripping lightweight liquid formula exfoliates and absorbs quickly while also calming skin with juniper berry and cucumber extract.",
+      "tags": [
+        "Toner"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_5e6dc9677d020497590eff4a",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_5e6dc9677d020497590eff4a"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_5e6dc9677d020497590eff4a",
+      "brand": "Olehenriksen",
+      "title": "Moisture Barrier Duo Strength Trainer Moisturizer & Hydrabarrier Face Oil",
+      "category": "Moisturizer",
+      "description": "Envelope skin in the ultimate barrier-boosting duo: A nourishing face oil that locks in hydration all day, improves uneven texture and strengthens skin paired with a daily moisturizer that's clinically tested to instantly double hydration, boost elasticity and improve the look of fine lines and wrinkles, while also re…",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_9f28937c48a11dc9ba42ae20",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_9f28937c48a11dc9ba42ae20"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_9f28937c48a11dc9ba42ae20",
+      "brand": "Olehenriksen",
+      "title": "Morning Glow Bundle Daily Skincare Routine",
+      "category": "Serum",
+      "description": "A corrective and protective daily skincare routine featuring a potent vitamin C serum, our bestselling eye cream and a mineral SPF that illuminates and prevents visible signs of sun damage.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_151e0b759efb00378fa68116",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_151e0b759efb00378fa68116"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_151e0b759efb00378fa68116",
+      "brand": "Olehenriksen",
+      "title": "Plumping Peptide Pair Mini Skincare Duo",
+      "category": "external",
+      "description": "A mini duo of peptide-powered essentials for firmer, bouncier skin and fuller looking lips in 1-week.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_12a9d5449837fc03d2ebc5cb",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_12a9d5449837fc03d2ebc5cb"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_12a9d5449837fc03d2ebc5cb",
+      "brand": "Olehenriksen",
+      "title": "Morning Glow Bundle Daily Skincare Routine-EU",
+      "category": "Serum",
+      "description": "A corrective and protective daily skincare routine featuring a potent vitamin C serum, our bestselling eye cream and a mineral SPF that illuminates and prevents visible signs of sun damage.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_842d06e9f8039ddcc784fccb",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_842d06e9f8039ddcc784fccb"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_842d06e9f8039ddcc784fccb",
+      "brand": "Olehenriksen",
+      "title": "Detox Drops 2% Salicylic Acid Toner-Canada",
+      "category": "Toner",
+      "description": "A daily BHA toner with salicylic acid and Danish purple willow ferment to unclog pores and visibly clear skin in 1-week.",
+      "tags": [
+        "Toner"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_c4e42a45eeec3a28c4c1ebb8",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_c4e42a45eeec3a28c4c1ebb8"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_c4e42a45eeec3a28c4c1ebb8",
+      "brand": "Olehenriksen",
+      "title": "Deep Clean + Scrub Duo",
+      "category": "Cleanser",
+      "description": "A delightful duo of our main-squeeze face cleansers to keep your skin feeling fresh—a conditioning deep cleanser with polyhydroxy acid and a skin-smoothing scrub with lactic and glycolic acids.",
+      "tags": [
+        "Cleanser"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_e7c55a62fa5f3084a7d4f100",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_e7c55a62fa5f3084a7d4f100"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_e7c55a62fa5f3084a7d4f100",
+      "brand": "Olehenriksen",
+      "title": "Balance+ Bundle-Europe",
+      "category": "external",
+      "description": "",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_8cd1f52b2ac0a4fa9a239494",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_8cd1f52b2ac0a4fa9a239494"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_8cd1f52b2ac0a4fa9a239494",
+      "brand": "Olehenriksen",
+      "title": "Best In Class Skincare Bestseller Set",
+      "category": "Toner",
+      "description": "The OleHenriksen Best in Class Skincare Essential Set is a 3-step skincare routine featuring bestselling Pout Preserve Peptide Lip Treatment in Strawberry Sorbet, Strength Moisturizer and Detox Drops Acne Toner, to reveal clear, bouncy skin and a plump, smooth pout.",
+      "tags": [
+        "Toner"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_918981bcc6d552cc2af0b535",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_918981bcc6d552cc2af0b535"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_918981bcc6d552cc2af0b535",
+      "brand": "Olehenriksen",
+      "title": "Banana Bright+ Eye Crème",
+      "category": "Fragrance",
+      "description": "Add Banana Bright+ Eye Crème to your routine for the ultimate OLE GLOW® Treatment. Our bestselling vitamin C eye cream, with a new and upgraded fragrance-free formula, now featuring real gold, that brightens, visibly diminishes dark circles and crow’s feet and improves concealer application and wear.",
+      "tags": [
+        "Fragrance"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_52418e4d45b2feff5a179e7c",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_52418e4d45b2feff5a179e7c"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_52418e4d45b2feff5a179e7c",
+      "brand": "Olehenriksen",
+      "title": "Best + Brightest Mini Skincare Starter Set",
+      "category": "external",
+      "description": "A bestselling daily routine—powered by vitamin C, AHAs and antioxidants—to brighten, smooth and strengthen your complexion.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_9efbe1905612219910596142",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_9efbe1905612219910596142"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_9efbe1905612219910596142",
+      "brand": "Olehenriksen",
+      "title": "Strength Trainer Peptide Boost Moisturizer",
+      "category": "Moisturizer",
+      "description": "A daily moisturizer, packed with peptides and hyaluronic acid, that’s clinically tested to instantly double hydration, boost elasticity and improve the look of fine lines and wrinkles, while also reinforcing your moisture barrier. Looking to lock in that hydration and amplify your results?",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_b852fb71297a0c4bd723c049",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_b852fb71297a0c4bd723c049"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_b852fb71297a0c4bd723c049",
+      "brand": "Olehenriksen",
+      "title": "Best of Ole Skincare Essential Set",
+      "category": "external",
+      "description": "A supercharged skincare set loaded with five clinical bestsellers for smoother, brighter, more hydrated skin and fuller-looking lips.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_cdf12a2412e34e43b3ab9232",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_cdf12a2412e34e43b3ab9232"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_cdf12a2412e34e43b3ab9232",
+      "brand": "Olehenriksen",
+      "title": "Dewtopia 5% Acid Firming Night Crème",
+      "category": "Moisturizer",
+      "description": "Glow to bed and wake up in Dewtopia. While you’re sleeping, your skin goes into restoration mode—that’s when this resurfacing night cream gets to work.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_ad5458530604d2c7bfe2fbf2",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_ad5458530604d2c7bfe2fbf2"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_ad5458530604d2c7bfe2fbf2",
+      "brand": "Olehenriksen",
+      "title": "Dewtopia 25% Acid Flash Facial Mask",
+      "category": "external",
+      "description": "A power ful at - home facial mask , packed with 25% AHAs and PHAs, that retexturizes , brighten s , visibly diminish es fine lines, wrinkles and pores and improve s skin clarity in just five minutes*.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_fc8169ca5d14312c187498d7",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_fc8169ca5d14312c187498d7"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_fc8169ca5d14312c187498d7",
+      "brand": "Olehenriksen",
+      "title": "Big + Plump Peach Collection Bundle",
+      "category": "external",
+      "description": "A 100% mineral sunscreen, with enhanced vitamin C and 16.3% zinc oxide , that protects skin against UVA and UVB rays, and corrects and prevents visible signs of sun damage, including dark spots, fine lines and wrinkles.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_99c2d94131f26d563e2093bc",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_99c2d94131f26d563e2093bc"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_99c2d94131f26d563e2093bc",
+      "brand": "Olehenriksen",
+      "title": "Dewtopia 20% Acid Night Treatment",
+      "category": "Serum",
+      "description": "Put uneven texture, dark spots, fine lines and wrinkles to bed. This 20% acid smoothing serum does the work while you sleep.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_68539ff7ebafec665991f495",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_68539ff7ebafec665991f495"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_68539ff7ebafec665991f495",
+      "brand": "Olehenriksen",
+      "title": "Hydrabarrier Nourishing Face Oil",
+      "category": "external",
+      "description": "A barrier - boosting face oil, with skin - supporting peptides and pure Scandinavian berry oils, that locks in hydration all day, improves uneven texture and strengthens skin. Award winner for 2023 Allure's Best of Beauty.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_4ea95b9803d90ab1e5cb8393",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_4ea95b9803d90ab1e5cb8393"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_4ea95b9803d90ab1e5cb8393",
+      "brand": "Olehenriksen",
+      "title": "Double Rewind 0.3% Pro-Grade Retinol Serum",
+      "category": "Serum",
+      "description": "An innovative retinol serum that renews and replenishes skin to visibly improve fine lines and wrinkles in just two weeks*.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_0cfa56c35dd9a64ef9b6fe0a",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_0cfa56c35dd9a64ef9b6fe0a"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_0cfa56c35dd9a64ef9b6fe0a",
+      "brand": "Olehenriksen",
+      "title": "After-Party Peptides Skin Strengthening Set",
+      "category": "external",
+      "description": "",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_962f8e170a6637cd7909958d",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_962f8e170a6637cd7909958d"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_962f8e170a6637cd7909958d",
+      "brand": "Olehenriksen",
+      "title": "Big + Plump Peach Collection Bundle",
+      "category": "external",
+      "description": "An ultra-nourishing body oil, packed with botanical oils and vitamin E, that instantly hydrates and softens skin, while strengthening your moisture barrier.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_6e74607b60d4a55b8d47623b",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_6e74607b60d4a55b8d47623b"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_6e74607b60d4a55b8d47623b",
+      "brand": "Olehenriksen",
+      "title": "Party of 4 Glimmers Edition",
+      "category": "external",
+      "description": "Sparkling lineup of lipcare , infused with lip-specific peptides and kokum butter, for clinically fuller-looking lips in just 1 week.*",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_2d5176c8edd52a0c49a1ab55",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_2d5176c8edd52a0c49a1ab55"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_2d5176c8edd52a0c49a1ab55",
+      "brand": "Olehenriksen",
+      "title": "Truth Juice Daily Cleanser",
+      "category": "Cleanser",
+      "description": "Remove dirt, oil & even longwear eye makeup—without stripping skin. Truth Juice Daily Cleanser is a serious multitasker.",
+      "tags": [
+        "Cleanser"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_e3006e422e1f1a2092b5513e",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_e3006e422e1f1a2092b5513e"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_e3006e422e1f1a2092b5513e",
+      "brand": "Olehenriksen",
+      "title": "Big + Plump Peach Collection Bundle",
+      "category": "Moisturizer",
+      "description": "Experience the ultimate luxury with Banana Bright+ Instant Glow Moisturizer Deluxe Mini.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_0b0480947c4257b036c48d02",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_0b0480947c4257b036c48d02"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_0b0480947c4257b036c48d02",
+      "brand": "Olehenriksen",
+      "title": "The Glow Cycle Bundle Full-Size Daily Routine",
+      "category": "Toner",
+      "description": "This skincare set has full sizes of everything you need to activate your Glow Cycle and unlock your best skin : A brightening serum and eye crème , skin - strengthening face cream and high - potency AHA toner.",
+      "tags": [
+        "Toner"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_bf290abedc8c5bd49e080100",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_bf290abedc8c5bd49e080100"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_bf290abedc8c5bd49e080100",
+      "brand": "Olehenriksen",
+      "title": "Glow2OH Dark Spot Toner Duo",
+      "category": "Toner",
+      "description": "A twin duo of our bestselling, high-potency AHA toner—supercharged with glycolic and lactic acids and enhanced with witch hazel water, chamomile and licorice root extracts—that targets the look of dark spots, uneven texture, fine lines and wrinkles.",
+      "tags": [
+        "Toner"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_599e54c521c4a42c0dbad8d4",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_599e54c521c4a42c0dbad8d4"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_599e54c521c4a42c0dbad8d4",
+      "brand": "Olehenriksen",
+      "title": "Barrier Bright Morning Trio",
+      "category": "Serum",
+      "description": "Start the day off strong and do your morning routine bright with this potent, skin-supporting trio: a brightening vitamin C serum, a color-correcting eye crème and a skin-strengthening moisturizer.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_5e536ca3758e4c3549cf518f",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_5e536ca3758e4c3549cf518f"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_5e536ca3758e4c3549cf518f",
+      "brand": "Olehenriksen",
+      "title": "Banana Bright+ Bundle Instant Glow Moisturizer & Eye Crème",
+      "category": "Moisturizer",
+      "description": "Make every day luminous with this brightening, makeup-prep pair: Banana Bright+ Moisturizer offers essential hydration enhanced with clinical brightening power and light-reflecting pigments for a warm golden glow. Our bestselling vitamin C eye cream visibly diminishes dark circles and crow’s feet while creating a smoo…",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_95cfbc51e01dd74b82df6e39",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_95cfbc51e01dd74b82df6e39"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_95cfbc51e01dd74b82df6e39",
+      "brand": "Olehenriksen",
+      "title": "Balance+ Bundle",
+      "category": "Fragrance",
+      "description": "C linically crafted fragrance-free acne care complete with a daily pore-clearing cleanser, 2% salicylic acid toner and purifying pore mask that deliver clearer skin in 1 week.*",
+      "tags": [
+        "Fragrance"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_3221a074fcd0a5b3d9a32f2d",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3221a074fcd0a5b3d9a32f2d"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3221a074fcd0a5b3d9a32f2d",
+      "brand": "Olehenriksen",
+      "title": "Peach Glaze Glow Mist",
+      "category": "Toner",
+      "description": "A Peach-Powered Spritz of Plumping Hydration This replenishing facial mist brightens skin instantly and over time for a healthy-looking glow. Clinically crafted with peach extracts, enhanced vitamin C and Scandinavian-inspired cloudberry water, it delivers an instant boost of antioxidant-rich hydration that lasts.",
+      "tags": [
+        "Toner"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_aea0be48bb20adf3ea960742",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_aea0be48bb20adf3ea960742"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_aea0be48bb20adf3ea960742",
+      "brand": "Olehenriksen",
+      "title": "Strawberry Skincare Set Smoothing Scrub + Pout Preserve Glimmer Duo",
+      "category": "external",
+      "description": "A refreshing ly fruity duo complete juicy AHA exfoliation for your face and a luscious peptide dip for your lips .",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_dd3377dea472f26648364a07",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_dd3377dea472f26648364a07"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_dd3377dea472f26648364a07",
+      "brand": "Olehenriksen",
+      "title": "Big + Plump Peach Collection Bundle",
+      "category": "external",
+      "description": "Peach-powered plumping for your face and lips: Get glazed, glowing, hydrated skin and a fuller-looking pout with this juicy , full-size trio.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_99fa171e954291717eaee641",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_99fa171e954291717eaee641"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_99fa171e954291717eaee641",
+      "brand": "Olehenriksen",
+      "title": "Renew + Strengthen Nighttime Skincare Routine",
+      "category": "Serum",
+      "description": "A nighttime skincare set featuring Double Rewind 0.3% Retinol Serum , Strength Trainer Moisturizer and HydraBarrier Face Oil for a transformative, restorative routine. Plus, enjoy a complimentary Satin Sleep Mask with your purchase.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_0fc6190f5695d261fa3e1883",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_0fc6190f5695d261fa3e1883"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_0fc6190f5695d261fa3e1883",
+      "brand": "Olehenriksen",
+      "title": "Party Of 4 Pout Preserve Lip Set",
+      "category": "external",
+      "description": "A luscious line up of every Pout Preserve flavor. Each flavor features skin-strengthening peptides and kokum butter, that instantly plumps lip with hydration and smoothes fine lines.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_19bf66093385858dcb0d6956",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_19bf66093385858dcb0d6956"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_19bf66093385858dcb0d6956",
+      "brand": "Olehenriksen",
+      "title": "Detox Drops 2% Salicylic Acid Toner-Europe",
+      "category": "Toner",
+      "description": "",
+      "tags": [
+        "Toner"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_df461e9f2856b689eb1914a8",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_df461e9f2856b689eb1914a8"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_df461e9f2856b689eb1914a8",
+      "brand": "Olehenriksen",
+      "title": "Pout Preserve Sugar Melt Lip Scrub",
+      "category": "external",
+      "description": "Smooth In Seconds—No Rinse Required This leave-on lip scrub gently exfoliates the look of dry, flaky, chapped lips with ultra-fine sugars and nourishing butters. This innovative formula instantly retexturizes for a softer, smoother pout in just one step.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_5ee1a11f6b1f780816beb545",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_5ee1a11f6b1f780816beb545"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_5ee1a11f6b1f780816beb545",
+      "brand": "Olehenriksen",
+      "title": "Pout Preserve Petites Mini Lip Trio",
+      "category": "Lip Balm",
+      "description": "A limited-edition mini trio of bestselling Pout Preserve Peptide Lip Treatment that instantly plumps lips with hydration for a fuller looking pout.",
+      "tags": [
+        "Lip Balm"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_15dc879fbef3a9aa6d5dbd99",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_15dc879fbef3a9aa6d5dbd99"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_15dc879fbef3a9aa6d5dbd99",
+      "brand": "Olehenriksen",
+      "title": "Truth Serum Duo",
+      "category": "Serum",
+      "description": "A twin set of the bestselling vitamin C serum that started it all: Truth Serum. This hydrating vitamin C serum brightens, firms and conditions skin.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_27ecddfd70b28613b9cdd8a7",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_27ecddfd70b28613b9cdd8a7"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_27ecddfd70b28613b9cdd8a7",
+      "brand": "Olehenriksen",
+      "title": "Pore-Balance Facial Sauna Scrub",
+      "category": "external",
+      "description": "",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_21e34c1f5546dafb539b0724",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_21e34c1f5546dafb539b0724"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_21e34c1f5546dafb539b0724",
+      "brand": "Olehenriksen",
+      "title": "Daily D-Clog Pore-Clearing Cleanser",
+      "category": "Cleanser",
+      "description": "gentle daily cleanser clarifies pores and calms skin with a blend of salicylic acid (BHA), betaine salicylate and Danish purple willow ferment balanced with cucumber and juniper berry extract. Get smoother skin in 1 week* with a clinical daily deep cleanse that instantly reduces oil and clears out congested pores with…",
+      "tags": [
+        "Cleanser"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_252dc09e43cca906ab852701",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_252dc09e43cca906ab852701"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_252dc09e43cca906ab852701",
+      "brand": "Olehenriksen",
+      "title": "Renew + Rescue Moisturizer Set",
+      "category": "Moisturizer",
+      "description": "The essential rotation of Strength Peptide Boost Moisturizer, HydraBarrier Nourishing Oil and Après Skin Rich Rescue Crème to rescue and repair stressed skin.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_0910c5ee09219dc2a59ccb1d",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_0910c5ee09219dc2a59ccb1d"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_0910c5ee09219dc2a59ccb1d",
+      "brand": "Olehenriksen",
+      "title": "Lemonade Smoothing Scrub",
+      "category": "Powder",
+      "description": "Bring life back to dull, rough skin. This dual-action scrub physically and chemically exfoliates your complexion.",
+      "tags": [
+        "Powder"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_5676831fca6caee579fa9095",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_5676831fca6caee579fa9095"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_5676831fca6caee579fa9095",
+      "brand": "Olehenriksen",
+      "title": "The Hangover Hack",
+      "category": "Lip Balm",
+      "description": "How to avoid the dreaded “you look tired” remark (even if you are, indeed, tired): Apply these bestsellers—Banana Bright+ Eye Creme to hydrate undereyes and reduce the look of crow’s feet, Banana Bright+ Vitamin CC Stick to instantly brighten dark circles and Pout Preserve Lip Treatment to plump lips with hydration. B…",
+      "tags": [
+        "Lip Balm"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_50024e49227406f6c14b1f95",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_50024e49227406f6c14b1f95"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_50024e49227406f6c14b1f95",
+      "brand": "Olehenriksen",
+      "title": "Banana Bright Illuminating Eye Duo",
+      "category": "Fragrance",
+      "description": "Hydrate and illuminate your undereyes with this vitamin C - powdered, fragrance - free eye duo , featuring a brightening eye cream and a color correcting eye cream stick.",
+      "tags": [
+        "Fragrance"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_23e6b8bf75be48cc5adfe517",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_23e6b8bf75be48cc5adfe517"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_23e6b8bf75be48cc5adfe517",
+      "brand": "Olehenriksen",
+      "title": "The Glow Cycle",
+      "category": "external",
+      "description": "A bestselling age-fighting routine—powered by vitamin C, chemical exfoliants and peptides—to target visible signs of aging and transform your complexion.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_75ae815b6acb82c8e3d8f4f3",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_75ae815b6acb82c8e3d8f4f3"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_75ae815b6acb82c8e3d8f4f3",
+      "brand": "Olehenriksen",
+      "title": "Violet Ice Cold Plunge Pore Mask",
+      "category": "Cleanser",
+      "description": "CLARIFY + CHILL This clarifying clay mask instantly clears blackheads, extracts impurities, and diminishes the look of pores with a refreshing chill. Purple kaolin clay absorbs excess oil and Danish purple willow ferment refines pores and keeps skin feeling nourished.",
+      "tags": [
+        "Cleanser"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_47fe725499e880c01ccfc134",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_47fe725499e880c01ccfc134"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_47fe725499e880c01ccfc134",
+      "brand": "Olehenriksen",
+      "title": "Banana Bright Face Primer",
+      "category": "external",
+      "description": "A vitamin C enriched makeup primer that improves and extends makeup wear, blurs pores and blemishes, hydrates and instantly brightens.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_44818b3adcaf24cd4d43f05f",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_44818b3adcaf24cd4d43f05f"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_44818b3adcaf24cd4d43f05f",
+      "brand": "Olehenriksen",
+      "title": "Smooth + Sweet Pout Preserve Peptide Lip Duo",
+      "category": "external",
+      "description": "This must-have limited-edition lip duo, featuring bestselling Strawberry Sorbet and Crème Brulee Glimmer, instantly plumps lips with hydration and smoothes lip lines.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_d2542d7b31829d2caadc58bb",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_d2542d7b31829d2caadc58bb"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_d2542d7b31829d2caadc58bb",
+      "brand": "Olehenriksen",
+      "title": "Balance+ Bundle-Canada",
+      "category": "Fragrance",
+      "description": "C linically crafted fragrance-free care complete with a daily pore-clearing cleanser, 2% salicylic acid toner and purifying pore mask that deliver clearer skin in 1 week.*",
+      "tags": [
+        "Fragrance"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_123d26f91740b0e100715451",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_123d26f91740b0e100715451"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_123d26f91740b0e100715451",
+      "brand": "Olehenriksen",
+      "title": "Pout Preserve Peptide Lip Treatment Glimmers",
+      "category": "Lip Balm",
+      "description": "The Glimmer Effect While it’s true Pout Preserve plumps, smooths and delivers clinically fuller-looking lips in just one week, our Glimmer Collection also shimmers, giving you an instant pick-me-up. Next time you need a lift, swipe on a Glimmer—and keep an eye out for more micro-moments of joy.",
+      "tags": [
+        "Lip Balm"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_26606a47bf430f9b16d15735",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_26606a47bf430f9b16d15735"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_26606a47bf430f9b16d15735",
+      "brand": "Olehenriksen",
+      "title": "BeamCream Smoothing Body Moisturizer",
+      "category": "Moisturizer",
+      "description": "Finally, a face-worthy body cream. This face-worthy body moisturizer plumps skin with hydration, retexturizes for silky-soft arms and legs (or whatever needs moisturizing) and features a light, bright citrus scent.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_3fe128d1441a94c26364da2b",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3fe128d1441a94c26364da2b"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3fe128d1441a94c26364da2b",
+      "brand": "Olehenriksen",
+      "title": "Pout Preserve Peptide Lip Treatment",
+      "category": "Lip Balm",
+      "description": "An advanced lip treatment, with skin - strengthening peptides and kokum butter, that instantly plumps lip with hydration and smoothes fine lines. Award winner for 2023 PEOPLE's Beauty Awards: Best Lip Treatment.",
+      "tags": [
+        "Lip Balm"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_4e4902ad12294f63294bebb0",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_4e4902ad12294f63294bebb0"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_4e4902ad12294f63294bebb0",
+      "brand": "Olehenriksen",
+      "title": "Touch Nourishing Body Lotion",
+      "category": "Moisturizer",
+      "description": "Splash, swipe + glow with this peach-perfect duo. Peach Glaze 2% Niacinamide Cleanser instantly brightens + tightens pores** for 100% luminosity, while bestselling Pout Preserve Peptide Lip Treatment smooths + hydrates for fuller-looking lips in 1 week.* *In an 8-week clinical study on 39 people **In a 1-week clinical…",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_94b5abce697f4012341a957f",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_94b5abce697f4012341a957f"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_94b5abce697f4012341a957f",
+      "brand": "Olehenriksen",
+      "title": "Banana Bright Mineral Sunscreen SPF 30 - EU",
+      "category": "external",
+      "description": "",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_a8f18bb1963155e5ce08466e",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_a8f18bb1963155e5ce08466e"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_a8f18bb1963155e5ce08466e",
+      "brand": "Olehenriksen",
+      "title": "Banana Bright Mineral Sunscreen SPF 30",
+      "category": "Fragrance",
+      "description": "The Experience This daily sunscreen looks good, feels good AND smells good - it has a fresh, naturally derived citrus scent (no sunscreen smell here) and soft-matte finish (never greasy). Mineral sunscreen takes longer to absorb into skin vs. chemical sunscreen.",
+      "tags": [
+        "Fragrance"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_eb411fef3e19381e8614af86",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_eb411fef3e19381e8614af86"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_eb411fef3e19381e8614af86",
+      "brand": "Olehenriksen",
+      "title": "Party Of 5 Pout Preserve Lip Set",
+      "category": "external",
+      "description": "A luscious line up of every Pout Preserve flavor. Each flavor features skin-strengthening peptides and kokum butter, that instantly plumps lip with hydration and smoothes fine lines.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_b5becc2f19292f002368f3c3",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_b5becc2f19292f002368f3c3"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_b5becc2f19292f002368f3c3",
+      "brand": "the ordinary",
+      "title": "Multi-Peptide + Copper Peptides 1% Serum",
+      "category": "Serum",
+      "description": "An advanced age-supporting serum with additional antioxidant support.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_906f8e7c7685d563a502787b",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_906f8e7c7685d563a502787b"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_906f8e7c7685d563a502787b",
+      "brand": "the ordinary",
+      "title": "The Age Support Set",
+      "category": "external",
+      "description": "Ein Regimen mit Multipeptidformulierungen zur gezielten Bekämpfung von Anzeichen der Hautalterung. A regimen including multi-peptide formulations to target signs of aging.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_af05377689d7e39f5740d5f2",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_af05377689d7e39f5740d5f2"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_af05377689d7e39f5740d5f2",
+      "brand": "the ordinary",
+      "title": "The Barrier Support Collection",
+      "category": "external",
+      "description": "A regimen that includes products designed to rebuild and strengthen the skin barrier",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_32ade9ee42d2f0e50b1b8d50",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_32ade9ee42d2f0e50b1b8d50"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_32ade9ee42d2f0e50b1b8d50",
+      "brand": "the ordinary",
+      "title": "Sulphate 4% Cleanser for Body and Hair",
+      "category": "Shampoo",
+      "description": "A gentle, fragrance-free shampoo and body wash for daily use.",
+      "tags": [
+        "Shampoo"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_6795b3092d68d098794dfc0d",
+    "notes": "Live pilot case sampled from public /products listing (The Ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_6795b3092d68d098794dfc0d"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_6795b3092d68d098794dfc0d",
+      "brand": "The Ordinary",
+      "title": "100% Plant-Derived Squalane",
+      "category": "Serum",
+      "description": "A fast-absorbing oil-like serum for enhanced hydration.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_446a1fb3f647cec3c7ab9b42",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_446a1fb3f647cec3c7ab9b42"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_446a1fb3f647cec3c7ab9b42",
+      "brand": "the ordinary",
+      "title": "The Sensitive Skin Collection",
+      "category": "external",
+      "description": "A collection for sensitive skin that includes products designed to smooth and soften skin texture while supporting the skin barrier.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_9c4e18524e509dd477c9b226",
+    "notes": "Live pilot case sampled from public /products listing (The Ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_9c4e18524e509dd477c9b226"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_9c4e18524e509dd477c9b226",
+      "brand": "The Ordinary",
+      "title": "Glycolic Acid 7% Exfoliating Toner",
+      "category": "Toner",
+      "description": "A daily glycolic acid toner that smooths skin texture, evens tone, and enhances luminosity.",
+      "tags": [
+        "Toner"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_31222a0b09f21b419ada1884",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_31222a0b09f21b419ada1884"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_31222a0b09f21b419ada1884",
+      "brand": "the ordinary",
+      "title": "Balancing & Clarifying Serum",
+      "category": "Serum",
+      "description": "A multi-active solution designed to reduce signs of skin congestion by minimizing excess shine, and improving pore appearance for clearer-looking skin.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_58ac6ca08d8cf935840b34ae",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_58ac6ca08d8cf935840b34ae"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_58ac6ca08d8cf935840b34ae",
+      "brand": "the ordinary",
+      "title": "Natural Moisturizing Factors + Inulin Body Lotion",
+      "category": "Moisturizer",
+      "description": "A lightweight, non-greasy body lotion for instant and all-day surface hydration.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_725c7186634cbf1a2a0ac542",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_725c7186634cbf1a2a0ac542"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_725c7186634cbf1a2a0ac542",
+      "brand": "the ordinary",
+      "title": "The Lip & Lash Set",
+      "category": "external",
+      "description": "Ein Set enthält zwei Produkte in Normalgröße für die Pflege von Lippen, Wimpern und Augenbrauen. A set including two full-size formulations to nourish lips, lashes and brows.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_dff4bb27d27ef25f1d152d15",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_dff4bb27d27ef25f1d152d15"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_dff4bb27d27ef25f1d152d15",
+      "brand": "the ordinary",
+      "title": "The Uneven Skin Tone Collection",
+      "category": "external",
+      "description": "A collection featuring key ingredients for a more even skin tone and a radiant complexion.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_bab7ef3c1544b4b2cde95b90",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_bab7ef3c1544b4b2cde95b90"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_bab7ef3c1544b4b2cde95b90",
+      "brand": "the ordinary",
+      "title": "The Most-Loved Collection",
+      "category": "external",
+      "description": "A collection of our most-loved products.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_dfcfc5b215fcff69897f2c92",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_dfcfc5b215fcff69897f2c92"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_dfcfc5b215fcff69897f2c92",
+      "brand": "the ordinary",
+      "title": "Multi-Peptide Eye Serum",
+      "category": "Serum",
+      "description": "A multi-technology peptide eye serum to target signs of aging around the eye.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_8d48ddf145a14a2bf2635584",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_8d48ddf145a14a2bf2635584"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_8d48ddf145a14a2bf2635584",
+      "brand": "the ordinary",
+      "title": "The Eye, Lash & Brow Collection",
+      "category": "external",
+      "description": "Eine Kollektion von Augenpflegeformulierungen, die darauf abzielen, Anzeichen der Hautalterung zu bekämpfen sowie zu volleren, dichteren und gesünder aussehenden Wimpern und Augenbrauen beizutragen. A collection of eye care formulations designed to target signs of aging, and support fuller, thicker, healthier-looking…",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_27aa391e738ea9b899a14252",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_27aa391e738ea9b899a14252"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_27aa391e738ea9b899a14252",
+      "brand": "the ordinary",
+      "title": "Glycolipid Cream Cleanser",
+      "category": "Cleanser",
+      "description": "A gentle cream cleanser that effectively removes makeup.",
+      "tags": [
+        "Cleanser"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_1916fbcf3116992f9257bf6e",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_1916fbcf3116992f9257bf6e"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_1916fbcf3116992f9257bf6e",
+      "brand": "the ordinary",
+      "title": "Granactive Retinoid 2% Emulsion",
+      "category": "Serum",
+      "description": "Next-generation retinol-alternative technologies to address signs of aging.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_44f3e5e50a268c2ba5bb0304",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_44f3e5e50a268c2ba5bb0304"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_44f3e5e50a268c2ba5bb0304",
+      "brand": "the ordinary",
+      "title": "Squalane Cleanser",
+      "category": "Cleanser",
+      "description": "An oil-free cleansing balm An oil-free cleansing balm",
+      "tags": [
+        "Cleanser"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_3ddd25b09118f4eb30df093a",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3ddd25b09118f4eb30df093a"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3ddd25b09118f4eb30df093a",
+      "brand": "the ordinary",
+      "title": "The Multi-Peptide Collection",
+      "category": "external",
+      "description": "Eine Kollektion von Multi-Peptid-Formeln zur umfassenden Unterstützung der Hautalterung im Gesicht und um die Augen. A collection of multi-peptide formulas for comprehensive age support across the face and eyes.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_322e6282831ebd8a41b48e20",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_322e6282831ebd8a41b48e20"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_322e6282831ebd8a41b48e20",
+      "brand": "the ordinary",
+      "title": "Serum Foundation",
+      "category": "Serum",
+      "description": "A light foundation with a natural finish.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_21eb1a40822defc31299b9af",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_21eb1a40822defc31299b9af"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_21eb1a40822defc31299b9af",
+      "brand": "the ordinary",
+      "title": "Retinal 0.2% Emulsion",
+      "category": "external",
+      "description": "Our highest-strength retinoid formula with stabilized retinaldehyde for advanced age support, optimal for nighttime use.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_d1bc4fe2331af3d949058c9b",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_d1bc4fe2331af3d949058c9b"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_d1bc4fe2331af3d949058c9b",
+      "brand": "the ordinary",
+      "title": "Salicylic Acid 2% Solution",
+      "category": "Serum",
+      "description": "A serum formulated to target acne and allow skin to heal.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_55ff62b10fbdb4f186bebeff",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_55ff62b10fbdb4f186bebeff"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_55ff62b10fbdb4f186bebeff",
+      "brand": "the ordinary",
+      "title": "The Winter Skin Set",
+      "category": "external",
+      "description": "Eine Kollektion von feuchtigkeitsspendenden Produkten in einem extra Beutel, um auf trockene Haut zu wirken, welche durch raues Winterwetter entstanden ist. A collection of hydrating formulations, in a complementary pouch, to support dry skin from harsh winter weather.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_be64bec9edea11cdae9fb998",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_be64bec9edea11cdae9fb998"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_be64bec9edea11cdae9fb998",
+      "brand": "the ordinary",
+      "title": "Hyaluronic Acid 2% + B5 (Original Formulation)",
+      "category": "Serum",
+      "description": "The original hyaluronic acid serum for hydrated, smoother-looking skin.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_3f478ff30ba66e60fe260e64",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3f478ff30ba66e60fe260e64"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3f478ff30ba66e60fe260e64",
+      "brand": "the ordinary",
+      "title": "Sulfur 10% Powder-to-Cream Concentrate",
+      "category": "Serum",
+      "description": "A sulfur acne treatment in a powder-to-cream format to shrink pimples and calm acne redness.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_fd447e3ddace65210a62d6e1",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_fd447e3ddace65210a62d6e1"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_fd447e3ddace65210a62d6e1",
+      "brand": "the ordinary",
+      "title": "The Daily Set",
+      "category": "external",
+      "description": "Die Grundlage einer gesunden Hautpflegeroutine. The building blocks of a healthy skincare routine.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_b46bad8dd8605cdd0642ab76",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_b46bad8dd8605cdd0642ab76"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_b46bad8dd8605cdd0642ab76",
+      "brand": "the ordinary",
+      "title": "Retinol 1% in Squalane",
+      "category": "Serum",
+      "description": "A high-strength retinol serum that targets general signs of skin aging.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_a7d1193f64e8e78bf1ef9741",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_a7d1193f64e8e78bf1ef9741"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_a7d1193f64e8e78bf1ef9741",
+      "brand": "the ordinary",
+      "title": "The Mini Discovery Set",
+      "category": "external",
+      "description": "Entdecken Sie The Ordinary mit seinen Miniaturgrößen von unseren Regimen-Essentials. An introduction to The Ordinary featuring miniature sizes of our regimen essentials.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_c7646281bf251a8c32cc9b78",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_c7646281bf251a8c32cc9b78"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_c7646281bf251a8c32cc9b78",
+      "brand": "the ordinary",
+      "title": "Saccharomyces Ferment 30% Milky Toner",
+      "category": "Toner",
+      "description": "A gentle exfoliating toner that promotes smoother, brighter skin while boosting hydration. Suitable for sensitive skin.",
+      "tags": [
+        "Toner"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_a066f09b461999a2ff025d45",
+    "notes": "Live pilot case sampled from public /products listing (The Ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_a066f09b461999a2ff025d45"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_a066f09b461999a2ff025d45",
+      "brand": "The Ordinary",
+      "title": "Mandelic Acid 10% + HA",
+      "category": "Serum",
+      "description": "A gentle exfoliator, in serum form.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_3c163878a163df986beeb2b0",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3c163878a163df986beeb2b0"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3c163878a163df986beeb2b0",
+      "brand": "the ordinary",
+      "title": "Multi-Active Delivery Essence",
+      "category": "Serum",
+      "description": "A hydrating, conditioning essence that primes for skincare penetration.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_00da148a84d243a1a2126732",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_00da148a84d243a1a2126732"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_00da148a84d243a1a2126732",
+      "brand": "the ordinary",
+      "title": "PHA 5% Exfoliating Lip Serum",
+      "category": "Serum",
+      "description": "A gentle chemical-based lip exfoliator with 5% Polyhydroxy Acid (Gluconolactone) to smooth and hydrate lips.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_b23ef7c54e22270375fd7b4e",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_b23ef7c54e22270375fd7b4e"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_b23ef7c54e22270375fd7b4e",
+      "brand": "the ordinary",
+      "title": "The Bright Set",
+      "category": "external",
+      "description": "Eine Reihe von Formulierungen, die den Hautton sichtbar ausgleichen und die Haut zum Strahlen bringen. A set of formulations to visibly even skin tone and boost skin radiance.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_83513127a7a7cac50726b5cd",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_83513127a7a7cac50726b5cd"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_83513127a7a7cac50726b5cd",
+      "brand": "the ordinary",
+      "title": "Soothing & Barrier Support Serum Set",
+      "category": "Serum",
+      "description": "Eine multiaktive Lösung in einen wiederverwendbaren Beutel für den Schlüsselbund für die schnelle Hautreparatur unterwegs. A multi-active solution in a reusable keychain pouch for fast skin repair on-the-go.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_d7c74bcb380cbc2bdd5d5d90",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_d7c74bcb380cbc2bdd5d5d90"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_d7c74bcb380cbc2bdd5d5d90",
+      "brand": "the ordinary",
+      "title": "Multi-Peptide Lash and Brow Serum",
+      "category": "Serum",
+      "description": "A volumizing lash and brow serum for a thicker, fuller, and healthier look.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_40d86163d7cbfc82039b5a24",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_40d86163d7cbfc82039b5a24"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_40d86163d7cbfc82039b5a24",
+      "brand": "the ordinary",
+      "title": "The Mini Icons Set",
+      "category": "external",
+      "description": "Ein Trio von Lieblingsprodukten in Miniaturausgabe mit wiederverwendbaren Wattepads, um den ungleichmäßigen Hautton aufzuhellen und zu hydratisieren. A trio of miniature hero products, with reusable cotton pads, to brighten and hydrate uneven skin tone.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_0281be2868f91dcf200fa248",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_0281be2868f91dcf200fa248"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_0281be2868f91dcf200fa248",
+      "brand": "the ordinary",
+      "title": "Soothing & Barrier Support Serum",
+      "category": "Serum",
+      "description": "A multi-active solution designed to help repair skin barrier, soothe discomfort, and reduce the look of redness.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_37b3cefddca1ad1237c5a22b",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_37b3cefddca1ad1237c5a22b"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_37b3cefddca1ad1237c5a22b",
+      "brand": "the ordinary",
+      "title": "Multi-Antioxidant Radiance Serum",
+      "category": "Serum",
+      "description": "A daily antioxidant serum with 8 technologies that helps protect skin and boost radiance.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_b3db87a2f0832cd4815d77c2",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_b3db87a2f0832cd4815d77c2"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_b3db87a2f0832cd4815d77c2",
+      "brand": "the ordinary",
+      "title": "Retinol 0.2% in Squalane",
+      "category": "Serum",
+      "description": "A mild retinol serum that targets general signs of skin aging.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_8cb65133bbfedfe553f4c315",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_8cb65133bbfedfe553f4c315"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_8cb65133bbfedfe553f4c315",
+      "brand": "the ordinary",
+      "title": "Aloe 2% + NAG 2% Solution",
+      "category": "Treatment",
+      "description": "A soothing solution for post-acne marks.",
+      "tags": [
+        "Treatment"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_529fc241c3a83f576f74b333",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_529fc241c3a83f576f74b333"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_529fc241c3a83f576f74b333",
+      "brand": "the ordinary",
+      "title": "Natural Moisturizing Factors + HA",
+      "category": "Moisturizer",
+      "description": "The original surface hydrator.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_614b112b4d746b2124b8b18c",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_614b112b4d746b2124b8b18c"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_614b112b4d746b2124b8b18c",
+      "brand": "the ordinary",
+      "title": "Granactive Retinoid 5% in Squalane",
+      "category": "Serum",
+      "description": "Next-generation retinol-alternative technologies to address signs of aging in an oil-like format.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_58694a9cfa8eb580c53ab5d5",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_58694a9cfa8eb580c53ab5d5"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_58694a9cfa8eb580c53ab5d5",
+      "brand": "the ordinary",
+      "title": "Digital Gift Card",
+      "category": "external",
+      "description": "Sie können sich nicht entscheiden, was Sie kaufen sollen? DECIEM-Geschenkkarten sind eine einfache Lösung.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_86c02b71c4f8576cafdea079",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_86c02b71c4f8576cafdea079"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_86c02b71c4f8576cafdea079",
+      "brand": "the ordinary",
+      "title": "The Face & Body Set",
+      "category": "external",
+      "description": "Eine Kollektion von Gesichts- und Körperprodukten, um die Haut geschmeidig zu machen, sie zum Strahlen zu bringen und ihr Feuchtigkeit zu spenden. A collection of face and body formulations to smooth, brighten and hydrate.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_3d9df6012687584d893ecf2f",
+    "notes": "Live pilot case sampled from public /products listing (The Ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3d9df6012687584d893ecf2f"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3d9df6012687584d893ecf2f",
+      "brand": "The Ordinary",
+      "title": "Lactic Acid 10% + HA",
+      "category": "Bronzer",
+      "description": "A high-strength exfoliator that works to reveal smoother skin.",
+      "tags": [
+        "Bronzer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_4cafac4b871068bfec223aa5",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_4cafac4b871068bfec223aa5"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_4cafac4b871068bfec223aa5",
+      "brand": "the ordinary",
+      "title": "100% Fermented Rose Hip Seed Oil",
+      "category": "external",
+      "description": "A fermented plant-derived seed oil to soothe visible signs of sensitivity that can lead to premature signs of skin aging.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_140b49c03c28045227f5c320",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_140b49c03c28045227f5c320"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_140b49c03c28045227f5c320",
+      "brand": "the ordinary",
+      "title": "Lash Curl Finisher",
+      "category": "external",
+      "description": "A transparent lash styling formulation that holds lift and curl for a natural, defined look.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_cd863effad0b358b85541f7d",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_cd863effad0b358b85541f7d"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_cd863effad0b358b85541f7d",
+      "brand": "the ordinary",
+      "title": "Natural Moisturizing Factors + PhytoCeramides",
+      "category": "Moisturizer",
+      "description": "Our most nourishing moisturizer.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_15f93d28515b692d02422716",
+    "notes": "Live pilot case sampled from public /products listing (The Ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_15f93d28515b692d02422716"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_15f93d28515b692d02422716",
+      "brand": "The Ordinary",
+      "title": "Alpha Arbutin 2% + HA",
+      "category": "Serum",
+      "description": "A high-strength serum to minimize the appearance of dark spots and brighten.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_5172a31c95d698f69631ca88",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_5172a31c95d698f69631ca88"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_5172a31c95d698f69631ca88",
+      "brand": "the ordinary",
+      "title": "Squalane + Amino Acids Lip Balm",
+      "category": "Lip Balm",
+      "description": "A multi-use moisturizing balm designed to hydrate the lips, elbows and cuticles.",
+      "tags": [
+        "Lip Balm"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_ef18411b415ccf063283b72b",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_ef18411b415ccf063283b72b"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_ef18411b415ccf063283b72b",
+      "brand": "the ordinary",
+      "title": "The Smooth Skin Collection",
+      "category": "external",
+      "description": "Ein Pflegeprogramm, das einige beliebte Formeln zur gezielten Behandlung ungleichmäßiger Hautstruktur enthält. A collection that includes some well-loved formulas for targeting uneven skin texture.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_d3f2f176c092de7a7b26004d",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_d3f2f176c092de7a7b26004d"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_d3f2f176c092de7a7b26004d",
+      "brand": "the ordinary",
+      "title": "GF 15% Solution",
+      "category": "Serum",
+      "description": "An age-support serum containing a 15% solution of growth factors to help minimize and repair visible skin damage to regenerate the look of aging skin.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_ec17cd36301a86b31d009022",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_ec17cd36301a86b31d009022"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_ec17cd36301a86b31d009022",
+      "brand": "the ordinary",
+      "title": "Volufiline 92% + Pal-Isoleucine 1%",
+      "category": "Serum",
+      "description": "A targeted plumping serum formulated with Volufiline to target volume loss.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_03f807471fc292d2bbdbdc99",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_03f807471fc292d2bbdbdc99"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_03f807471fc292d2bbdbdc99",
+      "brand": "the ordinary",
+      "title": "Natural Moisturizing Factors + HA for Scalp",
+      "category": "Hair Care",
+      "description": "A lightweight hydrating serum for the scalp.",
+      "tags": [
+        "Hair Care"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_9c5497bd80f09eb2b2c1592f",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_9c5497bd80f09eb2b2c1592f"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_9c5497bd80f09eb2b2c1592f",
+      "brand": "the ordinary",
+      "title": "Rice Lipids + Ectoin Microemulsion",
+      "category": "Moisturizer",
+      "description": "An ultra-light moisturizer, for dry and dehydrated skin, to deliver 24-hour soothing hydration.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_394407f65256e48f026b38ef",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_394407f65256e48f026b38ef"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_394407f65256e48f026b38ef",
+      "brand": "the ordinary",
+      "title": "Azelaic Acid Suspension 10%",
+      "category": "Treatment",
+      "description": "A formula for blemish-prone skin to target uneven skin tone and texture.",
+      "tags": [
+        "Treatment"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_95f745a3d0c5f80056f4dd26",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_95f745a3d0c5f80056f4dd26"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_95f745a3d0c5f80056f4dd26",
+      "brand": "the ordinary",
+      "title": "Salicylic Acid 2% Anhydrous Solution",
+      "category": "Treatment",
+      "description": "A gentler solution for blemish-prone skin and uneven texture.",
+      "tags": [
+        "Treatment"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_23e74a997125f2c94f72669c",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_23e74a997125f2c94f72669c"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_23e74a997125f2c94f72669c",
+      "brand": "the ordinary",
+      "title": "Retinol 0.5% in Squalane",
+      "category": "Serum",
+      "description": "A moderate-strength retinol serum that targets general signs of skin aging.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_93155a1f2a84b951e46ef878",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_93155a1f2a84b951e46ef878"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_93155a1f2a84b951e46ef878",
+      "brand": "the ordinary",
+      "title": "The Hydration Collection",
+      "category": "external",
+      "description": "Eine Kollektion, die ein vollständigen Regimen mit feuchtigkeitsspendenden Produkten umfasst. A collection that includes a full regimen of hydrating products.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  }
+]

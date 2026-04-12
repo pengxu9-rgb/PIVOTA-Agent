@@ -499,6 +499,191 @@ describe('product_intel pilot compare selection', () => {
     expect(overridden.field_sources.external_highlight_signals).toBe('manual');
   });
 
+  test('gemini placeholder headline does not overwrite baseline what-it-is headline', () => {
+    const caseRow = {
+      case_id: 'pilot_placeholder_headline',
+      canonical_product_ref: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_placeholder_headline',
+      },
+      product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_placeholder_headline',
+        brand: 'SKIN1004',
+        title: 'Hyalu-Cica Gentle Cleansing Milk',
+        category: 'Cleanser',
+        description:
+          'A mild cleansing milk that dissolves makeup and sunscreen while supporting the skin moisture barrier.',
+      },
+    };
+
+    const baseline = buildProductIntelDraftBundle({
+      product: caseRow.product,
+      canonicalProductRef: caseRow.canonical_product_ref,
+    });
+
+    const geminiOutput = {
+      product_intel_core: {
+        what_it_is: {
+          headline: 'Pivota Insights',
+          body: 'A mild cleansing milk formulated to dissolve makeup and sunscreen while supporting the skin moisture barrier.',
+        },
+        best_for: [{ tag: 'makeup_removal', label: 'Makeup and sunscreen removal', confidence: 'moderate' }],
+        why_it_stands_out: [
+          {
+            headline: 'Milk cleanser format',
+            body: 'Uses a cleansing milk format for gentler makeup and sunscreen removal.',
+            evidence_strength: 'moderate',
+          },
+        ],
+        routine_fit: {
+          step: 'cleanser',
+          am_pm: ['pm'],
+          pairing_notes: ['Use before leave-on products.'],
+        },
+        watchouts: [],
+      },
+      community_signals: {
+        status: 'unavailable',
+      },
+    };
+
+    const candidate = mergeGeminiDraftIntoBaseline(caseRow, baseline, geminiOutput, 'gemini-test');
+
+    expect(candidate.product_intel_core.what_it_is.headline).toBe(
+      baseline.product_intel_core.what_it_is.headline,
+    );
+    expect(candidate.product_intel_core.what_it_is.headline).not.toBe('Pivota Insights');
+  });
+
+  test('normalizes malformed gemini best-for tags back to label-derived tags', () => {
+    const caseRow = {
+      case_id: 'pilot_bad_best_for_tag',
+      canonical_product_ref: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_bad_best_for_tag',
+      },
+      product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_bad_best_for_tag',
+        brand: 'Olehenriksen',
+        title: 'Banana Bright 15% Vitamin C Dark Spot Serum',
+        category: 'Serum',
+        description:
+          'A vitamin C serum made to visibly brighten, target dark spots, and support firmer-looking skin.',
+      },
+    };
+
+    const baseline = buildProductIntelDraftBundle({
+      product: caseRow.product,
+      canonicalProductRef: caseRow.canonical_product_ref,
+    });
+
+    const geminiOutput = {
+      product_intel_core: {
+        what_it_is: {
+          headline: '15% vitamin C serum',
+          body: 'A vitamin C serum built to brighten and target dark spots.',
+        },
+        best_for: [
+          { tag: 'object_object', label: 'Dark spot routines', confidence: 'moderate' },
+          { tag: 'object_object', label: 'Fine lines or firmness concerns', confidence: 'moderate' },
+        ],
+        why_it_stands_out: [
+          {
+            headline: 'Vitamin C brightening step',
+            body: 'Keeps vitamin C at the center of a dark-spot and firmness routine.',
+            evidence_strength: 'moderate',
+          },
+        ],
+        routine_fit: {
+          step: 'serum',
+          am_pm: ['am'],
+          pairing_notes: ['Apply before moisturizer and SPF in the morning.'],
+        },
+        watchouts: [],
+      },
+      community_signals: {
+        status: 'unavailable',
+      },
+    };
+
+    const candidate = mergeGeminiDraftIntoBaseline(caseRow, baseline, geminiOutput, 'gemini-test');
+
+    expect(candidate.product_intel_core.best_for).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ tag: 'dark_spot_routines', label: 'Dark spot routines' }),
+        expect.objectContaining({
+          tag: 'fine_lines_or_firmness_concerns',
+          label: 'Fine lines or firmness concerns',
+        }),
+      ]),
+    );
+    expect(candidate.product_intel_core.best_for).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ tag: 'object_object' })]),
+    );
+  });
+
+  test('drops object-placeholder best-for and watchout fields from gemini output', () => {
+    const caseRow = {
+      case_id: 'pilot_object_placeholder_fields',
+      canonical_product_ref: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_object_placeholder_fields',
+      },
+      product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_object_placeholder_fields',
+        brand: 'Olehenriksen',
+        title: 'Banana Bright 15% Vitamin C Dark Spot Serum',
+        category: 'Serum',
+        description:
+          'A vitamin C serum made to visibly brighten, target dark spots, and support firmer-looking skin.',
+      },
+    };
+
+    const baseline = buildProductIntelDraftBundle({
+      product: caseRow.product,
+      canonicalProductRef: caseRow.canonical_product_ref,
+    });
+
+    const geminiOutput = {
+      product_intel_core: {
+        what_it_is: {
+          headline: '',
+          body: 'A morning serum formulated with 15% stabilized vitamin C to target dark spots and skin firmness.',
+        },
+        best_for: [
+          { tag: 'object_object', label: '[object Object]', confidence: 'moderate' },
+        ],
+        why_it_stands_out: [
+          {
+            headline: 'Vitamin C brightening step',
+            body: 'Keeps vitamin C at the center of a dark-spot and firmness routine.',
+            evidence_strength: 'moderate',
+          },
+        ],
+        routine_fit: {
+          step: '',
+          am_pm: [],
+          pairing_notes: [],
+        },
+        watchouts: [{ type: 'watchout', label: '[object Object]', severity: 'low' }],
+      },
+      community_signals: {
+        status: 'unavailable',
+      },
+    };
+
+    const candidate = mergeGeminiDraftIntoBaseline(caseRow, baseline, geminiOutput, 'gemini-test');
+    const quality = evaluateGeminiCandidateQuality(baseline, candidate);
+
+    expect(candidate.product_intel_core.best_for).toEqual([]);
+    expect(candidate.product_intel_core.watchouts).toEqual([]);
+    expect(quality.field_decisions.best_for).toBe(false);
+    expect(quality.field_decisions.watchouts).toBe(false);
+  });
+
   test('builds shopping card payload from selected bundle and hard evidence', () => {
     const caseRow = {
       product: {

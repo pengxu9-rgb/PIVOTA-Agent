@@ -1,0 +1,326 @@
+[
+  {
+    "case_id": "live_ext_cd9e4645dd98f9b8693406ab",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_cd9e4645dd98f9b8693406ab"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_cd9e4645dd98f9b8693406ab",
+      "brand": "Murad",
+      "title": "Retexturizing Body Pads",
+      "category": "external",
+      "description": "",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_edd8a7c8824da40e28d289d4",
+    "notes": "Live pilot case sampled from public /products listing (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_edd8a7c8824da40e28d289d4"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_edd8a7c8824da40e28d289d4",
+      "brand": "Murad",
+      "title": "Targeted Pore Corrector",
+      "category": "external",
+      "description": "",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_3a99798960160df9c8769d94",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3a99798960160df9c8769d94"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3a99798960160df9c8769d94",
+      "brand": "Naturium",
+      "title": "Retinaldehyde Cream Serum 0.05%",
+      "category": "Serum",
+      "description": "50 ML / 1.7 FL OZ We all know retinal is effective, but the greatest setback to formulating and producing a product with this material is its oxidative instability. To ensure that our product maintains its potency through its shelf life we assayed the retinal under accelerated conditions.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_e7c55a62fa5f3084a7d4f100",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_e7c55a62fa5f3084a7d4f100"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_e7c55a62fa5f3084a7d4f100",
+      "brand": "Olehenriksen",
+      "title": "Balance+ Bundle-Europe",
+      "category": "external",
+      "description": "",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_0cfa56c35dd9a64ef9b6fe0a",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_0cfa56c35dd9a64ef9b6fe0a"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_0cfa56c35dd9a64ef9b6fe0a",
+      "brand": "Olehenriksen",
+      "title": "After-Party Peptides Skin Strengthening Set",
+      "category": "external",
+      "description": "",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_aea0be48bb20adf3ea960742",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_aea0be48bb20adf3ea960742"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_aea0be48bb20adf3ea960742",
+      "brand": "Olehenriksen",
+      "title": "Strawberry Skincare Set Smoothing Scrub + Pout Preserve Glimmer Duo",
+      "category": "external",
+      "description": "A refreshing ly fruity duo complete juicy AHA exfoliation for your face and a luscious peptide dip for your lips .",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_27ecddfd70b28613b9cdd8a7",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_27ecddfd70b28613b9cdd8a7"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_27ecddfd70b28613b9cdd8a7",
+      "brand": "Olehenriksen",
+      "title": "Pore-Balance Facial Sauna Scrub",
+      "category": "external",
+      "description": "",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_50024e49227406f6c14b1f95",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_50024e49227406f6c14b1f95"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_50024e49227406f6c14b1f95",
+      "brand": "Olehenriksen",
+      "title": "Banana Bright Illuminating Eye Duo",
+      "category": "Fragrance",
+      "description": "Hydrate and illuminate your undereyes with this vitamin C - powdered, fragrance - free eye duo , featuring a brightening eye cream and a color correcting eye cream stick.",
+      "tags": [
+        "Fragrance"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_3fe128d1441a94c26364da2b",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3fe128d1441a94c26364da2b"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3fe128d1441a94c26364da2b",
+      "brand": "Olehenriksen",
+      "title": "Pout Preserve Peptide Lip Treatment",
+      "category": "Lip Balm",
+      "description": "An advanced lip treatment, with skin - strengthening peptides and kokum butter, that instantly plumps lip with hydration and smoothes fine lines. Award winner for 2023 PEOPLE's Beauty Awards: Best Lip Treatment.",
+      "tags": [
+        "Lip Balm"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_a8f18bb1963155e5ce08466e",
+    "notes": "Live pilot case sampled from public /products listing (Olehenriksen).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_a8f18bb1963155e5ce08466e"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_a8f18bb1963155e5ce08466e",
+      "brand": "Olehenriksen",
+      "title": "Banana Bright Mineral Sunscreen SPF 30",
+      "category": "Fragrance",
+      "description": "The Experience This daily sunscreen looks good, feels good AND smells good - it has a fresh, naturally derived citrus scent (no sunscreen smell here) and soft-matte finish (never greasy). Mineral sunscreen takes longer to absorb into skin vs. chemical sunscreen.",
+      "tags": [
+        "Fragrance"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_906f8e7c7685d563a502787b",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_906f8e7c7685d563a502787b"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_906f8e7c7685d563a502787b",
+      "brand": "the ordinary",
+      "title": "The Age Support Set",
+      "category": "external",
+      "description": "Ein Regimen mit Multipeptidformulierungen zur gezielten Bekämpfung von Anzeichen der Hautalterung. A regimen including multi-peptide formulations to target signs of aging.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_af05377689d7e39f5740d5f2",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_af05377689d7e39f5740d5f2"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_af05377689d7e39f5740d5f2",
+      "brand": "the ordinary",
+      "title": "The Barrier Support Collection",
+      "category": "external",
+      "description": "A regimen that includes products designed to rebuild and strengthen the skin barrier",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  }
+]

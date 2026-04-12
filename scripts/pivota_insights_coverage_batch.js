@@ -14,6 +14,7 @@ function parseArgs(argv) {
     frontendBaseUrl: 'https://agent.pivota.cc',
     frontendPaths: ['/products'],
     coveredReport: '',
+    manualOverrides: 'scripts/fixtures/product_intel_manual_overrides.json',
     limit: 50,
     perQuery: 24,
     seed: String(process.env.PRODUCT_INTEL_PILOT_SEED || new Date().toISOString().slice(0, 10).replace(/-/g, '')),
@@ -21,9 +22,13 @@ function parseArgs(argv) {
     excludeCovered: true,
     requireBadgeEvidence: false,
     skipGemini: false,
-    model: String(process.env.PIVOTA_PRODUCT_INTEL_MODEL || 'gemini-3-pro-preview'),
+    model: String(process.env.PIVOTA_PRODUCT_INTEL_MODEL || 'gemini-3-flash-preview'),
     maxPerBrand: 3,
     maxPerCategory: 4,
+    queryConcurrency: Math.max(1, Number(process.env.PRODUCT_INTEL_PILOT_QUERY_CONCURRENCY || 6) || 6),
+    frontendConcurrency: Math.max(1, Number(process.env.PRODUCT_INTEL_PILOT_FRONTEND_CONCURRENCY || 4) || 4),
+    pdpConcurrency: Math.max(1, Number(process.env.PRODUCT_INTEL_PILOT_PDP_CONCURRENCY || 10) || 10),
+    geminiConcurrency: Math.max(1, Number(process.env.PRODUCT_INTEL_PILOT_GEMINI_CONCURRENCY || 6) || 6),
   };
 
   for (let i = 2; i < argv.length; i += 1) {
@@ -62,6 +67,9 @@ function parseArgs(argv) {
     } else if (token === '--covered-report' && next) {
       out.coveredReport = next;
       i += 1;
+    } else if (token === '--manual-overrides' && next) {
+      out.manualOverrides = next;
+      i += 1;
     } else if (token === '--limit' && next) {
       out.limit = Math.max(1, Number(next) || 50);
       i += 1;
@@ -90,6 +98,18 @@ function parseArgs(argv) {
       i += 1;
     } else if (token === '--max-per-category' && next) {
       out.maxPerCategory = Math.max(0, Number(next) || 0);
+      i += 1;
+    } else if (token === '--query-concurrency' && next) {
+      out.queryConcurrency = Math.max(1, Number(next) || out.queryConcurrency);
+      i += 1;
+    } else if (token === '--frontend-concurrency' && next) {
+      out.frontendConcurrency = Math.max(1, Number(next) || out.frontendConcurrency);
+      i += 1;
+    } else if (token === '--pdp-concurrency' && next) {
+      out.pdpConcurrency = Math.max(1, Number(next) || out.pdpConcurrency);
+      i += 1;
+    } else if (token === '--gemini-concurrency' && next) {
+      out.geminiConcurrency = Math.max(1, Number(next) || out.geminiConcurrency);
       i += 1;
     }
   }
@@ -239,6 +259,12 @@ async function main() {
     String(args.maxPerBrand),
     '--max-per-category',
     String(args.maxPerCategory),
+    '--query-concurrency',
+    String(args.queryConcurrency),
+    '--frontend-concurrency',
+    String(args.frontendConcurrency),
+    '--pdp-concurrency',
+    String(args.pdpConcurrency),
   ];
   if (args.productIds.length) {
     buildArgs.push('--product-ids', args.productIds.join(','));
@@ -255,6 +281,9 @@ async function main() {
   if (args.coveredReport) {
     buildArgs.push('--covered-report', args.coveredReport);
   }
+  if (args.manualOverrides) {
+    buildArgs.push('--manual-overrides', args.manualOverrides);
+  }
   if (args.excludeCovered) buildArgs.push('--exclude-covered');
   if (args.requireBadgeEvidence) buildArgs.push('--require-badge-evidence');
   runNodeScript(path.join(rootDir, 'scripts/build_product_intel_live_pilot_cases.js'), buildArgs, { cwd: rootDir });
@@ -268,6 +297,8 @@ async function main() {
     compareMdPath,
     '--model',
     args.model,
+    '--concurrency',
+    String(args.geminiConcurrency),
   ];
   if (args.skipGemini) compareArgs.push('--skip-gemini');
   runNodeScript(path.join(rootDir, 'scripts/product_intel_pilot_compare.js'), compareArgs, { cwd: rootDir });

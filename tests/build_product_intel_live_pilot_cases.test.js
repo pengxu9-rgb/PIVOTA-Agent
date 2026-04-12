@@ -13,6 +13,8 @@ const {
   hasBadgeEvidence,
   loadCoveredProductIdSet,
   loadCoveredProductIdSetFromReport,
+  loadManualOverrideProductIdSet,
+  parseArgs,
   sampleWithoutReplacement,
   selectDiverseCases,
 } = require('../scripts/build_product_intel_live_pilot_cases');
@@ -20,6 +22,26 @@ const {
 const axios = require('axios');
 
 describe('build_product_intel_live_pilot_cases', () => {
+  test('parses concurrency controls for bulk batches', () => {
+    const args = parseArgs([
+      'node',
+      'script',
+      '--queries',
+      'cleanser,serum',
+      '--query-concurrency',
+      '8',
+      '--frontend-concurrency',
+      '3',
+      '--pdp-concurrency',
+      '12',
+    ]);
+
+    expect(args.queries).toEqual(['cleanser', 'serum']);
+    expect(args.queryConcurrency).toBe(8);
+    expect(args.frontendConcurrency).toBe(3);
+    expect(args.pdpConcurrency).toBe(12);
+  });
+
   test('samples deterministically without replacement', () => {
     const input = ['a', 'b', 'c', 'd', 'e', 'e'];
     const first = sampleWithoutReplacement(input, 3, 'seed-1');
@@ -60,6 +82,20 @@ describe('build_product_intel_live_pilot_cases', () => {
     );
 
     expect(Array.from(loadCoveredProductIdSetFromReport(tmpReport))).toEqual(['prod_a']);
+  });
+
+  test('loads covered product ids from manual overrides', () => {
+    const tmpOverrides = '/tmp/build-product-intel-manual-overrides.json';
+    require('fs').writeFileSync(
+      tmpOverrides,
+      JSON.stringify({
+        'product:ext_alpha': { notes: 'reviewed' },
+        live_ext_beta: { notes: 'reviewed' },
+        random_key: { notes: 'ignore' },
+      }),
+    );
+
+    expect(Array.from(loadManualOverrideProductIdSet(tmpOverrides)).sort()).toEqual(['ext_alpha', 'ext_beta']);
   });
 
   test('selects a diverse subset across brands and categories', () => {

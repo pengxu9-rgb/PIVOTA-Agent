@@ -1,0 +1,10 @@
+{
+  "status": "ok",
+  "requested": 200,
+  "built": 200,
+  "selected": 200,
+  "source": "historical_cases_manifest",
+  "seed": "20260412_batch200_from_reports",
+  "manifest": "/Users/pengchydan/dev/PIVOTA-Agent-codex-mainline/reports/pivota-insights-coverage/20260412_batch200_from_reports/product_ids.json",
+  "cases": "/Users/pengchydan/dev/PIVOTA-Agent-codex-mainline/reports/pivota-insights-coverage/20260412_batch200_from_reports/cases.json"
+}

@@ -25,7 +25,8 @@ function parseArgs(argv) {
     out: '',
     markdown: '',
     manualOverrides: 'scripts/fixtures/product_intel_manual_overrides.json',
-    model: process.env.PRODUCT_INTEL_PILOT_GEMINI_MODEL || 'gemini-3-pro-preview',
+    model: process.env.PRODUCT_INTEL_PILOT_GEMINI_MODEL || 'gemini-3-flash-preview',
+    concurrency: Math.max(1, Number(process.env.PRODUCT_INTEL_PILOT_GEMINI_CONCURRENCY || 6) || 6),
     skipGemini: false,
   };
 
@@ -46,6 +47,9 @@ function parseArgs(argv) {
       i += 1;
     } else if (token === '--model' && next) {
       out.model = next;
+      i += 1;
+    } else if (token === '--concurrency' && next) {
+      out.concurrency = Math.max(1, Number(next) || out.concurrency);
       i += 1;
     } else if (token === '--skip-gemini') {
       out.skipGemini = true;
@@ -83,6 +87,27 @@ function writeJson(filePath, value) {
 function writeText(filePath, value) {
   ensureDir(filePath);
   fs.writeFileSync(filePath, value);
+}
+
+async function mapWithConcurrency(values, concurrency, worker) {
+  const list = Array.isArray(values) ? values : [];
+  const safeConcurrency = Math.max(1, Math.trunc(Number(concurrency) || 1));
+  const results = new Array(list.length);
+  let nextIndex = 0;
+
+  async function runWorker() {
+    while (nextIndex < list.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      results[currentIndex] = await worker(list[currentIndex], currentIndex);
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(safeConcurrency, list.length) }, () => runWorker()),
+  );
+
+  return results;
 }
 
 function asString(value) {
@@ -208,6 +233,69 @@ function normalizeLabelSet(values) {
       .map((value) => asString(value).toLowerCase())
       .filter(Boolean),
   );
+}
+
+function normalizeCandidateTag(rawTag, label) {
+  const normalizedLabelTag = asString(label)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 80);
+  const normalizedRawTag = asString(rawTag)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 80);
+
+  if (!normalizedRawTag) return normalizedLabelTag || 'fit';
+  if (/^pivota_?insights?$/.test(normalizedRawTag)) return normalizedLabelTag || 'fit';
+  if (/^object(?:_object)?$/.test(normalizedRawTag)) return normalizedLabelTag || 'fit';
+  return normalizedRawTag;
+}
+
+function isObjectPlaceholderText(value) {
+  const normalized = asString(value).trim().toLowerCase();
+  return normalized === '[object object]' || normalized === 'object' || normalized === 'object object';
+}
+
+function normalizeBestForEntries(value) {
+  return toList(value)
+    .map((item) => {
+      const row = item && typeof item === 'object' ? item : null;
+      const label = asString(row?.label || item).slice(0, 120);
+      if (
+        !label ||
+        /^pivota insights$/i.test(label) ||
+        /^object(?:\s+object)?$/i.test(label) ||
+        isObjectPlaceholderText(label)
+      ) {
+        return null;
+      }
+      return {
+        tag: normalizeCandidateTag(row?.tag, label),
+        label,
+        confidence: 'moderate',
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 4);
+}
+
+function normalizeWatchoutEntries(value) {
+  return toList(value)
+    .map((item) => {
+      const row = item && typeof item === 'object' ? item : null;
+      const label = asString(row?.label || item).slice(0, 160);
+      if (!label || isObjectPlaceholderText(label)) return null;
+      const severityRaw = asString(row?.severity).toLowerCase();
+      return {
+        type: asString(row?.type).slice(0, 80) || 'watchout',
+        label,
+        severity: ['low', 'medium', 'high'].includes(severityRaw) ? severityRaw : 'low',
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 4);
 }
 
 function jaccardOverlap(leftValues, rightValues) {
@@ -504,22 +592,7 @@ function buildGeminiPrompt(caseRow, baselineDraft) {
 }
 
 function normalizeGeminiDraftOutput(output) {
-  const bestFor = toList(output?.product_intel_core?.best_for)
-    .map((item) => {
-      const row = item && typeof item === 'object' ? item : null;
-      const label = asString(row?.label || item).slice(0, 120);
-      if (!label) return null;
-      return {
-        tag:
-          asString(row?.tag).slice(0, 80) ||
-          label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 80) ||
-          'fit',
-        label,
-        confidence: 'moderate',
-      };
-    })
-    .filter(Boolean)
-    .slice(0, 4);
+  const bestFor = normalizeBestForEntries(output?.product_intel_core?.best_for);
 
   const highlights = toList(output?.product_intel_core?.why_it_stands_out)
     .map((item) => {
@@ -544,20 +617,7 @@ function normalizeGeminiDraftOutput(output) {
     )
     .slice(0, 4);
 
-  const watchouts = toList(output?.product_intel_core?.watchouts)
-    .map((item) => {
-      const row = item && typeof item === 'object' ? item : null;
-      const label = asString(row?.label || item).slice(0, 160);
-      if (!label) return null;
-      const severityRaw = asString(row?.severity).toLowerCase();
-      return {
-        type: asString(row?.type).slice(0, 80) || 'watchout',
-        label,
-        severity: ['low', 'medium', 'high'].includes(severityRaw) ? severityRaw : 'low',
-      };
-    })
-    .filter(Boolean)
-    .slice(0, 4);
+  const watchouts = normalizeWatchoutEntries(output?.product_intel_core?.watchouts);
 
   const textureFinish =
     output?.texture_finish && typeof output.texture_finish === 'object'
@@ -600,9 +660,7 @@ function normalizeGeminiDraftOutput(output) {
   return {
     product_intel_core: {
       what_it_is: {
-        headline:
-          asString(output?.product_intel_core?.what_it_is?.headline).slice(0, 120) ||
-          PIVOTA_INSIGHTS_DISPLAY_NAME,
+        headline: compactWhatItIsHeadline(output?.product_intel_core?.what_it_is?.headline),
         body: normalizeSellerWhatItIs(asString(output?.product_intel_core?.what_it_is?.body)).slice(0, 400),
       },
       best_for: bestFor,
@@ -679,10 +737,17 @@ function mergeGeminiDraftIntoBaseline(caseRow, baselineBundle, geminiOutput, mod
     what_it_is: {
       ...(baselineCore.what_it_is || {}),
       ...(geminiCore.what_it_is || {}),
+      headline:
+        compactWhatItIsHeadline(geminiCore.what_it_is?.headline) ||
+        asString(baselineCore.what_it_is?.headline) ||
+        PIVOTA_INSIGHTS_DISPLAY_NAME,
+      body:
+        asString(geminiCore.what_it_is?.body) ||
+        asString(baselineCore.what_it_is?.body),
     },
     best_for:
       Array.isArray(geminiCore.best_for) && geminiCore.best_for.length
-        ? geminiCore.best_for
+        ? normalizeBestForEntries(geminiCore.best_for)
         : baselineCore.best_for || [],
     why_it_stands_out:
       Array.isArray(geminiCore.why_it_stands_out) && geminiCore.why_it_stands_out.length
@@ -702,7 +767,7 @@ function mergeGeminiDraftIntoBaseline(caseRow, baselineBundle, geminiOutput, mod
     },
     watchouts:
       Array.isArray(geminiCore.watchouts) && geminiCore.watchouts.length
-        ? geminiCore.watchouts
+        ? normalizeWatchoutEntries(geminiCore.watchouts)
         : baselineCore.watchouts || [],
     confidence: baselineCore.confidence || merged.confidence,
     freshness: {
@@ -875,7 +940,10 @@ function evaluateGeminiCandidateQuality(baselineBundle, geminiCandidateBundle) {
     watchouts:
       (!sellerOnlyViolation &&
         Array.isArray(candidateCore.watchouts) &&
-        candidateCore.watchouts.every((item) => asString(item?.label).length > 0)) ||
+        candidateCore.watchouts.length > 0 &&
+        candidateCore.watchouts.every(
+          (item) => asString(item?.label).length > 0 && !isObjectPlaceholderText(item?.label),
+        )) ||
       false,
     texture_finish: hasMeaningfulTextureFinish(geminiCandidateBundle.texture_finish),
     community_signals:
@@ -1155,8 +1223,7 @@ async function main() {
   const cases = Array.isArray(casesPayload) ? casesPayload : [];
   const manualOverrides = readJsonIfExists(resolvePath(rootDir, args.manualOverrides)) || {};
 
-  const reportRows = [];
-  for (const caseRow of cases) {
+  const reportRows = await mapWithConcurrency(cases, args.concurrency, async (caseRow) => {
     const baseline = buildProductIntelDraftBundle({
       product: caseRow.product || {},
       relatedProducts: Array.isArray(caseRow.related_products) ? caseRow.related_products : [],
@@ -1175,7 +1242,7 @@ async function main() {
     const manualOverride = resolveManualOverride(caseRow, manualOverrides);
     const selected = applyManualOverrideToSelected(caseRow, selectedBase, manualOverride);
 
-    reportRows.push({
+    return {
       case_id: asString(caseRow.case_id) || 'unnamed_case',
       notes: asString(caseRow.notes),
       manual_override_applied: Boolean(manualOverride),
@@ -1187,8 +1254,8 @@ async function main() {
       quality_gate: qualityGate,
       selected,
       comparison: buildComparisonSummary(baseline, geminiCandidate, selected, qualityGate),
-    });
-  }
+    };
+  });
 
   const generatedAt = new Date().toISOString();
   const jsonOut =
@@ -1227,6 +1294,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  parseArgs,
   buildFactsPack,
   normalizeGeminiDraftOutput,
   mergeGeminiDraftIntoBaseline,
@@ -1236,5 +1304,6 @@ module.exports = {
   buildMarkdownReport,
   applyManualOverrideToSelected,
   resolveManualOverride,
+  mapWithConcurrency,
   buildShoppingCardPayload,
 };

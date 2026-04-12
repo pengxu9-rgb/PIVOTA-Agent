@@ -13,9 +13,15 @@ describe('pivota_insights_coverage_batch', () => {
     expect(args.surface).toBe('');
     expect(args.pages).toBe(0);
     expect(args.frontendPaths).toEqual(['/products']);
+    expect(args.manualOverrides).toBe('scripts/fixtures/product_intel_manual_overrides.json');
     expect(args.limit).toBe(40);
     expect(args.excludeCovered).toBe(true);
     expect(args.skipGemini).toBe(true);
+    expect(args.model).toBe('gemini-3-flash-preview');
+    expect(args.queryConcurrency).toBe(6);
+    expect(args.frontendConcurrency).toBe(4);
+    expect(args.pdpConcurrency).toBe(10);
+    expect(args.geminiConcurrency).toBe(6);
   });
 
   test('parses explicit product ids for manual expansion batches', () => {
@@ -27,6 +33,26 @@ describe('pivota_insights_coverage_batch', () => {
     ]);
 
     expect(args.productIds).toEqual(['ext_a', 'ext_b', 'ext_c']);
+  });
+
+  test('parses batch concurrency overrides', () => {
+    const args = parseArgs([
+      'node',
+      'script',
+      '--query-concurrency',
+      '9',
+      '--frontend-concurrency',
+      '5',
+      '--pdp-concurrency',
+      '14',
+      '--gemini-concurrency',
+      '7',
+    ]);
+
+    expect(args.queryConcurrency).toBe(9);
+    expect(args.frontendConcurrency).toBe(5);
+    expect(args.pdpConcurrency).toBe(14);
+    expect(args.geminiConcurrency).toBe(7);
   });
 
   test('builds a pending review packet from compare rows', () => {

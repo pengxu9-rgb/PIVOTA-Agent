@@ -43,6 +43,7 @@ function parseArgs(argv) {
     frontendBaseUrl: 'https://agent.pivota.cc',
     frontendPaths: [],
     coveredReport: '',
+    manualOverrides: '',
     limit: 10,
     perQuery: 12,
     seed: String(process.env.PRODUCT_INTEL_PILOT_SEED || '20260408'),
@@ -52,6 +53,9 @@ function parseArgs(argv) {
     candidatePoolMultiplier: 4,
     maxPerBrand: 3,
     maxPerCategory: 4,
+    queryConcurrency: Math.max(1, Number(process.env.PRODUCT_INTEL_PILOT_QUERY_CONCURRENCY || 6) || 6),
+    frontendConcurrency: Math.max(1, Number(process.env.PRODUCT_INTEL_PILOT_FRONTEND_CONCURRENCY || 4) || 4),
+    pdpConcurrency: Math.max(1, Number(process.env.PRODUCT_INTEL_PILOT_PDP_CONCURRENCY || 10) || 10),
   };
 
   for (let i = 2; i < argv.length; i += 1) {
@@ -90,6 +94,9 @@ function parseArgs(argv) {
     } else if (token === '--covered-report' && next) {
       out.coveredReport = next;
       i += 1;
+    } else if (token === '--manual-overrides' && next) {
+      out.manualOverrides = next;
+      i += 1;
     } else if (token === '--limit' && next) {
       out.limit = Math.max(1, Number(next) || 10);
       i += 1;
@@ -114,6 +121,15 @@ function parseArgs(argv) {
       i += 1;
     } else if (token === '--max-per-category' && next) {
       out.maxPerCategory = Math.max(0, Number(next) || 0);
+      i += 1;
+    } else if (token === '--query-concurrency' && next) {
+      out.queryConcurrency = Math.max(1, Number(next) || out.queryConcurrency);
+      i += 1;
+    } else if (token === '--frontend-concurrency' && next) {
+      out.frontendConcurrency = Math.max(1, Number(next) || out.frontendConcurrency);
+      i += 1;
+    } else if (token === '--pdp-concurrency' && next) {
+      out.pdpConcurrency = Math.max(1, Number(next) || out.pdpConcurrency);
       i += 1;
     }
   }
@@ -183,6 +199,27 @@ function sampleWithoutReplacement(values, limit, seed) {
   return arr.slice(0, limit);
 }
 
+async function mapWithConcurrency(values, concurrency, worker) {
+  const list = Array.isArray(values) ? values : [];
+  const safeConcurrency = Math.max(1, Math.trunc(Number(concurrency) || 1));
+  const results = new Array(list.length);
+  let nextIndex = 0;
+
+  async function runWorker() {
+    while (nextIndex < list.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      results[currentIndex] = await worker(list[currentIndex], currentIndex);
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(safeConcurrency, list.length) }, () => runWorker()),
+  );
+
+  return results;
+}
+
 async function loadCoveredProductIdSet(productIds, queryFn = query) {
   const ids = Array.from(new Set(asArray(productIds).map((item) => asString(item)).filter(Boolean)));
   if (!ids.length || typeof queryFn !== 'function') return new Set();
@@ -222,6 +259,19 @@ function loadCoveredProductIdSetFromReport(reportPath) {
             row?.canonical_product_ref?.product_id,
         ),
       )
+      .filter(Boolean),
+  );
+}
+
+function loadManualOverrideProductIdSet(manualOverridesPath) {
+  if (!manualOverridesPath || !fs.existsSync(manualOverridesPath)) return new Set();
+  const overrides = readJson(manualOverridesPath);
+  return new Set(
+    Object.keys(overrides || {})
+      .map((key) => {
+        const match = String(key || '').match(/^(?:product:|live_)(ext_[A-Za-z0-9]+)/);
+        return match ? match[1] : '';
+      })
       .filter(Boolean),
   );
 }
@@ -648,13 +698,13 @@ async function main() {
   let coveredProductIds = new Set();
   const coveredReportPath = resolvePath(rootDir, args.coveredReport);
   const reportCoveredProductIds = loadCoveredProductIdSetFromReport(coveredReportPath);
+  const manualOverrideProductIds = loadManualOverrideProductIdSet(resolvePath(rootDir, args.manualOverrides));
 
   if (!selectedIds.length && (args.queries.length || (args.surface && args.pages > 0) || args.frontendPaths.length)) {
     const candidates = [];
     if (args.queries.length) {
-      for (const query of args.queries) {
+      await mapWithConcurrency(args.queries, args.queryConcurrency, async (query) => {
         try {
-          // eslint-disable-next-line no-await-in-loop
           const rows = await fetchSearchCandidates(args.gatewayUrl, query, args.perQuery);
           candidates.push(...rows);
         } catch (err) {
@@ -663,12 +713,13 @@ async function main() {
             error: asString(err?.message || err),
           });
         }
-      }
+        return null;
+      });
     }
     if (args.surface && args.pages > 0) {
-      for (let page = 1; page <= args.pages; page += 1) {
+      const pages = Array.from({ length: args.pages }, (_, index) => index + 1);
+      await mapWithConcurrency(pages, args.queryConcurrency, async (page) => {
         try {
-          // eslint-disable-next-line no-await-in-loop
           const rows = await fetchDiscoveryCandidates(args.gatewayUrl, args.surface, page, args.perQuery);
           candidates.push(...rows);
         } catch (err) {
@@ -678,13 +729,13 @@ async function main() {
             error: asString(err?.message || err),
           });
         }
-      }
+        return null;
+      });
     }
     const frontendSeedCases = [];
     if (args.frontendPaths.length) {
-      for (const pagePath of args.frontendPaths) {
+      await mapWithConcurrency(args.frontendPaths, args.frontendConcurrency, async (pagePath) => {
         try {
-          // eslint-disable-next-line no-await-in-loop
           const ids = await fetchFrontendProductIds(args.frontendBaseUrl, pagePath);
           for (const productId of ids) {
             frontendSeedCases.push({
@@ -706,7 +757,8 @@ async function main() {
             error: asString(err?.message || err),
           });
         }
-      }
+        return null;
+      });
     }
     const dedupedCases = [
       ...candidates.map((row) => buildPilotCaseFromSearchCandidate(row)).filter(Boolean),
@@ -716,7 +768,7 @@ async function main() {
     let candidateIds = Array.from(byProductId.keys());
     if (args.excludeCovered) {
       coveredProductIds = await loadCoveredProductIdSet(candidateIds).catch(() => new Set());
-      const allCovered = new Set([...coveredProductIds, ...reportCoveredProductIds]);
+      const allCovered = new Set([...coveredProductIds, ...reportCoveredProductIds, ...manualOverrideProductIds]);
       candidateIds = candidateIds.filter((id) => !allCovered.has(id));
       coveredProductIds = allCovered;
     }
@@ -729,47 +781,44 @@ async function main() {
     throw new Error('missing_product_ids_or_queries');
   }
 
-  const cases = [];
-  for (const productId of selectedIds) {
-    const seedCase = seedCases.find((row) => row?.canonical_product_ref?.product_id === productId) || null;
+  const seedCasesByProductId = new Map(
+    seedCases.map((row) => [row?.canonical_product_ref?.product_id, row]),
+  );
+  const cases = await mapWithConcurrency(selectedIds, args.pdpConcurrency, async (productId) => {
+    const seedCase = seedCasesByProductId.get(productId) || null;
     try {
-      // eslint-disable-next-line no-await-in-loop
       const response = await fetchPdpResponse(args.gatewayUrl, productId);
       let row = buildPilotCaseFromPdpResponse(response, seedCase);
       if (!row) {
         // Fall back to external seed truth when invoke resolution is unavailable.
-        // eslint-disable-next-line no-await-in-loop
         const externalSeedProduct = await fetchExternalSeedProduct(productId);
         row = buildPilotCaseFromExternalSeedProduct(externalSeedProduct, seedCase);
       }
       if (row) {
-        cases.push(row);
-      } else {
-        cases.push({
-          ...(seedCase || {
-            case_id: `live_${productId}`,
-            canonical_product_ref: {
-              merchant_id: 'unknown',
-              product_id: productId,
-            },
-          }),
-          notes: `Pilot fetch returned no canonical product: ${productId}`,
-          error: 'missing_canonical_product',
-        });
+        return row;
       }
+      return {
+        ...(seedCase || {
+          case_id: `live_${productId}`,
+          canonical_product_ref: {
+            merchant_id: 'unknown',
+            product_id: productId,
+          },
+        }),
+        notes: `Pilot fetch returned no canonical product: ${productId}`,
+        error: 'missing_canonical_product',
+      };
     } catch (err) {
       try {
-        // eslint-disable-next-line no-await-in-loop
         const externalSeedProduct = await fetchExternalSeedProduct(productId);
         const fallbackRow = buildPilotCaseFromExternalSeedProduct(externalSeedProduct, seedCase);
         if (fallbackRow) {
-          cases.push(fallbackRow);
-          continue;
+          return fallbackRow;
         }
       } catch {
         // Keep original fetch error below when the DB fallback also fails.
       }
-      cases.push({
+      return {
         ...(seedCase || {
           case_id: `live_${productId}`,
           canonical_product_ref: {
@@ -779,9 +828,9 @@ async function main() {
         }),
         notes: `Pilot fetch failed: ${asString(err?.message || err)}`,
         error: asString(err?.message || err),
-      });
+      };
     }
-  }
+  });
 
   const eligibleCases = args.requireBadgeEvidence ? cases.filter((row) => hasBadgeEvidence(row)) : cases;
   const finalCases = selectDiverseCases(eligibleCases, {
@@ -830,6 +879,9 @@ module.exports = {
   hasBadgeEvidence,
   loadCoveredProductIdSet,
   loadCoveredProductIdSetFromReport,
+  loadManualOverrideProductIdSet,
+  mapWithConcurrency,
+  parseArgs,
   sampleWithoutReplacement,
   selectDiverseCases,
   extractProductIdsFromFrontendHtml,

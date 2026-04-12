@@ -826,17 +826,148 @@
     "external_review_batch": "manual_card_highlight_2026_04_12"
   },
   "live_ext_f92f16420511f97e810f1c5c": {
-    "notes": "Manual card rewrite to replace the ingredient-only serum line with the seller-grounded payoff set.",
+    "notes": "Curated seller-grounded rewrite to replace the baseline treatment-serum generic copy with a formula-led vitamin C serum definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Vitamin C serum",
+        "body": "A vitamin C serum that pairs vitamin C, ferulic acid, citrus extracts, and aloe for antioxidant brightening with lightweight hydration."
+      },
+      "best_for": [
+        {
+          "tag": "brightness_tone",
+          "label": "Dullness or uneven tone",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "hydration",
+          "label": "Hydration-focused routines",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Vitamin C + ferulic acid pairing",
+          "body": "Centers vitamin C with ferulic acid as the brightening antioxidant core.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Aloe-supported daily glow",
+          "body": "Adds aloe and citrus extracts so the serum reads as brightening with hydration support instead of acting like a harsher treatment-only step.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply before moisturizer; follow with SPF if used in the morning."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "sun",
+          "label": "Daytime brightening routines still need sunscreen to help protect tone work.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "serum",
+      "finish": "radiant",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Apply before moisturizer; follow with SPF if used in the morning."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_plus_formula"
+    },
     "shopping_card": {
       "subtitle": "Vitamin C serum",
-      "highlight": "Tone, collagen + antioxidant care"
+      "highlight": "Tone, collagen + antioxidant care",
+      "intro": "A vitamin C serum for tone and daily glow."
     },
     "search_card": {
       "compact_candidate": "Vitamin C serum",
-      "highlight_candidate": "Tone, collagen + antioxidant care"
+      "highlight_candidate": "Tone, collagen + antioxidant care",
+      "intro_candidate": "A vitamin C serum for tone and daily glow."
     },
     "external_highlight_review_status": "rewrite",
-    "external_review_batch": "manual_card_highlight_2026_04_12"
+    "external_review_batch": "manual_query_probe1_seller_rewrite_2026_04_12"
+  },
+  "product:ext_f92f16420511f97e810f1c5c": {
+    "notes": "Curated seller-grounded rewrite to replace the baseline treatment-serum generic copy with a formula-led vitamin C serum definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Vitamin C serum",
+        "body": "A vitamin C serum that pairs vitamin C, ferulic acid, citrus extracts, and aloe for antioxidant brightening with lightweight hydration."
+      },
+      "best_for": [
+        {
+          "tag": "brightness_tone",
+          "label": "Dullness or uneven tone",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "hydration",
+          "label": "Hydration-focused routines",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Vitamin C + ferulic acid pairing",
+          "body": "Centers vitamin C with ferulic acid as the brightening antioxidant core.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Aloe-supported daily glow",
+          "body": "Adds aloe and citrus extracts so the serum reads as brightening with hydration support instead of acting like a harsher treatment-only step.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply before moisturizer; follow with SPF if used in the morning."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "sun",
+          "label": "Daytime brightening routines still need sunscreen to help protect tone work.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "serum",
+      "finish": "radiant",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Apply before moisturizer; follow with SPF if used in the morning."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_plus_formula"
+    },
+    "shopping_card": {
+      "subtitle": "Vitamin C serum",
+      "highlight": "Tone, collagen + antioxidant care",
+      "intro": "A vitamin C serum for tone and daily glow."
+    },
+    "search_card": {
+      "compact_candidate": "Vitamin C serum",
+      "highlight_candidate": "Tone, collagen + antioxidant care",
+      "intro_candidate": "A vitamin C serum for tone and daily glow."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_query_probe1_seller_rewrite_2026_04_12"
   },
   "live_ext_280f5c9e112050a83d7aeac0": {
     "notes": "Manual card rewrite to replace the ingredient-list eye-cream line with the seller-grounded eye-area payoff.",
@@ -39617,30 +39748,148 @@
     "external_review_batch": "manual_card_highlight_2026_04_12"
   },
   "live_ext_3d9b56df4a6024541a01d6c2": {
-    "notes": "Manual card rewrite to replace the generic refill serum label with the actual niacinamide dark-spot treatment claim from seller copy.",
+    "notes": "Curated seller-grounded rewrite to replace the baseline treatment-serum generic copy with a corrected refill dark-spot serum definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Dark spot serum refill",
+        "body": "A refill format for Fenty's niacinamide dark-spot serum, aimed at uneven tone and post-blemish mark routines."
+      },
+      "best_for": [
+        {
+          "tag": "dark_spots",
+          "label": "Dark spot routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "uneven_tone",
+          "label": "Uneven tone concerns",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "5% niacinamide focus",
+          "body": "Keeps 5% niacinamide at the center of the tone-correcting serum claim.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Refill format",
+          "body": "Lets you restock the serum without changing the role it plays in the routine.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply before moisturizer; use SPF in daytime tone-correction routines."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "format",
+          "label": "This is a refill, so it is meant to replace the inner cartridge rather than act as a standalone bottle.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "serum",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Apply before moisturizer; use SPF in daytime tone-correction routines."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
     "shopping_card": {
       "subtitle": "Dark spot serum refill",
-      "highlight": "5% niacinamide + brighter tone"
+      "highlight": "5% niacinamide + brighter tone",
+      "intro": "A refill serum for dark spots and uneven tone."
     },
     "search_card": {
       "compact_candidate": "Dark spot serum refill",
-      "highlight_candidate": "5% niacinamide + brighter tone"
+      "highlight_candidate": "5% niacinamide + brighter tone",
+      "intro_candidate": "A refill serum for dark spots and uneven tone."
     },
     "external_highlight_review_status": "rewrite",
-    "external_review_batch": "manual_card_highlight_2026_04_12"
+    "external_review_batch": "manual_query_probe1_seller_rewrite_2026_04_12"
   },
   "product:ext_3d9b56df4a6024541a01d6c2": {
-    "notes": "Manual card rewrite to replace the generic refill serum label with the actual niacinamide dark-spot treatment claim from seller copy.",
+    "notes": "Curated seller-grounded rewrite to replace the baseline treatment-serum generic copy with a corrected refill dark-spot serum definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Dark spot serum refill",
+        "body": "A refill format for Fenty's niacinamide dark-spot serum, aimed at uneven tone and post-blemish mark routines."
+      },
+      "best_for": [
+        {
+          "tag": "dark_spots",
+          "label": "Dark spot routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "uneven_tone",
+          "label": "Uneven tone concerns",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "5% niacinamide focus",
+          "body": "Keeps 5% niacinamide at the center of the tone-correcting serum claim.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Refill format",
+          "body": "Lets you restock the serum without changing the role it plays in the routine.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply before moisturizer; use SPF in daytime tone-correction routines."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "format",
+          "label": "This is a refill, so it is meant to replace the inner cartridge rather than act as a standalone bottle.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "serum",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Apply before moisturizer; use SPF in daytime tone-correction routines."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
     "shopping_card": {
       "subtitle": "Dark spot serum refill",
-      "highlight": "5% niacinamide + brighter tone"
+      "highlight": "5% niacinamide + brighter tone",
+      "intro": "A refill serum for dark spots and uneven tone."
     },
     "search_card": {
       "compact_candidate": "Dark spot serum refill",
-      "highlight_candidate": "5% niacinamide + brighter tone"
+      "highlight_candidate": "5% niacinamide + brighter tone",
+      "intro_candidate": "A refill serum for dark spots and uneven tone."
     },
     "external_highlight_review_status": "rewrite",
-    "external_review_batch": "manual_card_highlight_2026_04_12"
+    "external_review_batch": "manual_query_probe1_seller_rewrite_2026_04_12"
   },
   "live_ext_472a9b351e03ae2a6e92fb37": {
     "notes": "Manual card rewrite to replace the generic serum label with the travel-pod vitamin C format and glow use case from seller copy.",
@@ -39669,30 +39918,156 @@
     "external_review_batch": "manual_card_highlight_2026_04_12"
   },
   "live_ext_62a2014411830d70f71baac3": {
-    "notes": "Manual card rewrite to replace the generic treatment-serum label with the seller-grounded dark-spot and firmness callout.",
+    "notes": "Curated seller-grounded rewrite to replace the baseline treatment-serum generic copy with a corrected 15% vitamin C dark-spot serum definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "15% vitamin C serum",
+        "body": "A 15% vitamin C serum built to brighten, target dark spots, and support firmer-looking skin."
+      },
+      "best_for": [
+        {
+          "tag": "dark_spots",
+          "label": "Dark spot routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "brightness_tone",
+          "label": "Dullness or uneven tone",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "firmness_lines",
+          "label": "Fine lines or firmness concerns",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "15% vitamin C focus",
+          "body": "Keeps 15% vitamin C at the center of the brightening and tone-correction claim.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Morning dark-spot step",
+          "body": "Frames the serum as a morning use-case for dark spots, brightness, and firmness support.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am"
+        ],
+        "pairing_notes": [
+          "Apply before moisturizer and SPF in morning brightening routines."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "sun",
+          "label": "Daytime dark-spot routines still need sunscreen to help limit new discoloration.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "serum",
+      "finish": "radiant",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Apply before moisturizer and SPF in morning brightening routines."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
     "shopping_card": {
       "subtitle": "15% vitamin C serum",
-      "highlight": "Dark spots + firmer, bouncier skin"
+      "highlight": "Dark spots + firmer, bouncier skin",
+      "intro": "A 15% vitamin C serum for dark spots and brightness."
     },
     "search_card": {
       "compact_candidate": "15% vitamin C serum",
-      "highlight_candidate": "Dark spots + firmer, bouncier skin"
+      "highlight_candidate": "Dark spots + firmer, bouncier skin",
+      "intro_candidate": "A 15% vitamin C serum for dark spots and brightness."
     },
     "external_highlight_review_status": "rewrite",
-    "external_review_batch": "manual_card_highlight_2026_04_12"
+    "external_review_batch": "manual_query_probe1_seller_rewrite_2026_04_12"
   },
   "product:ext_62a2014411830d70f71baac3": {
-    "notes": "Manual card rewrite to replace the generic treatment-serum label with the seller-grounded dark-spot and firmness callout.",
+    "notes": "Curated seller-grounded rewrite to replace the baseline treatment-serum generic copy with a corrected 15% vitamin C dark-spot serum definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "15% vitamin C serum",
+        "body": "A 15% vitamin C serum built to brighten, target dark spots, and support firmer-looking skin."
+      },
+      "best_for": [
+        {
+          "tag": "dark_spots",
+          "label": "Dark spot routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "brightness_tone",
+          "label": "Dullness or uneven tone",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "firmness_lines",
+          "label": "Fine lines or firmness concerns",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "15% vitamin C focus",
+          "body": "Keeps 15% vitamin C at the center of the brightening and tone-correction claim.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Morning dark-spot step",
+          "body": "Frames the serum as a morning use-case for dark spots, brightness, and firmness support.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am"
+        ],
+        "pairing_notes": [
+          "Apply before moisturizer and SPF in morning brightening routines."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "sun",
+          "label": "Daytime dark-spot routines still need sunscreen to help limit new discoloration.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "serum",
+      "finish": "radiant",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Apply before moisturizer and SPF in morning brightening routines."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
     "shopping_card": {
       "subtitle": "15% vitamin C serum",
-      "highlight": "Dark spots + firmer, bouncier skin"
+      "highlight": "Dark spots + firmer, bouncier skin",
+      "intro": "A 15% vitamin C serum for dark spots and brightness."
     },
     "search_card": {
       "compact_candidate": "15% vitamin C serum",
-      "highlight_candidate": "Dark spots + firmer, bouncier skin"
+      "highlight_candidate": "Dark spots + firmer, bouncier skin",
+      "intro_candidate": "A 15% vitamin C serum for dark spots and brightness."
     },
     "external_highlight_review_status": "rewrite",
-    "external_review_batch": "manual_card_highlight_2026_04_12"
+    "external_review_batch": "manual_query_probe1_seller_rewrite_2026_04_12"
   },
   "live_ext_c218b847ffdf17168d3bb2d8": {
     "notes": "Manual card rewrite to replace the incorrect makeup label with the actual mini eye-and-lip duo use case from seller copy.",
@@ -40265,5 +40640,3229 @@
     },
     "external_highlight_review_status": "rewrite",
     "external_review_batch": "manual_card_highlight_2026_04_12"
+  },
+  "live_ext_5f1eaf3898146877fe9171b3": {
+    "notes": "Curated seller-grounded rewrite to replace the baseline treatment-serum generic copy with a cleaner vitamin C serum definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Vitamin C serum",
+        "body": "A vitamin C serum positioned as a daily antioxidant step for brighter-looking skin."
+      },
+      "best_for": [
+        {
+          "tag": "brightness_tone",
+          "label": "Dullness or uneven tone",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "firmness_lines",
+          "label": "Fine lines or firmness concerns",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Vitamin C antioxidant focus",
+          "body": "Keeps vitamin C at the center of the serum's daily antioxidant story.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Daily-use serum slot",
+          "body": "Reads as a regular brightening serum step rather than a heavy treatment-only format.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply before moisturizer; use SPF in daytime brightening routines."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "sun",
+          "label": "Daytime brightening routines still need sunscreen to help protect tone work.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "serum",
+      "finish": "radiant",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Apply before moisturizer; use SPF in daytime brightening routines."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Vitamin C serum",
+      "highlight": "Daily antioxidant brightening",
+      "intro": "A vitamin C serum for tone and antioxidant care."
+    },
+    "search_card": {
+      "compact_candidate": "Vitamin C serum",
+      "highlight_candidate": "Daily antioxidant brightening",
+      "intro_candidate": "A vitamin C serum for tone and antioxidant care."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_query_probe1_seller_rewrite_2026_04_12"
+  },
+  "product:ext_5f1eaf3898146877fe9171b3": {
+    "notes": "Curated seller-grounded rewrite to replace the baseline treatment-serum generic copy with a cleaner vitamin C serum definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Vitamin C serum",
+        "body": "A vitamin C serum positioned as a daily antioxidant step for brighter-looking skin."
+      },
+      "best_for": [
+        {
+          "tag": "brightness_tone",
+          "label": "Dullness or uneven tone",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "firmness_lines",
+          "label": "Fine lines or firmness concerns",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Vitamin C antioxidant focus",
+          "body": "Keeps vitamin C at the center of the serum's daily antioxidant story.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Daily-use serum slot",
+          "body": "Reads as a regular brightening serum step rather than a heavy treatment-only format.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply before moisturizer; use SPF in daytime brightening routines."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "sun",
+          "label": "Daytime brightening routines still need sunscreen to help protect tone work.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "serum",
+      "finish": "radiant",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Apply before moisturizer; use SPF in daytime brightening routines."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Vitamin C serum",
+      "highlight": "Daily antioxidant brightening",
+      "intro": "A vitamin C serum for tone and antioxidant care."
+    },
+    "search_card": {
+      "compact_candidate": "Vitamin C serum",
+      "highlight_candidate": "Daily antioxidant brightening",
+      "intro_candidate": "A vitamin C serum for tone and antioxidant care."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_query_probe1_seller_rewrite_2026_04_12"
+  },
+  "live_ext_3e6db6ab9ff14b9fb21f45a8": {
+    "notes": "Curated seller-grounded rewrite to replace the baseline cleansing-product generic copy with a hydrating cleanser definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Hydrating cleanser",
+        "body": "A hydrating cleanser that lifts daily buildup without stripping the skin barrier."
+      },
+      "best_for": [
+        {
+          "tag": "dryness_barrier",
+          "label": "Dryness or barrier support",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "sensitive_skin",
+          "label": "Sensitive or easily stressed skin",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Non-stripping cleanse",
+          "body": "Frames cleansing around removing what skin doesn't want while leaving barrier comfort intact.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Matcha + hemp identity",
+          "body": "Keeps matcha and hemp at the center of the cleanser identity instead of treating it like a generic wash.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "cleanser",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use as the cleansing step before serums and moisturizers."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use as the cleansing step before serums and moisturizers."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Hydrating cleanser",
+      "highlight": "Non-stripping barrier cleanse",
+      "intro": "A hydrating cleanser for barrier-conscious daily cleansing."
+    },
+    "search_card": {
+      "compact_candidate": "Hydrating cleanser",
+      "highlight_candidate": "Non-stripping barrier cleanse",
+      "intro_candidate": "A hydrating cleanser for barrier-conscious daily cleansing."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_query_probe1_seller_rewrite_2026_04_12"
+  },
+  "product:ext_3e6db6ab9ff14b9fb21f45a8": {
+    "notes": "Curated seller-grounded rewrite to replace the baseline cleansing-product generic copy with a hydrating cleanser definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Hydrating cleanser",
+        "body": "A hydrating cleanser that lifts daily buildup without stripping the skin barrier."
+      },
+      "best_for": [
+        {
+          "tag": "dryness_barrier",
+          "label": "Dryness or barrier support",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "sensitive_skin",
+          "label": "Sensitive or easily stressed skin",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Non-stripping cleanse",
+          "body": "Frames cleansing around removing what skin doesn't want while leaving barrier comfort intact.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Matcha + hemp identity",
+          "body": "Keeps matcha and hemp at the center of the cleanser identity instead of treating it like a generic wash.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "cleanser",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use as the cleansing step before serums and moisturizers."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use as the cleansing step before serums and moisturizers."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Hydrating cleanser",
+      "highlight": "Non-stripping barrier cleanse",
+      "intro": "A hydrating cleanser for barrier-conscious daily cleansing."
+    },
+    "search_card": {
+      "compact_candidate": "Hydrating cleanser",
+      "highlight_candidate": "Non-stripping barrier cleanse",
+      "intro_candidate": "A hydrating cleanser for barrier-conscious daily cleansing."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_query_probe1_seller_rewrite_2026_04_12"
+  },
+  "live_ext_7b14df97188c0389f7abfed7": {
+    "notes": "Curated seller-grounded rewrite to replace the baseline sunscreen misclassification with a cleansing-milk definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Cleansing milk",
+        "body": "A cleansing milk that dissolves makeup, sunscreen, and daily buildup while leaning on hyaluronic acid and centella for a gentler barrier-conscious cleanse."
+      },
+      "best_for": [
+        {
+          "tag": "makeup_removal",
+          "label": "Makeup and sunscreen removal",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "dryness_barrier",
+          "label": "Dryness or barrier support",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "sensitive_skin",
+          "label": "Sensitive or easily stressed skin",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Hyalu-Cica cleansing base",
+          "body": "Centers hyaluronic acid and centella in a milky cleanser rather than a foaming wash.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Barrier-conscious makeup removal",
+          "body": "Built to remove makeup, sunscreen, and daily impurities while supporting the moisture barrier.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "cleanser",
+        "am_pm": [
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use as a first cleanse or gentle all-over cleanse before leave-on products."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "milk",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use as a first cleanse or gentle all-over cleanse before leave-on products."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Cleansing milk",
+      "highlight": "Makeup, SPF + barrier comfort",
+      "intro": "A cleansing milk for makeup removal and barrier comfort."
+    },
+    "search_card": {
+      "compact_candidate": "Cleansing milk",
+      "highlight_candidate": "Makeup, SPF + barrier comfort",
+      "intro_candidate": "A cleansing milk for makeup removal and barrier comfort."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_query_probe1_seller_rewrite_2026_04_12"
+  },
+  "product:ext_7b14df97188c0389f7abfed7": {
+    "notes": "Curated seller-grounded rewrite to replace the baseline sunscreen misclassification with a cleansing-milk definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Cleansing milk",
+        "body": "A cleansing milk that dissolves makeup, sunscreen, and daily buildup while leaning on hyaluronic acid and centella for a gentler barrier-conscious cleanse."
+      },
+      "best_for": [
+        {
+          "tag": "makeup_removal",
+          "label": "Makeup and sunscreen removal",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "dryness_barrier",
+          "label": "Dryness or barrier support",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "sensitive_skin",
+          "label": "Sensitive or easily stressed skin",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Hyalu-Cica cleansing base",
+          "body": "Centers hyaluronic acid and centella in a milky cleanser rather than a foaming wash.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Barrier-conscious makeup removal",
+          "body": "Built to remove makeup, sunscreen, and daily impurities while supporting the moisture barrier.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "cleanser",
+        "am_pm": [
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use as a first cleanse or gentle all-over cleanse before leave-on products."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "milk",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use as a first cleanse or gentle all-over cleanse before leave-on products."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Cleansing milk",
+      "highlight": "Makeup, SPF + barrier comfort",
+      "intro": "A cleansing milk for makeup removal and barrier comfort."
+    },
+    "search_card": {
+      "compact_candidate": "Cleansing milk",
+      "highlight_candidate": "Makeup, SPF + barrier comfort",
+      "intro_candidate": "A cleansing milk for makeup removal and barrier comfort."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_query_probe1_seller_rewrite_2026_04_12"
+  },
+  "live_ext_dec9a0707cb6759231ebe1ec": {
+    "notes": "Strict human QA override: reviewed from gemini-3-flash-preview and tightened into a seller-grounded SPF moisturizer definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "SPF moisturizer",
+        "body": "A daily SPF moisturizer that combines weightless hydration, broad-spectrum SPF 40, and moisture-barrier support in one daytime step."
+      },
+      "best_for": [
+        {
+          "tag": "daily_spf",
+          "label": "Daily SPF routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "dryness_barrier",
+          "label": "Dryness or barrier support",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Hydration, SPF, and barrier support together",
+          "body": "Packages weightless hydration, sun protection, and barrier support into one moisturizer-led morning step.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Moisturizer-first daytime wear",
+          "body": "Leans into a lighter moisturizer feel rather than a heavier standalone sunscreen texture.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "sunscreen",
+        "am_pm": [
+          "am"
+        ],
+        "pairing_notes": [
+          "Use as the last skincare step before makeup in the morning."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "spf",
+          "label": "Daily SPF still depends on full application and reapplication when needed.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "light cream",
+      "finish": "",
+      "sensory_notes": [
+        "Weightless moisturizer feel"
+      ],
+      "layering_notes": [
+        "Use as the last skincare step before makeup in the morning."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "SPF moisturizer",
+      "highlight": "Weightless hydration + SPF 40",
+      "intro": "A daily SPF moisturizer with hydration and barrier support."
+    },
+    "search_card": {
+      "compact_candidate": "SPF moisturizer",
+      "highlight_candidate": "Weightless hydration + SPF 40",
+      "intro_candidate": "A daily SPF moisturizer with hydration and barrier support."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_query_probe3_reviewed_2026_04_12"
+  },
+  "product:ext_dec9a0707cb6759231ebe1ec": {
+    "notes": "Strict human QA override: reviewed from gemini-3-flash-preview and tightened into a seller-grounded SPF moisturizer definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "SPF moisturizer",
+        "body": "A daily SPF moisturizer that combines weightless hydration, broad-spectrum SPF 40, and moisture-barrier support in one daytime step."
+      },
+      "best_for": [
+        {
+          "tag": "daily_spf",
+          "label": "Daily SPF routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "dryness_barrier",
+          "label": "Dryness or barrier support",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Hydration, SPF, and barrier support together",
+          "body": "Packages weightless hydration, sun protection, and barrier support into one moisturizer-led morning step.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Moisturizer-first daytime wear",
+          "body": "Leans into a lighter moisturizer feel rather than a heavier standalone sunscreen texture.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "sunscreen",
+        "am_pm": [
+          "am"
+        ],
+        "pairing_notes": [
+          "Use as the last skincare step before makeup in the morning."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "spf",
+          "label": "Daily SPF still depends on full application and reapplication when needed.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "light cream",
+      "finish": "",
+      "sensory_notes": [
+        "Weightless moisturizer feel"
+      ],
+      "layering_notes": [
+        "Use as the last skincare step before makeup in the morning."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "SPF moisturizer",
+      "highlight": "Weightless hydration + SPF 40",
+      "intro": "A daily SPF moisturizer with hydration and barrier support."
+    },
+    "search_card": {
+      "compact_candidate": "SPF moisturizer",
+      "highlight_candidate": "Weightless hydration + SPF 40",
+      "intro_candidate": "A daily SPF moisturizer with hydration and barrier support."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_query_probe3_reviewed_2026_04_12"
+  },
+  "live_ext_cdcb6dd807957b998ea79623": {
+    "notes": "Strict human QA override: reviewed from gemini-3.1-pro-preview after gemini-3-flash-preview timed out, then tightened into a jumbo SPF moisturizer definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Jumbo SPF moisturizer",
+        "body": "A jumbo-size daily SPF moisturizer that pairs broad-spectrum SPF 50 PA++++ protection with dewy hydration, niacinamide, and ethyl ascorbic acid."
+      },
+      "best_for": [
+        {
+          "tag": "daily_spf",
+          "label": "Daily SPF routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "brightness_tone",
+          "label": "Dullness or uneven tone",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "hydration",
+          "label": "Hydration-focused routines",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Dewy SPF 50 in a moisturizer format",
+          "body": "Keeps SPF 50 PA++++ protection in a daily moisturizer step that stays dewy rather than reading like a dry sunscreen cast layer.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Niacinamide plus ethyl ascorbic acid",
+          "body": "Adds niacinamide and ethyl ascorbic acid so the formula carries a tone-support angle alongside UV coverage.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "sunscreen",
+        "am_pm": [
+          "am"
+        ],
+        "pairing_notes": [
+          "Use as the last skincare step before makeup in the morning."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "filters",
+          "label": "Uses chemical sunscreen filters, so it may not fit mineral-only sunscreen preferences.",
+          "severity": "low"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "cream",
+      "finish": "dewy",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use as the last skincare step before makeup in the morning."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Jumbo SPF moisturizer",
+      "highlight": "Dewy SPF 50 + tone support",
+      "intro": "A jumbo SPF moisturizer with a dewy finish."
+    },
+    "search_card": {
+      "compact_candidate": "Jumbo SPF moisturizer",
+      "highlight_candidate": "Dewy SPF 50 + tone support",
+      "intro_candidate": "A jumbo SPF moisturizer with a dewy finish."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_query_probe3_reviewed_2026_04_12"
+  },
+  "product:ext_cdcb6dd807957b998ea79623": {
+    "notes": "Strict human QA override: reviewed from gemini-3.1-pro-preview after gemini-3-flash-preview timed out, then tightened into a jumbo SPF moisturizer definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Jumbo SPF moisturizer",
+        "body": "A jumbo-size daily SPF moisturizer that pairs broad-spectrum SPF 50 PA++++ protection with dewy hydration, niacinamide, and ethyl ascorbic acid."
+      },
+      "best_for": [
+        {
+          "tag": "daily_spf",
+          "label": "Daily SPF routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "brightness_tone",
+          "label": "Dullness or uneven tone",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "hydration",
+          "label": "Hydration-focused routines",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Dewy SPF 50 in a moisturizer format",
+          "body": "Keeps SPF 50 PA++++ protection in a daily moisturizer step that stays dewy rather than reading like a dry sunscreen cast layer.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Niacinamide plus ethyl ascorbic acid",
+          "body": "Adds niacinamide and ethyl ascorbic acid so the formula carries a tone-support angle alongside UV coverage.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "sunscreen",
+        "am_pm": [
+          "am"
+        ],
+        "pairing_notes": [
+          "Use as the last skincare step before makeup in the morning."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "filters",
+          "label": "Uses chemical sunscreen filters, so it may not fit mineral-only sunscreen preferences.",
+          "severity": "low"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "cream",
+      "finish": "dewy",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use as the last skincare step before makeup in the morning."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Jumbo SPF moisturizer",
+      "highlight": "Dewy SPF 50 + tone support",
+      "intro": "A jumbo SPF moisturizer with a dewy finish."
+    },
+    "search_card": {
+      "compact_candidate": "Jumbo SPF moisturizer",
+      "highlight_candidate": "Dewy SPF 50 + tone support",
+      "intro_candidate": "A jumbo SPF moisturizer with a dewy finish."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_query_probe3_reviewed_2026_04_12"
+  },
+  "live_ext_fc26386f850350182168d8d1": {
+    "notes": "Strict human QA override: reviewed from gemini-3-flash-preview and tightened into an oil-control SPF moisturizer definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Oil-control SPF moisturizer",
+        "body": "A daily SPF moisturizer that targets shine and pore appearance with salicylic acid while delivering SPF 50 protection."
+      },
+      "best_for": [
+        {
+          "tag": "daily_spf",
+          "label": "Daily SPF routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "blemish_oil",
+          "label": "Blemish or excess-oil concerns",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Salicylic acid plus SPF 50",
+          "body": "Pairs high daily UV coverage with salicylic acid so oil and pore care sit inside the sunscreen step instead of a separate treatment layer.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Mattifying wear",
+          "body": "Built around shine-free hydration rather than a dewy or cushiony sunscreen finish.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "sunscreen",
+        "am_pm": [
+          "am"
+        ],
+        "pairing_notes": [
+          "Use as the last skincare step before makeup in the morning."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "active",
+          "label": "Salicylic acid may feel too active if your skin is already sensitive or over-exfoliated.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "light cream",
+      "finish": "matte",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use as the last skincare step before makeup in the morning."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Oil-control SPF moisturizer",
+      "highlight": "Salicylic acid + matte SPF 50",
+      "intro": "An SPF moisturizer for shine and pore control."
+    },
+    "search_card": {
+      "compact_candidate": "Oil-control SPF moisturizer",
+      "highlight_candidate": "Salicylic acid + matte SPF 50",
+      "intro_candidate": "An SPF moisturizer for shine and pore control."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_query_probe3_reviewed_2026_04_12"
+  },
+  "product:ext_fc26386f850350182168d8d1": {
+    "notes": "Strict human QA override: reviewed from gemini-3-flash-preview and tightened into an oil-control SPF moisturizer definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Oil-control SPF moisturizer",
+        "body": "A daily SPF moisturizer that targets shine and pore appearance with salicylic acid while delivering SPF 50 protection."
+      },
+      "best_for": [
+        {
+          "tag": "daily_spf",
+          "label": "Daily SPF routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "blemish_oil",
+          "label": "Blemish or excess-oil concerns",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Salicylic acid plus SPF 50",
+          "body": "Pairs high daily UV coverage with salicylic acid so oil and pore care sit inside the sunscreen step instead of a separate treatment layer.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Mattifying wear",
+          "body": "Built around shine-free hydration rather than a dewy or cushiony sunscreen finish.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "sunscreen",
+        "am_pm": [
+          "am"
+        ],
+        "pairing_notes": [
+          "Use as the last skincare step before makeup in the morning."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "active",
+          "label": "Salicylic acid may feel too active if your skin is already sensitive or over-exfoliated.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "light cream",
+      "finish": "matte",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use as the last skincare step before makeup in the morning."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Oil-control SPF moisturizer",
+      "highlight": "Salicylic acid + matte SPF 50",
+      "intro": "An SPF moisturizer for shine and pore control."
+    },
+    "search_card": {
+      "compact_candidate": "Oil-control SPF moisturizer",
+      "highlight_candidate": "Salicylic acid + matte SPF 50",
+      "intro_candidate": "An SPF moisturizer for shine and pore control."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_query_probe3_reviewed_2026_04_12"
+  },
+  "live_ext_229f0543d01c417c79b0ddc5": {
+    "notes": "Strict human QA override: title and imported description point to different Olehenriksen products, so the rewrite prioritizes title truth and keeps the bundle definition conservative.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Mini moisturizer + eye duo",
+        "body": "A mini routine duo that pairs a moisturizer with an eye cream in travel-friendly sizes."
+      },
+      "best_for": [
+        {
+          "tag": "routine_simplification",
+          "label": "Routine simplification",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Two-step mini set",
+          "body": "Groups a moisturizer and eye cream into one smaller set instead of a single standalone SKU.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Travel-friendly sizing",
+          "body": "Mini sizing makes the set easier to pack or test than jumping straight to full sizes.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "routine set",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use the eye cream around the eye area and the moisturizer as the sealing face step."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "format",
+          "label": "This is a mini set, not a full-size single product.",
+          "severity": "low"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use the eye cream around the eye area and the moisturizer as the sealing face step."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Mini moisturizer + eye duo",
+      "highlight": "Travel-size moisture + eye care",
+      "intro": "A mini duo that pairs moisturizer and eye care."
+    },
+    "search_card": {
+      "compact_candidate": "Mini moisturizer + eye duo",
+      "highlight_candidate": "Travel-size moisture + eye care",
+      "intro_candidate": "A mini duo that pairs moisturizer and eye care."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_query_probe3_reviewed_2026_04_12"
+  },
+  "product:ext_229f0543d01c417c79b0ddc5": {
+    "notes": "Strict human QA override: title and imported description point to different Olehenriksen products, so the rewrite prioritizes title truth and keeps the bundle definition conservative.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Mini moisturizer + eye duo",
+        "body": "A mini routine duo that pairs a moisturizer with an eye cream in travel-friendly sizes."
+      },
+      "best_for": [
+        {
+          "tag": "routine_simplification",
+          "label": "Routine simplification",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Two-step mini set",
+          "body": "Groups a moisturizer and eye cream into one smaller set instead of a single standalone SKU.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Travel-friendly sizing",
+          "body": "Mini sizing makes the set easier to pack or test than jumping straight to full sizes.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "routine set",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use the eye cream around the eye area and the moisturizer as the sealing face step."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "format",
+          "label": "This is a mini set, not a full-size single product.",
+          "severity": "low"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use the eye cream around the eye area and the moisturizer as the sealing face step."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Mini moisturizer + eye duo",
+      "highlight": "Travel-size moisture + eye care",
+      "intro": "A mini duo that pairs moisturizer and eye care."
+    },
+    "search_card": {
+      "compact_candidate": "Mini moisturizer + eye duo",
+      "highlight_candidate": "Travel-size moisture + eye care",
+      "intro_candidate": "A mini duo that pairs moisturizer and eye care."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_query_probe3_reviewed_2026_04_12"
+  },
+  "live_ext_d7ce5dea9d90103468e9640d": {
+    "notes": "Strict human QA override: reviewed from both gemini-3-flash-preview and gemini-3.1-pro-preview, then reclassified from generic serum into a makeup-plus-lip set.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Glow cushion + lip duo",
+        "body": "A 2-piece set that pairs a glow cushion base with a peptide lip serum for a coordinated complexion-and-lip finish."
+      },
+      "best_for": [
+        {
+          "tag": "makeup_prep",
+          "label": "Makeup-prep or cosmetic finish",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "lip_care",
+          "label": "Lip care routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "routine_simplification",
+          "label": "Routine simplification",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Complexion plus lip pairing",
+          "body": "Combines a glow cushion and peptide lip serum so face and lip finish come from the same small set.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Glow-and-shine focus",
+          "body": "The set is built around complexion glow and lip shine rather than a single skincare-only treatment step.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "routine set",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use the cushion for complexion coverage and the lip serum as the finishing lip step."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "",
+      "finish": "glowy",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use the cushion for complexion coverage and the lip serum as the finishing lip step."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Glow cushion + lip duo",
+      "highlight": "Radiant base + peptide lip shine",
+      "intro": "A 2-piece set for complexion glow and lip shine."
+    },
+    "search_card": {
+      "compact_candidate": "Glow cushion + lip duo",
+      "highlight_candidate": "Radiant base + peptide lip shine",
+      "intro_candidate": "A 2-piece set for complexion glow and lip shine."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_query_probe3_reviewed_2026_04_12"
+  },
+  "product:ext_d7ce5dea9d90103468e9640d": {
+    "notes": "Strict human QA override: reviewed from both gemini-3-flash-preview and gemini-3.1-pro-preview, then reclassified from generic serum into a makeup-plus-lip set.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Glow cushion + lip duo",
+        "body": "A 2-piece set that pairs a glow cushion base with a peptide lip serum for a coordinated complexion-and-lip finish."
+      },
+      "best_for": [
+        {
+          "tag": "makeup_prep",
+          "label": "Makeup-prep or cosmetic finish",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "lip_care",
+          "label": "Lip care routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "routine_simplification",
+          "label": "Routine simplification",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Complexion plus lip pairing",
+          "body": "Combines a glow cushion and peptide lip serum so face and lip finish come from the same small set.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Glow-and-shine focus",
+          "body": "The set is built around complexion glow and lip shine rather than a single skincare-only treatment step.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "routine set",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use the cushion for complexion coverage and the lip serum as the finishing lip step."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "",
+      "finish": "glowy",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use the cushion for complexion coverage and the lip serum as the finishing lip step."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Glow cushion + lip duo",
+      "highlight": "Radiant base + peptide lip shine",
+      "intro": "A 2-piece set for complexion glow and lip shine."
+    },
+    "search_card": {
+      "compact_candidate": "Glow cushion + lip duo",
+      "highlight_candidate": "Radiant base + peptide lip shine",
+      "intro_candidate": "A 2-piece set for complexion glow and lip shine."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_query_probe3_reviewed_2026_04_12"
+  },
+  "live_ext_9b15ea1fb859095cf0a4f042": {
+    "notes": "Strict human QA override: reviewed from both gemini-3-flash-preview and gemini-3.1-pro-preview, then tightened from generic serum framing into a lip-serum set definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Peptide lip serum set",
+        "body": "A multi-piece lip serum set built around peptide care for softer, brighter-looking lips."
+      },
+      "best_for": [
+        {
+          "tag": "lip_care",
+          "label": "Lip care routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "dry_lips",
+          "label": "Dry lips needing extra care",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Peptide-led lip care",
+          "body": "Keeps peptide care at the center of the set instead of treating it like a generic face serum bundle.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Juicy finish angle",
+          "body": "Built around softer, brighter-looking lips with a more cushioned finish than a matte lip step.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "lip_balm",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use as the lip-care step whenever lips feel dry or need extra shine."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "",
+      "finish": "glossy",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use as the lip-care step whenever lips feel dry or need extra shine."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Peptide lip serum set",
+      "highlight": "Nourishing peptide lip care",
+      "intro": "A multi-piece lip serum set for soft, juicy lips."
+    },
+    "search_card": {
+      "compact_candidate": "Peptide lip serum set",
+      "highlight_candidate": "Nourishing peptide lip care",
+      "intro_candidate": "A multi-piece lip serum set for soft, juicy lips."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_query_probe3_reviewed_2026_04_12"
+  },
+  "product:ext_9b15ea1fb859095cf0a4f042": {
+    "notes": "Strict human QA override: reviewed from both gemini-3-flash-preview and gemini-3.1-pro-preview, then tightened from generic serum framing into a lip-serum set definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Peptide lip serum set",
+        "body": "A multi-piece lip serum set built around peptide care for softer, brighter-looking lips."
+      },
+      "best_for": [
+        {
+          "tag": "lip_care",
+          "label": "Lip care routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "dry_lips",
+          "label": "Dry lips needing extra care",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Peptide-led lip care",
+          "body": "Keeps peptide care at the center of the set instead of treating it like a generic face serum bundle.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Juicy finish angle",
+          "body": "Built around softer, brighter-looking lips with a more cushioned finish than a matte lip step.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "lip_balm",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use as the lip-care step whenever lips feel dry or need extra shine."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "",
+      "finish": "glossy",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use as the lip-care step whenever lips feel dry or need extra shine."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Peptide lip serum set",
+      "highlight": "Nourishing peptide lip care",
+      "intro": "A multi-piece lip serum set for soft, juicy lips."
+    },
+    "search_card": {
+      "compact_candidate": "Peptide lip serum set",
+      "highlight_candidate": "Nourishing peptide lip care",
+      "intro_candidate": "A multi-piece lip serum set for soft, juicy lips."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_query_probe3_reviewed_2026_04_12"
+  },
+  "live_ext_4729e70c78478cb6a57aa177": {
+    "notes": "Strict human QA override: reviewed from gemini-3-flash-preview and tightened into a ceramide-led barrier moisturizer definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Barrier moisturizer",
+        "body": "An ultra-rich barrier moisturizer that uses ceramides, hyaluronic acid, and niacinamide to hydrate and soothe dry, stressed skin."
+      },
+      "best_for": [
+        {
+          "tag": "dryness_barrier",
+          "label": "Dryness or barrier support",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "sensitive_skin",
+          "label": "Sensitive or easily stressed skin",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "4-ceramide barrier complex",
+          "body": "Centers a lipid-rich ceramide blend so the moisturizer reads as barrier rescue, not just a generic rich cream.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Niacinamide plus hyaluronic acid support",
+          "body": "Pairs richer moisture with niacinamide and hyaluronic acid to replenish dehydrated skin while soothing stress.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "moisturizer",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use after serum as the sealing moisture step."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "texture",
+          "label": "The ultra-rich texture may feel heavy if you prefer lightweight gel moisturizers.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "rich cream",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use after serum as the sealing moisture step."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Barrier moisturizer",
+      "highlight": "Ceramides + rich rescue hydration",
+      "intro": "An ultra-rich barrier moisturizer for dry, stressed skin."
+    },
+    "search_card": {
+      "compact_candidate": "Barrier moisturizer",
+      "highlight_candidate": "Ceramides + rich rescue hydration",
+      "intro_candidate": "An ultra-rich barrier moisturizer for dry, stressed skin."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_query_probe3_reviewed_2026_04_12"
+  },
+  "product:ext_4729e70c78478cb6a57aa177": {
+    "notes": "Strict human QA override: reviewed from gemini-3-flash-preview and tightened into a ceramide-led barrier moisturizer definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Barrier moisturizer",
+        "body": "An ultra-rich barrier moisturizer that uses ceramides, hyaluronic acid, and niacinamide to hydrate and soothe dry, stressed skin."
+      },
+      "best_for": [
+        {
+          "tag": "dryness_barrier",
+          "label": "Dryness or barrier support",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "sensitive_skin",
+          "label": "Sensitive or easily stressed skin",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "4-ceramide barrier complex",
+          "body": "Centers a lipid-rich ceramide blend so the moisturizer reads as barrier rescue, not just a generic rich cream.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Niacinamide plus hyaluronic acid support",
+          "body": "Pairs richer moisture with niacinamide and hyaluronic acid to replenish dehydrated skin while soothing stress.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "moisturizer",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use after serum as the sealing moisture step."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "texture",
+          "label": "The ultra-rich texture may feel heavy if you prefer lightweight gel moisturizers.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "rich cream",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use after serum as the sealing moisture step."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Barrier moisturizer",
+      "highlight": "Ceramides + rich rescue hydration",
+      "intro": "An ultra-rich barrier moisturizer for dry, stressed skin."
+    },
+    "search_card": {
+      "compact_candidate": "Barrier moisturizer",
+      "highlight_candidate": "Ceramides + rich rescue hydration",
+      "intro_candidate": "An ultra-rich barrier moisturizer for dry, stressed skin."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_query_probe3_reviewed_2026_04_12"
+  },
+  "live_ext_6d12a8e77ab2239f5d3b624b": {
+    "notes": "Strict human QA override: reviewed from gemini-3-flash-preview and tightened into a ceramide-led barrier serum definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Barrier serum",
+        "body": "A ceramide serum designed to strengthen the skin barrier while nourishing and replenishing dry or stressed skin."
+      },
+      "best_for": [
+        {
+          "tag": "dryness_barrier",
+          "label": "Dryness or barrier support",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "sensitive_skin",
+          "label": "Sensitive or easily stressed skin",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Ceramide barrier support",
+          "body": "Keeps barrier repair and replenishment at the center of the serum instead of a generic hydration-only claim.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Nourishing serum step",
+          "body": "Frames the formula as a lighter barrier-support layer for use before moisturizer.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use before moisturizer when you want a barrier-support serum step."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "serum",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use before moisturizer when you want a barrier-support serum step."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Barrier serum",
+      "highlight": "Ceramide barrier support",
+      "intro": "A ceramide serum for barrier support and replenishment."
+    },
+    "search_card": {
+      "compact_candidate": "Barrier serum",
+      "highlight_candidate": "Ceramide barrier support",
+      "intro_candidate": "A ceramide serum for barrier support and replenishment."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_query_probe3_reviewed_2026_04_12"
+  },
+  "product:ext_6d12a8e77ab2239f5d3b624b": {
+    "notes": "Strict human QA override: reviewed from gemini-3-flash-preview and tightened into a ceramide-led barrier serum definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Barrier serum",
+        "body": "A ceramide serum designed to strengthen the skin barrier while nourishing and replenishing dry or stressed skin."
+      },
+      "best_for": [
+        {
+          "tag": "dryness_barrier",
+          "label": "Dryness or barrier support",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "sensitive_skin",
+          "label": "Sensitive or easily stressed skin",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Ceramide barrier support",
+          "body": "Keeps barrier repair and replenishment at the center of the serum instead of a generic hydration-only claim.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Nourishing serum step",
+          "body": "Frames the formula as a lighter barrier-support layer for use before moisturizer.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use before moisturizer when you want a barrier-support serum step."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "serum",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use before moisturizer when you want a barrier-support serum step."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Barrier serum",
+      "highlight": "Ceramide barrier support",
+      "intro": "A ceramide serum for barrier support and replenishment."
+    },
+    "search_card": {
+      "compact_candidate": "Barrier serum",
+      "highlight_candidate": "Ceramide barrier support",
+      "intro_candidate": "A ceramide serum for barrier support and replenishment."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_query_probe3_reviewed_2026_04_12"
+  },
+  "live_ext_edd8a7c8824da40e28d289d4": {
+    "notes": "Strict human QA override: title-only seller metadata left Murad Targeted Pore Corrector as a generic product, so the rewrite tightens it into a pore-targeting treatment definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Targeted pore treatment",
+        "body": "A targeted treatment made for areas where enlarged pores and excess oil are most visible."
+      },
+      "best_for": [
+        {
+          "tag": "pore_visibility",
+          "label": "Visible pores or uneven texture",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "blemish_oil",
+          "label": "Oily or combination skin zones",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Localized pore care",
+          "body": "Built for targeted application instead of a full-face cleanser or moisturizer step.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Pore-and-shine focus",
+          "body": "Keeps visible pores and oily-zone refinement at the center of the treatment.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use on pore-prone areas before moisturizer."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use on pore-prone areas before moisturizer."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Targeted pore treatment",
+      "highlight": "Localized pore + shine care",
+      "intro": "A targeted treatment for visible pores and oily zones."
+    },
+    "search_card": {
+      "compact_candidate": "Targeted pore treatment",
+      "highlight_candidate": "Localized pore + shine care",
+      "intro_candidate": "A targeted treatment for visible pores and oily zones."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+  },
+  "product:ext_edd8a7c8824da40e28d289d4": {
+    "notes": "Strict human QA override: title-only seller metadata left Murad Targeted Pore Corrector as a generic product, so the rewrite tightens it into a pore-targeting treatment definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Targeted pore treatment",
+        "body": "A targeted treatment made for areas where enlarged pores and excess oil are most visible."
+      },
+      "best_for": [
+        {
+          "tag": "pore_visibility",
+          "label": "Visible pores or uneven texture",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "blemish_oil",
+          "label": "Oily or combination skin zones",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Localized pore care",
+          "body": "Built for targeted application instead of a full-face cleanser or moisturizer step.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Pore-and-shine focus",
+          "body": "Keeps visible pores and oily-zone refinement at the center of the treatment.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use on pore-prone areas before moisturizer."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use on pore-prone areas before moisturizer."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Targeted pore treatment",
+      "highlight": "Localized pore + shine care",
+      "intro": "A targeted treatment for visible pores and oily zones."
+    },
+    "search_card": {
+      "compact_candidate": "Targeted pore treatment",
+      "highlight_candidate": "Localized pore + shine care",
+      "intro_candidate": "A targeted treatment for visible pores and oily zones."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+  },
+  "live_ext_3a99798960160df9c8769d94": {
+    "notes": "Strict human QA override: reviewed from both Gemini passes and seller copy, then tightened into a stabilized retinaldehyde cream-serum definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Retinal cream serum",
+        "body": "A 0.05% retinaldehyde cream serum built to keep the retinoid active more stable through shelf life."
+      },
+      "best_for": [
+        {
+          "tag": "fine_lines_wrinkles",
+          "label": "Fine lines or early age-support routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "texture_tone",
+          "label": "Texture or uneven-looking skin",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "0.05% retinaldehyde delivery",
+          "body": "Uses 0.05% retinaldehyde in a cream-serum format instead of a heavier night cream.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Stability-focused formula",
+          "body": "Seller copy emphasizes accelerated-condition testing to help maintain retinal potency over shelf life.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use at night before moisturizer and build frequency gradually."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "retinoid",
+          "label": "Retinoids can feel too active if you're new to them or stacking other exfoliants.",
+          "severity": "high"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "cream serum",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use at night before moisturizer and build frequency gradually."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Retinal cream serum",
+      "highlight": "0.05% retinaldehyde + stability",
+      "intro": "A retinal cream serum with stability-focused delivery."
+    },
+    "search_card": {
+      "compact_candidate": "Retinal cream serum",
+      "highlight_candidate": "0.05% retinaldehyde + stability",
+      "intro_candidate": "A retinal cream serum with stability-focused delivery."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+  },
+  "product:ext_3a99798960160df9c8769d94": {
+    "notes": "Strict human QA override: reviewed from both Gemini passes and seller copy, then tightened into a stabilized retinaldehyde cream-serum definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Retinal cream serum",
+        "body": "A 0.05% retinaldehyde cream serum built to keep the retinoid active more stable through shelf life."
+      },
+      "best_for": [
+        {
+          "tag": "fine_lines_wrinkles",
+          "label": "Fine lines or early age-support routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "texture_tone",
+          "label": "Texture or uneven-looking skin",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "0.05% retinaldehyde delivery",
+          "body": "Uses 0.05% retinaldehyde in a cream-serum format instead of a heavier night cream.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Stability-focused formula",
+          "body": "Seller copy emphasizes accelerated-condition testing to help maintain retinal potency over shelf life.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use at night before moisturizer and build frequency gradually."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "retinoid",
+          "label": "Retinoids can feel too active if you're new to them or stacking other exfoliants.",
+          "severity": "high"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "cream serum",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use at night before moisturizer and build frequency gradually."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Retinal cream serum",
+      "highlight": "0.05% retinaldehyde + stability",
+      "intro": "A retinal cream serum with stability-focused delivery."
+    },
+    "search_card": {
+      "compact_candidate": "Retinal cream serum",
+      "highlight_candidate": "0.05% retinaldehyde + stability",
+      "intro_candidate": "A retinal cream serum with stability-focused delivery."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+  },
+  "live_ext_e7c55a62fa5f3084a7d4f100": {
+    "notes": "Strict human QA override: title-only seller metadata and unrelated imported bundle text made Balance+ Bundle-Europe unreliable, so the rewrite stays conservative and title-grounded.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Balancing skincare set",
+        "body": "A multi-step skincare set grouped under the Balance+ line for a balance-focused routine."
+      },
+      "best_for": [
+        {
+          "tag": "routine_simplification",
+          "label": "Routine simplification",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "blemish_oil",
+          "label": "Oilier or easily congested routines",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Multi-step bundle format",
+          "body": "Packages more than one step into a single set instead of a standalone SKU.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Balance-focused positioning",
+          "body": "The Balance+ naming keeps the routine aimed at a more even, controlled feel.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "routine set",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use the included steps in the order listed by the brand."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "format",
+          "label": "This is a multi-step set, not a single treatment product.",
+          "severity": "low"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use the included steps in the order listed by the brand."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Balancing skincare set",
+      "highlight": "Balance-focused multi-step set",
+      "intro": "A multi-step Balance+ set for a streamlined routine."
+    },
+    "search_card": {
+      "compact_candidate": "Balancing skincare set",
+      "highlight_candidate": "Balance-focused multi-step set",
+      "intro_candidate": "A multi-step Balance+ set for a streamlined routine."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+  },
+  "product:ext_e7c55a62fa5f3084a7d4f100": {
+    "notes": "Strict human QA override: title-only seller metadata and unrelated imported bundle text made Balance+ Bundle-Europe unreliable, so the rewrite stays conservative and title-grounded.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Balancing skincare set",
+        "body": "A multi-step skincare set grouped under the Balance+ line for a balance-focused routine."
+      },
+      "best_for": [
+        {
+          "tag": "routine_simplification",
+          "label": "Routine simplification",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "blemish_oil",
+          "label": "Oilier or easily congested routines",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Multi-step bundle format",
+          "body": "Packages more than one step into a single set instead of a standalone SKU.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Balance-focused positioning",
+          "body": "The Balance+ naming keeps the routine aimed at a more even, controlled feel.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "routine set",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use the included steps in the order listed by the brand."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "format",
+          "label": "This is a multi-step set, not a single treatment product.",
+          "severity": "low"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use the included steps in the order listed by the brand."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Balancing skincare set",
+      "highlight": "Balance-focused multi-step set",
+      "intro": "A multi-step Balance+ set for a streamlined routine."
+    },
+    "search_card": {
+      "compact_candidate": "Balancing skincare set",
+      "highlight_candidate": "Balance-focused multi-step set",
+      "intro_candidate": "A multi-step Balance+ set for a streamlined routine."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+  },
+  "live_ext_0cfa56c35dd9a64ef9b6fe0a": {
+    "notes": "Strict human QA override: title-only seller metadata left this set too generic, so the rewrite keeps it to a conservative peptide-led skin-strengthening set definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Peptide skincare set",
+        "body": "A multi-step skincare set centered on peptides and a skin-strengthening routine."
+      },
+      "best_for": [
+        {
+          "tag": "routine_simplification",
+          "label": "Routine simplification",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "dryness_barrier",
+          "label": "Skin needing barrier support",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Peptide-led set",
+          "body": "Frames peptides as the anchor of the routine instead of a single serum-only step.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Skin-strengthening focus",
+          "body": "The title positions the set around supporting stronger-feeling skin across multiple steps.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "routine set",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use the included steps in the order listed by the brand."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "format",
+          "label": "This is a multi-step set, not a single peptide serum.",
+          "severity": "low"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use the included steps in the order listed by the brand."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Peptide skincare set",
+      "highlight": "Peptide-led skin-strength set",
+      "intro": "A peptide-focused set for a richer skin-strengthening routine."
+    },
+    "search_card": {
+      "compact_candidate": "Peptide skincare set",
+      "highlight_candidate": "Peptide-led skin-strength set",
+      "intro_candidate": "A peptide-focused set for a richer skin-strengthening routine."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+  },
+  "product:ext_0cfa56c35dd9a64ef9b6fe0a": {
+    "notes": "Strict human QA override: title-only seller metadata left this set too generic, so the rewrite keeps it to a conservative peptide-led skin-strengthening set definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Peptide skincare set",
+        "body": "A multi-step skincare set centered on peptides and a skin-strengthening routine."
+      },
+      "best_for": [
+        {
+          "tag": "routine_simplification",
+          "label": "Routine simplification",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "dryness_barrier",
+          "label": "Skin needing barrier support",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Peptide-led set",
+          "body": "Frames peptides as the anchor of the routine instead of a single serum-only step.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Skin-strengthening focus",
+          "body": "The title positions the set around supporting stronger-feeling skin across multiple steps.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "routine set",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use the included steps in the order listed by the brand."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "format",
+          "label": "This is a multi-step set, not a single peptide serum.",
+          "severity": "low"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use the included steps in the order listed by the brand."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Peptide skincare set",
+      "highlight": "Peptide-led skin-strength set",
+      "intro": "A peptide-focused set for a richer skin-strengthening routine."
+    },
+    "search_card": {
+      "compact_candidate": "Peptide skincare set",
+      "highlight_candidate": "Peptide-led skin-strength set",
+      "intro_candidate": "A peptide-focused set for a richer skin-strengthening routine."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+  },
+  "live_ext_aea0be48bb20adf3ea960742": {
+    "notes": "Strict human QA override: imported copy for this set was garbled, so the rewrite reclassifies it as a conservative face-scrub plus lip-treatment duo.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Face scrub + lip duo",
+        "body": "A mixed set that pairs an exfoliating face scrub with a Pout Preserve lip treatment."
+      },
+      "best_for": [
+        {
+          "tag": "texture_tone",
+          "label": "Texture or dullness routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "lip_care",
+          "label": "Lip care routines",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Face plus lip pairing",
+          "body": "Combines a smoothing scrub and a lip treatment in one set instead of a single-category product.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Exfoliation plus lip care",
+          "body": "The title points to exfoliating face care alongside a cushioning Pout Preserve lip step.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "routine set",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use the scrub on face as directed, then use the lip treatment separately as needed."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "acid",
+          "label": "The scrub side may feel too active if your skin is already over-exfoliated.",
+          "severity": "high"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use the scrub on face as directed, then use the lip treatment separately as needed."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Face scrub + lip duo",
+      "highlight": "Face exfoliation + lip care",
+      "intro": "A mixed set pairing a face scrub with Pout Preserve lip care."
+    },
+    "search_card": {
+      "compact_candidate": "Face scrub + lip duo",
+      "highlight_candidate": "Face exfoliation + lip care",
+      "intro_candidate": "A mixed set pairing a face scrub with Pout Preserve lip care."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+  },
+  "product:ext_aea0be48bb20adf3ea960742": {
+    "notes": "Strict human QA override: imported copy for this set was garbled, so the rewrite reclassifies it as a conservative face-scrub plus lip-treatment duo.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Face scrub + lip duo",
+        "body": "A mixed set that pairs an exfoliating face scrub with a Pout Preserve lip treatment."
+      },
+      "best_for": [
+        {
+          "tag": "texture_tone",
+          "label": "Texture or dullness routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "lip_care",
+          "label": "Lip care routines",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Face plus lip pairing",
+          "body": "Combines a smoothing scrub and a lip treatment in one set instead of a single-category product.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Exfoliation plus lip care",
+          "body": "The title points to exfoliating face care alongside a cushioning Pout Preserve lip step.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "routine set",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use the scrub on face as directed, then use the lip treatment separately as needed."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "acid",
+          "label": "The scrub side may feel too active if your skin is already over-exfoliated.",
+          "severity": "high"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use the scrub on face as directed, then use the lip treatment separately as needed."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Face scrub + lip duo",
+      "highlight": "Face exfoliation + lip care",
+      "intro": "A mixed set pairing a face scrub with Pout Preserve lip care."
+    },
+    "search_card": {
+      "compact_candidate": "Face scrub + lip duo",
+      "highlight_candidate": "Face exfoliation + lip care",
+      "intro_candidate": "A mixed set pairing a face scrub with Pout Preserve lip care."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+  },
+  "live_ext_27ecddfd70b28613b9cdd8a7": {
+    "notes": "Strict human QA override: title-only seller metadata and broken Gemini highlights left this scrub too generic, so the rewrite narrows it to a warming pore-focused exfoliating step.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Warming facial scrub",
+        "body": "A facial scrub built around pore-focused exfoliation with a warming, sauna-style feel."
+      },
+      "best_for": [
+        {
+          "tag": "pore_visibility",
+          "label": "Visible pores or rough texture",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "blemish_oil",
+          "label": "Oilier or congested skin",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Pore-focused scrub step",
+          "body": "Targets pore-prone texture in a rinse-off exfoliating step rather than a leave-on serum.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Sauna-style feel",
+          "body": "The sauna naming signals a scrub with a warmer, more stimulating cleansing feel.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "exfoliant",
+        "am_pm": [
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use a few times weekly, then follow with soothing hydration."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "texture",
+          "label": "The scrub can feel too intense if your skin is already sensitized or over-exfoliated.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "scrub",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use a few times weekly, then follow with soothing hydration."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Warming facial scrub",
+      "highlight": "Pore-focused warming exfoliation",
+      "intro": "A warming facial scrub for pore-prone texture."
+    },
+    "search_card": {
+      "compact_candidate": "Warming facial scrub",
+      "highlight_candidate": "Pore-focused warming exfoliation",
+      "intro_candidate": "A warming facial scrub for pore-prone texture."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+  },
+  "product:ext_27ecddfd70b28613b9cdd8a7": {
+    "notes": "Strict human QA override: title-only seller metadata and broken Gemini highlights left this scrub too generic, so the rewrite narrows it to a warming pore-focused exfoliating step.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Warming facial scrub",
+        "body": "A facial scrub built around pore-focused exfoliation with a warming, sauna-style feel."
+      },
+      "best_for": [
+        {
+          "tag": "pore_visibility",
+          "label": "Visible pores or rough texture",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "blemish_oil",
+          "label": "Oilier or congested skin",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Pore-focused scrub step",
+          "body": "Targets pore-prone texture in a rinse-off exfoliating step rather than a leave-on serum.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Sauna-style feel",
+          "body": "The sauna naming signals a scrub with a warmer, more stimulating cleansing feel.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "exfoliant",
+        "am_pm": [
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use a few times weekly, then follow with soothing hydration."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "texture",
+          "label": "The scrub can feel too intense if your skin is already sensitized or over-exfoliated.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "scrub",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use a few times weekly, then follow with soothing hydration."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Warming facial scrub",
+      "highlight": "Pore-focused warming exfoliation",
+      "intro": "A warming facial scrub for pore-prone texture."
+    },
+    "search_card": {
+      "compact_candidate": "Warming facial scrub",
+      "highlight_candidate": "Pore-focused warming exfoliation",
+      "intro_candidate": "A warming facial scrub for pore-prone texture."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+  },
+  "live_ext_50024e49227406f6c14b1f95": {
+    "notes": "Strict human QA override: reviewed from gemini-3.1-pro-preview and corrected from moisturizer framing into a brightening eye-duo definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Brightening eye duo",
+        "body": "An eye duo that pairs a vitamin C eye cream with a color-correcting eye stick for the undereye area."
+      },
+      "best_for": [
+        {
+          "tag": "brightness_tone",
+          "label": "Undereye dullness or uneven tone",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "routine_simplification",
+          "label": "Eye care plus color correction",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Cream plus stick pairing",
+          "body": "Combines a standard eye cream with a targeted color-correcting stick in one set.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Vitamin C eye-care angle",
+          "body": "Keeps brightening eye care at the center instead of misclassifying the duo as a face cream.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "eye_care",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use the eye cream first, then tap on the stick where you want extra brightening."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "cream + stick",
+      "finish": "brightening",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use the eye cream first, then tap on the stick where you want extra brightening."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Brightening eye duo",
+      "highlight": "Vitamin C + color-correcting duo",
+      "intro": "An eye duo for brightening and color-correcting undereyes."
+    },
+    "search_card": {
+      "compact_candidate": "Brightening eye duo",
+      "highlight_candidate": "Vitamin C + color-correcting duo",
+      "intro_candidate": "An eye duo for brightening and color-correcting undereyes."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+  },
+  "product:ext_50024e49227406f6c14b1f95": {
+    "notes": "Strict human QA override: reviewed from gemini-3.1-pro-preview and corrected from moisturizer framing into a brightening eye-duo definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Brightening eye duo",
+        "body": "An eye duo that pairs a vitamin C eye cream with a color-correcting eye stick for the undereye area."
+      },
+      "best_for": [
+        {
+          "tag": "brightness_tone",
+          "label": "Undereye dullness or uneven tone",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "routine_simplification",
+          "label": "Eye care plus color correction",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Cream plus stick pairing",
+          "body": "Combines a standard eye cream with a targeted color-correcting stick in one set.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Vitamin C eye-care angle",
+          "body": "Keeps brightening eye care at the center instead of misclassifying the duo as a face cream.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "eye_care",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use the eye cream first, then tap on the stick where you want extra brightening."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "cream + stick",
+      "finish": "brightening",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use the eye cream first, then tap on the stick where you want extra brightening."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Brightening eye duo",
+      "highlight": "Vitamin C + color-correcting duo",
+      "intro": "An eye duo for brightening and color-correcting undereyes."
+    },
+    "search_card": {
+      "compact_candidate": "Brightening eye duo",
+      "highlight_candidate": "Vitamin C + color-correcting duo",
+      "intro_candidate": "An eye duo for brightening and color-correcting undereyes."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+  },
+  "live_ext_3fe128d1441a94c26364da2b": {
+    "notes": "Strict human QA override: reviewed from both Gemini passes and stripped out award-led copy so the product stays a seller-grounded peptide lip treatment.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Peptide lip treatment",
+        "body": "A peptide-led lip treatment that hydrates, cushions, and smooths the look of lip lines."
+      },
+      "best_for": [
+        {
+          "tag": "dry_lips",
+          "label": "Dry lips needing extra moisture",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "lip_lines",
+          "label": "Lip lines or rough lip texture",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Peptides plus kokum butter",
+          "body": "Pairs peptides with richer lip-conditioning support instead of reading like a simple gloss.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Treatment-first lip care",
+          "body": "Built as a care step for softer, fuller-looking lips rather than color payoff.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "lip_balm",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use whenever lips need moisture or a smoothing treatment layer."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "balm",
+      "finish": "glossy",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use whenever lips need moisture or a smoothing treatment layer."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Peptide lip treatment",
+      "highlight": "Peptides + cushioned lip care",
+      "intro": "A peptide lip treatment for hydration and smoother-looking lips."
+    },
+    "search_card": {
+      "compact_candidate": "Peptide lip treatment",
+      "highlight_candidate": "Peptides + cushioned lip care",
+      "intro_candidate": "A peptide lip treatment for hydration and smoother-looking lips."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+  },
+  "product:ext_3fe128d1441a94c26364da2b": {
+    "notes": "Strict human QA override: reviewed from both Gemini passes and stripped out award-led copy so the product stays a seller-grounded peptide lip treatment.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Peptide lip treatment",
+        "body": "A peptide-led lip treatment that hydrates, cushions, and smooths the look of lip lines."
+      },
+      "best_for": [
+        {
+          "tag": "dry_lips",
+          "label": "Dry lips needing extra moisture",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "lip_lines",
+          "label": "Lip lines or rough lip texture",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Peptides plus kokum butter",
+          "body": "Pairs peptides with richer lip-conditioning support instead of reading like a simple gloss.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Treatment-first lip care",
+          "body": "Built as a care step for softer, fuller-looking lips rather than color payoff.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "lip_balm",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use whenever lips need moisture or a smoothing treatment layer."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "balm",
+      "finish": "glossy",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use whenever lips need moisture or a smoothing treatment layer."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Peptide lip treatment",
+      "highlight": "Peptides + cushioned lip care",
+      "intro": "A peptide lip treatment for hydration and smoother-looking lips."
+    },
+    "search_card": {
+      "compact_candidate": "Peptide lip treatment",
+      "highlight_candidate": "Peptides + cushioned lip care",
+      "intro_candidate": "A peptide lip treatment for hydration and smoother-looking lips."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+  },
+  "live_ext_a8f18bb1963155e5ce08466e": {
+    "notes": "Strict human QA override: reviewed from both Gemini passes and tightened from scent-led sunscreen copy into a seller-grounded mineral SPF definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Mineral sunscreen",
+        "body": "A mineral SPF 30 sunscreen made for daily wear with a soft-matte finish."
+      },
+      "best_for": [
+        {
+          "tag": "daily_spf",
+          "label": "Daily sun-protection routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "blemish_oil",
+          "label": "Those preferring a softer matte finish",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Soft-matte mineral wear",
+          "body": "Keeps the finish more soft-matte and less greasy than a dewier sunscreen step.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Daily mineral SPF 30",
+          "body": "Puts mineral UV protection into an everyday daytime step rather than a makeup-only product.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "sunscreen",
+        "am_pm": [
+          "am"
+        ],
+        "pairing_notes": [
+          "Use as the last skincare step before makeup in the morning."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "spf",
+          "label": "Mineral formulas can take longer to blend and still need full application for coverage.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "cream",
+      "finish": "soft-matte",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use as the last skincare step before makeup in the morning."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Mineral sunscreen",
+      "highlight": "Soft-matte mineral SPF 30",
+      "intro": "A daily mineral sunscreen with a soft-matte finish."
+    },
+    "search_card": {
+      "compact_candidate": "Mineral sunscreen",
+      "highlight_candidate": "Soft-matte mineral SPF 30",
+      "intro_candidate": "A daily mineral sunscreen with a soft-matte finish."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+  },
+  "product:ext_a8f18bb1963155e5ce08466e": {
+    "notes": "Strict human QA override: reviewed from both Gemini passes and tightened from scent-led sunscreen copy into a seller-grounded mineral SPF definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Mineral sunscreen",
+        "body": "A mineral SPF 30 sunscreen made for daily wear with a soft-matte finish."
+      },
+      "best_for": [
+        {
+          "tag": "daily_spf",
+          "label": "Daily sun-protection routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "blemish_oil",
+          "label": "Those preferring a softer matte finish",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Soft-matte mineral wear",
+          "body": "Keeps the finish more soft-matte and less greasy than a dewier sunscreen step.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Daily mineral SPF 30",
+          "body": "Puts mineral UV protection into an everyday daytime step rather than a makeup-only product.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "sunscreen",
+        "am_pm": [
+          "am"
+        ],
+        "pairing_notes": [
+          "Use as the last skincare step before makeup in the morning."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "spf",
+          "label": "Mineral formulas can take longer to blend and still need full application for coverage.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "cream",
+      "finish": "soft-matte",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use as the last skincare step before makeup in the morning."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Mineral sunscreen",
+      "highlight": "Soft-matte mineral SPF 30",
+      "intro": "A daily mineral sunscreen with a soft-matte finish."
+    },
+    "search_card": {
+      "compact_candidate": "Mineral sunscreen",
+      "highlight_candidate": "Soft-matte mineral SPF 30",
+      "intro_candidate": "A daily mineral sunscreen with a soft-matte finish."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+  },
+  "live_ext_906f8e7c7685d563a502787b": {
+    "notes": "Strict human QA override: reviewed from both Gemini passes and tightened from a generic product card into a multi-peptide age-support set definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Age-support skincare set",
+        "body": "A multi-step skincare set that uses multi-peptide products to support visible signs of aging."
+      },
+      "best_for": [
+        {
+          "tag": "fine_lines_wrinkles",
+          "label": "Fine lines or wrinkle-focused routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "routine_simplification",
+          "label": "A coordinated age-support routine",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Multi-peptide routine",
+          "body": "Groups multi-peptide products into one coordinated age-support set.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Set format over single SKU",
+          "body": "Designed as a routine bundle instead of asking one product to do the full job.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "routine set",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use the included products in the order directed by the brand."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "format",
+          "label": "This is a multi-step set, not a single peptide serum.",
+          "severity": "low"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use the included products in the order directed by the brand."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Age-support skincare set",
+      "highlight": "Multi-peptide age-support set",
+      "intro": "A multi-step set built around age-support peptides."
+    },
+    "search_card": {
+      "compact_candidate": "Age-support skincare set",
+      "highlight_candidate": "Multi-peptide age-support set",
+      "intro_candidate": "A multi-step set built around age-support peptides."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+  },
+  "product:ext_906f8e7c7685d563a502787b": {
+    "notes": "Strict human QA override: reviewed from both Gemini passes and tightened from a generic product card into a multi-peptide age-support set definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Age-support skincare set",
+        "body": "A multi-step skincare set that uses multi-peptide products to support visible signs of aging."
+      },
+      "best_for": [
+        {
+          "tag": "fine_lines_wrinkles",
+          "label": "Fine lines or wrinkle-focused routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "routine_simplification",
+          "label": "A coordinated age-support routine",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Multi-peptide routine",
+          "body": "Groups multi-peptide products into one coordinated age-support set.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Set format over single SKU",
+          "body": "Designed as a routine bundle instead of asking one product to do the full job.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "routine set",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use the included products in the order directed by the brand."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "format",
+          "label": "This is a multi-step set, not a single peptide serum.",
+          "severity": "low"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use the included products in the order directed by the brand."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Age-support skincare set",
+      "highlight": "Multi-peptide age-support set",
+      "intro": "A multi-step set built around age-support peptides."
+    },
+    "search_card": {
+      "compact_candidate": "Age-support skincare set",
+      "highlight_candidate": "Multi-peptide age-support set",
+      "intro_candidate": "A multi-step set built around age-support peptides."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+  },
+  "live_ext_af05377689d7e39f5740d5f2": {
+    "notes": "Strict human QA override: reviewed from both Gemini passes and tightened from a generic product card into a barrier-support routine set definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Barrier-support skincare set",
+        "body": "A multi-step collection designed to help support and rebuild the skin barrier."
+      },
+      "best_for": [
+        {
+          "tag": "dryness_barrier",
+          "label": "Dryness or barrier-repair routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "sensitive_skin",
+          "label": "Skin that feels easily stressed",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Barrier-first routine",
+          "body": "Keeps barrier repair at the center of the collection instead of a single moisturizer step.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Multi-step support",
+          "body": "Bundles several supportive steps for a fuller barrier routine.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "routine set",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use the included products in the order directed by the brand."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "format",
+          "label": "This is a collection of steps, not a single barrier cream.",
+          "severity": "low"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use the included products in the order directed by the brand."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Barrier-support skincare set",
+      "highlight": "Barrier-focused routine set",
+      "intro": "A multi-step collection for barrier support and recovery."
+    },
+    "search_card": {
+      "compact_candidate": "Barrier-support skincare set",
+      "highlight_candidate": "Barrier-focused routine set",
+      "intro_candidate": "A multi-step collection for barrier support and recovery."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+  },
+  "product:ext_af05377689d7e39f5740d5f2": {
+    "notes": "Strict human QA override: reviewed from both Gemini passes and tightened from a generic product card into a barrier-support routine set definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Barrier-support skincare set",
+        "body": "A multi-step collection designed to help support and rebuild the skin barrier."
+      },
+      "best_for": [
+        {
+          "tag": "dryness_barrier",
+          "label": "Dryness or barrier-repair routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "sensitive_skin",
+          "label": "Skin that feels easily stressed",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Barrier-first routine",
+          "body": "Keeps barrier repair at the center of the collection instead of a single moisturizer step.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Multi-step support",
+          "body": "Bundles several supportive steps for a fuller barrier routine.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "routine set",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use the included products in the order directed by the brand."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "format",
+          "label": "This is a collection of steps, not a single barrier cream.",
+          "severity": "low"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use the included products in the order directed by the brand."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Barrier-support skincare set",
+      "highlight": "Barrier-focused routine set",
+      "intro": "A multi-step collection for barrier support and recovery."
+    },
+    "search_card": {
+      "compact_candidate": "Barrier-support skincare set",
+      "highlight_candidate": "Barrier-focused routine set",
+      "intro_candidate": "A multi-step collection for barrier support and recovery."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+  },
+  "live_ext_cd9e4645dd98f9b8693406ab": {
+    "notes": "Strict human QA override: reviewed after strict batch audit because Murad Retexturizing Body Pads still carried a generic Product card despite usable body-exfoliation signal.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Body exfoliation pads",
+        "body": "Pre-soaked body pads made to exfoliate and smooth rough, uneven skin texture."
+      },
+      "best_for": [
+        {
+          "tag": "texture_tone",
+          "label": "Rough or uneven body texture",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "body_care",
+          "label": "Body exfoliation routines",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Pre-soaked pad format",
+          "body": "Puts body exfoliation into an easy wipe-on pad instead of a scrub or body wash step.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Texture-smoothing body care",
+          "body": "Keeps retexturizing and smoothing body skin at the center of the product role.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "body_treatment",
+        "am_pm": [
+          "pm"
+        ],
+        "pairing_notes": [
+          "Swipe over rough body areas, then follow with body moisturizer."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "sun",
+          "label": "Use sunscreen on treated areas because exfoliating products can increase sun sensitivity.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "pre-soaked pads",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Swipe over rough body areas, then follow with body moisturizer."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Body exfoliation pads",
+      "highlight": "Body exfoliation in pad form",
+      "intro": "Pre-soaked body pads for rough, uneven texture."
+    },
+    "search_card": {
+      "compact_candidate": "Body exfoliation pads",
+      "highlight_candidate": "Body exfoliation in pad form",
+      "intro_candidate": "Pre-soaked body pads for rough, uneven texture."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+  },
+  "product:ext_cd9e4645dd98f9b8693406ab": {
+    "notes": "Strict human QA override: reviewed after strict batch audit because Murad Retexturizing Body Pads still carried a generic Product card despite usable body-exfoliation signal.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Body exfoliation pads",
+        "body": "Pre-soaked body pads made to exfoliate and smooth rough, uneven skin texture."
+      },
+      "best_for": [
+        {
+          "tag": "texture_tone",
+          "label": "Rough or uneven body texture",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "body_care",
+          "label": "Body exfoliation routines",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Pre-soaked pad format",
+          "body": "Puts body exfoliation into an easy wipe-on pad instead of a scrub or body wash step.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Texture-smoothing body care",
+          "body": "Keeps retexturizing and smoothing body skin at the center of the product role.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "body_treatment",
+        "am_pm": [
+          "pm"
+        ],
+        "pairing_notes": [
+          "Swipe over rough body areas, then follow with body moisturizer."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "sun",
+          "label": "Use sunscreen on treated areas because exfoliating products can increase sun sensitivity.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "pre-soaked pads",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Swipe over rough body areas, then follow with body moisturizer."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Body exfoliation pads",
+      "highlight": "Body exfoliation in pad form",
+      "intro": "Pre-soaked body pads for rough, uneven texture."
+    },
+    "search_card": {
+      "compact_candidate": "Body exfoliation pads",
+      "highlight_candidate": "Body exfoliation in pad form",
+      "intro_candidate": "Pre-soaked body pads for rough, uneven texture."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch200_reviewed_2026_04_13"
   }
 }
