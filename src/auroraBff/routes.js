@@ -17,6 +17,10 @@ const {
   EXTERNAL_SEED_RECALL_SQL_FIELDS,
 } = require('../services/externalSeedRecall');
 const {
+  buildRecoAuthorityQueryVariants,
+  buildRecoAuthoritySearchAliases,
+} = require('../services/recoAlternativesAuthority');
+const {
   deduplicateCandidates: dedupeDupeCandidatesV2,
   filterSelfReferences: filterDupeSelfReferencesV2,
   getCandidateIdentity: getDupeCandidateIdentityV2,
@@ -64727,7 +64731,141 @@ function scoreRecoAlternativeCatalogGroundingMatch(openWorldRow, catalogRow) {
   };
 }
 
-function mapCatalogGroundedOpenWorldAlternative(openWorldRow, catalogRow, { matchScore = 0, query = '' } = {}) {
+function classifyRecoAuthorityHitSource(candidate) {
+  const normalized = normalizeRecoCatalogProduct(candidate);
+  if (!normalized) return '';
+  if (
+    String(normalized.merchant_id || '').trim().toLowerCase() === String(EXTERNAL_SEED_MERCHANT_ID || '').trim().toLowerCase() ||
+    String(normalized.retrieval_source || '').trim().toLowerCase() === 'external_seed' ||
+    String(normalized.source || '').trim().toLowerCase().includes('external')
+  ) {
+    return 'external_seed_hit';
+  }
+  return 'internal_hit';
+}
+
+function summarizeResolverAuthoritySource(resolved) {
+  const canonicalRef =
+    normalizeCanonicalProductRef(resolved?.canonicalProductRef, {
+      requireMerchant: true,
+      allowOpaqueProductId: false,
+    }) || null;
+  if (
+    String(canonicalRef?.merchant_id || '').trim().toLowerCase() === String(EXTERNAL_SEED_MERCHANT_ID || '').trim().toLowerCase()
+  ) {
+    return 'external_seed_hit';
+  }
+  const sources = Array.isArray(resolved?.metadata?.sources) ? resolved.metadata.sources : [];
+  if (sources.some((entry) => String(entry?.source || '').trim().toLowerCase().includes('external'))) {
+    return 'external_seed_hit';
+  }
+  return canonicalRef ? 'internal_hit' : '';
+}
+
+function buildOpenWorldAlternativeAuthorityQueryPack(row, { targetSignals = null } = {}) {
+  const item = isPlainObject(row) ? row : {};
+  const product = getRecoAlternativeProductObject(item);
+  const brand = pickFirstTrimmed(product.brand, item.brand);
+  const name = pickFirstTrimmed(product.display_name, product.displayName, product.name, item.name);
+  const category = pickFirstTrimmed(product.category, product.product_type, item.product_type, targetSignals?.productType);
+  const usageRole = pickFirstTrimmed(targetSignals?.usageRole);
+  const searchAliases = uniqCaseInsensitiveStrings(
+    [
+      ...asStringArray(item.search_aliases, 8),
+      ...asStringArray(product.search_aliases, 8),
+      ...asStringArray(item.aliases, 8),
+      ...asStringArray(product.aliases, 8),
+      joinBrandAndName(brand, name),
+      name,
+    ].filter(Boolean),
+    8,
+  );
+  return buildRecoAuthorityQueryVariants({
+    brand,
+    name,
+    category,
+    usageRole,
+    searchAliases,
+    maxVariants: 6,
+  });
+}
+
+function isGenericGroundedAlternativeCopy(row) {
+  const reasons = asStringArray(row?.reasons, 2);
+  const tradeoffNotes = asStringArray(row?.tradeoff_notes, 2);
+  const reasonText = reasons.join(' | ').toLowerCase();
+  const tradeoffText = tradeoffNotes.join(' | ').toLowerCase();
+  if (!reasons.length && !tradeoffNotes.length) return true;
+  return (
+    /same .* step as the anchor|distinct option for this compare|resolved to a live product entry/i.test(reasonText) ||
+    /verify formula specifics before comparing actives or finish|key formula details still need verification/i.test(tradeoffText)
+  );
+}
+
+function collectGroundedAlternativeAuthorityExperience(candidate) {
+  const normalized = normalizeRecoCatalogProduct(candidate);
+  if (!normalized) {
+    return {
+      compareHighlights: [],
+      productIntel: null,
+      shoppingCard: null,
+      searchCard: null,
+      pivotaInsights: null,
+    };
+  }
+  const compareHighlights = buildRecoCompareHighlightsFromInsightFields({
+    row: normalized,
+    pivotaInsights: normalized.pivota_insights,
+    shoppingCard: normalized.shopping_card,
+  });
+  return {
+    compareHighlights,
+    productIntel: normalized.product_intel || null,
+    shoppingCard: normalized.shopping_card || null,
+    searchCard: normalized.search_card || null,
+    pivotaInsights: normalized.pivota_insights || null,
+    whyThisOne: pickFirstTrimmed(normalized.why_this_one),
+    keyFeatures: asStringArray(normalized.key_features, 6),
+    shortDescription: pickFirstTrimmed(normalized.short_description),
+    description: pickFirstTrimmed(normalized.description),
+    bestFor: pickFirstTrimmed(normalized.best_for),
+  };
+}
+
+function applyGroundedAlternativeAuthorityExperience(row, candidate) {
+  const item = isPlainObject(row) ? { ...row } : {};
+  const experience = collectGroundedAlternativeAuthorityExperience(candidate);
+  const next = {
+    ...item,
+    ...(experience.compareHighlights.length ? { compare_highlights: experience.compareHighlights } : {}),
+    ...(experience.productIntel ? { product_intel: experience.productIntel } : {}),
+    ...(experience.shoppingCard ? { shopping_card: experience.shoppingCard } : {}),
+    ...(experience.searchCard ? { search_card: experience.searchCard } : {}),
+    ...(experience.pivotaInsights ? { pivota_insights: experience.pivotaInsights } : {}),
+    ...(experience.whyThisOne ? { why_this_one: experience.whyThisOne } : {}),
+    ...(experience.keyFeatures.length ? { key_features: experience.keyFeatures } : {}),
+    ...(experience.shortDescription ? { short_description: experience.shortDescription } : {}),
+    ...(experience.description ? { description: experience.description } : {}),
+    ...(experience.bestFor ? { best_for: experience.bestFor } : {}),
+  };
+  if (isGenericGroundedAlternativeCopy(next) && experience.compareHighlights.length) {
+    next.reasons = experience.compareHighlights.slice(0, 2);
+  }
+  return next;
+}
+
+function mapCatalogGroundedOpenWorldAlternative(
+  openWorldRow,
+  catalogRow,
+  {
+    matchScore = 0,
+    query = '',
+    queryVariant = '',
+    queryVariants = [],
+    authorityPresence = '',
+    searchHitCount = 0,
+  } = {},
+) {
   const normalized = normalizeRecoCatalogProduct(catalogRow);
   if (!normalized) return openWorldRow;
   const productId = pickFirstTrimmed(normalized.product_id, normalized.sku_id);
@@ -64749,7 +64887,7 @@ function mapCatalogGroundedOpenWorldAlternative(openWorldRow, catalogRow, { matc
               external: { query: candidateLabel },
             }
           : { path: 'external', external: { query: candidateLabel } };
-  return {
+  return applyGroundedAlternativeAuthorityExperience({
     ...openWorldRow,
     candidate_origin: 'pool',
     grounding_status: 'catalog_verified',
@@ -64773,9 +64911,15 @@ function mapCatalogGroundedOpenWorldAlternative(openWorldRow, catalogRow, { matc
       catalog_grounding_query: String(query || '').trim() || null,
       catalog_grounding_mode: 'catalog_exact_search',
       catalog_grounding_score: Number(matchScore.toFixed(3)),
+      ...(queryVariant ? { catalog_grounding_query_variant: queryVariant } : {}),
+      ...(Array.isArray(queryVariants) && queryVariants.length
+        ? { catalog_grounding_query_variants: queryVariants.slice(0, 6) }
+        : {}),
+      ...(authorityPresence ? { authority_presence_class: authorityPresence } : {}),
+      ...(searchHitCount > 0 ? { authority_hit_count: Math.max(0, Math.trunc(Number(searchHitCount) || 0)) } : {}),
       merged_candidate_origins: ['open_world', 'pool'],
     },
-  };
+  }, normalized);
 }
 
 function buildOpenWorldAlternativeResolveHints(openWorldRow) {
@@ -64785,19 +64929,27 @@ function buildOpenWorldAlternativeResolveHints(openWorldRow) {
   const name = pickFirstTrimmed(product.display_name, product.displayName, product.name, row.name);
   const displayName = pickFirstTrimmed(product.display_name, product.displayName, name);
   const aliasLabel = joinBrandAndName(brand, displayName || name);
+  const authorityAliases = buildRecoAuthoritySearchAliases({
+    brand,
+    name: displayName || name,
+    category: pickFirstTrimmed(product.category, product.product_type, row.product_type),
+    usageRole: pickFirstTrimmed(row?.metadata?.usage_role),
+    searchAliases: uniqCaseInsensitiveStrings(
+      [
+        ...asStringArray(row.search_aliases, 8),
+        aliasLabel,
+        displayName,
+        name,
+      ],
+      8,
+    ),
+    maxAliases: 8,
+  });
   const base = {
     ...row,
     ...(aliasLabel
       ? {
-          search_aliases: uniqCaseInsensitiveStrings(
-            [
-              ...asStringArray(row.search_aliases, 8),
-              aliasLabel,
-              displayName,
-              name,
-            ],
-            8,
-          ),
+          search_aliases: authorityAliases,
         }
       : {}),
   };
@@ -64904,6 +65056,10 @@ function mapResolverGroundedOpenWorldAlternative(openWorldRow, {
   query = '',
   targetSignals = null,
   groundingMode = 'resolver_ref',
+  queryVariant = '',
+  queryVariants = [],
+  authorityPresence = '',
+  resolverSource = '',
 } = {}) {
   const row = isPlainObject(openWorldRow) ? openWorldRow : {};
   const product = getRecoAlternativeProductObject(row);
@@ -64959,6 +65115,12 @@ function mapResolverGroundedOpenWorldAlternative(openWorldRow, {
         : 'open_world_grounded_resolver',
       catalog_grounding_query: String(query || '').trim() || null,
       catalog_grounding_mode: groundingMode,
+      ...(queryVariant ? { catalog_grounding_query_variant: queryVariant } : {}),
+      ...(Array.isArray(queryVariants) && queryVariants.length
+        ? { catalog_grounding_query_variants: queryVariants.slice(0, 6) }
+        : {}),
+      ...(authorityPresence ? { authority_presence_class: authorityPresence } : {}),
+      ...(resolverSource ? { catalog_grounding_resolver_source: resolverSource } : {}),
       merged_candidate_origins: ['open_world', 'pool'],
     },
   };
@@ -64967,91 +65129,187 @@ function mapResolverGroundedOpenWorldAlternative(openWorldRow, {
 
 async function groundOpenWorldAlternativesToCatalog(rows, { logger, targetSignals = null } = {}) {
   const list = Array.isArray(rows) ? rows : [];
-  if (!list.length) return { alternatives: [], grounded_count: 0, attempted_count: 0 };
+  if (!list.length) {
+    return {
+      alternatives: [],
+      grounded_count: 0,
+      attempted_count: 0,
+      failure_class_counts: { coverage_miss: 0, recall_miss: 0 },
+    };
+  }
   const groundOne = async (row) => {
     const origin = String(row?.candidate_origin || '').trim().toLowerCase();
     const grounding = String(row?.grounding_status || '').trim().toLowerCase();
     if (origin !== 'open_world' || grounding === 'catalog_verified') {
-      return { row, grounded: false, attempted: false };
+      return { row, grounded: false, attempted: false, failureClass: null };
     }
     const product = getRecoAlternativeProductObject(row);
     const brand = pickFirstTrimmed(product.brand, row?.brand);
     const name = pickFirstTrimmed(product.name, row?.name);
-    const query = joinBrandAndName(brand, name);
-    if (!brand || !name || !query) {
-      return { row, grounded: false, attempted: false };
+    const queryPack = buildOpenWorldAlternativeAuthorityQueryPack(row, { targetSignals });
+    const fallbackQuery = joinBrandAndName(brand, name);
+    if ((!brand || !name || !fallbackQuery) && !queryPack.length) {
+      return { row, grounded: false, attempted: false, failureClass: null };
     }
+    const queries = queryPack.length
+      ? queryPack
+      : [{ query: fallbackQuery, normalized_query: fallbackQuery.toLowerCase(), kind: 'brand_name_exact' }];
     let best = null;
+    const seenAuthorityCandidates = new Set();
+    const queryVariants = queries.map((entry) => String(entry?.query || '').trim()).filter(Boolean);
+    let searchHitCount = 0;
+    let lastResolverSource = '';
     try {
-      const searched = await searchPivotaBackendProducts({
-        query,
-        limit: 5,
-        logger,
-        timeoutMs: 1100,
-        minTimeoutMs: 220,
-        mode: 'main_path',
-        allowExternalSeed: true,
-        externalSeedStrategy: 'supplement_internal_first',
-        fastMode: true,
-      });
-      for (const candidate of Array.isArray(searched?.products) ? searched.products : []) {
-        const scored = scoreRecoAlternativeCatalogGroundingMatch(row, candidate);
-        if (!scored.ok) continue;
-        if (!best || scored.score > best.score) best = { ...scored, raw: candidate };
+      for (const variant of queries.slice(0, 4)) {
+        // eslint-disable-next-line no-await-in-loop
+        const searched = await searchPivotaBackendProducts({
+          query: variant.query,
+          limit: 5,
+          logger,
+          timeoutMs: 700,
+          minTimeoutMs: 220,
+          mode: 'main_path',
+          allowExternalSeed: true,
+          externalSeedStrategy: 'supplement_internal_first',
+          fastMode: true,
+        });
+        for (const candidate of Array.isArray(searched?.products) ? searched.products : []) {
+          const normalizedCandidate = normalizeRecoCatalogProduct(candidate);
+          const candidateKey = normalizeRecoDedupeToken(
+            pickFirstTrimmed(
+              normalizedCandidate?.product_id,
+              normalizedCandidate?.sku_id,
+              normalizedCandidate?.merchant_id && normalizedCandidate?.name
+                ? `${normalizedCandidate.merchant_id}:${normalizedCandidate.name}`
+                : '',
+            ),
+          );
+          if (candidateKey && !seenAuthorityCandidates.has(candidateKey)) {
+            seenAuthorityCandidates.add(candidateKey);
+            searchHitCount += 1;
+          }
+          const scored = scoreRecoAlternativeCatalogGroundingMatch(row, candidate);
+          if (!scored.ok) continue;
+          if (!best || scored.score > best.score) {
+            best = {
+              ...scored,
+              raw: candidate,
+              query: variant.query,
+              queryVariant: variant.kind,
+              authorityPresence: classifyRecoAuthorityHitSource(candidate),
+            };
+          }
+        }
+        if (best?.score >= 0.94) break;
       }
     } catch (err) {
-      logger?.warn?.({ err: err?.message || String(err), query }, 'aurora bff: alternatives catalog grounding failed');
+      logger?.warn?.(
+        { err: err?.message || String(err), query_variants: queryVariants.slice(0, 3) },
+        'aurora bff: alternatives catalog grounding failed',
+      );
     }
     if (best?.candidate) {
       return {
-        row: mapCatalogGroundedOpenWorldAlternative(row, best.candidate, { matchScore: best.score, query }),
+        row: mapCatalogGroundedOpenWorldAlternative(row, best.candidate, {
+          matchScore: best.score,
+          query: best.query || fallbackQuery,
+          queryVariant: best.queryVariant,
+          queryVariants,
+          authorityPresence: best.authorityPresence,
+          searchHitCount,
+        }),
         grounded: true,
         attempted: true,
+        failureClass: null,
       };
     }
     try {
-      const resolverHints = buildOpenWorldAlternativeResolveHints(row);
-      const resolved = await resolveRecoPdpByLocalResolver({
-        queryText: query,
-        hints: resolverHints,
-        logger,
-        timeoutMs: 850,
-        allowExternalSeed: true,
-        externalSeedStrategy: 'supplement_internal_first',
-      });
-      if (resolved?.ok && resolved.canonicalProductRef) {
-        return {
-          row: mapResolverGroundedOpenWorldAlternative(row, {
-            canonicalProductRef: resolved.canonicalProductRef,
-            query,
-            targetSignals,
-            groundingMode: 'resolver_ref',
+      for (const variant of queries.slice(0, 3)) {
+        const resolverHints = buildOpenWorldAlternativeResolveHints({
+          ...row,
+          search_aliases: buildRecoAuthoritySearchAliases({
+            brand,
+            name,
+            category: pickFirstTrimmed(product.category, product.product_type, row.product_type, targetSignals?.productType),
+            usageRole: pickFirstTrimmed(targetSignals?.usageRole),
+            searchAliases: queryVariants,
+            maxAliases: 8,
           }),
-          grounded: true,
-          attempted: true,
-        };
+        });
+        // eslint-disable-next-line no-await-in-loop
+        const resolved = await resolveRecoPdpByLocalResolver({
+          queryText: variant.query,
+          hints: resolverHints,
+          logger,
+          timeoutMs: 650,
+          allowExternalSeed: true,
+          externalSeedStrategy: 'supplement_internal_first',
+        });
+        lastResolverSource = summarizeResolverAuthoritySource(resolved);
+        if (resolved?.ok && resolved.canonicalProductRef) {
+          return {
+            row: mapResolverGroundedOpenWorldAlternative(row, {
+              canonicalProductRef: resolved.canonicalProductRef,
+              query: variant.query,
+              targetSignals,
+              groundingMode: 'resolver_ref',
+              queryVariant: variant.kind,
+              queryVariants,
+              authorityPresence: lastResolverSource || (searchHitCount > 0 ? 'present_but_unresolved' : ''),
+              resolverSource: lastResolverSource,
+            }),
+            grounded: true,
+            attempted: true,
+            failureClass: null,
+          };
+        }
       }
     } catch (err) {
-      logger?.warn?.({ err: err?.message || String(err), query }, 'aurora bff: alternatives resolver grounding failed');
+      logger?.warn?.(
+        { err: err?.message || String(err), query_variants: queryVariants.slice(0, 3) },
+        'aurora bff: alternatives resolver grounding failed',
+      );
     }
+    const failureClass = searchHitCount > 0 ? 'recall_miss' : 'coverage_miss';
     return {
-      row: markOpenWorldAlternativeVisibleCopy(row, { mode: 'name_only' }),
+      row: markOpenWorldAlternativeVisibleCopy({
+        ...row,
+        metadata: {
+          ...(row?.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata) ? row.metadata : {}),
+          authority_presence_class: searchHitCount > 0 ? 'present_but_unresolved' : 'missing_authority',
+          grounding_failure_class: failureClass,
+          ...(queryVariants.length ? { catalog_grounding_query_variants: queryVariants.slice(0, 6) } : {}),
+          ...(lastResolverSource ? { catalog_grounding_resolver_source: lastResolverSource } : {}),
+          ...(searchHitCount > 0 ? { authority_hit_count: searchHitCount } : {}),
+        },
+      }, { mode: 'name_only' }),
       grounded: false,
       attempted: true,
+      failureClass,
     };
   };
   const settled = await Promise.allSettled(list.map((row) => groundOne(row)));
   const enriched = [];
   let groundedCount = 0;
   let attemptedCount = 0;
+  const failureClassCounts = { coverage_miss: 0, recall_miss: 0 };
   for (let i = 0; i < settled.length; i += 1) {
     const result = settled[i];
-    const value = result.status === 'fulfilled' ? result.value : { row: list[i], grounded: false, attempted: false };
+    const value = result.status === 'fulfilled'
+      ? result.value
+      : { row: list[i], grounded: false, attempted: false, failureClass: null };
     if (value.grounded) groundedCount += 1;
     if (value.attempted) attemptedCount += 1;
+    if (value.failureClass === 'coverage_miss') failureClassCounts.coverage_miss += 1;
+    if (value.failureClass === 'recall_miss') failureClassCounts.recall_miss += 1;
     enriched.push(value.row || list[i]);
   }
-  return { alternatives: enriched, grounded_count: groundedCount, attempted_count: attemptedCount };
+  return {
+    alternatives: enriched,
+    grounded_count: groundedCount,
+    attempted_count: attemptedCount,
+    failure_class_counts: failureClassCounts,
+  };
 }
 
 function normalizeRecoAlternativesOpenWorldModel(raw) {
@@ -65308,6 +65566,7 @@ async function fetchRecoAlternativesForLocalGeminiOpenWorld({
     const grounded = await groundOpenWorldAlternativesToCatalog(normalizedRows, { logger, targetSignals });
     llmTrace.catalog_grounding_attempted_count = grounded.attempted_count;
     llmTrace.catalog_grounded_count = grounded.grounded_count;
+    llmTrace.catalog_grounding_failure_class_counts = grounded.failure_class_counts;
     const finalAlternatives = applyOpenWorldAlternativeVisibleCopy(grounded.alternatives, { targetSignals });
     return {
       ok: true,
@@ -65337,6 +65596,7 @@ async function fetchRecoAlternativesForLocalGeminiOpenWorld({
     const grounded = await groundOpenWorldAlternativesToCatalog(recoveredRows, { logger, targetSignals });
     llmTrace.catalog_grounding_attempted_count = grounded.attempted_count;
     llmTrace.catalog_grounded_count = grounded.grounded_count;
+    llmTrace.catalog_grounding_failure_class_counts = grounded.failure_class_counts;
     llmTrace.recovered_from_truncated_raw = true;
     llmTrace.recovered_row_count = recoveredRows.length;
     const finalAlternatives = applyOpenWorldAlternativeVisibleCopy(grounded.alternatives, { targetSignals });
@@ -65424,6 +65684,7 @@ async function fetchRecoAlternativesForExternalSeedProduct({
   let openWorldStatus = 'empty';
   let openWorldGroundingAttemptedCount = 0;
   let openWorldGroundedCount = 0;
+  let openWorldFailureClassCounts = { coverage_miss: 0, recall_miss: 0 };
   let llmTrace = null;
 
   const poolSummary = poolCandidates.slice(0, 4).map((row) => {
@@ -65531,8 +65792,10 @@ async function fetchRecoAlternativesForExternalSeedProduct({
           openWorldRows = grounded.alternatives;
           openWorldGroundingAttemptedCount = grounded.attempted_count;
           openWorldGroundedCount = grounded.grounded_count;
+          openWorldFailureClassCounts = grounded.failure_class_counts || openWorldFailureClassCounts;
           llmTrace.catalog_grounding_attempted_count = grounded.attempted_count;
           llmTrace.catalog_grounded_count = grounded.grounded_count;
+          llmTrace.catalog_grounding_failure_class_counts = grounded.failure_class_counts;
         }
         if (recoveredRawRows.length) {
           llmTrace.recovered_from_truncated_raw = true;
@@ -65587,6 +65850,7 @@ async function fetchRecoAlternativesForExternalSeedProduct({
     open_world_selected_count: openWorldSelectedCount,
     open_world_grounding_attempted_count: openWorldGroundingAttemptedCount,
     open_world_grounded_count: openWorldGroundedCount,
+    open_world_grounding_failure_class_counts: openWorldFailureClassCounts,
     ranking_mode: 'best_score_mixed',
     pool_recall_status: poolCandidates.length >= 3 ? 'full' : poolCandidates.length > 0 ? 'partial' : 'empty',
     open_world_status: openWorldStatus,

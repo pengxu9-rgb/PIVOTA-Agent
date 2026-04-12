@@ -269,10 +269,26 @@ function main() {
   }
 }
 
-try {
-  main();
-  process.exit(0);
-} catch (error) {
-  process.stderr.write(`${error && error.stack ? error.stack : String(error)}\n`);
-  process.exit(1);
+if (require.main === module) {
+  try {
+    main();
+    process.exit(0);
+  } catch (error) {
+    process.stderr.write(`${error && error.stack ? error.stack : String(error)}\n`);
+    process.exit(1);
+  }
 }
+
+module.exports = {
+  parseArgs,
+  normalizeHttpUrl,
+  parsePrice,
+  normalizeAvailability,
+  collectImageUrls,
+  stableExternalProductId,
+  stableSeedId,
+  pickPrimaryVariant,
+  mapVariants,
+  buildSeedRow,
+  main,
+};

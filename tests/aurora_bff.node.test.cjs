@@ -6282,6 +6282,8 @@ test('fetchRecoAlternativesForProduct: open_world_only grounds unresolved search
         assert.equal(out.alternatives[0]?.pdp_open?.path, 'ref');
         assert.equal(out.alternatives[0]?.metadata?.compare_stage, 'open_world_grounded_resolver');
         assert.equal(out.alternatives[0]?.metadata?.catalog_grounding_mode, 'resolver_ref');
+        assert.equal(out.alternatives[0]?.metadata?.authority_presence_class, 'external_seed_hit');
+        assert.equal(Array.isArray(out.alternatives[0]?.metadata?.catalog_grounding_query_variants), true);
         assert.equal(out.alternatives[0]?.metadata?.visible_copy_mode, undefined);
         assert.equal(out.alternatives[0]?.metadata?.name_only_copy_sanitized, undefined);
         assert.deepEqual(
@@ -6391,9 +6393,12 @@ test('fetchRecoAlternativesForProduct: open_world_only sanitizes unresolved name
 
         assert.equal(out?.llm_trace?.catalog_grounding_attempted_count, 1);
         assert.equal(out?.llm_trace?.catalog_grounded_count, 0);
+        assert.equal(out?.llm_trace?.catalog_grounding_failure_class_counts?.coverage_miss, 1);
         assert.equal(out?.alternatives?.length, 1);
         assert.equal(out.alternatives[0]?.candidate_origin, 'open_world');
         assert.equal(out.alternatives[0]?.grounding_status, 'name_only');
+        assert.equal(out.alternatives[0]?.metadata?.authority_presence_class, 'missing_authority');
+        assert.equal(out.alternatives[0]?.metadata?.grounding_failure_class, 'coverage_miss');
         assert.equal(out.alternatives[0]?.metadata?.visible_copy_mode, 'name_only');
         assert.equal(out.alternatives[0]?.metadata?.name_only_copy_sanitized, true);
         assert.match(String(out.alternatives[0]?.reasons?.[0] || ''), /same .* step as the anchor/i);
@@ -6408,6 +6413,227 @@ test('fetchRecoAlternativesForProduct: open_world_only sanitizes unresolved name
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
         loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
         loaded?.__internal?.__resetResolveProductRefForTest?.();
+        axios.get = originalGet;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('fetchRecoAlternativesForProduct: open_world_only marks recall_miss when authority hits exist but do not resolve', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      GEMINI_API_KEY: 'test_gemini_key',
+      AURORA_DIAG_FORCE_GEMINI: 'true',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED: 'false',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      axios.get = async (url) => {
+        if (!isProductsSearchUrl(url)) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: 'ext_supergoop_other',
+                merchant_id: 'external_seed',
+                brand: 'Supergoop!',
+                name: 'Glow Oil SPF 50',
+                display_name: 'Glow Oil SPF 50',
+                product_type: 'Sunscreen',
+                category: 'Sunscreen',
+              },
+            ],
+          },
+        };
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { __internal } = routeModule;
+        __internal.__setCallGeminiJsonObjectForTest(async () => ({
+          ok: true,
+          json: {
+            alternatives: [
+              {
+                brand: 'Supergoop!',
+                name: 'Glowscreen SPF 40',
+                product_type: 'sunscreen',
+                similarity_score: 74,
+                reasons: ['Same sunscreen step with a glow-finish positioning.'],
+                tradeoff_notes: ['Specific UV filter details still need verification.'],
+              },
+            ],
+          },
+        }));
+        __internal.__setResolveProductRefForTest(async () => ({
+          resolved: false,
+          product_ref: null,
+          confidence: 0,
+          reason: 'no_candidates',
+          candidates: [],
+        }));
+
+        const out = await __internal.fetchRecoAlternativesForProduct({
+          ctx: {
+            lang: 'EN',
+            request_id: 'req_open_world_recall_miss',
+            trace_id: 'trace_open_world_recall_miss',
+          },
+          profileSummary: null,
+          recentLogs: [],
+          productInput: 'The Ordinary UV Filters SPF 45 Serum',
+          productObj: {
+            brand: 'The Ordinary',
+            name: 'UV Filters SPF 45 Serum',
+            product_type: 'sunscreen',
+            category: 'Sunscreen',
+            claims: ['daily sunscreen', 'lightweight protection'],
+          },
+          anchorId: '',
+          maxTotal: 3,
+          candidatePool: [],
+          logger: null,
+          options: {
+            recommendation_mode: 'open_world_only',
+            profile_mode: 'anchor_only',
+            disable_fallback: true,
+            disable_synthetic_local_fallback: true,
+            ignore_selector_candidates: true,
+            skip_anchor_precheck: true,
+          },
+        });
+
+        assert.equal(out?.llm_trace?.catalog_grounding_failure_class_counts?.recall_miss, 1);
+        assert.equal(out.alternatives[0]?.metadata?.authority_presence_class, 'present_but_unresolved');
+        assert.equal(out.alternatives[0]?.metadata?.grounding_failure_class, 'recall_miss');
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        loaded?.__internal?.__resetResolveProductRefForTest?.();
+        axios.get = originalGet;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('fetchRecoAlternativesForProduct: open_world_only preserves reviewed highlights on catalog-grounded rows', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      GEMINI_API_KEY: 'test_gemini_key',
+      AURORA_DIAG_FORCE_GEMINI: 'true',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED: 'false',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      axios.get = async (url) => {
+        if (!isProductsSearchUrl(url)) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: 'ext_lrp_anthelios',
+                merchant_id: 'external_seed',
+                brand: 'La Roche-Posay',
+                name: 'Anthelios Ultra-Light Invisible Fluid SPF 50+',
+                display_name: 'Anthelios Ultra-Light Invisible Fluid SPF 50+',
+                product_type: 'Sunscreen',
+                category: 'Sunscreen',
+                compare_highlights: ['Very fluid sunscreen texture.', 'Higher price than the anchor.'],
+                pivota_insights: {
+                  why_it_stands_out: [{ body: 'Multiple shoppers mention the ultra-light fluid finish.' }],
+                },
+              },
+            ],
+          },
+        };
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { __internal } = routeModule;
+        __internal.__setCallGeminiJsonObjectForTest(async () => ({
+          ok: true,
+          json: {
+            alternatives: [
+              {
+                brand: 'La Roche-Posay',
+                name: 'Anthelios Ultra-Light Invisible Fluid SPF 50+',
+                product_type: 'sunscreen',
+                similarity_score: 82,
+                reasons: ['Lightweight fluid sunscreen alternative.'],
+                tradeoff_notes: ['Costs more than the anchor.'],
+              },
+            ],
+          },
+        }));
+
+        const out = await __internal.fetchRecoAlternativesForProduct({
+          ctx: {
+            lang: 'EN',
+            request_id: 'req_open_world_reviewed_highlights',
+            trace_id: 'trace_open_world_reviewed_highlights',
+          },
+          profileSummary: null,
+          recentLogs: [],
+          productInput: 'The Ordinary UV Filters SPF 45 Serum',
+          productObj: {
+            brand: 'The Ordinary',
+            name: 'UV Filters SPF 45 Serum',
+            product_type: 'sunscreen',
+            category: 'Sunscreen',
+            claims: ['lightweight sunscreen'],
+          },
+          anchorId: '',
+          maxTotal: 3,
+          candidatePool: [],
+          logger: null,
+          options: {
+            recommendation_mode: 'open_world_only',
+            profile_mode: 'anchor_only',
+            disable_fallback: true,
+            disable_synthetic_local_fallback: true,
+            ignore_selector_candidates: true,
+            skip_anchor_precheck: true,
+          },
+        });
+
+        assert.equal(out.alternatives[0]?.grounding_status, 'catalog_verified');
+        assert.deepEqual(out.alternatives[0]?.compare_highlights, [
+          'Very fluid sunscreen texture.',
+          'Higher price than the anchor.',
+          'Multiple shoppers mention the ultra-light fluid finish.',
+        ]);
+        assert.equal(
+          out.alternatives[0]?.pivota_insights?.why_it_stands_out?.[0]?.body,
+          'Multiple shoppers mention the ultra-light fluid finish.',
+        );
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
         axios.get = originalGet;
         delete require.cache[moduleId];
       }
