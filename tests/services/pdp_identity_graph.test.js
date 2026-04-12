@@ -334,4 +334,162 @@ describe('pdpIdentityGraph', () => {
       }),
     );
   });
+
+  test('promotePdpIdentityLiveRead dry-run enables whole exact-item groups backed by brand source', async () => {
+    process.env = {
+      ...ORIGINAL_ENV,
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgresql://example.test/pivota',
+      PDP_IDENTITY_GRAPH_ENABLED: 'false',
+    };
+    jest.resetModules();
+    const { promotePdpIdentityLiveRead } = require('../../src/services/pdpIdentityGraph');
+    const candidateRow = {
+      source_listing_ref: 'external_seed:ext_1',
+      merchant_id: 'external_seed',
+      product_id: 'ext_1',
+      source_kind: 'external_seed',
+      source_tier: 'brand',
+      live_read_enabled: false,
+      sellable_item_group_id: 'sig_1',
+      product_line_id: 'pl_1',
+      review_family_id: 'rf_1',
+      identity_status: 'approved',
+      identity_confidence: 0.98,
+      match_basis: [],
+      strong_identity: {},
+      soft_identity: {},
+      variant_axes: { volume: '45ml' },
+      source_payload: { title: 'Example Product' },
+      review_summary: {},
+      official_domain: 'brand.example',
+      brand_norm: 'example',
+      title_norm: 'example product',
+      title_core_norm: 'example product',
+      review_required: false,
+      review_reason_codes: [],
+    };
+    const merchantRow = {
+      ...candidateRow,
+      source_listing_ref: 'merch_1:prod_1',
+      merchant_id: 'merch_1',
+      product_id: 'prod_1',
+      source_kind: 'internal',
+      source_tier: 'merchant',
+    };
+    const queryFn = jest
+      .fn()
+      .mockResolvedValueOnce({ rows: [candidateRow] })
+      .mockResolvedValueOnce({ rows: [candidateRow, merchantRow] });
+
+    const result = await promotePdpIdentityLiveRead({
+      brand: 'Example',
+      dryRun: true,
+      limit: 50,
+      queryFn,
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        dry_run: true,
+        candidate_rows_scanned: 1,
+        groups_considered: 1,
+        groups_eligible: 1,
+        rows_to_enable: 2,
+        overrides_to_write: 2,
+        updated_rows: 0,
+        brand_filter: 'example',
+      }),
+    );
+    expect(result.sample_refs).toEqual(
+      expect.arrayContaining(['external_seed:ext_1', 'merch_1:prod_1']),
+    );
+  });
+
+  test('promotePdpIdentityLiveRead writes approve_live_read overrides and updates rows', async () => {
+    process.env = {
+      ...ORIGINAL_ENV,
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgresql://example.test/pivota',
+    };
+    jest.resetModules();
+    const { promotePdpIdentityLiveRead } = require('../../src/services/pdpIdentityGraph');
+    const candidateRow = {
+      source_listing_ref: 'external_seed:ext_1',
+      merchant_id: 'external_seed',
+      product_id: 'ext_1',
+      source_kind: 'external_seed',
+      source_tier: 'brand',
+      live_read_enabled: false,
+      sellable_item_group_id: 'sig_1',
+      product_line_id: 'pl_1',
+      review_family_id: 'rf_1',
+      identity_status: 'approved',
+      identity_confidence: 0.98,
+      match_basis: [],
+      strong_identity: {},
+      soft_identity: {},
+      variant_axes: { volume: '45ml' },
+      source_payload: { title: 'Example Product' },
+      review_summary: {},
+      official_domain: 'brand.example',
+      brand_norm: 'example',
+      title_norm: 'example product',
+      title_core_norm: 'example product',
+      review_required: false,
+      review_reason_codes: [],
+    };
+    const merchantRow = {
+      ...candidateRow,
+      source_listing_ref: 'merch_1:prod_1',
+      merchant_id: 'merch_1',
+      product_id: 'prod_1',
+      source_kind: 'internal',
+      source_tier: 'merchant',
+    };
+    const queryFn = jest
+      .fn()
+      .mockResolvedValueOnce({ rows: [candidateRow] })
+      .mockResolvedValueOnce({ rows: [candidateRow, merchantRow] });
+    const client = {
+      query: jest
+        .fn()
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({ rowCount: 2 })
+        .mockResolvedValueOnce({}),
+    };
+    const withClientFn = jest.fn(async (work) => work(client));
+
+    const result = await promotePdpIdentityLiveRead({
+      brand: 'Example',
+      dryRun: false,
+      limit: 50,
+      createdBy: 'codex',
+      queryFn,
+      withClientFn,
+    });
+
+    expect(withClientFn).toHaveBeenCalledTimes(1);
+    expect(client.query).toHaveBeenCalledWith('BEGIN');
+    expect(client.query).toHaveBeenCalledWith('COMMIT');
+    const insertCalls = client.query.mock.calls.filter((call) =>
+      String(call[0]).includes('INSERT INTO pdp_identity_override'),
+    );
+    expect(insertCalls).toHaveLength(2);
+    const updateCall = client.query.mock.calls.find((call) =>
+      String(call[0]).includes('UPDATE pdp_identity_listing'),
+    );
+    expect(updateCall).toBeTruthy();
+    expect(result).toEqual(
+      expect.objectContaining({
+        dry_run: false,
+        groups_eligible: 1,
+        rows_to_enable: 2,
+        overrides_to_write: 2,
+        updated_rows: 2,
+      }),
+    );
+  });
 });

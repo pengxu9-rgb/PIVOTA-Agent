@@ -53,6 +53,7 @@ const { buildStructuredPdpIngredientModules } = require('./services/pdpIngredien
 const {
   maybeBuildLiveSyntheticPdp,
   backfillPdpIdentityGraph,
+  promotePdpIdentityLiveRead,
   listPdpIdentityShadowRows,
   listPdpIdentityReviewQueue,
   listPdpIdentityOverrides,
@@ -17241,6 +17242,29 @@ app.post('/api/admin/pdp-identity/overrides', requireAdmin, async (req, res) => 
     return res.status(statusCode).json({
       ok: false,
       error: code || 'PDP_IDENTITY_OVERRIDE_FAILED',
+      message: err?.message || String(err),
+    });
+  }
+});
+
+app.post('/api/admin/pdp-identity/promote-live-read', requireAdmin, async (req, res) => {
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  try {
+    const result = await promotePdpIdentityLiveRead({
+      brand: String(body.brand || '').trim() || null,
+      sourceListingRefs: Array.isArray(body.source_listing_refs || body.sourceListingRefs)
+        ? (body.source_listing_refs || body.sourceListingRefs)
+        : [],
+      limit: Number(body.limit ?? 500) || 500,
+      dryRun: body.dry_run === true || body.dryRun === true,
+      requireBrandSource: body.require_brand_source !== false && body.requireBrandSource !== false,
+      createdBy: body.created_by || body.createdBy || 'admin',
+    });
+    return res.json({ ok: true, result });
+  } catch (err) {
+    return res.status(500).json({
+      ok: false,
+      error: 'PDP_IDENTITY_PROMOTE_LIVE_READ_FAILED',
       message: err?.message || String(err),
     });
   }
