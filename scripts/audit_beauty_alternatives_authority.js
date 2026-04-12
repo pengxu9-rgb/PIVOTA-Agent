@@ -114,7 +114,7 @@ async function fetchInternalHitsForVariant(queryFn, variant, limit = 5) {
   const res = await queryFn(
     `
       SELECT
-        product_id::text AS product_id,
+        id::text AS product_id,
         merchant_id::text AS merchant_id
       FROM products_cache
       WHERE lower(to_jsonb(products_cache)::text) LIKE $1
