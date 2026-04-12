@@ -64,7 +64,12 @@ describe('discovery feed service', () => {
       DISCOVERY_BRAND_DIRECT_PREFETCH_DELAY_MS: process.env.DISCOVERY_BRAND_DIRECT_PREFETCH_DELAY_MS,
       DISCOVERY_RECALL_BUDGET_MS: process.env.DISCOVERY_RECALL_BUDGET_MS,
       DISCOVERY_POOL_CACHE_TTL_MS: process.env.DISCOVERY_POOL_CACHE_TTL_MS,
+      DISCOVERY_SERVING_SHADOW_TIMEOUT_MS: process.env.DISCOVERY_SERVING_SHADOW_TIMEOUT_MS,
       CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET: process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET,
+      CATALOG_SERVING_INDEX_BASE_URL: process.env.CATALOG_SERVING_INDEX_BASE_URL,
+      CATALOG_SERVING_INDEX_NAME: process.env.CATALOG_SERVING_INDEX_NAME,
+      CATALOG_SERVING_INDEX_API_KEY: process.env.CATALOG_SERVING_INDEX_API_KEY,
+      CATALOG_SERVING_INDEX_SHADOW_READ_ENABLED: process.env.CATALOG_SERVING_INDEX_SHADOW_READ_ENABLED,
       DATABASE_URL: process.env.DATABASE_URL,
     };
     resetDiscoveryMetricsForTest();
@@ -4184,6 +4189,248 @@ describe('discovery feed service', () => {
     );
   });
 
+  test('generic anonymous browse serves a curated head first, then hands off to exhaustive cursor tail', async () => {
+    const candidateProducts = Array.from({ length: 180 }, (_, idx) =>
+      ({
+        ...makeProduct({
+          merchant_id: 'external_seed',
+          product_id: `generic_${idx + 1}`,
+          title: `Barrier Serum ${idx + 1}`,
+          brand: `Brand ${idx + 1}`,
+          category: 'Skincare',
+          product_type: 'Serum',
+        }),
+        __discovery_provider: 'products_search',
+      }));
+
+    const basePayload = {
+      surface: 'browse_products',
+      limit: 60,
+      context: {
+        auth_state: 'anonymous',
+        locale: 'en-US',
+        recent_views: [],
+        recent_queries: [],
+      },
+    };
+
+    const pageOne = await getDiscoveryFeed(basePayload, { candidateProducts });
+    const pageTwo = await getDiscoveryFeed(
+      {
+        ...basePayload,
+        cursor: pageOne.cursor_info.next_cursor,
+      },
+      { candidateProducts },
+    );
+    const pageThree = await getDiscoveryFeed(
+      {
+        ...basePayload,
+        cursor: pageTwo.cursor_info.next_cursor,
+      },
+      { candidateProducts },
+    );
+
+    expect(pageOne.metadata).toEqual(
+      expect.objectContaining({
+        serving_mode: 'curated_head',
+        eligible_pool_count: 120,
+      }),
+    );
+    expect(pageTwo.metadata).toEqual(
+      expect.objectContaining({
+        serving_mode: 'curated_head',
+      }),
+    );
+    expect(pageThree.metadata).toEqual(
+      expect.objectContaining({
+        serving_mode: 'exhaustive',
+      }),
+    );
+    expect(pageOne.cursor_info).toEqual(
+      expect.objectContaining({
+        has_next_page: true,
+        serving_mode: 'curated_head',
+      }),
+    );
+    expect(pageTwo.cursor_info).toEqual(
+      expect.objectContaining({
+        has_next_page: true,
+        serving_mode: 'exhaustive',
+      }),
+    );
+    expect(pageThree.cursor_info).toEqual(
+      expect.objectContaining({
+        has_next_page: false,
+        serving_mode: 'exhaustive',
+      }),
+    );
+
+    const ids = [
+      ...pageOne.products.map((product) => product.product_id),
+      ...pageTwo.products.map((product) => product.product_id),
+      ...pageThree.products.map((product) => product.product_id),
+    ];
+    expect(new Set(ids).size).toBe(180);
+    expect(pageOne.products[0].product_id).toBe('generic_1');
+    expect(pageTwo.products[0].product_id).toBe('generic_61');
+    expect(pageThree.products[0].product_id).toBe('generic_121');
+  });
+
+  test('brand or query scoped browse skips curated head and starts in exhaustive mode', async () => {
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        limit: 2,
+        query: {
+          text: 'serum',
+        },
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      },
+      {
+        candidateProducts: [
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'serum_1',
+            title: 'Barrier Serum',
+            brand: 'KraveBeauty',
+            category: 'Skincare',
+            product_type: 'Serum',
+          }),
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'serum_2',
+            title: 'Hydrating Serum',
+            brand: 'Byoma',
+            category: 'Skincare',
+            product_type: 'Serum',
+          }),
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'cream_1',
+            title: 'Barrier Cream',
+            brand: 'KraveBeauty',
+            category: 'Skincare',
+            product_type: 'Cream',
+          }),
+        ],
+      },
+    );
+
+    expect(response.metadata).toEqual(
+      expect.objectContaining({
+        serving_mode: 'exhaustive',
+        serving_contract_version: 'pivota.discovery.serving.v1',
+      }),
+    );
+    expect(response.cursor_info).toEqual(
+      expect.objectContaining({
+        has_next_page: false,
+        serving_mode: 'exhaustive',
+      }),
+    );
+    expect(response.products.map((product) => product.product_id)).toEqual(['serum_1', 'serum_2']);
+  });
+
+  test('browse_products debug mode records a non-blocking catalog serving shadow summary', async () => {
+    jest.resetModules();
+    process.env.CATALOG_SERVING_INDEX_BASE_URL = 'https://catalog-shadow.example';
+    process.env.CATALOG_SERVING_INDEX_SHADOW_READ_ENABLED = 'true';
+    process.env.DISCOVERY_SERVING_SHADOW_TIMEOUT_MS = '450';
+
+    const searchCatalogServingIndexMock = jest.fn(async () => ({
+      items: [
+        { doc_id: 'source:external_seed:serum_1' },
+        { doc_id: 'source:external_seed:serum_2' },
+      ],
+      cursor_info: {
+        next_cursor: 'shadow-next',
+        has_next_page: true,
+        serving_mode: 'exhaustive',
+      },
+      source: 'opensearch_compatible',
+    }));
+
+    jest.doMock('../src/services/catalogServingIndex', () => {
+      const actual = jest.requireActual('../src/services/catalogServingIndex');
+      return {
+        ...actual,
+        getCatalogServingIndexConfig: () => ({
+          base_url: 'https://catalog-shadow.example',
+          index_name: 'catalog_public_v1',
+          api_key: null,
+          shadow_read_enabled: true,
+          enabled: true,
+        }),
+        isCatalogServingIndexEnabled: () => true,
+        searchCatalogServingIndex: searchCatalogServingIndexMock,
+      };
+    });
+
+    try {
+      const fresh = require('../src/services/discoveryFeed');
+      const response = await fresh.getDiscoveryFeed(
+        {
+          surface: 'browse_products',
+          limit: 2,
+          debug: true,
+          context: {
+            auth_state: 'anonymous',
+            locale: 'en-US',
+            recent_views: [],
+            recent_queries: [],
+          },
+        },
+        {
+          candidateProducts: [
+            makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'serum_1',
+              title: 'Barrier Serum',
+              brand: 'KraveBeauty',
+              category: 'Skincare',
+              product_type: 'Serum',
+            }),
+            makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'serum_2',
+              title: 'Hydrating Serum',
+              brand: 'Byoma',
+              category: 'Skincare',
+              product_type: 'Serum',
+            }),
+          ],
+        },
+      );
+
+      expect(searchCatalogServingIndexMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          limit: 2,
+          market: 'US',
+          timeout_ms: 450,
+        }),
+      );
+      expect(response.metadata.shadow_serving_summary).toEqual(
+        expect.objectContaining({
+          mode: 'shadow',
+          status: 'ok',
+          market: 'US',
+          runtime_returned: 2,
+          shadow_returned: 2,
+          overlap_count: 2,
+          overlap_ratio: 1,
+          source: 'opensearch_compatible',
+        }),
+      );
+    } finally {
+      jest.dontMock('../src/services/catalogServingIndex');
+    }
+  });
+
   test('browse_products uses stable catalog count from db when available and keeps runtime pool in metadata', async () => {
     jest.resetModules();
     const prevDatabaseUrl = process.env.DATABASE_URL;
@@ -5479,9 +5726,16 @@ describe('discovery feed service', () => {
       expect(response.metadata).toEqual(
         expect.objectContaining({
           primary_path_used: 'external_seed_fastpath',
-          eligible_pool_count: 240,
+          eligible_pool_count: 120,
           runtime_corpus_count: 240,
           has_more: true,
+          serving_mode: 'curated_head',
+        }),
+      );
+      expect(response.cursor_info).toEqual(
+        expect.objectContaining({
+          has_next_page: true,
+          serving_mode: 'curated_head',
         }),
       );
     } finally {
@@ -5532,12 +5786,20 @@ describe('discovery feed service', () => {
         }),
       );
       expect(response.products).toHaveLength(60);
+      expect(response.products[0].product_id).toBe('external_121');
       expect(response.metadata).toEqual(
         expect.objectContaining({
           primary_path_used: 'external_seed_fastpath',
           eligible_pool_count: 240,
           runtime_corpus_count: 240,
-          has_more: true,
+          has_more: false,
+          serving_mode: 'curated_head',
+        }),
+      );
+      expect(response.cursor_info).toEqual(
+        expect.objectContaining({
+          has_next_page: false,
+          serving_mode: 'curated_head',
         }),
       );
     } finally {
