@@ -12,6 +12,7 @@
     "probe:travel-plans:synthetic": "bash scripts/travel_plans_synthetic_probe.sh",
     "smoke:aurora:auth-session": "bash scripts/smoke_aurora_auth_session_refresh.sh",
     "smoke:discovery:prod": "bash scripts/smoke_discovery_feed_prod.sh",
+    "audit:catalog-serving:shadow": "node scripts/catalog_serving_shadow_acceptance.js",
     "rollback:webhook": "bash scripts/trigger_rollback_webhook.sh",
     "diag:calibration:train": "node scripts/train_diag_calibration.js",
     "diag:calibration:eval": "node scripts/eval_calibration.js",
