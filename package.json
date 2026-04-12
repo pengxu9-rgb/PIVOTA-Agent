@@ -8,6 +8,7 @@
     "dev": "node src/server.js",
     "smoke:layer2": "node scripts/smoke-layer2.js",
     "smoke:pdp:standard:prod": "node scripts/smoke_standard_pdp_prod.js",
+    "pdp-identity:coverage-lift": "node scripts/pdp-identity-coverage-lift.js",
     "pdp-identity:promote-live-read": "node scripts/promote-pdp-identity-live-read.js",
     "smoke:travel-plans:runtime": "bash scripts/smoke_travel_plans_runtime.sh",
     "probe:travel-plans:synthetic": "bash scripts/travel_plans_synthetic_probe.sh",

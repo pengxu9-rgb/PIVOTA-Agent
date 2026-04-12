@@ -492,4 +492,211 @@ describe('pdpIdentityGraph', () => {
       }),
     );
   });
+
+  test('summarizePdpIdentityCoverageByBrand normalizes coverage ratios', async () => {
+    process.env = {
+      ...ORIGINAL_ENV,
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgresql://example.test/pivota',
+    };
+    jest.resetModules();
+    const { summarizePdpIdentityCoverageByBrand } = require('../../src/services/pdpIdentityGraph');
+    const queryFn = jest.fn().mockResolvedValue({
+      rows: [
+        {
+          brand_norm: 'fenty beauty',
+          internal_rows: 2,
+          external_rows: 8,
+          beauty_external_rows: 8,
+          source_rows: 10,
+          identity_rows: 4,
+          live_rows: 3,
+          approved_rows: 4,
+          review_rows: 1,
+        },
+      ],
+    });
+
+    const result = await summarizePdpIdentityCoverageByBrand({
+      limit: 5,
+      minSourceRows: 1,
+      queryFn,
+    });
+
+    expect(queryFn).toHaveBeenCalledTimes(1);
+    expect(result).toEqual([
+      expect.objectContaining({
+        brand_norm: 'fenty beauty',
+        source_rows: 10,
+        identity_rows: 4,
+        live_rows: 3,
+        approved_rows: 4,
+        review_rows: 1,
+        missing_identity_rows: 6,
+        pending_live_rows: 1,
+        identity_coverage_ratio: 0.4,
+        live_coverage_ratio: 0.75,
+        review_ratio: 0.25,
+      }),
+    ]);
+  });
+
+  test('runPdpIdentityCoverageLift dry-run backfills and promotes selected brands', async () => {
+    process.env = {
+      ...ORIGINAL_ENV,
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgresql://example.test/pivota',
+    };
+    jest.resetModules();
+    const { runPdpIdentityCoverageLift } = require('../../src/services/pdpIdentityGraph');
+    const summaryFn = jest
+      .fn()
+      .mockResolvedValueOnce([
+        {
+          brand_norm: 'fenty beauty',
+          source_rows: 100,
+          identity_rows: 0,
+          live_rows: 0,
+          approved_rows: 0,
+          review_rows: 0,
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          brand_norm: 'fenty beauty',
+          source_rows: 100,
+          identity_rows: 40,
+          live_rows: 30,
+          approved_rows: 40,
+          review_rows: 10,
+        },
+      ]);
+    const backfillFn = jest.fn().mockResolvedValue({
+      dry_run: true,
+      identity_rows_built: 40,
+      review_queue_rows_built: 10,
+      written_rows: 0,
+      review_queue_rows: 0,
+    });
+    const promoteFn = jest.fn().mockResolvedValue({
+      dry_run: true,
+      rows_to_enable: 30,
+      updated_rows: 0,
+    });
+
+    const result = await runPdpIdentityCoverageLift({
+      dryRun: true,
+      topBrands: 1,
+      summaryFn,
+      backfillFn,
+      promoteFn,
+      queryFn: jest.fn(),
+      withClientFn: jest.fn(),
+    });
+
+    expect(backfillFn).toHaveBeenCalledTimes(1);
+    expect(backfillFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        brand: 'fenty beauty',
+        dryRun: true,
+        limit: 100,
+      }),
+    );
+    expect(promoteFn).toHaveBeenCalledTimes(1);
+    expect(promoteFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        brand: 'fenty beauty',
+        dryRun: true,
+        limit: 400,
+        requireBrandSource: true,
+      }),
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        dry_run: true,
+        brands_selected: ['fenty beauty'],
+        totals: expect.objectContaining({
+          brands_processed: 1,
+          brands_written: 0,
+          promote_rows_targeted: 30,
+        }),
+      }),
+    );
+    expect(result.results[0]).toEqual(
+      expect.objectContaining({
+        brand_norm: 'fenty beauty',
+        write_applied: false,
+        review_ratio: 0.25,
+      }),
+    );
+  });
+
+  test('runPdpIdentityCoverageLift skips write when preview review ratio is too high', async () => {
+    process.env = {
+      ...ORIGINAL_ENV,
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgresql://example.test/pivota',
+    };
+    jest.resetModules();
+    const { runPdpIdentityCoverageLift } = require('../../src/services/pdpIdentityGraph');
+    const summaryFn = jest
+      .fn()
+      .mockResolvedValueOnce([
+        {
+          brand_norm: 'tom ford beauty',
+          source_rows: 120,
+          identity_rows: 0,
+          live_rows: 0,
+          approved_rows: 0,
+          review_rows: 0,
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          brand_norm: 'tom ford beauty',
+          source_rows: 120,
+          identity_rows: 0,
+          live_rows: 0,
+          approved_rows: 0,
+          review_rows: 0,
+        },
+      ]);
+    const backfillFn = jest.fn().mockResolvedValue({
+      dry_run: true,
+      identity_rows_built: 50,
+      review_queue_rows_built: 40,
+      written_rows: 0,
+      review_queue_rows: 0,
+    });
+    const promoteFn = jest.fn();
+
+    const result = await runPdpIdentityCoverageLift({
+      dryRun: false,
+      topBrands: 1,
+      maxReviewRatio: 0.5,
+      summaryFn,
+      backfillFn,
+      promoteFn,
+      queryFn: jest.fn(),
+      withClientFn: jest.fn(),
+    });
+
+    expect(backfillFn).toHaveBeenCalledTimes(1);
+    expect(promoteFn).not.toHaveBeenCalled();
+    expect(result.results[0]).toEqual(
+      expect.objectContaining({
+        brand_norm: 'tom ford beauty',
+        write_applied: false,
+        skip_reason: 'review_ratio_exceeds_threshold',
+        review_ratio: 0.8,
+      }),
+    );
+    expect(result.totals).toEqual(
+      expect.objectContaining({
+        brands_processed: 1,
+        brands_written: 0,
+        skipped_brands: 1,
+      }),
+    );
+  });
 });
