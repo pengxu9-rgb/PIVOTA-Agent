@@ -380,7 +380,27 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  process.stderr.write(`${error && error.stack ? error.stack : String(error)}\n`);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    process.stderr.write(`${error && error.stack ? error.stack : String(error)}\n`);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  parseArgs,
+  normalizePath,
+  normalizeNonEmptyString,
+  ensureObject,
+  resolvePathMaybeRelative,
+  buildRow,
+  prepareRow,
+  validateRow,
+  findExistingRows,
+  insertRow,
+  processManifestWithDb,
+  processManifestWithoutDb,
+  summarizeResults,
+  buildCorrectionFollowups,
+  main,
+};

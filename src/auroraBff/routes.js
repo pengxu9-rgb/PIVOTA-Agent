@@ -532,6 +532,10 @@ const {
   canEnqueueBackfill: canEnqueueCompetitorSnapshotBackfill,
   markBackfillCooldown: markCompetitorSnapshotBackfillCooldown,
 } = require('./competitorSnapshotStore');
+const {
+  enqueueRecoAlternativesAuthorityBackfill,
+  _internals: recoAlternativesAuthorityBackfillInternals,
+} = require('./recoAlternativesAuthorityBackfill');
 const { simulateConflicts } = require('./routineRules');
 const { buildConflictHeatmapV1 } = require('./conflictHeatmapV1');
 const { INTENT_ENUM, inferCanonicalIntent } = require('./intentCanonical');
@@ -65770,6 +65774,42 @@ async function groundOpenWorldAlternativesToCatalog(rows, { logger, targetSignal
   };
 }
 
+async function buildRecoAlternativesAuthorityBackfillLedger({
+  ctx,
+  alternatives,
+  logger,
+} = {}) {
+  try {
+    return await enqueueRecoAlternativesAuthorityBackfill({
+      ctx,
+      alternatives,
+      logger,
+    });
+  } catch (err) {
+    logger?.warn?.(
+      {
+        err: err?.message || String(err),
+        request_id: ctx?.request_id || null,
+        trace_id: ctx?.trace_id || null,
+      },
+      'aurora bff: alternatives authority backfill enqueue failed',
+    );
+    return {
+      mode: 'async_external_seed_backfill',
+      policy: 'open_world_coverage_repair',
+      open_world_role: 'coverage_supplement',
+      open_world_row_count: 0,
+      coverage_gap_count: 0,
+      recall_gap_count: 0,
+      pending: false,
+      status: 'enqueue_error',
+      enqueued_brand_count: 0,
+      enqueued_candidate_count: 0,
+      brands: [],
+    };
+  }
+}
+
 function normalizeRecoAlternativesOpenWorldModel(raw) {
   const model = pickFirstTrimmed(raw);
   const lower = String(model || '').trim().toLowerCase();
@@ -66027,13 +66067,18 @@ async function fetchRecoAlternativesForLocalGeminiOpenWorld({
     llmTrace.catalog_grounding_failure_class_counts = grounded.failure_class_counts;
     const hydratedAlternatives = await hydrateRecoAlternativesAuthorityExperienceRows(grounded.alternatives);
     const finalAlternatives = applyOpenWorldAlternativeVisibleCopy(hydratedAlternatives, { targetSignals });
+    const backfillLedger = await buildRecoAlternativesAuthorityBackfillLedger({
+      ctx,
+      alternatives: finalAlternatives,
+      logger,
+    });
     return {
       ok: true,
       alternatives: finalAlternatives.slice(0, Math.max(1, Math.min(6, Number(maxTotal) || 1))),
       field_missing: [],
       source_mode: 'open_world_only',
       fallback_source: null,
-      refresh_pending: false,
+      refresh_pending: Boolean(backfillLedger?.pending),
       refresh_after_ms: 0,
       failure_class: null,
       attempt_count: 1,
@@ -66042,6 +66087,14 @@ async function fetchRecoAlternativesForLocalGeminiOpenWorld({
       template_id: 'reco_alternatives_open_world_v1',
       raw_output_summary: summarizeRecoAlternativesRaw(resp?.json?.alternatives),
       llm_trace: llmTrace,
+      compare_meta: {
+        open_world_status: 'success',
+        open_world_candidate_count: normalizedRows.length,
+        open_world_selected_count: finalAlternatives.filter((row) => String(row?.candidate_origin || '') === 'open_world').length,
+        open_world_grounding_attempted_count: grounded.attempted_count,
+        open_world_grounded_count: grounded.grounded_count,
+        authority_backfill: backfillLedger,
+      },
     };
   }
 
@@ -66060,13 +66113,18 @@ async function fetchRecoAlternativesForLocalGeminiOpenWorld({
     llmTrace.recovered_row_count = recoveredRows.length;
     const hydratedAlternatives = await hydrateRecoAlternativesAuthorityExperienceRows(grounded.alternatives);
     const finalAlternatives = applyOpenWorldAlternativeVisibleCopy(hydratedAlternatives, { targetSignals });
+    const backfillLedger = await buildRecoAlternativesAuthorityBackfillLedger({
+      ctx,
+      alternatives: finalAlternatives,
+      logger,
+    });
     return {
       ok: true,
       alternatives: finalAlternatives.slice(0, Math.max(1, Math.min(6, Number(maxTotal) || 1))),
       field_missing: [],
       source_mode: 'open_world_only',
       fallback_source: null,
-      refresh_pending: false,
+      refresh_pending: Boolean(backfillLedger?.pending),
       refresh_after_ms: 0,
       failure_class: null,
       attempt_count: 1,
@@ -66075,6 +66133,14 @@ async function fetchRecoAlternativesForLocalGeminiOpenWorld({
       template_id: 'reco_alternatives_open_world_v1',
       raw_output_summary: summarizeRecoAlternativesRaw(recoveredRows),
       llm_trace: llmTrace,
+      compare_meta: {
+        open_world_status: 'success',
+        open_world_candidate_count: recoveredRows.length,
+        open_world_selected_count: finalAlternatives.filter((row) => String(row?.candidate_origin || '') === 'open_world').length,
+        open_world_grounding_attempted_count: grounded.attempted_count,
+        open_world_grounded_count: grounded.grounded_count,
+        authority_backfill: backfillLedger,
+      },
     };
   }
 
@@ -66088,7 +66154,7 @@ async function fetchRecoAlternativesForLocalGeminiOpenWorld({
     refresh_after_ms: 0,
     failure_class: classifyAlternativesFailureCode(resp?.reason),
     attempt_count: 1,
-    no_result_reason: 'no_viable_results_after_fallback',
+    no_result_reason: 'no_viable_results_after_open_world',
     recommendation_mode: 'open_world_only',
     profile_mode: normalizeAlternativesProfileMode(profileMode),
     template_id: 'reco_alternatives_open_world_v1',
@@ -66301,6 +66367,11 @@ async function fetchRecoAlternativesForExternalSeedProduct({
     delete next._mixed_score;
     return next;
   }), { targetSignals });
+  const backfillLedger = await buildRecoAlternativesAuthorityBackfillLedger({
+    ctx,
+    alternatives: cleanedAlternatives.length ? cleanedAlternatives : openWorldRows,
+    logger,
+  });
   const poolSelectedCount = cleanedAlternatives.filter((row) => String(row?.candidate_origin || '') === 'pool').length;
   const openWorldSelectedCount = cleanedAlternatives.filter((row) => String(row?.candidate_origin || '') === 'open_world').length;
   const compareMeta = {
@@ -66315,6 +66386,8 @@ async function fetchRecoAlternativesForExternalSeedProduct({
     ranking_mode: 'best_score_mixed',
     pool_recall_status: poolCandidates.length >= 3 ? 'full' : poolCandidates.length > 0 ? 'partial' : 'empty',
     open_world_status: openWorldStatus,
+    open_world_role: 'coverage_supplement',
+    authority_backfill: backfillLedger,
   };
 
   if (!cleanedAlternatives.length) {
@@ -66324,7 +66397,7 @@ async function fetchRecoAlternativesForExternalSeedProduct({
       field_missing: [{ field: 'alternatives', reason: 'no_viable_compare_candidates' }],
       source_mode: 'pool_open_world_mixed',
       fallback_source: 'none',
-      refresh_pending: false,
+      refresh_pending: Boolean(backfillLedger?.pending),
       refresh_after_ms: 0,
       failure_class: openWorldStatus === 'provider_error' ? 'provider_error' : null,
       attempt_count: 1,
@@ -66342,7 +66415,7 @@ async function fetchRecoAlternativesForExternalSeedProduct({
     field_missing: [],
     source_mode: 'pool_open_world_mixed',
     fallback_source: null,
-    refresh_pending: false,
+    refresh_pending: Boolean(backfillLedger?.pending),
     refresh_after_ms: 0,
     failure_class: openWorldStatus === 'provider_error' && poolSelectedCount === 0 ? 'provider_error' : null,
     attempt_count: 1,
@@ -66679,7 +66752,7 @@ async function fetchRecoAlternativesForProduct({
         });
       } else {
         recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: 'precheck_fail' });
-        if (!disableFallback && selectorGroundedAlternatives.length) {
+        if (selectorGroundedAlternatives.length) {
           return {
             ok: true,
             alternatives: selectorGroundedAlternatives,
@@ -66724,7 +66797,7 @@ async function fetchRecoAlternativesForProduct({
           refresh_after_ms: 0,
           failure_class: 'anchor_missing_precheck',
           attempt_count: 0,
-          no_result_reason: localFallback.alternatives.length ? null : (recommendationMode === 'open_world_only' ? 'anchor_insufficient_for_open_world_fallback' : null),
+          no_result_reason: localFallback.alternatives.length ? null : (recommendationMode === 'open_world_only' ? 'anchor_insufficient_for_open_world' : null),
           recommendation_mode: recommendationMode,
           profile_mode: profileMode,
           raw_output_summary: emptyRawOutputSummary,
@@ -66752,7 +66825,7 @@ async function fetchRecoAlternativesForProduct({
       }
       if (bestInput && (allowAnchorlessOpenWorld || RECO_ALTERNATIVES_ANCHORLESS_ON_PRECHECK_FAILURE_ENABLED)) {
         // Continue with anchorless LLM path when local precheck is unavailable.
-      } else if (!disableFallback && selectorGroundedAlternatives.length) {
+      } else if (selectorGroundedAlternatives.length) {
         return {
           ok: true,
           alternatives: selectorGroundedAlternatives,
@@ -66781,7 +66854,7 @@ async function fetchRecoAlternativesForProduct({
           refresh_after_ms: 0,
           failure_class: 'anchor_missing_precheck',
           attempt_count: 0,
-          no_result_reason: localFallback.alternatives.length ? null : (recommendationMode === 'open_world_only' ? 'anchor_insufficient_for_open_world_fallback' : null),
+          no_result_reason: localFallback.alternatives.length ? null : (recommendationMode === 'open_world_only' ? 'anchor_insufficient_for_open_world' : null),
           recommendation_mode: recommendationMode,
           profile_mode: profileMode,
           raw_output_summary: emptyRawOutputSummary,
@@ -66881,6 +66954,20 @@ async function fetchRecoAlternativesForProduct({
           open_world_selected_count: 0,
           open_world_status: 'skipped_sufficient_pool',
           ranking_mode: 'grounded_pool_first',
+          open_world_role: 'coverage_supplement',
+          authority_backfill: {
+            mode: 'async_external_seed_backfill',
+            policy: 'open_world_coverage_repair',
+            open_world_role: 'coverage_supplement',
+            open_world_row_count: 0,
+            coverage_gap_count: 0,
+            recall_gap_count: 0,
+            pending: false,
+            status: 'not_needed',
+            enqueued_brand_count: 0,
+            enqueued_candidate_count: 0,
+            brands: [],
+          },
         },
         ...(debug ? { debug: { anchor_precheck: anchorPrecheck, grounded_pool: groundedPoolMeta } } : {}),
       };
@@ -66933,6 +67020,10 @@ async function fetchRecoAlternativesForProduct({
       : openWorldOut?.failure_class
         ? 'provider_error'
         : 'empty';
+    const openWorldBackfill =
+      openWorldOut?.compare_meta && typeof openWorldOut.compare_meta === 'object'
+        ? openWorldOut.compare_meta.authority_backfill || null
+        : null;
     return {
       ok: true,
       alternatives: hydratedAlternatives,
@@ -66941,7 +67032,7 @@ async function fetchRecoAlternativesForProduct({
         : mergeFieldMissing(openWorldOut?.field_missing, [{ field: 'alternatives', reason: 'no_viable_compare_candidates' }]),
       source_mode: 'hybrid_fallback',
       fallback_source: hydratedAlternatives.length ? null : 'none',
-      refresh_pending: false,
+      refresh_pending: Boolean(openWorldOut?.refresh_pending),
       refresh_after_ms: 0,
       failure_class: hydratedAlternatives.length ? null : (openWorldOut?.failure_class || 'empty_structured'),
       attempt_count: Math.max(1, Number(openWorldOut?.attempt_count) || 1),
@@ -66962,6 +67053,20 @@ async function fetchRecoAlternativesForProduct({
         open_world_grounded_count: Number(openWorldOut?.llm_trace?.catalog_grounded_count || 0),
         open_world_status: openWorldStatus,
         ranking_mode: 'grounded_pool_then_local_open_world',
+        open_world_role: 'coverage_supplement',
+        authority_backfill: openWorldBackfill || {
+          mode: 'async_external_seed_backfill',
+          policy: 'open_world_coverage_repair',
+          open_world_role: 'coverage_supplement',
+          open_world_row_count: openWorldAlternatives.length,
+          coverage_gap_count: 0,
+          recall_gap_count: 0,
+          pending: false,
+          status: 'not_needed',
+          enqueued_brand_count: 0,
+          enqueued_candidate_count: 0,
+          brands: [],
+        },
       },
       ...(debug ? { debug: { anchor_precheck: anchorPrecheck, grounded_pool: groundedPoolMeta } } : {}),
     };
@@ -67040,7 +67145,7 @@ async function fetchRecoAlternativesForProduct({
           ? 'timeout'
           : 'provider_error';
     recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: llmFailureClass });
-    if (!disableFallback && selectorGroundedAlternatives.length) {
+    if (selectorGroundedAlternatives.length) {
       const alternatives = recommendationMode === 'hybrid_fallback'
         ? mergeRecoAlternativesForHybrid([], selectorGroundedAlternatives, { maxTotal })
         : selectorGroundedAlternatives;
@@ -67079,7 +67184,7 @@ async function fetchRecoAlternativesForProduct({
         failure_class: llmFailureClass,
         attempt_count: 1,
         no_result_reason: recommendationMode === 'open_world_only'
-          ? 'no_viable_results_after_fallback'
+          ? 'no_viable_results_after_open_world'
           : null,
         recommendation_mode: recommendationMode,
         profile_mode: profileMode,
@@ -67182,7 +67287,7 @@ async function fetchRecoAlternativesForProduct({
     };
   }
 
-  if (!disableFallback && selectorGroundedAlternatives.length) {
+  if (selectorGroundedAlternatives.length) {
     const alternatives = recommendationMode === 'hybrid_fallback'
       ? mergeRecoAlternativesForHybrid([], selectorGroundedAlternatives, { maxTotal })
       : selectorGroundedAlternatives;
@@ -67216,7 +67321,7 @@ async function fetchRecoAlternativesForProduct({
       refresh_after_ms: 0,
       failure_class: llmOutcome === 'empty_structured_clarify' ? 'empty_structured_clarify' : 'empty_structured',
       attempt_count: 1,
-      no_result_reason: upstreamNoResultReason || 'no_viable_results_after_fallback',
+      no_result_reason: upstreamNoResultReason || 'no_viable_results_after_open_world',
       recommendation_mode: recommendationMode,
       profile_mode: profileMode,
       template_id: queryPack.templateId,
@@ -67384,6 +67489,7 @@ async function enrichRecommendationsWithAlternatives({ ctx, profileSummary, rece
       debug,
       logger,
       options: {
+        disable_fallback: true,
         disable_synthetic_local_fallback: true,
       },
     });
@@ -72659,6 +72765,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         debug: false,
         logger,
         options: {
+          disable_fallback: true,
           disable_synthetic_local_fallback: true,
         },
       });
@@ -86769,6 +86876,21 @@ const __internal = {
   },
   __resetResolveProductRefForTest() {
     resolveProductRefDirectImpl = resolveProductRefDirect;
+  },
+  __setRecoAlternativesAuthorityBackfillRunnerForTest(fn) {
+    recoAlternativesAuthorityBackfillInternals.setRunnerForTest(fn);
+  },
+  __setRecoAlternativesAuthorityBackfillSourcePlanResolverForTest(fn) {
+    recoAlternativesAuthorityBackfillInternals.setSourcePlanResolverForTest(fn);
+  },
+  async __flushRecoAlternativesAuthorityBackfillForTest() {
+    await recoAlternativesAuthorityBackfillInternals.flushRecoAlternativesAuthorityBackfillJobsForTest();
+  },
+  __resetRecoAlternativesAuthorityBackfillForTest() {
+    recoAlternativesAuthorityBackfillInternals.resetRecoAlternativesAuthorityBackfillStateForTest();
+  },
+  __getRecoAlternativesAuthorityBackfillHistoryForTest() {
+    return recoAlternativesAuthorityBackfillInternals.getHistoryForTest();
   },
   __setVisionRunnersForTest(runners = {}) {
     const geminiFn = runners && typeof runners.gemini === 'function' ? runners.gemini : null;
