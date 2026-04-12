@@ -5769,6 +5769,7 @@ test('/v1/reco/alternatives: explicit synthetic fallback opt-in still returns pl
           .send({
             product_input: 'unknown product text with no structured candidate',
             max_total: 3,
+            recommendation_mode: 'pool_only',
             disable_synthetic_local_fallback: false,
           });
 
@@ -5830,6 +5831,7 @@ test('/v1/reco/alternatives: structured candidate pool returns selector_grounded
           .send({
             product_input: 'unknown product text with selector candidates',
             max_total: 3,
+            recommendation_mode: 'pool_only',
             product: {
               name: 'Anchor product',
               alternatives: [
@@ -5871,17 +5873,30 @@ test('/v1/reco/alternatives: structured candidate pool returns selector_grounded
   );
 });
 
-test('/v1/reco/alternatives: aurora product-card surface disables synthetic local fallback by default', async () => {
+test('/v1/reco/alternatives: aurora product-card surface defaults to grounded hybrid alternatives', async () => {
   return withEnv(
     {
       AURORA_BFF_RETENTION_DAYS: '0',
       DATABASE_URL: undefined,
-      AURORA_BFF_CHAT_RECO_BUDGET_MS: '9000',
-      AURORA_BFF_RECO_ALTERNATIVES_TIMEOUT_MS: '6500',
-      AURORA_BFF_RECO_ALTERNATIVES_OVERHEAD_MS: '2000',
+      AURORA_BFF_USE_MOCK: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED: 'false',
     },
     async () => {
-      resetVisionMetrics();
+      const axios = require('axios');
+      const originalGet = axios.get;
+      axios.get = async (url) => {
+        if (!isProductsSearchUrl(url)) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        return {
+          status: 200,
+          data: {
+            products: [],
+          },
+        };
+      };
       const moduleId = require.resolve('../src/auroraBff/routes');
       delete require.cache[moduleId];
       try {
@@ -5890,7 +5905,79 @@ test('/v1/reco/alternatives: aurora product-card surface disables synthetic loca
         let geminiCalls = 0;
         __internal.__setCallGeminiJsonObjectForTest(async () => {
           geminiCalls += 1;
-          return { ok: true, json: { products: [{ id: 'fake_1', why: 'should_not_happen' }] } };
+          return {
+            ok: true,
+            json: {
+              alternatives: [
+                {
+                  brand: 'The Inkey List',
+                  name: 'Niacinamide Serum',
+                  product_type: 'serum',
+                  similarity_score: 82,
+                  reasons: ['Matches the same oil-control active.'],
+                  tradeoff_notes: ['Less focused on zinc support.'],
+                },
+                {
+                  brand: "Paula's Choice",
+                  name: '10% Niacinamide Booster',
+                  product_type: 'serum',
+                  similarity_score: 79,
+                  reasons: ['Keeps the same niacinamide-led role.'],
+                  tradeoff_notes: ['Higher price point.'],
+                },
+              ],
+            },
+          };
+        });
+        __internal.__setResolveProductRefForTest(async (args = {}) => {
+          const query = String(args?.query || '').toLowerCase();
+          if (query.includes('the ordinary niacinamide')) {
+            return {
+              resolved: true,
+              product_ref: {
+                product_id: 'prod_anchor',
+                merchant_id: 'mid_anchor',
+              },
+              reason: 'resolved',
+              metadata: {
+                sources: [{ source: 'products_cache', ok: true }],
+              },
+            };
+          }
+          if (query.includes('the inkey list') || query.includes('niacinamide serum')) {
+            return {
+              resolved: true,
+              product_ref: {
+                product_id: 'ext_inkey_niacinamide',
+                merchant_id: 'external_seed',
+              },
+              reason: 'resolved',
+              metadata: {
+                sources: [{ source: 'external_seed_local_recall', ok: true }],
+              },
+            };
+          }
+          if (query.includes("paula's choice") || query.includes('10% niacinamide booster')) {
+            return {
+              resolved: true,
+              product_ref: {
+                product_id: 'ext_pc_niacinamide',
+                merchant_id: 'external_seed',
+              },
+              reason: 'resolved',
+              metadata: {
+                sources: [{ source: 'external_seed_local_recall', ok: true }],
+              },
+            };
+          }
+          return {
+            resolved: false,
+            product_ref: null,
+            reason: 'no_candidates',
+            metadata: {
+              sources: [{ source: 'external_seed_local_recall', ok: false, reason: 'no_results' }],
+            },
+          };
         });
 
         const app = express();
@@ -5906,27 +5993,33 @@ test('/v1/reco/alternatives: aurora product-card surface disables synthetic loca
             'X-Lang': 'EN',
           })
           .send({
-            product_input: 'unknown product text with no structured candidate',
-            max_total: 3,
+            product_input: 'The Ordinary Niacinamide 10% + Zinc 1%',
+            max_total: 6,
           });
 
         assert.equal(resp.status, 200);
         assert.equal(Array.isArray(resp.body?.alternatives), true);
-        assert.equal(resp.body.alternatives.length, 0);
-        assert.equal(resp.body?.source_mode, 'llm');
-        assert.equal(resp.body?.fallback_source, 'none');
-        assert.equal(resp.body?.failure_class, 'anchor_missing_precheck');
-        assert.equal(geminiCalls, 0);
+        assert.equal(resp.body?.source_mode, 'hybrid_fallback');
+        assert.equal(resp.body?.fallback_source, null);
+        assert.equal(resp.body?.failure_class, null);
+        assert.equal(resp.body.alternatives.length, 2);
+        assert.equal(resp.body.alternatives[0]?.candidate_origin, 'open_world');
+        assert.equal(resp.body.alternatives[0]?.grounding_status, 'catalog_verified');
+        assert.equal(resp.body.alternatives[0]?.product?.product_id, 'ext_inkey_niacinamide');
+        assert.equal(resp.body?.compare_meta?.open_world_grounded_count, 2);
+        assert.equal(geminiCalls, 1);
       } finally {
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
         loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        loaded?.__internal?.__resetResolveProductRefForTest?.();
+        axios.get = originalGet;
         delete require.cache[moduleId];
       }
     },
   );
 });
 
-test('/v1/reco/alternatives: empty structured result stays llm-empty when synthetic fallback is disabled by default', async () => {
+test('/v1/reco/alternatives: explicit pool_only empty structured result stays llm-empty when synthetic fallback is disabled', async () => {
   return withEnv(
     {
       AURORA_BFF_RETENTION_DAYS: '0',
@@ -5978,6 +6071,7 @@ test('/v1/reco/alternatives: empty structured result stays llm-empty when synthe
           .send({
             product_input: 'The Ordinary Niacinamide 10% + Zinc 1%',
             max_total: 6,
+            recommendation_mode: 'pool_only',
           });
 
         assert.equal(resp.status, 200);
