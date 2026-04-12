@@ -1179,7 +1179,7 @@ async function listLivePdpIdentityRowsForRefs({
   sourceListingRefs = [],
   queryFn = query,
 } = {}) {
-  if (!PDP_IDENTITY_GRAPH_ENABLED || !process.env.DATABASE_URL || typeof queryFn !== 'function') {
+  if (!process.env.DATABASE_URL || typeof queryFn !== 'function') {
     return [];
   }
   const refs = uniqueStrings(sourceListingRefs, 500);
