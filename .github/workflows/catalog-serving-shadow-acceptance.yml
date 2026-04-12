@@ -39,6 +39,8 @@ jobs:
   shadow-acceptance:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    environment:
+      name: Pivota Agent / production
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       CATALOG_SERVING_INDEX_BASE_URL: ${{ vars.CATALOG_SERVING_INDEX_BASE_URL || secrets.CATALOG_SERVING_INDEX_BASE_URL }}
