@@ -3473,7 +3473,10 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
     const stagedRows = [];
     const seenRowKeys = new Set();
     const seenSqlIds = new Set();
-    const summaryThreshold = Math.min(safeLimit, Math.max(4, getPrimaryPathEnoughThreshold(request)));
+    const summaryThreshold =
+      request?.surface === 'browse_products' && isGenericNoSignalDiscoveryRequest(request, profile)
+        ? safeLimit
+        : Math.min(safeLimit, Math.max(4, getPrimaryPathEnoughThreshold(request)));
     const appendRows = (rows = []) => {
       for (const row of Array.isArray(rows) ? rows : []) {
         const rowKey = buildDiscoverySeedStageRowKey(row);
@@ -5063,6 +5066,41 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
     orderedInternalDeferred.push(entry);
   }
   const rankedOrderedPool = orderedPool.concat(orderedInternalDeferred);
+  const corpusPreferredPool = [...preferredPool];
+  const corpusColdStartDeferredPool = [...coldStartDeferredPool];
+  const corpusOrderedInternalDeferred = [...orderedInternalDeferred];
+
+  for (const entry of recentViewDeferred) {
+    if (queryText && !matchesQueryTextCandidate(entry.candidate, queryText)) {
+      continue;
+    }
+    if (shouldDeferInternalCatalogCandidate(entry.candidate, profile)) {
+      if (categoryScope.length > 0 && !matchesCategoryScopeCandidate(entry.candidate, categoryScope)) {
+        continue;
+      }
+      corpusOrderedInternalDeferred.push(entry);
+      continue;
+    }
+    if (categoryScope.length > 0 && !matchesCategoryScopeCandidate(entry.candidate, categoryScope)) {
+      continue;
+    }
+    if (coldStartCuration && shouldDeferColdStartCandidate(entry.candidate)) {
+      corpusColdStartDeferredPool.push(entry);
+      continue;
+    }
+    if (hasExternalSeedBeautyCandidate && shouldDeferColdStartInternalSourceCandidate(entry.candidate)) {
+      corpusColdStartDeferredPool.push(entry);
+      continue;
+    }
+    corpusPreferredPool.push(entry);
+  }
+
+  const corpusOrderedPool =
+    (
+      coldStartCuration && corpusPreferredPool.length > 0
+        ? corpusPreferredPool
+        : corpusPreferredPool.concat(corpusColdStartDeferredPool)
+    ).concat(corpusOrderedInternalDeferred);
 
   const start = (page - 1) * limit;
   const pageItems = rankedOrderedPool.slice(start, start + limit);
@@ -5076,6 +5114,7 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
   }
   if (!collectDebug) {
     return {
+      corpusPool: corpusOrderedPool,
       preCategoryPool,
       orderedPool,
       pageItems,
@@ -5096,6 +5135,7 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
   }
 
   return {
+    corpusPool: corpusOrderedPool,
     ranked,
     preCategoryPool,
     orderedPool: rankedOrderedPool,
@@ -6253,6 +6293,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
     let selectedEntries;
     let total;
     let eligiblePoolCount = 0;
+    let corpusTotalCount = 0;
     let ranked = [];
     let orderedPool = [];
     let categoryFacets = [];
@@ -6289,7 +6330,8 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
         },
       );
       selectedEntries = browseSelection.pageItems;
-      total = browseSelection.orderedPool.length;
+      total = browseSelection.corpusPool.length;
+      corpusTotalCount = browseSelection.corpusPool.length;
       eligiblePoolCount = browseSelection.orderedPool.length;
       categoryFacets =
         brandScopeAliases.length > 0
@@ -6324,7 +6366,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
     });
 
     const latencyMs = Date.now() - startedAt;
-    const hasMore = total > request.page * request.limit;
+    const hasMore = eligiblePoolCount > request.page * request.limit;
     const selectedSourceBreakdown = selectedEntries.reduce(
       (acc, entry) => {
         const provider = String(entry?.candidate?.provider || '').trim() || 'unknown';
@@ -6348,6 +6390,8 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       ...(fallbackReason ? { fallback_reason: fallbackReason } : {}),
       provider_breakdown: providerBreakdown,
       candidate_counts: candidateCounts,
+      eligible_pool_count: eligiblePoolCount,
+      corpus_total_count: corpusTotalCount || total,
       selected_source_breakdown: selectedSourceBreakdown,
       request_latency_ms: latencyMs,
       sort_applied: request.sort,

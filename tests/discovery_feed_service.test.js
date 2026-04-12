@@ -4015,6 +4015,94 @@ describe('discovery feed service', () => {
     expect(response.metadata.filter_counts.filtered_cold_start_internal_source).toBeGreaterThanOrEqual(1);
   });
 
+  test('browse_products total reports stable corpus count while eligible pool stays page-local', async () => {
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 4,
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [
+            {
+              merchant_id: 'm1',
+              product_id: 'recent_alpha',
+              title: 'Alpha Repair Serum',
+              brand: 'Alpha',
+              category: 'Skincare',
+              product_type: 'Serum',
+              viewed_at: '2026-04-11T10:00:00Z',
+            },
+          ],
+          recent_queries: [],
+        },
+      },
+      {
+        candidateProducts: [
+          makeProduct({
+            merchant_id: 'm1',
+            product_id: 'recent_alpha',
+            title: 'Alpha Repair Serum',
+            brand: 'Alpha',
+            category: 'Skincare',
+            product_type: 'Serum',
+          }),
+          makeProduct({
+            merchant_id: 'm2',
+            product_id: 'alpha_2',
+            title: 'Alpha Barrier Cream',
+            brand: 'Alpha',
+            category: 'Skincare',
+            product_type: 'Cream',
+          }),
+          makeProduct({
+            merchant_id: 'm3',
+            product_id: 'beta_1',
+            title: 'Beta Repair Serum',
+            brand: 'Beta',
+            category: 'Skincare',
+            product_type: 'Serum',
+          }),
+          makeProduct({
+            merchant_id: 'm4',
+            product_id: 'gamma_1',
+            title: 'Gamma Recovery Toner',
+            brand: 'Gamma',
+            category: 'Skincare',
+            product_type: 'Toner',
+          }),
+          makeProduct({
+            merchant_id: 'm5',
+            product_id: 'delta_1',
+            title: 'Delta Gel Cream',
+            brand: 'Delta',
+            category: 'Skincare',
+            product_type: 'Moisturizer',
+          }),
+        ],
+      },
+    );
+
+    expect(response.total).toBe(5);
+    expect(response.products).toHaveLength(4);
+    expect(response.products.some((product) => product.product_id === 'recent_alpha')).toBe(false);
+    expect(response.metadata).toEqual(
+      expect.objectContaining({
+        corpus_total_count: 5,
+        eligible_pool_count: 4,
+        has_more: false,
+        candidate_counts: expect.objectContaining({
+          raw: 5,
+          normalized: 5,
+          scored: 5,
+          eligible_pool: 4,
+          returned: 4,
+        }),
+      }),
+    );
+  });
+
   test('cold start browse does not backfill deferred domains onto later pages when non-deferred results exist', async () => {
     const response = await getDiscoveryFeed(
       {
@@ -4976,6 +5064,135 @@ describe('discovery feed service', () => {
           (call) => !String(call?.[0] || '').includes("'recall_summary'::text AS match_stage"),
         ),
       ).toBe(true);
+    } finally {
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+    }
+  });
+
+  test('anonymous browse fastpath fills stable corpus beyond first-page coverage before stopping DB stages', async () => {
+    jest.resetModules();
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = 'postgres://discovery-fastpath-test';
+    const requiredColumns = [
+      { table_name: 'products_cache', column_name: 'id' },
+      { table_name: 'products_cache', column_name: 'merchant_id' },
+      { table_name: 'products_cache', column_name: 'product_data' },
+      { table_name: 'products_cache', column_name: 'expires_at' },
+      { table_name: 'products_cache', column_name: 'cached_at' },
+      { table_name: 'external_product_seeds', column_name: 'id' },
+      { table_name: 'external_product_seeds', column_name: 'external_product_id' },
+      { table_name: 'external_product_seeds', column_name: 'destination_url' },
+      { table_name: 'external_product_seeds', column_name: 'canonical_url' },
+      { table_name: 'external_product_seeds', column_name: 'title' },
+      { table_name: 'external_product_seeds', column_name: 'seed_data' },
+      { table_name: 'external_product_seeds', column_name: 'market' },
+      { table_name: 'external_product_seeds', column_name: 'tool' },
+      { table_name: 'external_product_seeds', column_name: 'status' },
+      { table_name: 'external_product_seeds', column_name: 'attached_product_key' },
+      { table_name: 'external_product_seeds', column_name: 'updated_at' },
+      { table_name: 'external_product_seeds', column_name: 'created_at' },
+    ];
+    const requiredIndexes = [
+      'idx_external_product_seeds_recall_title_trgm',
+      'idx_external_product_seeds_recall_summary_trgm',
+      'idx_external_product_seeds_recall_category_vertical_recency',
+      'idx_external_product_seeds_recall_vertical_recency',
+      'idx_external_product_seeds_recall_ingredient_tokens_trgm',
+      'idx_external_product_seeds_recall_alias_tokens_trgm',
+    ].map((indexname) => ({ tablename: 'external_product_seeds', indexname }));
+
+    const makeSeedRow = (id) => ({
+      id,
+      external_product_id: `seed_${id}`,
+      destination_url: `https://example.com/products/${id}`,
+      canonical_url: `https://example.com/products/${id}`,
+      domain: 'beauty',
+      title: `Niacinamide Serum ${id}`,
+      image_url: `https://example.com/images/${id}.jpg`,
+      price_amount: 24,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        snapshot: {
+          title: `Niacinamide Serum ${id}`,
+          brand: 'Alpha',
+          category: 'Skincare',
+          product_type: 'Serum',
+          description: `Serum ${id}`,
+          destination_url: `https://example.com/products/${id}`,
+          canonical_url: `https://example.com/products/${id}`,
+          image_url: `https://example.com/images/${id}.jpg`,
+          price_amount: 24,
+          price_currency: 'USD',
+          availability: 'in_stock',
+        },
+        derived: {
+          recall: {
+            retrieval_title: `Niacinamide Serum ${id}`,
+            retrieval_summary: `Serum ${id}`,
+            brand: 'Alpha',
+            category: 'Skincare',
+          },
+        },
+      },
+    });
+
+    const dbQueryMock = jest
+      .fn()
+      .mockResolvedValueOnce({
+        rows: requiredColumns,
+      })
+      .mockResolvedValueOnce({
+        rows: requiredIndexes,
+      })
+      .mockResolvedValueOnce({
+        rows: Array.from({ length: 48 }, (_, index) => makeSeedRow(index + 1)),
+      })
+      .mockResolvedValueOnce({
+        rows: Array.from({ length: 12 }, (_, index) => makeSeedRow(index + 49)),
+      })
+      .mockResolvedValueOnce({
+        rows: Array.from({ length: 48 }, (_, index) => makeSeedRow(index + 61)),
+      })
+      .mockResolvedValueOnce({
+        rows: [],
+      });
+
+    jest.doMock('../src/db', () => ({
+      query: dbQueryMock,
+    }));
+
+    try {
+      const { _internals: freshInternals } = require('../src/services/discoveryFeed');
+      freshInternals.resetDiscoveryDependencyProbeCache();
+      const request = freshInternals.normalizeDiscoveryRequest({
+        surface: 'browse_products',
+        page: 1,
+        limit: 60,
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      });
+
+      const result = await freshInternals.fetchBeautyInterestExternalSeedFastpathCandidates({
+        request,
+        profile: {
+          hasInterestSignals: false,
+        },
+        queries: ['niacinamide serum'],
+        limit: 120,
+        providerName: 'external_seeds',
+        productProvider: 'beauty_interest_mainline',
+        stepName: 'external_seed_pool_fastpath',
+        label: 'external_seed_pool_fastpath',
+      });
+
+      expect(result.products).toHaveLength(108);
+      expect(dbQueryMock.mock.calls.length).toBeGreaterThan(4);
     } finally {
       if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
       else process.env.DATABASE_URL = prevDatabaseUrl;
