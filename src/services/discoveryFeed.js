@@ -2176,13 +2176,37 @@ function resolveDiscoveryCandidateLimit(request) {
   const fetchCap = getDiscoveryCandidateFetchCap(request);
   if (request?.surface === 'browse_products') {
     const pageNeed = request.page * request.limit + Math.max(request.limit, 24);
+    const genericBrowsePrefetchFloor = resolveGenericBrowsePrefetchFloor(request);
     if (hasBrandScope(request)) {
       return clampInt(Math.max(pageNeed, 48), 72, 48, fetchCap);
     }
-    return clampInt(pageNeed, 72, 24, fetchCap);
+    return clampInt(Math.max(pageNeed, genericBrowsePrefetchFloor), 72, 24, fetchCap);
   }
   const homeNeed = Math.max(request?.limit * 4, 48);
   return clampInt(homeNeed, 48, 24, fetchCap);
+}
+
+function isBehaviorlessGenericBrowseRequest(request) {
+  if (request?.surface !== 'browse_products') return false;
+  if (hasBrandScope(request) || hasDiscoveryQueryText(request) || hasDiscoveryCategoryScope(request)) {
+    return false;
+  }
+  const recentViews = Array.isArray(request?.context?.recent_views) ? request.context.recent_views : [];
+  const recentQueries = Array.isArray(request?.context?.recent_queries) ? request.context.recent_queries : [];
+  return recentViews.length <= 0 && recentQueries.length <= 0;
+}
+
+function resolveGenericBrowsePrefetchFloor(request) {
+  if (!isBehaviorlessGenericBrowseRequest(request)) return 0;
+  const fetchCap = getDiscoveryCandidateFetchCap(request);
+  const pageLimit = clampInt(request?.limit, 24, 1, 120);
+  const defaultFloor = Math.max(pageLimit * 4, 120);
+  return clampInt(
+    process.env.DISCOVERY_GENERIC_BROWSE_PREFETCH_FLOOR,
+    defaultFloor,
+    120,
+    fetchCap,
+  );
 }
 
 function buildDiscoveryContextCacheKey(request) {
@@ -4070,7 +4094,12 @@ function resolveExternalSeedProviderLimit(request, safeLimit) {
   const fetchCap = getDiscoveryCandidateFetchCap(request);
   const cappedSafeLimit = clampInt(safeLimit, fetchCap, 12, fetchCap);
   if (request?.surface === 'browse_products') {
-    const browseNeed = Math.max((request?.page || 1) * (request?.limit || 0) + (request?.limit || 0), 18);
+    const prefetchFloor = Math.min(resolveGenericBrowsePrefetchFloor(request), cappedSafeLimit);
+    const browseNeed = Math.max(
+      (request?.page || 1) * (request?.limit || 0) + (request?.limit || 0),
+      prefetchFloor,
+      18,
+    );
     return clampInt(browseNeed, Math.min(cappedSafeLimit, 48), 12, cappedSafeLimit);
   }
   const homeNeed = Math.max((request?.limit || 0) * 3, 18);
