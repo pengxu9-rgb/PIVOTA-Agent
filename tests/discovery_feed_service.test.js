@@ -5434,6 +5434,62 @@ describe('discovery feed service', () => {
     }
   });
 
+  test('anonymous browse first page prefetches beyond a single page for generic runtime browsing', async () => {
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    delete process.env.DATABASE_URL;
+
+    const externalProducts = Array.from({ length: 240 }, (_, idx) =>
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: `external_page1_${idx + 1}`,
+        title: `Niacinamide Serum ${idx + 1}`,
+        brand: `Seeded ${idx + 1}`,
+        category: 'Skincare',
+        product_type: 'Serum',
+      }),
+    );
+    const externalSpy = jest.fn(async ({ limit }) => externalProducts.slice(0, limit));
+
+    try {
+      const response = await getDiscoveryFeed(
+        {
+          surface: 'browse_products',
+          page: 1,
+          limit: 60,
+          context: {
+            auth_state: 'anonymous',
+            locale: 'en-US',
+            recent_views: [],
+            recent_queries: [],
+          },
+        },
+        {
+          providerOverrides: {
+            external_seeds: externalSpy,
+          },
+        },
+      );
+
+      expect(externalSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          limit: 240,
+        }),
+      );
+      expect(response.products).toHaveLength(60);
+      expect(response.metadata).toEqual(
+        expect.objectContaining({
+          primary_path_used: 'external_seed_fastpath',
+          eligible_pool_count: 240,
+          runtime_corpus_count: 240,
+          has_more: true,
+        }),
+      );
+    } finally {
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+    }
+  });
+
   test('anonymous browse deep pages expand fastpath beyond the legacy 120 candidate ceiling', async () => {
     const prevDatabaseUrl = process.env.DATABASE_URL;
     delete process.env.DATABASE_URL;
