@@ -66261,28 +66261,53 @@ async function fetchRecoAlternativesForProduct({
   const usesOpenWorldPrompt = recommendationMode === 'hybrid_fallback' || recommendationMode === 'open_world_only';
 
   const inputText = String(productInput || '').trim();
-  const productJson = productObj && typeof productObj === 'object' ? JSON.stringify(productObj).slice(0, 1400) : '';
+  let effectiveProductObj = productObj && typeof productObj === 'object' && !Array.isArray(productObj) ? productObj : null;
+  const serializeRecoAlternativesProductJson = (product) => (
+    product && typeof product === 'object' && !Array.isArray(product)
+      ? JSON.stringify(product).slice(0, 1400)
+      : ''
+  );
+  const shouldAdoptResolvedAnchorProduct = (currentProduct, resolvedProduct) => {
+    const current = currentProduct && typeof currentProduct === 'object' && !Array.isArray(currentProduct) ? currentProduct : null;
+    const resolved = resolvedProduct && typeof resolvedProduct === 'object' && !Array.isArray(resolvedProduct) ? resolvedProduct : null;
+    if (!resolved) return false;
+    if (!current) return true;
+    return !pickFirstTrimmed(
+      current.product_id,
+      current.sku_id,
+      current.canonical_product_ref?.product_id,
+      current.brand,
+      current.name,
+      current.display_name,
+    );
+  };
+  const buildSelectorCandidatePoolForProduct = (activeProductObj, activeAnchorId) => (
+    ignoreSelectorCandidates
+      ? []
+      : buildRecoAlternativesCandidatePool({
+        sharedCandidates: candidatePool,
+        productObj: activeProductObj,
+        anchorId: activeAnchorId,
+        maxCandidates: Math.max(8, Math.min(24, (Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 6) * 3)),
+      })
+  );
+  const hydrateSelectorGroundedAlternativesForPool = async (pool) => (
+    ignoreSelectorCandidates
+      ? []
+      : hydrateRecoAlternativesAuthorityExperienceRows(
+        mapSelectorCandidatesToAlternatives(pool, {
+          maxTotal,
+          lang: ctx.lang,
+          reasonLine: ctx.lang === 'CN'
+            ? '基于已解析商品候选给出 grounded alternatives。'
+            : 'Grounded alternatives derived from resolved candidate pool.',
+        }),
+      )
+  );
   let anchor = anchorId ? String(anchorId).trim() : '';
   const bestInput = inputText || anchor;
-  const selectorCandidatePool = ignoreSelectorCandidates
-    ? []
-    : buildRecoAlternativesCandidatePool({
-      sharedCandidates: candidatePool,
-      productObj,
-      anchorId: anchor,
-      maxCandidates: Math.max(8, Math.min(24, (Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 6) * 3)),
-    });
-  const selectorGroundedAlternatives = ignoreSelectorCandidates
-    ? []
-    : await hydrateRecoAlternativesAuthorityExperienceRows(
-      mapSelectorCandidatesToAlternatives(selectorCandidatePool, {
-        maxTotal,
-        lang: ctx.lang,
-        reasonLine: ctx.lang === 'CN'
-          ? '基于已解析商品候选给出 grounded alternatives。'
-          : 'Grounded alternatives derived from resolved candidate pool.',
-      }),
-    );
+  let selectorCandidatePool = buildSelectorCandidatePoolForProduct(effectiveProductObj, anchor);
+  let selectorGroundedAlternatives = await hydrateSelectorGroundedAlternativesForPool(selectorCandidatePool);
   const emptyRawOutputSummary = summarizeRecoAlternativesRaw([]);
   let refreshKey = makeRecoAlternativesRefreshKey({
     anchorId: anchor || null,
@@ -66429,7 +66454,7 @@ async function fetchRecoAlternativesForProduct({
       }
     }
     if (!out.length && !disableSyntheticLocalFallback) {
-      const base = productObj && typeof productObj === 'object' && !Array.isArray(productObj) ? productObj : {};
+      const base = effectiveProductObj && typeof effectiveProductObj === 'object' && !Array.isArray(effectiveProductObj) ? effectiveProductObj : {};
       const brand = pickFirstTrimmed(base.brand, base.manufacturer) || null;
       const name = pickFirstTrimmed(base.display_name, base.displayName, base.name, inputText, anchor) || null;
       const prefixName = name || (ctx.lang === 'CN' ? '护肤替代候选' : 'Skincare alternative candidate');
@@ -66481,6 +66506,17 @@ async function fetchRecoAlternativesForProduct({
         logger,
       });
       const resolvedAnchor = extractAnchorIdFromProductLike(resolved && resolved.product);
+      const resolvedAnchorProduct = shouldAdoptResolvedAnchorProduct(
+        effectiveProductObj,
+        resolved && resolved.product,
+      )
+        ? (
+          mapCatalogProductToAnchorProduct(resolved && resolved.product, { fallbackName: bestInput }) ||
+          (resolved && resolved.product && typeof resolved.product === 'object' && !Array.isArray(resolved.product)
+            ? resolved.product
+            : null)
+        )
+        : null;
       const precheckReasonCode =
         resolved && resolved.resolve_reason_code ? normalizeResolveReasonCode(resolved.resolve_reason_code, null) : null;
       const canProceedWithoutAnchor =
@@ -66498,9 +66534,15 @@ async function fetchRecoAlternativesForProduct({
         reason: precheckReasonCode,
         latency_ms: Date.now() - startedAt,
         continue_without_anchor: Boolean(!resolvedAnchor && canProceedWithoutAnchor),
+        resolved_product_hydrated: Boolean(resolvedAnchorProduct),
       };
       if (resolvedAnchor) {
         anchor = resolvedAnchor;
+        if (resolvedAnchorProduct) {
+          effectiveProductObj = resolvedAnchorProduct;
+          selectorCandidatePool = buildSelectorCandidatePoolForProduct(effectiveProductObj, anchor);
+          selectorGroundedAlternatives = await hydrateSelectorGroundedAlternativesForPool(selectorCandidatePool);
+        }
         refreshKey = makeRecoAlternativesRefreshKey({
           anchorId: anchor || null,
           productInput: bestInput,
@@ -66658,7 +66700,7 @@ async function fetchRecoAlternativesForProduct({
       const pool = await collectExternalSeedPoolAlternatives({
         ctx,
         productInput: bestInput,
-        productObj,
+        productObj: effectiveProductObj,
         maxTotal,
         anchorId: anchor,
         logger,
@@ -66732,7 +66774,7 @@ async function fetchRecoAlternativesForProduct({
       openWorldOut = await fetchRecoAlternativesForLocalGeminiOpenWorld({
         ctx,
         productInput: bestInput,
-        productObj,
+        productObj: effectiveProductObj,
         maxTotal: Math.max(1, limit - groundedPoolAlternatives.length),
         profileMode,
         logger,
@@ -66811,7 +66853,7 @@ async function fetchRecoAlternativesForProduct({
     return fetchRecoAlternativesForLocalGeminiOpenWorld({
       ctx,
       productInput: bestInput,
-      productObj,
+      productObj: effectiveProductObj,
       maxTotal,
       profileMode,
       logger,
@@ -66829,7 +66871,7 @@ async function fetchRecoAlternativesForProduct({
     lang: ctx.lang,
     profileSnapshot,
     productInput: bestInput,
-    productObj,
+    productObj: effectiveProductObj,
     maxTotal,
     region: normalizeRecoPromptRegion(profileSummary),
     candidates: selectorCandidatePool,
@@ -66848,7 +66890,7 @@ async function fetchRecoAlternativesForProduct({
     model: null,
     coverage: {
       has_anchor_id: Boolean(anchor),
-      has_product_json: Boolean(productJson),
+      has_product_json: Boolean(serializeRecoAlternativesProductJson(effectiveProductObj)),
       has_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
     },
   });
