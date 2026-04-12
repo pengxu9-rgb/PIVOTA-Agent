@@ -5960,6 +5960,8 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
           assert.equal(args.route, 'aurora_reco_alternatives_open_world');
           assert.equal(args.ignoreForceModel, true);
           assert.equal(args.model, 'gemini-3-flash-preview');
+          assert.match(String(args.systemPrompt || ''), /generic same-step products/i);
+          assert.match(String(args.systemPrompt || ''), /share a named active/i);
           assert.equal(args.responseJsonSchema?.properties?.alternatives?.items?.properties?.product_type?.type, 'string');
           assert.equal(args.responseJsonSchema?.properties?.alternatives?.items?.properties?.product_type?.nullable, true);
           assert.equal(Object.prototype.hasOwnProperty.call(args, 'responseSchema'), false);
@@ -6033,6 +6035,7 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
         const payload = JSON.parse(geminiRequest?.userPrompt || '{}');
         assert.equal(payload?.task?.max_alternatives, 3);
         assert.match(String(payload?.task?.selection_rule || ''), /distinct real skincare alternatives/i);
+        assert.match(String(payload?.task?.selection_rule || ''), /same functional claim/i);
         assert.ok(Array.isArray(payload?.anchor?.hero_ingredients ?? []));
         assert.ok((payload?.anchor?.hero_ingredients ?? []).length <= 2);
         assert.deepEqual(payload?.anchor?.known_actives ?? [], ['Niacinamide', 'Zinc PCA']);

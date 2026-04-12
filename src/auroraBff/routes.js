@@ -64612,8 +64612,8 @@ function normalizeOpenWorldAlternativeRow(candidate, {
   if (!isSkincareCategory(categoryProbe) && candidateRole !== targetRole) return null;
   if (isBlacklistedCategoryOrTitle(categoryProbe) || isExternalSeedPlaceholderCandidate(categoryProbe)) return null;
 
-  const reasons = uniqCaseInsensitiveStrings(asStringArray(row.reasons, 3), 3);
-  const tradeoffNotes = uniqCaseInsensitiveStrings(asStringArray(row.tradeoff_notes, 3), 3);
+  const reasons = uniqCaseInsensitiveStrings(asStringArray(row.reasons, 2), 2);
+  const tradeoffNotes = uniqCaseInsensitiveStrings(asStringArray(row.tradeoff_notes, 2), 2);
   if (!reasons.length || !tradeoffNotes.length) return null;
 
   const sourceText = [candidateLabel, productType, reasons.join(' '), tradeoffNotes.join(' ')].join(' ');
@@ -64857,7 +64857,7 @@ function buildRecoAlternativesOpenWorldUserPayload({ ctx, productInput, productO
     },
     task: {
       max_alternatives: limit,
-      selection_rule: 'Return distinct real skincare alternatives anchored to the product context; prefer the same product role and clear tradeoffs.',
+      selection_rule: 'Return distinct real skincare alternatives anchored to the product context. For serum or treatment anchors with named actives or oil-control claims, every alternative must overlap on at least one named active or the same functional claim; do not return generic calming, repair, or same-category-only serums. Prefer the same product role and clear tradeoffs.',
     },
   };
 }
@@ -64999,6 +64999,7 @@ async function fetchRecoAlternativesForLocalGeminiOpenWorld({
     'Return real skincare alternatives only. No makeup, tools, or placeholders.',
     'Do not invent URLs, product IDs, exact INCI lists, or internal references.',
     'Keep each reason grounded to the anchor product role and actives.',
+    'Do not choose generic same-step products. For treatment/serum anchors, every alternative must share a named active or the same functional claim.',
     'Return at most 3 alternatives. Use 1 concise reason and 1 concise tradeoff note per item.',
   ].join('\n');
   const userPayload = buildRecoAlternativesOpenWorldUserPayload({ ctx, productInput, productObj, maxTotal });
@@ -65186,6 +65187,7 @@ async function fetchRecoAlternativesForExternalSeedProduct({
     'Never invent URLs, product IDs, SKUs, exact INCI lists, or internal catalog references.',
     'Each alternative must include a real brand, a real product name, anchor-linked reasons, and at least one concrete tradeoff or uncertainty.',
     'Reject makeup, tools, fragrance, body-only items, haircare, and placeholder products.',
+    'Do not choose generic same-step products. For treatment/serum anchors, every alternative must share a named active or the same functional claim.',
     'Return at most 3 alternatives. Use 1 concise reason and 1 concise tradeoff note per item.',
   ].join('\n');
   const userPayload = {
