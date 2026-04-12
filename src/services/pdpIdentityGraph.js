@@ -1210,6 +1210,245 @@ async function listLivePdpIdentityRowsForRefs({
   }
 }
 
+async function promotePdpIdentityLiveRead({
+  brand = null,
+  sourceListingRefs = [],
+  limit = 500,
+  dryRun = false,
+  requireBrandSource = true,
+  createdBy = 'admin',
+  queryFn = query,
+  withClientFn = withClient,
+} = {}) {
+  if (!process.env.DATABASE_URL || typeof queryFn !== 'function') {
+    return {
+      dry_run: dryRun === true,
+      candidate_rows_scanned: 0,
+      groups_considered: 0,
+      groups_eligible: 0,
+      rows_to_enable: 0,
+      overrides_to_write: 0,
+      updated_rows: 0,
+      brand_filter: normalizeBrandToken(brand) || null,
+      require_brand_source: requireBrandSource === true,
+      sample_refs: [],
+      reason: 'db_not_configured',
+    };
+  }
+
+  const refs = uniqueStrings(sourceListingRefs, 500);
+  const normalizedBrand = normalizeBrandToken(brand);
+  const normalizedLimit = Math.max(1, Math.min(5000, Number(limit) || 500));
+
+  try {
+    const params = [];
+    const where = [
+      `identity_status = 'approved'`,
+      `review_required = false`,
+      `live_read_enabled = false`,
+    ];
+    if (refs.length) {
+      params.push(refs);
+      where.push(`source_listing_ref = ANY($${params.length}::text[])`);
+    } else if (normalizedBrand) {
+      params.push(normalizedBrand);
+      where.push(`brand_norm = $${params.length}`);
+    }
+    params.push(normalizedLimit);
+    const candidatesRes = await queryFn(
+      `
+        SELECT *
+        FROM pdp_identity_listing
+        WHERE ${where.join(' AND ')}
+        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+        LIMIT $${params.length}
+      `,
+      params,
+    );
+    const candidateRows = normalizeIdentityRows(candidatesRes?.rows);
+    const candidateGroupIds = uniqueStrings(
+      candidateRows.map((row) => asString(row?.sellable_item_group_id)),
+      normalizedLimit,
+    );
+    if (!candidateGroupIds.length) {
+      return {
+        dry_run: dryRun === true,
+        candidate_rows_scanned: candidateRows.length,
+        groups_considered: 0,
+        groups_eligible: 0,
+        rows_to_enable: 0,
+        overrides_to_write: 0,
+        updated_rows: 0,
+        brand_filter: normalizedBrand || null,
+        require_brand_source: requireBrandSource === true,
+        sample_refs: [],
+      };
+    }
+
+    const groupRowsRes = await queryFn(
+      `
+        SELECT *
+        FROM pdp_identity_listing
+        WHERE sellable_item_group_id = ANY($1::text[])
+        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+      `,
+      [candidateGroupIds],
+    );
+    const groupRows = normalizeIdentityRows(groupRowsRes?.rows);
+    const groups = new Map();
+    for (const row of groupRows) {
+      const groupId = asString(row?.sellable_item_group_id);
+      if (!groupId) continue;
+      const current = groups.get(groupId) || [];
+      current.push(row);
+      groups.set(groupId, current);
+    }
+
+    const eligibleGroups = [];
+    for (const [groupId, rows] of groups.entries()) {
+      const safeRows = Array.isArray(rows) ? rows : [];
+      if (!safeRows.length) continue;
+      if (
+        !safeRows.every(
+          (row) =>
+            asString(row?.identity_status) === 'approved' &&
+            row?.review_required !== true,
+        )
+      ) {
+        continue;
+      }
+      if (
+        requireBrandSource === true &&
+        !safeRows.some((row) => asString(row?.source_tier).toLowerCase() === 'brand')
+      ) {
+        continue;
+      }
+      const rowsToEnable = safeRows.filter((row) => row?.live_read_enabled !== true);
+      if (!rowsToEnable.length) continue;
+      eligibleGroups.push({
+        sellable_item_group_id: groupId,
+        brand_norm: asString(safeRows[0]?.brand_norm) || null,
+        rows: safeRows,
+        rows_to_enable: rowsToEnable,
+      });
+    }
+
+    const rowsToEnable = eligibleGroups.flatMap((group) => group.rows_to_enable);
+    const sourceRefsToEnable = uniqueStrings(
+      rowsToEnable.map((row) => asString(row?.source_listing_ref)),
+      5000,
+    );
+    const sampleRefs = sourceRefsToEnable.slice(0, 20);
+
+    if (dryRun === true || !sourceRefsToEnable.length) {
+      return {
+        dry_run: true,
+        candidate_rows_scanned: candidateRows.length,
+        groups_considered: groups.size,
+        groups_eligible: eligibleGroups.length,
+        rows_to_enable: sourceRefsToEnable.length,
+        overrides_to_write: sourceRefsToEnable.length,
+        updated_rows: 0,
+        brand_filter: normalizedBrand || null,
+        require_brand_source: requireBrandSource === true,
+        sample_refs: sampleRefs,
+      };
+    }
+
+    const written = await withClientFn(async (client) => {
+      await client.query('BEGIN');
+      try {
+        for (const row of rowsToEnable) {
+          const sourceRef = asString(row?.source_listing_ref);
+          const payload = {
+            source_listing_ref: sourceRef,
+            reason: 'eligible_exact_item_group_batch',
+            sellable_item_group_id: asString(row?.sellable_item_group_id) || null,
+            product_line_id: asString(row?.product_line_id) || null,
+            review_family_id: asString(row?.review_family_id) || null,
+            brand_norm: asString(row?.brand_norm) || null,
+          };
+          const overrideId = stableHash('ovr', ['approve_live_read', sourceRef, payload.reason]);
+          await client.query(
+            `
+              INSERT INTO pdp_identity_override (
+                id,
+                source_listing_ref,
+                action_type,
+                payload,
+                created_by,
+                active,
+                updated_at
+              ) VALUES ($1,$2,'approve_live_read',$3::jsonb,$4,true, now())
+              ON CONFLICT (id) DO UPDATE SET
+                payload = EXCLUDED.payload,
+                created_by = EXCLUDED.created_by,
+                active = EXCLUDED.active,
+                updated_at = now()
+            `,
+            [
+              overrideId,
+              sourceRef,
+              JSON.stringify(payload),
+              asString(createdBy) || 'admin',
+            ],
+          );
+        }
+
+        const updateRes = await client.query(
+          `
+            UPDATE pdp_identity_listing
+            SET
+              live_read_enabled = true,
+              identity_status = 'approved',
+              review_required = false,
+              updated_at = now()
+            WHERE source_listing_ref = ANY($1::text[])
+          `,
+          [sourceRefsToEnable],
+        );
+        await client.query('COMMIT');
+        return {
+          updated_rows: Number(updateRes?.rowCount || 0),
+        };
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      }
+    });
+
+    return {
+      dry_run: false,
+      candidate_rows_scanned: candidateRows.length,
+      groups_considered: groups.size,
+      groups_eligible: eligibleGroups.length,
+      rows_to_enable: sourceRefsToEnable.length,
+      overrides_to_write: sourceRefsToEnable.length,
+      updated_rows: written.updated_rows,
+      brand_filter: normalizedBrand || null,
+      require_brand_source: requireBrandSource === true,
+      sample_refs: sampleRefs,
+    };
+  } catch (err) {
+    if (looksLikeRelationMissing(err)) {
+      return {
+        dry_run: dryRun === true,
+        candidate_rows_scanned: 0,
+        groups_considered: 0,
+        groups_eligible: 0,
+        rows_to_enable: 0,
+        overrides_to_write: 0,
+        updated_rows: 0,
+        brand_filter: normalizedBrand || null,
+        require_brand_source: requireBrandSource === true,
+        sample_refs: [],
+        reason: 'identity_tables_not_ready',
+      };
+    }
+    throw err;
+  }
+}
+
 async function fetchBackfillProducts({ limit = 500, brandFilter = null, queryFn = query } = {}) {
   const normalizedLimit = Math.max(1, Math.min(5000, Number(limit) || 500));
   const normalizedBrandFilter = normalizeBrandToken(brandFilter);
@@ -1808,6 +2047,7 @@ module.exports = {
   composeSyntheticCanonicalProduct,
   maybeBuildLiveSyntheticPdp,
   listLivePdpIdentityRowsForRefs,
+  promotePdpIdentityLiveRead,
   backfillPdpIdentityGraph,
   listPdpIdentityShadowRows,
   listPdpIdentityReviewQueue,
