@@ -1,0 +1,95 @@
+name: catalog-serving-shadow-acceptance
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Backfill sample size"
+        required: false
+        default: "500"
+      market:
+        description: "Market code"
+        required: false
+        default: "US"
+      brand:
+        description: "Optional brand filter"
+        required: false
+        default: ""
+      sample_query:
+        description: "Optional catalog-serving probe query"
+        required: false
+        default: "serum"
+      skip_search:
+        description: "Skip index probe"
+        type: boolean
+        required: false
+        default: false
+      fail_on_status:
+        description: "Fail workflow on status threshold"
+        required: false
+        default: "red"
+
+concurrency:
+  group: catalog-serving-shadow-acceptance
+  cancel-in-progress: true
+
+jobs:
+  shadow-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      CATALOG_SERVING_INDEX_BASE_URL: ${{ vars.CATALOG_SERVING_INDEX_BASE_URL || secrets.CATALOG_SERVING_INDEX_BASE_URL }}
+      CATALOG_SERVING_INDEX_API_KEY: ${{ secrets.CATALOG_SERVING_INDEX_API_KEY }}
+      CATALOG_SERVING_INDEX_NAME: ${{ vars.CATALOG_SERVING_INDEX_NAME || 'catalog_public_v1' }}
+      DEFAULT_DISCOVERY_EXTERNAL_SEED_MARKET: ${{ vars.DEFAULT_DISCOVERY_EXTERNAL_SEED_MARKET || 'US' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install
+        run: npm ci
+
+      - name: Run catalog-serving shadow acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${DATABASE_URL:-}" ]]; then
+            echo "DATABASE_URL is not configured; skipping catalog-serving shadow acceptance."
+            exit 0
+          fi
+          mkdir -p reports
+          args=(
+            --out-dir reports
+            --limit "${{ inputs.limit || '500' }}"
+            --market "${{ inputs.market || 'US' }}"
+            --sample-query "${{ inputs.sample_query || 'serum' }}"
+            --fail-on-status "${{ inputs.fail_on_status || 'red' }}"
+          )
+          brand_input="${{ inputs.brand || '' }}"
+          if [[ -n "${brand_input}" ]]; then
+            args+=(--brand "${brand_input}")
+          fi
+          skip_search_input="${{ inputs.skip_search || false }}"
+          if [[ "${skip_search_input}" == "true" ]]; then
+            args+=(--skip-search)
+          fi
+          node scripts/catalog_serving_shadow_acceptance.js "${args[@]}"
+
+      - name: Upload report artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalog-serving-shadow-acceptance-reports
+          path: |
+            reports/catalog_serving_shadow_acceptance_*.json
+            reports/catalog_serving_shadow_acceptance_*.md
+          retention-days: 7
