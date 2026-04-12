@@ -1,5 +1,6 @@
 const {
   buildManifestFromExtract,
+  buildManifestFromSourceAttempts,
   computeExtractLimit,
   looksLikeBundleLikeProduct,
   scorePreferredTitleMatch,
@@ -128,5 +129,161 @@ describe('build_beauty_brand_external_seed_manifest', () => {
   test('expands extract window when preferred titles are provided', () => {
     expect(computeExtractLimit(12, [])).toBe(60);
     expect(computeExtractLimit(12, ['10% Niacinamide Serum'])).toBe(250);
+  });
+
+  test('uses a secondary source only when the primary source cannot satisfy the preferred target', () => {
+    const primaryManifest = buildManifestFromExtract({
+      brand: 'La Roche-Posay',
+      domain: 'https://www.laroche-posay.us/our-products/sun/face-sunscreen/anthelios-aox-antioxidant-serum-with-spf-50-sunscreen-3606000403703.html',
+      market: 'US',
+      limit: 1,
+      preferredTitles: ['Anthelios AOX Antioxidant Serum with SPF 50 Sunscreen'],
+      sourceRole: 'primary',
+      extractDoc: {
+        diagnostics: {
+          discovery_strategy: 'seed_page',
+          failure_category: 'bot_challenge',
+          block_provider: 'cloudflare',
+        },
+        products: [],
+      },
+    });
+    const secondaryManifest = buildManifestFromExtract({
+      brand: 'La Roche-Posay',
+      domain: 'https://www.ulta.com/p/anthelios-aox-daily-antioxidant-face-serum-spf-50-xlsImpprod12101063?sku=2285142',
+      market: 'US',
+      limit: 1,
+      preferredTitles: ['Anthelios AOX Antioxidant Serum with SPF 50 Sunscreen'],
+      sourceRole: 'secondary_fallback',
+      extractDoc: {
+        diagnostics: {
+          discovery_strategy: 'seed_page',
+          failure_category: null,
+          block_provider: null,
+        },
+        products: [
+          {
+            title: 'Anthelios AOX Daily Antioxidant Face Serum SPF 50',
+            url: 'https://www.ulta.com/p/anthelios-aox-daily-antioxidant-face-serum-spf-50-xlsImpprod12101063?sku=2285142',
+            image_url: 'https://cdn.example.com/lrp-aox.jpg',
+            price: '$44.99',
+            currency: 'USD',
+            availability: 'in stock',
+          },
+        ],
+      },
+    });
+
+    const manifest = buildManifestFromSourceAttempts({
+      brand: 'La Roche-Posay',
+      domain: primaryManifest.domain,
+      fallbackDomains: [secondaryManifest.domain],
+      market: 'US',
+      limit: 1,
+      preferredTitles: ['Anthelios AOX Antioxidant Serum with SPF 50 Sunscreen'],
+      sourceManifests: [primaryManifest, secondaryManifest],
+    });
+
+    expect(manifest.item_count).toBe(1);
+    expect(manifest.fallback_used).toBe(true);
+    expect(manifest.source_attempts[0]).toMatchObject({
+      source_role: 'primary',
+      used_in_manifest: false,
+      diagnostics_summary: expect.objectContaining({
+        failure_category: 'bot_challenge',
+        block_provider: 'cloudflare',
+      }),
+    });
+    expect(manifest.source_attempts[1]).toMatchObject({
+      source_role: 'secondary_fallback',
+      used_in_manifest: true,
+      added_item_count: 1,
+    });
+    expect(manifest.items[0]).toMatchObject({
+      source_role: 'secondary_fallback',
+      target_url: 'https://www.ulta.com/p/anthelios-aox-daily-antioxidant-face-serum-spf-50-xlsImpprod12101063?sku=2285142',
+      matched_preferred_titles: ['Anthelios AOX Antioxidant Serum with SPF 50 Sunscreen'],
+    });
+    expect(manifest.items[0].seed_row.seed_data.search_aliases).toContain(
+      'Anthelios AOX Antioxidant Serum with SPF 50 Sunscreen',
+    );
+    expect(manifest.items[0].seed_row.seed_data.snapshot.authority_source).toMatchObject({
+      source_role: 'secondary_fallback',
+      source_url: 'https://www.ulta.com/p/anthelios-aox-daily-antioxidant-face-serum-spf-50-xlsImpprod12101063?sku=2285142',
+    });
+  });
+
+  test('does not consume secondary source rows once the primary source already satisfies preferred titles', () => {
+    const primaryManifest = buildManifestFromExtract({
+      brand: 'Neutrogena',
+      domain: 'https://www.neutrogena.com/products/sun/invisible-daily-defense-face-serum-spf-60/6811153',
+      market: 'US',
+      limit: 1,
+      preferredTitles: ['Invisible Daily Defense Face Serum SPF 60+'],
+      sourceRole: 'primary',
+      extractDoc: {
+        diagnostics: {
+          discovery_strategy: 'seed_page',
+          failure_category: null,
+          block_provider: null,
+        },
+        products: [
+          {
+            title: 'Invisible Daily Defense Face Serum SPF 60+',
+            url: 'https://www.neutrogena.com/products/sun/invisible-daily-defense-face-serum-spf-60/6811153',
+            image_url: 'https://cdn.example.com/neutrogena-serum.jpg',
+            price: '$19.99',
+            currency: 'USD',
+            availability: 'in stock',
+          },
+        ],
+      },
+    });
+    const secondaryManifest = buildManifestFromExtract({
+      brand: 'Neutrogena',
+      domain: 'https://www.target.com/p/neutrogena-invisible-daily-defense-face-serum-spf-60',
+      market: 'US',
+      limit: 1,
+      preferredTitles: ['Invisible Daily Defense Face Serum SPF 60+'],
+      sourceRole: 'secondary_fallback',
+      extractDoc: {
+        diagnostics: {
+          discovery_strategy: 'seed_page',
+          failure_category: null,
+          block_provider: null,
+        },
+        products: [
+          {
+            title: 'Neutrogena Invisible Daily Defense Sunscreen Serum SPF 60',
+            url: 'https://www.target.com/p/neutrogena-invisible-daily-defense-face-serum-spf-60',
+            image_url: 'https://cdn.example.com/neutrogena-target.jpg',
+            price: '$18.99',
+            currency: 'USD',
+            availability: 'in stock',
+          },
+        ],
+      },
+    });
+
+    const manifest = buildManifestFromSourceAttempts({
+      brand: 'Neutrogena',
+      domain: primaryManifest.domain,
+      fallbackDomains: [secondaryManifest.domain],
+      market: 'US',
+      limit: 1,
+      preferredTitles: ['Invisible Daily Defense Face Serum SPF 60+'],
+      sourceManifests: [primaryManifest, secondaryManifest],
+    });
+
+    expect(manifest.item_count).toBe(1);
+    expect(manifest.fallback_used).toBe(false);
+    expect(manifest.items[0].target_url).toBe(
+      'https://www.neutrogena.com/products/sun/invisible-daily-defense-face-serum-spf-60/6811153',
+    );
+    expect(manifest.source_attempts[1]).toMatchObject({
+      source_role: 'secondary_fallback',
+      used_in_manifest: false,
+      skip_reason: 'primary_sufficient',
+    });
   });
 });

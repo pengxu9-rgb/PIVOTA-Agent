@@ -55,11 +55,15 @@ function parseBrandSpecs(values) {
     .map((raw) => String(raw || '').trim())
     .filter(Boolean)
     .map((raw) => {
-      const [brand, domain, preferredTitlesRaw] = raw.split('|').map((item) => item.trim());
+      const [brand, domain, preferredTitlesRaw, fallbackDomainsRaw] = raw.split('|').map((item) => item.trim());
       return {
         brand,
         domain,
         preferredTitles: String(preferredTitlesRaw || '')
+          .split(';')
+          .map((item) => item.trim())
+          .filter(Boolean),
+        fallbackDomains: String(fallbackDomainsRaw || '')
           .split(';')
           .map((item) => item.trim())
           .filter(Boolean),
@@ -128,6 +132,7 @@ async function main() {
     const brandReport = {
       brand: spec.brand,
       domain: spec.domain,
+      fallback_domains: spec.fallbackDomains,
       paths: {
         manifest: manifestPath,
         seed_creation: creationPath,
@@ -147,6 +152,9 @@ async function main() {
         String(args.limit),
         ...(spec.preferredTitles.length > 0
           ? ['--preferred-titles', spec.preferredTitles.join(';;')]
+          : []),
+        ...(spec.fallbackDomains.length > 0
+          ? ['--fallback-domains', spec.fallbackDomains.join(';;')]
           : []),
         '--out',
         manifestPath,
