@@ -3332,10 +3332,27 @@ function buildDiscoverySeedStageSqlId(row) {
 }
 
 function normalizeDiscoveryExactTitleSqlText(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, ' ');
+  return normalizeResolverLookupText(value);
+}
+
+function buildDiscoveryExactTitleSqlNormalizationExpr(sourceExpr) {
+  const expr = String(sourceExpr || '').trim();
+  if (!expr) {
+    return "''";
+  }
+  return [
+    'lower(trim(',
+    "regexp_replace(",
+    "regexp_replace(",
+    "regexp_replace(",
+    "regexp_replace(",
+    `regexp_replace(coalesce(${expr}, ''), E'[＋+]', ' plus ', 'g'),`,
+    "E'[%％]', ' percent ', 'g'),",
+    "E'&', ' and ', 'g'),",
+    "E'[^[:alnum:]]+', ' ', 'g'),",
+    "E'\\\\s+', ' ', 'g')",
+    '))',
+  ].join(' ');
 }
 
 function buildDiscoveryExactTitleLookupVariants(queryText) {
@@ -3381,6 +3398,26 @@ function buildDiscoveryExactTitleLookupVariants(queryText) {
         normalizedQuery.slice(normalizedBrandVariant.length).trim(),
       );
     }
+  }
+
+  const rawQueryTokens = rawNormalizedQuery.split(/\s+/).filter(Boolean);
+  for (const prefixLength of [1, 2]) {
+    if (rawQueryTokens.length - prefixLength < 3) continue;
+    const candidateTokens = rawQueryTokens.slice(prefixLength);
+    const hasFormFactor = candidateTokens.some((token) =>
+      DISCOVERY_EXACT_TITLE_FORM_FACTOR_TOKENS.has(String(token || '').toLowerCase()),
+    );
+    if (!hasFormFactor) continue;
+    const informativeTokens = candidateTokens.filter((token) => {
+      const normalizedToken = String(token || '').trim().toLowerCase();
+      return (
+        normalizedToken &&
+        !DISCOVERY_EXACT_TITLE_GENERIC_TOKENS.has(normalizedToken) &&
+        normalizedToken.length >= 3
+      );
+    });
+    if (informativeTokens.length < 2) continue;
+    pushVariant(candidateTokens.join(' '), candidateTokens.join(' '));
   }
 
   return {
@@ -3483,11 +3520,13 @@ async function fetchExternalSeedExactTitleCandidates({
     return null;
   }
 
-  const titleExpr = "lower(regexp_replace(coalesce(title, ''), E'\\\\s+', ' ', 'g'))";
-  const snapshotTitleExpr =
-    "lower(regexp_replace(coalesce(seed_data->'snapshot'->>'title', ''), E'\\\\s+', ' ', 'g'))";
-  const retrievalTitleExpr =
-    "lower(regexp_replace(coalesce(seed_data->'derived'->'recall'->>'retrieval_title', ''), E'\\\\s+', ' ', 'g'))";
+  const titleExpr = buildDiscoveryExactTitleSqlNormalizationExpr('title');
+  const snapshotTitleExpr = buildDiscoveryExactTitleSqlNormalizationExpr(
+    "seed_data->'snapshot'->>'title'",
+  );
+  const retrievalTitleExpr = buildDiscoveryExactTitleSqlNormalizationExpr(
+    "seed_data->'derived'->'recall'->>'retrieval_title'",
+  );
 
   try {
     const res = await query(
@@ -4191,6 +4230,39 @@ async function loadCatalogCandidates({
       catalogUnavailableError: null,
     };
   };
+
+  const exactTitlePrimaryResult = await fetchExternalSeedExactTitleCandidates({
+    request,
+    profile,
+    limit: externalProviderLimit,
+  });
+  if (exactTitlePrimaryResult?.products?.length) {
+    candidateSource = 'exact_title_primary';
+    primaryPathUsed = 'exact_title_primary';
+    providerResults.push({
+      provider: 'external_seeds',
+      products: exactTitlePrimaryResult.products,
+      recallSummary: exactTitlePrimaryResult.recallSummary,
+    });
+    mergeProducts(exactTitlePrimaryResult.products);
+    providerResults.push(
+      buildSkippedProviderResult('products_search', {
+        label: getProviderLabel('products_search'),
+        query: providerQueries.join(' | '),
+        limit: safeLimit,
+        skipReason: 'exact_title_primary_used',
+      }),
+    );
+    providerResults.push(
+      buildSkippedProviderResult('internal_catalog', {
+        label: getProviderLabel('internal_catalog'),
+        query: providerQueries.join(' | '),
+        limit: internalProviderLimit,
+        skipReason: 'exact_title_primary_used',
+      }),
+    );
+    return finalizeProviderResult();
+  }
 
   if (useBeautyInterestMainline) {
     try {
@@ -6882,6 +6954,7 @@ module.exports = {
     resolveDiscoveryProductsSearchApiKeyConfig,
     resolveDiscoveryProductsSearchBaseUrlConfig,
     loadBrandScopedRecommendationFallback,
+    loadCatalogCandidates,
     hydrateDiscoveryCandidateProductIntel,
     matchesQueryTextCandidate,
     matchesBrandScopeCandidate,
