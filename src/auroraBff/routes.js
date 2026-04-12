@@ -66862,6 +66862,9 @@ async function enrichRecommendationsWithAlternatives({ ctx, profileSummary, rece
       budget: alternativesBudget,
       debug,
       logger,
+      options: {
+        disable_synthetic_local_fallback: true,
+      },
     });
     return { ...out, idx: t.idx };
   });
@@ -72134,6 +72137,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         maxTotal: total,
         debug: false,
         logger,
+        options: {
+          disable_synthetic_local_fallback: true,
+        },
       });
 
       const mapped = Array.isArray(upstreamOut.alternatives) ? upstreamOut.alternatives : [];

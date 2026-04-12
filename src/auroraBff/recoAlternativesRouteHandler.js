@@ -43,6 +43,7 @@ function createRecoAlternativesRouteHandlerRuntime(deps = {}) {
       const debugHeaderRaw = req.get('X-Debug') ?? req.get('X-Aurora-Debug');
       const includeDebugFromHeader = debugHeaderRaw == null || debugHeaderRaw === '' ? null : coerceBoolean(debugHeaderRaw);
       const includeDebug = includeDebugFromHeader == null ? Boolean(parsed.data.include_debug) : includeDebugFromHeader;
+      const disableSyntheticLocalFallback = parsed.data.disable_synthetic_local_fallback !== false;
       const maxTotal = Number.isFinite(Number(parsed.data.max_total))
         ? Math.max(1, Math.min(8, Math.trunc(Number(parsed.data.max_total))))
         : 6;
@@ -79,7 +80,7 @@ function createRecoAlternativesRouteHandlerRuntime(deps = {}) {
           logger,
           options: {
             recommendation_mode: parsed.data.recommendation_mode,
-            disable_synthetic_local_fallback: parsed.data.disable_synthetic_local_fallback === true,
+            disable_synthetic_local_fallback: disableSyntheticLocalFallback,
           },
         });
 

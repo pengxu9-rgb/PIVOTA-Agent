@@ -1197,6 +1197,7 @@ async function buildDupeSuggestCompatFallbackCandidates({ req, internal, product
         recommendation_mode: 'pool_only',
         profile_mode: 'anchor_only',
         disable_async_refresh: true,
+        disable_synthetic_local_fallback: true,
       },
     });
     return Array.isArray(out && out.alternatives)

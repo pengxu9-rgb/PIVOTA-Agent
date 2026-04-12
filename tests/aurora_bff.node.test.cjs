@@ -5732,7 +5732,7 @@ test('/v1/chat: alternatives budget exhausted only degrades alternatives (recomm
   );
 });
 
-test('/v1/reco/alternatives: no candidates returns explainable empty and never calls provider', async () => {
+test('/v1/reco/alternatives: explicit synthetic fallback opt-in still returns placeholder alternatives without calling provider', async () => {
   return withEnv(
     {
       AURORA_BFF_RETENTION_DAYS: '0',
@@ -5769,6 +5769,7 @@ test('/v1/reco/alternatives: no candidates returns explainable empty and never c
           .send({
             product_input: 'unknown product text with no structured candidate',
             max_total: 3,
+            disable_synthetic_local_fallback: false,
           });
 
         assert.equal(resp.status, 200);
@@ -5870,7 +5871,7 @@ test('/v1/reco/alternatives: structured candidate pool returns selector_grounded
   );
 });
 
-test('/v1/reco/alternatives: aurora product-card surface can disable synthetic local fallback', async () => {
+test('/v1/reco/alternatives: aurora product-card surface disables synthetic local fallback by default', async () => {
   return withEnv(
     {
       AURORA_BFF_RETENTION_DAYS: '0',
@@ -5907,7 +5908,6 @@ test('/v1/reco/alternatives: aurora product-card surface can disable synthetic l
           .send({
             product_input: 'unknown product text with no structured candidate',
             max_total: 3,
-            disable_synthetic_local_fallback: true,
           });
 
         assert.equal(resp.status, 200);
