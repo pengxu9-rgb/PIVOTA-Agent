@@ -5732,6 +5732,190 @@ test('/v1/chat: alternatives budget exhausted only degrades alternatives (recomm
   );
 });
 
+test('reco alternatives target signals and query plan retain sunscreen compare context from product-card rows', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const product = {
+      product_id: 'ext_anchor_sunscreen',
+      merchant_id: 'external_seed',
+      brand: 'the ordinary',
+      name: 'UV Filters SPF 45 Serum',
+      display_name: 'UV Filters SPF 45 Serum',
+      category: 'sunscreen',
+      product_type: 'sunscreen',
+      key_features: ['UV filters', 'Glycerin', 'Lightweight serum'],
+      short_description: 'It keeps your daytime protection step easier to wear every morning.',
+      description: 'A lightweight SPF 45 sunscreen serum that protects and hydrates, for daily use with no white cast.',
+    };
+
+    const signals = __internal.buildRecoAlternativesTargetSignals(product, {
+      productInput: 'UV Filters SPF 45 Serum',
+      lang: 'EN',
+    });
+    const queries = __internal.buildExternalSeedCompareSearchQueries({
+      productObj: product,
+      productInput: 'UV Filters SPF 45 Serum',
+      lang: 'EN',
+    });
+
+    assert.equal(signals.usageRole, 'sunscreen');
+    assert.ok(signals.primaryClaims.includes('sun protection'));
+    assert.ok(signals.primaryClaims.includes('hydration'));
+    assert.ok(signals.primaryClaims.includes('Glycerin'));
+    assert.ok(signals.textureHints.includes('serum texture'));
+    assert.ok(signals.textureHints.includes('lightweight finish'));
+    assert.equal(queries.some((query) => /sunscreen sunscreen/i.test(String(query))), false);
+    assert.ok(queries.slice(0, 4).some((query) => /sun protection|hydration|lightweight finish/i.test(String(query))));
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('/v1/reco/alternatives: external_seed sunscreen compare recalls pool hits from richer anchor signals before provider', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED: 'false',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      const seenQueries = [];
+      axios.get = async (url, config = {}) => {
+        if (!isProductsSearchUrl(url)) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        const queryText = String(
+          config?.params?.q ||
+          config?.params?.query ||
+          config?.params?.text ||
+          '',
+        ).trim();
+        seenQueries.push(queryText);
+        if (/(sun protection|hydration|lightweight finish).*(sunscreen)|sunscreen.*(sun protection|hydration|lightweight finish)/i.test(queryText)) {
+          return {
+            status: 200,
+            data: {
+              products: [
+                {
+                  product_id: 'ext_skin1004_sunscreen',
+                  merchant_id: 'external_seed',
+                  brand: 'Skin1004',
+                  name: 'Madagascar Centella Hyalu-Cica Water-Fit Sun Serum SPF50+',
+                  display_name: 'Madagascar Centella Hyalu-Cica Water-Fit Sun Serum SPF50+',
+                  product_type: 'Sunscreen',
+                  category: 'Sunscreen',
+                  retrieval_source: 'external_seed',
+                  canonical_product_ref: {
+                    product_id: 'ext_skin1004_sunscreen',
+                    merchant_id: 'external_seed',
+                  },
+                  url: 'https://skin1004.com/products/hyalu-cica-water-fit-sun-serum-spf50',
+                },
+                {
+                  product_id: 'ext_lrp_anthelios',
+                  merchant_id: 'external_seed',
+                  brand: 'La Roche-Posay',
+                  name: 'Anthelios Ultra-Light Invisible Fluid SPF 50+',
+                  display_name: 'Anthelios Ultra-Light Invisible Fluid SPF 50+',
+                  product_type: 'Sunscreen',
+                  category: 'Sunscreen',
+                  retrieval_source: 'external_seed',
+                  canonical_product_ref: {
+                    product_id: 'ext_lrp_anthelios',
+                    merchant_id: 'external_seed',
+                  },
+                  url: 'https://laroche-posay.us/products/anthelios-ultra-light-invisible-fluid-spf-50',
+                },
+                {
+                  product_id: 'ext_supergoop_every_single_face',
+                  merchant_id: 'external_seed',
+                  brand: 'Supergoop!',
+                  name: 'Every. Single. Face. Watery Lotion SPF 50',
+                  display_name: 'Every. Single. Face. Watery Lotion SPF 50',
+                  product_type: 'Sunscreen',
+                  category: 'Sunscreen',
+                  retrieval_source: 'external_seed',
+                  canonical_product_ref: {
+                    product_id: 'ext_supergoop_every_single_face',
+                    merchant_id: 'external_seed',
+                  },
+                  url: 'https://supergoop.com/products/every-single-face-watery-lotion-spf-50',
+                },
+              ],
+            },
+          };
+        }
+        return { status: 200, data: { products: [] } };
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { mountAuroraBffRoutes, __internal } = routeModule;
+        let geminiCalled = false;
+        __internal.__setCallGeminiJsonObjectForTest(async () => {
+          geminiCalled = true;
+          throw new Error('provider should not run when grounded sunscreen pool is sufficient');
+        });
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/reco/alternatives')
+          .set({
+            'X-Aurora-UID': 'test_uid_alt_sunscreen_pool_recall',
+            'X-Trace-ID': 'test_trace_alt_sunscreen_pool_recall',
+            'X-Brief-ID': 'test_brief_alt_sunscreen_pool_recall',
+            'X-Lang': 'EN',
+          })
+          .send({
+            product_input: 'UV Filters SPF 45 Serum',
+            max_total: 6,
+            disable_synthetic_local_fallback: true,
+            product: {
+              product_id: 'ext_anchor_sunscreen',
+              merchant_id: 'external_seed',
+              brand: 'the ordinary',
+              name: 'UV Filters SPF 45 Serum',
+              display_name: 'UV Filters SPF 45 Serum',
+              product_type: 'sunscreen',
+              category: 'sunscreen',
+              key_features: ['UV filters', 'Glycerin', 'Lightweight serum'],
+              short_description: 'It keeps your daytime protection step easier to wear every morning.',
+              description: 'A lightweight SPF 45 sunscreen serum that protects and hydrates, for daily use with no white cast.',
+              canonical_product_ref: {
+                product_id: 'ext_anchor_sunscreen',
+                merchant_id: 'external_seed',
+              },
+            },
+          });
+
+        assert.equal(resp.status, 200);
+        assert.equal(geminiCalled, false);
+        assert.equal(resp.body?.source_mode, 'pool_open_world_mixed');
+        assert.equal(resp.body?.compare_meta?.open_world_status, 'skipped_sufficient_pool');
+        assert.ok(Number(resp.body?.compare_meta?.pool_selected_count || 0) >= 3);
+        assert.ok(seenQueries.some((query) => /sun protection|hydration|lightweight finish/i.test(String(query))));
+        assert.equal(resp.body.alternatives.every((alt) => String(alt?.candidate_origin || '') === 'pool'), true);
+        assert.equal(resp.body.alternatives.every((alt) => String(alt?.grounding_status || '') === 'catalog_verified'), true);
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        axios.get = originalGet;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
 test('/v1/reco/alternatives: explicit synthetic fallback opt-in still returns placeholder alternatives without calling provider', async () => {
   return withEnv(
     {

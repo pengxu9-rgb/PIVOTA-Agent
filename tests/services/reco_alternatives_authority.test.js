@@ -65,4 +65,21 @@ describe('recoAlternativesAuthority', () => {
     );
     expect(aliases.length).toBeLessThanOrEqual(6);
   });
+
+  test('keeps shortened long-title sunscreen phrases when callers allow more variants', () => {
+    const variants = buildRecoAuthorityQueryVariants({
+      brand: 'Supergoop!',
+      name: 'Daily Dose Hydra-Ceramide Boost + SPF 40 Sunscreen Oil-Free Serum',
+      category: 'Sunscreen',
+      maxVariants: 8,
+    });
+
+    expect(variants).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          query: 'hydra ceramide boost plus spf 40 sunscreen oil free serum',
+        }),
+      ]),
+    );
+  });
 });

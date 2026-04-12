@@ -63517,6 +63517,15 @@ function collectRecoPromptTextList(values, { max = 6, maxLen = 80 } = {}) {
   return out.slice(0, max);
 }
 
+function normalizeRecoPromptNarrative(value) {
+  return String(value || '')
+    .replace(/<\s*br\s*\/?>/gi, ' ')
+    .replace(/<\/?\s*(?:p|div|section|article|header|footer|blockquote|h[1-6]|ul|ol|li)\b[^>]*>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function inferRecoAlternativesUsageRole(...values) {
   const text = values.filter(Boolean).join(' ').toLowerCase();
   if (!text) return 'unknown';
@@ -63538,14 +63547,14 @@ function inferRecoAlternativesClaimHints(...values) {
   const seen = new Set();
   const push = (value) => pushRecoPromptText(out, seen, value, { max: 6, maxLen: 48 });
   if (!text) return out;
-  if (/\b(hydrat|moist|hyaluronic|plump)\b/.test(text)) push('hydration');
-  if (/\b(barrier|repair|soothing|calm|redness)\b/.test(text)) push('barrier support');
-  if (/\b(bright|dark spot|tone|vitamin c|glow|niacinamide)\b/.test(text)) push('brightening');
-  if (/\b(acne|blemish|clarifying|salicylic|bha|breakout|pore)\b/.test(text)) push('blemish care');
-  if (/\b(retinol|retinoid|firm|wrinkle|aging|ageing|line)\b/.test(text)) push('anti-aging');
-  if (/\b(oil control|oil-free|matt|shine)\b/.test(text)) push('oil control');
-  if (/\b(spf|sunscreen|uv)\b/.test(text)) push('sun protection');
-  if (/\b(exfoliat|aha|bha|pha|acid|peel)\b/.test(text)) push('exfoliation');
+  if (/\b(?:hydrat\w*|moist\w*|hyaluronic|plump\w*)\b/.test(text)) push('hydration');
+  if (/\b(?:barrier|repair\w*|sooth\w*|calm\w*|redness)\b/.test(text)) push('barrier support');
+  if (/\b(?:bright\w*|dark spot\w*|tone\w*|vitamin c|glow\w*|niacinamide)\b/.test(text)) push('brightening');
+  if (/\b(?:acne|blemish\w*|clarif\w*|salicylic|bha|breakout\w*|pore\w*)\b/.test(text)) push('blemish care');
+  if (/\b(?:retinol|retinoid\w*|firm\w*|wrinkle\w*|aging|ageing|line\w*)\b/.test(text)) push('anti-aging');
+  if (/\b(?:oil control|oil-free|matt\w*|shine\w*)\b/.test(text)) push('oil control');
+  if (/\b(?:spf|sunscreen|uv)\b/.test(text)) push('sun protection');
+  if (/\b(?:exfoliat\w*|aha|bha|pha|acid\w*|peel\w*)\b/.test(text)) push('exfoliation');
   return out;
 }
 
@@ -63571,10 +63580,73 @@ function inferRecoAlternativesTextureHints(...values) {
 
 function buildRecoAlternativesTargetSignals(product, { productInput = '', lang = 'EN' } = {}) {
   const row = isPlainObject(product) ? product : {};
-  const category = pickFirstTrimmed(row.category, row.category_name, row.product_type, row.productType, row.type) || null;
-  const productType = pickFirstTrimmed(row.product_type, row.productType, row.type, row.category, row.category_name) || null;
-  const name = pickFirstTrimmed(row.display_name, row.displayName, row.name, row.product_name, productInput);
-  const brand = pickFirstTrimmed(row.brand, row.manufacturer);
+  const sku = isPlainObject(row.sku) ? row.sku : {};
+  const category =
+    pickFirstTrimmed(
+      row.category,
+      row.category_name,
+      row.product_type,
+      row.productType,
+      row.type,
+      sku.category,
+      sku.category_name,
+      sku.product_type,
+      sku.productType,
+      sku.type,
+    ) || null;
+  const productType =
+    pickFirstTrimmed(
+      row.product_type,
+      row.productType,
+      row.type,
+      row.category,
+      row.category_name,
+      sku.product_type,
+      sku.productType,
+      sku.type,
+      sku.category,
+      sku.category_name,
+    ) || null;
+  const name = pickFirstTrimmed(
+    row.display_name,
+    row.displayName,
+    row.name,
+    row.product_name,
+    sku.display_name,
+    sku.displayName,
+    sku.name,
+    sku.product_name,
+    productInput,
+  );
+  const brand = pickFirstTrimmed(row.brand, row.manufacturer, sku.brand, sku.manufacturer);
+  const keyFeatureSignals = collectRecoPromptTextList(
+    [
+      ...(Array.isArray(row.key_features) ? row.key_features : []),
+      ...(Array.isArray(row.keyFeatures) ? row.keyFeatures : []),
+      ...(Array.isArray(sku.key_features) ? sku.key_features : []),
+      ...(Array.isArray(sku.keyFeatures) ? sku.keyFeatures : []),
+    ],
+    { max: 6, maxLen: 48 },
+  );
+  const narrativeSignals = collectRecoPromptTextList(
+    [
+      normalizeRecoPromptNarrative(row.short_description),
+      normalizeRecoPromptNarrative(row.shortDescription),
+      normalizeRecoPromptNarrative(row.why_this_one),
+      normalizeRecoPromptNarrative(row.whyThisOne),
+      normalizeRecoPromptNarrative(row.description),
+      normalizeRecoPromptNarrative(row.summary),
+      normalizeRecoPromptNarrative(row.subtitle),
+      normalizeRecoPromptNarrative(sku.short_description),
+      normalizeRecoPromptNarrative(sku.shortDescription),
+      normalizeRecoPromptNarrative(sku.why_this_one),
+      normalizeRecoPromptNarrative(sku.whyThisOne),
+      normalizeRecoPromptNarrative(sku.description),
+      normalizeRecoPromptNarrative(sku.summary),
+      normalizeRecoPromptNarrative(sku.subtitle),
+    ],
+    { max: 4, maxLen: 120 },
+  );
 
   const explicitHeroIngredients = collectRecoPromptTextList(
     [
@@ -63583,14 +63655,25 @@ function buildRecoAlternativesTargetSignals(product, { productInput = '', lang =
       ...(Array.isArray(row.known_actives) ? row.known_actives : []),
       ...(Array.isArray(row.keyActives) ? row.keyActives : []),
       ...(Array.isArray(row.key_actives) ? row.key_actives : []),
+      ...(Array.isArray(sku.hero_ingredients) ? sku.hero_ingredients : []),
+      ...(Array.isArray(sku.heroIngredients) ? sku.heroIngredients : []),
+      ...(Array.isArray(sku.known_actives) ? sku.known_actives : []),
+      ...(Array.isArray(sku.keyActives) ? sku.keyActives : []),
+      ...(Array.isArray(sku.key_actives) ? sku.key_actives : []),
     ],
     { max: 6, maxLen: 48 },
   );
 
-  const ingredientLabels = collectRecoPromptTextList(Array.isArray(row.ingredients) ? row.ingredients : [], {
-    max: 8,
-    maxLen: 48,
-  });
+  const ingredientLabels = collectRecoPromptTextList(
+    [
+      ...(Array.isArray(row.ingredients) ? row.ingredients : []),
+      ...(Array.isArray(sku.ingredients) ? sku.ingredients : []),
+    ],
+    {
+      max: 8,
+      maxLen: 48,
+    },
+  );
   const heroIngredients = uniqCaseInsensitiveStrings(
     [
       ...explicitHeroIngredients,
@@ -63607,6 +63690,13 @@ function buildRecoAlternativesTargetSignals(product, { productInput = '', lang =
       ...(Array.isArray(row.benefits) ? row.benefits : []),
       ...(Array.isArray(row.highlights) ? row.highlights : []),
       ...(Array.isArray(row.compare_highlights) ? row.compare_highlights : []),
+      ...(Array.isArray(sku.claims) ? sku.claims : []),
+      ...(Array.isArray(sku.notable_claims) ? sku.notable_claims : []),
+      ...(Array.isArray(sku.notableClaims) ? sku.notableClaims : []),
+      ...(Array.isArray(sku.benefits) ? sku.benefits : []),
+      ...(Array.isArray(sku.highlights) ? sku.highlights : []),
+      ...(Array.isArray(sku.compare_highlights) ? sku.compare_highlights : []),
+      ...keyFeatureSignals,
     ],
     { max: 6, maxLen: 56 },
   );
@@ -63616,20 +63706,34 @@ function buildRecoAlternativesTargetSignals(product, { productInput = '', lang =
     productType,
     productInput,
     explicitClaims.join(' '),
+    keyFeatureSignals.join(' '),
+    narrativeSignals.join(' '),
     heroIngredients.join(' '),
   );
-  const primaryClaims = uniqCaseInsensitiveStrings([...explicitClaims, ...claimHints], 6);
+  const primaryClaims = uniqCaseInsensitiveStrings([...claimHints, ...explicitClaims], 6);
 
   const explicitKnownActives = collectRecoPromptTextList(
     [
       ...(Array.isArray(row.known_actives) ? row.known_actives : []),
       ...(Array.isArray(row.keyActives) ? row.keyActives : []),
       ...(Array.isArray(row.key_actives) ? row.key_actives : []),
+      ...(Array.isArray(sku.known_actives) ? sku.known_actives : []),
+      ...(Array.isArray(sku.keyActives) ? sku.keyActives : []),
+      ...(Array.isArray(sku.key_actives) ? sku.key_actives : []),
     ],
     { max: 8, maxLen: 48 },
   );
   const activeTokens = extractKnownActivesFromText(
-    [name, productInput, heroIngredients.join(', '), primaryClaims.join(', ')].filter(Boolean).join(' '),
+    [
+      name,
+      productInput,
+      heroIngredients.join(', '),
+      keyFeatureSignals.join(', '),
+      narrativeSignals.join(', '),
+      primaryClaims.join(', '),
+    ]
+      .filter(Boolean)
+      .join(' '),
     lang,
   );
   const knownActives = uniqCaseInsensitiveStrings(
@@ -63643,22 +63747,59 @@ function buildRecoAlternativesTargetSignals(product, { productInput = '', lang =
 
   const textureHints = uniqCaseInsensitiveStrings(
     [
-      ...collectRecoPromptTextList([row.texture, row.finish, ...(Array.isArray(row.texture_hints) ? row.texture_hints : [])], {
-        max: 5,
-        maxLen: 40,
-      }),
-      ...inferRecoAlternativesTextureHints(name, category, productType, explicitClaims.join(' '), productInput),
+      ...collectRecoPromptTextList(
+        [
+          row.texture,
+          row.finish,
+          ...(Array.isArray(row.texture_hints) ? row.texture_hints : []),
+          sku.texture,
+          sku.finish,
+          ...(Array.isArray(sku.texture_hints) ? sku.texture_hints : []),
+        ],
+        {
+          max: 5,
+          maxLen: 40,
+        },
+      ),
+      ...inferRecoAlternativesTextureHints(
+        name,
+        category,
+        productType,
+        explicitClaims.join(' '),
+        keyFeatureSignals.join(' '),
+        narrativeSignals.join(' '),
+        productInput,
+      ),
     ],
     5,
   );
 
-  const usageRole = inferRecoAlternativesUsageRole(name, category, productType, primaryClaims.join(' '));
+  const usageRole = inferRecoAlternativesUsageRole(
+    name,
+    category,
+    productType,
+    keyFeatureSignals.join(' '),
+    narrativeSignals.join(' '),
+    primaryClaims.join(' '),
+  );
   const notes = pickFirstTrimmed(
     row.notes,
     row.anchor_notes,
+    row.short_description,
+    row.shortDescription,
+    row.why_this_one,
+    row.whyThisOne,
     row.summary,
     row.description,
     row.subtitle,
+    sku.notes,
+    sku.short_description,
+    sku.shortDescription,
+    sku.why_this_one,
+    sku.whyThisOne,
+    sku.summary,
+    sku.description,
+    sku.subtitle,
     primaryClaims.length ? primaryClaims.join('; ') : '',
   ) || null;
 
@@ -64297,6 +64438,14 @@ function buildExternalSeedCompareSearchQueries({ productObj, productInput = '', 
   const target = identity.targetSignals;
   const out = [];
   const seen = new Set();
+  const usageRole = String(target.usageRole || '').trim().replace(/_/g, ' ');
+  const stepTerms = uniqCaseInsensitiveStrings(
+    [
+      target.productType,
+      usageRole,
+    ].filter(Boolean),
+    2,
+  ).join(' ');
   const pushQuery = (raw) => {
     const query = String(raw || '').trim().replace(/\s+/g, ' ');
     if (!query) return;
@@ -64307,22 +64456,39 @@ function buildExternalSeedCompareSearchQueries({ productObj, productInput = '', 
   };
 
   pushQuery(identity.anchorLabel);
-  for (const alias of identity.aliases) pushQuery(alias);
+  const aliasQueries = identity.aliases.filter(
+    (alias) => String(alias || '').trim().toLowerCase() !== String(identity.anchorLabel || '').trim().toLowerCase(),
+  );
+  for (const alias of aliasQueries.slice(0, 1)) pushQuery(alias);
 
-  if (target.brand && target.name && target.usageRole !== 'unknown') {
-    pushQuery(`${target.brand} ${target.name} ${target.usageRole}`);
+  if (usageRole && usageRole !== 'unknown' && target.primaryClaims.length && target.textureHints.length) {
+    pushQuery(`${target.textureHints[0]} ${target.primaryClaims[0]} ${usageRole}`);
   }
-  if (target.productType && target.usageRole !== 'unknown') {
-    pushQuery(`${target.productType} ${target.usageRole}`);
+  if (usageRole && usageRole !== 'unknown' && target.primaryClaims.length) {
+    pushQuery(`${target.primaryClaims[0]} ${usageRole}`);
   }
-  if (target.knownActives.length && target.usageRole !== 'unknown') {
-    pushQuery(`${target.knownActives[0]} ${target.usageRole}`);
+  if (usageRole && usageRole !== 'unknown' && target.textureHints.length) {
+    pushQuery(`${target.textureHints[0]} ${usageRole}`);
   }
-  if (target.primaryClaims.length && target.usageRole !== 'unknown') {
-    pushQuery(`${target.primaryClaims[0]} ${target.usageRole}`);
+  if (stepTerms) {
+    pushQuery(stepTerms);
   }
-  if (target.productType && target.primaryClaims.length) {
-    pushQuery(`${target.productType} ${target.primaryClaims[0]}`);
+  if (stepTerms && target.primaryClaims.length) {
+    pushQuery(`${stepTerms} ${target.primaryClaims[0]}`);
+  }
+  if (stepTerms && target.textureHints.length) {
+    pushQuery(`${stepTerms} ${target.textureHints[0]}`);
+  }
+  if (usageRole && usageRole !== 'unknown' && target.knownActives.length) {
+    pushQuery(`${target.knownActives[0]} ${usageRole}`);
+  }
+  for (const alias of aliasQueries.slice(1)) pushQuery(alias);
+
+  if (target.brand && target.name && usageRole && usageRole !== 'unknown') {
+    pushQuery(`${target.brand} ${target.name} ${usageRole}`);
+  }
+  if (target.productType && usageRole && usageRole !== 'unknown' && String(target.productType).trim().toLowerCase() !== usageRole.toLowerCase()) {
+    pushQuery(`${target.productType} ${usageRole}`);
   }
   if (target.productType && String(productInput || '').trim()) {
     pushQuery(`${target.productType} ${String(productInput || '').trim()}`);
@@ -64778,7 +64944,7 @@ function buildOpenWorldAlternativeAuthorityQueryPack(row, { targetSignals = null
       joinBrandAndName(brand, name),
       name,
     ].filter(Boolean),
-    8,
+    10,
   );
   return buildRecoAuthorityQueryVariants({
     brand,
@@ -64786,7 +64952,7 @@ function buildOpenWorldAlternativeAuthorityQueryPack(row, { targetSignals = null
     category,
     usageRole,
     searchAliases,
-    maxVariants: 6,
+    maxVariants: 8,
   });
 }
 
@@ -86093,6 +86259,8 @@ const __internal = {
   buildIngredientRecoUpstreamPrompt,
   buildAuroraProductRecommendationsQuery,
   buildAuroraRecoAlternativesQuery,
+  buildRecoAlternativesTargetSignals,
+  buildExternalSeedCompareSearchQueries,
   buildProductInputText,
   buildRecoAlternativesCandidatePool,
   applyIngredientRecoConstraint,
