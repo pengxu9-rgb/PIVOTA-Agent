@@ -131,6 +131,43 @@ describe('catalog serving shadow acceptance script', () => {
     );
   });
 
+  test('writes a blocked red report when prerequisites are missing', () => {
+    const repoRoot = path.join(__dirname, '..');
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'catalog-serving-shadow-blocked-'));
+    const scriptPath = path.join(repoRoot, 'scripts', 'catalog_serving_shadow_acceptance.js');
+
+    const stdout = execFileSync(
+      process.execPath,
+      [
+        scriptPath,
+        '--out-dir',
+        outDir,
+        '--blocked-reason',
+        'GitHub Actions secret DATABASE_URL is not configured; shadow backfill sampling cannot run.',
+        '--blocked-reason',
+        'CATALOG_SERVING_INDEX_BASE_URL is not configured; the OpenSearch-compatible probe is unavailable.',
+      ],
+      {
+        cwd: repoRoot,
+        encoding: 'utf8',
+      },
+    );
+    const payload = JSON.parse(String(stdout || '').trim());
+    const json = JSON.parse(fs.readFileSync(payload.json_path, 'utf8'));
+    const markdown = fs.readFileSync(payload.markdown_path, 'utf8');
+
+    expect(payload.readiness_status).toBe('red');
+    expect(json.blocked).toBe(true);
+    expect(json.blocked_reasons).toEqual(
+      expect.arrayContaining([
+        'GitHub Actions secret DATABASE_URL is not configured; shadow backfill sampling cannot run.',
+        'CATALOG_SERVING_INDEX_BASE_URL is not configured; the OpenSearch-compatible probe is unavailable.',
+      ]),
+    );
+    expect(markdown).toContain('## Blockers');
+    expect(markdown).toContain('## Prerequisites');
+  });
+
   test('fails when fail-on-status threshold is met', () => {
     const repoRoot = path.join(__dirname, '..');
     const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'catalog-serving-shadow-fail-'));

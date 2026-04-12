@@ -62,10 +62,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -z "${DATABASE_URL:-}" ]]; then
-            echo "DATABASE_URL is not configured; skipping catalog-serving shadow acceptance."
-            exit 0
-          fi
           mkdir -p reports
           args=(
             --out-dir reports
@@ -81,6 +77,16 @@ jobs:
           skip_search_input="${{ inputs.skip_search || false }}"
           if [[ "${skip_search_input}" == "true" ]]; then
             args+=(--skip-search)
+          fi
+          if [[ -z "${DATABASE_URL:-}" ]]; then
+            args+=(
+              --blocked-reason "GitHub Actions secret DATABASE_URL is not configured; shadow backfill sampling cannot run."
+            )
+            if [[ -z "${CATALOG_SERVING_INDEX_BASE_URL:-}" ]]; then
+              args+=(
+                --blocked-reason "CATALOG_SERVING_INDEX_BASE_URL is not configured; the OpenSearch-compatible probe is unavailable."
+              )
+            fi
           fi
           node scripts/catalog_serving_shadow_acceptance.js "${args[@]}"
 
