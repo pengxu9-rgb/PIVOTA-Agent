@@ -6030,7 +6030,10 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
         assert.equal(out.alternatives[0]?.grounding_status, 'name_only');
         assert.equal(out.alternatives[0]?.product?.brand, 'Good Molecules');
         assert.equal(out.alternatives[0]?.product?.name, 'Niacinamide Serum');
-        assert.deepEqual(out.alternatives[0]?.tradeoff_notes, ['Formula overlap remains uncertain.']);
+        assert.deepEqual(
+          out.alternatives[0]?.tradeoff_notes,
+          ['Key formula details still need verification before comparing actives or finish.'],
+        );
         assert.equal(geminiRequest?.maxOutputTokens, 3072);
         assert.equal(geminiRequest?.timeoutMs, 12000);
         assert.equal(geminiRequest?.responseJsonSchema?.properties?.alternatives?.maxItems, 3);
@@ -6168,6 +6171,243 @@ test('fetchRecoAlternativesForProduct: open_world_only grounds exact catalog hit
       } finally {
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
         loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        axios.get = originalGet;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('fetchRecoAlternativesForProduct: open_world_only grounds unresolved search misses through resolver authority', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      GEMINI_API_KEY: 'test_gemini_key',
+      AURORA_DIAG_FORCE_GEMINI: 'true',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED: 'false',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      axios.get = async (url) => {
+        if (!isProductsSearchUrl(url)) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        return {
+          status: 200,
+          data: {
+            products: [],
+          },
+        };
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { __internal } = routeModule;
+        let resolveArgs = null;
+        __internal.__setCallGeminiJsonObjectForTest(async () => ({
+          ok: true,
+          json: {
+            alternatives: [
+              {
+                brand: 'Paula’s Choice',
+                name: '10% Niacinamide Booster',
+                product_type: 'serum',
+                similarity_score: 79,
+                reasons: ['Targets oiliness and uneven tone with the same hero active.'],
+                tradeoff_notes: ['Formula concentration differs from the anchor.'],
+              },
+            ],
+          },
+        }));
+        __internal.__setResolveProductRefForTest(async (args = {}) => {
+          resolveArgs = args;
+          return {
+            resolved: true,
+            product_ref: {
+              product_id: 'resolved_pc_niacinamide',
+              merchant_id: 'external_seed',
+            },
+            confidence: 0.93,
+            reason: 'resolved',
+          };
+        });
+
+        const out = await __internal.fetchRecoAlternativesForProduct({
+          ctx: {
+            lang: 'EN',
+            request_id: 'req_open_world_resolver_grounded',
+            trace_id: 'trace_open_world_resolver_grounded',
+          },
+          profileSummary: null,
+          recentLogs: [],
+          productInput: 'The Ordinary Niacinamide 10% + Zinc 1%',
+          productObj: {
+            brand: 'The Ordinary',
+            name: 'Niacinamide 10% + Zinc 1%',
+            product_type: 'serum',
+            category: 'Serum',
+            ingredients: ['Niacinamide', 'Zinc PCA'],
+            claims: ['oil control', 'pore care'],
+          },
+          anchorId: '',
+          maxTotal: 3,
+          candidatePool: [],
+          logger: null,
+          options: {
+            recommendation_mode: 'open_world_only',
+            profile_mode: 'anchor_only',
+            disable_fallback: true,
+            disable_synthetic_local_fallback: true,
+            ignore_selector_candidates: true,
+            skip_anchor_precheck: true,
+          },
+        });
+
+        assert.equal(resolveArgs?.options?.allow_external_seed, true);
+        assert.equal(resolveArgs?.options?.external_seed_strategy, 'supplement_internal_first');
+        assert.equal(out?.llm_trace?.catalog_grounding_attempted_count, 1);
+        assert.equal(out?.llm_trace?.catalog_grounded_count, 1);
+        assert.equal(out?.alternatives?.length, 1);
+        assert.equal(out.alternatives[0]?.candidate_origin, 'open_world');
+        assert.equal(out.alternatives[0]?.grounding_status, 'catalog_verified');
+        assert.equal(out.alternatives[0]?.product?.product_id, 'resolved_pc_niacinamide');
+        assert.equal(out.alternatives[0]?.product?.merchant_id, 'external_seed');
+        assert.equal(out.alternatives[0]?.pdp_open?.path, 'ref');
+        assert.equal(out.alternatives[0]?.metadata?.compare_stage, 'open_world_grounded_resolver');
+        assert.equal(out.alternatives[0]?.metadata?.catalog_grounding_mode, 'resolver_ref');
+        assert.equal(out.alternatives[0]?.metadata?.visible_copy_mode, undefined);
+        assert.equal(out.alternatives[0]?.metadata?.name_only_copy_sanitized, undefined);
+        assert.deepEqual(
+          out.alternatives[0]?.reasons,
+          ['Targets oiliness and uneven tone with the same hero active.'],
+        );
+        assert.deepEqual(
+          out.alternatives[0]?.tradeoff_notes,
+          ['Formula concentration differs from the anchor.'],
+        );
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        loaded?.__internal?.__resetResolveProductRefForTest?.();
+        axios.get = originalGet;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('fetchRecoAlternativesForProduct: open_world_only sanitizes unresolved name-only copy', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      GEMINI_API_KEY: 'test_gemini_key',
+      AURORA_DIAG_FORCE_GEMINI: 'true',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED: 'false',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      axios.get = async (url) => {
+        if (!isProductsSearchUrl(url)) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        return {
+          status: 200,
+          data: {
+            products: [],
+          },
+        };
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { __internal } = routeModule;
+        __internal.__setCallGeminiJsonObjectForTest(async () => ({
+          ok: true,
+          json: {
+            alternatives: [
+              {
+                brand: 'Belif',
+                name: 'The True Cream Aqua Bomb',
+                product_type: 'moisturizer',
+                similarity_score: 76,
+                reasons: ['Gel-cream hydration with a dewy finish and fragrance profile close to the anchor.'],
+                tradeoff_notes: ['Can pill under sunscreen and feels more fragranced on sensitive skin.'],
+              },
+            ],
+          },
+        }));
+        __internal.__setResolveProductRefForTest(async () => ({
+          resolved: false,
+          product_ref: null,
+          confidence: 0,
+          reason: 'no_candidates',
+          candidates: [],
+        }));
+
+        const out = await __internal.fetchRecoAlternativesForProduct({
+          ctx: {
+            lang: 'EN',
+            request_id: 'req_open_world_name_only_sanitized',
+            trace_id: 'trace_open_world_name_only_sanitized',
+          },
+          profileSummary: null,
+          recentLogs: [],
+          productInput: 'First Aid Beauty Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+          productObj: {
+            brand: 'First Aid Beauty',
+            name: 'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+            product_type: 'moisturizer',
+            category: 'Moisturizer',
+            claims: ['hydration', 'barrier support'],
+            texture_hints: ['gel cream'],
+          },
+          anchorId: '',
+          maxTotal: 3,
+          candidatePool: [],
+          logger: null,
+          options: {
+            recommendation_mode: 'open_world_only',
+            profile_mode: 'anchor_only',
+            disable_fallback: true,
+            disable_synthetic_local_fallback: true,
+            ignore_selector_candidates: true,
+            skip_anchor_precheck: true,
+          },
+        });
+
+        assert.equal(out?.llm_trace?.catalog_grounding_attempted_count, 1);
+        assert.equal(out?.llm_trace?.catalog_grounded_count, 0);
+        assert.equal(out?.alternatives?.length, 1);
+        assert.equal(out.alternatives[0]?.candidate_origin, 'open_world');
+        assert.equal(out.alternatives[0]?.grounding_status, 'name_only');
+        assert.equal(out.alternatives[0]?.metadata?.visible_copy_mode, 'name_only');
+        assert.equal(out.alternatives[0]?.metadata?.name_only_copy_sanitized, true);
+        assert.match(String(out.alternatives[0]?.reasons?.[0] || ''), /same .* step as the anchor/i);
+        assert.equal(String(out.alternatives[0]?.reasons?.[1] || ''), 'Presented as a distinct option for this compare.');
+        assert.deepEqual(
+          out.alternatives[0]?.tradeoff_notes,
+          ['Key formula details still need verification before comparing actives or finish.'],
+        );
+        const reasonsJoined = (Array.isArray(out.alternatives[0]?.reasons) ? out.alternatives[0].reasons : []).join(' | ');
+        assert.equal(/fragrance|pilling|dewy finish|sensitive skin/i.test(reasonsJoined), false);
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        loaded?.__internal?.__resetResolveProductRefForTest?.();
         axios.get = originalGet;
         delete require.cache[moduleId];
       }

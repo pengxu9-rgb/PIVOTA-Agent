@@ -54683,9 +54683,16 @@ async function resolveRecoPdpByLocalResolver({
   hints = null,
   logger,
   timeoutMs = null,
+  allowExternalSeed = false,
+  externalSeedStrategy = '',
 } = {}) {
   const q = String(queryText || '').trim();
   if (!q) return { ok: false, reasonCode: 'no_candidates' };
+  const normalizedExternalSeedStrategy = (() => {
+    const token = String(externalSeedStrategy || '').trim().toLowerCase();
+    if (token === 'supplement_internal_first' || token === 'legacy') return token;
+    return '';
+  })();
 
   const resolveTimeoutMs = getRecoPdpResolveTimeoutMs({
     strictInternal: true,
@@ -54712,7 +54719,10 @@ async function resolveRecoPdpByLocalResolver({
             upstream_retries: 0,
             stable_alias_short_circuit: true,
             allow_stable_alias_for_uuid: true,
-            allow_external_seed: false,
+            allow_external_seed: allowExternalSeed === true,
+            ...(allowExternalSeed === true && normalizedExternalSeedStrategy
+              ? { external_seed_strategy: normalizedExternalSeedStrategy }
+              : {}),
           },
           caller: 'aurora_chatbox',
         },
@@ -54748,6 +54758,10 @@ async function resolveRecoPdpByLocalResolver({
           upstream_retries: 0,
           stable_alias_short_circuit: true,
           allow_stable_alias_for_uuid: true,
+          allow_external_seed: allowExternalSeed === true,
+          ...(allowExternalSeed === true && normalizedExternalSeedStrategy
+            ? { external_seed_strategy: normalizedExternalSeedStrategy }
+            : {}),
         },
         caller: 'aurora_chatbox',
       });
@@ -54771,6 +54785,12 @@ async function resolveRecoPdpByLocalResolver({
       ok: true,
       canonicalProductRef: resolvedProductRef,
       reasonCode: null,
+      confidence: Number.isFinite(Number(responseBody?.confidence)) ? Number(responseBody.confidence) : null,
+      candidates: Array.isArray(responseBody?.candidates) ? responseBody.candidates.slice(0, 4) : [],
+      metadata:
+        responseBody?.metadata && typeof responseBody.metadata === 'object' && !Array.isArray(responseBody.metadata)
+          ? responseBody.metadata
+          : null,
     };
   }
 
@@ -54801,6 +54821,18 @@ async function resolveRecoPdpByLocalResolver({
         ok: true,
         canonicalProductRef: fallbackResolvedProductRef,
         reasonCode: null,
+        confidence: Number.isFinite(Number(fallbackOut.responseBody?.confidence))
+          ? Number(fallbackOut.responseBody.confidence)
+          : null,
+        candidates: Array.isArray(fallbackOut.responseBody?.candidates)
+          ? fallbackOut.responseBody.candidates.slice(0, 4)
+          : [],
+        metadata:
+          fallbackOut.responseBody?.metadata &&
+          typeof fallbackOut.responseBody.metadata === 'object' &&
+          !Array.isArray(fallbackOut.responseBody.metadata)
+            ? fallbackOut.responseBody.metadata
+            : null,
       };
     }
     const fallbackReasonCode = mapResolveFailureCode({
@@ -64739,13 +64771,201 @@ function mapCatalogGroundedOpenWorldAlternative(openWorldRow, catalogRow, { matc
       ...(openWorldRow?.metadata && typeof openWorldRow.metadata === 'object' && !Array.isArray(openWorldRow.metadata) ? openWorldRow.metadata : {}),
       compare_stage: 'open_world_grounded_catalog',
       catalog_grounding_query: String(query || '').trim() || null,
+      catalog_grounding_mode: 'catalog_exact_search',
       catalog_grounding_score: Number(matchScore.toFixed(3)),
       merged_candidate_origins: ['open_world', 'pool'],
     },
   };
 }
 
-async function groundOpenWorldAlternativesToCatalog(rows, { logger } = {}) {
+function buildOpenWorldAlternativeResolveHints(openWorldRow) {
+  const row = isPlainObject(openWorldRow) ? openWorldRow : {};
+  const product = getRecoAlternativeProductObject(row);
+  const brand = pickFirstTrimmed(product.brand, row.brand);
+  const name = pickFirstTrimmed(product.display_name, product.displayName, product.name, row.name);
+  const displayName = pickFirstTrimmed(product.display_name, product.displayName, name);
+  const aliasLabel = joinBrandAndName(brand, displayName || name);
+  const base = {
+    ...row,
+    ...(aliasLabel
+      ? {
+          search_aliases: uniqCaseInsensitiveStrings(
+            [
+              ...asStringArray(row.search_aliases, 8),
+              aliasLabel,
+              displayName,
+              name,
+            ],
+            8,
+          ),
+        }
+      : {}),
+  };
+  return buildRecoResolveHints({
+    base,
+    skuCandidate: product,
+    rawProductId: null,
+    rawMerchantId: null,
+    brand,
+    name,
+    displayName,
+  });
+}
+
+function sanitizeOpenWorldAlternativeVisibleCopy(row, {
+  targetSignals = null,
+  mode = 'name_only',
+} = {}) {
+  const item = isPlainObject(row) ? row : {};
+  const product = getRecoAlternativeProductObject(item);
+  const productType = pickFirstTrimmed(
+    product.category,
+    product.product_type,
+    item.product_type,
+    targetSignals?.productType,
+    targetSignals?.category,
+  );
+  const targetRole = String(targetSignals?.usageRole || '').trim().toLowerCase();
+  const roleLabel = targetRole && targetRole !== 'unknown' ? targetRole.replace(/_/g, ' ') : '';
+  const reasonPrimary = roleLabel
+    ? `Same ${roleLabel} step as the anchor.`
+    : productType
+      ? `Same ${String(productType).trim().toLowerCase()} step as the anchor.`
+      : 'Same product step as the anchor.';
+  const reasonSecondary = mode === 'resolved_ref'
+    ? 'Resolved to a live product entry you can open for details.'
+    : 'Presented as a distinct option for this compare.';
+  const tradeoff = mode === 'resolved_ref'
+    ? 'Open details to verify formula specifics before comparing actives or finish.'
+    : 'Key formula details still need verification before comparing actives or finish.';
+  return {
+    ...item,
+    reasons: uniqCaseInsensitiveStrings([reasonPrimary, reasonSecondary], 2),
+    tradeoff_notes: [tradeoff],
+    metadata: {
+      ...(item.metadata && typeof item.metadata === 'object' && !Array.isArray(item.metadata) ? item.metadata : {}),
+      name_only_copy_sanitized: true,
+      visible_copy_mode: mode,
+    },
+  };
+}
+
+function markOpenWorldAlternativeVisibleCopy(row, { mode = 'name_only' } = {}) {
+  const item = isPlainObject(row) ? row : {};
+  return {
+    ...item,
+    metadata: {
+      ...(item.metadata && typeof item.metadata === 'object' && !Array.isArray(item.metadata) ? item.metadata : {}),
+      needs_conservative_copy: true,
+      visible_copy_mode: mode,
+    },
+  };
+}
+
+function maybeApplyOpenWorldAlternativeVisibleCopy(row, { targetSignals = null } = {}) {
+  const item = isPlainObject(row) ? row : row;
+  if (!isPlainObject(item)) return row;
+  const metadata = item.metadata && typeof item.metadata === 'object' && !Array.isArray(item.metadata)
+    ? item.metadata
+    : {};
+  if (metadata.needs_conservative_copy !== true) return item;
+  const origin = String(item.candidate_origin || '').trim().toLowerCase();
+  const grounding = String(item.grounding_status || '').trim().toLowerCase();
+  if (origin !== 'open_world' || grounding === 'catalog_verified') {
+    const nextMetadata = { ...metadata };
+    delete nextMetadata.needs_conservative_copy;
+    return {
+      ...item,
+      metadata: nextMetadata,
+    };
+  }
+  const sanitized = sanitizeOpenWorldAlternativeVisibleCopy(item, {
+    targetSignals,
+    mode: pickFirstTrimmed(metadata.visible_copy_mode, 'name_only') || 'name_only',
+  });
+  const nextMetadata =
+    sanitized.metadata && typeof sanitized.metadata === 'object' && !Array.isArray(sanitized.metadata)
+      ? { ...sanitized.metadata }
+      : {};
+  delete nextMetadata.needs_conservative_copy;
+  return {
+    ...sanitized,
+    metadata: nextMetadata,
+  };
+}
+
+function applyOpenWorldAlternativeVisibleCopy(rows, { targetSignals = null } = {}) {
+  return (Array.isArray(rows) ? rows : []).map((row) => maybeApplyOpenWorldAlternativeVisibleCopy(row, { targetSignals }));
+}
+
+function mapResolverGroundedOpenWorldAlternative(openWorldRow, {
+  canonicalProductRef = null,
+  canonicalProductGroupId = null,
+  query = '',
+  targetSignals = null,
+  groundingMode = 'resolver_ref',
+} = {}) {
+  const row = isPlainObject(openWorldRow) ? openWorldRow : {};
+  const product = getRecoAlternativeProductObject(row);
+  const normalizedGroupId = pickFirstTrimmed(canonicalProductGroupId);
+  const normalizedRef =
+    normalizeCanonicalProductRef(canonicalProductRef, {
+      requireMerchant: true,
+      allowOpaqueProductId: false,
+    }) || extractCanonicalRefFromProductGroupId(normalizedGroupId);
+  if (!normalizedRef && !normalizedGroupId) {
+    return sanitizeOpenWorldAlternativeVisibleCopy(row, { targetSignals, mode: 'name_only' });
+  }
+  const brand = pickFirstTrimmed(product.brand, row.brand);
+  const name = pickFirstTrimmed(product.display_name, product.displayName, product.name, row.name);
+  const category = pickFirstTrimmed(product.category, product.product_type, row.product_type);
+  const internalUrl = normalizedRef
+    ? buildInternalPdpUrlFromTarget({
+        productId: normalizedRef.product_id,
+        merchantId: normalizedRef.merchant_id,
+      })
+    : '';
+  const next = {
+    ...row,
+    candidate_origin: 'open_world',
+    grounding_status: 'catalog_verified',
+    product: {
+      ...(product && typeof product === 'object' && !Array.isArray(product) ? product : {}),
+      ...(normalizedRef?.product_id ? { product_id: normalizedRef.product_id } : {}),
+      ...(normalizedRef?.merchant_id ? { merchant_id: normalizedRef.merchant_id } : {}),
+      ...(normalizedGroupId ? { product_group_id: normalizedGroupId } : {}),
+      ...(brand ? { brand } : {}),
+      ...(name ? { name } : {}),
+      ...(category ? { category } : {}),
+      ...(internalUrl ? { pdp_url: internalUrl, url: internalUrl } : {}),
+    },
+    ...(brand ? { brand } : {}),
+    ...(name ? { name } : {}),
+    ...(normalizedRef ? { canonical_product_ref: normalizedRef } : {}),
+    pdp_open: normalizedGroupId
+      ? { path: 'group', product_group_id: normalizedGroupId }
+      : normalizedRef
+        ? { path: 'ref', product_ref: normalizedRef }
+        : {
+            path: 'external',
+            external: {
+              query: joinBrandAndName(brand, name),
+            },
+          },
+    metadata: {
+      ...(row.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata) ? row.metadata : {}),
+      compare_stage: groundingMode === 'catalog_search_ref'
+        ? 'open_world_grounded_catalog_search'
+        : 'open_world_grounded_resolver',
+      catalog_grounding_query: String(query || '').trim() || null,
+      catalog_grounding_mode: groundingMode,
+      merged_candidate_origins: ['open_world', 'pool'],
+    },
+  };
+  return next;
+}
+
+async function groundOpenWorldAlternativesToCatalog(rows, { logger, targetSignals = null } = {}) {
   const list = Array.isArray(rows) ? rows : [];
   if (!list.length) return { alternatives: [], grounded_count: 0, attempted_count: 0 };
   const groundOne = async (row) => {
@@ -64789,7 +65009,36 @@ async function groundOpenWorldAlternativesToCatalog(rows, { logger } = {}) {
         attempted: true,
       };
     }
-    return { row, grounded: false, attempted: true };
+    try {
+      const resolverHints = buildOpenWorldAlternativeResolveHints(row);
+      const resolved = await resolveRecoPdpByLocalResolver({
+        queryText: query,
+        hints: resolverHints,
+        logger,
+        timeoutMs: 850,
+        allowExternalSeed: true,
+        externalSeedStrategy: 'supplement_internal_first',
+      });
+      if (resolved?.ok && resolved.canonicalProductRef) {
+        return {
+          row: mapResolverGroundedOpenWorldAlternative(row, {
+            canonicalProductRef: resolved.canonicalProductRef,
+            query,
+            targetSignals,
+            groundingMode: 'resolver_ref',
+          }),
+          grounded: true,
+          attempted: true,
+        };
+      }
+    } catch (err) {
+      logger?.warn?.({ err: err?.message || String(err), query }, 'aurora bff: alternatives resolver grounding failed');
+    }
+    return {
+      row: markOpenWorldAlternativeVisibleCopy(row, { mode: 'name_only' }),
+      grounded: false,
+      attempted: true,
+    };
   };
   const settled = await Promise.allSettled(list.map((row) => groundOne(row)));
   const enriched = [];
@@ -65004,6 +65253,10 @@ async function fetchRecoAlternativesForLocalGeminiOpenWorld({
     'Return at most 3 alternatives. Use 1 concise reason and 1 concise tradeoff note per item.',
   ].join('\n');
   const userPayload = buildRecoAlternativesOpenWorldUserPayload({ ctx, productInput, productObj, maxTotal });
+  const targetSignals = buildRecoAlternativesTargetSignals(productObj, {
+    productInput,
+    lang: normalizeRecoPromptLanguage(ctx?.lang || 'EN'),
+  });
   const startedAt = Date.now();
   let resp = null;
   try {
@@ -65052,12 +65305,13 @@ async function fetchRecoAlternativesForLocalGeminiOpenWorld({
     maxTotal,
   });
   if (normalizedRows.length) {
-    const grounded = await groundOpenWorldAlternativesToCatalog(normalizedRows, { logger });
+    const grounded = await groundOpenWorldAlternativesToCatalog(normalizedRows, { logger, targetSignals });
     llmTrace.catalog_grounding_attempted_count = grounded.attempted_count;
     llmTrace.catalog_grounded_count = grounded.grounded_count;
+    const finalAlternatives = applyOpenWorldAlternativeVisibleCopy(grounded.alternatives, { targetSignals });
     return {
       ok: true,
-      alternatives: grounded.alternatives.slice(0, Math.max(1, Math.min(6, Number(maxTotal) || 1))),
+      alternatives: finalAlternatives.slice(0, Math.max(1, Math.min(6, Number(maxTotal) || 1))),
       field_missing: [],
       source_mode: 'open_world_only',
       fallback_source: null,
@@ -65080,14 +65334,15 @@ async function fetchRecoAlternativesForLocalGeminiOpenWorld({
       )
     : [];
   if (recoveredRows.length) {
-    const grounded = await groundOpenWorldAlternativesToCatalog(recoveredRows, { logger });
+    const grounded = await groundOpenWorldAlternativesToCatalog(recoveredRows, { logger, targetSignals });
     llmTrace.catalog_grounding_attempted_count = grounded.attempted_count;
     llmTrace.catalog_grounded_count = grounded.grounded_count;
     llmTrace.recovered_from_truncated_raw = true;
     llmTrace.recovered_row_count = recoveredRows.length;
+    const finalAlternatives = applyOpenWorldAlternativeVisibleCopy(grounded.alternatives, { targetSignals });
     return {
       ok: true,
-      alternatives: grounded.alternatives.slice(0, Math.max(1, Math.min(6, Number(maxTotal) || 1))),
+      alternatives: finalAlternatives.slice(0, Math.max(1, Math.min(6, Number(maxTotal) || 1))),
       field_missing: [],
       source_mode: 'open_world_only',
       fallback_source: null,
@@ -65272,7 +65527,7 @@ async function fetchRecoAlternativesForExternalSeedProduct({
           }))
           .filter(Boolean);
         if (openWorldRows.length) {
-          const grounded = await groundOpenWorldAlternativesToCatalog(openWorldRows, { logger });
+          const grounded = await groundOpenWorldAlternativesToCatalog(openWorldRows, { logger, targetSignals });
           openWorldRows = grounded.alternatives;
           openWorldGroundingAttemptedCount = grounded.attempted_count;
           openWorldGroundedCount = grounded.grounded_count;
@@ -65317,11 +65572,11 @@ async function fetchRecoAlternativesForExternalSeedProduct({
     preferBestScore: true,
   });
 
-  const cleanedAlternatives = merged.map((row) => {
+  const cleanedAlternatives = applyOpenWorldAlternativeVisibleCopy(merged.map((row) => {
     const next = { ...(row || {}) };
     delete next._mixed_score;
     return next;
-  });
+  }), { targetSignals });
   const poolSelectedCount = cleanedAlternatives.filter((row) => String(row?.candidate_origin || '') === 'pool').length;
   const openWorldSelectedCount = cleanedAlternatives.filter((row) => String(row?.candidate_origin || '') === 'open_world').length;
   const compareMeta = {
