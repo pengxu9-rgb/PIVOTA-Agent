@@ -45,6 +45,12 @@ const {
   listLivePdpIdentityRowsForRefs,
 } = require('./pdpIdentityGraph');
 const {
+  buildCatalogServingDoc,
+  getCatalogServingIndexConfig,
+  isCatalogServingIndexEnabled,
+  searchCatalogServingIndex,
+} = require('./catalogServingIndex');
+const {
   normalizeCardIntroCandidate,
   resolveDisplayableCompactHighlight,
 } = require('./pivotaShoppingCard');
@@ -59,6 +65,10 @@ const DEFAULT_MAX_BROWSE_CANDIDATE_FETCH = 720;
 const DEFAULT_DEBUG_TOP_CANDIDATES = 10;
 const PRODUCTS_SEARCH_PAGE_SIZE = 60;
 const MAX_PRODUCTS_SEARCH_CALLS = 2;
+const DISCOVERY_CURSOR_VERSION = 'pivota.discovery.cursor.v1';
+const DISCOVERY_SERVING_CONTRACT_VERSION = 'pivota.discovery.serving.v1';
+const DISCOVERY_CURATED_HEAD_LIMIT = 120;
+const DEFAULT_DISCOVERY_SERVING_SHADOW_TIMEOUT_MS = 600;
 const DISCOVERY_PRODUCTS_SEARCH_PRIMARY_BASE_URL_ENV = 'DISCOVERY_PRODUCTS_SEARCH_BASE_URL';
 const DISCOVERY_PRODUCTS_SEARCH_PRIMARY_API_KEY_ENV = 'DISCOVERY_PRODUCTS_SEARCH_API_KEY';
 const DISCOVERY_PRODUCTS_SEARCH_FALLBACK_BASE_URL_ENVS = ['PIVOTA_BACKEND_BASE_URL', 'PIVOTA_API_BASE'];
@@ -89,6 +99,7 @@ const DISCOVERY_PROVIDER_ORDER = [
 ];
 const VALID_SURFACES = new Set(['home_hot_deals', 'browse_products']);
 const VALID_DISCOVERY_RESPONSE_DETAILS = new Set(['full', 'card']);
+const VALID_DISCOVERY_SERVING_MODES = new Set(['curated_head', 'exhaustive']);
 const VALID_AUTH_STATES = new Set(['authenticated', 'anonymous']);
 const VALID_DISCOVERY_SORTS = new Set(['popular', 'price_desc', 'price_asc']);
 const SELLABLE_PRODUCT_STATUS_VALUES = ['active', 'published', 'online', 'live', 'enabled', 'available'];
@@ -1588,13 +1599,204 @@ function normalizeDiscoveryResponseDetail(value) {
   return 'full';
 }
 
+function encodeDiscoveryCursorPayload(payload) {
+  return Buffer.from(JSON.stringify(payload), 'utf8')
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
+}
+
+function decodeDiscoveryCursorPayload(raw) {
+  const normalized = String(raw || '').trim().replace(/-/g, '+').replace(/_/g, '/');
+  if (!normalized) return null;
+  const padded = normalized + '='.repeat((4 - (normalized.length % 4 || 4)) % 4);
+  return JSON.parse(Buffer.from(padded, 'base64').toString('utf8'));
+}
+
+function buildDiscoveryCursorContextSignature(request = {}) {
+  return JSON.stringify({
+    surface: String(request?.surface || '').trim() || 'unknown',
+    sort: normalizeDiscoverySort(request?.sort),
+    query_text: normalizeCacheText(request?.query?.text),
+    scope: {
+      brand_names: uniqStrings(request?.scope?.brand_names, 8).map((value) => normalizeCacheText(value)),
+      categories: normalizeDiscoveryCategories(request?.scope?.categories, 12).map((value) => normalizeCacheText(value)),
+    },
+    source_product_ref: {
+      merchant_id: String(request?.source_product_ref?.merchant_id || '').trim(),
+      product_id: String(request?.source_product_ref?.product_id || '').trim(),
+    },
+  });
+}
+
+function getDiscoveryCursorAbsoluteOffset(cursor, limit) {
+  if (!cursor) return 0;
+  const safeLimit = clampInt(limit, 20, 1, 100);
+  const baseOffset = clampInt(cursor.offset, 0, 0, 500000);
+  if (cursor.mode === 'exhaustive' && cursor.absolute_offset == null) {
+    return Math.max(DISCOVERY_CURATED_HEAD_LIMIT, safeLimit) + baseOffset;
+  }
+  return clampInt(cursor.absolute_offset, baseOffset, 0, 500000);
+}
+
+function normalizeDiscoveryCursor(rawCursor, { signature, limit } = {}) {
+  const raw = String(rawCursor || '').trim();
+  if (!raw) return null;
+  let decoded = null;
+  try {
+    decoded = decodeDiscoveryCursorPayload(raw);
+  } catch (err) {
+    throw new DiscoveryValidationError('cursor is invalid');
+  }
+  const version = String(decoded?.v || '').trim();
+  const mode = String(decoded?.mode || '').trim();
+  const offset = Number(decoded?.offset);
+  const absoluteOffset = Number(decoded?.absolute_offset);
+  const cursorSignature = String(decoded?.sig || '').trim();
+  if (version !== DISCOVERY_CURSOR_VERSION) {
+    throw new DiscoveryValidationError('cursor version is not supported');
+  }
+  if (!VALID_DISCOVERY_SERVING_MODES.has(mode)) {
+    throw new DiscoveryValidationError('cursor mode is invalid');
+  }
+  if (!Number.isFinite(offset) || offset < 0) {
+    throw new DiscoveryValidationError('cursor offset is invalid');
+  }
+  if (signature && cursorSignature !== signature) {
+    throw new DiscoveryValidationError('cursor does not match the current discovery scope');
+  }
+  const safeLimit = clampInt(limit, 20, 1, 100);
+  const resolvedAbsoluteOffset =
+    Number.isFinite(absoluteOffset) && absoluteOffset >= 0
+      ? Math.floor(absoluteOffset)
+      : mode === 'exhaustive'
+        ? Math.max(DISCOVERY_CURATED_HEAD_LIMIT, safeLimit) + Math.floor(offset)
+        : Math.floor(offset);
+  return {
+    raw,
+    mode,
+    offset: Math.floor(offset),
+    absolute_offset: resolvedAbsoluteOffset,
+    signature: cursorSignature,
+    derived_page: Math.max(1, Math.floor(resolvedAbsoluteOffset / safeLimit) + 1),
+  };
+}
+
+function buildDiscoveryCursor(request, mode, offset, absoluteOffset) {
+  return encodeDiscoveryCursorPayload({
+    v: DISCOVERY_CURSOR_VERSION,
+    mode,
+    offset: Math.max(0, Math.floor(Number(offset || 0) || 0)),
+    absolute_offset: Math.max(0, Math.floor(Number(absoluteOffset || 0) || 0)),
+    sig: buildDiscoveryCursorContextSignature(request),
+  });
+}
+
+function buildDiscoveryCursorInfo({ request, servingMode, nextOffset, nextAbsoluteOffset, hasNextPage }) {
+  const nextCursor =
+    hasNextPage && VALID_DISCOVERY_SERVING_MODES.has(String(servingMode || '').trim())
+      ? buildDiscoveryCursor(request, servingMode, nextOffset, nextAbsoluteOffset)
+      : null;
+  return {
+    next_cursor: nextCursor,
+    has_next_page: Boolean(nextCursor),
+    serving_mode: VALID_DISCOVERY_SERVING_MODES.has(String(servingMode || '').trim())
+      ? servingMode
+      : 'exhaustive',
+  };
+}
+
+function getDiscoveryServingShadowTimeoutMs() {
+  return clampInt(
+    process.env.DISCOVERY_SERVING_SHADOW_TIMEOUT_MS,
+    DEFAULT_DISCOVERY_SERVING_SHADOW_TIMEOUT_MS,
+    100,
+    5000,
+  );
+}
+
+function canRunCatalogServingShadowRead(request) {
+  const config = getCatalogServingIndexConfig();
+  return Boolean(
+    request?.surface === 'browse_products' &&
+      request?.debug?.enabled &&
+      config.enabled &&
+      config.shadow_read_enabled &&
+      !request?.cursor &&
+      Number(request?.page || 1) === 1,
+  );
+}
+
+function buildDiscoveryRuntimeServingDocIds(selectedEntries = []) {
+  return uniqStrings(
+    (Array.isArray(selectedEntries) ? selectedEntries : []).map((entry) =>
+      buildCatalogServingDoc(entry?.candidate?.raw || entry?.candidate || {}).doc_id,
+    ),
+    64,
+  );
+}
+
+async function maybeReadCatalogServingShadow(request, selectedEntries = []) {
+  if (!canRunCatalogServingShadowRead(request)) return null;
+  const market = resolveDiscoveryExternalSeedMarketConfig().market;
+
+  try {
+    const shadowResponse = await searchCatalogServingIndex({
+      query_text: request?.query?.text,
+      brand_names: request?.scope?.brand_names,
+      categories: request?.scope?.categories,
+      market,
+      limit: request?.limit,
+      sort: request?.sort,
+      timeout_ms: getDiscoveryServingShadowTimeoutMs(),
+    });
+
+    const runtimeDocIds = buildDiscoveryRuntimeServingDocIds(selectedEntries);
+    const shadowDocIds = uniqStrings(
+      (Array.isArray(shadowResponse?.items) ? shadowResponse.items : []).map((item) => item?.doc_id),
+      64,
+    );
+    const shadowDocIdSet = new Set(shadowDocIds);
+    const overlapCount = runtimeDocIds.filter((docId) => shadowDocIdSet.has(docId)).length;
+    return {
+      mode: 'shadow',
+      status: 'ok',
+      source: shadowResponse?.source || 'opensearch_compatible',
+      market,
+      runtime_returned: selectedEntries.length,
+      shadow_returned: shadowDocIds.length,
+      overlap_count: overlapCount,
+      overlap_ratio:
+        runtimeDocIds.length > 0 ? Number((overlapCount / runtimeDocIds.length).toFixed(4)) : null,
+      runtime_sample_doc_ids: runtimeDocIds.slice(0, 5),
+      shadow_sample_doc_ids: shadowDocIds.slice(0, 5),
+      cursor_info: shadowResponse?.cursor_info || null,
+    };
+  } catch (err) {
+    const httpStatus = Number(err?.response?.status || 0) || null;
+    return {
+      mode: 'shadow',
+      status: 'error',
+      market,
+      error_code:
+        err?.code === 'ECONNABORTED'
+          ? 'timeout'
+          : httpStatus
+            ? classifyDiscoveryHttpFailure(httpStatus)
+            : 'request_failed',
+      http_status: httpStatus,
+      message: err?.message || String(err),
+    };
+  }
+}
+
 function normalizeDiscoveryRequest(input = {}) {
   const source = input && typeof input.discovery === 'object' ? { ...input.discovery, ...input } : input;
   const surface = String(source.surface || '').trim();
   if (!VALID_SURFACES.has(surface)) {
     throw new DiscoveryValidationError('surface must be home_hot_deals or browse_products');
   }
-  const page = clampInt(source.page, 1, 1, 1000);
   const limit = clampInt(source.limit, 20, 1, 100);
   const context = source.context && typeof source.context === 'object' ? source.context : {};
 
@@ -1643,6 +1845,18 @@ function normalizeDiscoveryRequest(input = {}) {
           product_id: null,
           merchant_id: null,
         };
+  const cursorSignature = buildDiscoveryCursorContextSignature({
+    surface,
+    sort,
+    scope,
+    query,
+    source_product_ref: sourceProductRef,
+  });
+  const cursor = normalizeDiscoveryCursor(
+    source.cursor ?? source.next_cursor ?? source.nextCursor,
+    { signature: cursorSignature, limit },
+  );
+  const page = cursor?.derived_page || clampInt(source.page, 1, 1, 1000);
 
   return {
     surface,
@@ -1658,6 +1872,7 @@ function normalizeDiscoveryRequest(input = {}) {
       locale,
     },
     source_product_ref: sourceProductRef,
+    cursor,
     debug,
     response_detail: responseDetail,
   };
@@ -5527,6 +5742,125 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
   };
 }
 
+function selectBrowseServingWindow(browseSelection, request, options = {}) {
+  const limit = clampInt(request?.limit, 20, 1, 100);
+  const brandScoped = options.brandScoped === true;
+  const queryText = String(options.queryText || '').trim();
+  const categoryScope = normalizeDiscoveryCategories(options.categories, 12);
+  const explicitIntent = brandScoped || Boolean(queryText) || categoryScope.length > 0;
+  const genericCurated = isGenericAnonymousBrowseColdStart(options.profile, {
+    sort: request?.sort,
+    brandScoped,
+    queryText,
+    categoryScope,
+  });
+  const orderedPool = Array.isArray(browseSelection?.orderedPool) ? browseSelection.orderedPool : [];
+  const corpusPool = Array.isArray(browseSelection?.corpusPool) ? browseSelection.corpusPool : [];
+  const defaultExhaustivePool = genericCurated ? corpusPool : orderedPool;
+  const curatedHeadPool = genericCurated ? orderedPool.slice(0, DISCOVERY_CURATED_HEAD_LIMIT) : [];
+  const curatedHeadKeys = new Set(
+    curatedHeadPool.map((entry) => String(entry?.candidate?.key || '').trim()).filter(Boolean),
+  );
+  const exhaustivePool =
+    genericCurated && curatedHeadKeys.size > 0
+      ? defaultExhaustivePool.filter((entry) => !curatedHeadKeys.has(String(entry?.candidate?.key || '').trim()))
+      : defaultExhaustivePool;
+  const legacyPageMode = !request?.cursor && Number(request?.page || 1) > 1;
+
+  if (legacyPageMode) {
+    const currentOffset = Math.max(0, (Number(request.page || 1) - 1) * limit);
+    const activeMode = genericCurated ? 'curated_head' : 'exhaustive';
+    const activePool = genericCurated ? curatedHeadPool : defaultExhaustivePool;
+    const hasNextPage = currentOffset + limit < activePool.length;
+    return {
+      selectedEntries: Array.isArray(browseSelection?.pageItems) ? browseSelection.pageItems : [],
+      servingMode: activeMode,
+      cursorInfo: buildDiscoveryCursorInfo({
+        request,
+        servingMode: activeMode,
+        nextOffset: currentOffset + limit,
+        nextAbsoluteOffset: currentOffset + limit,
+        hasNextPage,
+      }),
+      hasMore: hasNextPage,
+      eligiblePoolCount: orderedPool.length,
+      runtimeCorpusCount: corpusPool.length,
+    };
+  }
+
+  if (!request?.cursor && genericCurated) {
+    const selectedEntries = curatedHeadPool.slice(0, limit);
+    const hasMoreInHead = limit < curatedHeadPool.length;
+    const cursorInfo = hasMoreInHead
+      ? buildDiscoveryCursorInfo({
+          request,
+          servingMode: 'curated_head',
+          nextOffset: limit,
+          nextAbsoluteOffset: limit,
+          hasNextPage: true,
+        })
+      : buildDiscoveryCursorInfo({
+          request,
+          servingMode: 'exhaustive',
+          nextOffset: 0,
+          nextAbsoluteOffset: DISCOVERY_CURATED_HEAD_LIMIT,
+          hasNextPage: exhaustivePool.length > 0,
+        });
+    return {
+      selectedEntries,
+      servingMode: 'curated_head',
+      cursorInfo,
+      hasMore: cursorInfo.has_next_page,
+      eligiblePoolCount: curatedHeadPool.length,
+      runtimeCorpusCount: corpusPool.length,
+    };
+  }
+
+  const cursorMode =
+    request?.cursor?.mode === 'curated_head' && genericCurated ? 'curated_head' : 'exhaustive';
+  const selectedPool = cursorMode === 'curated_head' ? curatedHeadPool : exhaustivePool;
+  const selectedOffset = request?.cursor?.mode === cursorMode ? request.cursor.offset : 0;
+  const slice = selectedPool.slice(selectedOffset, selectedOffset + limit);
+  const nextOffset = selectedOffset + limit;
+  let cursorInfo = null;
+
+  if (cursorMode === 'curated_head') {
+    const hasMoreInHead = nextOffset < curatedHeadPool.length;
+    cursorInfo = hasMoreInHead
+      ? buildDiscoveryCursorInfo({
+          request,
+          servingMode: 'curated_head',
+          nextOffset,
+          nextAbsoluteOffset: nextOffset,
+          hasNextPage: true,
+        })
+      : buildDiscoveryCursorInfo({
+          request,
+          servingMode: 'exhaustive',
+          nextOffset: 0,
+          nextAbsoluteOffset: DISCOVERY_CURATED_HEAD_LIMIT,
+          hasNextPage: exhaustivePool.length > 0,
+        });
+  } else {
+    cursorInfo = buildDiscoveryCursorInfo({
+      request,
+      servingMode: 'exhaustive',
+      nextOffset,
+      nextAbsoluteOffset: getDiscoveryCursorAbsoluteOffset(request?.cursor, limit) + limit,
+      hasNextPage: nextOffset < exhaustivePool.length,
+    });
+  }
+
+  return {
+    selectedEntries: slice,
+    servingMode: cursorMode,
+    cursorInfo,
+    hasMore: cursorInfo.has_next_page,
+    eligiblePoolCount: selectedPool.length,
+    runtimeCorpusCount: corpusPool.length,
+  };
+}
+
 const SHOPPING_CARD_CONTRACT_VERSION = 'pivota.shopping_card.v1';
 
 function discoveryCardString(value) {
@@ -6701,6 +7035,15 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
     let corpusTotalCount = 0;
     let runtimeCorpusCount = 0;
     let countSource = null;
+    let shadowServingSummary = null;
+    let cursorInfo = buildDiscoveryCursorInfo({
+      request,
+      servingMode: 'exhaustive',
+      nextOffset: 0,
+      nextAbsoluteOffset: 0,
+      hasNextPage: false,
+    });
+    let servingMode = 'exhaustive';
     let ranked = [];
     let orderedPool = [];
     let categoryFacets = [];
@@ -6736,9 +7079,18 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
           categories: request.scope.categories,
         },
       );
-      selectedEntries = browseSelection.pageItems;
-      runtimeCorpusCount = browseSelection.corpusPool.length;
-      eligiblePoolCount = browseSelection.orderedPool.length;
+      const browseServingWindow = selectBrowseServingWindow(browseSelection, request, {
+        profile,
+        sort: request.sort,
+        brandScoped: brandScopeAliases.length > 0,
+        queryText: request.query.text,
+        categories: request.scope.categories,
+      });
+      selectedEntries = browseServingWindow.selectedEntries;
+      runtimeCorpusCount = browseServingWindow.runtimeCorpusCount;
+      eligiblePoolCount = browseServingWindow.eligiblePoolCount;
+      cursorInfo = browseServingWindow.cursorInfo;
+      servingMode = browseServingWindow.servingMode;
       categoryFacets =
         brandScopeAliases.length > 0
           ? buildDiscoveryCategoryFacets(browseSelection.preCategoryPool)
@@ -6751,6 +7103,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       total = stableBrowseCatalogCount?.total ?? runtimeCorpusCount;
       corpusTotalCount = total;
       countSource = stableBrowseCatalogCount?.source || 'runtime_corpus_fallback';
+      shadowServingSummary = await maybeReadCatalogServingShadow(request, selectedEntries);
     }
 
     candidateCounts = buildCandidateCounts({
@@ -6776,7 +7129,10 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
     });
 
     const latencyMs = Date.now() - startedAt;
-    const hasMore = eligiblePoolCount > request.page * request.limit;
+    const hasMore =
+      request.surface === 'browse_products'
+        ? cursorInfo.has_next_page
+        : eligiblePoolCount > request.page * request.limit;
     const selectedSourceBreakdown = selectedEntries.reduce(
       (acc, entry) => {
         const provider = String(entry?.candidate?.provider || '').trim() || 'unknown';
@@ -6792,6 +7148,10 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       query_items_used: Number(profile.queryItemsUsed || 0),
       anchor_count: profile.anchors.length,
       scoring_version: SCORING_VERSION,
+      serving_contract_version: DISCOVERY_SERVING_CONTRACT_VERSION,
+      serving_engine: isCatalogServingIndexEnabled()
+        ? 'opensearch_compatible_shadow'
+        : 'runtime_discovery',
       surface: request.surface,
       locale: request.context.locale,
       candidate_source: effectiveCandidateSource,
@@ -6804,6 +7164,13 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       corpus_total_count: corpusTotalCount || total,
       ...(request.surface === 'browse_products' ? { runtime_corpus_count: runtimeCorpusCount } : {}),
       ...(countSource ? { count_source: countSource } : {}),
+      ...(request.surface === 'browse_products'
+        ? {
+            serving_mode: servingMode,
+            cursor_info: cursorInfo,
+            ...(shadowServingSummary ? { shadow_serving_summary: shadowServingSummary } : {}),
+          }
+        : {}),
       selected_source_breakdown: selectedSourceBreakdown,
       request_latency_ms: latencyMs,
       sort_applied: request.sort,
@@ -6859,6 +7226,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       page: request.page,
       page_size: selectedEntries.length,
       metadata,
+      ...(request.surface === 'browse_products' ? { cursor_info: cursorInfo } : {}),
     };
 
     recordDiscoveryFeedRequest({
@@ -6979,13 +7347,17 @@ module.exports = {
     matchesQueryTextCandidate,
     matchesBrandScopeCandidate,
     normalizeDiscoveryRequest,
+    normalizeDiscoveryCursor,
     normalizeCandidateProduct,
     applyIdentityGraphDiscoveryDedupe,
     resolveDiscoveryCandidateLimit,
     buildStableBrowseCatalogCountQuery,
+    buildDiscoveryCursor,
+    buildDiscoveryCursorContextSignature,
     countStableBrowseCatalogTotal,
     scoreCandidate,
     selectBrowseProducts,
+    selectBrowseServingWindow,
     selectHomeProducts,
     buildProductKey,
     resetDiscoveryDependencyProbeCache: () => {
