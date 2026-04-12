@@ -6161,6 +6161,163 @@ test('fetchRecoAlternativesForProduct: anchor precheck hydrates resolved sunscre
   );
 });
 
+test('fetchRecoAlternativesForProduct: grounded sunscreen pool ranks texture-aligned rows ahead of cosmetic-finish variants', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED: 'false',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      axios.get = async (url) => {
+        if (!isProductsSearchUrl(url)) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: 'ext_neutrogena_face_serum',
+                merchant_id: 'external_seed',
+                brand: 'Neutrogena',
+                name: 'Invisible Daily Defense Face Serum SPF 60+',
+                display_name: 'Invisible Daily Defense Face Serum SPF 60+',
+                product_type: 'Sunscreen',
+                category: 'Sunscreen',
+                retrieval_source: 'external_seed',
+                key_features: ['Lightweight serum', 'Invisible finish', 'Daily UV protection'],
+                short_description: 'A lightweight face sunscreen serum that stays easy to wear every morning.',
+                description: 'Invisible face serum texture with daily UV protection and a non-heavy finish.',
+                canonical_product_ref: {
+                  product_id: 'ext_neutrogena_face_serum',
+                  merchant_id: 'external_seed',
+                },
+              },
+              {
+                product_id: 'ext_skin1004_sunscreen',
+                merchant_id: 'external_seed',
+                brand: 'Skin1004',
+                name: 'Madagascar Centella Hyalu-Cica Water-Fit Sun Serum SPF50+',
+                display_name: 'Madagascar Centella Hyalu-Cica Water-Fit Sun Serum SPF50+',
+                product_type: 'Sunscreen',
+                category: 'Sunscreen',
+                retrieval_source: 'external_seed',
+                key_features: ['Sun serum', 'Hydrating daily SPF', 'Lightweight finish'],
+                short_description: 'A water-fit sun serum with lightweight daily protection.',
+                description: 'Hydrating sun serum texture built for lightweight daily wear.',
+                canonical_product_ref: {
+                  product_id: 'ext_skin1004_sunscreen',
+                  merchant_id: 'external_seed',
+                },
+              },
+              {
+                product_id: 'ext_lrp_aox',
+                merchant_id: 'external_seed',
+                brand: 'La Roche-Posay',
+                name: 'Anthelios AOX Daily Antioxidant Face Serum SPF 50',
+                display_name: 'Anthelios AOX Daily Antioxidant Face Serum SPF 50',
+                product_type: 'Sunscreen',
+                category: 'Sunscreen',
+                retrieval_source: 'external_seed',
+                key_features: ['Antioxidant serum', 'Daily SPF', 'Face serum texture'],
+                short_description: 'A daily antioxidant sunscreen serum with a lighter face-serum feel.',
+                description: 'Face serum sunscreen texture for straightforward daily protection.',
+                canonical_product_ref: {
+                  product_id: 'ext_lrp_aox',
+                  merchant_id: 'external_seed',
+                },
+              },
+              {
+                product_id: 'ext_supergoop_glowscreen',
+                merchant_id: 'external_seed',
+                brand: 'Supergoop!',
+                name: 'Mineral Glowscreen Soft-Radiance Drops SPF 40',
+                display_name: 'Mineral Glowscreen Soft-Radiance Drops SPF 40',
+                product_type: 'Sunscreen',
+                category: 'Sunscreen',
+                retrieval_source: 'external_seed',
+                key_features: ['Soft-radiance finish', 'Glow primer effect', 'Pearlescent look'],
+                short_description: 'A glowy sunscreen primer with a pearlescent radiance finish.',
+                description: 'Soft-radiance drops for a luminous makeup-prep look rather than a plain invisible sunscreen finish.',
+                tags: ['glow', 'radiance', 'makeup prep'],
+                canonical_product_ref: {
+                  product_id: 'ext_supergoop_glowscreen',
+                  merchant_id: 'external_seed',
+                },
+              },
+            ],
+          },
+        };
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { __internal } = routeModule;
+        let geminiCalled = false;
+        __internal.__setCallGeminiJsonObjectForTest(async () => {
+          geminiCalled = true;
+          throw new Error('provider should not run when the grounded sunscreen pool is sufficient');
+        });
+
+        const out = await __internal.fetchRecoAlternativesForProduct({
+          ctx: {
+            lang: 'EN',
+            request_id: 'req_sunscreen_pool_rank',
+            trace_id: 'trace_sunscreen_pool_rank',
+          },
+          profileSummary: null,
+          recentLogs: [],
+          productInput: 'The Ordinary UV Filters SPF 45 Serum',
+          productObj: {
+            brand: 'The Ordinary',
+            name: 'UV Filters SPF 45 Serum',
+            product_type: 'sunscreen',
+            category: 'Sunscreen',
+            claims: ['daily sunscreen', 'lightweight protection'],
+            key_features: ['Lightweight serum', 'Daily UV protection'],
+            short_description: 'A lightweight sunscreen serum for daily protection.',
+            description: 'Lightweight serum texture with daily UV protection and no heavy finish.',
+          },
+          anchorId: '',
+          maxTotal: 3,
+          candidatePool: [],
+          debug: true,
+          logger: null,
+          options: {
+            recommendation_mode: 'hybrid_fallback',
+            disable_synthetic_local_fallback: true,
+            ignore_selector_candidates: false,
+            skip_anchor_precheck: true,
+          },
+        });
+
+        assert.equal(out?.ok, true);
+        assert.equal(geminiCalled, false);
+        assert.equal(out?.compare_meta?.open_world_status, 'skipped_sufficient_pool');
+        assert.equal(Array.isArray(out?.alternatives), true);
+        assert.equal(out.alternatives.length, 3);
+        const returnedNames = out.alternatives.map((row) => String(row?.product?.name || row?.name || ''));
+        assert.ok(returnedNames.includes('Invisible Daily Defense Face Serum SPF 60+'));
+        assert.ok(returnedNames.includes('Madagascar Centella Hyalu-Cica Water-Fit Sun Serum SPF50+'));
+        assert.ok(!returnedNames.includes('Mineral Glowscreen Soft-Radiance Drops SPF 40'));
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        axios.get = originalGet;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
 test('fetchRecoAlternativesForProduct: open_world_only grounds same-brand SPF title variants from authority hits', async () => {
   return withEnv(
     {

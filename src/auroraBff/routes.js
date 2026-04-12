@@ -64586,6 +64586,67 @@ function isRecoAlternativeFormFactorCompatible(candidate, { targetSignals = null
   return true;
 }
 
+const RECO_ALTERNATIVE_COSMETIC_FINISH_SIGNAL_RE = /\b(glow(?:screen)?|radiance|radiant|illuminat\w*|lumin(?:ous|izer)?|tinted|shimmer|pearlescent|soft[-\s]?radiance|bronz\w*|highlight\w*)\b/i;
+const RECO_ALTERNATIVE_FINISH_DROPS_SIGNAL_RE = /\bdrops?\b/i;
+
+function buildRecoAlternativePoolCandidateText(normalized) {
+  const row = isPlainObject(normalized) ? normalized : {};
+  const shoppingCard = isPlainObject(row.shopping_card) ? row.shopping_card : {};
+  const searchCard = isPlainObject(row.search_card) ? row.search_card : {};
+  const pivotaInsights = isPlainObject(row.pivota_insights) ? row.pivota_insights : {};
+  const productIntel = isPlainObject(row.product_intel) ? row.product_intel : {};
+  return [
+    joinBrandAndName(row.brand, pickFirstTrimmed(row.display_name, row.name)),
+    row.category,
+    row.product_type,
+    ...(Array.isArray(row.ingredient_tokens) ? row.ingredient_tokens : []),
+    ...(Array.isArray(row.skin_type_tags) ? row.skin_type_tags : []),
+    ...(Array.isArray(row.search_aliases) ? row.search_aliases.slice(0, 4) : []),
+    ...(Array.isArray(row.benefit_tokens) ? row.benefit_tokens.slice(0, 6) : []),
+    ...(Array.isArray(row.description_tokens) ? row.description_tokens.slice(0, 4) : []),
+    ...(Array.isArray(row.tag_tokens) ? row.tag_tokens.slice(0, 6) : []),
+    row.short_description,
+    row.description,
+    row.best_for,
+    row.why_this_one,
+    ...(Array.isArray(row.key_features) ? row.key_features.slice(0, 6) : []),
+    ...(Array.isArray(row.compare_highlights) ? row.compare_highlights.slice(0, 4) : []),
+    pickFirstTrimmed(
+      shoppingCard.intro,
+      searchCard.intro,
+      pivotaInsights.what_it_is,
+      pivotaInsights.one_liner,
+      productIntel.what_it_is,
+      productIntel.one_liner,
+    ),
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+}
+
+function computeRecoAlternativeCosmeticFinishPenalty(targetSignals, candidateText, candidateLabel) {
+  if (String(targetSignals?.usageRole || '').trim().toLowerCase() !== 'sunscreen') return 0;
+  const targetText = [
+    targetSignals?.name,
+    targetSignals?.notes,
+    ...(Array.isArray(targetSignals?.primaryClaims) ? targetSignals.primaryClaims : []),
+    ...(Array.isArray(targetSignals?.textureHints) ? targetSignals.textureHints : []),
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+  if (RECO_ALTERNATIVE_COSMETIC_FINISH_SIGNAL_RE.test(targetText)) return 0;
+  const candidateHaystack = [candidateLabel, candidateText]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+  if (!RECO_ALTERNATIVE_COSMETIC_FINISH_SIGNAL_RE.test(candidateHaystack)) return 0;
+  let penalty = 0.06;
+  if (RECO_ALTERNATIVE_FINISH_DROPS_SIGNAL_RE.test(candidateHaystack)) penalty += 0.02;
+  return Math.min(0.12, penalty);
+}
+
 function normalizePoolAlternativeRow(row, {
   targetSignals,
   anchorLabel = '',
@@ -64624,19 +64685,12 @@ function normalizePoolAlternativeRow(row, {
     return null;
   }
 
-  const candidateText = [
-    candidateLabel,
-    normalized.category,
-    ...(Array.isArray(normalized.ingredient_tokens) ? normalized.ingredient_tokens : []),
-    ...(Array.isArray(normalized.skin_type_tags) ? normalized.skin_type_tags : []),
-  ]
-    .map((value) => String(value || '').trim())
-    .filter(Boolean)
-    .join(' ');
+  const candidateText = buildRecoAlternativePoolCandidateText(normalized);
   const nameOverlap = computeTokenJaccardScore(anchorNameTokens, tokenizeProductTextForSimilarity(candidateLabel)) || 0;
   const ingredientOverlap = computeExternalSeedSignalOverlap(ingredientTokens, candidateText);
   const claimOverlap = computeExternalSeedSignalOverlap(claimTokens, candidateText);
   const textureOverlap = computeExternalSeedSignalOverlap(textureTokens, candidateText);
+  const cosmeticFinishPenalty = computeRecoAlternativeCosmeticFinishPenalty(targetSignals, candidateText, candidateLabel);
   const roleScore = !targetRole || targetRole === 'unknown'
     ? 0.72
     : candidateRole === targetRole
@@ -64653,7 +64707,8 @@ function normalizePoolAlternativeRow(row, {
     claimOverlap * 0.12 +
     textureOverlap * 0.06 +
     stableIdBonus +
-    retrievalBonus,
+    retrievalBonus -
+    cosmeticFinishPenalty,
   );
   if (mixedScore < 0.55) return null;
 
@@ -64712,6 +64767,9 @@ function normalizePoolAlternativeRow(row, {
           ? 'Pool hit is external-backed, so internal PDP coverage may vary.'
           : '',
         candidateRole === 'unknown' ? 'Exact usage role is inferred from sparse catalog text.' : '',
+        cosmeticFinishPenalty > 0
+          ? 'Finish leans more cosmetic than the anchor, so it ranks lower for a straightforward sunscreen compare.'
+          : '',
       ],
       2,
     ),
