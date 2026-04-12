@@ -3,7 +3,10 @@ const {
   buildProductIntelDraftBundle,
   normalizePublishedProductIntelBundle,
 } = require('../src/pdpProductIntel');
-const { normalizeCardIntroCandidate } = require('../src/services/pivotaShoppingCard');
+const {
+  buildCardHighlight,
+  normalizeCardIntroCandidate,
+} = require('../src/services/pivotaShoppingCard');
 
 describe('pdp product intel bundle shaping', () => {
   test('card intro normalization fixes sentence casing and trailing punctuation', () => {
@@ -17,6 +20,44 @@ describe('pdp product intel bundle shaping', () => {
     expect(
       normalizeCardIntroCandidate('richer moisturizer for visibly stressed or dry-looking skin,.'),
     ).toBe('Richer moisturizer for visibly stressed or dry-looking skin.');
+  });
+
+  test('buildCardHighlight falls back to approved external highlight when explicit copy duplicates subtitle', () => {
+    expect(
+      buildCardHighlight({
+        bundle: {
+          provenance: {
+            external_highlight_review_status: 'rewrite',
+          },
+          shopping_card: {
+            title: 'Barrier Balm',
+            subtitle: 'Barrier balm',
+            highlight: 'Barrier balm',
+          },
+          search_card: {
+            title_candidate: 'Barrier Balm',
+            compact_candidate: 'Barrier balm',
+            highlight_candidate: 'Barrier balm',
+          },
+          external_highlight_signals: [
+            {
+              signal_id: 'sig_1',
+              source_type: 'verified_reviews',
+              claim_type: 'card_hook',
+              claim_text: 'Reviewers often mention how well it layers under makeup.',
+              surface_text: 'Layers cleanly under makeup',
+              rating_summary: {
+                rating: 4.7,
+                review_count: 318,
+              },
+              evidence_strength: 'strong',
+              independence_count: 318,
+              surface_targets: ['shopping_card_highlight'],
+            },
+          ],
+        },
+      }),
+    ).toBe('Layers cleanly under makeup');
   });
 
   test('buildProductIntelBundle returns structured insights with texture and community signals', () => {

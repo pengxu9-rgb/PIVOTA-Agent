@@ -396,11 +396,12 @@ function buildCardHighlight({ bundle }) {
     bundle?.search_card?.highlight_candidate || bundle?.shopping_card?.highlight,
   );
   if (explicitHighlight) {
-    return resolveDisplayableCompactHighlight(explicitHighlight, {
+    const resolvedExplicit = resolveDisplayableCompactHighlight(explicitHighlight, {
       bundle,
       title: bundle?.shopping_card?.title || bundle?.search_card?.title_candidate,
       subtitle: bundle?.shopping_card?.subtitle || bundle?.search_card?.compact_candidate,
     });
+    if (resolvedExplicit) return resolvedExplicit;
   }
   const signal = pickSurfaceableExternalHighlightSignal(bundle?.external_highlight_signals, {
     surfaceTarget: 'shopping_card_highlight',
