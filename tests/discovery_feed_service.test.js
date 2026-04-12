@@ -309,6 +309,93 @@ describe('discovery feed service', () => {
     }
   });
 
+  test('exact-title primary path bypasses generic provider waterfall for anonymous browse search', async () => {
+    jest.resetModules();
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = 'postgres://discovery-exact-title-primary';
+    const dbQueryMock = jest.fn(async () => ({
+      rows: [
+        makeExternalSeedRow({
+          id: 'eps_dermalogica_exact',
+          external_product_id: 'ext_dermalogica_exact',
+          title: 'biolumin c vitamin c gel moisturizer',
+          brand: 'Dermalogica',
+          category: 'Moisturizer',
+          product_type: 'Moisturizer',
+          description: 'Radiance boost + weightless hydration',
+        }),
+      ],
+    }));
+    jest.doMock('../src/db', () => ({
+      query: dbQueryMock,
+    }));
+
+    try {
+      const {
+        buildDiscoveryProfile: freshBuildDiscoveryProfile,
+        _internals: freshInternals,
+      } = require('../src/services/discoveryFeed');
+      const request = freshInternals.normalizeDiscoveryRequest({
+        surface: 'browse_products',
+        query: {
+          text: 'Dermalogica biolumin-c vitamin c gel moisturizer',
+        },
+        context: {
+          auth_state: 'anonymous',
+          recent_views: [],
+          recent_queries: [],
+          locale: 'en-US',
+        },
+      });
+
+      const result = await freshInternals.loadCatalogCandidates({
+        request,
+        profile: freshBuildDiscoveryProfile(request.context),
+        limit: 24,
+      });
+
+      expect(result.products.map((product) => product.title)).toEqual([
+        'biolumin c vitamin c gel moisturizer',
+      ]);
+      expect(result.candidateSource).toBe('exact_title_primary');
+      expect(result.primaryPathUsed).toBe('exact_title_primary');
+      expect(result.recallSummary).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            provider: 'external_seeds',
+            label: 'external_seed_exact_title_pool',
+            status: 200,
+            returned: 1,
+          }),
+          expect.objectContaining({
+            provider: 'products_search',
+            label: 'products_search_pool',
+            skipped: true,
+            skip_reason: 'exact_title_primary_used',
+          }),
+          expect.objectContaining({
+            provider: 'internal_catalog',
+            label: 'internal_catalog_pool',
+            skipped: true,
+            skip_reason: 'exact_title_primary_used',
+          }),
+        ]),
+      );
+      expect(result.recallSummary.some((step) => step?.label === 'external_seed_pool')).toBe(false);
+      expect(dbQueryMock).toHaveBeenCalledTimes(1);
+      expect(dbQueryMock.mock.calls[0]?.[1]?.[2]).toEqual(
+        expect.arrayContaining([
+          'dermalogica biolumin c vitamin c gel moisturizer',
+          'biolumin c vitamin c gel moisturizer',
+        ]),
+      );
+    } finally {
+      jest.dontMock('../src/db');
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+    }
+  });
+
   test('buildDiscoveryProfile treats recent queries as user behavior signals', () => {
     const request = _internals.normalizeDiscoveryRequest({
       surface: 'browse_products',
