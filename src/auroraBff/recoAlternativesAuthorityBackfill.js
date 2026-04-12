@@ -73,7 +73,32 @@ function normalizeBrand(value) {
   return String(value || '')
     .trim()
     .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[’']/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
     .replace(/\s+/g, ' ');
+}
+
+function normalizeBrandCompact(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[’']/g, '')
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+function buildBrandLookupVariants(value) {
+  const normalized = normalizeBrand(value);
+  const compact = normalizeBrandCompact(value);
+  const withoutAnd = normalized.replace(/\band\b/g, ' ').replace(/\s+/g, ' ').trim();
+  const compactWithoutAnd = withoutAnd.replace(/\s+/g, '');
+  return {
+    exact: uniqueStrings([String(value || '').trim().toLowerCase()].filter(Boolean), 6),
+    loose: uniqueStrings([normalized, withoutAnd].filter(Boolean), 6),
+    compact: uniqueStrings([compact, compactWithoutAnd].filter(Boolean), 6),
+  };
 }
 
 function normalizeTitle(value) {
@@ -178,8 +203,8 @@ async function resolveBrandSourcePlanDefault({ brand, market = ASYNC_BACKFILL_MA
   if (!getPool()) {
     return { ok: false, reason: 'no_database', primaryDomain: '', fallbackDomains: [] };
   }
-  const normalizedBrand = normalizeBrand(brand);
-  if (!normalizedBrand) {
+  const brandVariants = buildBrandLookupVariants(brand);
+  if (!brandVariants.loose.length && !brandVariants.compact.length && !brandVariants.exact.length) {
     return { ok: false, reason: 'brand_missing', primaryDomain: '', fallbackDomains: [] };
   }
 
@@ -191,7 +216,11 @@ async function resolveBrandSourcePlanDefault({ brand, market = ASYNC_BACKFILL_MA
       `
         SELECT official_domain
         FROM pdp_identity_listing
-        WHERE brand_norm = $1
+        WHERE (
+          lower(trim(coalesce(brand_norm, ''))) = ANY($1::text[])
+          OR trim(regexp_replace(lower(coalesce(brand_norm, '')), '[^a-z0-9]+', ' ', 'g')) = ANY($2::text[])
+          OR regexp_replace(lower(coalesce(brand_norm, '')), '[^a-z0-9]+', '', 'g') = ANY($3::text[])
+        )
           AND coalesce(official_domain, '') <> ''
         ORDER BY
           CASE WHEN source_tier = 'brand' THEN 0 ELSE 1 END,
@@ -201,7 +230,7 @@ async function resolveBrandSourcePlanDefault({ brand, market = ASYNC_BACKFILL_MA
           created_at DESC NULLS LAST
         LIMIT 4
       `,
-      [normalizedBrand],
+      [brandVariants.exact, brandVariants.loose, brandVariants.compact],
     );
     for (const row of Array.isArray(identityRes?.rows) ? identityRes.rows : []) {
       const domain = ensureHttpUrl(row?.official_domain);
@@ -224,7 +253,11 @@ async function resolveBrandSourcePlanDefault({ brand, market = ASYNC_BACKFILL_MA
         WHERE status = 'active'
           AND attached_product_key IS NULL
           AND market = $2
-          AND lower(trim(coalesce(seed_data->>'brand', seed_data->'snapshot'->>'brand', ''))) = $1
+          AND (
+            lower(trim(coalesce(seed_data->>'brand', seed_data->'snapshot'->>'brand', ''))) = ANY($1::text[])
+            OR trim(regexp_replace(lower(coalesce(seed_data->>'brand', seed_data->'snapshot'->>'brand', '')), '[^a-z0-9]+', ' ', 'g')) = ANY($3::text[])
+            OR regexp_replace(lower(coalesce(seed_data->>'brand', seed_data->'snapshot'->>'brand', '')), '[^a-z0-9]+', '', 'g') = ANY($4::text[])
+          )
           AND coalesce(domain, '') <> ''
         ORDER BY
           CASE WHEN coalesce(seed_data #>> '{authority_source,source_role}', '') = 'primary' THEN 0 ELSE 1 END,
@@ -232,7 +265,12 @@ async function resolveBrandSourcePlanDefault({ brand, market = ASYNC_BACKFILL_MA
           created_at DESC NULLS LAST
         LIMIT 8
       `,
-      [normalizedBrand, String(market || ASYNC_BACKFILL_MARKET).trim().toUpperCase() || ASYNC_BACKFILL_MARKET],
+      [
+        brandVariants.exact,
+        String(market || ASYNC_BACKFILL_MARKET).trim().toUpperCase() || ASYNC_BACKFILL_MARKET,
+        brandVariants.loose,
+        brandVariants.compact,
+      ],
     );
     for (const row of Array.isArray(externalRes?.rows) ? externalRes.rows : []) {
       const sourceUrl = ensureHttpUrl(pickFirstTrimmed(row?.source_url, row?.domain));
