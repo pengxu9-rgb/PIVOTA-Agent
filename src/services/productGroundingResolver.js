@@ -2,8 +2,24 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const { withClient } = require('../db');
+const {
+  EXTERNAL_SEED_RECALL_SQL_FIELDS,
+  resolveExternalSeedRecallDoc,
+} = require('./externalSeedRecall');
 
 const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
+const PRODUCT_GROUNDING_BASE_URL_ENVS = ['PIVOTA_BACKEND_BASE_URL', 'PIVOTA_API_BASE'];
+const PRODUCT_GROUNDING_API_KEY_ENVS = [
+  'PIVOTA_BACKEND_AGENT_API_KEY',
+  'PIVOTA_API_KEY',
+  'SHOP_GATEWAY_AGENT_API_KEY',
+  'PIVOTA_AGENT_API_KEY',
+  'AGENT_API_KEY',
+];
+const EXTERNAL_SEED_BRAND_FASTPATH_SQL =
+  "lower(COALESCE(seed_data->>'brand', seed_data->'snapshot'->>'brand', seed_data->>'merchant_display_name', seed_data->'snapshot'->>'merchant_display_name', seed_data->>'vendor', seed_data->'snapshot'->>'vendor', ''))";
+const EXTERNAL_SEED_BRAND_NORM_SQL =
+  "lower(regexp_replace(COALESCE(seed_data->>'brand', seed_data->'snapshot'->>'brand', split_part(domain, '.', 1), ''), '[^a-z0-9]+', '', 'g'))";
 const LATIN_STOPWORDS = new Set([
   'a',
   'an',
@@ -141,6 +157,24 @@ function compactNoSpaces(s) {
   return String(s || '').replace(/\s+/g, '');
 }
 
+function normalizeBrandFastpathText(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[™®!.,]+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeBrandIndexKey(value) {
+  return String(value || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '')
+    .trim();
+}
+
 function stripCommonCjkQueryAffixes(compact) {
   const s = String(compact || '');
   if (!s) return '';
@@ -171,6 +205,16 @@ function firstNonEmptyString(...values) {
   for (const raw of values) {
     const s = String(raw || '').trim();
     if (s) return s;
+  }
+  return '';
+}
+
+function readFirstConfiguredEnv(names = []) {
+  for (const name of Array.isArray(names) ? names : []) {
+    const raw = process.env?.[String(name || '').trim()];
+    const value = typeof raw === 'string' ? raw.trim() : '';
+    if (!value || value === 'undefined' || value === 'null') continue;
+    return value;
   }
   return '';
 }
@@ -389,13 +433,22 @@ function extractResolverHints(hints) {
   if (Array.isArray(hintObj.aliases)) {
     for (const alias of hintObj.aliases) {
       pushAlias(alias);
-      if (aliases.length >= 8) break;
+      if (aliases.length >= 12) break;
     }
+  }
+  const searchAliases = []
+    .concat(Array.isArray(hintObj.search_aliases) ? hintObj.search_aliases : [])
+    .concat(Array.isArray(hintObj.searchAliases) ? hintObj.searchAliases : [])
+    .concat(Array.isArray(hintObj.target?.search_aliases) ? hintObj.target.search_aliases : [])
+    .concat(Array.isArray(hintObj.target?.searchAliases) ? hintObj.target.searchAliases : []);
+  for (const alias of searchAliases) {
+    pushAlias(alias);
+    if (aliases.length >= 12) break;
   }
 
   return {
     product_ref: productRef,
-    aliases: aliases.slice(0, 8),
+    aliases: aliases.slice(0, 12),
     brand,
   };
 }
@@ -973,11 +1026,204 @@ function dedupeByProductRef(candidates) {
   return out;
 }
 
+function buildExternalSeedResolverPatterns({ query = '', aliases = [] } = {}) {
+  return buildExternalSeedResolverSearchTerms({ query, aliases }).map((normalized) => `%${normalized}%`);
+}
+
+function buildExternalSeedResolverSearchTerms({ query = '', aliases = [] } = {}) {
+  const surfaces = [];
+  const push = (value) => {
+    const trimmed = String(value || '').trim();
+    if (trimmed) surfaces.push(trimmed);
+    const normalized = normalizeTextForResolver(trimmed);
+    if (normalized && normalized !== trimmed) surfaces.push(normalized);
+  };
+
+  push(query);
+  for (const alias of Array.isArray(aliases) ? aliases : []) {
+    push(alias);
+  }
+
+  const queryTokens = tokenizeNormalizedResolverQuery(normalizeTextForResolver(query));
+  if (queryTokens.length > 1) {
+    surfaces.push(queryTokens.join(' '));
+    for (let index = 0; index < queryTokens.length - 1; index += 1) {
+      const phrase = `${queryTokens[index]} ${queryTokens[index + 1]}`.trim();
+      if (phrase) surfaces.push(phrase);
+    }
+  }
+
+  const patterns = [];
+  const seen = new Set();
+  for (const surface of surfaces) {
+    const normalized = String(surface || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[%_]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!normalized || normalized.length < 3 || seen.has(normalized)) continue;
+    seen.add(normalized);
+    patterns.push(normalized);
+    if (patterns.length >= 18) break;
+  }
+  return patterns;
+}
+
+function buildExternalSeedResolverProduct(row) {
+  const seedData = row?.seed_data && typeof row.seed_data === 'object' ? row.seed_data : {};
+  const snapshot = seedData?.snapshot && typeof seedData.snapshot === 'object' ? seedData.snapshot : {};
+  const recall = resolveExternalSeedRecallDoc({ row, seedData, snapshot });
+  const brand = firstNonEmptyString(recall?.brand, seedData?.brand, snapshot?.brand, row?.brand);
+  const title = firstNonEmptyString(recall?.retrieval_title, row?.title);
+  const category = firstNonEmptyString(
+    recall?.category,
+    seedData?.category,
+    seedData?.product_type,
+    snapshot?.category,
+    snapshot?.product_type,
+  );
+  const productId = firstNonEmptyString(row?.external_product_id, row?.id);
+  if (!productId || !title) return null;
+  return {
+    product_id: productId,
+    merchant_id: EXTERNAL_SEED_MERCHANT_ID,
+    title,
+    name: title,
+    display_name: title,
+    ...(brand ? { brand, vendor: brand } : {}),
+    ...(category ? { category, product_type: category } : {}),
+    ...(firstNonEmptyString(row?.canonical_url, snapshot?.canonical_url) ? { canonical_url: firstNonEmptyString(row?.canonical_url, snapshot?.canonical_url) } : {}),
+    ...(firstNonEmptyString(row?.destination_url, snapshot?.destination_url, row?.canonical_url) ? { destination_url: firstNonEmptyString(row?.destination_url, snapshot?.destination_url, row?.canonical_url) } : {}),
+    ...(firstNonEmptyString(row?.destination_url, snapshot?.destination_url, row?.canonical_url, snapshot?.canonical_url)
+      ? { url: firstNonEmptyString(row?.destination_url, snapshot?.destination_url, row?.canonical_url, snapshot?.canonical_url) }
+      : {}),
+    ...(firstNonEmptyString(row?.domain) ? { domain: firstNonEmptyString(row?.domain) } : {}),
+    source: 'external_seed',
+    source_type: 'external_seed',
+  };
+}
+
+async function fetchCandidatesViaExternalSeedRecall({
+  query,
+  hintAliases = [],
+  hintBrand = '',
+  limit,
+  timeoutMs,
+}) {
+  if (!process.env.DATABASE_URL) return { ok: false, products: [], reason: 'db_not_configured' };
+  const exactTerms = buildExternalSeedResolverSearchTerms({ query, aliases: hintAliases });
+  const patterns = exactTerms.map((value) => `%${value}%`);
+  if (!patterns.length) return { ok: true, products: [], reason: 'empty' };
+  const normalizedBrand = normalizeBrandFastpathText(hintBrand);
+  const normalizedBrandIndex = normalizeBrandIndexKey(hintBrand);
+  if (!normalizedBrand || !normalizedBrandIndex) {
+    return { ok: false, products: [], reason: 'brand_missing' };
+  }
+
+  const safeLimit = clampInt(limit, { min: 1, max: 100, fallback: 40 });
+  const fetchLimit = Math.min(48, Math.max(safeLimit * 4, 12));
+  const safeTimeout = clampInt(timeoutMs, { min: 50, max: 15000, fallback: 900 });
+  const market = firstNonEmptyString(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET, 'US').toUpperCase();
+  const tool = 'creator_agents';
+  const baseWhereSql = `
+    status = 'active'
+      AND attached_product_key IS NULL
+      AND market = $1
+      AND (tool = '*' OR tool = $2)
+      AND COALESCE((seed_data#>>'{derived,recall,suppression_flags,exclude_from_recall}')::boolean, false) = false
+      AND (${EXTERNAL_SEED_BRAND_FASTPATH_SQL} = $3 OR ${EXTERNAL_SEED_BRAND_NORM_SQL} = $4)
+  `;
+  const stageDefinitions = [
+    {
+      source: 'external_seed_local_title',
+      whereSql: "lower(coalesce(title, '')) LIKE ANY($5::text[])",
+      matchScoreSql: '120::int',
+    },
+    {
+      source: 'external_seed_local_recall_title',
+      whereSql: `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY($5::text[])`,
+      matchScoreSql: '110::int',
+    },
+    {
+      source: 'external_seed_local_alias_tokens',
+      whereSql: `${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY($5::text[])`,
+      matchScoreSql: '90::int',
+    },
+  ];
+
+  try {
+    const res = await withClient(async (client) => {
+      const ms = Math.max(25, safeTimeout);
+      await client.query(`SET statement_timeout = ${Math.trunc(ms)}`);
+      try {
+        const rows = [];
+        const seenIds = new Set();
+        for (const stage of stageDefinitions) {
+          if (rows.length >= fetchLimit) break;
+          // eslint-disable-next-line no-await-in-loop
+          const stageRes = await client.query(
+            `
+              SELECT
+                id::text AS id,
+                external_product_id,
+                title,
+                canonical_url,
+                destination_url,
+                domain,
+                seed_data,
+                updated_at,
+                created_at,
+                ${stage.matchScoreSql} AS match_score,
+                '${stage.source}'::text AS match_source
+              FROM external_product_seeds
+              WHERE ${baseWhereSql}
+                AND ${stage.whereSql}
+              ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
+              LIMIT $6
+            `,
+            [market, tool, normalizedBrand, normalizedBrandIndex, patterns, fetchLimit],
+          );
+          for (const row of Array.isArray(stageRes?.rows) ? stageRes.rows : []) {
+            const rowId = firstNonEmptyString(row?.id, row?.external_product_id);
+            if (!rowId || seenIds.has(rowId)) continue;
+            seenIds.add(rowId);
+            rows.push(row);
+            if (rows.length >= fetchLimit) break;
+          }
+        }
+        return { rows };
+      } finally {
+        await client.query('SET statement_timeout = 0');
+      }
+    });
+    const rows = Array.isArray(res?.rows) ? res.rows : [];
+    const products = rows
+      .map((row) => buildExternalSeedResolverProduct(row))
+      .filter(Boolean);
+    return { ok: true, products: products.slice(0, fetchLimit), reason: null };
+  } catch (err) {
+    const code = String(err?.code || '').toUpperCase();
+    const msg = String(err?.message || err || '').toLowerCase();
+    if (code === '42P01') return { ok: false, products: [], reason: 'external_product_seeds_missing', error_code: code };
+    if (code === '57014' || /statement timeout|canceling statement due to statement timeout|query canceled/.test(msg)) {
+      return { ok: false, products: [], reason: 'db_query_timeout', error_code: code || '57014' };
+    }
+    if (code === '42703') return { ok: false, products: [], reason: 'db_schema_mismatch', error_code: code };
+    if (code.startsWith('08')) return { ok: false, products: [], reason: 'db_unreachable', error_code: code };
+    return { ok: false, products: [], reason: 'db_error', error_code: code || null };
+  }
+}
+
 function createProductGroundingResolver(deps = {}) {
   const fetchProductsCache =
     typeof deps.fetchCandidatesViaProductsCache === 'function'
       ? deps.fetchCandidatesViaProductsCache
       : fetchCandidatesViaProductsCache;
+  const fetchExternalSeedRecall =
+    typeof deps.fetchCandidatesViaExternalSeedRecall === 'function'
+      ? deps.fetchCandidatesViaExternalSeedRecall
+      : fetchCandidatesViaExternalSeedRecall;
   const fetchAgentSearch =
     typeof deps.fetchCandidatesViaAgentSearch === 'function'
       ? deps.fetchCandidatesViaAgentSearch
@@ -1048,6 +1294,9 @@ function createProductGroundingResolver(deps = {}) {
   const limit = clampInt(options?.limit, { min: 1, max: 50, fallback: 20 });
   const upstreamRetries = clampInt(options?.upstream_retries, { min: 0, max: 3, fallback: 1 });
   const upstreamRetryBackoffMs = clampInt(options?.upstream_retry_backoff_ms, { min: 25, max: 1000, fallback: 90 });
+  const resolvedPivotaApiBase = firstNonEmptyString(pivotaApiBase, readFirstConfiguredEnv(PRODUCT_GROUNDING_BASE_URL_ENVS));
+  const resolvedPivotaApiKey = firstNonEmptyString(pivotaApiKey, readFirstConfiguredEnv(PRODUCT_GROUNDING_API_KEY_ENVS));
+  const exactAuthorityLookupMode = allowExternalSeed && Boolean(firstNonEmptyString(hintData.brand));
 
   const products = [];
   const sources = [];
@@ -1192,8 +1441,8 @@ function createProductGroundingResolver(deps = {}) {
   if (products.length === 0 && preferMerchants.length > 0 && scopedUpstreamTimeout >= 80) {
     const scopedRetries = scopedUpstreamTimeout >= 700 ? upstreamRetries : 0;
     const upstreamScoped = await fetchAgentSearch({
-      pivotaApiBase,
-      pivotaApiKey,
+      pivotaApiBase: resolvedPivotaApiBase,
+      pivotaApiKey: resolvedPivotaApiKey,
       checkoutToken,
       query: q,
       merchantIds: preferMerchants,
@@ -1222,10 +1471,46 @@ function createProductGroundingResolver(deps = {}) {
     }
   }
 
-  // 3) Optional: global products_cache fallback (avoids network timeouts).
+  // 3) Exact external-seed recall for authority rows. This should not depend on upstream base availability.
+  const externalSeedLocalTimeout = stageTimeout({ capMs: 700, reserveMs: 650, floorMs: 60 });
+  const shouldTryExternalSeedLocal =
+    allowExternalSeed &&
+    externalSeedLocalTimeout >= 60 &&
+    (searchAllMerchants === true || (!preferMerchants.length && searchAllMerchants !== false)) &&
+    products.length < Math.max(2, Math.min(6, limit));
+  let hasExternalSeedLocalCandidates = false;
+  if (shouldTryExternalSeedLocal) {
+    const externalSeedLocal = await fetchExternalSeedRecall({
+      query: q,
+      hintAliases: hintData.aliases,
+      hintBrand: hintData.brand,
+      limit: Math.max(limit, 18),
+      timeoutMs: externalSeedLocalTimeout,
+    });
+    if (externalSeedLocal.ok && Array.isArray(externalSeedLocal.products) && externalSeedLocal.products.length) {
+      hasExternalSeedLocalCandidates = true;
+      products.push(...externalSeedLocal.products);
+      sources.push({
+        source: 'external_seed_local_recall',
+        ok: true,
+        count: externalSeedLocal.products.length,
+      });
+    } else {
+      sources.push({
+        source: 'external_seed_local_recall',
+        ok: false,
+        reason: externalSeedLocal.reason || 'no_results',
+        ...(externalSeedLocal.error_code ? { error_code: externalSeedLocal.error_code } : {}),
+      });
+    }
+  }
+
+  // 4) Optional: global products_cache fallback (avoids network timeouts).
   const globalCacheTimeout = stageTimeout({ capMs: 1500, reserveMs: 300, floorMs: 80 });
   const shouldTryGlobalCache =
     globalCacheTimeout >= 60 &&
+    !hasExternalSeedLocalCandidates &&
+    !exactAuthorityLookupMode &&
     (searchAllMerchants === true || (!preferMerchants.length && searchAllMerchants !== false)) &&
     products.length < Math.max(6, Math.min(14, limit));
   if (shouldTryGlobalCache) {
@@ -1248,18 +1533,20 @@ function createProductGroundingResolver(deps = {}) {
     }
   }
 
-  // 4) Optional: global agent search (no external_seed by default).
+  // 5) Optional: global agent search (no external_seed by default).
   const globalUpstreamTimeout = stageTimeout({ capMs: 1400, reserveMs: 0, floorMs: 120 });
   const shouldTryGlobal =
     globalUpstreamTimeout >= 120 &&
+    !hasExternalSeedLocalCandidates &&
+    !exactAuthorityLookupMode &&
     (searchAllMerchants === true || (!preferMerchants.length && searchAllMerchants !== false)) &&
     // Avoid a second network call when we already have plenty of candidates.
     products.length < Math.max(6, Math.min(14, limit));
   if (shouldTryGlobal) {
     const globalRetries = globalUpstreamTimeout >= 900 ? upstreamRetries : 0;
     const upstreamGlobal = await fetchAgentSearch({
-      pivotaApiBase,
-      pivotaApiKey,
+      pivotaApiBase: resolvedPivotaApiBase,
+      pivotaApiKey: resolvedPivotaApiKey,
       checkoutToken,
       query: q,
       merchantIds: undefined,
@@ -1288,18 +1575,20 @@ function createProductGroundingResolver(deps = {}) {
     }
   }
 
-  // 5) View-details / deep-resolution only: budgeted external-seed supplement.
+  // 6) View-details / deep-resolution only: budgeted external-seed supplement.
   const externalSeedTimeout = stageTimeout({ capMs: 1200, reserveMs: 0, floorMs: 120 });
   const shouldTryExternalSeed =
     allowExternalSeed &&
     externalSeedTimeout >= 120 &&
+    !hasExternalSeedLocalCandidates &&
+    !exactAuthorityLookupMode &&
     (searchAllMerchants === true || (!preferMerchants.length && searchAllMerchants !== false)) &&
     products.length < Math.max(4, Math.min(10, limit));
   if (shouldTryExternalSeed) {
     const externalRetries = externalSeedTimeout >= 900 ? Math.min(1, upstreamRetries) : 0;
     const upstreamExternal = await fetchAgentSearch({
-      pivotaApiBase,
-      pivotaApiKey,
+      pivotaApiBase: resolvedPivotaApiBase,
+      pivotaApiKey: resolvedPivotaApiKey,
       checkoutToken,
       query: q,
       merchantIds: undefined,
@@ -1418,12 +1707,13 @@ function createProductGroundingResolver(deps = {}) {
       timeout_ms: timeoutMs,
       latency_ms: latencyMs,
       sources,
-      ...(q !== rawQuery ? { query_from_hints: true, effective_query: q, original_query: rawQuery } : {}),
-      ...(preferMerchants.length ? { prefer_merchants: preferMerchants } : {}),
-      ...(allowExternalSeed ? { allow_external_seed: true } : {}),
-      ...(allowExternalSeed ? { external_seed_strategy: externalSeedStrategy } : {}),
-    },
-  };
+        ...(q !== rawQuery ? { query_from_hints: true, effective_query: q, original_query: rawQuery } : {}),
+        ...(preferMerchants.length ? { prefer_merchants: preferMerchants } : {}),
+        ...(allowExternalSeed ? { allow_external_seed: true } : {}),
+        ...(allowExternalSeed ? { external_seed_strategy: externalSeedStrategy } : {}),
+        ...(resolvedPivotaApiBase ? { pivota_api_base_configured: true } : {}),
+      },
+    };
   };
 }
 
@@ -1437,12 +1727,14 @@ module.exports = {
     tokenizeNormalizedResolverQuery,
     isStrongStandaloneResolverToken,
     resolveKnownStableProductRef,
+    extractResolverHints,
+    buildExternalSeedResolverPatterns,
     scoreAndRankCandidates,
     resolveFromRankedCandidates,
     isExternalProduct,
     isUuidLike,
-    extractResolverHints,
     fetchCandidatesViaProductsCache,
+    fetchCandidatesViaExternalSeedRecall,
     fetchCandidatesViaAgentSearch,
     computeTokenOverlapScoreFromTokenSet,
   },

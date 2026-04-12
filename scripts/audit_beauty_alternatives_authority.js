@@ -163,18 +163,14 @@ async function auditCandidate(candidate, deps = {}) {
   const rows = [];
   let firstInternalMatch = null;
   let firstExternalMatch = null;
-  for (const variant of variants.slice(0, 4)) {
+  for (const variant of variants.slice(0, 6)) {
     // eslint-disable-next-line no-await-in-loop
-    const [internalHits, externalHits] = await Promise.all([
-      fetchInternalHitsForVariant(queryFn, variant, 5),
-      fetchExternalHitsForVariant(queryFn, variant, 5),
-    ]);
-    if (!firstInternalMatch && internalHits.length) firstInternalMatch = { variant, rows: internalHits };
+    const externalHits = await fetchExternalHitsForVariant(queryFn, variant, 5);
     if (!firstExternalMatch && externalHits.length) firstExternalMatch = { variant, rows: externalHits };
     rows.push({
       query: variant.query,
       kind: variant.kind,
-      internal_hit_count: internalHits.length,
+      internal_hit_count: 0,
       external_hit_count: externalHits.length,
     });
   }
@@ -185,6 +181,15 @@ async function auditCandidate(candidate, deps = {}) {
       query: `${normalized.brand} ${normalized.name}`.trim(),
       lang: 'en',
       hints: {
+        brand: normalized.brand,
+        aliases: buildRecoAuthoritySearchAliases({
+          brand: normalized.brand,
+          name: normalized.name,
+          category: normalized.product_type,
+          usageRole: normalized.usage_role,
+          searchAliases: queryVariants,
+          maxAliases: 8,
+        }),
         search_aliases: buildRecoAuthoritySearchAliases({
           brand: normalized.brand,
           name: normalized.name,
@@ -217,7 +222,7 @@ async function auditCandidate(candidate, deps = {}) {
     classification = String(resolver.product_ref?.merchant_id || '').trim().toLowerCase() === 'external_seed'
       ? 'external_seed_hit'
       : 'internal_hit';
-  } else if (firstInternalMatch || firstExternalMatch) {
+  } else if (firstExternalMatch) {
     classification = 'present_but_unresolved';
   }
 
