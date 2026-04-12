@@ -44,6 +44,19 @@ function normalizeNonEmptyString(value) {
   return String(value || '').trim();
 }
 
+function dedupeStrings(values) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(values) ? values : []) {
+    const normalized = normalizeNonEmptyString(raw);
+    const key = normalized.toLowerCase();
+    if (!normalized || seen.has(key)) continue;
+    seen.add(key);
+    out.push(normalized);
+  }
+  return out;
+}
+
 function resolvePathMaybeRelative(targetPath) {
   const normalized = normalizeNonEmptyString(targetPath);
   if (!normalized) return '';
@@ -93,10 +106,60 @@ function collectSeedIds(creationDoc) {
 
 function collectExternalProductIds(creationDoc) {
   const items = Array.isArray(creationDoc?.apply_result?.items) ? creationDoc.apply_result.items : [];
-  return items
+  return dedupeStrings(
+    items
     .filter((item) => ['inserted', 'skipped_existing', 'would_insert', 'would_insert_unverified'].includes(item?.status))
     .map((item) => normalizeNonEmptyString(item.external_product_id))
-    .filter(Boolean);
+    .filter(Boolean),
+  );
+}
+
+function collectAppliedSeedIds(creationDoc) {
+  const items = Array.isArray(creationDoc?.apply_result?.items) ? creationDoc.apply_result.items : [];
+  return dedupeStrings(
+    items
+    .filter((item) => ['inserted', 'skipped_existing', 'would_insert', 'would_insert_unverified'].includes(item?.status))
+    .map((item) => normalizeNonEmptyString(item.seed_id))
+    .filter(Boolean),
+  );
+}
+
+function summarizeSeedScopedAuditResults(results) {
+  const summary = {
+    scanned_seed_count: Array.isArray(results) ? results.length : 0,
+    failed_seed_count: 0,
+    finding_total: 0,
+    failure_reason_counts: {},
+  };
+  for (const item of Array.isArray(results) ? results : []) {
+    const result = item?.result || null;
+    if (Array.isArray(result)) {
+      const failed = result.some((entry) => Array.isArray(entry?.failure_reasons) && entry.failure_reasons.length > 0);
+      if (failed) summary.failed_seed_count += 1;
+      for (const entry of result) {
+        for (const reason of Array.isArray(entry?.failure_reasons) ? entry.failure_reasons : []) {
+          summary.failure_reason_counts[reason] = (summary.failure_reason_counts[reason] || 0) + 1;
+        }
+      }
+      continue;
+    }
+    const findingCount = Math.max(0, Number(result?.summary?.findings_total || 0) || 0);
+    summary.finding_total += findingCount;
+    if (findingCount > 0) summary.failed_seed_count += 1;
+  }
+  return summary;
+}
+
+function runSeedScopedJsonBatch(scriptPath, seedIds, buildArgs, cwd) {
+  const dedupedSeedIds = dedupeStrings(seedIds);
+  const results = dedupedSeedIds.map((seedId) => ({
+    seed_id: seedId,
+    result: runNodeJson(scriptPath, buildArgs(seedId), cwd),
+  }));
+  return {
+    summary: summarizeSeedScopedAuditResults(results),
+    results,
+  };
 }
 
 function writeSeedIdFile(outDir, brandKey, seedIds) {
@@ -176,8 +239,10 @@ async function main() {
 
     const seedIds = collectSeedIds(brandReport.seed_creation);
     const externalProductIds = collectExternalProductIds(brandReport.seed_creation);
+    const appliedSeedIds = collectAppliedSeedIds(brandReport.seed_creation);
     brandReport.seed_ids = seedIds;
     brandReport.external_product_ids = externalProductIds;
+    brandReport.applied_seed_ids = appliedSeedIds;
 
     if (seedIds.length && args.apply) {
       const seedIdFile = writeSeedIdFile(brandDir, spec.key, seedIds);
@@ -192,28 +257,16 @@ async function main() {
         ],
         rootDir,
       );
-      brandReport.seed_audit = runNodeJson(
+      brandReport.seed_audit = runSeedScopedJsonBatch(
         path.join(rootDir, 'scripts', 'audit-external-product-seeds-content.js'),
-        [
-          '--market',
-          report.market,
-          '--brand',
-          spec.brand,
-          '--format',
-          'json',
-        ],
+        appliedSeedIds,
+        (seedId) => ['--market', report.market, '--seed-id', seedId, '--format', 'json'],
         rootDir,
       );
-      brandReport.live_pdp_quality = runNodeJson(
+      brandReport.live_pdp_quality = runSeedScopedJsonBatch(
         path.join(rootDir, 'scripts', 'audit-external-product-pdp-quality.js'),
-        [
-          '--market',
-          report.market,
-          '--brand',
-          spec.brand,
-          '--format',
-          'json',
-        ],
+        appliedSeedIds,
+        (seedId) => ['--market', report.market, '--seed-id', seedId, '--format', 'json'],
         rootDir,
       );
       if (!args.skipInsights && externalProductIds.length) {
@@ -238,7 +291,18 @@ async function main() {
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 }
 
-main().catch((error) => {
-  process.stderr.write(`${error && error.stack ? error.stack : String(error)}\n`);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    process.stderr.write(`${error && error.stack ? error.stack : String(error)}\n`);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  parseBrandSpecs,
+  collectSeedIds,
+  collectExternalProductIds,
+  collectAppliedSeedIds,
+  summarizeSeedScopedAuditResults,
+  runSeedScopedJsonBatch,
+};
