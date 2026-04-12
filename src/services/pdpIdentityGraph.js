@@ -269,6 +269,49 @@ function collectVariantOptionEntries(value) {
     .filter((item) => item.name || item.value);
 }
 
+function collectIdentityVariantOptionEntries(variant) {
+  if (!variant) return [];
+  return uniqueStrings(
+    [
+      ...collectVariantOptionEntries(variant?.options).map((item) =>
+        JSON.stringify({ name: item.name, value: item.value }),
+      ),
+      ...collectVariantOptionEntries(variant?.selected_options).map((item) =>
+        JSON.stringify({ name: item.name, value: item.value }),
+      ),
+      ...collectVariantOptionEntries(variant?.selectedOptions).map((item) =>
+        JSON.stringify({ name: item.name, value: item.value }),
+      ),
+      JSON.stringify({
+        name: firstNonEmptyString(variant?.option_name, variant?.optionName),
+        value: firstNonEmptyString(
+          variant?.option_value,
+          variant?.optionValue,
+          variant?.option1,
+          variant?.option2,
+          variant?.option3,
+        ),
+      }),
+    ]
+      .map((item) => {
+        try {
+          return JSON.parse(item);
+        } catch {
+          return null;
+        }
+      })
+      .filter((item) => item && (item.name || item.value))
+      .map((item) => `${item.name}:::${item.value}`),
+    24,
+  ).map((item) => {
+    const [name, value] = String(item || '').split(':::');
+    return {
+      name: asString(name),
+      value: asString(value),
+    };
+  });
+}
+
 function collectVariantOptionTexts(variant) {
   if (!variant) return [];
   return uniqueStrings(
@@ -277,20 +320,93 @@ function collectVariantOptionTexts(variant) {
       variant?.option1,
       variant?.option2,
       variant?.option3,
-      ...collectVariantOptionEntries(variant?.options).map((item) => item.value),
-      ...collectVariantOptionEntries(variant?.selected_options).map((item) => item.value),
-      ...collectVariantOptionEntries(variant?.selectedOptions).map((item) => item.value),
+      ...collectIdentityVariantOptionEntries(variant).map((item) => item.value),
     ],
     16,
   );
 }
 
+function hasExplicitIdentityVariantSelection(product) {
+  const selectedVariantId = firstNonEmptyString(
+    product?.default_variant_id,
+    product?.defaultVariantId,
+    product?.selected_variant_id,
+    product?.selectedVariantId,
+  );
+  if (selectedVariantId) return true;
+  const variantTitle = normalizeAxisValue(
+    firstNonEmptyString(product?.variant_title, product?.variantTitle),
+  );
+  const baseTitle = normalizeAxisValue(
+    firstNonEmptyString(product?.title, product?.name, product?.display_name),
+  );
+  if (variantTitle && variantTitle !== baseTitle) return true;
+  const selectedEntries = [
+    ...collectVariantOptionEntries(product?.selected_options),
+    ...collectVariantOptionEntries(product?.selectedOptions),
+  ];
+  return selectedEntries.some((item) => normalizeAxisValue(item?.value));
+}
+
+function parseGenericSizeToken(text) {
+  const raw = normalizeAxisValue(text);
+  if (!raw) return '';
+  if (/\bfull size\b/i.test(raw)) return 'full size';
+  if (/\brefill\b/i.test(raw)) return 'refill';
+  if (/\btravel size\b/i.test(raw)) return 'travel size';
+  if (/\bone size\b/i.test(raw)) return 'one size';
+  if (/\bjumbo\b/i.test(raw)) return 'jumbo';
+  if (/\bmini\b/i.test(raw)) return 'mini';
+  if (/\bstandard\b/i.test(raw)) return 'standard';
+  if (/\bregular\b/i.test(raw)) return 'regular';
+  return '';
+}
+
+function inferAxisFromGenericOptionValue(value) {
+  const normalized = normalizeAxisValue(value);
+  if (!normalized) return null;
+  const volume = parseQuantityToken(normalized, ['ml', 'm l', 'g', 'kg', 'oz', 'fl oz']);
+  if (volume) return { volume };
+  const pack = parsePackToken(normalized);
+  if (pack) return { pack };
+  const size = parseGenericSizeToken(normalized);
+  if (size) return { size };
+  if (normalized.split(/\s+/g).length <= 8) {
+    return { shade: normalized };
+  }
+  return null;
+}
+
+function inferAxisFromExplicitVariant(product) {
+  if (!hasExplicitIdentityVariantSelection(product)) return {};
+  const variant = pickIdentityVariant(product);
+  const optionEntries = collectIdentityVariantOptionEntries(variant);
+  for (const option of optionEntries) {
+    const name = normalizeResolverText(option?.name);
+    if (!name) continue;
+    if (!['variant', 'option', 'style', 'type', 'finish', 'selection'].some((token) => name.includes(token))) {
+      continue;
+    }
+    const inferred = inferAxisFromGenericOptionValue(option?.value);
+    if (inferred) return inferred;
+  }
+  const fallbackTexts = [
+    firstNonEmptyString(product?.variant_title, product?.variantTitle),
+    firstNonEmptyString(variant?.title),
+  ];
+  for (const text of fallbackTexts) {
+    const inferred = inferAxisFromGenericOptionValue(text);
+    if (inferred) return inferred;
+  }
+  return {};
+}
+
 function parseNamedAxisFromOptions(product, names) {
   const variant = pickIdentityVariant(product);
   const optionEntries = [
-    ...collectVariantOptionEntries(variant?.options),
-    ...collectVariantOptionEntries(variant?.selected_options),
-    ...collectVariantOptionEntries(variant?.selectedOptions),
+    ...collectIdentityVariantOptionEntries(variant),
+    ...collectVariantOptionEntries(product?.selected_options),
+    ...collectVariantOptionEntries(product?.selectedOptions),
   ];
   for (const option of optionEntries) {
     const name = normalizeResolverText(option?.name);
@@ -321,6 +437,7 @@ function parseNamedAxisFromOptions(product, names) {
 function extractVariantAxes(product) {
   const variants = asArray(product?.variants);
   const identityVariant = pickIdentityVariant(product);
+  const inferredGenericAxis = inferAxisFromExplicitVariant(product);
   const texts = uniqueStrings(
     collectDeepStrings([
       product?.title,
@@ -336,17 +453,19 @@ function extractVariantAxes(product) {
   const joined = texts.join(' ');
   const size =
     parseNamedAxisFromOptions(product, ['size']) ||
+    inferredGenericAxis.size ||
     (/\btravel size\b/i.test(joined)
-      ? 'travel_size'
+      ? 'travel size'
       : /\bjumbo\b/i.test(joined)
         ? 'jumbo'
         : /\bmini\b/i.test(joined)
           ? 'mini'
           : '');
-  const volume = parseQuantityToken(joined, ['ml', 'm l', 'g', 'kg', 'oz', 'fl oz']);
-  const pack = parsePackToken(joined);
-  const shade = parseNamedAxisFromOptions(product, ['shade', 'tone', 'hue']);
-  const color = parseNamedAxisFromOptions(product, ['color', 'colour']);
+  const volume =
+    inferredGenericAxis.volume || parseQuantityToken(joined, ['ml', 'm l', 'g', 'kg', 'oz', 'fl oz']);
+  const pack = inferredGenericAxis.pack || parsePackToken(joined);
+  const shade = parseNamedAxisFromOptions(product, ['shade', 'tone', 'hue']) || inferredGenericAxis.shade;
+  const color = parseNamedAxisFromOptions(product, ['color', 'colour']) || inferredGenericAxis.color;
   const normalized = {
     ...(size ? { size } : {}),
     ...(volume ? { volume } : {}),

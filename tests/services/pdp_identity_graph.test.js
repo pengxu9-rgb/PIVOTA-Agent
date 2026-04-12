@@ -141,6 +141,88 @@ describe('pdpIdentityGraph', () => {
     );
   });
 
+  test('buildIdentityListingFromProduct resolves generic option axes when a selected variant is explicit', () => {
+    const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
+
+    const listing = buildIdentityListingFromProduct({
+      merchantId: 'external_seed',
+      productId: 'ext_inn_extreme_cream',
+      sourceKind: 'external_seed',
+      product: {
+        title: 'Extreme Cream',
+        brand: 'INNBEAUTY Project',
+        source_url: 'https://innbeautyproject.com/products/extreme-cream',
+        default_variant_id: '41148734701616',
+        variants: [
+          {
+            variant_id: '41148734668848',
+            title: 'Extreme Cream',
+            option_name: 'Option',
+            option_value: 'Full Size',
+          },
+          {
+            variant_id: '41148734701616',
+            title: 'Extreme Cream',
+            option_name: 'Option',
+            option_value: 'Refill',
+          },
+        ],
+      },
+    });
+
+    expect(listing.identity_status).toBe('approved');
+    expect(listing.review_required).toBe(false);
+    expect(listing.variant_axes).toEqual({
+      size: 'refill',
+      multi_variant: true,
+    });
+    expect(listing.matched_by_rule).toBe('official_url_axes');
+    expect(listing.match_basis).toContain(
+      'variant_axes:size:refill',
+    );
+  });
+
+  test('buildIdentityListingFromProduct keeps generic multi-variant pages blocked without explicit variant selection', () => {
+    const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
+
+    const listing = buildIdentityListingFromProduct({
+      merchantId: 'external_seed',
+      productId: 'ext_inn_extreme_cream_unresolved',
+      sourceKind: 'external_seed',
+      product: {
+        title: 'Extreme Cream',
+        brand: 'INNBEAUTY Project',
+        source_url: 'https://innbeautyproject.com/products/extreme-cream',
+        variants: [
+          {
+            variant_id: '41148734668848',
+            title: 'Extreme Cream',
+            option_name: 'Option',
+            option_value: 'Full Size',
+          },
+          {
+            variant_id: '41148734701616',
+            title: 'Extreme Cream',
+            option_name: 'Option',
+            option_value: 'Refill',
+          },
+        ],
+      },
+    });
+
+    expect(listing.identity_status).toBe('review_required');
+    expect(listing.review_required).toBe(true);
+    expect(listing.review_reason_codes).toEqual(
+      expect.arrayContaining([
+        'multi_variant_exact_item_unresolved',
+        'insufficient_exact_item_evidence',
+      ]),
+    );
+    expect(listing.variant_axes).toEqual({
+      multi_variant: true,
+    });
+  });
+
   test('composeSyntheticCanonicalProduct keeps exact-item gallery separate from product-line preview and aggregates review scope', () => {
     const { composeSyntheticCanonicalProduct } = require('../../src/services/pdpIdentityGraph');
 
