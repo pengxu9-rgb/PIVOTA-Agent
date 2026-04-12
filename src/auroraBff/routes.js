@@ -65000,6 +65000,7 @@ async function fetchRecoAlternativesForLocalGeminiOpenWorld({
     'Do not invent URLs, product IDs, exact INCI lists, or internal references.',
     'Keep each reason grounded to the anchor product role and actives.',
     'Do not choose generic same-step products. For treatment/serum anchors, every alternative must share a named active or the same functional claim.',
+    'For name-only open-world products, stay conservative: use product name, category, role, price, and availability tradeoffs only. Do not assert unseen ingredients, UV filter type, fragrance, alcohol, irritation, pilling, clinical claims, or exact finish unless supplied in the payload.',
     'Return at most 3 alternatives. Use 1 concise reason and 1 concise tradeoff note per item.',
   ].join('\n');
   const userPayload = buildRecoAlternativesOpenWorldUserPayload({ ctx, productInput, productObj, maxTotal });
@@ -65188,6 +65189,7 @@ async function fetchRecoAlternativesForExternalSeedProduct({
     'Each alternative must include a real brand, a real product name, anchor-linked reasons, and at least one concrete tradeoff or uncertainty.',
     'Reject makeup, tools, fragrance, body-only items, haircare, and placeholder products.',
     'Do not choose generic same-step products. For treatment/serum anchors, every alternative must share a named active or the same functional claim.',
+    'For name-only open-world products, stay conservative: use product name, category, role, price, and availability tradeoffs only. Do not assert unseen ingredients, UV filter type, fragrance, alcohol, irritation, pilling, clinical claims, or exact finish unless supplied in the payload.',
     'Return at most 3 alternatives. Use 1 concise reason and 1 concise tradeoff note per item.',
   ].join('\n');
   const userPayload = {

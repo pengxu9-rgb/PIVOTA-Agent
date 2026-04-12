@@ -5962,6 +5962,8 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
           assert.equal(args.model, 'gemini-3-flash-preview');
           assert.match(String(args.systemPrompt || ''), /generic same-step products/i);
           assert.match(String(args.systemPrompt || ''), /share a named active/i);
+          assert.match(String(args.systemPrompt || ''), /name-only open-world products/i);
+          assert.match(String(args.systemPrompt || ''), /Do not assert unseen ingredients/i);
           assert.equal(args.responseJsonSchema?.properties?.alternatives?.items?.properties?.product_type?.type, 'string');
           assert.equal(args.responseJsonSchema?.properties?.alternatives?.items?.properties?.product_type?.nullable, true);
           assert.equal(Object.prototype.hasOwnProperty.call(args, 'responseSchema'), false);
