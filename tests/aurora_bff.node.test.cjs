@@ -5832,25 +5832,96 @@ test('/v1/reco/alternatives: external_seed sunscreen compare recalls pool hits f
                   url: 'https://laroche-posay.us/products/anthelios-ultra-light-invisible-fluid-spf-50',
                 },
                 {
-                  product_id: 'ext_supergoop_every_single_face',
+                  product_id: 'ext_neutrogena_face_serum',
                   merchant_id: 'external_seed',
-                  brand: 'Supergoop!',
-                  name: 'Every. Single. Face. Watery Lotion SPF 50',
-                  display_name: 'Every. Single. Face. Watery Lotion SPF 50',
+                  brand: 'Neutrogena',
+                  name: 'Invisible Daily Defense Face Serum SPF 60+',
+                  display_name: 'Invisible Daily Defense Face Serum SPF 60+',
                   product_type: 'Sunscreen',
                   category: 'Sunscreen',
                   retrieval_source: 'external_seed',
                   canonical_product_ref: {
-                    product_id: 'ext_supergoop_every_single_face',
+                    product_id: 'ext_neutrogena_face_serum',
                     merchant_id: 'external_seed',
                   },
-                  url: 'https://supergoop.com/products/every-single-face-watery-lotion-spf-50',
+                  url: 'https://www.neutrogena.com/products/sun/invisible-daily-defense-face-serum-spf-60/6811153.html',
+                },
+                {
+                  product_id: 'ext_supergoop_body',
+                  merchant_id: 'external_seed',
+                  brand: 'Supergoop!',
+                  name: 'Unseen Sunscreen Body SPF 40',
+                  display_name: 'Unseen Sunscreen Body SPF 40',
+                  product_type: 'Sunscreen',
+                  category: 'Sunscreen',
+                  retrieval_source: 'external_seed',
+                  canonical_product_ref: {
+                    product_id: 'ext_supergoop_body',
+                    merchant_id: 'external_seed',
+                  },
+                  url: 'https://supergoop.com/products/unseen-sunscreen-body-spf-40',
+                },
+                {
+                  product_id: 'ext_supergoop_stick',
+                  merchant_id: 'external_seed',
+                  brand: 'Supergoop!',
+                  name: 'Unseen Sunscreen Stick SPF 40',
+                  display_name: 'Unseen Sunscreen Stick SPF 40',
+                  product_type: 'Sunscreen',
+                  category: 'Sunscreen',
+                  retrieval_source: 'external_seed',
+                  canonical_product_ref: {
+                    product_id: 'ext_supergoop_stick',
+                    merchant_id: 'external_seed',
+                  },
+                  url: 'https://supergoop.com/products/unseen-sunscreen-stick-spf-40',
                 },
               ],
             },
           };
         }
         return { status: 200, data: { products: [] } };
+      };
+
+      const kbStoreModuleId = require.resolve('../src/auroraBff/productIntelKbStore');
+      delete require.cache[kbStoreModuleId];
+      const kbStore = require('../src/auroraBff/productIntelKbStore');
+      const originalGetProductIntelKbEntry = kbStore.getProductIntelKbEntry;
+      kbStore.getProductIntelKbEntry = async (kbKey) => {
+        if (kbKey !== 'product:ext_neutrogena_face_serum') return null;
+        return {
+          kb_key: kbKey,
+          analysis: {
+            product_intel_v1: {
+              contract_version: 'pivota.product_intel.v1',
+              canonical_product_ref: {
+                product_id: 'ext_neutrogena_face_serum',
+                merchant_id: 'external_seed',
+              },
+              product_intel_core: {
+                what_it_is: {
+                  headline: 'Pivota Insights',
+                  body: 'A high-protection facial serum that combines SPF 60+ with ginger extract while staying clear on skin.',
+                },
+                best_for: [
+                  { label: 'All skin tones seeking a high SPF without a white cast' },
+                ],
+                why_it_stands_out: [
+                  { body: 'Formulated to remain invisible across all skin tones.' },
+                ],
+              },
+              shopping_card: {
+                title: 'Neutrogena Invisible Daily Defense Face Serum SPF 60+',
+                subtitle: 'Serum',
+                intro: 'High-protection facial serum with SPF 60+.',
+              },
+              search_card: {
+                compact_candidate: 'Serum',
+                intro_candidate: 'High-protection facial serum with SPF 60+.',
+              },
+            },
+          },
+        };
       };
 
       const moduleId = require.resolve('../src/auroraBff/routes');
@@ -5906,11 +5977,26 @@ test('/v1/reco/alternatives: external_seed sunscreen compare recalls pool hits f
         assert.ok(seenQueries.some((query) => /sun protection|hydration|lightweight finish/i.test(String(query))));
         assert.equal(resp.body.alternatives.every((alt) => String(alt?.candidate_origin || '') === 'pool'), true);
         assert.equal(resp.body.alternatives.every((alt) => String(alt?.grounding_status || '') === 'catalog_verified'), true);
+        const names = resp.body.alternatives.map((alt) => String(alt?.product?.name || alt?.name || ''));
+        assert.equal(names.some((name) => /body/i.test(name)), false);
+        assert.equal(names.some((name) => /stick/i.test(name)), false);
+        const neutrogena = resp.body.alternatives.find((alt) => String(alt?.product?.product_id || '') === 'ext_neutrogena_face_serum');
+        assert.equal(neutrogena?.metadata?.product_intel_kb_used, true);
+        assert.equal(
+          neutrogena?.product_intel?.product_intel_core?.what_it_is?.body,
+          'A high-protection facial serum that combines SPF 60+ with ginger extract while staying clear on skin.',
+        );
+        assert.ok(
+          Array.isArray(neutrogena?.compare_highlights)
+          && neutrogena.compare_highlights.some((line) => /invisible across all skin tones|high-protection facial serum/i.test(String(line))),
+        );
       } finally {
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
         loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        kbStore.getProductIntelKbEntry = originalGetProductIntelKbEntry;
         axios.get = originalGet;
         delete require.cache[moduleId];
+        delete require.cache[kbStoreModuleId];
       }
     },
   );
