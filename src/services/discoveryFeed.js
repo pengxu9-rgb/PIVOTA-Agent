@@ -2347,20 +2347,26 @@ function buildDiscoverySeededBrowseQuery(request, profile) {
 
 function buildDiscoveryProviderQueries(request, profile) {
   const brandQuery = buildDiscoveryBrandScopedQuery(request);
+  const explicitQuery = buildDiscoverySearchPhraseSet([request?.query?.text], 1)[0] || '';
+  const withExplicitQuery = (queries = [], limit = 4) =>
+    explicitQuery
+      ? buildDiscoverySearchPhraseSet([explicitQuery, ...(Array.isArray(queries) ? queries : [queries])], limit)
+      : buildDiscoverySearchPhraseSet(queries, limit);
+
   if (Array.isArray(request?.scope?.brand_names) && request.scope.brand_names.length > 0) {
-    return buildDiscoverySearchPhraseSet([brandQuery], 2);
+    return withExplicitQuery([brandQuery], 3);
   }
 
   if (!profile?.hasInterestSignals) {
-    return getDiscoveryColdStartQueries();
+    return explicitQuery ? withExplicitQuery(getDiscoveryColdStartQueries(), 4) : getDiscoveryColdStartQueries();
   }
 
   if (profile?.dominantDomain === 'beauty') {
-    return buildBeautyPersonalizedQueries(request, profile).providerQueries;
+    return withExplicitQuery(buildBeautyPersonalizedQueries(request, profile).providerQueries, 4);
   }
 
   if (request?.surface === 'browse_products') {
-    return buildDiscoverySearchPhraseSet(
+    return withExplicitQuery(
       [
         buildDiscoverySeededBrowseQuery(request, profile),
         buildDiscoveryExpansionQuery(request, profile),
@@ -2370,7 +2376,7 @@ function buildDiscoveryProviderQueries(request, profile) {
     );
   }
 
-  return buildDiscoverySearchPhraseSet(
+  return withExplicitQuery(
     [
       buildDiscoveryInterestQuery(request, profile),
       buildDiscoveryExpansionQuery(request, profile),

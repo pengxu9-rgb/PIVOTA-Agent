@@ -142,6 +142,30 @@ describe('discovery feed service', () => {
     expect(profile.queryTokens.has('repair')).toBe(true);
   });
 
+  test('buildDiscoveryRecallPlan prioritizes explicit query text for anonymous browse search', () => {
+    const request = _internals.normalizeDiscoveryRequest({
+      surface: 'browse_products',
+      query: {
+        text: 'Naturium The Brightener Vitamin C Brightening Body Wash',
+      },
+      context: {
+        auth_state: 'anonymous',
+        recent_views: [],
+        recent_queries: [],
+        locale: 'en-US',
+      },
+    });
+    const profile = buildDiscoveryProfile(request.context);
+
+    const plan = _internals.buildDiscoveryRecallPlan(request, profile, 48);
+
+    expect(Array.isArray(plan)).toBe(true);
+    expect(plan[0]).toMatchObject({
+      label: 'browse_pool',
+      query: 'Naturium The Brightener Vitamin C Brightening Body Wash',
+    });
+  });
+
   test('buildDiscoveryProfile treats recent queries as user behavior signals', () => {
     const request = _internals.normalizeDiscoveryRequest({
       surface: 'browse_products',
