@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const axios = require('axios');
 
 const { getPool, query } = require('../db');
 const {
@@ -38,6 +39,12 @@ const ASYNC_BACKFILL_TITLE_LIMIT = Math.max(
 const ASYNC_BACKFILL_MANIFEST_LIMIT = Math.max(
   20,
   Math.min(400, Number(process.env.AURORA_RECO_ALTERNATIVES_ASYNC_BACKFILL_MANIFEST_LIMIT || 120) || 120),
+);
+const ASYNC_BACKFILL_SOURCE_DISCOVERY_ENABLED =
+  String(process.env.AURORA_RECO_ALTERNATIVES_ASYNC_BACKFILL_SOURCE_DISCOVERY_ENABLED || 'true').trim().toLowerCase() !== 'false';
+const ASYNC_BACKFILL_SOURCE_DISCOVERY_TIMEOUT_MS = Math.max(
+  1000,
+  Math.min(15000, Number(process.env.AURORA_RECO_ALTERNATIVES_ASYNC_BACKFILL_SOURCE_DISCOVERY_TIMEOUT_MS || 5000) || 5000),
 );
 const ASYNC_BACKFILL_COOLDOWN_MS = Math.max(
   10 * 1000,
@@ -99,6 +106,79 @@ function buildBrandLookupVariants(value) {
     loose: uniqueStrings([normalized, withoutAnd].filter(Boolean), 6),
     compact: uniqueStrings([compact, compactWithoutAnd].filter(Boolean), 6),
   };
+}
+
+function buildBrandDomainGuessCandidates(brand, market = ASYNC_BACKFILL_MARKET) {
+  const normalized = normalizeBrand(brand);
+  const compact = normalizeBrandCompact(brand);
+  const hyphenated = normalized.replace(/\s+/g, '-');
+  const candidates = [];
+  for (const host of [compact, hyphenated]) {
+    const safeHost = String(host || '').trim().replace(/^-+|-+$/g, '');
+    if (!safeHost) continue;
+    candidates.push(`https://${safeHost}.com`);
+    candidates.push(`https://www.${safeHost}.com`);
+    if (String(market || '').trim().toUpperCase() === 'US') {
+      candidates.push(`https://${safeHost}.us`);
+      candidates.push(`https://www.${safeHost}.us`);
+    }
+  }
+  return uniqueStrings(candidates, 8);
+}
+
+function getAxiosResponseUrl(resp) {
+  return pickFirstTrimmed(
+    resp?.request?.res?.responseUrl,
+    resp?.request?._redirectable?._currentUrl,
+    resp?.config?.url,
+  );
+}
+
+async function discoverBrandSourcePlanByGuess({ brand, market = ASYNC_BACKFILL_MARKET, logger } = {}) {
+  if (!ASYNC_BACKFILL_SOURCE_DISCOVERY_ENABLED) {
+    return { ok: false, reason: 'source_discovery_disabled', primaryDomain: '', fallbackDomains: [] };
+  }
+  const compactBrand = normalizeBrandCompact(brand);
+  if (!compactBrand) {
+    return { ok: false, reason: 'brand_missing', primaryDomain: '', fallbackDomains: [] };
+  }
+  const candidates = buildBrandDomainGuessCandidates(brand, market);
+  for (const candidateUrl of candidates) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const resp = await axios.get(candidateUrl, {
+        timeout: ASYNC_BACKFILL_SOURCE_DISCOVERY_TIMEOUT_MS,
+        maxRedirects: 5,
+        responseType: 'text',
+        validateStatus: (status) => Number.isFinite(Number(status)) && Number(status) >= 200 && Number(status) < 400,
+        headers: {
+          'User-Agent': 'AuroraRecoAlternativesAuthorityBackfill/1.0',
+          Accept: 'text/html,application/xhtml+xml',
+        },
+      });
+      const resolvedUrl = getAxiosResponseUrl(resp);
+      const parsed = new URL(resolvedUrl || candidateUrl);
+      const hostCompact = normalizeBrandCompact(parsed.hostname.replace(/^www\./i, ''));
+      if (!hostCompact) continue;
+      if (!hostCompact.includes(compactBrand) && !compactBrand.includes(hostCompact)) continue;
+      return {
+        ok: true,
+        primaryDomain: `${parsed.protocol}//${parsed.host}`.replace(/\/+$/, ''),
+        primaryRole: 'guessed_official',
+        fallbackDomains: [],
+      };
+    } catch (err) {
+      logger?.debug?.(
+        {
+          err: err?.message || String(err),
+          brand,
+          candidate_url: candidateUrl,
+        },
+        'aurora bff: alternatives authority backfill source guess failed',
+      );
+    }
+  }
+  return { ok: false, reason: 'no_domain_guess_match', primaryDomain: '', fallbackDomains: [] };
 }
 
 function normalizeTitle(value) {
@@ -199,7 +279,7 @@ function buildCoverageGroups(rows, market = ASYNC_BACKFILL_MARKET) {
   };
 }
 
-async function resolveBrandSourcePlanDefault({ brand, market = ASYNC_BACKFILL_MARKET } = {}) {
+async function resolveBrandSourcePlanDefault({ brand, market = ASYNC_BACKFILL_MARKET, logger = null } = {}) {
   if (!getPool()) {
     return { ok: false, reason: 'no_database', primaryDomain: '', fallbackDomains: [] };
   }
@@ -297,7 +377,7 @@ async function resolveBrandSourcePlanDefault({ brand, market = ASYNC_BACKFILL_MA
     ? uniqueFallback
     : uniqueFallback.slice(1);
   if (!primaryDomain) {
-    return { ok: false, reason: 'no_domain', primaryDomain: '', fallbackDomains: [] };
+    return discoverBrandSourcePlanByGuess({ brand, market, logger });
   }
   return {
     ok: true,
@@ -680,5 +760,7 @@ module.exports = {
     setSourcePlanResolverForTest(fn) {
       state.sourcePlanResolverOverride = typeof fn === 'function' ? fn : null;
     },
+    buildBrandDomainGuessCandidates,
+    discoverBrandSourcePlanByGuess,
   },
 };

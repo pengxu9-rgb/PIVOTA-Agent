@@ -59,4 +59,40 @@ describe('recoAlternativesAuthorityBackfill', () => {
     });
     expect(query).toHaveBeenCalledTimes(2);
   });
+
+  test('falls back to guessed official domain when authority tables have no brand domain', async () => {
+    const query = jest.fn(async () => ({ rows: [] }));
+    const axiosGet = jest.fn(async (url) => ({
+      status: 200,
+      data: '<html><title>Beauty of Joseon</title></html>',
+      config: { url },
+      request: {
+        res: {
+          responseUrl: 'https://beautyofjoseon.com/',
+        },
+      },
+    }));
+
+    jest.doMock('../src/db', () => ({
+      getPool: () => ({}),
+      query,
+    }));
+    jest.doMock('axios', () => ({
+      get: axiosGet,
+    }));
+
+    const backfill = require('../src/auroraBff/recoAlternativesAuthorityBackfill');
+    const result = await backfill._internals.resolveBrandSourcePlanDefault({
+      brand: 'Beauty of Joseon',
+      market: 'US',
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      primaryDomain: 'https://beautyofjoseon.com',
+      primaryRole: 'guessed_official',
+      fallbackDomains: [],
+    });
+    expect(axiosGet).toHaveBeenCalled();
+  });
 });
