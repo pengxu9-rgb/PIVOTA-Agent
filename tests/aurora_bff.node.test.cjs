@@ -5913,12 +5913,86 @@ test('/v1/reco/alternatives: aurora product-card surface disables synthetic loca
         assert.equal(resp.status, 200);
         assert.equal(Array.isArray(resp.body?.alternatives), true);
         assert.equal(resp.body.alternatives.length, 0);
+        assert.equal(resp.body?.source_mode, 'llm');
+        assert.equal(resp.body?.fallback_source, 'none');
         assert.equal(resp.body?.failure_class, 'anchor_missing_precheck');
         assert.equal(geminiCalls, 0);
       } finally {
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
         loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
         delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('/v1/reco/alternatives: empty structured result stays llm-empty when synthetic fallback is disabled by default', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+    },
+    async () => {
+      const decisionModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
+      delete require.cache[decisionModuleId];
+      const decisionModule = require('../src/auroraBff/auroraDecisionClient');
+      const originalAuroraChat = decisionModule.auroraChat;
+      decisionModule.auroraChat = async () => ({
+        answer: JSON.stringify({ alternatives: [] }),
+        intent: 'alternatives',
+      });
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { mountAuroraBffRoutes, __internal } = routeModule;
+        __internal.__setResolveProductRefForTest(async () => ({
+          resolved: true,
+          product_ref: {
+            product_id: 'prod_anchor',
+            merchant_id: 'mid_anchor',
+          },
+          reason: 'resolved',
+          metadata: {
+            sources: [{ source: 'products_cache', ok: true }],
+          },
+        }));
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/reco/alternatives')
+          .set({
+            'X-Aurora-UID': 'test_uid_alt_empty_structured_no_synth',
+            'X-Trace-ID': 'test_trace_alt_empty_structured_no_synth',
+            'X-Brief-ID': 'test_brief_alt_empty_structured_no_synth',
+            'X-Lang': 'EN',
+          })
+          .send({
+            product_input: 'The Ordinary Niacinamide 10% + Zinc 1%',
+            max_total: 6,
+          });
+
+        assert.equal(resp.status, 200);
+        assert.equal(Array.isArray(resp.body?.alternatives), true);
+        assert.equal(resp.body.alternatives.length, 0);
+        assert.equal(resp.body?.source_mode, 'llm');
+        assert.equal(resp.body?.fallback_source, 'none');
+        assert.equal(resp.body?.failure_class, 'empty_structured');
+        assert.equal(resp.body?.refresh_pending, true);
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetResolveProductRefForTest?.();
+        decisionModule.auroraChat = originalAuroraChat;
+        delete require.cache[moduleId];
+        delete require.cache[decisionModuleId];
       }
     },
   );

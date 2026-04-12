@@ -66113,6 +66113,16 @@ async function fetchRecoAlternativesForProduct({
     }
     return { alternatives: out.slice(0, maxItems), fallback_source: fallbackSource };
   };
+  const describeLocalFallbackVisibility = (localFallback) => {
+    const hasVisibleAlternatives = Array.isArray(localFallback?.alternatives) && localFallback.alternatives.length > 0;
+    return {
+      hasVisibleAlternatives,
+      source_mode: hasVisibleAlternatives ? 'local_fallback' : 'llm',
+      fallback_source: hasVisibleAlternatives
+        ? pickFirstTrimmed(localFallback?.fallback_source) || 'synthetic'
+        : 'none',
+    };
+  };
 
   let anchorPrecheck = null;
   if (!anchor && !skipAnchorPrecheck) {
@@ -66198,12 +66208,13 @@ async function fetchRecoAlternativesForProduct({
           };
         }
         const localFallback = await buildLocalFallbackAlternatives({ failureClass: 'anchor_missing_precheck' });
+        const localFallbackMeta = describeLocalFallbackVisibility(localFallback);
         return {
           ok: true,
           alternatives: localFallback.alternatives,
           field_missing: localFallback.alternatives.length ? [] : [{ field: 'alternatives', reason: 'anchor_missing_precheck' }],
-          source_mode: recommendationMode === 'pool_only' ? 'local_fallback' : recommendationMode,
-          fallback_source: localFallback.fallback_source,
+          source_mode: localFallbackMeta.source_mode,
+          fallback_source: localFallbackMeta.fallback_source,
           refresh_pending: false,
           refresh_after_ms: 0,
           failure_class: 'anchor_missing_precheck',
@@ -66254,12 +66265,13 @@ async function fetchRecoAlternativesForProduct({
         };
       } else if (!disableFallback) {
         const localFallback = await buildLocalFallbackAlternatives({ failureClass: 'anchor_missing_precheck' });
+        const localFallbackMeta = describeLocalFallbackVisibility(localFallback);
         return {
           ok: true,
           alternatives: localFallback.alternatives,
           field_missing: localFallback.alternatives.length ? [] : [{ field: 'alternatives', reason: 'anchor_missing_precheck' }],
-          source_mode: recommendationMode === 'pool_only' ? 'local_fallback' : recommendationMode,
-          fallback_source: localFallback.fallback_source,
+          source_mode: localFallbackMeta.source_mode,
+          fallback_source: localFallbackMeta.fallback_source,
           refresh_pending: false,
           refresh_after_ms: 0,
           failure_class: 'anchor_missing_precheck',
@@ -66575,12 +66587,13 @@ async function fetchRecoAlternativesForProduct({
       };
     }
     const localFallback = disableFallback ? { alternatives: [], fallback_source: 'none' } : await buildLocalFallbackAlternatives({ failureClass: llmFailureClass });
+    const localFallbackMeta = describeLocalFallbackVisibility(localFallback);
     return {
       ok: !disableFallback,
       alternatives: localFallback.alternatives,
       field_missing: localFallback.alternatives.length ? [] : [{ field: 'alternatives', reason: 'upstream_error' }],
-      source_mode: disableFallback ? 'llm' : 'local_fallback',
-      fallback_source: localFallback.fallback_source,
+      source_mode: disableFallback ? 'llm' : localFallbackMeta.source_mode,
+      fallback_source: disableFallback ? 'none' : localFallbackMeta.fallback_source,
       refresh_pending: !disableFallback && Boolean(anchor) && Boolean(refreshKey),
       refresh_after_ms: !disableFallback && Boolean(anchor) && Boolean(refreshKey) ? RECO_ALTERNATIVES_REFRESH_DELAY_MS : 0,
       failure_class: llmFailureClass,
@@ -66709,6 +66722,7 @@ async function fetchRecoAlternativesForProduct({
   const localFallback = disableFallback ? { alternatives: [], fallback_source: 'none' } : await buildLocalFallbackAlternatives({
     failureClass: llmOutcome === 'empty_structured_clarify' ? 'policy_skip' : 'empty_structured',
   });
+  const localFallbackMeta = describeLocalFallbackVisibility(localFallback);
   const shouldRefresh = !disableFallback && !disableAsyncRefresh && Boolean(anchor) && Boolean(refreshKey);
   if (shouldRefresh && !recoAlternativesRefreshInFlight.has(refreshKey)) {
     recoAlternativesRefreshInFlight.add(refreshKey);
@@ -66754,8 +66768,8 @@ async function fetchRecoAlternativesForProduct({
     ok: !disableFallback,
     alternatives: localFallback.alternatives,
     field_missing: localFallback.alternatives.length ? [] : [{ field: 'alternatives', reason: 'upstream_missing_or_empty' }],
-    source_mode: disableFallback ? 'llm' : 'local_fallback',
-    fallback_source: localFallback.fallback_source,
+    source_mode: disableFallback ? 'llm' : localFallbackMeta.source_mode,
+    fallback_source: disableFallback ? 'none' : localFallbackMeta.fallback_source,
     refresh_pending: shouldRefresh,
     refresh_after_ms: shouldRefresh ? RECO_ALTERNATIVES_REFRESH_DELAY_MS : 0,
     failure_class: llmOutcome === 'empty_structured_clarify' ? 'empty_structured_clarify' : 'empty_structured',
