@@ -30,6 +30,7 @@ function parseArgs(argv) {
     minPublicDocs: '',
     maxShadowRatio: '',
     failOnStatus: '',
+    blockedReasons: [],
     skipSearch: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -88,6 +89,11 @@ function parseArgs(argv) {
     if (token === '--fail-on-status') {
       out.failOnStatus = next;
       index += 1;
+      continue;
+    }
+    if (token === '--blocked-reason') {
+      out.blockedReasons.push(next);
+      index += 1;
     }
   }
   return out;
@@ -101,6 +107,20 @@ function safeToken(value, fallback = '') {
 function safeNumber(value, fallback = null) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function uniqStrings(values = [], limit = 32) {
+  const out = [];
+  const seen = new Set();
+  for (const value of Array.isArray(values) ? values : [values]) {
+    const normalized = safeToken(value, '');
+    const key = normalized.toLowerCase();
+    if (!normalized || seen.has(key)) continue;
+    seen.add(key);
+    out.push(normalized);
+    if (out.length >= limit) break;
+  }
+  return out;
 }
 
 async function readJson(filePath) {
@@ -144,8 +164,23 @@ function buildMarkdown(report) {
     `- Returned: ${safeNumber(searchProbe.returned, 0) || 0}`,
     `- Has next page: ${searchProbe.has_next_page === true ? 'yes' : 'no'}`,
     '',
-    '## Notes',
-    '',
+    ...(Array.isArray(report.blocked_reasons) && report.blocked_reasons.length
+      ? [
+          '## Blockers',
+          '',
+          ...report.blocked_reasons.map((line) => (line.startsWith('- ') ? line : `- ${line}`)),
+          '',
+        ]
+      : []),
+    ...((Array.isArray(report.prerequisites) && report.prerequisites.length
+      ? [
+          '## Prerequisites',
+          '',
+          ...report.prerequisites.map((line) => (line.startsWith('- ') ? line : `- ${line}`)),
+          '',
+        ]
+      : [])),
+    ...['## Notes', ''],
     ...((Array.isArray(report.notes) && report.notes.length
       ? report.notes
       : ['- No additional notes.']).map((line) => (line.startsWith('- ') ? line : `- ${line}`))),
@@ -157,6 +192,11 @@ function evaluateReadiness(report, thresholds) {
   const notes = [];
   const backfill = report.backfill || {};
   const searchProbe = report.search_probe || {};
+
+  if (report.blocked === true || (Array.isArray(report.blocked_reasons) && report.blocked_reasons.length)) {
+    notes.push(...(Array.isArray(report.blocked_reasons) ? report.blocked_reasons : []));
+    return { status: 'red', notes };
+  }
 
   if ((safeNumber(backfill.docs_built, 0) || 0) <= 0) {
     notes.push('No serving docs were built from the current backfill sample.');
@@ -269,11 +309,59 @@ async function collectRuntimeSummary(options) {
   };
 }
 
+function buildBlockedSummary(args, reasons = []) {
+  const brand = safeToken(args.brand, '') || null;
+  const market = safeToken(args.market, DEFAULT_MARKET) || DEFAULT_MARKET;
+  const sampleQuery = safeToken(args.sampleQuery, brand || 'serum');
+  const sampleLimit = Math.max(1, Math.min(20, safeNumber(args.sampleLimit, DEFAULT_SAMPLE_LIMIT) || DEFAULT_SAMPLE_LIMIT));
+  const limit = Math.max(1, Math.min(5000, safeNumber(args.limit, DEFAULT_LIMIT) || DEFAULT_LIMIT));
+  const config = getCatalogServingIndexConfig(process.env);
+  return {
+    schema_version: SCHEMA_VERSION,
+    generated_at_utc: new Date().toISOString(),
+    blocked: true,
+    blocked_reasons: uniqStrings(reasons, 16),
+    prerequisites: [
+      'Set GitHub Actions secret DATABASE_URL so the workflow can build a shadow backfill sample.',
+      'Set CATALOG_SERVING_INDEX_BASE_URL to enable the OpenSearch-compatible probe.',
+      'Set CATALOG_SERVING_INDEX_API_KEY if the serving index requires authenticated reads.',
+    ],
+    requested: {
+      limit,
+      brand,
+      market,
+      sample_query: sampleQuery,
+      sample_limit: sampleLimit,
+      skip_search: args.skipSearch === true,
+    },
+    index_config: {
+      enabled: config.enabled,
+      index_name: config.index_name || null,
+      shadow_read_enabled: config.shadow_read_enabled === true,
+    },
+    backfill: {
+      source_rows_scanned: 0,
+      live_identity_rows: 0,
+      docs_built: 0,
+      public_docs_built: 0,
+      non_public_docs_built: 0,
+    },
+    search_probe: {
+      status: 'blocked',
+      source: config.enabled ? 'opensearch_compatible' : 'disabled',
+      returned: 0,
+      has_next_page: false,
+    },
+  };
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const outDir = path.resolve(safeToken(args.outDir, DEFAULT_REPORTS_OUT));
   const summary =
-    safeToken(args.inputJson, '')
+    Array.isArray(args.blockedReasons) && args.blockedReasons.length
+      ? buildBlockedSummary(args, args.blockedReasons)
+      : safeToken(args.inputJson, '')
       ? await readJson(path.resolve(args.inputJson))
       : await collectRuntimeSummary(args);
 
@@ -342,6 +430,7 @@ if (require.main === module) {
 
 module.exports = {
   buildMarkdown,
+  buildBlockedSummary,
   evaluateReadiness,
   statusSeverity,
 };
