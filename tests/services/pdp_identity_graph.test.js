@@ -274,4 +274,64 @@ describe('pdpIdentityGraph', () => {
     );
     expect(queries).toHaveLength(2);
   });
+
+  test('listLivePdpIdentityRowsForRefs does not depend on PDP live-read feature flag', async () => {
+    process.env = {
+      ...ORIGINAL_ENV,
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgresql://example.test/pivota',
+      PDP_IDENTITY_GRAPH_ENABLED: 'false',
+    };
+    jest.resetModules();
+    const { listLivePdpIdentityRowsForRefs } = require('../../src/services/pdpIdentityGraph');
+    const queryFn = jest.fn(async () => ({
+      rows: [
+        {
+          source_listing_ref: 'external_seed:ext_1',
+          merchant_id: 'external_seed',
+          product_id: 'ext_1',
+          source_kind: 'external_seed',
+          source_tier: 'brand',
+          live_read_enabled: true,
+          sellable_item_group_id: 'sig_1',
+          product_line_id: 'pl_1',
+          review_family_id: 'rf_1',
+          identity_status: 'approved',
+          identity_confidence: 0.98,
+          matched_by_rule: 'official_url_soft_exact_cluster',
+          match_basis: ['official_url:https://brand.example/products/ext-1'],
+          strong_identity: {},
+          soft_identity: {},
+          variant_axes: { volume: '45ml' },
+          source_payload: { title: 'Example Product' },
+          review_summary: {},
+          official_url: 'https://brand.example/products/ext-1',
+          official_domain: 'brand.example',
+          brand_norm: 'example',
+          title_norm: 'example product',
+          title_core_norm: 'example product',
+          review_required: false,
+          review_reason_codes: [],
+          created_at: '2026-04-10T00:00:00Z',
+          updated_at: '2026-04-10T00:00:00Z',
+        },
+      ],
+    }));
+
+    const rows = await listLivePdpIdentityRowsForRefs({
+      sourceListingRefs: ['external_seed:ext_1'],
+      queryFn,
+    });
+
+    expect(queryFn).toHaveBeenCalledTimes(1);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual(
+      expect.objectContaining({
+        source_listing_ref: 'external_seed:ext_1',
+        identity_status: 'approved',
+        live_read_enabled: true,
+        sellable_item_group_id: 'sig_1',
+      }),
+    );
+  });
 });
