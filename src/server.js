@@ -80,6 +80,7 @@ const {
   getDiscoveryHealthSnapshot,
   getDiscoveryFeed,
 } = require('./services/discoveryFeed');
+const { backfillCatalogServingIndex } = require('./services/catalogServingIndex');
 const { resolveNonImageGeminiModel } = require('./lib/geminiModelFloor');
 const { recommendHandler } = require('./recommend/index');
 const {
@@ -17197,6 +17198,27 @@ app.post('/api/admin/pdp-identity/backfill', requireAdmin, async (req, res) => {
     return res.status(500).json({
       ok: false,
       error: 'PDP_IDENTITY_BACKFILL_FAILED',
+      message: err?.message || String(err),
+    });
+  }
+});
+
+app.post('/api/admin/catalog-serving/backfill', requireAdmin, async (req, res) => {
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  try {
+    const result = await backfillCatalogServingIndex({
+      limit: Number(body.limit ?? 500) || 500,
+      brand: String(body.brand || '').trim() || null,
+      market: String(body.market || '').trim() || 'US',
+      dryRun: body.dry_run === true || body.dryRun === true,
+      refresh: body.refresh === true,
+      includeNonPublic: !(body.public_only === true || body.publicOnly === true),
+    });
+    return res.json({ ok: true, result });
+  } catch (err) {
+    return res.status(500).json({
+      ok: false,
+      error: 'CATALOG_SERVING_BACKFILL_FAILED',
       message: err?.message || String(err),
     });
   }

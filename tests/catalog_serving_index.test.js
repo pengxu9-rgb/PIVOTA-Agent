@@ -1,4 +1,6 @@
 const {
+  backfillCatalogServingIndex,
+  buildCatalogServingBackfillDocs,
   buildCatalogServingDoc,
   buildCatalogServingSearchBody,
   bulkUpsertCatalogServingDocs,
@@ -198,6 +200,182 @@ describe('catalog serving index', () => {
         headers: expect.objectContaining({
           'Content-Type': 'application/x-ndjson',
         }),
+      }),
+    );
+  });
+
+  test('buildCatalogServingBackfillDocs emits a public exact-item doc from live identity members only', () => {
+    const sourceRows = [
+      {
+        merchant_id: 'external_seed',
+        product_id: 'seed_gbr_45ml',
+        source_kind: 'external_seed',
+        product: {
+          product_id: 'seed_gbr_45ml',
+          title: 'Great Barrier Relief',
+          brand: 'KraveBeauty',
+          description: 'Barrier serum from brand source',
+          canonical_url: 'https://kravebeauty.com/products/great-barrier-relief',
+          image_url: 'https://images.example/gbr-brand.jpg',
+          price: 28,
+          destination_url: 'https://kravebeauty.com/products/great-barrier-relief',
+          card_intro: 'Reviewed by Pivota.',
+        },
+        source_meta: {
+          market: 'US',
+          updated_at: '2026-04-12T02:00:00Z',
+        },
+      },
+      {
+        merchant_id: 'merch_internal',
+        product_id: 'internal_gbr_45ml',
+        source_kind: 'internal',
+        product: {
+          product_id: 'internal_gbr_45ml',
+          title: 'Great Barrier Relief 45ml',
+          brand: 'KraveBeauty',
+          canonical_url: 'https://kravebeauty.com/products/great-barrier-relief',
+          image_url: 'https://images.example/gbr-internal.jpg',
+          default_offer_id: 'offer_internal',
+          offers: [
+            {
+              offer_id: 'offer_internal',
+              merchant_id: 'merch_internal',
+              price: { amount: 30 },
+            },
+          ],
+        },
+        source_meta: {
+          updated_at: '2026-04-12T03:00:00Z',
+        },
+      },
+      {
+        merchant_id: 'merch_shadow',
+        product_id: 'shadow_gbr_45ml',
+        source_kind: 'internal',
+        product: {
+          product_id: 'shadow_gbr_45ml',
+          title: 'Shadow GBR listing',
+          brand: 'KraveBeauty',
+          canonical_url: 'https://kravebeauty.com/products/great-barrier-relief',
+          description: 'Should not leak into public exact-item serving',
+          offers: [
+            {
+              offer_id: 'offer_shadow',
+              merchant_id: 'merch_shadow',
+              price: { amount: 31 },
+            },
+          ],
+        },
+      },
+    ];
+    const identityRows = [
+      {
+        source_listing_ref: 'external_seed:seed_gbr_45ml',
+        sellable_item_group_id: 'sig_gbr_45ml',
+        product_line_id: 'pl_gbr',
+        review_family_id: 'rf_gbr',
+        source_tier: 'brand',
+        identity_status: 'approved',
+        live_read_enabled: true,
+        variant_axes: { volume: '45ml' },
+      },
+      {
+        source_listing_ref: 'merch_internal:internal_gbr_45ml',
+        sellable_item_group_id: 'sig_gbr_45ml',
+        product_line_id: 'pl_gbr',
+        review_family_id: 'rf_gbr',
+        source_tier: 'merchant',
+        identity_status: 'approved',
+        live_read_enabled: true,
+        variant_axes: { volume: '45ml' },
+      },
+    ];
+
+    const docs = buildCatalogServingBackfillDocs(sourceRows, {
+      identityRows,
+      includeNonPublic: true,
+      market: 'US',
+    });
+
+    expect(docs).toHaveLength(2);
+    const publicDoc = docs.find((doc) => doc.publish_state === 'public');
+    expect(publicDoc).toEqual(
+      expect.objectContaining({
+        doc_id: 'sellable:sig_gbr_45ml',
+        publish_state: 'public',
+        title: 'Great Barrier Relief',
+        brand_name: 'KraveBeauty',
+        default_offer_id: 'offer_internal',
+        internal_offer_exists: true,
+        external_offer_exists: true,
+        source_refs: ['external_seed:seed_gbr_45ml', 'merch_internal:internal_gbr_45ml'],
+      }),
+    );
+    expect(publicDoc.source_refs).not.toContain('merch_shadow:shadow_gbr_45ml');
+    expect(publicDoc.price_min).toBe(28);
+    expect(publicDoc.price_max).toBe(30);
+    expect(docs.find((doc) => doc.source_refs.includes('merch_shadow:shadow_gbr_45ml'))).toEqual(
+      expect.objectContaining({
+        publish_state: 'eligible',
+      }),
+    );
+  });
+
+  test('backfillCatalogServingIndex reports publish-state breakdown during dry run', async () => {
+    const result = await backfillCatalogServingIndex(
+      {
+        limit: 10,
+        dryRun: true,
+        includeNonPublic: true,
+        market: 'US',
+      },
+      {
+        fetchBackfillProductsFn: jest.fn(async () => [
+          {
+            merchant_id: 'external_seed',
+            product_id: 'eligible_serum',
+            source_kind: 'external_seed',
+            product: {
+              product_id: 'eligible_serum',
+              title: 'Barrier Serum',
+              brand: 'KraveBeauty',
+              canonical_url: 'https://kravebeauty.com/products/barrier-serum',
+              image_url: 'https://images.example/eligible.jpg',
+            },
+            source_meta: { market: 'US' },
+          },
+          {
+            merchant_id: 'merch_multi',
+            product_id: 'review_required_serum',
+            source_kind: 'internal',
+            product: {
+              product_id: 'review_required_serum',
+              title: 'Mystery Multi Variant Serum',
+              brand: 'KraveBeauty',
+              variants: [{ sku: 'a' }, { sku: 'b' }],
+            },
+            source_meta: { market: 'US' },
+          },
+        ]),
+        identityRowsResolverFn: jest.fn(async () => []),
+      },
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        dry_run: true,
+        source_rows_scanned: 2,
+        live_identity_rows: 0,
+        docs_built: 2,
+        public_docs_built: 0,
+        non_public_docs_built: 2,
+        publish_state_breakdown: {
+          eligible: 1,
+          shadow: 1,
+        },
+        indexed: 0,
+        source: 'dry_run',
       }),
     );
   });
