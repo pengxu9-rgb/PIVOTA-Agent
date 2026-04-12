@@ -42,6 +42,14 @@ const PDP_IDENTITY_GRAPH_REVIEW_QUEUE_LIMIT = Math.max(
   1,
   Math.min(1000, Number(process.env.PDP_IDENTITY_GRAPH_REVIEW_QUEUE_LIMIT || 250) || 250),
 );
+const PDP_IDENTITY_COVERAGE_DEFAULT_BEAUTY_VERTICALS = Object.freeze([
+  'beauty',
+  'bodycare',
+  'fragrance',
+  'haircare',
+  'makeup',
+  'skincare',
+]);
 
 function asString(value) {
   if (typeof value === 'string') return value.trim();
@@ -79,6 +87,18 @@ function uniqueStrings(values, limit = 100) {
     if (out.length >= limit) break;
   }
   return out;
+}
+
+function asFiniteNumber(value, fallback = 0) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function roundRatio(value, digits = 4) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 0;
+  const power = Math.pow(10, Math.max(0, digits));
+  return Math.round(numeric * power) / power;
 }
 
 function isHttpUrl(value) {
@@ -1449,6 +1469,326 @@ async function promotePdpIdentityLiveRead({
   }
 }
 
+async function summarizePdpIdentityCoverageByBrand({
+  limit = 20,
+  brand = null,
+  minSourceRows = 1,
+  beautyOnly = true,
+  queryFn = query,
+} = {}) {
+  if (!process.env.DATABASE_URL || typeof queryFn !== 'function') {
+    return [];
+  }
+
+  const normalizedLimit = Math.max(1, Math.min(500, Number(limit) || 20));
+  const normalizedBrand = normalizeBrandToken(brand);
+  const normalizedMinSourceRows = Math.max(0, Math.min(500000, Number(minSourceRows) || 0));
+  const params = [EXTERNAL_SEED_MERCHANT_ID, PDP_IDENTITY_COVERAGE_DEFAULT_BEAUTY_VERTICALS];
+  const where = [`coalesce(i.brand_norm, e.brand_norm, s.brand_norm) <> ''`];
+  if (normalizedBrand) {
+    params.push(normalizedBrand);
+    where.push(`coalesce(i.brand_norm, e.brand_norm, s.brand_norm) = $${params.length}`);
+  } else if (beautyOnly === true) {
+    where.push(`coalesce(e.beauty_external_rows, 0) > 0`);
+  }
+  params.push(normalizedMinSourceRows);
+  where.push(
+    `(coalesce(s.internal_rows, 0) + coalesce(e.external_rows, 0)) >= $${params.length}`,
+  );
+  params.push(normalizedLimit);
+
+  try {
+    const result = await queryFn(
+      `
+        WITH identity_rows AS (
+          SELECT
+            brand_norm,
+            count(*)::int AS identity_rows,
+            count(*) FILTER (WHERE live_read_enabled = true)::int AS live_rows,
+            count(*) FILTER (WHERE identity_status = 'approved')::int AS approved_rows,
+            count(*) FILTER (WHERE review_required = true)::int AS review_rows
+          FROM pdp_identity_listing
+          GROUP BY brand_norm
+        ),
+        external_source_rows AS (
+          SELECT
+            lower(trim(coalesce(
+              seed_data #>> '{brand,name}',
+              seed_data->>'brand',
+              seed_data->>'brand_name',
+              seed_data->>'vendor',
+              seed_data->>'vendor_name',
+              ''
+            ))) AS brand_norm,
+            count(*)::int AS external_rows,
+            count(*) FILTER (
+              WHERE lower(trim(coalesce(
+                seed_data #>> '{derived,recall,vertical}',
+                seed_data->>'vertical',
+                ''
+              ))) = ANY($2::text[])
+            )::int AS beauty_external_rows
+          FROM external_product_seeds
+          WHERE status = 'active'
+          GROUP BY 1
+        ),
+        internal_source_rows AS (
+          SELECT
+            lower(trim(coalesce(
+              product_data #>> '{brand,name}',
+              product_data->>'brand',
+              product_data->>'brand_name',
+              product_data->>'vendor',
+              product_data->>'vendor_name',
+              ''
+            ))) AS brand_norm,
+            count(*)::int AS internal_rows
+          FROM products_cache
+          WHERE merchant_id <> $1
+          GROUP BY 1
+        )
+        SELECT
+          coalesce(i.brand_norm, e.brand_norm, s.brand_norm) AS brand_norm,
+          coalesce(s.internal_rows, 0)::int AS internal_rows,
+          coalesce(e.external_rows, 0)::int AS external_rows,
+          coalesce(e.beauty_external_rows, 0)::int AS beauty_external_rows,
+          (coalesce(s.internal_rows, 0) + coalesce(e.external_rows, 0))::int AS source_rows,
+          coalesce(i.identity_rows, 0)::int AS identity_rows,
+          coalesce(i.live_rows, 0)::int AS live_rows,
+          coalesce(i.approved_rows, 0)::int AS approved_rows,
+          coalesce(i.review_rows, 0)::int AS review_rows
+        FROM identity_rows i
+        FULL OUTER JOIN external_source_rows e
+          ON e.brand_norm = i.brand_norm
+        FULL OUTER JOIN internal_source_rows s
+          ON s.brand_norm = coalesce(i.brand_norm, e.brand_norm)
+        WHERE ${where.join(' AND ')}
+        ORDER BY
+          GREATEST((coalesce(s.internal_rows, 0) + coalesce(e.external_rows, 0)) - coalesce(i.identity_rows, 0), 0) DESC,
+          (coalesce(s.internal_rows, 0) + coalesce(e.external_rows, 0)) DESC,
+          coalesce(i.brand_norm, e.brand_norm, s.brand_norm) ASC
+        LIMIT $${params.length}
+      `,
+      params,
+    );
+    return (result?.rows || []).map((row) => {
+      const sourceRows = asFiniteNumber(row?.source_rows, 0);
+      const identityRows = asFiniteNumber(row?.identity_rows, 0);
+      const liveRows = asFiniteNumber(row?.live_rows, 0);
+      const approvedRows = asFiniteNumber(row?.approved_rows, 0);
+      const reviewRows = asFiniteNumber(row?.review_rows, 0);
+      return {
+        brand_norm: asString(row?.brand_norm) || null,
+        internal_rows: asFiniteNumber(row?.internal_rows, 0),
+        external_rows: asFiniteNumber(row?.external_rows, 0),
+        beauty_external_rows: asFiniteNumber(row?.beauty_external_rows, 0),
+        source_rows: sourceRows,
+        identity_rows: identityRows,
+        live_rows: liveRows,
+        approved_rows: approvedRows,
+        review_rows: reviewRows,
+        missing_identity_rows: Math.max(sourceRows - identityRows, 0),
+        pending_live_rows: Math.max(approvedRows - liveRows, 0),
+        identity_coverage_ratio: sourceRows > 0 ? roundRatio(identityRows / sourceRows) : 0,
+        live_coverage_ratio: approvedRows > 0 ? roundRatio(liveRows / approvedRows) : 0,
+        review_ratio: identityRows > 0 ? roundRatio(reviewRows / identityRows) : 0,
+      };
+    });
+  } catch (err) {
+    if (looksLikeRelationMissing(err)) return [];
+    throw err;
+  }
+}
+
+async function runPdpIdentityCoverageLift({
+  brand = null,
+  topBrands = 5,
+  sourceLimitPerBrand = 100,
+  dryRun = true,
+  promoteLiveRead = true,
+  requireBrandSource = true,
+  minSourceRows = 10,
+  beautyOnly = true,
+  maxReviewRatio = 0.65,
+  createdBy = 'coverage_lift',
+  queryFn = query,
+  withClientFn = withClient,
+  summarizeFn = summarizePdpIdentityCoverageByBrand,
+  summaryFn = null,
+  backfillFn = backfillPdpIdentityGraph,
+  promoteFn = promotePdpIdentityLiveRead,
+} = {}) {
+  const normalizedBrand = normalizeBrandToken(brand);
+  const normalizedTopBrands = Math.max(1, Math.min(50, Number(topBrands) || 5));
+  const normalizedSourceLimit = Math.max(1, Math.min(5000, Number(sourceLimitPerBrand) || 100));
+  const normalizedMinSourceRows = Math.max(0, Math.min(500000, Number(minSourceRows) || 0));
+  const normalizedMaxReviewRatio = Math.max(0, Math.min(1, Number(maxReviewRatio) || 0));
+  const promoteLimit = Math.max(normalizedSourceLimit * 4, 200);
+
+  const effectiveSummarizeFn = typeof summaryFn === 'function' ? summaryFn : summarizeFn;
+  const summaryBefore = await effectiveSummarizeFn({
+    limit: normalizedBrand ? 1 : normalizedTopBrands,
+    brand: normalizedBrand || null,
+    minSourceRows: normalizedBrand ? 0 : normalizedMinSourceRows,
+    beautyOnly: normalizedBrand ? false : beautyOnly === true,
+    queryFn,
+  });
+  const targetBrands = normalizedBrand
+    ? [normalizedBrand]
+    : uniqueStrings(summaryBefore.map((row) => row?.brand_norm), normalizedTopBrands);
+
+  const results = [];
+  for (const brandNorm of targetBrands) {
+    const coverageBefore =
+      summaryBefore.find((row) => asString(row?.brand_norm) === brandNorm) ||
+      (
+        await effectiveSummarizeFn({
+          limit: 1,
+          brand: brandNorm,
+          minSourceRows: 0,
+          beautyOnly: false,
+          queryFn,
+        })
+      )[0] ||
+      null;
+    const previewBackfill = await backfillFn({
+      brand: brandNorm,
+      limit: normalizedSourceLimit,
+      dryRun: true,
+      queryFn,
+      withClientFn,
+    });
+    const reviewRatio =
+      (asFiniteNumber(previewBackfill?.identity_rows_built, 0) || 0) > 0
+        ? roundRatio(
+            asFiniteNumber(previewBackfill?.review_queue_rows_built, 0) /
+              asFiniteNumber(previewBackfill?.identity_rows_built, 1),
+          )
+        : 0;
+    const skipReason =
+      reviewRatio > normalizedMaxReviewRatio ? 'review_ratio_exceeds_threshold' : null;
+    const shouldWrite = dryRun !== true && !skipReason;
+
+    let backfillResult = previewBackfill;
+    if (shouldWrite) {
+      backfillResult = await backfillFn({
+        brand: brandNorm,
+        limit: normalizedSourceLimit,
+        dryRun: false,
+        queryFn,
+        withClientFn,
+      });
+    } else if (dryRun !== true && skipReason) {
+      backfillResult = {
+        ...previewBackfill,
+        dry_run: false,
+        skipped_reason: skipReason,
+        written_rows: 0,
+        review_queue_rows: 0,
+      };
+    }
+
+    let promoteResult = null;
+    if (promoteLiveRead === true) {
+      if (shouldWrite) {
+        promoteResult = await promoteFn({
+          brand: brandNorm,
+          limit: promoteLimit,
+          dryRun: false,
+          requireBrandSource,
+          createdBy,
+          queryFn,
+          withClientFn,
+        });
+      } else if (dryRun === true) {
+        promoteResult = await promoteFn({
+          brand: brandNorm,
+          limit: promoteLimit,
+          dryRun: true,
+          requireBrandSource,
+          createdBy,
+          queryFn,
+          withClientFn,
+        });
+      } else {
+        promoteResult = {
+          dry_run: false,
+          candidate_rows_scanned: 0,
+          groups_considered: 0,
+          groups_eligible: 0,
+          rows_to_enable: 0,
+          overrides_to_write: 0,
+          updated_rows: 0,
+          brand_filter: brandNorm,
+          require_brand_source: requireBrandSource === true,
+          sample_refs: [],
+          skipped_reason: skipReason,
+        };
+      }
+    }
+
+    const coverageAfter =
+      (
+        await effectiveSummarizeFn({
+          limit: 1,
+          brand: brandNorm,
+          minSourceRows: 0,
+          beautyOnly: false,
+          queryFn,
+        })
+      )[0] || null;
+    results.push({
+      brand_norm: brandNorm,
+      skip_reason: skipReason,
+      write_applied: shouldWrite,
+      review_ratio: reviewRatio,
+      coverage_before: coverageBefore,
+      preview_backfill: previewBackfill,
+      backfill: backfillResult,
+      promote: promoteResult,
+      coverage_after: coverageAfter,
+    });
+  }
+
+  return {
+    dry_run: dryRun === true,
+    requested: {
+      brand: normalizedBrand || null,
+      top_brands: normalizedBrand ? 1 : normalizedTopBrands,
+      source_limit_per_brand: normalizedSourceLimit,
+      min_source_rows: normalizedMinSourceRows,
+      beauty_only: normalizedBrand ? false : beautyOnly === true,
+      promote_live_read: promoteLiveRead === true,
+      require_brand_source: requireBrandSource === true,
+      max_review_ratio: normalizedMaxReviewRatio,
+    },
+    brands_selected: targetBrands,
+    summary_before: summaryBefore,
+    results,
+    totals: {
+      brands_processed: results.length,
+      brands_written: results.filter((item) => item.write_applied === true).length,
+      skipped_brands: results.filter((item) => item.skip_reason).length,
+      identity_rows_built: results.reduce(
+        (sum, item) => sum + asFiniteNumber(item?.preview_backfill?.identity_rows_built, 0),
+        0,
+      ),
+      review_queue_rows_built: results.reduce(
+        (sum, item) => sum + asFiniteNumber(item?.preview_backfill?.review_queue_rows_built, 0),
+        0,
+      ),
+      promote_rows_targeted: results.reduce(
+        (sum, item) => sum + asFiniteNumber(item?.promote?.rows_to_enable, 0),
+        0,
+      ),
+      promote_rows_updated: results.reduce(
+        (sum, item) => sum + asFiniteNumber(item?.promote?.updated_rows, 0),
+        0,
+      ),
+    },
+  };
+}
+
 async function fetchBackfillProducts({ limit = 500, brandFilter = null, queryFn = query } = {}) {
   const normalizedLimit = Math.max(1, Math.min(5000, Number(limit) || 500));
   const normalizedBrandFilter = normalizeBrandToken(brandFilter);
@@ -2048,6 +2388,8 @@ module.exports = {
   maybeBuildLiveSyntheticPdp,
   listLivePdpIdentityRowsForRefs,
   promotePdpIdentityLiveRead,
+  summarizePdpIdentityCoverageByBrand,
+  runPdpIdentityCoverageLift,
   backfillPdpIdentityGraph,
   listPdpIdentityShadowRows,
   listPdpIdentityReviewQueue,
