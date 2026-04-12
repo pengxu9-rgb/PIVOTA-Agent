@@ -1,4 +1,5 @@
 const { stripExternalSeedMarketingBannerPrefix } = require('./externalSeedMarketingText');
+const { buildRecoAuthorityAliasTokens } = require('./recoAlternativesAuthority');
 
 const SYNTHETIC_SUMMARY_RE = /\bOFFICIAL:[\s\S]*\/\/\/\s*SOCIAL HIGHLIGHTS:/i;
 const TEMPLATE_PREFIX_RE = /^experience the ultimate luxury with\s+/i;
@@ -314,14 +315,40 @@ function normalizeIngredientTokens(seedData = {}, snapshot = {}, row = {}) {
   );
 }
 
-function buildAliasTokens({ retrievalTitle = '', category = '', brand = '' } = {}) {
-  const stopwords = new Set(
-    ['the', 'and', 'for', 'with', 'from', 'official', 'beauty', 'shop', 'product', 'products', 'new'],
-  );
-  const brandTokens = new Set(buildTokenList([brand], { maxItems: 8, minLength: 2 }));
-  return buildTokenList([retrievalTitle, category], { maxItems: 24, minLength: 2 }).filter(
-    (token) => !stopwords.has(token) && !brandTokens.has(token),
-  );
+function collectRecallAliasInputs(seedData = {}, snapshot = {}, row = {}) {
+  const values = [
+    row?.search_aliases,
+    row?.searchAliases,
+    row?.aliases,
+    seedData?.search_aliases,
+    seedData?.searchAliases,
+    seedData?.aliases,
+    seedData?.product?.search_aliases,
+    seedData?.product?.searchAliases,
+    seedData?.product?.aliases,
+    snapshot?.search_aliases,
+    snapshot?.searchAliases,
+    snapshot?.aliases,
+    snapshot?.product?.search_aliases,
+    snapshot?.product?.searchAliases,
+    snapshot?.product?.aliases,
+  ];
+  return dedupeStrings(values.flatMap((value) => (Array.isArray(value) ? value : [value])), 16);
+}
+
+function buildAliasTokens({
+  retrievalTitle = '',
+  category = '',
+  brand = '',
+  searchAliases = [],
+} = {}) {
+  return buildRecoAuthorityAliasTokens({
+    brand,
+    name: retrievalTitle,
+    category,
+    usageRole: category,
+    searchAliases,
+  });
 }
 
 function detectExclusionFlags({ title = '', canonicalUrl = '', destinationUrl = '', summary = '', body = '' } = {}) {
@@ -529,6 +556,7 @@ function buildExternalSeedRecallDoc({ row = {}, seedData = {}, snapshot = {} } =
     normalizeNonEmptyString(seedData.seed_description_origin || snapshot.seed_description_origin) === 'synthetic_summary';
   const templatePolluted = rawTextCandidates.some((item) => TEMPLATE_PREFIX_RE.test(item) || looksLikeRecallNoise(item));
   const ingredientTokens = normalizeIngredientTokens(seedData, snapshot, row);
+  const searchAliases = collectRecallAliasInputs(seedData, snapshot, row);
   const protection = resolveExternalSeedProtectionContract({
     row,
     seedData,
@@ -544,7 +572,12 @@ function buildExternalSeedRecallDoc({ row = {}, seedData = {}, snapshot = {} } =
     category: category || null,
     vertical: vertical || null,
     ingredient_tokens: ingredientTokens,
-    alias_tokens: buildAliasTokens({ retrievalTitle: retrievalTitle || titleSource, category, brand }),
+    alias_tokens: buildAliasTokens({
+      retrievalTitle: retrievalTitle || titleSource,
+      category,
+      brand,
+      searchAliases,
+    }),
     exclusion_flags: exclusionFlags,
     quality_signals: {
       template_polluted: Boolean(templatePolluted),

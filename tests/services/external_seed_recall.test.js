@@ -192,4 +192,26 @@ describe('externalSeedRecall', () => {
     expect(predicate).toMatch(/seed_data::text/);
     expect(predicate.indexOf('retrieval_title')).toBeLessThan(predicate.indexOf('seed_data::text'));
   });
+
+  test('expands alias tokens for punctuation and SPF-normalized recall matching', () => {
+    const doc = buildExternalSeedRecallDoc({
+      row: {
+        title: 'Anthelios Ultra-Light Invisible Fluid SPF 50+',
+      },
+      seedData: {
+        brand: 'La Roche-Posay',
+        search_aliases: ['Anthelios Invisible Fluid SPF50+', 'Ultra Light Invisible Fluid'],
+      },
+      snapshot: {},
+    });
+
+    expect(doc.alias_tokens).toEqual(
+      expect.arrayContaining([
+        'anthelios ultra light invisible fluid spf50+',
+        'anthelios ultra light invisible fluid spf 50 plus',
+        'ultra light',
+        'invisible fluid',
+      ]),
+    );
+  });
 });
