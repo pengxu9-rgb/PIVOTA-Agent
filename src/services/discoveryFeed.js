@@ -89,6 +89,7 @@ const VALID_SURFACES = new Set(['home_hot_deals', 'browse_products']);
 const VALID_DISCOVERY_RESPONSE_DETAILS = new Set(['full', 'card']);
 const VALID_AUTH_STATES = new Set(['authenticated', 'anonymous']);
 const VALID_DISCOVERY_SORTS = new Set(['popular', 'price_desc', 'price_asc']);
+const SELLABLE_PRODUCT_STATUS_VALUES = ['active', 'published', 'online', 'live', 'enabled', 'available'];
 const HOME_INTEREST_RECALL_LIMIT = 24;
 const HOME_BROWSE_FILL_LIMIT = 24;
 const HOME_MIN_BROWSE_FILL_LIMIT = 16;
@@ -275,6 +276,7 @@ const DOMAIN_KEYWORDS = {
 };
 const WEAK_CATEGORY_LABELS = new Set(['', 'all', 'catalog', 'external', 'misc', 'other', 'product', 'products', 'unknown']);
 const browsePoolCache = new Map();
+const browseCatalogCountCache = new Map();
 const discoveryDbDependencyProbeCache = {
   value: null,
   expiresAt: 0,
@@ -913,6 +915,314 @@ function buildBrandScopeAliases(brandNames = []) {
     });
   }
   return Array.from(aliases);
+}
+
+function buildSellableStatusPredicate(statusExpr) {
+  const expr = `lower(coalesce(${statusExpr}, ''))`;
+  const allowed = SELLABLE_PRODUCT_STATUS_VALUES.map((value) => `'${value}'`).join(', ');
+  return `(${expr} = '' OR ${expr} IN (${allowed}))`;
+}
+
+function getDiscoveryBrowseCatalogCountCacheTtlMs() {
+  return clampInt(process.env.DISCOVERY_BROWSE_COUNT_CACHE_TTL_MS, 60000, 1000, 300000);
+}
+
+function buildDiscoveryBrowseCatalogCountCacheKey(request, { market = '' } = {}) {
+  return JSON.stringify({
+    surface: request?.surface || 'unknown',
+    market: String(market || '').trim().toUpperCase(),
+    scope: {
+      brand_aliases: buildBrandScopeAliases(request?.scope?.brand_names || []),
+      categories: normalizeDiscoveryCategories(request?.scope?.categories, 12),
+    },
+    query: {
+      text: String(request?.query?.text || '').trim().toLowerCase().replace(/\s+/g, ' '),
+    },
+  });
+}
+
+function readBrowseCatalogCountCache(cacheKey) {
+  const entry = browseCatalogCountCache.get(cacheKey);
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) {
+    browseCatalogCountCache.delete(cacheKey);
+    return null;
+  }
+  return entry.value || null;
+}
+
+function writeBrowseCatalogCountCache(cacheKey, value) {
+  browseCatalogCountCache.set(cacheKey, {
+    value,
+    storedAt: Date.now(),
+    expiresAt: Date.now() + getDiscoveryBrowseCatalogCountCacheTtlMs(),
+  });
+  if (browseCatalogCountCache.size > 100) {
+    const oldestKey = Array.from(browseCatalogCountCache.entries()).sort((a, b) => a[1].storedAt - b[1].storedAt)[0]?.[0];
+    if (oldestKey) browseCatalogCountCache.delete(oldestKey);
+  }
+}
+
+function buildStableBrowseCatalogCountQuery(request, { includeIdentityJoin = true } = {}) {
+  const marketConfig = resolveDiscoveryExternalSeedMarketConfig();
+  const market = marketConfig.market;
+  const tool = 'creator_agents';
+  const params = [];
+  const bind = (value) => {
+    params.push(value);
+    return `$${params.length}`;
+  };
+
+  const marketBind = bind(market);
+  const toolBind = bind(tool);
+  const normalizedCategories = normalizeDiscoveryCategories(request?.scope?.categories, 12);
+  const brandAliases = buildBrandScopeAliases(request?.scope?.brand_names || []);
+  const brandCompacts = uniqStrings(
+    brandAliases.map((value) => compactBrandToken(value)).filter(Boolean),
+    12,
+  );
+  const brandPatterns = uniqStrings(
+    brandAliases
+      .map((value) => String(value || '').trim().toLowerCase())
+      .filter(Boolean)
+      .map((value) => `%${value}%`),
+    12,
+  );
+  const rawQueryText = String(request?.query?.text || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const queryTerms = buildDiscoveryDatabaseSearchTerms(rawQueryText ? [rawQueryText] : [], {
+    maxPhrases: 4,
+    maxTokens: 8,
+  });
+  const filteredClauses = ['TRUE'];
+
+  if (brandCompacts.length > 0 || brandPatterns.length > 0) {
+    const brandClauses = [];
+    if (brandCompacts.length > 0) {
+      brandClauses.push(`brand_compact = ANY(${bind(brandCompacts)}::text[])`);
+    }
+    if (brandPatterns.length > 0) {
+      brandClauses.push(`search_text LIKE ANY(${bind(brandPatterns)}::text[])`);
+    }
+    filteredClauses.push(`(${brandClauses.join(' OR ')})`);
+  }
+
+  if (normalizedCategories.length > 0) {
+    filteredClauses.push(`category_text = ANY(${bind(normalizedCategories)}::text[])`);
+  }
+
+  if (rawQueryText) {
+    const queryClauses = [`search_text LIKE ${bind(`%${rawQueryText}%`)}`];
+    if (queryTerms.phrases.length > 0) {
+      const phrasesBind = bind(queryTerms.phrases);
+      queryClauses.push(
+        `(SELECT count(*)::int FROM unnest(${phrasesBind}::text[]) phrase WHERE phrase <> '' AND search_text LIKE '%' || phrase || '%') > 0`,
+      );
+    }
+    if (queryTerms.tokens.length > 0) {
+      const tokensBind = bind(queryTerms.tokens);
+      const minTokenHitsBind = bind(Math.max(1, Math.ceil(queryTerms.tokens.length * 0.6)));
+      queryClauses.push(
+        `(SELECT count(*)::int FROM unnest(${tokensBind}::text[]) token WHERE token <> '' AND search_text LIKE '%' || token || '%') >= ${minTokenHitsBind}`,
+      );
+    }
+    filteredClauses.push(`(${queryClauses.join(' OR ')})`);
+  }
+
+  const internalListingIdExpr = `
+    coalesce(
+      nullif(pc.product_data->>'product_id', ''),
+      nullif(pc.product_data->>'id', ''),
+      nullif(pc.platform_product_id, '')
+    )
+  `;
+  const internalBrandTextExpr = `
+    lower(trim(coalesce(
+      pc.product_data #>> '{brand,name}',
+      pc.product_data->>'brand',
+      pc.product_data->>'brand_name',
+      pc.product_data->>'vendor',
+      pc.product_data->>'vendor_name',
+      pc.product_data->>'manufacturer',
+      ''
+    )))
+  `;
+  const internalCategoryExpr = `
+    lower(trim(coalesce(
+      pc.product_data->>'product_type',
+      pc.product_data->>'productType',
+      pc.product_data->>'category',
+      pc.product_data->>'category_name',
+      ''
+    )))
+  `;
+  const internalSearchTextExpr = `
+    lower(concat_ws(' ',
+      coalesce(pc.product_data->>'title', ''),
+      coalesce(pc.product_data->>'name', ''),
+      coalesce(pc.product_data->>'description', ''),
+      coalesce(pc.product_data #>> '{brand,name}', ''),
+      coalesce(pc.product_data->>'brand', ''),
+      coalesce(pc.product_data->>'brand_name', ''),
+      coalesce(pc.product_data->>'vendor', ''),
+      coalesce(pc.product_data->>'vendor_name', ''),
+      coalesce(pc.product_data->>'manufacturer', ''),
+      coalesce(pc.product_data->>'category', ''),
+      coalesce(pc.product_data->>'product_type', '')
+    ))
+  `;
+  const externalListingIdExpr = `
+    coalesce(
+      nullif(eps.external_product_id, ''),
+      nullif(eps.seed_data->>'external_product_id', ''),
+      nullif(eps.seed_data->>'product_id', ''),
+      nullif(eps.canonical_url, ''),
+      nullif(eps.destination_url, ''),
+      concat('row:', eps.id::text)
+    )
+  `;
+  const externalSearchTextExpr = `
+    lower(concat_ws(' ',
+      coalesce(eps.seed_data->'derived'->'recall'->>'retrieval_title', ''),
+      coalesce(eps.seed_data->'derived'->'recall'->>'retrieval_summary', ''),
+      coalesce(eps.title, ''),
+      coalesce(eps.seed_data->>'title', ''),
+      coalesce(eps.seed_data->>'description', ''),
+      coalesce(eps.seed_data->'snapshot'->>'description', ''),
+      coalesce(eps.seed_data->>'brand', ''),
+      coalesce(eps.seed_data->>'brand_name', ''),
+      coalesce(eps.seed_data->>'vendor', ''),
+      coalesce(eps.seed_data->>'vendor_name', ''),
+      coalesce(eps.seed_data->>'category', ''),
+      coalesce(eps.seed_data->'snapshot'->>'category', ''),
+      coalesce(eps.seed_data->>'product_type', ''),
+      coalesce(eps.seed_data->'snapshot'->>'product_type', '')
+    ))
+  `;
+
+  const dedupeExpr = includeIdentityJoin
+    ? `coalesce('sellable:' || pil.sellable_item_group_id, 'source:' || filtered.source_listing_ref)`
+    : `'source:' || filtered.source_listing_ref`;
+  const identityJoinSql = includeIdentityJoin
+    ? `
+      LEFT JOIN pdp_identity_listing pil
+        ON pil.source_listing_ref = filtered.source_listing_ref
+       AND pil.identity_status = 'approved'
+       AND pil.live_read_enabled = true
+    `
+    : '';
+
+  return {
+    market,
+    params,
+    sql: `
+      WITH internal_source AS (
+        SELECT DISTINCT ON (pc.merchant_id, ${internalListingIdExpr})
+          pc.merchant_id,
+          ${internalListingIdExpr} AS product_id,
+          pc.merchant_id || ':' || ${internalListingIdExpr} AS source_listing_ref,
+          regexp_replace(${internalBrandTextExpr}, '[^a-z0-9]+', '', 'g') AS brand_compact,
+          ${internalCategoryExpr} AS category_text,
+          ${internalSearchTextExpr} AS search_text
+        FROM products_cache pc
+        JOIN merchant_onboarding mo
+          ON mo.merchant_id = pc.merchant_id
+        WHERE (pc.expires_at IS NULL OR pc.expires_at > now())
+          AND ${buildSellableStatusPredicate("pc.product_data->>'status'")}
+          AND COALESCE(lower(pc.product_data->>'orderable'), 'true') <> 'false'
+          AND mo.status NOT IN ('deleted', 'rejected')
+          AND mo.psp_connected = true
+          AND ${internalListingIdExpr} IS NOT NULL
+        ORDER BY
+          pc.merchant_id,
+          ${internalListingIdExpr},
+          pc.cached_at DESC NULLS LAST,
+          pc.id DESC
+      ),
+      external_source AS (
+        SELECT DISTINCT ON (${externalListingIdExpr})
+          '${EXTERNAL_SEED_MERCHANT_ID}'::text AS merchant_id,
+          ${externalListingIdExpr} AS product_id,
+          '${EXTERNAL_SEED_MERCHANT_ID}'::text || ':' || ${externalListingIdExpr} AS source_listing_ref,
+          regexp_replace(${EXTERNAL_SEED_RECALL_SQL_FIELDS.brand}, '[^a-z0-9]+', '', 'g') AS brand_compact,
+          trim(${EXTERNAL_SEED_RECALL_SQL_FIELDS.category}) AS category_text,
+          ${externalSearchTextExpr} AS search_text
+        FROM external_product_seeds eps
+        WHERE eps.status = 'active'
+          AND eps.attached_product_key IS NULL
+          AND eps.market = ${marketBind}
+          AND (eps.tool = '*' OR eps.tool = ${toolBind})
+          AND coalesce(lower(eps.seed_data#>>'{suppression_flags,exclude_from_recall}'), 'false') <> 'true'
+          AND coalesce(lower(eps.seed_data#>>'{derived,recall,suppression_flags,exclude_from_recall}'), 'false') <> 'true'
+          AND ${externalListingIdExpr} IS NOT NULL
+        ORDER BY
+          ${externalListingIdExpr},
+          eps.updated_at DESC NULLS LAST,
+          eps.created_at DESC NULLS LAST,
+          eps.id DESC
+      ),
+      corpus_source AS (
+        SELECT * FROM internal_source
+        UNION ALL
+        SELECT * FROM external_source
+      ),
+      filtered AS (
+        SELECT *
+        FROM corpus_source
+        WHERE ${filteredClauses.join('\n          AND ')}
+      )
+      SELECT COUNT(DISTINCT ${dedupeExpr})::int AS total
+      FROM filtered
+      ${identityJoinSql}
+    `,
+  };
+}
+
+async function countStableBrowseCatalogTotal(request, { queryFn = query, useCache = true } = {}) {
+  if (!request || request.surface !== 'browse_products' || typeof queryFn !== 'function' || !process.env.DATABASE_URL) {
+    return null;
+  }
+
+  const { market } = resolveDiscoveryExternalSeedMarketConfig();
+  const cacheEnabled = useCache !== false && queryFn === query;
+  const cacheKey = buildDiscoveryBrowseCatalogCountCacheKey(request, { market });
+  if (cacheEnabled) {
+    const cached = readBrowseCatalogCountCache(cacheKey);
+    if (cached) return cached;
+  }
+
+  const attempts = [true, false];
+  let lastError = null;
+  for (const includeIdentityJoin of attempts) {
+    const statement = buildStableBrowseCatalogCountQuery(request, { includeIdentityJoin });
+    try {
+      const result = await queryFn(statement.sql, statement.params);
+      const total = Math.max(0, Number(result?.rows?.[0]?.total || 0) || 0);
+      const output = {
+        total,
+        source: includeIdentityJoin ? 'stable_catalog_identity_grouped' : 'stable_catalog_source_listing',
+      };
+      if (cacheEnabled) writeBrowseCatalogCountCache(cacheKey, output);
+      return output;
+    } catch (err) {
+      lastError = err;
+      const failureReason = classifyDiscoveryQueryError(err);
+      if (includeIdentityJoin && failureReason === 'schema_missing') {
+        continue;
+      }
+      break;
+    }
+  }
+
+  logger.warn(
+    {
+      err: lastError?.message || String(lastError),
+      surface: request?.surface,
+      scope: request?.scope || null,
+      query_text: request?.query?.text || '',
+    },
+    'stable browse catalog count failed; falling back to runtime corpus size',
+  );
+  return null;
 }
 
 function resolveBrandDirectCandidateLimit(request, limit) {
@@ -6294,6 +6604,8 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
     let total;
     let eligiblePoolCount = 0;
     let corpusTotalCount = 0;
+    let runtimeCorpusCount = 0;
+    let countSource = null;
     let ranked = [];
     let orderedPool = [];
     let categoryFacets = [];
@@ -6330,8 +6642,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
         },
       );
       selectedEntries = browseSelection.pageItems;
-      total = browseSelection.corpusPool.length;
-      corpusTotalCount = browseSelection.corpusPool.length;
+      runtimeCorpusCount = browseSelection.corpusPool.length;
       eligiblePoolCount = browseSelection.orderedPool.length;
       categoryFacets =
         brandScopeAliases.length > 0
@@ -6341,6 +6652,10 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       orderedPool = browseSelection.orderedPool;
       decisions = browseSelection.decisions;
       filterCounts = buildFilterCounts(decisions);
+      const stableBrowseCatalogCount = await countStableBrowseCatalogTotal(request);
+      total = stableBrowseCatalogCount?.total ?? runtimeCorpusCount;
+      corpusTotalCount = total;
+      countSource = stableBrowseCatalogCount?.source || 'runtime_corpus_fallback';
     }
 
     candidateCounts = buildCandidateCounts({
@@ -6392,6 +6707,8 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       candidate_counts: candidateCounts,
       eligible_pool_count: eligiblePoolCount,
       corpus_total_count: corpusTotalCount || total,
+      ...(request.surface === 'browse_products' ? { runtime_corpus_count: runtimeCorpusCount } : {}),
+      ...(countSource ? { count_source: countSource } : {}),
       selected_source_breakdown: selectedSourceBreakdown,
       request_latency_ms: latencyMs,
       sort_applied: request.sort,
@@ -6570,6 +6887,8 @@ module.exports = {
     normalizeCandidateProduct,
     applyIdentityGraphDiscoveryDedupe,
     resolveDiscoveryCandidateLimit,
+    buildStableBrowseCatalogCountQuery,
+    countStableBrowseCatalogTotal,
     scoreCandidate,
     selectBrowseProducts,
     selectHomeProducts,
@@ -6580,5 +6899,6 @@ module.exports = {
       discoveryDbDependencyProbeCache.pending = null;
     },
     resetBrowsePoolCache: () => browsePoolCache.clear(),
+    resetBrowseCatalogCountCache: () => browseCatalogCountCache.clear(),
   },
 };

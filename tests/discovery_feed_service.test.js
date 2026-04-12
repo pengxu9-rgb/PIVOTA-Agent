@@ -69,6 +69,7 @@ describe('discovery feed service', () => {
     };
     resetDiscoveryMetricsForTest();
     _internals.resetBrowsePoolCache();
+    _internals.resetBrowseCatalogCountCache();
     _internals.resetDiscoveryDependencyProbeCache();
     nock.cleanAll();
   });
@@ -4101,6 +4102,160 @@ describe('discovery feed service', () => {
         }),
       }),
     );
+  });
+
+  test('browse_products uses stable catalog count from db when available and keeps runtime pool in metadata', async () => {
+    jest.resetModules();
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = 'postgres://browse-count-test';
+
+    const dbQueryMock = jest.fn(async (sql) => {
+      const text = String(sql || '');
+      if (text.includes('COUNT(DISTINCT') && text.includes('FROM filtered')) {
+        return { rows: [{ total: 37 }] };
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../src/db', () => ({
+      query: dbQueryMock,
+    }));
+
+    try {
+      const fresh = require('../src/services/discoveryFeed');
+      const response = await fresh.getDiscoveryFeed(
+        {
+          surface: 'browse_products',
+          page: 1,
+          limit: 4,
+          context: {
+            auth_state: 'anonymous',
+            locale: 'en-US',
+            recent_views: [
+              {
+                merchant_id: 'm1',
+                product_id: 'recent_alpha',
+                title: 'Alpha Repair Serum',
+                brand: 'Alpha',
+                category: 'Skincare',
+                product_type: 'Serum',
+                viewed_at: '2026-04-11T10:00:00Z',
+              },
+            ],
+            recent_queries: [],
+          },
+        },
+        {
+          candidateProducts: [
+            makeProduct({
+              merchant_id: 'm1',
+              product_id: 'recent_alpha',
+              title: 'Alpha Repair Serum',
+              brand: 'Alpha',
+              category: 'Skincare',
+              product_type: 'Serum',
+            }),
+            makeProduct({
+              merchant_id: 'm2',
+              product_id: 'alpha_2',
+              title: 'Alpha Barrier Cream',
+              brand: 'Alpha',
+              category: 'Skincare',
+              product_type: 'Cream',
+            }),
+            makeProduct({
+              merchant_id: 'm3',
+              product_id: 'beta_1',
+              title: 'Beta Repair Serum',
+              brand: 'Beta',
+              category: 'Skincare',
+              product_type: 'Serum',
+            }),
+            makeProduct({
+              merchant_id: 'm4',
+              product_id: 'gamma_1',
+              title: 'Gamma Recovery Toner',
+              brand: 'Gamma',
+              category: 'Skincare',
+              product_type: 'Toner',
+            }),
+            makeProduct({
+              merchant_id: 'm5',
+              product_id: 'delta_1',
+              title: 'Delta Gel Cream',
+              brand: 'Delta',
+              category: 'Skincare',
+              product_type: 'Moisturizer',
+            }),
+          ],
+        },
+      );
+
+      expect(response.total).toBe(37);
+      expect(response.metadata).toEqual(
+        expect.objectContaining({
+          corpus_total_count: 37,
+          runtime_corpus_count: 5,
+          eligible_pool_count: 4,
+          count_source: 'stable_catalog_identity_grouped',
+        }),
+      );
+      const countQueries = dbQueryMock.mock.calls
+        .map(([sql]) => String(sql || ''))
+        .filter((text) => text.includes('COUNT(DISTINCT') && text.includes('FROM filtered'));
+      expect(countQueries).toHaveLength(1);
+    } finally {
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+    }
+  });
+
+  test('stable browse catalog count falls back to source listing count when identity graph table is missing', async () => {
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = 'postgres://browse-count-fallback-test';
+    const request = _internals.normalizeDiscoveryRequest({
+      surface: 'browse_products',
+      page: 1,
+      limit: 24,
+      query: {
+        text: 'Great Barrier',
+      },
+      scope: {
+        brand_names: ['KraveBeauty'],
+        categories: ['Serum'],
+      },
+      context: {
+        auth_state: 'anonymous',
+        locale: 'en-US',
+        recent_views: [],
+        recent_queries: [],
+      },
+    });
+
+    const queryFn = jest
+      .fn()
+      .mockRejectedValueOnce(Object.assign(new Error('relation "pdp_identity_listing" does not exist'), { code: '42P01' }))
+      .mockResolvedValueOnce({ rows: [{ total: 29 }] });
+
+    const result = await _internals.countStableBrowseCatalogTotal(request, {
+      queryFn,
+      useCache: false,
+    });
+
+    try {
+      expect(result).toEqual({
+        total: 29,
+        source: 'stable_catalog_source_listing',
+      });
+      expect(queryFn).toHaveBeenCalledTimes(2);
+      expect(String(queryFn.mock.calls[0][0])).toContain('LEFT JOIN pdp_identity_listing pil');
+      expect(String(queryFn.mock.calls[1][0])).not.toContain('LEFT JOIN pdp_identity_listing pil');
+      expect(String(queryFn.mock.calls[1][0])).toContain('FROM external_product_seeds eps');
+      expect(String(queryFn.mock.calls[1][0])).toContain('FROM products_cache pc');
+    } finally {
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+    }
   });
 
   test('cold start browse does not backfill deferred domains onto later pages when non-deferred results exist', async () => {
