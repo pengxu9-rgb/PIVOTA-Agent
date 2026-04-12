@@ -45,6 +45,64 @@ function makeProduct({
   };
 }
 
+function makeExternalSeedRow({
+  id,
+  external_product_id,
+  title,
+  brand = 'Pixi Beauty',
+  category = 'Toner',
+  product_type = 'Toner',
+  description = '',
+  canonical_url,
+  destination_url,
+} = {}) {
+  const resolvedExternalProductId = external_product_id || `ext_${String(id || title || 'seed').replace(/[^a-z0-9]+/gi, '_').toLowerCase()}`;
+  const resolvedCanonicalUrl =
+    canonical_url || `https://example.com/products/${resolvedExternalProductId}`;
+  const resolvedDestinationUrl = destination_url || resolvedCanonicalUrl;
+  const imageUrl = `https://cdn.example.com/${resolvedExternalProductId}.jpg`;
+  return {
+    id: id || `eps_${resolvedExternalProductId}`,
+    external_product_id: resolvedExternalProductId,
+    destination_url: resolvedDestinationUrl,
+    canonical_url: resolvedCanonicalUrl,
+    domain: 'example.com',
+    title,
+    image_url: imageUrl,
+    price_amount: 24,
+    price_currency: 'USD',
+    availability: 'in_stock',
+    updated_at: '2026-04-12T10:00:00Z',
+    created_at: '2026-04-12T09:00:00Z',
+    seed_data: {
+      title,
+      brand,
+      category,
+      product_type,
+      description,
+      snapshot: {
+        title,
+        brand,
+        category,
+        product_type,
+        description,
+        canonical_url: resolvedCanonicalUrl,
+        destination_url: resolvedDestinationUrl,
+        image_url: imageUrl,
+      },
+      derived: {
+        recall: {
+          retrieval_title: title,
+          retrieval_summary: description,
+          brand,
+          category,
+          vertical: 'skincare',
+        },
+      },
+    },
+  };
+}
+
 describe('discovery feed service', () => {
   let previousEnv;
 
@@ -164,6 +222,91 @@ describe('discovery feed service', () => {
       label: 'browse_pool',
       query: 'Naturium The Brightener Vitamin C Brightening Body Wash',
     });
+  });
+
+  test('explicit browse lookup short-circuits external seed recall with exact-title fastpath', async () => {
+    jest.resetModules();
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = 'postgres://discovery-exact-title-fastpath';
+    const dbQueryMock = jest.fn(async () => ({
+      rows: [
+        makeExternalSeedRow({
+          id: 'eps_pixi_original',
+          external_product_id: 'ext_pixi_original',
+          title: 'Vitamin-C Tonic Original Size',
+          description: 'Even tone + daily glow',
+        }),
+        makeExternalSeedRow({
+          id: 'eps_pixi_sample',
+          external_product_id: 'ext_pixi_sample',
+          title: 'Vitamin-C Tonic Sample Size',
+          description: 'Even tone + daily glow',
+        }),
+        makeExternalSeedRow({
+          id: 'eps_pixi_travel',
+          external_product_id: 'ext_pixi_travel',
+          title: 'Vitamin-C Tonic Travel Size',
+          description: 'Even tone + daily glow',
+        }),
+        makeExternalSeedRow({
+          id: 'eps_pixi_bundle',
+          external_product_id: 'ext_pixi_bundle',
+          title: 'Best of Tonics Vault',
+          description: 'Bundle that should not be treated as the exact tonic lookup hit.',
+        }),
+      ],
+    }));
+    jest.doMock('../src/db', () => ({
+      query: dbQueryMock,
+    }));
+
+    try {
+      const {
+        buildDiscoveryProfile: freshBuildDiscoveryProfile,
+        _internals: freshInternals,
+      } = require('../src/services/discoveryFeed');
+      const request = freshInternals.normalizeDiscoveryRequest({
+        surface: 'browse_products',
+        query: {
+          text: 'PIXI BEAUTY Vitamin-C Tonic',
+        },
+        context: {
+          auth_state: 'anonymous',
+          recent_views: [],
+          recent_queries: [],
+          locale: 'en-US',
+        },
+      });
+
+      const result = await freshInternals.fetchExternalSeedCandidates({
+        request,
+        profile: freshBuildDiscoveryProfile(request.context),
+        queries: [request.query.text],
+        limit: 20,
+      });
+
+      expect(result.products.map((product) => product.title)).toEqual([
+        'Vitamin-C Tonic Original Size',
+        'Vitamin-C Tonic Sample Size',
+        'Vitamin-C Tonic Travel Size',
+      ]);
+      expect(result.recallSummary).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            provider: 'external_seeds',
+            label: 'external_seed_exact_title_pool',
+            status: 200,
+            returned: 3,
+          }),
+        ]),
+      );
+      expect(dbQueryMock).toHaveBeenCalledTimes(1);
+      expect(String(dbQueryMock.mock.calls[0]?.[0] || '')).not.toContain('match_score');
+    } finally {
+      jest.dontMock('../src/db');
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+    }
   });
 
   test('buildDiscoveryProfile treats recent queries as user behavior signals', () => {
