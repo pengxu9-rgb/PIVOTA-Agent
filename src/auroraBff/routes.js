@@ -64936,6 +64936,46 @@ function normalizeOpenWorldAlternativeRow(candidate, {
   };
 }
 
+const RECO_ALTERNATIVE_GROUNDING_GENERIC_TOKEN_SET = new Set([
+  'spf',
+  'sunscreen',
+  'sun',
+  'screen',
+  'serum',
+  'face',
+  'daily',
+  'fluid',
+  'lotion',
+  'cream',
+  'gel',
+  'oil',
+  'free',
+  'invisible',
+  'ultra',
+  'light',
+  'broad',
+  'spectrum',
+  'protection',
+  'protect',
+  'filters',
+  'uv',
+]);
+
+function extractRecoAlternativeSpfValue(text) {
+  const match = String(text || '').match(/\bspf\s*(\d{1,3})\+?\b/i);
+  const value = Number(match?.[1] || 0);
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function collectRecoAlternativeMeaningfulTokens(tokens) {
+  return uniqCaseInsensitiveStrings(
+    (Array.isArray(tokens) ? tokens : [])
+      .map((token) => String(token || '').trim().toLowerCase())
+      .filter((token) => token && token.length >= 4 && !RECO_ALTERNATIVE_GROUNDING_GENERIC_TOKEN_SET.has(token)),
+    12,
+  );
+}
+
 function scoreRecoAlternativeCatalogGroundingMatch(openWorldRow, catalogRow) {
   const openProduct = getRecoAlternativeProductObject(openWorldRow);
   const candidate = normalizeRecoCatalogProduct(catalogRow);
@@ -64952,13 +64992,30 @@ function scoreRecoAlternativeCatalogGroundingMatch(openWorldRow, catalogRow) {
   const openTokens = tokenizeProductTextForSimilarity(openName);
   const candidateTokens = tokenizeProductTextForSimilarity(candidateName);
   const tokenScore = computeTokenJaccardScore(openTokens, candidateTokens) || 0;
+  const openSpf = extractRecoAlternativeSpfValue(openName);
+  const candidateSpf = extractRecoAlternativeSpfValue(candidateName);
+  const sharedMeaningfulTokens = collectRecoAlternativeMeaningfulTokens(openTokens)
+    .filter((token) => collectRecoAlternativeMeaningfulTokens(candidateTokens).includes(token));
   const exactName = openName === candidateName;
   const containsName = openName.length >= 8 && candidateName.length >= 8 && (openName.includes(candidateName) || candidateName.includes(openName));
-  const ok = exactName || (containsName && tokenScore >= 0.72) || tokenScore >= 0.84;
+  const relaxedSpfVariantMatch =
+    openSpf > 0 &&
+    candidateSpf > 0 &&
+    openSpf === candidateSpf &&
+    tokenScore >= 0.46 &&
+    (sharedMeaningfulTokens.length >= 2 || sharedMeaningfulTokens.some((token) => token.length >= 8));
+  const ok = exactName || (containsName && tokenScore >= 0.72) || tokenScore >= 0.84 || relaxedSpfVariantMatch;
   return {
     ok,
-    score: exactName ? 1 : containsName ? Math.max(0.86, tokenScore) : tokenScore,
+    score: exactName
+      ? 1
+      : containsName
+        ? Math.max(0.86, tokenScore)
+        : relaxedSpfVariantMatch
+          ? Math.max(0.76, tokenScore)
+          : tokenScore,
     candidate,
+    matchMode: relaxedSpfVariantMatch ? 'catalog_fuzzy_search' : 'catalog_exact_search',
   };
 }
 
@@ -65201,6 +65258,7 @@ function mapCatalogGroundedOpenWorldAlternative(
   {
     matchScore = 0,
     query = '',
+    groundingMode = 'catalog_exact_search',
     queryVariant = '',
     queryVariants = [],
     authorityPresence = '',
@@ -65250,7 +65308,7 @@ function mapCatalogGroundedOpenWorldAlternative(
       ...(openWorldRow?.metadata && typeof openWorldRow.metadata === 'object' && !Array.isArray(openWorldRow.metadata) ? openWorldRow.metadata : {}),
       compare_stage: 'open_world_grounded_catalog',
       catalog_grounding_query: String(query || '').trim() || null,
-      catalog_grounding_mode: 'catalog_exact_search',
+      catalog_grounding_mode: groundingMode,
       catalog_grounding_score: Number(matchScore.toFixed(3)),
       ...(queryVariant ? { catalog_grounding_query_variant: queryVariant } : {}),
       ...(Array.isArray(queryVariants) && queryVariants.length
@@ -65554,6 +65612,7 @@ async function groundOpenWorldAlternativesToCatalog(rows, { logger, targetSignal
         row: mapCatalogGroundedOpenWorldAlternative(row, best.candidate, {
           matchScore: best.score,
           query: best.query || fallbackQuery,
+          groundingMode: best.matchMode || 'catalog_exact_search',
           queryVariant: best.queryVariant,
           queryVariants,
           authorityPresence: best.authorityPresence,

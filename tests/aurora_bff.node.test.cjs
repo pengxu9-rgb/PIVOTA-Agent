@@ -6161,6 +6161,143 @@ test('fetchRecoAlternativesForProduct: anchor precheck hydrates resolved sunscre
   );
 });
 
+test('fetchRecoAlternativesForProduct: open_world_only grounds same-brand SPF title variants from authority hits', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      GEMINI_API_KEY: 'test_gemini_key',
+      AURORA_DIAG_FORCE_GEMINI: 'true',
+      AURORA_DIAG_FORCE_GEMINI_MODEL: 'gemini-3-flash-preview',
+      AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL: 'gemini-3-flash-preview',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED: 'false',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      axios.get = async (url, config = {}) => {
+        if (!isProductsSearchUrl(url)) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        const queryText = String(
+          config?.params?.q ||
+          config?.params?.query ||
+          config?.params?.text ||
+          '',
+        ).trim();
+        if (/daily dose hydra ceramide/i.test(queryText)) {
+          return {
+            status: 200,
+            data: {
+              products: [
+                {
+                  product_id: 'ext_supergoop_daily_dose',
+                  merchant_id: 'external_seed',
+                  brand: 'Supergoop!',
+                  name: 'Daily Dose Hydra-Ceramide Boost + SPF 40 Sunscreen Oil-Free Serum',
+                  display_name: 'Daily Dose Hydra-Ceramide Boost + SPF 40 Sunscreen Oil-Free Serum',
+                  product_type: 'Sunscreen',
+                  category: 'Sunscreen',
+                  retrieval_source: 'external_seed',
+                  canonical_product_ref: {
+                    product_id: 'ext_supergoop_daily_dose',
+                    merchant_id: 'external_seed',
+                  },
+                },
+              ],
+            },
+          };
+        }
+        return { status: 200, data: { products: [] } };
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { __internal } = routeModule;
+        __internal.__setCallGeminiJsonObjectForTest(async () => ({
+          ok: true,
+          json: {
+            alternatives: [
+              {
+                brand: 'Supergoop!',
+                name: 'Daily Dose Hydra-Ceramide Boost SPF 40',
+                product_type: 'sunscreen serum',
+                similarity_score: 77,
+                reasons: ['Keeps the same serum-weight SPF step with hydration support.'],
+                tradeoff_notes: ['Title variant is shorter than the catalog row.'],
+              },
+            ],
+          },
+        }));
+        __internal.__setResolveProductRefForTest(async () => ({
+          resolved: false,
+          product_ref: null,
+          reason: 'no_candidates',
+          metadata: {
+            sources: [{ source: 'agent_search_external_seed', ok: false, reason: 'no_results' }],
+          },
+        }));
+
+        const out = await __internal.fetchRecoAlternativesForProduct({
+          ctx: { lang: 'EN', request_id: 'req_spf_variant_grounding', trace_id: 'trace_spf_variant_grounding' },
+          profileSummary: null,
+          recentLogs: [],
+          productInput: 'The Ordinary UV Filters SPF 45 Serum',
+          productObj: {
+            product_id: 'ext_anchor_sunscreen',
+            merchant_id: 'external_seed',
+            brand: 'the ordinary',
+            name: 'UV Filters SPF 45 Serum',
+            display_name: 'UV Filters SPF 45 Serum',
+            product_type: 'sunscreen',
+            category: 'sunscreen',
+            key_features: ['UV filters', 'Glycerin', 'Lightweight serum'],
+            short_description: 'It keeps your daytime protection step easier to wear every morning.',
+            description: 'A lightweight SPF 45 sunscreen serum that protects and hydrates, for daily use with no white cast.',
+            canonical_product_ref: {
+              product_id: 'ext_anchor_sunscreen',
+              merchant_id: 'external_seed',
+            },
+          },
+          anchorId: 'ext_anchor_sunscreen',
+          maxTotal: 3,
+          candidatePool: [],
+          debug: false,
+          logger: null,
+          options: {
+            recommendation_mode: 'open_world_only',
+            disable_fallback: true,
+            disable_synthetic_local_fallback: true,
+            ignore_selector_candidates: true,
+            skip_anchor_precheck: true,
+          },
+        });
+
+        assert.equal(out?.ok, true);
+        assert.equal(out?.failure_class, null);
+        assert.equal(out?.llm_trace?.catalog_grounded_count, 1);
+        assert.equal(Array.isArray(out?.alternatives), true);
+        assert.equal(out.alternatives.length, 1);
+        assert.equal(out.alternatives[0]?.grounding_status, 'catalog_verified');
+        assert.equal(out.alternatives[0]?.product?.product_id, 'ext_supergoop_daily_dose');
+        assert.equal(out.alternatives[0]?.metadata?.catalog_grounding_mode, 'catalog_fuzzy_search');
+        assert.equal(out.alternatives[0]?.metadata?.authority_presence_class, 'external_seed_hit');
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        loaded?.__internal?.__resetResolveProductRefForTest?.();
+        axios.get = originalGet;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
 test('/v1/reco/alternatives: explicit synthetic fallback opt-in still returns placeholder alternatives without calling provider', async () => {
   return withEnv(
     {
