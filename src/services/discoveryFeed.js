@@ -48,6 +48,9 @@ const {
   normalizeCardIntroCandidate,
   resolveDisplayableCompactHighlight,
 } = require('./pivotaShoppingCard');
+const {
+  _internals: productGroundingResolverInternals = {},
+} = require('./productGroundingResolver');
 let productIntelKbStore = null;
 
 const SCORING_VERSION = 'discovery_v2';
@@ -108,6 +111,69 @@ const DEFAULT_COLD_START_QUERY_BASKET = [
   'barrier moisturizer',
   'gentle cleanser sunscreen',
 ];
+const normalizeResolverLookupText =
+  typeof productGroundingResolverInternals.normalizeTextForResolver === 'function'
+    ? productGroundingResolverInternals.normalizeTextForResolver
+    : (value) => String(value || '').trim().toLowerCase();
+const tokenizeResolverLookupQuery =
+  typeof productGroundingResolverInternals.tokenizeNormalizedResolverQuery === 'function'
+    ? productGroundingResolverInternals.tokenizeNormalizedResolverQuery
+    : (value) =>
+        String(value || '')
+          .trim()
+          .toLowerCase()
+          .split(/\s+/)
+          .filter(Boolean);
+const DISCOVERY_EXACT_TITLE_FORM_FACTOR_TOKENS = new Set([
+  'serum',
+  'essence',
+  'ampoule',
+  'toner',
+  'tonic',
+  'lotion',
+  'cleanser',
+  'cleanse',
+  'wash',
+  'cream',
+  'moisturizer',
+  'moisturiser',
+  'mask',
+  'balm',
+  'oil',
+  'sunscreen',
+  'sunblock',
+  'gel',
+  'mist',
+  'treatment',
+]);
+const DISCOVERY_EXACT_TITLE_GENERIC_TOKENS = new Set([
+  'face',
+  'facial',
+  'skin',
+  'skincare',
+  'care',
+  'body',
+  'eye',
+  'hand',
+  'travel',
+  'size',
+  'jumbo',
+  'mini',
+  'daily',
+  'gentle',
+  'repair',
+  'hydrating',
+  'hydration',
+  'barrier',
+  'foam',
+  'foaming',
+  'with',
+  'and',
+  'plus',
+  'default',
+  'title',
+  ...DISCOVERY_EXACT_TITLE_FORM_FACTOR_TOKENS,
+]);
 const BEAUTY_INTEREST_SKINCARE_HINT_TOKENS = new Set([
   'skincare',
   'skin',
@@ -2943,6 +3009,15 @@ async function fetchExternalSeedCandidates({
     };
   }
 
+  const exactTitleFastpathResult = await fetchExternalSeedExactTitleCandidates({
+    request,
+    profile,
+    limit: safeLimit,
+  });
+  if (exactTitleFastpathResult?.products?.length) {
+    return exactTitleFastpathResult;
+  }
+
   const providerDatabaseState = await getDiscoveryProviderDatabaseState(provider);
   if (providerDatabaseState && providerDatabaseState.ready !== true) {
     const failureReason = providerDatabaseState.code || 'schema_missing';
@@ -3254,6 +3329,262 @@ function buildDiscoverySeedStageRowKey(row) {
 function buildDiscoverySeedStageSqlId(row) {
   const id = String(row?.id ?? '').trim();
   return /^\d+$/.test(id) ? id : null;
+}
+
+function normalizeDiscoveryExactTitleSqlText(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+function buildDiscoveryExactTitleLookupVariants(queryText) {
+  const rawQuery = String(queryText || '').trim();
+  const rawNormalizedQuery = normalizeDiscoveryExactTitleSqlText(queryText);
+  const normalizedQuery = normalizeResolverLookupText(queryText);
+  const brandDetection = detectBrandEntities(rawQuery, { candidateProducts: [] });
+  const brandVariants = buildBrandQueryVariants(rawQuery, brandDetection?.brands || []);
+  const rawVariants = [];
+  const normalizedVariants = [];
+  const seenRaw = new Set();
+  const seenNormalized = new Set();
+
+  const pushVariant = (rawValue, normalizedValue) => {
+    const rawNormalizedValue = normalizeDiscoveryExactTitleSqlText(rawValue);
+    const resolverNormalizedValue = normalizeResolverLookupText(normalizedValue || rawValue);
+    if (rawNormalizedValue && !seenRaw.has(rawNormalizedValue)) {
+      seenRaw.add(rawNormalizedValue);
+      rawVariants.push(rawNormalizedValue);
+    }
+    if (resolverNormalizedValue && !seenNormalized.has(resolverNormalizedValue)) {
+      seenNormalized.add(resolverNormalizedValue);
+      normalizedVariants.push(resolverNormalizedValue);
+    }
+  };
+
+  pushVariant(rawQuery, queryText);
+
+  for (const brandVariant of brandVariants) {
+    const rawBrandVariant = normalizeDiscoveryExactTitleSqlText(brandVariant);
+    const normalizedBrandVariant = normalizeResolverLookupText(brandVariant);
+
+    if (rawNormalizedQuery && rawBrandVariant && rawNormalizedQuery.startsWith(`${rawBrandVariant} `)) {
+      pushVariant(rawNormalizedQuery.slice(rawBrandVariant.length).trim());
+    }
+    if (
+      normalizedQuery &&
+      normalizedBrandVariant &&
+      normalizedQuery.startsWith(`${normalizedBrandVariant} `)
+    ) {
+      pushVariant(
+        normalizedQuery.slice(normalizedBrandVariant.length).trim(),
+        normalizedQuery.slice(normalizedBrandVariant.length).trim(),
+      );
+    }
+  }
+
+  return {
+    rawVariants,
+    normalizedVariants,
+    rawPrefixPatterns: rawVariants.map((value) => `${value} %`),
+  };
+}
+
+function shouldUseDiscoveryExternalSeedExactTitleFastpath(request, profile) {
+  void profile;
+  if (request?.surface !== 'browse_products') return false;
+  const rawQuery = String(request?.query?.text || '').trim();
+  if (!rawQuery || rawQuery.length > 96) return false;
+  if (/[?？]/.test(rawQuery)) return false;
+
+  const loweredQuery = rawQuery.toLowerCase();
+  if (
+    /推荐|best|for\s|适合|怎么|如何|教程|guide|tips|budget|under\s|above\s|at least|gift|礼物|清单|what to buy|need to buy|checklist/i.test(
+      loweredQuery,
+    )
+  ) {
+    return false;
+  }
+
+  const normalizedQuery = normalizeResolverLookupText(rawQuery);
+  const queryTokens = tokenizeResolverLookupQuery(normalizedQuery);
+  if (queryTokens.length < 3 || queryTokens.length > 8) return false;
+
+  const hasFormFactor = queryTokens.some((token) =>
+    DISCOVERY_EXACT_TITLE_FORM_FACTOR_TOKENS.has(String(token || '').toLowerCase()),
+  );
+  if (!hasFormFactor) return false;
+
+  const informativeTokens = queryTokens.filter((token) => {
+    const normalizedToken = String(token || '').trim().toLowerCase();
+    return (
+      normalizedToken &&
+      !DISCOVERY_EXACT_TITLE_GENERIC_TOKENS.has(normalizedToken) &&
+      normalizedToken.length >= 3
+    );
+  });
+  if (!informativeTokens.length) return false;
+
+  const hasStrongTitleSignal =
+    /[-/+]/.test(rawQuery) ||
+    /\d/.test(rawQuery) ||
+    ((rawQuery.match(/\b[A-Z][A-Za-z0-9'’+-]*\b/g) || []).length >= 2);
+  return hasStrongTitleSignal ? informativeTokens.length >= 1 : informativeTokens.length >= 2;
+}
+
+function getDiscoveryExternalSeedExactTitleMatchRank(product, normalizedVariants = []) {
+  const variants = (Array.isArray(normalizedVariants) ? normalizedVariants : []).filter(Boolean);
+  if (!variants.length || !product || typeof product !== 'object') return Number.POSITIVE_INFINITY;
+
+  const candidateTitles = [
+    product?.title,
+    product?.name,
+    product?.title && product?.brand ? `${product.brand} ${product.title}` : '',
+    product?.name && product?.brand ? `${product.brand} ${product.name}` : '',
+  ]
+    .map((value) => normalizeResolverLookupText(value))
+    .filter(Boolean);
+  if (!candidateTitles.length) return Number.POSITIVE_INFINITY;
+
+  let bestRank = Number.POSITIVE_INFINITY;
+  for (const candidateTitle of candidateTitles) {
+    for (const variant of variants) {
+      if (candidateTitle === variant) bestRank = Math.min(bestRank, 0);
+      else if (candidateTitle.startsWith(`${variant} `)) bestRank = Math.min(bestRank, 1);
+      else if (candidateTitle.includes(variant)) bestRank = Math.min(bestRank, 2);
+    }
+  }
+  return bestRank;
+}
+
+async function fetchExternalSeedExactTitleCandidates({
+  request,
+  profile,
+  limit = MAX_CANDIDATE_FETCH,
+} = {}) {
+  void profile;
+  const provider = 'external_seeds';
+  const stepStartedAt = Date.now();
+  const safeLimit = clampInt(limit, Math.max(limit, 24), 12, MAX_CANDIDATE_FETCH);
+  const queryText = String(request?.query?.text || '').trim();
+  const marketConfig = resolveDiscoveryExternalSeedMarketConfig();
+  const market = marketConfig.market;
+  const tool = 'creator_agents';
+
+  if (!process.env.DATABASE_URL) {
+    return null;
+  }
+  if (!shouldUseDiscoveryExternalSeedExactTitleFastpath(request, profile)) {
+    return null;
+  }
+
+  const lookupVariants = buildDiscoveryExactTitleLookupVariants(queryText);
+  if (!lookupVariants.rawVariants.length || !lookupVariants.normalizedVariants.length) {
+    return null;
+  }
+
+  const titleExpr = "lower(regexp_replace(coalesce(title, ''), E'\\\\s+', ' ', 'g'))";
+  const snapshotTitleExpr =
+    "lower(regexp_replace(coalesce(seed_data->'snapshot'->>'title', ''), E'\\\\s+', ' ', 'g'))";
+  const retrievalTitleExpr =
+    "lower(regexp_replace(coalesce(seed_data->'derived'->'recall'->>'retrieval_title', ''), E'\\\\s+', ' ', 'g'))";
+
+  try {
+    const res = await query(
+      `
+        SELECT
+          id,
+          external_product_id,
+          destination_url,
+          canonical_url,
+          domain,
+          title,
+          image_url,
+          price_amount,
+          price_currency,
+          availability,
+          seed_data,
+          updated_at,
+          created_at,
+          CASE
+            WHEN ${titleExpr} = ANY($3::text[])
+              OR ${snapshotTitleExpr} = ANY($3::text[])
+              OR ${retrievalTitleExpr} = ANY($3::text[])
+            THEN 0
+            WHEN ${titleExpr} LIKE ANY($4::text[])
+              OR ${snapshotTitleExpr} LIKE ANY($4::text[])
+              OR ${retrievalTitleExpr} LIKE ANY($4::text[])
+            THEN 1
+            ELSE 2
+          END AS exact_match_rank
+        FROM external_product_seeds
+        WHERE status = 'active'
+          AND market = $1
+          AND (tool = '*' OR tool = $2)
+          AND (
+            ${titleExpr} = ANY($3::text[])
+            OR ${snapshotTitleExpr} = ANY($3::text[])
+            OR ${retrievalTitleExpr} = ANY($3::text[])
+            OR ${titleExpr} LIKE ANY($4::text[])
+            OR ${snapshotTitleExpr} LIKE ANY($4::text[])
+            OR ${retrievalTitleExpr} LIKE ANY($4::text[])
+          )
+        ORDER BY exact_match_rank ASC, updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
+        LIMIT $5
+      `,
+      [market, tool, lookupVariants.rawVariants, lookupVariants.rawPrefixPatterns, safeLimit],
+    );
+
+    const products = annotateProviderProducts(
+      provider,
+      (res.rows || [])
+        .map((row) => buildExternalSeedProduct(row, { matchSource: 'exact_title' }))
+        .filter(Boolean),
+    )
+      .map((product) => ({
+        product,
+        matchRank: getDiscoveryExternalSeedExactTitleMatchRank(
+          product,
+          lookupVariants.normalizedVariants,
+        ),
+      }))
+      .filter((entry) => Number.isFinite(entry.matchRank))
+      .sort((a, b) => {
+        if (a.matchRank !== b.matchRank) return a.matchRank - b.matchRank;
+        const aTitle = String(a.product?.title || '').trim();
+        const bTitle = String(b.product?.title || '').trim();
+        return aTitle.localeCompare(bTitle);
+      })
+      .map((entry) => entry.product);
+
+    if (products.length <= 0) return null;
+
+    recordDiscoveryRecallStep({
+      surface: request?.surface,
+      step: 'external_seed_exact_title_pool',
+      status: 'success',
+      latencyMs: Date.now() - stepStartedAt,
+      cacheHit: false,
+    });
+    return {
+      products,
+      recallSummary: [
+        buildDiscoveryProviderStepSummary({
+          provider,
+          label: 'external_seed_exact_title_pool',
+          query: lookupVariants.rawVariants.join(' | '),
+          limit: safeLimit,
+          returned: products.length,
+          status: 200,
+          latencyMs: Date.now() - stepStartedAt,
+          market,
+          marketSource: marketConfig.source,
+        }),
+      ],
+    };
+  } catch (err) {
+    return null;
+  }
 }
 
 async function fetchBeautyInterestExternalSeedFastpathCandidates({
@@ -6531,7 +6862,10 @@ module.exports = {
     buildBrandScopeAliases,
     buildBeautyPersonalizedQueries,
     computeDiscoveryStepTimeoutMs,
+    fetchExternalSeedCandidates,
+    fetchExternalSeedExactTitleCandidates,
     fetchBeautyInterestExternalSeedFastpathCandidates,
+    buildDiscoveryExactTitleLookupVariants,
     buildDiscoveryContextCacheKey,
     buildDiscoveryDatabaseSearchTerms,
     buildDiscoveryInterestQuery,
@@ -6551,6 +6885,7 @@ module.exports = {
     hydrateDiscoveryCandidateProductIntel,
     matchesQueryTextCandidate,
     matchesBrandScopeCandidate,
+    shouldUseDiscoveryExternalSeedExactTitleFastpath,
     normalizeDiscoveryRequest,
     normalizeCandidateProduct,
     applyIdentityGraphDiscoveryDedupe,
