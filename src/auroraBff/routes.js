@@ -51301,7 +51301,182 @@ function buildRecoAssistantPromptPriceDiagnostics(items = []) {
   };
 }
 
-function buildRecoAssistantRewritePrompt({ payload, language, profile, userRequestText } = {}) {
+function buildRecoAssistantReasonPoints(detail, { max = 4 } = {}) {
+  const item = isPlainObject(detail) ? detail : {};
+  return uniqCaseInsensitiveStrings(
+    collectRecoPromptTextList(
+      [
+        ...(Array.isArray(item.evidence_points) ? item.evidence_points : []),
+        ...(Array.isArray(item.compare_highlights) ? item.compare_highlights : []),
+        ...(Array.isArray(item.key_features) ? item.key_features : []),
+        pickFirstTrimmed(item.best_for),
+        pickFirstTrimmed(item.why_this_one),
+        pickFirstTrimmed(item.description_snippet),
+        pickFirstTrimmed(item.short_description),
+      ],
+      { max: Math.max(2, max), maxLen: 120 },
+    ),
+    Math.max(2, max),
+  );
+}
+
+function inferRecoAssistantEvidenceDimensions(detail = {}) {
+  const item = isPlainObject(detail) ? detail : {};
+  const detailText = [
+    ...(Array.isArray(item.key_features) ? item.key_features : []),
+    ...(Array.isArray(item.compare_highlights) ? item.compare_highlights : []),
+    ...(Array.isArray(item.evidence_points) ? item.evidence_points : []),
+    pickFirstTrimmed(item.best_for),
+    pickFirstTrimmed(item.why_this_one),
+    pickFirstTrimmed(item.description_snippet),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  const dimensions = [];
+  if (pickFirstTrimmed(item.matched_role_label, item.preferred_step, item.routine_slot)) {
+    dimensions.push('role_match');
+  }
+  if (/\b(niacinamide|zinc|salicylic|vitamin c|retinol|ceramide|glycerin|hyaluronic|spf|uv)\b/.test(detailText)) {
+    dimensions.push('formula_or_ingredient');
+  }
+  if (/\b(lightweight|gel|cream|serum|fluid|water|matte|dewy|white cast|breathable|non-greasy)\b/.test(detailText)) {
+    dimensions.push('texture_or_finish');
+  }
+  if (pickFirstTrimmed(item.best_for) || /\b(oil|shine|greasy|hydration|uv|sunscreen|daily use|breakout|barrier)\b/.test(detailText)) {
+    dimensions.push('use_case_fit');
+  }
+  if (pickFirstTrimmed(item.price_label) || item.price) {
+    dimensions.push('price_value');
+  }
+  if (item.reviewed_insight_available === true) {
+    dimensions.push('reviewed_insight');
+  }
+  return uniqCaseInsensitiveStrings(dimensions, 6);
+}
+
+function buildRecoAssistantPriceNote(detail = {}, {
+  selectedProductRoleMix = 'single_product',
+} = {}) {
+  const item = isPlainObject(detail) ? detail : {};
+  const priceLabel = pickFirstTrimmed(item.price_label);
+  const pricePosition = pickFirstTrimmed(item.price_position);
+  if (!priceLabel) return null;
+  if (selectedProductRoleMix === 'routine_mix' && item.role_scope === 'primary') {
+    if (pricePosition === 'lowest' || pricePosition === 'lower') return `${priceLabel} and the lowest-priced lead step`;
+    return `${priceLabel} for the lead step`;
+  }
+  if (selectedProductRoleMix === 'same_role_comparison') {
+    if (pricePosition === 'lowest' || pricePosition === 'lower') return `${priceLabel} and the lower-priced option`;
+    if (pricePosition === 'highest' || pricePosition === 'higher') return `${priceLabel} and the higher-priced option`;
+    return priceLabel;
+  }
+  return priceLabel;
+}
+
+function buildRecoAssistantTradeoffNote(detail = {}, {
+  selectedProductRoleMix = 'single_product',
+} = {}) {
+  const item = isPlainObject(detail) ? detail : {};
+  if (pickFirstTrimmed(item.tradeoff_hint)) return pickFirstTrimmed(item.tradeoff_hint);
+  if (selectedProductRoleMix !== 'same_role_comparison') return null;
+  const priceLabel = pickFirstTrimmed(item.price_label);
+  const pricePosition = pickFirstTrimmed(item.price_position);
+  if ((pricePosition === 'lowest' || pricePosition === 'lower') && priceLabel) {
+    return `${priceLabel} and positioned as the lower-cost same-slot option`;
+  }
+  if ((pricePosition === 'highest' || pricePosition === 'higher') && priceLabel) {
+    return `${priceLabel} and positioned as the pricier same-slot option`;
+  }
+  return null;
+}
+
+function buildRecoAssistantWritePlan({
+  selectedProductDetails = [],
+  selectedProductRoleMix = 'single_product',
+  requestMode = 'generic',
+  targetLabel = null,
+} = {}) {
+  const products = Array.isArray(selectedProductDetails) ? selectedProductDetails : [];
+  if (!products.length) return null;
+  const lead = products[0] || null;
+  const leadReasonPoints = buildRecoAssistantReasonPoints(lead, { max: 4 });
+  const supportSteps = products
+    .filter((item) => item && item !== lead)
+    .map((item) => ({
+      name: pickFirstTrimmed(item.name),
+      matched_role_label: pickFirstTrimmed(item.matched_role_label),
+      preferred_step: pickFirstTrimmed(item.preferred_step),
+      role_scope: pickFirstTrimmed(item.role_scope),
+      fit_assessment: pickFirstTrimmed(item.fit_assessment),
+      price_note: buildRecoAssistantPriceNote(item, { selectedProductRoleMix }),
+      reason_points: buildRecoAssistantReasonPoints(item, { max: 3 }),
+      evidence_dimensions: inferRecoAssistantEvidenceDimensions(item),
+    }));
+  const sameRoleOptions = products
+    .filter((item) => item && item !== lead && pickFirstTrimmed(item.matched_role_id) === pickFirstTrimmed(lead?.matched_role_id))
+    .map((item) => ({
+      name: pickFirstTrimmed(item.name),
+      price_note: buildRecoAssistantPriceNote(item, { selectedProductRoleMix }),
+      tradeoff_note: buildRecoAssistantTradeoffNote(item, { selectedProductRoleMix }),
+      reason_points: buildRecoAssistantReasonPoints(item, { max: 2 }),
+      fit_assessment: pickFirstTrimmed(item.fit_assessment),
+    }));
+  return {
+    request_mode: requestMode,
+    selected_product_role_mix: selectedProductRoleMix,
+    target_label: pickFirstTrimmed(targetLabel),
+    lead_product: {
+      name: pickFirstTrimmed(lead?.name),
+      matched_role_label: pickFirstTrimmed(lead?.matched_role_label),
+      preferred_step: pickFirstTrimmed(lead?.preferred_step),
+      role_scope: pickFirstTrimmed(lead?.role_scope),
+      fit_assessment: pickFirstTrimmed(lead?.fit_assessment),
+      price_note: buildRecoAssistantPriceNote(lead, { selectedProductRoleMix }),
+      evidence_dimensions: inferRecoAssistantEvidenceDimensions(lead),
+      must_use_reason_points: leadReasonPoints,
+    },
+    support_steps: supportSteps,
+    same_role_options: sameRoleOptions,
+    writing_requirements: {
+      require_non_price_reason_for_lead: true,
+      require_support_step_reasoning: selectedProductRoleMix === 'routine_mix' && supportSteps.length > 0,
+      avoid_generic_closing: true,
+    },
+  };
+}
+
+function describeRecoAssistantRewriteFailureReason(reason) {
+  const normalized = String(reason || '').trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized === 'rewrite_buy_lead_not_direct') {
+    return 'Open with a direct buy recommendation that names the lead product in the first sentence.';
+  }
+  if (normalized === 'rewrite_buy_addon_filler') {
+    return 'Do not pad the answer with future routine-building filler.';
+  }
+  if (normalized === 'rewrite_vague_benefit_language') {
+    return 'Replace vague benefit language with concrete product-specific evidence from Context.';
+  }
+  if (normalized === 'rewrite_generic_routine_wrapup') {
+    return 'Do not end with a generic routine wrap-up. Use the last sentence for a concrete step reason, tradeoff, or buy-now guidance.';
+  }
+  if (normalized === 'rewrite_failed_alignment_guard') {
+    return 'Tighten alignment to the selected products, the target concern, and the final payload.';
+  }
+  if (normalized === 'empty_rewrite') {
+    return 'Return a non-empty assistant_text in strict JSON.';
+  }
+  return 'Rewrite from scratch and fix the quality issue directly.';
+}
+
+function buildRecoAssistantRewritePrompt({
+  payload,
+  language,
+  profile,
+  userRequestText,
+  retryReason = null,
+} = {}) {
   const lang = language === 'CN' ? 'CN' : 'EN';
   const names = pickRecoNames(payload, 3);
   const { primaryTarget, secondaryTargets, selectionShiftReason } = pickRecoMetaTargets(payload);
@@ -51521,6 +51696,12 @@ function buildRecoAssistantRewritePrompt({ payload, language, profile, userReque
       selected_count: count,
     };
   });
+  const assistantWritePlan = buildRecoAssistantWritePlan({
+    selectedProductDetails,
+    selectedProductRoleMix,
+    requestMode,
+    targetLabel: primaryTargetLabel || null,
+  });
   const context = {
     language: lang,
     profile_summary: summarizeProfileForAnswer(profile, lang),
@@ -51592,7 +51773,9 @@ function buildRecoAssistantRewritePrompt({ payload, language, profile, userReque
           .filter(Boolean)
           .slice(0, 4)
       : [],
+    assistant_write_plan: assistantWritePlan,
   };
+  const retryInstruction = describeRecoAssistantRewriteFailureReason(retryReason);
   return [
     'Return strict JSON only.',
     'Write one recommendation assistant message that is natural, specific, concise, and aligned to the final payload.',
@@ -51609,6 +51792,10 @@ function buildRecoAssistantRewritePrompt({ payload, language, profile, userReque
     'If selected_product_role_mix is "routine_mix", use selected_product_details.role_scope, matched_role_label, and preferred_step to label what each product is doing in the routine.',
     'For multiple selected products, choose one best first buy when the context supports it, then use compare_highlights or pivota_insights to explain tradeoffs.',
     'For routine_mix buy answers, explain the lead product with at least two available dimensions from Context: role match, formula/ingredient/texture evidence, and price/value.',
+    'Use assistant_write_plan.lead_product.must_use_reason_points as the preferred reason list for the lead recommendation when available.',
+    'If assistant_write_plan.lead_product.price_note exists, pair it with at least one non-price reason from assistant_write_plan.lead_product.must_use_reason_points.',
+    'If assistant_write_plan.support_steps is non-empty, justify each support step with its own reason_points instead of using a generic closing summary.',
+    'If assistant_write_plan.same_role_options is non-empty, use their tradeoff_note or reason_points to explain how they differ from the lead pick.',
     'If selected_product_details.reviewed_insight_available is false for a product, treat why_this_one, key_features, best_for, and description_snippet as product-record evidence only; do not imply independent review, clinical, or community proof.',
     'Do not discuss alternatives/dupes pros and cons unless alternatives_count is greater than 0 or compare_highlights/pivota_insights provide explicit tradeoff evidence.',
     'If known_price_count is 2 or more, compare price/value or ROI in plain shopper terms using only listed prices; do not compute per-use ROI, percentages, or size-normalized value unless Context provides size and usage data.',
@@ -51627,6 +51814,7 @@ function buildRecoAssistantRewritePrompt({ payload, language, profile, userReque
     'If selected_product_details.tradeoff_hint exists, honor it.',
     'Prefer product-specific evidence over generic role language when both are available.',
     'For single-direction answers, sentence 2 should explain the fit in shopper-facing language instead of repeating the question.',
+    'Do not end with a generic closing sentence like "these steps support your skin" or "together they help balance the routine".',
     'Only mention targets, ingredients, steps, and product names that already exist in Context.',
     'Do not invent products, targets, routines, claims, or benefits beyond Context.',
     'If there is one selected product, keep a single main direction.',
@@ -51638,6 +51826,12 @@ function buildRecoAssistantRewritePrompt({ payload, language, profile, userReque
     'Do not add unsupported benefits like pore-minimizing unless they already appear in Context.',
     'Do not mention "Direction 1/2/3", generic shopping filler, or any product not in selected_products.',
     'Do not use internal phrases or internal framing such as "Primary recommendation focus" or "Products actually selected this time".',
+    ...(retryInstruction
+      ? [
+        'Previous draft failed the quality gate.',
+        `Fix required: ${retryInstruction}`,
+      ]
+      : []),
     'Schema: { "assistant_text": string }',
     `Context: ${JSON.stringify(context)}`,
   ].join('\n');
@@ -51659,6 +51853,18 @@ function assistantTextUsesFutureRoutineUpsell(text) {
 
 function assistantTextUsesVagueRecoBenefitLanguage(text) {
   return /\bsurface activity\b/i.test(String(text || ''));
+}
+
+function assistantTextUsesGenericRoutineWrapup(text) {
+  const sentences = splitRecoAssistantSentences(text, 6);
+  const lastSentence = String(sentences[sentences.length - 1] || '').trim();
+  if (!lastSentence) return false;
+  if (/\b(niacinamide|zinc|spf|sunscreen|serum|moisturizer|gel cream|uv filters|hyaluronic|ceramide|glycerin|\$[0-9]+)\b/i.test(lastSentence)) {
+    return false;
+  }
+  return /\b(these|together|both|all three|the other two|secondary steps|support steps|selected products|products)\b/i.test(lastSentence)
+    && /\b(support|help|keep|protect|balance|hydrate)\b/i.test(lastSentence)
+    && /\b(routine|skin|oily skin|hydration|uv damage|breathable)\b/i.test(lastSentence);
 }
 
 function assistantTextMentionsRecoTargetSemantics(text, primaryTarget) {
@@ -51785,6 +51991,9 @@ function validateRecoAssistantRewriteCandidate({
     4,
   );
   const selectedProductRoutineMix = selectedRecommendationRoleIds.length > 1;
+  const usesGenericRoutineWrapup =
+    selectedProductRoutineMix
+    && assistantTextUsesGenericRoutineWrapup(text);
   const buyUsesRoutineUpsell =
     requestMode === 'buy'
     && secondaryTargets.length === 0
@@ -51801,13 +52010,24 @@ function validateRecoAssistantRewriteCandidate({
     || buyLeadNotDirect
     || buyUsesRoutineUpsell
     || usesVagueBenefitLanguage
+    || usesGenericRoutineWrapup
   ) {
     if (buyLeadNotDirect) return { ok: false, reason: 'rewrite_buy_lead_not_direct' };
     if (buyUsesRoutineUpsell) return { ok: false, reason: 'rewrite_buy_addon_filler' };
     if (usesVagueBenefitLanguage) return { ok: false, reason: 'rewrite_vague_benefit_language' };
+    if (usesGenericRoutineWrapup) return { ok: false, reason: 'rewrite_generic_routine_wrapup' };
     return { ok: false, reason: 'rewrite_failed_alignment_guard' };
   }
   return { ok: true, reason: null };
+}
+
+function shouldRetryRecoAssistantRewrite(reason) {
+  const normalized = String(reason || '').trim().toLowerCase();
+  return normalized === 'empty_rewrite'
+    || normalized === 'rewrite_buy_lead_not_direct'
+    || normalized === 'rewrite_vague_benefit_language'
+    || normalized === 'rewrite_generic_routine_wrapup'
+    || normalized === 'rewrite_failed_alignment_guard';
 }
 
 async function maybeRewriteRecoAssistantTextWithLlm({
@@ -51841,74 +52061,133 @@ async function maybeRewriteRecoAssistantTextWithLlm({
 
   try {
     const normalizedDeadlineAtMs = Number(deadlineAtMs);
-    const remainingBudgetMs = Number.isFinite(normalizedDeadlineAtMs) && normalizedDeadlineAtMs > 0
-      ? Math.max(0, Math.trunc(normalizedDeadlineAtMs - Date.now()))
-      : null;
-    if (Number.isFinite(remainingBudgetMs) && remainingBudgetMs <= 250) {
-      return { text: fallbackText, llm_used: false, reason: 'rewrite_budget_exhausted' };
-    }
-    const effectiveRewriteTimeoutMs = Number.isFinite(remainingBudgetMs)
-      ? Math.max(
-        250,
-        Math.min(AURORA_RECO_ASSISTANT_REWRITE_TIMEOUT_MS, Math.trunc(remainingBudgetMs)),
-      )
-      : AURORA_RECO_ASSISTANT_REWRITE_TIMEOUT_MS;
+    const getRemainingBudgetMs = () => (
+      Number.isFinite(normalizedDeadlineAtMs) && normalizedDeadlineAtMs > 0
+        ? Math.max(0, Math.trunc(normalizedDeadlineAtMs - Date.now()))
+        : null
+    );
     const rewriteThinkingLevel = resolveRecoAssistantRewriteThinkingLevel({
       llmProvider: AURORA_PRODUCT_INTEL_LLM_PROVIDER,
       llmModel: AURORA_PRODUCT_INTEL_LLM_MODEL,
     });
-    const result = await callStructuredSummaryJson({
-      llmProvider: AURORA_PRODUCT_INTEL_LLM_PROVIDER,
-      llmModel: AURORA_PRODUCT_INTEL_LLM_MODEL,
-      systemPrompt: 'You rewrite skincare recommendation explanations. Output strict JSON only.',
-      userPrompt: buildRecoAssistantRewritePrompt({
+    const executeRewriteAttempt = async ({ retryReason = null, timeoutCapMs = null } = {}) => {
+      const remainingBudgetMs = getRemainingBudgetMs();
+      if (Number.isFinite(remainingBudgetMs) && remainingBudgetMs <= 250) {
+        return { ok: false, reason: 'rewrite_budget_exhausted' };
+      }
+      const effectiveRewriteTimeoutMs = Number.isFinite(remainingBudgetMs)
+        ? Math.max(
+          250,
+          Math.min(
+            Number.isFinite(Number(timeoutCapMs)) && Number(timeoutCapMs) > 0
+              ? Math.trunc(Number(timeoutCapMs))
+              : AURORA_RECO_ASSISTANT_REWRITE_TIMEOUT_MS,
+            Math.trunc(remainingBudgetMs),
+          ),
+        )
+        : Number.isFinite(Number(timeoutCapMs)) && Number(timeoutCapMs) > 0
+          ? Math.trunc(Number(timeoutCapMs))
+          : AURORA_RECO_ASSISTANT_REWRITE_TIMEOUT_MS;
+      const result = await callStructuredSummaryJson({
+        llmProvider: AURORA_PRODUCT_INTEL_LLM_PROVIDER,
+        llmModel: AURORA_PRODUCT_INTEL_LLM_MODEL,
+        systemPrompt: 'You rewrite skincare recommendation explanations. Output strict JSON only.',
+        userPrompt: buildRecoAssistantRewritePrompt({
+          payload,
+          language,
+          profile,
+          userRequestText,
+          retryReason,
+        }),
+        responseSchema: RECO_ASSISTANT_REWRITE_JSON_SCHEMA,
+        timeoutMs: effectiveRewriteTimeoutMs,
+        maxOutputTokens: AURORA_RECO_ASSISTANT_REWRITE_MAX_OUTPUT_TOKENS,
+        route: 'aurora_reco_assistant_rewrite',
+        thinkingLevel: rewriteThinkingLevel,
+      });
+      let candidateText = String(result && result.json && result.json.assistant_text || '').trim();
+      let parseStatus = result && result.parse_status ? String(result.parse_status).trim() : null;
+      if (!candidateText && typeof result?.raw_text === 'string') {
+        const recoveredText = recoverRecoAssistantRewriteTextFromRaw(result.raw_text);
+        if (recoveredText) {
+          candidateText = recoveredText;
+          parseStatus = parseStatus ? `recovered_${parseStatus}` : 'recovered_raw_text';
+        }
+      }
+      candidateText = compactSingleDirectionRecoAssistantText(candidateText, {
+        names,
+        secondaryTargets,
+      });
+      if (!candidateText) {
+        return {
+          ok: false,
+          reason: result && result.failure_reason ? result.failure_reason : 'empty_rewrite',
+          provider: result?.provider || null,
+          model: result?.model || null,
+          parse_status: parseStatus,
+        };
+      }
+      const validation = validateRecoAssistantRewriteCandidate({
+        candidateText,
         payload,
         language,
-        profile,
-        userRequestText,
-      }),
-      responseSchema: RECO_ASSISTANT_REWRITE_JSON_SCHEMA,
-      timeoutMs: effectiveRewriteTimeoutMs,
-      maxOutputTokens: AURORA_RECO_ASSISTANT_REWRITE_MAX_OUTPUT_TOKENS,
-      route: 'aurora_reco_assistant_rewrite',
-      thinkingLevel: rewriteThinkingLevel,
-    });
-    let candidateText = String(result && result.json && result.json.assistant_text || '').trim();
-    let parseStatus = result && result.parse_status ? String(result.parse_status).trim() : null;
-    if (!candidateText && typeof result?.raw_text === 'string') {
-      const recoveredText = recoverRecoAssistantRewriteTextFromRaw(result.raw_text);
-      if (recoveredText) {
-        candidateText = recoveredText;
-        parseStatus = parseStatus ? `recovered_${parseStatus}` : 'recovered_raw_text';
+        primaryTarget,
+        secondaryTargets,
+        names,
+        requestMode,
+      });
+      if (!validation.ok) {
+        return {
+          ok: false,
+          reason: validation.reason,
+          provider: result?.provider || null,
+          model: result?.model || null,
+          parse_status: parseStatus,
+          candidate_text: candidateText,
+        };
       }
-    }
-    candidateText = compactSingleDirectionRecoAssistantText(candidateText, {
-      names,
-      secondaryTargets,
-    });
-    if (!candidateText) {
-      return { text: fallbackText, llm_used: false, reason: result && result.failure_reason ? result.failure_reason : 'empty_rewrite' };
-    }
-    const validation = validateRecoAssistantRewriteCandidate({
-      candidateText,
-      payload,
-      language,
-      primaryTarget,
-      secondaryTargets,
-      names,
-      requestMode,
-    });
-    if (!validation.ok) {
-      return { text: fallbackText, llm_used: false, reason: validation.reason };
-    }
-    return {
-      text: candidateText,
-      llm_used: true,
-      provider: result.provider || null,
-      model: result.model || null,
-      parse_status: parseStatus,
-      reason: null,
+      return {
+        ok: true,
+        text: candidateText,
+        provider: result.provider || null,
+        model: result.model || null,
+        parse_status: parseStatus,
+      };
     };
+
+    const firstAttempt = await executeRewriteAttempt();
+    if (firstAttempt.ok) {
+      return {
+        text: firstAttempt.text,
+        llm_used: true,
+        provider: firstAttempt.provider || null,
+        model: firstAttempt.model || null,
+        parse_status: firstAttempt.parse_status,
+        reason: null,
+      };
+    }
+    if (!shouldRetryRecoAssistantRewrite(firstAttempt.reason)) {
+      return { text: fallbackText, llm_used: false, reason: firstAttempt.reason };
+    }
+    const remainingBudgetMs = getRemainingBudgetMs();
+    if (Number.isFinite(remainingBudgetMs) && remainingBudgetMs <= 350) {
+      return { text: fallbackText, llm_used: false, reason: firstAttempt.reason };
+    }
+    const retryAttempt = await executeRewriteAttempt({
+      retryReason: firstAttempt.reason,
+      timeoutCapMs: Number.isFinite(remainingBudgetMs) ? Math.min(900, remainingBudgetMs) : 900,
+    });
+    if (retryAttempt.ok) {
+      return {
+        text: retryAttempt.text,
+        llm_used: true,
+        provider: retryAttempt.provider || firstAttempt.provider || null,
+        model: retryAttempt.model || firstAttempt.model || null,
+        parse_status: retryAttempt.parse_status || firstAttempt.parse_status,
+        reason: null,
+      };
+    }
+    return { text: fallbackText, llm_used: false, reason: retryAttempt.reason || firstAttempt.reason };
   } catch (err) {
     return {
       text: fallbackText,

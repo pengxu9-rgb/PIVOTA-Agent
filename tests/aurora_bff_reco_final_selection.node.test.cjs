@@ -180,10 +180,16 @@ test('reco assistant rewrite prompt frames multi-role selections as routine mix 
     assert.match(prompt, /"known_price_count":2/);
     assert.match(prompt, /"price":\{"amount":12,"currency":"USD","unknown":false\}/);
     assert.match(prompt, /"price":\{"amount":28,"currency":"USD","unknown":false\}/);
+    assert.match(prompt, /"assistant_write_plan":\{"request_mode":"buy","selected_product_role_mix":"routine_mix"/);
+    assert.match(prompt, /"lead_product":\{"name":"The Ordinary Niacinamide 10% \+ Zinc 1%"/);
+    assert.match(prompt, /"support_steps":\[\{"name":"LightLab Oil-Free Gel Cream"/);
     assert.match(prompt, /"fit_assessment":"direct_match"/);
     assert.match(prompt, /"fit_assessment":"support_step"/);
     assert.match(prompt, /selected products from different roles as routine add-ons; only same-role products may be same-slot alternatives/);
     assert.match(prompt, /present a basic routine by role or step, and do not imply products from different roles are interchangeable/);
+    assert.match(prompt, /Use assistant_write_plan\.lead_product\.must_use_reason_points as the preferred reason list for the lead recommendation when available\./);
+    assert.match(prompt, /If assistant_write_plan\.support_steps is non-empty, justify each support step with its own reason_points instead of using a generic closing summary\./);
+    assert.match(prompt, /Do not end with a generic closing sentence like "these steps support your skin" or "together they help balance the routine"\./);
     assert.match(prompt, /compare price\/value or ROI in plain shopper terms using only listed prices/);
     assert.match(prompt, /do not compute per-use ROI, percentages, or size-normalized value unless Context provides size and usage data/);
   } finally {
@@ -594,6 +600,145 @@ test('reco assistant rewrite accepts direct buy copy with shopper-facing oil-con
       rewrite.text,
       'Buy GoalSkin Oil Control Serum for oily skin. It targets excess shine without adding heaviness.',
     );
+  } finally {
+    __internal.__resetCallGeminiJsonObjectForTest();
+    if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
+    else process.env.AURORA_BFF_USE_MOCK = prevMock;
+    if (prevProvider === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = prevProvider;
+    if (prevModel === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = prevModel;
+    delete require.cache[moduleId];
+  }
+});
+
+test('reco assistant rewrite retries routine-mix drafts that end in a generic closing summary', async () => {
+  const prevMock = process.env.AURORA_BFF_USE_MOCK;
+  const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+  const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+  process.env.AURORA_BFF_USE_MOCK = 'false';
+  process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = 'gemini';
+  process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = 'gemini-3-flash-preview';
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'oily_pick_1',
+            display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+            brand: 'The Ordinary',
+            category: 'Serum',
+            short_description: 'A lightweight oil-control serum for visible shine.',
+            price: { amount: 12, currency: 'USD', unknown: false },
+            matched_role_id: 'oil_control_treatment',
+            matched_role_label: 'Oil-control treatment',
+            key_features: ['Niacinamide 10%', 'Zinc 1%'],
+          },
+          {
+            product_id: 'routine_support_1',
+            display_name: 'LightLab Oil-Free Gel Cream',
+            brand: 'LightLab',
+            category: 'Moisturizer',
+            short_description: 'A breathable gel moisturizer for oily skin.',
+            price: { amount: 28, currency: 'USD', unknown: false },
+            matched_role_id: 'lightweight_moisturizer',
+            matched_role_label: 'Lightweight moisturizer',
+          },
+          {
+            product_id: 'routine_support_2',
+            display_name: 'SunLab Daily SPF 50 Fluid',
+            brand: 'SunLab',
+            category: 'Sunscreen',
+            short_description: 'A lightweight daily sunscreen fluid with no white cast.',
+            price: { amount: 24, currency: 'USD', unknown: false },
+            matched_role_id: 'daily_sunscreen',
+            matched_role_label: 'Daily sunscreen',
+          },
+        ],
+        roles: [
+          {
+            role_id: 'oil_control_treatment',
+            label: 'Oil-control treatment',
+            preferred_step: 'treatment',
+            why_this_role: 'Reduce excess sebum.',
+          },
+          {
+            role_id: 'lightweight_moisturizer',
+            label: 'Lightweight moisturizer',
+            preferred_step: 'moisturizer',
+            why_this_role: 'Support barrier without heaviness.',
+          },
+          {
+            role_id: 'daily_sunscreen',
+            label: 'Daily sunscreen',
+            preferred_step: 'sunscreen',
+            why_this_role: 'Protect skin during the day.',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'treatment',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Oil-control treatment',
+        resolved_target_step: 'treatment',
+        primary_target_id: 'oil_control_treatment',
+        ranked_targets: [
+          {
+            target_id: 'oil_control_treatment',
+            ingredient_query: 'Oil-control treatment',
+            resolved_target_step: 'treatment',
+          },
+        ],
+        selected_target_ids: ['oil_control_treatment', 'lightweight_moisturizer', 'daily_sunscreen'],
+      },
+    );
+    const prompts = [];
+    let callCount = 0;
+    __internal.__setCallGeminiJsonObjectForTest(async (args = {}) => {
+      callCount += 1;
+      prompts.push(String(args.userPrompt || ''));
+      if (callCount === 1) {
+        return {
+          ok: true,
+          json: {
+            assistant_text:
+              'The Ordinary Niacinamide 10% + Zinc 1% is your best first buy for oily skin because it pairs niacinamide with zinc and costs $12. LightLab Oil-Free Gel Cream is your moisturizer step, and SunLab Daily SPF 50 Fluid is your sunscreen step. These secondary steps support your oily skin by keeping hydration breathable and protecting against UV damage.',
+          },
+          parse_status: 'parsed',
+          provider: 'gemini',
+          effective_model: 'gemini-3-flash-preview',
+        };
+      }
+      return {
+        ok: true,
+        json: {
+          assistant_text:
+            'Buy The Ordinary Niacinamide 10% + Zinc 1% first for oily skin because it is the direct oil-control step, pairs niacinamide with zinc, and costs $12. The other two picks are different routine steps, not substitutes: LightLab Oil-Free Gel Cream is your lightweight moisturizer step for breathable hydration, and SunLab Daily SPF 50 Fluid is your sunscreen step for daily UV protection without a heavy finish.',
+        },
+        parse_status: 'parsed',
+        provider: 'gemini',
+        effective_model: 'gemini-3-flash-preview',
+      };
+    });
+
+    const rewrite = await __internal.maybeRewriteRecoAssistantTextWithLlm({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily', goals: ['oil control'] },
+      userRequestText: 'im oily skin. what product should i buy?',
+      allowLockedSelectionRewrite: true,
+    });
+
+    assert.equal(callCount, 2);
+    assert.equal(rewrite.llm_used, true);
+    assert.equal(rewrite.reason, null);
+    assert.match(prompts[1], /Previous draft failed the quality gate\./);
+    assert.match(prompts[1], /Fix required: Do not end with a generic routine wrap-up\./);
+    assert.match(String(rewrite.text || ''), /Buy The Ordinary Niacinamide 10% \+ Zinc 1% first/);
+    assert.doesNotMatch(String(rewrite.text || ''), /These secondary steps support your oily skin/i);
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
     if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
