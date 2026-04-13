@@ -51466,6 +51466,19 @@ function buildRecoAssistantWritePlan({
   };
 }
 
+function inferRecoAssistantSelectedProductRoleMix(recommendations = []) {
+  const rows = Array.isArray(recommendations) ? recommendations.filter((item) => isPlainObject(item)) : [];
+  const selectedProductRoleIds = uniqCaseInsensitiveStrings(
+    rows
+      .map((item) => pickFirstTrimmed(item?.matched_role_id, item?.matchedRoleId))
+      .filter(Boolean),
+    4,
+  );
+  if (selectedProductRoleIds.length > 1) return 'routine_mix';
+  if (rows.length > 1) return 'same_role_comparison';
+  return 'single_product';
+}
+
 function buildCompactRecoAssistantWritePlan(writePlan = null) {
   const plan = isPlainObject(writePlan) ? writePlan : null;
   if (!plan) return null;
@@ -51587,6 +51600,9 @@ function describeRecoAssistantRewriteFailureReason(reason) {
   }
   if (normalized === 'rewrite_single_product_routine_framing') {
     return 'Do not turn a single-product answer into a routine or multi-step plan. Stay on the one selected product and explain its fit directly.';
+  }
+  if (normalized === 'rewrite_templated_routine_bridge') {
+    return 'Replace templated routine bridge lines like "To build out a full routine" with direct shopper-facing step framing.';
   }
   if (normalized === 'rewrite_failed_alignment_guard') {
     return 'Tighten alignment to the selected products, the target concern, and the final payload.';
@@ -51807,12 +51823,7 @@ function buildRecoAssistantRewritePrompt({
       .filter(Boolean),
     4,
   );
-  const selectedProductRoleMix =
-    selectedProductRoleIds.length > 1
-      ? 'routine_mix'
-      : selectedProductDetails.length > 1
-        ? 'same_role_comparison'
-        : 'single_product';
+  const selectedProductRoleMix = inferRecoAssistantSelectedProductRoleMix(selectedProductDetails);
   const knownPriceCount = priceDiagnostics.known_price_count;
   const roleMixSummary = selectedProductRoleIds.map((roleId) => {
     const roleMeta = frameworkRoleById.get(roleId) || null;
@@ -52023,6 +52034,10 @@ function assistantTextUsesSingleProductRoutineFraming(text) {
   );
 }
 
+function assistantTextUsesTemplatedRoutineBridge(text) {
+  return /\bto build out a full routine\b/i.test(String(text || ''));
+}
+
 function assistantTextMentionsRecoTargetSemantics(text, primaryTarget) {
   const haystack = String(text || '').trim().toLowerCase();
   if (!haystack) return false;
@@ -52158,6 +52173,9 @@ function validateRecoAssistantRewriteCandidate({
   const usesGenericRoutineWrapup =
     selectedProductRoutineMix
     && assistantTextUsesGenericRoutineWrapup(text);
+  const usesTemplatedRoutineBridge =
+    selectedProductRoutineMix
+    && assistantTextUsesTemplatedRoutineBridge(text);
   const usesStiffSelectionFraming = assistantTextUsesStiffSelectionFraming(text);
   const usesSingleProductRoutineFraming =
     singleProductFocus
@@ -52179,6 +52197,7 @@ function validateRecoAssistantRewriteCandidate({
     || buyLeadNotProductFirst
     || buyUsesRoutineUpsell
     || usesVagueBenefitLanguage
+    || usesTemplatedRoutineBridge
     || usesStiffSelectionFraming
     || usesSingleProductRoutineFraming
     || usesGenericRoutineWrapup
@@ -52187,6 +52206,7 @@ function validateRecoAssistantRewriteCandidate({
     if (buyLeadNotDirect) return { ok: false, reason: 'rewrite_buy_lead_not_direct' };
     if (buyUsesRoutineUpsell) return { ok: false, reason: 'rewrite_buy_addon_filler' };
     if (usesVagueBenefitLanguage) return { ok: false, reason: 'rewrite_vague_benefit_language' };
+    if (usesTemplatedRoutineBridge) return { ok: false, reason: 'rewrite_templated_routine_bridge' };
     if (usesStiffSelectionFraming) return { ok: false, reason: 'rewrite_stiff_selection_framing' };
     if (usesSingleProductRoutineFraming) return { ok: false, reason: 'rewrite_single_product_routine_framing' };
     if (usesGenericRoutineWrapup) return { ok: false, reason: 'rewrite_generic_routine_wrapup' };
@@ -52203,6 +52223,7 @@ function shouldRetryRecoAssistantRewrite(reason) {
     || normalized === 'rewrite_buy_lead_not_product_first'
     || normalized === 'rewrite_buy_lead_not_direct'
     || normalized === 'rewrite_vague_benefit_language'
+    || normalized === 'rewrite_templated_routine_bridge'
     || normalized === 'rewrite_stiff_selection_framing'
     || normalized === 'rewrite_single_product_routine_framing'
     || normalized === 'rewrite_generic_routine_wrapup'
@@ -52229,6 +52250,7 @@ async function maybeRewriteRecoAssistantTextWithLlm({
   if (!recommendations.length) return { text: fallbackText, llm_used: false, reason: 'no_recommendations' };
   const names = pickRecoNames(payload, 3);
   const { primaryTarget, secondaryTargets } = pickRecoMetaTargets(payload);
+  const selectedProductRoleMix = inferRecoAssistantSelectedProductRoleMix(recommendations);
   const requestMode = inferRecoAssistantRequestMode(
     pickFirstTrimmed(
       userRequestText,
@@ -52343,7 +52365,15 @@ async function maybeRewriteRecoAssistantTextWithLlm({
       };
     };
 
-    const firstAttempt = await executeRewriteAttempt();
+    const preferCompactPrimaryAttempt =
+      secondaryTargets.length === 0
+      && selectedProductRoleMix !== 'routine_mix';
+    const firstAttempt = await executeRewriteAttempt({
+      compactContext: preferCompactPrimaryAttempt,
+      maxOutputTokensOverride: preferCompactPrimaryAttempt
+        ? Math.min(220, AURORA_RECO_ASSISTANT_REWRITE_MAX_OUTPUT_TOKENS)
+        : null,
+    });
     if (firstAttempt.ok) {
       return {
         text: firstAttempt.text,
@@ -52363,7 +52393,9 @@ async function maybeRewriteRecoAssistantTextWithLlm({
     }
     const firstAttemptReason = String(firstAttempt.reason || '').trim().toLowerCase();
     const useCompactRetry =
-      firstAttemptReason === 'gemini_json_timeout'
+      preferCompactPrimaryAttempt
+      || firstAttemptReason === 'rewrite_templated_routine_bridge'
+      || firstAttemptReason === 'gemini_json_timeout'
       || firstAttemptReason === 'parse_truncated_json'
       || firstAttemptReason === 'empty_rewrite';
     const retryAttempt = await executeRewriteAttempt({

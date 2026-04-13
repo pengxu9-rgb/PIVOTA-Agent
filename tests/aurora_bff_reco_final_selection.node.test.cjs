@@ -1006,9 +1006,132 @@ test('reco assistant rewrite retries gemini timeout with compact prompt context'
     assert.equal(callCount, 2);
     assert.equal(rewrite.llm_used, true);
     assert.equal(rewrite.reason, null);
-    assert.ok(maxTokens[1] > 0 && maxTokens[1] < maxTokens[0]);
+    assert.ok(maxTokens[0] > 0);
+    assert.equal(maxTokens[0], maxTokens[1]);
+    assert.match(prompts[0], /"prompt_profile":"compact_timeout_retry"/);
     assert.match(prompts[1], /"prompt_profile":"compact_timeout_retry"/);
     assert.match(prompts[1], /Compact retry mode: keep the answer tight/);
+  } finally {
+    __internal.__resetCallGeminiJsonObjectForTest();
+    if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
+    else process.env.AURORA_BFF_USE_MOCK = prevMock;
+    if (prevProvider === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = prevProvider;
+    if (prevModel === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = prevModel;
+    delete require.cache[moduleId];
+  }
+});
+
+test('reco assistant rewrite retries routine-mix drafts that use a templated full-routine bridge', async () => {
+  const prevMock = process.env.AURORA_BFF_USE_MOCK;
+  const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+  const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+  process.env.AURORA_BFF_USE_MOCK = 'false';
+  process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = 'gemini';
+  process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = 'gemini-3-flash-preview';
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'oily_pick_1',
+            display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+            brand: 'The Ordinary',
+            category: 'Serum',
+            short_description: 'A lightweight oil-control serum for visible shine.',
+            price: { amount: 12, currency: 'USD', unknown: false },
+            matched_role_id: 'oil_control_treatment',
+            matched_role_label: 'Oil-control treatment',
+          },
+          {
+            product_id: 'routine_support_1',
+            display_name: 'LightLab Oil-Free Gel Cream',
+            brand: 'LightLab',
+            category: 'Moisturizer',
+            short_description: 'A breathable gel moisturizer for oily skin.',
+            price: { amount: 28, currency: 'USD', unknown: false },
+            matched_role_id: 'lightweight_moisturizer',
+            matched_role_label: 'Lightweight moisturizer',
+          },
+          {
+            product_id: 'routine_support_2',
+            display_name: 'SunLab Daily SPF 50 Fluid',
+            brand: 'SunLab',
+            category: 'Sunscreen',
+            short_description: 'A lightweight daily sunscreen fluid with no white cast.',
+            price: { amount: 24, currency: 'USD', unknown: false },
+            matched_role_id: 'daily_sunscreen',
+            matched_role_label: 'Daily sunscreen',
+          },
+        ],
+        roles: [
+          { role_id: 'oil_control_treatment', label: 'Oil-control treatment', preferred_step: 'treatment', why_this_role: 'Reduce excess sebum.' },
+          { role_id: 'lightweight_moisturizer', label: 'Lightweight moisturizer', preferred_step: 'moisturizer', why_this_role: 'Support barrier without heaviness.' },
+          { role_id: 'daily_sunscreen', label: 'Daily sunscreen', preferred_step: 'sunscreen', why_this_role: 'Protect skin during the day.' },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'treatment',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Oil-control treatment',
+        resolved_target_step: 'treatment',
+        primary_target_id: 'oil_control_treatment',
+        ranked_targets: [
+          {
+            target_id: 'oil_control_treatment',
+            ingredient_query: 'Oil-control treatment',
+            resolved_target_step: 'treatment',
+          },
+        ],
+        selected_target_ids: ['oil_control_treatment', 'lightweight_moisturizer', 'daily_sunscreen'],
+      },
+    );
+    const prompts = [];
+    let callCount = 0;
+    __internal.__setCallGeminiJsonObjectForTest(async (args = {}) => {
+      callCount += 1;
+      prompts.push(String(args.userPrompt || ''));
+      if (callCount === 1) {
+        return {
+          ok: true,
+          json: {
+            assistant_text:
+              'The Ordinary Niacinamide 10% + Zinc 1% is your best first buy for oily skin because it pairs niacinamide with zinc and costs $12. To build out a full routine, add LightLab Oil-Free Gel Cream as your moisturizer step and SunLab Daily SPF 50 Fluid as your sunscreen step.',
+          },
+          parse_status: 'parsed',
+          provider: 'gemini',
+          effective_model: 'gemini-3-flash-preview',
+        };
+      }
+      return {
+        ok: true,
+        json: {
+          assistant_text:
+            'The Ordinary Niacinamide 10% + Zinc 1% is your best first buy for oily skin because it pairs niacinamide with zinc and costs $12. LightLab Oil-Free Gel Cream is the lightweight moisturizer step for breathable hydration, and SunLab Daily SPF 50 Fluid is the sunscreen step for daily UV protection without a heavy finish.',
+        },
+        parse_status: 'parsed',
+        provider: 'gemini',
+        effective_model: 'gemini-3-flash-preview',
+      };
+    });
+
+    const rewrite = await __internal.maybeRewriteRecoAssistantTextWithLlm({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily', goals: ['oil control'] },
+      userRequestText: 'im oily skin. what product should i buy?',
+      allowLockedSelectionRewrite: true,
+    });
+
+    assert.equal(callCount, 2);
+    assert.equal(rewrite.llm_used, true);
+    assert.equal(rewrite.reason, null);
+    assert.match(prompts[1], /Fix required: Replace templated routine bridge lines like "To build out a full routine"/);
+    assert.doesNotMatch(String(rewrite.text || ''), /To build out a full routine/i);
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
     if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
