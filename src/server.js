@@ -17978,12 +17978,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       checkoutRuntime.checkoutTraceId = gatewayRequestId;
     }
     let metadata = normalizeMetadata(req.body.metadata, payload);
+    const sourceContractPayload = applyFindProductsMultiSourceContract(
+      payload,
+      metadata,
+      operation,
+    );
     try {
       gatewayGovernanceAudit = buildInvokeGatewayGovernanceAudit({
         req,
         routeContext,
         operation,
-        payload,
+        payload: sourceContractPayload,
         metadata,
         gatewayRequestId,
       });
@@ -18007,7 +18012,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     if (operation === 'find_products_multi') {
       const nluStartedAtMs = Date.now();
       findProductsMultiCtx = await buildFindProductsMultiContext({
-        payload,
+        payload: sourceContractPayload,
         metadata: {
           ...(metadata || {}),
           expansion_mode: FIND_PRODUCTS_MULTI_EXPANSION_MODE,
@@ -18015,7 +18020,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       });
       debugRuntime.nluLatencyMs = Math.max(0, Date.now() - nluStartedAtMs);
     }
-    const effectivePayload = findProductsMultiCtx?.adjustedPayload || payload;
+    const effectivePayload = applyFindProductsMultiSourceContract(
+      findProductsMultiCtx?.adjustedPayload || sourceContractPayload,
+      metadata,
+      operation,
+    );
     const effectiveIntent = findProductsMultiCtx?.intent || null;
     const findProductsExpansionMeta = findProductsMultiCtx?.expansion_meta || null;
     const rawUserQuery =
