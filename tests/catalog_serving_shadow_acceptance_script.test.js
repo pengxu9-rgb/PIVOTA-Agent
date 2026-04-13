@@ -2,8 +2,89 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const {
+  collectRuntimeSummary,
+  listRepresentativeLiveBrands,
+} = require('../scripts/catalog_serving_shadow_acceptance');
 
 describe('catalog serving shadow acceptance script', () => {
+  test('sorts representative live brands by live coverage before lower-signal candidates', async () => {
+    const brands = await listRepresentativeLiveBrands({
+      summarizeFn: async () => [
+        { brand_norm: 'Brand C', live_rows: 12, review_ratio: 0.2 },
+        { brand_norm: 'Brand A', live_rows: 40, review_ratio: 0.4 },
+        { brand_norm: 'Brand B', live_rows: 40, review_ratio: 0.1 },
+        { brand_norm: 'Brand D', live_rows: 0, review_ratio: 0 },
+      ],
+    });
+
+    expect(brands).toEqual(['Brand B', 'Brand A', 'Brand C']);
+  });
+
+  test('retries runtime backfill on a representative live brand when the global sample has zero public docs', async () => {
+    const calls = [];
+    const summary = await collectRuntimeSummary(
+      {
+        limit: 50,
+        brand: '',
+        market: 'US',
+        sampleQuery: 'serum',
+        sampleLimit: 5,
+        skipSearch: false,
+      },
+      {
+        getCatalogServingIndexConfigFn: () => ({
+          enabled: false,
+          index_name: 'catalog_public_v1',
+          shadow_read_enabled: false,
+        }),
+        summarizeCoverageFn: async () => [
+          { brand_norm: 'Brand B', live_rows: 40, review_ratio: 0.1 },
+          { brand_norm: 'Brand A', live_rows: 20, review_ratio: 0.2 },
+        ],
+        backfillCatalogServingIndexFn: async ({ brand }) => {
+          calls.push(brand || null);
+          if (!brand) {
+            return {
+              source_rows_scanned: 1000,
+              live_identity_rows: 0,
+              docs_built: 996,
+              public_docs_built: 0,
+              non_public_docs_built: 996,
+            };
+          }
+          if (brand === 'Brand B') {
+            return {
+              source_rows_scanned: 50,
+              live_identity_rows: 40,
+              docs_built: 38,
+              public_docs_built: 31,
+              non_public_docs_built: 7,
+            };
+          }
+          return {
+            source_rows_scanned: 50,
+            live_identity_rows: 20,
+            docs_built: 20,
+            public_docs_built: 10,
+            non_public_docs_built: 10,
+          };
+        },
+      },
+    );
+
+    expect(calls).toEqual([null, 'Brand B']);
+    expect(summary.backfill.public_docs_built).toBe(31);
+    expect(summary.initial_backfill.public_docs_built).toBe(0);
+    expect(summary.backfill_sample_scope).toBe('representative_brand_retry');
+    expect(summary.representative_sample).toEqual(
+      expect.objectContaining({
+        brand: 'Brand B',
+        candidate_rank: 1,
+      }),
+    );
+  });
+
   test('writes markdown and json artifacts from a healthy fixture summary', () => {
     const repoRoot = path.join(__dirname, '..');
     const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'catalog-serving-shadow-'));

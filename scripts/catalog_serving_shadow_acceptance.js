@@ -9,6 +9,7 @@ const {
   getCatalogServingIndexConfig,
   searchCatalogServingIndex,
 } = require('../src/services/catalogServingIndex');
+const { summarizePdpIdentityCoverageByBrand } = require('../src/services/pdpIdentityGraph');
 
 const SCHEMA_VERSION = 'pivota.catalog_serving.shadow_acceptance.v1';
 const DEFAULT_REPORTS_OUT = 'reports';
@@ -140,6 +141,7 @@ function percent(value) {
 function buildMarkdown(report) {
   const backfill = report.backfill || {};
   const searchProbe = report.search_probe || {};
+  const representativeSample = report.representative_sample || null;
   return [
     '# Catalog Serving Shadow Acceptance',
     '',
@@ -150,6 +152,7 @@ function buildMarkdown(report) {
     '',
     '## Backfill Summary',
     '',
+    `- Sample scope: ${safeToken(report.backfill_sample_scope, 'default')}`,
     `- Source rows scanned: ${safeNumber(backfill.source_rows_scanned, 0) || 0}`,
     `- Live identity rows: ${safeNumber(backfill.live_identity_rows, 0) || 0}`,
     `- Docs built: ${safeNumber(backfill.docs_built, 0) || 0}`,
@@ -157,6 +160,16 @@ function buildMarkdown(report) {
     `- Non-public docs built: ${safeNumber(backfill.non_public_docs_built, 0) || 0}`,
     `- Shadow ratio: ${percent(report.shadow_ratio)}`,
     '',
+    ...(representativeSample
+      ? [
+          '## Representative Retry',
+          '',
+          `- Brand: ${safeToken(representativeSample.brand, 'unknown')}`,
+          `- Candidate rank: ${safeNumber(representativeSample.candidate_rank, 0) || 0}`,
+          `- Public docs built: ${safeNumber(representativeSample.backfill?.public_docs_built, 0) || 0}`,
+          '',
+        ]
+      : []),
     '## Search Probe',
     '',
     `- Status: ${safeToken(searchProbe.status, 'unknown')}`,
@@ -243,20 +256,82 @@ function statusSeverity(status) {
   return 0;
 }
 
-async function collectRuntimeSummary(options) {
+function sortRepresentativeBrands(rows = []) {
+  return [...(Array.isArray(rows) ? rows : [])].sort((left, right) => {
+    const liveDelta = (safeNumber(right?.live_rows, 0) || 0) - (safeNumber(left?.live_rows, 0) || 0);
+    if (liveDelta !== 0) return liveDelta;
+    const reviewDelta =
+      (safeNumber(left?.review_ratio, 1) || 0) - (safeNumber(right?.review_ratio, 1) || 0);
+    if (reviewDelta !== 0) return reviewDelta;
+    return safeToken(left?.brand_norm, '').localeCompare(safeToken(right?.brand_norm, ''));
+  });
+}
+
+async function listRepresentativeLiveBrands({ queryFn, summarizeFn = summarizePdpIdentityCoverageByBrand } = {}) {
+  const summary = await summarizeFn({
+    limit: 100,
+    minSourceRows: 1,
+    beautyOnly: false,
+    ...(typeof queryFn === 'function' ? { queryFn } : {}),
+  });
+  return sortRepresentativeBrands(summary)
+    .filter((row) => (safeNumber(row?.live_rows, 0) || 0) > 0)
+    .map((row) => safeToken(row?.brand_norm, ''))
+    .filter(Boolean)
+    .slice(0, 10);
+}
+
+async function collectRuntimeSummary(
+  options,
+  {
+    backfillCatalogServingIndexFn = backfillCatalogServingIndex,
+    getCatalogServingIndexConfigFn = getCatalogServingIndexConfig,
+    searchCatalogServingIndexFn = searchCatalogServingIndex,
+    summarizeCoverageFn = summarizePdpIdentityCoverageByBrand,
+  } = {},
+) {
   const limit = Math.max(1, Math.min(5000, safeNumber(options.limit, DEFAULT_LIMIT) || DEFAULT_LIMIT));
   const brand = safeToken(options.brand, '') || null;
   const market = safeToken(options.market, DEFAULT_MARKET) || DEFAULT_MARKET;
   const sampleQuery = safeToken(options.sampleQuery, brand || 'serum');
   const sampleLimit = Math.max(1, Math.min(20, safeNumber(options.sampleLimit, DEFAULT_SAMPLE_LIMIT) || DEFAULT_SAMPLE_LIMIT));
-  const config = getCatalogServingIndexConfig(process.env);
-  const backfill = await backfillCatalogServingIndex({
+  const config = getCatalogServingIndexConfigFn(process.env);
+  const initialBackfill = await backfillCatalogServingIndexFn({
     limit,
     brand,
     market,
     dryRun: true,
     includeNonPublic: true,
   });
+  let backfill = initialBackfill;
+  let representativeSample = null;
+  let backfillSampleScope = brand ? 'brand_filter' : 'global_recent';
+
+  if (!brand && (safeNumber(initialBackfill?.public_docs_built, 0) || 0) <= 0) {
+    const candidateBrands = await listRepresentativeLiveBrands({
+      summarizeFn: summarizeCoverageFn,
+    });
+    for (let index = 0; index < candidateBrands.length; index += 1) {
+      const candidateBrand = candidateBrands[index];
+      const candidateBackfill = await backfillCatalogServingIndexFn({
+        limit,
+        brand: candidateBrand,
+        market,
+        dryRun: true,
+        includeNonPublic: true,
+      });
+      representativeSample = {
+        brand: candidateBrand,
+        candidate_rank: index + 1,
+        backfill: candidateBackfill,
+      };
+      if ((safeNumber(candidateBackfill?.public_docs_built, 0) || 0) > 0) {
+        backfill = candidateBackfill;
+        backfillSampleScope = 'representative_brand_retry';
+        break;
+      }
+    }
+  }
 
   let searchProbe = {
     status: options.skipSearch ? 'skipped' : config.enabled ? 'pending' : 'disabled',
@@ -266,7 +341,7 @@ async function collectRuntimeSummary(options) {
   };
   if (!options.skipSearch && config.enabled) {
     try {
-      const response = await searchCatalogServingIndex({
+      const response = await searchCatalogServingIndexFn({
         query_text: sampleQuery,
         market,
         limit: sampleLimit,
@@ -305,6 +380,9 @@ async function collectRuntimeSummary(options) {
       shadow_read_enabled: config.shadow_read_enabled === true,
     },
     backfill,
+    initial_backfill: representativeSample ? initialBackfill : undefined,
+    representative_sample: representativeSample,
+    backfill_sample_scope: backfillSampleScope,
     search_probe: searchProbe,
   };
 }
@@ -431,6 +509,8 @@ if (require.main === module) {
 module.exports = {
   buildMarkdown,
   buildBlockedSummary,
+  collectRuntimeSummary,
   evaluateReadiness,
+  listRepresentativeLiveBrands,
   statusSeverity,
 };
