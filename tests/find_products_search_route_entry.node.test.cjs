@@ -167,7 +167,7 @@ test('guidance-only external seed route remains a direct fastpath, not discovery
   assert.equal(routePlan.payload.metadata.search_request_contract.request_class, 'support_recall');
 });
 
-test('beauty head-term route skips guidance ladder and forces catalog child recall', () => {
+test('beauty head-term route skips guidance ladder and stays on beauty mainline', () => {
   const runtime = buildRuntime();
   const routePlan = runtime.prepareAgentProductsSearchRoute({
     query: {
@@ -179,16 +179,16 @@ test('beauty head-term route skips guidance ladder and forces catalog child reca
 
   assert.equal(routePlan.invalid, false);
   assert.equal(routePlan.forceDirectInvokeMainPath, true);
-  assert.equal(routePlan.payload.search.local_mainline_child, true);
-  assert.equal(routePlan.payload.metadata.local_mainline_child, true);
-  assert.equal(routePlan.payload.metadata.primary_lane, 'catalog_child_recall');
+  assert.equal(routePlan.payload.search.local_mainline_child, undefined);
+  assert.equal(routePlan.payload.metadata.local_mainline_child, undefined);
+  assert.equal(routePlan.payload.metadata.primary_lane, 'beauty_discovery_mainline');
   assert.equal(
     routePlan.payload.metadata.primary_retrieval_contract,
-    'agent_v2_catalog_child_recall',
+    'agent_v1_search_beauty_mainline',
   );
 });
 
-test('public beauty head-term route defaults external seed on catalog child recall', () => {
+test('public beauty head-term route defaults external seed on beauty mainline', () => {
   const runtime = buildRuntime();
   const routePlan = runtime.prepareAgentProductsSearchRoute({
     query: {
@@ -202,10 +202,10 @@ test('public beauty head-term route defaults external seed on catalog child reca
   assert.equal(routePlan.forceDirectInvokeMainPath, true);
   assert.equal(routePlan.payload.search.allow_external_seed, true);
   assert.equal(routePlan.payload.search.external_seed_strategy, 'unified_relevance');
-  assert.equal(routePlan.payload.metadata.primary_lane, 'catalog_child_recall');
+  assert.equal(routePlan.payload.metadata.primary_lane, 'beauty_discovery_mainline');
   assert.equal(
     routePlan.payload.metadata.primary_retrieval_contract,
-    'agent_v2_catalog_child_recall',
+    'agent_v1_search_beauty_mainline',
   );
   assert.deepEqual(
     routePlan.payload.metadata.search_request_contract.supplement_lanes,

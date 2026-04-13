@@ -248,30 +248,36 @@ function buildFindProductsSearchRequestContract({
         })
       : null;
   const effectiveSemanticContract = beautyCategoryBrowseFastpath ? null : semanticContract;
-  const requestClass = localMainlineChild || beautyCategoryBrowseFastpath
+  const requestClass = localMainlineChild
     ? 'catalog_child_recall'
-    : strictConstraintQuery
+    : beautyCategoryBrowseFastpath
       ? 'beauty_discovery'
-      : supportRecallRequest
-        ? 'support_recall'
-        : ['lookup', 'attribute', 'category'].includes(normalizedQueryClass)
-          ? 'resolver_lookup'
-          : 'beauty_discovery';
-  const primaryLane = localMainlineChild || beautyCategoryBrowseFastpath
+      : strictConstraintQuery
+        ? 'beauty_discovery'
+        : supportRecallRequest
+          ? 'support_recall'
+          : ['lookup', 'attribute', 'category'].includes(normalizedQueryClass)
+            ? 'resolver_lookup'
+            : 'beauty_discovery';
+  const primaryLane = localMainlineChild
     ? 'catalog_child_recall'
-    : strictConstraintQuery
-      ? 'shop_invoke_strict'
-      : requestClass === 'resolver_lookup' &&
-        String(semanticContract?.resolver_only || '').trim().toLowerCase() === 'true'
-        ? 'resolver_only'
-        : 'beauty_discovery_mainline';
-  const primaryRetrievalContract = localMainlineChild || beautyCategoryBrowseFastpath
+    : beautyCategoryBrowseFastpath
+      ? 'beauty_discovery_mainline'
+      : strictConstraintQuery
+        ? 'shop_invoke_strict'
+        : requestClass === 'resolver_lookup' &&
+          String(semanticContract?.resolver_only || '').trim().toLowerCase() === 'true'
+          ? 'resolver_only'
+          : 'beauty_discovery_mainline';
+  const primaryRetrievalContract = localMainlineChild
     ? 'agent_v2_catalog_child_recall'
-    : strictConstraintQuery
-      ? 'shop_invoke_strict'
-      : primaryLane === 'resolver_only'
-        ? 'resolver_only'
-        : 'agent_v1_search_beauty_mainline';
+    : beautyCategoryBrowseFastpath
+      ? 'agent_v1_search_beauty_mainline'
+      : strictConstraintQuery
+        ? 'shop_invoke_strict'
+        : primaryLane === 'resolver_only'
+          ? 'resolver_only'
+          : 'agent_v1_search_beauty_mainline';
 
   return {
     contract_version: 'search_contract_v1',
