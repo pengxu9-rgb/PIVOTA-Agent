@@ -1785,7 +1785,7 @@ describe('discovery feed service', () => {
 
   test('browse_products card response detail hydrates reviewed shopping card fields from product intel KB', async () => {
     const kbStore = require('../src/auroraBff/productIntelKbStore');
-    jest.spyOn(kbStore, 'getProductIntelKbEntry').mockResolvedValue({
+    const kbEntry = {
       kb_key: 'product:ext_13c520e764f9f7d7f23c611b',
       analysis: {
         product_intel_v1: {
@@ -1825,7 +1825,11 @@ describe('discovery feed service', () => {
           },
         },
       },
-    });
+    };
+    jest.spyOn(kbStore, 'getProductIntelKbEntry').mockResolvedValue(kbEntry);
+    jest
+      .spyOn(kbStore, 'getProductIntelKbEntries')
+      .mockResolvedValue(new Map([[kbEntry.kb_key, kbEntry]]));
 
     const response = await getDiscoveryFeed(
       {
@@ -1895,9 +1899,101 @@ describe('discovery feed service', () => {
     );
   });
 
+  test('browse_products card response detail batches product intel KB hydration when the store supports bulk reads', async () => {
+    const kbStore = require('../src/auroraBff/productIntelKbStore');
+    const bulkSpy = jest.spyOn(kbStore, 'getProductIntelKbEntries').mockResolvedValue(
+      new Map([
+        [
+          'product:ext_batch_one',
+          {
+            kb_key: 'product:ext_batch_one',
+            analysis: {
+              product_intel_v1: {
+                shopping_card: {
+                  contract_version: 'pivota.shopping_card.v1',
+                  title: 'Batch One Reviewed Title',
+                  subtitle: 'Serum',
+                  highlight: 'Batch hydrated highlight',
+                },
+              },
+            },
+          },
+        ],
+        [
+          'product:ext_batch_two',
+          {
+            kb_key: 'product:ext_batch_two',
+            analysis: {
+              product_intel_v1: {
+                shopping_card: {
+                  contract_version: 'pivota.shopping_card.v1',
+                  title: 'Batch Two Reviewed Title',
+                  subtitle: 'Cream',
+                  highlight: 'Batch hydrated cream highlight',
+                },
+              },
+            },
+          },
+        ],
+      ]),
+    );
+    const singleSpy = jest.spyOn(kbStore, 'getProductIntelKbEntry').mockResolvedValue(null);
+
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        response_detail: 'card',
+        context: {
+          locale: 'en-US',
+        },
+      },
+      {
+        candidateProducts: [
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'ext_batch_one',
+            title: 'Batch One',
+            brand: 'Naturium',
+            category: 'Serum',
+            product_type: 'Serum',
+            price: 31,
+          }),
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'ext_batch_two',
+            title: 'Batch Two',
+            brand: 'Byoma',
+            category: 'Cream',
+            product_type: 'Cream',
+            price: 29,
+          }),
+        ],
+      },
+    );
+
+    expect(bulkSpy).toHaveBeenCalledWith(['product:ext_batch_one', 'product:ext_batch_two']);
+    expect(singleSpy).not.toHaveBeenCalled();
+    expect(response.products).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          product_id: 'ext_batch_one',
+          card_title: 'Batch One Reviewed Title',
+          card_highlight: 'Batch hydrated highlight',
+        }),
+        expect.objectContaining({
+          product_id: 'ext_batch_two',
+          card_title: 'Batch Two Reviewed Title',
+          card_highlight: 'Batch hydrated cream highlight',
+        }),
+      ]),
+    );
+  });
+
   test('browse_products default response still hydrates reviewed card fields from product intel KB', async () => {
     const kbStore = require('../src/auroraBff/productIntelKbStore');
-    jest.spyOn(kbStore, 'getProductIntelKbEntry').mockResolvedValue({
+    const kbEntry = {
       kb_key: 'product:ext_13c520e764f9f7d7f23c611b',
       analysis: {
         product_intel_v1: {
@@ -1919,7 +2015,11 @@ describe('discovery feed service', () => {
           },
         },
       },
-    });
+    };
+    jest.spyOn(kbStore, 'getProductIntelKbEntry').mockResolvedValue(kbEntry);
+    jest
+      .spyOn(kbStore, 'getProductIntelKbEntries')
+      .mockResolvedValue(new Map([[kbEntry.kb_key, kbEntry]]));
 
     const response = await getDiscoveryFeed(
       {
@@ -1970,7 +2070,7 @@ describe('discovery feed service', () => {
 
   test('browse_products suppresses pending external highlight text from hydrated KB bundles', async () => {
     const kbStore = require('../src/auroraBff/productIntelKbStore');
-    jest.spyOn(kbStore, 'getProductIntelKbEntry').mockResolvedValue({
+    const kbEntry = {
       kb_key: 'product:ext_pending_highlight_1',
       analysis: {
         product_intel_v1: {
@@ -2008,7 +2108,11 @@ describe('discovery feed service', () => {
           },
         },
       },
-    });
+    };
+    jest.spyOn(kbStore, 'getProductIntelKbEntry').mockResolvedValue(kbEntry);
+    jest
+      .spyOn(kbStore, 'getProductIntelKbEntries')
+      .mockResolvedValue(new Map([[kbEntry.kb_key, kbEntry]]));
 
     const response = await getDiscoveryFeed(
       {
@@ -2046,7 +2150,7 @@ describe('discovery feed service', () => {
 
   test('browse_products falls back to approved external highlight when explicit card highlight duplicates subtitle', async () => {
     const kbStore = require('../src/auroraBff/productIntelKbStore');
-    jest.spyOn(kbStore, 'getProductIntelKbEntry').mockResolvedValue({
+    const kbEntry = {
       kb_key: 'product:ext_duplicate_highlight_1',
       analysis: {
         product_intel_v1: {
@@ -2084,7 +2188,11 @@ describe('discovery feed service', () => {
           },
         },
       },
-    });
+    };
+    jest.spyOn(kbStore, 'getProductIntelKbEntry').mockResolvedValue(kbEntry);
+    jest
+      .spyOn(kbStore, 'getProductIntelKbEntries')
+      .mockResolvedValue(new Map([[kbEntry.kb_key, kbEntry]]));
 
     const response = await getDiscoveryFeed(
       {
