@@ -96,6 +96,49 @@ describe('recoAlternativesAuthorityBackfill', () => {
     expect(axiosGet).toHaveBeenCalled();
   });
 
+  test('filters runtime coverage repair manifests to preferred-alias rows only', () => {
+    const backfill = require('../src/auroraBff/recoAlternativesAuthorityBackfill');
+    const manifest = {
+      item_count: 2,
+      items: [
+        {
+          seed_row: {
+            title: 'Birch Moisturizing Mild-Up Sunscreen SPF 50+, PA++++',
+            seed_data: {
+              search_aliases: [
+                'Birch Juice Moisturizing Sunscreen SPF50+ PA++++',
+                'Birch Moisturizing Mild-Up Sunscreen SPF 50+, PA++++',
+              ],
+            },
+          },
+          alias_preferred_titles: ['Birch Juice Moisturizing Sunscreen SPF50+ PA++++'],
+        },
+        {
+          seed_row: {
+            title: 'Shipping Protection',
+            seed_data: {
+              search_aliases: ['Shipping Protection'],
+            },
+          },
+        },
+      ],
+    };
+
+    const filtered = backfill._internals.filterManifestForPreferredRepair(
+      manifest,
+      ['Birch Juice Moisturizing Sunscreen SPF50+ PA++++'],
+    );
+
+    expect(filtered.item_count).toBe(1);
+    expect(filtered.items[0].seed_row.title).toBe('Birch Moisturizing Mild-Up Sunscreen SPF 50+, PA++++');
+    expect(filtered.coverage_repair_preferred_filter).toMatchObject({
+      enabled: true,
+      original_item_count: 2,
+      kept_item_count: 1,
+      rejected_non_matching_preferred_count: 1,
+    });
+  });
+
   test('runs post-apply enrichment and queues pivota insights for clean seeds', async () => {
     const query = jest.fn(async () => ({
       rows: [

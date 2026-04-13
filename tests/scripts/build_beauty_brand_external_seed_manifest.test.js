@@ -126,6 +126,41 @@ describe('build_beauty_brand_external_seed_manifest', () => {
     expect(manifest.items[0].seed_row.title).toBe('10% Niacinamide Serum');
   });
 
+  test('keeps high-similarity preferred titles as recall aliases even below strong-match threshold', () => {
+    const manifest = buildManifestFromExtract({
+      brand: 'Round Lab',
+      domain: 'https://roundlab.com',
+      market: 'US',
+      limit: 1,
+      preferredTitles: ['Birch Juice Moisturizing Sunscreen SPF50+ PA++++'],
+      extractDoc: {
+        diagnostics: { source: 'catalog_extract' },
+        products: [
+          {
+            title: 'Birch Moisturizing Mild-Up Sunscreen SPF 50+, PA++++',
+            url: 'https://roundlab.com/products/birch-moisturizing-mild-up-sunscreen-spf-50-pa',
+            image_url: 'https://cdn.example.com/roundlab.jpg',
+            price: '$28.00',
+            currency: 'USD',
+            availability: 'out of stock',
+          },
+        ],
+      },
+    });
+
+    expect(scorePreferredTitleMatch(
+      { title: 'Birch Moisturizing Mild-Up Sunscreen SPF 50+, PA++++' },
+      ['Birch Juice Moisturizing Sunscreen SPF50+ PA++++'],
+    )).toBe(60);
+    expect(manifest.matched_preferred_title_count).toBe(0);
+    expect(manifest.items[0].alias_preferred_titles).toEqual([
+      'Birch Juice Moisturizing Sunscreen SPF50+ PA++++',
+    ]);
+    expect(manifest.items[0].seed_row.seed_data.search_aliases).toContain(
+      'Birch Juice Moisturizing Sunscreen SPF50+ PA++++',
+    );
+  });
+
   test('expands extract window when preferred titles are provided', () => {
     expect(computeExtractLimit(12, [])).toBe(60);
     expect(computeExtractLimit(12, ['10% Niacinamide Serum'])).toBe(250);

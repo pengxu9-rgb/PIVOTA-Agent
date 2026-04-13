@@ -155,7 +155,7 @@ function scorePreferredTitleMatch(product = {}, preferredTitles = []) {
   return bestScore;
 }
 
-function collectPreferredTitleHits(product = {}, preferredTitles = []) {
+function collectPreferredTitleHits(product = {}, preferredTitles = [], { minScore = 80 } = {}) {
   const normalizedTitle = normalizeSearchText(product?.title || product?.name);
   if (!normalizedTitle) return [];
   const hits = [];
@@ -170,7 +170,7 @@ function collectPreferredTitleHits(product = {}, preferredTitles = []) {
       const overlap = preferredTokens.filter((token) => normalizedTitle.includes(token)).length;
       if (overlap > 0) matchScore = 20 + overlap * 10;
     }
-    if (matchScore >= 80) hits.push(normalizeNonEmptyString(rawPreferred));
+    if (matchScore >= minScore) hits.push(normalizeNonEmptyString(rawPreferred));
   }
   return dedupeStrings(hits, 12);
 }
@@ -282,7 +282,8 @@ function buildManifestFromExtract({
       },
     );
     if (!seedRow) continue;
-    const preferredHits = collectPreferredTitleHits(product, preferred);
+    const preferredHits = collectPreferredTitleHits(product, preferred, { minScore: 80 });
+    const preferredAliases = collectPreferredTitleHits(product, preferred, { minScore: 60 });
     items.push({
       ingredient_id: null,
       ingredient_name: null,
@@ -293,10 +294,11 @@ function buildManifestFromExtract({
       source_domain: domain,
       source_role: sourceRole,
       matched_preferred_titles: preferredHits,
+      alias_preferred_titles: preferredAliases,
       seed_row: annotateSeedRowAuthoritySource(seedRow, {
         sourceUrl: domain,
         sourceRole,
-        matchedPreferredTitles: preferredHits,
+        matchedPreferredTitles: dedupeStrings([...preferredAliases, ...preferredHits], 12),
       }),
     });
     if (priority >= 80) matchedPreferredTitleCount += 1;

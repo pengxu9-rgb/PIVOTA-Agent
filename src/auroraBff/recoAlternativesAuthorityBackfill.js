@@ -204,6 +204,15 @@ function normalizeTitle(value) {
     .replace(/\s+/g, ' ');
 }
 
+function normalizeSearchText(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function ensureHttpUrl(value) {
   const text = String(value || '').trim();
   if (!text) return '';
@@ -466,6 +475,58 @@ async function fetchSeedRowsByIds({ seedIds, market }) {
 function writeJson(outPath, doc) {
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
   fs.writeFileSync(outPath, `${JSON.stringify(doc, null, 2)}\n`, 'utf8');
+}
+
+function collectManifestItemAliases(item = {}) {
+  const seedRow = isPlainObject(item?.seed_row) ? item.seed_row : {};
+  const seedData = isPlainObject(seedRow?.seed_data) ? seedRow.seed_data : {};
+  const snapshot = isPlainObject(seedData?.snapshot) ? seedData.snapshot : {};
+  const authoritySource = isPlainObject(seedData?.authority_source) ? seedData.authority_source : {};
+  const snapshotAuthoritySource = isPlainObject(snapshot?.authority_source) ? snapshot.authority_source : {};
+  return uniqueStrings(
+    [
+      ...(Array.isArray(item?.matched_preferred_titles) ? item.matched_preferred_titles : []),
+      ...(Array.isArray(item?.alias_preferred_titles) ? item.alias_preferred_titles : []),
+      ...(Array.isArray(authoritySource?.matched_preferred_titles) ? authoritySource.matched_preferred_titles : []),
+      ...(Array.isArray(snapshotAuthoritySource?.matched_preferred_titles) ? snapshotAuthoritySource.matched_preferred_titles : []),
+      ...(Array.isArray(seedData?.search_aliases) ? seedData.search_aliases : []),
+      ...(Array.isArray(snapshot?.search_aliases) ? snapshot.search_aliases : []),
+      seedRow?.title,
+      seedData?.title,
+      snapshot?.title,
+    ],
+    80,
+  );
+}
+
+function manifestItemMatchesPreferredRepair(item = {}, preferredTitles = []) {
+  const preferredKeys = new Set(
+    (Array.isArray(preferredTitles) ? preferredTitles : [])
+      .map((value) => normalizeSearchText(value))
+      .filter(Boolean),
+  );
+  if (!preferredKeys.size) return true;
+  const aliases = collectManifestItemAliases(item).map((value) => normalizeSearchText(value)).filter(Boolean);
+  return aliases.some((alias) => preferredKeys.has(alias));
+}
+
+function filterManifestForPreferredRepair(manifest = {}, preferredTitles = []) {
+  const preferred = uniqueStrings(preferredTitles, ASYNC_BACKFILL_TITLE_LIMIT);
+  const items = Array.isArray(manifest?.items) ? manifest.items : [];
+  if (!preferred.length || !items.length) return manifest;
+  const filteredItems = items.filter((item) => manifestItemMatchesPreferredRepair(item, preferred));
+  return {
+    ...manifest,
+    items: filteredItems,
+    item_count: filteredItems.length,
+    coverage_repair_preferred_filter: {
+      enabled: true,
+      preferred_titles: preferred,
+      original_item_count: items.length,
+      kept_item_count: filteredItems.length,
+      rejected_non_matching_preferred_count: Math.max(0, items.length - filteredItems.length),
+    },
+  };
 }
 
 function countAuditFindingsBySeverity(findings = []) {
@@ -785,7 +846,7 @@ async function runBackfillJobDefault({ brand, market, preferredTitles, sourcePla
     }
   }
 
-  const manifest = buildManifestFromSourceAttempts({
+  const rawManifest = buildManifestFromSourceAttempts({
     brand,
     domain: primaryDomain,
     fallbackDomains,
@@ -794,6 +855,7 @@ async function runBackfillJobDefault({ brand, market, preferredTitles, sourcePla
     preferredTitles,
     sourceManifests,
   });
+  const manifest = filterManifestForPreferredRepair(rawManifest, preferredTitles);
   const manifestPath = path.join(jobDir, 'brand-manifest.json');
   writeJson(manifestPath, manifest);
 
@@ -809,6 +871,7 @@ async function runBackfillJobDefault({ brand, market, preferredTitles, sourcePla
         primary_domain: primaryDomain,
         fallback_domains: fallbackDomains,
       },
+      coverage_repair_preferred_filter: manifest.coverage_repair_preferred_filter || null,
     };
     const reportPath = path.join(jobDir, 'backfill-report.json');
     writeJson(reportPath, report);
@@ -876,6 +939,7 @@ async function runBackfillJobDefault({ brand, market, preferredTitles, sourcePla
       primary_domain: primaryDomain,
       fallback_domains: fallbackDomains,
     },
+    coverage_repair_preferred_filter: manifest.coverage_repair_preferred_filter || null,
     apply_summary: applySummary,
     applied_seed_ids: appliedSeedIds,
     correction_followups: correctionFollowups,
@@ -1085,5 +1149,7 @@ module.exports = {
     },
     buildBrandDomainGuessCandidates,
     discoverBrandSourcePlanByGuess,
+    collectManifestItemAliases,
+    filterManifestForPreferredRepair,
   },
 };
