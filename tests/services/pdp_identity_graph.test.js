@@ -141,6 +141,65 @@ describe('pdpIdentityGraph', () => {
     );
   });
 
+  test('buildIdentityListingFromProduct canonicalizes official URL host before conflict checks', () => {
+    const { buildIdentityListingFromProduct, _internals } = require('../../src/services/pdpIdentityGraph');
+
+    const refillWithoutWww = buildIdentityListingFromProduct({
+      merchantId: 'external_seed',
+      productId: 'ext_inn_elastic_refill_a',
+      sourceKind: 'external_seed',
+      product: {
+        title: 'Elastic Skin',
+        brand: 'INNBEAUTY Project',
+        source_url: 'https://innbeautyproject.com/products/elastic-skin?variant=41576028110896',
+        default_variant_id: '41576028110896',
+        variants: [
+          {
+            variant_id: '41576028110896',
+            title: 'Refill',
+            option_name: 'Size',
+            option_value: 'Refill',
+          },
+        ],
+      },
+    });
+    const refillWithWww = buildIdentityListingFromProduct({
+      merchantId: 'external_seed',
+      productId: 'ext_inn_elastic_refill_b',
+      sourceKind: 'external_seed',
+      product: {
+        title: 'Elastic Skin',
+        brand: 'INNBEAUTY Project',
+        source_url: 'https://www.innbeautyproject.com/products/elastic-skin?variant=41576028110896',
+        default_variant_id: '41576028110896',
+        variants: [
+          {
+            variant_id: '41576028110896',
+            title: 'Refill',
+            option_name: 'Size',
+            option_value: 'Refill',
+          },
+        ],
+      },
+    });
+
+    expect(refillWithoutWww.strong_identity.official_url).toBe(
+      'https://innbeautyproject.com/products/elastic-skin',
+    );
+    expect(refillWithWww.strong_identity.official_url).toBe(
+      'https://innbeautyproject.com/products/elastic-skin',
+    );
+    expect(refillWithWww.strong_identity.official_domain).toBe('innbeautyproject.com');
+    expect(refillWithWww.sellable_item_group_id).toBe(refillWithoutWww.sellable_item_group_id);
+
+    const clustered = _internals.clusterIdentityListings([refillWithoutWww, refillWithWww]);
+    expect(clustered.every((listing) => listing.identity_status === 'approved')).toBe(true);
+    expect(clustered.every((listing) => listing.review_required === false)).toBe(true);
+    expect(clustered.flatMap((listing) => listing.review_reason_codes)).not.toContain(
+      'conflicting_official_url',
+    );
+  });
+
   test('buildIdentityListingFromProduct resolves generic option axes when a selected variant is explicit', () => {
     const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
 

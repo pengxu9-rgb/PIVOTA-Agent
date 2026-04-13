@@ -112,6 +112,7 @@ function normalizeComparableUrl(value) {
     const parsed = new URL(raw);
     parsed.hash = '';
     parsed.search = '';
+    parsed.hostname = normalizeComparableHost(parsed.hostname);
     const pathname = parsed.pathname.replace(/\/+$/, '');
     return `${parsed.protocol.toLowerCase()}//${parsed.host.toLowerCase()}${pathname.toLowerCase()}`;
   } catch {
@@ -119,13 +120,18 @@ function normalizeComparableUrl(value) {
   }
 }
 
+function normalizeComparableHost(value) {
+  const host = asString(value).toLowerCase().replace(/\.+$/, '');
+  return host.startsWith('www.') ? host.slice(4) : host;
+}
+
 function normalizeComparableDomain(value) {
   const raw = asString(value);
   if (!raw) return '';
-  if (/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(raw)) return raw.toLowerCase();
+  if (/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(raw)) return normalizeComparableHost(raw);
   try {
     const parsed = new URL(raw);
-    return asString(parsed.host).toLowerCase();
+    return normalizeComparableHost(parsed.hostname);
   } catch {
     return '';
   }
