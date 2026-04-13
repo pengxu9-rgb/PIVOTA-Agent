@@ -99,6 +99,31 @@ describe('externalSeedPdpQuality', () => {
     );
   });
 
+  test('uses exact seed price when auditing variant-scoped PDP live output', () => {
+    const livePdpGate = buildLivePdpGate({
+      expectedPrice: 56,
+      extractorProduct: {
+        description_raw: 'Vitamin C serum.',
+        variants: [{ price: '64.00' }],
+      },
+      livePayload: {
+        modules: [
+          {
+            type: 'price_promo',
+            data: { price: { amount: 56, currency: 'USD' } },
+          },
+          {
+            type: 'product_details',
+            data: { sections: [{ heading: 'Overview', content: 'Vitamin C serum.' }] },
+          },
+        ],
+      },
+    });
+
+    expect(livePdpGate.status).toBe('passed');
+    expect(livePdpGate.failure_reasons).not.toContain('price_mismatch');
+  });
+
   test('exempts gift cards from strict similar count requirement', () => {
     const similarGate = buildSimilarGate({
       similarResponse: { products: [] },

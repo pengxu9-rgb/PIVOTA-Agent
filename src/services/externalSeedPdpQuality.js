@@ -110,8 +110,10 @@ function buildExtractorGate({ extractorResponse = {}, extractorProduct = {} } = 
   };
 }
 
-function buildLivePdpGate({ extractorProduct = {}, livePayload = {}, liveResponse = {} } = {}) {
+function buildLivePdpGate({ extractorProduct = {}, livePayload = {}, liveResponse = {}, expectedPrice = null } = {}) {
   const extractorPrice = pickExtractorPrice(extractorProduct);
+  const expectedPriceAmount = normalizeAmount(expectedPrice);
+  const referencePrice = expectedPriceAmount > 0 ? expectedPriceAmount : extractorPrice;
   const livePrice = pickLivePdpPrice(livePayload);
   const descriptionText = collectProductDescriptionText(livePayload);
   const detailsText = collectProductDetailsText(livePayload);
@@ -132,7 +134,7 @@ function buildLivePdpGate({ extractorProduct = {}, livePayload = {}, liveRespons
     };
   }
 
-  if (extractorPrice > 0 && livePrice > 0 && Math.abs(extractorPrice - livePrice) > 0.01) {
+  if (referencePrice > 0 && livePrice > 0 && Math.abs(referencePrice - livePrice) > 0.01) {
     failureReasons.push('price_mismatch');
   }
   if (extractorHasDescription && detailsText.length === 0) {

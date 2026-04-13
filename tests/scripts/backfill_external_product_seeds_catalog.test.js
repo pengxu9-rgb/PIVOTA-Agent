@@ -23,6 +23,24 @@ describe('backfill-external-product-seeds-catalog', () => {
     expect(pickSeedTargetUrl(row)).toBe('https://example.com/p/canonical-product');
   });
 
+  test('prefers variant destination URL for expanded exact-item seeds', () => {
+    const row = {
+      canonical_url: 'https://example.com/products/pro-c-serum',
+      destination_url: 'https://example.com/products/pro-c-serum?variant=42771629506608',
+      seed_data: {
+        source_listing_scope: 'variant',
+        parent_external_product_id: 'ext_parent',
+        selected_variant_id: '42771629506608',
+        snapshot: {
+          canonical_url: 'https://example.com/products/pro-c-serum',
+          destination_url: 'https://example.com/products/pro-c-serum?variant=42771629506608',
+        },
+      },
+    };
+
+    expect(pickSeedTargetUrl(row)).toBe('https://example.com/products/pro-c-serum?variant=42771629506608');
+  });
+
   test('passes the seed market through to catalog-intelligence', () => {
     const row = {
       id: 'eps_theordinary_1',

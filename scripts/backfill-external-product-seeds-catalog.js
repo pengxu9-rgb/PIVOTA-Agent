@@ -406,6 +406,10 @@ function recoverTargetUrlFromDiagnostics(row) {
 function pickSeedTargetUrl(row) {
   const seedData = ensureJsonObject(row?.seed_data);
   const snapshot = ensureJsonObject(seedData.snapshot);
+  const variantDestinationUrl = normalizeUrlLike(row?.destination_url || seedData.destination_url || snapshot.destination_url);
+  if (isVariantExpandedSeed(seedData) && collectVariantHintTokensFromUrl(variantDestinationUrl).length > 0) {
+    return variantDestinationUrl;
+  }
   const currentUrl = normalizeUrlLike(row?.canonical_url || row?.destination_url);
   const recoveredUrl =
     looksLikeKnownNonProductUrl(currentUrl) || !currentUrl ? recoverTargetUrlFromDiagnostics(row) : '';
