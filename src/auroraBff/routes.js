@@ -8032,11 +8032,6 @@ function buildLocalExternalSeedStageRowKey(row) {
   return '';
 }
 
-function buildLocalExternalSeedStageSqlId(row) {
-  const id = String(row?.id ?? '').trim();
-  return id || null;
-}
-
 function buildLocalExternalSeedSupportCategoryTerms({ role = null, preferredStep = '', query = '' } = {}) {
   const step = normalizeRecoTargetStep(preferredStep || role?.preferred_step);
   const haystack = [
@@ -8075,54 +8070,105 @@ function buildLocalExternalSeedSupportCategoryTerms({ role = null, preferredStep
   return uniqCaseInsensitiveStrings(terms, 10);
 }
 
-function buildLocalExternalSeedSupportStageDefinitions({
+function buildLocalExternalSeedSupportCombinedQuery({
   patterns = [],
   categoryTerms = [],
   safeLimit = 6,
+  market,
+  tool,
 } = {}) {
-  const stageCap = Math.max(safeLimit, Math.min(safeLimit * 3, 36));
-  const stages = [];
-  if (categoryTerms.length > 0) {
-    stages.push({
+  const params = [market, tool];
+  const stageOrder = [];
+  const stageWhereClauses = [];
+  const scoreClauses = [];
+  const stageClauses = [];
+  const bind = (value) => {
+    params.push(value);
+    return `$${params.length}`;
+  };
+
+  const addStage = ({ stage, score, whereSql }) => {
+    const stageName = String(stage || '').trim();
+    const normalizedWhereSql = String(whereSql || '').trim();
+    if (!stageName || !normalizedWhereSql) return;
+    stageOrder.push(stageName);
+    stageWhereClauses.push(`(${normalizedWhereSql})`);
+    scoreClauses.push(`WHEN ${normalizedWhereSql} THEN ${Number(score || 0)}`);
+    stageClauses.push(`WHEN ${normalizedWhereSql} THEN '${stageName}'`);
+  };
+
+  if (Array.isArray(categoryTerms) && categoryTerms.length > 0) {
+    const categoryBind = bind(categoryTerms);
+    addStage({
       stage: 'support_category_exact',
       score: 56,
-      cap: stageCap,
-      buildWhereSql: (stageBind) => `(
-        ${LOCAL_EXTERNAL_SEED_DIRECT_RECALL_CATEGORY_FIELD} = ANY(${stageBind(categoryTerms)}::text[])
-      )`,
+      whereSql: `${LOCAL_EXTERNAL_SEED_DIRECT_RECALL_CATEGORY_FIELD} = ANY(${categoryBind}::text[])`,
     });
   }
-  if (patterns.length > 0) {
-    stages.push({
+
+  if (Array.isArray(patterns) && patterns.length > 0) {
+    const patternBind = bind(patterns);
+    addStage({
       stage: 'support_recall_title',
       score: 48,
-      cap: stageCap,
-      buildWhereSql: (stageBind) =>
-        `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${stageBind(patterns)}::text[])`,
+      whereSql: `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${patternBind}::text[])`,
     });
-    stages.push({
+    addStage({
+      stage: 'support_raw_title',
+      score: 46,
+      whereSql: `lower(coalesce(title, '')) LIKE ANY(${patternBind}::text[])`,
+    });
+    addStage({
       stage: 'support_alias_tokens',
       score: 42,
-      cap: stageCap,
-      buildWhereSql: (stageBind) =>
-        `${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY(${stageBind(patterns)}::text[])`,
+      whereSql: `${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY(${patternBind}::text[])`,
     });
-    stages.push({
+    addStage({
       stage: 'support_ingredient_tokens',
       score: 38,
-      cap: stageCap,
-      buildWhereSql: (stageBind) =>
-        `${EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokens} LIKE ANY(${stageBind(patterns)}::text[])`,
-    });
-    stages.push({
-      stage: 'support_recall_summary',
-      score: 28,
-      cap: Math.max(safeLimit, Math.min(safeLimit * 2, 24)),
-      buildWhereSql: (stageBind) =>
-        `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${stageBind(patterns)}::text[])`,
+      whereSql: `${EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokens} LIKE ANY(${patternBind}::text[])`,
     });
   }
-  return stages;
+
+  if (stageWhereClauses.length === 0) {
+    return {
+      sql: '',
+      params,
+      stageOrder,
+      cap: 0,
+    };
+  }
+
+  const cap = Math.max(safeLimit, Math.min(safeLimit * 8, 80));
+  const limitBind = bind(cap);
+  const matchWhereSql = stageWhereClauses.join('\n          OR ');
+  return {
+    sql: `
+      SELECT
+        ${LOCAL_EXTERNAL_SEED_SELECT_FIELDS},
+        CASE
+          ${scoreClauses.join('\n          ')}
+          ELSE 0
+        END::int AS match_score,
+        CASE
+          ${stageClauses.join('\n          ')}
+          ELSE 'support_combined_match'
+        END::text AS match_stage
+      FROM external_product_seeds
+      WHERE status = 'active'
+        AND attached_product_key IS NULL
+        AND market = $1
+        AND (tool = '*' OR tool = $2)
+        AND (
+          ${matchWhereSql}
+        )
+      ORDER BY match_score DESC, updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
+      LIMIT ${limitBind}
+    `,
+    params,
+    stageOrder,
+    cap,
+  };
 }
 
 async function searchLocalExternalSeedProductsViaSupportStages({
@@ -8136,76 +8182,58 @@ async function searchLocalExternalSeedProductsViaSupportStages({
   tool,
 } = {}) {
   const categoryTerms = buildLocalExternalSeedSupportCategoryTerms({ role, preferredStep, query: q });
-  const stageDefinitions = buildLocalExternalSeedSupportStageDefinitions({
+  const queryPlan = buildLocalExternalSeedSupportCombinedQuery({
     patterns,
     categoryTerms,
     safeLimit,
+    market,
+    tool,
   });
   const stagedRows = [];
   const seenRowKeys = new Set();
-  const seenSqlIds = new Set();
-  const stageDebug = [];
-  const baseWhereSql = `
-    status = 'active'
-      AND attached_product_key IS NULL
-      AND market = $1
-      AND (tool = '*' OR tool = $2)
-  `;
   const appendRows = (rows = []) => {
     for (const row of Array.isArray(rows) ? rows : []) {
       const rowKey = buildLocalExternalSeedStageRowKey(row);
       if (!rowKey || seenRowKeys.has(rowKey)) continue;
       seenRowKeys.add(rowKey);
-      const sqlId = buildLocalExternalSeedStageSqlId(row);
-      if (sqlId) seenSqlIds.add(sqlId);
       stagedRows.push(row);
       if (stagedRows.length >= safeLimit) break;
     }
   };
 
-  for (const stageDefinition of stageDefinitions) {
-    if (stagedRows.length >= safeLimit) break;
-    const startedAt = Date.now();
-    const stageParams = [market, tool];
-    const stageBind = (value) => {
-      stageParams.push(value);
-      return `$${stageParams.length}`;
+  if (!queryPlan.sql) {
+    return {
+      rows: [],
+      stageDebug: [],
+      categoryTerms,
     };
-    const stageWhereSql = typeof stageDefinition.buildWhereSql === 'function'
-      ? stageDefinition.buildWhereSql(stageBind)
-      : '';
-    if (!stageWhereSql) continue;
-    let sql = `
-      SELECT
-        ${LOCAL_EXTERNAL_SEED_SELECT_FIELDS},
-        ${Number(stageDefinition.score || 0)}::int AS match_score,
-        '${stageDefinition.stage}'::text AS match_stage
-      FROM external_product_seeds
-      WHERE ${baseWhereSql}
-        AND ${stageWhereSql}
-    `;
-    if (seenSqlIds.size > 0) {
-      const excludedIdsBind = stageBind(Array.from(seenSqlIds));
-      sql += `
-        AND NOT (id::text = ANY(${excludedIdsBind}::text[]))
-      `;
-    }
-    const limitBind = stageBind(Math.max(safeLimit, Math.min(36, Number(stageDefinition.cap || safeLimit))));
-    sql += `
-      ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
-      LIMIT ${limitBind}
-    `;
-    const res = await runQuery(sql, stageParams);
-    const rows = Array.isArray(res?.rows) ? res.rows : [];
-    appendRows(rows);
-    stageDebug.push({
-      stage: String(stageDefinition.stage || '').trim() || 'unknown',
-      row_count: rows.length,
-      cumulative_row_count: stagedRows.length,
-      duration_ms: Math.max(0, Date.now() - startedAt),
-      cap: Math.max(safeLimit, Math.min(36, Number(stageDefinition.cap || safeLimit))),
-    });
   }
+  const startedAt = Date.now();
+  const res = await runQuery(queryPlan.sql, queryPlan.params);
+  const rows = Array.isArray(res?.rows) ? res.rows : [];
+  appendRows(rows);
+  const durationMs = Math.max(0, Date.now() - startedAt);
+  const countsByStage = new Map();
+  for (const row of rows) {
+    const stage = String(row?.match_stage || '').trim() || 'support_combined_match';
+    countsByStage.set(stage, (countsByStage.get(stage) || 0) + 1);
+  }
+  let cumulativeRowCount = 0;
+  const stageOrder = Array.isArray(queryPlan.stageOrder) && queryPlan.stageOrder.length
+    ? queryPlan.stageOrder
+    : [];
+  const stageDebug = stageOrder.map((stage) => {
+    const rowCount = countsByStage.get(stage) || 0;
+    cumulativeRowCount = Math.min(safeLimit, cumulativeRowCount + rowCount);
+    return {
+      stage,
+      row_count: rowCount,
+      cumulative_row_count: cumulativeRowCount,
+      duration_ms: durationMs,
+      cap: queryPlan.cap,
+      combined_query: true,
+    };
+  });
 
   return {
     rows: stagedRows.slice(0, safeLimit),
@@ -20428,7 +20456,7 @@ async function runBeautyMainlineLocalHandoffSearch({
             : 5000,
       ),
     ),
-    limit: isFrameworkLocalHandoff ? 12 : 6,
+    limit: 6,
     usePurchasableFallback: false,
     allowExternalSeed: true,
     externalSeedStrategy: 'supplement_internal_first',
