@@ -5953,8 +5953,62 @@ function getAuroraFallbackOverrides(source, operation) {
   };
 }
 
+function shouldDefaultPublicSearchExternalSeedContract(search = {}, metadata = {}) {
+  const queryText = String(search?.query || search?.q || '').trim().toLowerCase();
+  if (!queryText) return false;
+  const uiSurface = normalizeSearchUiSurface(
+    metadata?.ui_surface ||
+      metadata?.uiSurface ||
+      search?.ui_surface ||
+      search?.uiSurface,
+  );
+  if (uiSurface === 'ingredient_plan_guidance_only') return false;
+  if (parseQueryBoolean(search?.product_only ?? search?.productOnly) === true) return false;
+  if (parseQueryBoolean(search?.local_mainline_child ?? search?.localMainlineChild) === true) {
+    return false;
+  }
+  const catalogSurface = String(
+    firstQueryParamValue(
+      search?.catalog_surface ||
+        search?.catalogSurface ||
+        metadata?.catalog_surface ||
+        metadata?.catalogSurface,
+    ) || '',
+  )
+    .trim()
+    .toLowerCase();
+  if (['agent_api', 'acp', 'ucp'].includes(catalogSurface)) return false;
+  return true;
+}
+
 function applyFindProductsMultiSourceContract(rawPayload, metadata = {}, operation = '') {
-  return rawPayload;
+  if (String(operation || '').trim() !== 'find_products_multi') return rawPayload;
+  if (!isPublicSearchSource(metadata?.source)) return rawPayload;
+  const payload =
+    rawPayload && typeof rawPayload === 'object' && !Array.isArray(rawPayload)
+      ? { ...rawPayload }
+      : {};
+  const search =
+    payload.search && typeof payload.search === 'object' && !Array.isArray(payload.search)
+      ? { ...payload.search }
+      : {};
+  if (!shouldDefaultPublicSearchExternalSeedContract(search, metadata)) {
+    return rawPayload;
+  }
+  const explicitAllowExternalSeed = parseQueryBoolean(
+    search.allow_external_seed ?? search.allowExternalSeed,
+  );
+  const explicitExternalSeedStrategy = firstQueryParamValue(
+    search.external_seed_strategy ?? search.externalSeedStrategy,
+  );
+  if (explicitAllowExternalSeed === undefined) {
+    search.allow_external_seed = true;
+  }
+  if (!explicitExternalSeedStrategy) {
+    search.external_seed_strategy = 'unified_relevance';
+  }
+  payload.search = search;
+  return payload;
 }
 
 function applyShoppingCatalogQueryGuards(queryParams, source) {

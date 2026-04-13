@@ -105,6 +105,7 @@ describe('Celestial commerce core source policy module', () => {
     ).toEqual({
       search: {
         query: 'serum',
+        allow_external_seed: true,
         external_seed_strategy: 'unified_relevance',
       },
     });
@@ -112,5 +113,25 @@ describe('Celestial commerce core source policy module', () => {
     expect(
       applyFindProductsMultiSourceContract(payload, { source: 'shopping_agent' }, 'find_products_multi'),
     ).toEqual(payload);
+  });
+
+  test('find_products_multi source contract defaults public search external seed contract', () => {
+    expect(
+      applyFindProductsMultiSourceContract(
+        {
+          search: {
+            query: 'hair oil',
+          },
+        },
+        { source: 'search' },
+        'find_products_multi',
+      ),
+    ).toEqual({
+      search: {
+        query: 'hair oil',
+        allow_external_seed: true,
+        external_seed_strategy: 'unified_relevance',
+      },
+    });
   });
 });
