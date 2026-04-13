@@ -116,4 +116,29 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(payload.product.external_redirect_url).toBe('https://merchant.example/products/barrier-cream');
     expect(payload.product.canonical_url).toBe('https://merchant.example/products/barrier-cream');
   });
+
+  test('preserves structured ingredient items without re-splitting numeric INCI commas', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_ingredient_atomic',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Rice Milk Toner',
+        description: 'Hydrating toner.',
+        canonical_url: 'https://merchant.example/products/rice-milk-toner',
+        image_url: 'https://example.com/rice-milk-toner.png',
+        ingredients_inci: {
+          items: ['AQUA', '1,2-HEXANEDIOL', 'GLYCERIN'],
+          source_origin: 'pdp_section',
+          source_quality_status: 'authoritative',
+        },
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const ingredientsInci = payload.modules.find((module) => module.type === 'ingredients_inci');
+
+    expect(ingredientsInci?.data?.items).toEqual(['AQUA', '1,2-HEXANEDIOL', 'GLYCERIN']);
+  });
 });
