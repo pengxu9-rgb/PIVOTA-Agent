@@ -7727,6 +7727,162 @@ test('fetchRecoAlternativesForProduct: open_world_only hides unresolved rows whe
   );
 });
 
+test('fetchRecoAlternativesForProduct: open_world_only ranks grounded sunscreen serum rows ahead of glow-finish rows', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      GEMINI_API_KEY: 'test_gemini_key',
+      AURORA_DIAG_FORCE_GEMINI: 'true',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED: 'false',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      axios.get = async (url) => {
+        if (!isProductsSearchUrl(url)) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: 'ext_lrp_aox',
+                merchant_id: 'external_seed',
+                brand: 'La Roche-Posay',
+                name: 'Anthelios AOX Antioxidant Serum SPF 50',
+                display_name: 'Anthelios AOX Antioxidant Serum SPF 50',
+                product_type: 'Sunscreen',
+                category: 'Sunscreen',
+                retrieval_source: 'external_seed',
+                description: 'Face serum sunscreen texture for straightforward daily protection.',
+                compare_highlights: ['Serum sunscreen format.'],
+              },
+              {
+                product_id: 'ext_supergoop_glowscreen',
+                merchant_id: 'external_seed',
+                brand: 'Supergoop!',
+                name: 'Glowscreen SPF 40',
+                display_name: 'Glowscreen SPF 40',
+                product_type: 'Sunscreen',
+                category: 'Sunscreen',
+                retrieval_source: 'external_seed',
+                description: 'Glowy sunscreen primer with pearlescent radiance and a dewy makeup-prep finish.',
+                compare_highlights: ['Glow primer finish.'],
+              },
+              {
+                product_id: 'ext_neutrogena_invisible',
+                merchant_id: 'external_seed',
+                brand: 'Neutrogena',
+                name: 'Invisible Daily Defense Sunscreen Serum SPF 60+',
+                display_name: 'Invisible Daily Defense Sunscreen Serum SPF 60+',
+                product_type: 'Sunscreen',
+                category: 'Sunscreen',
+                retrieval_source: 'external_seed',
+                description: 'Invisible daily sunscreen serum with a lightweight face-serum feel.',
+                compare_highlights: ['Invisible daily sunscreen serum.'],
+              },
+            ],
+          },
+        };
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { __internal } = routeModule;
+        __internal.__setCallGeminiJsonObjectForTest(async () => ({
+          ok: true,
+          json: {
+            alternatives: [
+              {
+                brand: 'La Roche-Posay',
+                name: 'Anthelios AOX Antioxidant Serum SPF 50',
+                product_type: 'sunscreen',
+                similarity_score: 62,
+                reasons: ['Serum sunscreen texture for daily SPF.'],
+                tradeoff_notes: ['Usually a higher-price pharmacy option.'],
+              },
+              {
+                brand: 'Supergoop!',
+                name: 'Glowscreen SPF 40',
+                product_type: 'sunscreen',
+                similarity_score: 61,
+                reasons: ['Same sunscreen step.'],
+                tradeoff_notes: ['Leaves a pearlescent, dewy glow finish.'],
+              },
+              {
+                brand: 'Neutrogena',
+                name: 'Invisible Daily Defense Sunscreen Serum SPF 60+',
+                product_type: 'sunscreen',
+                similarity_score: 57,
+                reasons: ['Invisible serum sunscreen format.'],
+                tradeoff_notes: ['Drugstore SPF serum rather than the exact anchor formula.'],
+              },
+            ],
+          },
+        }));
+
+        const out = await __internal.fetchRecoAlternativesForProduct({
+          ctx: {
+            lang: 'EN',
+            request_id: 'req_open_world_sunscreen_anchor_fit_rank',
+            trace_id: 'trace_open_world_sunscreen_anchor_fit_rank',
+          },
+          profileSummary: null,
+          recentLogs: [],
+          productInput: 'The Ordinary UV Filters SPF 45 Serum',
+          productObj: {
+            brand: 'The Ordinary',
+            name: 'UV Filters SPF 45 Serum',
+            product_type: 'sunscreen',
+            category: 'Sunscreen',
+            claims: ['daily sunscreen', 'lightweight protection'],
+            key_features: ['Lightweight serum', 'Daily UV protection'],
+            short_description: 'A lightweight sunscreen serum for daily protection.',
+          },
+          anchorId: '',
+          maxTotal: 3,
+          candidatePool: [],
+          logger: null,
+          options: {
+            recommendation_mode: 'open_world_only',
+            profile_mode: 'anchor_only',
+            disable_fallback: true,
+            disable_synthetic_local_fallback: true,
+            ignore_selector_candidates: true,
+            skip_anchor_precheck: true,
+          },
+        });
+
+        assert.equal(out?.llm_trace?.catalog_grounded_count, 3);
+        assert.equal(out.alternatives.length, 3);
+        const returnedNames = out.alternatives.map((row) => String(row?.product?.name || row?.name || ''));
+        const neutrogenaIndex = returnedNames.findIndex((name) => /Invisible Daily Defense/i.test(name));
+        const glowscreenIndex = returnedNames.findIndex((name) => /Glowscreen/i.test(name));
+        assert.ok(neutrogenaIndex >= 0);
+        assert.ok(glowscreenIndex >= 0);
+        assert.ok(neutrogenaIndex < glowscreenIndex);
+        const glowscreen = out.alternatives[glowscreenIndex];
+        assert.equal(glowscreen?.grounding_status, 'catalog_verified');
+        assert.ok(Number(glowscreen?.metadata?.cosmetic_finish_penalty || 0) > 0);
+        assert.ok(Array.isArray(glowscreen?.metadata?.ranking_signals_used));
+        assert.ok(glowscreen.metadata.ranking_signals_used.includes('cosmetic_finish_mismatch_penalty'));
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        axios.get = originalGet;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
 test('fetchRecoAlternativesForProduct: open_world_only preserves reviewed highlights on catalog-grounded rows', async () => {
   return withEnv(
     {

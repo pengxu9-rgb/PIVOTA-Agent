@@ -64942,6 +64942,20 @@ function mergeRecoAlternativesForHybrid(primary, fallback, { maxTotal = 3, prefe
   return finalizeRecoAlternativesForCompetitiveQuality(out, { maxTotal: limit });
 }
 
+function sortRecoAlternativesByMixedScore(rows) {
+  return (Array.isArray(rows) ? rows : [])
+    .filter((row) => row && typeof row === 'object' && !Array.isArray(row))
+    .slice()
+    .sort((left, right) => {
+      const scoreDiff = Number(right?._mixed_score || 0) - Number(left?._mixed_score || 0);
+      if (scoreDiff !== 0) return scoreDiff;
+      if (String(left?.candidate_origin || '') !== String(right?.candidate_origin || '')) {
+        return String(left?.candidate_origin || '') === 'pool' ? -1 : 1;
+      }
+      return String(left?.product?.name || left?.name || '').localeCompare(String(right?.product?.name || right?.name || ''));
+    });
+}
+
 function isExternalRecoAlternativesSeedProduct(product) {
   const row = isPlainObject(product) ? product : {};
   const metadata = isPlainObject(row.metadata) ? row.metadata : {};
@@ -65234,6 +65248,41 @@ function computeRecoAlternativeCosmeticFinishPenalty(targetSignals, candidateTex
   return Math.min(0.12, penalty);
 }
 
+function applyRecoAlternativeCosmeticFinishPenaltyToRow(row, {
+  targetSignals,
+  candidateText = '',
+  candidateLabel = '',
+} = {}) {
+  const item = isPlainObject(row) ? row : null;
+  if (!item) return row;
+  const computedPenalty = computeRecoAlternativeCosmeticFinishPenalty(targetSignals, candidateText, candidateLabel);
+  if (!(computedPenalty > 0)) return item;
+  const metadata = isPlainObject(item.metadata) ? item.metadata : {};
+  const priorPenalty = Math.max(0, Number(metadata.cosmetic_finish_penalty) || 0);
+  const extraPenalty = Math.max(0, computedPenalty - priorPenalty);
+  if (!(extraPenalty > 0)) return item;
+  const baseScore = Number.isFinite(Number(item._mixed_score))
+    ? clamp01Score(Number(item._mixed_score))
+    : normalizeMaybePercentScore(item.similarity_score);
+  if (!Number.isFinite(baseScore)) return item;
+  const nextScore = clamp01Score(baseScore - extraPenalty);
+  return {
+    ...item,
+    similarity_score: Math.max(1, Math.min(100, Math.round(nextScore * 100))),
+    metadata: {
+      ...metadata,
+      raw_similarity_score: Number(nextScore.toFixed(3)),
+      cosmetic_finish_penalty: Number(Math.max(priorPenalty, computedPenalty).toFixed(3)),
+      ranking_signals_used: uniqCaseInsensitiveStrings([
+        ...asStringArray(metadata.ranking_signals_used, 6),
+        pickFirstTrimmed(metadata.ranking_signal),
+        'cosmetic_finish_mismatch_penalty',
+      ], 6),
+    },
+    _mixed_score: nextScore,
+  };
+}
+
 function normalizePoolAlternativeRow(row, {
   targetSignals,
   anchorLabel = '',
@@ -65366,6 +65415,12 @@ function normalizePoolAlternativeRow(row, {
       compare_stage: 'pool_only',
       retrieval_source: normalized.retrieval_source || null,
       raw_similarity_score: Number(mixedScore.toFixed(3)),
+      ...(cosmeticFinishPenalty > 0
+        ? {
+            cosmetic_finish_penalty: Number(cosmeticFinishPenalty.toFixed(3)),
+            ranking_signals_used: ['cosmetic_finish_mismatch_penalty'],
+          }
+        : {}),
     },
     _mixed_score: mixedScore,
   }, normalized);
@@ -65551,7 +65606,7 @@ function normalizeOpenWorldAlternativeRow(candidate, {
     nameOverlap * 0.06,
   );
 
-  return {
+  return applyRecoAlternativeCosmeticFinishPenaltyToRow({
     kind: 'similar',
     candidate_origin: 'open_world',
     grounding_status: 'name_only',
@@ -65578,7 +65633,7 @@ function normalizeOpenWorldAlternativeRow(candidate, {
       raw_similarity_score: Number(mixedScore.toFixed(3)),
     },
     _mixed_score: mixedScore,
-  };
+  }, { targetSignals, candidateText: sourceText, candidateLabel });
 }
 
 const RECO_ALTERNATIVE_GROUNDING_GENERIC_TOKEN_SET = new Set([
@@ -65908,6 +65963,7 @@ function mapCatalogGroundedOpenWorldAlternative(
     queryVariants = [],
     authorityPresence = '',
     searchHitCount = 0,
+    targetSignals = null,
   } = {},
 ) {
   const normalized = normalizeRecoCatalogProduct(catalogRow);
@@ -65931,7 +65987,7 @@ function mapCatalogGroundedOpenWorldAlternative(
               external: { query: candidateLabel },
             }
           : { path: 'external', external: { query: candidateLabel } };
-  return applyGroundedAlternativeAuthorityExperience({
+  const grounded = applyGroundedAlternativeAuthorityExperience({
     ...openWorldRow,
     candidate_origin: 'pool',
     grounding_status: 'catalog_verified',
@@ -65964,6 +66020,11 @@ function mapCatalogGroundedOpenWorldAlternative(
       merged_candidate_origins: ['open_world', 'pool'],
     },
   }, normalized);
+  return applyRecoAlternativeCosmeticFinishPenaltyToRow(grounded, {
+    targetSignals,
+    candidateText: buildRecoAlternativePoolCandidateText(normalized),
+    candidateLabel,
+  });
 }
 
 function buildOpenWorldAlternativeResolveHints(openWorldRow) {
@@ -66191,7 +66252,15 @@ function mapResolverGroundedOpenWorldAlternative(openWorldRow, {
       merged_candidate_origins: ['open_world', 'pool'],
     },
   };
-  return next;
+  return applyRecoAlternativeCosmeticFinishPenaltyToRow(next, {
+    targetSignals,
+    candidateText: [
+      category,
+      ...(Array.isArray(next.reasons) ? next.reasons : []),
+      ...(Array.isArray(next.tradeoff_notes) ? next.tradeoff_notes : []),
+    ].join(' '),
+    candidateLabel: joinBrandAndName(brand, name),
+  });
 }
 
 async function groundOpenWorldAlternativesToCatalog(rows, { logger, targetSignals = null } = {}) {
@@ -66285,6 +66354,7 @@ async function groundOpenWorldAlternativesToCatalog(rows, { logger, targetSignal
           queryVariants,
           authorityPresence: best.authorityPresence,
           searchHitCount,
+          targetSignals,
         }),
         grounded: true,
         attempted: true,
@@ -66672,7 +66742,10 @@ async function fetchRecoAlternativesForLocalGeminiOpenWorld({
     llmTrace.catalog_grounded_count = grounded.grounded_count;
     llmTrace.catalog_grounding_failure_class_counts = grounded.failure_class_counts;
     const hydratedAlternatives = await hydrateRecoAlternativesAuthorityExperienceRows(grounded.alternatives);
-    const finalAlternatives = applyOpenWorldAlternativeVisibleCopy(hydratedAlternatives, { targetSignals });
+    const finalAlternatives = applyOpenWorldAlternativeVisibleCopy(
+      sortRecoAlternativesByMixedScore(hydratedAlternatives),
+      { targetSignals },
+    );
     const visibleAlternatives = filterRecoAlternativesVisibleAuthorityRows(finalAlternatives, { minGrounded: 2 });
     const backfillLedger = await buildRecoAlternativesAuthorityBackfillLedger({
       ctx,
@@ -66721,7 +66794,10 @@ async function fetchRecoAlternativesForLocalGeminiOpenWorld({
     llmTrace.recovered_from_truncated_raw = true;
     llmTrace.recovered_row_count = recoveredRows.length;
     const hydratedAlternatives = await hydrateRecoAlternativesAuthorityExperienceRows(grounded.alternatives);
-    const finalAlternatives = applyOpenWorldAlternativeVisibleCopy(hydratedAlternatives, { targetSignals });
+    const finalAlternatives = applyOpenWorldAlternativeVisibleCopy(
+      sortRecoAlternativesByMixedScore(hydratedAlternatives),
+      { targetSignals },
+    );
     const visibleAlternatives = filterRecoAlternativesVisibleAuthorityRows(finalAlternatives, { minGrounded: 2 });
     const backfillLedger = await buildRecoAlternativesAuthorityBackfillLedger({
       ctx,
