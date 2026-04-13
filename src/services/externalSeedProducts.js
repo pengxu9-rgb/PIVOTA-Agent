@@ -42,6 +42,12 @@ const BEAUTY_CATEGORY_PATTERNS = [
   ['Lipstick', /\b(lipstick|lip color|lip colour|liquid lip|lip luxe|lip lacquer|lip gloss)\b/i],
   ['Moisturizer', /\b(moisturizer|moisturiser|cream|lotion|gel cream|gel-cream|barrier cream)\b/i],
 ];
+const BEAUTY_CATEGORY_DESCRIPTION_PATTERNS = BEAUTY_CATEGORY_PATTERNS.map(([label, pattern]) => {
+  if (label === 'Powder') {
+    return ['Powder', /\b(setting powder|pressed powder|loose powder|blurring powder|finishing powder)\b/i];
+  }
+  return [label, pattern];
+});
 const STRONG_ACTIVE_SOLUTION_INGREDIENT_IDS = new Set([
   'salicylic_acid',
   'niacinamide',
@@ -301,7 +307,7 @@ function inferExternalSeedBeautyCategory({
     if (pattern.test(primarySurfaceText)) return label;
   }
 
-  for (const [label, pattern] of BEAUTY_CATEGORY_PATTERNS) {
+  for (const [label, pattern] of BEAUTY_CATEGORY_DESCRIPTION_PATTERNS) {
     if (pattern.test(descriptionText)) return label;
   }
 
