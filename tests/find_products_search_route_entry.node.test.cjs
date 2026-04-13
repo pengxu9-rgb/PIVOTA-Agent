@@ -104,6 +104,8 @@ test('direct route preserves local mainline child marker into invoke payload', (
   assert.equal(routePlan.invalid, false);
   assert.equal(routePlan.payload.search.local_mainline_child, true);
   assert.equal(routePlan.payload.metadata.local_mainline_child, true);
+  assert.equal(routePlan.payload.search.allow_external_seed, undefined);
+  assert.equal(routePlan.payload.search.external_seed_strategy, undefined);
 });
 
 test('direct route child marker suppresses beauty semantic handoff reinjection', () => {
@@ -183,5 +185,55 @@ test('beauty head-term route skips guidance ladder and forces catalog child reca
   assert.equal(
     routePlan.payload.metadata.primary_retrieval_contract,
     'agent_v2_catalog_child_recall',
+  );
+});
+
+test('public beauty head-term route defaults external seed on catalog child recall', () => {
+  const runtime = buildRuntime();
+  const routePlan = runtime.prepareAgentProductsSearchRoute({
+    query: {
+      query: 'lip balm',
+      source: 'search',
+      catalog_surface: 'beauty',
+    },
+  });
+
+  assert.equal(routePlan.invalid, false);
+  assert.equal(routePlan.forceDirectInvokeMainPath, true);
+  assert.equal(routePlan.payload.search.allow_external_seed, true);
+  assert.equal(routePlan.payload.search.external_seed_strategy, 'unified_relevance');
+  assert.equal(routePlan.payload.metadata.primary_lane, 'catalog_child_recall');
+  assert.equal(
+    routePlan.payload.metadata.primary_retrieval_contract,
+    'agent_v2_catalog_child_recall',
+  );
+  assert.deepEqual(
+    routePlan.payload.metadata.search_request_contract.supplement_lanes,
+    ['external_seed_supplement', 'coverage_supplement'],
+  );
+});
+
+test('public beauty discovery route defaults external seed on mainline queries', () => {
+  const runtime = buildRuntime();
+  const routePlan = runtime.prepareAgentProductsSearchRoute({
+    query: {
+      query: 'vitamin c serum',
+      source: 'search',
+      catalog_surface: 'beauty',
+    },
+  });
+
+  assert.equal(routePlan.invalid, false);
+  assert.equal(routePlan.forceDirectInvokeMainPath, true);
+  assert.equal(routePlan.payload.search.allow_external_seed, true);
+  assert.equal(routePlan.payload.search.external_seed_strategy, 'unified_relevance');
+  assert.equal(routePlan.payload.metadata.primary_lane, 'beauty_discovery_mainline');
+  assert.equal(
+    routePlan.payload.metadata.primary_retrieval_contract,
+    'agent_v1_search_beauty_mainline',
+  );
+  assert.deepEqual(
+    routePlan.payload.metadata.search_request_contract.supplement_lanes,
+    ['external_seed_supplement', 'coverage_supplement'],
   );
 });
