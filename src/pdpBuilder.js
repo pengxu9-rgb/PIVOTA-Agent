@@ -550,12 +550,25 @@ function splitHowToUseStepsFromText(text) {
 }
 
 function buildIngredientsModuleData(candidates, fallbackTitle) {
+  const collectAtomicItems = (candidate) => {
+    const directLists = [];
+    if (Array.isArray(candidate)) directLists.push(candidate);
+    if (candidate && typeof candidate === 'object') {
+      if (Array.isArray(candidate.items)) directLists.push(candidate.items);
+      if (Array.isArray(candidate.values)) directLists.push(candidate.values);
+    }
+    return uniqueNonEmptyStrings(
+      directLists.flatMap((list) => list.map((item) => asNonEmptyString(item)).filter(Boolean)),
+    );
+  };
+
   for (const candidate of candidates) {
     if (!candidate) continue;
     const rawText = pickStructuredText(candidate);
+    const atomicItems = collectAtomicItems(candidate);
     const items = uniqueNonEmptyStrings([
-      ...normalizeStructuredItems(candidate),
-      ...splitIngredientsItemsFromText(rawText),
+      ...(atomicItems.length ? atomicItems : normalizeStructuredItems(candidate)),
+      ...(atomicItems.length ? [] : splitIngredientsItemsFromText(rawText)),
     ]);
     if (!items.length && !rawText) continue;
     return {
