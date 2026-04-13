@@ -51464,6 +51464,9 @@ function describeRecoAssistantRewriteFailureReason(reason) {
   if (normalized === 'rewrite_generic_routine_wrapup') {
     return 'Do not end with a generic routine wrap-up. Use the last sentence for a concrete step reason, tradeoff, or buy-now guidance.';
   }
+  if (normalized === 'rewrite_stiff_selection_framing') {
+    return 'Replace stiff meta phrasing like "selected products" with shopper-facing routine language.';
+  }
   if (normalized === 'rewrite_failed_alignment_guard') {
     return 'Tighten alignment to the selected products, the target concern, and the final payload.';
   }
@@ -51786,9 +51789,9 @@ function buildRecoAssistantRewritePrompt({
     'If request_mode is "buy", use direct shopping advice tone.',
     'If request_mode is "buy", start the first sentence with the lead product name rather than a generic concern summary.',
     'If request_mode is "buy" and there is one selected product, the first sentence must directly recommend that product by name.',
-    'If request_mode is "buy" and selected_product_role_mix is "same_role_comparison", the first sentence must name the best first buy and signal that the remaining selected products are same-slot comparison options.',
-    'If request_mode is "buy" and selected_product_role_mix is "routine_mix", the first sentence must name the best first buy and frame selected products from different roles as routine add-ons; only same-role products may be same-slot alternatives.',
-    'If selected_product_role_mix is "routine_mix", explicitly say the selected products are different steps in a basic routine and not the same type of product.',
+    'If request_mode is "buy" and selected_product_role_mix is "same_role_comparison", the first sentence must name the best first buy and signal that the remaining picks are same-slot comparison options.',
+    'If request_mode is "buy" and selected_product_role_mix is "routine_mix", the first sentence must name the best first buy and frame the remaining picks as routine add-ons from other roles; only same-role products may be same-slot alternatives.',
+    'If selected_product_role_mix is "routine_mix", make it clear these are different routine steps, not interchangeable substitutes, and do not use the phrase "selected products".',
     'If request_mode is "buy" and there is one selected product with no secondary targets, use exactly 2 sentences.',
     'If selected_product_role_mix is "same_role_comparison", present a concise horizontal comparison and name each selected product exactly once if space allows.',
     'If selected_product_role_mix is "same_role_comparison", compare lower-priced versus higher-priced options only inside the same role when price_order_summary supports it.',
@@ -51877,6 +51880,11 @@ function assistantTextUsesGenericRoutineWrapup(text) {
   return /\b(these|together|both|all three|the other two|secondary steps|support steps|selected products|products)\b/i.test(lastSentence)
     && /\b(support|help|keep|protect|balance|hydrate)\b/i.test(lastSentence)
     && /\b(routine|skin|oily skin|hydration|uv damage|breathable)\b/i.test(lastSentence);
+}
+
+function assistantTextUsesStiffSelectionFraming(text) {
+  return /\bthese selected products\b/i.test(String(text || ''))
+    || /\bselected products are different steps\b/i.test(String(text || ''));
 }
 
 function assistantTextMentionsRecoTargetSemantics(text, primaryTarget) {
@@ -52010,6 +52018,7 @@ function validateRecoAssistantRewriteCandidate({
   const usesGenericRoutineWrapup =
     selectedProductRoutineMix
     && assistantTextUsesGenericRoutineWrapup(text);
+  const usesStiffSelectionFraming = assistantTextUsesStiffSelectionFraming(text);
   const buyUsesRoutineUpsell =
     requestMode === 'buy'
     && secondaryTargets.length === 0
@@ -52027,12 +52036,14 @@ function validateRecoAssistantRewriteCandidate({
     || buyLeadNotProductFirst
     || buyUsesRoutineUpsell
     || usesVagueBenefitLanguage
+    || usesStiffSelectionFraming
     || usesGenericRoutineWrapup
   ) {
     if (buyLeadNotProductFirst) return { ok: false, reason: 'rewrite_buy_lead_not_product_first' };
     if (buyLeadNotDirect) return { ok: false, reason: 'rewrite_buy_lead_not_direct' };
     if (buyUsesRoutineUpsell) return { ok: false, reason: 'rewrite_buy_addon_filler' };
     if (usesVagueBenefitLanguage) return { ok: false, reason: 'rewrite_vague_benefit_language' };
+    if (usesStiffSelectionFraming) return { ok: false, reason: 'rewrite_stiff_selection_framing' };
     if (usesGenericRoutineWrapup) return { ok: false, reason: 'rewrite_generic_routine_wrapup' };
     return { ok: false, reason: 'rewrite_failed_alignment_guard' };
   }
@@ -52045,6 +52056,7 @@ function shouldRetryRecoAssistantRewrite(reason) {
     || normalized === 'rewrite_buy_lead_not_product_first'
     || normalized === 'rewrite_buy_lead_not_direct'
     || normalized === 'rewrite_vague_benefit_language'
+    || normalized === 'rewrite_stiff_selection_framing'
     || normalized === 'rewrite_generic_routine_wrapup'
     || normalized === 'rewrite_failed_alignment_guard';
 }
