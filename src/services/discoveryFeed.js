@@ -7231,6 +7231,10 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       strategy === 'personalized_interest' ? profile.personalizationSource : 'none';
     const candidateLimit = options.candidateLimit || resolveDiscoveryCandidateLimit(request);
     const brandScopeAliases = buildBrandScopeAliases(request.scope?.brand_names || []);
+    const stableBrowseCatalogCountPromise =
+      request.surface === 'browse_products'
+        ? countStableBrowseCatalogTotal(request)
+        : Promise.resolve(null);
     const shouldUseBrandDirectPrimary =
       !Array.isArray(options.candidateProducts) &&
       brandScopeAliases.length > 0 &&
@@ -7540,7 +7544,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       orderedPool = browseSelection.orderedPool;
       decisions = browseSelection.decisions;
       filterCounts = buildFilterCounts(decisions);
-      const stableBrowseCatalogCount = await countStableBrowseCatalogTotal(request);
+      const stableBrowseCatalogCount = await stableBrowseCatalogCountPromise;
       total = stableBrowseCatalogCount?.total ?? runtimeCorpusCount;
       corpusTotalCount = total;
       countSource = stableBrowseCatalogCount?.source || 'runtime_corpus_fallback';

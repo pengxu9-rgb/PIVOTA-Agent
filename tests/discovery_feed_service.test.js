@@ -5023,6 +5023,78 @@ describe('discovery feed service', () => {
     }
   });
 
+  test('browse_products overlaps stable catalog count with candidate loading instead of serializing both waits', async () => {
+    jest.resetModules();
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = 'postgres://browse-count-parallel-test';
+
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const dbQueryMock = jest.fn(async (sql) => {
+      const text = String(sql || '');
+      if (text.includes('COUNT(DISTINCT') && text.includes('FROM filtered')) {
+        await sleep(120);
+        return { rows: [{ total: 240 }] };
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../src/db', () => ({
+      query: dbQueryMock,
+    }));
+
+    try {
+      const fresh = require('../src/services/discoveryFeed');
+      const externalProducts = Array.from({ length: 120 }, (_, idx) =>
+        makeProduct({
+          merchant_id: 'external_seed',
+          product_id: `parallel_external_${idx + 1}`,
+          title: `Parallel Serum ${idx + 1}`,
+          brand: `Seed ${idx + 1}`,
+          category: 'Skincare',
+          product_type: 'Serum',
+        }),
+      );
+      const externalSpy = jest.fn(async () => {
+        await sleep(120);
+        return externalProducts;
+      });
+
+      const startedAt = Date.now();
+      const response = await fresh.getDiscoveryFeed(
+        {
+          surface: 'browse_products',
+          page: 1,
+          limit: 24,
+          context: {
+            auth_state: 'anonymous',
+            locale: 'en-US',
+            recent_views: [],
+            recent_queries: [],
+          },
+        },
+        {
+          providerOverrides: {
+            external_seeds: externalSpy,
+          },
+        },
+      );
+      const elapsedMs = Date.now() - startedAt;
+
+      expect(response.total).toBe(240);
+      expect(response.metadata).toEqual(
+        expect.objectContaining({
+          primary_path_used: 'external_seed_fastpath',
+          count_source: 'stable_catalog_identity_grouped',
+        }),
+      );
+      expect(externalSpy).toHaveBeenCalled();
+      expect(elapsedMs).toBeLessThan(220);
+    } finally {
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+    }
+  });
+
   test('cold start browse does not backfill deferred domains onto later pages when non-deferred results exist', async () => {
     const response = await getDiscoveryFeed(
       {
