@@ -850,6 +850,94 @@ test('__internal: content spine is preserved on reco payload and assistant text 
   assert.match(assistantText, /slowly|1-2 weeks|conservative/i);
 });
 
+test('__internal: content spine keeps explicit role-tagged rows from bleeding into token-adjacent support targets', async () => {
+  const { __internal } = loadRoutesFresh();
+  const payload = __internal.applyRecoContentSpineToPayload({
+    recommendations: [
+      {
+        product_id: 'prod_barrier',
+        merchant_id: 'mid_test',
+        brand: 'CalmLab',
+        name: 'Soothing Barrier Cream',
+        display_name: 'CalmLab Soothing Barrier Cream',
+        product_type: 'moisturizer',
+        category: 'moisturizer',
+        matched_role_id: 'barrier_moisturizer',
+      },
+    ],
+    recommendation_meta: {
+      resolved_target_step: 'moisturizer',
+      resolved_target_step_confidence: 'medium',
+      mainline_status: 'grounded_success',
+      source_mode: 'framework_mainline',
+    },
+  }, {
+    ingredient_query: 'Barrier moisturizer',
+    resolved_target_step: 'moisturizer',
+    resolved_target_step_confidence: 'medium',
+    primary_target_id: 'barrier_moisturizer',
+    ranked_targets: [
+      {
+        target_id: 'barrier_moisturizer',
+        target_role: 'primary',
+        ingredient_query: 'Barrier moisturizer',
+        goal: 'barrier repair',
+        resolved_target_step: 'moisturizer',
+      },
+      {
+        target_id: 'soothing_treatment',
+        target_role: 'secondary',
+        ingredient_query: 'Soothing treatment',
+        goal: 'calm redness',
+        resolved_target_step: 'moisturizer',
+      },
+    ],
+  });
+
+  assert.deepEqual(payload.recommendation_meta?.selected_target_ids, ['barrier_moisturizer']);
+  assert.deepEqual(payload.recommendation_meta?.displayed_target_ids, ['barrier_moisturizer']);
+});
+
+test('__internal: content spine still falls back to text matching when reco rows have no explicit role tag', async () => {
+  const { __internal } = loadRoutesFresh();
+  const payload = __internal.applyRecoContentSpineToPayload({
+    recommendations: [
+      {
+        product_id: 'prod_soothing',
+        merchant_id: 'mid_test',
+        brand: 'CalmLab',
+        name: 'Soothing Relief Serum',
+        display_name: 'CalmLab Soothing Relief Serum',
+        product_type: 'serum',
+        category: 'serum',
+      },
+    ],
+    recommendation_meta: {
+      resolved_target_step: 'serum',
+      resolved_target_step_confidence: 'medium',
+      mainline_status: 'grounded_success',
+      source_mode: 'catalog_grounded',
+    },
+  }, {
+    ingredient_query: 'Soothing treatment',
+    resolved_target_step: 'serum',
+    resolved_target_step_confidence: 'medium',
+    primary_target_id: 'soothing_treatment',
+    ranked_targets: [
+      {
+        target_id: 'soothing_treatment',
+        target_role: 'primary',
+        ingredient_query: 'Soothing treatment',
+        goal: 'calm redness',
+        resolved_target_step: 'serum',
+      },
+    ],
+  });
+
+  assert.deepEqual(payload.recommendation_meta?.selected_target_ids, ['soothing_treatment']);
+  assert.deepEqual(payload.recommendation_meta?.displayed_target_ids, ['soothing_treatment']);
+});
+
 test('__internal: quality contract exposes semantic reco alignment flags', async () => {
   const { __internal } = loadRoutesFresh();
   const payload = __internal.applyRecoContentSpineToPayload({

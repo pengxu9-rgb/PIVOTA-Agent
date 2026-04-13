@@ -50328,8 +50328,24 @@ function getRecoContentSpineFromContext(recoContext) {
   };
 }
 
-function recommendationMatchesRecoContextTarget(row, target) {
+function collectRecommendationExplicitTargetIds(row) {
+  if (!isPlainObject(row)) return [];
+  return normalizeRecoContextTargetIds([
+    pickFirstTrimmed(row.matched_role_id, row.matchedRoleId),
+    pickFirstTrimmed(row.retrieval_role_id, row.retrievalRoleId),
+    pickFirstTrimmed(row.role_id, row.roleId),
+    pickFirstTrimmed(row.target_id, row.targetId),
+  ]);
+}
+
+function recommendationMatchesRecoContextTarget(row, target, { preferExplicitRoleMatch = false } = {}) {
   if (!isPlainObject(row) || !isPlainObject(target)) return false;
+  const targetId = pickFirstTrimmed(target.target_id, target.targetId);
+  const explicitTargetIds = collectRecommendationExplicitTargetIds(row);
+  if (targetId && explicitTargetIds.length) {
+    if (explicitTargetIds.includes(targetId)) return true;
+    if (preferExplicitRoleMatch) return false;
+  }
   const targetCandidates = Array.isArray(target.product_candidates) ? target.product_candidates : [];
   if (targetCandidates.length && rowMatchesIngredientConstraintProductCandidate(row, targetCandidates)) return true;
   const candidateText = ingredient_query_normalize(buildIngredientRecoConstraintCandidateText(row));
@@ -50421,7 +50437,11 @@ function deriveRecoSelectedTargetState({ recommendations, recoContext } = {}) {
   for (const target of rankedTargets) {
     const targetId = pickFirstTrimmed(target.target_id);
     if (!targetId || seen.has(targetId)) continue;
-    if (!(Array.isArray(recommendations) ? recommendations : []).some((row) => recommendationMatchesRecoContextTarget(row, target))) {
+    if (!(Array.isArray(recommendations) ? recommendations : []).some((row) => recommendationMatchesRecoContextTarget(
+      row,
+      target,
+      { preferExplicitRoleMatch: true },
+    ))) {
       continue;
     }
     seen.add(targetId);
