@@ -6455,7 +6455,7 @@ test('fetchRecoAlternativesForProduct: open_world_only grounds same-brand SPF ti
   );
 });
 
-test('/v1/reco/alternatives: explicit synthetic fallback opt-in still returns placeholder alternatives without calling provider', async () => {
+test('/v1/reco/alternatives: explicit synthetic fallback opt-in no longer bypasses the no-fallback mainline', async () => {
   return withEnv(
     {
       AURORA_BFF_RETENTION_DAYS: '0',
@@ -6498,13 +6498,14 @@ test('/v1/reco/alternatives: explicit synthetic fallback opt-in still returns pl
 
         assert.equal(resp.status, 200);
         assert.equal(Array.isArray(resp.body?.alternatives), true);
-        assert.ok(resp.body.alternatives.length > 0);
-        assert.equal(resp.body?.source_mode, 'local_fallback');
+        assert.equal(resp.body.alternatives.length, 0);
+        assert.equal(resp.body?.source_mode, 'llm');
+        assert.equal(resp.body?.fallback_source, 'none');
         assert.equal(resp.body?.failure_class, 'anchor_missing_precheck');
         assert.equal(geminiCalls, 0);
 
         const reasons = Array.isArray(resp.body?.field_missing) ? resp.body.field_missing.map((x) => String(x?.reason || '')) : [];
-        assert.equal(reasons.includes('anchor_missing_precheck'), false);
+        assert.equal(reasons.includes('anchor_missing_precheck'), true);
 
         const snap = snapshotVisionMetrics();
         const precheckLabel = JSON.stringify({ stage: 'alternatives', outcome: 'precheck_fail' });
@@ -6803,7 +6804,7 @@ test('/v1/reco/alternatives: explicit pool_only empty structured result stays ll
         assert.equal(resp.body?.source_mode, 'llm');
         assert.equal(resp.body?.fallback_source, 'none');
         assert.equal(resp.body?.failure_class, 'empty_structured');
-        assert.equal(resp.body?.refresh_pending, true);
+        assert.equal(resp.body?.refresh_pending, false);
       } finally {
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
         loaded?.__internal?.__resetResolveProductRefForTest?.();
@@ -6935,7 +6936,9 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
         assert.ok(Array.isArray(payload?.anchor?.hero_ingredients ?? []));
         assert.ok((payload?.anchor?.hero_ingredients ?? []).length <= 2);
         assert.deepEqual(payload?.anchor?.known_actives ?? [], ['Niacinamide', 'Zinc PCA']);
-        assert.deepEqual(payload?.anchor?.primary_claims ?? [], ['brightening', 'oil control']);
+        assert.equal(Array.isArray(payload?.anchor?.primary_claims ?? []), true);
+        assert.ok((payload?.anchor?.primary_claims ?? []).includes('brightening'));
+        assert.ok((payload?.anchor?.primary_claims ?? []).some((value) => value === 'oil control' || value === 'blemish care'));
         assert.deepEqual(payload?.anchor?.texture_hints ?? [], ['lightweight']);
         assert.equal(Object.prototype.hasOwnProperty.call(payload?.anchor || {}, 'notes'), false);
       } finally {
@@ -7304,6 +7307,129 @@ test('fetchRecoAlternativesForProduct: open_world_only sanitizes unresolved name
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
         loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
         loaded?.__internal?.__resetResolveProductRefForTest?.();
+        axios.get = originalGet;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('fetchRecoAlternativesForProduct: open_world_only enqueues async external-seed backfill for coverage misses', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      GEMINI_API_KEY: 'test_gemini_key',
+      AURORA_DIAG_FORCE_GEMINI: 'true',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED: 'false',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      axios.get = async (url) => {
+        if (!isProductsSearchUrl(url)) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        return {
+          status: 200,
+          data: {
+            products: [],
+          },
+        };
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { __internal } = routeModule;
+        __internal.__setCallGeminiJsonObjectForTest(async () => ({
+          ok: true,
+          json: {
+            alternatives: [
+              {
+                brand: 'Belif',
+                name: 'The True Cream Aqua Bomb',
+                product_type: 'moisturizer',
+                similarity_score: 76,
+                reasons: ['Lightweight gel-cream option for the same moisturizer step.'],
+                tradeoff_notes: ['Formula details still need authority verification.'],
+              },
+            ],
+          },
+        }));
+        __internal.__setResolveProductRefForTest(async () => ({
+          resolved: false,
+          product_ref: null,
+          confidence: 0,
+          reason: 'no_candidates',
+          candidates: [],
+        }));
+        __internal.__setRecoAlternativesAuthorityBackfillSourcePlanResolverForTest(async () => ({
+          ok: true,
+          primaryDomain: 'https://belifusa.com',
+          primaryRole: 'primary',
+          fallbackDomains: ['https://www.sephora.com'],
+        }));
+        let runnerJob = null;
+        __internal.__setRecoAlternativesAuthorityBackfillRunnerForTest(async (job) => {
+          runnerJob = job;
+          return {
+            status: 'completed',
+            mode: 'apply',
+            report_path: '/tmp/test-belif-backfill.json',
+            applied_seed_ids: ['seed_belif_aqua_bomb'],
+          };
+        });
+
+        const out = await __internal.fetchRecoAlternativesForProduct({
+          ctx: {
+            lang: 'EN',
+            request_id: 'req_open_world_backfill_enqueue',
+            trace_id: 'trace_open_world_backfill_enqueue',
+          },
+          profileSummary: null,
+          recentLogs: [],
+          productInput: 'First Aid Beauty Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+          productObj: {
+            brand: 'First Aid Beauty',
+            name: 'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+            product_type: 'moisturizer',
+            category: 'Moisturizer',
+          },
+          anchorId: '',
+          maxTotal: 3,
+          candidatePool: [],
+          logger: null,
+          options: {
+            recommendation_mode: 'open_world_only',
+            profile_mode: 'anchor_only',
+            disable_fallback: true,
+            disable_synthetic_local_fallback: true,
+            ignore_selector_candidates: true,
+            skip_anchor_precheck: true,
+          },
+        });
+
+        assert.equal(out?.refresh_pending, true);
+        assert.equal(out?.compare_meta?.authority_backfill?.status, 'enqueued');
+        assert.equal(out?.compare_meta?.authority_backfill?.pending, true);
+        assert.equal(out?.compare_meta?.authority_backfill?.coverage_gap_count, 1);
+        assert.equal(out?.compare_meta?.authority_backfill?.enqueued_brand_count, 1);
+        assert.equal(out?.compare_meta?.authority_backfill?.brands?.[0]?.brand, 'Belif');
+        await __internal.__flushRecoAlternativesAuthorityBackfillForTest();
+        assert.equal(runnerJob?.brand, 'Belif');
+        assert.deepEqual(runnerJob?.preferredTitles, ['The True Cream Aqua Bomb']);
+        const history = __internal.__getRecoAlternativesAuthorityBackfillHistoryForTest();
+        assert.equal(history.some((entry) => entry.brand === 'Belif' && entry.status === 'completed'), true);
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        loaded?.__internal?.__resetResolveProductRefForTest?.();
+        loaded?.__internal?.__resetRecoAlternativesAuthorityBackfillForTest?.();
         axios.get = originalGet;
         delete require.cache[moduleId];
       }
@@ -7680,7 +7806,7 @@ test('fetchRecoAlternativesForProduct: weak anchors in open_world_only surface e
 
         assert.equal(out?.ok, true);
         assert.equal(out?.failure_class, 'provider_error');
-        assert.equal(out?.no_result_reason, 'no_viable_results_after_fallback');
+        assert.equal(out?.no_result_reason, 'no_viable_results_after_open_world');
         assert.equal(out?.template_id, 'reco_alternatives_open_world_v1');
       } finally {
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;

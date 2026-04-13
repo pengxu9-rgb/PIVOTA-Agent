@@ -1,3 +1,7 @@
+const {
+  buildSupportRoleQueryVariants,
+} = require('./auroraBff/recoSupportRoleQueries');
+
 function createFindProductsInvokeSemanticOwnerRuntime(deps = {}) {
   const {
     normalizeAgentSource,
@@ -141,25 +145,29 @@ function createFindProductsInvokeSemanticOwnerRuntime(deps = {}) {
         : semanticOwnerTargetStepFamily === 'sunscreen'
           ? 2
           : 1;
-    const buildSemanticOwnerSupportRoleQuery = (roleId = '') => {
+    const frameworkRoles = Array.isArray(semanticContractMeta?.framework_roles)
+      ? semanticContractMeta.framework_roles.filter((role) => role && typeof role === 'object' && !Array.isArray(role))
+      : [];
+    const buildSemanticOwnerSupportRoleQueries = (roleId = '') => {
       const normalizedRoleId = String(roleId || '').trim().toLowerCase();
-      if (!normalizedRoleId) return '';
-      const oilySignal =
-        semanticOwnerSemanticFamily === 'oil_control' ||
-        /\b(oily|oil control|sebum|shine control|mattify|mattifying|non-greasy|non greasy)\b/.test(
-          `${String(rawUserQuery || '').trim().toLowerCase()} ${semanticOwnerSemanticFamily}`,
-        );
-      if (normalizedRoleId === 'lightweight_moisturizer') {
-        return oilySignal ? 'lightweight moisturizer oily skin' : 'lightweight moisturizer';
-      }
-      if (normalizedRoleId === 'barrier_moisturizer') return 'barrier moisturizer';
-      if (normalizedRoleId === 'daily_sunscreen') {
-        return oilySignal ? 'oil control sunscreen' : 'daily sunscreen';
-      }
-      return normalizedRoleId.replace(/_/g, ' ');
+      if (!normalizedRoleId) return [];
+      const role = frameworkRoles.find((item) => String(item?.role_id || '').trim().toLowerCase() === normalizedRoleId) || null;
+      const out = buildSupportRoleQueryVariants({
+        roleId: role?.role_id || normalizedRoleId,
+        roleLabel: role?.label || '',
+        preferredStep: role?.preferred_step || role?.step || normalizedRoleId,
+        queryTerms: Array.isArray(role?.query_terms) ? role.query_terms : [],
+        fitKeywords: Array.isArray(role?.fit_keywords) ? role.fit_keywords : [],
+        semanticFamily: semanticOwnerSemanticFamily || role?.semantic_family || role?.semanticFamily || '',
+        concernText: rawUserQuery,
+        maxQueries: 2,
+      });
+      if (out.length > 0) return out;
+      if (normalizedRoleId === 'barrier_moisturizer') return ['barrier moisturizer'];
+      return [normalizedRoleId.replace(/_/g, ' ')];
     };
     const semanticOwnerSupportRoleQueryPack = normalizeSemanticOwnerQueryPack(
-      semanticOwnerSupportRoleIds.map((roleId) => buildSemanticOwnerSupportRoleQuery(roleId)),
+      semanticOwnerSupportRoleIds.flatMap((roleId) => buildSemanticOwnerSupportRoleQueries(roleId)),
       4,
     );
 

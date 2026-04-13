@@ -193,6 +193,15 @@ describe('externalSeedRecall', () => {
     expect(predicate.indexOf('retrieval_title')).toBeLessThan(predicate.indexOf('seed_data::text'));
   });
 
+  test('authority alias SQL reads refreshed raw seed aliases before legacy fallback', () => {
+    const predicate = buildExternalSeedRecallLikePredicate('$3', { includeLegacyFallback: true });
+
+    expect(predicate).toMatch(/seed_data#>>'\{derived,recall,alias_tokens\}'/);
+    expect(predicate).toMatch(/seed_data#>>'\{search_aliases\}'/);
+    expect(predicate).toMatch(/seed_data#>>'\{snapshot,search_aliases\}'/);
+    expect(predicate.indexOf("seed_data#>>'{search_aliases}'")).toBeLessThan(predicate.indexOf('seed_data::text'));
+  });
+
   test('expands alias tokens for punctuation and SPF-normalized recall matching', () => {
     const doc = buildExternalSeedRecallDoc({
       row: {

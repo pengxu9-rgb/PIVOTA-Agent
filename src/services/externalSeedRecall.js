@@ -667,7 +667,21 @@ const EXTERNAL_SEED_RECALL_SQL_FIELDS = Object.freeze({
     "lower(coalesce(seed_data->'derived'->'recall'->>'category', seed_data->>'category', seed_data->'product'->>'category', seed_data->'snapshot'->>'category', seed_data->>'product_type', seed_data->'product'->>'product_type', seed_data->'snapshot'->>'product_type', ''))",
   vertical: "lower(coalesce(seed_data->'derived'->'recall'->>'vertical', ''))",
   ingredientTokens: "lower(coalesce(seed_data#>>'{derived,recall,ingredient_tokens}', ''))",
-  aliasTokens: "lower(coalesce(seed_data#>>'{derived,recall,alias_tokens}', ''))",
+  aliasTokens: `lower(concat_ws(' ',
+    coalesce(seed_data#>>'{derived,recall,alias_tokens}', ''),
+    coalesce(seed_data#>>'{search_aliases}', ''),
+    coalesce(seed_data#>>'{searchAliases}', ''),
+    coalesce(seed_data#>>'{aliases}', ''),
+    coalesce(seed_data#>>'{product,search_aliases}', ''),
+    coalesce(seed_data#>>'{product,searchAliases}', ''),
+    coalesce(seed_data#>>'{product,aliases}', ''),
+    coalesce(seed_data#>>'{snapshot,search_aliases}', ''),
+    coalesce(seed_data#>>'{snapshot,searchAliases}', ''),
+    coalesce(seed_data#>>'{snapshot,aliases}', ''),
+    coalesce(seed_data#>>'{snapshot,product,search_aliases}', ''),
+    coalesce(seed_data#>>'{snapshot,product,searchAliases}', ''),
+    coalesce(seed_data#>>'{snapshot,product,aliases}', '')
+  ))`,
 });
 
 function buildExternalSeedRecallLikePredicate(bind, { includeLegacyFallback = false } = {}) {

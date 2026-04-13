@@ -63,6 +63,25 @@ function countConcernIngredientMatches(text, values = [], maxHits = 2) {
   return hits;
 }
 
+function buildConcernRoleProductTypeHypotheses(role = null, preferredStep = '') {
+  const base = Array.isArray(role?.product_type_hypotheses) ? role.product_type_hypotheses : [];
+  const aliases = [];
+  if (preferredStep === 'moisturizer') {
+    aliases.push('moisturizer', 'lotion', 'cream', 'gel cream', 'water gel', 'water cream', 'emulsion');
+  } else if (preferredStep === 'sunscreen') {
+    aliases.push('sunscreen', 'spf', 'sun fluid', 'sun cream', 'sun lotion', 'uv');
+  } else if (preferredStep === 'treatment') {
+    aliases.push('treatment', 'serum', 'ampoule', 'essence');
+  }
+  return Array.from(
+    new Set(
+      [...base, ...aliases]
+        .map((value) => normalizeConcernQueryToken(value).toLowerCase())
+        .filter(Boolean),
+    ),
+  );
+}
+
 function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '' } = {}) {
   const roleId = String(role?.role_id || '').trim();
   if (!roleId) return null;
@@ -81,7 +100,11 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
   const fitKeywordMatches = countConcernRoleSignalMatches(candidateText, role?.fit_keywords, 3);
   const queryTermMatches = countConcernRoleSignalMatches(candidateText, role?.query_terms, 3);
   const ingredientMatches = countConcernIngredientMatches(candidateText, role?.ingredient_hypotheses, 2);
-  const productTypeMatches = countConcernRoleSignalMatches(candidateText, role?.product_type_hypotheses, 2);
+  const productTypeMatches = countConcernRoleSignalMatches(
+    candidateText,
+    buildConcernRoleProductTypeHypotheses(role, preferredStep),
+    2,
+  );
   const strongSemanticFitMatched = fitKeywordMatches > 0 || queryTermMatches > 0;
   const exactStep = Boolean(candidateStep && preferredStep && candidateStep === preferredStep);
   const alternateStep = Boolean(candidateStep && alternateSteps.includes(candidateStep));

@@ -4,6 +4,9 @@ const {
   buildBeautyDiscoveryQueryPackFromContract,
   BEAUTY_DISCOVERY_MAINLINE_OWNER,
 } = require('../findProductsMulti/policy');
+const {
+  buildSupportRoleQueryVariants,
+} = require('./recoSupportRoleQueries');
 
 function uniqueCaseInsensitiveStrings(values, max = 12) {
   const out = [];
@@ -376,12 +379,13 @@ function buildBeautyMainlineRecallPlan({ mode, semanticContract = null, rawQuery
         slot: inferBeautyMainlineSlot(primaryPreferredStep),
       }),
       ...supportRoles.flatMap((role) => {
+        const supportPreferredStep = normalizeSemanticStepFamily(role?.preferred_step);
+        const supportInternalMaxQueries = supportPreferredStep === 'sunscreen' ? 3 : 2;
         const supportInternalQueries = buildRoleStageQueries(role, {
           allowConcernFallback: false,
-          maxQueriesOverride: 1,
+          maxQueriesOverride: supportInternalMaxQueries,
         });
         const supportExternalQueries = buildRoleStageQueries(role, { allowConcernFallback: false });
-        const supportPreferredStep = normalizeSemanticStepFamily(role?.preferred_step);
         return [
           buildStage({
             stageId: buildFrameworkSupportStageId(role?.role_id, 'internal'),
@@ -390,7 +394,7 @@ function buildBeautyMainlineRecallPlan({ mode, semanticContract = null, rawQuery
             sourceScope: 'internal',
             queries: supportInternalQueries,
             concurrency: 1,
-            maxAttemptsForStage: 1,
+            maxAttemptsForStage: Math.min(supportInternalQueries.length || 1, supportInternalMaxQueries),
             stopOnViableMatch: true,
             reasonForInclusion: 'framework_support_internal',
             runIf: 'if_role_unfilled_after_primary',
@@ -665,8 +669,16 @@ function buildFrameworkRoleQueries(
       if (roleQueries.length <= 1 && anchorQuery) out.push(anchorQuery);
     }
   } else {
-    if (roleQueries.length > 0) out.push(roleQueries[0]);
-    out.push(...roleQueries.slice(1));
+    out.push(...buildSupportRoleQueryVariants({
+      roleId: roleObj.role_id,
+      roleLabel: roleObj.label,
+      preferredStep,
+      queryTerms: roleQueries,
+      fitKeywords: Array.isArray(roleObj.fit_keywords) ? roleObj.fit_keywords : [],
+      semanticFamily: roleObj.semantic_family || deriveSemanticFamilyFromRole(roleObj) || '',
+      concernText,
+      maxQueries,
+    }));
   }
   if (allowConcernFallback && concernText) {
     if (preferredStep) out.push(`${concernText} ${preferredStep}`);

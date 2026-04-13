@@ -4,6 +4,50 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
 describe('apply_aurora_external_seed_creation_manifest', () => {
+  test('merges preferred aliases into existing seed data without replacing product truth', () => {
+    const { mergeSeedAliasData } = require('../../scripts/apply_aurora_external_seed_creation_manifest.cjs');
+    const result = mergeSeedAliasData(
+      {
+        brand: 'Round Lab',
+        title: 'Birch Moisturizing Mild-Up Sunscreen SPF 50+, PA++++',
+        search_aliases: ['Birch Moisturizing Mild-Up Sunscreen SPF 50+, PA++++'],
+        snapshot: {
+          title: 'Birch Moisturizing Mild-Up Sunscreen SPF 50+, PA++++',
+          search_aliases: ['Birch Moisturizing Mild-Up Sunscreen SPF 50+, PA++++'],
+        },
+      },
+      {
+        search_aliases: [
+          'Birch Juice Moisturizing Sunscreen SPF50+ PA++++',
+          'Birch Moisturizing Mild-Up Sunscreen SPF 50+, PA++++',
+        ],
+        authority_source: {
+          matched_preferred_titles: ['Birch Juice Moisturizing Sunscreen SPF50+ PA++++'],
+        },
+        snapshot: {
+          search_aliases: ['Birch Juice Moisturizing Sunscreen SPF50+ PA++++'],
+          authority_source: {
+            matched_preferred_titles: ['Birch Juice Moisturizing Sunscreen SPF50+ PA++++'],
+          },
+        },
+      },
+    );
+
+    expect(result.changed).toBe(true);
+    expect(result.nextSeedData.title).toBe('Birch Moisturizing Mild-Up Sunscreen SPF 50+, PA++++');
+    expect(result.nextSeedData.search_aliases).toEqual([
+      'Birch Moisturizing Mild-Up Sunscreen SPF 50+, PA++++',
+      'Birch Juice Moisturizing Sunscreen SPF50+ PA++++',
+    ]);
+    expect(result.nextSeedData.snapshot.search_aliases).toEqual([
+      'Birch Moisturizing Mild-Up Sunscreen SPF 50+, PA++++',
+      'Birch Juice Moisturizing Sunscreen SPF50+ PA++++',
+    ]);
+    expect(result.nextSeedData.authority_source.matched_preferred_titles).toEqual([
+      'Birch Juice Moisturizing Sunscreen SPF50+ PA++++',
+    ]);
+  });
+
   test('dry-run without database returns would_insert_unverified rows', () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aurora-seed-create-'));
     const inputPath = path.join(tempDir, 'manifest.json');

@@ -3585,15 +3585,15 @@ test('__internal: framework recall planner emits role-aware primary and support 
   assert.ok(Array.isArray(plan.stages));
   assert.equal(plan.stages.length, 6);
   assert.ok(Array.isArray(plan.entries));
-  assert.equal(plan.entries.length, 13);
+  assert.equal(plan.entries.length, 16);
   assert.deepEqual(
     plan.stages.map((stage) => [stage.stage_id, stage.source_scope, stage.role_id, stage.entries.length]),
     [
       ['framework_stage_a_primary_internal', 'internal', 'oil_control_treatment', 3],
       ['framework_stage_b_primary_external_seed', 'external_seed', 'oil_control_treatment', 4],
-      ['framework_stage_c_support_lightweight_moisturizer', 'internal', 'lightweight_moisturizer', 1],
+      ['framework_stage_c_support_lightweight_moisturizer', 'internal', 'lightweight_moisturizer', 2],
       ['framework_stage_c_support_lightweight_moisturizer_external_seed', 'external_seed', 'lightweight_moisturizer', 2],
-      ['framework_stage_c_support_daily_sunscreen', 'internal', 'daily_sunscreen', 1],
+      ['framework_stage_c_support_daily_sunscreen', 'internal', 'daily_sunscreen', 3],
       ['framework_stage_c_support_daily_sunscreen_external_seed', 'external_seed', 'daily_sunscreen', 2],
     ],
   );
@@ -3609,18 +3609,21 @@ test('__internal: framework recall planner emits role-aware primary and support 
     'oil control serum',
   ]);
   assert.deepEqual(plan.stages[2]?.entries?.map((entry) => entry?.query), [
-    'lightweight moisturizer',
+    'lightweight moisturizer oily skin',
+    'oil free moisturizer',
   ]);
   assert.deepEqual(plan.stages[3]?.entries?.map((entry) => entry?.query), [
-    'lightweight moisturizer',
-    'gel cream',
+    'lightweight moisturizer oily skin',
+    'oil free moisturizer',
   ]);
   assert.deepEqual(plan.stages[4]?.entries?.map((entry) => entry?.query), [
-    'daily sunscreen',
+    'oil control sunscreen',
+    'lightweight sunscreen oily skin',
+    'spf fluid oily skin',
   ]);
   assert.deepEqual(plan.stages[5]?.entries?.map((entry) => entry?.query), [
-    'daily sunscreen',
-    'lightweight sunscreen',
+    'oil control sunscreen',
+    'lightweight sunscreen oily skin',
   ]);
 });
 
@@ -4815,6 +4818,78 @@ test('__internal: framework pool rescues an exact-step lightweight moisturizer s
   assert.ok(Number(state.role_pool_stats?.lightweight_moisturizer?.top_score || 0) >= 0.58);
 });
 
+test('__internal: framework pool rescues lotion-shaped moisturizer support when catalog rows omit the canonical moisturizer type token', async () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'catalog_oil_balance_support_alias_1',
+        merchant_id: 'merchant_catalog_oil_balance_support_alias',
+        brand: 'Clarity Lab',
+        name: 'Oil Balance Serum',
+        display_name: 'Clarity Lab Oil Balance Serum',
+        category: 'serum',
+        product_type: 'serum',
+        retrieval_source: 'catalog',
+        retrieval_query: 'oil control serum',
+        retrieval_step: 'treatment',
+        retrieval_role_id: 'oil_control_treatment',
+        benefit_tags: ['oil control', 'shine control'],
+        short_description: 'A mattifying oil-control serum for oily skin.',
+      },
+      {
+        product_id: 'catalog_balance_lotion_alias_1',
+        merchant_id: 'merchant_catalog_balance_lotion_alias',
+        brand: 'LightLab',
+        name: 'Daily Balance Lotion',
+        display_name: 'LightLab Daily Balance Lotion',
+        category: 'lotion',
+        product_type: 'lotion',
+        retrieval_source: 'catalog',
+        retrieval_query: 'oil free moisturizer',
+        retrieval_step: 'moisturizer',
+        retrieval_role_id: 'lightweight_moisturizer',
+        short_description: 'A face lotion for oily skin.',
+      },
+    ],
+    {
+      targetContext: {
+        framework_id: 'recofw_test_oily_support_lotion_alias_rescue',
+        primary_role_id: 'oil_control_treatment',
+        framework_roles: [
+          {
+            role_id: 'oil_control_treatment',
+            rank: 1,
+            preferred_step: 'treatment',
+            alternate_steps: ['serum'],
+            label: 'Oil-control treatment',
+            query_terms: ['oil control serum', 'shine control serum', 'mattifying serum', 'balancing serum oily skin'],
+            fit_keywords: ['oil control', 'shine control', 'mattifying', 'mattify', 'sebum', 'balancing', 'anti-shine', 'blemish'],
+            ingredient_hypotheses: ['Niacinamide', 'Zinc PCA'],
+            product_type_hypotheses: ['treatment', 'serum'],
+          },
+          {
+            role_id: 'lightweight_moisturizer',
+            rank: 2,
+            preferred_step: 'moisturizer',
+            label: 'Lightweight moisturizer',
+            query_terms: ['lightweight moisturizer', 'gel cream', 'barrier lotion'],
+            fit_keywords: ['lightweight', 'gel cream', 'water gel', 'breathable', 'barrier lotion', 'oil-free'],
+            ingredient_hypotheses: ['Glycerin', 'Ceramide NP', 'Panthenol'],
+            product_type_hypotheses: ['moisturizer'],
+          },
+        ],
+      },
+    },
+  );
+
+  const moisturizer = state.selected_recommendations.find((item) => item?.matched_role_id === 'lightweight_moisturizer') || null;
+  assert.ok(moisturizer);
+  assert.equal(moisturizer?.candidate_step, 'moisturizer');
+  assert.ok(Number(moisturizer?.framework_score || 0) >= 0.58);
+  assert.equal(state.role_pool_stats?.lightweight_moisturizer?.viable_count, 1);
+});
+
 test('__internal: framework pool rescues exact-step sunscreen support from role-matched external seed recall with weak title semantics', async () => {
   const { __internal } = loadRoutesFresh();
   const state = __internal.finalizeConcernFrameworkCandidatePools(
@@ -5886,6 +5961,70 @@ test('__internal: reco assistant rewrite prompt exposes same-role price comparis
     context.selected_product_details.map((item) => item.price_position),
     ['lowest', 'middle', 'highest'],
   );
+});
+
+test('__internal: reco assistant rewrite prompt exposes evidence and soft-match context for same-role fillers', async () => {
+  const { __internal } = loadRoutesFresh();
+  const prompt = __internal.buildRecoAssistantRewritePrompt({
+    language: 'EN',
+    userRequestText: 'im oily skin. what product should i buy?',
+    profile: { skinType: 'oily', goals: ['oil control'] },
+    payload: {
+      roles: [
+        {
+          role_id: 'oil_control_treatment',
+          label: 'Oil-control treatment',
+          why_this_role: 'Start with a targeted oil-control step to manage shine.',
+          preferred_step: 'treatment',
+          rank: 1,
+          slot: 'pm',
+        },
+      ],
+      recommendation_meta: {
+        primary_target_id: 'oil_control_treatment',
+        selected_target_ids: ['oil_control_treatment'],
+        ranked_targets: [
+          {
+            target_id: 'oil_control_treatment',
+            ingredient_query: 'Oil-control treatment',
+            resolved_target_step: 'treatment',
+          },
+        ],
+      },
+      recommendations: [
+        {
+          display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+          brand: 'The Ordinary',
+          category: 'Serum',
+          matched_role_id: 'oil_control_treatment',
+          matched_role_label: 'Oil-control treatment',
+          price: { amount: 12, currency: 'USD' },
+          description: '<p>A water-based niacinamide serum with zinc PCA to target excess oil and visible shine.</p>',
+          key_features: ['Niacinamide 10%', 'Zinc 1%'],
+        },
+        {
+          display_name: 'KraveBeauty Great Barrier Relief',
+          brand: 'KraveBeauty',
+          category: 'Treatment',
+          matched_role_id: 'oil_control_treatment',
+          matched_role_label: 'Oil-control treatment',
+          price: { amount: 28, currency: 'USD' },
+          description: '<p>A barrier-repair serum built around tamanu oil, niacinamide, and ceramides to calm the look of redness.</p>',
+          comparison_fill_reason: 'same_role_soft_mismatch',
+        },
+      ],
+    },
+  });
+
+  const context = extractRecoRewritePromptContext(prompt);
+  assert.equal(context.selected_product_role_mix, 'same_role_comparison');
+  assert.match(String(context.selected_product_details[0]?.description_snippet || ''), /niacinamide serum/i);
+  assert.ok(Array.isArray(context.selected_product_details[0]?.evidence_points));
+  assert.ok(context.selected_product_details[0].evidence_points.some((item) => /niacinamide|zinc/i.test(String(item))));
+  assert.equal(context.selected_product_details[1]?.comparison_fill_reason, 'same_role_soft_mismatch');
+  assert.equal(context.selected_product_details[1]?.fit_assessment, 'soft_match');
+  assert.match(String(context.selected_product_details[1]?.description_snippet || ''), /barrier-repair serum/i);
+  assert.ok(context.selected_product_details[1].evidence_points.some((item) => /tamanu|ceramides/i.test(String(item))));
 });
 
 test('__internal: framework pool rejects explicit SPF sunscreen serum from the oil-control treatment primary slot', async () => {

@@ -37,6 +37,75 @@ function ensureObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
 
+function dedupeStrings(values, limit = 64) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(values) ? values : []) {
+    const text = normalizeNonEmptyString(raw);
+    const key = text.toLowerCase();
+    if (!text || seen.has(key)) continue;
+    seen.add(key);
+    out.push(text);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+function mergeSeedAliasData(existingSeedData = {}, incomingSeedData = {}) {
+  const existing = ensureObject(existingSeedData);
+  const incoming = ensureObject(incomingSeedData);
+  const existingSnapshot = ensureObject(existing.snapshot);
+  const incomingSnapshot = ensureObject(incoming.snapshot);
+  const existingAuthority = ensureObject(existing.authority_source);
+  const incomingAuthority = ensureObject(incoming.authority_source);
+  const existingSnapshotAuthority = ensureObject(existingSnapshot.authority_source);
+  const incomingSnapshotAuthority = ensureObject(incomingSnapshot.authority_source);
+
+  const searchAliases = dedupeStrings([
+    ...(Array.isArray(existing.search_aliases) ? existing.search_aliases : []),
+    ...(Array.isArray(existingSnapshot.search_aliases) ? existingSnapshot.search_aliases : []),
+    ...(Array.isArray(incoming.search_aliases) ? incoming.search_aliases : []),
+    ...(Array.isArray(incomingSnapshot.search_aliases) ? incomingSnapshot.search_aliases : []),
+  ]);
+  const matchedPreferredTitles = dedupeStrings([
+    ...(Array.isArray(existingAuthority.matched_preferred_titles) ? existingAuthority.matched_preferred_titles : []),
+    ...(Array.isArray(existingSnapshotAuthority.matched_preferred_titles) ? existingSnapshotAuthority.matched_preferred_titles : []),
+    ...(Array.isArray(incomingAuthority.matched_preferred_titles) ? incomingAuthority.matched_preferred_titles : []),
+    ...(Array.isArray(incomingSnapshotAuthority.matched_preferred_titles) ? incomingSnapshotAuthority.matched_preferred_titles : []),
+  ]);
+
+  const nextSeedData = {
+    ...existing,
+    ...(searchAliases.length ? { search_aliases: searchAliases } : {}),
+    ...(matchedPreferredTitles.length
+      ? {
+          authority_source: {
+            ...existingAuthority,
+            matched_preferred_titles: matchedPreferredTitles,
+          },
+        }
+      : {}),
+    snapshot: {
+      ...existingSnapshot,
+      ...(searchAliases.length ? { search_aliases: searchAliases } : {}),
+      ...(matchedPreferredTitles.length
+        ? {
+            authority_source: {
+              ...existingSnapshotAuthority,
+              matched_preferred_titles: matchedPreferredTitles,
+            },
+          }
+        : {}),
+    },
+  };
+  return {
+    nextSeedData,
+    changed: JSON.stringify(existing) !== JSON.stringify(nextSeedData),
+    search_aliases: searchAliases,
+    matched_preferred_titles: matchedPreferredTitles,
+  };
+}
+
 function resolvePathMaybeRelative(targetPath) {
   if (!targetPath) return '';
   return path.isAbsolute(targetPath) ? targetPath : path.join(process.cwd(), targetPath);
@@ -115,6 +184,7 @@ async function findExistingRows(client, row) {
         canonical_url,
         destination_url,
         title,
+        seed_data,
         updated_at
       FROM external_product_seeds
       WHERE id = $1
@@ -126,6 +196,32 @@ async function findExistingRows(client, row) {
     [row.seed_id, row.external_product_id, row.canonical_url, row.destination_url],
   );
   return Array.isArray(res?.rows) ? res.rows : [];
+}
+
+async function refreshExistingSeedAliases(client, existingRow, incomingRow, mode) {
+  const merged = mergeSeedAliasData(existingRow?.seed_data, incomingRow?.seed_data);
+  if (!merged.changed) {
+    return {
+      status: 'unchanged',
+      search_alias_count: merged.search_aliases.length,
+      matched_preferred_title_count: merged.matched_preferred_titles.length,
+    };
+  }
+  if (mode === 'apply') {
+    await client.query(
+      `
+        UPDATE external_product_seeds
+        SET seed_data = $2::jsonb, updated_at = NOW()
+        WHERE id = $1
+      `,
+      [existingRow.id, JSON.stringify(merged.nextSeedData)],
+    );
+  }
+  return {
+    status: mode === 'apply' ? 'updated' : 'dry_run',
+    search_alias_count: merged.search_aliases.length,
+    matched_preferred_title_count: merged.matched_preferred_titles.length,
+  };
 }
 
 async function insertRow(client, row) {
@@ -203,12 +299,15 @@ async function processManifestWithDb(manifest, mode) {
 
         const existing = await findExistingRows(client, row);
         if (existing.length) {
+          const primaryExisting = existing[0];
+          const aliasRefresh = await refreshExistingSeedAliases(client, primaryExisting, row, mode);
           results.push({
             ingredient_id: row.ingredient_id,
             ingredient_name: row.ingredient_name,
-            seed_id: row.seed_id,
-            external_product_id: row.external_product_id,
+            seed_id: normalizeNonEmptyString(primaryExisting.id || row.seed_id),
+            external_product_id: normalizeNonEmptyString(primaryExisting.external_product_id || row.external_product_id),
             status: 'skipped_existing',
+            existing_alias_refresh: aliasRefresh,
             existing_matches: existing.map((match) => ({
               id: normalizeNonEmptyString(match.id),
               external_product_id: normalizeNonEmptyString(match.external_product_id),
@@ -380,7 +479,29 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  process.stderr.write(`${error && error.stack ? error.stack : String(error)}\n`);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    process.stderr.write(`${error && error.stack ? error.stack : String(error)}\n`);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  parseArgs,
+  normalizePath,
+  normalizeNonEmptyString,
+  ensureObject,
+  dedupeStrings,
+  mergeSeedAliasData,
+  resolvePathMaybeRelative,
+  buildRow,
+  prepareRow,
+  validateRow,
+  findExistingRows,
+  insertRow,
+  processManifestWithDb,
+  processManifestWithoutDb,
+  summarizeResults,
+  buildCorrectionFollowups,
+  main,
+};

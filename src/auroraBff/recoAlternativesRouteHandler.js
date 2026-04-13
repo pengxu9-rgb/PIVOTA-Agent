@@ -81,6 +81,7 @@ function createRecoAlternativesRouteHandlerRuntime(deps = {}) {
           logger,
           options: {
             recommendation_mode: recommendationMode,
+            disable_fallback: true,
             disable_synthetic_local_fallback: disableSyntheticLocalFallback,
           },
         });
