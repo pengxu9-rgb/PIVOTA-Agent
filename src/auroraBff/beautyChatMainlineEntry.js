@@ -680,6 +680,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
             updated_at_ms: Date.now(),
           }),
         );
+        const rewriteDeadlineAtMs = Date.now() + rewriteReserveMs;
         const assistantRewrite =
           typeof maybeRewriteRecoAssistantTextWithLlm === 'function'
             ? await (async () => {
@@ -691,7 +692,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
                   profile: assistantProfile,
                   userRequestText: pickFirstTrimmed(recoRequestMessage, message),
                   allowLockedSelectionRewrite: true,
-                  deadlineAtMs: hardPathBudget.deadlineAtMs,
+                  deadlineAtMs: rewriteDeadlineAtMs,
                 });
               } finally {
                 hardPathTiming.rewriteMs = elapsedBeautyChatStageMs(rewriteStartedAtMs);

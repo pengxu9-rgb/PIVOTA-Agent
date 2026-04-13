@@ -1489,6 +1489,7 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
       };
     },
     maybeRewriteRecoAssistantTextWithLlm: async ({ deadlineAtMs, baseText, userRequestText }) => {
+      observed.rewriteInvokedAtMs = Date.now();
       observed.rewriteDeadlineAtMs = deadlineAtMs;
       observed.rewriteBaseText = baseText;
       observed.rewriteUserRequestText = userRequestText;
@@ -1554,12 +1555,157 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
   assert.equal(Number.isFinite(observed.rewriteDeadlineAtMs), true);
   assert.ok(observed.handoffDeadlineAtMs >= observed.plannerDeadlineAtMs);
   assert.ok(observed.rewriteDeadlineAtMs > observed.handoffDeadlineAtMs);
-  assert.ok(observed.rewriteDeadlineAtMs - observed.handoffDeadlineAtMs >= 4500);
+  assert.equal(Number.isFinite(observed.rewriteInvokedAtMs), true);
+  assert.ok(observed.rewriteDeadlineAtMs - observed.rewriteInvokedAtMs >= 4500);
   assert.equal(observed.rewriteBaseText, undefined);
   assert.equal(observed.rewriteUserRequestText, 'im oily skin, what products should i use?');
   assert.equal(result?.envelope?.assistant_message, null);
   assert.equal(payload?.recommendation_meta?.assistant_rewrite_llm_used, false);
   assert.equal(payload?.recommendation_meta?.assistant_rewrite_reason, 'test_passthrough');
+});
+
+test('beauty chat mainline entry gives rewrite a fresh bounded deadline after slow upstream work', async () => {
+  const observed = {};
+  const realDateNow = Date.now;
+  let fakeNow = 1_770_000_000_000;
+  Date.now = () => fakeNow;
+  try {
+    const runtime = createBeautyChatMainlineEntryRuntime({
+      RECO_CATALOG_GROUNDED_ENABLED: true,
+      RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS: 1000,
+      AURORA_BFF_CHAT_RECO_BUDGET_MS: 9000,
+      resolveRecommendationTargetContext: () => ({
+        entry_type: 'chat',
+        intent_mode: 'generic_concern',
+        step_aware_intent: false,
+        resolved_target_step: null,
+        primary_role_id: 'oil_control_treatment',
+        framework_roles: [
+          {
+            role_id: 'oil_control_treatment',
+            rank: 1,
+            preferred_step: 'treatment',
+            label: 'Oil-control treatment',
+          },
+        ],
+      }),
+      summarizeProfileForContext: (profile) => profile,
+      mergeIngredientRecoContextValue: (left, right) => ({ ...(left || {}), ...(right || {}) }),
+      appendLatestRecoContextToSessionPatch: (sessionPatch, recoContext) => {
+        sessionPatch.latest_reco_context = recoContext;
+      },
+      extractRecoFinalSelectionContract: () => ({
+        selection_owner: 'shopping_agent_beauty_mainline',
+      }),
+      makeAssistantMessage: (content) => ({ role: 'assistant', format: 'text', content }),
+      buildEnvelope: (_ctx, envelope) => envelope,
+      makeEvent: (_ctx, kind, data) => ({ kind, data }),
+      applyRecoContractToRecoRequestedEvents: (events) => ({ events }),
+      buildRecoRequestedEventData: ({ payload, source }) => ({ payload, source }),
+      normalizeRecoSourceDetail: (value) => value,
+      stateChangeAllowed: () => false,
+      handoffRecoToBeautyMainlineSearch: async (args) => {
+        observed.handoffDeadlineAtMs = args.deadlineAtMs;
+        fakeNow += 6000;
+        return {
+          targetContext: args.targetContext,
+          recommendations: [
+            {
+              product_id: 'planned_oily_1',
+              display_name: 'Oil Control Serum',
+              matched_role_id: 'oil_control_treatment',
+              matched_role_label: 'Oil-control treatment',
+              price: { amount: 18, currency: 'USD', unknown: false },
+            },
+          ],
+          searchResult: {
+            decision_owner: 'shopping_agent_beauty_mainline',
+            semantic_owner: 'shopping_agent_beauty_mainline',
+            metadata: {
+              contract_bridge: {
+                resolved_contract: 'agent_v1_search_beauty_mainline',
+              },
+              source_breakdown: {
+                source_tier_counts: { fresh_external: 1 },
+              },
+              search_stage_ledger: {
+                final_selection: {
+                  selection_owner: 'shopping_agent_beauty_mainline',
+                  selected_product_ids: ['planned_oily_1'],
+                  selected_titles: ['Oil Control Serum'],
+                  selection_signature: 'search_sel_planned_oily_fresh_deadline',
+                  mainline_status: 'grounded_success',
+                  source_tier_counts: { fresh_external: 1 },
+                },
+              },
+            },
+          },
+        };
+      },
+      buildRecoPayloadFromBeautyMainlineHandoff: ({ sourceMode, basePayload }) => ({
+        payload: {
+          source: 'catalog_grounded_v1',
+          mainline_status: 'grounded_success',
+          recommendations: [
+            {
+              product_id: 'planned_oily_1',
+              display_name: 'Oil Control Serum',
+              matched_role_id: 'oil_control_treatment',
+              matched_role_label: 'Oil-control treatment',
+              price: { amount: 18, currency: 'USD', unknown: false },
+            },
+          ],
+          recommendation_meta: {
+            ...(basePayload?.recommendation_meta || {}),
+            source_mode: sourceMode,
+          },
+        },
+        contract: {
+          version: 'test_contract',
+        },
+      }),
+      maybeRewriteRecoAssistantTextWithLlm: async ({ deadlineAtMs }) => {
+        observed.rewriteInvokedAtMs = Date.now();
+        observed.rewriteDeadlineAtMs = deadlineAtMs;
+        return { text: '', llm_used: false, reason: 'test_passthrough' };
+      },
+      classifyBeautyMainlineHandoffFallback: () => ({
+        reason: 'unreachable',
+      }),
+      buildBeautyMainlineHandoffFallbackEnvelope: () => ({
+        cards: [],
+      }),
+      looksLikeRecommendationRequest: () => true,
+      sendChatEnvelope: async () => null,
+    });
+
+    const result = await runtime.maybeHandleBeautyOwnedChatReco({
+      ctx: {
+        request_id: 'req_rewrite_fresh_deadline',
+        trace_id: 'trace_rewrite_fresh_deadline',
+        lang: 'EN',
+        trigger_source: 'chat',
+      },
+      logger: null,
+      message: 'im oily skin, what products should i use?',
+      recoEntrySourceDetail: 'typed_reco',
+      profile: {
+        skinType: 'oily',
+        sensitivity: 'low',
+        barrierStatus: 'stable',
+        goals: ['oil control'],
+      },
+    });
+
+    const originalBudgetDeadlineAtMs = 1_770_000_009_000;
+    assert.equal(result?.handled, true);
+    assert.equal(observed.rewriteInvokedAtMs, 1_770_000_006_000);
+    assert.ok(observed.rewriteDeadlineAtMs > originalBudgetDeadlineAtMs);
+    assert.equal(observed.rewriteDeadlineAtMs - observed.rewriteInvokedAtMs, 5000);
+    assert.ok(observed.rewriteDeadlineAtMs > observed.handoffDeadlineAtMs);
+  } finally {
+    Date.now = realDateNow;
+  }
 });
 
 test('beauty chat mainline entry returns only llm rewrite prose on successful rewrite', async () => {
