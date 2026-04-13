@@ -257,6 +257,7 @@ describe('cross-merchant cache lexical search', () => {
       ]),
     );
     expect(seenSql.some((sql) => sql.includes('COUNT(*)::int AS total'))).toBe(false);
+    expect(seenSql.some((sql) => sql.includes("product_data->>'description'"))).toBe(false);
   });
 
   test('hair oil query can use beauty category browse fastpath without beauty lexical fallback', async () => {

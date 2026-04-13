@@ -12119,7 +12119,6 @@ async function tryCrossMerchantBeautyCategoryBrowseFastpath(
   const matchFields = [
     "lower(coalesce(pc.product_data->>'title',''))",
     "lower(coalesce(pc.product_data->>'product_type',''))",
-    "lower(coalesce(pc.product_data->>'description',''))",
   ];
   const matchClauses = [];
   const params = [];
