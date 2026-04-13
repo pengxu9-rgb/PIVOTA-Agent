@@ -311,6 +311,91 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
     expect(resp.body.metadata?.search_trace?.expanded_query).toBe('oil control treatment');
   });
 
+  test('public search defaults external seed contract on the real invoke -> v2 upstream path', async () => {
+    let upstreamRequestBody = null;
+    let upstreamQuery = null;
+
+    const primaryScope = nock('http://pivota.test')
+      .post('/agent/v2/products/search', (body) => {
+        upstreamRequestBody = body;
+        return true;
+      })
+      .query((query) => {
+        upstreamQuery = query;
+        return (
+          String(query.search_all_merchants || '') === 'true' &&
+          String(query.query || '') === 'lip balm' &&
+          String(query.allow_external_seed || '') === 'true' &&
+          String(query.external_seed_strategy || '') === 'unified_relevance'
+        );
+      })
+      .reply(200, function replySearchV2(_, body) {
+        return {
+          status: 'success',
+          success: true,
+          products: [
+            {
+              merchant_id: 'external_seed',
+              product_id: 'ext_lip_balm_1',
+              source: 'external_seed',
+              title: 'Barrier Repair Lip Balm',
+            },
+          ],
+          total: 1,
+          metadata: {
+            query_source: 'agent_products_v2',
+          },
+        };
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'lip balm',
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'search',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(primaryScope.isDone()).toBe(true);
+    expect(upstreamQuery).toEqual(
+      expect.objectContaining({
+        query: 'lip balm',
+        search_all_merchants: 'true',
+        allow_external_seed: 'true',
+        external_seed_strategy: 'unified_relevance',
+      }),
+    );
+    expect(upstreamRequestBody).toEqual(
+      expect.objectContaining({
+        query: 'lip balm',
+        search_all_merchants: true,
+        allow_external_seed: true,
+        external_seed_strategy: 'unified_relevance',
+      }),
+    );
+    expect(resp.body.metadata?.search_request_contract).toEqual(
+      expect.objectContaining({
+        policy: expect.objectContaining({
+          allow_external_seed: true,
+        }),
+        supplement_lanes: expect.arrayContaining([
+          'external_seed_supplement',
+          'coverage_supplement',
+        ]),
+      }),
+    );
+  });
+
   test('shopping_agent explicit legacy_contracts is isolated as legacy_internal', async () => {
     const queryText = 'ipsa';
     const productId = '9886500127048';
