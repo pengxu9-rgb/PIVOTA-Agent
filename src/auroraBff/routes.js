@@ -8019,6 +8019,8 @@ const LOCAL_EXTERNAL_SEED_SELECT_FIELDS = `
 `;
 const LOCAL_EXTERNAL_SEED_DIRECT_RECALL_CATEGORY_FIELD =
   "lower(coalesce(seed_data->'derived'->'recall'->>'category', ''))";
+const FRAMEWORK_SUPPORT_EXTERNAL_SEED_AUTHORITY_STAGE_ID =
+  'framework_stage_c_support_external_seed_authority';
 
 function buildLocalExternalSeedStageRowKey(row) {
   const id = String(row?.id ?? '').trim();
@@ -20144,10 +20146,26 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
         );
       }
     }
-    for (const group of supportGroups) {
-      if (!group?.externalLevel) continue;
-      keptLevels.push(group.externalLevel);
-      executedSupportExternalSeedLevels.push(group.externalLabel);
+    const supportExternalGroups = supportGroups.filter((group) => group?.externalLevel);
+    if (supportExternalGroups.length > 1) {
+      keptLevels.push({
+        ...supportExternalGroups[0].externalLevel,
+        ladder_level: FRAMEWORK_SUPPORT_EXTERNAL_SEED_AUTHORITY_STAGE_ID,
+        stage_id: FRAMEWORK_SUPPORT_EXTERNAL_SEED_AUTHORITY_STAGE_ID,
+        queries: supportExternalGroups.flatMap((group) =>
+          Array.isArray(group?.externalLevel?.queries) ? group.externalLevel.queries : [],
+        ),
+      });
+      executedSupportExternalSeedLevels.push(
+        ...supportExternalGroups
+          .map((group) => group?.externalLabel)
+          .filter(Boolean),
+      );
+    } else {
+      for (const group of supportExternalGroups) {
+        keptLevels.push(group.externalLevel);
+        executedSupportExternalSeedLevels.push(group.externalLabel);
+      }
     }
     for (const group of supportGroups) {
       if (!group?.internalLevel) continue;

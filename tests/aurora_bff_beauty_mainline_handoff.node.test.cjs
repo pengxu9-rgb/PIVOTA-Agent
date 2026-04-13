@@ -541,7 +541,7 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
     );
     assert.equal(out.searchResult?.query_source, 'beauty_mainline_local_handoff');
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.planned_level_count, 6);
-    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_level_count, 6);
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_level_count, 5);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_query_count, 14);
     assert.equal(
       out.searchResult?.metadata?.search_stage_ledger?.primary_search?.execution_lane,
