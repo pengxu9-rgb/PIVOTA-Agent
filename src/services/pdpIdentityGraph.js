@@ -1341,7 +1341,19 @@ async function listLivePdpIdentityRowsForRefs({
   try {
     const result = await queryFn(
       `
-        SELECT *
+        SELECT
+          source_listing_ref,
+          merchant_id,
+          product_id,
+          source_kind,
+          source_tier,
+          live_read_enabled,
+          sellable_item_group_id,
+          product_line_id,
+          review_family_id,
+          identity_status,
+          identity_confidence,
+          match_basis
         FROM pdp_identity_listing
         WHERE source_listing_ref = ANY($1::text[])
           AND identity_status = 'approved'
