@@ -5,6 +5,9 @@ const {
 const {
   INTERNAL_PRODUCTS_SEARCH_PATH,
 } = require('./findProductsInternalSearchPrimitive');
+const {
+  resolveBeautyCategoryBrowseFastpath,
+} = require('./findProductsBeautyCategoryBrowseFastpath');
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -20,6 +23,17 @@ function firstNonEmptyString(...values) {
 
 function firstValue(value) {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function normalizeStringArray(value) {
+  const list = Array.isArray(value) ? value : value == null ? [] : [value];
+  return Array.from(
+    new Set(
+      list
+        .map((entry) => String(entry || '').trim())
+        .filter(Boolean),
+    ),
+  );
 }
 
 function parseBooleanLike(value) {
@@ -193,6 +207,7 @@ function buildFindProductsSearchRequestContract({
       semanticContract?.query_class ||
       semanticContract?.queryClass,
   );
+  const rawQueryText = firstNonEmptyString(normalizedSearch.query, normalizedSearch.q);
   const allowExternalSeed =
     parseBooleanLike(
       normalizedSearch.allow_external_seed ?? normalizedSearch.allowExternalSeed,
@@ -202,7 +217,38 @@ function buildFindProductsSearchRequestContract({
   const supportRecallRequest =
     String(semanticContract?.request_class || '').trim().toLowerCase() === 'support_role' ||
     uiSurface === 'ingredient_plan_guidance_only';
-  const requestClass = localMainlineChild
+  const hasExplicitScopeConstraint =
+    Boolean(
+      firstNonEmptyString(
+        normalizedSearch.merchant_id,
+        normalizedSearch.merchantId,
+        normalizedSearch.category,
+      ),
+    ) ||
+    firstValue(normalizedSearch.price_min) != null ||
+    firstValue(normalizedSearch.min_price) != null ||
+    firstValue(normalizedSearch.price_max) != null ||
+    firstValue(normalizedSearch.max_price) != null ||
+    normalizeStringArray(normalizedSearch.merchant_ids || normalizedSearch.merchantIds).length > 0;
+  const requestedCatalogSurface = firstNonEmptyString(
+    normalizedSearch.catalog_surface,
+    normalizedSearch.catalogSurface,
+    normalizedMetadata.catalog_surface,
+    normalizedMetadata.catalogSurface,
+  ).toLowerCase();
+  const beautyCategoryBrowseFastpath =
+    !localMainlineChild &&
+    !strictConstraintQuery &&
+    !supportRecallRequest &&
+    !semanticContract &&
+    !hasExplicitScopeConstraint &&
+    (!requestedCatalogSurface || requestedCatalogSurface === 'beauty')
+      ? resolveBeautyCategoryBrowseFastpath(rawQueryText, {
+          queryClass: normalizedQueryClass,
+        })
+      : null;
+  const effectiveSemanticContract = beautyCategoryBrowseFastpath ? null : semanticContract;
+  const requestClass = localMainlineChild || beautyCategoryBrowseFastpath
     ? 'catalog_child_recall'
     : strictConstraintQuery
       ? 'beauty_discovery'
@@ -211,7 +257,7 @@ function buildFindProductsSearchRequestContract({
         : ['lookup', 'attribute', 'category'].includes(normalizedQueryClass)
           ? 'resolver_lookup'
           : 'beauty_discovery';
-  const primaryLane = localMainlineChild
+  const primaryLane = localMainlineChild || beautyCategoryBrowseFastpath
     ? 'catalog_child_recall'
     : strictConstraintQuery
       ? 'shop_invoke_strict'
@@ -219,7 +265,7 @@ function buildFindProductsSearchRequestContract({
         String(semanticContract?.resolver_only || '').trim().toLowerCase() === 'true'
         ? 'resolver_only'
         : 'beauty_discovery_mainline';
-  const primaryRetrievalContract = localMainlineChild
+  const primaryRetrievalContract = localMainlineChild || beautyCategoryBrowseFastpath
     ? 'agent_v2_catalog_child_recall'
     : strictConstraintQuery
       ? 'shop_invoke_strict'
@@ -235,7 +281,7 @@ function buildFindProductsSearchRequestContract({
     source_profile: sourceProfile || null,
     ownership_domain: strictConstraintQuery ? 'strict_shop' : 'beauty_mainline',
     request_class: requestClass,
-    semantic_contract: semanticContract,
+    semantic_contract: effectiveSemanticContract,
     policy: {
       allow_external_seed: allowExternalSeed,
       ui_surface: uiSurface,

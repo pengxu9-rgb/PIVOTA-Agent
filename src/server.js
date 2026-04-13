@@ -121,6 +121,9 @@ const {
   isBeautyBucketCompatibleForQuery,
 } = require('./findProductsMulti/beautyQueryProfile');
 const {
+  resolveBeautyCategoryBrowseFastpath,
+} = require('./findProductsBeautyCategoryBrowseFastpath');
+const {
   detectBrandEntities,
   buildBrandQueryVariants,
   hasExplicitCategoryHint,
@@ -12085,6 +12088,83 @@ function detectBeautyQueryBucket(queryText) {
   return detectSharedBeautyQueryBucket(queryText);
 }
 
+function scoreBeautyCategoryBrowseFastpathProduct(product, fastpath) {
+  if (!product || typeof product !== 'object' || !fastpath) return 0;
+  const title = normalizeSearchTextForMatch(
+    String(product.title || product.name || product.display_name || ''),
+  );
+  const category = normalizeSearchTextForMatch(
+    String(product.category || product.product_type || product.productType || ''),
+  );
+  const text = buildFallbackCandidateText(product);
+  let score = 0;
+  if (fastpath.titlePattern && fastpath.titlePattern.test(title)) score += 7;
+  if (fastpath.titlePattern && fastpath.titlePattern.test(category)) score += 5;
+  if (fastpath.productPattern && fastpath.productPattern.test(title)) score += 4;
+  if (fastpath.productPattern && fastpath.productPattern.test(category)) score += 3;
+  if (fastpath.productPattern && fastpath.productPattern.test(text)) score += 1;
+  return score;
+}
+
+function rankBeautyCategoryBrowseFastpathProducts(products, fastpath) {
+  return (Array.isArray(products) ? products : [])
+    .map((product, index) => ({
+      product,
+      index,
+      score: scoreBeautyCategoryBrowseFastpathProduct(product, fastpath),
+    }))
+    .filter((row) => row.score > 0)
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .map((row) => row.product);
+}
+
+async function tryCrossMerchantBeautyCategoryBrowseFastpath(
+  queryText,
+  page = 1,
+  limit = 20,
+  options = {},
+) {
+  const fastpath = resolveBeautyCategoryBrowseFastpath(queryText, {
+    queryClass: options?.queryClass || options?.intent?.query_class,
+  });
+  if (!fastpath) return null;
+  const safePage = Math.max(1, Number(page || 1));
+  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), SEARCH_LIMIT_MAX);
+  const offset = (safePage - 1) * safeLimit;
+  const browseLimit = Math.min(Math.max(offset + safeLimit * 8, 80), 100);
+  const browse = await loadCrossMerchantBrowseFromCache(1, browseLimit, {
+    inStockOnly: options?.inStockOnly !== false,
+  });
+  const browseProducts = Array.isArray(browse?.products) ? browse.products : [];
+  const rankedProducts = rankBeautyCategoryBrowseFastpathProducts(browseProducts, fastpath);
+  if (rankedProducts.length === 0) return null;
+  const pageItems = rankedProducts.slice(offset, offset + safeLimit);
+  return {
+    products: pageItems,
+    total: rankedProducts.length,
+    page: safePage,
+    page_size: pageItems.length,
+    retrieval_sources: [
+      {
+        source: 'beauty_category_browse_fastpath',
+        used: true,
+        category_id: fastpath.id,
+        category_label: fastpath.label,
+        count: pageItems.length,
+        candidate_count: rankedProducts.length,
+        browse_candidate_count: browseProducts.length,
+      },
+    ],
+    query_terms: [fastpath.label.toLowerCase()],
+    beauty_query_bucket: fastpath.bucket || null,
+    internal_filter_debug: {
+      applied: true,
+      bucket: fastpath.bucket || null,
+      filtered_irrelevant_count: Math.max(0, browseProducts.length - rankedProducts.length),
+    },
+  };
+}
+
 function getResolverFallbackResolveQueryUsed(result, queryText = '') {
   return String(
     result?.resolve_query_used || result?.data?.metadata?.resolve_query_used || queryText || '',
@@ -12798,6 +12878,19 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
           queryClass: options?.queryClass || options?.intent?.query_class,
           intent: options?.intent,
         });
+  const beautyCategoryBrowseFastpath = await tryCrossMerchantBeautyCategoryBrowseFastpath(
+    queryText,
+    safePage,
+    safeLimit,
+    {
+      ...options,
+      beautyQueryProfile,
+      inStockOnly,
+    },
+  );
+  if (beautyCategoryBrowseFastpath) {
+    return beautyCategoryBrowseFastpath;
+  }
 
   const terms = tokenizeQueryForCache(q, {
     intent: options?.intent,
