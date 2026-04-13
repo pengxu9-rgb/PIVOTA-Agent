@@ -12,12 +12,19 @@ function parseRouteBoolean(value) {
   return undefined;
 }
 
-function shouldDefaultBeautyMainlineExternalSeed(search = {}, semanticContract = null) {
+function shouldDefaultBeautyMainlineExternalSeed(
+  search = {},
+  semanticContract = null,
+  { publicSearch = false } = {},
+) {
   const queryText = String(search?.query || search?.q || '').trim().toLowerCase();
   if (!queryText) return false;
   const uiSurface = String(search?.ui_surface || search?.uiSurface || '').trim().toLowerCase();
   if (uiSurface === 'ingredient_plan_guidance_only') return false;
   if (parseRouteBoolean(search?.product_only ?? search?.productOnly) === true) return false;
+  if (parseRouteBoolean(search?.local_mainline_child ?? search?.localMainlineChild) === true) {
+    return false;
+  }
   const targetStepFamily = String(
     semanticContract?.target_step_family ||
       semanticContract?.targetStepFamily ||
@@ -26,6 +33,7 @@ function shouldDefaultBeautyMainlineExternalSeed(search = {}, semanticContract =
       '',
   ).trim().toLowerCase();
   if (targetStepFamily === 'sunscreen') return false;
+  if (publicSearch) return true;
   return /\b(oily|oil control|sebum|shine control|mattify|mattifying|non-greasy|non greasy)\b/i.test(
     queryText,
   );
@@ -124,6 +132,27 @@ function createFindProductsSearchRouteEntryRuntime(deps = {}) {
           '',
       ).trim().toLowerCase(),
     );
+    const defaultPublicSearchExternalSeed =
+      !explicitStrictCatalogSurfaceRequested &&
+      shouldDefaultBeautyMainlineExternalSeed(
+        rawSearch,
+        publicBeautyMainlineBypass.semanticContract,
+        {
+          publicSearch:
+            !publicSearchSource ||
+            normalizeAgentSource(publicSearchSource) === 'search',
+        },
+      );
+    if (defaultPublicSearchExternalSeed) {
+      const existingAllowExternalSeed = rawSearch?.allow_external_seed ?? rawSearch?.allowExternalSeed;
+      const existingExternalSeedStrategy =
+        rawSearch?.external_seed_strategy || rawSearch?.externalSeedStrategy;
+      payload.search = {
+        ...rawSearch,
+        ...(existingAllowExternalSeed === undefined ? { allow_external_seed: true } : {}),
+        ...(existingExternalSeedStrategy ? {} : { external_seed_strategy: 'unified_relevance' }),
+      };
+    }
     const searchRequestContract =
       typeof buildFindProductsSearchRequestContract === 'function'
         ? buildFindProductsSearchRequestContract({
