@@ -41,6 +41,10 @@ const PDP_RECS_EXTERNAL_BASE_FETCH_TIMEOUT_MS = Math.max(
   PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS,
   parseTimeoutMs(process.env.PDP_RECS_EXTERNAL_BASE_FETCH_TIMEOUT_MS, 5000),
 );
+const PDP_RECS_IDENTITY_DEDUPE_TIMEOUT_MS = Math.max(
+  100,
+  parseTimeoutMs(process.env.PDP_RECS_IDENTITY_DEDUPE_TIMEOUT_MS, 450),
+);
 const PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_MULTIPLIER = Math.max(
   1,
   Math.min(
@@ -373,6 +377,20 @@ function buildCandidateKey(product) {
   return `${getMerchantId(product)}::${getProductId(product)}`;
 }
 
+function buildSourceListingRef(product) {
+  const merchantId = getMerchantId(product);
+  const productId = getProductId(product);
+  if (!merchantId || !productId) return '';
+  return `${merchantId}:${productId}`;
+}
+
+function buildRecommendationSemanticDedupeKey(product) {
+  const brand = getBrandName(product);
+  const title = normalizeText(product?.title || product?.name);
+  if (!brand || !title) return '';
+  return `${brand}::${title}`;
+}
+
 function buildExcludedCandidateState(items = []) {
   const exactKeys = new Set();
   const productIds = new Set();
@@ -496,6 +514,190 @@ function uniqueByKey(items, keyFn) {
     out.push(it);
   }
   return out;
+}
+
+function normalizeIdentityRows(rows = []) {
+  return (Array.isArray(rows) ? rows : [])
+    .map((row) => {
+      const sourceListingRef = String(row?.source_listing_ref || '').trim();
+      const sellableItemGroupId = String(row?.sellable_item_group_id || '').trim();
+      const productLineId = String(row?.product_line_id || '').trim();
+      if (!sourceListingRef || (!sellableItemGroupId && !productLineId)) return null;
+      return {
+        source_listing_ref: sourceListingRef,
+        sellable_item_group_id: sellableItemGroupId || null,
+        product_line_id: productLineId || null,
+        review_family_id: String(row?.review_family_id || '').trim() || null,
+        identity_confidence:
+          row?.identity_confidence == null ? null : Number(row.identity_confidence) || null,
+      };
+    })
+    .filter(Boolean);
+}
+
+async function loadLiveIdentityRowsForRecommendationProducts(products, options = {}) {
+  const queryFn = typeof options.queryFn === 'function' ? options.queryFn : query;
+  const refs = uniqueByKey(
+    (Array.isArray(products) ? products : []).map((product) => buildSourceListingRef(product)).filter(Boolean),
+    (value) => value,
+  ).slice(0, 600);
+  if (!refs.length || !process.env.DATABASE_URL || typeof queryFn !== 'function') return [];
+
+  try {
+    const result = await queryFn(
+      `
+        SELECT
+          source_listing_ref,
+          sellable_item_group_id,
+          product_line_id,
+          review_family_id,
+          identity_confidence
+        FROM pdp_identity_listing
+        WHERE source_listing_ref = ANY($1::text[])
+          AND identity_status = 'approved'
+          AND live_read_enabled = true
+      `,
+      [refs],
+    );
+    return normalizeIdentityRows(result?.rows);
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (msg.includes('pdp_identity_listing') && msg.includes('does not exist')) return [];
+    logger.warn(
+      { err: err?.message || String(err), refs: refs.length },
+      'recommendations identity dedupe lookup failed',
+    );
+    return [];
+  }
+}
+
+function attachIdentityRow(product, row) {
+  if (!product || !row) return product;
+  return {
+    ...product,
+    ...(row.sellable_item_group_id && !product.sellable_item_group_id
+      ? { sellable_item_group_id: row.sellable_item_group_id }
+      : {}),
+    ...(row.product_line_id && !product.product_line_id ? { product_line_id: row.product_line_id } : {}),
+    ...(row.review_family_id && !product.review_family_id ? { review_family_id: row.review_family_id } : {}),
+    ...(row.identity_confidence != null && product.identity_confidence == null
+      ? { identity_confidence: row.identity_confidence }
+      : {}),
+  };
+}
+
+async function dedupeRecommendationCandidatesByIdentity({
+  baseProduct,
+  internalCandidates = [],
+  externalCandidates = [],
+  identityRows = null,
+  identityRowsResolverFn = null,
+} = {}) {
+  const productsForLookup = [
+    baseProduct,
+    ...(Array.isArray(internalCandidates) ? internalCandidates : []),
+    ...(Array.isArray(externalCandidates) ? externalCandidates : []),
+  ].filter(Boolean);
+  const stats = {
+    applied: false,
+    matched_candidates: 0,
+    duplicate_candidates_dropped: 0,
+    semantic_duplicates_dropped: 0,
+    base_identity_excluded: 0,
+    rows_loaded: 0,
+  };
+
+  let rows = normalizeIdentityRows(identityRows);
+  if (!rows.length) {
+    if (typeof identityRowsResolverFn === 'function') {
+      rows = normalizeIdentityRows(await identityRowsResolverFn(productsForLookup));
+    } else if (process.env.DATABASE_URL) {
+      rows = normalizeIdentityRows(
+        await withSoftTimeout(
+          loadLiveIdentityRowsForRecommendationProducts(productsForLookup),
+          PDP_RECS_IDENTITY_DEDUPE_TIMEOUT_MS,
+          [],
+          () => {
+            logger.warn(
+              { timeout_ms: PDP_RECS_IDENTITY_DEDUPE_TIMEOUT_MS },
+              'recommendations identity dedupe lookup timed out',
+            );
+          },
+        ),
+      );
+    }
+  }
+
+  if (!rows.length) {
+    return {
+      internalCandidates,
+      externalCandidates,
+      stats,
+    };
+  }
+
+  const rowByRef = new Map(rows.map((row) => [row.source_listing_ref, row]));
+  const baseRow = rowByRef.get(buildSourceListingRef(baseProduct)) || null;
+  const baseSellableGroup = String(baseRow?.sellable_item_group_id || '').trim();
+  const baseProductLine = String(baseRow?.product_line_id || '').trim();
+  const baseSemanticKey = buildRecommendationSemanticDedupeKey(baseProduct);
+  const seenSellableGroups = new Set();
+  const seenProductLines = new Set();
+  const seenSemanticKeys = new Set();
+  stats.applied = true;
+  stats.rows_loaded = rows.length;
+
+  const processCandidates = (candidates) => {
+    const out = [];
+    const orderedCandidates = (Array.isArray(candidates) ? candidates : []).slice().sort((left, right) => {
+      const leftHasIdentity = rowByRef.has(buildSourceListingRef(left)) ? 1 : 0;
+      const rightHasIdentity = rowByRef.has(buildSourceListingRef(right)) ? 1 : 0;
+      return rightHasIdentity - leftHasIdentity;
+    });
+    for (const candidate of orderedCandidates) {
+      const row = rowByRef.get(buildSourceListingRef(candidate)) || null;
+      const sellableGroup = String(row?.sellable_item_group_id || candidate?.sellable_item_group_id || '').trim();
+      const productLine = String(row?.product_line_id || candidate?.product_line_id || '').trim();
+      const semanticKey = buildRecommendationSemanticDedupeKey(candidate);
+
+      if (row) stats.matched_candidates += 1;
+      if (sellableGroup && baseSellableGroup && sellableGroup === baseSellableGroup) {
+        stats.base_identity_excluded += 1;
+        continue;
+      }
+      if (productLine && baseProductLine && productLine === baseProductLine) {
+        stats.base_identity_excluded += 1;
+        continue;
+      }
+      if (semanticKey && baseSemanticKey && semanticKey === baseSemanticKey) {
+        stats.base_identity_excluded += 1;
+        continue;
+      }
+      if (sellableGroup && seenSellableGroups.has(sellableGroup)) {
+        stats.duplicate_candidates_dropped += 1;
+        continue;
+      }
+      if (productLine && seenProductLines.has(productLine)) {
+        stats.duplicate_candidates_dropped += 1;
+        continue;
+      }
+      if (semanticKey && seenSemanticKeys.has(semanticKey)) {
+        stats.semantic_duplicates_dropped += 1;
+        continue;
+      }
+      if (sellableGroup) seenSellableGroups.add(sellableGroup);
+      if (productLine) seenProductLines.add(productLine);
+      if (semanticKey) seenSemanticKeys.add(semanticKey);
+      out.push(row ? attachIdentityRow(candidate, row) : candidate);
+    }
+    return out;
+  };
+
+  return {
+    internalCandidates: processCandidates(internalCandidates),
+    externalCandidates: processCandidates(externalCandidates),
+    stats,
+  };
 }
 
 function firstNonEmptyText(...values) {
@@ -1642,8 +1844,17 @@ async function recommend({
     ? []
     : await externalCandidatesTask;
 
-  const filteredInternalCandidates = filterCandidateCollection(internalCandidates, effectiveExcludedCandidates);
-  const filteredExternalCandidates = filterCandidateCollection(externalCandidates, effectiveExcludedCandidates);
+  let filteredInternalCandidates = filterCandidateCollection(internalCandidates, effectiveExcludedCandidates);
+  let filteredExternalCandidates = filterCandidateCollection(externalCandidates, effectiveExcludedCandidates);
+  const identityDedupe = await dedupeRecommendationCandidatesByIdentity({
+    baseProduct,
+    internalCandidates: filteredInternalCandidates,
+    externalCandidates: filteredExternalCandidates,
+    identityRows: options?.identity_rows,
+    identityRowsResolverFn: options?.identity_rows_resolver_fn,
+  });
+  filteredInternalCandidates = identityDedupe.internalCandidates;
+  filteredExternalCandidates = identityDedupe.externalCandidates;
 
   const picked = pickLayeredRecommendations({
     baseProduct,
@@ -1729,6 +1940,9 @@ async function recommend({
     underfill: Math.max(0, safeK - finalItems.length),
     low_confidence: Boolean(picked?.metadata?.low_confidence),
     similar_status: finalItems.length > 0 ? 'ready' : internalTimedOut || externalTimedOut ? 'unavailable' : 'empty',
+    ...(identityDedupe?.stats?.applied
+      ? { identity_dedupe: identityDedupe.stats }
+      : {}),
   };
 
   if (historyFallbackDebug.used) {

@@ -154,6 +154,137 @@ describe('RecommendationEngine (PDP)', () => {
     expect(result.items.map((item) => item.product_id)).toEqual(['ext_green_machine']);
   });
 
+  test('dedupes similar candidates by live identity exact group and product line', async () => {
+    const result = await recommend({
+      pdp_product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_pro_c_serum',
+        title: 'Pro C Serum',
+        brand: 'INNBEAUTY Project',
+        category: 'Serum',
+        price: 56,
+        source: 'external_seed',
+        inventory_quantity: 10,
+        status: 'active',
+      },
+      k: 6,
+      options: {
+        debug: true,
+        no_cache: true,
+        identity_rows: [
+          {
+            source_listing_ref: 'external_seed:ext_pro_c_serum',
+            sellable_item_group_id: 'sig_pro_c_refill',
+            product_line_id: 'pl_pro_c',
+            review_family_id: 'rf_pro_c',
+          },
+          {
+            source_listing_ref: 'external_seed:ext_pro_c_full_size',
+            sellable_item_group_id: 'sig_pro_c_full',
+            product_line_id: 'pl_pro_c',
+            review_family_id: 'rf_pro_c',
+          },
+          {
+            source_listing_ref: 'external_seed:ext_calm_a',
+            sellable_item_group_id: 'sig_calm_default',
+            product_line_id: 'pl_calm',
+            review_family_id: 'rf_calm',
+          },
+          {
+            source_listing_ref: 'external_seed:ext_calm_b',
+            sellable_item_group_id: 'sig_calm_default',
+            product_line_id: 'pl_calm',
+            review_family_id: 'rf_calm',
+          },
+          {
+            source_listing_ref: 'external_seed:ext_green_machine',
+            sellable_item_group_id: 'sig_green_machine',
+            product_line_id: 'pl_green_machine',
+            review_family_id: 'rf_green_machine',
+          },
+        ],
+        external_candidates: [
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_pro_c_full_size',
+            title: 'Pro C Serum',
+            brand: 'INNBEAUTY Project',
+            category: 'Serum',
+            price: 64,
+            source: 'external_seed',
+            inventory_quantity: 10,
+            status: 'active',
+          },
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_calm_a',
+            title: 'Calm The Red Down',
+            brand: 'INNBEAUTY Project',
+            category: 'Serum',
+            price: 32,
+            source: 'external_seed',
+            inventory_quantity: 10,
+            status: 'active',
+          },
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_calm_b',
+            title: 'Calm The Red Down',
+            brand: 'INNBEAUTY Project',
+            category: 'Serum',
+            price: 32,
+            source: 'external_seed',
+            inventory_quantity: 10,
+            status: 'active',
+          },
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_calm_missing_identity',
+            title: 'Calm The Red Down',
+            brand: 'INNBEAUTY Project',
+            category: 'Serum',
+            price: 32,
+            source: 'external_seed',
+            inventory_quantity: 10,
+            status: 'active',
+          },
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_green_machine',
+            title: 'Green Machine Serum',
+            brand: 'INNBEAUTY Project',
+            category: 'Serum',
+            price: 48,
+            source: 'external_seed',
+            inventory_quantity: 10,
+            status: 'active',
+          },
+        ],
+      },
+    });
+
+    expect(result.items.map((item) => item.product_id)).toEqual(
+      expect.arrayContaining(['ext_calm_a', 'ext_green_machine']),
+    );
+    expect(result.items.map((item) => item.product_id)).not.toContain('ext_calm_b');
+    expect(result.items.map((item) => item.product_id)).not.toContain('ext_calm_missing_identity');
+    expect(result.items.map((item) => item.product_id)).not.toContain('ext_pro_c_full_size');
+    expect(result.items.find((item) => item.product_id === 'ext_calm_a')).toEqual(
+      expect.objectContaining({
+        sellable_item_group_id: 'sig_calm_default',
+        product_line_id: 'pl_calm',
+      }),
+    );
+    expect(result.metadata?.identity_dedupe).toEqual(
+      expect.objectContaining({
+        applied: true,
+        base_identity_excluded: 1,
+        duplicate_candidates_dropped: 1,
+        semantic_duplicates_dropped: 1,
+      }),
+    );
+  });
+
   test('c) no brand matches but same category + near price fills', () => {
     const base = makeProduct({
       merchant_id: 'merch_store',
