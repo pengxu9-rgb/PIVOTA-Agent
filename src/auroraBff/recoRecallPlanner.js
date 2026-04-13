@@ -381,7 +381,7 @@ function buildBeautyMainlineRecallPlan({ mode, semanticContract = null, rawQuery
       ...supportRoles.flatMap((role) => {
         const supportInternalQueries = buildRoleStageQueries(role, {
           allowConcernFallback: false,
-          maxQueriesOverride: 1,
+          maxQueriesOverride: 2,
         });
         const supportExternalQueries = buildRoleStageQueries(role, { allowConcernFallback: false });
         const supportPreferredStep = normalizeSemanticStepFamily(role?.preferred_step);
@@ -393,7 +393,7 @@ function buildBeautyMainlineRecallPlan({ mode, semanticContract = null, rawQuery
             sourceScope: 'internal',
             queries: supportInternalQueries,
             concurrency: 1,
-            maxAttemptsForStage: 1,
+            maxAttemptsForStage: Math.min(supportInternalQueries.length || 1, 2),
             stopOnViableMatch: true,
             reasonForInclusion: 'framework_support_internal',
             runIf: 'if_role_unfilled_after_primary',

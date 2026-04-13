@@ -3585,15 +3585,15 @@ test('__internal: framework recall planner emits role-aware primary and support 
   assert.ok(Array.isArray(plan.stages));
   assert.equal(plan.stages.length, 6);
   assert.ok(Array.isArray(plan.entries));
-  assert.equal(plan.entries.length, 13);
+  assert.equal(plan.entries.length, 15);
   assert.deepEqual(
     plan.stages.map((stage) => [stage.stage_id, stage.source_scope, stage.role_id, stage.entries.length]),
     [
       ['framework_stage_a_primary_internal', 'internal', 'oil_control_treatment', 3],
       ['framework_stage_b_primary_external_seed', 'external_seed', 'oil_control_treatment', 4],
-      ['framework_stage_c_support_lightweight_moisturizer', 'internal', 'lightweight_moisturizer', 1],
+      ['framework_stage_c_support_lightweight_moisturizer', 'internal', 'lightweight_moisturizer', 2],
       ['framework_stage_c_support_lightweight_moisturizer_external_seed', 'external_seed', 'lightweight_moisturizer', 2],
-      ['framework_stage_c_support_daily_sunscreen', 'internal', 'daily_sunscreen', 1],
+      ['framework_stage_c_support_daily_sunscreen', 'internal', 'daily_sunscreen', 2],
       ['framework_stage_c_support_daily_sunscreen_external_seed', 'external_seed', 'daily_sunscreen', 2],
     ],
   );
@@ -3610,6 +3610,7 @@ test('__internal: framework recall planner emits role-aware primary and support 
   ]);
   assert.deepEqual(plan.stages[2]?.entries?.map((entry) => entry?.query), [
     'lightweight moisturizer oily skin',
+    'oil free moisturizer',
   ]);
   assert.deepEqual(plan.stages[3]?.entries?.map((entry) => entry?.query), [
     'lightweight moisturizer oily skin',
@@ -3617,6 +3618,7 @@ test('__internal: framework recall planner emits role-aware primary and support 
   ]);
   assert.deepEqual(plan.stages[4]?.entries?.map((entry) => entry?.query), [
     'oil control sunscreen',
+    'lightweight sunscreen oily skin',
   ]);
   assert.deepEqual(plan.stages[5]?.entries?.map((entry) => entry?.query), [
     'oil control sunscreen',
