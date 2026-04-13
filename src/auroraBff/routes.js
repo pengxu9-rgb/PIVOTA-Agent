@@ -1322,9 +1322,9 @@ const RECO_CATALOG_EXTERNAL_SEED_HANDOFF_TIMEOUT_MS = (() => {
   return Math.max(12000, Math.min(45000, v));
 })();
 const RECO_CATALOG_FRAMEWORK_LOCAL_HANDOFF_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_FRAMEWORK_LOCAL_HANDOFF_TIMEOUT_MS || 6200);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 6200;
-  return Math.max(2400, Math.min(8500, v));
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_FRAMEWORK_LOCAL_HANDOFF_TIMEOUT_MS || 10500);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 10500;
+  return Math.max(2400, Math.min(13000, v));
 })();
 const RECO_CATALOG_PRIMARY_EXTERNAL_SEED_QUERY_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_CATALOG_PRIMARY_EXTERNAL_SEED_QUERY_TIMEOUT_MS || 2600);
@@ -1332,9 +1332,9 @@ const RECO_CATALOG_PRIMARY_EXTERNAL_SEED_QUERY_TIMEOUT_MS = (() => {
   return Math.max(800, Math.min(4800, v));
 })();
 const RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS || 2200);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 2200;
-  return Math.max(50, Math.min(4000, v));
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS || 4000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 4000;
+  return Math.max(50, Math.min(6000, v));
 })();
 const {
   classifyBeautyMainlineHandoffFallback,
@@ -20428,7 +20428,7 @@ async function runBeautyMainlineLocalHandoffSearch({
             : 5000,
       ),
     ),
-    limit: 6,
+    limit: isFrameworkLocalHandoff ? 12 : 6,
     usePurchasableFallback: false,
     allowExternalSeed: true,
     externalSeedStrategy: 'supplement_internal_first',
