@@ -1254,7 +1254,18 @@ function applyBeautyDiversityPolicy(products, options = {}) {
     idx,
     bucket: classifyBeautyBucketForDiversity(product),
   }));
-  const priorityBuckets = ['base_makeup', 'eye_makeup', 'lip_makeup', 'skincare', 'tools', 'other'];
+  const priorityBuckets = [
+    'base_makeup',
+    'eye_makeup',
+    'lip_makeup',
+    'lip_care',
+    'skincare',
+    'haircare',
+    'bodycare',
+    'tools',
+    'fragrance',
+    'other',
+  ];
   const queues = new Map(priorityBuckets.map((bucket) => [bucket, []]));
   for (const item of annotated) {
     if (!queues.has(item.bucket)) queues.set(item.bucket, []);
@@ -5095,9 +5106,15 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
       const mix = diversityDebug.category_mix_topN && typeof diversityDebug.category_mix_topN === 'object'
         ? diversityDebug.category_mix_topN
         : {};
-      const nonToolDistinctBuckets = ['base_makeup', 'eye_makeup', 'lip_makeup', 'skincare'].filter(
-        (bucket) => Number(mix[bucket] || 0) > 0,
-      ).length;
+      const nonToolDistinctBuckets = [
+        'base_makeup',
+        'eye_makeup',
+        'lip_makeup',
+        'lip_care',
+        'skincare',
+        'haircare',
+        'bodycare',
+      ].filter((bucket) => Number(mix[bucket] || 0) > 0).length;
       if (nonToolDistinctBuckets < 2) {
         const isFragranceFlow = querySemanticClass === 'fragrance';
         if (!isFragranceFlow) {
