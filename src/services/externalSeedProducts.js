@@ -682,6 +682,157 @@ function collectPrimaryVariantImageUrls(variants) {
   return out;
 }
 
+function normalizeVariantHintToken(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function collectVariantHintTokensFromUrl(value) {
+  const raw = normalizeHttpUrl(value);
+  if (!raw) return [];
+  try {
+    const parsed = new URL(raw);
+    const out = [];
+    for (const [key, paramValue] of parsed.searchParams.entries()) {
+      const normalizedKey = normalizeVariantHintToken(key);
+      const normalizedValue = normalizeVariantHintToken(paramValue);
+      if (!normalizedValue) continue;
+      if (!['v', 'variant', 'variant_id', 'sku', 'sku_id', 'pid'].includes(normalizedKey)) {
+        continue;
+      }
+      out.push(normalizedValue);
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+function collectVariantIdentityTokens(variant) {
+  const optionValues = normalizeOptionEntries(variant?.options).map((item) => item.value);
+  return Array.from(
+    new Set(
+      [
+        variant?.variant_id,
+        variant?.id,
+        variant?.sku,
+        variant?.sku_id,
+        variant?.option_name,
+        variant?.option_value,
+        variant?.title,
+        ...optionValues,
+      ]
+        .map((item) => normalizeVariantHintToken(item))
+        .filter(Boolean),
+    ),
+  );
+}
+
+function variantMatchesHintTokens(variant, hintTokens = []) {
+  const variantTokens = collectVariantIdentityTokens(variant);
+  if (!variantTokens.length || !Array.isArray(hintTokens) || !hintTokens.length) return false;
+  return hintTokens.some((token) => variantTokens.includes(normalizeVariantHintToken(token)));
+}
+
+function findVariantsMatchingPrimaryImage(variants, primaryImageUrl) {
+  const normalizedPrimary = normalizePdpImageUrl(primaryImageUrl);
+  if (!normalizedPrimary || !Array.isArray(variants)) return [];
+  return variants.filter((variant) => {
+    const urls = [];
+    appendImageUrls(urls, variant?.image_url);
+    appendImageUrls(urls, variant?.image_urls);
+    appendImageUrls(urls, variant?.images);
+    return urls.some((url) => normalizePdpImageUrl(url) === normalizedPrimary);
+  });
+}
+
+function findVariantsMatchingPrice(variants, rawPrice, priceContext) {
+  const normalizedPrice = normalizeExternalSeedPrice(rawPrice, priceContext);
+  if (!(normalizedPrice > 0) || !Array.isArray(variants)) return [];
+  return variants.filter((variant) => normalizeAmount(variant?.price) === normalizedPrice);
+}
+
+function moveVariantToFront(variants, targetVariantId) {
+  const targetId = String(targetVariantId || '').trim();
+  if (!targetId || !Array.isArray(variants) || variants.length <= 1) return variants;
+  const index = variants.findIndex((variant) => String(variant?.variant_id || variant?.id || '').trim() === targetId);
+  if (index <= 0) return variants;
+  return [variants[index], ...variants.slice(0, index), ...variants.slice(index + 1)];
+}
+
+function resolveSelectedSeedVariant({
+  variants,
+  row,
+  seedData,
+  snapshot,
+  destinationUrl,
+  canonicalUrl,
+  priceContext,
+} = {}) {
+  const safeVariants = Array.isArray(variants) ? variants.filter(Boolean) : [];
+  if (safeVariants.length <= 1) return safeVariants[0] || null;
+
+  const explicitHintTokens = Array.from(
+    new Set(
+      [
+        seedData?.selected_variant_id,
+        seedData?.default_variant_id,
+        seedData?.variant_id,
+        seedData?.sku_id,
+        seedData?.variant_title,
+        snapshot?.selected_variant_id,
+        snapshot?.default_variant_id,
+        snapshot?.variant_id,
+        snapshot?.sku_id,
+        snapshot?.variant_title,
+        row?.selected_variant_id,
+        row?.default_variant_id,
+        ...collectVariantHintTokensFromUrl(destinationUrl),
+        ...collectVariantHintTokensFromUrl(canonicalUrl),
+      ]
+        .map((item) => normalizeVariantHintToken(item))
+        .filter(Boolean),
+    ),
+  );
+
+  const explicitMatches = explicitHintTokens.length
+    ? safeVariants.filter((variant) => variantMatchesHintTokens(variant, explicitHintTokens))
+    : [];
+  const primaryImageUrl =
+    snapshot?.image_url || row?.image_url || seedData?.image_url || null;
+  const imageMatches = findVariantsMatchingPrimaryImage(safeVariants, primaryImageUrl);
+  const priceMatches = findVariantsMatchingPrice(
+    safeVariants,
+    row?.price_amount ?? seedData?.price_amount ?? snapshot?.price_amount,
+    priceContext,
+  );
+
+  let candidate = null;
+  if (explicitMatches.length === 1) {
+    candidate = explicitMatches[0];
+  } else if (!explicitMatches.length && imageMatches.length === 1 && priceMatches.length === 1) {
+    const imageVariantId = String(imageMatches[0]?.variant_id || imageMatches[0]?.id || '').trim();
+    const priceVariantId = String(priceMatches[0]?.variant_id || priceMatches[0]?.id || '').trim();
+    if (imageVariantId && imageVariantId === priceVariantId) {
+      candidate = imageMatches[0];
+    }
+  }
+
+  if (!candidate) return null;
+
+  if (imageMatches.length === 1) {
+    const imageVariantId = String(imageMatches[0]?.variant_id || imageMatches[0]?.id || '').trim();
+    const candidateId = String(candidate?.variant_id || candidate?.id || '').trim();
+    if (imageVariantId && candidateId && imageVariantId !== candidateId) return null;
+  }
+  if (priceMatches.length === 1) {
+    const priceVariantId = String(priceMatches[0]?.variant_id || priceMatches[0]?.id || '').trim();
+    const candidateId = String(candidate?.variant_id || candidate?.id || '').trim();
+    if (priceVariantId && candidateId && priceVariantId !== candidateId) return null;
+  }
+
+  return candidate;
+}
+
 function normalizeProductOptionNames(raw) {
   if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
     return Object.keys(raw).map((key) => String(key).trim()).filter(Boolean);
@@ -1166,6 +1317,18 @@ function buildExternalSeedProduct(row, options = {}) {
     };
   });
   let imageUrls = normalizeSeedImageUrls(seedData, row);
+  const selectedVariant = resolveSelectedSeedVariant({
+    variants,
+    row,
+    seedData,
+    snapshot,
+    destinationUrl,
+    canonicalUrl,
+    priceContext,
+  });
+  if (selectedVariant?.variant_id) {
+    variants = moveVariantToFront(variants, selectedVariant.variant_id);
+  }
   const primaryVariantImageUrls = collectPrimaryVariantImageUrls(variants);
   if (primaryVariantImageUrls.length > 0) {
     imageUrls = Array.from(new Set([...primaryVariantImageUrls, ...imageUrls]));
@@ -1307,6 +1470,9 @@ function buildExternalSeedProduct(row, options = {}) {
     external_seed_quality_signals: recall.quality_signals || undefined,
     ...(options.matchSource ? { external_seed_match_source: String(options.matchSource).trim() } : {}),
     variants,
+    ...(selectedVariant?.variant_id ? { selected_variant_id: selectedVariant.variant_id } : {}),
+    ...(selectedVariant?.variant_id ? { default_variant_id: selectedVariant.variant_id } : {}),
+    ...(selectedVariant?.title ? { variant_title: String(selectedVariant.title).trim() } : {}),
     ...(rawIngredientTextClean ? { raw_ingredient_text_clean: rawIngredientTextClean } : {}),
     ...(inciList.length ? { inci_list: inciList } : {}),
     ...(activeIngredients.length ? { active_ingredients: activeIngredients } : {}),

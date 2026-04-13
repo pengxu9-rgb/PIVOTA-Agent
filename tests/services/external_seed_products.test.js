@@ -127,6 +127,116 @@ describe('externalSeedProducts helper', () => {
     ]);
   });
 
+  test('infers selected variant from destination url variant token for external seeds', () => {
+    const row = {
+      id: 'eps_guerlain_variant_1',
+      canonical_url:
+        'https://www.guerlain.com/us/en-us/p/kisskiss-bee-glow-98-naturally-derived%C2%B9-honey-tint-balm-P043570.html',
+      destination_url:
+        'https://www.guerlain.com/us/en-us/p/kisskiss-bee-glow-98-naturally-derived%C2%B9-honey-tint-balm-P043570.html?v=G043573',
+      title: 'KISSKISS BEE GLOW 98% naturally-derived¹ honey tint balm',
+      image_url:
+        'https://www.guerlain.com/dw/image/v2/BDCZ_PRD/on/demandware.static/-/Sites-GSA_master_catalog/default/dw5c71e8b1/01-ProductsViewer/P043570/P043570_G043573_E01_hi-res.jpg?sw=655&sh=655&sfrm=png',
+      price_amount: 43,
+      price_currency: 'USD',
+      seed_data: {
+        brand: 'Guerlain',
+        title: 'KISSKISS BEE GLOW 98% naturally-derived¹ honey tint balm',
+        snapshot: {
+          canonical_url:
+            'https://www.guerlain.com/us/en-us/p/kisskiss-bee-glow-98-naturally-derived%C2%B9-honey-tint-balm-P043570.html',
+          destination_url:
+            'https://www.guerlain.com/us/en-us/p/kisskiss-bee-glow-98-naturally-derived%C2%B9-honey-tint-balm-P043570.html?v=G043573',
+          image_url:
+            'https://www.guerlain.com/dw/image/v2/BDCZ_PRD/on/demandware.static/-/Sites-GSA_master_catalog/default/dw5c71e8b1/01-ProductsViewer/P043570/P043570_G043573_E01_hi-res.jpg?sw=655&sh=655&sfrm=png',
+          variants: [
+            {
+              variant_id: 'c3e266edb7ea',
+              sku: 'G043573',
+              option_name: 'Variant',
+              option_value: '775 POPPY GLOW',
+              price: '43.00',
+              currency: 'USD',
+              image_url:
+                'https://www.guerlain.com/dw/image/v2/BDCZ_PRD/on/demandware.static/-/Sites-GSA_master_catalog/default/dw5c71e8b1/01-ProductsViewer/P043570/P043570_G043573_E01_hi-res.jpg?sw=655&sh=655&sfrm=png',
+            },
+            {
+              variant_id: 'd9bb32e25d40',
+              sku: 'G043569',
+              option_name: 'Variant',
+              option_value: '309 HONEY GLOW',
+              price: '43.00',
+              currency: 'USD',
+              image_url:
+                'https://www.guerlain.com/dw/image/v2/BDCZ_PRD/on/demandware.static/-/Sites-GSA_master_catalog/default/dw2a0b267a/01-ProductsViewer/P043570/P043569_E01_hi-res.jpg?sw=655&sh=655&sfrm=png',
+            },
+          ],
+        },
+      },
+    };
+
+    const product = buildExternalSeedProduct(row);
+    expect(product.selected_variant_id).toBe('c3e266edb7ea');
+    expect(product.default_variant_id).toBe('c3e266edb7ea');
+    expect(product.variant_title).toBe('775 POPPY GLOW');
+    expect(product.variants[0]).toEqual(
+      expect.objectContaining({
+        variant_id: 'c3e266edb7ea',
+        title: '775 POPPY GLOW',
+      }),
+    );
+  });
+
+  test('does not infer selected variant when image and price signals conflict without an explicit hint', () => {
+    const row = {
+      id: 'eps_innbeauty_conflict_1',
+      canonical_url: 'https://innbeautyproject.com/products/extreme-cream',
+      destination_url: 'https://innbeautyproject.com/products/extreme-cream',
+      title: 'Extreme Cream',
+      image_url:
+        'https://cdn.shopify.com/s/files/1/0261/0108/8304/files/Extremecream01_hero.jpg?v=1',
+      price_amount: 44,
+      price_currency: 'USD',
+      seed_data: {
+        brand: 'INNBEAUTY Project',
+        title: 'Extreme Cream',
+        snapshot: {
+          canonical_url: 'https://innbeautyproject.com/products/extreme-cream',
+          destination_url: 'https://innbeautyproject.com/products/extreme-cream',
+          image_url:
+            'https://cdn.shopify.com/s/files/1/0261/0108/8304/files/Extremecream01_hero.jpg?v=1',
+          variants: [
+            {
+              variant_id: '41148734668848',
+              sku: '0190',
+              option_name: 'Option',
+              option_value: 'Full Size',
+              price: '50.00',
+              currency: 'USD',
+              image_url:
+                'https://cdn.shopify.com/s/files/1/0261/0108/8304/files/Extremecream01_hero.jpg?v=1',
+            },
+            {
+              variant_id: '41148734701616',
+              sku: '0191',
+              option_name: 'Option',
+              option_value: 'Refill',
+              price: '44.00',
+              currency: 'USD',
+              image_url:
+                'https://cdn.shopify.com/s/files/1/0261/0108/8304/files/Extremecream_refill.jpg?v=1',
+            },
+          ],
+        },
+      },
+    };
+
+    const product = buildExternalSeedProduct(row);
+    expect(product.selected_variant_id).toBeUndefined();
+    expect(product.default_variant_id).toBeUndefined();
+    expect(product.variant_title).toBeUndefined();
+  });
+
   test('splits combined color and size seed options and normalizes stale shopify image urls', () => {
     const row = {
       id: 'eps_combined_color_size_1',
