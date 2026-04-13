@@ -4360,6 +4360,15 @@ function normalizeRecoCatalogProduct(raw) {
     { requireMerchant: true, allowOpaqueProductId: false },
   );
   if (canonicalProductRef) out.canonical_product_ref = canonicalProductRef;
+  if (!isPlainObject(out.pdp_open)) {
+    const authorityPdpOpen = buildRecoPdpOpenContractFromAuthorityKeys({
+      productGroupId: out.product_group_id,
+      canonicalProductRef: out.canonical_product_ref,
+      directUrl: directUrl || purchasePath,
+      queryText: joinBrandAndName(out.brand, pickFirstTrimmed(out.display_name, out.name)),
+    });
+    if (authorityPdpOpen) out.pdp_open = authorityPdpOpen;
+  }
 
   return out.product_id ? out : null;
 }
@@ -51372,6 +51381,16 @@ function buildRecoAssistantRewritePrompt({ payload, language, profile, userReque
       max: 5,
     });
     const descriptionSnippet = pickFirstTrimmed(evidencePoints[0], baseDescriptionSnippet);
+    const alternativesCount = Math.max(
+      0,
+      Number.isFinite(Number(item.alternatives_count))
+        ? Number(item.alternatives_count)
+        : Number.isFinite(Number(item.alternativesCount))
+          ? Number(item.alternativesCount)
+          : Array.isArray(item.alternatives)
+            ? item.alternatives.length
+            : 0,
+    );
     const comparisonFillReason = pickFirstTrimmed(
       item.comparison_fill_reason,
       item.comparisonFillReason,
@@ -51422,7 +51441,9 @@ function buildRecoAssistantRewritePrompt({ payload, language, profile, userReque
         ],
         3,
       ),
+      alternatives_count: alternativesCount,
       evidence_points: evidencePoints,
+      reviewed_insight_available: Boolean(productIntel || pivotaInsights),
       pivota_insights: (() => {
         if (!pivotaInsights) return null;
         return {
@@ -51587,6 +51608,9 @@ function buildRecoAssistantRewritePrompt({ payload, language, profile, userReque
     'If selected_product_role_mix is "routine_mix", present a basic routine by role or step, and do not imply products from different roles are interchangeable.',
     'If selected_product_role_mix is "routine_mix", use selected_product_details.role_scope, matched_role_label, and preferred_step to label what each product is doing in the routine.',
     'For multiple selected products, choose one best first buy when the context supports it, then use compare_highlights or pivota_insights to explain tradeoffs.',
+    'For routine_mix buy answers, explain the lead product with at least two available dimensions from Context: role match, formula/ingredient/texture evidence, and price/value.',
+    'If selected_product_details.reviewed_insight_available is false for a product, treat why_this_one, key_features, best_for, and description_snippet as product-record evidence only; do not imply independent review, clinical, or community proof.',
+    'Do not discuss alternatives/dupes pros and cons unless alternatives_count is greater than 0 or compare_highlights/pivota_insights provide explicit tradeoff evidence.',
     'If known_price_count is 2 or more, compare price/value or ROI in plain shopper terms using only listed prices; do not compute per-use ROI, percentages, or size-normalized value unless Context provides size and usage data.',
     'Price may support a recommendation, but price alone is not enough; pair it with at least one concrete fit, formula, texture, ingredient, or use-case reason from Context.',
     'Use price_order_summary and selected_product_details.price_position to explain lower-cost first buys versus higher-cost support steps or upgrades when Context supports that framing.',
@@ -55363,6 +55387,67 @@ function buildExternalGoogleSearchUrl(query) {
   return `https://www.google.com/search?q=${encodeURIComponent(q)}`;
 }
 
+function buildRecoPdpOpenContractFromAuthorityKeys({
+  productGroupId = '',
+  canonicalProductRef = null,
+  directUrl = '',
+  queryText = '',
+  resolveReasonCode = null,
+} = {}) {
+  const groupId = pickFirstTrimmed(
+    isPlainObject(productGroupId) ? productGroupId.product_group_id : '',
+    isPlainObject(productGroupId) ? productGroupId.productGroupId : '',
+    isPlainObject(productGroupId) ? productGroupId.id : '',
+    productGroupId,
+  );
+  if (groupId) {
+    const subject = { type: 'product_group', id: groupId, product_group_id: groupId };
+    return {
+      path: 'group',
+      subject,
+      get_pdp_v2_payload: { subject: { type: 'product_group', id: groupId } },
+    };
+  }
+
+  const ref = normalizeCanonicalProductRef(canonicalProductRef, {
+    requireMerchant: true,
+    allowOpaqueProductId: false,
+  });
+  if (ref) {
+    return {
+      path: 'ref',
+      product_ref: ref,
+      get_pdp_v2_payload: { product_ref: ref },
+    };
+  }
+
+  const url = (() => {
+    const raw = String(directUrl || '').trim();
+    if (!PRODUCT_INTEL_HTTP_URL_RE.test(raw)) return '';
+    try {
+      return new URL(raw).toString();
+    } catch {
+      return '';
+    }
+  })();
+  const query = String(queryText || '').trim().replace(/\s+/g, ' ');
+  if (!url && !query) return null;
+  const normalizedFailReason =
+    resolveReasonCode != null && resolveReasonCode !== ''
+      ? normalizeResolveReasonCode(resolveReasonCode)
+      : null;
+  return {
+    path: 'external',
+    external: {
+      provider: url ? 'direct' : 'google',
+      target: '_blank',
+      url: url || buildExternalGoogleSearchUrl(query),
+      query: query || null,
+    },
+    ...(normalizedFailReason ? { resolve_reason_code: normalizedFailReason } : {}),
+  };
+}
+
 function withRecoPdpMetadata(base, {
   path,
   subject = null,
@@ -56934,14 +57019,63 @@ function coerceRecoItemForUi(item, { lang } = {}) {
       : '';
   const effectiveProductId = productId || syntheticExternalId || null;
   const effectiveSkuId = skuId || effectiveProductId || null;
-  const subjectProductGroupId = pickFirstTrimmed(base?.subject?.product_group_id, base?.subject?.id, skuCandidate?.product_group_id);
+  const subjectProductGroupId = pickFirstTrimmed(
+    base?.subject?.product_group_id,
+    base?.subject?.productGroupId,
+    base?.subject?.id,
+    base?.product_group_id,
+    base?.productGroupId,
+    skuCandidate?.subject?.product_group_id,
+    skuCandidate?.subject?.productGroupId,
+    skuCandidate?.subject?.id,
+    skuCandidate?.product_group_id,
+    skuCandidate?.productGroupId,
+  );
   const canonicalRefProductId = pickFirstTrimmed(
     base?.canonical_product_ref?.product_id,
     base?.canonical_product_ref?.productId,
+    base?.canonicalProductRef?.product_id,
+    base?.canonicalProductRef?.productId,
+    base?.product_ref?.product_id,
+    base?.productRef?.product_id,
+    base?.productRef?.productId,
     skuCandidate?.canonical_product_ref?.product_id,
     skuCandidate?.canonical_product_ref?.productId,
+    skuCandidate?.canonicalProductRef?.product_id,
+    skuCandidate?.canonicalProductRef?.productId,
+    skuCandidate?.product_ref?.product_id,
+    skuCandidate?.productRef?.product_id,
+    skuCandidate?.productRef?.productId,
+    productId,
   );
-  const hasInternalHandle = Boolean(subjectProductGroupId || canonicalRefProductId || productId || skuId);
+  const canonicalRefMerchantId = pickFirstTrimmed(
+    base?.canonical_product_ref?.merchant_id,
+    base?.canonical_product_ref?.merchantId,
+    base?.canonicalProductRef?.merchant_id,
+    base?.canonicalProductRef?.merchantId,
+    base?.product_ref?.merchant_id,
+    base?.productRef?.merchant_id,
+    base?.productRef?.merchantId,
+    skuCandidate?.canonical_product_ref?.merchant_id,
+    skuCandidate?.canonical_product_ref?.merchantId,
+    skuCandidate?.canonicalProductRef?.merchant_id,
+    skuCandidate?.canonicalProductRef?.merchantId,
+    skuCandidate?.product_ref?.merchant_id,
+    skuCandidate?.productRef?.merchant_id,
+    skuCandidate?.productRef?.merchantId,
+    base?.merchant_id,
+    base?.merchantId,
+    skuCandidate?.merchant_id,
+    skuCandidate?.merchantId,
+  );
+  const canonicalProductRefForOpen = normalizeCanonicalProductRef(
+    {
+      product_id: canonicalRefProductId,
+      merchant_id: canonicalRefMerchantId,
+    },
+    { requireMerchant: true, allowOpaqueProductId: false },
+  );
+  const hasInternalHandle = Boolean(subjectProductGroupId || canonicalProductRefForOpen || productId || skuId);
 
   const slotRaw = typeof base.slot === 'string' ? base.slot.trim().toLowerCase() : '';
   const slot = slotRaw === 'am' || slotRaw === 'pm' ? slotRaw : 'other';
@@ -56990,6 +57124,17 @@ function coerceRecoItemForUi(item, { lang } = {}) {
     nextMetadata.pdp_open_path = 'editorial';
     nextMetadata.pdp_open_mode = 'editorial';
     nextPdpOpen = null;
+  } else if (!nextPdpOpen && (subjectProductGroupId || canonicalProductRefForOpen)) {
+    nextPdpOpen = buildRecoPdpOpenContractFromAuthorityKeys({
+      productGroupId: subjectProductGroupId,
+      canonicalProductRef: canonicalProductRefForOpen,
+      directUrl: candidateExternalUrl,
+      queryText: externalQuery,
+    });
+    if (nextPdpOpen) {
+      nextMetadata.pdp_open_path = nextPdpOpen.path === 'external' ? 'external' : 'internal';
+      nextMetadata.pdp_open_mode = nextPdpOpen.path;
+    }
   } else if (!hasInternalHandle && hasOpenableExternal) {
     nextMetadata.pdp_open_path = 'external';
     nextMetadata.pdp_open_mode = 'external';

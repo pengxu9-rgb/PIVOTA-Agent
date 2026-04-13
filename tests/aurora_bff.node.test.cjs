@@ -135,6 +135,48 @@ function assertPassiveGateAdvisorySignal(body, gateId) {
   assert.equal(passiveSuppressed || suppressedGateIds.includes(gateId) || hasGateEvent, true);
 }
 
+test('__internal: recommendation rows synthesize pdp_open from authority identity', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const normalized = __internal.normalizeRecoCatalogProduct({
+      product_id: 'ext_bbe1ff8884f06d874bbccbd8',
+      merchant_id: 'external_seed',
+      brand: 'The Ordinary',
+      display_name: 'UV Filters SPF 45 Serum',
+      pdp_url: 'https://theordinary.com/en-us/uv-filters-spf-45-serum-100720.html',
+    });
+    assert.equal(normalized?.pdp_open?.path, 'ref');
+    assert.deepEqual(normalized?.pdp_open?.product_ref, {
+      product_id: 'ext_bbe1ff8884f06d874bbccbd8',
+      merchant_id: 'external_seed',
+    });
+
+    const coerced = __internal.coerceRecoItemForUi(
+      {
+        product_id: '9886499864904',
+        merchant_id: 'merch_efbc46b4619cfbdf',
+        canonical_product_ref: {
+          product_id: '9886499864904',
+          merchant_id: 'merch_efbc46b4619cfbdf',
+        },
+        brand: 'The Ordinary',
+        display_name: 'Niacinamide 10% + Zinc 1%',
+        pdp_url: 'https://agent.pivota.cc/products/9886499864904?merchant_id=merch_efbc46b4619cfbdf',
+      },
+      { lang: 'EN' },
+    );
+    assert.equal(coerced?.pdp_open?.path, 'ref');
+    assert.deepEqual(coerced?.pdp_open?.get_pdp_v2_payload?.product_ref, {
+      product_id: '9886499864904',
+      merchant_id: 'merch_efbc46b4619cfbdf',
+    });
+    assert.equal(coerced?.metadata?.pdp_open_path, 'internal');
+    assert.equal(coerced?.metadata?.pdp_open_mode, 'ref');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('extractQuickProfileLightweightPatch maps lightweight quick-profile signals', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
