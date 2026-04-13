@@ -12857,6 +12857,11 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
   const offset = (safePage - 1) * safeLimit;
   const q = String(queryText || '').trim().toLowerCase();
   const inStockOnly = options?.inStockOnly !== false;
+  const normalizedQueryClass = String(
+    options?.queryClass || options?.intent?.query_class || '',
+  )
+    .trim()
+    .toLowerCase();
   const beautyQueryProfile =
     options?.beautyQueryProfile && typeof options.beautyQueryProfile === 'object'
       ? options.beautyQueryProfile
@@ -12896,6 +12901,15 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
     });
 
   const skuLike = looksSkuLikeQuery(q);
+  const lookupAnchorTokens = extractSearchAnchorTokens(queryText);
+  const lookupLikeQuery =
+    skuLike ||
+    ['lookup', 'attribute'].includes(normalizedQueryClass) ||
+    isLookupStyleSearchQuery(queryText, lookupAnchorTokens) ||
+    isKnownLookupAliasQuery(queryText);
+  const brandLikeQuery = Boolean(detectBrandEntities(queryText, { candidateProducts: [] })?.brand_like);
+  const allowRelaxedNoOnboardingFallback =
+    !beautyQueryProfile?.isBeautyQuery || lookupLikeQuery || brandLikeQuery;
   const buildQueryFilter = (fieldPrefix = 'pc.') => {
     const matchFields = [
       `lower(coalesce(${fieldPrefix}product_data->>'title',''))`,
@@ -13062,6 +13076,77 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
     };
   }
 
+  const runBeautyBrowseFallback = async (relaxedTotal = 0) => {
+    if (!hasBeautyMakeupSearchSignal(q)) return null;
+    const beautySignalFilter = buildBeautySignalSql(1);
+    const beautyRowsSql = `
+      SELECT pc.merchant_id,
+             mo.business_name AS merchant_name,
+             pc.product_data
+      FROM products_cache pc
+      JOIN merchant_onboarding mo
+        ON mo.merchant_id = pc.merchant_id
+      WHERE ${baseWhere}
+        AND ${beautySignalFilter.sql}
+      ORDER BY pc.cached_at DESC NULLS LAST, pc.id DESC
+      OFFSET $${beautySignalFilter.nextIndex}
+      LIMIT $${beautySignalFilter.nextIndex + 1}
+    `;
+    const beautyRowsQuery = await runCacheSql(
+      'beauty_browse_fallback',
+      'rows',
+      beautyRowsSql,
+      [...beautySignalFilter.params, pageOffset, pageFetch],
+    );
+    const beautyRowsRes = beautyRowsQuery.result;
+    const beautyRanked = toRankedUniqueProducts(beautyRowsRes.rows || []);
+    const beautyFiltered = applyBeautySpecificFilter(beautyRanked.products);
+    retrievalSources.push({
+      source: 'beauty_browse_fallback',
+      used: true,
+      count: beautyFiltered.products.length,
+      candidate_count: beautyRanked.candidateCount,
+      filtered_irrelevant_count: beautyFiltered.filtered_irrelevant_count,
+      rows_query_ms: beautyRowsQuery.timing.duration_ms,
+    });
+
+    if (beautyFiltered.products.length <= 0) return null;
+    await applyShopifyCurrencyOverride(beautyFiltered.products);
+    return {
+      products: beautyFiltered.products,
+      total: Math.max(strictTotal, relaxedTotal, beautyFiltered.products.length),
+      page: safePage,
+      page_size: beautyFiltered.products.length,
+      retrieval_sources: retrievalSources,
+      query_terms: terms,
+      beauty_query_bucket: beautyQueryProfile?.bucket || null,
+      internal_filter_debug: beautyFiltered,
+    };
+  };
+
+  if (!allowRelaxedNoOnboardingFallback) {
+    retrievalSources.push({
+      source: 'lexical_cache_relaxed_no_onboarding',
+      used: false,
+      skipped: true,
+      reason: 'beauty_query_skip_relaxed_no_onboarding',
+    });
+    const beautyFallbackResult = await runBeautyBrowseFallback(0);
+    if (beautyFallbackResult) {
+      return beautyFallbackResult;
+    }
+    return {
+      products: [],
+      total: strictTotal,
+      page: safePage,
+      page_size: 0,
+      retrieval_sources: retrievalSources,
+      query_terms: terms,
+      beauty_query_bucket: beautyQueryProfile?.bucket || null,
+      internal_filter_debug: applyBeautySpecificFilter([]),
+    };
+  }
+
   try {
     const relaxedFilter = buildQueryFilter('');
     const relaxedBaseWhere = `
@@ -13167,51 +13252,10 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
       }
     }
 
-    if (relaxedFiltered.products.length === 0 && hasBeautyMakeupSearchSignal(q)) {
-      const beautySignalFilter = buildBeautySignalSql(1);
-      const beautyRowsSql = `
-        SELECT pc.merchant_id,
-               mo.business_name AS merchant_name,
-               pc.product_data
-        FROM products_cache pc
-        JOIN merchant_onboarding mo
-          ON mo.merchant_id = pc.merchant_id
-        WHERE ${baseWhere}
-          AND ${beautySignalFilter.sql}
-        ORDER BY pc.cached_at DESC NULLS LAST, pc.id DESC
-        OFFSET $${beautySignalFilter.nextIndex}
-        LIMIT $${beautySignalFilter.nextIndex + 1}
-      `;
-      const beautyRowsQuery = await runCacheSql(
-        'beauty_browse_fallback',
-        'rows',
-        beautyRowsSql,
-        [...beautySignalFilter.params, pageOffset, pageFetch],
-      );
-      const beautyRowsRes = beautyRowsQuery.result;
-      const beautyRanked = toRankedUniqueProducts(beautyRowsRes.rows || []);
-      const beautyFiltered = applyBeautySpecificFilter(beautyRanked.products);
-      retrievalSources.push({
-        source: 'beauty_browse_fallback',
-        used: true,
-        count: beautyFiltered.products.length,
-        candidate_count: beautyRanked.candidateCount,
-        filtered_irrelevant_count: beautyFiltered.filtered_irrelevant_count,
-        rows_query_ms: beautyRowsQuery.timing.duration_ms,
-      });
-
-      if (beautyFiltered.products.length > 0) {
-        await applyShopifyCurrencyOverride(beautyFiltered.products);
-        return {
-          products: beautyFiltered.products,
-          total: Math.max(strictTotal, relaxedTotal, beautyFiltered.products.length),
-          page: safePage,
-          page_size: beautyFiltered.products.length,
-          retrieval_sources: retrievalSources,
-          query_terms: terms,
-          beauty_query_bucket: beautyQueryProfile?.bucket || null,
-          internal_filter_debug: beautyFiltered,
-        };
+    if (relaxedFiltered.products.length === 0) {
+      const beautyFallbackResult = await runBeautyBrowseFallback(relaxedTotal);
+      if (beautyFallbackResult) {
+        return beautyFallbackResult;
       }
     }
 
@@ -21806,8 +21850,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             cacheUsedBeautyCategoryBrowseFastpath && internalProductsAfterAnchor.length > 0;
           const preferInternalSpecificBeautyCache =
             internalProductsAfterAnchor.length > 0 &&
-            ((cacheBeautyQueryProfile?.isSpecificBeautyQuery === true &&
-              cacheBeautyQueryProfile?.bucket === 'skincare') ||
+            (cacheBeautyQueryProfile?.isSpecificBeautyQuery === true ||
               preferInternalBeautyCategoryCache);
           const safeResultLimit = Math.max(1, Number(limit || 20));
           const needsPrimaryFillSupplement = internalProductsAfterAnchor.length < safeResultLimit;
