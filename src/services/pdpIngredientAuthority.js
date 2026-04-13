@@ -36,7 +36,7 @@ function stripHtml(input) {
 }
 
 const INGREDIENT_SECTION_RE =
-  /\b(full ingredient(?:s| list)?|full ingredients? list|ingredients(?:\s*\(inci\))?|inci(?: list)?)\s*:/ig;
+  /\b(full ingredient(?:s| list)?|full ingredients? list|ingredients(?:\s*\(inci\))?|inci(?: list)?)\b\s*:?\s*/ig;
 const ACTIVE_SECTION_RE = /\bactive ingredients?\s*:/ig;
 const STOP_MARKERS = [
   /\bpeta-certified\b/i,
@@ -67,7 +67,7 @@ function collectSectionBlocks(product) {
   const pushSection = (value) => {
     if (!value || typeof value !== 'object') return;
     const heading = asString(value.heading || value.title || value.name);
-    const content = asString(value.content || value.value || value.text || value.raw_text);
+    const content = asString(value.content || value.body || value.value || value.text || value.raw_text);
     if (!heading || !content) return;
     sections.push({ heading, content });
   };
