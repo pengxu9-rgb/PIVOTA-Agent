@@ -1040,6 +1040,7 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
           queryTotal:
             Number.isFinite(Number(query.query_total)) ? Number(query.query_total) : null,
           authHeaders,
+          localMainlineChild: true,
           merchantId:
             firstNonEmptyString(
               query.merchant_id,
@@ -1068,7 +1069,8 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
       );
     } catch (err) {
       const timeoutTriggered =
-        String(err?.code || '').trim() === 'LOCAL_INTERNAL_SEARCH_WALL_CLOCK_TIMEOUT';
+        String(err?.code || '').trim() === 'LOCAL_INTERNAL_SEARCH_WALL_CLOCK_TIMEOUT' ||
+        String(err?.code || '').trim() === 'ECONNABORTED';
       searchOut = buildBoundedPrimitiveFailure({
         reason: timeoutTriggered ? 'upstream_timeout' : 'upstream_error',
         timeoutMs,
@@ -2273,6 +2275,7 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
                 queryIndex: queryCursor,
                 queryTotal: recallEntries.length,
                 authHeaders,
+                localMainlineChild: true,
                 offset: 0,
                 inStockOnly: true,
                 callerLane: 'beauty_discovery_mainline',

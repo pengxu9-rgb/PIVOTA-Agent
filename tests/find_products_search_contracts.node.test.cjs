@@ -189,6 +189,44 @@ test('local mainline child recall keeps beauty surface but bypasses discovery ow
   assert.equal(plan.endpoint_kind, 'internal_primitive');
 });
 
+test('beauty head-term category queries use catalog child recall fastpath', () => {
+  const contract = buildFindProductsSearchRequestContract({
+    surface: 'direct',
+    operation: 'find_products_multi',
+    search: {
+      query: 'lip balm',
+      catalog_surface: 'beauty',
+    },
+    metadata: {
+      source: 'shopping',
+    },
+  });
+
+  assert.equal(contract.request_class, 'catalog_child_recall');
+  assert.equal(contract.semantic_contract, null);
+  assert.equal(contract.primary_lane, 'catalog_child_recall');
+  assert.equal(contract.primary_retrieval_contract, 'agent_v2_catalog_child_recall');
+  assert.deepEqual(contract.supplement_lanes, []);
+});
+
+test('attribute-rich beauty queries stay on discovery mainline', () => {
+  const contract = buildFindProductsSearchRequestContract({
+    surface: 'direct',
+    operation: 'find_products_multi',
+    search: {
+      query: 'vitamin c serum',
+      catalog_surface: 'beauty',
+    },
+    metadata: {
+      source: 'shopping',
+    },
+  });
+
+  assert.equal(contract.request_class, 'beauty_discovery');
+  assert.equal(contract.primary_lane, 'beauty_discovery_mainline');
+  assert.equal(contract.primary_retrieval_contract, 'agent_v1_search_beauty_mainline');
+});
+
 test('ingress search contract is preferred over execution-time rebuild', () => {
   const ingressContract = buildFindProductsSearchRequestContract({
     surface: 'direct',

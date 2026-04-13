@@ -143,10 +143,13 @@ function createFindProductsSearchRouteEntryRuntime(deps = {}) {
           rawSearch?.uiSurface,
       ) !== 'ingredient_plan_guidance_only' &&
       !explicitShoppingExternalSeedOnly;
+    const forceCatalogChildRecallMainPath =
+      String(searchRequestContract?.primary_lane || '').trim() === 'catalog_child_recall';
     const forceStrictShoppingMainPath =
       String(searchRequestContract?.primary_lane || '').trim() === 'shop_invoke_strict';
     const forceDirectInvokeMainPath =
       localMainlineChild === true ||
+      forceCatalogChildRecallMainPath ||
       forceStrictShoppingMainPath ||
       forceBeautyMainlineInvokePath;
 
@@ -167,7 +170,40 @@ function createFindProductsSearchRouteEntryRuntime(deps = {}) {
       };
     }
 
-    if (forceBeautyMainlineInvokePath) {
+    if (forceCatalogChildRecallMainPath) {
+      const nextMetadata =
+        payload?.metadata && typeof payload.metadata === 'object' && !Array.isArray(payload.metadata)
+          ? payload.metadata
+          : routeMetadata;
+      payload.search = {
+        ...(payload?.search && typeof payload.search === 'object' && !Array.isArray(payload.search)
+          ? payload.search
+          : {}),
+        local_mainline_child: true,
+        catalog_surface:
+          payload?.search?.catalog_surface ||
+          payload?.search?.catalogSurface ||
+          'beauty',
+        commerce_surface:
+          payload?.search?.commerce_surface ||
+          payload?.search?.commerceSurface ||
+          payload?.search?.catalog_surface ||
+          payload?.search?.catalogSurface ||
+          'beauty',
+      };
+      payload.metadata = {
+        ...nextMetadata,
+        local_mainline_child: true,
+        search_request_contract: searchRequestContract,
+        primary_lane: searchRequestContract?.primary_lane || 'catalog_child_recall',
+        primary_retrieval_contract:
+          searchRequestContract?.primary_retrieval_contract ||
+          'agent_v2_catalog_child_recall',
+        supplement_lanes: Array.isArray(searchRequestContract?.supplement_lanes)
+          ? searchRequestContract.supplement_lanes
+          : [],
+      };
+    } else if (forceBeautyMainlineInvokePath) {
       const existingAllowExternalSeed = payload?.search?.allow_external_seed ?? payload?.search?.allowExternalSeed;
       const existingExternalSeedStrategy =
         payload?.search?.external_seed_strategy || payload?.search?.externalSeedStrategy;

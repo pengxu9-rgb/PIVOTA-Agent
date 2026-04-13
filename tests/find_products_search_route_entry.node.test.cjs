@@ -164,3 +164,24 @@ test('guidance-only external seed route remains a direct fastpath, not discovery
   assert.equal(routePlan.payload.metadata.primary_lane, 'beauty_discovery_mainline');
   assert.equal(routePlan.payload.metadata.search_request_contract.request_class, 'support_recall');
 });
+
+test('beauty head-term route skips guidance ladder and forces catalog child recall', () => {
+  const runtime = buildRuntime();
+  const routePlan = runtime.prepareAgentProductsSearchRoute({
+    query: {
+      query: 'lip balm',
+      source: 'shopping',
+      catalog_surface: 'beauty',
+    },
+  });
+
+  assert.equal(routePlan.invalid, false);
+  assert.equal(routePlan.forceDirectInvokeMainPath, true);
+  assert.equal(routePlan.payload.search.local_mainline_child, true);
+  assert.equal(routePlan.payload.metadata.local_mainline_child, true);
+  assert.equal(routePlan.payload.metadata.primary_lane, 'catalog_child_recall');
+  assert.equal(
+    routePlan.payload.metadata.primary_retrieval_contract,
+    'agent_v2_catalog_child_recall',
+  );
+});
