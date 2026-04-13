@@ -3609,18 +3609,18 @@ test('__internal: framework recall planner emits role-aware primary and support 
     'oil control serum',
   ]);
   assert.deepEqual(plan.stages[2]?.entries?.map((entry) => entry?.query), [
-    'lightweight moisturizer',
+    'lightweight moisturizer oily skin',
   ]);
   assert.deepEqual(plan.stages[3]?.entries?.map((entry) => entry?.query), [
-    'lightweight moisturizer',
-    'gel cream',
+    'lightweight moisturizer oily skin',
+    'oil free moisturizer',
   ]);
   assert.deepEqual(plan.stages[4]?.entries?.map((entry) => entry?.query), [
-    'daily sunscreen',
+    'oil control sunscreen',
   ]);
   assert.deepEqual(plan.stages[5]?.entries?.map((entry) => entry?.query), [
-    'daily sunscreen',
-    'lightweight sunscreen',
+    'oil control sunscreen',
+    'lightweight sunscreen oily skin',
   ]);
 });
 

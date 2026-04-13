@@ -4,6 +4,9 @@ const {
   buildBeautyDiscoveryQueryPackFromContract,
   BEAUTY_DISCOVERY_MAINLINE_OWNER,
 } = require('../findProductsMulti/policy');
+const {
+  buildSupportRoleQueryVariants,
+} = require('./recoSupportRoleQueries');
 
 function uniqueCaseInsensitiveStrings(values, max = 12) {
   const out = [];
@@ -665,8 +668,16 @@ function buildFrameworkRoleQueries(
       if (roleQueries.length <= 1 && anchorQuery) out.push(anchorQuery);
     }
   } else {
-    if (roleQueries.length > 0) out.push(roleQueries[0]);
-    out.push(...roleQueries.slice(1));
+    out.push(...buildSupportRoleQueryVariants({
+      roleId: roleObj.role_id,
+      roleLabel: roleObj.label,
+      preferredStep,
+      queryTerms: roleQueries,
+      fitKeywords: Array.isArray(roleObj.fit_keywords) ? roleObj.fit_keywords : [],
+      semanticFamily: roleObj.semantic_family || deriveSemanticFamilyFromRole(roleObj) || '',
+      concernText,
+      maxQueries,
+    }));
   }
   if (allowConcernFallback && concernText) {
     if (preferredStep) out.push(`${concernText} ${preferredStep}`);

@@ -501,7 +501,7 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
         'salicylic acid serum oily skin',
         'oil control serum',
         'lightweight moisturizer oily skin',
-        'gel cream oily skin',
+        'oil free moisturizer',
         'oil control sunscreen',
         'lightweight sunscreen oily skin',
       ],
@@ -836,7 +836,7 @@ test('handoffRecoToBeautyMainlineSearch skips primary external seed when interna
       externalCaptured,
       [
         'lightweight moisturizer oily skin',
-        'gel cream oily skin',
+        'oil free moisturizer',
         'oil control sunscreen',
         'lightweight sunscreen oily skin',
       ],
