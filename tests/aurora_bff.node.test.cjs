@@ -7588,6 +7588,145 @@ test('fetchRecoAlternativesForProduct: open_world_only marks recall_miss when au
   );
 });
 
+test('fetchRecoAlternativesForProduct: open_world_only hides unresolved rows when enough grounded alternatives exist', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      GEMINI_API_KEY: 'test_gemini_key',
+      AURORA_DIAG_FORCE_GEMINI: 'true',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED: 'false',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      axios.get = async (url) => {
+        if (!isProductsSearchUrl(url)) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: 'ext_lrp_aox',
+                merchant_id: 'external_seed',
+                brand: 'La Roche-Posay',
+                name: 'Anthelios AOX Antioxidant Serum SPF 50',
+                display_name: 'Anthelios AOX Antioxidant Serum SPF 50',
+                product_type: 'Sunscreen',
+                category: 'Sunscreen',
+                compare_highlights: ['Serum sunscreen format.'],
+              },
+              {
+                product_id: 'ext_neutrogena_invisible',
+                merchant_id: 'external_seed',
+                brand: 'Neutrogena',
+                name: 'Invisible Daily Defense Face Serum SPF 60+',
+                display_name: 'Invisible Daily Defense Face Serum SPF 60+',
+                product_type: 'Sunscreen',
+                category: 'Sunscreen',
+                compare_highlights: ['Invisible daily sunscreen serum.'],
+              },
+            ],
+          },
+        };
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { __internal } = routeModule;
+        __internal.__setCallGeminiJsonObjectForTest(async () => ({
+          ok: true,
+          json: {
+            alternatives: [
+              {
+                brand: 'La Roche-Posay',
+                name: 'Anthelios AOX Antioxidant Serum SPF 50',
+                product_type: 'sunscreen',
+                similarity_score: 65,
+                reasons: ['Lightweight serum texture.'],
+                tradeoff_notes: ['More premium than the anchor.'],
+              },
+              {
+                brand: 'Neutrogena',
+                name: 'Invisible Daily Defense Face Serum SPF 60+',
+                product_type: 'sunscreen',
+                similarity_score: 59,
+                reasons: ['Invisible serum sunscreen format.'],
+                tradeoff_notes: ['Higher SPF than the anchor.'],
+              },
+              {
+                brand: 'Supergoop!',
+                name: 'Glow Screen SPF 40',
+                product_type: 'sunscreen',
+                similarity_score: 58,
+                reasons: ['Same sunscreen step.'],
+                tradeoff_notes: ['Formula details need verification.'],
+              },
+            ],
+          },
+        }));
+        __internal.__setResolveProductRefForTest(async () => ({
+          resolved: false,
+          product_ref: null,
+          confidence: 0,
+          reason: 'no_candidates',
+          candidates: [],
+        }));
+
+        const out = await __internal.fetchRecoAlternativesForProduct({
+          ctx: {
+            lang: 'EN',
+            request_id: 'req_open_world_hide_name_only_when_grounded',
+            trace_id: 'trace_open_world_hide_name_only_when_grounded',
+          },
+          profileSummary: null,
+          recentLogs: [],
+          productInput: 'The Ordinary UV Filters SPF 45 Serum',
+          productObj: {
+            brand: 'The Ordinary',
+            name: 'UV Filters SPF 45 Serum',
+            product_type: 'sunscreen',
+            category: 'Sunscreen',
+            claims: ['daily sunscreen', 'lightweight protection'],
+          },
+          anchorId: '',
+          maxTotal: 3,
+          candidatePool: [],
+          logger: null,
+          options: {
+            recommendation_mode: 'open_world_only',
+            profile_mode: 'anchor_only',
+            disable_fallback: true,
+            disable_synthetic_local_fallback: true,
+            ignore_selector_candidates: true,
+            skip_anchor_precheck: true,
+          },
+        });
+
+        assert.equal(out?.llm_trace?.catalog_grounded_count, 2);
+        assert.equal(out?.compare_meta?.visible_authority_only_filter_applied, true);
+        assert.equal(out?.compare_meta?.hidden_unresolved_count, 1);
+        assert.equal(out.alternatives.length, 2);
+        assert.equal(out.alternatives.every((row) => row?.grounding_status === 'catalog_verified'), true);
+        assert.equal(out.alternatives.some((row) => /glow\s*screen/i.test(String(row?.name || row?.product?.name || ''))), false);
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        loaded?.__internal?.__resetResolveProductRefForTest?.();
+        axios.get = originalGet;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
 test('fetchRecoAlternativesForProduct: open_world_only preserves reviewed highlights on catalog-grounded rows', async () => {
   return withEnv(
     {

@@ -66094,6 +66094,29 @@ function applyOpenWorldAlternativeVisibleCopy(rows, { targetSignals = null } = {
   return (Array.isArray(rows) ? rows : []).map((row) => maybeApplyOpenWorldAlternativeVisibleCopy(row, { targetSignals }));
 }
 
+function isCatalogVerifiedRecoAlternative(row) {
+  const item = isPlainObject(row) ? row : {};
+  return String(item.grounding_status || '').trim().toLowerCase() === 'catalog_verified';
+}
+
+function filterRecoAlternativesVisibleAuthorityRows(rows, { minGrounded = 2 } = {}) {
+  const list = Array.isArray(rows) ? rows.filter((row) => isPlainObject(row)) : [];
+  const grounded = list.filter(isCatalogVerifiedRecoAlternative);
+  const minimum = Math.max(1, Math.trunc(Number(minGrounded) || 2));
+  if (grounded.length < minimum) {
+    return {
+      alternatives: list,
+      hidden_unresolved_count: 0,
+      visible_authority_only_filter_applied: false,
+    };
+  }
+  return {
+    alternatives: grounded,
+    hidden_unresolved_count: Math.max(0, list.length - grounded.length),
+    visible_authority_only_filter_applied: grounded.length !== list.length,
+  };
+}
+
 function mapResolverGroundedOpenWorldAlternative(openWorldRow, {
   canonicalProductRef = null,
   canonicalProductGroupId = null,
@@ -66650,6 +66673,7 @@ async function fetchRecoAlternativesForLocalGeminiOpenWorld({
     llmTrace.catalog_grounding_failure_class_counts = grounded.failure_class_counts;
     const hydratedAlternatives = await hydrateRecoAlternativesAuthorityExperienceRows(grounded.alternatives);
     const finalAlternatives = applyOpenWorldAlternativeVisibleCopy(hydratedAlternatives, { targetSignals });
+    const visibleAlternatives = filterRecoAlternativesVisibleAuthorityRows(finalAlternatives, { minGrounded: 2 });
     const backfillLedger = await buildRecoAlternativesAuthorityBackfillLedger({
       ctx,
       alternatives: finalAlternatives,
@@ -66657,7 +66681,7 @@ async function fetchRecoAlternativesForLocalGeminiOpenWorld({
     });
     return {
       ok: true,
-      alternatives: finalAlternatives.slice(0, Math.max(1, Math.min(6, Number(maxTotal) || 1))),
+      alternatives: visibleAlternatives.alternatives.slice(0, Math.max(1, Math.min(6, Number(maxTotal) || 1))),
       field_missing: [],
       source_mode: 'open_world_only',
       fallback_source: null,
@@ -66673,9 +66697,11 @@ async function fetchRecoAlternativesForLocalGeminiOpenWorld({
       compare_meta: {
         open_world_status: 'success',
         open_world_candidate_count: normalizedRows.length,
-        open_world_selected_count: finalAlternatives.filter((row) => String(row?.candidate_origin || '') === 'open_world').length,
+        open_world_selected_count: visibleAlternatives.alternatives.filter((row) => String(row?.candidate_origin || '') === 'open_world').length,
         open_world_grounding_attempted_count: grounded.attempted_count,
         open_world_grounded_count: grounded.grounded_count,
+        visible_authority_only_filter_applied: visibleAlternatives.visible_authority_only_filter_applied,
+        hidden_unresolved_count: visibleAlternatives.hidden_unresolved_count,
         authority_backfill: backfillLedger,
       },
     };
@@ -66696,6 +66722,7 @@ async function fetchRecoAlternativesForLocalGeminiOpenWorld({
     llmTrace.recovered_row_count = recoveredRows.length;
     const hydratedAlternatives = await hydrateRecoAlternativesAuthorityExperienceRows(grounded.alternatives);
     const finalAlternatives = applyOpenWorldAlternativeVisibleCopy(hydratedAlternatives, { targetSignals });
+    const visibleAlternatives = filterRecoAlternativesVisibleAuthorityRows(finalAlternatives, { minGrounded: 2 });
     const backfillLedger = await buildRecoAlternativesAuthorityBackfillLedger({
       ctx,
       alternatives: finalAlternatives,
@@ -66703,7 +66730,7 @@ async function fetchRecoAlternativesForLocalGeminiOpenWorld({
     });
     return {
       ok: true,
-      alternatives: finalAlternatives.slice(0, Math.max(1, Math.min(6, Number(maxTotal) || 1))),
+      alternatives: visibleAlternatives.alternatives.slice(0, Math.max(1, Math.min(6, Number(maxTotal) || 1))),
       field_missing: [],
       source_mode: 'open_world_only',
       fallback_source: null,
@@ -66719,9 +66746,11 @@ async function fetchRecoAlternativesForLocalGeminiOpenWorld({
       compare_meta: {
         open_world_status: 'success',
         open_world_candidate_count: recoveredRows.length,
-        open_world_selected_count: finalAlternatives.filter((row) => String(row?.candidate_origin || '') === 'open_world').length,
+        open_world_selected_count: visibleAlternatives.alternatives.filter((row) => String(row?.candidate_origin || '') === 'open_world').length,
         open_world_grounding_attempted_count: grounded.attempted_count,
         open_world_grounded_count: grounded.grounded_count,
+        visible_authority_only_filter_applied: visibleAlternatives.visible_authority_only_filter_applied,
+        hidden_unresolved_count: visibleAlternatives.hidden_unresolved_count,
         authority_backfill: backfillLedger,
       },
     };
@@ -66950,13 +66979,15 @@ async function fetchRecoAlternativesForExternalSeedProduct({
     delete next._mixed_score;
     return next;
   }), { targetSignals });
+  const visibleAlternatives = filterRecoAlternativesVisibleAuthorityRows(cleanedAlternatives, { minGrounded: 2 });
   const backfillLedger = await buildRecoAlternativesAuthorityBackfillLedger({
     ctx,
     alternatives: cleanedAlternatives.length ? cleanedAlternatives : openWorldRows,
     logger,
   });
-  const poolSelectedCount = cleanedAlternatives.filter((row) => String(row?.candidate_origin || '') === 'pool').length;
-  const openWorldSelectedCount = cleanedAlternatives.filter((row) => String(row?.candidate_origin || '') === 'open_world').length;
+  const visibleAlternativeRows = visibleAlternatives.alternatives;
+  const poolSelectedCount = visibleAlternativeRows.filter((row) => String(row?.candidate_origin || '') === 'pool').length;
+  const openWorldSelectedCount = visibleAlternativeRows.filter((row) => String(row?.candidate_origin || '') === 'open_world').length;
   const compareMeta = {
     embedded_candidate_count: embeddedPoolCandidates.length,
     pool_candidate_count: poolCandidates.length,
@@ -66966,6 +66997,8 @@ async function fetchRecoAlternativesForExternalSeedProduct({
     open_world_grounding_attempted_count: openWorldGroundingAttemptedCount,
     open_world_grounded_count: openWorldGroundedCount,
     open_world_grounding_failure_class_counts: openWorldFailureClassCounts,
+    visible_authority_only_filter_applied: visibleAlternatives.visible_authority_only_filter_applied,
+    hidden_unresolved_count: visibleAlternatives.hidden_unresolved_count,
     ranking_mode: 'best_score_mixed',
     pool_recall_status: poolCandidates.length >= 3 ? 'full' : poolCandidates.length > 0 ? 'partial' : 'empty',
     open_world_status: openWorldStatus,
@@ -66973,7 +67006,7 @@ async function fetchRecoAlternativesForExternalSeedProduct({
     authority_backfill: backfillLedger,
   };
 
-  if (!cleanedAlternatives.length) {
+  if (!visibleAlternativeRows.length) {
     return {
       ok: true,
       alternatives: [],
@@ -66994,7 +67027,7 @@ async function fetchRecoAlternativesForExternalSeedProduct({
 
   return {
     ok: true,
-    alternatives: cleanedAlternatives,
+    alternatives: visibleAlternativeRows,
     field_missing: [],
     source_mode: 'pool_open_world_mixed',
     fallback_source: null,
@@ -67598,6 +67631,7 @@ async function fetchRecoAlternativesForProduct({
       { maxTotal: limit },
     );
     const hydratedAlternatives = await hydrateRecoAlternativesAuthorityExperienceRows(alternatives);
+    const visibleAlternatives = filterRecoAlternativesVisibleAuthorityRows(hydratedAlternatives, { minGrounded: 2 });
     const openWorldStatus = openWorldAlternatives.length
       ? 'success'
       : openWorldOut?.failure_class
@@ -67609,17 +67643,17 @@ async function fetchRecoAlternativesForProduct({
         : null;
     return {
       ok: true,
-      alternatives: hydratedAlternatives,
-      field_missing: hydratedAlternatives.length
+      alternatives: visibleAlternatives.alternatives,
+      field_missing: visibleAlternatives.alternatives.length
         ? []
         : mergeFieldMissing(openWorldOut?.field_missing, [{ field: 'alternatives', reason: 'no_viable_compare_candidates' }]),
       source_mode: 'hybrid_fallback',
-      fallback_source: hydratedAlternatives.length ? null : 'none',
+      fallback_source: visibleAlternatives.alternatives.length ? null : 'none',
       refresh_pending: Boolean(openWorldOut?.refresh_pending),
       refresh_after_ms: 0,
-      failure_class: hydratedAlternatives.length ? null : (openWorldOut?.failure_class || 'empty_structured'),
+      failure_class: visibleAlternatives.alternatives.length ? null : (openWorldOut?.failure_class || 'empty_structured'),
       attempt_count: Math.max(1, Number(openWorldOut?.attempt_count) || 1),
-      no_result_reason: hydratedAlternatives.length
+      no_result_reason: visibleAlternatives.alternatives.length
         ? null
         : (openWorldOut?.no_result_reason || 'pool_and_open_world_empty'),
       recommendation_mode: recommendationMode,
@@ -67629,12 +67663,14 @@ async function fetchRecoAlternativesForProduct({
       llm_trace: openWorldOut?.llm_trace || null,
       compare_meta: {
         ...(groundedPoolMeta || {}),
-        pool_selected_count: hydratedAlternatives.filter((row) => String(row?.candidate_origin || '') === 'pool').length,
+        pool_selected_count: visibleAlternatives.alternatives.filter((row) => String(row?.candidate_origin || '') === 'pool').length,
         open_world_candidate_count: openWorldAlternatives.length,
-        open_world_selected_count: hydratedAlternatives.filter((row) => String(row?.candidate_origin || '') === 'open_world').length,
+        open_world_selected_count: visibleAlternatives.alternatives.filter((row) => String(row?.candidate_origin || '') === 'open_world').length,
         open_world_grounding_attempted_count: Number(openWorldOut?.llm_trace?.catalog_grounding_attempted_count || 0),
         open_world_grounded_count: Number(openWorldOut?.llm_trace?.catalog_grounded_count || 0),
         open_world_status: openWorldStatus,
+        visible_authority_only_filter_applied: visibleAlternatives.visible_authority_only_filter_applied,
+        hidden_unresolved_count: visibleAlternatives.hidden_unresolved_count,
         ranking_mode: 'grounded_pool_then_local_open_world',
         open_world_role: 'coverage_supplement',
         authority_backfill: openWorldBackfill || {
