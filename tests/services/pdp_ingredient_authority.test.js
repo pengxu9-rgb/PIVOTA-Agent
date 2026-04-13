@@ -71,8 +71,8 @@ describe('pdpIngredientAuthority', () => {
       pdp_details_sections: [
         {
           heading: 'Details',
-          content:
-            'Key Ingredients\nRice Extract\nRice Amino Acids\nFull Ingredient List: AQUA, METHYLPROPANEDIOL, PROPANEDIOL, 1,2-HEXANEDIOL, GLYCERIN, ORYZA SATIVA (RICE) EXTRACT, RICE AMINO ACIDS. Warning: For external use only.',
+          body:
+            'Key Ingredients\nRice Extract\nRice Amino Acids\nFull Ingredient List\nAQUA, METHYLPROPANEDIOL, PROPANEDIOL, 1,2-HEXANEDIOL, GLYCERIN, ORYZA SATIVA (RICE) EXTRACT, RICE AMINO ACIDS. Warning: For external use only.',
         },
       ],
     });
@@ -87,6 +87,30 @@ describe('pdpIngredientAuthority', () => {
         'GLYCERIN',
         'ORYZA SATIVA (RICE) EXTRACT',
         'RICE AMINO ACIDS',
+      ]),
+    );
+  });
+
+  test('reads body-based seed details sections when collecting authority', () => {
+    const authority = buildAuthoritativeIngredientView({
+      seed_data: {
+        pdp_details_sections: [
+          {
+            heading: 'Full Ingredients',
+            body: 'AQUA, GLYCERIN, NIACINAMIDE, PANTHENOL.',
+            source_kind: 'html_snapshot_product_content',
+          },
+        ],
+      },
+    });
+
+    expect(authority.purity_status).toBe('authoritative');
+    expect(authority.items).toEqual(
+      expect.arrayContaining([
+        'AQUA',
+        'GLYCERIN',
+        'NIACINAMIDE',
+        'PANTHENOL',
       ]),
     );
   });
