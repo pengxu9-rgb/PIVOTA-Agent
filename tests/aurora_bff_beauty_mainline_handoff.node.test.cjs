@@ -832,7 +832,10 @@ test('handoffRecoToBeautyMainlineSearch skips primary external seed when interna
         'oil control serum',
         'shine control serum',
         'lightweight moisturizer oily skin',
+        'oil free moisturizer',
         'oil control sunscreen',
+        'lightweight sunscreen oily skin',
+        'spf oily skin',
       ],
     );
     assert.deepEqual(

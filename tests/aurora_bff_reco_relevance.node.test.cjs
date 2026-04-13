@@ -4510,12 +4510,19 @@ test('__internal: tri-state skincare classifier only hard rejects explicit non-s
       name: 'Oil Control Serum',
       category: 'serum',
     }),
-    'explicit_skincare',
+    'explicit_face_skincare',
   );
   assert.equal(
     recoShared.classifySkincareCandidateDomain({
       name: 'Makeup Brush',
       category: 'tool',
+    }),
+    'explicit_non_skincare',
+  );
+  assert.equal(
+    recoShared.classifySkincareCandidateDomain({
+      name: 'Warm Fall/Winter Padded Winter Vest for Dogs & Cats',
+      category: 'moisturizer',
     }),
     'explicit_non_skincare',
   );
@@ -6718,6 +6725,86 @@ test('__internal: framework reco query collection runs per-level catalog searche
   } finally {
     axios.get = originalGet;
   }
+});
+
+test('__internal: collectRecoCandidatesFromQueryLevels drops explicit non-skincare pollution at beauty boundary', async () => {
+  const { __internal } = loadRoutesFresh();
+  const targetContext = {
+    framework_id: 'framework_oily_skin_v1',
+    primary_role_id: 'lightweight_moisturizer',
+    framework_roles: [
+      {
+        role_id: 'lightweight_moisturizer',
+        rank: 1,
+        label: 'Lightweight moisturizer',
+        preferred_step: 'moisturizer',
+        semantic_family: 'moisturizer',
+        query_terms: ['lightweight moisturizer oily skin'],
+      },
+    ],
+    framework_owner_source: 'generic_concern_framework_resolver',
+    framework_owner_state: 'trusted',
+  };
+  const out = await __internal.collectRecoCandidatesFromQueryLevels({
+    queryLevels: [
+      {
+        level_index: 0,
+        ladder_level: 'framework_stage_c_support_lightweight_moisturizer',
+        queries: [
+          {
+            query: 'lightweight moisturizer oily skin',
+            step: 'moisturizer',
+            slot: 'other',
+            ladder_level: 'framework_stage_c_support_lightweight_moisturizer',
+            role_id: 'lightweight_moisturizer',
+            role_rank: 1,
+          },
+        ],
+      },
+    ],
+    targetContext,
+    recommendationTaskContext: null,
+    logger: null,
+    timeoutMs: 800,
+    limit: 6,
+    usePurchasableFallback: false,
+    allowExternalSeed: false,
+    searchFn: async () => ({
+      ok: true,
+      products: [
+        {
+          product_id: 'pet_vest_1',
+          merchant_id: 'merchant_noise',
+          display_name: 'Warm Fall/Winter Padded Winter Vest for Dogs & Cats',
+          product_type: 'moisturizer',
+        },
+        {
+          product_id: 'moisturizer_1',
+          merchant_id: 'merchant_beauty',
+          brand: 'Clear Skin Lab',
+          display_name: 'Clear Skin Lab Oil-Free Water Gel Moisturizer',
+          product_type: 'moisturizer',
+          ingredient_tokens: ['glycerin', 'niacinamide'],
+          benefit_tokens: ['oil-free', 'lightweight hydration'],
+        },
+      ],
+    }),
+  });
+
+  assert.deepEqual(
+    out.rawCandidates.map((item) => item.product_id),
+    ['moisturizer_1'],
+  );
+  assert.deepEqual(
+    out.boundaryRejects.map((entry) => entry.product.product_id),
+    ['pet_vest_1'],
+  );
+  assert.equal(out.boundaryRejects[0].reason, 'explicit_non_skincare');
+  assert.equal(out.candidateState.raw_candidate_count, 1);
+  assert.equal(
+    (out.candidateState.hard_reject || []).some((entry) => entry?.product?.product_id === 'pet_vest_1'),
+    false,
+  );
 });
 
 test('__internal: collectRecoCandidatesFromQueryLevels clamps per-query timeout by deadline', async () => {

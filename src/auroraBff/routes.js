@@ -4833,7 +4833,9 @@ async function searchInternalProductsPrimitive({
     upstreamErrorMessage = null,
     upstreamFailureStage = null,
     upstreamInternalErrorCode = null,
+    upstreamMetadata = null,
   } = {}) => {
+    const primitiveMetadata = isPlainObject(upstreamMetadata) ? upstreamMetadata : null;
     const transportHop = {
       caller_lane: String(callerLane || '').trim() || null,
       target_base_url: normalizedBase || null,
@@ -4876,6 +4878,21 @@ async function searchInternalProductsPrimitive({
       nested_orchestrator_hops: 0,
       search_source: String(searchSourceOverride || '').trim().toLowerCase() || null,
       latency_ms: Date.now() - startedAt,
+      ...(primitiveMetadata?.post_filter_applied !== undefined
+        ? { upstream_post_filter_applied: primitiveMetadata.post_filter_applied === true }
+        : {}),
+      ...(Number.isFinite(Number(primitiveMetadata?.post_filter_rejected_count))
+        ? { upstream_post_filter_rejected_count: Math.max(0, Math.trunc(Number(primitiveMetadata.post_filter_rejected_count))) }
+        : {}),
+      ...(pickFirstTrimmed(primitiveMetadata?.post_filter_target_step_family)
+        ? { upstream_post_filter_target_step_family: pickFirstTrimmed(primitiveMetadata.post_filter_target_step_family) }
+        : {}),
+      ...(pickFirstTrimmed(primitiveMetadata?.post_filter_semantic_family)
+        ? { upstream_post_filter_semantic_family: pickFirstTrimmed(primitiveMetadata.post_filter_semantic_family) }
+        : {}),
+      ...(pickFirstTrimmed(primitiveMetadata?.post_filter_query_step_strength)
+        ? { upstream_post_filter_query_step_strength: pickFirstTrimmed(primitiveMetadata.post_filter_query_step_strength) }
+        : {}),
     };
   };
   const readPrimitiveErrorCode = (payload) => {
@@ -4995,6 +5012,7 @@ async function searchInternalProductsPrimitive({
         reason: products.length > 0 ? null : bodyReason || 'empty',
         products,
         statusCode,
+        upstreamMetadata: body?.metadata,
       }),
       products,
       resolver_first_applied: false,
@@ -18105,6 +18123,44 @@ function buildRecoCandidateStateFromRawCandidates(rawCandidates, { targetContext
       });
 }
 
+function classifyBeautyMainlineBoundaryRejectCandidate(candidate) {
+  if (!isPlainObject(candidate)) return { rejected: false, reason: null };
+  const scopeClassification = classifyConcernScopeCandidate(candidate);
+  if (scopeClassification?.hard_reject === true) {
+    return {
+      rejected: true,
+      reason: String(scopeClassification.reason || 'explicit_non_skincare').trim() || 'explicit_non_skincare',
+    };
+  }
+  return { rejected: false, reason: null };
+}
+
+function recordBeautyMainlineBoundaryReject({
+  rejects,
+  product,
+  reason,
+  queryEntry = null,
+  stageId = null,
+} = {}) {
+  if (!Array.isArray(rejects) || !isPlainObject(product)) return;
+  rejects.push({
+    product: {
+      ...product,
+      retrieval_query: pickFirstTrimmed(queryEntry?.query, product.retrieval_query) || null,
+      retrieval_step: pickFirstTrimmed(queryEntry?.preferred_step, queryEntry?.step, product.retrieval_step) || null,
+      retrieval_slot: pickFirstTrimmed(queryEntry?.slot, product.retrieval_slot) || null,
+      retrieval_ladder_level: pickFirstTrimmed(stageId, queryEntry?.ladder_level, product.retrieval_ladder_level) || null,
+      retrieval_role_id: pickFirstTrimmed(queryEntry?.role_id, product.retrieval_role_id) || null,
+      ...(Number.isFinite(Number(queryEntry?.role_rank))
+        ? { retrieval_role_rank: Number(queryEntry.role_rank) }
+        : Number.isFinite(Number(product.retrieval_role_rank))
+          ? { retrieval_role_rank: Number(product.retrieval_role_rank) }
+          : {}),
+    },
+    reason: String(reason || 'beauty_mainline_boundary_reject').trim() || 'beauty_mainline_boundary_reject',
+  });
+}
+
 async function executeRecoRecallPlanEntry({
   entry,
   logger,
@@ -18364,6 +18420,7 @@ async function collectRecoCandidatesFromRecallPlan({
   searchFn = null,
 } = {}) {
   const rawCandidates = [];
+  const boundaryRejects = [];
   const searchResults = [];
   const stageResults = [];
   const stageTimeoutCounts = {};
@@ -18488,6 +18545,17 @@ async function collectRecoCandidatesFromRecallPlan({
       for (const product of products) {
         const normalized = normalizeRecoCatalogProduct(product);
         if (!isPlainObject(normalized)) continue;
+        const boundaryReject = classifyBeautyMainlineBoundaryRejectCandidate(normalized);
+        if (boundaryReject.rejected) {
+          recordBeautyMainlineBoundaryReject({
+            rejects: boundaryRejects,
+            product: normalized,
+            reason: boundaryReject.reason,
+            queryEntry,
+            stageId: String(stage?.stage_id || '').trim() || null,
+          });
+          continue;
+        }
         rawCandidates.push({
           ...normalized,
           retrieval_query: queryEntry.query,
@@ -18559,6 +18627,7 @@ async function collectRecoCandidatesFromRecallPlan({
 
   return {
     rawCandidates,
+    boundaryRejects,
     searchResults,
     candidateState,
     stopLevel,
@@ -19873,6 +19942,7 @@ function buildBeautyMainlineLocalSourceBreakdown(products = []) {
 function buildBeautyMainlineLocalCandidatePoolSummary({
   candidateState = null,
   rawCandidates = [],
+  boundaryRejects = [],
   selectedProducts = [],
 } = {}) {
   const rawSourceCounts =
@@ -19900,6 +19970,7 @@ function buildBeautyMainlineLocalCandidatePoolSummary({
     comparison_fill_applied: candidateState?.comparison_fill_applied === true,
     comparison_fill_count: Number(candidateState?.comparison_fill_count || 0),
     comparison_slot_reserved: candidateState?.comparison_slot_reserved === true,
+    boundary_reject_count: Array.isArray(boundaryRejects) ? boundaryRejects.length : 0,
     raw_source_counts: rawSourceCounts,
     viable_source_counts: viableSourceCounts,
     selected_source_counts: selectedSourceCounts,
@@ -19911,6 +19982,7 @@ function buildBeautyMainlineLocalCandidatePoolSummary({
       : {},
     hard_reject_preview: buildConcernFrameworkRejectPreview(candidateState?.hard_reject),
     soft_mismatch_preview: buildConcernFrameworkRejectPreview(candidateState?.soft_mismatch),
+    boundary_reject_preview: buildConcernFrameworkRejectPreview(boundaryRejects),
   };
 }
 
@@ -20124,6 +20196,21 @@ function buildBeautyMainlineLocalQueryAttempts(searchResults = []) {
     ...(Array.isArray(row?.attempted_request_timeouts_ms)
       ? { attempted_request_timeouts_ms: row.attempted_request_timeouts_ms }
       : {}),
+    ...(row?.upstream_post_filter_applied !== undefined
+      ? { upstream_post_filter_applied: row.upstream_post_filter_applied === true }
+      : {}),
+    ...(Number.isFinite(Number(row?.upstream_post_filter_rejected_count))
+      ? { upstream_post_filter_rejected_count: Math.max(0, Math.trunc(Number(row.upstream_post_filter_rejected_count))) }
+      : {}),
+    ...(pickFirstTrimmed(row?.upstream_post_filter_target_step_family)
+      ? { upstream_post_filter_target_step_family: pickFirstTrimmed(row.upstream_post_filter_target_step_family) }
+      : {}),
+    ...(pickFirstTrimmed(row?.upstream_post_filter_semantic_family)
+      ? { upstream_post_filter_semantic_family: pickFirstTrimmed(row.upstream_post_filter_semantic_family) }
+      : {}),
+    ...(pickFirstTrimmed(row?.upstream_post_filter_query_step_strength)
+      ? { upstream_post_filter_query_step_strength: pickFirstTrimmed(row.upstream_post_filter_query_step_strength) }
+      : {}),
     ...(pickFirstTrimmed(row?.local_external_seed_search_mode)
       ? { local_external_seed_search_mode: pickFirstTrimmed(row.local_external_seed_search_mode) }
       : {}),
@@ -20149,6 +20236,7 @@ function buildBeautyMainlineLocalSearchResult({
   const candidatePoolSummary = buildBeautyMainlineLocalCandidatePoolSummary({
     candidateState: collected?.candidateState,
     rawCandidates: collected?.rawCandidates,
+    boundaryRejects: collected?.boundaryRejects,
     selectedProducts: selected,
   });
   const effectiveCandidateDropStage = pickFirstTrimmed(
@@ -21308,6 +21396,7 @@ async function collectRecoCandidatesFromQueryLevels({
   searchFn = null,
 } = {}) {
   const rawCandidates = [];
+  const boundaryRejects = [];
   const searchResults = [];
   const hasFrameworkTargetContext =
     Array.isArray(targetContext?.framework_roles) && targetContext.framework_roles.length > 0;
@@ -21470,6 +21559,17 @@ async function collectRecoCandidatesFromQueryLevels({
       for (const product of products) {
         const normalized = normalizeRecoCatalogProduct(product);
         if (!isPlainObject(normalized)) continue;
+        const boundaryReject = classifyBeautyMainlineBoundaryRejectCandidate(normalized);
+        if (boundaryReject.rejected) {
+          recordBeautyMainlineBoundaryReject({
+            rejects: boundaryRejects,
+            product: normalized,
+            reason: boundaryReject.reason,
+            queryEntry,
+            stageId,
+          });
+          continue;
+        }
         rawCandidates.push({
           ...normalized,
           retrieval_query: queryEntry.query,
@@ -21527,6 +21627,7 @@ async function collectRecoCandidatesFromQueryLevels({
 
   return {
     rawCandidates,
+    boundaryRejects,
     searchResults,
     candidateState,
     stopLevel,
