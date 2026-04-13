@@ -51449,6 +51449,9 @@ function buildRecoAssistantWritePlan({
 function describeRecoAssistantRewriteFailureReason(reason) {
   const normalized = String(reason || '').trim().toLowerCase();
   if (!normalized) return null;
+  if (normalized === 'rewrite_buy_lead_not_product_first') {
+    return 'Start the first sentence with the lead product name, then give the buy recommendation and reason.';
+  }
   if (normalized === 'rewrite_buy_lead_not_direct') {
     return 'Open with a direct buy recommendation that names the lead product in the first sentence.';
   }
@@ -51781,6 +51784,7 @@ function buildRecoAssistantRewritePrompt({
     'Write one recommendation assistant message that is natural, specific, concise, and aligned to the final payload.',
     'Address the user_request directly and respond to the user\'s real complaint first.',
     'If request_mode is "buy", use direct shopping advice tone.',
+    'If request_mode is "buy", start the first sentence with the lead product name rather than a generic concern summary.',
     'If request_mode is "buy" and there is one selected product, the first sentence must directly recommend that product by name.',
     'If request_mode is "buy" and selected_product_role_mix is "same_role_comparison", the first sentence must name the best first buy and signal that the remaining selected products are same-slot comparison options.',
     'If request_mode is "buy" and selected_product_role_mix is "routine_mix", the first sentence must name the best first buy and frame selected products from different roles as routine add-ons; only same-role products may be same-slot alternatives.',
@@ -51843,6 +51847,14 @@ function extractRecoAssistantLeadSentence(text) {
   const match = raw.match(/^[\s\S]{1,240}?[.!?。！？](?:\s|$)/);
   if (match && match[0]) return String(match[0]).trim();
   return raw.slice(0, 240).trim();
+}
+
+function assistantTextStartsWithSelectedProductName(text, value) {
+  const lead = normalizeSemanticAuditText(String(text || ''));
+  const target = normalizeSemanticAuditText(String(value || ''));
+  if (!lead || !target) return false;
+  if (lead.startsWith(target)) return true;
+  return lead.startsWith(`buy ${target}`) || lead.startsWith(`recommend ${target}`);
 }
 
 function assistantTextUsesFutureRoutineUpsell(text) {
@@ -51984,6 +51996,10 @@ function validateRecoAssistantRewriteCandidate({
       ? false
       : secondaryTargets.length > 2;
   const buyLeadNotDirect = requestMode === 'buy' && !assistantTextHasDirectBuyLead(leadSentence, names);
+  const buyLeadNotProductFirst =
+    requestMode === 'buy'
+    && names.length > 0
+    && !assistantTextStartsWithSelectedProductName(leadSentence, names[0]);
   const selectedRecommendationRoleIds = uniqCaseInsensitiveStrings(
     (Array.isArray(payload?.recommendations) ? payload.recommendations : [])
       .map((item) => pickFirstTrimmed(item?.matched_role_id, item?.matchedRoleId))
@@ -52008,10 +52024,12 @@ function validateRecoAssistantRewriteCandidate({
     || overconfident
     || secondaryTargetsMentionedAsTooMany
     || buyLeadNotDirect
+    || buyLeadNotProductFirst
     || buyUsesRoutineUpsell
     || usesVagueBenefitLanguage
     || usesGenericRoutineWrapup
   ) {
+    if (buyLeadNotProductFirst) return { ok: false, reason: 'rewrite_buy_lead_not_product_first' };
     if (buyLeadNotDirect) return { ok: false, reason: 'rewrite_buy_lead_not_direct' };
     if (buyUsesRoutineUpsell) return { ok: false, reason: 'rewrite_buy_addon_filler' };
     if (usesVagueBenefitLanguage) return { ok: false, reason: 'rewrite_vague_benefit_language' };
@@ -52024,6 +52042,7 @@ function validateRecoAssistantRewriteCandidate({
 function shouldRetryRecoAssistantRewrite(reason) {
   const normalized = String(reason || '').trim().toLowerCase();
   return normalized === 'empty_rewrite'
+    || normalized === 'rewrite_buy_lead_not_product_first'
     || normalized === 'rewrite_buy_lead_not_direct'
     || normalized === 'rewrite_vague_benefit_language'
     || normalized === 'rewrite_generic_routine_wrapup'

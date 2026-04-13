@@ -70,6 +70,7 @@ test('reco assistant rewrite prompt omits deterministic base text and carries re
     assert.match(prompt, /"request_mode":"buy"/);
     assert.match(prompt, /"user_request":"I am oily skin\. What product should I buy\?"/);
     assert.match(prompt, /If request_mode is "buy", use direct shopping advice tone\./);
+    assert.match(prompt, /If request_mode is "buy", start the first sentence with the lead product name rather than a generic concern summary\./);
     assert.match(prompt, /If request_mode is "buy" and there is one selected product, the first sentence must directly recommend that product by name\./);
     assert.match(prompt, /If request_mode is "buy" and selected_product_role_mix is "same_role_comparison", the first sentence must name the best first buy and signal that the remaining selected products are same-slot comparison options\./);
     assert.match(prompt, /If request_mode is "buy" and selected_product_role_mix is "routine_mix", the first sentence must name the best first buy and frame selected products from different roles as routine add-ons; only same-role products may be same-slot alternatives\./);
@@ -289,7 +290,7 @@ test('reco assistant rewrite uses minimal thinking for gemini 3 structured outpu
       return {
         ok: true,
         json: {
-          assistant_text: 'For oily skin, buy GoalSkin GoalSkin Oil Control Serum first as your oil-control treatment.',
+          assistant_text: 'GoalSkin Oil Control Serum is the product to buy first for oily skin as your oil-control treatment.',
         },
         parse_status: 'parsed',
         provider: 'gemini',
@@ -307,7 +308,7 @@ test('reco assistant rewrite uses minimal thinking for gemini 3 structured outpu
 
     assert.equal(capturedArgs?.thinkingLevel, 'minimal');
     assert.equal(rewrite.llm_used, true);
-    assert.match(String(rewrite.text || ''), /GoalSkin GoalSkin Oil Control Serum/);
+    assert.match(String(rewrite.text || ''), /GoalSkin Oil Control Serum/);
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
     if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
@@ -362,7 +363,7 @@ test('reco assistant rewrite recovers truncated raw json when assistant_text is 
       ok: false,
       reason: 'PARSE_TRUNCATED_JSON',
       raw_text:
-        'Here is the JSON requested:\n{"assistant_text":"For oily skin, buy GoalSkin GoalSkin Oil Control Serum first as your oil-control treatment to keep shine in check',
+        'Here is the JSON requested:\n{"assistant_text":"GoalSkin Oil Control Serum is the product to buy first for oily skin as your oil-control treatment to keep shine in check',
       parse_status: 'parse_truncated',
       provider: 'gemini',
       effective_model: 'gemini-3-flash-preview',
@@ -379,7 +380,7 @@ test('reco assistant rewrite recovers truncated raw json when assistant_text is 
     assert.equal(rewrite.llm_used, true);
     assert.equal(rewrite.reason, null);
     assert.equal(rewrite.parse_status, 'recovered_parse_truncated');
-    assert.match(String(rewrite.text || ''), /GoalSkin GoalSkin Oil Control Serum/);
+    assert.match(String(rewrite.text || ''), /GoalSkin Oil Control Serum/);
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
     if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
@@ -392,7 +393,7 @@ test('reco assistant rewrite recovers truncated raw json when assistant_text is 
   }
 });
 
-test('reco assistant rewrite rejects buy copy that opens without a direct product recommendation', async () => {
+test('reco assistant rewrite rejects buy copy that does not start with the lead product name', async () => {
   const prevMock = process.env.AURORA_BFF_USE_MOCK;
   const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
   const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
@@ -450,7 +451,7 @@ test('reco assistant rewrite rejects buy copy that opens without a direct produc
     });
 
     assert.equal(rewrite.llm_used, false);
-    assert.equal(rewrite.reason, 'rewrite_buy_lead_not_direct');
+    assert.equal(rewrite.reason, 'rewrite_buy_lead_not_product_first');
     assert.equal(rewrite.text, '');
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
@@ -599,6 +600,102 @@ test('reco assistant rewrite accepts direct buy copy with shopper-facing oil-con
     assert.equal(
       rewrite.text,
       'Buy GoalSkin Oil Control Serum for oily skin. It targets excess shine without adding heaviness.',
+    );
+  } finally {
+    __internal.__resetCallGeminiJsonObjectForTest();
+    if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
+    else process.env.AURORA_BFF_USE_MOCK = prevMock;
+    if (prevProvider === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = prevProvider;
+    if (prevModel === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = prevModel;
+    delete require.cache[moduleId];
+  }
+});
+
+test('reco assistant rewrite retries buy drafts that bury the lead product after a concern opener', async () => {
+  const prevMock = process.env.AURORA_BFF_USE_MOCK;
+  const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+  const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+  process.env.AURORA_BFF_USE_MOCK = 'false';
+  process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = 'gemini';
+  process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = 'gemini-3-flash-preview';
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'oily_pick_1',
+            display_name: 'GoalSkin Oil Control Serum',
+            brand: 'GoalSkin',
+            category: 'Serum',
+            short_description: 'Helps reduce visible shine without feeling heavy.',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'treatment',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Oil-control treatment',
+        resolved_target_step: 'treatment',
+        primary_target_id: 'oil_control_treatment',
+        ranked_targets: [
+          {
+            target_id: 'oil_control_treatment',
+            ingredient_query: 'Oil-control treatment',
+            resolved_target_step: 'treatment',
+          },
+        ],
+        selected_target_ids: ['oil_control_treatment'],
+      },
+    );
+    const prompts = [];
+    let callCount = 0;
+    __internal.__setCallGeminiJsonObjectForTest(async (args = {}) => {
+      callCount += 1;
+      prompts.push(String(args.userPrompt || ''));
+      if (callCount === 1) {
+        return {
+          ok: true,
+          json: {
+            assistant_text:
+              'To manage oily skin and shine, buy GoalSkin Oil Control Serum first. It helps reduce visible shine without feeling heavy.',
+          },
+          parse_status: 'parsed',
+          provider: 'gemini',
+          effective_model: 'gemini-3-flash-preview',
+        };
+      }
+      return {
+        ok: true,
+        json: {
+          assistant_text:
+            'GoalSkin Oil Control Serum is the product to buy first for oily skin. It helps reduce visible shine without feeling heavy.',
+        },
+        parse_status: 'parsed',
+        provider: 'gemini',
+        effective_model: 'gemini-3-flash-preview',
+      };
+    });
+
+    const rewrite = await __internal.maybeRewriteRecoAssistantTextWithLlm({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily', goals: ['oil control'] },
+      userRequestText: 'What product should I buy?',
+      allowLockedSelectionRewrite: true,
+    });
+
+    assert.equal(callCount, 2);
+    assert.equal(rewrite.llm_used, true);
+    assert.equal(rewrite.reason, null);
+    assert.match(prompts[1], /Fix required: Start the first sentence with the lead product name/);
+    assert.equal(
+      rewrite.text,
+      'GoalSkin Oil Control Serum is the product to buy first for oily skin. It helps reduce visible shine without feeling heavy.',
     );
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
