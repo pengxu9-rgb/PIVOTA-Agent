@@ -4201,7 +4201,7 @@ test('__internal: local external seed support-role patterns avoid bare fit keywo
   assert.equal(patterns.includes('%oil free moisturizer%'), true);
 });
 
-test('__internal: local external seed support-role search uses staged category fastpath before broad text recall', async () => {
+test('__internal: local external seed support-role search uses lean title authority recall before broad text recall', async () => {
   const { __internal } = loadRoutesFresh();
   const observedQueries = [];
   const makeRow = (id, title, price) => ({
@@ -4215,8 +4215,8 @@ test('__internal: local external seed support-role search uses staged category f
     price_amount: price,
     price_currency: 'USD',
     availability: 'in_stock',
-    match_stage: 'support_category_exact',
-    match_score: 56,
+    match_stage: 'support_recall_title',
+    match_score: 48,
     seed_data: {
       derived: {
         recall: {
@@ -4265,15 +4265,19 @@ test('__internal: local external seed support-role search uses staged category f
   assert.equal(out.ok, true);
   assert.equal(out.local_external_seed_search_mode, 'staged_support_fastpath');
   assert.equal(observedQueries.length, 1);
-  assert.match(observedQueries[0].sql, /support_category_exact/);
-  assert.match(observedQueries[0].sql, /seed_data->'derived'->'recall'->>'category'/);
+  assert.match(observedQueries[0].sql, /support_recall_title/);
   assert.doesNotMatch(observedQueries[0].sql, /seed_data::text/i);
   assert.doesNotMatch(observedQueries[0].sql, /retrieval_summary/i);
-  assert.deepEqual(observedQueries[0].params[2].slice(0, 2), ['moisturizer', 'moisturiser']);
-  assert.equal(out.local_external_seed_stage_debug[0]?.stage, 'support_category_exact');
+  assert.doesNotMatch(observedQueries[0].sql, /alias_tokens/i);
+  assert.doesNotMatch(observedQueries[0].sql, /ingredient_tokens/i);
+  assert.deepEqual(observedQueries[0].params[2].slice(0, 2), [
+    '%lightweight moisturizer oily skin%',
+    '%lightweight moisturizer%',
+  ]);
+  assert.equal(out.local_external_seed_stage_debug[0]?.stage, 'support_recall_title');
   assert.equal(out.products.length, 2);
-  assert.equal(out.products[0].retrieval_match_stage, 'support_category_exact');
-  assert.match(out.products[0].retrieval_reason, /support_category_exact/);
+  assert.equal(out.products[0].retrieval_match_stage, 'support_recall_title');
+  assert.match(out.products[0].retrieval_reason, /support_recall_title/);
 });
 
 test('__internal: framework recall exhausts primary planned sources before support stages when mock recall never yields a candidate', async () => {

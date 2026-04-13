@@ -8017,10 +8017,6 @@ const LOCAL_EXTERNAL_SEED_SELECT_FIELDS = `
   updated_at,
   created_at
 `;
-const LOCAL_EXTERNAL_SEED_DIRECT_RECALL_CATEGORY_FIELD =
-  "lower(coalesce(seed_data->'derived'->'recall'->>'category', ''))";
-const FRAMEWORK_SUPPORT_EXTERNAL_SEED_AUTHORITY_STAGE_ID =
-  'framework_stage_c_support_external_seed_authority';
 
 function buildLocalExternalSeedStageRowKey(row) {
   const id = String(row?.id ?? '').trim();
@@ -8099,15 +8095,6 @@ function buildLocalExternalSeedSupportCombinedQuery({
     stageClauses.push(`WHEN ${normalizedWhereSql} THEN '${stageName}'`);
   };
 
-  if (Array.isArray(categoryTerms) && categoryTerms.length > 0) {
-    const categoryBind = bind(categoryTerms);
-    addStage({
-      stage: 'support_category_exact',
-      score: 56,
-      whereSql: `${LOCAL_EXTERNAL_SEED_DIRECT_RECALL_CATEGORY_FIELD} = ANY(${categoryBind}::text[])`,
-    });
-  }
-
   if (Array.isArray(patterns) && patterns.length > 0) {
     const patternBind = bind(patterns);
     addStage({
@@ -8120,16 +8107,6 @@ function buildLocalExternalSeedSupportCombinedQuery({
       score: 46,
       whereSql: `lower(coalesce(title, '')) LIKE ANY(${patternBind}::text[])`,
     });
-    addStage({
-      stage: 'support_alias_tokens',
-      score: 42,
-      whereSql: `${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY(${patternBind}::text[])`,
-    });
-    addStage({
-      stage: 'support_ingredient_tokens',
-      score: 38,
-      whereSql: `${EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokens} LIKE ANY(${patternBind}::text[])`,
-    });
   }
 
   if (stageWhereClauses.length === 0) {
@@ -8141,7 +8118,7 @@ function buildLocalExternalSeedSupportCombinedQuery({
     };
   }
 
-  const cap = Math.max(safeLimit, Math.min(safeLimit * 3, 36));
+  const cap = safeLimit;
   const limitBind = bind(cap);
   const matchWhereSql = stageWhereClauses.join('\n          OR ');
   return {
@@ -20146,26 +20123,10 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
         );
       }
     }
-    const supportExternalGroups = supportGroups.filter((group) => group?.externalLevel);
-    if (supportExternalGroups.length > 1) {
-      keptLevels.push({
-        ...supportExternalGroups[0].externalLevel,
-        ladder_level: FRAMEWORK_SUPPORT_EXTERNAL_SEED_AUTHORITY_STAGE_ID,
-        stage_id: FRAMEWORK_SUPPORT_EXTERNAL_SEED_AUTHORITY_STAGE_ID,
-        queries: supportExternalGroups.flatMap((group) =>
-          Array.isArray(group?.externalLevel?.queries) ? group.externalLevel.queries : [],
-        ),
-      });
-      executedSupportExternalSeedLevels.push(
-        ...supportExternalGroups
-          .map((group) => group?.externalLabel)
-          .filter(Boolean),
-      );
-    } else {
-      for (const group of supportExternalGroups) {
-        keptLevels.push(group.externalLevel);
-        executedSupportExternalSeedLevels.push(group.externalLabel);
-      }
+    for (const group of supportGroups) {
+      if (!group?.externalLevel) continue;
+      keptLevels.push(group.externalLevel);
+      executedSupportExternalSeedLevels.push(group.externalLabel);
     }
     for (const group of supportGroups) {
       if (!group?.internalLevel) continue;
