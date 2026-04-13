@@ -1357,6 +1357,17 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.body.metadata?.cache_stage_query_terms || []).toEqual(
       expect.arrayContaining(['serum']),
     );
+    expect(resp.body.metadata?.search_request_contract).toEqual(
+      expect.objectContaining({
+        policy: expect.objectContaining({
+          allow_external_seed: true,
+        }),
+        supplement_lanes: expect.arrayContaining([
+          'external_seed_supplement',
+          'coverage_supplement',
+        ]),
+      }),
+    );
     expect(resp.body.metadata?.retrieval_sources || []).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
