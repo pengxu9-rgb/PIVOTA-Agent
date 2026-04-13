@@ -19910,6 +19910,7 @@ function buildBeautyMainlineLocalCandidatePoolSummary({
       ? candidateState.role_pool_stats
       : {},
     hard_reject_preview: buildConcernFrameworkRejectPreview(candidateState?.hard_reject),
+    soft_mismatch_preview: buildConcernFrameworkRejectPreview(candidateState?.soft_mismatch),
   };
 }
 
