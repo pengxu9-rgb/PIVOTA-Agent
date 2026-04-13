@@ -76,14 +76,21 @@ test('reco assistant rewrite prompt omits deterministic base text and carries re
     assert.match(prompt, /If selected_product_role_mix is "same_role_comparison", present a concise horizontal comparison and name each selected product exactly once if space allows\./);
     assert.match(prompt, /If selected_product_role_mix is "routine_mix", present a basic routine by role or step, and do not imply products from different roles are interchangeable\./);
     assert.match(prompt, /If known_price_count is 2 or more, compare price\/value or ROI in plain shopper terms using only listed prices; do not compute per-use ROI, percentages, or size-normalized value unless Context provides size and usage data\./);
+    assert.match(prompt, /Price may support a recommendation, but price alone is not enough; pair it with at least one concrete fit, formula, texture, ingredient, or use-case reason from Context\./);
     assert.match(prompt, /Use selected_product_details\.compare_highlights and selected_product_details\.pivota_insights when available; do not invent highlights that are absent from Context\./);
+    assert.match(prompt, /Use selected_product_details\.description_snippet and selected_product_details\.evidence_points as the primary concrete reason layer when available\./);
+    assert.match(prompt, /Do not call something the best first buy unless the same sentence or the next sentence gives a concrete reason/);
+    assert.match(prompt, /If selected_product_details\.fit_assessment is "soft_match" or comparison_fill_reason is present, frame that product as a softer or broader alternative instead of an equally direct match\./);
+    assert.match(prompt, /Prefer product-specific evidence over generic role language when both are available\./);
     assert.match(prompt, /If request_mode is "buy" and there is one selected product with no secondary targets, use exactly 2 sentences\./);
     assert.match(prompt, /If selected_target_ids has length 1, secondary_targets is empty, and selected_product_role_mix is not "routine_mix", do not add future routine-building suggestions or extra steps\./);
     assert.match(prompt, /Use plain shopper-facing skincare language\. Avoid vague phrases like "surface activity"\./);
     assert.match(prompt, /Avoid generic filler like "great choice", "balanced complexion", or "solution for oiliness"\./);
-    assert.match(prompt, /Use selected_product_details\.why_this_one, selected_product_details\.best_for, and selected_product_details\.key_features as the concrete reason layer when available\./);
+    assert.match(prompt, /Use selected_product_details\.why_this_one, selected_product_details\.best_for, and selected_product_details\.key_features as supporting context when available\./);
     assert.match(prompt, /If request_mode is "use_first", use starting-point advice tone\./);
     assert.match(prompt, /"short_description":"Helps reduce visible shine without feeling heavy\."/);
+    assert.match(prompt, /"description_snippet":"Helps reduce visible shine without feeling heavy\."/);
+    assert.match(prompt, /"evidence_points":\["Helps reduce visible shine without feeling heavy\."\]/);
     assert.match(prompt, /"key_features":\[\]/);
     assert.match(prompt, /"price":\{"amount":12,"currency":"USD","unknown":false\}/);
     assert.match(prompt, /"selected_product_role_mix":"single_product"/);
@@ -173,6 +180,8 @@ test('reco assistant rewrite prompt frames multi-role selections as routine mix 
     assert.match(prompt, /"known_price_count":2/);
     assert.match(prompt, /"price":\{"amount":12,"currency":"USD","unknown":false\}/);
     assert.match(prompt, /"price":\{"amount":28,"currency":"USD","unknown":false\}/);
+    assert.match(prompt, /"fit_assessment":"direct_match"/);
+    assert.match(prompt, /"fit_assessment":"support_step"/);
     assert.match(prompt, /selected products from different roles as routine add-ons; only same-role products may be same-slot alternatives/);
     assert.match(prompt, /present a basic routine by role or step, and do not imply products from different roles are interchangeable/);
     assert.match(prompt, /compare price\/value or ROI in plain shopper terms using only listed prices/);
@@ -722,6 +731,51 @@ test('beauty mainline reco rows derive stable brand and shopper fields when sour
     assert.match(String(rows[0].why_this_one || ''), /lightweight|shine/i);
     assert.deepEqual(rows[0].key_features, ['Niacinamide 10%', 'Zinc 1%', 'Oil-control support', 'Lightweight serum']);
     assert.equal(rows[0].short_description, rows[0].why_this_one);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('beauty mainline reco rows prefer product-specific description snippets over generic role copy when raw row is sparse', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const rows = __internal.buildRecoRowsFromMainlineProducts(
+      [
+        {
+          product_id: '10008793153864',
+          merchant_id: 'merch_efbc46b4619cfbdf',
+          display_name: 'KraveBeauty Great Barrier Relief',
+          category: 'treatment',
+          sku: {
+            description: '<p>A barrier-repair serum for over-sensitized or irritated skin, built around tamanu oil, niacinamide, and ceramides to calm the look of redness.</p>',
+            framework_score: 0.44,
+            framework_semantic_fit: true,
+            comparison_fill_reason: 'same_role_soft_mismatch',
+          },
+        },
+      ],
+      {
+        targetContext: {
+          resolved_target_step: 'treatment',
+          primary_role_id: 'oil_control_treatment',
+          framework_roles: [
+            {
+              role_id: 'oil_control_treatment',
+              label: 'Oil-control treatment',
+              rank: 1,
+              preferred_step: 'treatment',
+              why_this_role: 'Reduce excess sebum and visible shine first.',
+            },
+          ],
+        },
+        language: 'EN',
+      },
+    );
+
+    assert.equal(rows.length, 1);
+    assert.match(String(rows[0].short_description || ''), /barrier-repair serum/i);
+    assert.match(String(rows[0].why_this_one || ''), /barrier-repair serum/i);
+    assert.doesNotMatch(String(rows[0].short_description || ''), /take down excess shine without making the routine feel heavier/i);
   } finally {
     delete require.cache[moduleId];
   }

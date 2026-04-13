@@ -5888,6 +5888,70 @@ test('__internal: reco assistant rewrite prompt exposes same-role price comparis
   );
 });
 
+test('__internal: reco assistant rewrite prompt exposes evidence and soft-match context for same-role fillers', async () => {
+  const { __internal } = loadRoutesFresh();
+  const prompt = __internal.buildRecoAssistantRewritePrompt({
+    language: 'EN',
+    userRequestText: 'im oily skin. what product should i buy?',
+    profile: { skinType: 'oily', goals: ['oil control'] },
+    payload: {
+      roles: [
+        {
+          role_id: 'oil_control_treatment',
+          label: 'Oil-control treatment',
+          why_this_role: 'Start with a targeted oil-control step to manage shine.',
+          preferred_step: 'treatment',
+          rank: 1,
+          slot: 'pm',
+        },
+      ],
+      recommendation_meta: {
+        primary_target_id: 'oil_control_treatment',
+        selected_target_ids: ['oil_control_treatment'],
+        ranked_targets: [
+          {
+            target_id: 'oil_control_treatment',
+            ingredient_query: 'Oil-control treatment',
+            resolved_target_step: 'treatment',
+          },
+        ],
+      },
+      recommendations: [
+        {
+          display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+          brand: 'The Ordinary',
+          category: 'Serum',
+          matched_role_id: 'oil_control_treatment',
+          matched_role_label: 'Oil-control treatment',
+          price: { amount: 12, currency: 'USD' },
+          description: '<p>A water-based niacinamide serum with zinc PCA to target excess oil and visible shine.</p>',
+          key_features: ['Niacinamide 10%', 'Zinc 1%'],
+        },
+        {
+          display_name: 'KraveBeauty Great Barrier Relief',
+          brand: 'KraveBeauty',
+          category: 'Treatment',
+          matched_role_id: 'oil_control_treatment',
+          matched_role_label: 'Oil-control treatment',
+          price: { amount: 28, currency: 'USD' },
+          description: '<p>A barrier-repair serum built around tamanu oil, niacinamide, and ceramides to calm the look of redness.</p>',
+          comparison_fill_reason: 'same_role_soft_mismatch',
+        },
+      ],
+    },
+  });
+
+  const context = extractRecoRewritePromptContext(prompt);
+  assert.equal(context.selected_product_role_mix, 'same_role_comparison');
+  assert.match(String(context.selected_product_details[0]?.description_snippet || ''), /niacinamide serum/i);
+  assert.ok(Array.isArray(context.selected_product_details[0]?.evidence_points));
+  assert.ok(context.selected_product_details[0].evidence_points.some((item) => /niacinamide|zinc/i.test(String(item))));
+  assert.equal(context.selected_product_details[1]?.comparison_fill_reason, 'same_role_soft_mismatch');
+  assert.equal(context.selected_product_details[1]?.fit_assessment, 'soft_match');
+  assert.match(String(context.selected_product_details[1]?.description_snippet || ''), /barrier-repair serum/i);
+  assert.ok(context.selected_product_details[1].evidence_points.some((item) => /tamanu|ceramides/i.test(String(item))));
+});
+
 test('__internal: framework pool rejects explicit SPF sunscreen serum from the oil-control treatment primary slot', async () => {
   const { __internal } = loadRoutesFresh();
   const state = __internal.finalizeConcernFrameworkCandidatePools(
