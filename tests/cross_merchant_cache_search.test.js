@@ -310,4 +310,68 @@ describe('cross-merchant cache lexical search', () => {
       ]),
     );
   });
+
+  test('specific beauty query skips relaxed no-onboarding fallback and goes straight to beauty browse fallback', async () => {
+    jest.doMock('../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        const isStrictJoin = text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo');
+        const isCountQuery = text.includes('COUNT(*)::int AS total');
+        const isRelaxedQuery =
+          !text.includes('JOIN merchant_onboarding mo') && text.includes('FROM products_cache');
+
+        if (isStrictJoin && isCountQuery) return { rows: [{ total: 0 }] };
+        if (isStrictJoin && !isCountQuery && !text.includes('~*')) return { rows: [] };
+        if (isRelaxedQuery) {
+          throw new Error('relaxed no-onboarding fallback should be skipped for specific beauty query');
+        }
+        if (isStrictJoin && text.includes('~*')) {
+          return {
+            rows: [
+              {
+                merchant_id: 'merch_beauty_1',
+                merchant_name: 'Beauty Merchant',
+                product_data: {
+                  id: 'prod_serum_1',
+                  product_id: 'prod_serum_1',
+                  merchant_id: 'merch_beauty_1',
+                  title: 'Barrier Repair Serum',
+                  description: 'Repair serum for stressed skin',
+                  product_type: 'Serum',
+                  status: 'active',
+                  inventory_quantity: 4,
+                },
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const app = require('../src/server');
+    const { searchCrossMerchantFromCache } = app._debug;
+
+    const result = await searchCrossMerchantFromCache('serum', 1, 10, { inStockOnly: true });
+
+    expect((result.products || []).map((p) => String(p.product_id || p.id || ''))).toEqual([
+      'prod_serum_1',
+    ]);
+    expect(result.retrieval_sources || []).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ source: 'lexical_cache', count: 0 }),
+        expect.objectContaining({
+          source: 'lexical_cache_relaxed_no_onboarding',
+          used: false,
+          skipped: true,
+          reason: 'beauty_query_skip_relaxed_no_onboarding',
+        }),
+        expect.objectContaining({
+          source: 'beauty_browse_fallback',
+          used: true,
+          count: 1,
+        }),
+      ]),
+    );
+  });
 });
