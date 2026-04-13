@@ -1131,6 +1131,125 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(externalSupplement.isDone()).toBe(false);
   });
 
+  test('beauty category fastpath returns internal cache without external supplement or upstream fallback', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) {
+          throw new Error('lexical count should not run for beauty category fastpath');
+        }
+        if (text.includes('FROM (') && text.includes('JOIN merchant_onboarding mo')) {
+          return {
+            rows: [
+              {
+                merchant_id: 'merch_lip',
+                merchant_name: 'Lip Care Shop',
+                product_data: {
+                  id: 'prod_lip_balm_1',
+                  product_id: 'prod_lip_balm_1',
+                  merchant_id: 'merch_lip',
+                  title: 'Barrier Lip Balm',
+                  description: 'Comforting lip balm for dry lips',
+                  product_type: 'Lip Balm',
+                  status: 'published',
+                  inventory_quantity: 5,
+                },
+              },
+              {
+                merchant_id: 'merch_skin',
+                merchant_name: 'Skin Shop',
+                product_data: {
+                  id: 'prod_serum_1',
+                  product_id: 'prod_serum_1',
+                  merchant_id: 'merch_skin',
+                  title: 'Daily Face Serum',
+                  description: 'Vitamin serum',
+                  product_type: 'Serum',
+                  status: 'published',
+                  inventory_quantity: 7,
+                },
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const externalSupplement = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.merchant_id || '') === 'external_seed')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.search_all_merchants || '') === 'true')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'lip balm',
+            page: 1,
+            limit: 5,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'creator_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).toBe('cache_cross_merchant_search');
+    expect((resp.body.products || []).map((item) => String(item?.product_id || item?.id || ''))).toEqual([
+      'prod_lip_balm_1',
+    ]);
+    expect(resp.body.metadata?.route_debug?.cross_merchant_cache).toEqual(
+      expect.objectContaining({
+        beauty_query_bucket: 'lip_care',
+        beauty_category_fastpath: true,
+        cache_hit: true,
+      }),
+    );
+    expect(resp.body.metadata?.route_debug?.cross_merchant_cache?.supplement).toEqual(
+      expect.objectContaining({
+        applied: false,
+        reason: 'beauty_category_fastpath_internal_preferred',
+      }),
+    );
+    expect(resp.body.metadata?.route_debug?.cross_merchant_cache?.cache_validation).toEqual(
+      expect.objectContaining({
+        accepted: true,
+        min_count: 1,
+      }),
+    );
+    expect(resp.body.metadata?.retrieval_sources || []).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: 'beauty_category_browse_fastpath',
+          category_id: 'lip_balm',
+          browse_query_ms: expect.any(Number),
+        }),
+      ]),
+    );
+    expect(externalSupplement.isDone()).toBe(false);
+    expect(upstreamSearch.isDone()).toBe(false);
+  });
+
   test('public source=search serum contract stays internal-first and emits cache-stage diagnostics', async () => {
     process.env.SEARCH_EXTERNAL_HARD_RULE_PRUNE = 'true';
 

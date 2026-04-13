@@ -121,6 +121,9 @@ const {
   isBeautyBucketCompatibleForQuery,
 } = require('./findProductsMulti/beautyQueryProfile');
 const {
+  resolveBeautyCategoryBrowseFastpath,
+} = require('./findProductsBeautyCategoryBrowseFastpath');
+const {
   detectBrandEntities,
   buildBrandQueryVariants,
   hasExplicitCategoryHint,
@@ -4657,37 +4660,7 @@ function buildSearchTrace({
 function classifyBeautyMixBucket(product) {
   const text = buildFallbackCandidateText(product);
   if (!text) return 'other';
-  if (
-    /\b(foundation|concealer|primer|powder|cushion|bb cream|cc cream)\b/i.test(text) ||
-    /(粉底|遮瑕|妆前|妝前|定妆|定妝|气垫|氣墊)/.test(text)
-  ) {
-    return 'base_makeup';
-  }
-  if (
-    /\b(eyeshadow|eye shadow|eyeliner|mascara|brow|eyebrow)\b/i.test(text) ||
-    /(眼影|眼线|眼線|睫毛膏|眉笔|眉筆|眉粉)/.test(text)
-  ) {
-    return 'eye_makeup';
-  }
-  if (
-    /\b(lipstick|lip gloss|lip tint|lip balm|lip liner)\b/i.test(text) ||
-    /(口红|口紅|唇釉|唇膏|唇蜜|唇线|唇線)/.test(text)
-  ) {
-    return 'lip_makeup';
-  }
-  if (
-    /\b(brush|brush set|puff|sponge|applicator|curler|tweezer|tool|tools)\b/i.test(text) ||
-    /(化妆刷|化妝刷|刷具|粉扑|粉撲|美妆蛋|美妝蛋|睫毛夹|睫毛夾|工具)/.test(text)
-  ) {
-    return 'tools';
-  }
-  if (
-    /\b(toner|serum|essence|lotion|moisturizer|sunscreen|cleanser|cream)\b/i.test(text) ||
-    /(化妆水|化妝水|精华|精華|乳液|面霜|防晒|防曬|洁面|潔面|面膜)/.test(text)
-  ) {
-    return 'skincare';
-  }
-  return 'other';
+  return classifyBeautyBucketFromText(text);
 }
 
 function buildCategoryMixTopN(products, topN = 10) {
@@ -7668,8 +7641,7 @@ function evaluateCacheQualityGate({ products, queryText, intent, queryClass }) {
     intent,
   });
   const minCount =
-    beautyQueryProfile?.isSpecificBeautyQuery === true &&
-    beautyQueryProfile?.bucket === 'skincare'
+    beautyQueryProfile?.isSpecificBeautyQuery === true
       ? 1
       : resolveCacheValidationMinCount(queryClass);
   const anchorRatio = computeAnchorRatioTopK(queryText, list, 10);
@@ -12085,6 +12057,86 @@ function detectBeautyQueryBucket(queryText) {
   return detectSharedBeautyQueryBucket(queryText);
 }
 
+function scoreBeautyCategoryBrowseFastpathProduct(product, fastpath) {
+  if (!product || typeof product !== 'object' || !fastpath) return 0;
+  const title = normalizeSearchTextForMatch(
+    String(product.title || product.name || product.display_name || ''),
+  );
+  const category = normalizeSearchTextForMatch(
+    String(product.category || product.product_type || product.productType || ''),
+  );
+  const text = buildFallbackCandidateText(product);
+  let score = 0;
+  if (fastpath.titlePattern && fastpath.titlePattern.test(title)) score += 7;
+  if (fastpath.titlePattern && fastpath.titlePattern.test(category)) score += 5;
+  if (fastpath.productPattern && fastpath.productPattern.test(title)) score += 4;
+  if (fastpath.productPattern && fastpath.productPattern.test(category)) score += 3;
+  if (fastpath.productPattern && fastpath.productPattern.test(text)) score += 1;
+  return score;
+}
+
+function rankBeautyCategoryBrowseFastpathProducts(products, fastpath) {
+  return (Array.isArray(products) ? products : [])
+    .map((product, index) => ({
+      product,
+      index,
+      score: scoreBeautyCategoryBrowseFastpathProduct(product, fastpath),
+    }))
+    .filter((row) => row.score > 0)
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .map((row) => row.product);
+}
+
+async function tryCrossMerchantBeautyCategoryBrowseFastpath(
+  queryText,
+  page = 1,
+  limit = 20,
+  options = {},
+) {
+  const fastpath = resolveBeautyCategoryBrowseFastpath(queryText, {
+    queryClass: options?.queryClass || options?.intent?.query_class,
+  });
+  if (!fastpath) return null;
+  const safePage = Math.max(1, Number(page || 1));
+  const safeLimit = Math.min(Math.max(1, Number(limit || 20)), SEARCH_LIMIT_MAX);
+  const offset = (safePage - 1) * safeLimit;
+  const browseLimit = Math.min(Math.max(offset + safeLimit * 8, 80), 100);
+  const browseStartedAt = Date.now();
+  const browse = await loadCrossMerchantBrowseFromCache(1, browseLimit, {
+    inStockOnly: options?.inStockOnly !== false,
+  });
+  const browseQueryMs = Math.max(0, Date.now() - browseStartedAt);
+  const browseProducts = Array.isArray(browse?.products) ? browse.products : [];
+  const rankedProducts = rankBeautyCategoryBrowseFastpathProducts(browseProducts, fastpath);
+  if (rankedProducts.length === 0) return null;
+  const pageItems = rankedProducts.slice(offset, offset + safeLimit);
+  return {
+    products: pageItems,
+    total: rankedProducts.length,
+    page: safePage,
+    page_size: pageItems.length,
+    retrieval_sources: [
+      {
+        source: 'beauty_category_browse_fastpath',
+        used: true,
+        category_id: fastpath.id,
+        category_label: fastpath.label,
+        count: pageItems.length,
+        candidate_count: rankedProducts.length,
+        browse_candidate_count: browseProducts.length,
+        browse_query_ms: browseQueryMs,
+      },
+    ],
+    query_terms: [fastpath.label.toLowerCase()],
+    beauty_query_bucket: fastpath.bucket || null,
+    internal_filter_debug: {
+      applied: true,
+      bucket: fastpath.bucket || null,
+      filtered_irrelevant_count: Math.max(0, browseProducts.length - rankedProducts.length),
+    },
+  };
+}
+
 function getResolverFallbackResolveQueryUsed(result, queryText = '') {
   return String(
     result?.resolve_query_used || result?.data?.metadata?.resolve_query_used || queryText || '',
@@ -12160,7 +12212,11 @@ function computeBeautyBucketMix(products, topN = 10) {
     base_makeup: 0,
     eye_makeup: 0,
     lip_makeup: 0,
+    lip_care: 0,
     skincare: 0,
+    haircare: 0,
+    bodycare: 0,
+    fragrance: 0,
     tools: 0,
     other: 0,
   };
@@ -12181,7 +12237,7 @@ function isBeautyGeneralDiversitySupplementCandidate(intent, products, limit, op
   if (!beautyQueryProfile?.allowBeautyDiversity) return false;
   const topN = Math.max(1, Number(limit || 10));
   const mix = computeBeautyBucketMix(products, topN);
-  const coreBuckets = ['base_makeup', 'eye_makeup', 'lip_makeup', 'skincare'];
+  const coreBuckets = ['base_makeup', 'eye_makeup', 'lip_makeup', 'lip_care', 'skincare', 'haircare', 'bodycare'];
   const distinctCore = coreBuckets.filter((bucket) => Number(mix[bucket] || 0) > 0).length;
   const toolsCount = Number(mix.tools || 0);
   return distinctCore < 2 && toolsCount >= Math.ceil(topN * 0.6);
@@ -12189,7 +12245,18 @@ function isBeautyGeneralDiversitySupplementCandidate(intent, products, limit, op
 
 function blendBeautyDiversitySupplement(internalProducts, supplementProducts, limit) {
   const targetLimit = Math.max(1, Number(limit || 10));
-  const priorityBuckets = ['base_makeup', 'eye_makeup', 'lip_makeup', 'skincare', 'tools', 'other'];
+  const priorityBuckets = [
+    'base_makeup',
+    'eye_makeup',
+    'lip_makeup',
+    'lip_care',
+    'skincare',
+    'haircare',
+    'bodycare',
+    'tools',
+    'fragrance',
+    'other',
+  ];
   const seen = new Set();
   const merged = [];
   const internal = Array.isArray(internalProducts) ? internalProducts : [];
@@ -12790,6 +12857,11 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
   const offset = (safePage - 1) * safeLimit;
   const q = String(queryText || '').trim().toLowerCase();
   const inStockOnly = options?.inStockOnly !== false;
+  const normalizedQueryClass = String(
+    options?.queryClass || options?.intent?.query_class || '',
+  )
+    .trim()
+    .toLowerCase();
   const beautyQueryProfile =
     options?.beautyQueryProfile && typeof options.beautyQueryProfile === 'object'
       ? options.beautyQueryProfile
@@ -12798,6 +12870,19 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
           queryClass: options?.queryClass || options?.intent?.query_class,
           intent: options?.intent,
         });
+  const beautyCategoryBrowseFastpath = await tryCrossMerchantBeautyCategoryBrowseFastpath(
+    queryText,
+    safePage,
+    safeLimit,
+    {
+      ...options,
+      beautyQueryProfile,
+      inStockOnly,
+    },
+  );
+  if (beautyCategoryBrowseFastpath) {
+    return beautyCategoryBrowseFastpath;
+  }
 
   const terms = tokenizeQueryForCache(q, {
     intent: options?.intent,
@@ -12816,6 +12901,15 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
     });
 
   const skuLike = looksSkuLikeQuery(q);
+  const lookupAnchorTokens = extractSearchAnchorTokens(queryText);
+  const lookupLikeQuery =
+    skuLike ||
+    ['lookup', 'attribute'].includes(normalizedQueryClass) ||
+    isLookupStyleSearchQuery(queryText, lookupAnchorTokens) ||
+    isKnownLookupAliasQuery(queryText);
+  const brandLikeQuery = Boolean(detectBrandEntities(queryText, { candidateProducts: [] })?.brand_like);
+  const allowRelaxedNoOnboardingFallback =
+    !beautyQueryProfile?.isBeautyQuery || lookupLikeQuery || brandLikeQuery;
   const buildQueryFilter = (fieldPrefix = 'pc.') => {
     const matchFields = [
       `lower(coalesce(${fieldPrefix}product_data->>'title',''))`,
@@ -12910,6 +13004,18 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
 
   const pageFetch = Math.min(Math.max(safeLimit * 4, 80), 400);
   const pageOffset = Math.max(0, offset);
+  const runCacheSql = async (stage, kind, sql, params) => {
+    const startedAt = Date.now();
+    const result = await query(sql, params);
+    return {
+      result,
+      timing: {
+        stage,
+        kind,
+        duration_ms: Math.max(0, Date.now() - startedAt),
+      },
+    };
+  };
 
   const countSql = `
     SELECT COUNT(*)::int AS total
@@ -12935,10 +13041,12 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
   `;
 
   const retrievalSources = [];
-  const [countRes, rowsRes] = await Promise.all([
-    query(countSql, strictFilter.params),
-    query(rowsSql, [...strictFilter.params, pageOffset, pageFetch]),
+  const [strictCountQuery, strictRowsQuery] = await Promise.all([
+    runCacheSql('lexical_cache', 'count', countSql, strictFilter.params),
+    runCacheSql('lexical_cache', 'rows', rowsSql, [...strictFilter.params, pageOffset, pageFetch]),
   ]);
+  const countRes = strictCountQuery.result;
+  const rowsRes = strictRowsQuery.result;
 
   const strictTotal = Number(countRes.rows?.[0]?.total || 0);
   const strictRanked = toRankedUniqueProducts(rowsRes.rows || []);
@@ -12950,6 +13058,8 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
     candidate_count: strictRanked.candidateCount,
     total: strictTotal,
     filtered_irrelevant_count: strictFiltered.filtered_irrelevant_count,
+    count_query_ms: strictCountQuery.timing.duration_ms,
+    rows_query_ms: strictRowsQuery.timing.duration_ms,
   });
 
   if (strictFiltered.products.length > 0) {
@@ -12963,6 +13073,77 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
       query_terms: terms,
       beauty_query_bucket: beautyQueryProfile?.bucket || null,
       internal_filter_debug: strictFiltered,
+    };
+  }
+
+  const runBeautyBrowseFallback = async (relaxedTotal = 0) => {
+    if (!hasBeautyMakeupSearchSignal(q)) return null;
+    const beautySignalFilter = buildBeautySignalSql(1);
+    const beautyRowsSql = `
+      SELECT pc.merchant_id,
+             mo.business_name AS merchant_name,
+             pc.product_data
+      FROM products_cache pc
+      JOIN merchant_onboarding mo
+        ON mo.merchant_id = pc.merchant_id
+      WHERE ${baseWhere}
+        AND ${beautySignalFilter.sql}
+      ORDER BY pc.cached_at DESC NULLS LAST, pc.id DESC
+      OFFSET $${beautySignalFilter.nextIndex}
+      LIMIT $${beautySignalFilter.nextIndex + 1}
+    `;
+    const beautyRowsQuery = await runCacheSql(
+      'beauty_browse_fallback',
+      'rows',
+      beautyRowsSql,
+      [...beautySignalFilter.params, pageOffset, pageFetch],
+    );
+    const beautyRowsRes = beautyRowsQuery.result;
+    const beautyRanked = toRankedUniqueProducts(beautyRowsRes.rows || []);
+    const beautyFiltered = applyBeautySpecificFilter(beautyRanked.products);
+    retrievalSources.push({
+      source: 'beauty_browse_fallback',
+      used: true,
+      count: beautyFiltered.products.length,
+      candidate_count: beautyRanked.candidateCount,
+      filtered_irrelevant_count: beautyFiltered.filtered_irrelevant_count,
+      rows_query_ms: beautyRowsQuery.timing.duration_ms,
+    });
+
+    if (beautyFiltered.products.length <= 0) return null;
+    await applyShopifyCurrencyOverride(beautyFiltered.products);
+    return {
+      products: beautyFiltered.products,
+      total: Math.max(strictTotal, relaxedTotal, beautyFiltered.products.length),
+      page: safePage,
+      page_size: beautyFiltered.products.length,
+      retrieval_sources: retrievalSources,
+      query_terms: terms,
+      beauty_query_bucket: beautyQueryProfile?.bucket || null,
+      internal_filter_debug: beautyFiltered,
+    };
+  };
+
+  if (!allowRelaxedNoOnboardingFallback) {
+    retrievalSources.push({
+      source: 'lexical_cache_relaxed_no_onboarding',
+      used: false,
+      skipped: true,
+      reason: 'beauty_query_skip_relaxed_no_onboarding',
+    });
+    const beautyFallbackResult = await runBeautyBrowseFallback(0);
+    if (beautyFallbackResult) {
+      return beautyFallbackResult;
+    }
+    return {
+      products: [],
+      total: strictTotal,
+      page: safePage,
+      page_size: 0,
+      retrieval_sources: retrievalSources,
+      query_terms: terms,
+      beauty_query_bucket: beautyQueryProfile?.bucket || null,
+      internal_filter_debug: applyBeautySpecificFilter([]),
     };
   }
 
@@ -12990,10 +13171,22 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
       OFFSET $${relaxedFilter.idx}
       LIMIT $${relaxedFilter.idx + 1}
     `;
-    const [relaxedCountRes, relaxedRowsRes] = await Promise.all([
-      query(relaxedCountSql, relaxedFilter.params),
-      query(relaxedRowsSql, [...relaxedFilter.params, pageOffset, pageFetch]),
+    const [relaxedCountQuery, relaxedRowsQuery] = await Promise.all([
+      runCacheSql(
+        'lexical_cache_relaxed_no_onboarding',
+        'count',
+        relaxedCountSql,
+        relaxedFilter.params,
+      ),
+      runCacheSql(
+        'lexical_cache_relaxed_no_onboarding',
+        'rows',
+        relaxedRowsSql,
+        [...relaxedFilter.params, pageOffset, pageFetch],
+      ),
     ]);
+    const relaxedCountRes = relaxedCountQuery.result;
+    const relaxedRowsRes = relaxedRowsQuery.result;
     const relaxedTotal = Number(relaxedCountRes.rows?.[0]?.total || 0);
     const relaxedRanked = toRankedUniqueProducts(relaxedRowsRes.rows || []);
     const relaxedFiltered = applyBeautySpecificFilter(relaxedRanked.products);
@@ -13004,6 +13197,8 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
       candidate_count: relaxedRanked.candidateCount,
       total: relaxedTotal,
       filtered_irrelevant_count: relaxedFiltered.filtered_irrelevant_count,
+      count_query_ms: relaxedCountQuery.timing.duration_ms,
+      rows_query_ms: relaxedRowsQuery.timing.duration_ms,
     });
 
     if (relaxedFiltered.products.length === 0 && hasPetSearchSignal(q)) {
@@ -13024,10 +13219,13 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
         OFFSET $${petSignalFilter.nextIndex}
         LIMIT $${petSignalFilter.nextIndex + 1}
       `;
-      const petRowsRes = await query(
+      const petRowsQuery = await runCacheSql(
+        preferHarnessResults ? 'pet_harness_browse_fallback' : 'pet_browse_fallback',
+        'rows',
         petRowsSql,
         [...petSignalFilter.params, pageOffset, pageFetch],
       );
+      const petRowsRes = petRowsQuery.result;
       const petRanked = toRankedUniqueProducts(petRowsRes.rows || []);
       const petFiltered = applyBeautySpecificFilter(petRanked.products);
       retrievalSources.push({
@@ -13036,6 +13234,7 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
         count: petFiltered.products.length,
         candidate_count: petRanked.candidateCount,
         filtered_irrelevant_count: petFiltered.filtered_irrelevant_count,
+        rows_query_ms: petRowsQuery.timing.duration_ms,
       });
 
       if (petFiltered.products.length > 0) {
@@ -13053,47 +13252,10 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
       }
     }
 
-    if (relaxedFiltered.products.length === 0 && hasBeautyMakeupSearchSignal(q)) {
-      const beautySignalFilter = buildBeautySignalSql(1);
-      const beautyRowsSql = `
-        SELECT pc.merchant_id,
-               mo.business_name AS merchant_name,
-               pc.product_data
-        FROM products_cache pc
-        JOIN merchant_onboarding mo
-          ON mo.merchant_id = pc.merchant_id
-        WHERE ${baseWhere}
-          AND ${beautySignalFilter.sql}
-        ORDER BY pc.cached_at DESC NULLS LAST, pc.id DESC
-        OFFSET $${beautySignalFilter.nextIndex}
-        LIMIT $${beautySignalFilter.nextIndex + 1}
-      `;
-      const beautyRowsRes = await query(
-        beautyRowsSql,
-        [...beautySignalFilter.params, pageOffset, pageFetch],
-      );
-      const beautyRanked = toRankedUniqueProducts(beautyRowsRes.rows || []);
-      const beautyFiltered = applyBeautySpecificFilter(beautyRanked.products);
-      retrievalSources.push({
-        source: 'beauty_browse_fallback',
-        used: true,
-        count: beautyFiltered.products.length,
-        candidate_count: beautyRanked.candidateCount,
-        filtered_irrelevant_count: beautyFiltered.filtered_irrelevant_count,
-      });
-
-      if (beautyFiltered.products.length > 0) {
-        await applyShopifyCurrencyOverride(beautyFiltered.products);
-        return {
-          products: beautyFiltered.products,
-          total: Math.max(strictTotal, relaxedTotal, beautyFiltered.products.length),
-          page: safePage,
-          page_size: beautyFiltered.products.length,
-          retrieval_sources: retrievalSources,
-          query_terms: terms,
-          beauty_query_bucket: beautyQueryProfile?.bucket || null,
-          internal_filter_debug: beautyFiltered,
-        };
+    if (relaxedFiltered.products.length === 0) {
+      const beautyFallbackResult = await runBeautyBrowseFallback(relaxedTotal);
+      if (beautyFallbackResult) {
+        return beautyFallbackResult;
       }
     }
 
@@ -21650,6 +21812,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               }
             }
           }
+          const cacheUsedBeautyCategoryBrowseFastpath =
+            Array.isArray(fromCache?.retrieval_sources) &&
+            fromCache.retrieval_sources.some(
+              (item) => String(item?.source || '') === 'beauty_category_browse_fastpath',
+            );
           const internalProducts = Array.isArray(fromCache.products) ? fromCache.products : [];
           const lookupAnchorTokens = extractSearchAnchorTokens(cacheQueryText);
           const isLookupQuery =
@@ -21679,10 +21846,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               )
             : internalProductsForRecall;
           const internalProductsAfterAnchor = leashAnchoredInternalProducts;
+          const preferInternalBeautyCategoryCache =
+            cacheUsedBeautyCategoryBrowseFastpath && internalProductsAfterAnchor.length > 0;
           const preferInternalSpecificBeautyCache =
-            cacheBeautyQueryProfile?.isSpecificBeautyQuery === true &&
-            cacheBeautyQueryProfile?.bucket === 'skincare' &&
-            internalProductsAfterAnchor.length > 0;
+            internalProductsAfterAnchor.length > 0 &&
+            (cacheBeautyQueryProfile?.isSpecificBeautyQuery === true ||
+              preferInternalBeautyCategoryCache);
           const safeResultLimit = Math.max(1, Number(limit || 20));
           const needsPrimaryFillSupplement = internalProductsAfterAnchor.length < safeResultLimit;
           const shouldSkipExternalSupplementForPetHarness =
@@ -21747,10 +21916,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   attempted: false,
                   applied: false,
                   added_count: 0,
-                  reason: 'specific_beauty_internal_preferred',
+                  reason: preferInternalBeautyCategoryCache
+                    ? 'beauty_category_fastpath_internal_preferred'
+                    : 'specific_beauty_internal_preferred',
                   gate: {
                     beauty_bucket: cacheBeautyQueryProfile?.bucket || null,
                     internal_count: internalProductsAfterAnchor.length,
+                    beauty_category_fastpath: preferInternalBeautyCategoryCache,
                   },
                 };
               } else if (!canApplyExternalFillGate) {
@@ -21949,6 +22121,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             total: Number(fromCache.total || 0),
             retrieval_sources: fromCache.retrieval_sources || null,
             beauty_query_bucket: fromCache?.beauty_query_bucket || cacheBeautyQueryProfile?.bucket || null,
+            beauty_category_fastpath: cacheUsedBeautyCategoryBrowseFastpath,
             internal_filtered_irrelevant_count: Number(
               fromCache?.internal_filter_debug?.filtered_irrelevant_count || 0,
             ),
@@ -22083,7 +22256,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             !isLookupQuery &&
             !cacheBrandLikeQuery &&
             ['category', 'exploratory'].includes(cachePolicyQueryClass) &&
-            !cacheBeautyQueryProfile?.isSpecificBeautyQuery;
+            !cacheBeautyQueryProfile?.isSpecificBeautyQuery &&
+            !cacheUsedBeautyCategoryBrowseFastpath;
           if (forceSearchFirstForExpandedQuery) {
             effectiveCacheHit = false;
           }
@@ -22117,16 +22291,21 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 : applyDealsToResponse(upstreamData, promotions, now, creatorId);
           }
           if (effectiveCacheHit) {
+            const cacheReturnResponse =
+              crossMerchantCacheProtectedResponse ||
+              (withPolicyProducts.length > 0
+                ? enriched
+                : applyDealsToResponse(upstreamData, promotions, now, creatorId));
             const cacheClarification =
-              enriched &&
-              typeof enriched === 'object' &&
-              !Array.isArray(enriched) &&
-              enriched.clarification &&
-              typeof enriched.clarification === 'object' &&
-              enriched.clarification.question
-                ? enriched.clarification
+              cacheReturnResponse &&
+              typeof cacheReturnResponse === 'object' &&
+              !Array.isArray(cacheReturnResponse) &&
+              cacheReturnResponse.clarification &&
+              typeof cacheReturnResponse.clarification === 'object' &&
+              cacheReturnResponse.clarification.question
+                ? cacheReturnResponse.clarification
                 : null;
-            const diagnosed = withSearchDiagnostics(enriched, {
+            const diagnosed = withSearchDiagnostics(cacheReturnResponse, {
               route_health: buildSearchRouteHealth({
                 primaryPathUsed: 'cache_stage',
                 primaryLatencyMs: Math.max(0, Date.now() - invokeStartedAtMs),
