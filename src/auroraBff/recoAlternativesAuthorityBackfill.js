@@ -21,6 +21,9 @@ const {
   processRow: processRecallRow,
   summarizeResults: summarizeRecallRefreshResults,
 } = require('../../scripts/backfill-external-seed-recall-docs.js');
+const { auditExternalSeedRow, summarizeAuditResults } = require('../services/externalSeedContentAudit');
+const { auditRow: auditExternalSeedPdpQualityRow, resolveGatewayUrl: resolveQualityGatewayUrl } = require('../../scripts/audit-external-product-pdp-quality.js');
+const { runCoverageBatch: runPivotaInsightsCoverageBatch } = require('../../scripts/pivota_insights_coverage_batch.js');
 
 const ASYNC_BACKFILL_ENABLED =
   String(process.env.AURORA_RECO_ALTERNATIVES_ASYNC_BACKFILL_ENABLED || 'true').trim().toLowerCase() !== 'false';
@@ -45,6 +48,20 @@ const ASYNC_BACKFILL_SOURCE_DISCOVERY_ENABLED =
 const ASYNC_BACKFILL_SOURCE_DISCOVERY_TIMEOUT_MS = Math.max(
   1000,
   Math.min(15000, Number(process.env.AURORA_RECO_ALTERNATIVES_ASYNC_BACKFILL_SOURCE_DISCOVERY_TIMEOUT_MS || 5000) || 5000),
+);
+const ASYNC_BACKFILL_POST_ENRICHMENT_ENABLED =
+  String(process.env.AURORA_RECO_ALTERNATIVES_ASYNC_BACKFILL_POST_ENRICHMENT_ENABLED || 'true').trim().toLowerCase() !== 'false';
+const ASYNC_BACKFILL_PIVOTA_INSIGHTS_ENABLED =
+  String(process.env.AURORA_RECO_ALTERNATIVES_ASYNC_BACKFILL_PIVOTA_INSIGHTS_ENABLED || 'true').trim().toLowerCase() !== 'false';
+const ASYNC_BACKFILL_PIVOTA_INSIGHTS_MODEL =
+  String(
+    process.env.AURORA_RECO_ALTERNATIVES_ASYNC_BACKFILL_PIVOTA_INSIGHTS_MODEL ||
+      process.env.PIVOTA_PRODUCT_INTEL_MODEL ||
+      'gemini-3-flash-preview',
+  ).trim() || 'gemini-3-flash-preview';
+const ASYNC_BACKFILL_PIVOTA_INSIGHTS_MAX_PRODUCTS = Math.max(
+  1,
+  Math.min(12, Number(process.env.AURORA_RECO_ALTERNATIVES_ASYNC_BACKFILL_PIVOTA_INSIGHTS_MAX_PRODUCTS || 6) || 6),
 );
 const ASYNC_BACKFILL_COOLDOWN_MS = Math.max(
   10 * 1000,
@@ -415,9 +432,291 @@ function ensureOutDir() {
   return OUT_DIR;
 }
 
+async function fetchSeedRowsByIds({ seedIds, market }) {
+  const normalizedSeedIds = uniqueStrings(seedIds, 200);
+  if (!normalizedSeedIds.length || !getPool()) return [];
+  const res = await query(
+    `
+      SELECT
+        id,
+        external_product_id,
+        market,
+        domain,
+        canonical_url,
+        destination_url,
+        title,
+        image_url,
+        price_amount,
+        price_currency,
+        availability,
+        seed_data,
+        status,
+        updated_at,
+        created_at
+      FROM external_product_seeds
+      WHERE id::text = ANY($1::text[])
+        AND market = $2
+      ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+    `,
+    [normalizedSeedIds, String(market || ASYNC_BACKFILL_MARKET).trim().toUpperCase() || ASYNC_BACKFILL_MARKET],
+  );
+  return Array.isArray(res?.rows) ? res.rows : [];
+}
+
 function writeJson(outPath, doc) {
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
   fs.writeFileSync(outPath, `${JSON.stringify(doc, null, 2)}\n`, 'utf8');
+}
+
+function countAuditFindingsBySeverity(findings = []) {
+  return (Array.isArray(findings) ? findings : []).reduce(
+    (acc, finding) => {
+      const severity = String(finding?.severity || '').trim().toLowerCase();
+      if (severity === 'blocker') acc.blocker += 1;
+      else if (severity === 'review') acc.review += 1;
+      else acc.info += 1;
+      return acc;
+    },
+    { blocker: 0, review: 0, info: 0 },
+  );
+}
+
+function countByString(values = []) {
+  return (Array.isArray(values) ? values : []).reduce((acc, value) => {
+    const key = String(value || '').trim();
+    if (!key) return acc;
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+}
+
+function hasBlockingSeedAuditFindings(result = {}) {
+  return (Array.isArray(result?.findings) ? result.findings : []).some((finding) => {
+    const severity = String(finding?.severity || '').trim().toLowerCase();
+    return severity === 'blocker' || severity === 'review';
+  });
+}
+
+async function runPostApplyEnrichmentDefault({
+  jobDir,
+  brand,
+  market,
+  appliedSeedIds,
+  logger,
+} = {}) {
+  const baseReport = {
+    status: 'not_needed',
+    eligible_seed_ids: [],
+    eligible_external_product_ids: [],
+    remaining_followups: [],
+    seed_content_audit: null,
+    live_pdp_quality: null,
+    pivota_insights: null,
+  };
+  if (!ASYNC_BACKFILL_POST_ENRICHMENT_ENABLED) {
+    return {
+      ...baseReport,
+      status: 'skipped_disabled',
+    };
+  }
+  if (!Array.isArray(appliedSeedIds) || !appliedSeedIds.length) {
+    return {
+      ...baseReport,
+      status: 'skipped_no_applied_seeds',
+    };
+  }
+
+  const seedRows = await fetchSeedRowsByIds({ seedIds: appliedSeedIds, market });
+  if (!seedRows.length) {
+    return {
+      ...baseReport,
+      status: 'skipped_missing_seed_rows',
+    };
+  }
+
+  const seedAuditResults = seedRows.map((row) => auditExternalSeedRow(row));
+  const seedAuditSummary = summarizeAuditResults(seedAuditResults);
+  const seedAuditBlocked = [];
+  const seedAuditPassedRows = [];
+  seedAuditResults.forEach((result, index) => {
+    const row = seedRows[index];
+    const findingCounts = countAuditFindingsBySeverity(result?.findings);
+    const seedId = pickFirstTrimmed(row?.id);
+    const externalProductId = pickFirstTrimmed(row?.external_product_id);
+    if (hasBlockingSeedAuditFindings(result)) {
+      seedAuditBlocked.push({
+        seed_id: seedId,
+        external_product_id: externalProductId,
+        finding_counts: findingCounts,
+        anomaly_types: uniqueStrings((result?.findings || []).map((finding) => pickFirstTrimmed(finding?.anomaly_type)), 24),
+      });
+    } else {
+      seedAuditPassedRows.push(row);
+    }
+  });
+  const seedAuditReport = {
+    generated_at: new Date().toISOString(),
+    brand,
+    market,
+    scanned_seed_count: seedRows.length,
+    passed_seed_ids: seedAuditPassedRows.map((row) => pickFirstTrimmed(row?.id)).filter(Boolean),
+    blocked_rows: seedAuditBlocked,
+    summary: seedAuditSummary,
+  };
+  const seedAuditPath = path.join(jobDir, 'seed-content-audit.json');
+  writeJson(seedAuditPath, seedAuditReport);
+
+  const livePdpResults = [];
+  for (const row of seedAuditPassedRows) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      livePdpResults.push(
+        await auditExternalSeedPdpQualityRow(row, {
+          catalogBaseUrl:
+            process.env.CATALOG_INTELLIGENCE_BASE_URL ||
+            'https://pivota-catalog-intelligence-production.up.railway.app',
+          gatewayUrl: resolveQualityGatewayUrl(
+            process.env.PIVOTA_GATEWAY_URL ||
+              process.env.EXTERNAL_PDP_QUALITY_GATEWAY_URL ||
+              process.env.PDP_SMOKE_GATEWAY,
+          ),
+        }),
+      );
+    } catch (err) {
+      logger?.warn?.(
+        {
+          err: err?.message || String(err),
+          brand,
+          seed_id: pickFirstTrimmed(row?.id),
+        },
+        'aurora bff: alternatives authority backfill live PDP quality failed',
+      );
+      livePdpResults.push({
+        seed_id: pickFirstTrimmed(row?.id),
+        external_product_id: pickFirstTrimmed(row?.external_product_id),
+        canonical_url: pickFirstTrimmed(row?.canonical_url),
+        seed_gate: { status: 'passed', findings_count: 0, blockers_count: 0 },
+        extractor_gate: { status: 'failed', failure_reasons: ['live_pdp_quality_exception'] },
+        live_pdp_gate: { status: 'failed', failure_reasons: ['live_pdp_quality_exception'] },
+        similar_gate: { status: 'failed', failure_reasons: ['live_pdp_quality_exception'] },
+        failure_reasons: ['live_pdp_quality_exception'],
+      });
+    }
+  }
+  const livePdpBlocked = livePdpResults
+    .filter((result) => Array.isArray(result?.failure_reasons) && result.failure_reasons.length > 0)
+    .map((result) => ({
+      seed_id: pickFirstTrimmed(result?.seed_id),
+      external_product_id: pickFirstTrimmed(result?.external_product_id),
+      failure_reasons: uniqueStrings(result?.failure_reasons || [], 24),
+    }));
+  const livePdpPassed = livePdpResults.filter(
+    (result) => !Array.isArray(result?.failure_reasons) || result.failure_reasons.length <= 0,
+  );
+  const livePdpReport = {
+    generated_at: new Date().toISOString(),
+    brand,
+    market,
+    scanned_seed_count: livePdpResults.length,
+    passed_seed_ids: livePdpPassed.map((result) => pickFirstTrimmed(result?.seed_id)).filter(Boolean),
+    blocked_rows: livePdpBlocked,
+    failure_reason_counts: countByString(livePdpResults.flatMap((result) => result?.failure_reasons || [])),
+  };
+  const livePdpPath = path.join(jobDir, 'live-pdp-quality.json');
+  writeJson(livePdpPath, livePdpReport);
+
+  const eligibleExternalProductIds = uniqueStrings(
+    livePdpPassed.map((result) => pickFirstTrimmed(result?.external_product_id)).filter(Boolean),
+    200,
+  );
+  const limitedInsightsProductIds = eligibleExternalProductIds.slice(0, ASYNC_BACKFILL_PIVOTA_INSIGHTS_MAX_PRODUCTS);
+  const deferredInsightsProductIds = eligibleExternalProductIds.slice(ASYNC_BACKFILL_PIVOTA_INSIGHTS_MAX_PRODUCTS);
+
+  let insightsReport = {
+    status: 'skipped_no_eligible_products',
+    eligible_external_product_ids: eligibleExternalProductIds,
+    queued_external_product_ids: [],
+    deferred_external_product_ids: deferredInsightsProductIds,
+  };
+  if (!ASYNC_BACKFILL_PIVOTA_INSIGHTS_ENABLED) {
+    insightsReport = {
+      ...insightsReport,
+      status: 'skipped_disabled',
+    };
+  } else if (limitedInsightsProductIds.length > 0) {
+    const outDir = path.join(jobDir, 'pivota-insights');
+    try {
+      const coverageResult = await runPivotaInsightsCoverageBatch({
+        gatewayUrl: process.env.PIVOTA_GATEWAY_URL || 'https://agent.pivota.cc/api/gateway',
+        productIds: limitedInsightsProductIds,
+        frontendPaths: [],
+        outDir,
+        excludeCovered: false,
+        model: ASYNC_BACKFILL_PIVOTA_INSIGHTS_MODEL,
+        maxPerBrand: Math.max(1, Math.min(3, limitedInsightsProductIds.length)),
+        maxPerCategory: Math.max(1, Math.min(4, limitedInsightsProductIds.length)),
+      });
+      insightsReport = {
+        ...coverageResult,
+        status: 'completed',
+        coverage_status: pickFirstTrimmed(coverageResult?.status, 'ok'),
+        eligible_external_product_ids: eligibleExternalProductIds,
+        queued_external_product_ids: limitedInsightsProductIds,
+        deferred_external_product_ids: deferredInsightsProductIds,
+      };
+    } catch (err) {
+      logger?.warn?.(
+        {
+          err: err?.message || String(err),
+          brand,
+          product_ids: limitedInsightsProductIds,
+        },
+        'aurora bff: alternatives authority backfill pivota insights coverage failed',
+      );
+      insightsReport = {
+        status: 'failed',
+        error: err?.message || String(err),
+        eligible_external_product_ids: eligibleExternalProductIds,
+        queued_external_product_ids: limitedInsightsProductIds,
+        deferred_external_product_ids: deferredInsightsProductIds,
+      };
+    }
+  }
+  const insightsPath = path.join(jobDir, 'pivota-insights-summary.json');
+  writeJson(insightsPath, insightsReport);
+
+  const remainingFollowups = [];
+  if (seedAuditBlocked.length > 0) remainingFollowups.push('seed_content_audit');
+  if (livePdpBlocked.length > 0) remainingFollowups.push('live_pdp_quality');
+  if (
+    ASYNC_BACKFILL_PIVOTA_INSIGHTS_ENABLED &&
+    eligibleExternalProductIds.length > 0 &&
+    String(insightsReport?.status || '') !== 'completed'
+  ) {
+    remainingFollowups.push('pivota_insights');
+  }
+  if (deferredInsightsProductIds.length > 0) {
+    remainingFollowups.push('pivota_insights');
+  }
+
+  return {
+    status: remainingFollowups.length > 0 ? 'partial' : 'completed',
+    eligible_seed_ids: livePdpPassed.map((result) => pickFirstTrimmed(result?.seed_id)).filter(Boolean),
+    eligible_external_product_ids: eligibleExternalProductIds,
+    remaining_followups: uniqueStrings(remainingFollowups, 8),
+    seed_content_audit: {
+      path: seedAuditPath,
+      ...seedAuditReport,
+    },
+    live_pdp_quality: {
+      path: livePdpPath,
+      ...livePdpReport,
+    },
+    pivota_insights: {
+      path: insightsPath,
+      ...insightsReport,
+    },
+  };
 }
 
 async function runBackfillJobDefault({ brand, market, preferredTitles, sourcePlan, logger } = {}) {
@@ -547,6 +846,24 @@ async function runBackfillJobDefault({ brand, market, preferredTitles, sourcePla
     recallSummary = summarizeRecallRefreshResults(recallResults);
   }
 
+  const postEnrichment = applyMode === 'apply' && appliedSeedIds.length > 0
+    ? await runPostApplyEnrichmentDefault({
+        jobDir,
+        brand,
+        market,
+        appliedSeedIds,
+        logger,
+      })
+    : {
+        status: applyMode === 'apply' ? 'skipped_no_applied_seeds' : 'skipped_non_apply_mode',
+        eligible_seed_ids: [],
+        eligible_external_product_ids: [],
+        remaining_followups: [],
+        seed_content_audit: null,
+        live_pdp_quality: null,
+        pivota_insights: null,
+      };
+
   const report = {
     generated_at: new Date().toISOString(),
     brand,
@@ -563,9 +880,14 @@ async function runBackfillJobDefault({ brand, market, preferredTitles, sourcePla
     applied_seed_ids: appliedSeedIds,
     correction_followups: correctionFollowups,
     recall_refresh_summary: recallSummary,
-    pending_followups: appliedSeedIds.length
-      ? ['seed_content_audit', 'live_pdp_quality', 'pivota_insights']
-      : [],
+    post_enrichment: postEnrichment,
+    pending_followups: uniqueStrings(
+      [
+        ...(Array.isArray(correctionFollowups) ? correctionFollowups.map((item) => pickFirstTrimmed(item?.action, item?.kind, item?.type)) : []),
+        ...(Array.isArray(postEnrichment?.remaining_followups) ? postEnrichment.remaining_followups : []),
+      ].filter(Boolean),
+      12,
+    ),
   };
   const reportPath = path.join(jobDir, 'backfill-report.json');
   writeJson(reportPath, report);
@@ -749,6 +1071,7 @@ module.exports = {
     markCooldown,
     resolveBrandSourcePlanDefault,
     runBackfillJobDefault,
+    runPostApplyEnrichmentDefault,
     flushRecoAlternativesAuthorityBackfillJobsForTest,
     resetRecoAlternativesAuthorityBackfillStateForTest,
     getHistoryForTest() {

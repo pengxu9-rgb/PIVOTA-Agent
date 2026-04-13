@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { spawnSync } = require('child_process');
+const { spawn } = require('child_process');
 
 function parseArgs(argv) {
   const out = {
@@ -127,15 +127,48 @@ function toList(value) {
 }
 
 function runNodeScript(scriptPath, args, options = {}) {
-  const result = spawnSync(process.execPath, [scriptPath, ...args], {
-    cwd: options.cwd,
-    env: options.env || process.env,
-    encoding: 'utf8',
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [scriptPath, ...args], {
+      cwd: options.cwd,
+      env: options.env || process.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+    const timeoutMs = Number(options.timeoutMs || 0) || 0;
+    const timer = timeoutMs > 0
+      ? setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          child.kill('SIGTERM');
+          reject(new Error(`script_timeout:${path.basename(scriptPath)}`));
+        }, timeoutMs)
+      : null;
+
+    child.stdout.on('data', (chunk) => {
+      stdout += String(chunk || '');
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += String(chunk || '');
+    });
+    child.on('error', (err) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      reject(err);
+    });
+    child.on('close', (code) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      if (code !== 0) {
+        reject(new Error(asString(stderr || stdout || `script_failed:${path.basename(scriptPath)}`)));
+        return;
+      }
+      resolve(asString(stdout));
+    });
   });
-  if (result.status !== 0) {
-    throw new Error(asString(result.stderr || result.stdout || `script_failed:${path.basename(scriptPath)}`));
-  }
-  return asString(result.stdout);
 }
 
 function buildReviewPacket(compareReport) {
@@ -211,9 +244,16 @@ function buildReviewPacket(compareReport) {
   };
 }
 
-async function main() {
-  const args = parseArgs(process.argv);
+async function runCoverageBatch(rawArgs = {}) {
+  const args = {
+    ...parseArgs([process.execPath, __filename]),
+    ...(rawArgs && typeof rawArgs === 'object' ? rawArgs : {}),
+  };
   const rootDir = path.resolve(__dirname, '..');
+  const childTimeoutMs = Math.max(
+    30 * 1000,
+    Number(process.env.PIVOTA_INSIGHTS_COVERAGE_CHILD_TIMEOUT_MS || 10 * 60 * 1000) || 10 * 60 * 1000,
+  );
   if (!args.productIds.length && !args.queries.length && !(args.surface && args.pages > 0) && !args.frontendPaths.length) {
     throw new Error('missing_product_ids_queries_surface_or_frontend_paths');
   }
@@ -257,7 +297,10 @@ async function main() {
   }
   if (args.excludeCovered) buildArgs.push('--exclude-covered');
   if (args.requireBadgeEvidence) buildArgs.push('--require-badge-evidence');
-  runNodeScript(path.join(rootDir, 'scripts/build_product_intel_live_pilot_cases.js'), buildArgs, { cwd: rootDir });
+  await runNodeScript(path.join(rootDir, 'scripts/build_product_intel_live_pilot_cases.js'), buildArgs, {
+    cwd: rootDir,
+    timeoutMs: childTimeoutMs,
+  });
 
   const compareArgs = [
     '--cases',
@@ -270,23 +313,29 @@ async function main() {
     args.model,
   ];
   if (args.skipGemini) compareArgs.push('--skip-gemini');
-  runNodeScript(path.join(rootDir, 'scripts/product_intel_pilot_compare.js'), compareArgs, { cwd: rootDir });
+  await runNodeScript(path.join(rootDir, 'scripts/product_intel_pilot_compare.js'), compareArgs, {
+    cwd: rootDir,
+    timeoutMs: childTimeoutMs,
+  });
 
   const compareReport = readJson(compareJsonPath);
   const reviewPacket = buildReviewPacket(compareReport);
   writeJson(reviewPath, reviewPacket);
 
-  process.stdout.write(
-    `${JSON.stringify({
-      status: 'ok',
-      out_dir: outDir,
-      cases: casesPath,
-      compare_json: compareJsonPath,
-      compare_markdown: compareMdPath,
-      review: reviewPath,
-      count: toList(compareReport.rows).length,
-    })}\n`,
-  );
+  return {
+    status: 'ok',
+    out_dir: outDir,
+    cases: casesPath,
+    compare_json: compareJsonPath,
+    compare_markdown: compareMdPath,
+    review: reviewPath,
+    count: toList(compareReport.rows).length,
+  };
+}
+
+async function main() {
+  const result = await runCoverageBatch(parseArgs(process.argv));
+  process.stdout.write(`${JSON.stringify(result)}\n`);
 }
 
 if (require.main === module) {
@@ -299,4 +348,5 @@ if (require.main === module) {
 module.exports = {
   buildReviewPacket,
   parseArgs,
+  runCoverageBatch,
 };
