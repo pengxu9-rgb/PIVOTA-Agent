@@ -1,0 +1,2293 @@
+{
+  "meta": {
+    "generated_at": "2026-04-13T07:23:47.362Z",
+    "total": 44,
+    "pass": 33,
+    "rewrite": 11,
+    "baseline_only": 0
+  },
+  "rows": [
+    {
+      "case_id": "live_ext_5d82f54375f34090612782b0",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_5d82f54375f34090612782b0"
+      },
+      "title": "Round Lab Pine Calming Cica Body Wash",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [],
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "baseline",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Round Lab Pine Calming Cica Body Wash",
+        "subtitle": "Cleansing Product",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Cleansing Product",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": "A proprietary Pine Cica Activer™ complex (80."
+      },
+      "pivota_insights": {
+        "what_it_is": "A low-pH gel body cleanser formulated with a high concentration of red pine leaf extract to soothe skin during cleansing.",
+        "why_it_stands_out": [
+          {
+            "headline": "Contains an 80.4% concentration of red pine leaf extract and plant-based glycoproteins to address skin sensitivity.",
+            "body": "Contains an 80.4% concentration of red pine leaf extract and plant-based glycoproteins to address skin sensitivity."
+          },
+          {
+            "headline": "Uses a specific extraction process for the Pinus densiflora leaves to help maintain the integrity of their soothing prop",
+            "body": "Uses a specific extraction process for the Pinus densiflora leaves to help maintain the integrity of their soothing properties."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_62bd1b4ed080e232d040db05",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_62bd1b4ed080e232d040db05"
+      },
+      "title": "Haruharu Wonder Triple AHA Gentle Cleansing Gel / Unscented",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [],
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "gemini",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Haruharu Wonder Triple AHA Gentle Cleansing Gel / Unscented",
+        "subtitle": "Cleansing Product",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Cleansing Product",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": ""
+      },
+      "pivota_insights": {
+        "what_it_is": "A fragrance-free cleansing gel that utilizes plant-derived surfactants and triple AHAs to remove impurities while maintaining the skin's natural balance.",
+        "why_it_stands_out": [
+          {
+            "headline": "Combines three alpha hydroxy acids to provide gentle surface resurfacing during the cleansing step.",
+            "body": "Combines three alpha hydroxy acids to provide gentle surface resurfacing during the cleansing step."
+          },
+          {
+            "headline": "Uses plant-based cleansing agents to create a fine lather that lifts debris without stripping the skin.",
+            "body": "Uses plant-based cleansing agents to create a fine lather that lifts debris without stripping the skin."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_58265709fba82ce79184a8a4",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_58265709fba82ce79184a8a4"
+      },
+      "title": "Round Lab Soybean Nourishing Cleanser",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [],
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "gemini",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Round Lab Soybean Nourishing Cleanser",
+        "subtitle": "Cleansing Product",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Cleansing Product",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": ""
+      },
+      "pivota_insights": {
+        "what_it_is": "A foaming cleanser with a scrub texture designed to remove impurities and dead skin cells while maintaining moisture levels.",
+        "why_it_stands_out": [
+          {
+            "headline": "Scrub foam texture that combines deep cleansing with moisturizing properties.",
+            "body": "Scrub foam texture that combines deep cleansing with moisturizing properties."
+          },
+          {
+            "headline": "Formulated with black soybean extract from Jeonseon to nourish the skin during exfoliation.",
+            "body": "Formulated with black soybean extract from Jeonseon to nourish the skin during exfoliation."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_39a74534dd72fafbbc646125",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_39a74534dd72fafbbc646125"
+      },
+      "title": "Round Lab Mugwort Calming Cleanser",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [],
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "gemini",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Round Lab Mugwort Calming Cleanser",
+        "subtitle": "Cleansing Product",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Cleansing Product",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": "Creamy facial cleanser formulated."
+      },
+      "pivota_insights": {
+        "what_it_is": "A creamy facial cleanser formulated with mugwort extract and 4-CICA ingredients to soothe skin irritated by environmental stressors.",
+        "why_it_stands_out": [
+          {
+            "headline": "4-CICA and Mugwort Blend: Combines mugwort leaf extract with four centella-derived ingredients to target skin relief dur",
+            "body": "4-CICA and Mugwort Blend: Combines mugwort leaf extract with four centella-derived ingredients to target skin relief during the cleansing step."
+          },
+          {
+            "headline": "Botanical Scent Profile: Utilizes mugwort, black tea extract, and salvia oil for a natural aromatic experience.",
+            "body": "Botanical Scent Profile: Utilizes mugwort, black tea extract, and salvia oil for a natural aromatic experience."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_64bbf9948349bcef6a4360a7",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_64bbf9948349bcef6a4360a7"
+      },
+      "title": "Round Lab Soybean Panthenol Cleanser",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [],
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "baseline",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Round Lab Soybean Panthenol Cleanser",
+        "subtitle": "Cleansing Product",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Cleansing Product",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": "5, it effectively removes dirt, sweat, and light makeup while supporting a heal…."
+      },
+      "pivota_insights": {
+        "what_it_is": "A low pH foaming cleanser formulated with fermented soybean extract and panthenol to purify the skin while maintaining moisture levels.",
+        "why_it_stands_out": [
+          {
+            "headline": "Maintains a skin-friendly pH of 5.5 to prevent stripping essential moisture during the cleansing process.",
+            "body": "Maintains a skin-friendly pH of 5.5 to prevent stripping essential moisture during the cleansing process."
+          },
+          {
+            "headline": "Utilizes fermented soybean extract and Vitamin B5 to support hydration and skin recovery.",
+            "body": "Utilizes fermented soybean extract and Vitamin B5 to support hydration and skin recovery."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_332e0949ace181c1749e16e6",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_332e0949ace181c1749e16e6"
+      },
+      "title": "Round Lab Birch Moisturizing Cleanser",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [],
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "baseline",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Round Lab Birch Moisturizing Cleanser",
+        "subtitle": "Cleansing Product",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Cleansing Product",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": "It is a low acidic foamy cleanser that cleans away hidden sebum and even dead skin cells."
+      },
+      "pivota_insights": {
+        "what_it_is": "A low acidic foaming cleanser designed to remove excess sebum and dead skin cells while maintaining skin balance.",
+        "why_it_stands_out": [
+          {
+            "headline": "Low acidic pH formula",
+            "body": "Low acidic pH formula"
+          },
+          {
+            "headline": "Dual-action removal of sebum and dead skin cells",
+            "body": "Dual-action removal of sebum and dead skin cells"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_8d5c578c4ddcf431b19c2115",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_8d5c578c4ddcf431b19c2115"
+      },
+      "title": "Round Lab Pine Calming Cica Cleanser",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [],
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "baseline",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Round Lab Pine Calming Cica Cleanser",
+        "subtitle": "Cleansing Product",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Cleansing Product",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": ""
+      },
+      "pivota_insights": {
+        "what_it_is": "A daily foaming cleanser that utilizes a dense, creamy lather to remove impurities and excess sebum. It is formulated to provide a refreshing cleanse suitable for sensitive and dry skin types without causing irritation.",
+        "why_it_stands_out": [
+          {
+            "headline": "Features a high-density bubble texture that allows for smooth application and thorough cleansing while minimizing mechan",
+            "body": "Features a high-density bubble texture that allows for smooth application and thorough cleansing while minimizing mechanical friction on sensitive skin."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_1ee358db8a0a348d940541ea",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_1ee358db8a0a348d940541ea"
+      },
+      "title": "Round Lab 1025 Dokdo Cleanser",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [],
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "baseline",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Round Lab 1025 Dokdo Cleanser",
+        "subtitle": "Cleansing Product",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Cleansing Product",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": "Oz (150ml) How it works Triple hyaluron…."
+      },
+      "pivota_insights": {
+        "what_it_is": "A creamy, low-acidic facial cleanser designed to remove excess sebum and impurities while maintaining the skin's moisture balance.",
+        "why_it_stands_out": [
+          {
+            "headline": "Low acidic pH (5.0-6.0) architecture to support the skin's natural barrier during cleansing.",
+            "body": "Low acidic pH (5.0-6.0) architecture to support the skin's natural barrier during cleansing."
+          },
+          {
+            "headline": "Triple hyaluronic acid blend to prevent moisture loss while removing impurities.",
+            "body": "Triple hyaluronic acid blend to prevent moisture loss while removing impurities."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_e7ef913b73f94eb5921023fe",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_e7ef913b73f94eb5921023fe"
+      },
+      "title": "Round Lab Camellia Deep Collagen Jelly Mask Cleanser",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [],
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "baseline",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Round Lab Camellia Deep Collagen Jelly Mask Cleanser",
+        "subtitle": "Cleansing Product",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Cleansing Product",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": ""
+      },
+      "pivota_insights": {
+        "what_it_is": "A dual-action jelly-to-foam cleanser that functions as both a daily wash and a nourishing mask. It utilizes Jeju camellia flower extract, hydrolyzed collagen, and ceramide NP to remove impurities while supporting skin elasticity and moisture.",
+        "why_it_stands_out": [
+          {
+            "headline": "Barrier-Supporting Blend",
+            "body": "Combines ceramide NP, hydrolyzed collagen, and Jeju camellia flower extract to maintain moisture while lifting impurities."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_46fff1a0ea1bace6f4520722",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_46fff1a0ea1bace6f4520722"
+      },
+      "title": "Round Lab Birch Moisturizing Sun Cushion SPF 50+",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [],
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "gemini",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Round Lab Birch Moisturizing Sun Cushion SPF 50+",
+        "subtitle": "Daily Sunscreen",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Daily Sunscreen",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": "A hydrating mineral sunscreen delivered in a cushion format."
+      },
+      "pivota_insights": {
+        "what_it_is": "A hydrating mineral sunscreen delivered in a cushion format. It provides SPF 50+ broad-spectrum protection against UVA, UVB, and blue light while soothing the skin.",
+        "why_it_stands_out": [
+          {
+            "headline": "Provides mineral SPF 50+ broad-spectrum and blue light defense alongside hydrating properties.",
+            "body": "Provides mineral SPF 50+ broad-spectrum and blue light defense alongside hydrating properties."
+          },
+          {
+            "headline": "Utilizes a cushion delivery system designed for direct application and reapplication.",
+            "body": "Utilizes a cushion delivery system designed for direct application and reapplication."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_ebbcb7f9ccbf20c656808ac4",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_ebbcb7f9ccbf20c656808ac4"
+      },
+      "title": "Round Lab Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [],
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "gemini",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Round Lab Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum",
+        "subtitle": "Daily Sunscreen",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Daily Sunscreen",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": ""
+      },
+      "pivota_insights": {
+        "what_it_is": "A broad-spectrum SPF 50+ sunscreen that utilizes physical filters to provide UV protection for sensitive and dry skin types.",
+        "why_it_stands_out": [
+          {
+            "headline": "Uses physical UV filters to provide broad-spectrum SPF 50+ protection suitable for reactive skin.",
+            "body": "Uses physical UV filters to provide broad-spectrum SPF 50+ protection suitable for reactive skin."
+          },
+          {
+            "headline": "Specifically developed to provide reliable UVA and UVB defense for those with sensitive or dry skin profiles.",
+            "body": "Specifically developed to provide reliable UVA and UVB defense for those with sensitive or dry skin profiles."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_03dfb4ac825988a3ae86c1ac",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_03dfb4ac825988a3ae86c1ac"
+      },
+      "title": "Beauty of Joseon Day Dew Sunscreen 10ml",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [],
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "gemini",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Beauty of Joseon Day Dew Sunscreen 10ml",
+        "subtitle": "Daily Sunscreen",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Daily Sunscreen",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": "Meet our most innovative SPF yet- now in a handy 10ml size, perfect for on the go."
+      },
+      "pivota_insights": {
+        "what_it_is": "A compact 10ml sunscreen designed for portability and ease of application without a heavy or chalky finish.",
+        "why_it_stands_out": [
+          {
+            "headline": "Portable 10ml size for travel and mid-day reapplication.",
+            "body": "Portable 10ml size for travel and mid-day reapplication."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_6caa0a0e7a6095fec92b93b6",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_6caa0a0e7a6095fec92b93b6"
+      },
+      "title": "Haruharu Wonder Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [],
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "gemini",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Haruharu Wonder Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented",
+        "subtitle": "Daily Sunscreen",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Daily Sunscreen",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": "Size: 50ml A velvet finished airyfit sunscreen with very high protection for daily life."
+      },
+      "pivota_insights": {
+        "what_it_is": "An unscented daily sunscreen providing SPF50+/PA++++ protection with a velvet finish. It incorporates black rice extract and hyaluronic acid to support the skin's moisture barrier.",
+        "why_it_stands_out": [
+          {
+            "headline": "Velvet Airyfit Finish: Delivers high UV protection with a lightweight, non-greasy texture that leaves a smooth finish.",
+            "body": "Velvet Airyfit Finish: Delivers high UV protection with a lightweight, non-greasy texture that leaves a smooth finish."
+          },
+          {
+            "headline": "Moisture-Retaining Barrier: Uses black rice extract and hyaluronic acid to form a protective layer that prevents hydrati",
+            "body": "Moisture-Retaining Barrier: Uses black rice extract and hyaluronic acid to form a protective layer that prevents hydration loss."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_94e79b8163564b4df1764a92",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_94e79b8163564b4df1764a92"
+      },
+      "title": "Round Lab Birch Moisturizing Cream",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [],
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "baseline",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Round Lab Birch Moisturizing Cream",
+        "subtitle": "Daily Moisturizer",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Daily Moisturizer",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": "Lightweight cream formulated."
+      },
+      "pivota_insights": {
+        "what_it_is": "A lightweight cream formulated with birch extract to provide hydration while supporting the skin barrier and offering soothing benefits.",
+        "why_it_stands_out": [
+          {
+            "headline": "Birch extract integration for anti-inflammatory and healing effects.",
+            "body": "Birch extract integration for anti-inflammatory and healing effects."
+          },
+          {
+            "headline": "Dual-action barrier strengthening and moisture retention.",
+            "body": "Dual-action barrier strengthening and moisture retention."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_624a12ac9aec83ba278950e0",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_624a12ac9aec83ba278950e0"
+      },
+      "title": "Round Lab 1025 Dokdo Cream",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [],
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "baseline",
+        "texture_finish": "baseline",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Round Lab 1025 Dokdo Cream",
+        "subtitle": "Daily Moisturizer",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Daily Moisturizer",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": "A fully packed perfect hydration to the skin."
+      },
+      "pivota_insights": {
+        "what_it_is": "A moisturizer formulated to deliver long-lasting hydration while soothing tired and irritated skin.",
+        "why_it_stands_out": [
+          {
+            "headline": "Soothing Hydration Focus",
+            "body": "Combines long-lasting moisture delivery with specialized care to calm tired and irritated skin."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_6f25677c2060830312544cce",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_6f25677c2060830312544cce"
+      },
+      "title": "Haruharu Wonder 5 Ceramide Barrier Moisturizing Cream / Unscented",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [
+        "weak_highlights"
+      ],
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "baseline",
+        "routine_fit": "gemini",
+        "watchouts": "baseline",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Haruharu Wonder 5 Ceramide Barrier Moisturizing Cream / Unscented",
+        "subtitle": "Daily Moisturizer",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Daily Moisturizer",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": "With antioxidant-rich black rice, it soothes, brightens, and improves skin texture."
+      },
+      "pivota_insights": {
+        "what_it_is": "An unscented cream that utilizes five types of ceramides and antioxidant-rich black rice to strengthen the skin barrier and provide deep hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Formula angle",
+            "body": "This luxurious cream combines ceramide capsules and barrier-boosting ingredients for deep hydration, strengthened skin barrier, and lasting protection."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_273d8e1b82e1c7a6e18e8a69",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_273d8e1b82e1c7a6e18e8a69"
+      },
+      "title": "Haruharu Wonder 10 Hyaluronic Cream",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [],
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "baseline",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Haruharu Wonder 10 Hyaluronic Cream",
+        "subtitle": "Daily Moisturizer",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Daily Moisturizer",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": "Moisturizing cream formulated."
+      },
+      "pivota_insights": {
+        "what_it_is": "A moisturizing cream formulated with 95% naturally derived ingredients to provide deep hydration and skin rejuvenation.",
+        "why_it_stands_out": [
+          {
+            "headline": "Combines 10,000ppm of Korean black rice extract with hyaluronic acid to support skin firmness and moisture retention.",
+            "body": "Combines 10,000ppm of Korean black rice extract with hyaluronic acid to support skin firmness and moisture retention."
+          },
+          {
+            "headline": "Utilizes evening primrose oil and naturally derived ingredients to deliver intensive nourishment to the skin barrier.",
+            "body": "Utilizes evening primrose oil and naturally derived ingredients to deliver intensive nourishment to the skin barrier."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_5608cae08244cafe1b6ff9c2",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_5608cae08244cafe1b6ff9c2"
+      },
+      "title": "Haruharu Wonder Probiotics Barrier 2% NAD + Serum Mist",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [],
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "baseline",
+        "texture_finish": "baseline",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Haruharu Wonder Probiotics Barrier 2% NAD + Serum Mist",
+        "subtitle": "Treatment Serum",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Treatment Serum",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": "Key Features Replenish and Renew: Restore what your body loses."
+      },
+      "pivota_insights": {
+        "what_it_is": "A facial mist formulated with 2% NAD+, probiotics, and fermented black rice to support the skin barrier. It functions as a hybrid treatment to replenish nutrients lost with age and strengthen skin structure.",
+        "why_it_stands_out": [
+          {
+            "headline": "Utilizes a 2% concentration of NAD+ combined with fermented black rice to target cellular replenishment.",
+            "body": "Utilizes a 2% concentration of NAD+ combined with fermented black rice to target cellular replenishment."
+          },
+          {
+            "headline": "Features a 5-Ceramide Complex to provide the essential building blocks for barrier reinforcement.",
+            "body": "Features a 5-Ceramide Complex to provide the essential building blocks for barrier reinforcement."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_ea93a3fd2c60e0a45b8d53cd",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_ea93a3fd2c60e0a45b8d53cd"
+      },
+      "title": "Haruharu Wonder Probiotics Barrier Essence / Unscented",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [],
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "baseline",
+        "texture_finish": "baseline",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Haruharu Wonder Probiotics Barrier Essence / Unscented",
+        "subtitle": "Treatment Serum",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Treatment Serum",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": "IMPORTANT The product must be ordered 1ea in an order."
+      },
+      "pivota_insights": {
+        "what_it_is": "An unscented essence formulated with a lipid complex and fermented ingredients to support the skin barrier.",
+        "why_it_stands_out": [
+          {
+            "headline": "Integrates black rice and galactomyces ferment to deliver probiotic benefits and antioxidant protection.",
+            "body": "Integrates black rice and galactomyces ferment to deliver probiotic benefits and antioxidant protection."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_04dab6a642edac20a33ccae6",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_04dab6a642edac20a33ccae6"
+      },
+      "title": "Round Lab 1025 Dokdo Toner Pad",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Strict human QA override: the Dokdo toner pad edge case still lacked publishable card framing, so the rewrite restores the soothing exfoliating pad use case and routine step.",
+      "selected_mode": "manual_override",
+      "fail_reasons": [
+        "missing_candidate"
+      ],
+      "field_sources": {
+        "what_it_is": "manual",
+        "best_for": "manual",
+        "why_it_stands_out": "manual",
+        "routine_fit": "manual",
+        "watchouts": "manual",
+        "texture_finish": "manual",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Round Lab 1025 Dokdo Toner Pad",
+        "subtitle": "Mineral Toner Pads",
+        "highlight": "Soothing exfoliating pads",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Mineral Toner Pads",
+        "highlight_candidate": "Soothing exfoliating pads",
+        "proof_badge_candidate": "",
+        "intro_candidate": "A toner pad that smooths texture while keeping skin comfortable."
+      },
+      "pivota_insights": {
+        "what_it_is": "Pre-soaked toner pads with deep seawater minerals plus panthenol, allantoin, and betaine for mild exfoliation and soothing hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Deep seawater plus soothing humectants",
+            "body": "Keeps the pads grounded in a mineral-and-soothing blend rather than a generic prep label."
+          },
+          {
+            "headline": "Swipe-and-prep exfoliating pad",
+            "body": "Frames the product as a quick toner pad for texture smoothing before the rest of the routine."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_52db83881b3497c1f1165248",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_52db83881b3497c1f1165248"
+      },
+      "title": "Round Lab 1025 Dokdo Lotion",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [],
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "baseline",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Round Lab 1025 Dokdo Lotion",
+        "subtitle": "Daily Moisturizer",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Daily Moisturizer",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": "It replenishes your skin with moisture and gives long-lasting moisture."
+      },
+      "pivota_insights": {
+        "what_it_is": "A lightweight facial moisturizer formulated with mineral-rich deep sea water and three types of hyaluronic acid to provide hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Uses Ulleungdo deep sea water to deliver essential minerals to the skin barrier.",
+            "body": "Uses Ulleungdo deep sea water to deliver essential minerals to the skin barrier."
+          },
+          {
+            "headline": "Combines three molecular weights of hyaluronic acid for layered moisture retention.",
+            "body": "Combines three molecular weights of hyaluronic acid for layered moisture retention."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_ac8e55c3778eeb2ce81284ab",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_ac8e55c3778eeb2ce81284ab"
+      },
+      "title": "Haruharu Wonder Black Rice Hyaluronic Toner",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Strict human QA override: the black rice toner draft still carried size metadata and an empty routine, so the rewrite normalizes it into a clean daily hydration toner.",
+      "selected_mode": "manual_override",
+      "fail_reasons": [
+        "missing_candidate"
+      ],
+      "field_sources": {
+        "what_it_is": "manual",
+        "best_for": "manual",
+        "why_it_stands_out": "manual",
+        "routine_fit": "manual",
+        "watchouts": "manual",
+        "texture_finish": "manual",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Haruharu Wonder Black Rice Hyaluronic Toner",
+        "subtitle": "Hydrating Toner",
+        "highlight": "Fermented black rice hydration",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Hydrating Toner",
+        "highlight_candidate": "Fermented black rice hydration",
+        "proof_badge_candidate": "",
+        "intro_candidate": "A lightweight toner for daily hydration and skin prep."
+      },
+      "pivota_insights": {
+        "what_it_is": "A lightweight toner built around black rice and hyaluronic hydration with a fermented formula for daily skin prep.",
+        "why_it_stands_out": [
+          {
+            "headline": "Fermented black rice hydration",
+            "body": "Keeps the toner grounded around black rice and a fermented hydration story instead of noisy size metadata."
+          },
+          {
+            "headline": "Light daily prep texture",
+            "body": "Positions it as a refreshing toner layer that can slot in before serum or moisturizer without heaviness."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_267205e8964dd5ccf73f7232",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_267205e8964dd5ccf73f7232"
+      },
+      "title": "Round Lab Soybean Panthenol Toner",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Strict human QA override: the soybean panthenol toner still had empty routine framing and missing card copy, so the rewrite makes the barrier-support toner role explicit.",
+      "selected_mode": "manual_override",
+      "fail_reasons": [
+        "missing_candidate"
+      ],
+      "field_sources": {
+        "what_it_is": "manual",
+        "best_for": "manual",
+        "why_it_stands_out": "manual",
+        "routine_fit": "manual",
+        "watchouts": "manual",
+        "texture_finish": "manual",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Round Lab Soybean Panthenol Toner",
+        "subtitle": "Barrier-Support Toner",
+        "highlight": "Soybean + panthenol barrier care",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Barrier-Support Toner",
+        "highlight_candidate": "Soybean + panthenol barrier care",
+        "proof_badge_candidate": "",
+        "intro_candidate": "A calming toner for hydration and barrier support."
+      },
+      "pivota_insights": {
+        "what_it_is": "A soothing toner with black soybean extract and panthenol to replenish hydration while supporting a weakened skin barrier.",
+        "why_it_stands_out": [
+          {
+            "headline": "Soybean plus panthenol barrier care",
+            "body": "Keeps the toner grounded in calming barrier support instead of a generic prep-step bucket."
+          },
+          {
+            "headline": "Hydrating calm-first toner layer",
+            "body": "Frames it as an easy first hydration step for skin that feels weakened or reactive."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_356317cf3d4fdc55a8656b5e",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_356317cf3d4fdc55a8656b5e"
+      },
+      "title": "Round Lab Pine Calming Cica Toner Pad",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Strict human QA override: the pine toner pad draft still read like a vague prep product, so the rewrite makes the pad format and texture-smoothing use case explicit.",
+      "selected_mode": "manual_override",
+      "fail_reasons": [
+        "missing_candidate"
+      ],
+      "field_sources": {
+        "what_it_is": "manual",
+        "best_for": "manual",
+        "why_it_stands_out": "manual",
+        "routine_fit": "manual",
+        "watchouts": "manual",
+        "texture_finish": "manual",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Round Lab Pine Calming Cica Toner Pad",
+        "subtitle": "Calming Toner Pads",
+        "highlight": "Calm + texture-refining pads",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Calming Toner Pads",
+        "highlight_candidate": "Calm + texture-refining pads",
+        "proof_badge_candidate": "",
+        "intro_candidate": "A pine-led toner pad for rough texture and daily calming care."
+      },
+      "pivota_insights": {
+        "what_it_is": "Pre-soaked toner pads with pine-derived calming care that smooth rough texture while clearing leftover buildup.",
+        "why_it_stands_out": [
+          {
+            "headline": "Pine calming pad format",
+            "body": "Keeps the product anchored as a soothing toner pad instead of a generic prep step."
+          },
+          {
+            "headline": "Texture-smoothing swipe step",
+            "body": "Frames the pads around rough-texture cleanup and pore-clogging residue removal in one swipe."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_8f57ee8b842f3dcd53f8a13b",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_8f57ee8b842f3dcd53f8a13b"
+      },
+      "title": "Round Lab 1025 Dokdo Toner",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Strict human QA override: the Dokdo toner still carried vague seller copy and no usable routine framing, so the rewrite keeps the mineral-hydration toner role explicit.",
+      "selected_mode": "manual_override",
+      "fail_reasons": [
+        "missing_candidate"
+      ],
+      "field_sources": {
+        "what_it_is": "manual",
+        "best_for": "manual",
+        "why_it_stands_out": "manual",
+        "routine_fit": "manual",
+        "watchouts": "manual",
+        "texture_finish": "manual",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Round Lab 1025 Dokdo Toner",
+        "subtitle": "Mineral Hydration Toner",
+        "highlight": "Deep seawater hydration",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Mineral Hydration Toner",
+        "highlight_candidate": "Deep seawater hydration",
+        "proof_badge_candidate": "",
+        "intro_candidate": "A watery toner that lightly smooths while replenishing hydration."
+      },
+      "pivota_insights": {
+        "what_it_is": "A watery toner with deep seawater minerals that lightly smooths texture while replenishing hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Deep seawater mineral base",
+            "body": "Keeps the toner grounded in its mineral-rich hydration story instead of vague merchant taglines."
+          },
+          {
+            "headline": "Hydration plus light exfoliation",
+            "body": "Frames the formula as a toner step that pairs moisture replenishment with mild surface smoothing."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_c4f616d3d67c75a6b0d4ae27",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_c4f616d3d67c75a6b0d4ae27"
+      },
+      "title": "Round Lab Camellia Deep Collagen Milky PDRN Toner 150ml",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Strict human QA override: the milky collagen toner lacked usable card copy, so the rewrite makes the milky format and bounce-support angle explicit.",
+      "selected_mode": "manual_override",
+      "fail_reasons": [
+        "missing_candidate"
+      ],
+      "field_sources": {
+        "what_it_is": "manual",
+        "best_for": "manual",
+        "why_it_stands_out": "manual",
+        "routine_fit": "manual",
+        "watchouts": "manual",
+        "texture_finish": "manual",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Round Lab Camellia Deep Collagen Milky PDRN Toner 150ml",
+        "subtitle": "Milky Collagen Toner",
+        "highlight": "Milky hydration + bounce support",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Milky Collagen Toner",
+        "highlight_candidate": "Milky hydration + bounce support",
+        "proof_badge_candidate": "",
+        "intro_candidate": "A camellia-and-collagen toner for cushioned daily hydration."
+      },
+      "pivota_insights": {
+        "what_it_is": "A milky toner combining camellia extract, collagen, and PDRN for cushioning hydration and smoother-looking bounce.",
+        "why_it_stands_out": [
+          {
+            "headline": "Milky hydration texture",
+            "body": "Keeps the toner grounded as a milky first layer rather than an undefined prep product."
+          },
+          {
+            "headline": "Camellia + collagen + PDRN blend",
+            "body": "Centers the formula around a cushioning hydration mix aimed at smoother, more supple-looking skin."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_4be7b0a729d4cbfef94683dc",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_4be7b0a729d4cbfef94683dc"
+      },
+      "title": "Round Lab Mugwort Calming Toner",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Strict human QA override: the mugwort toner still over-compressed into a weak best-for tag, so the rewrite restores the calming toner use case.",
+      "selected_mode": "manual_override",
+      "fail_reasons": [
+        "missing_candidate"
+      ],
+      "field_sources": {
+        "what_it_is": "manual",
+        "best_for": "manual",
+        "why_it_stands_out": "manual",
+        "routine_fit": "manual",
+        "watchouts": "manual",
+        "texture_finish": "manual",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Round Lab Mugwort Calming Toner",
+        "subtitle": "Soothing Mugwort Toner",
+        "highlight": "Mugwort calming hydration",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Soothing Mugwort Toner",
+        "highlight_candidate": "Mugwort calming hydration",
+        "proof_badge_candidate": "",
+        "intro_candidate": "A fresh, water-light toner for irritated skin."
+      },
+      "pivota_insights": {
+        "what_it_is": "A water-light toner built around mugwort extract to calm irritated skin while adding lightweight hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Mugwort-led calming focus",
+            "body": "Keeps the toner centered on mugwort's soothing role instead of a generic tone-evening claim."
+          },
+          {
+            "headline": "Fresh water-light texture",
+            "body": "Frames it as an easy first hydration layer for irritated skin that does not want a heavier toner feel."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_a22f02d99b3ce8b53f1a6be5",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_a22f02d99b3ce8b53f1a6be5"
+      },
+      "title": "Round Lab Soybean Nourishing Toner",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Strict human QA override: the soybean toner draft still leaked texture and size metadata into the card copy, so the rewrite keeps it as a nourishing toner with firmness support.",
+      "selected_mode": "manual_override",
+      "fail_reasons": [
+        "missing_candidate"
+      ],
+      "field_sources": {
+        "what_it_is": "manual",
+        "best_for": "manual",
+        "why_it_stands_out": "manual",
+        "routine_fit": "manual",
+        "watchouts": "manual",
+        "texture_finish": "manual",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Round Lab Soybean Nourishing Toner",
+        "subtitle": "Nourishing Toner",
+        "highlight": "Soybean nourishment + firmness",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Nourishing Toner",
+        "highlight_candidate": "Soybean nourishment + firmness",
+        "proof_badge_candidate": "",
+        "intro_candidate": "A watery toner that layers nourishment before your serum step."
+      },
+      "pivota_insights": {
+        "what_it_is": "A watery toner with black soybean extract and adenosine to layer moisture while supporting a firmer-looking complexion.",
+        "why_it_stands_out": [
+          {
+            "headline": "Black soybean nourishment",
+            "body": "Keeps the toner grounded around black soybean nourishment instead of spilling raw merch metadata into the copy."
+          },
+          {
+            "headline": "Watery unscented layering step",
+            "body": "Frames it as a flexible nourishing toner that layers easily before serum or moisturizer."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_7731f99b32ebe69a4cd5680d",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_7731f99b32ebe69a4cd5680d"
+      },
+      "title": "Haruharu Wonder Botanical 2GF Wonderful Ampoule",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Strict human QA override: the botanical ampoule still collapsed into placeholder copy, so the rewrite keeps it as a conservative serum-step definition anchored to the title.",
+      "selected_mode": "manual_override",
+      "fail_reasons": [
+        "missing_candidate"
+      ],
+      "field_sources": {
+        "what_it_is": "manual",
+        "best_for": "manual",
+        "why_it_stands_out": "manual",
+        "routine_fit": "manual",
+        "watchouts": "manual",
+        "texture_finish": "baseline",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Haruharu Wonder Botanical 2GF Wonderful Ampoule",
+        "subtitle": "Botanical Ampoule Serum",
+        "highlight": "Botanical 2GF treatment step",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Botanical Ampoule Serum",
+        "highlight_candidate": "Botanical 2GF treatment step",
+        "proof_badge_candidate": "",
+        "intro_candidate": "A concentrated ampoule serum for serum-step layering."
+      },
+      "pivota_insights": {
+        "what_it_is": "An ampoule serum centered around a botanical 2GF complex for concentrated treatment layering.",
+        "why_it_stands_out": [
+          {
+            "headline": "Botanical 2GF serum focus",
+            "body": "Keeps the product anchored to its botanical 2GF ampoule positioning instead of placeholder seller copy."
+          },
+          {
+            "headline": "Concentrated ampoule format",
+            "body": "Frames it as a treatment-layer serum rather than a generic undefined product."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_12f1b1cb96647a81fb237ab0",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_12f1b1cb96647a81fb237ab0"
+      },
+      "title": "Haruharu Wonder Top-to-Toe SPF Veil SPF 50+/PA++++",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [],
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "gemini",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Haruharu Wonder Top-to-Toe SPF Veil SPF 50+/PA++++",
+        "subtitle": "Daily Sunscreen",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Daily Sunscreen",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": "Key Features Easy application: a lightweight lotion glides on effortlessly."
+      },
+      "pivota_insights": {
+        "what_it_is": "A broad-spectrum chemical sunscreen lotion for the face and body providing SPF 50+ PA++++ protection. It incorporates three types of hyaluronic acid to hydrate the skin while leaving a transparent, glowing finish.",
+        "why_it_stands_out": [
+          {
+            "headline": "Integrates three weights of hyaluronic acid to deliver multi-depth hydration alongside high-factor UV protection.",
+            "body": "Integrates three weights of hyaluronic acid to deliver multi-depth hydration alongside high-factor UV protection."
+          },
+          {
+            "headline": "The chemical filter blend ensures a transparent finish on all skin tones while providing a non-sticky, healthy glow.",
+            "body": "The chemical filter blend ensures a transparent finish on all skin tones while providing a non-sticky, healthy glow."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_e703e9fd8af228189d2caa0a",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_e703e9fd8af228189d2caa0a"
+      },
+      "title": "Haruharu Wonder Peptide Glowy Balm",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Strict human QA override: the peptide balm was still stuck as a generic product bucket, so the rewrite defines it as lip care with a glowy finish.",
+      "selected_mode": "manual_override",
+      "fail_reasons": [
+        "missing_candidate"
+      ],
+      "field_sources": {
+        "what_it_is": "manual",
+        "best_for": "manual",
+        "why_it_stands_out": "manual",
+        "routine_fit": "manual",
+        "watchouts": "manual",
+        "texture_finish": "manual",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Haruharu Wonder Peptide Glowy Balm",
+        "subtitle": "Peptide Lip Balm",
+        "highlight": "Peptide lip shine",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Peptide Lip Balm",
+        "highlight_candidate": "Peptide lip shine",
+        "proof_badge_candidate": "",
+        "intro_candidate": "A conditioning lip balm with a glossy finish."
+      },
+      "pivota_insights": {
+        "what_it_is": "A peptide lip balm made to condition lips while leaving a glossy finish.",
+        "why_it_stands_out": [
+          {
+            "headline": "Peptide lip treatment angle",
+            "body": "Keeps the balm grounded as lip care instead of an undefined generic product."
+          },
+          {
+            "headline": "Glossy balm finish",
+            "body": "Frames the product around conditioning care with a glowy look rather than a heavy treatment mask feel."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_e0221b1333bf64e7c738376c",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_e0221b1333bf64e7c738376c"
+      },
+      "title": "Haruharu Wonder Bakuchiol Eye Cream / Unscented",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Strict human QA override: the bakuchiol eye cream still failed basic category and routine grounding, so the rewrite turns it into a clean eye-treatment definition.",
+      "selected_mode": "manual_override",
+      "fail_reasons": [
+        "missing_candidate"
+      ],
+      "field_sources": {
+        "what_it_is": "manual",
+        "best_for": "manual",
+        "why_it_stands_out": "manual",
+        "routine_fit": "manual",
+        "watchouts": "manual",
+        "texture_finish": "manual",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Haruharu Wonder Bakuchiol Eye Cream / Unscented",
+        "subtitle": "Bakuchiol Eye Cream",
+        "highlight": "Unscented eye-area care",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Bakuchiol Eye Cream",
+        "highlight_candidate": "Unscented eye-area care",
+        "proof_badge_candidate": "",
+        "intro_candidate": "A fragrance-free eye cream built for a daily treatment step."
+      },
+      "pivota_insights": {
+        "what_it_is": "An unscented eye cream built around bakuchiol for a gentle eye-area treatment step.",
+        "why_it_stands_out": [
+          {
+            "headline": "Bakuchiol-centered eye care",
+            "body": "Keeps the formula grounded as an eye treatment instead of letting it drift into a face-moisturizer bucket."
+          },
+          {
+            "headline": "Unscented eye-area format",
+            "body": "Makes the fragrance-free eye cream positioning explicit for gentler daily use."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_46d03792241b2eb743cdcaa3",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_46d03792241b2eb743cdcaa3"
+      },
+      "title": "Haruharu Wonder Night Knight Retinol Serum / Unscented",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [],
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "gemini",
+        "texture_finish": "baseline",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Haruharu Wonder Night Knight Retinol Serum / Unscented",
+        "subtitle": "Treatment Serum",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Treatment Serum",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": "Notification: This product is available for ship after Apr."
+      },
+      "pivota_insights": {
+        "what_it_is": "A night serum formulated with a blend of microencapsulated retinol and bakuchiol to support skin renewal while minimizing irritation.",
+        "why_it_stands_out": [
+          {
+            "headline": "Pairs 0.08% microencapsulated retinol with 1% bakuchiol to provide effective resurfacing with a lower irritation profile",
+            "body": "Pairs 0.08% microencapsulated retinol with 1% bakuchiol to provide effective resurfacing with a lower irritation profile than traditional retinoids."
+          },
+          {
+            "headline": "Specifically engineered to provide the benefits of skin renewal for those who typically struggle with standard vitamin A",
+            "body": "Specifically engineered to provide the benefits of skin renewal for those who typically struggle with standard vitamin A treatments."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_f0a1dd59c785fdee1499a3e0",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_f0a1dd59c785fdee1499a3e0"
+      },
+      "title": "Haruharu Wonder 3% PHA Gentle Liquid Exfoliating Serum",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [],
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "gemini",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Haruharu Wonder 3% PHA Gentle Liquid Exfoliating Serum",
+        "subtitle": "Treatment Serum",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Treatment Serum",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": "Orange water from fresh oranges recharges your skin with vit…."
+      },
+      "pivota_insights": {
+        "what_it_is": "A liquid serum that uses 3% PHA to clear pores and blackheads. It is formulated with centella and orange water to soothe and hydrate sensitive skin during exfoliation.",
+        "why_it_stands_out": [
+          {
+            "headline": "Uses 3% PHA to clear blackheads and refine pores with a larger molecular structure that minimizes irritation for sensiti",
+            "body": "Uses 3% PHA to clear blackheads and refine pores with a larger molecular structure that minimizes irritation for sensitive skin."
+          },
+          {
+            "headline": "Integrates centella and orange water to calm the skin and provide a vitamin-rich hydration boost during the exfoliation ",
+            "body": "Integrates centella and orange water to calm the skin and provide a vitamin-rich hydration boost during the exfoliation process."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_c77c0794a910bcf9efa4f542",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_c77c0794a910bcf9efa4f542"
+      },
+      "title": "Haruharu Wonder 10 Hyaluronic Cream (Unscented)",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [],
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "baseline",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Haruharu Wonder 10 Hyaluronic Cream (Unscented)",
+        "subtitle": "Daily Moisturizer",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Daily Moisturizer",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": ""
+      },
+      "pivota_insights": {
+        "what_it_is": "A moisturizer formulated with fermented Korean black rice and bamboo shoot bark extracts to provide deep hydration and nourishment.",
+        "why_it_stands_out": [
+          {
+            "headline": "Combines 100% Korean-produced fermented black rice and bamboo shoot bark extracts to deliver nutrients deep into the ski",
+            "body": "Combines 100% Korean-produced fermented black rice and bamboo shoot bark extracts to deliver nutrients deep into the skin."
+          },
+          {
+            "headline": "Features an increased concentration of Safflower Seed Oil and Evening Primrose Oil to promote a smoother, plumper skin t",
+            "body": "Features an increased concentration of Safflower Seed Oil and Evening Primrose Oil to promote a smoother, plumper skin texture."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_a986eef875b6895d09b00c83",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_a986eef875b6895d09b00c83"
+      },
+      "title": "Beauty of Joseon Radiance Cleansing Balm",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [],
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "gemini",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Beauty of Joseon Radiance Cleansing Balm",
+        "subtitle": "Daily Sunscreen",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Daily Sunscreen",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": "Even the most stubborn waterproof mascara is no match for our buttery cleansing balm."
+      },
+      "pivota_insights": {
+        "what_it_is": "A buttery cleansing balm formulated with rice and grain extracts. It dissolves waterproof makeup, sunscreen, and daily impurities while remaining gentle on the skin.",
+        "why_it_stands_out": [
+          {
+            "headline": "Rice and grain extract infusion",
+            "body": "Rice and grain extract infusion"
+          },
+          {
+            "headline": "High-efficacy removal of stubborn waterproof formulas",
+            "body": "High-efficacy removal of stubborn waterproof formulas"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_f507ba8a55c82c5f3c5536a7",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_f507ba8a55c82c5f3c5536a7"
+      },
+      "title": "Beauty of Joseon Daily Tinted Fluid Sunscreen LP110",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [],
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "gemini",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Beauty of Joseon Daily Tinted Fluid Sunscreen LP110",
+        "subtitle": "Daily Sunscreen",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Daily Sunscreen",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": "Tinted fluid sunscreen that provides sheer, natural coverage."
+      },
+      "pivota_insights": {
+        "what_it_is": "A tinted fluid sunscreen that provides sheer, natural coverage while balancing hydration and oil control.",
+        "why_it_stands_out": [
+          {
+            "headline": "Hybrid finish that balances hydration and control to avoid being overly dewy or matte",
+            "body": "Hybrid finish that balances hydration and control to avoid being overly dewy or matte"
+          },
+          {
+            "headline": "Silky fluid texture designed for seamless blending into the skin",
+            "body": "Silky fluid texture designed for seamless blending into the skin"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_6aa235f9b1977ce419f179c1",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_6aa235f9b1977ce419f179c1"
+      },
+      "title": "Beauty of Joseon Daily Tinted Fluid Sunscreen MY220",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [],
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "gemini",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Beauty of Joseon Daily Tinted Fluid Sunscreen MY220",
+        "subtitle": "Daily Sunscreen",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Daily Sunscreen",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": "Lightweight tinted sunscreen that provides sheer, natural coverage."
+      },
+      "pivota_insights": {
+        "what_it_is": "A lightweight tinted sunscreen that provides sheer, natural coverage with a balanced finish that is neither overly dewy nor matte.",
+        "why_it_stands_out": [
+          {
+            "headline": "Formula angle",
+            "body": "Meet the Tint + SPF You’ll Actually Wear Naturally radiant, this tinted fluid sunscreen celebrates your skin’s beauty with the perfect balance of hydration and control—not too dewy, not too matte."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_3a23aa3e20cea405b0d7fed0",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_3a23aa3e20cea405b0d7fed0"
+      },
+      "title": "Beauty of Joseon Daily Tinted Fluid Sunscreen",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [],
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "gemini",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Beauty of Joseon Daily Tinted Fluid Sunscreen",
+        "subtitle": "Daily Sunscreen",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Daily Sunscreen",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": "A lightweight, tinted fluid sunscreen that provides sheer, natural coverage."
+      },
+      "pivota_insights": {
+        "what_it_is": "A lightweight, tinted fluid sunscreen that provides sheer, natural coverage. It balances hydration and oil control for a radiant finish that is neither too dewy nor too matte.",
+        "why_it_stands_out": [
+          {
+            "headline": "Integrates daily UV defense with a sheer tint for a unified, skin-like finish.",
+            "body": "Integrates daily UV defense with a sheer tint for a unified, skin-like finish."
+          },
+          {
+            "headline": "Engineered to balance hydration and oil control, resulting in a radiant finish that avoids extreme dewiness or flatness.",
+            "body": "Engineered to balance hydration and oil control, resulting in a radiant finish that avoids extreme dewiness or flatness."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_cde60aaf3970cd5c4ddb5e78",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_cde60aaf3970cd5c4ddb5e78"
+      },
+      "title": "Beauty of Joseon Day Dew Sunscreen",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [],
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "gemini",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Beauty of Joseon Day Dew Sunscreen",
+        "subtitle": "Daily Sunscreen",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Daily Sunscreen",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": "Our most innovative SPF yet."
+      },
+      "pivota_insights": {
+        "what_it_is": "A lightweight sunscreen that shields against UV rays while providing soothing and hydrating benefits.",
+        "why_it_stands_out": [
+          {
+            "headline": "Skincare-infused formula that combines UV protection with soothing and hydrating properties.",
+            "body": "Skincare-infused formula that combines UV protection with soothing and hydrating properties."
+          },
+          {
+            "headline": "Formulated for compatibility with makeup application.",
+            "body": "Formulated for compatibility with makeup application."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_125e6b88cd78fe243b4f19e1",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_125e6b88cd78fe243b4f19e1"
+      },
+      "title": "Beauty of Joseon Daily Tinted Fluid Sunscreen DY300",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [
+        "weak_highlights"
+      ],
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "baseline",
+        "routine_fit": "gemini",
+        "watchouts": "gemini",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Beauty of Joseon Daily Tinted Fluid Sunscreen DY300",
+        "subtitle": "Daily Sunscreen",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Daily Sunscreen",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": "A lightweight tinted sunscreen that provides sheer coverage with a balanced finish."
+      },
+      "pivota_insights": {
+        "what_it_is": "A lightweight tinted sunscreen that provides sheer coverage with a balanced finish.",
+        "why_it_stands_out": [
+          {
+            "headline": "Formula angle",
+            "body": "Meet the Tint + SPF You’ll Actually Wear Naturally radiant, this tinted fluid sunscreen celebrates your skin’s beauty with the perfect balance of hydration and control—not too dewy, not too matte."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_30a00ffd89b3270dbca1967f",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_30a00ffd89b3270dbca1967f"
+      },
+      "title": "Beauty of Joseon Daily Tinted Fluid Sunscreen MP200",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [],
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "gemini",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Beauty of Joseon Daily Tinted Fluid Sunscreen MP200",
+        "subtitle": "Daily Sunscreen",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Daily Sunscreen",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": "A tinted fluid sunscreen that provides sheer, natural coverage with a balanced finish."
+      },
+      "pivota_insights": {
+        "what_it_is": "A tinted fluid sunscreen that provides sheer, natural coverage with a balanced finish. It features a silky, lightweight texture designed to blend seamlessly into the skin.",
+        "why_it_stands_out": [
+          {
+            "headline": "Balanced finish that is neither overly dewy nor matte",
+            "body": "Balanced finish that is neither overly dewy nor matte"
+          },
+          {
+            "headline": "Silky fluid texture for seamless blending",
+            "body": "Silky fluid texture for seamless blending"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_364d79199298fc5e2bc460fd",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_364d79199298fc5e2bc460fd"
+      },
+      "title": "Beauty of Joseon Apricot Blossom Peeling Gel",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [],
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "gemini",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Beauty of Joseon Apricot Blossom Peeling Gel",
+        "subtitle": "Cleansing Product",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Cleansing Product",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": "Use it on your face + body to reveal naturally radiant results."
+      },
+      "pivota_insights": {
+        "what_it_is": "A gel-based cleanser for the face and body that utilizes plum blossom water and plant-derived exfoliants to refine skin texture.",
+        "why_it_stands_out": [
+          {
+            "headline": "Dual-use formula designed for both facial and body application to address texture concerns.",
+            "body": "Dual-use formula designed for both facial and body application to address texture concerns."
+          },
+          {
+            "headline": "Combines plum blossom water with plant-based physical exfoliants for a smoothing effect.",
+            "body": "Combines plum blossom water with plant-based physical exfoliants for a smoothing effect."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_f84eb0354d9578e047520615",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_f84eb0354d9578e047520615"
+      },
+      "title": "Beauty of Joseon Relief Sun Aqua-Fresh : Rice + B5 (SPF50+ PA++++)",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [],
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "gemini",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Beauty of Joseon Relief Sun Aqua-Fresh : Rice + B5 (SPF50+ PA++++)",
+        "subtitle": "Daily Sunscreen",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Daily Sunscreen",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": "For those who loved our Relief Sun but found it a bit too rich."
+      },
+      "pivota_insights": {
+        "what_it_is": "An ultra-lightweight fluid sunscreen offering SPF50+ PA++++ protection. It is formulated with rice seed water and B5 to provide refreshing hydration as a lighter alternative to richer creams.",
+        "why_it_stands_out": [
+          {
+            "headline": "Combines SPF50+ PA++++ UV protection with a hydrating blend of rice seed water and B5",
+            "body": "Combines SPF50+ PA++++ UV protection with a hydrating blend of rice seed water and B5"
+          },
+          {
+            "headline": "Formulated as a fluid, ultra-lightweight alternative to the brand's original Relief Sun",
+            "body": "Formulated as a fluid, ultra-lightweight alternative to the brand's original Relief Sun"
+          }
+        ]
+      }
+    }
+  ]
+}

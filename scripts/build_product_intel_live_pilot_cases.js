@@ -717,10 +717,14 @@ async function fetchSearchCandidates(gatewayUrl, query, limit) {
         query,
         limit,
         in_stock_only: true,
+        catalog_surface: 'beauty',
+        commerce_surface: 'beauty',
       },
     },
     metadata: {
       source: 'product_intel_live_pilot_builder',
+      catalog_surface: 'beauty',
+      commerce_surface: 'beauty',
     },
   };
 

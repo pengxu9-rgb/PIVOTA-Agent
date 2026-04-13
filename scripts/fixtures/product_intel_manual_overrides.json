@@ -46002,5 +46002,739 @@
     },
     "external_highlight_review_status": "rewrite",
     "external_review_batch": "manual_discovery_browse_batch30_reviewed_2026_04_13"
+  },
+  "live_ext_ac8e55c3778eeb2ce81284ab": {
+    "notes": "Strict human QA override: the black rice toner draft still carried size metadata and an empty routine, so the rewrite normalizes it into a clean daily hydration toner.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Hydrating toner",
+        "body": "A lightweight toner built around black rice and hyaluronic hydration with a fermented formula for daily skin prep."
+      },
+      "best_for": [
+        {
+          "tag": "dehydration",
+          "label": "Dehydrated skin needing a light first layer",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "daily_prep",
+          "label": "Daily toner-step hydration routines",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Fermented black rice hydration",
+          "body": "Keeps the toner grounded around black rice and a fermented hydration story instead of noisy size metadata.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Light daily prep texture",
+          "body": "Positions it as a refreshing toner layer that can slot in before serum or moisturizer without heaviness.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "toner",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use after cleansing before serum or moisturizer."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "watery",
+      "finish": "fresh",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use after cleansing before serum or moisturizer."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Hydrating toner",
+      "highlight": "Fermented black rice hydration",
+      "intro": "A lightweight toner for daily hydration and skin prep."
+    },
+    "search_card": {
+      "compact_candidate": "Hydrating toner",
+      "highlight_candidate": "Fermented black rice hydration",
+      "intro_candidate": "A lightweight toner for daily hydration and skin prep."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_search_clean44_reviewed_2026_04_13"
+  },
+  "live_ext_356317cf3d4fdc55a8656b5e": {
+    "notes": "Strict human QA override: the pine toner pad draft still read like a vague prep product, so the rewrite makes the pad format and texture-smoothing use case explicit.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Calming toner pads",
+        "body": "Pre-soaked toner pads with pine-derived calming care that smooth rough texture while clearing leftover buildup."
+      },
+      "best_for": [
+        {
+          "tag": "rough_texture",
+          "label": "Rough or congested skin texture",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "sensitive_breakout_prone",
+          "label": "Sensitive or breakout-prone skin needing a gentler pad step",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Pine calming pad format",
+          "body": "Keeps the product anchored as a soothing toner pad instead of a generic prep step.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Texture-smoothing swipe step",
+          "body": "Frames the pads around rough-texture cleanup and pore-clogging residue removal in one swipe.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "toner",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Swipe on clean skin after cleansing, then follow with serum or moisturizer."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "exfoliation",
+          "label": "Reduce frequency if skin feels sensitized or over-exfoliated.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "pre-soaked pad",
+      "finish": "fresh",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Swipe on clean skin after cleansing, then follow with serum or moisturizer."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Calming toner pads",
+      "highlight": "Calm + texture-refining pads",
+      "intro": "A pine-led toner pad for rough texture and daily calming care."
+    },
+    "search_card": {
+      "compact_candidate": "Calming toner pads",
+      "highlight_candidate": "Calm + texture-refining pads",
+      "intro_candidate": "A pine-led toner pad for rough texture and daily calming care."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_search_clean44_reviewed_2026_04_13"
+  },
+  "live_ext_8f57ee8b842f3dcd53f8a13b": {
+    "notes": "Strict human QA override: the Dokdo toner still carried vague seller copy and no usable routine framing, so the rewrite keeps the mineral-hydration toner role explicit.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Mineral hydration toner",
+        "body": "A watery toner with deep seawater minerals that lightly smooths texture while replenishing hydration."
+      },
+      "best_for": [
+        {
+          "tag": "dehydration",
+          "label": "Dehydrated skin needing a light toner layer",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "rough_texture",
+          "label": "Skin needing gentle texture smoothing",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Deep seawater mineral base",
+          "body": "Keeps the toner grounded in its mineral-rich hydration story instead of vague merchant taglines.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Hydration plus light exfoliation",
+          "body": "Frames the formula as a toner step that pairs moisture replenishment with mild surface smoothing.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "toner",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use after cleansing before serum or moisturizer."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "exfoliation",
+          "label": "Scale back if skin is already irritated or over-exfoliated.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "watery",
+      "finish": "fresh",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use after cleansing before serum or moisturizer."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Mineral hydration toner",
+      "highlight": "Deep seawater hydration",
+      "intro": "A watery toner that lightly smooths while replenishing hydration."
+    },
+    "search_card": {
+      "compact_candidate": "Mineral hydration toner",
+      "highlight_candidate": "Deep seawater hydration",
+      "intro_candidate": "A watery toner that lightly smooths while replenishing hydration."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_search_clean44_reviewed_2026_04_13"
+  },
+  "live_ext_c4f616d3d67c75a6b0d4ae27": {
+    "notes": "Strict human QA override: the milky collagen toner lacked usable card copy, so the rewrite makes the milky format and bounce-support angle explicit.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Milky collagen toner",
+        "body": "A milky toner combining camellia extract, collagen, and PDRN for cushioning hydration and smoother-looking bounce."
+      },
+      "best_for": [
+        {
+          "tag": "dehydration",
+          "label": "Dry or dehydrated skin",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "loss_of_bounce",
+          "label": "Skin needing a softer, more supple look",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Milky hydration texture",
+          "body": "Keeps the toner grounded as a milky first layer rather than an undefined prep product.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Camellia + collagen + PDRN blend",
+          "body": "Centers the formula around a cushioning hydration mix aimed at smoother, more supple-looking skin.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "toner",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use after cleansing before serum or moisturizer."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "milky",
+      "finish": "cushioned",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use after cleansing before serum or moisturizer."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Milky collagen toner",
+      "highlight": "Milky hydration + bounce support",
+      "intro": "A camellia-and-collagen toner for cushioned daily hydration."
+    },
+    "search_card": {
+      "compact_candidate": "Milky collagen toner",
+      "highlight_candidate": "Milky hydration + bounce support",
+      "intro_candidate": "A camellia-and-collagen toner for cushioned daily hydration."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_search_clean44_reviewed_2026_04_13"
+  },
+  "live_ext_4be7b0a729d4cbfef94683dc": {
+    "notes": "Strict human QA override: the mugwort toner still over-compressed into a weak best-for tag, so the rewrite restores the calming toner use case.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Soothing mugwort toner",
+        "body": "A water-light toner built around mugwort extract to calm irritated skin while adding lightweight hydration."
+      },
+      "best_for": [
+        {
+          "tag": "sensitivity",
+          "label": "Easily irritated skin",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "light_hydration",
+          "label": "Routines wanting a fresh, lightweight toner layer",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Mugwort-led calming focus",
+          "body": "Keeps the toner centered on mugwort's soothing role instead of a generic tone-evening claim.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Fresh water-light texture",
+          "body": "Frames it as an easy first hydration layer for irritated skin that does not want a heavier toner feel.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "toner",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use after cleansing before serum or moisturizer."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "watery",
+      "finish": "fresh",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use after cleansing before serum or moisturizer."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Soothing mugwort toner",
+      "highlight": "Mugwort calming hydration",
+      "intro": "A fresh, water-light toner for irritated skin."
+    },
+    "search_card": {
+      "compact_candidate": "Soothing mugwort toner",
+      "highlight_candidate": "Mugwort calming hydration",
+      "intro_candidate": "A fresh, water-light toner for irritated skin."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_search_clean44_reviewed_2026_04_13"
+  },
+  "live_ext_a22f02d99b3ce8b53f1a6be5": {
+    "notes": "Strict human QA override: the soybean toner draft still leaked texture and size metadata into the card copy, so the rewrite keeps it as a nourishing toner with firmness support.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Nourishing toner",
+        "body": "A watery toner with black soybean extract and adenosine to layer moisture while supporting a firmer-looking complexion."
+      },
+      "best_for": [
+        {
+          "tag": "dehydration",
+          "label": "Dry or dehydrated skin",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "loss_of_bounce",
+          "label": "Skin needing a more nourished, firmer feel",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Black soybean nourishment",
+          "body": "Keeps the toner grounded around black soybean nourishment instead of spilling raw merch metadata into the copy.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Watery unscented layering step",
+          "body": "Frames it as a flexible nourishing toner that layers easily before serum or moisturizer.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "toner",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use after cleansing before serum or moisturizer."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "watery",
+      "finish": "fresh",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use after cleansing before serum or moisturizer."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Nourishing toner",
+      "highlight": "Soybean nourishment + firmness",
+      "intro": "A watery toner that layers nourishment before your serum step."
+    },
+    "search_card": {
+      "compact_candidate": "Nourishing toner",
+      "highlight_candidate": "Soybean nourishment + firmness",
+      "intro_candidate": "A watery toner that layers nourishment before your serum step."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_search_clean44_reviewed_2026_04_13"
+  },
+  "live_ext_e703e9fd8af228189d2caa0a": {
+    "notes": "Strict human QA override: the peptide balm was still stuck as a generic product bucket, so the rewrite defines it as lip care with a glowy finish.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Peptide lip balm",
+        "body": "A peptide lip balm made to condition lips while leaving a glossy finish."
+      },
+      "best_for": [
+        {
+          "tag": "dry_lips",
+          "label": "Dry lips needing everyday conditioning",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "glossy_finish",
+          "label": "Lip routines wanting shine with balm comfort",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Peptide lip treatment angle",
+          "body": "Keeps the balm grounded as lip care instead of an undefined generic product.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Glossy balm finish",
+          "body": "Frames the product around conditioning care with a glowy look rather than a heavy treatment mask feel.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "lip care",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply on bare lips as the balm step and reapply as needed."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "balm",
+      "finish": "glowy",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Apply on bare lips as the balm step and reapply as needed."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Peptide lip balm",
+      "highlight": "Peptide lip shine",
+      "intro": "A conditioning lip balm with a glossy finish."
+    },
+    "search_card": {
+      "compact_candidate": "Peptide lip balm",
+      "highlight_candidate": "Peptide lip shine",
+      "intro_candidate": "A conditioning lip balm with a glossy finish."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_search_clean44_reviewed_2026_04_13"
+  },
+  "live_ext_04dab6a642edac20a33ccae6": {
+    "notes": "Strict human QA override: the Dokdo toner pad edge case still lacked publishable card framing, so the rewrite restores the soothing exfoliating pad use case and routine step.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Mineral toner pads",
+        "body": "Pre-soaked toner pads with deep seawater minerals plus panthenol, allantoin, and betaine for mild exfoliation and soothing hydration."
+      },
+      "best_for": [
+        {
+          "tag": "rough_texture",
+          "label": "Rough skin texture needing a gentler pad step",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "dehydration",
+          "label": "Skin wanting exfoliation without losing hydration",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Deep seawater plus soothing humectants",
+          "body": "Keeps the pads grounded in a mineral-and-soothing blend rather than a generic prep label.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Swipe-and-prep exfoliating pad",
+          "body": "Frames the product as a quick toner pad for texture smoothing before the rest of the routine.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "toner",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Swipe on clean skin after cleansing, then follow with serum or moisturizer."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "exfoliation",
+          "label": "Reduce frequency if skin is already sensitized or over-exfoliated.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "pre-soaked pad",
+      "finish": "fresh",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Swipe on clean skin after cleansing, then follow with serum or moisturizer."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Mineral toner pads",
+      "highlight": "Soothing exfoliating pads",
+      "intro": "A toner pad that smooths texture while keeping skin comfortable."
+    },
+    "search_card": {
+      "compact_candidate": "Mineral toner pads",
+      "highlight_candidate": "Soothing exfoliating pads",
+      "intro_candidate": "A toner pad that smooths texture while keeping skin comfortable."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_search_clean44_reviewed_2026_04_13"
+  },
+  "live_ext_267205e8964dd5ccf73f7232": {
+    "notes": "Strict human QA override: the soybean panthenol toner still had empty routine framing and missing card copy, so the rewrite makes the barrier-support toner role explicit.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Barrier-support toner",
+        "body": "A soothing toner with black soybean extract and panthenol to replenish hydration while supporting a weakened skin barrier."
+      },
+      "best_for": [
+        {
+          "tag": "sensitivity",
+          "label": "Sensitive or easily stressed skin",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "barrier_support",
+          "label": "Barrier-focused hydration routines",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Soybean plus panthenol barrier care",
+          "body": "Keeps the toner grounded in calming barrier support instead of a generic prep-step bucket.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Hydrating calm-first toner layer",
+          "body": "Frames it as an easy first hydration step for skin that feels weakened or reactive.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "toner",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use after cleansing before serum or moisturizer."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "watery",
+      "finish": "fresh",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use after cleansing before serum or moisturizer."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Barrier-support toner",
+      "highlight": "Soybean + panthenol barrier care",
+      "intro": "A calming toner for hydration and barrier support."
+    },
+    "search_card": {
+      "compact_candidate": "Barrier-support toner",
+      "highlight_candidate": "Soybean + panthenol barrier care",
+      "intro_candidate": "A calming toner for hydration and barrier support."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_search_clean44_reviewed_2026_04_13"
+  },
+  "live_ext_7731f99b32ebe69a4cd5680d": {
+    "notes": "Strict human QA override: the botanical ampoule still collapsed into placeholder copy, so the rewrite keeps it as a conservative serum-step definition anchored to the title.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Botanical ampoule serum",
+        "body": "An ampoule serum centered around a botanical 2GF complex for concentrated treatment layering."
+      },
+      "best_for": [
+        {
+          "tag": "treatment_serum",
+          "label": "Routines wanting a dedicated treatment serum",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "serum_layering",
+          "label": "Users building a serum step before moisturizer",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Botanical 2GF serum focus",
+          "body": "Keeps the product anchored to its botanical 2GF ampoule positioning instead of placeholder seller copy.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Concentrated ampoule format",
+          "body": "Frames it as a treatment-layer serum rather than a generic undefined product.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply after toner before moisturizer."
+        ]
+      },
+      "watchouts": []
+    },
+    "shopping_card": {
+      "subtitle": "Botanical ampoule serum",
+      "highlight": "Botanical 2GF treatment step",
+      "intro": "A concentrated ampoule serum for serum-step layering."
+    },
+    "search_card": {
+      "compact_candidate": "Botanical ampoule serum",
+      "highlight_candidate": "Botanical 2GF treatment step",
+      "intro_candidate": "A concentrated ampoule serum for serum-step layering."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_search_clean44_reviewed_2026_04_13"
+  },
+  "live_ext_e0221b1333bf64e7c738376c": {
+    "notes": "Strict human QA override: the bakuchiol eye cream still failed basic category and routine grounding, so the rewrite turns it into a clean eye-treatment definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Bakuchiol eye cream",
+        "body": "An unscented eye cream built around bakuchiol for a gentle eye-area treatment step."
+      },
+      "best_for": [
+        {
+          "tag": "eye_care",
+          "label": "Routines wanting a dedicated eye-area treatment",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "fragrance_free",
+          "label": "Users avoiding fragrance around the eye area",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Bakuchiol-centered eye care",
+          "body": "Keeps the formula grounded as an eye treatment instead of letting it drift into a face-moisturizer bucket.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Unscented eye-area format",
+          "body": "Makes the fragrance-free eye cream positioning explicit for gentler daily use.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "eye treatment",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Tap a small amount around the eye area after toner or serum, then follow with moisturizer if needed."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "cream",
+      "finish": "soft",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Tap a small amount around the eye area after toner or serum, then follow with moisturizer if needed."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Bakuchiol eye cream",
+      "highlight": "Unscented eye-area care",
+      "intro": "A fragrance-free eye cream built for a daily treatment step."
+    },
+    "search_card": {
+      "compact_candidate": "Bakuchiol eye cream",
+      "highlight_candidate": "Unscented eye-area care",
+      "intro_candidate": "A fragrance-free eye cream built for a daily treatment step."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_search_clean44_reviewed_2026_04_13"
   }
 }

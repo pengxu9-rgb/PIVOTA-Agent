@@ -1,0 +1,209 @@
+[
+  {
+    "case_id": "live_ext_e7ef913b73f94eb5921023fe",
+    "notes": "Live pilot case sampled from public search results (Round Lab).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_e7ef913b73f94eb5921023fe"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_e7ef913b73f94eb5921023fe",
+      "brand": "Round Lab",
+      "title": "Camellia Deep Collagen Jelly Mask Cleanser",
+      "category": "Cleanser",
+      "description": "The Camellia Collagen Jelly Mask Cleanser is a dual-action formula that works as both a refreshing daily cleanser and a nourishing mask. With Jeju camellia flower extract, hydrolyzed collagen, and ceramide NP, this jelly-to-foam cleanser helps lift away impurities while replenishing skin’s elasticity and moisture.",
+      "tags": [
+        "Cleanser"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_46fff1a0ea1bace6f4520722",
+    "notes": "Live pilot case sampled from public search results (Round Lab).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_46fff1a0ea1bace6f4520722"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_46fff1a0ea1bace6f4520722",
+      "brand": "Round Lab",
+      "title": "Birch Moisturizing Sun Cushion SPF 50+",
+      "category": "Fragrance",
+      "description": "Birch Moisturizing Sun Cushion SPF50+ Hydrating Mineral Sunscreen in a Cushion Format Experience sun protection that soothes and hydrates. The Birch Moisturizing Sun Cushion is a lightweight mineral sunscreen that delivers SPF50+broad-spectrum defense against UVA, UVB, and blue light—all in a convenient, mess-free cus…",
+      "tags": [
+        "Fragrance"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_624a12ac9aec83ba278950e0",
+    "notes": "Live pilot case sampled from public search results (Round Lab).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_624a12ac9aec83ba278950e0"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_624a12ac9aec83ba278950e0",
+      "brand": "Round Lab",
+      "title": "1025 Dokdo Cream",
+      "category": "Moisturizer",
+      "description": "A fully packed perfect hydration to the skin. It's specialized in soothing care for tired and irritated skin and gives long-lasting hydration.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_04dab6a642edac20a33ccae6",
+    "notes": "Live pilot case sampled from public search results (Round Lab).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_04dab6a642edac20a33ccae6"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_04dab6a642edac20a33ccae6",
+      "brand": "Round Lab",
+      "title": "1025 Dokdo Toner Pad",
+      "category": "Toner",
+      "description": "This Dokdo Toner Pad is made with concentrated minerals from Ulleungdo's deep seawater, soaked in a relaxing cotton pad. It provides deep hydration, gentle exfoliation, and soothes your stressed-out skin with Panthenol, Allantoin, and Betaine.",
+      "tags": [
+        "Toner"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_267205e8964dd5ccf73f7232",
+    "notes": "Live pilot case sampled from public search results (Round Lab).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_267205e8964dd5ccf73f7232"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_267205e8964dd5ccf73f7232",
+      "brand": "Round Lab",
+      "title": "Soybean Panthenol Toner",
+      "category": "Toner",
+      "description": "The Soybean Panthenol Toner is a deeply soothing and barrier-supporting toner that replenishes hydration while strengthening the skin’s natural defenses. Powered by Black Soybean Extract from Jeongseon and panthenol (pro-vitamin B5), this toner nourishes, calms, and restores balance to weakened or sensitive skin.",
+      "tags": [
+        "Toner"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_7731f99b32ebe69a4cd5680d",
+    "notes": "Live pilot case sampled from public search results (Haruharu Wonder).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_7731f99b32ebe69a4cd5680d"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_7731f99b32ebe69a4cd5680d",
+      "brand": "Haruharu Wonder",
+      "title": "Botanical 2GF Wonderful Ampoule",
+      "category": "Serum",
+      "description": "Details \n\nHow to use \n\nIngredients",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_e0221b1333bf64e7c738376c",
+    "notes": "Live pilot case sampled from public search results (Haruharu Wonder).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_e0221b1333bf64e7c738376c"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_e0221b1333bf64e7c738376c",
+      "brand": "Haruharu Wonder",
+      "title": "Bakuchiol Eye Cream / Unscented",
+      "category": "Moisturizer",
+      "description": "Details \n\nHow to use \n\nIngredients",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_3a23aa3e20cea405b0d7fed0",
+    "notes": "Live pilot case sampled from public search results (Beauty of Joseon).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3a23aa3e20cea405b0d7fed0"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3a23aa3e20cea405b0d7fed0",
+      "brand": "Beauty of Joseon",
+      "title": "Daily Tinted Fluid Sunscreen",
+      "category": "external",
+      "description": "Meet the Tint + SPF You’ll Actually Wear Naturally radiant, this tinted fluid sunscreen celebrates your skin’s beauty with the perfect balance of hydration and control—not too dewy, not too matte. Its silky, lightweight texture glides on effortlessly, blending seamlessly for sheer, natural coverage that feels like ski…",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_f84eb0354d9578e047520615",
+    "notes": "Live pilot case sampled from public search results (Beauty of Joseon).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_f84eb0354d9578e047520615"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_f84eb0354d9578e047520615",
+      "brand": "Beauty of Joseon",
+      "title": "Relief Sun Aqua-Fresh : Rice + B5 (SPF50+ PA++++)",
+      "category": "external",
+      "description": "For those who loved our Relief Sun but found it a bit too rich. This ultra-lightweight fluid sunscreen is made with rice seed water for a splash of refreshing hydration.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  }
+]

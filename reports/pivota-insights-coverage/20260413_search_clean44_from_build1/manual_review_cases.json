@@ -1,0 +1,255 @@
+[
+  {
+    "case_id": "live_ext_04dab6a642edac20a33ccae6",
+    "notes": "Live pilot case sampled from public search results (Round Lab).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_04dab6a642edac20a33ccae6"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_04dab6a642edac20a33ccae6",
+      "brand": "Round Lab",
+      "title": "1025 Dokdo Toner Pad",
+      "category": "Toner",
+      "description": "This Dokdo Toner Pad is made with concentrated minerals from Ulleungdo's deep seawater, soaked in a relaxing cotton pad. It provides deep hydration, gentle exfoliation, and soothes your stressed-out skin with Panthenol, Allantoin, and Betaine.",
+      "tags": [
+        "Toner"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_ac8e55c3778eeb2ce81284ab",
+    "notes": "Live pilot case sampled from public search results (Haruharu Wonder).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_ac8e55c3778eeb2ce81284ab"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_ac8e55c3778eeb2ce81284ab",
+      "brand": "Haruharu Wonder",
+      "title": "Black Rice Hyaluronic Toner",
+      "category": "Toner",
+      "description": "Size : 30ml A light, hydrating, and refreshing toner packed with nourishing ingredients. Our unique fermentation formula transforms raw ingredients into a more flexible configuration for the skin to absorb.",
+      "tags": [
+        "Toner"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_267205e8964dd5ccf73f7232",
+    "notes": "Live pilot case sampled from public search results (Round Lab).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_267205e8964dd5ccf73f7232"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_267205e8964dd5ccf73f7232",
+      "brand": "Round Lab",
+      "title": "Soybean Panthenol Toner",
+      "category": "Toner",
+      "description": "The Soybean Panthenol Toner is a deeply soothing and barrier-supporting toner that replenishes hydration while strengthening the skin\u2019s natural defenses. Powered by Black Soybean Extract from Jeongseon and panthenol (pro-vitamin B5), this toner nourishes, calms, and restores balance to weakened or sensitive skin.",
+      "tags": [
+        "Toner"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_356317cf3d4fdc55a8656b5e",
+    "notes": "Live pilot case sampled from public search results (Round Lab).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_356317cf3d4fdc55a8656b5e"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_356317cf3d4fdc55a8656b5e",
+      "brand": "Round Lab",
+      "title": "Pine Calming Cica Toner Pad",
+      "category": "Toner",
+      "description": "The Pine Calming Cica Toner pad smooths rough skin texture with just one sheet, gently removing dead skin cells and waste products that block your pores. Scent: Unscented Skin type: Sensitive, Dry, Oily, Acne-prone Size: 50pcs How it works Yangyang Pine Tree protects the skin from numerous environments that are tireso\u2026",
+      "tags": [
+        "Toner"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_8f57ee8b842f3dcd53f8a13b",
+    "notes": "Live pilot case sampled from public search results (Round Lab).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_8f57ee8b842f3dcd53f8a13b"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_8f57ee8b842f3dcd53f8a13b",
+      "brand": "Round Lab",
+      "title": "1025 Dokdo Toner",
+      "category": "Toner",
+      "description": "Voted for the Best Toner in Toner Category in South Korea for three consecutive years Presenting a special toner that exfoliates dead skin cells while filling up the skin with moisture. The method is simple, but the results are special!",
+      "tags": [
+        "Toner"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_c4f616d3d67c75a6b0d4ae27",
+    "notes": "Live pilot case sampled from public search results (Round Lab).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_c4f616d3d67c75a6b0d4ae27"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_c4f616d3d67c75a6b0d4ae27",
+      "brand": "Round Lab",
+      "title": "Camellia Deep Collagen Milky PDRN Toner 150ml",
+      "category": "Toner",
+      "description": "The Camellia Deep Collagen Milky PDRN Toner delivers nourishing hydration and elasticity care in a comforting milky formula. Powered by Jeju Camellia Flower Extract, multi-weight collagen, and PDRN, this toner helps replenish moisture while supporting smoother, more supple-looking skin.",
+      "tags": [
+        "Toner"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_4be7b0a729d4cbfef94683dc",
+    "notes": "Live pilot case sampled from public search results (Round Lab).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_4be7b0a729d4cbfef94683dc"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_4be7b0a729d4cbfef94683dc",
+      "brand": "Round Lab",
+      "title": "Mugwort Calming Toner",
+      "category": "Toner",
+      "description": "The Mugwort Calming Toner uses Mugwort extract to calm and heal irritated skin. This water type toner leaves your skin fresh while providing rich nutrients.",
+      "tags": [
+        "Toner"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_a22f02d99b3ce8b53f1a6be5",
+    "notes": "Live pilot case sampled from public search results (Round Lab).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_a22f02d99b3ce8b53f1a6be5"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_a22f02d99b3ce8b53f1a6be5",
+      "brand": "Round Lab",
+      "title": "Soybean Nourishing Toner",
+      "category": "Toner",
+      "description": "This toner has a mixture of rich, active ingredients of Black Soybean Extract and Adenosine, supply dense nourishment to the skin to make a firm complexion. Texture: Watery Scent: Unscented Skin type: Dry, Normal, Combination, Fine lines Size:10.1 fl. oz (300ml) How it works This Soybean Nourishing Toner is excellent\u2026",
+      "tags": [
+        "Toner"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_7731f99b32ebe69a4cd5680d",
+    "notes": "Live pilot case sampled from public search results (Haruharu Wonder).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_7731f99b32ebe69a4cd5680d"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_7731f99b32ebe69a4cd5680d",
+      "brand": "Haruharu Wonder",
+      "title": "Botanical 2GF Wonderful Ampoule",
+      "category": "Serum",
+      "description": "Details \n\nHow to use \n\nIngredients",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_e703e9fd8af228189d2caa0a",
+    "notes": "Live pilot case sampled from public search results (Haruharu Wonder).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_e703e9fd8af228189d2caa0a"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_e703e9fd8af228189d2caa0a",
+      "brand": "Haruharu Wonder",
+      "title": "Peptide Glowy Balm",
+      "category": "external",
+      "description": "",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_e0221b1333bf64e7c738376c",
+    "notes": "Live pilot case sampled from public search results (Haruharu Wonder).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_e0221b1333bf64e7c738376c"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_e0221b1333bf64e7c738376c",
+      "brand": "Haruharu Wonder",
+      "title": "Bakuchiol Eye Cream / Unscented",
+      "category": "Moisturizer",
+      "description": "Details \n\nHow to use \n\nIngredients",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  }
+]

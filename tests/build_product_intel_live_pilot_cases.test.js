@@ -264,6 +264,45 @@ describe('build_product_intel_live_pilot_cases', () => {
     });
   });
 
+  test('search candidate fetch uses the beauty discovery contract', async () => {
+    axios.post.mockResolvedValueOnce({
+      data: {
+        products: [],
+      },
+    });
+    axios.post.mockResolvedValueOnce({
+      data: {
+        products: [],
+      },
+    });
+
+    await fetchDiscoveryCandidates('https://gateway.example/api', 'browse_products', 1, 12);
+    await require('../scripts/build_product_intel_live_pilot_cases').fetchSearchCandidates(
+      'https://gateway.example/api',
+      'vitamin c serum',
+      12,
+    );
+
+    expect(axios.post).toHaveBeenLastCalledWith(
+      'https://gateway.example/api',
+      expect.objectContaining({
+        operation: 'find_products_multi',
+        payload: expect.objectContaining({
+          search: expect.objectContaining({
+            query: 'vitamin c serum',
+            catalog_surface: 'beauty',
+            commerce_surface: 'beauty',
+          }),
+        }),
+        metadata: expect.objectContaining({
+          catalog_surface: 'beauty',
+          commerce_surface: 'beauty',
+        }),
+      }),
+      expect.any(Object),
+    );
+  });
+
   test('extracts review summary from reviews_preview module', () => {
     expect(
       extractReviewsPreviewSummary({
