@@ -471,6 +471,7 @@ function normalizeTextForResolver(input) {
     .replace(/([\u4E00-\u9FFF])([a-z0-9])/g, '$1 $2')
     .replace(/['’`]/g, '')
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\bspf\s+(\d{1,3})\b/g, 'spf$1')
     .replace(/\s+/g, ' ')
     .trim();
 

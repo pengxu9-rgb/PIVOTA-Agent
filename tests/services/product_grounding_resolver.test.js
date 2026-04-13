@@ -61,6 +61,41 @@ describe('productGroundingResolver', () => {
     );
   });
 
+  test('external seed ranking treats SPF spacing variants as the same sunscreen signal', () => {
+    const ranked = _internals.scoreAndRankCandidates({
+      query: 'Round Lab Birch Juice Moisturizing Sunscreen SPF50+ PA++++',
+      lang: 'en',
+      products: [
+        {
+          product_id: 'ext_round_lab_ampoule',
+          merchant_id: 'external_seed',
+          brand: 'Round Lab',
+          title: 'Birch Juice Moisturizing Ampoule',
+          category: 'Serum',
+          source: 'external_seed',
+        },
+        {
+          product_id: 'ext_round_lab_mild_up_sunscreen',
+          merchant_id: 'external_seed',
+          brand: 'Round Lab',
+          title: 'Birch Moisturizing Mild-Up Sunscreen SPF 50+, PA++++',
+          category: 'Sunscreen',
+          source: 'external_seed',
+        },
+      ],
+      options: {
+        allow_external_seed: true,
+      },
+    });
+
+    expect(ranked.scored[0]).toEqual(
+      expect.objectContaining({
+        title: 'Birch Moisturizing Mild-Up Sunscreen SPF 50+, PA++++',
+      }),
+    );
+    expect(ranked.scored[0].score).toBeGreaterThanOrEqual(0.72);
+  });
+
   test('resolveProductRef reads upstream base and key from environment', async () => {
     process.env.PIVOTA_BACKEND_BASE_URL = 'https://catalog.test';
     process.env.PIVOTA_API_KEY = 'test_key';
