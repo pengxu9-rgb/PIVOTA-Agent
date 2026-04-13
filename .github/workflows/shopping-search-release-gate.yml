@@ -42,6 +42,7 @@ on:
       - "src/findProductsExternalSeedDirectRuntime.js"
       - "src/findProductsMulti/**"
       - "src/modules/decisioning/shopping_agent/**"
+      - "src/modules/orchestration/aurora_beauty/index.js"
       - "src/observability/discoveryMetrics.js"
       - "src/services/discoveryFeed.js"
       - "src/services/catalogServingGateway.js"
@@ -53,6 +54,7 @@ on:
       - "tests/discovery_feed_service.test.js"
       - "tests/server.health.test.js"
       - "tests/aurora_commerce_core_contracts.test.js"
+      - "tests/aurora_beauty_facade.test.js"
       - "tests/find_products_multi_policy.test.js"
       - "tests/shopping_agent_strict_find_products_multi.test.js"
       - "tests/services/ingredient_product_recall.test.js"
@@ -100,6 +102,7 @@ on:
       - "src/findProductsExternalSeedDirectRuntime.js"
       - "src/findProductsMulti/**"
       - "src/modules/decisioning/shopping_agent/**"
+      - "src/modules/orchestration/aurora_beauty/index.js"
       - "src/observability/discoveryMetrics.js"
       - "src/services/discoveryFeed.js"
       - "src/services/catalogServingGateway.js"
@@ -111,6 +114,7 @@ on:
       - "tests/discovery_feed_service.test.js"
       - "tests/server.health.test.js"
       - "tests/aurora_commerce_core_contracts.test.js"
+      - "tests/aurora_beauty_facade.test.js"
       - "tests/find_products_multi_policy.test.js"
       - "tests/shopping_agent_strict_find_products_multi.test.js"
       - "tests/services/ingredient_product_recall.test.js"
@@ -163,6 +167,7 @@ jobs:
         run: |
           set -euo pipefail
           node --check src/server.js
+          node --check src/modules/orchestration/aurora_beauty/index.js
           node --check scripts/check_budget_fx_freshness.js
           node --check scripts/run_discovery_feed_smoke.cjs
           node --check scripts/warm_find_products_multi_runtime.js
@@ -189,6 +194,7 @@ jobs:
             tests/discovery_feed_smoke_script.test.js \
             tests/server.health.test.js \
             tests/aurora_commerce_core_contracts.test.js \
+            tests/aurora_beauty_facade.test.js \
             tests/catalog_serving_index.test.js \
             tests/catalog_serving_gateway.test.js \
             tests/catalog_serving_shadow_acceptance_script.test.js \

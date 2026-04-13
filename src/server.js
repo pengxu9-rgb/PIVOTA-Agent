@@ -22336,13 +22336,19 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   : {}),
               },
             };
-            const earlyWithPolicy = applyFindProductsMultiPolicy({
+            const earlyWithPolicyRaw = applyFindProductsMultiPolicy({
               response: earlyDecisionResponse,
               intent: effectiveIntent,
               requestPayload: effectivePayload,
               metadata: policyMetadata,
               rawUserQuery,
             });
+            const earlyWithPolicy =
+              earlyWithPolicyRaw &&
+              typeof earlyWithPolicyRaw === 'object' &&
+              !Array.isArray(earlyWithPolicyRaw)
+                ? earlyWithPolicyRaw
+                : earlyDecisionResponse;
             const earlyDecisionProducts = Array.isArray(earlyWithPolicy?.products)
               ? earlyWithPolicy.products
               : [];
@@ -22359,11 +22365,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               Boolean(earlyWithPolicy?.metadata?.strict_empty) ||
               (earlyDecisionProducts.length === 0 && !earlyDecisionClarification);
             const earlyDecisionResponsePayload =
-              earlyDecisionStrictEmpty &&
-              earlyWithPolicy &&
-              typeof earlyWithPolicy === 'object' &&
-              !Array.isArray(earlyWithPolicy) &&
-              !earlyWithPolicy?.metadata?.strict_empty
+              earlyDecisionStrictEmpty && !earlyWithPolicy?.metadata?.strict_empty
                 ? {
                     ...earlyWithPolicy,
                     metadata: {
@@ -22371,6 +22373,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                         ? earlyWithPolicy.metadata
                         : {}),
                       strict_empty: true,
+                      strict_empty_reason:
+                        String(
+                          (earlyWithPolicy.metadata &&
+                          typeof earlyWithPolicy.metadata === 'object' &&
+                          earlyWithPolicy.metadata.strict_empty_reason) ||
+                            earlyDecisionCause ||
+                            'strict_empty',
+                        ).trim() || 'strict_empty',
                     },
                   }
                 : earlyWithPolicy;

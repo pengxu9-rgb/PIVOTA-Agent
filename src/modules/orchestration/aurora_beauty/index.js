@@ -1620,13 +1620,17 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
       earlyDecisionCause,
       queryClassForEarlyDecision,
     });
-    const earlyWithPolicy = applyFindProductsMultiPolicyIfNeededImpl({
+    const earlyWithPolicyRaw = applyFindProductsMultiPolicyIfNeededImpl({
       response: earlyDecisionResponse,
       intent,
       requestPayload,
       metadata: policyMetadata,
       rawUserQuery,
     });
+    const earlyWithPolicy =
+      earlyWithPolicyRaw && typeof earlyWithPolicyRaw === 'object' && !Array.isArray(earlyWithPolicyRaw)
+        ? earlyWithPolicyRaw
+        : earlyDecisionResponse;
     const earlyDecisionProducts = Array.isArray(earlyWithPolicy?.products)
       ? earlyWithPolicy.products
       : [];
@@ -1643,11 +1647,7 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
       Boolean(earlyWithPolicy?.metadata?.strict_empty) ||
       (earlyDecisionProducts.length === 0 && !earlyDecisionClarification);
     const earlyDecisionResponsePayload =
-      earlyDecisionStrictEmpty &&
-      earlyWithPolicy &&
-      typeof earlyWithPolicy === 'object' &&
-      !Array.isArray(earlyWithPolicy) &&
-      !earlyWithPolicy?.metadata?.strict_empty
+      earlyDecisionStrictEmpty && !earlyWithPolicy?.metadata?.strict_empty
         ? {
             ...earlyWithPolicy,
             metadata: {
@@ -1655,6 +1655,14 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
                 ? earlyWithPolicy.metadata
                 : {}),
               strict_empty: true,
+              strict_empty_reason:
+                String(
+                  (earlyWithPolicy.metadata &&
+                  typeof earlyWithPolicy.metadata === 'object' &&
+                  earlyWithPolicy.metadata.strict_empty_reason) ||
+                    earlyDecisionCause ||
+                    'strict_empty',
+                ).trim() || 'strict_empty',
             },
           }
         : earlyWithPolicy;
