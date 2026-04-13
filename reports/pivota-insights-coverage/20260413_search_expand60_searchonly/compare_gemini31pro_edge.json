@@ -1,0 +1,1299 @@
+{
+  "meta": {
+    "generated_at": "2026-04-13T07:45:06.893Z",
+    "contract_version": "pivota.product_intel.v1",
+    "gemini_model": "gemini-3.1-pro-preview",
+    "gemini_completed": 2,
+    "gemini_skipped": 0,
+    "hybrid_selected": 2,
+    "baseline_only": 0
+  },
+  "rows": [
+    {
+      "case_id": "live_ext_572faba591a8712e6c37fbe3",
+      "notes": "Search-only pilot case sampled from query historical_probe2_leftover (Skin1004).",
+      "manual_override_applied": false,
+      "baseline": {
+        "contract_version": "pivota.product_intel.v1",
+        "display_name": "Pivota Insights",
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_572faba591a8712e6c37fbe3"
+        },
+        "product_group_id": null,
+        "product_intel_core": {
+          "display_name": "Pivota Insights",
+          "what_it_is": {
+            "headline": "Prep or toner step",
+            "body": "A mild exfoliating toner with fruit extracts, Madewhite™, and Niacinamide that gently refines and preps the skin for the next step in your skincare routine. Product Benefits: Soothing, Brightening, Skin Clarity, Dullness Reduction Skin Type: Normal, Dry, Combination Key."
+          },
+          "best_for": [
+            {
+              "tag": "dryness",
+              "label": "Dry or dehydrated skin",
+              "confidence": "moderate"
+            },
+            {
+              "tag": "sensitive_skin",
+              "label": "Sensitive skin",
+              "confidence": "moderate"
+            },
+            {
+              "tag": "uneven_tone",
+              "label": "Uneven tone concerns",
+              "confidence": "moderate"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Formula angle",
+              "body": "A mild exfoliating toner with fruit extracts, Madewhite™, and Niacinamide that gently refines and preps the skin for the next step in your skincare routine.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "toner",
+            "am_pm": [],
+            "pairing_notes": []
+          },
+          "watchouts": [
+            {
+              "type": "acid",
+              "label": "May be too active for very sensitive or over-exfoliated skin.",
+              "severity": "high"
+            }
+          ],
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-13T07:44:49.591Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          }
+        },
+        "texture_finish": null,
+        "community_signals": {
+          "status": "unavailable",
+          "unavailable_reason": "insufficient_feedback",
+          "confidence": "low",
+          "evidence_profile": "seller_only"
+        },
+        "recommendation_intents": {
+          "similar": [],
+          "complementary": [],
+          "routine_pairing": [],
+          "underfill_reason": null,
+          "confidence": "low"
+        },
+        "market_signal_badges": [],
+        "external_highlight_signals": [],
+        "quality_state": "limited",
+        "evidence_profile": "seller_only",
+        "source_coverage": {
+          "seller": {
+            "available": true
+          },
+          "formula": {
+            "available": false
+          },
+          "reviews": {
+            "available": false,
+            "count": 0
+          },
+          "creator": {
+            "available": false,
+            "count": 0
+          },
+          "editorial": {
+            "available": false,
+            "count": 0
+          }
+        },
+        "confidence": {
+          "overall": "moderate",
+          "fields": {
+            "what_it_is": "high",
+            "best_for": "moderate",
+            "why_it_stands_out": "moderate",
+            "routine_fit": "moderate",
+            "watchouts": "moderate"
+          }
+        },
+        "freshness": {
+          "generated_at": "2026-04-13T07:44:49.591Z",
+          "source_version": "pivota.product_intel.v1"
+        },
+        "offer_pointers": {
+          "offers_count": 0,
+          "default_offer_id": null,
+          "best_price_offer_id": null,
+          "commerce_modes": []
+        },
+        "provenance": null,
+        "shopping_card": {
+          "contract_version": "pivota.shopping_card.v1",
+          "title": "Skin1004 Tone Brightening Boosting Toner",
+          "subtitle": "Prep Or Toner Step",
+          "evidence_profile": "seller_only"
+        },
+        "search_card": {
+          "title_candidate": "Skin1004 Tone Brightening Boosting Toner",
+          "compact_candidate": "Prep Or Toner Step"
+        }
+      },
+      "gemini": {
+        "skipped": false,
+        "raw": {
+          "product_intel_core": {
+            "what_it_is": {
+              "headline": "",
+              "body": ""
+            },
+            "best_for": [
+              {
+                "tag": "normal_dry_and_combination_skin_types",
+                "label": "Normal, dry, and combination skin types",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "those_looking_to_address_dullness_and_improve_overall_skin_clarity",
+                "label": "Those looking to address dullness and improve overall skin clarity",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Combines mild exfoliation from fruit extracts with the brightening properties of niacinamide and Madewhite™",
+                "body": "Combines mild exfoliation from fruit extracts with the brightening properties of niacinamide and Madewhite™",
+                "evidence_strength": "limited"
+              },
+              {
+                "headline": "Functions as a dual-action prep step that simultaneously soothes the skin and targets dullness",
+                "body": "Functions as a dual-action prep step that simultaneously soothes the skin and targets dullness",
+                "evidence_strength": "limited"
+              }
+            ],
+            "routine_fit": {
+              "step": "",
+              "am_pm": [],
+              "pairing_notes": []
+            },
+            "watchouts": []
+          },
+          "texture_finish": {
+            "texture": null,
+            "finish": null,
+            "sensory_notes": [],
+            "layering_notes": []
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "unavailable_reason": null,
+            "top_loves": [],
+            "top_complaints": [],
+            "best_fit_users": [],
+            "mixed_feedback": []
+          }
+        },
+        "candidate": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_572faba591a8712e6c37fbe3"
+          },
+          "product_group_id": null,
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Prep or toner step",
+              "body": "A mild exfoliating toner with fruit extracts, Madewhite™, and Niacinamide that gently refines and preps the skin for the next step in your skincare routine. Product Benefits: Soothing, Brightening, Skin Clarity, Dullness Reduction Skin Type: Normal, Dry, Combination Key."
+            },
+            "best_for": [
+              {
+                "tag": "normal_dry_and_combination_skin_types",
+                "label": "Normal, dry, and combination skin types",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "those_looking_to_address_dullness_and_improve_overall_skin_clarity",
+                "label": "Those looking to address dullness and improve overall skin clarity",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Combines mild exfoliation from fruit extracts with the brightening properties of niacinamide and Madewhite™",
+                "body": "Combines mild exfoliation from fruit extracts with the brightening properties of niacinamide and Madewhite™",
+                "evidence_strength": "limited"
+              },
+              {
+                "headline": "Functions as a dual-action prep step that simultaneously soothes the skin and targets dullness",
+                "body": "Functions as a dual-action prep step that simultaneously soothes the skin and targets dullness",
+                "evidence_strength": "limited"
+              }
+            ],
+            "routine_fit": {
+              "step": "toner",
+              "am_pm": [],
+              "pairing_notes": []
+            },
+            "watchouts": [
+              {
+                "type": "acid",
+                "label": "May be too active for very sensitive or over-exfoliated skin.",
+                "severity": "high"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-04-13T07:45:06.886Z",
+              "source_version": "pilot_gemini_candidate:gemini-3.1-pro-preview"
+            },
+            "quality_state": "limited",
+            "evidence_profile": "seller_only",
+            "source_coverage": {
+              "seller": {
+                "available": true
+              },
+              "formula": {
+                "available": false
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "texture": null,
+            "finish": null,
+            "sensory_notes": [],
+            "layering_notes": [],
+            "confidence": "moderate",
+            "evidence_profile": "seller_only"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "unavailable_reason": "insufficient_feedback",
+            "confidence": "low",
+            "evidence_profile": "seller_only"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-13T07:45:06.886Z",
+            "source_version": "pilot_gemini_candidate:gemini-3.1-pro-preview"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "product_intel_pilot_compare",
+            "generator": "gemini_candidate",
+            "model": "gemini-3.1-pro-preview",
+            "case_id": "live_ext_572faba591a8712e6c37fbe3"
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Skin1004 Tone Brightening Boosting Toner",
+            "subtitle": "Prep Or Toner Step",
+            "evidence_profile": "seller_only"
+          },
+          "search_card": {
+            "title_candidate": "Skin1004 Tone Brightening Boosting Toner",
+            "compact_candidate": "Prep Or Toner Step"
+          }
+        }
+      },
+      "manual_override": null,
+      "quality_gate": {
+        "candidate_available": true,
+        "overall_pass": true,
+        "quality_score": 4,
+        "fail_reasons": [
+          "weak_routine_fit"
+        ],
+        "seller_only_violation": false,
+        "best_for_overlap": 0,
+        "watchout_overlap": 1,
+        "field_decisions": {
+          "what_it_is": true,
+          "best_for": true,
+          "why_it_stands_out": true,
+          "routine_fit": false,
+          "watchouts": true,
+          "texture_finish": false,
+          "community_signals": false
+        }
+      },
+      "selected": {
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_572faba591a8712e6c37fbe3"
+          },
+          "product_group_id": null,
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Prep or toner step",
+              "body": "A mild exfoliating toner with fruit extracts, Madewhite™, and Niacinamide that gently refines and preps the skin for the next step in your skincare routine. Product Benefits: Soothing, Brightening, Skin Clarity, Dullness Reduction Skin Type: Normal, Dry, Combination Key."
+            },
+            "best_for": [
+              {
+                "tag": "normal_dry_and_combination_skin_types",
+                "label": "Normal, dry, and combination skin types",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "those_looking_to_address_dullness_and_improve_overall_skin_clarity",
+                "label": "Those looking to address dullness and improve overall skin clarity",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Combines mild exfoliation from fruit extracts with the brightening properties of niacinamide and Madewhite™",
+                "body": "Combines mild exfoliation from fruit extracts with the brightening properties of niacinamide and Madewhite™",
+                "evidence_strength": "limited"
+              },
+              {
+                "headline": "Functions as a dual-action prep step that simultaneously soothes the skin and targets dullness",
+                "body": "Functions as a dual-action prep step that simultaneously soothes the skin and targets dullness",
+                "evidence_strength": "limited"
+              }
+            ],
+            "routine_fit": {
+              "step": "toner",
+              "am_pm": [],
+              "pairing_notes": []
+            },
+            "watchouts": [
+              {
+                "type": "acid",
+                "label": "May be too active for very sensitive or over-exfoliated skin.",
+                "severity": "high"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-04-13T07:45:06.891Z",
+              "source_version": "pilot_selected:gemini-3.1-pro-preview"
+            },
+            "quality_state": "limited",
+            "evidence_profile": "seller_only",
+            "source_coverage": {
+              "seller": {
+                "available": true
+              },
+              "formula": {
+                "available": false
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": null,
+          "community_signals": {
+            "status": "unavailable",
+            "unavailable_reason": "insufficient_feedback",
+            "confidence": "low",
+            "evidence_profile": "seller_only"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-13T07:45:06.891Z",
+            "source_version": "pilot_selected:gemini-3.1-pro-preview"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "product_intel_pilot_compare",
+            "generator": "baseline_plus_gemini",
+            "selection_strategy": "baseline_first_gemini_guarded",
+            "gemini_model": "gemini-3.1-pro-preview",
+            "field_sources": {
+              "what_it_is": "gemini",
+              "best_for": "gemini",
+              "why_it_stands_out": "gemini",
+              "routine_fit": "baseline",
+              "watchouts": "gemini",
+              "texture_finish": "baseline",
+              "community_signals": "baseline"
+            },
+            "gemini_quality_gate": {
+              "candidate_available": true,
+              "overall_pass": true,
+              "quality_score": 4,
+              "fail_reasons": [
+                "weak_routine_fit"
+              ],
+              "seller_only_violation": false,
+              "best_for_overlap": 0,
+              "watchout_overlap": 1,
+              "field_decisions": {
+                "what_it_is": true,
+                "best_for": true,
+                "why_it_stands_out": true,
+                "routine_fit": false,
+                "watchouts": true,
+                "texture_finish": false,
+                "community_signals": false
+              }
+            }
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Skin1004 Tone Brightening Boosting Toner",
+            "subtitle": "Prep Or Toner Step",
+            "evidence_profile": "seller_only"
+          },
+          "search_card": {
+            "title_candidate": "Skin1004 Tone Brightening Boosting Toner",
+            "compact_candidate": "Prep Or Toner Step"
+          }
+        },
+        "field_sources": {
+          "what_it_is": "gemini",
+          "best_for": "gemini",
+          "why_it_stands_out": "gemini",
+          "routine_fit": "baseline",
+          "watchouts": "gemini",
+          "texture_finish": "baseline",
+          "community_signals": "baseline"
+        },
+        "selected_field_count": 4,
+        "selected_mode": "hybrid_gemini"
+      },
+      "comparison": {
+        "compared": true,
+        "best_for_overlap": 0,
+        "watchout_overlap": 1,
+        "baseline_highlight_count": 1,
+        "gemini_highlight_count": 2,
+        "gemini_quality": {
+          "candidate_available": true,
+          "overall_pass": true,
+          "quality_score": 4,
+          "fail_reasons": [
+            "weak_routine_fit"
+          ],
+          "seller_only_violation": false,
+          "best_for_overlap": 0,
+          "watchout_overlap": 1,
+          "field_decisions": {
+            "what_it_is": true,
+            "best_for": true,
+            "why_it_stands_out": true,
+            "routine_fit": false,
+            "watchouts": true,
+            "texture_finish": false,
+            "community_signals": false
+          }
+        },
+        "selected_mode": "hybrid_gemini",
+        "selected_field_count": 4,
+        "selected_field_sources": {
+          "what_it_is": "gemini",
+          "best_for": "gemini",
+          "why_it_stands_out": "gemini",
+          "routine_fit": "baseline",
+          "watchouts": "gemini",
+          "texture_finish": "baseline",
+          "community_signals": "baseline"
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_378d80a20c6f872e94e9ca86",
+      "notes": "Search-only pilot case sampled from query historical_probe2_leftover (The Inkey List).",
+      "manual_override_applied": false,
+      "baseline": {
+        "contract_version": "pivota.product_intel.v1",
+        "display_name": "Pivota Insights",
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_378d80a20c6f872e94e9ca86"
+        },
+        "product_group_id": null,
+        "product_intel_core": {
+          "display_name": "Pivota Insights",
+          "what_it_is": {
+            "headline": "Daily moisturizer",
+            "body": "Searching for an oil-free moisturizer that hydrates without feeling greasy or heavy on the skin? We've got it! ​ Go supersize and seal in instant hydration for longer."
+          },
+          "best_for": [
+            {
+              "tag": "moisturizer",
+              "label": "Moisturizer shoppers",
+              "confidence": "low"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Formula angle",
+              "body": "Searching for an oil-free moisturizer that hydrates without feeling greasy or heavy on the skin?",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "moisturizer",
+            "am_pm": [
+              "am",
+              "pm"
+            ],
+            "pairing_notes": [
+              "Layer after watery treatments and before SPF in the daytime."
+            ]
+          },
+          "watchouts": [],
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-13T07:44:49.616Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          }
+        },
+        "texture_finish": {
+          "texture": "oil",
+          "finish": "",
+          "sensory_notes": [],
+          "layering_notes": [
+            "Usually layers after serums and before daytime SPF."
+          ],
+          "confidence": "moderate",
+          "evidence_profile": "seller_only"
+        },
+        "community_signals": {
+          "status": "unavailable",
+          "unavailable_reason": "insufficient_feedback",
+          "confidence": "low",
+          "evidence_profile": "seller_only"
+        },
+        "recommendation_intents": {
+          "similar": [],
+          "complementary": [],
+          "routine_pairing": [],
+          "underfill_reason": null,
+          "confidence": "low"
+        },
+        "market_signal_badges": [],
+        "external_highlight_signals": [],
+        "quality_state": "limited",
+        "evidence_profile": "seller_only",
+        "source_coverage": {
+          "seller": {
+            "available": true
+          },
+          "formula": {
+            "available": false
+          },
+          "reviews": {
+            "available": false,
+            "count": 0
+          },
+          "creator": {
+            "available": false,
+            "count": 0
+          },
+          "editorial": {
+            "available": false,
+            "count": 0
+          }
+        },
+        "confidence": {
+          "overall": "moderate",
+          "fields": {
+            "what_it_is": "high",
+            "best_for": "moderate",
+            "why_it_stands_out": "moderate",
+            "routine_fit": "moderate",
+            "watchouts": "moderate"
+          }
+        },
+        "freshness": {
+          "generated_at": "2026-04-13T07:44:49.616Z",
+          "source_version": "pivota.product_intel.v1"
+        },
+        "offer_pointers": {
+          "offers_count": 0,
+          "default_offer_id": null,
+          "best_price_offer_id": null,
+          "commerce_modes": []
+        },
+        "provenance": null,
+        "shopping_card": {
+          "contract_version": "pivota.shopping_card.v1",
+          "title": "The Inkey List Supersize Omega Water Cream - 100ml",
+          "subtitle": "Daily Moisturizer",
+          "intro": "​ Go supersize and seal in instant hydration for longer.",
+          "evidence_profile": "seller_only"
+        },
+        "search_card": {
+          "title_candidate": "The Inkey List Supersize Omega Water Cream - 100ml",
+          "compact_candidate": "Daily Moisturizer",
+          "intro_candidate": "​ Go supersize and seal in instant hydration for longer."
+        }
+      },
+      "gemini": {
+        "skipped": false,
+        "raw": {
+          "product_intel_core": {
+            "what_it_is": {
+              "headline": "",
+              "body": "An oil-free water cream moisturizer designed to deliver instant hydration without a heavy or greasy feel."
+            },
+            "best_for": [
+              {
+                "tag": "skin_types_seeking_an_oil_free_moisturizer",
+                "label": "Skin types seeking an oil-free moisturizer",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "those_who_prefer_lightweight_non_greasy_hydration",
+                "label": "Those who prefer lightweight, non-greasy hydration",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Utilizes an oil-free water cream architecture to seal in hydration without a heavy skin feel",
+                "body": "Utilizes an oil-free water cream architecture to seal in hydration without a heavy skin feel",
+                "evidence_strength": "limited"
+              }
+            ],
+            "routine_fit": {
+              "step": "",
+              "am_pm": [],
+              "pairing_notes": []
+            },
+            "watchouts": []
+          },
+          "texture_finish": {
+            "texture": "Lightweight water cream",
+            "finish": "Non-greasy",
+            "sensory_notes": [],
+            "layering_notes": []
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "unavailable_reason": null,
+            "top_loves": [],
+            "top_complaints": [],
+            "best_fit_users": [],
+            "mixed_feedback": []
+          }
+        },
+        "candidate": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_378d80a20c6f872e94e9ca86"
+          },
+          "product_group_id": null,
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Daily moisturizer",
+              "body": "An oil-free water cream moisturizer designed to deliver instant hydration without a heavy or greasy feel."
+            },
+            "best_for": [
+              {
+                "tag": "skin_types_seeking_an_oil_free_moisturizer",
+                "label": "Skin types seeking an oil-free moisturizer",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "those_who_prefer_lightweight_non_greasy_hydration",
+                "label": "Those who prefer lightweight, non-greasy hydration",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Utilizes an oil-free water cream architecture to seal in hydration without a heavy skin feel",
+                "body": "Utilizes an oil-free water cream architecture to seal in hydration without a heavy skin feel",
+                "evidence_strength": "limited"
+              }
+            ],
+            "routine_fit": {
+              "step": "moisturizer",
+              "am_pm": [
+                "am",
+                "pm"
+              ],
+              "pairing_notes": [
+                "Layer after watery treatments and before SPF in the daytime."
+              ]
+            },
+            "watchouts": [],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-04-13T07:45:06.636Z",
+              "source_version": "pilot_gemini_candidate:gemini-3.1-pro-preview"
+            },
+            "quality_state": "limited",
+            "evidence_profile": "seller_only",
+            "source_coverage": {
+              "seller": {
+                "available": true
+              },
+              "formula": {
+                "available": false
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "texture": "Lightweight water cream",
+            "finish": "Non-greasy",
+            "sensory_notes": [],
+            "layering_notes": [],
+            "confidence": "moderate",
+            "evidence_profile": "seller_only"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "unavailable_reason": "insufficient_feedback",
+            "confidence": "low",
+            "evidence_profile": "seller_only"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-13T07:45:06.636Z",
+            "source_version": "pilot_gemini_candidate:gemini-3.1-pro-preview"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "product_intel_pilot_compare",
+            "generator": "gemini_candidate",
+            "model": "gemini-3.1-pro-preview",
+            "case_id": "live_ext_378d80a20c6f872e94e9ca86"
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "The Inkey List Supersize Omega Water Cream - 100ml",
+            "subtitle": "Daily Moisturizer",
+            "intro": "​ Go supersize and seal in instant hydration for longer.",
+            "evidence_profile": "seller_only"
+          },
+          "search_card": {
+            "title_candidate": "The Inkey List Supersize Omega Water Cream - 100ml",
+            "compact_candidate": "Daily Moisturizer",
+            "intro_candidate": "​ Go supersize and seal in instant hydration for longer."
+          }
+        }
+      },
+      "manual_override": null,
+      "quality_gate": {
+        "candidate_available": true,
+        "overall_pass": true,
+        "quality_score": 5,
+        "fail_reasons": [],
+        "seller_only_violation": false,
+        "best_for_overlap": 0,
+        "watchout_overlap": 1,
+        "field_decisions": {
+          "what_it_is": true,
+          "best_for": true,
+          "why_it_stands_out": true,
+          "routine_fit": true,
+          "watchouts": false,
+          "texture_finish": true,
+          "community_signals": false
+        }
+      },
+      "selected": {
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_378d80a20c6f872e94e9ca86"
+          },
+          "product_group_id": null,
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Daily moisturizer",
+              "body": "An oil-free water cream moisturizer designed to deliver instant hydration without a heavy or greasy feel."
+            },
+            "best_for": [
+              {
+                "tag": "skin_types_seeking_an_oil_free_moisturizer",
+                "label": "Skin types seeking an oil-free moisturizer",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "those_who_prefer_lightweight_non_greasy_hydration",
+                "label": "Those who prefer lightweight, non-greasy hydration",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Utilizes an oil-free water cream architecture to seal in hydration without a heavy skin feel",
+                "body": "Utilizes an oil-free water cream architecture to seal in hydration without a heavy skin feel",
+                "evidence_strength": "limited"
+              }
+            ],
+            "routine_fit": {
+              "step": "moisturizer",
+              "am_pm": [
+                "am",
+                "pm"
+              ],
+              "pairing_notes": [
+                "Layer after watery treatments and before SPF in the daytime."
+              ]
+            },
+            "watchouts": [],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-04-13T07:45:06.640Z",
+              "source_version": "pilot_selected:gemini-3.1-pro-preview"
+            },
+            "quality_state": "limited",
+            "evidence_profile": "seller_only",
+            "source_coverage": {
+              "seller": {
+                "available": true
+              },
+              "formula": {
+                "available": false
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "texture": "Lightweight water cream",
+            "finish": "Non-greasy",
+            "sensory_notes": [],
+            "layering_notes": [],
+            "confidence": "moderate",
+            "evidence_profile": "seller_only"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "unavailable_reason": "insufficient_feedback",
+            "confidence": "low",
+            "evidence_profile": "seller_only"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-13T07:45:06.640Z",
+            "source_version": "pilot_selected:gemini-3.1-pro-preview"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "product_intel_pilot_compare",
+            "generator": "baseline_plus_gemini",
+            "selection_strategy": "baseline_first_gemini_guarded",
+            "gemini_model": "gemini-3.1-pro-preview",
+            "field_sources": {
+              "what_it_is": "gemini",
+              "best_for": "gemini",
+              "why_it_stands_out": "gemini",
+              "routine_fit": "gemini",
+              "watchouts": "baseline",
+              "texture_finish": "gemini",
+              "community_signals": "baseline"
+            },
+            "gemini_quality_gate": {
+              "candidate_available": true,
+              "overall_pass": true,
+              "quality_score": 5,
+              "fail_reasons": [],
+              "seller_only_violation": false,
+              "best_for_overlap": 0,
+              "watchout_overlap": 1,
+              "field_decisions": {
+                "what_it_is": true,
+                "best_for": true,
+                "why_it_stands_out": true,
+                "routine_fit": true,
+                "watchouts": false,
+                "texture_finish": true,
+                "community_signals": false
+              }
+            }
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "The Inkey List Supersize Omega Water Cream - 100ml",
+            "subtitle": "Daily Moisturizer",
+            "intro": "​ Go supersize and seal in instant hydration for longer.",
+            "evidence_profile": "seller_only"
+          },
+          "search_card": {
+            "title_candidate": "The Inkey List Supersize Omega Water Cream - 100ml",
+            "compact_candidate": "Daily Moisturizer",
+            "intro_candidate": "​ Go supersize and seal in instant hydration for longer."
+          }
+        },
+        "field_sources": {
+          "what_it_is": "gemini",
+          "best_for": "gemini",
+          "why_it_stands_out": "gemini",
+          "routine_fit": "gemini",
+          "watchouts": "baseline",
+          "texture_finish": "gemini",
+          "community_signals": "baseline"
+        },
+        "selected_field_count": 5,
+        "selected_mode": "hybrid_gemini"
+      },
+      "comparison": {
+        "compared": true,
+        "best_for_overlap": 0,
+        "watchout_overlap": 1,
+        "baseline_highlight_count": 1,
+        "gemini_highlight_count": 1,
+        "gemini_quality": {
+          "candidate_available": true,
+          "overall_pass": true,
+          "quality_score": 5,
+          "fail_reasons": [],
+          "seller_only_violation": false,
+          "best_for_overlap": 0,
+          "watchout_overlap": 1,
+          "field_decisions": {
+            "what_it_is": true,
+            "best_for": true,
+            "why_it_stands_out": true,
+            "routine_fit": true,
+            "watchouts": false,
+            "texture_finish": true,
+            "community_signals": false
+          }
+        },
+        "selected_mode": "hybrid_gemini",
+        "selected_field_count": 5,
+        "selected_field_sources": {
+          "what_it_is": "gemini",
+          "best_for": "gemini",
+          "why_it_stands_out": "gemini",
+          "routine_fit": "gemini",
+          "watchouts": "baseline",
+          "texture_finish": "gemini",
+          "community_signals": "baseline"
+        }
+      }
+    }
+  ]
+}

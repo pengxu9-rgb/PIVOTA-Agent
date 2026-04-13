@@ -46736,5 +46736,208 @@
     },
     "external_highlight_review_status": "rewrite",
     "external_review_batch": "manual_search_clean44_reviewed_2026_04_13"
+  },
+  "product:10008793153864": {
+    "notes": "Strict human QA override: the KraveBeauty draft was directionally correct but lacked compact card framing, so the rewrite gives it a clear barrier-serum highlight.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Barrier-repair serum",
+        "body": "A barrier-repair serum for over-sensitized or irritated skin, built around tamanu oil, niacinamide, and ceramides to calm the look of redness."
+      },
+      "best_for": [
+        {
+          "tag": "barrier_support",
+          "label": "Compromised or over-sensitized skin barriers",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "visible_redness",
+          "label": "Skin showing visible redness or irritation",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Tamanu-led barrier serum",
+          "body": "Keeps the product grounded as a barrier-repair serum centered on tamanu oil instead of a generic calming treatment.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Niacinamide + ceramide support",
+          "body": "Pairs redness-focused niacinamide with ceramides for a calmer, stronger-feeling barrier routine.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply after toner before moisturizer; use SPF during daytime routines."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "serum",
+      "finish": "comforting",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Apply after toner before moisturizer; use SPF during daytime routines."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Barrier-repair serum",
+      "highlight": "Tamanu + ceramide barrier support",
+      "intro": "A calming serum for over-sensitized or irritated skin."
+    },
+    "search_card": {
+      "compact_candidate": "Barrier-repair serum",
+      "highlight_candidate": "Tamanu + ceramide barrier support",
+      "intro_candidate": "A calming serum for over-sensitized or irritated skin."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_search_expand60_searchonly_reviewed_2026_04_13"
+  },
+  "live_ext_572faba591a8712e6c37fbe3": {
+    "notes": "Strict human QA override: the SKIN1004 toner kept an empty routine and noisy benefit string, so the rewrite makes the brightening toner role explicit.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Brightening exfoliating toner",
+        "body": "A mild exfoliating toner with fruit extracts, Madewhite, and niacinamide to refine texture and prep skin for the next routine step."
+      },
+      "best_for": [
+        {
+          "tag": "dullness",
+          "label": "Dull or uneven-looking tone",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "texture_refinement",
+          "label": "Skin needing a gentle refining toner step",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Madewhite + niacinamide tone care",
+          "body": "Keeps the toner grounded around brightening and clarity support rather than a raw benefit list.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Fruit-extract exfoliating prep",
+          "body": "Frames it as a mild exfoliating toner that refines skin before serum or moisturizer.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "toner",
+        "am_pm": [
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use after cleansing before serum or moisturizer; start a few times weekly if skin is sensitive."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "exfoliation",
+          "label": "Reduce frequency if skin feels sensitized or over-exfoliated.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "watery",
+      "finish": "fresh",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use after cleansing before serum or moisturizer."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Brightening exfoliating toner",
+      "highlight": "Madewhite + niacinamide tone care",
+      "intro": "A mild refining toner for dullness and uneven texture."
+    },
+    "search_card": {
+      "compact_candidate": "Brightening exfoliating toner",
+      "highlight_candidate": "Madewhite + niacinamide tone care",
+      "intro_candidate": "A mild refining toner for dullness and uneven texture."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_search_expand60_searchonly_reviewed_2026_04_13"
+  },
+  "live_ext_378d80a20c6f872e94e9ca86": {
+    "notes": "Strict human QA override: the Omega Water Cream draft still leaked supersize merch language into the card intro, so the rewrite centers the oil-free water-cream role.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Oil-free water cream",
+        "body": "An oil-free water cream moisturizer made to hydrate without a greasy or heavy feel."
+      },
+      "best_for": [
+        {
+          "tag": "light_hydration",
+          "label": "Skin wanting lightweight daily hydration",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "oil_free_moisture",
+          "label": "Moisturizer shoppers avoiding heavy or greasy creams",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Oil-free water-cream texture",
+          "body": "Keeps the product grounded as a lightweight moisturizer instead of letting supersize merch copy lead.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Hydration without heaviness",
+          "body": "Frames the formula around instant hydration with a non-greasy feel for daily moisturizer routines.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "moisturizer",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Layer after serum and before SPF in the morning."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "water cream",
+      "finish": "lightweight",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Layer after serum and before SPF in the morning."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Oil-free water cream",
+      "highlight": "Hydration without heaviness",
+      "intro": "A lightweight moisturizer that hydrates without a greasy feel."
+    },
+    "search_card": {
+      "compact_candidate": "Oil-free water cream",
+      "highlight_candidate": "Hydration without heaviness",
+      "intro_candidate": "A lightweight moisturizer that hydrates without a greasy feel."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_search_expand60_searchonly_reviewed_2026_04_13"
   }
 }

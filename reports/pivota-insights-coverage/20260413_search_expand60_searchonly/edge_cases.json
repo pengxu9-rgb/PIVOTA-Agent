@@ -1,0 +1,48 @@
+[
+  {
+    "case_id": "live_ext_572faba591a8712e6c37fbe3",
+    "notes": "Search-only pilot case sampled from query historical_probe2_leftover (Skin1004).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_572faba591a8712e6c37fbe3"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_572faba591a8712e6c37fbe3",
+      "brand": "Skin1004",
+      "title": "Tone Brightening Boosting Toner",
+      "category": "Toner",
+      "description": "A mild exfoliating toner with fruit extracts, Madewhite™, and Niacinamide that gently refines and preps the skin for the next step in your skincare routine. Product Benefits: Soothing, Brightening, Skin Clarity, Dullness Reduction Skin Type: Normal, Dry, Combination Key",
+      "tags": [
+        "Toner"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_378d80a20c6f872e94e9ca86",
+    "notes": "Search-only pilot case sampled from query historical_probe2_leftover (The Inkey List).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_378d80a20c6f872e94e9ca86"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_378d80a20c6f872e94e9ca86",
+      "brand": "The Inkey List",
+      "title": "Supersize Omega Water Cream - 100ml",
+      "category": "Moisturizer",
+      "description": "Searching for an oil-free moisturizer that hydrates without feeling greasy or heavy on the skin? We've got it! ​ Go supersize and seal in instant hydration for longer.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  }
+]

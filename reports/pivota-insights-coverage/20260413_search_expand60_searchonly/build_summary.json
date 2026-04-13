@@ -1,0 +1,39 @@
+{
+  "generated_at": "2026-04-13T07:43:25.433Z",
+  "source": "search_only_find_products_multi_abortable_repaired",
+  "queries": 4,
+  "raw_candidates": 19,
+  "covered_product_ids": 619,
+  "clean_uncovered_pool": 3,
+  "selected": 3,
+  "products": [
+    {
+      "product_id": "10008793153864",
+      "brand": "KraveBeauty",
+      "title": "KraveBeauty Great Barrier Relief",
+      "category": ""
+    },
+    {
+      "product_id": "ext_572faba591a8712e6c37fbe3",
+      "brand": "Skin1004",
+      "title": "Tone Brightening Boosting Toner",
+      "category": "Toner"
+    },
+    {
+      "product_id": "ext_378d80a20c6f872e94e9ca86",
+      "brand": "The Inkey List",
+      "title": "Supersize Omega Water Cream - 100ml",
+      "category": "Moisturizer"
+    }
+  ],
+  "query_errors": [
+    {
+      "query": "lip balm",
+      "error": "timeout_15000ms"
+    },
+    {
+      "query": "hair oil",
+      "error": "timeout_15000ms"
+    }
+  ]
+}

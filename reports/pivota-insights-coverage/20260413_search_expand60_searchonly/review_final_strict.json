@@ -1,0 +1,173 @@
+{
+  "meta": {
+    "generated_at": "2026-04-13T07:46:41.381Z",
+    "total": 3,
+    "pass": 0,
+    "rewrite": 3,
+    "baseline_only": 0
+  },
+  "rows": [
+    {
+      "case_id": "live_10008793153864",
+      "product_ref": {
+        "merchant_id": "merch_efbc46b4619cfbdf",
+        "product_id": "10008793153864"
+      },
+      "title": "KraveBeauty Great Barrier Relief",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Strict human QA override: the KraveBeauty draft was directionally correct but lacked compact card framing, so the rewrite gives it a clear barrier-serum highlight.",
+      "selected_mode": "manual_override",
+      "fail_reasons": [
+        "missing_candidate"
+      ],
+      "field_sources": {
+        "what_it_is": "manual",
+        "best_for": "manual",
+        "why_it_stands_out": "manual",
+        "routine_fit": "manual",
+        "watchouts": "manual",
+        "texture_finish": "manual",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "KraveBeauty Great Barrier Relief",
+        "subtitle": "Barrier-Repair Serum",
+        "highlight": "Tamanu + ceramide barrier support",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Barrier-Repair Serum",
+        "highlight_candidate": "Tamanu + ceramide barrier support",
+        "proof_badge_candidate": "",
+        "intro_candidate": "A calming serum for over-sensitized or irritated skin."
+      },
+      "pivota_insights": {
+        "what_it_is": "A barrier-repair serum for over-sensitized or irritated skin, built around tamanu oil, niacinamide, and ceramides to calm the look of redness.",
+        "why_it_stands_out": [
+          {
+            "headline": "Tamanu-led barrier serum",
+            "body": "Keeps the product grounded as a barrier-repair serum centered on tamanu oil instead of a generic calming treatment."
+          },
+          {
+            "headline": "Niacinamide + ceramide support",
+            "body": "Pairs redness-focused niacinamide with ceramides for a calmer, stronger-feeling barrier routine."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_572faba591a8712e6c37fbe3",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_572faba591a8712e6c37fbe3"
+      },
+      "title": "Skin1004 Tone Brightening Boosting Toner",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Strict human QA override: the SKIN1004 toner kept an empty routine and noisy benefit string, so the rewrite makes the brightening toner role explicit.",
+      "selected_mode": "manual_override",
+      "fail_reasons": [
+        "missing_candidate"
+      ],
+      "field_sources": {
+        "what_it_is": "manual",
+        "best_for": "manual",
+        "why_it_stands_out": "manual",
+        "routine_fit": "manual",
+        "watchouts": "manual",
+        "texture_finish": "manual",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Skin1004 Tone Brightening Boosting Toner",
+        "subtitle": "Brightening Exfoliating Toner",
+        "highlight": "Madewhite + niacinamide tone care",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Brightening Exfoliating Toner",
+        "highlight_candidate": "Madewhite + niacinamide tone care",
+        "proof_badge_candidate": "",
+        "intro_candidate": "A mild refining toner for dullness and uneven texture."
+      },
+      "pivota_insights": {
+        "what_it_is": "A mild exfoliating toner with fruit extracts, Madewhite, and niacinamide to refine texture and prep skin for the next routine step.",
+        "why_it_stands_out": [
+          {
+            "headline": "Madewhite + niacinamide tone care",
+            "body": "Keeps the toner grounded around brightening and clarity support rather than a raw benefit list."
+          },
+          {
+            "headline": "Fruit-extract exfoliating prep",
+            "body": "Frames it as a mild exfoliating toner that refines skin before serum or moisturizer."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_378d80a20c6f872e94e9ca86",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_378d80a20c6f872e94e9ca86"
+      },
+      "title": "The Inkey List Supersize Omega Water Cream - 100ml",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Strict human QA override: the Omega Water Cream draft still leaked supersize merch language into the card intro, so the rewrite centers the oil-free water-cream role.",
+      "selected_mode": "manual_override",
+      "fail_reasons": [
+        "missing_candidate"
+      ],
+      "field_sources": {
+        "what_it_is": "manual",
+        "best_for": "manual",
+        "why_it_stands_out": "manual",
+        "routine_fit": "manual",
+        "watchouts": "manual",
+        "texture_finish": "manual",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "The Inkey List Supersize Omega Water Cream - 100ml",
+        "subtitle": "Oil-Free Water Cream",
+        "highlight": "Hydration without heaviness",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Oil-Free Water Cream",
+        "highlight_candidate": "Hydration without heaviness",
+        "proof_badge_candidate": "",
+        "intro_candidate": "A lightweight moisturizer that hydrates without a greasy feel."
+      },
+      "pivota_insights": {
+        "what_it_is": "An oil-free water cream moisturizer made to hydrate without a greasy or heavy feel.",
+        "why_it_stands_out": [
+          {
+            "headline": "Oil-free water-cream texture",
+            "body": "Keeps the product grounded as a lightweight moisturizer instead of letting supersize merch copy lead."
+          },
+          {
+            "headline": "Hydration without heaviness",
+            "body": "Frames the formula around instant hydration with a non-greasy feel for daily moisturizer routines."
+          }
+        ]
+      }
+    }
+  ]
+}
