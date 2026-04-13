@@ -35,7 +35,8 @@ function stripHtml(input) {
     .trim();
 }
 
-const INGREDIENT_SECTION_RE = /\b(full ingredients?|ingredients(?:\s*\(inci\))?|inci(?: list)?)\s*:/ig;
+const INGREDIENT_SECTION_RE =
+  /\b(full ingredient(?:s| list)?|full ingredients? list|ingredients(?:\s*\(inci\))?|inci(?: list)?)\s*:/ig;
 const ACTIVE_SECTION_RE = /\bactive ingredients?\s*:/ig;
 const STOP_MARKERS = [
   /\bpeta-certified\b/i,
@@ -72,12 +73,15 @@ function collectSectionBlocks(product) {
   };
 
   const directLists = [
+    product?.pdp_details_sections,
     product?.details_sections,
     product?.detail_sections,
     product?.details,
     product?.product_details?.sections,
+    product?.seed_data?.pdp_details_sections,
     product?.seed_data?.details_sections,
     product?.seed_data?.detail_sections,
+    product?.seed_data?.snapshot?.pdp_details_sections,
     product?.seed_data?.snapshot?.details_sections,
     product?.seed_data?.snapshot?.detail_sections,
   ];
@@ -293,7 +297,11 @@ function buildAuthorityFromSections(product, sections) {
     if (!heading || !content) continue;
     const normalizedHeading = heading.toLowerCase();
     if (normalizedHeading.includes('active ingredient')) continue;
-    if (!SECTION_HEADING_RE.test(heading) && !/(full ingredients?|ingredients|inci)/i.test(heading)) continue;
+    const hasIngredientHeading =
+      SECTION_HEADING_RE.test(heading) || /(full ingredients?|ingredients|inci)/i.test(heading);
+    const hasInlineIngredientLabel = INGREDIENT_SECTION_RE.test(content);
+    INGREDIENT_SECTION_RE.lastIndex = 0;
+    if (!hasIngredientHeading && !hasInlineIngredientLabel) continue;
     const parsed = parseCandidateRawText(content, 'pdp_section');
     if (!parsed) continue;
     ranked.push(parsed);

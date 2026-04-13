@@ -65,4 +65,29 @@ describe('pdpIngredientAuthority', () => {
     expect(authority.items).toEqual(['Water', 'Glycerin', 'Niacinamide']);
     expect(authority.active_items).toEqual(['Niacinamide']);
   });
+
+  test('parses inline full ingredient list from generic details sections', () => {
+    const authority = buildAuthoritativeIngredientView({
+      pdp_details_sections: [
+        {
+          heading: 'Details',
+          content:
+            'Key Ingredients\nRice Extract\nRice Amino Acids\nFull Ingredient List: AQUA, METHYLPROPANEDIOL, PROPANEDIOL, 1,2-HEXANEDIOL, GLYCERIN, ORYZA SATIVA (RICE) EXTRACT, RICE AMINO ACIDS. Warning: For external use only.',
+        },
+      ],
+    });
+
+    expect(authority.purity_status).toBe('authoritative');
+    expect(authority.items).toEqual(
+      expect.arrayContaining([
+        'AQUA',
+        'METHYLPROPANEDIOL',
+        'PROPANEDIOL',
+        '1,2-HEXANEDIOL',
+        'GLYCERIN',
+        'ORYZA SATIVA (RICE) EXTRACT',
+        'RICE AMINO ACIDS',
+      ]),
+    );
+  });
 });

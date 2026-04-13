@@ -849,6 +849,36 @@ describe('externalSeedProducts helper', () => {
     expect(product.product_type).toBe('Eyeshadow');
   });
 
+  test('does not infer powder from ingredient-style description mentions when title surface is non-powder', () => {
+    const bananaStick = buildExternalSeedProduct({
+      id: 'eps_ole_banana_cc_stick',
+      external_product_id: 'ext_ole_banana_cc_stick',
+      canonical_url: 'https://olehenriksen.com/products/banana-bright-vitamin-cc-stick',
+      destination_url: 'https://olehenriksen.com/products/banana-bright-vitamin-cc-stick',
+      domain: 'olehenriksen.com',
+      title: 'Banana Bright+ Vitamin CC Stick',
+      seed_brand: 'Olehenriksen',
+      seed_description:
+        'A color-correcting eye cream stick, with two forms of vitamin C and banana powder-inspired pigments, that instantly neutralizes dark circles, brightens and hydrates.',
+    });
+    expect(bananaStick.category).not.toBe('Powder');
+    expect(bananaStick.product_type).not.toBe('Powder');
+
+    const lemonadeScrub = buildExternalSeedProduct({
+      id: 'eps_ole_lemonade_scrub',
+      external_product_id: 'ext_ole_lemonade_scrub',
+      canonical_url: 'https://olehenriksen.com/products/lemonade-smoothing-scrub',
+      destination_url: 'https://olehenriksen.com/products/lemonade-smoothing-scrub',
+      domain: 'olehenriksen.com',
+      title: 'Lemonade Smoothing Scrub',
+      seed_brand: 'Olehenriksen',
+      seed_description:
+        'High-potency AHAs help exfoliate while lemon peel powder and ultra-fine sugar gently buff away rough skin.',
+    });
+    expect(lemonadeScrub.category).not.toBe('Powder');
+    expect(lemonadeScrub.product_type).not.toBe('Powder');
+  });
+
   test('prefers primary variant image ordering over stale top-level seed image ordering', () => {
     const row = {
       id: 'eps_tomford_lip_liquid',
