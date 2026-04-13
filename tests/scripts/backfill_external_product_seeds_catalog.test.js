@@ -3,6 +3,7 @@ const {
   buildExtractRequestBody,
   chooseRepresentativeProduct,
   buildSeedUpdatePayload,
+  buildVariantSeedRows,
   comparableSeedData,
   normalizeComparableUrlKey,
   normalizeTargetUrlForMarket,
@@ -20,6 +21,24 @@ describe('backfill-external-product-seeds-catalog', () => {
     };
 
     expect(pickSeedTargetUrl(row)).toBe('https://example.com/p/canonical-product');
+  });
+
+  test('prefers variant destination URL for expanded exact-item seeds', () => {
+    const row = {
+      canonical_url: 'https://example.com/products/pro-c-serum',
+      destination_url: 'https://example.com/products/pro-c-serum?variant=42771629506608',
+      seed_data: {
+        source_listing_scope: 'variant',
+        parent_external_product_id: 'ext_parent',
+        selected_variant_id: '42771629506608',
+        snapshot: {
+          canonical_url: 'https://example.com/products/pro-c-serum',
+          destination_url: 'https://example.com/products/pro-c-serum?variant=42771629506608',
+        },
+      },
+    };
+
+    expect(pickSeedTargetUrl(row)).toBe('https://example.com/products/pro-c-serum?variant=42771629506608');
   });
 
   test('passes the seed market through to catalog-intelligence', () => {
@@ -813,5 +832,260 @@ describe('backfill-external-product-seeds-catalog', () => {
     expect(payload.nextRow.seed_data.derived.recall.retrieval_body).not.toMatch(
       /customer service|privacy policy|donation/i,
     );
+  });
+
+  test('preserves base PDP scope while retaining extractor variant deep links for expansion', () => {
+    const row = {
+      id: 'eps_inn_extreme',
+      external_product_id: 'ext_parent_extreme',
+      market: 'US',
+      tool: 'creator_agents',
+      title: 'Extreme Cream',
+      canonical_url: 'https://innbeautyproject.com/products/extreme-cream',
+      destination_url: 'https://innbeautyproject.com/products/extreme-cream',
+      image_url: 'https://cdn.example.com/full-size.jpg',
+      price_amount: 44,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        brand: 'INNBEAUTY Project',
+        snapshot: {
+          canonical_url: 'https://innbeautyproject.com/products/extreme-cream',
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: 'Extreme Cream',
+            url: 'https://innbeautyproject.com/products/extreme-cream',
+            image_url: 'https://cdn.example.com/full-size.jpg',
+            image_urls: ['https://cdn.example.com/full-size.jpg', 'https://cdn.example.com/refill.jpg'],
+            variants: [
+              {
+                id: '41148734668848',
+                sku: '0190',
+                option_name: 'Option',
+                option_value: 'Full Size',
+                price: '50.00',
+                currency: 'USD',
+                stock: 'In Stock',
+                product_url: 'https://innbeautyproject.com/products/extreme-cream',
+                image_url: 'https://cdn.example.com/full-size.jpg',
+                image_urls: ['https://cdn.example.com/full-size.jpg'],
+              },
+              {
+                id: '41148734701616',
+                sku: '0191',
+                option_name: 'Option',
+                option_value: 'Refill',
+                price: '44.00',
+                currency: 'USD',
+                stock: 'In Stock',
+                product_url: 'https://innbeautyproject.com/products/extreme-cream',
+                image_url: 'https://cdn.example.com/refill.jpg',
+                image_urls: ['https://cdn.example.com/refill.jpg'],
+              },
+            ],
+          },
+        ],
+        variants: [
+          {
+            id: '41148734668848',
+            sku: '0190',
+            deep_link: 'https://innbeautyproject.com/products/extreme-cream?variant=41148734668848',
+            product_url: 'https://innbeautyproject.com/products/extreme-cream',
+          },
+          {
+            id: '41148734701616',
+            sku: '0191',
+            deep_link: 'https://innbeautyproject.com/products/extreme-cream?variant=41148734701616',
+            product_url: 'https://innbeautyproject.com/products/extreme-cream',
+          },
+        ],
+        diagnostics: {},
+      },
+      'https://innbeautyproject.com/products/extreme-cream',
+    );
+
+    expect(payload.nextRow.destination_url).toBe('https://innbeautyproject.com/products/extreme-cream');
+    expect(payload.nextRow.price_amount).toBe(44);
+    expect(payload.nextRow.seed_data.selected_variant_id).toBeUndefined();
+    expect(payload.nextRow.seed_data.snapshot.variants[0]).toEqual(
+      expect.objectContaining({
+        variant_id: '41148734668848',
+        url: 'https://innbeautyproject.com/products/extreme-cream?variant=41148734668848',
+      }),
+    );
+  });
+
+  test('builds exact-item child seeds from variant deep links without mutating the base seed identity', () => {
+    const row = {
+      id: 'eps_inn_extreme',
+      external_product_id: 'ext_parent_extreme',
+      market: 'US',
+      tool: 'creator_agents',
+      domain: 'innbeautyproject.com',
+      title: 'Extreme Cream',
+      canonical_url: 'https://innbeautyproject.com/products/extreme-cream',
+      destination_url: 'https://innbeautyproject.com/products/extreme-cream',
+      image_url: 'https://cdn.example.com/full-size.jpg',
+      price_amount: 44,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        brand: 'INNBEAUTY Project',
+        snapshot: {
+          canonical_url: 'https://innbeautyproject.com/products/extreme-cream',
+        },
+      },
+    };
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: 'Extreme Cream',
+            url: 'https://innbeautyproject.com/products/extreme-cream',
+            variants: [
+              {
+                id: '41148734668848',
+                sku: '0190',
+                option_name: 'Option',
+                option_value: 'Full Size',
+                price: '50.00',
+                currency: 'USD',
+                stock: 'In Stock',
+                product_url: 'https://innbeautyproject.com/products/extreme-cream',
+                deep_link: 'https://innbeautyproject.com/products/extreme-cream?variant=41148734668848',
+                image_url: 'https://cdn.example.com/full-size.jpg',
+                image_urls: ['https://cdn.example.com/full-size.jpg'],
+              },
+              {
+                id: '41148734701616',
+                sku: '0191',
+                option_name: 'Option',
+                option_value: 'Refill',
+                price: '44.00',
+                currency: 'USD',
+                stock: 'In Stock',
+                product_url: 'https://innbeautyproject.com/products/extreme-cream',
+                deep_link: 'https://innbeautyproject.com/products/extreme-cream?variant=41148734701616',
+                image_url: 'https://cdn.example.com/refill.jpg',
+                image_urls: ['https://cdn.example.com/refill.jpg'],
+              },
+            ],
+          },
+        ],
+        variants: [],
+        diagnostics: {},
+      },
+      'https://innbeautyproject.com/products/extreme-cream',
+    );
+
+    const rows = buildVariantSeedRows(row, payload);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toEqual(
+      expect.objectContaining({
+        id: expect.stringMatching(/^epsv_[0-9a-f]{24}$/),
+        external_product_id: expect.stringMatching(/^ext_[0-9a-f]{24}$/),
+        destination_url: 'https://innbeautyproject.com/products/extreme-cream?variant=41148734668848',
+        price_amount: 50,
+        image_url: 'https://cdn.example.com/full-size.jpg',
+      }),
+    );
+    expect(rows[0].seed_data).toEqual(
+      expect.objectContaining({
+        source_listing_scope: 'variant',
+        parent_external_product_id: 'ext_parent_extreme',
+        selected_variant_id: '41148734668848',
+        default_variant_id: '41148734668848',
+        variant_title: 'Full Size',
+      }),
+    );
+    expect(rows[0].seed_data.snapshot.variants).toHaveLength(1);
+    expect(rows[1].seed_data.variant_title).toBe('Refill');
+    expect(rows[1].price_amount).toBe(44);
+  });
+
+  test('selects exact variant fields when refreshing a variant deep-link seed', () => {
+    const row = {
+      id: 'epsv_inn_extreme_refill',
+      external_product_id: 'ext_variant_refill',
+      market: 'US',
+      tool: 'creator_agents',
+      title: 'Extreme Cream',
+      canonical_url: 'https://innbeautyproject.com/products/extreme-cream',
+      destination_url: 'https://innbeautyproject.com/products/extreme-cream?variant=41148734701616',
+      image_url: 'https://cdn.example.com/refill.jpg',
+      price_amount: 44,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        brand: 'INNBEAUTY Project',
+        source_listing_scope: 'variant',
+        parent_external_product_id: 'ext_parent_extreme',
+        selected_variant_id: '41148734701616',
+        snapshot: {
+          canonical_url: 'https://innbeautyproject.com/products/extreme-cream',
+          destination_url: 'https://innbeautyproject.com/products/extreme-cream?variant=41148734701616',
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: 'Extreme Cream',
+            url: 'https://innbeautyproject.com/products/extreme-cream',
+            image_url: 'https://cdn.example.com/full-size.jpg',
+            image_urls: ['https://cdn.example.com/full-size.jpg', 'https://cdn.example.com/refill.jpg'],
+            variants: [
+              {
+                id: '41148734668848',
+                sku: '0190',
+                option_name: 'Option',
+                option_value: 'Full Size',
+                price: '50.00',
+                currency: 'USD',
+                stock: 'In Stock',
+                deep_link: 'https://innbeautyproject.com/products/extreme-cream?variant=41148734668848',
+                image_url: 'https://cdn.example.com/full-size.jpg',
+                image_urls: ['https://cdn.example.com/full-size.jpg'],
+              },
+              {
+                id: '41148734701616',
+                sku: '0191',
+                option_name: 'Option',
+                option_value: 'Refill',
+                price: '44.00',
+                currency: 'USD',
+                stock: 'In Stock',
+                deep_link: 'https://innbeautyproject.com/products/extreme-cream?variant=41148734701616',
+                image_url: 'https://cdn.example.com/refill.jpg',
+                image_urls: ['https://cdn.example.com/refill.jpg'],
+              },
+            ],
+          },
+        ],
+        variants: [],
+        diagnostics: {},
+      },
+      'https://innbeautyproject.com/products/extreme-cream?variant=41148734701616',
+    );
+
+    expect(payload.nextRow.destination_url).toBe(
+      'https://innbeautyproject.com/products/extreme-cream?variant=41148734701616',
+    );
+    expect(payload.nextRow.price_amount).toBe(44);
+    expect(payload.nextRow.image_url).toBe('https://cdn.example.com/refill.jpg');
+    expect(payload.nextRow.seed_data.selected_variant_id).toBe('41148734701616');
+    expect(payload.nextRow.seed_data.variant_title).toBe('Refill');
+    expect(buildVariantSeedRows(row, payload)).toEqual([]);
   });
 });

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+const crypto = require('node:crypto');
 const axios = require('axios');
 const { query, withClient } = require('../src/db');
 const { lookupExternalSeedImageOverride } = require('../src/services/externalSeedImageOverrides');
@@ -109,6 +110,127 @@ function uniqueStrings(values) {
     out.push(next);
   }
   return out;
+}
+
+function cloneJsonValue(value) {
+  return JSON.parse(JSON.stringify(value || {}));
+}
+
+function stableHash(value, length = 24) {
+  return crypto.createHash('sha256').update(String(value || '')).digest('hex').slice(0, length);
+}
+
+function stableVariantSeedId(row, variant) {
+  const parentKey = normalizeNonEmptyString(row?.id || row?.external_product_id || row?.destination_url);
+  const variantKey = normalizeNonEmptyString(variant?.variant_id || variant?.id || variant?.sku || variant?.url);
+  return `epsv_${stableHash(`${parentKey}|${variantKey}`, 24)}`;
+}
+
+function stableVariantExternalProductId(row, variant) {
+  const parentKey = normalizeNonEmptyString(row?.external_product_id || row?.id || row?.destination_url);
+  const variantKey = normalizeNonEmptyString(variant?.variant_id || variant?.id || variant?.sku || variant?.url);
+  return `ext_${stableHash(`${parentKey}|${variantKey}`, 24)}`;
+}
+
+function normalizeVariantHintToken(value) {
+  return normalizeNonEmptyString(value).toLowerCase();
+}
+
+function collectVariantHintTokensFromUrl(value) {
+  const raw = normalizeUrlLike(value);
+  if (!raw) return [];
+  try {
+    const parsed = new URL(raw);
+    const out = [];
+    for (const [key, paramValue] of parsed.searchParams.entries()) {
+      const normalizedKey = normalizeVariantHintToken(key);
+      const normalizedValue = normalizeVariantHintToken(paramValue);
+      if (!normalizedValue) continue;
+      if (!['v', 'variant', 'variant_id', 'sku', 'sku_id', 'pid'].includes(normalizedKey)) continue;
+      out.push(normalizedValue);
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+function collectVariantIdentityTokens(variant) {
+  const optionValues = [];
+  if (Array.isArray(variant?.options)) {
+    for (const option of variant.options) {
+      if (!option || typeof option !== 'object') continue;
+      optionValues.push(option.value, option.option_value);
+    }
+  }
+  return Array.from(
+    new Set(
+      [
+        variant?.variant_id,
+        variant?.id,
+        variant?.sku,
+        variant?.sku_id,
+        variant?.option_name,
+        variant?.option_value,
+        variant?.title,
+        ...optionValues,
+      ]
+        .map((item) => normalizeVariantHintToken(item))
+        .filter(Boolean),
+    ),
+  );
+}
+
+function variantMatchesHintTokens(variant, hintTokens = []) {
+  const variantTokens = collectVariantIdentityTokens(variant);
+  if (!variantTokens.length || !Array.isArray(hintTokens) || !hintTokens.length) return false;
+  return hintTokens.some((token) => variantTokens.includes(normalizeVariantHintToken(token)));
+}
+
+function pickVariantByHints(variants, hints = []) {
+  const safeVariants = Array.isArray(variants) ? variants.filter(Boolean) : [];
+  const hintTokens = Array.from(
+    new Set(
+      hints
+        .flatMap((hint) => {
+          const normalized = normalizeNonEmptyString(hint);
+          if (!normalized) return [];
+          if (/^https?:\/\//i.test(normalized)) return collectVariantHintTokensFromUrl(normalized);
+          return [normalized];
+        })
+        .map((item) => normalizeVariantHintToken(item))
+        .filter(Boolean),
+    ),
+  );
+  if (!safeVariants.length || !hintTokens.length) return null;
+  const matches = safeVariants.filter((variant) => variantMatchesHintTokens(variant, hintTokens));
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function getVariantId(variant) {
+  return normalizeNonEmptyString(variant?.variant_id || variant?.id || variant?.sku || variant?.sku_id);
+}
+
+function getVariantTitle(variant) {
+  return normalizeNonEmptyString(
+    variant?.option_value ||
+      variant?.title ||
+      (Array.isArray(variant?.options) ? variant.options.map((item) => item?.value).filter(Boolean).join(' / ') : '') ||
+      variant?.sku,
+  );
+}
+
+function isDefaultVariantTitle(value) {
+  return /^(?:default|default title|title)$/i.test(normalizeNonEmptyString(value));
+}
+
+function collectVariantImageUrls(variant) {
+  return sanitizeSeedImageUrls([
+    ...(Array.isArray(variant?.image_urls) ? variant.image_urls : []),
+    ...(Array.isArray(variant?.images) ? variant.images : []),
+    variant?.image_url,
+    variant?.image,
+  ]);
 }
 
 function isDecorativeSeedImageUrl(value) {
@@ -284,6 +406,10 @@ function recoverTargetUrlFromDiagnostics(row) {
 function pickSeedTargetUrl(row) {
   const seedData = ensureJsonObject(row?.seed_data);
   const snapshot = ensureJsonObject(seedData.snapshot);
+  const variantDestinationUrl = normalizeUrlLike(row?.destination_url || seedData.destination_url || snapshot.destination_url);
+  if (isVariantExpandedSeed(seedData) && collectVariantHintTokensFromUrl(variantDestinationUrl).length > 0) {
+    return variantDestinationUrl;
+  }
   const currentUrl = normalizeUrlLike(row?.canonical_url || row?.destination_url);
   const recoveredUrl =
     looksLikeKnownNonProductUrl(currentUrl) || !currentUrl ? recoverTargetUrlFromDiagnostics(row) : '';
@@ -338,6 +464,38 @@ function chooseRepresentativeProduct(response, targetUrl, row) {
 
 function mapSnapshotVariants(product, response, existingSeedData) {
   const responseVariants = Array.isArray(response?.variants) ? response.variants : [];
+  const findResponseVariantMatch = (variant) => {
+    const strongTokens = [
+      variant?.id,
+      variant?.variant_id,
+      variant?.sku,
+      variant?.sku_id,
+    ]
+      .map((item) => normalizeVariantHintToken(item))
+      .filter(Boolean);
+    if (strongTokens.length > 0) {
+      const strongMatch = responseVariants.find((candidate) => {
+        const candidateTokens = [
+          candidate?.id,
+          candidate?.variant_id,
+          candidate?.sku,
+          candidate?.sku_id,
+        ]
+          .map((item) => normalizeVariantHintToken(item))
+          .filter(Boolean);
+        return candidateTokens.some((token) => strongTokens.includes(token));
+      });
+      if (strongMatch) return strongMatch;
+    }
+
+    const optionValue = normalizeVariantHintToken(variant?.option_value || variant?.title);
+    if (!optionValue) return null;
+    const optionMatches = responseVariants.filter((candidate) => {
+      const candidateValue = normalizeVariantHintToken(candidate?.option_value || candidate?.title);
+      return candidateValue && candidateValue === optionValue;
+    });
+    return optionMatches.length === 1 ? optionMatches[0] : null;
+  };
   const representativeVariants =
     Array.isArray(product?.variants) && product.variants.length > 0
       ? product.variants
@@ -350,20 +508,42 @@ function mapSnapshotVariants(product, response, existingSeedData) {
   const mapped = representativeVariants
     .map((variant, idx) => {
       if (!variant || typeof variant !== 'object') return null;
-      const imageUrls = uniqueStrings([...(Array.isArray(variant.image_urls) ? variant.image_urls : []), variant.image_url]);
-      const sku = normalizeNonEmptyString(variant.sku || variant.sku_id || variant.id || `variant-${idx + 1}`);
+      const responseVariant = findResponseVariantMatch(variant) || {};
+      const imageUrls = uniqueStrings([
+        ...(Array.isArray(variant.image_urls) ? variant.image_urls : []),
+        ...(Array.isArray(responseVariant.image_urls) ? responseVariant.image_urls : []),
+        variant.image_url,
+        responseVariant.image_url,
+      ]);
+      const sku = normalizeNonEmptyString(
+        variant.sku || variant.sku_id || responseVariant.sku || responseVariant.sku_id || variant.id || `variant-${idx + 1}`,
+      );
+      const variantUrl = normalizeUrlLike(
+        variant.deep_link ||
+          responseVariant.deep_link ||
+          variant.url ||
+          responseVariant.url ||
+          variant.product_url ||
+          responseVariant.product_url,
+      );
       return {
         sku,
-        variant_id: normalizeNonEmptyString(variant.id || variant.variant_id || sku),
-        url: normalizeUrlLike(variant.url || variant.product_url),
-        option_name: normalizeNonEmptyString(variant.option_name),
-        option_value: normalizeNonEmptyString(variant.option_value),
-        price: normalizeNonEmptyString(variant.price),
-        currency: normalizeNonEmptyString(variant.currency),
-        stock: normalizeNonEmptyString(variant.stock),
+        variant_id: normalizeNonEmptyString(variant.id || variant.variant_id || responseVariant.id || responseVariant.variant_id || sku),
+        url: variantUrl,
+        ...(normalizeUrlLike(variant.deep_link || responseVariant.deep_link)
+          ? { deep_link: normalizeUrlLike(variant.deep_link || responseVariant.deep_link) }
+          : {}),
+        ...(normalizeUrlLike(variant.product_url || responseVariant.product_url)
+          ? { product_url: normalizeUrlLike(variant.product_url || responseVariant.product_url) }
+          : {}),
+        option_name: normalizeNonEmptyString(variant.option_name || responseVariant.option_name),
+        option_value: normalizeNonEmptyString(variant.option_value || responseVariant.option_value),
+        price: normalizeNonEmptyString(variant.price || responseVariant.price),
+        currency: normalizeNonEmptyString(variant.currency || responseVariant.currency),
+        stock: normalizeNonEmptyString(variant.stock || responseVariant.stock),
         image_url: imageUrls[0] || '',
         image_urls: imageUrls,
-        description: normalizeNonEmptyString(variant.description),
+        description: normalizeNonEmptyString(variant.description || responseVariant.description),
       };
     })
     .filter(Boolean);
@@ -434,14 +614,39 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   const representativeProductUrl = normalizeUrlLike(representativeProduct?.url) || normalizeUrlLike(targetUrl) || normalizeUrlLike(row?.canonical_url);
   const snapshotVariants = mapSnapshotVariants(representativeProduct, response, seedData);
   const effectiveSnapshotVariants = fallbackPollutedRow && !representativeProduct ? [] : snapshotVariants;
+  const selectedSnapshotVariant = pickVariantByHints(effectiveSnapshotVariants, [
+    seedData.selected_variant_id,
+    seedData.default_variant_id,
+    seedData.variant_id,
+    seedData.sku_id,
+    seedData.variant_title,
+    snapshot.selected_variant_id,
+    snapshot.default_variant_id,
+    snapshot.variant_id,
+    snapshot.sku_id,
+    snapshot.variant_title,
+    row?.selected_variant_id,
+    row?.default_variant_id,
+    targetUrl,
+    row?.destination_url,
+    row?.canonical_url,
+  ]);
+  const selectedVariantId = getVariantId(selectedSnapshotVariant);
+  const selectedVariantTitle = getVariantTitle(selectedSnapshotVariant);
+  const selectedVariantImageUrls = collectVariantImageUrls(selectedSnapshotVariant);
   const hasLiveVariantImages =
     Array.isArray(response?.variants) &&
     response.variants.length > 0 &&
     effectiveSnapshotVariants.some((variant) => Array.isArray(variant.image_urls) && variant.image_urls.length > 0);
   const extractedImageUrls = sanitizeSeedImageUrls([
-    ...(Array.isArray(representativeProduct?.image_urls) ? representativeProduct.image_urls : []),
-    representativeProduct?.image_url,
-    ...(hasLiveVariantImages ? effectiveSnapshotVariants.flatMap((variant) => variant.image_urls || []) : []),
+    ...(selectedVariantImageUrls.length > 0 ? selectedVariantImageUrls : []),
+    ...(selectedVariantImageUrls.length > 0 || selectedSnapshotVariant
+      ? []
+      : [
+          ...(Array.isArray(representativeProduct?.image_urls) ? representativeProduct.image_urls : []),
+          representativeProduct?.image_url,
+          ...(hasLiveVariantImages ? effectiveSnapshotVariants.flatMap((variant) => variant.image_urls || []) : []),
+        ]),
   ]);
   const existingImageUrls = fallbackPollutedRow ? [] : sanitizeSeedImageUrls(collectSeedImageUrls(seedData, row));
   const imageOverride = lookupExternalSeedImageOverride(
@@ -463,7 +668,8 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   if (manualImageOverrideApplied) mergedImageUrls = overrideImageUrls;
   const imageUrl = mergedImageUrls[0] || '';
   const variantSkus = uniqueStrings(effectiveSnapshotVariants.map((variant) => variant.sku));
-  const variantPrices = effectiveSnapshotVariants
+  const variantsForPrice = selectedSnapshotVariant ? [selectedSnapshotVariant] : effectiveSnapshotVariants;
+  const variantPrices = variantsForPrice
     .map((variant) => parsePrice(variant.price))
     .filter((value) => typeof value === 'number' && value > 0);
   const anyInStock = effectiveSnapshotVariants.some((variant) => {
@@ -549,7 +755,8 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     normalizeNonEmptyString(representativeProduct?.title || seedData.title || snapshot.title || row?.title) || row?.id;
   const currency =
     normalizeNonEmptyString(
-      effectiveSnapshotVariants.find((variant) => variant.currency)?.currency ||
+      selectedSnapshotVariant?.currency ||
+        effectiveSnapshotVariants.find((variant) => variant.currency)?.currency ||
         row?.price_currency ||
         seedData.price_currency ||
         snapshot.price_currency,
@@ -561,7 +768,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
         ? row.price_amount
         : parsePrice(seedData.price_amount ?? snapshot.price_amount) || null;
   const destinationUrl =
-    normalizeUrlLike(effectiveSnapshotVariants.find((variant) => variant.url)?.url) ||
+    (selectedSnapshotVariant ? normalizeUrlLike(selectedSnapshotVariant.url) : '') ||
     representativeProductUrl ||
     (fallbackPollutedRow ? normalizeUrlLike(targetUrl) : normalizeUrlLike(row?.destination_url)) ||
     normalizeUrlLike(targetUrl);
@@ -583,6 +790,8 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     ...(nextPdpIngredientsRaw ? { pdp_ingredients_raw: nextPdpIngredientsRaw } : {}),
     ...(nextPdpActiveIngredientsRaw ? { pdp_active_ingredients_raw: nextPdpActiveIngredientsRaw } : {}),
     ...(nextPdpHowToUseRaw ? { pdp_how_to_use_raw: nextPdpHowToUseRaw } : {}),
+    ...(selectedVariantId ? { selected_variant_id: selectedVariantId, default_variant_id: selectedVariantId } : {}),
+    ...(selectedVariantTitle && !isDefaultVariantTitle(selectedVariantTitle) ? { variant_title: selectedVariantTitle } : {}),
     ...(nextDescriptionOrigin ? { seed_description_origin: nextDescriptionOrigin } : {}),
     ...(pdpFieldCaptureStatus ? { pdp_field_capture_status: pdpFieldCaptureStatus } : {}),
     image_url: imageUrl || normalizeNonEmptyString(snapshot.image_url),
@@ -611,6 +820,8 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     ...(nextPdpIngredientsRaw ? { pdp_ingredients_raw: nextPdpIngredientsRaw } : {}),
     ...(nextPdpActiveIngredientsRaw ? { pdp_active_ingredients_raw: nextPdpActiveIngredientsRaw } : {}),
     ...(nextPdpHowToUseRaw ? { pdp_how_to_use_raw: nextPdpHowToUseRaw } : {}),
+    ...(selectedVariantId ? { selected_variant_id: selectedVariantId, default_variant_id: selectedVariantId } : {}),
+    ...(selectedVariantTitle && !isDefaultVariantTitle(selectedVariantTitle) ? { variant_title: selectedVariantTitle } : {}),
     ...(nextDescriptionOrigin ? { seed_description_origin: nextDescriptionOrigin } : {}),
     ...(pdpFieldCaptureStatus ? { pdp_field_capture_status: pdpFieldCaptureStatus } : {}),
     ...(imageUrl ? { image_url: imageUrl } : {}),
@@ -664,6 +875,200 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     representativeProduct,
     snapshot: nextSnapshot,
   };
+}
+
+function isVariantExpandedSeed(seedData) {
+  return normalizeNonEmptyString(seedData?.source_listing_scope).toLowerCase() === 'variant' ||
+    Boolean(normalizeNonEmptyString(seedData?.parent_external_product_id || seedData?.parent_seed_id));
+}
+
+function hasExplicitVariantUrl(url, variant) {
+  const hintTokens = collectVariantHintTokensFromUrl(url);
+  return hintTokens.length > 0 && variantMatchesHintTokens(variant, hintTokens);
+}
+
+function buildVariantSeedRows(row, payload) {
+  const nextRow = payload?.nextRow || {};
+  const seedData = ensureJsonObject(nextRow.seed_data);
+  if (isVariantExpandedSeed(seedData)) return [];
+
+  const snapshot = ensureJsonObject(seedData.snapshot);
+  const variants = Array.isArray(snapshot.variants) ? snapshot.variants : [];
+  if (variants.length <= 1) return [];
+
+  const parentExternalProductId = normalizeNonEmptyString(
+    row?.external_product_id || seedData.external_product_id || seedData.product_id,
+  );
+  const parentSeedId = normalizeNonEmptyString(row?.id);
+  const baseCanonicalUrl = normalizeUrlLike(nextRow.canonical_url || snapshot.canonical_url || row?.canonical_url);
+  const baseDestinationUrl = normalizeUrlLike(nextRow.destination_url || snapshot.destination_url || row?.destination_url);
+  const rows = [];
+
+  for (const variant of variants) {
+    const variantId = getVariantId(variant);
+    const variantTitle = getVariantTitle(variant);
+    const variantUrl = normalizeUrlLike(variant?.deep_link || variant?.url);
+    if (!variantId || !variantTitle || isDefaultVariantTitle(variantTitle)) continue;
+    if (!variantUrl || !hasExplicitVariantUrl(variantUrl, variant)) continue;
+
+    const imageUrls = collectVariantImageUrls(variant);
+    const priceAmount = parsePrice(variant.price);
+    const priceCurrency = normalizeNonEmptyString(variant.currency || nextRow.price_currency || row?.price_currency) || 'USD';
+    const availability = normalizeSeedAvailability(variant.stock || variant.availability || nextRow.availability || row?.availability) || '';
+    const externalProductId = stableVariantExternalProductId({ ...row, external_product_id: parentExternalProductId }, variant);
+    const seedId = stableVariantSeedId({ ...row, external_product_id: parentExternalProductId }, variant);
+    const variantSeed = {
+      ...cloneJsonValue(variant),
+      url: variantUrl,
+      variant_id: variantId,
+      id: variantId,
+      title: variantTitle,
+      ...(imageUrls.length > 0 ? { image_url: imageUrls[0], image_urls: imageUrls, images: imageUrls } : {}),
+    };
+    const childSeedData = {
+      ...cloneJsonValue(seedData),
+      external_product_id: externalProductId,
+      product_id: externalProductId,
+      parent_external_product_id: parentExternalProductId || undefined,
+      parent_seed_id: parentSeedId || undefined,
+      source_listing_scope: 'variant',
+      selected_variant_id: variantId,
+      default_variant_id: variantId,
+      variant_title: variantTitle,
+      destination_url: variantUrl,
+      canonical_url: baseCanonicalUrl || baseDestinationUrl || variantUrl,
+      ...(priceAmount != null ? { price_amount: priceAmount } : {}),
+      price_currency: priceCurrency,
+      ...(availability ? { availability } : {}),
+      ...(imageUrls.length > 0 ? { image_url: imageUrls[0], image_urls: imageUrls, images: imageUrls } : {}),
+      variants: [variantSeed],
+      snapshot: {
+        ...cloneJsonValue(snapshot),
+        destination_url: variantUrl,
+        canonical_url: baseCanonicalUrl || baseDestinationUrl || variantUrl,
+        selected_variant_id: variantId,
+        default_variant_id: variantId,
+        variant_title: variantTitle,
+        ...(priceAmount != null ? { price_amount: priceAmount } : {}),
+        price_currency: priceCurrency,
+        ...(availability ? { availability } : {}),
+        ...(imageUrls.length > 0 ? { image_url: imageUrls[0], image_urls: imageUrls, images: imageUrls } : {}),
+        variants: [variantSeed],
+      },
+    };
+
+    const childRow = {
+      id: seedId,
+      market: normalizeNonEmptyString(row?.market) || 'US',
+      tool: normalizeNonEmptyString(row?.tool) || '*',
+      destination_url: variantUrl,
+      canonical_url: baseCanonicalUrl || baseDestinationUrl || variantUrl,
+      domain: normalizeNonEmptyString(row?.domain),
+      title: normalizeNonEmptyString(nextRow.title || row?.title),
+      image_url: imageUrls[0] || normalizeNonEmptyString(nextRow.image_url || row?.image_url),
+      price_amount: priceAmount != null ? priceAmount : nextRow.price_amount ?? row?.price_amount ?? null,
+      price_currency: priceCurrency,
+      availability: availability || normalizeNonEmptyString(nextRow.availability || row?.availability),
+      status: 'active',
+      notes: `variant seed expanded from ${parentExternalProductId || parentSeedId || 'external seed'}`,
+      created_by_employee_id: normalizeNonEmptyString(row?.created_by_employee_id),
+      attached_product_key: null,
+      attached_variant_id: null,
+      utm_template: row?.utm_template || null,
+      partner_type: row?.partner_type || null,
+      disclosure_text: row?.disclosure_text || null,
+      external_product_id: externalProductId,
+      seed_data: childSeedData,
+    };
+    childSeedData.derived = {
+      ...ensureJsonObject(childSeedData.derived),
+      recall: buildExternalSeedRecallDoc({
+        row: childRow,
+        seedData: childSeedData,
+        snapshot: childSeedData.snapshot,
+      }),
+    };
+    rows.push({ ...childRow, seed_data: childSeedData });
+  }
+
+  return rows;
+}
+
+async function upsertVariantSeedRows(client, rows) {
+  for (const row of Array.isArray(rows) ? rows : []) {
+    await client.query(
+      `
+        INSERT INTO external_product_seeds (
+          id,
+          market,
+          tool,
+          destination_url,
+          canonical_url,
+          domain,
+          title,
+          image_url,
+          price_amount,
+          price_currency,
+          availability,
+          status,
+          notes,
+          created_by_employee_id,
+          attached_product_key,
+          attached_variant_id,
+          seed_data,
+          utm_template,
+          partner_type,
+          disclosure_text,
+          external_product_id,
+          updated_at
+        )
+        VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+          $11, $12, $13, $14, $15, $16, $17::jsonb, $18, $19, $20, $21, now()
+        )
+        ON CONFLICT (market, tool, external_product_id)
+          WHERE status = 'active' AND external_product_id IS NOT NULL
+        DO UPDATE SET
+          destination_url = EXCLUDED.destination_url,
+          canonical_url = EXCLUDED.canonical_url,
+          domain = EXCLUDED.domain,
+          title = EXCLUDED.title,
+          image_url = EXCLUDED.image_url,
+          price_amount = EXCLUDED.price_amount,
+          price_currency = EXCLUDED.price_currency,
+          availability = EXCLUDED.availability,
+          notes = EXCLUDED.notes,
+          seed_data = EXCLUDED.seed_data,
+          utm_template = EXCLUDED.utm_template,
+          partner_type = EXCLUDED.partner_type,
+          disclosure_text = EXCLUDED.disclosure_text,
+          updated_at = now()
+      `,
+      [
+        row.id,
+        row.market,
+        row.tool,
+        row.destination_url,
+        row.canonical_url,
+        row.domain,
+        row.title,
+        row.image_url,
+        row.price_amount,
+        row.price_currency,
+        row.availability,
+        row.status,
+        row.notes,
+        row.created_by_employee_id,
+        row.attached_product_key,
+        row.attached_variant_id,
+        JSON.stringify(row.seed_data),
+        row.utm_template,
+        row.partner_type,
+        row.disclosure_text,
+        row.external_product_id,
+      ],
+    );
+  }
 }
 
 function buildFailureSeedData(row, targetUrl, error) {
@@ -772,9 +1177,15 @@ async function fetchRows(options) {
       price_amount,
       price_currency,
       availability,
+      notes,
+      created_by_employee_id,
       seed_data,
+      utm_template,
+      partner_type,
+      disclosure_text,
       status,
       attached_product_key,
+      attached_variant_id,
       created_at,
       updated_at
     FROM external_product_seeds
@@ -840,47 +1251,54 @@ async function processRow(row, options) {
       nextRow: enrichedNextRow,
       ingredient_enrichment: enrichment || null,
     };
-    if (options.dryRun || !enrichedPayload.changed) {
+    const variantSeedRows = options.expandVariants ? buildVariantSeedRows(row, enrichedPayload) : [];
+    const hasVariantSeedRows = variantSeedRows.length > 0;
+    if (options.dryRun || (!enrichedPayload.changed && !hasVariantSeedRows)) {
       return {
-        status: enrichedPayload.changed ? 'dry_run' : 'skipped',
-        reason: enrichedPayload.changed ? null : 'unchanged',
+        status: enrichedPayload.changed || hasVariantSeedRows ? 'dry_run' : 'skipped',
+        reason: enrichedPayload.changed || hasVariantSeedRows ? null : 'unchanged',
         row,
         targetUrl,
-        payload: enrichedPayload,
+        payload: { ...enrichedPayload, variant_seed_rows: variantSeedRows },
       };
     }
 
     await withClient(async (client) => {
-      await client.query(
-        `
-          UPDATE external_product_seeds
-          SET
-            title = CASE WHEN $2 <> '' THEN $2 ELSE title END,
-            canonical_url = CASE WHEN $3 <> '' THEN $3 ELSE canonical_url END,
-            destination_url = CASE WHEN $4 <> '' THEN $4 ELSE destination_url END,
-            image_url = CASE WHEN $5 <> '' THEN $5 ELSE image_url END,
-            price_amount = COALESCE($6, price_amount),
-            price_currency = CASE WHEN $7 <> '' THEN $7 ELSE price_currency END,
-            availability = CASE WHEN $8 <> '' THEN $8 ELSE availability END,
-            seed_data = $9::jsonb,
-            updated_at = now()
-          WHERE id = $1
-        `,
-        [
-          row.id,
-          enrichedPayload.nextRow.title,
-          enrichedPayload.nextRow.canonical_url,
-          enrichedPayload.nextRow.destination_url,
-          enrichedPayload.nextRow.image_url,
-          enrichedPayload.nextRow.price_amount,
-          enrichedPayload.nextRow.price_currency,
-          enrichedPayload.nextRow.availability,
-          JSON.stringify(enrichedPayload.nextRow.seed_data),
-        ],
-      );
+      if (enrichedPayload.changed) {
+        await client.query(
+          `
+            UPDATE external_product_seeds
+            SET
+              title = CASE WHEN $2 <> '' THEN $2 ELSE title END,
+              canonical_url = CASE WHEN $3 <> '' THEN $3 ELSE canonical_url END,
+              destination_url = CASE WHEN $4 <> '' THEN $4 ELSE destination_url END,
+              image_url = CASE WHEN $5 <> '' THEN $5 ELSE image_url END,
+              price_amount = COALESCE($6, price_amount),
+              price_currency = CASE WHEN $7 <> '' THEN $7 ELSE price_currency END,
+              availability = CASE WHEN $8 <> '' THEN $8 ELSE availability END,
+              seed_data = $9::jsonb,
+              updated_at = now()
+            WHERE id = $1
+          `,
+          [
+            row.id,
+            enrichedPayload.nextRow.title,
+            enrichedPayload.nextRow.canonical_url,
+            enrichedPayload.nextRow.destination_url,
+            enrichedPayload.nextRow.image_url,
+            enrichedPayload.nextRow.price_amount,
+            enrichedPayload.nextRow.price_currency,
+            enrichedPayload.nextRow.availability,
+            JSON.stringify(enrichedPayload.nextRow.seed_data),
+          ],
+        );
+      }
+      if (hasVariantSeedRows) {
+        await upsertVariantSeedRows(client, variantSeedRows);
+      }
     });
 
-    return { status: 'updated', row, targetUrl, payload: enrichedPayload };
+    return { status: 'updated', row, targetUrl, payload: { ...enrichedPayload, variant_seed_rows: variantSeedRows } };
   } catch (error) {
     const nextSeedData = buildFailureSeedData(row, targetUrl, error);
     const failureEnrichment = await enrichExternalSeedRowIngredients({
@@ -943,6 +1361,7 @@ async function main() {
     offset,
     concurrency,
     dryRun: hasFlag('dry-run') || hasFlag('dryRun'),
+    expandVariants: hasFlag('expand-variants') || hasFlag('expandVariants'),
     baseUrl: DEFAULT_CATALOG_BASE_URL,
   };
 
@@ -956,6 +1375,10 @@ async function main() {
     dry_run: results.filter((result) => result.status === 'dry_run').length,
     skipped: results.filter((result) => result.status === 'skipped').length,
     failed: results.filter((result) => result.status === 'failed').length,
+    variant_seed_rows: results.reduce(
+      (sum, result) => sum + (Array.isArray(result.payload?.variant_seed_rows) ? result.payload.variant_seed_rows.length : 0),
+      0,
+    ),
   };
   console.log(JSON.stringify(summary, null, 2));
 
@@ -985,6 +1408,7 @@ module.exports = {
   buildExtractRequestBody,
   chooseRepresentativeProduct,
   buildSeedUpdatePayload,
+  buildVariantSeedRows,
   buildFailureSeedData,
   comparableSeedData,
   normalizeComparableUrlKey,

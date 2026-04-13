@@ -226,6 +226,9 @@ function unwrapLivePdpPayload(response = {}) {
 async function auditRow(row, { catalogBaseUrl, gatewayUrl }) {
   const seedData = ensureJsonObject(row.seed_data);
   const snapshot = ensureJsonObject(seedData.snapshot);
+  const variantScopedSeed =
+    normalizeNonEmptyString(seedData.source_listing_scope).toLowerCase() === 'variant' ||
+    Boolean(normalizeNonEmptyString(seedData.parent_external_product_id || seedData.parent_seed_id));
   const recall = resolveExternalSeedRecallDoc({ row, seedData, snapshot });
   const extractor = await fetchExtractorTruth(row, catalogBaseUrl);
   const productId =
@@ -254,6 +257,7 @@ async function auditRow(row, { catalogBaseUrl, gatewayUrl }) {
     extractorProduct: extractor.product || {},
     livePayload: unwrapLivePdpPayload(livePdp),
     liveResponse: ensureJsonObject(livePdp),
+    expectedPrice: variantScopedSeed ? row.price_amount : null,
   });
   const similarGate = buildSimilarGate({
     similarResponse: ensureJsonObject(similar),

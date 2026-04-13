@@ -94,6 +94,66 @@ describe('RecommendationEngine (PDP)', () => {
     expect(top5SigmaExternal).toBeGreaterThanOrEqual(2);
   });
 
+  test('excludes same external product line parent and sibling variants from similar', async () => {
+    const result = await recommend({
+      pdp_product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_refill',
+        title: 'Pro C Serum',
+        brand: 'INNBEAUTY Project',
+        category: 'Serum',
+        price: 56,
+        source: 'external_seed',
+        parent_external_product_id: 'ext_parent_pro_c',
+        inventory_quantity: 10,
+        status: 'active',
+      },
+      k: 4,
+      options: {
+        debug: true,
+        no_cache: true,
+        external_candidates: [
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_parent_pro_c',
+            title: 'Pro C Serum',
+            brand: 'INNBEAUTY Project',
+            category: 'Serum',
+            price: 56,
+            source: 'external_seed',
+            inventory_quantity: 10,
+            status: 'active',
+          },
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_full_size',
+            title: 'Pro C Serum',
+            brand: 'INNBEAUTY Project',
+            category: 'Serum',
+            price: 64,
+            source: 'external_seed',
+            parent_external_product_id: 'ext_parent_pro_c',
+            inventory_quantity: 10,
+            status: 'active',
+          },
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_green_machine',
+            title: 'Green Machine Serum',
+            brand: 'INNBEAUTY Project',
+            category: 'Serum',
+            price: 48,
+            source: 'external_seed',
+            inventory_quantity: 10,
+            status: 'active',
+          },
+        ],
+      },
+    });
+
+    expect(result.items.map((item) => item.product_id)).toEqual(['ext_green_machine']);
+  });
+
   test('c) no brand matches but same category + near price fills', () => {
     const base = makeProduct({
       merchant_id: 'merch_store',

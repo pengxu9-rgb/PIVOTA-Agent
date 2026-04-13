@@ -262,6 +262,14 @@ function getMerchantId(product) {
   return String(product?.merchant_id || product?.merchantId || product?.merchant?.id || '').trim();
 }
 
+function getParentExternalProductId(product) {
+  return firstNonEmptyText(
+    product?.parent_external_product_id,
+    product?.parentExternalProductId,
+    product?.seed_data?.parent_external_product_id,
+  );
+}
+
 function isExternalProduct(product) {
   const mid = getMerchantId(product);
   if (mid === EXTERNAL_SEED_MERCHANT_ID) return true;
@@ -373,11 +381,13 @@ function buildExcludedCandidateState(items = []) {
     const productId = getProductId(item);
     if (!productId) continue;
     const merchantId = getMerchantId(item);
+    const parentExternalProductId = getParentExternalProductId(item);
     if (merchantId) {
       exactKeys.add(`${merchantId}::${productId}`);
     } else {
       productIds.add(productId);
     }
+    if (parentExternalProductId) productIds.add(parentExternalProductId);
   }
 
   return { exactKeys, productIds };
@@ -401,6 +411,8 @@ function isExcludedCandidate(product, state) {
   const productId = getProductId(product);
   if (!productId) return false;
   if (state.productIds?.has(productId)) return true;
+  const parentExternalProductId = getParentExternalProductId(product);
+  if (parentExternalProductId && state.productIds?.has(parentExternalProductId)) return true;
   const merchantId = getMerchantId(product);
   return merchantId ? state.exactKeys?.has(`${merchantId}::${productId}`) === true : false;
 }
@@ -535,6 +547,12 @@ function buildExternalSeedRecommendationCandidate(row, options = {}) {
     seedData.product_id,
     snapshot.product_id,
   );
+  const parentExternalProductId = firstNonEmptyText(
+    seedData.parent_external_product_id,
+    snapshot.parent_external_product_id,
+  );
+  const sourceListingScope = firstNonEmptyText(seedData.source_listing_scope, snapshot.source_listing_scope);
+  const variantTitle = firstNonEmptyText(seedData.variant_title, snapshot.variant_title);
 
   if (!externalProductId) return null;
 
@@ -637,6 +655,9 @@ function buildExternalSeedRecommendationCandidate(row, options = {}) {
     status: 'active',
     platform: 'external',
     source: 'external_seed',
+    ...(parentExternalProductId ? { parent_external_product_id: parentExternalProductId } : {}),
+    ...(sourceListingScope ? { source_listing_scope: sourceListingScope } : {}),
+    ...(variantTitle ? { variant_title: variantTitle } : {}),
   };
 }
 
@@ -1190,6 +1211,7 @@ async function fetchExternalCandidates({ brandHint, categoryHint, domainHints = 
             price_amount,
             price_currency,
             availability,
+            seed_data,
             updated_at,
             created_at
           FROM external_product_seeds
@@ -1266,13 +1288,6 @@ async function fetchExternalCandidates({ brandHint, categoryHint, domainHints = 
   const out = [];
   const domainMatches = await runDomainQuery(12);
   out.push(...domainMatches);
-
-  // For external-brand PDPs, same-domain seeds are the strongest available
-  // identity signal. When they already provide enough inventory for a normal
-  // similar rail, avoid the slower broad JSON brand/category scans.
-  if (domainMatches.length >= 6) {
-    return uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`).slice(0, safeLimit * 3);
-  }
 
   const [brandMatches, categoryMatches] = await Promise.all([
     brand
@@ -1540,6 +1555,10 @@ async function recommend({
 
   const start = Date.now();
   const { product: baseProduct, semantic: baseSemantic } = await enrichExternalBaseProduct(rawBaseProduct);
+  const effectiveExcludedCandidates = mergeExcludedCandidateStates(
+    excludedCandidates,
+    buildExcludedCandidateState([baseProduct]),
+  );
   const baseBrand = getBrandName(baseProduct);
   const baseLeaf = getLeafCategory(baseProduct);
   const baseDomains = extractProductDomains(baseProduct);
@@ -1623,8 +1642,8 @@ async function recommend({
     ? []
     : await externalCandidatesTask;
 
-  const filteredInternalCandidates = filterCandidateCollection(internalCandidates, excludedCandidates);
-  const filteredExternalCandidates = filterCandidateCollection(externalCandidates, excludedCandidates);
+  const filteredInternalCandidates = filterCandidateCollection(internalCandidates, effectiveExcludedCandidates);
+  const filteredExternalCandidates = filterCandidateCollection(externalCandidates, effectiveExcludedCandidates);
 
   const picked = pickLayeredRecommendations({
     baseProduct,
@@ -1669,6 +1688,7 @@ async function recommend({
       });
 
       const perAnchorExcluded = mergeExcludedCandidateStates(
+        effectiveExcludedCandidates,
         historyExcludedCandidates,
         buildExcludedCandidateState(historyItems),
       );
