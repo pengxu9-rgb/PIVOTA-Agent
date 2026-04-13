@@ -385,7 +385,10 @@ function buildBeautyMainlineRecallPlan({ mode, semanticContract = null, rawQuery
           allowConcernFallback: false,
           maxQueriesOverride: supportInternalMaxQueries,
         });
-        const supportExternalQueries = buildRoleStageQueries(role, { allowConcernFallback: false });
+        const supportExternalQueries = buildRoleStageQueries(role, {
+          allowConcernFallback: false,
+          maxQueriesOverride: 1,
+        });
         return [
           buildStage({
             stageId: buildFrameworkSupportStageId(role?.role_id, 'internal'),

@@ -8139,7 +8139,7 @@ function buildLocalExternalSeedSupportCombinedQuery({
     };
   }
 
-  const cap = Math.max(safeLimit, Math.min(safeLimit * 8, 80));
+  const cap = Math.max(safeLimit, Math.min(safeLimit * 3, 36));
   const limitBind = bind(cap);
   const matchWhereSql = stageWhereClauses.join('\n          OR ');
   return {
@@ -20089,7 +20089,8 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
         String(level?.ladder_level || level?.stage_id || '').trim().toLowerCase() === 'framework_stage_a_primary_internal',
       ) || stagedLevels[0];
     keptLevels.push(primaryInternalLevel);
-    const keptSupportRoleIds = new Set();
+    const supportGroups = [];
+    const supportGroupById = new Map();
     for (const level of stagedLevels) {
       if (level === primaryInternalLevel) continue;
       const levelId = String(level?.ladder_level || level?.stage_id || '').trim().toLowerCase();
@@ -20106,16 +20107,31 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
         const supportRoleId = levelId.replace(/_external_seed$/, '');
         const supportLevelLabel =
           String(level?.ladder_level || level?.stage_id || '').trim()
-          || `level_${keptSupportRoleIds.size + 1}`;
-        if (!keptSupportRoleIds.has(supportRoleId) && keptSupportRoleIds.size >= maxRoutineSupportRoles) {
+          || `level_${supportGroups.length + 1}`;
+        let supportGroup = supportGroupById.get(supportRoleId);
+        if (!supportGroup && supportGroups.length >= maxRoutineSupportRoles) {
           if (allowExternalSeedOnly) skippedExternalSeedLevels.push(supportLevelLabel);
           else skippedSupportLevels.push(supportLevelLabel);
           continue;
         }
-        keptSupportRoleIds.add(supportRoleId);
-        keptLevels.push(level);
-        if (allowExternalSeedOnly) executedSupportExternalSeedLevels.push(supportLevelLabel);
-        else executedSupportInternalLevels.push(supportLevelLabel);
+        if (!supportGroup) {
+          supportGroup = {
+            supportRoleId,
+            internalLevel: null,
+            internalLabel: '',
+            externalLevel: null,
+            externalLabel: '',
+          };
+          supportGroupById.set(supportRoleId, supportGroup);
+          supportGroups.push(supportGroup);
+        }
+        if (allowExternalSeedOnly) {
+          supportGroup.externalLevel = level;
+          supportGroup.externalLabel = supportLevelLabel;
+        } else {
+          supportGroup.internalLevel = level;
+          supportGroup.internalLabel = supportLevelLabel;
+        }
         continue;
       }
       if (allowExternalSeedOnly) {
@@ -20127,6 +20143,16 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
           String(level?.ladder_level || level?.stage_id || '').trim() || `level_${skippedSupportLevels.length + 1}`,
         );
       }
+    }
+    for (const group of supportGroups) {
+      if (!group?.externalLevel) continue;
+      keptLevels.push(group.externalLevel);
+      executedSupportExternalSeedLevels.push(group.externalLabel);
+    }
+    for (const group of supportGroups) {
+      if (!group?.internalLevel) continue;
+      keptLevels.push(group.internalLevel);
+      executedSupportInternalLevels.push(group.internalLabel);
     }
   } else {
     keptLevels.push(...stagedLevels);
@@ -20151,15 +20177,15 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
         ? {
             routine_support_strategy:
               executedSupportInternalLevels.length && executedSupportExternalSeedLevels.length
-                ? 'primary_plus_internal_then_external_support'
+                ? 'primary_plus_external_then_internal_support'
                 : executedSupportInternalLevels.length
                   ? 'primary_plus_internal_support'
                   : 'primary_plus_external_support',
             executed_support_level_count:
               executedSupportInternalLevels.length + executedSupportExternalSeedLevels.length,
             executed_support_levels: [
-              ...executedSupportInternalLevels,
               ...executedSupportExternalSeedLevels,
+              ...executedSupportInternalLevels,
             ],
           }
         : {}),
