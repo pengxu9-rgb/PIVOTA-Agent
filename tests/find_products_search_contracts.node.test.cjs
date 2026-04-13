@@ -189,7 +189,7 @@ test('local mainline child recall keeps beauty surface but bypasses discovery ow
   assert.equal(plan.endpoint_kind, 'internal_primitive');
 });
 
-test('beauty head-term category queries use catalog child recall fastpath', () => {
+test('beauty head-term category queries stay on beauty discovery mainline', () => {
   const contract = buildFindProductsSearchRequestContract({
     surface: 'direct',
     operation: 'find_products_multi',
@@ -202,10 +202,10 @@ test('beauty head-term category queries use catalog child recall fastpath', () =
     },
   });
 
-  assert.equal(contract.request_class, 'catalog_child_recall');
+  assert.equal(contract.request_class, 'beauty_discovery');
   assert.equal(contract.semantic_contract, null);
-  assert.equal(contract.primary_lane, 'catalog_child_recall');
-  assert.equal(contract.primary_retrieval_contract, 'agent_v2_catalog_child_recall');
+  assert.equal(contract.primary_lane, 'beauty_discovery_mainline');
+  assert.equal(contract.primary_retrieval_contract, 'agent_v1_search_beauty_mainline');
   assert.deepEqual(contract.supplement_lanes, []);
 });
 
