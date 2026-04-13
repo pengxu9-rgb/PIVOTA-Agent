@@ -96,6 +96,58 @@ describe('recoAlternativesAuthorityBackfill', () => {
     expect(axiosGet).toHaveBeenCalled();
   });
 
+  test('prefers guessed official domain over existing marketplace seed domains', async () => {
+    const query = jest.fn(async (sql) => {
+      if (sql.includes('FROM pdp_identity_listing')) {
+        return { rows: [] };
+      }
+      if (sql.includes('FROM external_product_seeds')) {
+        return {
+          rows: [
+            {
+              domain: 'ulta.com',
+              source_role: 'secondary_fallback',
+              source_url: 'https://www.ulta.com/p/anthelios-aox-daily-antioxidant-face-serum-spf-50-xlsImpprod12101063',
+            },
+          ],
+        };
+      }
+      throw new Error(`Unexpected SQL: ${sql}`);
+    });
+    const axiosGet = jest.fn(async (url) => ({
+      status: 200,
+      data: '<html><title>La Roche-Posay</title></html>',
+      config: { url },
+      request: {
+        res: {
+          responseUrl: 'https://www.laroche-posay.us/',
+        },
+      },
+    }));
+
+    jest.doMock('../src/db', () => ({
+      getPool: () => ({}),
+      query,
+    }));
+    jest.doMock('axios', () => ({
+      get: axiosGet,
+    }));
+
+    const backfill = require('../src/auroraBff/recoAlternativesAuthorityBackfill');
+    const result = await backfill._internals.resolveBrandSourcePlanDefault({
+      brand: 'La Roche-Posay',
+      market: 'US',
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      primaryDomain: 'https://www.laroche-posay.us',
+      primaryRole: 'guessed_official',
+      fallbackDomains: ['https://www.ulta.com/p/anthelios-aox-daily-antioxidant-face-serum-spf-50-xlsImpprod12101063'],
+    });
+    expect(axiosGet).toHaveBeenCalled();
+  });
+
   test('filters runtime coverage repair manifests to preferred-alias rows only', () => {
     const backfill = require('../src/auroraBff/recoAlternativesAuthorityBackfill');
     const manifest = {

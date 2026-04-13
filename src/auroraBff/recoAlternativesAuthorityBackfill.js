@@ -397,13 +397,28 @@ async function resolveBrandSourcePlanDefault({ brand, market = ASYNC_BACKFILL_MA
     8,
   );
 
-  const primaryDomain = uniquePrimary[0] || uniqueFallback[0] || '';
-  const primaryRole = uniquePrimary[0] ? 'primary' : uniqueFallback[0] ? 'secondary_fallback' : '';
-  const fallbackDomains = uniquePrimary[0]
-    ? uniqueFallback
-    : uniqueFallback.slice(1);
+  let guessedOfficial = null;
+  if (!uniquePrimary[0]) {
+    guessedOfficial = await discoverBrandSourcePlanByGuess({ brand, market, logger });
+  }
+  const guessedDomain = guessedOfficial?.ok ? ensureHttpUrl(guessedOfficial.primaryDomain) : '';
+  const primaryDomain = uniquePrimary[0] || guessedDomain || uniqueFallback[0] || '';
+  const primaryRole = uniquePrimary[0]
+    ? 'primary'
+    : guessedDomain
+      ? pickFirstTrimmed(guessedOfficial?.primaryRole, 'guessed_official')
+      : uniqueFallback[0]
+        ? 'secondary_fallback'
+        : '';
+  const fallbackDomains = uniqueStrings(
+    [
+      ...(uniquePrimary[0] ? [] : uniqueFallback),
+      ...(Array.isArray(guessedOfficial?.fallbackDomains) ? guessedOfficial.fallbackDomains : []),
+    ].filter((domain) => domain && String(domain).toLowerCase() !== String(primaryDomain).toLowerCase()),
+    8,
+  );
   if (!primaryDomain) {
-    return discoverBrandSourcePlanByGuess({ brand, market, logger });
+    return { ok: false, reason: guessedOfficial?.reason || 'no_domain_guess_match', primaryDomain: '', fallbackDomains: [] };
   }
   return {
     ok: true,
