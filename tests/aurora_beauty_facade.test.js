@@ -1515,6 +1515,7 @@ describe('Aurora beauty orchestration facade', () => {
         cacheStrictEmptyBypassReason: 'missing_external_for_unified',
         forceSearchFirstForExpandedQuery: true,
         cacheClarifyOnlyShouldUseEarlyDecision: true,
+        cacheIrrelevantShouldUseEarlyDecision: true,
         earlyDecisionRouteDebugUpdate: {
           applied: true,
           reason: 'scenario_query',
@@ -1535,6 +1536,7 @@ describe('Aurora beauty orchestration facade', () => {
       cache_strict_empty_bypass_reason: 'missing_external_for_unified',
       force_search_first_for_expanded_query: true,
       cache_clarify_only_recast_as_early_decision: true,
+      cache_irrelevant_recast_as_early_decision: true,
       early_decision: {
         applied: true,
         reason: 'scenario_query',
@@ -1582,6 +1584,7 @@ describe('Aurora beauty orchestration facade', () => {
       withPolicyProducts: [{ product_id: 'sku_1' }],
       cacheClarifyOnly: false,
       cacheClarifyOnlyShouldUseEarlyDecision: false,
+      cacheIrrelevantShouldUseEarlyDecision: false,
       cacheValidation: {
         enabled: true,
         accepted: false,
@@ -1638,6 +1641,7 @@ describe('Aurora beauty orchestration facade', () => {
       withPolicyProducts: [{ product_id: 'sku_1' }],
       cacheClarifyOnly: false,
       cacheClarifyOnlyShouldUseEarlyDecision: false,
+      cacheIrrelevantShouldUseEarlyDecision: false,
       cacheValidation: {
         enabled: false,
         accepted: true,
@@ -1701,6 +1705,7 @@ describe('Aurora beauty orchestration facade', () => {
       withPolicyProducts: [{ product_id: 'sku_1' }],
       cacheClarifyOnly: false,
       cacheClarifyOnlyShouldUseEarlyDecision: false,
+      cacheIrrelevantShouldUseEarlyDecision: false,
       cacheValidation: {
         enabled: true,
         accepted: true,
@@ -1765,6 +1770,7 @@ describe('Aurora beauty orchestration facade', () => {
       withPolicyProducts: [{ product_id: 'sku_1' }],
       cacheClarifyOnly: false,
       cacheClarifyOnlyShouldUseEarlyDecision: false,
+      cacheIrrelevantShouldUseEarlyDecision: false,
       cacheValidation: {
         enabled: true,
         accepted: true,
@@ -1820,6 +1826,7 @@ describe('Aurora beauty orchestration facade', () => {
       withPolicyProducts: [{ product_id: 'sku_1' }],
       cacheClarifyOnly: false,
       cacheClarifyOnlyShouldUseEarlyDecision: false,
+      cacheIrrelevantShouldUseEarlyDecision: false,
       cacheValidation: {
         enabled: false,
         accepted: true,
@@ -1831,6 +1838,59 @@ describe('Aurora beauty orchestration facade', () => {
       cacheStrictEmptyBypassReason: 'missing_external_for_unified',
       forceSearchFirstForExpandedQuery: false,
       bypassCacheStrictEmptyForUnified: true,
+    });
+  });
+
+  test('guidance-only cache transition plan recasts irrelevant scenario hits as early decision inside aurora orchestration facade', () => {
+    const runtime = createAuroraBeautyOrchestrationRuntime({
+      evaluateCacheQualityGate() {
+        return {
+          enabled: false,
+          accepted: true,
+          reason: null,
+        };
+      },
+    });
+
+    expect(
+      runtime.buildGuidanceOnlyCacheTransitionPlan({
+        effectiveCacheHit: true,
+        response: {
+          products: [{ product_id: 'pet_jacket_1' }],
+        },
+        effectiveProducts: [{ product_id: 'pet_jacket_1' }],
+        cacheQueryText: '出差要买什么',
+        queryText: '出差要买什么',
+        intent: { query_class: 'scenario' },
+        traceQueryClass: 'scenario',
+        cachePolicyQueryClass: 'scenario',
+        cacheBrandLikeQuery: false,
+        isLookupQuery: false,
+        cacheRelevant: false,
+        unifiedRelevanceRequested: false,
+        externalCount: 0,
+        source: 'creator_agent',
+        hasMerchantScope: false,
+        preferInternalSpecificBeautyCache: false,
+        cacheBeautyQueryProfile: null,
+      }),
+    ).toEqual({
+      effectiveCacheHit: false,
+      withPolicyProducts: [{ product_id: 'pet_jacket_1' }],
+      cacheClarifyOnly: false,
+      cacheClarifyOnlyShouldUseEarlyDecision: false,
+      cacheIrrelevantShouldUseEarlyDecision: true,
+      cacheValidation: {
+        enabled: false,
+        accepted: true,
+        reason: null,
+      },
+      cacheRejectedLowQuality: false,
+      mainPathContractLocked: false,
+      cacheMissingExternalForUnified: false,
+      cacheStrictEmptyBypassReason: null,
+      forceSearchFirstForExpandedQuery: false,
+      bypassCacheStrictEmptyForUnified: false,
     });
   });
 
@@ -1968,6 +2028,137 @@ describe('Aurora beauty orchestration facade', () => {
           },
           policy_applied: true,
           strict_empty: true,
+          strict_empty_reason: 'scenario_query',
+          route_health: {
+            primaryPathUsed: 'cache_stage',
+            primaryLatencyMs: 27,
+            fallbackTriggered: false,
+            fallbackReason: null,
+            ambiguityScorePre: 0.82,
+            ambiguityScorePost: 1,
+            clarifyTriggered: false,
+          },
+          search_trace: {
+            traceId: 'trace_early',
+            rawQuery: 'gift ideas',
+            expandedQuery: 'gift ideas',
+            expansionMode: 'direct',
+            queryClass: 'scenario',
+            rewriteGate: 'pass',
+            associationPlan: 'none',
+            flagsSnapshot: { flag_d: true },
+            intent: { query_class: 'scenario' },
+            cacheStage: {
+              hit: false,
+              candidateCount: 0,
+              relevantCount: 0,
+              retrievalSources: ['internal_cache'],
+              cacheRouteDebug: { attempted: true, products_count: 2 },
+              selectedSource: 'cache_empty',
+            },
+            upstreamStage: {
+              called: false,
+              timeout: false,
+              status: null,
+              latency_ms: 0,
+            },
+            resolverStage: {
+              called: false,
+              hit: false,
+              miss: false,
+              latency_ms: null,
+            },
+            finalDecision: 'strict_empty',
+          },
+        },
+        strict_empty: true,
+      },
+    });
+  });
+
+  test('guidance-only cache early-decision outcome preserves strict-empty contract when policy returns no object', () => {
+    const runtime = createAuroraBeautyOrchestrationRuntime({
+      applyFindProductsMultiPolicyIfNeeded() {
+        return undefined;
+      },
+      withSearchDiagnostics(response, diagnostics) {
+        return {
+          ...response,
+          metadata: {
+            ...(response?.metadata || {}),
+            route_health: diagnostics.route_health,
+            search_trace: diagnostics.search_trace,
+          },
+          ...(diagnostics.strict_empty ? { strict_empty: diagnostics.strict_empty } : {}),
+        };
+      },
+      buildSearchRouteHealth(value) {
+        return value;
+      },
+      buildSearchTrace(value) {
+        return value;
+      },
+      buildCacheStageSnapshot(value) {
+        return value;
+      },
+    });
+
+    expect(
+      runtime.buildGuidanceOnlyCacheEarlyDecisionOutcome({
+        page: 1,
+        merchantsReturned: ['merchant_a'],
+        cacheRouteDebug: { attempted: true, products_count: 2 },
+        routeDebugEnabled: true,
+        earlyDecisionCause: 'scenario_query',
+        queryClassForEarlyDecision: 'scenario',
+        intent: { query_class: 'scenario' },
+        requestPayload: { search: { query: 'gift ideas' } },
+        policyMetadata: { source: 'shopping_agent' },
+        rawUserQuery: 'gift ideas',
+        primaryLatencyMs: 27,
+        ambiguityScorePre: 0.82,
+        traceId: 'trace_early',
+        expandedQuery: 'gift ideas',
+        expansionMode: 'direct',
+        queryClass: 'scenario',
+        rewriteGate: 'pass',
+        associationPlan: 'none',
+        flagsSnapshot: { flag_d: true },
+        retrievalSources: ['internal_cache'],
+      }),
+    ).toEqual({
+      shouldReturn: true,
+      clarification: null,
+      strictEmpty: true,
+      response: {
+        products: [],
+        total: 0,
+        page: 1,
+        page_size: 0,
+        reply: null,
+        metadata: {
+          query_source: 'cache_cross_merchant_search_early_decision',
+          fetched_at: expect.any(String),
+          merchants_searched: 1,
+          source_breakdown: {
+            internal_count: 0,
+            external_seed_count: 0,
+            stale_cache_used: false,
+            strategy_applied: 'ambiguity_gate_before_upstream',
+          },
+          route_debug: {
+            cross_merchant_cache: {
+              attempted: true,
+              products_count: 2,
+              early_decision: {
+                applied: true,
+                reason: 'scenario_query',
+                query_class: 'scenario',
+              },
+            },
+          },
+          strict_empty: true,
+          strict_empty_reason: 'scenario_query',
           route_health: {
             primaryPathUsed: 'cache_stage',
             primaryLatencyMs: 27,

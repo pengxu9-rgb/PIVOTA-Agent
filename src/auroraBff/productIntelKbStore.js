@@ -160,6 +160,37 @@ async function readFromDb(kbKey) {
   }
 }
 
+async function readManyFromDb(kbKeys) {
+  const normalizedKeys = Array.isArray(kbKeys)
+    ? kbKeys.map((key) => normalizeKey(key)).filter(Boolean)
+    : [];
+  if (state.dbUnavailable || !normalizedKeys.length) return new Map();
+  try {
+    const res = await query(
+      `
+        SELECT kb_key, analysis, source, source_meta, last_success_at, last_error, created_at, updated_at
+        FROM aurora_product_intel_kb
+        WHERE kb_key = ANY($1::text[])
+      `,
+      [normalizedKeys],
+    );
+    const out = new Map();
+    for (const row of res && Array.isArray(res.rows) ? res.rows : []) {
+      const entry = mapRowToEntry(row);
+      if (!entry?.kb_key) continue;
+      out.set(entry.kb_key, entry);
+    }
+    return out;
+  } catch (err) {
+    const code = err && err.code ? String(err.code) : '';
+    if (code === 'NO_DATABASE' || code === '42P01') {
+      state.dbUnavailable = true;
+      return new Map();
+    }
+    return new Map();
+  }
+}
+
 async function upsertToDb(entry) {
   if (state.dbUnavailable) return;
   const kbKey = normalizeKey(entry && entry.kb_key);
@@ -216,6 +247,36 @@ async function getProductIntelKbEntry(kbKey) {
   return null;
 }
 
+async function getProductIntelKbEntries(kbKeys) {
+  const normalizedKeys = Array.isArray(kbKeys)
+    ? [...new Set(kbKeys.map((key) => normalizeKey(key)).filter(Boolean))]
+    : [];
+  const results = new Map();
+  if (!normalizedKeys.length) return results;
+
+  const misses = [];
+  for (const key of normalizedKeys) {
+    const memHit = readFreshMemoryEntry(state.memIndex, key);
+    if (memHit) {
+      results.set(key, memHit);
+      continue;
+    }
+    misses.push(key);
+  }
+
+  if (misses.length) {
+    const dbHits = await readManyFromDb(misses);
+    for (const key of misses) {
+      const entry = dbHits.get(key);
+      if (!entry) continue;
+      touchLru(state.memIndex, key, entry);
+      results.set(key, entry);
+    }
+  }
+
+  return results;
+}
+
 async function upsertProductIntelKbEntry(entry) {
   const kbKey = normalizeKey(entry && entry.kb_key);
   if (!kbKey) return;
@@ -236,6 +297,7 @@ async function upsertProductIntelKbEntry(entry) {
 module.exports = {
   normalizeKey,
   getProductIntelKbEntry,
+  getProductIntelKbEntries,
   upsertProductIntelKbEntry,
   mergeProductIntelKbAnalysis,
   __internal: {

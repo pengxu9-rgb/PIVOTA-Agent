@@ -1785,7 +1785,7 @@ describe('discovery feed service', () => {
 
   test('browse_products card response detail hydrates reviewed shopping card fields from product intel KB', async () => {
     const kbStore = require('../src/auroraBff/productIntelKbStore');
-    jest.spyOn(kbStore, 'getProductIntelKbEntry').mockResolvedValue({
+    const kbEntry = {
       kb_key: 'product:ext_13c520e764f9f7d7f23c611b',
       analysis: {
         product_intel_v1: {
@@ -1825,7 +1825,11 @@ describe('discovery feed service', () => {
           },
         },
       },
-    });
+    };
+    jest.spyOn(kbStore, 'getProductIntelKbEntry').mockResolvedValue(kbEntry);
+    jest
+      .spyOn(kbStore, 'getProductIntelKbEntries')
+      .mockResolvedValue(new Map([[kbEntry.kb_key, kbEntry]]));
 
     const response = await getDiscoveryFeed(
       {
@@ -1895,9 +1899,101 @@ describe('discovery feed service', () => {
     );
   });
 
+  test('browse_products card response detail batches product intel KB hydration when the store supports bulk reads', async () => {
+    const kbStore = require('../src/auroraBff/productIntelKbStore');
+    const bulkSpy = jest.spyOn(kbStore, 'getProductIntelKbEntries').mockResolvedValue(
+      new Map([
+        [
+          'product:ext_batch_one',
+          {
+            kb_key: 'product:ext_batch_one',
+            analysis: {
+              product_intel_v1: {
+                shopping_card: {
+                  contract_version: 'pivota.shopping_card.v1',
+                  title: 'Batch One Reviewed Title',
+                  subtitle: 'Serum',
+                  highlight: 'Batch hydrated highlight',
+                },
+              },
+            },
+          },
+        ],
+        [
+          'product:ext_batch_two',
+          {
+            kb_key: 'product:ext_batch_two',
+            analysis: {
+              product_intel_v1: {
+                shopping_card: {
+                  contract_version: 'pivota.shopping_card.v1',
+                  title: 'Batch Two Reviewed Title',
+                  subtitle: 'Cream',
+                  highlight: 'Batch hydrated cream highlight',
+                },
+              },
+            },
+          },
+        ],
+      ]),
+    );
+    const singleSpy = jest.spyOn(kbStore, 'getProductIntelKbEntry').mockResolvedValue(null);
+
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        response_detail: 'card',
+        context: {
+          locale: 'en-US',
+        },
+      },
+      {
+        candidateProducts: [
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'ext_batch_one',
+            title: 'Batch One',
+            brand: 'Naturium',
+            category: 'Serum',
+            product_type: 'Serum',
+            price: 31,
+          }),
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'ext_batch_two',
+            title: 'Batch Two',
+            brand: 'Byoma',
+            category: 'Cream',
+            product_type: 'Cream',
+            price: 29,
+          }),
+        ],
+      },
+    );
+
+    expect(bulkSpy).toHaveBeenCalledWith(['product:ext_batch_one', 'product:ext_batch_two']);
+    expect(singleSpy).not.toHaveBeenCalled();
+    expect(response.products).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          product_id: 'ext_batch_one',
+          card_title: 'Batch One Reviewed Title',
+          card_highlight: 'Batch hydrated highlight',
+        }),
+        expect.objectContaining({
+          product_id: 'ext_batch_two',
+          card_title: 'Batch Two Reviewed Title',
+          card_highlight: 'Batch hydrated cream highlight',
+        }),
+      ]),
+    );
+  });
+
   test('browse_products default response still hydrates reviewed card fields from product intel KB', async () => {
     const kbStore = require('../src/auroraBff/productIntelKbStore');
-    jest.spyOn(kbStore, 'getProductIntelKbEntry').mockResolvedValue({
+    const kbEntry = {
       kb_key: 'product:ext_13c520e764f9f7d7f23c611b',
       analysis: {
         product_intel_v1: {
@@ -1919,7 +2015,11 @@ describe('discovery feed service', () => {
           },
         },
       },
-    });
+    };
+    jest.spyOn(kbStore, 'getProductIntelKbEntry').mockResolvedValue(kbEntry);
+    jest
+      .spyOn(kbStore, 'getProductIntelKbEntries')
+      .mockResolvedValue(new Map([[kbEntry.kb_key, kbEntry]]));
 
     const response = await getDiscoveryFeed(
       {
@@ -1970,7 +2070,7 @@ describe('discovery feed service', () => {
 
   test('browse_products suppresses pending external highlight text from hydrated KB bundles', async () => {
     const kbStore = require('../src/auroraBff/productIntelKbStore');
-    jest.spyOn(kbStore, 'getProductIntelKbEntry').mockResolvedValue({
+    const kbEntry = {
       kb_key: 'product:ext_pending_highlight_1',
       analysis: {
         product_intel_v1: {
@@ -2008,7 +2108,11 @@ describe('discovery feed service', () => {
           },
         },
       },
-    });
+    };
+    jest.spyOn(kbStore, 'getProductIntelKbEntry').mockResolvedValue(kbEntry);
+    jest
+      .spyOn(kbStore, 'getProductIntelKbEntries')
+      .mockResolvedValue(new Map([[kbEntry.kb_key, kbEntry]]));
 
     const response = await getDiscoveryFeed(
       {
@@ -2046,7 +2150,7 @@ describe('discovery feed service', () => {
 
   test('browse_products falls back to approved external highlight when explicit card highlight duplicates subtitle', async () => {
     const kbStore = require('../src/auroraBff/productIntelKbStore');
-    jest.spyOn(kbStore, 'getProductIntelKbEntry').mockResolvedValue({
+    const kbEntry = {
       kb_key: 'product:ext_duplicate_highlight_1',
       analysis: {
         product_intel_v1: {
@@ -2084,7 +2188,11 @@ describe('discovery feed service', () => {
           },
         },
       },
-    });
+    };
+    jest.spyOn(kbStore, 'getProductIntelKbEntry').mockResolvedValue(kbEntry);
+    jest
+      .spyOn(kbStore, 'getProductIntelKbEntries')
+      .mockResolvedValue(new Map([[kbEntry.kb_key, kbEntry]]));
 
     const response = await getDiscoveryFeed(
       {
@@ -4685,6 +4793,82 @@ describe('discovery feed service', () => {
     }
   });
 
+  test('browse_products debug mode does not read local shadow when the external serving index is disabled', async () => {
+    jest.resetModules();
+    const prevBaseUrl = process.env.CATALOG_SERVING_INDEX_BASE_URL;
+    const prevShadowReadEnabled = process.env.CATALOG_SERVING_INDEX_SHADOW_READ_ENABLED;
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    process.env.CATALOG_SERVING_INDEX_BASE_URL = '';
+    process.env.CATALOG_SERVING_INDEX_SHADOW_READ_ENABLED = 'true';
+    process.env.DATABASE_URL = 'postgres://catalog-shadow.test/pivota';
+
+    const searchCatalogServingIndexMock = jest.fn(async () => ({
+      items: [{ doc_id: 'source:external_seed:serum_1' }],
+      cursor_info: {
+        next_cursor: null,
+        has_next_page: false,
+        serving_mode: 'exhaustive',
+      },
+      source: 'local_shadow',
+    }));
+
+    jest.doMock('../src/services/catalogServingIndex', () => {
+      const actual = jest.requireActual('../src/services/catalogServingIndex');
+      return {
+        ...actual,
+        getCatalogServingIndexConfig: () => ({
+          base_url: '',
+          index_name: 'catalog_public_v1',
+          api_key: null,
+          shadow_read_enabled: true,
+          enabled: false,
+        }),
+        isCatalogServingIndexEnabled: () => false,
+        searchCatalogServingIndex: searchCatalogServingIndexMock,
+      };
+    });
+
+    try {
+      const fresh = require('../src/services/discoveryFeed');
+      const response = await fresh.getDiscoveryFeed(
+        {
+          surface: 'browse_products',
+          limit: 2,
+          debug: true,
+          context: {
+            auth_state: 'anonymous',
+            locale: 'en-US',
+            recent_views: [],
+            recent_queries: [],
+          },
+        },
+        {
+          candidateProducts: [
+            makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'serum_1',
+              title: 'Barrier Serum',
+              brand: 'KraveBeauty',
+              category: 'Skincare',
+              product_type: 'Serum',
+            }),
+          ],
+        },
+      );
+
+      expect(searchCatalogServingIndexMock).not.toHaveBeenCalled();
+      expect(response.metadata.shadow_serving_summary).toBeUndefined();
+    } finally {
+      jest.dontMock('../src/services/catalogServingIndex');
+      if (prevBaseUrl === undefined) delete process.env.CATALOG_SERVING_INDEX_BASE_URL;
+      else process.env.CATALOG_SERVING_INDEX_BASE_URL = prevBaseUrl;
+      if (prevShadowReadEnabled === undefined) delete process.env.CATALOG_SERVING_INDEX_SHADOW_READ_ENABLED;
+      else process.env.CATALOG_SERVING_INDEX_SHADOW_READ_ENABLED = prevShadowReadEnabled;
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+    }
+  });
+
   test('browse_products uses stable catalog count from db when available and keeps runtime pool in metadata', async () => {
     jest.resetModules();
     const prevDatabaseUrl = process.env.DATABASE_URL;
@@ -4833,6 +5017,78 @@ describe('discovery feed service', () => {
       expect(String(queryFn.mock.calls[1][0])).not.toContain('LEFT JOIN pdp_identity_listing pil');
       expect(String(queryFn.mock.calls[1][0])).toContain('FROM external_product_seeds eps');
       expect(String(queryFn.mock.calls[1][0])).toContain('FROM products_cache pc');
+    } finally {
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+    }
+  });
+
+  test('browse_products overlaps stable catalog count with candidate loading instead of serializing both waits', async () => {
+    jest.resetModules();
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = 'postgres://browse-count-parallel-test';
+
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const dbQueryMock = jest.fn(async (sql) => {
+      const text = String(sql || '');
+      if (text.includes('COUNT(DISTINCT') && text.includes('FROM filtered')) {
+        await sleep(120);
+        return { rows: [{ total: 240 }] };
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../src/db', () => ({
+      query: dbQueryMock,
+    }));
+
+    try {
+      const fresh = require('../src/services/discoveryFeed');
+      const externalProducts = Array.from({ length: 120 }, (_, idx) =>
+        makeProduct({
+          merchant_id: 'external_seed',
+          product_id: `parallel_external_${idx + 1}`,
+          title: `Parallel Serum ${idx + 1}`,
+          brand: `Seed ${idx + 1}`,
+          category: 'Skincare',
+          product_type: 'Serum',
+        }),
+      );
+      const externalSpy = jest.fn(async () => {
+        await sleep(120);
+        return externalProducts;
+      });
+
+      const startedAt = Date.now();
+      const response = await fresh.getDiscoveryFeed(
+        {
+          surface: 'browse_products',
+          page: 1,
+          limit: 24,
+          context: {
+            auth_state: 'anonymous',
+            locale: 'en-US',
+            recent_views: [],
+            recent_queries: [],
+          },
+        },
+        {
+          providerOverrides: {
+            external_seeds: externalSpy,
+          },
+        },
+      );
+      const elapsedMs = Date.now() - startedAt;
+
+      expect(response.total).toBe(240);
+      expect(response.metadata).toEqual(
+        expect.objectContaining({
+          primary_path_used: 'external_seed_fastpath',
+          count_source: 'stable_catalog_identity_grouped',
+        }),
+      );
+      expect(externalSpy).toHaveBeenCalled();
+      expect(elapsedMs).toBeLessThan(220);
     } finally {
       if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
       else process.env.DATABASE_URL = prevDatabaseUrl;

@@ -46,7 +46,6 @@ const {
 } = require('./pdpIdentityGraph');
 const {
   buildCatalogServingDoc,
-  canSearchCatalogServingIndex,
   getCatalogServingIndexConfig,
   isCatalogServingIndexEnabled,
   searchCatalogServingIndex,
@@ -1786,9 +1785,9 @@ function getDiscoveryServingShadowTimeoutMs() {
 function canRunCatalogServingShadowRead(request) {
   const config = getCatalogServingIndexConfig();
   return Boolean(
-    request?.surface === 'browse_products' &&
+      request?.surface === 'browse_products' &&
       request?.debug?.enabled &&
-      canSearchCatalogServingIndex() &&
+      isCatalogServingIndexEnabled() &&
       config.shadow_read_enabled &&
       !request?.cursor &&
       Number(request?.page || 1) === 1,
@@ -6394,26 +6393,10 @@ function extractDiscoveryProductIntelBundle(entry) {
   );
 }
 
-async function hydrateDiscoveryCandidateProductIntel(candidate) {
+function applyDiscoveryProductIntelBundle(candidate, bundle) {
   if (!candidate || typeof candidate !== 'object') return candidate;
   const raw = asPlainObject(candidate.raw);
-  if (!raw) return candidate;
-
-  const productId = String(raw.product_id || candidate.productId || '').trim();
-  if (!productId) return candidate;
-
-  const { getProductIntelKbEntry } = getProductIntelKbStore();
-  if (typeof getProductIntelKbEntry !== 'function') return candidate;
-
-  let kbEntry = null;
-  try {
-    kbEntry = await getProductIntelKbEntry(`product:${productId}`);
-  } catch {
-    return candidate;
-  }
-
-  const bundle = extractDiscoveryProductIntelBundle(kbEntry);
-  if (!bundle) return candidate;
+  if (!raw || !bundle || typeof bundle !== 'object') return candidate;
 
   const shoppingCard = asPlainObject(bundle.shopping_card);
   const searchCard = asPlainObject(bundle.search_card);
@@ -6455,10 +6438,58 @@ async function hydrateDiscoveryCandidateProductIntel(candidate) {
   };
 }
 
+async function hydrateDiscoveryCandidateProductIntel(candidate) {
+  if (!candidate || typeof candidate !== 'object') return candidate;
+  const raw = asPlainObject(candidate.raw);
+  if (!raw) return candidate;
+
+  const productId = String(raw.product_id || candidate.productId || '').trim();
+  if (!productId) return candidate;
+
+  const { getProductIntelKbEntry } = getProductIntelKbStore();
+  if (typeof getProductIntelKbEntry !== 'function') return candidate;
+
+  let kbEntry = null;
+  try {
+    kbEntry = await getProductIntelKbEntry(`product:${productId}`);
+  } catch {
+    return candidate;
+  }
+
+  const bundle = extractDiscoveryProductIntelBundle(kbEntry);
+  if (!bundle) return candidate;
+  return applyDiscoveryProductIntelBundle(candidate, bundle);
+}
+
+function buildDiscoveryProductIntelKbKey(candidate) {
+  const raw = asPlainObject(candidate?.raw);
+  const productId = String(raw?.product_id || candidate?.productId || '').trim();
+  return productId ? `product:${productId}` : '';
+}
+
 async function hydrateDiscoveryCandidatesProductIntel(candidates, request) {
   if (!Array.isArray(candidates) || !candidates.length) return candidates;
   const responseDetail = String(request?.response_detail || '').trim().toLowerCase();
   if (responseDetail && responseDetail !== 'card' && responseDetail !== 'full') return candidates;
+  const { getProductIntelKbEntries } = getProductIntelKbStore();
+  if (typeof getProductIntelKbEntries === 'function') {
+    let kbEntriesByKey = null;
+    try {
+      kbEntriesByKey = await getProductIntelKbEntries(
+        candidates.map((candidate) => buildDiscoveryProductIntelKbKey(candidate)).filter(Boolean),
+      );
+    } catch {
+      kbEntriesByKey = null;
+    }
+    if (kbEntriesByKey && typeof kbEntriesByKey.get === 'function') {
+      return candidates.map((candidate) => {
+        const kbKey = buildDiscoveryProductIntelKbKey(candidate);
+        const kbEntry = kbKey ? kbEntriesByKey.get(kbKey) : null;
+        const bundle = extractDiscoveryProductIntelBundle(kbEntry);
+        return bundle ? applyDiscoveryProductIntelBundle(candidate, bundle) : candidate;
+      });
+    }
+  }
   return Promise.all(candidates.map((candidate) => hydrateDiscoveryCandidateProductIntel(candidate)));
 }
 
@@ -7200,6 +7231,10 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       strategy === 'personalized_interest' ? profile.personalizationSource : 'none';
     const candidateLimit = options.candidateLimit || resolveDiscoveryCandidateLimit(request);
     const brandScopeAliases = buildBrandScopeAliases(request.scope?.brand_names || []);
+    const stableBrowseCatalogCountPromise =
+      request.surface === 'browse_products'
+        ? countStableBrowseCatalogTotal(request)
+        : Promise.resolve(null);
     const shouldUseBrandDirectPrimary =
       !Array.isArray(options.candidateProducts) &&
       brandScopeAliases.length > 0 &&
@@ -7509,7 +7544,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       orderedPool = browseSelection.orderedPool;
       decisions = browseSelection.decisions;
       filterCounts = buildFilterCounts(decisions);
-      const stableBrowseCatalogCount = await countStableBrowseCatalogTotal(request);
+      const stableBrowseCatalogCount = await stableBrowseCatalogCountPromise;
       total = stableBrowseCatalogCount?.total ?? runtimeCorpusCount;
       corpusTotalCount = total;
       countSource = stableBrowseCatalogCount?.source || 'runtime_corpus_fallback';
@@ -7538,7 +7573,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       count: selectedEntries.length,
     });
 
-    const latencyMs = Date.now() - startedAt;
+    const selectionLatencyMs = Date.now() - startedAt;
     const hasMore =
       request.surface === 'browse_products'
         ? cursorInfo.has_next_page
@@ -7582,7 +7617,6 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
           }
         : {}),
       selected_source_breakdown: selectedSourceBreakdown,
-      request_latency_ms: latencyMs,
       sort_applied: request.sort,
       brand_scope_applied: request.scope.brand_names,
       category_scope_applied: request.scope.categories,
@@ -7602,6 +7636,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
         fallback_triggered: fallbackTriggered,
         final_decision: selectedEntries.length > 0 ? 'products_returned' : 'empty',
       },
+      selection_latency_ms: selectionLatencyMs,
       ...(profile.dominantDomain ? { dominant_domain: profile.dominantDomain } : {}),
       ...(identityGraphDedupeStats?.applied
         ? {
@@ -7623,10 +7658,15 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       });
     }
 
+    const hydrationStartedAt = Date.now();
     const hydratedSelectedCandidates = await hydrateDiscoveryCandidatesProductIntel(
       selectedEntries.map((entry) => entry.candidate),
       request,
     );
+    const hydrateLatencyMs = Math.max(0, Date.now() - hydrationStartedAt);
+    const latencyMs = Math.max(0, Date.now() - startedAt);
+    metadata.hydrate_latency_ms = hydrateLatencyMs;
+    metadata.request_latency_ms = latencyMs;
 
     const response = {
       status: 'success',
@@ -7667,6 +7707,8 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       limit: request.limit,
       returned_count: selectedEntries.length,
       latency_ms: latencyMs,
+      selection_latency_ms: selectionLatencyMs,
+      hydrate_latency_ms: hydrateLatencyMs,
       dominant_domain: profile.dominantDomain || null,
     });
     logger.info(

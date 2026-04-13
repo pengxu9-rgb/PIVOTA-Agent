@@ -70,4 +70,39 @@ describe('productIntelKbStore memory cache', () => {
     expect(second.analysis.product_intel_v1.marker).toBe('cached');
     expect(query).toHaveBeenCalledTimes(1);
   });
+
+  test('batches KB entry reads for cache misses and reuses memory hits', async () => {
+    process.env.AURORA_PRODUCT_INTEL_KB_MEM_TTL_MS = '60000';
+    const query = jest.fn(async (_sql, params) => ({
+      rows: (Array.isArray(params?.[0]) ? params[0] : []).map((kbKey) => ({
+        kb_key: kbKey,
+        analysis: { product_intel_v1: { marker: kbKey } },
+        source: 'test',
+        source_meta: {},
+        last_success_at: '2026-04-10T00:00:00.000Z',
+        last_error: null,
+        created_at: '2026-04-10T00:00:00.000Z',
+        updated_at: '2026-04-10T00:00:00.000Z',
+      })),
+    }));
+    jest.doMock('../src/db', () => ({ query }));
+
+    const store = require('../src/auroraBff/productIntelKbStore');
+    const first = await store.getProductIntelKbEntries([
+      'product:ext_one',
+      'product:ext_two',
+      'product:ext_one',
+    ]);
+
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(query.mock.calls[0][1][0]).toEqual(['product:ext_one', 'product:ext_two']);
+    expect(first.get('product:ext_one').analysis.product_intel_v1.marker).toBe('product:ext_one');
+    expect(first.get('product:ext_two').analysis.product_intel_v1.marker).toBe('product:ext_two');
+
+    const second = await store.getProductIntelKbEntries(['product:ext_two', 'product:ext_one']);
+
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(second.get('product:ext_one').analysis.product_intel_v1.marker).toBe('product:ext_one');
+    expect(second.get('product:ext_two').analysis.product_intel_v1.marker).toBe('product:ext_two');
+  });
 });

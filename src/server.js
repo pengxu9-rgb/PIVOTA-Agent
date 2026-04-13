@@ -82,6 +82,7 @@ const {
   getDiscoveryFeed,
 } = require('./services/discoveryFeed');
 const { backfillCatalogServingIndex } = require('./services/catalogServingIndex');
+const { searchCatalogServingGateway } = require('./services/catalogServingGateway');
 const { resolveNonImageGeminiModel } = require('./lib/geminiModelFloor');
 const { recommendHandler } = require('./recommend/index');
 const {
@@ -17500,6 +17501,31 @@ app.post('/api/admin/catalog-serving/backfill', requireAdmin, async (req, res) =
   }
 });
 
+app.post('/api/admin/catalog-serving/search', requireAdmin, async (req, res) => {
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  try {
+    const result = await searchCatalogServingGateway({
+      query_text: body.query_text ?? body.queryText,
+      brand_names: body.brand_names ?? body.brandNames,
+      categories: body.categories,
+      market: body.market,
+      limit: body.limit,
+      cursor: body.cursor,
+      sort: body.sort,
+      timeout_ms: body.timeout_ms ?? body.timeoutMs,
+      local_scan_limit: body.local_scan_limit ?? body.localScanLimit,
+      shadow_mode: body.shadow_mode ?? body.shadowMode,
+    });
+    return res.json({ ok: true, result });
+  } catch (err) {
+    return res.status(500).json({
+      ok: false,
+      error: 'CATALOG_SERVING_SEARCH_FAILED',
+      message: err?.message || String(err),
+    });
+  }
+});
+
 app.post('/api/admin/pdp-identity/overrides', requireAdmin, async (req, res) => {
   const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
   try {
@@ -22311,6 +22337,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ) &&
             !cacheBrandLikeQuery &&
             !isLookupQuery;
+          const cacheIrrelevantShouldUseEarlyDecision =
+            !cacheRelevant &&
+            (withPolicyProducts.length > 0 || effectiveProducts.length > 0) &&
+            ['mission', 'scenario', 'gift'].includes(
+              cachePolicyQueryClass,
+            );
           const cacheValidationQueryClass =
             traceQueryClass ||
             effectiveIntent?.query_class ||
@@ -22341,6 +22373,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             effectiveCacheHit = false;
           }
           if (cacheClarifyOnlyShouldUseEarlyDecision) {
+            effectiveCacheHit = false;
+          }
+          if (cacheIrrelevantShouldUseEarlyDecision) {
             effectiveCacheHit = false;
           }
           const cacheMissingExternalForUnified =
@@ -22389,6 +22424,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               forceSearchFirstForExpandedQuery;
             crossMerchantCacheRouteDebug.cache_clarify_only_recast_as_early_decision =
               cacheClarifyOnlyShouldUseEarlyDecision;
+            crossMerchantCacheRouteDebug.cache_irrelevant_recast_as_early_decision =
+              cacheIrrelevantShouldUseEarlyDecision;
           }
 
           const promotions = await getActivePromotions(now, creatorId);
@@ -22602,13 +22639,19 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   : {}),
               },
             };
-            const earlyWithPolicy = applyFindProductsMultiPolicy({
+            const earlyWithPolicyRaw = applyFindProductsMultiPolicy({
               response: earlyDecisionResponse,
               intent: effectiveIntent,
               requestPayload: effectivePayload,
               metadata: policyMetadata,
               rawUserQuery,
             });
+            const earlyWithPolicy =
+              earlyWithPolicyRaw &&
+              typeof earlyWithPolicyRaw === 'object' &&
+              !Array.isArray(earlyWithPolicyRaw)
+                ? earlyWithPolicyRaw
+                : earlyDecisionResponse;
             const earlyDecisionProducts = Array.isArray(earlyWithPolicy?.products)
               ? earlyWithPolicy.products
               : [];
@@ -22625,11 +22668,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               Boolean(earlyWithPolicy?.metadata?.strict_empty) ||
               (earlyDecisionProducts.length === 0 && !earlyDecisionClarification);
             const earlyDecisionResponsePayload =
-              earlyDecisionStrictEmpty &&
-              earlyWithPolicy &&
-              typeof earlyWithPolicy === 'object' &&
-              !Array.isArray(earlyWithPolicy) &&
-              !earlyWithPolicy?.metadata?.strict_empty
+              earlyDecisionStrictEmpty && !earlyWithPolicy?.metadata?.strict_empty
                 ? {
                     ...earlyWithPolicy,
                     metadata: {
@@ -22637,6 +22676,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                         ? earlyWithPolicy.metadata
                         : {}),
                       strict_empty: true,
+                      strict_empty_reason:
+                        String(
+                          (earlyWithPolicy.metadata &&
+                          typeof earlyWithPolicy.metadata === 'object' &&
+                          earlyWithPolicy.metadata.strict_empty_reason) ||
+                            earlyDecisionCause ||
+                            'strict_empty',
+                        ).trim() || 'strict_empty',
                     },
                   }
                 : earlyWithPolicy;

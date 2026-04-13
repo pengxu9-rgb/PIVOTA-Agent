@@ -84,8 +84,8 @@ function canUseLocalCatalogServingSearch(env = process.env) {
   return Boolean(asString(env.DATABASE_URL));
 }
 
-function canSearchCatalogServingIndex(env = process.env) {
-  return isCatalogServingIndexEnabled(env) || canUseLocalCatalogServingSearch(env);
+function canSearchCatalogServingIndex(env = process.env, { allowLocalShadow = false } = {}) {
+  return isCatalogServingIndexEnabled(env) || (allowLocalShadow === true && canUseLocalCatalogServingSearch(env));
 }
 
 function extractPriceAmount(source) {
@@ -874,10 +874,11 @@ async function searchCatalogServingIndex(params = {}, {
   queryFn,
   fetchBackfillProductsFn = fetchBackfillProducts,
   identityRowsResolverFn = listLivePdpIdentityRowsForRefs,
+  allowLocalShadow = false,
 } = {}) {
   const config = getCatalogServingIndexConfig(env);
   if (!config.enabled) {
-    if (!canUseLocalCatalogServingSearch(env)) {
+    if (!allowLocalShadow || !canUseLocalCatalogServingSearch(env)) {
       return {
         items: [],
         cursor_info: {
@@ -1051,6 +1052,7 @@ module.exports = {
   decodeCatalogServingCursor,
   encodeCatalogServingCursor,
   getCatalogServingIndexConfig,
+  canUseLocalCatalogServingSearch,
   canSearchCatalogServingIndex,
   isCatalogServingIndexEnabled,
   searchCatalogServingIndex,

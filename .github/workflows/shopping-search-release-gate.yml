@@ -23,6 +23,7 @@ on:
       - "docs/runbooks/deploy_via_github_push_only.md"
       - "docs/runbooks/shopping_discovery_cutover.md"
       - "scripts/check_budget_fx_freshness.js"
+      - "scripts/catalog_serving_shadow_acceptance.js"
       - "scripts/search_stability_matrix.js"
       - "scripts/smoke_discovery_feed_prod.sh"
       - "scripts/smoke_find_products_multi_skincare_prod.sh"
@@ -35,13 +36,17 @@ on:
       - "scripts/fixtures/find_products_multi_skincare_prod_gate.json"
       - "scripts/fixtures/find_products_multi_external_seed_ingredient_validity_batch.json"
       - "src/server.js"
+      - "src/db/index.js"
       - "src/db/migrations/**"
       - "src/findProductsExternalSeedBrandFastpath.js"
       - "src/findProductsExternalSeedDirectRuntime.js"
       - "src/findProductsMulti/**"
       - "src/modules/decisioning/shopping_agent/**"
+      - "src/modules/orchestration/aurora_beauty/index.js"
       - "src/observability/discoveryMetrics.js"
       - "src/services/discoveryFeed.js"
+      - "src/services/catalogServingGateway.js"
+      - "src/services/catalogServingIndex.js"
       - "src/services/ingredientSkuEvidence.js"
       - "src/services/externalSeedProducts.js"
       - "src/services/externalSeedHarvesterBridge.js"
@@ -49,6 +54,7 @@ on:
       - "tests/discovery_feed_service.test.js"
       - "tests/server.health.test.js"
       - "tests/aurora_commerce_core_contracts.test.js"
+      - "tests/aurora_beauty_facade.test.js"
       - "tests/find_products_multi_policy.test.js"
       - "tests/shopping_agent_strict_find_products_multi.test.js"
       - "tests/services/ingredient_product_recall.test.js"
@@ -58,6 +64,10 @@ on:
       - "tests/integration/invoke.get_discovery_feed_products_search.test.js"
       - "tests/commerce_invoke_rail_inventory.test.js"
       - "tests/commerce_primary_path_contract.test.js"
+      - "tests/admin.catalog_serving_search.test.js"
+      - "tests/catalog_serving_gateway.test.js"
+      - "tests/catalog_serving_index.test.js"
+      - "tests/catalog_serving_shadow_acceptance_script.test.js"
       - "tests/services/external_seed_brand_fastpath.test.js"
       - "tests/services/external_seed_products.test.js"
       - "tests/services/external_seed_harvester_bridge.test.js"
@@ -73,6 +83,7 @@ on:
       - "docs/runbooks/deploy_via_github_push_only.md"
       - "docs/runbooks/shopping_discovery_cutover.md"
       - "scripts/check_budget_fx_freshness.js"
+      - "scripts/catalog_serving_shadow_acceptance.js"
       - "scripts/search_stability_matrix.js"
       - "scripts/smoke_discovery_feed_prod.sh"
       - "scripts/smoke_find_products_multi_skincare_prod.sh"
@@ -85,13 +96,17 @@ on:
       - "scripts/fixtures/find_products_multi_skincare_prod_gate.json"
       - "scripts/fixtures/find_products_multi_external_seed_ingredient_validity_batch.json"
       - "src/server.js"
+      - "src/db/index.js"
       - "src/db/migrations/**"
       - "src/findProductsExternalSeedBrandFastpath.js"
       - "src/findProductsExternalSeedDirectRuntime.js"
       - "src/findProductsMulti/**"
       - "src/modules/decisioning/shopping_agent/**"
+      - "src/modules/orchestration/aurora_beauty/index.js"
       - "src/observability/discoveryMetrics.js"
       - "src/services/discoveryFeed.js"
+      - "src/services/catalogServingGateway.js"
+      - "src/services/catalogServingIndex.js"
       - "src/services/ingredientSkuEvidence.js"
       - "src/services/externalSeedProducts.js"
       - "src/services/externalSeedHarvesterBridge.js"
@@ -99,6 +114,7 @@ on:
       - "tests/discovery_feed_service.test.js"
       - "tests/server.health.test.js"
       - "tests/aurora_commerce_core_contracts.test.js"
+      - "tests/aurora_beauty_facade.test.js"
       - "tests/find_products_multi_policy.test.js"
       - "tests/shopping_agent_strict_find_products_multi.test.js"
       - "tests/services/ingredient_product_recall.test.js"
@@ -108,6 +124,10 @@ on:
       - "tests/integration/invoke.get_discovery_feed_products_search.test.js"
       - "tests/commerce_invoke_rail_inventory.test.js"
       - "tests/commerce_primary_path_contract.test.js"
+      - "tests/admin.catalog_serving_search.test.js"
+      - "tests/catalog_serving_gateway.test.js"
+      - "tests/catalog_serving_index.test.js"
+      - "tests/catalog_serving_shadow_acceptance_script.test.js"
       - "tests/services/external_seed_brand_fastpath.test.js"
       - "tests/services/external_seed_products.test.js"
       - "tests/services/external_seed_harvester_bridge.test.js"
@@ -147,6 +167,7 @@ jobs:
         run: |
           set -euo pipefail
           node --check src/server.js
+          node --check src/modules/orchestration/aurora_beauty/index.js
           node --check scripts/check_budget_fx_freshness.js
           node --check scripts/run_discovery_feed_smoke.cjs
           node --check scripts/warm_find_products_multi_runtime.js
@@ -173,6 +194,11 @@ jobs:
             tests/discovery_feed_smoke_script.test.js \
             tests/server.health.test.js \
             tests/aurora_commerce_core_contracts.test.js \
+            tests/aurora_beauty_facade.test.js \
+            tests/catalog_serving_index.test.js \
+            tests/catalog_serving_gateway.test.js \
+            tests/catalog_serving_shadow_acceptance_script.test.js \
+            tests/admin.catalog_serving_search.test.js \
             tests/verify_deployed_commit_matches_script.test.js
           npx jest --runInBand \
             tests/services/ingredient_product_recall.test.js \

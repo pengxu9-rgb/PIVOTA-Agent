@@ -4,12 +4,13 @@ const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
+const { closePool } = require('../src/db');
 const {
   backfillCatalogServingIndex,
   canSearchCatalogServingIndex,
   getCatalogServingIndexConfig,
-  searchCatalogServingIndex,
 } = require('../src/services/catalogServingIndex');
+const { searchCatalogServingGateway } = require('../src/services/catalogServingGateway');
 const { summarizePdpIdentityCoverageByBrand } = require('../src/services/pdpIdentityGraph');
 
 const SCHEMA_VERSION = 'pivota.catalog_serving.shadow_acceptance.v1';
@@ -298,7 +299,7 @@ async function collectRuntimeSummary(
   {
     backfillCatalogServingIndexFn = backfillCatalogServingIndex,
     getCatalogServingIndexConfigFn = getCatalogServingIndexConfig,
-    searchCatalogServingIndexFn = searchCatalogServingIndex,
+    searchCatalogServingGatewayFn = searchCatalogServingGateway,
     summarizeCoverageFn = summarizePdpIdentityCoverageByBrand,
   } = {},
 ) {
@@ -345,24 +346,29 @@ async function collectRuntimeSummary(
     }
   }
 
+  const localShadowProbeEnabled = canSearchCatalogServingIndex(process.env, { allowLocalShadow: true });
+  const requestedShadowMode = config.enabled ? 'external_only' : 'allow_local_shadow';
   let searchProbe = {
-    status: options.skipSearch ? 'skipped' : canSearchCatalogServingIndex(process.env) ? 'pending' : 'disabled',
-    source: config.enabled ? 'opensearch_compatible' : canSearchCatalogServingIndex(process.env) ? 'local_shadow' : 'disabled',
+    status: options.skipSearch ? 'skipped' : localShadowProbeEnabled ? 'pending' : 'disabled',
+    source: config.enabled ? 'opensearch_compatible' : localShadowProbeEnabled ? 'local_shadow' : 'disabled',
+    shadow_mode: requestedShadowMode,
     returned: 0,
     has_next_page: false,
   };
-  if (!options.skipSearch && canSearchCatalogServingIndex(process.env)) {
+  if (!options.skipSearch && localShadowProbeEnabled) {
     try {
-      const response = await searchCatalogServingIndexFn({
+      const response = await searchCatalogServingGatewayFn({
         query_text: sampleQuery,
         market,
         limit: sampleLimit,
+        shadow_mode: requestedShadowMode,
       });
       searchProbe = {
         status: 'ok',
         source: safeToken(response?.source, 'opensearch_compatible'),
         returned: Array.isArray(response?.items) ? response.items.length : 0,
         has_next_page: response?.cursor_info?.has_next_page === true,
+        shadow_mode: safeToken(response?.shadow_mode, requestedShadowMode),
       };
     } catch (err) {
       searchProbe = {
@@ -370,6 +376,7 @@ async function collectRuntimeSummary(
         source: 'opensearch_compatible',
         returned: 0,
         has_next_page: false,
+        shadow_mode: requestedShadowMode,
         error: err?.message || String(err),
       };
     }
@@ -446,62 +453,66 @@ function buildBlockedSummary(args, reasons = []) {
 }
 
 async function main() {
-  const args = parseArgs(process.argv.slice(2));
-  const outDir = path.resolve(safeToken(args.outDir, DEFAULT_REPORTS_OUT));
-  const summary =
-    Array.isArray(args.blockedReasons) && args.blockedReasons.length
-      ? buildBlockedSummary(args, args.blockedReasons)
-      : safeToken(args.inputJson, '')
-      ? await readJson(path.resolve(args.inputJson))
-      : await collectRuntimeSummary(args);
+  try {
+    const args = parseArgs(process.argv.slice(2));
+    const outDir = path.resolve(safeToken(args.outDir, DEFAULT_REPORTS_OUT));
+    const summary =
+      Array.isArray(args.blockedReasons) && args.blockedReasons.length
+        ? buildBlockedSummary(args, args.blockedReasons)
+        : safeToken(args.inputJson, '')
+        ? await readJson(path.resolve(args.inputJson))
+        : await collectRuntimeSummary(args);
 
-  const docsBuilt = safeNumber(summary?.backfill?.docs_built, 0) || 0;
-  const nonPublicDocs = safeNumber(summary?.backfill?.non_public_docs_built, 0) || 0;
-  const shadowRatio = docsBuilt > 0 ? Number((nonPublicDocs / docsBuilt).toFixed(4)) : 1;
-  const thresholds = {
-    minPublicDocs: Math.max(0, safeNumber(args.minPublicDocs, DEFAULT_MIN_PUBLIC_DOCS) || DEFAULT_MIN_PUBLIC_DOCS),
-    maxShadowRatio: Math.max(0, Math.min(1, safeNumber(args.maxShadowRatio, DEFAULT_MAX_SHADOW_RATIO) || DEFAULT_MAX_SHADOW_RATIO)),
-  };
-  const failOnStatus = safeToken(args.failOnStatus, '').toLowerCase();
-  const readiness = evaluateReadiness(
-    {
+    const docsBuilt = safeNumber(summary?.backfill?.docs_built, 0) || 0;
+    const nonPublicDocs = safeNumber(summary?.backfill?.non_public_docs_built, 0) || 0;
+    const shadowRatio = docsBuilt > 0 ? Number((nonPublicDocs / docsBuilt).toFixed(4)) : 1;
+    const thresholds = {
+      minPublicDocs: Math.max(0, safeNumber(args.minPublicDocs, DEFAULT_MIN_PUBLIC_DOCS) || DEFAULT_MIN_PUBLIC_DOCS),
+      maxShadowRatio: Math.max(0, Math.min(1, safeNumber(args.maxShadowRatio, DEFAULT_MAX_SHADOW_RATIO) || DEFAULT_MAX_SHADOW_RATIO)),
+    };
+    const failOnStatus = safeToken(args.failOnStatus, '').toLowerCase();
+    const readiness = evaluateReadiness(
+      {
+        ...summary,
+        shadow_ratio: shadowRatio,
+      },
+      thresholds,
+    );
+    const report = {
       ...summary,
       shadow_ratio: shadowRatio,
-    },
-    thresholds,
-  );
-  const report = {
-    ...summary,
-    shadow_ratio: shadowRatio,
-    thresholds,
-    fail_on_status: failOnStatus || null,
-    readiness_status: readiness.status,
-    notes: readiness.notes,
-  };
+      thresholds,
+      fail_on_status: failOnStatus || null,
+      readiness_status: readiness.status,
+      notes: readiness.notes,
+    };
 
-  await fsp.mkdir(outDir, { recursive: true });
-  const stamp = buildStamp();
-  const jsonPath = path.join(outDir, `catalog_serving_shadow_acceptance_${stamp}.json`);
-  const markdownPath = path.join(outDir, `catalog_serving_shadow_acceptance_${stamp}.md`);
-  await fsp.writeFile(jsonPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
-  await fsp.writeFile(markdownPath, `${buildMarkdown(report)}\n`, 'utf8');
+    await fsp.mkdir(outDir, { recursive: true });
+    const stamp = buildStamp();
+    const jsonPath = path.join(outDir, `catalog_serving_shadow_acceptance_${stamp}.json`);
+    const markdownPath = path.join(outDir, `catalog_serving_shadow_acceptance_${stamp}.md`);
+    await fsp.writeFile(jsonPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+    await fsp.writeFile(markdownPath, `${buildMarkdown(report)}\n`, 'utf8');
 
-  process.stdout.write(
-    `${JSON.stringify(
-      {
-        schema_version: SCHEMA_VERSION,
-        readiness_status: report.readiness_status,
-        json_path: jsonPath,
-        markdown_path: markdownPath,
-        fail_on_status: report.fail_on_status,
-      },
-      null,
-      2,
-    )}\n`,
-  );
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          schema_version: SCHEMA_VERSION,
+          readiness_status: report.readiness_status,
+          json_path: jsonPath,
+          markdown_path: markdownPath,
+          fail_on_status: report.fail_on_status,
+        },
+        null,
+        2,
+      )}\n`,
+    );
 
-  if (failOnStatus && statusSeverity(report.readiness_status) >= statusSeverity(failOnStatus)) {
-    process.exitCode = 1;
+    if (failOnStatus && statusSeverity(report.readiness_status) >= statusSeverity(failOnStatus)) {
+      process.exitCode = 1;
+    }
+  } finally {
+    await closePool().catch(() => {});
   }
 }
 

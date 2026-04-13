@@ -172,6 +172,57 @@ describe('catalog serving index', () => {
   });
 
   test('searchCatalogServingIndex falls back to local public-doc search when external index is unavailable', async () => {
+    const fetchBackfillProductsFn = jest.fn(async () => [
+      {
+        merchant_id: 'external_seed',
+        product_id: 'serum_1',
+        source_kind: 'external_seed',
+        product: {
+          product_id: 'serum_1',
+          title: 'Barrier Serum',
+          brand: 'KraveBeauty',
+          category: 'Serum',
+          canonical_url: 'https://brand.example/barrier-serum',
+          image_url: 'https://images.example/barrier-serum.jpg',
+          card_intro: 'Barrier repair insight',
+        },
+        source_meta: { market: 'US' },
+      },
+      {
+        merchant_id: 'external_seed',
+        product_id: 'cream_1',
+        source_kind: 'external_seed',
+        product: {
+          product_id: 'cream_1',
+          title: 'Barrier Cream',
+          brand: 'KraveBeauty',
+          category: 'Moisturizer',
+          canonical_url: 'https://brand.example/barrier-cream',
+          image_url: 'https://images.example/barrier-cream.jpg',
+        },
+        source_meta: { market: 'US' },
+      },
+    ]);
+    const identityRowsResolverFn = jest.fn(async () => [
+      {
+        source_listing_ref: 'external_seed:serum_1',
+        sellable_item_group_id: 'sig_serum_1',
+        product_line_id: 'pl_serum_1',
+        review_family_id: 'rf_serum_1',
+        source_tier: 'brand',
+        identity_status: 'approved',
+        live_read_enabled: true,
+      },
+      {
+        source_listing_ref: 'external_seed:cream_1',
+        sellable_item_group_id: 'sig_cream_1',
+        product_line_id: 'pl_cream_1',
+        review_family_id: 'rf_cream_1',
+        source_tier: 'brand',
+        identity_status: 'approved',
+        live_read_enabled: true,
+      },
+    ]);
     const result = await searchCatalogServingIndex(
       {
         query_text: 'barrier serum',
@@ -183,60 +234,14 @@ describe('catalog serving index', () => {
         env: {
           DATABASE_URL: 'postgres://catalog-shadow.test/pivota',
         },
-        fetchBackfillProductsFn: jest.fn(async () => [
-          {
-            merchant_id: 'external_seed',
-            product_id: 'serum_1',
-            source_kind: 'external_seed',
-            product: {
-              product_id: 'serum_1',
-              title: 'Barrier Serum',
-              brand: 'KraveBeauty',
-              category: 'Serum',
-              canonical_url: 'https://brand.example/barrier-serum',
-              image_url: 'https://images.example/barrier-serum.jpg',
-              card_intro: 'Barrier repair insight',
-            },
-            source_meta: { market: 'US' },
-          },
-          {
-            merchant_id: 'external_seed',
-            product_id: 'cream_1',
-            source_kind: 'external_seed',
-            product: {
-              product_id: 'cream_1',
-              title: 'Barrier Cream',
-              brand: 'KraveBeauty',
-              category: 'Moisturizer',
-              canonical_url: 'https://brand.example/barrier-cream',
-              image_url: 'https://images.example/barrier-cream.jpg',
-            },
-            source_meta: { market: 'US' },
-          },
-        ]),
-        identityRowsResolverFn: jest.fn(async () => [
-          {
-            source_listing_ref: 'external_seed:serum_1',
-            sellable_item_group_id: 'sig_serum_1',
-            product_line_id: 'pl_serum_1',
-            review_family_id: 'rf_serum_1',
-            source_tier: 'brand',
-            identity_status: 'approved',
-            live_read_enabled: true,
-          },
-          {
-            source_listing_ref: 'external_seed:cream_1',
-            sellable_item_group_id: 'sig_cream_1',
-            product_line_id: 'pl_cream_1',
-            review_family_id: 'rf_cream_1',
-            source_tier: 'brand',
-            identity_status: 'approved',
-            live_read_enabled: true,
-          },
-        ]),
+        allowLocalShadow: true,
+        fetchBackfillProductsFn,
+        identityRowsResolverFn,
       },
     );
 
+    expect(fetchBackfillProductsFn).toHaveBeenCalledTimes(1);
+    expect(identityRowsResolverFn).toHaveBeenCalledTimes(1);
     expect(result.source).toBe('local_shadow');
     expect(result.items).toHaveLength(1);
     expect(result.items[0]).toEqual(
@@ -246,6 +251,38 @@ describe('catalog serving index', () => {
         publish_state: 'public',
       }),
     );
+  });
+
+  test('searchCatalogServingIndex does not use local shadow unless explicitly allowed', async () => {
+    const fetchBackfillProductsFn = jest.fn(async () => []);
+    const identityRowsResolverFn = jest.fn(async () => []);
+    const result = await searchCatalogServingIndex(
+      {
+        query_text: 'barrier serum',
+        market: 'US',
+        limit: 1,
+      },
+      {
+        env: {
+          DATABASE_URL: 'postgres://catalog-shadow.test/pivota',
+        },
+        fetchBackfillProductsFn,
+        identityRowsResolverFn,
+      },
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        items: [],
+        source: 'disabled',
+        cursor_info: expect.objectContaining({
+          has_next_page: false,
+          serving_mode: 'exhaustive',
+        }),
+      }),
+    );
+    expect(fetchBackfillProductsFn).not.toHaveBeenCalled();
+    expect(identityRowsResolverFn).not.toHaveBeenCalled();
   });
 
   test('bulkUpsertCatalogServingDocs emits ndjson bulk payloads', async () => {
@@ -461,6 +498,12 @@ describe('catalog serving index', () => {
   test('index config reports disabled state when base url is missing', () => {
     expect(getCatalogServingIndexConfig({}).enabled).toBe(false);
     expect(isCatalogServingIndexEnabled({})).toBe(false);
-    expect(canSearchCatalogServingIndex({ DATABASE_URL: 'postgres://catalog-shadow.test/pivota' })).toBe(true);
+    expect(canSearchCatalogServingIndex({ DATABASE_URL: 'postgres://catalog-shadow.test/pivota' })).toBe(false);
+    expect(
+      canSearchCatalogServingIndex(
+        { DATABASE_URL: 'postgres://catalog-shadow.test/pivota' },
+        { allowLocalShadow: true },
+      ),
+    ).toBe(true);
   });
 });

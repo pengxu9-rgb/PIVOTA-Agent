@@ -1365,6 +1365,10 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
       ['mission', 'scenario', 'gift'].includes(cachePolicyQueryClass) &&
       !cacheBrandLikeQuery &&
       !isLookupQuery;
+    const cacheIrrelevantShouldUseEarlyDecision =
+      !cacheRelevant &&
+      (withPolicyProducts.length > 0 || normalizedEffectiveProducts.length > 0) &&
+      ['mission', 'scenario', 'gift'].includes(cachePolicyQueryClass);
     const cacheValidationQueryClass =
       traceQueryClass || intent?.query_class || (isLookupQuery && !cacheBrandLikeQuery ? 'lookup' : null);
     const cacheValidation = evaluateCacheQualityGateImpl({
@@ -1455,6 +1459,7 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
     if (
       cacheRejectedLowQuality ||
       cacheClarifyOnlyShouldUseEarlyDecision ||
+      cacheIrrelevantShouldUseEarlyDecision ||
       cacheMissingExternalForUnified ||
       forceSearchFirstForExpandedQuery
     ) {
@@ -1478,6 +1483,7 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
       withPolicyProducts,
       cacheClarifyOnly,
       cacheClarifyOnlyShouldUseEarlyDecision,
+      cacheIrrelevantShouldUseEarlyDecision,
       cacheValidation: normalizedCacheValidation,
       cacheRejectedLowQuality,
       mainPathContractLocked,
@@ -1500,6 +1506,7 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
       cacheStrictEmptyBypassReason,
       forceSearchFirstForExpandedQuery,
       cacheClarifyOnlyShouldUseEarlyDecision,
+      cacheIrrelevantShouldUseEarlyDecision,
       earlyDecisionRouteDebugUpdate,
     } = params;
     if (!cacheRouteDebug || typeof cacheRouteDebug !== 'object' || Array.isArray(cacheRouteDebug)) {
@@ -1531,6 +1538,11 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
     if (has('cacheClarifyOnlyShouldUseEarlyDecision')) {
       next.cache_clarify_only_recast_as_early_decision = Boolean(
         cacheClarifyOnlyShouldUseEarlyDecision,
+      );
+    }
+    if (has('cacheIrrelevantShouldUseEarlyDecision')) {
+      next.cache_irrelevant_recast_as_early_decision = Boolean(
+        cacheIrrelevantShouldUseEarlyDecision,
       );
     }
     if (has('earlyDecisionRouteDebugUpdate') && earlyDecisionRouteDebugUpdate) {
@@ -1620,13 +1632,17 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
       earlyDecisionCause,
       queryClassForEarlyDecision,
     });
-    const earlyWithPolicy = applyFindProductsMultiPolicyIfNeededImpl({
+    const earlyWithPolicyRaw = applyFindProductsMultiPolicyIfNeededImpl({
       response: earlyDecisionResponse,
       intent,
       requestPayload,
       metadata: policyMetadata,
       rawUserQuery,
     });
+    const earlyWithPolicy =
+      earlyWithPolicyRaw && typeof earlyWithPolicyRaw === 'object' && !Array.isArray(earlyWithPolicyRaw)
+        ? earlyWithPolicyRaw
+        : earlyDecisionResponse;
     const earlyDecisionProducts = Array.isArray(earlyWithPolicy?.products)
       ? earlyWithPolicy.products
       : [];
@@ -1643,11 +1659,7 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
       Boolean(earlyWithPolicy?.metadata?.strict_empty) ||
       (earlyDecisionProducts.length === 0 && !earlyDecisionClarification);
     const earlyDecisionResponsePayload =
-      earlyDecisionStrictEmpty &&
-      earlyWithPolicy &&
-      typeof earlyWithPolicy === 'object' &&
-      !Array.isArray(earlyWithPolicy) &&
-      !earlyWithPolicy?.metadata?.strict_empty
+      earlyDecisionStrictEmpty && !earlyWithPolicy?.metadata?.strict_empty
         ? {
             ...earlyWithPolicy,
             metadata: {
@@ -1655,6 +1667,14 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
                 ? earlyWithPolicy.metadata
                 : {}),
               strict_empty: true,
+              strict_empty_reason:
+                String(
+                  (earlyWithPolicy.metadata &&
+                  typeof earlyWithPolicy.metadata === 'object' &&
+                  earlyWithPolicy.metadata.strict_empty_reason) ||
+                    earlyDecisionCause ||
+                    'strict_empty',
+                ).trim() || 'strict_empty',
             },
           }
         : earlyWithPolicy;

@@ -1892,6 +1892,36 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
   });
 
   test('uses early ambiguity decision when cache candidates are irrelevant for scenario query', async () => {
+    process.env.SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO = 'false';
+
+    jest.doMock('../../src/findProductsMulti/policy', () => ({
+      buildFindProductsMultiContext: jest.fn().mockImplementation(({ payload }) => ({
+        intent: {
+          language: 'en',
+          primary_domain: 'other',
+          target_object: { type: 'unknown', age_group: 'unknown', notes: '' },
+          category: { required: [], optional: [] },
+          scenario: { name: 'outdoor_trip', signals: ['hiking'] },
+          hard_constraints: {
+            temperature_c: { min: null, max: null },
+            must_include_keywords: [],
+            must_exclude_domains: [],
+            must_exclude_keywords: [],
+            in_stock_only: true,
+            price: { currency: null, min: null, max: null },
+          },
+          soft_preferences: { style: [], colors: [], brands: [], materials: [] },
+          confidence: { overall: 0.9, domain: 0.8, target_object: 0.3, category: 0.5, notes: '' },
+          ambiguity: { needs_clarification: true, missing_slots: [], clarifying_questions: [] },
+          history_usage: { used: false, reason: 'test', ignored_queries: [] },
+          query_class: 'scenario',
+        },
+        adjustedPayload: payload,
+        rawUserQuery: payload?.search?.query || '',
+      })),
+      applyFindProductsMultiPolicy: jest.fn().mockImplementation(({ response }) => response),
+    }));
+
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
         const text = String(sql || '');
@@ -1936,7 +1966,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         operation: 'find_products_multi',
         payload: {
           search: {
-            query: '出差要买什么',
+            query: 'hiking essentials',
             page: 1,
             limit: 10,
             in_stock_only: true,
@@ -1948,13 +1978,17 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       });
 
     expect(resp.status).toBe(200);
-    expect(
-      ['cache_cross_merchant_search_early_decision', 'cache_cross_merchant_search'].includes(
-        String(resp.body.metadata?.query_source || ''),
-      ),
-    ).toBe(true);
+    expect(resp.body.metadata?.query_source).toBe('cache_cross_merchant_search_early_decision');
     expect(resp.body.metadata?.search_trace?.upstream_stage?.called).toBe(false);
     expect(resp.body.clarification || resp.body.metadata?.strict_empty).toBeTruthy();
+    expect(
+      Boolean(
+        resp.body.metadata?.route_debug?.cross_merchant_cache?.cache_irrelevant_recast_as_early_decision,
+      ),
+    ).toBe(true);
+    expect(resp.body.metadata?.route_debug?.cross_merchant_cache?.early_decision?.reason).toBe(
+      'cache_irrelevant_ambiguity_sensitive',
+    );
     expect(upstreamSearch.isDone()).toBe(false);
   });
 
