@@ -18950,15 +18950,27 @@ function buildRecoDerivedShopperCopy({
   const pivotaInsights = pickRecoPivotaInsights(rawRow);
   const shoppingCard = pickRecoShoppingCardPayload(rawRow);
   const searchCard = pickRecoSearchCardPayload(rawRow);
-  const specificNarrative = pickRecoSpecificNarrativeSnippet({
+  const evidencePoints = buildRecoProductEvidencePoints({
     row: rawRow,
     stableAnchorProduct,
     productIntel,
     pivotaInsights,
     shoppingCard,
     searchCard,
-    maxLen: 180,
+    max: 4,
   });
+  const specificNarrative = pickFirstTrimmed(
+    evidencePoints[0],
+    pickRecoSpecificNarrativeSnippet({
+      row: rawRow,
+      stableAnchorProduct,
+      productIntel,
+      pivotaInsights,
+      shoppingCard,
+      searchCard,
+      maxLen: 180,
+    }),
+  );
   const productType = pickFirstTrimmed(
     rawRow?.category,
     rawRow?.product_type,
@@ -19076,15 +19088,18 @@ function scoreRecoNarrativeSentence(sentence, hintText = '') {
   if (/\b(niacinamide|zinc|ceramide|ceramides|tamanu|centella|hyaluronic|retinol|retinoid|azelaic|salicylic|glycerin|vitamin c|spf|uv)\b/.test(text)) {
     score += 3;
   }
-  if (/\b(oil|oily|shine|sebum|barrier|redness|sooth|calm|hydrate|hydrat|lightweight|greasy|sunscreen|sun protection|protection|matte|blemish|pore)\b/.test(text)) {
-    score += 2;
+  if (/\b(excess oil|oil control|mid-day shine|sebum|redness|sooth|calm|sunscreen|sun protection|daily protection|white cast|uv protection)\b/.test(text)) {
+    score += 2.5;
+  }
+  if (/\b(barrier|hydrate|hydrat|lightweight|greasy|matte|blemish|pore)\b/.test(text)) {
+    score += 1;
   }
   const hints = String(hintText || '').trim().toLowerCase();
   if (hints) {
     const hintTokens = hints.split(/[^a-z0-9+]+/i).map((part) => part.trim()).filter((part) => part.length >= 4);
     if (hintTokens.some((token) => token && text.includes(token))) score += 1.5;
   }
-  if (/\b(brightness|radiance|glow)\b/.test(text) && !/\b(oil|shine|sebum|barrier|redness|spf|uv)\b/.test(text)) {
+  if (/\b(brightness|radiance|glow)\b/.test(text) && !/\b(oil|shine|sebum|redness|spf|uv)\b/.test(text)) {
     score -= 0.5;
   }
   return score;
@@ -19268,6 +19283,15 @@ function buildRecoVisibleProductFields(picked, { role = null, language = 'EN' } 
     searchCard,
     maxLen: 180,
   });
+  const evidencePoints = buildRecoProductEvidencePoints({
+    row,
+    stableAnchorProduct,
+    pivotaInsights,
+    shoppingCard,
+    searchCard,
+    max: 4,
+  });
+  const preferredNarrative = pickFirstTrimmed(evidencePoints[0], specificNarrative);
   const derivedShopperCopy = buildRecoDerivedShopperCopy({
     role,
     row,
@@ -19392,8 +19416,8 @@ function buildRecoVisibleProductFields(picked, { role = null, language = 'EN' } 
     } : {}),
     ...(imageUrl ? { image_url: imageUrl } : {}),
     ...(price ? { price } : {}),
-    ...((shortDescription || specificNarrative || derivedShopperCopy.why_this_one)
-      ? { short_description: shortDescription || specificNarrative || derivedShopperCopy.why_this_one }
+    ...((shortDescription || preferredNarrative || derivedShopperCopy.why_this_one)
+      ? { short_description: shortDescription || preferredNarrative || derivedShopperCopy.why_this_one }
       : {}),
     ...(description ? { description } : {}),
     ...(derivedShopperCopy.best_for ? { best_for: derivedShopperCopy.best_for } : {}),
@@ -51180,7 +51204,7 @@ function buildRecoAssistantRewritePrompt({ payload, language, profile, userReque
     const shoppingCard = pickRecoShoppingCardPayload(item);
     const searchCard = pickRecoSearchCardPayload(item);
     const pivotaInsights = pickRecoPivotaInsights(item);
-    const descriptionSnippet = pickRecoSpecificNarrativeSnippet({
+    const baseDescriptionSnippet = pickRecoSpecificNarrativeSnippet({
       row: item,
       stableAnchorProduct,
       productIntel,
@@ -51198,6 +51222,7 @@ function buildRecoAssistantRewritePrompt({ payload, language, profile, userReque
       searchCard,
       max: 5,
     });
+    const descriptionSnippet = pickFirstTrimmed(evidencePoints[0], baseDescriptionSnippet);
     const comparisonFillReason = pickFirstTrimmed(
       item.comparison_fill_reason,
       item.comparisonFillReason,
