@@ -3585,7 +3585,7 @@ test('__internal: framework recall planner emits role-aware primary and support 
   assert.ok(Array.isArray(plan.stages));
   assert.equal(plan.stages.length, 6);
   assert.ok(Array.isArray(plan.entries));
-  assert.equal(plan.entries.length, 15);
+  assert.equal(plan.entries.length, 16);
   assert.deepEqual(
     plan.stages.map((stage) => [stage.stage_id, stage.source_scope, stage.role_id, stage.entries.length]),
     [
@@ -3593,7 +3593,7 @@ test('__internal: framework recall planner emits role-aware primary and support 
       ['framework_stage_b_primary_external_seed', 'external_seed', 'oil_control_treatment', 4],
       ['framework_stage_c_support_lightweight_moisturizer', 'internal', 'lightweight_moisturizer', 2],
       ['framework_stage_c_support_lightweight_moisturizer_external_seed', 'external_seed', 'lightweight_moisturizer', 2],
-      ['framework_stage_c_support_daily_sunscreen', 'internal', 'daily_sunscreen', 2],
+      ['framework_stage_c_support_daily_sunscreen', 'internal', 'daily_sunscreen', 3],
       ['framework_stage_c_support_daily_sunscreen_external_seed', 'external_seed', 'daily_sunscreen', 2],
     ],
   );
@@ -3619,6 +3619,7 @@ test('__internal: framework recall planner emits role-aware primary and support 
   assert.deepEqual(plan.stages[4]?.entries?.map((entry) => entry?.query), [
     'oil control sunscreen',
     'lightweight sunscreen oily skin',
+    'spf fluid oily skin',
   ]);
   assert.deepEqual(plan.stages[5]?.entries?.map((entry) => entry?.query), [
     'oil control sunscreen',
@@ -4815,6 +4816,78 @@ test('__internal: framework pool rescues an exact-step lightweight moisturizer s
   assert.equal(moisturizer?.framework_semantic_fit, true);
   assert.equal(state.role_pool_stats?.lightweight_moisturizer?.viable_count, 1);
   assert.ok(Number(state.role_pool_stats?.lightweight_moisturizer?.top_score || 0) >= 0.58);
+});
+
+test('__internal: framework pool rescues lotion-shaped moisturizer support when catalog rows omit the canonical moisturizer type token', async () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'catalog_oil_balance_support_alias_1',
+        merchant_id: 'merchant_catalog_oil_balance_support_alias',
+        brand: 'Clarity Lab',
+        name: 'Oil Balance Serum',
+        display_name: 'Clarity Lab Oil Balance Serum',
+        category: 'serum',
+        product_type: 'serum',
+        retrieval_source: 'catalog',
+        retrieval_query: 'oil control serum',
+        retrieval_step: 'treatment',
+        retrieval_role_id: 'oil_control_treatment',
+        benefit_tags: ['oil control', 'shine control'],
+        short_description: 'A mattifying oil-control serum for oily skin.',
+      },
+      {
+        product_id: 'catalog_balance_lotion_alias_1',
+        merchant_id: 'merchant_catalog_balance_lotion_alias',
+        brand: 'LightLab',
+        name: 'Daily Balance Lotion',
+        display_name: 'LightLab Daily Balance Lotion',
+        category: 'lotion',
+        product_type: 'lotion',
+        retrieval_source: 'catalog',
+        retrieval_query: 'oil free moisturizer',
+        retrieval_step: 'moisturizer',
+        retrieval_role_id: 'lightweight_moisturizer',
+        short_description: 'A face lotion for oily skin.',
+      },
+    ],
+    {
+      targetContext: {
+        framework_id: 'recofw_test_oily_support_lotion_alias_rescue',
+        primary_role_id: 'oil_control_treatment',
+        framework_roles: [
+          {
+            role_id: 'oil_control_treatment',
+            rank: 1,
+            preferred_step: 'treatment',
+            alternate_steps: ['serum'],
+            label: 'Oil-control treatment',
+            query_terms: ['oil control serum', 'shine control serum', 'mattifying serum', 'balancing serum oily skin'],
+            fit_keywords: ['oil control', 'shine control', 'mattifying', 'mattify', 'sebum', 'balancing', 'anti-shine', 'blemish'],
+            ingredient_hypotheses: ['Niacinamide', 'Zinc PCA'],
+            product_type_hypotheses: ['treatment', 'serum'],
+          },
+          {
+            role_id: 'lightweight_moisturizer',
+            rank: 2,
+            preferred_step: 'moisturizer',
+            label: 'Lightweight moisturizer',
+            query_terms: ['lightweight moisturizer', 'gel cream', 'barrier lotion'],
+            fit_keywords: ['lightweight', 'gel cream', 'water gel', 'breathable', 'barrier lotion', 'oil-free'],
+            ingredient_hypotheses: ['Glycerin', 'Ceramide NP', 'Panthenol'],
+            product_type_hypotheses: ['moisturizer'],
+          },
+        ],
+      },
+    },
+  );
+
+  const moisturizer = state.selected_recommendations.find((item) => item?.matched_role_id === 'lightweight_moisturizer') || null;
+  assert.ok(moisturizer);
+  assert.equal(moisturizer?.candidate_step, 'moisturizer');
+  assert.ok(Number(moisturizer?.framework_score || 0) >= 0.58);
+  assert.equal(state.role_pool_stats?.lightweight_moisturizer?.viable_count, 1);
 });
 
 test('__internal: framework pool rescues exact-step sunscreen support from role-matched external seed recall with weak title semantics', async () => {

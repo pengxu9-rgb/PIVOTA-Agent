@@ -493,6 +493,7 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
         'oil free moisturizer',
         'oil control sunscreen',
         'lightweight sunscreen oily skin',
+        'spf oily skin',
       ],
     );
     assert.deepEqual(
@@ -543,7 +544,7 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
     assert.equal(out.searchResult?.query_source, 'beauty_mainline_local_handoff');
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.planned_level_count, 6);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_level_count, 6);
-    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_query_count, 15);
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_query_count, 16);
     assert.equal(
       out.searchResult?.metadata?.search_stage_ledger?.primary_search?.execution_lane,
       'beauty_mainline_local_handoff',
@@ -586,11 +587,11 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
     );
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts?.map((row) => row?.source_scope),
-      ['internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed'],
+      ['internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal', 'internal', 'internal', 'external_seed', 'external_seed'],
     );
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts?.map((row) => row?.source_scope),
-      ['internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed'],
+      ['internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal', 'internal', 'internal', 'external_seed', 'external_seed'],
     );
     const firstSupportExternalAttempt =
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
