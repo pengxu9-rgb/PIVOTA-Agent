@@ -969,11 +969,13 @@ test('reco assistant rewrite retries gemini timeout with compact prompt context'
     );
     const prompts = [];
     const maxTokens = [];
+    const timeouts = [];
     let callCount = 0;
     __internal.__setCallGeminiJsonObjectForTest(async (args = {}) => {
       callCount += 1;
       prompts.push(String(args.userPrompt || ''));
       maxTokens.push(Number(args.maxOutputTokens || 0));
+      timeouts.push(Number(args.timeoutMs || 0));
       if (callCount === 1) {
         return {
           ok: false,
@@ -1001,6 +1003,7 @@ test('reco assistant rewrite retries gemini timeout with compact prompt context'
       profile: { skinType: 'sensitive', goals: ['barrier support'] },
       userRequestText: 'What should I buy first for redness and barrier support?',
       allowLockedSelectionRewrite: true,
+      deadlineAtMs: Date.now() + 5000,
     });
 
     assert.equal(callCount, 2);
@@ -1008,6 +1011,9 @@ test('reco assistant rewrite retries gemini timeout with compact prompt context'
     assert.equal(rewrite.reason, null);
     assert.ok(maxTokens[0] > 0);
     assert.equal(maxTokens[0], maxTokens[1]);
+    assert.ok(timeouts[0] > 0 && timeouts[0] < 4500);
+    assert.ok(timeouts[1] >= 1400);
+    assert.ok(timeouts[1] < timeouts[0]);
     assert.match(prompts[0], /"prompt_profile":"compact_timeout_retry"/);
     assert.match(prompts[1], /"prompt_profile":"compact_timeout_retry"/);
     assert.match(prompts[1], /Compact retry mode: keep the answer tight/);

@@ -52368,7 +52368,21 @@ async function maybeRewriteRecoAssistantTextWithLlm({
     const preferCompactPrimaryAttempt =
       secondaryTargets.length === 0
       && selectedProductRoleMix !== 'routine_mix';
+    const minimumCompactRetryWindowMs = 1400;
+    const preferredPrimaryTimeoutCapMs =
+      preferCompactPrimaryAttempt
+        ? Math.min(2200, AURORA_RECO_ASSISTANT_REWRITE_TIMEOUT_MS)
+        : Math.min(3200, AURORA_RECO_ASSISTANT_REWRITE_TIMEOUT_MS);
+    const remainingBeforeFirstAttemptMs = getRemainingBudgetMs();
+    const firstAttemptTimeoutCapMs = Number.isFinite(remainingBeforeFirstAttemptMs)
+      ? (() => {
+          const retryReservedMs = Math.max(900, minimumCompactRetryWindowMs);
+          const maxFirstAttemptMs = Math.max(900, Math.trunc(remainingBeforeFirstAttemptMs - retryReservedMs));
+          return Math.max(900, Math.min(preferredPrimaryTimeoutCapMs, maxFirstAttemptMs));
+        })()
+      : preferredPrimaryTimeoutCapMs;
     const firstAttempt = await executeRewriteAttempt({
+      timeoutCapMs: firstAttemptTimeoutCapMs,
       compactContext: preferCompactPrimaryAttempt,
       maxOutputTokensOverride: preferCompactPrimaryAttempt
         ? Math.min(220, AURORA_RECO_ASSISTANT_REWRITE_MAX_OUTPUT_TOKENS)
@@ -52398,10 +52412,13 @@ async function maybeRewriteRecoAssistantTextWithLlm({
       || firstAttemptReason === 'gemini_json_timeout'
       || firstAttemptReason === 'parse_truncated_json'
       || firstAttemptReason === 'empty_rewrite';
+    const retryTimeoutCapMs = Number.isFinite(remainingBudgetMs)
+      ? Math.max(900, Math.min(1800, remainingBudgetMs))
+      : 1800;
     const retryAttempt = await executeRewriteAttempt({
       retryReason: firstAttempt.reason,
       compactContext: useCompactRetry,
-      timeoutCapMs: Number.isFinite(remainingBudgetMs) ? Math.min(900, remainingBudgetMs) : 900,
+      timeoutCapMs: retryTimeoutCapMs,
       maxOutputTokensOverride: useCompactRetry
         ? Math.min(220, AURORA_RECO_ASSISTANT_REWRITE_MAX_OUTPUT_TOKENS)
         : null,
