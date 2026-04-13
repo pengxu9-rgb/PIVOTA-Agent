@@ -9146,6 +9146,182 @@ test('/v1/reco/alternatives: external_seed mixed compare recovers pretty truncat
   );
 });
 
+test('/v1/reco/alternatives: external_seed compare ranks reviewed insight rows over sparse grounded rows', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED: 'false',
+      GEMINI_API_KEY: 'test_gemini_key',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      axios.get = async (url) => {
+        if (!isProductsSearchUrl(url)) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        return { status: 200, data: { products: [] } };
+      };
+
+      const kbStoreModuleId = require.resolve('../src/auroraBff/productIntelKbStore');
+      delete require.cache[kbStoreModuleId];
+      const kbStore = require('../src/auroraBff/productIntelKbStore');
+      const originalGetProductIntelKbEntry = kbStore.getProductIntelKbEntry;
+      kbStore.getProductIntelKbEntry = async (kbKey) => {
+        if (kbKey !== 'product:ext_lrp_aox') return null;
+        return {
+          kb_key: kbKey,
+          analysis: {
+            product_intel_v1: {
+              contract_version: 'pivota.product_intel.v1',
+              canonical_product_ref: {
+                product_id: 'ext_lrp_aox',
+                merchant_id: 'external_seed',
+              },
+              product_intel_core: {
+                what_it_is: {
+                  headline: 'Pivota Insights',
+                  body: 'A daily antioxidant sunscreen serum with SPF 50 and a face-serum format.',
+                },
+                best_for: [
+                  { label: 'Daily broad-spectrum UV protection' },
+                ],
+                why_it_stands_out: [
+                  { body: 'Pairs a serum texture with antioxidant support.' },
+                ],
+              },
+              shopping_card: {
+                title: 'La Roche-Posay Anthelios AOX Antioxidant Serum SPF 50',
+                subtitle: 'Sunscreen serum',
+                intro: 'Daily SPF 50 serum with antioxidant support.',
+              },
+              search_card: {
+                compact_candidate: 'SPF 50 serum',
+                intro_candidate: 'Daily SPF 50 serum with antioxidant support.',
+              },
+            },
+          },
+        };
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { mountAuroraBffRoutes, __internal } = routeModule;
+        __internal.__setCallGeminiJsonObjectForTest(async () => ({
+          ok: true,
+          json: {
+            alternatives: [
+              {
+                brand: 'Skin1004',
+                name: 'Madagascar Centella Hyalu-Cica Water-Fit Sun Serum SPF50+',
+                product_type: 'sunscreen',
+                similarity_score: 64,
+                reasons: ['Features a very similar lightweight serum-like consistency.'],
+                tradeoff_notes: ['Authority row is sparse and lacks reviewed compare highlights.'],
+              },
+              {
+                brand: 'La Roche-Posay',
+                name: 'Anthelios AOX Antioxidant Serum SPF 50',
+                product_type: 'sunscreen',
+                similarity_score: 62,
+                reasons: ['True serum texture that integrates into a skincare routine.'],
+                tradeoff_notes: ['Higher price point than the anchor.'],
+              },
+            ],
+          },
+        }));
+        __internal.__setResolveProductRefForTest(async (args = {}) => {
+          const query = String(args?.query || '').toLowerCase();
+          if (query.includes('skin1004') || query.includes('hyalu-cica') || query.includes('hyalu cica')) {
+            return {
+              resolved: true,
+              product_ref: {
+                product_id: 'ext_skin1004_water_fit',
+                merchant_id: 'external_seed',
+              },
+              confidence: 0.91,
+              reason: 'resolved',
+            };
+          }
+          if (query.includes('la roche') || query.includes('anthelios aox')) {
+            return {
+              resolved: true,
+              product_ref: {
+                product_id: 'ext_lrp_aox',
+                merchant_id: 'external_seed',
+              },
+              confidence: 0.91,
+              reason: 'resolved',
+            };
+          }
+          return {
+            resolved: false,
+            product_ref: null,
+            confidence: 0,
+            reason: 'no_candidates',
+            candidates: [],
+          };
+        });
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/reco/alternatives')
+          .set({
+            'X-Aurora-UID': 'test_uid_alt_external_seed_evidence_rank',
+            'X-Trace-ID': 'test_trace_alt_external_seed_evidence_rank',
+            'X-Brief-ID': 'test_brief_alt_external_seed_evidence_rank',
+            'X-Lang': 'EN',
+          })
+          .send({
+            product_input: 'The Ordinary UV Filters SPF 45 Serum',
+            max_total: 3,
+            recommendation_mode: 'hybrid_fallback',
+            disable_synthetic_local_fallback: true,
+            product: {
+              product_id: 'ext_anchor_sunscreen',
+              merchant_id: 'external_seed',
+              brand: 'the ordinary',
+              name: 'UV Filters SPF 45 Serum',
+              product_type: 'sunscreen',
+              category: 'sunscreen',
+              key_features: ['UV filters', 'Glycerin', 'Lightweight serum'],
+              canonical_product_ref: {
+                product_id: 'ext_anchor_sunscreen',
+                merchant_id: 'external_seed',
+              },
+            },
+          });
+
+        assert.equal(resp.status, 200);
+        assert.equal(resp.body?.source_mode, 'pool_open_world_mixed');
+        assert.equal(resp.body?.alternatives?.length, 2);
+        assert.equal(resp.body.alternatives[0]?.product?.product_id, 'ext_lrp_aox');
+        assert.equal(resp.body.alternatives[0]?.metadata?.product_intel_kb_used, true);
+        assert.ok(Number(resp.body.alternatives[0]?.metadata?.evidence_quality_bonus || 0) > 0);
+        assert.ok(resp.body.alternatives[0]?.metadata?.ranking_signals_used?.includes('reviewed_experience_evidence_bonus'));
+        assert.equal(resp.body.alternatives[1]?.product?.product_id, 'ext_skin1004_water_fit');
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        loaded?.__internal?.__resetResolveProductRefForTest?.();
+        kbStore.getProductIntelKbEntry = originalGetProductIntelKbEntry;
+        axios.get = originalGet;
+        delete require.cache[moduleId];
+        delete require.cache[kbStoreModuleId];
+      }
+    },
+  );
+});
+
 test('/v1/reco/alternatives: external_seed rows preserve full-product candidates and drop refill variants when provider fails', async () => {
   return withEnv(
     {
