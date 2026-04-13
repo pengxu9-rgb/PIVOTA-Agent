@@ -267,6 +267,12 @@ function sortRepresentativeBrands(rows = []) {
   });
 }
 
+function shouldRetryRepresentativeSample(backfill = {}) {
+  const publicDocsBuilt = safeNumber(backfill?.public_docs_built, 0) || 0;
+  const liveIdentityRows = safeNumber(backfill?.live_identity_rows, 0) || 0;
+  return publicDocsBuilt <= 1 || liveIdentityRows <= 1;
+}
+
 async function listRepresentativeLiveBrands({ queryFn, summarizeFn = summarizePdpIdentityCoverageByBrand } = {}) {
   const summary = await summarizeFn({
     limit: 100,
@@ -307,7 +313,7 @@ async function collectRuntimeSummary(
   let representativeSample = null;
   let backfillSampleScope = brand ? 'brand_filter' : 'global_recent';
 
-  if (!brand && (safeNumber(initialBackfill?.public_docs_built, 0) || 0) <= 0) {
+  if (!brand && shouldRetryRepresentativeSample(initialBackfill)) {
     const candidateBrands = await listRepresentativeLiveBrands({
       summarizeFn: summarizeCoverageFn,
     });
@@ -512,5 +518,6 @@ module.exports = {
   collectRuntimeSummary,
   evaluateReadiness,
   listRepresentativeLiveBrands,
+  shouldRetryRepresentativeSample,
   statusSeverity,
 };

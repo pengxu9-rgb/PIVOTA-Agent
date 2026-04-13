@@ -184,6 +184,14 @@ function normalizeBrandToken(value) {
   return normalizeResolverText(value).replace(/\s+/g, ' ').trim();
 }
 
+function normalizeCompactBrandToken(value) {
+  return normalizeBrandToken(value).replace(/\s+/g, '');
+}
+
+function buildNormalizedBrandSqlExpression(expression) {
+  return `trim(regexp_replace(regexp_replace(regexp_replace(lower(trim(${expression})), '[''’\`]+', '', 'g'), '[^[:alnum:]]+', ' ', 'g'), '\\s+', ' ', 'g'))`;
+}
+
 function normalizeTitleToken(value) {
   return normalizeResolverText(value).replace(/\s+/g, ' ').trim();
 }
@@ -1602,6 +1610,23 @@ async function summarizePdpIdentityCoverageByBrand({
   const normalizedLimit = Math.max(1, Math.min(500, Number(limit) || 20));
   const normalizedBrand = normalizeBrandToken(brand);
   const normalizedMinSourceRows = Math.max(0, Math.min(500000, Number(minSourceRows) || 0));
+  const identityBrandExpr = buildNormalizedBrandSqlExpression('brand_norm');
+  const externalBrandExpr = buildNormalizedBrandSqlExpression(`coalesce(
+              seed_data #>> '{brand,name}',
+              seed_data->>'brand',
+              seed_data->>'brand_name',
+              seed_data->>'vendor',
+              seed_data->>'vendor_name',
+              ''
+            )`);
+  const internalBrandExpr = buildNormalizedBrandSqlExpression(`coalesce(
+              product_data #>> '{brand,name}',
+              product_data->>'brand',
+              product_data->>'brand_name',
+              product_data->>'vendor',
+              product_data->>'vendor_name',
+              ''
+            )`);
   const params = [EXTERNAL_SEED_MERCHANT_ID, PDP_IDENTITY_COVERAGE_DEFAULT_BEAUTY_VERTICALS];
   const where = [`coalesce(i.brand_norm, e.brand_norm, s.brand_norm) <> ''`];
   if (normalizedBrand) {
@@ -1621,24 +1646,17 @@ async function summarizePdpIdentityCoverageByBrand({
       `
         WITH identity_rows AS (
           SELECT
-            brand_norm,
+            ${identityBrandExpr} AS brand_norm,
             count(*)::int AS identity_rows,
             count(*) FILTER (WHERE live_read_enabled = true)::int AS live_rows,
             count(*) FILTER (WHERE identity_status = 'approved')::int AS approved_rows,
             count(*) FILTER (WHERE review_required = true)::int AS review_rows
           FROM pdp_identity_listing
-          GROUP BY brand_norm
+          GROUP BY 1
         ),
         external_source_rows AS (
           SELECT
-            lower(trim(coalesce(
-              seed_data #>> '{brand,name}',
-              seed_data->>'brand',
-              seed_data->>'brand_name',
-              seed_data->>'vendor',
-              seed_data->>'vendor_name',
-              ''
-            ))) AS brand_norm,
+            ${externalBrandExpr} AS brand_norm,
             count(*)::int AS external_rows,
             count(*) FILTER (
               WHERE lower(trim(coalesce(
@@ -1653,14 +1671,7 @@ async function summarizePdpIdentityCoverageByBrand({
         ),
         internal_source_rows AS (
           SELECT
-            lower(trim(coalesce(
-              product_data #>> '{brand,name}',
-              product_data->>'brand',
-              product_data->>'brand_name',
-              product_data->>'vendor',
-              product_data->>'vendor_name',
-              ''
-            ))) AS brand_norm,
+            ${internalBrandExpr} AS brand_norm,
             count(*)::int AS internal_rows
           FROM products_cache
           WHERE merchant_id <> $1
@@ -1911,28 +1922,29 @@ async function runPdpIdentityCoverageLift({
 async function fetchBackfillProducts({ limit = 500, brandFilter = null, queryFn = query } = {}) {
   const normalizedLimit = Math.max(1, Math.min(5000, Number(limit) || 500));
   const normalizedBrandFilter = normalizeBrandToken(brandFilter);
+  const compactBrandFilter = normalizeCompactBrandToken(brandFilter);
   const internalRows = [];
   const externalRows = [];
-  const titleBrandPattern = normalizedBrandFilter ? `%${normalizedBrandFilter}%` : null;
+  const titleBrandPattern = compactBrandFilter ? `%${compactBrandFilter}%` : null;
 
   const internalParams = [EXTERNAL_SEED_MERCHANT_ID];
   const internalWhere = ['merchant_id <> $1'];
-  if (normalizedBrandFilter) {
-    internalParams.push(normalizedBrandFilter);
+  if (compactBrandFilter) {
+    internalParams.push(compactBrandFilter);
     const brandParam = `$${internalParams.length}`;
     internalParams.push(titleBrandPattern);
     const titleParam = `$${internalParams.length}`;
     internalWhere.push(`
       (
-        lower(trim(coalesce(
+        regexp_replace(lower(trim(coalesce(
           product_data #>> '{brand,name}',
           product_data->>'brand',
           product_data->>'brand_name',
           product_data->>'vendor',
           product_data->>'vendor_name',
           ''
-        ))) = ${brandParam}
-        OR lower(coalesce(product_data->>'title', product_data->>'name', '')) LIKE ${titleParam}
+        ))), '[^[:alnum:]]+', '', 'g') = ${brandParam}
+        OR regexp_replace(lower(coalesce(product_data->>'title', product_data->>'name', '')), '[^[:alnum:]]+', '', 'g') LIKE ${titleParam}
       )
     `);
   }
@@ -1972,22 +1984,22 @@ async function fetchBackfillProducts({ limit = 500, brandFilter = null, queryFn 
 
   const externalParams = [];
   const externalWhere = [`status = 'active'`];
-  if (normalizedBrandFilter) {
-    externalParams.push(normalizedBrandFilter);
+  if (compactBrandFilter) {
+    externalParams.push(compactBrandFilter);
     const brandParam = `$${externalParams.length}`;
     externalParams.push(titleBrandPattern);
     const titleParam = `$${externalParams.length}`;
     externalWhere.push(`
       (
-        lower(trim(coalesce(
+        regexp_replace(lower(trim(coalesce(
           seed_data #>> '{brand,name}',
           seed_data->>'brand',
           seed_data->>'brand_name',
           seed_data->>'vendor',
           seed_data->>'vendor_name',
           ''
-        ))) = ${brandParam}
-        OR lower(coalesce(title, seed_data->>'title', seed_data->>'name', '')) LIKE ${titleParam}
+        ))), '[^[:alnum:]]+', '', 'g') = ${brandParam}
+        OR regexp_replace(lower(coalesce(title, seed_data->>'title', seed_data->>'name', '')), '[^[:alnum:]]+', '', 'g') LIKE ${titleParam}
       )
     `);
   }

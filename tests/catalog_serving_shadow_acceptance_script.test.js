@@ -5,6 +5,7 @@ const { execFileSync } = require('child_process');
 const {
   collectRuntimeSummary,
   listRepresentativeLiveBrands,
+  shouldRetryRepresentativeSample,
 } = require('../scripts/catalog_serving_shadow_acceptance');
 
 describe('catalog serving shadow acceptance script', () => {
@@ -83,6 +84,73 @@ describe('catalog serving shadow acceptance script', () => {
         candidate_rank: 1,
       }),
     );
+  });
+
+  test('retries runtime backfill on a representative live brand when the global sample is low-signal', async () => {
+    const calls = [];
+    const summary = await collectRuntimeSummary(
+      {
+        limit: 50,
+        brand: '',
+        market: 'US',
+        sampleQuery: 'serum',
+        sampleLimit: 5,
+        skipSearch: false,
+      },
+      {
+        getCatalogServingIndexConfigFn: () => ({
+          enabled: false,
+          index_name: 'catalog_public_v1',
+          shadow_read_enabled: false,
+        }),
+        summarizeCoverageFn: async () => [
+          { brand_norm: 'Brand B', live_rows: 40, review_ratio: 0.1 },
+          { brand_norm: 'Brand A', live_rows: 20, review_ratio: 0.2 },
+        ],
+        backfillCatalogServingIndexFn: async ({ brand }) => {
+          calls.push(brand || null);
+          if (!brand) {
+            return {
+              source_rows_scanned: 1000,
+              live_identity_rows: 1,
+              docs_built: 997,
+              public_docs_built: 1,
+              non_public_docs_built: 996,
+            };
+          }
+          return {
+            source_rows_scanned: 50,
+            live_identity_rows: 40,
+            docs_built: 38,
+            public_docs_built: 31,
+            non_public_docs_built: 7,
+          };
+        },
+      },
+    );
+
+    expect(calls).toEqual([null, 'Brand B']);
+    expect(summary.backfill.public_docs_built).toBe(31);
+    expect(summary.initial_backfill.public_docs_built).toBe(1);
+    expect(summary.initial_backfill.live_identity_rows).toBe(1);
+    expect(summary.backfill_sample_scope).toBe('representative_brand_retry');
+  });
+
+  test('flags low-signal backfill samples for representative retry', () => {
+    expect(
+      shouldRetryRepresentativeSample({
+        docs_built: 997,
+        public_docs_built: 1,
+        live_identity_rows: 1,
+      }),
+    ).toBe(true);
+    expect(
+      shouldRetryRepresentativeSample({
+        docs_built: 55,
+        public_docs_built: 44,
+        live_identity_rows: 60,
+      }),
+    ).toBe(false);
   });
 
   test('writes markdown and json artifacts from a healthy fixture summary', () => {
