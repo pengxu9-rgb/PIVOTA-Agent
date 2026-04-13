@@ -173,6 +173,76 @@ test('internal products search primitive applies beauty step and semantic filter
   assert.equal(responseBody.metadata.post_filter_query_step_strength, 'strong_goal_family');
 });
 
+test('internal products search primitive rejects pet apparel when beauty text lives in alternate display fields', async () => {
+  const runtime = createFindProductsInternalSearchPrimitiveRuntime({
+    normalizeAgentProductsListResponse: (body) => body,
+    searchCrossMerchantFromCache: async () => ({
+      products: [
+        {
+          product_id: 'p_keep_moisturizer',
+          title: 'Oil-Free Gel Moisturizer',
+          description: 'A lightweight oil-free moisturizer for oily skin.',
+          product_type: 'Moisturizer',
+          merchant_id: 'm1',
+        },
+        {
+          product_id: 'p_drop_pet_vest',
+          displayName: 'Everyday Fall/Winter Padded Winter Vest for Dogs & Cats',
+          categoryName: 'Pet Apparel',
+          category_path: ['Pets', 'Dog Apparel', 'Winter Vest'],
+          search_aliases: ['padded winter vest', 'dog clothing'],
+          merchant_id: 'm2',
+        },
+      ],
+      total: 2,
+      retrieval_sources: [{ source: 'lexical_cache', used: true, count: 2 }],
+      query_terms: ['oil', 'free', 'moisturizer'],
+      beauty_query_bucket: 'skincare',
+    }),
+    getDefaultTimeoutMs: () => 4800,
+  });
+
+  const req = {
+    body: {
+      query: 'oil free moisturizer',
+      limit: 6,
+      catalog_surface: 'beauty',
+      target_step_family: 'moisturizer',
+      semantic_family: 'oil_control',
+      query_step_strength: 'supportive_family',
+    },
+    header() {
+      return null;
+    },
+  };
+  let statusCode = 200;
+  let responseBody = null;
+  const res = {
+    status(code) {
+      statusCode = code;
+      return this;
+    },
+    json(body) {
+      responseBody = body;
+      return body;
+    },
+  };
+
+  await runtime.handleInternalProductsSearch(req, res);
+
+  assert.equal(statusCode, 200);
+  assert.deepEqual(
+    responseBody.products.map((row) => row.product_id),
+    ['p_keep_moisturizer'],
+  );
+  assert.equal(responseBody.total, 1);
+  assert.equal(responseBody.metadata.post_filter_applied, true);
+  assert.equal(responseBody.metadata.post_filter_rejected_count, 1);
+  assert.equal(responseBody.metadata.post_filter_target_step_family, 'moisturizer');
+  assert.equal(responseBody.metadata.post_filter_semantic_family, 'oil_control');
+  assert.equal(responseBody.metadata.post_filter_query_step_strength, 'supportive_family');
+});
+
 test('internal products search primitive does not drop beauty tools for generic beauty queries without step or semantic gating', async () => {
   const runtime = createFindProductsInternalSearchPrimitiveRuntime({
     normalizeAgentProductsListResponse: (body) => body,

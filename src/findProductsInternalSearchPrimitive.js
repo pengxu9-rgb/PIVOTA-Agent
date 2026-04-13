@@ -285,14 +285,30 @@ function buildInternalBeautyCandidateText(product) {
     product.title,
     product.name,
     product.display_name,
+    product.displayName,
+    product.product_title,
+    product.productTitle,
+    product.product_name,
+    product.productName,
     product.description,
+    product.body_html,
+    product.bodyHtml,
+    product.overview,
+    product.subtitle,
     product.short_description,
     product.product_type,
     product.productType,
     product.category,
     product.category_name,
+    product.categoryName,
     product.vendor,
+    product.vendor_name,
+    product.vendorName,
     product.brand,
+    product.brand_name,
+    product.brandName,
+    ...(Array.isArray(product.search_aliases) ? product.search_aliases : []),
+    ...(Array.isArray(product.category_path) ? product.category_path : []),
     ...(Array.isArray(product.tags) ? product.tags : []),
   ]
     .map((value) => String(value || '').trim().toLowerCase())
@@ -304,7 +320,7 @@ function hasBeautyHardExclusionSignal(text, { excludeBeautyTools = false } = {})
   const haystack = String(text || '');
   if (!haystack) return true;
   const crossDomainHit =
-    /\b(lingerie|underwear|bra|panties|bodysuit|overall|overalls|dress|jacket|coat|hoodie|pet|dog|dogs|cat|cats|puppy|kitten|harness|leash|collar|toy|toys|doll|plush|costume)\b/i.test(
+    /\b(lingerie|underwear|bra|panties|bodysuit|overall|overalls|onesie|dress|jacket|coat|hoodie|sweater|sweatshirt|shirt|tee|vest|apparel|clothing|pet|dog|dogs|cat|cats|puppy|kitten|harness|leash|collar|toy|toys|doll|plush|costume)\b/i.test(
       haystack,
     )
     || /内衣|文胸|胸罩|下着|ランジェリー|宠物|寵物|狗|猫|犬|项圈|項圈|牵引|牽引|玩具|娃娃/.test(haystack)
