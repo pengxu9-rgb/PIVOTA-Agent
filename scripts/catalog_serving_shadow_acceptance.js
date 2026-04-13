@@ -8,8 +8,8 @@ const {
   backfillCatalogServingIndex,
   canSearchCatalogServingIndex,
   getCatalogServingIndexConfig,
-  searchCatalogServingIndex,
 } = require('../src/services/catalogServingIndex');
+const { searchCatalogServingGateway } = require('../src/services/catalogServingGateway');
 const { summarizePdpIdentityCoverageByBrand } = require('../src/services/pdpIdentityGraph');
 
 const SCHEMA_VERSION = 'pivota.catalog_serving.shadow_acceptance.v1';
@@ -298,7 +298,7 @@ async function collectRuntimeSummary(
   {
     backfillCatalogServingIndexFn = backfillCatalogServingIndex,
     getCatalogServingIndexConfigFn = getCatalogServingIndexConfig,
-    searchCatalogServingIndexFn = searchCatalogServingIndex,
+    searchCatalogServingGatewayFn = searchCatalogServingGateway,
     summarizeCoverageFn = summarizePdpIdentityCoverageByBrand,
   } = {},
 ) {
@@ -345,24 +345,29 @@ async function collectRuntimeSummary(
     }
   }
 
+  const localShadowProbeEnabled = canSearchCatalogServingIndex(process.env, { allowLocalShadow: true });
+  const requestedShadowMode = config.enabled ? 'external_only' : 'allow_local_shadow';
   let searchProbe = {
-    status: options.skipSearch ? 'skipped' : canSearchCatalogServingIndex(process.env) ? 'pending' : 'disabled',
-    source: config.enabled ? 'opensearch_compatible' : canSearchCatalogServingIndex(process.env) ? 'local_shadow' : 'disabled',
+    status: options.skipSearch ? 'skipped' : localShadowProbeEnabled ? 'pending' : 'disabled',
+    source: config.enabled ? 'opensearch_compatible' : localShadowProbeEnabled ? 'local_shadow' : 'disabled',
+    shadow_mode: requestedShadowMode,
     returned: 0,
     has_next_page: false,
   };
-  if (!options.skipSearch && canSearchCatalogServingIndex(process.env)) {
+  if (!options.skipSearch && localShadowProbeEnabled) {
     try {
-      const response = await searchCatalogServingIndexFn({
+      const response = await searchCatalogServingGatewayFn({
         query_text: sampleQuery,
         market,
         limit: sampleLimit,
+        shadow_mode: requestedShadowMode,
       });
       searchProbe = {
         status: 'ok',
         source: safeToken(response?.source, 'opensearch_compatible'),
         returned: Array.isArray(response?.items) ? response.items.length : 0,
         has_next_page: response?.cursor_info?.has_next_page === true,
+        shadow_mode: safeToken(response?.shadow_mode, requestedShadowMode),
       };
     } catch (err) {
       searchProbe = {
@@ -370,6 +375,7 @@ async function collectRuntimeSummary(
         source: 'opensearch_compatible',
         returned: 0,
         has_next_page: false,
+        shadow_mode: requestedShadowMode,
         error: err?.message || String(err),
       };
     }

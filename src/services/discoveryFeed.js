@@ -46,7 +46,6 @@ const {
 } = require('./pdpIdentityGraph');
 const {
   buildCatalogServingDoc,
-  canSearchCatalogServingIndex,
   getCatalogServingIndexConfig,
   isCatalogServingIndexEnabled,
   searchCatalogServingIndex,
@@ -1786,9 +1785,9 @@ function getDiscoveryServingShadowTimeoutMs() {
 function canRunCatalogServingShadowRead(request) {
   const config = getCatalogServingIndexConfig();
   return Boolean(
-    request?.surface === 'browse_products' &&
+      request?.surface === 'browse_products' &&
       request?.debug?.enabled &&
-      canSearchCatalogServingIndex() &&
+      isCatalogServingIndexEnabled() &&
       config.shadow_read_enabled &&
       !request?.cursor &&
       Number(request?.page || 1) === 1,

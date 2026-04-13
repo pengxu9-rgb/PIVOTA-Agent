@@ -82,6 +82,7 @@ const {
   getDiscoveryFeed,
 } = require('./services/discoveryFeed');
 const { backfillCatalogServingIndex } = require('./services/catalogServingIndex');
+const { searchCatalogServingGateway } = require('./services/catalogServingGateway');
 const { resolveNonImageGeminiModel } = require('./lib/geminiModelFloor');
 const { recommendHandler } = require('./recommend/index');
 const {
@@ -17220,6 +17221,31 @@ app.post('/api/admin/catalog-serving/backfill', requireAdmin, async (req, res) =
     return res.status(500).json({
       ok: false,
       error: 'CATALOG_SERVING_BACKFILL_FAILED',
+      message: err?.message || String(err),
+    });
+  }
+});
+
+app.post('/api/admin/catalog-serving/search', requireAdmin, async (req, res) => {
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  try {
+    const result = await searchCatalogServingGateway({
+      query_text: body.query_text ?? body.queryText,
+      brand_names: body.brand_names ?? body.brandNames,
+      categories: body.categories,
+      market: body.market,
+      limit: body.limit,
+      cursor: body.cursor,
+      sort: body.sort,
+      timeout_ms: body.timeout_ms ?? body.timeoutMs,
+      local_scan_limit: body.local_scan_limit ?? body.localScanLimit,
+      shadow_mode: body.shadow_mode ?? body.shadowMode,
+    });
+    return res.json({ ok: true, result });
+  } catch (err) {
+    return res.status(500).json({
+      ok: false,
+      error: 'CATALOG_SERVING_SEARCH_FAILED',
       message: err?.message || String(err),
     });
   }

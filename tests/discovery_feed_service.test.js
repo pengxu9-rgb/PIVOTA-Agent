@@ -4685,6 +4685,82 @@ describe('discovery feed service', () => {
     }
   });
 
+  test('browse_products debug mode does not read local shadow when the external serving index is disabled', async () => {
+    jest.resetModules();
+    const prevBaseUrl = process.env.CATALOG_SERVING_INDEX_BASE_URL;
+    const prevShadowReadEnabled = process.env.CATALOG_SERVING_INDEX_SHADOW_READ_ENABLED;
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    process.env.CATALOG_SERVING_INDEX_BASE_URL = '';
+    process.env.CATALOG_SERVING_INDEX_SHADOW_READ_ENABLED = 'true';
+    process.env.DATABASE_URL = 'postgres://catalog-shadow.test/pivota';
+
+    const searchCatalogServingIndexMock = jest.fn(async () => ({
+      items: [{ doc_id: 'source:external_seed:serum_1' }],
+      cursor_info: {
+        next_cursor: null,
+        has_next_page: false,
+        serving_mode: 'exhaustive',
+      },
+      source: 'local_shadow',
+    }));
+
+    jest.doMock('../src/services/catalogServingIndex', () => {
+      const actual = jest.requireActual('../src/services/catalogServingIndex');
+      return {
+        ...actual,
+        getCatalogServingIndexConfig: () => ({
+          base_url: '',
+          index_name: 'catalog_public_v1',
+          api_key: null,
+          shadow_read_enabled: true,
+          enabled: false,
+        }),
+        isCatalogServingIndexEnabled: () => false,
+        searchCatalogServingIndex: searchCatalogServingIndexMock,
+      };
+    });
+
+    try {
+      const fresh = require('../src/services/discoveryFeed');
+      const response = await fresh.getDiscoveryFeed(
+        {
+          surface: 'browse_products',
+          limit: 2,
+          debug: true,
+          context: {
+            auth_state: 'anonymous',
+            locale: 'en-US',
+            recent_views: [],
+            recent_queries: [],
+          },
+        },
+        {
+          candidateProducts: [
+            makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'serum_1',
+              title: 'Barrier Serum',
+              brand: 'KraveBeauty',
+              category: 'Skincare',
+              product_type: 'Serum',
+            }),
+          ],
+        },
+      );
+
+      expect(searchCatalogServingIndexMock).not.toHaveBeenCalled();
+      expect(response.metadata.shadow_serving_summary).toBeUndefined();
+    } finally {
+      jest.dontMock('../src/services/catalogServingIndex');
+      if (prevBaseUrl === undefined) delete process.env.CATALOG_SERVING_INDEX_BASE_URL;
+      else process.env.CATALOG_SERVING_INDEX_BASE_URL = prevBaseUrl;
+      if (prevShadowReadEnabled === undefined) delete process.env.CATALOG_SERVING_INDEX_SHADOW_READ_ENABLED;
+      else process.env.CATALOG_SERVING_INDEX_SHADOW_READ_ENABLED = prevShadowReadEnabled;
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+    }
+  });
+
   test('browse_products uses stable catalog count from db when available and keeps runtime pool in metadata', async () => {
     jest.resetModules();
     const prevDatabaseUrl = process.env.DATABASE_URL;
