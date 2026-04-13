@@ -6,6 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const {
   backfillCatalogServingIndex,
+  canSearchCatalogServingIndex,
   getCatalogServingIndexConfig,
   searchCatalogServingIndex,
 } = require('../src/services/catalogServingIndex');
@@ -235,6 +236,11 @@ function evaluateReadiness(report, thresholds) {
     return { status: 'yellow', notes };
   }
 
+  if (searchProbe.status === 'ok' && safeToken(searchProbe.source, '') === 'local_shadow') {
+    notes.push('Catalog serving local shadow probe passed, but the external OpenSearch-compatible index is still disabled.');
+    return { status: 'yellow', notes };
+  }
+
   if (searchProbe.status === 'disabled' || searchProbe.status === 'skipped') {
     notes.push('Catalog serving index probe was skipped or disabled; backfill sample passed.');
     return { status: 'yellow', notes };
@@ -340,12 +346,12 @@ async function collectRuntimeSummary(
   }
 
   let searchProbe = {
-    status: options.skipSearch ? 'skipped' : config.enabled ? 'pending' : 'disabled',
-    source: config.enabled ? 'opensearch_compatible' : 'disabled',
+    status: options.skipSearch ? 'skipped' : canSearchCatalogServingIndex(process.env) ? 'pending' : 'disabled',
+    source: config.enabled ? 'opensearch_compatible' : canSearchCatalogServingIndex(process.env) ? 'local_shadow' : 'disabled',
     returned: 0,
     has_next_page: false,
   };
-  if (!options.skipSearch && config.enabled) {
+  if (!options.skipSearch && canSearchCatalogServingIndex(process.env)) {
     try {
       const response = await searchCatalogServingIndexFn({
         query_text: sampleQuery,
