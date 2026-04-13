@@ -80,6 +80,14 @@ function isCatalogServingIndexEnabled(env = process.env) {
   return getCatalogServingIndexConfig(env).enabled;
 }
 
+function canUseLocalCatalogServingSearch(env = process.env) {
+  return Boolean(asString(env.DATABASE_URL));
+}
+
+function canSearchCatalogServingIndex(env = process.env) {
+  return isCatalogServingIndexEnabled(env) || canUseLocalCatalogServingSearch(env);
+}
+
 function extractPriceAmount(source) {
   if (!source || typeof source !== 'object') return null;
   if (typeof source.amount === 'number') return source.amount;
@@ -757,17 +765,200 @@ function buildCatalogServingSearchBody({
   return body;
 }
 
-async function searchCatalogServingIndex(params = {}, { httpClient = axios, env = process.env } = {}) {
+function normalizeLocalCatalogSearchToken(value) {
+  return asString(value)
+    .toLowerCase()
+    .normalize('NFKC')
+    .replace(/['’`]/g, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function buildLocalCatalogSearchBlob(doc = {}) {
+  return normalizeLocalCatalogSearchToken(
+    [
+      doc.title,
+      doc.subtitle,
+      doc.brand_name,
+      ...(Array.isArray(doc.category_paths) ? doc.category_paths : []),
+      ...(Array.isArray(doc.facet_tokens) ? doc.facet_tokens : []),
+      doc.pivota_insight_summary,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+}
+
+function getCatalogServingLocalSortSpec(sort = 'popular') {
+  if (sort === 'price_desc') {
+    return [
+      { key: 'price_max', direction: 'desc', type: 'number' },
+      { key: 'updated_at', direction: 'desc', type: 'date' },
+      { key: 'sellable_item_group_id', direction: 'asc', type: 'string' },
+    ];
+  }
+  if (sort === 'price_asc') {
+    return [
+      { key: 'price_min', direction: 'asc', type: 'number' },
+      { key: 'updated_at', direction: 'desc', type: 'date' },
+      { key: 'sellable_item_group_id', direction: 'asc', type: 'string' },
+    ];
+  }
+  return [
+    { key: 'browse_score', direction: 'desc', type: 'number' },
+    { key: 'updated_at', direction: 'desc', type: 'date' },
+    { key: 'sellable_item_group_id', direction: 'asc', type: 'string' },
+  ];
+}
+
+function getCatalogServingLocalSortTuple(doc = {}, sort = 'popular') {
+  const sortSpec = getCatalogServingLocalSortSpec(sort);
+  return sortSpec.map((item) => {
+    const rawValue =
+      item.key === 'sellable_item_group_id'
+        ? asString(doc.sellable_item_group_id || doc.doc_id)
+        : doc?.[item.key];
+    if (item.type === 'number') {
+      return Number.isFinite(Number(rawValue)) ? Number(rawValue) : Number.NEGATIVE_INFINITY;
+    }
+    if (item.type === 'date') {
+      const ms = Date.parse(asString(rawValue));
+      return Number.isFinite(ms) ? ms : Number.NEGATIVE_INFINITY;
+    }
+    return asString(rawValue);
+  });
+}
+
+function compareCatalogServingLocalSortTuples(left = [], right = [], sort = 'popular') {
+  const sortSpec = getCatalogServingLocalSortSpec(sort);
+  for (let index = 0; index < sortSpec.length; index += 1) {
+    const spec = sortSpec[index];
+    const leftValue = left[index];
+    const rightValue = right[index];
+    if (leftValue === rightValue) continue;
+    if (spec.direction === 'desc') {
+      return leftValue > rightValue ? -1 : 1;
+    }
+    return leftValue < rightValue ? -1 : 1;
+  }
+  return 0;
+}
+
+function filterLocalCatalogServingDocs(docs = [], params = {}) {
+  const market = asString(params.market || 'US') || 'US';
+  const brandTerms = uniqStrings((Array.isArray(params.brand_names) ? params.brand_names : []).map(normalizeLocalCatalogSearchToken), 24);
+  const categoryTerms = uniqStrings((Array.isArray(params.categories) ? params.categories : []).map(normalizeLocalCatalogSearchToken), 24);
+  const queryTokens = uniqStrings(normalizeLocalCatalogSearchToken(params.query_text).split(/\s+/g).filter(Boolean), 16);
+
+  return asArray(docs).filter((doc) => {
+    if (asString(doc.publish_state).toLowerCase() !== 'public') return false;
+    if (asString(doc.market || 'US').toUpperCase() !== market.toUpperCase()) return false;
+    if (brandTerms.length) {
+      const brandName = normalizeLocalCatalogSearchToken(doc.brand_name);
+      if (!brandTerms.includes(brandName)) return false;
+    }
+    if (categoryTerms.length) {
+      const categories = (Array.isArray(doc.category_paths) ? doc.category_paths : []).map(normalizeLocalCatalogSearchToken);
+      if (!categoryTerms.some((term) => categories.includes(term))) return false;
+    }
+    if (!queryTokens.length) return true;
+    const blob = buildLocalCatalogSearchBlob(doc);
+    return queryTokens.every((token) => blob.includes(token));
+  });
+}
+
+async function searchCatalogServingIndex(params = {}, {
+  httpClient = axios,
+  env = process.env,
+  queryFn,
+  fetchBackfillProductsFn = fetchBackfillProducts,
+  identityRowsResolverFn = listLivePdpIdentityRowsForRefs,
+} = {}) {
   const config = getCatalogServingIndexConfig(env);
   if (!config.enabled) {
+    if (!canUseLocalCatalogServingSearch(env)) {
+      return {
+        items: [],
+        cursor_info: {
+          next_cursor: null,
+          has_next_page: false,
+          serving_mode: 'exhaustive',
+        },
+        source: 'disabled',
+      };
+    }
+
+    const localScanLimit = Math.max(
+      50,
+      Math.min(
+        Number(params.local_scan_limit || env.CATALOG_SERVING_LOCAL_SCAN_LIMIT || 0) || 1000,
+        5000,
+      ),
+    );
+    const brandFilter =
+      Array.isArray(params.brand_names) && params.brand_names.length === 1
+        ? params.brand_names[0]
+        : null;
+    const sourceRows = await fetchBackfillProductsFn({
+      limit: localScanLimit,
+      brandFilter,
+      ...(typeof queryFn === 'function' ? { queryFn } : {}),
+    });
+    const sourceListingRefs = uniqStrings(
+      sourceRows.map((row) =>
+        buildSourceListingRef({
+          merchantId: row?.merchant_id,
+          productId: row?.product_id,
+        }),
+      ),
+      5000,
+    );
+    const identityRows = await identityRowsResolverFn({
+      sourceListingRefs,
+      ...(typeof queryFn === 'function' ? { queryFn } : {}),
+    });
+    const docs = buildCatalogServingBackfillDocs(sourceRows, {
+      identityRows,
+      includeNonPublic: false,
+      market: asString(params.market || 'US') || 'US',
+    });
+    const filteredDocs = filterLocalCatalogServingDocs(docs, params);
+    const sort = asString(params.sort || 'popular') || 'popular';
+    const sortedDocs = [...filteredDocs].sort((left, right) =>
+      compareCatalogServingLocalSortTuples(
+        getCatalogServingLocalSortTuple(left, sort),
+        getCatalogServingLocalSortTuple(right, sort),
+        sort,
+      ),
+    );
+    const searchAfter = decodeCatalogServingCursor(params.cursor);
+    const slicedDocs = searchAfter
+      ? sortedDocs.filter(
+          (doc) =>
+            compareCatalogServingLocalSortTuples(
+              getCatalogServingLocalSortTuple(doc, sort),
+              searchAfter,
+              sort,
+            ) > 0,
+        )
+      : sortedDocs;
+    const size = Math.max(1, Math.min(Number(params.limit || 24) || 24, 100));
+    const items = slicedDocs.slice(0, size);
+    const hasNextPage = slicedDocs.length > items.length;
+    const nextCursor =
+      hasNextPage && items.length
+        ? encodeCatalogServingCursor(getCatalogServingLocalSortTuple(items[items.length - 1], sort))
+        : null;
+
     return {
-      items: [],
+      items,
       cursor_info: {
-        next_cursor: null,
-        has_next_page: false,
+        next_cursor: nextCursor,
+        has_next_page: Boolean(nextCursor),
         serving_mode: 'exhaustive',
       },
-      source: 'disabled',
+      source: 'local_shadow',
     };
   }
 
@@ -860,11 +1051,16 @@ module.exports = {
   decodeCatalogServingCursor,
   encodeCatalogServingCursor,
   getCatalogServingIndexConfig,
+  canSearchCatalogServingIndex,
   isCatalogServingIndexEnabled,
   searchCatalogServingIndex,
   _internals: {
+    buildLocalCatalogSearchBlob,
     buildCatalogServingBackfillEntries,
     buildCatalogServingGroupInput,
+    compareCatalogServingLocalSortTuples,
+    filterLocalCatalogServingDocs,
+    getCatalogServingLocalSortTuple,
     resolveBackfillPublishState,
     sortCatalogServingEntries,
   },

@@ -6,6 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const {
   backfillCatalogServingIndex,
+  canSearchCatalogServingIndex,
   getCatalogServingIndexConfig,
   searchCatalogServingIndex,
 } = require('../src/services/catalogServingIndex');
@@ -235,6 +236,11 @@ function evaluateReadiness(report, thresholds) {
     return { status: 'yellow', notes };
   }
 
+  if (searchProbe.status === 'ok' && safeToken(searchProbe.source, '') === 'local_shadow') {
+    notes.push('Catalog serving local shadow probe passed, but the external OpenSearch-compatible index is still disabled.');
+    return { status: 'yellow', notes };
+  }
+
   if (searchProbe.status === 'disabled' || searchProbe.status === 'skipped') {
     notes.push('Catalog serving index probe was skipped or disabled; backfill sample passed.');
     return { status: 'yellow', notes };
@@ -265,6 +271,12 @@ function sortRepresentativeBrands(rows = []) {
     if (reviewDelta !== 0) return reviewDelta;
     return safeToken(left?.brand_norm, '').localeCompare(safeToken(right?.brand_norm, ''));
   });
+}
+
+function shouldRetryRepresentativeSample(backfill = {}) {
+  const publicDocsBuilt = safeNumber(backfill?.public_docs_built, 0) || 0;
+  const liveIdentityRows = safeNumber(backfill?.live_identity_rows, 0) || 0;
+  return publicDocsBuilt <= 1 || liveIdentityRows <= 1;
 }
 
 async function listRepresentativeLiveBrands({ queryFn, summarizeFn = summarizePdpIdentityCoverageByBrand } = {}) {
@@ -307,7 +319,7 @@ async function collectRuntimeSummary(
   let representativeSample = null;
   let backfillSampleScope = brand ? 'brand_filter' : 'global_recent';
 
-  if (!brand && (safeNumber(initialBackfill?.public_docs_built, 0) || 0) <= 0) {
+  if (!brand && shouldRetryRepresentativeSample(initialBackfill)) {
     const candidateBrands = await listRepresentativeLiveBrands({
       summarizeFn: summarizeCoverageFn,
     });
@@ -334,12 +346,12 @@ async function collectRuntimeSummary(
   }
 
   let searchProbe = {
-    status: options.skipSearch ? 'skipped' : config.enabled ? 'pending' : 'disabled',
-    source: config.enabled ? 'opensearch_compatible' : 'disabled',
+    status: options.skipSearch ? 'skipped' : canSearchCatalogServingIndex(process.env) ? 'pending' : 'disabled',
+    source: config.enabled ? 'opensearch_compatible' : canSearchCatalogServingIndex(process.env) ? 'local_shadow' : 'disabled',
     returned: 0,
     has_next_page: false,
   };
-  if (!options.skipSearch && config.enabled) {
+  if (!options.skipSearch && canSearchCatalogServingIndex(process.env)) {
     try {
       const response = await searchCatalogServingIndexFn({
         query_text: sampleQuery,
@@ -512,5 +524,6 @@ module.exports = {
   collectRuntimeSummary,
   evaluateReadiness,
   listRepresentativeLiveBrands,
+  shouldRetryRepresentativeSample,
   statusSeverity,
 };

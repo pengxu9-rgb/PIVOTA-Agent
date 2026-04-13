@@ -5,6 +5,7 @@ const { execFileSync } = require('child_process');
 const {
   collectRuntimeSummary,
   listRepresentativeLiveBrands,
+  shouldRetryRepresentativeSample,
 } = require('../scripts/catalog_serving_shadow_acceptance');
 
 describe('catalog serving shadow acceptance script', () => {
@@ -82,6 +83,136 @@ describe('catalog serving shadow acceptance script', () => {
         brand: 'Brand B',
         candidate_rank: 1,
       }),
+    );
+  });
+
+  test('retries runtime backfill on a representative live brand when the global sample is low-signal', async () => {
+    const calls = [];
+    const summary = await collectRuntimeSummary(
+      {
+        limit: 50,
+        brand: '',
+        market: 'US',
+        sampleQuery: 'serum',
+        sampleLimit: 5,
+        skipSearch: false,
+      },
+      {
+        getCatalogServingIndexConfigFn: () => ({
+          enabled: false,
+          index_name: 'catalog_public_v1',
+          shadow_read_enabled: false,
+        }),
+        summarizeCoverageFn: async () => [
+          { brand_norm: 'Brand B', live_rows: 40, review_ratio: 0.1 },
+          { brand_norm: 'Brand A', live_rows: 20, review_ratio: 0.2 },
+        ],
+        backfillCatalogServingIndexFn: async ({ brand }) => {
+          calls.push(brand || null);
+          if (!brand) {
+            return {
+              source_rows_scanned: 1000,
+              live_identity_rows: 1,
+              docs_built: 997,
+              public_docs_built: 1,
+              non_public_docs_built: 996,
+            };
+          }
+          return {
+            source_rows_scanned: 50,
+            live_identity_rows: 40,
+            docs_built: 38,
+            public_docs_built: 31,
+            non_public_docs_built: 7,
+          };
+        },
+      },
+    );
+
+    expect(calls).toEqual([null, 'Brand B']);
+    expect(summary.backfill.public_docs_built).toBe(31);
+    expect(summary.initial_backfill.public_docs_built).toBe(1);
+    expect(summary.initial_backfill.live_identity_rows).toBe(1);
+    expect(summary.backfill_sample_scope).toBe('representative_brand_retry');
+  });
+
+  test('flags low-signal backfill samples for representative retry', () => {
+    expect(
+      shouldRetryRepresentativeSample({
+        docs_built: 997,
+        public_docs_built: 1,
+        live_identity_rows: 1,
+      }),
+    ).toBe(true);
+    expect(
+      shouldRetryRepresentativeSample({
+        docs_built: 55,
+        public_docs_built: 44,
+        live_identity_rows: 60,
+      }),
+    ).toBe(false);
+  });
+
+  test('keeps readiness yellow when only local shadow search is available', () => {
+    const repoRoot = path.join(__dirname, '..');
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'catalog-serving-shadow-local-'));
+    const fixturePath = path.join(outDir, 'fixture.json');
+    const scriptPath = path.join(repoRoot, 'scripts', 'catalog_serving_shadow_acceptance.js');
+
+    fs.writeFileSync(
+      fixturePath,
+      JSON.stringify(
+        {
+          schema_version: 'pivota.catalog_serving.shadow_acceptance.v1',
+          generated_at_utc: '2026-04-13T09:50:17.530Z',
+          requested: {
+            limit: 500,
+            brand: null,
+            market: 'US',
+            sample_query: 'serum',
+            sample_limit: 5,
+            skip_search: false,
+          },
+          index_config: {
+            enabled: false,
+            index_name: 'catalog_public_v1',
+            shadow_read_enabled: false,
+          },
+          backfill: {
+            source_rows_scanned: 500,
+            live_identity_rows: 496,
+            docs_built: 467,
+            public_docs_built: 463,
+            non_public_docs_built: 4,
+          },
+          search_probe: {
+            status: 'ok',
+            source: 'local_shadow',
+            returned: 5,
+            has_next_page: true,
+          },
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
+
+    const stdout = execFileSync(
+      process.execPath,
+      [scriptPath, '--out-dir', outDir, '--input-json', fixturePath],
+      {
+        cwd: repoRoot,
+        encoding: 'utf8',
+      },
+    );
+    const payload = JSON.parse(String(stdout || '').trim());
+    const json = JSON.parse(fs.readFileSync(payload.json_path, 'utf8'));
+    expect(payload.readiness_status).toBe('yellow');
+    expect(json.notes).toEqual(
+      expect.arrayContaining([
+        'Catalog serving local shadow probe passed, but the external OpenSearch-compatible index is still disabled.',
+      ]),
     );
   });
 

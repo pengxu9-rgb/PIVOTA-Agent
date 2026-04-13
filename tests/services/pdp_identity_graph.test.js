@@ -314,7 +314,7 @@ describe('pdpIdentityGraph', () => {
         expect(String(sql)).not.toContain('created_at');
         expect(String(sql)).not.toContain('updated_at');
         expect(String(sql)).toContain("product_data->>'vendor'");
-        expect(String(sql)).toContain("product_data->>'title'");
+        expect(String(sql)).toContain("regexp_replace(lower(coalesce(product_data->>'title'");
         expect(params).toEqual(['external_seed', 'kravebeauty', '%kravebeauty%', 10]);
         return {
           rows: [
@@ -333,7 +333,7 @@ describe('pdpIdentityGraph', () => {
       }
       if (String(sql).includes('FROM external_product_seeds')) {
         expect(String(sql)).toContain("seed_data->>'vendor'");
-        expect(String(sql)).toContain('lower(coalesce(title');
+        expect(String(sql)).toContain("regexp_replace(lower(coalesce(title, seed_data->>'title'");
         expect(params).toEqual(['kravebeauty', '%kravebeauty%', 10]);
         return { rows: [] };
       }
@@ -352,6 +352,55 @@ describe('pdpIdentityGraph', () => {
         merchant_id: 'merch_krave',
         product_id: '10008793153864',
         source_kind: 'internal',
+      }),
+    );
+    expect(queries).toHaveLength(2);
+  });
+
+  test('backfill product fetch normalizes brand punctuation for source selection', async () => {
+    const { _internals } = require('../../src/services/pdpIdentityGraph');
+    const queries = [];
+    const queryFn = jest.fn(async (sql, params) => {
+      queries.push(String(sql));
+      if (String(sql).includes('FROM products_cache')) {
+        expect(String(sql)).toContain('regexp_replace(lower(trim(coalesce(');
+        expect(String(sql)).toContain("regexp_replace(lower(coalesce(product_data->>'title'");
+        expect(params).toEqual(['external_seed', 'paulaschoice', '%paulaschoice%', 10]);
+        return { rows: [] };
+      }
+      if (String(sql).includes('FROM external_product_seeds')) {
+        expect(String(sql)).toContain('regexp_replace(lower(trim(coalesce(');
+        expect(String(sql)).toContain("regexp_replace(lower(coalesce(title, seed_data->>'title'");
+        expect(params).toEqual(['paulaschoice', '%paulaschoice%', 10]);
+        return {
+          rows: [
+            {
+              id: 'eps_paulas',
+              external_product_id: 'ext_paulas_bha',
+              title: "Paula's Choice 2% BHA Liquid Exfoliant",
+              seed_data: {
+                brand_name: "Paula's Choice",
+                title: "Paula's Choice 2% BHA Liquid Exfoliant",
+              },
+            },
+          ],
+        };
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    });
+
+    const rows = await _internals.fetchBackfillProducts({
+      limit: 10,
+      brandFilter: "Paula's Choice",
+      queryFn,
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual(
+      expect.objectContaining({
+        merchant_id: 'external_seed',
+        product_id: 'ext_paulas_bha',
+        source_kind: 'external_seed',
       }),
     );
     expect(queries).toHaveLength(2);
@@ -619,6 +668,59 @@ describe('pdpIdentityGraph', () => {
         identity_coverage_ratio: 0.4,
         live_coverage_ratio: 0.75,
         review_ratio: 0.25,
+      }),
+    ]);
+  });
+
+  test('summarizePdpIdentityCoverageByBrand normalizes punctuation brands in source joins', async () => {
+    process.env = {
+      ...ORIGINAL_ENV,
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgresql://example.test/pivota',
+    };
+    jest.resetModules();
+    const { summarizePdpIdentityCoverageByBrand } = require('../../src/services/pdpIdentityGraph');
+    const queryFn = jest.fn().mockResolvedValue({
+      rows: [
+        {
+          brand_norm: 'paulas choice',
+          internal_rows: 0,
+          external_rows: 8,
+          beauty_external_rows: 8,
+          source_rows: 8,
+          identity_rows: 8,
+          live_rows: 8,
+          approved_rows: 8,
+          review_rows: 0,
+        },
+      ],
+    });
+
+    const result = await summarizePdpIdentityCoverageByBrand({
+      brand: "Paula's Choice",
+      limit: 1,
+      minSourceRows: 0,
+      beautyOnly: false,
+      queryFn,
+    });
+
+    expect(queryFn).toHaveBeenCalledTimes(1);
+    expect(String(queryFn.mock.calls[0][0])).toContain("regexp_replace(regexp_replace(regexp_replace(lower(trim(coalesce(");
+    expect(queryFn.mock.calls[0][1]).toEqual([
+      'external_seed',
+      expect.any(Array),
+      'paulas choice',
+      0,
+      1,
+    ]);
+    expect(result).toEqual([
+      expect.objectContaining({
+        brand_norm: 'paulas choice',
+        source_rows: 8,
+        identity_rows: 8,
+        live_rows: 8,
+        identity_coverage_ratio: 1,
+        live_coverage_ratio: 1,
       }),
     ]);
   });
