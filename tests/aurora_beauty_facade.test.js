@@ -1515,6 +1515,7 @@ describe('Aurora beauty orchestration facade', () => {
         cacheStrictEmptyBypassReason: 'missing_external_for_unified',
         forceSearchFirstForExpandedQuery: true,
         cacheClarifyOnlyShouldUseEarlyDecision: true,
+        cacheIrrelevantShouldUseEarlyDecision: true,
         earlyDecisionRouteDebugUpdate: {
           applied: true,
           reason: 'scenario_query',
@@ -1535,6 +1536,7 @@ describe('Aurora beauty orchestration facade', () => {
       cache_strict_empty_bypass_reason: 'missing_external_for_unified',
       force_search_first_for_expanded_query: true,
       cache_clarify_only_recast_as_early_decision: true,
+      cache_irrelevant_recast_as_early_decision: true,
       early_decision: {
         applied: true,
         reason: 'scenario_query',
@@ -1582,6 +1584,7 @@ describe('Aurora beauty orchestration facade', () => {
       withPolicyProducts: [{ product_id: 'sku_1' }],
       cacheClarifyOnly: false,
       cacheClarifyOnlyShouldUseEarlyDecision: false,
+      cacheIrrelevantShouldUseEarlyDecision: false,
       cacheValidation: {
         enabled: true,
         accepted: false,
@@ -1638,6 +1641,7 @@ describe('Aurora beauty orchestration facade', () => {
       withPolicyProducts: [{ product_id: 'sku_1' }],
       cacheClarifyOnly: false,
       cacheClarifyOnlyShouldUseEarlyDecision: false,
+      cacheIrrelevantShouldUseEarlyDecision: false,
       cacheValidation: {
         enabled: false,
         accepted: true,
@@ -1701,6 +1705,7 @@ describe('Aurora beauty orchestration facade', () => {
       withPolicyProducts: [{ product_id: 'sku_1' }],
       cacheClarifyOnly: false,
       cacheClarifyOnlyShouldUseEarlyDecision: false,
+      cacheIrrelevantShouldUseEarlyDecision: false,
       cacheValidation: {
         enabled: true,
         accepted: true,
@@ -1765,6 +1770,7 @@ describe('Aurora beauty orchestration facade', () => {
       withPolicyProducts: [{ product_id: 'sku_1' }],
       cacheClarifyOnly: false,
       cacheClarifyOnlyShouldUseEarlyDecision: false,
+      cacheIrrelevantShouldUseEarlyDecision: false,
       cacheValidation: {
         enabled: true,
         accepted: true,
@@ -1820,6 +1826,7 @@ describe('Aurora beauty orchestration facade', () => {
       withPolicyProducts: [{ product_id: 'sku_1' }],
       cacheClarifyOnly: false,
       cacheClarifyOnlyShouldUseEarlyDecision: false,
+      cacheIrrelevantShouldUseEarlyDecision: false,
       cacheValidation: {
         enabled: false,
         accepted: true,
@@ -1831,6 +1838,59 @@ describe('Aurora beauty orchestration facade', () => {
       cacheStrictEmptyBypassReason: 'missing_external_for_unified',
       forceSearchFirstForExpandedQuery: false,
       bypassCacheStrictEmptyForUnified: true,
+    });
+  });
+
+  test('guidance-only cache transition plan recasts irrelevant scenario hits as early decision inside aurora orchestration facade', () => {
+    const runtime = createAuroraBeautyOrchestrationRuntime({
+      evaluateCacheQualityGate() {
+        return {
+          enabled: false,
+          accepted: true,
+          reason: null,
+        };
+      },
+    });
+
+    expect(
+      runtime.buildGuidanceOnlyCacheTransitionPlan({
+        effectiveCacheHit: true,
+        response: {
+          products: [{ product_id: 'pet_jacket_1' }],
+        },
+        effectiveProducts: [{ product_id: 'pet_jacket_1' }],
+        cacheQueryText: '出差要买什么',
+        queryText: '出差要买什么',
+        intent: { query_class: 'scenario' },
+        traceQueryClass: 'scenario',
+        cachePolicyQueryClass: 'scenario',
+        cacheBrandLikeQuery: false,
+        isLookupQuery: false,
+        cacheRelevant: false,
+        unifiedRelevanceRequested: false,
+        externalCount: 0,
+        source: 'creator_agent',
+        hasMerchantScope: false,
+        preferInternalSpecificBeautyCache: false,
+        cacheBeautyQueryProfile: null,
+      }),
+    ).toEqual({
+      effectiveCacheHit: false,
+      withPolicyProducts: [{ product_id: 'pet_jacket_1' }],
+      cacheClarifyOnly: false,
+      cacheClarifyOnlyShouldUseEarlyDecision: false,
+      cacheIrrelevantShouldUseEarlyDecision: true,
+      cacheValidation: {
+        enabled: false,
+        accepted: true,
+        reason: null,
+      },
+      cacheRejectedLowQuality: false,
+      mainPathContractLocked: false,
+      cacheMissingExternalForUnified: false,
+      cacheStrictEmptyBypassReason: null,
+      forceSearchFirstForExpandedQuery: false,
+      bypassCacheStrictEmptyForUnified: false,
     });
   });
 

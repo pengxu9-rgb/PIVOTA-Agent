@@ -22051,6 +22051,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ) &&
             !cacheBrandLikeQuery &&
             !isLookupQuery;
+          const cacheIrrelevantShouldUseEarlyDecision =
+            !cacheRelevant &&
+            (withPolicyProducts.length > 0 || effectiveProducts.length > 0) &&
+            ['mission', 'scenario', 'gift'].includes(
+              cachePolicyQueryClass,
+            );
           const cacheValidationQueryClass =
             traceQueryClass ||
             effectiveIntent?.query_class ||
@@ -22081,6 +22087,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             effectiveCacheHit = false;
           }
           if (cacheClarifyOnlyShouldUseEarlyDecision) {
+            effectiveCacheHit = false;
+          }
+          if (cacheIrrelevantShouldUseEarlyDecision) {
             effectiveCacheHit = false;
           }
           const cacheMissingExternalForUnified =
@@ -22128,6 +22137,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               forceSearchFirstForExpandedQuery;
             crossMerchantCacheRouteDebug.cache_clarify_only_recast_as_early_decision =
               cacheClarifyOnlyShouldUseEarlyDecision;
+            crossMerchantCacheRouteDebug.cache_irrelevant_recast_as_early_decision =
+              cacheIrrelevantShouldUseEarlyDecision;
           }
 
           const promotions = await getActivePromotions(now, creatorId);
