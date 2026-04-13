@@ -19105,6 +19105,20 @@ function scoreRecoNarrativeSentence(sentence, hintText = '') {
   return score;
 }
 
+function truncateRecoNarrativeSnippet(value, maxLen = 180) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (raw.length <= maxLen) return raw;
+  const cutoff = Math.max(16, Number(maxLen) - 3);
+  let out = raw.slice(0, cutoff + 1).trim();
+  const lastSpace = out.lastIndexOf(' ');
+  if (lastSpace >= Math.floor(cutoff * 0.6)) {
+    out = out.slice(0, lastSpace).trim();
+  }
+  out = out.replace(/[,:;.!?\-]+$/g, '').trim();
+  return `${out}...`;
+}
+
 function compactRecoNarrativeSnippet(value, { maxLen = 180, hintText = '' } = {}) {
   const raw = stripHtmlToText(value).replace(/\s+/g, ' ').trim();
   if (!raw) return '';
@@ -19127,9 +19141,9 @@ function compactRecoNarrativeSnippet(value, { maxLen = 180, hintText = '' } = {}
         score: scoreRecoNarrativeSentence(part, hintText),
       }))
       .sort((left, right) => Number(right.score || 0) - Number(left.score || 0));
-    return String(ranked[0]?.part || viable[0]).slice(0, maxLen).trim();
+    return truncateRecoNarrativeSnippet(String(ranked[0]?.part || viable[0]).trim(), maxLen);
   }
-  return source.slice(0, maxLen).trim();
+  return truncateRecoNarrativeSnippet(source, maxLen);
 }
 
 function pickRecoSpecificNarrativeSnippet({
