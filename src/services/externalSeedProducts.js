@@ -1063,7 +1063,7 @@ function normalizeSeedVariants(seedData, row) {
       const normalizedImageUrls = narrowedImageUrls.length > 0 ? narrowedImageUrls : productImageUrls;
       const imageUrl = normalizedImageUrls[0];
       const options = normalizeOptions(rawVariant, optionName, optionValue, productOptionNames);
-      const url = normalizeHttpUrl(rawVariant.url);
+      const url = normalizeHttpUrl(rawVariant.deep_link || rawVariant.url || rawVariant.product_url);
       const availability = normalizeSeedAvailability(rawAvailability);
       const description = String(
         rawVariant.description || rawVariant.description_html || rawVariant.summary || rawVariant.body_html || '',
@@ -1101,6 +1101,8 @@ function normalizeSeedVariants(seedData, row) {
           ? { beauty_meta: rawVariant.beauty_meta }
           : {}),
         ...(url ? { url } : {}),
+        ...(normalizeHttpUrl(rawVariant.deep_link) ? { deep_link: normalizeHttpUrl(rawVariant.deep_link) } : {}),
+        ...(normalizeHttpUrl(rawVariant.product_url) ? { product_url: normalizeHttpUrl(rawVariant.product_url) } : {}),
       };
     })
     .filter(Boolean);
