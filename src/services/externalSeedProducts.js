@@ -1460,6 +1460,8 @@ function buildExternalSeedProduct(row, options = {}) {
     availability: availability || undefined,
     product_type: normalizedCategory || 'external',
     source: 'external_seed',
+    ...(seedData.parent_external_product_id ? { parent_external_product_id: String(seedData.parent_external_product_id).trim() } : {}),
+    ...(seedData.source_listing_scope ? { source_listing_scope: String(seedData.source_listing_scope).trim() } : {}),
     ...(ingredientIds.length ? { ingredient_ids: ingredientIds } : {}),
     url: canonicalUrl || destinationUrl || undefined,
     canonical_url: canonicalUrl || undefined,

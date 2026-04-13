@@ -243,7 +243,7 @@ describe('RecommendationEngine external candidate fetch', () => {
     ).toBe(true);
   });
 
-  test('prefers same-domain seed lookup and skips broad brand/category scans when domain yields enough rows', async () => {
+  test('uses same-domain seed lookup but still runs broad scans when domain rows may be variant-crowded', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 
     const queryMock = jest.fn(async (sql, params) => {
@@ -263,7 +263,7 @@ describe('RecommendationEngine external candidate fetch', () => {
           ),
         };
       }
-      throw new Error(`unexpected broad external query: ${sqlText}`);
+      return { rows: [] };
     });
 
     jest.doMock('../../src/db', () => ({ query: queryMock }));
@@ -285,7 +285,10 @@ describe('RecommendationEngine external candidate fetch', () => {
           String(product.canonical_url || product.destination_url || '').includes('kravebeauty.com'),
       ),
     ).toBe(true);
-    expect(queryMock).toHaveBeenCalledTimes(1);
+    expect(queryMock.mock.calls.some(([sql]) => String(sql).includes("lower(coalesce(domain, '')) = ANY($4)"))).toBe(true);
+    expect(
+      queryMock.mock.calls.some(([sql]) => String(sql).includes("seed_data->>'brand'")),
+    ).toBe(true);
   });
 
   test('same-domain seed lookup includes www and bare host aliases before broad scans', async () => {
@@ -308,7 +311,7 @@ describe('RecommendationEngine external candidate fetch', () => {
           ),
         };
       }
-      throw new Error(`unexpected broad external query: ${sqlText}`);
+      return { rows: [] };
     });
 
     jest.doMock('../../src/db', () => ({ query: queryMock }));
@@ -324,7 +327,7 @@ describe('RecommendationEngine external candidate fetch', () => {
 
     expect(products).toHaveLength(6);
     expect(products.every((product) => product.domain === 'www.tomfordbeauty.com')).toBe(true);
-    expect(queryMock).toHaveBeenCalledTimes(1);
+    expect(queryMock.mock.calls.some(([sql]) => String(sql).includes("lower(coalesce(domain, '')) = ANY($4)"))).toBe(true);
   });
 
   test('recommend fetches internal and external pools in parallel instead of serially stacking source latency', async () => {
@@ -488,7 +491,7 @@ describe('RecommendationEngine external candidate fetch', () => {
           ],
         });
       }
-      throw new Error(`unexpected broad external query: ${sqlText}`);
+      return Promise.resolve({ rows: [] });
     });
 
     jest.doMock('../../src/db', () => ({ query: queryMock }));
@@ -521,8 +524,8 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(queryMock.mock.calls.every(([sql]) => !String(sql).includes('FROM products_cache'))).toBe(true);
     expect(queryMock.mock.calls.some(([sql]) => String(sql).includes("lower(coalesce(domain, '')) = ANY($4)"))).toBe(true);
     expect(
-      queryMock.mock.calls.every(
-        ([sql]) => !String(sql).includes("seed_data->>'brand'") && !String(sql).includes("seed_data->>'category'"),
+      queryMock.mock.calls.some(
+        ([sql]) => String(sql).includes("seed_data->>'brand'") || String(sql).includes("seed_data->>'category'"),
       ),
     ).toBe(true);
   });
