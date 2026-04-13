@@ -235,7 +235,14 @@ async function withClient(fn) {
   }
 }
 
+async function closePool() {
+  const existingPool = pool;
+  if (!existingPool) return;
+  await resetPool(existingPool, 'manual_close', null);
+}
+
 module.exports = {
+  closePool,
   getPool,
   query,
   withClient,
