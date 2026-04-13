@@ -1116,7 +1116,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.body.metadata?.route_debug?.cross_merchant_cache?.supplement).toEqual(
       expect.objectContaining({
         applied: false,
-        reason: 'specific_beauty_internal_preferred',
+        reason: 'beauty_category_fastpath_internal_preferred',
       }),
     );
     expect(resp.body.metadata?.route_debug?.cross_merchant_cache?.cache_validation).toEqual(
@@ -1138,7 +1138,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         if (text.includes('COUNT(*)::int AS total')) {
           throw new Error('lexical count should not run for beauty category fastpath');
         }
-        if (text.includes('FROM (') && text.includes('JOIN merchant_onboarding mo')) {
+        if (text.includes('beauty_category_browse_fastpath')) {
           return {
             rows: [
               {
@@ -1357,7 +1357,15 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.body.metadata?.cache_stage_query_terms || []).toEqual(
       expect.arrayContaining(['serum']),
     );
-    expect(Number(resp.body.metadata?.cache_stage_strict_total || 0)).toBeGreaterThan(0);
+    expect(resp.body.metadata?.retrieval_sources || []).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: 'beauty_category_browse_fastpath',
+          category_id: 'serum',
+          browse_query_ms: expect.any(Number),
+        }),
+      ]),
+    );
     expect(resp.body.products.map((item) => String(item?.title || ''))).toEqual(
       expect.arrayContaining([
         'Winona Soothing Repair Serum',
