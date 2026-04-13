@@ -1,0 +1,2023 @@
+{
+  "meta": {
+    "generated_at": "2026-04-13T00:14:37.686Z",
+    "batch_id": "20260413_batch40_report_tail",
+    "total_cases": 40,
+    "decision_counts": {
+      "pass": 9,
+      "rewrite": 31
+    },
+    "selected_mode_counts": {
+      "manual_override": 31,
+      "hybrid_gemini": 9
+    },
+    "residual_fail_reason_counts": {},
+    "accepted_exceptions": []
+  },
+  "rows": [
+    {
+      "case_id": "live_ext_8d735b108c0f01151b80797b",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_8d735b108c0f01151b80797b"
+      },
+      "title": "Beekman 1802 Golden Booster Amla Berry Vitamin C Brightening Serum",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Curated seller-only rewrite to keep the brightening reason specific and formula-led.",
+      "selected_mode": "manual_override",
+      "field_sources": {
+        "what_it_is": "manual",
+        "best_for": "manual",
+        "why_it_stands_out": "manual",
+        "routine_fit": "manual",
+        "watchouts": "manual",
+        "texture_finish": "baseline",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Beekman 1802 Golden Booster Amla Berry Vitamin C Brightening Serum",
+        "subtitle": "Amla Brightening Serum",
+        "highlight": "Amla brightening for dark spots",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Amla Brightening Serum",
+        "highlight_candidate": "Amla brightening for dark spots",
+        "proof_badge_candidate": "",
+        "intro_candidate": "Serum for dark spots and uneven tone."
+      },
+      "pivota_insights": {
+        "what_it_is": "A brightening serum built around amla berry as a vitamin C-focused ingredient to target dullness, uneven tone, and the look of dark spots.",
+        "why_it_stands_out": [
+          {
+            "headline": "Amla berry as the lead brightener",
+            "body": "Uses amla berry as the lead brightening ingredient instead of centering a classic pure-vitamin-C serum profile."
+          },
+          {
+            "headline": "Tone and spot treatment focus",
+            "body": "Built for dullness, uneven tone, and dark-spot routines rather than hydration alone."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_7036139f48c84539ff819d8d",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_7036139f48c84539ff819d8d"
+      },
+      "title": "Olehenriksen Peach Glaze Glow Niacinamide Serum with Vitamin C",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Curated seller-only rewrite to stress the brightening-plus-hydration blend instead of generic texture claims.",
+      "selected_mode": "manual_override",
+      "field_sources": {
+        "what_it_is": "manual",
+        "best_for": "manual",
+        "why_it_stands_out": "manual",
+        "routine_fit": "manual",
+        "watchouts": "manual",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Olehenriksen Peach Glaze Glow Niacinamide Serum with Vitamin C",
+        "subtitle": "Vitamin C + Niacinamide Serum",
+        "highlight": "Brightening + plumping hydration",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Vitamin C + Niacinamide Serum",
+        "highlight_candidate": "Brightening + plumping hydration",
+        "proof_badge_candidate": "",
+        "intro_candidate": "Clinically Brighten + Plump."
+      },
+      "pivota_insights": {
+        "what_it_is": "A lightweight serum that combines niacinamide, vitamin C, peach extract, hyaluronic acid, and polyglutamic acid to brighten dullness while supporting plumper-feeling hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Brightening plus humectant blend",
+            "body": "Pairs niacinamide and vitamin C with hyaluronic acid and polyglutamic acid, so brightening support comes with added water-binding hydration."
+          },
+          {
+            "headline": "Glow and hydration in one serum",
+            "body": "Combines radiance support with plumper-feeling hydration in one pre-moisturizer step."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_f22e924478be64d4c3a1b918",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_f22e924478be64d4c3a1b918"
+      },
+      "title": "First Aid Beauty Ultra Repair Firming Night Cream with Colloidal Oatmeal + Niacinamide",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Curated seller-only rewrite to avoid generic night-cream texture filler.",
+      "selected_mode": "manual_override",
+      "field_sources": {
+        "what_it_is": "manual",
+        "best_for": "manual",
+        "why_it_stands_out": "manual",
+        "routine_fit": "manual",
+        "watchouts": "manual",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "First Aid Beauty Ultra Repair Firming Night Cream with Colloidal Oatmeal + Niacinamide",
+        "subtitle": "Night Cream",
+        "highlight": "Oatmeal + niacinamide at night",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Night Cream",
+        "highlight_candidate": "Oatmeal + niacinamide at night",
+        "proof_badge_candidate": "",
+        "intro_candidate": "Rich, buttery night cream that deeply hydrates."
+      },
+      "pivota_insights": {
+        "what_it_is": "A rich overnight cream that combines colloidal oatmeal and niacinamide with a moisture-sealing night step aimed at comfort and visible firmness support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Richer overnight cream texture",
+            "body": "Uses a fuller night-cream texture built for overnight moisture support instead of a light gel-cream feel."
+          },
+          {
+            "headline": "Oatmeal plus niacinamide support",
+            "body": "Pairs colloidal oatmeal and niacinamide to combine comfort support with a firmer-looking finish."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_f326aabff0f8a4a698aa192c",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_f326aabff0f8a4a698aa192c"
+      },
+      "title": "fenty beauty Hydra Vizor Invisible Moisturizer Broad Spectrum SPF 30 Sunscreen with Niacinamide + Kalahari Melon",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Curated seller-only rewrite to keep the SPF moisturizer explanation crisp and practical.",
+      "selected_mode": "manual_override",
+      "field_sources": {
+        "what_it_is": "manual",
+        "best_for": "manual",
+        "why_it_stands_out": "manual",
+        "routine_fit": "manual",
+        "watchouts": "manual",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "fenty beauty Hydra Vizor Invisible Moisturizer Broad Spectrum SPF 30 Sunscreen with Niacinamide + Kalahari Melon",
+        "subtitle": "Moisturizer With SPF",
+        "highlight": "SPF 30 + moisturizer in one step",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Moisturizer With SPF",
+        "highlight_candidate": "SPF 30 + moisturizer in one step",
+        "proof_badge_candidate": "",
+        "intro_candidate": "Powered by Hyaluronic Acid and Niacinamide."
+      },
+      "pivota_insights": {
+        "what_it_is": "A daily moisturizer with broad-spectrum SPF 30 that combines sun protection, hydration, and niacinamide-led skin-support benefits in one morning step.",
+        "why_it_stands_out": [
+          {
+            "headline": "Moisturizer and sunscreen in one step",
+            "body": "Combines daily hydration and SPF 30 in one morning step, so moisturizer and sunscreen do not need to be separate layers."
+          },
+          {
+            "headline": "Moisturizer-first sunscreen feel",
+            "body": "Keeps the wear closer to a daily moisturizer while still delivering SPF 30, rather than a heavier beach or sport-sunscreen feel."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_1d9e01e4c3a8800a0c22b175",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_1d9e01e4c3a8800a0c22b175"
+      },
+      "title": "First Aid Beauty Daily Resurfacing Lotion with 2% Niacinamide",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Curated seller-only rewrite to remove the inaccurate niacinamide-resurfacing framing.",
+      "selected_mode": "manual_override",
+      "field_sources": {
+        "what_it_is": "manual",
+        "best_for": "manual",
+        "why_it_stands_out": "manual",
+        "routine_fit": "manual",
+        "watchouts": "manual",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "First Aid Beauty Daily Resurfacing Lotion with 2% Niacinamide",
+        "subtitle": "Treatment Lotion",
+        "highlight": "2% niacinamide + ceramides",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Treatment Lotion",
+        "highlight_candidate": "2% niacinamide + ceramides",
+        "proof_badge_candidate": "",
+        "intro_candidate": "Lightweight lotion perfect for blemish-prone skin."
+      },
+      "pivota_insights": {
+        "what_it_is": "A lightweight treatment lotion built around 2% niacinamide, glycerin, and ceramides to target post-acne marks while supporting hydration and barrier comfort.",
+        "why_it_stands_out": [
+          {
+            "headline": "Niacinamide plus barrier support",
+            "body": "Uses 2% niacinamide with glycerin and ceramides, so post-acne-mark treatment comes with barrier-support ingredients instead of a drier active-serum feel."
+          },
+          {
+            "headline": "Lotion step between serum and cream",
+            "body": "Sits between a serum and moisturizer, giving discoloration care a lighter lotion feel."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_6c540ac96c2c1ab33f1af31d",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_6c540ac96c2c1ab33f1af31d"
+      },
+      "title": "Olehenriksen Banana Bright+ Vitamin CC Stick",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Curated seller-only rewrite to keep the under-eye explanation specific instead of convenience-led.",
+      "selected_mode": "manual_override",
+      "field_sources": {
+        "what_it_is": "manual",
+        "best_for": "manual",
+        "why_it_stands_out": "manual",
+        "routine_fit": "manual",
+        "watchouts": "manual",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Olehenriksen Banana Bright+ Vitamin CC Stick",
+        "subtitle": "Color-Correcting Eye Treatment Stick",
+        "highlight": "Instant dark-circle correction",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Color-Correcting Eye Treatment Stick",
+        "highlight_candidate": "Instant dark-circle correction",
+        "proof_badge_candidate": "",
+        "intro_candidate": "Color - correcting eye cream stick."
+      },
+      "pivota_insights": {
+        "what_it_is": "A targeted under-eye stick that combines vitamin C support with banana-toned pigments for immediate dark-circle correction and added hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Color correction plus vitamin C",
+            "body": "Combines banana-toned pigment correction with vitamin C brightening support instead of acting like a plain eye cream."
+          },
+          {
+            "headline": "Targeted under-eye application",
+            "body": "Keeps application focused on the under-eye area rather than general full-face brightening."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_aa93bbb9dbe9e3529030408b",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_aa93bbb9dbe9e3529030408b"
+      },
+      "title": "SKINTIFIC Vitamin C Brightening Boost Moisturizer",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Curated seller-only rewrite to keep the moisturizer explanation concrete and less generic.",
+      "selected_mode": "manual_override",
+      "field_sources": {
+        "what_it_is": "manual",
+        "best_for": "manual",
+        "why_it_stands_out": "manual",
+        "routine_fit": "manual",
+        "watchouts": "manual",
+        "texture_finish": "baseline",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "SKINTIFIC Vitamin C Brightening Boost Moisturizer",
+        "subtitle": "Brightening Moisturizer",
+        "highlight": "Dark spots + daily glow",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Brightening Moisturizer",
+        "highlight_candidate": "Dark spots + daily glow",
+        "proof_badge_candidate": "",
+        "intro_candidate": "Serum for dark spots and uneven tone."
+      },
+      "pivota_insights": {
+        "what_it_is": "A lightweight gel-cream moisturizer that uses vitamin C to combine daily hydration with a brightening, dark-spot-focused moisturizer step.",
+        "why_it_stands_out": [
+          {
+            "headline": "Brightening built into a gel-cream step",
+            "body": "Builds vitamin C into a lightweight gel-cream, so brightening happens in the daily moisturizer step instead of a separate serum."
+          },
+          {
+            "headline": "Gel-cream daily texture",
+            "body": "Keeps a lighter gel-cream texture while still targeting dullness and dark-spot routines."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_7c4b0a2885131b08d1cda84a",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_7c4b0a2885131b08d1cda84a"
+      },
+      "title": "First Aid Beauty Dark Spot Serum with Niacinamide",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Curated seller-only rewrite to make the discoloration explanation more specific and treatment-led.",
+      "selected_mode": "manual_override",
+      "field_sources": {
+        "what_it_is": "manual",
+        "best_for": "manual",
+        "why_it_stands_out": "manual",
+        "routine_fit": "manual",
+        "watchouts": "manual",
+        "texture_finish": "baseline",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "First Aid Beauty Dark Spot Serum with Niacinamide",
+        "subtitle": "Dark-Spot Serum",
+        "highlight": "Post-acne marks + uneven tone",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Dark-Spot Serum",
+        "highlight_candidate": "Post-acne marks + uneven tone",
+        "proof_badge_candidate": "",
+        "intro_candidate": "Effective formula helps visibly even skin’s tone with powerhouse Niacinamide."
+      },
+      "pivota_insights": {
+        "what_it_is": "A niacinamide-led serum aimed at dark spots, post-acne marks, and uneven tone, with a gentler treatment profile than a harsher acid-led discoloration serum.",
+        "why_it_stands_out": [
+          {
+            "headline": "Niacinamide-first discoloration focus",
+            "body": "Keeps niacinamide at the center of the formula, so the serum targets discoloration without leaning on a peel-like acid blend."
+          },
+          {
+            "headline": "Dedicated dark-spot serum",
+            "body": "Built as a focused discoloration step rather than a moisturizer or toner with secondary brightening claims."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_461170e7480048cf4ffb7941",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_461170e7480048cf4ffb7941"
+      },
+      "title": "the ordinary Behentrimonium Chloride 2% Conditioner",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Strict human QA override: the conditioner was misclassified as a fragrance product, so the rewrite restores a seller-grounded hair-conditioner definition.",
+      "selected_mode": "manual_override",
+      "field_sources": {
+        "what_it_is": "manual",
+        "best_for": "manual",
+        "why_it_stands_out": "manual",
+        "routine_fit": "manual",
+        "watchouts": "manual",
+        "texture_finish": "manual",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "the ordinary Behentrimonium Chloride 2% Conditioner",
+        "subtitle": "Conditioner",
+        "highlight": "Lightweight + fragrance-free care",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Conditioner",
+        "highlight_candidate": "Lightweight + fragrance-free care",
+        "proof_badge_candidate": "",
+        "intro_candidate": "A lightweight conditioner for softer, easier-to-manage hair."
+      },
+      "pivota_insights": {
+        "what_it_is": "A lightweight, fragrance-free conditioner with 2% behentrimonium chloride for softer, easier-to-manage hair.",
+        "why_it_stands_out": [
+          {
+            "headline": "2% behentrimonium chloride",
+            "body": "Keeps the conditioning benefit tied to a clear active level instead of vague hair-care language."
+          },
+          {
+            "headline": "Lightweight fragrance-free finish",
+            "body": "Built for daily conditioning without turning into a heavy fragranced mask."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_fd6ccfe1771cc86723ce3f4c",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_fd6ccfe1771cc86723ce3f4c"
+      },
+      "title": "the ordinary Multi-Peptide + HA Serum",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "",
+      "selected_mode": "hybrid_gemini",
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "baseline",
+        "texture_finish": "baseline",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "the ordinary Multi-Peptide + HA Serum",
+        "subtitle": "Treatment Serum",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Treatment Serum",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": "An age-supporting peptide serum that does a little bit of everything for your skin."
+      },
+      "pivota_insights": {
+        "what_it_is": "A peptide-based serum designed to address multiple signs of aging. It utilizes a blend of technologies to support overall skin health.",
+        "why_it_stands_out": [
+          {
+            "headline": "Combines various peptide complexes with hyaluronic acid to provide broad-spectrum skin support.",
+            "body": "Combines various peptide complexes with hyaluronic acid to provide broad-spectrum skin support."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_adf54c1f4075889a95acf8b5",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_adf54c1f4075889a95acf8b5"
+      },
+      "title": "the ordinary Natural Moisturizing Factors + Beta Glucan",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "",
+      "selected_mode": "hybrid_gemini",
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "baseline",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "the ordinary Natural Moisturizing Factors + Beta Glucan",
+        "subtitle": "Daily Moisturizer",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Daily Moisturizer",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": "Lightweight gel moisturizer to support surface hydration."
+      },
+      "pivota_insights": {
+        "what_it_is": "A lightweight gel moisturizer that combines natural moisturizing factors and beta glucan to support surface hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Utilizes beta glucan alongside natural moisturizing factors to target surface hydration without a heavy cream base",
+            "body": "Utilizes beta glucan alongside natural moisturizing factors to target surface hydration without a heavy cream base"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_841f229a3f0fab1a5cbf3bd7",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_841f229a3f0fab1a5cbf3bd7"
+      },
+      "title": "the ordinary Hyaluronic Acid 2% + B5 (with Ceramides)",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "",
+      "selected_mode": "hybrid_gemini",
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "baseline",
+        "texture_finish": "baseline",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "the ordinary Hyaluronic Acid 2% + B5 (with Ceramides)",
+        "subtitle": "Treatment Serum",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Treatment Serum",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": "Second-generation hyaluronic acid serum formulated."
+      },
+      "pivota_insights": {
+        "what_it_is": "A second-generation hyaluronic acid serum formulated with vitamin B5 and ceramides to provide instant and long-lasting hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Combines hyaluronic acid with ceramides to help maintain the skin's moisture barrier while delivering hydration.",
+            "body": "Combines hyaluronic acid with ceramides to help maintain the skin's moisture barrier while delivering hydration."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_60d0de6135b5a2042da8cbd5",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_60d0de6135b5a2042da8cbd5"
+      },
+      "title": "Paula's Choice 10% Niacinamide Booster",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Manual card rewrite to replace the generic serum label with the seller-grounded niacinamide booster use case.",
+      "selected_mode": "manual_override",
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "baseline",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Paula's Choice 10% Niacinamide Booster",
+        "subtitle": "Treatment Serum",
+        "highlight": "Uneven tone + pore refinement",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Treatment Serum",
+        "highlight_candidate": "Uneven tone + pore refinement",
+        "proof_badge_candidate": "",
+        "intro_candidate": ""
+      },
+      "pivota_insights": {
+        "what_it_is": "A concentrated 10% niacinamide serum designed to refine pore size and improve uneven skin tone. The ultra-light liquid formula can be used as a standalone treatment or mixed into other skincare products.",
+        "why_it_stands_out": [
+          {
+            "headline": "Features a 10% concentration of Vitamin B3 to specifically address pore refinement and skin clarity.",
+            "body": "Features a 10% concentration of Vitamin B3 to specifically address pore refinement and skin clarity."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_9af347d8b5d6f863db99f73d",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_9af347d8b5d6f863db99f73d"
+      },
+      "title": "Paula's Choice 5% Niacinamide Body Serum",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Manual card rewrite to make the body-serum use case visible without repeating the title.",
+      "selected_mode": "manual_override",
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "baseline",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Paula's Choice 5% Niacinamide Body Serum",
+        "subtitle": "Treatment Serum",
+        "highlight": "Discoloration + rough texture",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Treatment Serum",
+        "highlight_candidate": "Discoloration + rough texture",
+        "proof_badge_candidate": "",
+        "intro_candidate": "Evens skin tone and addresses discoloration."
+      },
+      "pivota_insights": {
+        "what_it_is": "A concentrated body serum formulated with 5% niacinamide and 5% d-panthenol to address uneven skin tone and rough texture. It targets discoloration while supporting a healthy skin barrier.",
+        "why_it_stands_out": [
+          {
+            "headline": "Combines 5% niacinamide with 5% d-panthenol to simultaneously improve skin clarity and moisture retention.",
+            "body": "Combines 5% niacinamide with 5% d-panthenol to simultaneously improve skin clarity and moisture retention."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_cb5bf6c59bef31adc9fc4bb2",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_cb5bf6c59bef31adc9fc4bb2"
+      },
+      "title": "The Inkey List 10% Niacinamide Serum",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Manual card rewrite to replace the generic serum label with the seller-grounded niacinamide benefit set.",
+      "selected_mode": "manual_override",
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "baseline",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "The Inkey List 10% Niacinamide Serum",
+        "subtitle": "Treatment Serum",
+        "highlight": "Oil, blemishes + redness",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Treatment Serum",
+        "highlight_candidate": "Oil, blemishes + redness",
+        "proof_badge_candidate": "",
+        "intro_candidate": "A lightweight serum formulated with 10% niacinamide."
+      },
+      "pivota_insights": {
+        "what_it_is": "A lightweight serum formulated with 10% niacinamide. It is designed to target excess oil, blemishes, and redness.",
+        "why_it_stands_out": [
+          {
+            "headline": "10% Niacinamide Concentration",
+            "body": "Delivers a targeted dose of vitamin B3 to manage oil production and reduce the appearance of blemishes."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_e9366ce39ac8c46f82a45619",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_e9366ce39ac8c46f82a45619"
+      },
+      "title": "Dermalogica biolumin-c vitamin c eye serum",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Manual card rewrite to replace generic serum labeling with concrete under-eye concerns.",
+      "selected_mode": "manual_override",
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "gemini",
+        "texture_finish": "baseline",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_plus_formula",
+      "quality_state": "eligible",
+      "shopping_card": {
+        "title": "Dermalogica biolumin-c vitamin c eye serum",
+        "subtitle": "Treatment Serum",
+        "highlight": "For dark circles + fine lines",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Treatment Serum",
+        "highlight_candidate": "For dark circles + fine lines",
+        "proof_badge_candidate": "",
+        "intro_candidate": "Vitamin C eye serum for dullness and early fine-line care."
+      },
+      "pivota_insights": {
+        "what_it_is": "A targeted eye serum formulated with Vitamin C to address visible signs of premature aging and environmental stress around the eye area.",
+        "why_it_stands_out": [
+          {
+            "headline": "Targets visible aging specifically linked to daily eye movements",
+            "body": "Targets visible aging specifically linked to daily eye movements"
+          },
+          {
+            "headline": "Formulated to mitigate the effects of environmental stress on the eye area",
+            "body": "Formulated to mitigate the effects of environmental stress on the eye area"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_9ceb53f2177266aed1fd4e0c",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_9ceb53f2177266aed1fd4e0c"
+      },
+      "title": "PIXI BEAUTY Vitamin-C Cleansing Cloths",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Strict human QA override: upgraded the cleansing cloths from card-only rewrite into a seller-grounded wipe definition.",
+      "selected_mode": "manual_override",
+      "field_sources": {
+        "what_it_is": "manual",
+        "best_for": "manual",
+        "why_it_stands_out": "manual",
+        "routine_fit": "manual",
+        "watchouts": "manual",
+        "texture_finish": "manual",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "PIXI BEAUTY Vitamin-C Cleansing Cloths",
+        "subtitle": "Vitamin C Cleansing Wipes",
+        "highlight": "For makeup + on-the-go cleansing",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Vitamin C Cleansing Wipes",
+        "highlight_candidate": "For makeup + on-the-go cleansing",
+        "proof_badge_candidate": "",
+        "intro_candidate": "Pre-soaked vitamin C wipes for makeup, dirt, and oil."
+      },
+      "pivota_insights": {
+        "what_it_is": "Pre-soaked cleansing wipes designed to remove makeup, dirt, and oil while leaving skin refreshed with a vitamin C-led formula.",
+        "why_it_stands_out": [
+          {
+            "headline": "Wipe format for on-the-go cleansing",
+            "body": "Keeps cleansing in a pre-soaked wipe format instead of a rinse-off cleanser step."
+          },
+          {
+            "headline": "Vitamin C plus botanicals",
+            "body": "Adds a vitamin C and botanical angle so the wipes feel more refreshing than plain makeup remover cloths."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_e97a6d50cce83288436c18fa",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_e97a6d50cce83288436c18fa"
+      },
+      "title": "Dermalogica multivitamin power recovery cream",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Manual card rewrite to anchor the recovery cream in the stressed-skin use case.",
+      "selected_mode": "manual_override",
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "baseline",
+        "texture_finish": "baseline",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_plus_formula",
+      "quality_state": "eligible",
+      "shopping_card": {
+        "title": "Dermalogica multivitamin power recovery cream",
+        "subtitle": "Daily Moisturizer",
+        "highlight": "For stressed, depleted skin",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Daily Moisturizer",
+        "highlight_candidate": "For stressed, depleted skin",
+        "proof_badge_candidate": "",
+        "intro_candidate": ""
+      },
+      "pivota_insights": {
+        "what_it_is": "A moisturizer formulated to address visible signs of skin stress and premature aging, including dryness and loss of elasticity.",
+        "why_it_stands_out": [
+          {
+            "headline": "Targeted stress recovery: Specifically addresses skin concerns triggered by stress, such as fine lines and sagging.",
+            "body": "Targeted stress recovery: Specifically addresses skin concerns triggered by stress, such as fine lines and sagging."
+          },
+          {
+            "headline": "Multivitamin-based restoration: Focuses on replenishing skin that shows signs of environmental or premature aging.",
+            "body": "Multivitamin-based restoration: Focuses on replenishing skin that shows signs of environmental or premature aging."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_a8f90cd8b83e185294eef5a3",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_a8f90cd8b83e185294eef5a3"
+      },
+      "title": "Naturium The Multi-Vitamin Daily Nutrients Body Wash",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Strict human QA override: upgraded the body wash from card-only rewrite into a seller-grounded body-wash definition.",
+      "selected_mode": "manual_override",
+      "field_sources": {
+        "what_it_is": "manual",
+        "best_for": "manual",
+        "why_it_stands_out": "manual",
+        "routine_fit": "manual",
+        "watchouts": "manual",
+        "texture_finish": "manual",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Naturium The Multi-Vitamin Daily Nutrients Body Wash",
+        "subtitle": "Multi-Vitamin Body Wash",
+        "highlight": "Plant-based cleanse + NMF support",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Multi-Vitamin Body Wash",
+        "highlight_candidate": "Plant-based cleanse + NMF support",
+        "proof_badge_candidate": "",
+        "intro_candidate": "A daily body wash with vitamins and skin-supportive cleansing."
+      },
+      "pivota_insights": {
+        "what_it_is": "A daily body wash designed to cleanse skin while supporting it with a blend of vitamins and nutrients.",
+        "why_it_stands_out": [
+          {
+            "headline": "Body-wash plus nutrient blend",
+            "body": "Keeps the product grounded as a body wash while adding a multi-vitamin support angle."
+          },
+          {
+            "headline": "NMF-support positioning",
+            "body": "Frames cleansing with more skin-supportive care than a plain soap-first body wash."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_5e3517fefadb05450f85d7d2",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_5e3517fefadb05450f85d7d2"
+      },
+      "title": "Naturium Niacinamide Cleansing Gelée 3%",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Strict human QA override: upgraded the niacinamide cleanser from card-only rewrite into a seller-grounded gel-cleansing definition.",
+      "selected_mode": "manual_override",
+      "field_sources": {
+        "what_it_is": "manual",
+        "best_for": "manual",
+        "why_it_stands_out": "manual",
+        "routine_fit": "manual",
+        "watchouts": "manual",
+        "texture_finish": "manual",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_plus_formula",
+      "quality_state": "eligible",
+      "shopping_card": {
+        "title": "Naturium Niacinamide Cleansing Gelée 3%",
+        "subtitle": "Niacinamide Gel Cleanser",
+        "highlight": "Makeup removal + oil control",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Niacinamide Gel Cleanser",
+        "highlight_candidate": "Makeup removal + oil control",
+        "proof_badge_candidate": "",
+        "intro_candidate": "3% niacinamide cleanser for makeup, oil, and impurities."
+      },
+      "pivota_insights": {
+        "what_it_is": "A niacinamide cleanser in a gelée format designed to remove makeup, oil, and impurities while keeping skin balanced.",
+        "why_it_stands_out": [
+          {
+            "headline": "3% niacinamide cleanser",
+            "body": "Keeps niacinamide visible in the cleansing step instead of treating it like a plain wash."
+          },
+          {
+            "headline": "Gelée cleansing feel",
+            "body": "Uses an essence-like gelée texture rather than a stripped-down foaming cleanser format."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_fe0c55a05a505ad59ddd7f0c",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_fe0c55a05a505ad59ddd7f0c"
+      },
+      "title": "The Inkey List 360° Acne Clearing Serum",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "",
+      "selected_mode": "hybrid_gemini",
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "baseline",
+        "texture_finish": "baseline",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "The Inkey List 360° Acne Clearing Serum",
+        "subtitle": "Treatment Serum",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Treatment Serum",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": ""
+      },
+      "pivota_insights": {
+        "what_it_is": "A daily anti-blemish serum designed to address excess oil, active breakouts, and post-blemish marks in a single step.",
+        "why_it_stands_out": [
+          {
+            "headline": "Three-stage breakout coverage",
+            "body": "Three-stage breakout coverage"
+          },
+          {
+            "headline": "Multi-phase blemish treatment",
+            "body": "Multi-phase blemish treatment"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_ba77f628da48958583f0f49f",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_ba77f628da48958583f0f49f"
+      },
+      "title": "The Inkey List Starter Retinol Serum",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Strict human QA override: the starter retinol serum still carried seller-community phrasing, so the rewrite narrows it into a beginner retinol definition.",
+      "selected_mode": "manual_override",
+      "field_sources": {
+        "what_it_is": "manual",
+        "best_for": "manual",
+        "why_it_stands_out": "manual",
+        "routine_fit": "manual",
+        "watchouts": "manual",
+        "texture_finish": "manual",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "The Inkey List Starter Retinol Serum",
+        "subtitle": "Beginner Retinol Serum",
+        "highlight": "Starter retinol for tone + texture",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Beginner Retinol Serum",
+        "highlight_candidate": "Starter retinol for tone + texture",
+        "proof_badge_candidate": "",
+        "intro_candidate": "A gentler retinol serum for fine lines, tone, and texture."
+      },
+      "pivota_insights": {
+        "what_it_is": "A beginner-friendly retinol serum designed to smooth fine lines and refine tone and texture with a gentler entry feel.",
+        "why_it_stands_out": [
+          {
+            "headline": "Starter retinol positioning",
+            "body": "Keeps the serum focused on a gentler retinol entry point rather than a stronger treatment pitch."
+          },
+          {
+            "headline": "Tone and texture support",
+            "body": "Frames the serum around smoother texture and more even-looking tone alongside fine-line care."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_7b977c72f7d63d9577b4dd13",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_7b977c72f7d63d9577b4dd13"
+      },
+      "title": "SKIN1004 Hyalu-Cica Water-Fit Sun Serum UV",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "",
+      "selected_mode": "hybrid_gemini",
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "gemini",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "SKIN1004 Hyalu-Cica Water-Fit Sun Serum UV",
+        "subtitle": "Daily Sunscreen",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Daily Sunscreen",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": "Lightweight chemical sunscreen formulated to provide UV protection."
+      },
+      "pivota_insights": {
+        "what_it_is": "A lightweight chemical sunscreen formulated to provide UV protection while hydrating and soothing the skin with a serum-like consistency.",
+        "why_it_stands_out": [
+          {
+            "headline": "The formula mimics a lightweight serum to provide a fresh finish without the weight or white cast often associated with ",
+            "body": "The formula mimics a lightweight serum to provide a fresh finish without the weight or white cast often associated with traditional sunscreens."
+          },
+          {
+            "headline": "Combines Panthenol with extracts of rice, oat, and soybean to help maintain skin hydration and comfort during sun exposu",
+            "body": "Combines Panthenol with extracts of rice, oat, and soybean to help maintain skin hydration and comfort during sun exposure."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_c311c64f5e217c2042951b77",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_c311c64f5e217c2042951b77"
+      },
+      "title": "SKIN1004 Hyalu-Cica Water-Fit Sun Serum SPF50+ PA++++",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "",
+      "selected_mode": "hybrid_gemini",
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "gemini",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "SKIN1004 Hyalu-Cica Water-Fit Sun Serum SPF50+ PA++++",
+        "subtitle": "Daily Sunscreen",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Daily Sunscreen",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": "Serum-like chemical sunscreen that is super lightweight, hydrating, and quickly absorbed."
+      },
+      "pivota_insights": {
+        "what_it_is": "A lightweight chemical sunscreen with a serum-like consistency that provides SPF50+ PA++++ protection while moisturizing and soothing the skin.",
+        "why_it_stands_out": [
+          {
+            "headline": "Combines high UV protection with a fast-absorbing serum texture for a non-greasy application.",
+            "body": "Combines high UV protection with a fast-absorbing serum texture for a non-greasy application."
+          },
+          {
+            "headline": "Formulated to provide a dewy finish while addressing hydration and skin soothing.",
+            "body": "Formulated to provide a dewy finish while addressing hydration and skin soothing."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_97a7cac23f8f5947a8b5f208",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_97a7cac23f8f5947a8b5f208"
+      },
+      "title": "SKIN1004 Hyalu-Cica Blue Serum",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "",
+      "selected_mode": "hybrid_gemini",
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "baseline",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "SKIN1004 Hyalu-Cica Blue Serum",
+        "subtitle": "Treatment Serum",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Treatment Serum",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": "Product Benefits: Moisturizing, Calming Skin Type: Sensitive, Normal, Dry Key."
+      },
+      "pivota_insights": {
+        "what_it_is": "A lightweight serum formulated with a blend of Centella Asiatica and five types of hyaluronic acid to address dryness and skin sensitivity.",
+        "why_it_stands_out": [
+          {
+            "headline": "Combines Centella Asiatica with a multi-molecular weight hyaluronic acid complex to simultaneously calm and hydrate.",
+            "body": "Combines Centella Asiatica with a multi-molecular weight hyaluronic acid complex to simultaneously calm and hydrate."
+          },
+          {
+            "headline": "Integrates Ceramide NP and Niacinamide to help maintain the skin's moisture barrier and improve overall tone.",
+            "body": "Integrates Ceramide NP and Niacinamide to help maintain the skin's moisture barrier and improve overall tone."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_4e6158b5e6f187c03c87b013",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_4e6158b5e6f187c03c87b013"
+      },
+      "title": "The Inkey List 10% Azelaic Acid Serum for Redness Relief",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "",
+      "selected_mode": "hybrid_gemini",
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "baseline",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "The Inkey List 10% Azelaic Acid Serum for Redness Relief",
+        "subtitle": "Treatment Serum",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Treatment Serum",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": "A fast-absorbing, non-pilling azelaic acid serum is formulated with 10% Azelaic Acid."
+      },
+      "pivota_insights": {
+        "what_it_is": "A 10% azelaic acid serum designed to reduce the appearance of redness and uneven skin tone while soothing irritation.",
+        "why_it_stands_out": [
+          {
+            "headline": "High-concentration 10% azelaic acid for targeted redness relief.",
+            "body": "High-concentration 10% azelaic acid for targeted redness relief."
+          },
+          {
+            "headline": "Fast-absorbing, non-pilling formula suitable for layering.",
+            "body": "Fast-absorbing, non-pilling formula suitable for layering."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_3eeaf9c029c24e5a0cbab749",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_3eeaf9c029c24e5a0cbab749"
+      },
+      "title": "The Inkey List PDRN Serum",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "",
+      "selected_mode": "hybrid_gemini",
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "baseline",
+        "texture_finish": "baseline",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "The Inkey List PDRN Serum",
+        "subtitle": "Treatment Serum",
+        "highlight": "",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Treatment Serum",
+        "highlight_candidate": "",
+        "proof_badge_candidate": "",
+        "intro_candidate": "Treatment serum presented through merchant product data."
+      },
+      "pivota_insights": {
+        "what_it_is": "A facial serum from The Inkey List featuring PDRN.",
+        "why_it_stands_out": [
+          {
+            "headline": "Delivers PDRN in a dedicated serum formula for direct skin application.",
+            "body": "Delivers PDRN in a dedicated serum formula for direct skin application."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_e8c621b40932284ae276bcff",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_e8c621b40932284ae276bcff"
+      },
+      "title": "Dermalogica biolumin-c vitamin c serum",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Manual card rewrite to make the serum benefit visible without repeating the title.",
+      "selected_mode": "manual_override",
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "baseline",
+        "texture_finish": "baseline",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_plus_formula",
+      "quality_state": "eligible",
+      "shopping_card": {
+        "title": "Dermalogica biolumin-c vitamin c serum",
+        "subtitle": "Treatment Serum",
+        "highlight": "For brightness + firmness",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Treatment Serum",
+        "highlight_candidate": "For brightness + firmness",
+        "proof_badge_candidate": "",
+        "intro_candidate": "Advanced bio-technology and an ultra-stable Vi…."
+      },
+      "pivota_insights": {
+        "what_it_is": "A high-performance Vitamin C serum formulated to brighten, firm, and reduce the appearance of fine lines. It utilizes bio-technology and a stable Vitamin C complex to support the skin's natural defense system.",
+        "why_it_stands_out": [
+          {
+            "headline": "Advanced bio-technology formulation targeting uneven texture and visible signs of aging.",
+            "body": "Advanced bio-technology formulation targeting uneven texture and visible signs of aging."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_9b77bf54c12fde61f957eaf5",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_9b77bf54c12fde61f957eaf5"
+      },
+      "title": "Dermalogica smart response serum",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Manual card rewrite to replace the vague serum label with the multi-concern smart-serum promise from seller copy.",
+      "selected_mode": "manual_override",
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "baseline",
+        "texture_finish": "baseline",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Dermalogica smart response serum",
+        "subtitle": "Treatment Serum",
+        "highlight": "Hydrates, brightens, soothes, firms",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Treatment Serum",
+        "highlight_candidate": "Hydrates, brightens, soothes, firms",
+        "proof_badge_candidate": "",
+        "intro_candidate": "Next-gen smart serum delivers what your skin needs, when and where it needs it."
+      },
+      "pivota_insights": {
+        "what_it_is": "A targeted serum that addresses dehydration, fine lines, and redness by delivering specific ingredients to localized areas of the skin.",
+        "why_it_stands_out": [
+          {
+            "headline": "Responsive delivery system that addresses localized skin concerns simultaneously.",
+            "body": "Responsive delivery system that addresses localized skin concerns simultaneously."
+          },
+          {
+            "headline": "Broad-spectrum concern coverage suitable for all skin types.",
+            "body": "Broad-spectrum concern coverage suitable for all skin types."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_b3a14ad8201131b244a9d180",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_b3a14ad8201131b244a9d180"
+      },
+      "title": "Dermalogica discover healthy skin kit",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Strict human QA override: upgraded the starter kit from card-only rewrite into a seller-grounded regimen definition.",
+      "selected_mode": "manual_override",
+      "field_sources": {
+        "what_it_is": "manual",
+        "best_for": "manual",
+        "why_it_stands_out": "manual",
+        "routine_fit": "manual",
+        "watchouts": "manual",
+        "texture_finish": "manual",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Dermalogica discover healthy skin kit",
+        "subtitle": "Starter Skincare Kit",
+        "highlight": "Cleanse, polish, and smooth",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Starter Skincare Kit",
+        "highlight_candidate": "Cleanse, polish, and smooth",
+        "proof_badge_candidate": "",
+        "intro_candidate": "An introductory kit for cleansing, polishing, and nourishment."
+      },
+      "pivota_insights": {
+        "what_it_is": "An introductory skincare kit that combines cleansing, exfoliating, and nourishing steps in one routine.",
+        "why_it_stands_out": [
+          {
+            "headline": "Intro routine format",
+            "body": "Packages several core skincare steps into one entry kit instead of a single hero product."
+          },
+          {
+            "headline": "Cleanse, polish, and nourish",
+            "body": "Balances cleansing, exfoliation, and skin-conditioning in one starter set."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_22ae54f3dfb815278f10a338",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_22ae54f3dfb815278f10a338"
+      },
+      "title": "Dermalogica am radiance + pm renewal kit (2 full-size)",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Strict human QA override: upgraded the day/night kit from card-only rewrite into a seller-grounded vitamin C plus retinol set definition.",
+      "selected_mode": "manual_override",
+      "field_sources": {
+        "what_it_is": "manual",
+        "best_for": "manual",
+        "why_it_stands_out": "manual",
+        "routine_fit": "manual",
+        "watchouts": "manual",
+        "texture_finish": "manual",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Dermalogica am radiance + pm renewal kit (2 full-size)",
+        "subtitle": "Vitamin C + Retinol Kit",
+        "highlight": "Vitamin C by day, retinol by night",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Vitamin C + Retinol Kit",
+        "highlight_candidate": "Vitamin C by day, retinol by night",
+        "proof_badge_candidate": "",
+        "intro_candidate": "A two-step kit for daytime vitamin C and nighttime retinol."
+      },
+      "pivota_insights": {
+        "what_it_is": "A two-piece kit that pairs daytime vitamin C with nighttime retinol in one coordinated routine.",
+        "why_it_stands_out": [
+          {
+            "headline": "Day-and-night split",
+            "body": "Separates vitamin C for daytime use and retinol for nighttime use in one kit."
+          },
+          {
+            "headline": "Two full-size treatments",
+            "body": "Works like a treatment duo rather than a sampler-sized trial set."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_2e3eabd6564cfaa8c200836b",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_2e3eabd6564cfaa8c200836b"
+      },
+      "title": "Dermalogica daily brightness boosters kit",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Strict human QA override: upgraded the brightening kit from card-only rewrite into a seller-grounded routine-set definition.",
+      "selected_mode": "manual_override",
+      "field_sources": {
+        "what_it_is": "manual",
+        "best_for": "manual",
+        "why_it_stands_out": "manual",
+        "routine_fit": "manual",
+        "watchouts": "manual",
+        "texture_finish": "manual",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Dermalogica daily brightness boosters kit",
+        "subtitle": "Brightening Skincare Kit",
+        "highlight": "For dull, uneven skin tone",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Brightening Skincare Kit",
+        "highlight_candidate": "For dull, uneven skin tone",
+        "proof_badge_candidate": "",
+        "intro_candidate": "A routine kit for dullness, hyperpigmentation, and radiance support."
+      },
+      "pivota_insights": {
+        "what_it_is": "A skincare kit built for dullness, hyperpigmentation, and uneven tone with a brightening-focused routine.",
+        "why_it_stands_out": [
+          {
+            "headline": "Brightening routine kit",
+            "body": "Combines multiple brightening steps in one kit instead of relying on a single serum alone."
+          },
+          {
+            "headline": "Conditioning plus radiance support",
+            "body": "Balances brightening with conditioning and hydration for a fuller routine feel."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_d3def504d7f06538aeaa2cee",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_d3def504d7f06538aeaa2cee"
+      },
+      "title": "Dermalogica dark spot solutions kit",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Strict human QA override: upgraded the dark-spot kit from card-only rewrite into a seller-grounded treatment-kit definition.",
+      "selected_mode": "manual_override",
+      "field_sources": {
+        "what_it_is": "manual",
+        "best_for": "manual",
+        "why_it_stands_out": "manual",
+        "routine_fit": "manual",
+        "watchouts": "manual",
+        "texture_finish": "manual",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Dermalogica dark spot solutions kit",
+        "subtitle": "Dark-Spot Treatment Kit",
+        "highlight": "Fade + help prevent dark spots",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Dark-Spot Treatment Kit",
+        "highlight_candidate": "Fade + help prevent dark spots",
+        "proof_badge_candidate": "",
+        "intro_candidate": "A treatment kit for visible dark spots and uneven tone."
+      },
+      "pivota_insights": {
+        "what_it_is": "A skincare kit designed to fade visible dark spots and support more even-looking tone.",
+        "why_it_stands_out": [
+          {
+            "headline": "Dark-spot correction focus",
+            "body": "Centers visible dark-spot care instead of reading as a general glow kit."
+          },
+          {
+            "headline": "Fade plus prevention angle",
+            "body": "Positions the kit around fading current spots while supporting a more even-looking tone over time."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_280f5c9e112050a83d7aeac0",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_280f5c9e112050a83d7aeac0"
+      },
+      "title": "Naturium Vitamin C Super Eye Cream Plus",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Strict human QA override: upgraded the eye cream from card-only rewrite into a seller-grounded vitamin C plus retinol eye-cream definition.",
+      "selected_mode": "manual_override",
+      "field_sources": {
+        "what_it_is": "manual",
+        "best_for": "manual",
+        "why_it_stands_out": "manual",
+        "routine_fit": "manual",
+        "watchouts": "manual",
+        "texture_finish": "manual",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_plus_formula",
+      "quality_state": "eligible",
+      "shopping_card": {
+        "title": "Naturium Vitamin C Super Eye Cream Plus",
+        "subtitle": "Vitamin C Eye Cream",
+        "highlight": "Brighten, smooth + firm eyes",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Vitamin C Eye Cream",
+        "highlight_candidate": "Brighten, smooth + firm eyes",
+        "proof_badge_candidate": "",
+        "intro_candidate": "An eye cream for brighter, smoother, firmer-looking undereyes."
+      },
+      "pivota_insights": {
+        "what_it_is": "An eye cream that combines vitamin C, encapsulated retinol, and hyaluronic acid to brighten, smooth, and firm the eye area.",
+        "why_it_stands_out": [
+          {
+            "headline": "Vitamin C plus encapsulated retinol",
+            "body": "Pairs brightening vitamin C with a retinol-led smoothing angle in one eye cream."
+          },
+          {
+            "headline": "Hydrating eye-area support",
+            "body": "Adds hyaluronic acid so the formula supports firmness and brightness with moisture."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_539c5068c2d9cc9f5f471093",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_539c5068c2d9cc9f5f471093"
+      },
+      "title": "Dermalogica biolumin-c night restore serum",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Manual card rewrite to make the overnight vitamin C serum promise more specific and seller-grounded.",
+      "selected_mode": "manual_override",
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "gemini",
+        "texture_finish": "baseline",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Dermalogica biolumin-c night restore serum",
+        "subtitle": "Treatment Serum",
+        "highlight": "Overnight radiance + barrier support",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Treatment Serum",
+        "highlight_candidate": "Overnight radiance + barrier support",
+        "proof_badge_candidate": "",
+        "intro_candidate": "At night, our skin enters a regenerative phase working to repair dayt…."
+      },
+      "pivota_insights": {
+        "what_it_is": "A nighttime treatment serum designed to support the skin's natural regenerative phase to improve radiance, hydration, and tone.",
+        "why_it_stands_out": [
+          {
+            "headline": "Nocturnal Repair Focus: Specifically formulated to work during the skin's overnight recovery cycle to address daytime en",
+            "body": "Nocturnal Repair Focus: Specifically formulated to work during the skin's overnight recovery cycle to address daytime environmental damage."
+          },
+          {
+            "headline": "Barrier-Conscious Brightening: Combines tone-correcting benefits with hydration to support moisture barrier integrity wh",
+            "body": "Barrier-Conscious Brightening: Combines tone-correcting benefits with hydration to support moisture barrier integrity while treating discoloration."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_eca8959862245d5af16ab206",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_eca8959862245d5af16ab206"
+      },
+      "title": "Dermalogica daily milkfoliant exfoliator",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Strict human QA override: upgraded the exfoliator from card-only rewrite into a seller-grounded powder-to-milk exfoliator definition.",
+      "selected_mode": "manual_override",
+      "field_sources": {
+        "what_it_is": "manual",
+        "best_for": "manual",
+        "why_it_stands_out": "manual",
+        "routine_fit": "manual",
+        "watchouts": "manual",
+        "texture_finish": "manual",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Dermalogica daily milkfoliant exfoliator",
+        "subtitle": "Milky Powder Exfoliator",
+        "highlight": "Calm exfoliation + barrier support",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Milky Powder Exfoliator",
+        "highlight_candidate": "Calm exfoliation + barrier support",
+        "proof_badge_candidate": "",
+        "intro_candidate": "A powder exfoliator that turns milky with water."
+      },
+      "pivota_insights": {
+        "what_it_is": "A powder exfoliator that activates with water into a milky texture for gentler resurfacing.",
+        "why_it_stands_out": [
+          {
+            "headline": "Powder-to-milk format",
+            "body": "Transforms from powder into a milky exfoliating texture instead of a harsher scrub format."
+          },
+          {
+            "headline": "Barrier-conscious exfoliation",
+            "body": "Positions exfoliation with a calmer, more supportive feel rather than an aggressive peel step."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_7d2e609bb0e8b213c6881552",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_7d2e609bb0e8b213c6881552"
+      },
+      "title": "Dermalogica stress positive eye lift mask",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Manual card rewrite to replace the generic eye-mask line with the seller-grounded depuff and dark-circle benefit.",
+      "selected_mode": "manual_override",
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "baseline",
+        "texture_finish": "gemini",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "Dermalogica stress positive eye lift mask",
+        "subtitle": "Daily Moisturizer",
+        "highlight": "Depuff + brighten tired eyes",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Daily Moisturizer",
+        "highlight_candidate": "Depuff + brighten tired eyes",
+        "proof_badge_candidate": "",
+        "intro_candidate": ""
+      },
+      "pivota_insights": {
+        "what_it_is": "A high-performance eye treatment and mask that energizes the skin to reduce visible signs of stress. The cooling cream-gel formula targets puffiness and dark circles while supporting skin barrier integrity.",
+        "why_it_stands_out": [
+          {
+            "headline": "Dual-action formula that functions as both a high-performance treatment and a leave-on eye mask.",
+            "body": "Dual-action formula that functions as both a high-performance treatment and a leave-on eye mask."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_3f08175bbe2382f68e78aee6",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_3f08175bbe2382f68e78aee6"
+      },
+      "title": "fenty beauty Fat Water Niacinamide Pore-Refining Toner Serum with Barbados Cherry",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Manual card rewrite to replace the generic toner-serum line with the seller-grounded pore, spot, and shine payoff.",
+      "selected_mode": "manual_override",
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "gemini",
+        "watchouts": "baseline",
+        "texture_finish": "baseline",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_plus_formula",
+      "quality_state": "eligible",
+      "shopping_card": {
+        "title": "fenty beauty Fat Water Niacinamide Pore-Refining Toner Serum with Barbados Cherry",
+        "subtitle": "Treatment Serum",
+        "highlight": "Pores, dark spots + shine control",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Treatment Serum",
+        "highlight_candidate": "Pores, dark spots + shine control",
+        "proof_badge_candidate": "",
+        "intro_candidate": "The power of a serum plus the treatment of a toner in one pore-busting step."
+      },
+      "pivota_insights": {
+        "what_it_is": "A multi-tasking formula that combines the refining properties of a toner with the treatment benefits of a serum to target pores and dark spots.",
+        "why_it_stands_out": [
+          {
+            "headline": "Functions as both a toner and a serum in one step to streamline treatment of texture and tone.",
+            "body": "Functions as both a toner and a serum in one step to streamline treatment of texture and tone."
+          },
+          {
+            "headline": "Checks excess shine and oil without stripping the skin of its natural moisture.",
+            "body": "Checks excess shine and oil without stripping the skin of its natural moisture."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_ab4d4c4ee679dca9c2078081",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_ab4d4c4ee679dca9c2078081"
+      },
+      "title": "PIXI BEAUTY Vitamin-C Cleansing Cloths Set of 5",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Strict human QA override: upgraded the cloths multipack from card-only rewrite into a seller-grounded cleansing-wipes set definition.",
+      "selected_mode": "manual_override",
+      "field_sources": {
+        "what_it_is": "manual",
+        "best_for": "manual",
+        "why_it_stands_out": "manual",
+        "routine_fit": "manual",
+        "watchouts": "manual",
+        "texture_finish": "manual",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_plus_formula",
+      "quality_state": "eligible",
+      "shopping_card": {
+        "title": "PIXI BEAUTY Vitamin-C Cleansing Cloths Set of 5",
+        "subtitle": "Vitamin C Cleansing Wipes Set",
+        "highlight": "Brighten + refresh on the go",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Vitamin C Cleansing Wipes Set",
+        "highlight_candidate": "Brighten + refresh on the go",
+        "proof_badge_candidate": "",
+        "intro_candidate": "A set of five vitamin C wipe packs for quick cleansing."
+      },
+      "pivota_insights": {
+        "what_it_is": "A multipack of vitamin C cleansing cloths designed for quick impurity and makeup removal with a refreshed finish.",
+        "why_it_stands_out": [
+          {
+            "headline": "Set-of-5 wipe format",
+            "body": "Turns the vitamin C cloths into a multipack rather than a single on-the-go pack."
+          },
+          {
+            "headline": "Quick cleanse plus refresh",
+            "body": "Keeps the wipes focused on fast cleansing with a refreshed, brighter-feeling finish."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "live_ext_f074d8c2996db56f02b2cdfd",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_f074d8c2996db56f02b2cdfd"
+      },
+      "title": "PIXI BEAUTY Vitamin-C Tonic Original Size",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Manual card rewrite to replace the generic toner label with the seller-grounded brightening and smoothing use case.",
+      "selected_mode": "manual_override",
+      "field_sources": {
+        "what_it_is": "gemini",
+        "best_for": "gemini",
+        "why_it_stands_out": "gemini",
+        "routine_fit": "baseline",
+        "watchouts": "gemini",
+        "texture_finish": "baseline",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_only",
+      "quality_state": "limited",
+      "shopping_card": {
+        "title": "PIXI BEAUTY Vitamin-C Tonic Original Size",
+        "subtitle": "Prep Or Toner Step",
+        "highlight": "Even tone + daily glow",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Prep Or Toner Step",
+        "highlight_candidate": "Even tone + daily glow",
+        "proof_badge_candidate": "",
+        "intro_candidate": "Brighten and smooth your skin with Pixi Vitamin-C Tonic."
+      },
+      "pivota_insights": {
+        "what_it_is": "A daily vitamin C toner designed to exfoliate, hydrate, and even skin tone.",
+        "why_it_stands_out": [
+          {
+            "headline": "Combines brightening vitamin C with exfoliating properties to address both tone and texture",
+            "body": "Combines brightening vitamin C with exfoliating properties to address both tone and texture"
+          },
+          {
+            "headline": "Integrates hydration alongside exfoliation to support daily use",
+            "body": "Integrates hydration alongside exfoliation to support daily use"
+          }
+        ]
+      }
+    }
+  ]
+}

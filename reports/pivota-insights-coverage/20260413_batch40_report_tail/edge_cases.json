@@ -1,0 +1,268 @@
+[
+  {
+    "case_id": "live_ext_461170e7480048cf4ffb7941",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_461170e7480048cf4ffb7941"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_461170e7480048cf4ffb7941",
+      "brand": "the ordinary",
+      "title": "Behentrimonium Chloride 2% Conditioner",
+      "category": "Conditioner",
+      "description": "A lightweight, fragrance-free conditioning formula.",
+      "tags": [
+        "Conditioner"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_adf54c1f4075889a95acf8b5",
+    "notes": "Live pilot case sampled from public /products listing (the ordinary).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_adf54c1f4075889a95acf8b5"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_adf54c1f4075889a95acf8b5",
+      "brand": "the ordinary",
+      "title": "Natural Moisturizing Factors + Beta Glucan",
+      "category": "Moisturizer",
+      "description": "Lightweight gel moisturizer to support surface hydration.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_cb5bf6c59bef31adc9fc4bb2",
+    "notes": "Live pilot case sampled from public /products listing (The Inkey List).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_cb5bf6c59bef31adc9fc4bb2"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_cb5bf6c59bef31adc9fc4bb2",
+      "brand": "The Inkey List",
+      "title": "10% Niacinamide Serum",
+      "category": "Serum",
+      "description": "A lightweight, power-packed Niacinamide Serum that can be easily layered into your skincare routine. Containing 10% Niacinamide this naturally occurring B3 vitamin helps to effectively reduce excess oil, blemishes and redness.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_9ceb53f2177266aed1fd4e0c",
+    "notes": "Live pilot case sampled from public /products listing (PIXI BEAUTY).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_9ceb53f2177266aed1fd4e0c"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_9ceb53f2177266aed1fd4e0c",
+      "brand": "PIXI BEAUTY",
+      "title": "Vitamin-C Cleansing Cloths",
+      "category": "Cleanser",
+      "description": "These soft cleansing cloths sweep away dirt, oil and makeup while infusing skin with Vitamin C and Botanicals. Designed to leave the complexion looking refreshed and Glowing, these soft, pre-soaked wipes are perfect for daily use or on-the-go cleansing.",
+      "tags": [
+        "Cleanser"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_ba77f628da48958583f0f49f",
+    "notes": "Live pilot case sampled from public /products listing (The Inkey List).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_ba77f628da48958583f0f49f"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_ba77f628da48958583f0f49f",
+      "brand": "The Inkey List",
+      "title": "Starter Retinol Serum",
+      "category": "Serum",
+      "description": "WHAT YOU GET A gentle yet effective beginner Retinol serum , clinically proven to visibly smooth fine lines in just 7 days -without irritation*. It helps even skin tone and refine texture while being perfectly suited for first-time Retinol users, sensitive skin, and rosacea-prone skin.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_b3a14ad8201131b244a9d180",
+    "notes": "Live pilot case sampled from public /products listing (Dermalogica).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_b3a14ad8201131b244a9d180"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_b3a14ad8201131b244a9d180",
+      "brand": "Dermalogica",
+      "title": "discover healthy skin kit",
+      "category": "Cleanser",
+      "description": "The perfect introduction to Dermalogica, this special collection of our favorite and most popular products is a complete regimen for all skin types. This kit helps to: Polish away dead skin cells to reveal a glowing complexion Wash away impurities without stripping the skin Nourish and improve skin texture on the face…",
+      "tags": [
+        "Cleanser"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_2e3eabd6564cfaa8c200836b",
+    "notes": "Live pilot case sampled from public /products listing (Dermalogica).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_2e3eabd6564cfaa8c200836b"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_2e3eabd6564cfaa8c200836b",
+      "brand": "Dermalogica",
+      "title": "daily brightness boosters kit",
+      "category": "external",
+      "description": "recommended for: hyperpigmentation dullness uneven skin tone Brighten, condition and hydrate your skin for a radiance boost.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_d3def504d7f06538aeaa2cee",
+    "notes": "Live pilot case sampled from public /products listing (Dermalogica).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_d3def504d7f06538aeaa2cee"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_d3def504d7f06538aeaa2cee",
+      "brand": "Dermalogica",
+      "title": "dark spot solutions kit",
+      "category": "external",
+      "description": "recommended for: hyperpigmentation dullness uneven skin tone Starts working fast to visibly fade + help prevent dark spots for bright, glowing skin.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_280f5c9e112050a83d7aeac0",
+    "notes": "Live pilot case sampled from public /products listing (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_280f5c9e112050a83d7aeac0"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_280f5c9e112050a83d7aeac0",
+      "brand": "Naturium",
+      "title": "Vitamin C Super Eye Cream Plus",
+      "category": "Moisturizer",
+      "description": "Our multi-benefit eye cream is formulated with a potent blend of vitamin C plus gold complex, encapsulated retinol and hyaluronic acid to help brighten, smooth and firm the appearance of the eye area. Aqua/Water/Eau, Dimethicone, Isododecane, Hydrogenated Polydecene, Propanediol, Glycerin, Isopentyldiol, Butyrospermum…",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_plus_formula"
+    }
+  },
+  {
+    "case_id": "live_ext_f074d8c2996db56f02b2cdfd",
+    "notes": "Live pilot case sampled from public /products listing (PIXI BEAUTY).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_f074d8c2996db56f02b2cdfd"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_f074d8c2996db56f02b2cdfd",
+      "brand": "PIXI BEAUTY",
+      "title": "Vitamin-C Tonic Original Size",
+      "category": "Toner",
+      "description": "Brighten and smooth your skin with Pixi Vitamin-C Tonic. This daily toner helps even tone, exfoliate and hydrate for a healthy, radiant glow.",
+      "tags": [
+        "Toner"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  }
+]

@@ -657,17 +657,136 @@
     "external_review_batch": "manual_card_highlight_2026_04_12"
   },
   "live_ext_9ceb53f2177266aed1fd4e0c": {
-    "notes": "Manual card rewrite to emphasize the actual use case instead of repeating cleansing-cloth naming.",
+    "notes": "Strict human QA override: upgraded the cleansing cloths from card-only rewrite into a seller-grounded wipe definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Vitamin C cleansing wipes",
+        "body": "Pre-soaked cleansing wipes designed to remove makeup, dirt, and oil while leaving skin refreshed with a vitamin C-led formula."
+      },
+      "best_for": [
+        {
+          "tag": "makeup_removal",
+          "label": "Makeup-removal or travel cleansing",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "brightness_tone",
+          "label": "A fresher, brighter post-cleanse feel",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Wipe format for on-the-go cleansing",
+          "body": "Keeps cleansing in a pre-soaked wipe format instead of a rinse-off cleanser step.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Vitamin C plus botanicals",
+          "body": "Adds a vitamin C and botanical angle so the wipes feel more refreshing than plain makeup remover cloths.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "cleanser",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use as a quick cleanse or makeup-removal step when you are away from a sink."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "pre-soaked wipes",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use as a quick cleanse or makeup-removal step when you are away from a sink."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
     "shopping_card": {
       "subtitle": "Vitamin C cleansing wipes",
-      "highlight": "For makeup + on-the-go cleansing"
+      "highlight": "For makeup + on-the-go cleansing",
+      "intro": "Pre-soaked vitamin C wipes for makeup, dirt, and oil."
     },
     "search_card": {
       "compact_candidate": "Vitamin C cleansing wipes",
-      "highlight_candidate": "For makeup + on-the-go cleansing"
+      "highlight_candidate": "For makeup + on-the-go cleansing",
+      "intro_candidate": "Pre-soaked vitamin C wipes for makeup, dirt, and oil."
     },
     "external_highlight_review_status": "rewrite",
-    "external_review_batch": "manual_card_highlight_2026_04_12"
+    "external_review_batch": "manual_batch40_reviewed_2026_04_13"
+  },
+  "product:ext_9ceb53f2177266aed1fd4e0c": {
+    "notes": "Strict human QA override: upgraded the cleansing cloths from card-only rewrite into a seller-grounded wipe definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Vitamin C cleansing wipes",
+        "body": "Pre-soaked cleansing wipes designed to remove makeup, dirt, and oil while leaving skin refreshed with a vitamin C-led formula."
+      },
+      "best_for": [
+        {
+          "tag": "makeup_removal",
+          "label": "Makeup-removal or travel cleansing",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "brightness_tone",
+          "label": "A fresher, brighter post-cleanse feel",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Wipe format for on-the-go cleansing",
+          "body": "Keeps cleansing in a pre-soaked wipe format instead of a rinse-off cleanser step.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Vitamin C plus botanicals",
+          "body": "Adds a vitamin C and botanical angle so the wipes feel more refreshing than plain makeup remover cloths.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "cleanser",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use as a quick cleanse or makeup-removal step when you are away from a sink."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "pre-soaked wipes",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use as a quick cleanse or makeup-removal step when you are away from a sink."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Vitamin C cleansing wipes",
+      "highlight": "For makeup + on-the-go cleansing",
+      "intro": "Pre-soaked vitamin C wipes for makeup, dirt, and oil."
+    },
+    "search_card": {
+      "compact_candidate": "Vitamin C cleansing wipes",
+      "highlight_candidate": "For makeup + on-the-go cleansing",
+      "intro_candidate": "Pre-soaked vitamin C wipes for makeup, dirt, and oil."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch40_reviewed_2026_04_13"
   },
   "live_ext_e8c621b40932284ae276bcff": {
     "notes": "Manual card rewrite to make the serum benefit visible without repeating the title.",
@@ -696,17 +815,132 @@
     "external_review_batch": "manual_card_highlight_2026_04_12"
   },
   "live_ext_5e3517fefadb05450f85d7d2": {
-    "notes": "Manual card rewrite to replace the generic cleanser label with the seller-grounded use case.",
+    "notes": "Strict human QA override: upgraded the niacinamide cleanser from card-only rewrite into a seller-grounded gel-cleansing definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Niacinamide gel cleanser",
+        "body": "A niacinamide cleanser in a gelée format designed to remove makeup, oil, and impurities while keeping skin balanced."
+      },
+      "best_for": [
+        {
+          "tag": "blemish_oil",
+          "label": "Oilier or congestion-prone cleansing routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "makeup_removal",
+          "label": "Daily makeup and impurity removal",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "3% niacinamide cleanser",
+          "body": "Keeps niacinamide visible in the cleansing step instead of treating it like a plain wash.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Gelée cleansing feel",
+          "body": "Uses an essence-like gelée texture rather than a stripped-down foaming cleanser format.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "cleanser",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use as your daily face-wash step before leave-on products."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "gelée cleanser",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use as your daily face-wash step before leave-on products."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
     "shopping_card": {
-      "subtitle": "Niacinamide cleanser",
+      "subtitle": "Niacinamide gel cleanser",
       "highlight": "Makeup removal + oil control"
     },
     "search_card": {
-      "compact_candidate": "Niacinamide cleanser",
+      "compact_candidate": "Niacinamide gel cleanser",
       "highlight_candidate": "Makeup removal + oil control"
     },
     "external_highlight_review_status": "rewrite",
-    "external_review_batch": "manual_card_highlight_2026_04_12"
+    "external_review_batch": "manual_batch40_reviewed_2026_04_13"
+  },
+  "product:ext_5e3517fefadb05450f85d7d2": {
+    "notes": "Strict human QA override: upgraded the niacinamide cleanser from card-only rewrite into a seller-grounded gel-cleansing definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Niacinamide gel cleanser",
+        "body": "A niacinamide cleanser in a gelée format designed to remove makeup, oil, and impurities while keeping skin balanced."
+      },
+      "best_for": [
+        {
+          "tag": "blemish_oil",
+          "label": "Oilier or congestion-prone cleansing routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "makeup_removal",
+          "label": "Daily makeup and impurity removal",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "3% niacinamide cleanser",
+          "body": "Keeps niacinamide visible in the cleansing step instead of treating it like a plain wash.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Gelée cleansing feel",
+          "body": "Uses an essence-like gelée texture rather than a stripped-down foaming cleanser format.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "cleanser",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use as your daily face-wash step before leave-on products."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "gelée cleanser",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use as your daily face-wash step before leave-on products."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Niacinamide gel cleanser",
+      "highlight": "Makeup removal + oil control"
+    },
+    "search_card": {
+      "compact_candidate": "Niacinamide gel cleanser",
+      "highlight_candidate": "Makeup removal + oil control"
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch40_reviewed_2026_04_13"
   },
   "live_ext_9b77bf54c12fde61f957eaf5": {
     "notes": "Manual card rewrite to replace the vague serum label with the multi-concern smart-serum promise from seller copy.",
@@ -722,43 +956,436 @@
     "external_review_batch": "manual_card_highlight_2026_04_12"
   },
   "live_ext_b3a14ad8201131b244a9d180": {
-    "notes": "Manual card rewrite to make the kit read as a starter regimen instead of a generic cleanser card.",
+    "notes": "Strict human QA override: upgraded the starter kit from card-only rewrite into a seller-grounded regimen definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Starter skincare kit",
+        "body": "An introductory skincare kit that combines cleansing, exfoliating, and nourishing steps in one routine."
+      },
+      "best_for": [
+        {
+          "tag": "routine_simplification",
+          "label": "A simplified starter routine",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "texture_tone",
+          "label": "General texture and glow upkeep",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Intro routine format",
+          "body": "Packages several core skincare steps into one entry kit instead of a single hero product.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Cleanse, polish, and nourish",
+          "body": "Balances cleansing, exfoliation, and skin-conditioning in one starter set.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "routine set",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use the included products in the order directed by the kit."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "format",
+          "label": "This is a multi-step kit, not a single cleansing product.",
+          "severity": "low"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use the included products in the order directed by the kit."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
     "shopping_card": {
       "subtitle": "Starter skincare kit",
-      "highlight": "Cleanse, polish, and smooth"
+      "highlight": "Cleanse, polish, and smooth",
+      "intro": "An introductory kit for cleansing, polishing, and nourishment."
     },
     "search_card": {
       "compact_candidate": "Starter skincare kit",
-      "highlight_candidate": "Cleanse, polish, and smooth"
+      "highlight_candidate": "Cleanse, polish, and smooth",
+      "intro_candidate": "An introductory kit for cleansing, polishing, and nourishment."
     },
     "external_highlight_review_status": "rewrite",
-    "external_review_batch": "manual_card_highlight_2026_04_12"
+    "external_review_batch": "manual_batch40_reviewed_2026_04_13"
+  },
+  "product:ext_b3a14ad8201131b244a9d180": {
+    "notes": "Strict human QA override: upgraded the starter kit from card-only rewrite into a seller-grounded regimen definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Starter skincare kit",
+        "body": "An introductory skincare kit that combines cleansing, exfoliating, and nourishing steps in one routine."
+      },
+      "best_for": [
+        {
+          "tag": "routine_simplification",
+          "label": "A simplified starter routine",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "texture_tone",
+          "label": "General texture and glow upkeep",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Intro routine format",
+          "body": "Packages several core skincare steps into one entry kit instead of a single hero product.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Cleanse, polish, and nourish",
+          "body": "Balances cleansing, exfoliation, and skin-conditioning in one starter set.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "routine set",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use the included products in the order directed by the kit."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "format",
+          "label": "This is a multi-step kit, not a single cleansing product.",
+          "severity": "low"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use the included products in the order directed by the kit."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Starter skincare kit",
+      "highlight": "Cleanse, polish, and smooth",
+      "intro": "An introductory kit for cleansing, polishing, and nourishment."
+    },
+    "search_card": {
+      "compact_candidate": "Starter skincare kit",
+      "highlight_candidate": "Cleanse, polish, and smooth",
+      "intro_candidate": "An introductory kit for cleansing, polishing, and nourishment."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch40_reviewed_2026_04_13"
   },
   "live_ext_22ae54f3dfb815278f10a338": {
-    "notes": "Manual card rewrite to surface the actual day/night split from seller copy instead of the generic routine line.",
+    "notes": "Strict human QA override: upgraded the day/night kit from card-only rewrite into a seller-grounded vitamin C plus retinol set definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Vitamin C + retinol kit",
+        "body": "A two-piece kit that pairs daytime vitamin C with nighttime retinol in one coordinated routine."
+      },
+      "best_for": [
+        {
+          "tag": "brightness_tone",
+          "label": "Dullness or uneven tone routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "fine_lines_wrinkles",
+          "label": "Nighttime renewal routines",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Day-and-night split",
+          "body": "Separates vitamin C for daytime use and retinol for nighttime use in one kit.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Two full-size treatments",
+          "body": "Works like a treatment duo rather than a sampler-sized trial set.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "routine set",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use the vitamin C step in the morning and the retinol step at night."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "retinoid",
+          "label": "Retinol users should build frequency gradually and pair the routine with daytime sunscreen.",
+          "severity": "high"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use the vitamin C step in the morning and the retinol step at night."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
     "shopping_card": {
       "subtitle": "Vitamin C + retinol kit",
-      "highlight": "Vitamin C by day, retinol by night"
+      "highlight": "Vitamin C by day, retinol by night",
+      "intro": "A two-step kit for daytime vitamin C and nighttime retinol."
     },
     "search_card": {
       "compact_candidate": "Vitamin C + retinol kit",
-      "highlight_candidate": "Vitamin C by day, retinol by night"
+      "highlight_candidate": "Vitamin C by day, retinol by night",
+      "intro_candidate": "A two-step kit for daytime vitamin C and nighttime retinol."
     },
     "external_highlight_review_status": "rewrite",
-    "external_review_batch": "manual_card_highlight_2026_04_12"
+    "external_review_batch": "manual_batch40_reviewed_2026_04_13"
+  },
+  "product:ext_22ae54f3dfb815278f10a338": {
+    "notes": "Strict human QA override: upgraded the day/night kit from card-only rewrite into a seller-grounded vitamin C plus retinol set definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Vitamin C + retinol kit",
+        "body": "A two-piece kit that pairs daytime vitamin C with nighttime retinol in one coordinated routine."
+      },
+      "best_for": [
+        {
+          "tag": "brightness_tone",
+          "label": "Dullness or uneven tone routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "fine_lines_wrinkles",
+          "label": "Nighttime renewal routines",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Day-and-night split",
+          "body": "Separates vitamin C for daytime use and retinol for nighttime use in one kit.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Two full-size treatments",
+          "body": "Works like a treatment duo rather than a sampler-sized trial set.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "routine set",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use the vitamin C step in the morning and the retinol step at night."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "retinoid",
+          "label": "Retinol users should build frequency gradually and pair the routine with daytime sunscreen.",
+          "severity": "high"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use the vitamin C step in the morning and the retinol step at night."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Vitamin C + retinol kit",
+      "highlight": "Vitamin C by day, retinol by night",
+      "intro": "A two-step kit for daytime vitamin C and nighttime retinol."
+    },
+    "search_card": {
+      "compact_candidate": "Vitamin C + retinol kit",
+      "highlight_candidate": "Vitamin C by day, retinol by night",
+      "intro_candidate": "A two-step kit for daytime vitamin C and nighttime retinol."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch40_reviewed_2026_04_13"
   },
   "live_ext_2e3eabd6564cfaa8c200836b": {
-    "notes": "Manual card rewrite to replace the empty/generic kit card with the seller-grounded brightening use case.",
+    "notes": "Strict human QA override: upgraded the brightening kit from card-only rewrite into a seller-grounded routine-set definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Brightening skincare kit",
+        "body": "A skincare kit built for dullness, hyperpigmentation, and uneven tone with a brightening-focused routine."
+      },
+      "best_for": [
+        {
+          "tag": "brightness_tone",
+          "label": "Dullness or uneven tone routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "dark_spots",
+          "label": "Hyperpigmentation support",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Brightening routine kit",
+          "body": "Combines multiple brightening steps in one kit instead of relying on a single serum alone.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Conditioning plus radiance support",
+          "body": "Balances brightening with conditioning and hydration for a fuller routine feel.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "routine set",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use the included products in the order directed by the kit."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "sun",
+          "label": "Brightening routines still need daytime sunscreen to help protect tone work.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use the included products in the order directed by the kit."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
     "shopping_card": {
       "subtitle": "Brightening skincare kit",
-      "highlight": "For dull, uneven skin tone"
+      "highlight": "For dull, uneven skin tone",
+      "intro": "A routine kit for dullness, hyperpigmentation, and radiance support."
     },
     "search_card": {
       "compact_candidate": "Brightening skincare kit",
-      "highlight_candidate": "For dull, uneven skin tone"
+      "highlight_candidate": "For dull, uneven skin tone",
+      "intro_candidate": "A routine kit for dullness, hyperpigmentation, and radiance support."
     },
     "external_highlight_review_status": "rewrite",
-    "external_review_batch": "manual_card_highlight_2026_04_12"
+    "external_review_batch": "manual_batch40_reviewed_2026_04_13"
+  },
+  "product:ext_2e3eabd6564cfaa8c200836b": {
+    "notes": "Strict human QA override: upgraded the brightening kit from card-only rewrite into a seller-grounded routine-set definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Brightening skincare kit",
+        "body": "A skincare kit built for dullness, hyperpigmentation, and uneven tone with a brightening-focused routine."
+      },
+      "best_for": [
+        {
+          "tag": "brightness_tone",
+          "label": "Dullness or uneven tone routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "dark_spots",
+          "label": "Hyperpigmentation support",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Brightening routine kit",
+          "body": "Combines multiple brightening steps in one kit instead of relying on a single serum alone.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Conditioning plus radiance support",
+          "body": "Balances brightening with conditioning and hydration for a fuller routine feel.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "routine set",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use the included products in the order directed by the kit."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "sun",
+          "label": "Brightening routines still need daytime sunscreen to help protect tone work.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use the included products in the order directed by the kit."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Brightening skincare kit",
+      "highlight": "For dull, uneven skin tone",
+      "intro": "A routine kit for dullness, hyperpigmentation, and radiance support."
+    },
+    "search_card": {
+      "compact_candidate": "Brightening skincare kit",
+      "highlight_candidate": "For dull, uneven skin tone",
+      "intro_candidate": "A routine kit for dullness, hyperpigmentation, and radiance support."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch40_reviewed_2026_04_13"
   },
   "live_ext_60d0de6135b5a2042da8cbd5": {
     "notes": "Manual card rewrite to replace the generic serum label with the seller-grounded niacinamide booster use case.",
@@ -787,17 +1414,136 @@
     "external_review_batch": "manual_card_highlight_2026_04_12"
   },
   "live_ext_a8f90cd8b83e185294eef5a3": {
-    "notes": "Manual card rewrite using seller page facts for the body-wash cleansing and NMF-support angle.",
+    "notes": "Strict human QA override: upgraded the body wash from card-only rewrite into a seller-grounded body-wash definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Multi-vitamin body wash",
+        "body": "A daily body wash designed to cleanse skin while supporting it with a blend of vitamins and nutrients."
+      },
+      "best_for": [
+        {
+          "tag": "body_care",
+          "label": "Daily body-cleansing routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "hydration",
+          "label": "Body care that feels less stripped after cleansing",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Body-wash plus nutrient blend",
+          "body": "Keeps the product grounded as a body wash while adding a multi-vitamin support angle.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "NMF-support positioning",
+          "body": "Frames cleansing with more skin-supportive care than a plain soap-first body wash.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "body_cleanser",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use in the shower as your daily body-wash step."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "body wash",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use in the shower as your daily body-wash step."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
     "shopping_card": {
       "subtitle": "Multi-vitamin body wash",
-      "highlight": "Plant-based cleanse + NMF support"
+      "highlight": "Plant-based cleanse + NMF support",
+      "intro": "A daily body wash with vitamins and skin-supportive cleansing."
     },
     "search_card": {
       "compact_candidate": "Multi-vitamin body wash",
-      "highlight_candidate": "Plant-based cleanse + NMF support"
+      "highlight_candidate": "Plant-based cleanse + NMF support",
+      "intro_candidate": "A daily body wash with vitamins and skin-supportive cleansing."
     },
     "external_highlight_review_status": "rewrite",
-    "external_review_batch": "manual_card_highlight_2026_04_12"
+    "external_review_batch": "manual_batch40_reviewed_2026_04_13"
+  },
+  "product:ext_a8f90cd8b83e185294eef5a3": {
+    "notes": "Strict human QA override: upgraded the body wash from card-only rewrite into a seller-grounded body-wash definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Multi-vitamin body wash",
+        "body": "A daily body wash designed to cleanse skin while supporting it with a blend of vitamins and nutrients."
+      },
+      "best_for": [
+        {
+          "tag": "body_care",
+          "label": "Daily body-cleansing routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "hydration",
+          "label": "Body care that feels less stripped after cleansing",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Body-wash plus nutrient blend",
+          "body": "Keeps the product grounded as a body wash while adding a multi-vitamin support angle.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "NMF-support positioning",
+          "body": "Frames cleansing with more skin-supportive care than a plain soap-first body wash.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "body_cleanser",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use in the shower as your daily body-wash step."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "body wash",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use in the shower as your daily body-wash step."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Multi-vitamin body wash",
+      "highlight": "Plant-based cleanse + NMF support",
+      "intro": "A daily body wash with vitamins and skin-supportive cleansing."
+    },
+    "search_card": {
+      "compact_candidate": "Multi-vitamin body wash",
+      "highlight_candidate": "Plant-based cleanse + NMF support",
+      "intro_candidate": "A daily body wash with vitamins and skin-supportive cleansing."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch40_reviewed_2026_04_13"
   },
   "live_ext_cb5bf6c59bef31adc9fc4bb2": {
     "notes": "Manual card rewrite to replace the generic serum label with the seller-grounded niacinamide benefit set.",
@@ -813,17 +1559,148 @@
     "external_review_batch": "manual_card_highlight_2026_04_12"
   },
   "live_ext_d3def504d7f06538aeaa2cee": {
-    "notes": "Manual card rewrite to make the dark-spot kit promise concrete and compact.",
+    "notes": "Strict human QA override: upgraded the dark-spot kit from card-only rewrite into a seller-grounded treatment-kit definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Dark-spot treatment kit",
+        "body": "A skincare kit designed to fade visible dark spots and support more even-looking tone."
+      },
+      "best_for": [
+        {
+          "tag": "dark_spots",
+          "label": "Dark spots or post-mark routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "brightness_tone",
+          "label": "Uneven tone concerns",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Dark-spot correction focus",
+          "body": "Centers visible dark-spot care instead of reading as a general glow kit.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Fade plus prevention angle",
+          "body": "Positions the kit around fading current spots while supporting a more even-looking tone over time.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "routine set",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use the included products in the order directed by the kit."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "sun",
+          "label": "Tone-correction routines still need sunscreen in the daytime.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use the included products in the order directed by the kit."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
     "shopping_card": {
       "subtitle": "Dark-spot treatment kit",
-      "highlight": "Fade + help prevent dark spots"
+      "highlight": "Fade + help prevent dark spots",
+      "intro": "A treatment kit for visible dark spots and uneven tone."
     },
     "search_card": {
       "compact_candidate": "Dark-spot treatment kit",
-      "highlight_candidate": "Fade + help prevent dark spots"
+      "highlight_candidate": "Fade + help prevent dark spots",
+      "intro_candidate": "A treatment kit for visible dark spots and uneven tone."
     },
     "external_highlight_review_status": "rewrite",
-    "external_review_batch": "manual_card_highlight_2026_04_12"
+    "external_review_batch": "manual_batch40_reviewed_2026_04_13"
+  },
+  "product:ext_d3def504d7f06538aeaa2cee": {
+    "notes": "Strict human QA override: upgraded the dark-spot kit from card-only rewrite into a seller-grounded treatment-kit definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Dark-spot treatment kit",
+        "body": "A skincare kit designed to fade visible dark spots and support more even-looking tone."
+      },
+      "best_for": [
+        {
+          "tag": "dark_spots",
+          "label": "Dark spots or post-mark routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "brightness_tone",
+          "label": "Uneven tone concerns",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Dark-spot correction focus",
+          "body": "Centers visible dark-spot care instead of reading as a general glow kit.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Fade plus prevention angle",
+          "body": "Positions the kit around fading current spots while supporting a more even-looking tone over time.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "routine set",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use the included products in the order directed by the kit."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "sun",
+          "label": "Tone-correction routines still need sunscreen in the daytime.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use the included products in the order directed by the kit."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Dark-spot treatment kit",
+      "highlight": "Fade + help prevent dark spots",
+      "intro": "A treatment kit for visible dark spots and uneven tone."
+    },
+    "search_card": {
+      "compact_candidate": "Dark-spot treatment kit",
+      "highlight_candidate": "Fade + help prevent dark spots",
+      "intro_candidate": "A treatment kit for visible dark spots and uneven tone."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch40_reviewed_2026_04_13"
   },
   "live_ext_f92f16420511f97e810f1c5c": {
     "notes": "Curated seller-grounded rewrite to replace the baseline treatment-serum generic copy with a formula-led vitamin C serum definition.",
@@ -970,17 +1847,146 @@
     "external_review_batch": "manual_query_probe1_seller_rewrite_2026_04_12"
   },
   "live_ext_280f5c9e112050a83d7aeac0": {
-    "notes": "Manual card rewrite to replace the ingredient-list eye-cream line with the seller-grounded eye-area payoff.",
+    "notes": "Strict human QA override: upgraded the eye cream from card-only rewrite into a seller-grounded vitamin C plus retinol eye-cream definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Vitamin C eye cream",
+        "body": "An eye cream that combines vitamin C, encapsulated retinol, and hyaluronic acid to brighten, smooth, and firm the eye area."
+      },
+      "best_for": [
+        {
+          "tag": "brightness_tone",
+          "label": "Dull or tired-looking undereyes",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "fine_lines_wrinkles",
+          "label": "Smoother, firmer eye-area routines",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Vitamin C plus encapsulated retinol",
+          "body": "Pairs brightening vitamin C with a retinol-led smoothing angle in one eye cream.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Hydrating eye-area support",
+          "body": "Adds hyaluronic acid so the formula supports firmness and brightness with moisture.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "eye_care",
+        "am_pm": [
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use around the eye area as your treatment eye-cream step, then build frequency gradually."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "retinoid",
+          "label": "Retinol around the eye area can be too active if your skin is easily irritated.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "cream",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use around the eye area as your treatment eye-cream step, then build frequency gradually."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_plus_formula"
+    },
     "shopping_card": {
       "subtitle": "Vitamin C eye cream",
-      "highlight": "Brighten, smooth + firm eyes"
+      "highlight": "Brighten, smooth + firm eyes",
+      "intro": "An eye cream for brighter, smoother, firmer-looking undereyes."
     },
     "search_card": {
       "compact_candidate": "Vitamin C eye cream",
-      "highlight_candidate": "Brighten, smooth + firm eyes"
+      "highlight_candidate": "Brighten, smooth + firm eyes",
+      "intro_candidate": "An eye cream for brighter, smoother, firmer-looking undereyes."
     },
     "external_highlight_review_status": "rewrite",
-    "external_review_batch": "manual_card_highlight_2026_04_12"
+    "external_review_batch": "manual_batch40_reviewed_2026_04_13"
+  },
+  "product:ext_280f5c9e112050a83d7aeac0": {
+    "notes": "Strict human QA override: upgraded the eye cream from card-only rewrite into a seller-grounded vitamin C plus retinol eye-cream definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Vitamin C eye cream",
+        "body": "An eye cream that combines vitamin C, encapsulated retinol, and hyaluronic acid to brighten, smooth, and firm the eye area."
+      },
+      "best_for": [
+        {
+          "tag": "brightness_tone",
+          "label": "Dull or tired-looking undereyes",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "fine_lines_wrinkles",
+          "label": "Smoother, firmer eye-area routines",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Vitamin C plus encapsulated retinol",
+          "body": "Pairs brightening vitamin C with a retinol-led smoothing angle in one eye cream.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Hydrating eye-area support",
+          "body": "Adds hyaluronic acid so the formula supports firmness and brightness with moisture.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "eye_care",
+        "am_pm": [
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use around the eye area as your treatment eye-cream step, then build frequency gradually."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "retinoid",
+          "label": "Retinol around the eye area can be too active if your skin is easily irritated.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "cream",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use around the eye area as your treatment eye-cream step, then build frequency gradually."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_plus_formula"
+    },
+    "shopping_card": {
+      "subtitle": "Vitamin C eye cream",
+      "highlight": "Brighten, smooth + firm eyes",
+      "intro": "An eye cream for brighter, smoother, firmer-looking undereyes."
+    },
+    "search_card": {
+      "compact_candidate": "Vitamin C eye cream",
+      "highlight_candidate": "Brighten, smooth + firm eyes",
+      "intro_candidate": "An eye cream for brighter, smoother, firmer-looking undereyes."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch40_reviewed_2026_04_13"
   },
   "live_ext_539c5068c2d9cc9f5f471093": {
     "notes": "Manual card rewrite to make the overnight vitamin C serum promise more specific and seller-grounded.",
@@ -996,17 +2002,146 @@
     "external_review_batch": "manual_card_highlight_2026_04_12"
   },
   "live_ext_eca8959862245d5af16ab206": {
-    "notes": "Manual card rewrite to replace the texture-only exfoliator label with the calmer resurfacing claim from seller copy.",
+    "notes": "Strict human QA override: upgraded the exfoliator from card-only rewrite into a seller-grounded powder-to-milk exfoliator definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Milky powder exfoliator",
+        "body": "A powder exfoliator that activates with water into a milky texture for gentler resurfacing."
+      },
+      "best_for": [
+        {
+          "tag": "texture_tone",
+          "label": "Texture-smoothing routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "sensitive_skin",
+          "label": "Those wanting a gentler exfoliating feel",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Powder-to-milk format",
+          "body": "Transforms from powder into a milky exfoliating texture instead of a harsher scrub format.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Barrier-conscious exfoliation",
+          "body": "Positions exfoliation with a calmer, more supportive feel rather than an aggressive peel step.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "exfoliant",
+        "am_pm": [
+          "pm"
+        ],
+        "pairing_notes": [
+          "Mix with water, massage onto damp skin, then rinse and follow with moisturizer."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "texture",
+          "label": "Even gentler exfoliators can be too much if your skin is already over-exfoliated.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "powder to milk",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Mix with water, massage onto damp skin, then rinse and follow with moisturizer."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
     "shopping_card": {
       "subtitle": "Milky powder exfoliator",
-      "highlight": "Calm exfoliation + barrier support"
+      "highlight": "Calm exfoliation + barrier support",
+      "intro": "A powder exfoliator that turns milky with water."
     },
     "search_card": {
       "compact_candidate": "Milky powder exfoliator",
-      "highlight_candidate": "Calm exfoliation + barrier support"
+      "highlight_candidate": "Calm exfoliation + barrier support",
+      "intro_candidate": "A powder exfoliator that turns milky with water."
     },
     "external_highlight_review_status": "rewrite",
-    "external_review_batch": "manual_card_highlight_2026_04_12"
+    "external_review_batch": "manual_batch40_reviewed_2026_04_13"
+  },
+  "product:ext_eca8959862245d5af16ab206": {
+    "notes": "Strict human QA override: upgraded the exfoliator from card-only rewrite into a seller-grounded powder-to-milk exfoliator definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Milky powder exfoliator",
+        "body": "A powder exfoliator that activates with water into a milky texture for gentler resurfacing."
+      },
+      "best_for": [
+        {
+          "tag": "texture_tone",
+          "label": "Texture-smoothing routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "sensitive_skin",
+          "label": "Those wanting a gentler exfoliating feel",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Powder-to-milk format",
+          "body": "Transforms from powder into a milky exfoliating texture instead of a harsher scrub format.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Barrier-conscious exfoliation",
+          "body": "Positions exfoliation with a calmer, more supportive feel rather than an aggressive peel step.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "exfoliant",
+        "am_pm": [
+          "pm"
+        ],
+        "pairing_notes": [
+          "Mix with water, massage onto damp skin, then rinse and follow with moisturizer."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "texture",
+          "label": "Even gentler exfoliators can be too much if your skin is already over-exfoliated.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "powder to milk",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Mix with water, massage onto damp skin, then rinse and follow with moisturizer."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Milky powder exfoliator",
+      "highlight": "Calm exfoliation + barrier support",
+      "intro": "A powder exfoliator that turns milky with water."
+    },
+    "search_card": {
+      "compact_candidate": "Milky powder exfoliator",
+      "highlight_candidate": "Calm exfoliation + barrier support",
+      "intro_candidate": "A powder exfoliator that turns milky with water."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch40_reviewed_2026_04_13"
   },
   "live_ext_7d2e609bb0e8b213c6881552": {
     "notes": "Manual card rewrite to replace the generic eye-mask line with the seller-grounded depuff and dark-circle benefit.",
@@ -2284,17 +3419,136 @@
     "external_review_batch": "manual_card_highlight_2026_04_12"
   },
   "live_ext_ab4d4c4ee679dca9c2078081": {
-    "notes": "Manual card rewrite to make the 5-pack cleansing-cloth set feel more useful than a repeated product name.",
+    "notes": "Strict human QA override: upgraded the cloths multipack from card-only rewrite into a seller-grounded cleansing-wipes set definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Vitamin C cleansing wipes set",
+        "body": "A multipack of vitamin C cleansing cloths designed for quick impurity and makeup removal with a refreshed finish."
+      },
+      "best_for": [
+        {
+          "tag": "makeup_removal",
+          "label": "Travel or makeup-removal routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "routine_simplification",
+          "label": "Stocking multiple cleansing-wipe packs at once",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Set-of-5 wipe format",
+          "body": "Turns the vitamin C cloths into a multipack rather than a single on-the-go pack.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Quick cleanse plus refresh",
+          "body": "Keeps the wipes focused on fast cleansing with a refreshed, brighter-feeling finish.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "cleanser",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use whenever you want a quick cleanse or makeup-removal step without a sink."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "pre-soaked wipes",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use whenever you want a quick cleanse or makeup-removal step without a sink."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
     "shopping_card": {
-      "subtitle": "Vitamin C cloth set",
-      "highlight": "Brighten-on-the-go, 5-pack"
+      "subtitle": "Vitamin C cleansing wipes set",
+      "highlight": "Brighten + refresh on the go",
+      "intro": "A set of five vitamin C wipe packs for quick cleansing."
     },
     "search_card": {
-      "compact_candidate": "Vitamin C cloth set",
-      "highlight_candidate": "Brighten-on-the-go, 5-pack"
+      "compact_candidate": "Vitamin C cleansing wipes set",
+      "highlight_candidate": "Brighten + refresh on the go",
+      "intro_candidate": "A set of five vitamin C wipe packs for quick cleansing."
     },
     "external_highlight_review_status": "rewrite",
-    "external_review_batch": "manual_card_highlight_2026_04_12"
+    "external_review_batch": "manual_batch40_reviewed_2026_04_13"
+  },
+  "product:ext_ab4d4c4ee679dca9c2078081": {
+    "notes": "Strict human QA override: upgraded the cloths multipack from card-only rewrite into a seller-grounded cleansing-wipes set definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Vitamin C cleansing wipes set",
+        "body": "A multipack of vitamin C cleansing cloths designed for quick impurity and makeup removal with a refreshed finish."
+      },
+      "best_for": [
+        {
+          "tag": "makeup_removal",
+          "label": "Travel or makeup-removal routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "routine_simplification",
+          "label": "Stocking multiple cleansing-wipe packs at once",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Set-of-5 wipe format",
+          "body": "Turns the vitamin C cloths into a multipack rather than a single on-the-go pack.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Quick cleanse plus refresh",
+          "body": "Keeps the wipes focused on fast cleansing with a refreshed, brighter-feeling finish.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "cleanser",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use whenever you want a quick cleanse or makeup-removal step without a sink."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "pre-soaked wipes",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use whenever you want a quick cleanse or makeup-removal step without a sink."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Vitamin C cleansing wipes set",
+      "highlight": "Brighten + refresh on the go",
+      "intro": "A set of five vitamin C wipe packs for quick cleansing."
+    },
+    "search_card": {
+      "compact_candidate": "Vitamin C cleansing wipes set",
+      "highlight_candidate": "Brighten + refresh on the go",
+      "intro_candidate": "A set of five vitamin C wipe packs for quick cleansing."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch40_reviewed_2026_04_13"
   },
   "live_ext_f074d8c2996db56f02b2cdfd": {
     "notes": "Manual card rewrite to replace the generic toner label with the seller-grounded brightening and smoothing use case.",
@@ -43864,5 +45118,273 @@
     },
     "external_highlight_review_status": "rewrite",
     "external_review_batch": "manual_batch200_reviewed_2026_04_13"
+  },
+  "live_ext_461170e7480048cf4ffb7941": {
+    "notes": "Strict human QA override: the conditioner was misclassified as a fragrance product, so the rewrite restores a seller-grounded hair-conditioner definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Conditioner",
+        "body": "A lightweight, fragrance-free conditioner with 2% behentrimonium chloride for softer, easier-to-manage hair."
+      },
+      "best_for": [
+        {
+          "tag": "hair_conditioning",
+          "label": "Daily conditioning routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "fragrance_free",
+          "label": "Fragrance-free hair care preferences",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "2% behentrimonium chloride",
+          "body": "Keeps the conditioning benefit tied to a clear active level instead of vague hair-care language.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Lightweight fragrance-free finish",
+          "body": "Built for daily conditioning without turning into a heavy fragranced mask.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "conditioner",
+        "am_pm": [],
+        "pairing_notes": [
+          "Use after shampoo, then rinse out before leave-on styling steps."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "conditioner",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use after shampoo, then rinse out before leave-on styling steps."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Conditioner",
+      "highlight": "Lightweight + fragrance-free care",
+      "intro": "A lightweight conditioner for softer, easier-to-manage hair."
+    },
+    "search_card": {
+      "compact_candidate": "Conditioner",
+      "highlight_candidate": "Lightweight + fragrance-free care",
+      "intro_candidate": "A lightweight conditioner for softer, easier-to-manage hair."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch40_reviewed_2026_04_13"
+  },
+  "product:ext_461170e7480048cf4ffb7941": {
+    "notes": "Strict human QA override: the conditioner was misclassified as a fragrance product, so the rewrite restores a seller-grounded hair-conditioner definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Conditioner",
+        "body": "A lightweight, fragrance-free conditioner with 2% behentrimonium chloride for softer, easier-to-manage hair."
+      },
+      "best_for": [
+        {
+          "tag": "hair_conditioning",
+          "label": "Daily conditioning routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "fragrance_free",
+          "label": "Fragrance-free hair care preferences",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "2% behentrimonium chloride",
+          "body": "Keeps the conditioning benefit tied to a clear active level instead of vague hair-care language.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Lightweight fragrance-free finish",
+          "body": "Built for daily conditioning without turning into a heavy fragranced mask.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "conditioner",
+        "am_pm": [],
+        "pairing_notes": [
+          "Use after shampoo, then rinse out before leave-on styling steps."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "conditioner",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use after shampoo, then rinse out before leave-on styling steps."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Conditioner",
+      "highlight": "Lightweight + fragrance-free care",
+      "intro": "A lightweight conditioner for softer, easier-to-manage hair."
+    },
+    "search_card": {
+      "compact_candidate": "Conditioner",
+      "highlight_candidate": "Lightweight + fragrance-free care",
+      "intro_candidate": "A lightweight conditioner for softer, easier-to-manage hair."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch40_reviewed_2026_04_13"
+  },
+  "live_ext_ba77f628da48958583f0f49f": {
+    "notes": "Strict human QA override: the starter retinol serum still carried seller-community phrasing, so the rewrite narrows it into a beginner retinol definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Beginner retinol serum",
+        "body": "A beginner-friendly retinol serum designed to smooth fine lines and refine tone and texture with a gentler entry feel."
+      },
+      "best_for": [
+        {
+          "tag": "fine_lines_wrinkles",
+          "label": "Fine lines or early age-support routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "retinoid_beginner",
+          "label": "First-time retinol users",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Starter retinol positioning",
+          "body": "Keeps the serum focused on a gentler retinol entry point rather than a stronger treatment pitch.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Tone and texture support",
+          "body": "Frames the serum around smoother texture and more even-looking tone alongside fine-line care.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use at night before moisturizer and build frequency gradually."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "retinoid",
+          "label": "Retinol can feel too active if you're new to it or already using other exfoliants.",
+          "severity": "high"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "serum",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use at night before moisturizer and build frequency gradually."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Beginner retinol serum",
+      "highlight": "Starter retinol for tone + texture",
+      "intro": "A gentler retinol serum for fine lines, tone, and texture."
+    },
+    "search_card": {
+      "compact_candidate": "Beginner retinol serum",
+      "highlight_candidate": "Starter retinol for tone + texture",
+      "intro_candidate": "A gentler retinol serum for fine lines, tone, and texture."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch40_reviewed_2026_04_13"
+  },
+  "product:ext_ba77f628da48958583f0f49f": {
+    "notes": "Strict human QA override: the starter retinol serum still carried seller-community phrasing, so the rewrite narrows it into a beginner retinol definition.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Beginner retinol serum",
+        "body": "A beginner-friendly retinol serum designed to smooth fine lines and refine tone and texture with a gentler entry feel."
+      },
+      "best_for": [
+        {
+          "tag": "fine_lines_wrinkles",
+          "label": "Fine lines or early age-support routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "retinoid_beginner",
+          "label": "First-time retinol users",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Starter retinol positioning",
+          "body": "Keeps the serum focused on a gentler retinol entry point rather than a stronger treatment pitch.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Tone and texture support",
+          "body": "Frames the serum around smoother texture and more even-looking tone alongside fine-line care.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use at night before moisturizer and build frequency gradually."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "retinoid",
+          "label": "Retinol can feel too active if you're new to it or already using other exfoliants.",
+          "severity": "high"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "serum",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [
+        "Use at night before moisturizer and build frequency gradually."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Beginner retinol serum",
+      "highlight": "Starter retinol for tone + texture",
+      "intro": "A gentler retinol serum for fine lines, tone, and texture."
+    },
+    "search_card": {
+      "compact_candidate": "Beginner retinol serum",
+      "highlight_candidate": "Starter retinol for tone + texture",
+      "intro_candidate": "A gentler retinol serum for fine lines, tone, and texture."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_batch40_reviewed_2026_04_13"
   }
 }
