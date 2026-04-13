@@ -1,0 +1,1921 @@
+[
+  {
+    "case_id": "live_ext_9d49c27d0d53a1f734405985",
+    "notes": "Live pilot case sampled from public search results (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_9d49c27d0d53a1f734405985"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_9d49c27d0d53a1f734405985",
+      "brand": "Naturium",
+      "title": "Niacinamide Gel Cream 5%",
+      "category": "Moisturizer",
+      "description": "Our refreshing gel-cream is formulated with a potent level of niacinamide, helping to balance skin’s hydration and reducing the appearance of pores, for healthier-looking and dewy skin. Now available in our signature airless pump!",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_d6716f08ba30aa68ed0120db",
+    "notes": "Live pilot case sampled from public search results (Haruharu Wonder).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_d6716f08ba30aa68ed0120db"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_d6716f08ba30aa68ed0120db",
+      "brand": "Haruharu Wonder",
+      "title": "5% Niacinamide Radiance Gel Cream / Unscented 40g",
+      "category": "Moisturizer",
+      "description": "It is Non-greasy and fast-absorbing, and a hydrating and lightweight gel cream packed with sustainable ingredients that not only just hydrate, but also even the skin tone, minimize hyperpigmentation, and protect your skin barrier. - Niacinamide(Vitamin B3) and Vitamin C which effectively evens the skin tone and gives…",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_f2f0f159377aa5d2a9613e32",
+    "notes": "Live pilot case sampled from public search results (Haruharu Wonder).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_f2f0f159377aa5d2a9613e32"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_f2f0f159377aa5d2a9613e32",
+      "brand": "Haruharu Wonder",
+      "title": "5% Niacinamide Radiance Gel Cream / Unscented",
+      "category": "Moisturizer",
+      "description": "It is Non-greasy and fast-absorbing, and a hydrating and lightweight gel cream packed with sustainable ingredients that not only just hydrate, but also even the skin tone, minimize hyperpigmentation, and protect your skin barrier. - Niacinamide(Vitamin B3) and Vitamin C which effectively evens the skin tone and gives…",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_d02c475630a8ac959414164a",
+    "notes": "Live pilot case sampled from public search results (Round Lab).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_d02c475630a8ac959414164a"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_d02c475630a8ac959414164a",
+      "brand": "Round Lab",
+      "title": "Vita Niacinamide Dark Spot Serum",
+      "category": "Serum",
+      "description": "The Vita Niacinamide Dark Spot Serum is a lightweight, fast-absorbing serum designed to improve skin clarity and radiance. Formulated with niacinamide (Vitamin B3) and Hippophae Rhamnoides Water , it helps brighten skin, reduce the look of dark spots, and promote a smoother complexion.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_7dde43f585bdccdbb85c9987",
+    "notes": "Live pilot case sampled from public search results (Round Lab).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_7dde43f585bdccdbb85c9987"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_7dde43f585bdccdbb85c9987",
+      "brand": "Round Lab",
+      "title": "Vita Niacinamide Dark Spot Cream",
+      "category": "Moisturizer",
+      "description": "The Vita Niacinamide Dark Spot Cream is designed to improve skin tone, enhance radiance, and promote a smoother, more even complexion. Powered by seaberry (sea buckthorn) extract sourced from Gangwon, this cream combines niacinamide (Vitamin B3) with effective skin-brightening ingredients to help refine the look of un…",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_daaf898179ef2c982fec210b",
+    "notes": "Live pilot case sampled from public search results (Round Lab).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_daaf898179ef2c982fec210b"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_daaf898179ef2c982fec210b",
+      "brand": "Round Lab",
+      "title": "Vita Niacinamide Dark Spot Serum Mask",
+      "category": "Serum",
+      "description": "Vita Niacinamide Dark Spot Serum Mask A skin-brightening sheet mask infused with a potent blend of niacinamide and vitamin-rich ingredients to target dark spots and enhance radiance. The lightweight sheet adheres seamlessly to deliver deep hydration and even out skin tone.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_93dd0ade75cfa764e50af653",
+    "notes": "Live pilot case sampled from public search results (Skin1004).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_93dd0ade75cfa764e50af653"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_93dd0ade75cfa764e50af653",
+      "brand": "Skin1004",
+      "title": "Niacinamide 10 Boosting Shot Ampoule",
+      "category": "Serum",
+      "description": "Formulated with Niacinamide to help refine pores and visibly even the look of skin tone, Tranexamic Acid to enhance skin texture and help support the skin’s natural barrier, and a Boosting Shot system that helps the skin feel hydrated and refreshed delivering a more even, healthy-looking glow. Product Benefits: Pore R…",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_61beb592d2642087c6cde62d",
+    "notes": "Live pilot case sampled from public search results (Beauty of Joseon).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_61beb592d2642087c6cde62d"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_61beb592d2642087c6cde62d",
+      "brand": "Beauty of Joseon",
+      "title": "Glow Serum : Propolis + Niacinamide",
+      "category": "Serum",
+      "description": "A cushiony smoothing serum with niacinamide and propolis extract that helps refine pores, hydrate, and calm reactive skin for a glassy glow. Read More",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_01c4ed04453742e87fc916be",
+    "notes": "Live pilot case sampled from public search results (PIXI BEAUTY).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_01c4ed04453742e87fc916be"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_01c4ed04453742e87fc916be",
+      "brand": "PIXI BEAUTY",
+      "title": "Roll-On BeautifEYE Serum Original Size",
+      "category": "Serum",
+      "description": "An energizing cooling eye serum with steel rollerballs that instantly refreshes and preps the eye area, perfect before makeup for a smoother, more awake look. Brightening Clarifying Hydrating Youth Enhancing Glow Enhancing Soothing Brand Story Press Loyalty Program Subscribe & Save Special Offers • \"BeautifEYE roll-on…",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_2491354e29719351d231f1c1",
+    "notes": "Live pilot case sampled from public search results (Fenty Beauty).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_2491354e29719351d231f1c1"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_2491354e29719351d231f1c1",
+      "brand": "Fenty Beauty",
+      "title": "Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill — 4",
+      "category": "Moisturizer",
+      "description": "Already have a Hydra Vizor refillable case? This is your refill of a moisturizer that works hard, so you don’t have to, instantly boosting skin's hydration.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_6867a9623d618fc1ec281452",
+    "notes": "Live pilot case sampled from public search results (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_6867a9623d618fc1ec281452"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_6867a9623d618fc1ec281452",
+      "brand": "Murad",
+      "title": "Vita-C Glycolic Serum",
+      "category": "Serum",
+      "description": "Gold-stabilized vitamin C and glycolic acid serum for dramatically brighter, healthier-looking skin Water/Aqua/Eau, Glycerin, Caprylic/Capric Triglyceride, Glycolic Acid, Dimethicone, HDI/Trimethylol Hexyllactone Crosspolymer, Diisopropyl Sebacate, C13-16 Isoparaffin, Sodium Hydroxide, Polyacrylate Crosspolymer-6, Lac…",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_78459078c41984b4f03eb5f5",
+    "notes": "Live pilot case sampled from public search results (Then I Met You).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_78459078c41984b4f03eb5f5"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_78459078c41984b4f03eb5f5",
+      "brand": "Then I Met You",
+      "title": "Renewing Rich Beauty Cream",
+      "category": "Moisturizer",
+      "description": "A rich and silky cream containing our proprietary Quad Ginseng Complex delivers a powerful blend of antioxidants and leaves skin smooth, soft and plump with moisture. Baobab, squalane and hyaluronic acid cocoon the face with lasting hydration that absorbs quickly, quenching skin in a dreamy, creamy, dewy glow.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_b63676ffc027492f7e986a71",
+    "notes": "Live pilot case sampled from public search results (Fenty Beauty).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_b63676ffc027492f7e986a71"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_b63676ffc027492f7e986a71",
+      "brand": "Fenty Beauty",
+      "title": "Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill — 7",
+      "category": "Moisturizer",
+      "description": "Already have a Hydra Vizor refillable case? This is your refill of a moisturizer that works hard, so you don’t have to, instantly boosting skin's hydration.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_3245669fb069e47c505ddb66",
+    "notes": "Live pilot case sampled from public search results (PIXI BEAUTY).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3245669fb069e47c505ddb66"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3245669fb069e47c505ddb66",
+      "brand": "PIXI BEAUTY",
+      "title": "+C Vit Brightening Trio",
+      "category": "Lip Balm",
+      "description": "Glow instantly with this Vitamin C infused trio. Includes priming oil, brightening perfector and lip balm for nourished, radiant skin.",
+      "tags": [
+        "Lip Balm"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_2935aafbdb707cb9627bb12a",
+    "notes": "Live pilot case sampled from public search results (BYOMA).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_2935aafbdb707cb9627bb12a"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_2935aafbdb707cb9627bb12a",
+      "brand": "BYOMA",
+      "title": "Moisturising Gel Cream",
+      "category": "Moisturizer",
+      "description": "This lightweight, oil-free daily moisturiser delivers effective, targeted hydration to thirsty skin. The unique, gel-cream texture absorbs instantly, softening and hydrating skin with a barrier boosting blend of carefully chosen ingredients.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_6172c87c5e9f44a3267dce77",
+    "notes": "Live pilot case sampled from public search results (INNBEAUTY PROJECT).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_6172c87c5e9f44a3267dce77"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_6172c87c5e9f44a3267dce77",
+      "brand": "INNBEAUTY PROJECT",
+      "title": "Green Machine Serum",
+      "category": "Serum",
+      "description": "Think of Green Machine as your topical liquid skin vitamin for the appearance of brighter, firmer, smoother looking skin.What’s so special about oil/jelly? It acts like both a serum penetrating deep & fast AND an oil, nourishing the skin barrier, in one easy step.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_08cdab51db0a83ffaa514f96",
+    "notes": "Live pilot case sampled from public search results (Beekman 1802).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_08cdab51db0a83ffaa514f96"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_08cdab51db0a83ffaa514f96",
+      "brand": "Beekman 1802",
+      "title": "Mini Oil Eliminating Foaming Gel Cleanser",
+      "category": "Cleanser",
+      "description": "Helps cleanse deeply, control sebum, and eliminate oil for clearer, more balanced skin. This Oil Eliminating Foaming Gel Cleanser is part of our new Shine-Free for oily/combination skin routine.",
+      "tags": [
+        "Cleanser"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_4237c58a7ddf21d66c3136da",
+    "notes": "Live pilot case sampled from public search results (Fenty Beauty).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_4237c58a7ddf21d66c3136da"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_4237c58a7ddf21d66c3136da",
+      "brand": "Fenty Beauty",
+      "title": "Hydra Vizor Huez SPF 30 Refillable Tinted Moisturizer Set",
+      "category": "Moisturizer",
+      "description": "A skin-quenching tinted moisturizer that's SPF'd up. Choose your flexible shade to deliver lightweight coverage for a natural, glowy finish.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_863f6f847c2b89f4f6bb4c79",
+    "notes": "Live pilot case sampled from public search results (SKINTIFIC).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_863f6f847c2b89f4f6bb4c79"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_863f6f847c2b89f4f6bb4c79",
+      "brand": "SKINTIFIC",
+      "title": "Glow Bright Day Cream",
+      "category": "Moisturizer",
+      "description": "GLOW BRIGHT DAY CREAM, your daily moisturizer for an instant natural bright, long lasting hydration, and fresh-looking complexion. Instant Buildable Tone-Up to enhance skin’s natural glow without cakey or white cast effect, adjustable tone-up to suit your look.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_320e1c59d56aa230a7996d8b",
+    "notes": "Live pilot case sampled from public search results (Fenty Beauty).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_320e1c59d56aa230a7996d8b"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_320e1c59d56aa230a7996d8b",
+      "brand": "Fenty Beauty",
+      "title": "Dew N Plump Hydrating Nectar Glow Serum",
+      "category": "Serum",
+      "description": "Dew it all with a serum that hydrates, plumps, boosts skin's moisture barrier and gives an instant glow. Powered by our hydrating SuperQuench Juice Complex, moisture barrier-boosting Panthenol and mega-plumping Polyglutamic + Hyaluronic Acids.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_ff921a71e82806843dcc67cd",
+    "notes": "Live pilot case sampled from public search results (Fenty Beauty).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_ff921a71e82806843dcc67cd"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_ff921a71e82806843dcc67cd",
+      "brand": "Fenty Beauty",
+      "title": "Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill — 5",
+      "category": "Moisturizer",
+      "description": "Already have a Hydra Vizor refillable case? This is your refill of a moisturizer that works hard, so you don’t have to, instantly boosting skin's hydration.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_2bdac5cdc338cccaae873a5b",
+    "notes": "Live pilot case sampled from public search results (PIXI BEAUTY).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_2bdac5cdc338cccaae873a5b"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_2bdac5cdc338cccaae873a5b",
+      "brand": "PIXI BEAUTY",
+      "title": "Vitamin-C LipPatch",
+      "category": "external",
+      "description": "Instantly hydrating and cooling lip patch.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_711d563a490f37378d057211",
+    "notes": "Live pilot case sampled from public search results (Fenty Beauty).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_711d563a490f37378d057211"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_711d563a490f37378d057211",
+      "brand": "Fenty Beauty",
+      "title": "Lux Balm Ultra-Hydrating Cherry Lip Balm with Barbados Cherry + Vitamin E",
+      "category": "Lip Balm",
+      "description": "Keep talkin' your s***-just make sure you do it with soft, smooth lips. This juicy, Barbados Cherry-powered lip balm brings dry, chapped lips back to life with instant hydration.",
+      "tags": [
+        "Lip Balm"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_72d2c56b07e2af3c3082a0d9",
+    "notes": "Live pilot case sampled from public search results (PIXI BEAUTY).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_72d2c56b07e2af3c3082a0d9"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_72d2c56b07e2af3c3082a0d9",
+      "brand": "PIXI BEAUTY",
+      "title": "Radiant Skin Antioxidant Trio",
+      "category": "external",
+      "description": "Revitalize your skin routine with this glow-boosting trio designed to cleanse, nourish & brighten. Delivering hydration, radiance & protection in every step!",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_2a7f0f4aac89565439078194",
+    "notes": "Live pilot case sampled from public search results (Supergoop!).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_2a7f0f4aac89565439078194"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_2a7f0f4aac89565439078194",
+      "brand": "Supergoop!",
+      "title": "PLAY Antioxidant Body Mist SPF 30 with Vitamin C",
+      "category": "Toner",
+      "description": "A weightless, non-aerosol sunscreen body spray that’s water- & sweat-resistant & leaves skin radiantly glowing.",
+      "tags": [
+        "Toner"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_52bf3996675b121b766c4303",
+    "notes": "Live pilot case sampled from public search results (Supergoop!).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_52bf3996675b121b766c4303"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_52bf3996675b121b766c4303",
+      "brand": "Supergoop!",
+      "title": "PLAY Antioxidant Body Mist SPF 50 with Vitamin C",
+      "category": "Toner",
+      "description": "A weightless, non-aerosol sunscreen body spray that is water & sweat-resistant & leaves skin radiantly glowing.",
+      "tags": [
+        "Toner"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_60bf699a1258676327b5d50b",
+    "notes": "Live pilot case sampled from public search results (Fenty Beauty).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_60bf699a1258676327b5d50b"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_60bf699a1258676327b5d50b",
+      "brand": "Fenty Beauty",
+      "title": "Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill — 8",
+      "category": "Moisturizer",
+      "description": "Already have a Hydra Vizor refillable case? This is your refill of a moisturizer that works hard, so you don’t have to, instantly boosting skin's hydration.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_6c478dfd39b4b7fd70731a1a",
+    "notes": "Live pilot case sampled from public search results (Fenty Beauty).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_6c478dfd39b4b7fd70731a1a"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_6c478dfd39b4b7fd70731a1a",
+      "brand": "Fenty Beauty",
+      "title": "Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill — 3",
+      "category": "Moisturizer",
+      "description": "Already have a Hydra Vizor refillable case? This is your refill of a moisturizer that works hard, so you don’t have to, instantly boosting skin's hydration.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_2e849c9f45f833f00c888b65",
+    "notes": "Live pilot case sampled from public search results (PIXI BEAUTY).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_2e849c9f45f833f00c888b65"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_2e849c9f45f833f00c888b65",
+      "brand": "PIXI BEAUTY",
+      "title": "Vitamin-C LipPatch (Set of 3)",
+      "category": "external",
+      "description": "Instantly hydrating and cooling lip patch.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_37d72074ffc0909d307b03c8",
+    "notes": "Live pilot case sampled from public search results (Beekman 1802).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_37d72074ffc0909d307b03c8"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_37d72074ffc0909d307b03c8",
+      "brand": "Beekman 1802",
+      "title": "Milk RX Advanced Better Aging Cream",
+      "category": "Moisturizer",
+      "description": "Our most advanced better-aging treatment ever! Milk RX is a doctor-formulated, dermatologist-approved multi-layer moisturizer that's 4x more potent than retinol with zero irritation.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_bcfc49c06e49e3cf28766ad3",
+    "notes": "Live pilot case sampled from public search results (Fenty Beauty).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_bcfc49c06e49e3cf28766ad3"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_bcfc49c06e49e3cf28766ad3",
+      "brand": "Fenty Beauty",
+      "title": "Cherry Dub BHA Toner with Salicylic Acid + Aloe Juice",
+      "category": "Toner",
+      "description": "This BHA-powered purifying toner doesn't play when it comes to controlling surface oil. It helps unclog pores, brightens, hydrates skin and keeps surface oil in check without stripping moisture.",
+      "tags": [
+        "Toner"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_702ed1fa5de40d0ebf9552c9",
+    "notes": "Live pilot case sampled from public search results (Fenty Beauty).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_702ed1fa5de40d0ebf9552c9"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_702ed1fa5de40d0ebf9552c9",
+      "brand": "Fenty Beauty",
+      "title": "Thicc N Smooth Rich Peptide Eye Cream",
+      "category": "Moisturizer",
+      "description": "Young or grown, it's time to fight under eye dryness and dark circles with a do-it-all eye cream. Hydrate, brighten and reduce the look of puffiness with a blend of eye-targeted ingredients, including peptides, caffeine and vitamins that instantly melt into skin.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_a13978756fd71db7c7e86c2e",
+    "notes": "Live pilot case sampled from public search results (PIXI BEAUTY).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_a13978756fd71db7c7e86c2e"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_a13978756fd71db7c7e86c2e",
+      "brand": "PIXI BEAUTY",
+      "title": "Pixi Ultimate Starter Kit",
+      "category": "external",
+      "description": "Discover the ultimate Pixi Mini Starter Kit to cleanse, hydrate, prime and add a personalized Glow with mini skincare and makeup favourites. Brightening Clarifying Hydrating Youth Enhancing Glow Enhancing Soothing Brand Story Press Loyalty Program Subscribe & Save Special Offers Flawless Beauty Primer • \"This keeps dr…",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_c28c5385f2c9160838862b86",
+    "notes": "Live pilot case sampled from public search results (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_c28c5385f2c9160838862b86"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_c28c5385f2c9160838862b86",
+      "brand": "Murad",
+      "title": "Retinal ReSculpt Overnight Cream",
+      "category": "Moisturizer",
+      "description": "Visibly lift, firm + re-volumize facial contours in 4 weeks with this deeply hydrating overnight cream powered by encapsulated retinal and NAD+ Lift Complex Water/Aqua/Eau, Squalane, Glycerin, Propanediol, Pentylene Glycol, Jojoba Esters, Cetyl Alcohol, Caprylic/Capric/Myristic/Stearic Triglyceride, Isononyl Isononano…",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_1a5c7c01e42108d25d893b27",
+    "notes": "Live pilot case sampled from public search results (Tom Ford Beauty).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_1a5c7c01e42108d25d893b27"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_1a5c7c01e42108d25d893b27",
+      "brand": "Tom Ford Beauty",
+      "title": "Architecture Radiance Hydrating Foundation Broad Spectrum SPF 50+",
+      "category": "Foundation",
+      "description": "Key Notes Skin Type For All Skin Types Skin Concern Dullness Finish Radiant Coverage Full Liquid light in a weightless, serum-like formula. An exclusive blend of skincare actives: Queen of the Night – a soothing, night-blooming flower, niacinamide, hyaluronic acids and botanical oils helps to protect and strengthen th…",
+      "tags": [
+        "Foundation"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_6c2feb5d6e43c9362d6a2254",
+    "notes": "Live pilot case sampled from public search results (https://www.firstaidbeauty.com/products/whole-body-deodorant-cream).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_6c2feb5d6e43c9362d6a2254"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_6c2feb5d6e43c9362d6a2254",
+      "brand": "https://www.firstaidbeauty.com/products/whole-body-deodorant-cream",
+      "title": "Whole Body Deodorant Cream",
+      "category": "Moisturizer",
+      "description": "A whole body deodorant cream with 24-hour odor control. This invisible, aluminum-free formula keeps you feeling dry + fresh with a light citrus scent.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_e8efc215c572eaf1e3558ecf",
+    "notes": "Live pilot case sampled from public search results (INNBEAUTY PROJECT).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_e8efc215c572eaf1e3558ecf"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_e8efc215c572eaf1e3558ecf",
+      "brand": "INNBEAUTY PROJECT",
+      "title": "Pro C Serum",
+      "category": "Serum",
+      "description": "Meet Pro C Serum - a next-gen brightening solution formulated with 30% clinically proven actives plus advanced liposomal Vitamin C technology. This high performance innovation targets pigmentation at every stage - fading visible dark spots, post-acne marks and hyperpigmentation while helping reduce future & early-stag…",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_99954e44d33d9e13042db1eb",
+    "notes": "Live pilot case sampled from public search results (INNBEAUTY PROJECT).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_99954e44d33d9e13042db1eb"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_99954e44d33d9e13042db1eb",
+      "brand": "INNBEAUTY PROJECT",
+      "title": "Extreme Cream",
+      "category": "Moisturizer",
+      "description": "This luxe, rich cream moisturizer leaves skin with a gorgeous glossy glow while potent, clinically proven anti-aging ingredients firm, sculpt & contour the skin. It cannot be used on its own without the original packaging.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_f52ed300f7d9c83bd06adb55",
+    "notes": "Live pilot case sampled from public search results (INNBEAUTY PROJECT).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_f52ed300f7d9c83bd06adb55"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_f52ed300f7d9c83bd06adb55",
+      "brand": "INNBEAUTY PROJECT",
+      "title": "Bright & Tight Eye Cream",
+      "category": "Moisturizer",
+      "description": "Good-bye dark circles! See full ingredients list Apply ½ pump to each eye, 360 around the eye area and gently massage in.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_3e60ea2a4396282e5cb1b9c7",
+    "notes": "Live pilot case sampled from public search results (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3e60ea2a4396282e5cb1b9c7"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3e60ea2a4396282e5cb1b9c7",
+      "brand": "Naturium",
+      "title": "Vitamin C Complex Cleanser",
+      "category": "Cleanser",
+      "description": "Our vitamin C complex cleanser is formulated with two forms of Vitamin C, phytic acid and fruit enzymes, including papain and bromelain, that gently exfoliate to instantly brighten skin. This gel cleanser also works to dissolve makeup, oil, dirt, and impurities leaving skin clean, soft and refreshed.",
+      "tags": [
+        "Cleanser"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_73a06f25367296b53a23af81",
+    "notes": "Live pilot case sampled from public search results (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_73a06f25367296b53a23af81"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_73a06f25367296b53a23af81",
+      "brand": "Murad",
+      "title": "Multi-Vitamin Clear Coat Broad Spectrum SPF 50",
+      "category": "external",
+      "description": "",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_618a5cf368a153492c14b151",
+    "notes": "Live pilot case sampled from public search results (PIXI BEAUTY).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_618a5cf368a153492c14b151"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_618a5cf368a153492c14b151",
+      "brand": "PIXI BEAUTY",
+      "title": "Mini Vitamin-C Tonic",
+      "category": "Toner",
+      "description": "A daily facial toner that contains Vitamin-C, a potent Antioxidant that is known to boost skin luminosity.",
+      "tags": [
+        "Toner"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_670fd3f47ecd319d143f8c65",
+    "notes": "Live pilot case sampled from public search results (KraveBeauty).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_670fd3f47ecd319d143f8c65"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_670fd3f47ecd319d143f8c65",
+      "brand": "KraveBeauty",
+      "title": "Great Barrier Relief",
+      "category": "Serum",
+      "description": "Great Barrier Relief is a skin-soothing serum that restores your damaged skin barrier while evening out your complexion. This nourishing formula offers irritated skin a reset button by using tamanu oil and other ingredients that mimic a healthy barrier to replenish what your skin lacks.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_ad1346513bbfbdffbf2136fe",
+    "notes": "Live pilot case sampled from public search results (Fenty Beauty).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_ad1346513bbfbdffbf2136fe"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_ad1346513bbfbdffbf2136fe",
+      "brand": "Fenty Beauty",
+      "title": "Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill — 6",
+      "category": "Moisturizer",
+      "description": "Already have a Hydra Vizor refillable case? This is your refill of a moisturizer that works hard, so you don’t have to, instantly boosting skin's hydration.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_7d1ec8eed3a596dc5b03f435",
+    "notes": "Live pilot case sampled from public search results (Fenty Beauty).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_7d1ec8eed3a596dc5b03f435"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_7d1ec8eed3a596dc5b03f435",
+      "brand": "Fenty Beauty",
+      "title": "Hydra Vizor Mini Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer",
+      "category": "Moisturizer",
+      "description": "A mini moisturizer that works hard, so you don't have to, instantly boosting skin's hydration and moisture barrier. It improves skin's texture, tone, elasticity and the look of dark spots.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_45a98912b36badb6abe0b7f3",
+    "notes": "Live pilot case sampled from public search results (PIXI BEAUTY).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_45a98912b36badb6abe0b7f3"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_45a98912b36badb6abe0b7f3",
+      "brand": "PIXI BEAUTY",
+      "title": "Vitamin-C Tonic To-Go",
+      "category": "external",
+      "description": "Everything you love about Vitamin-C Tonic, to go! Pre-soaked, travel-friendly pads for brightening, vitamin-boosting hydration.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_03246d53c45c6dcddce7894e",
+    "notes": "Live pilot case sampled from public search results (rhode).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_03246d53c45c6dcddce7894e"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_03246d53c45c6dcddce7894e",
+      "brand": "rhode",
+      "title": "barrier restore cream",
+      "category": "Moisturizer",
+      "description": "Rich, but lightweight, cream moisturizer to comfort, soothe, and restore the skin barrier to deliver hydrated, smoother, softer skin over time. • Comforts and soothes the skin barrier • Helps improve skin dullness • Supports healthy-looking skin over time PEPTIDES — short chains of amino acids that reduce the look of…",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_36dbd5cb94c8180355473525",
+    "notes": "Live pilot case sampled from public search results (PIXI BEAUTY).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_36dbd5cb94c8180355473525"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_36dbd5cb94c8180355473525",
+      "brand": "PIXI BEAUTY",
+      "title": "Vitamin-C Trio",
+      "category": "external",
+      "description": "Radiance starts here! Meet the NEW Vitamin-C Trio, your ultimate brightening routine in one easy set.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_0790a2b67a6237a55b3a44dc",
+    "notes": "Live pilot case sampled from public search results (fenty beauty).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_0790a2b67a6237a55b3a44dc"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_0790a2b67a6237a55b3a44dc",
+      "brand": "fenty beauty",
+      "title": "Fat Water Hydrating Milky Toner Essence with Hyaluronic Acid + Tamarind",
+      "category": "Toner",
+      "description": "Fat Water has a new sis in town and she's ready to dew the most to help keep your skin's moisture barrier on lock. This toner-essence combo comes through for those looking for more hydration-its thick, milky texture is bursting with feel good, look good ingredients for some major TLC.",
+      "tags": [
+        "Toner"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_e4ad75bd225e370109c9adc9",
+    "notes": "Live pilot case sampled from public search results (fenty beauty).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_e4ad75bd225e370109c9adc9"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_e4ad75bd225e370109c9adc9",
+      "brand": "fenty beauty",
+      "title": "Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer",
+      "category": "Moisturizer",
+      "description": "Boosts skin's hydration and moisture barrier. Improves texture, tone + elasticity.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_347618bc28b9fdddcb8a3f74",
+    "notes": "Live pilot case sampled from public search results (Fenty Beauty).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_347618bc28b9fdddcb8a3f74"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_347618bc28b9fdddcb8a3f74",
+      "brand": "Fenty Beauty",
+      "title": "Day + Night Hydrating Routine: Dew N Plump Serum + Slushie Mask",
+      "category": "Serum",
+      "description": "When skin's feeling extra thirsty, give your moisture barrier a boost with skincare that hydrates, plumps + strengthens. During the day, drench your skin in hydration instantly + over time with a 3-in-1 glow serum.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_a138fbf50be4e0a1397d8360",
+    "notes": "Live pilot case sampled from public search results (rhode).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_a138fbf50be4e0a1397d8360"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_a138fbf50be4e0a1397d8360",
+      "brand": "rhode",
+      "title": "peptide glazing fluid",
+      "category": "Serum",
+      "description": "Hailey Bieber's signature step to dewy, glazed skin. Lightweight, quick-absorbing, gel serum that visibly plumps, hydrates and supports a healthy-looking skin barrier. • Hydrates and brightens skin • Instantly illuminates for a glazed finish • Visibly plumps skin over time PEPTIDE — a short chain of amino acids that s…",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_89fd8f89ad4e033bce6b98c2",
+    "notes": "Live pilot case sampled from public search results (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_89fd8f89ad4e033bce6b98c2"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_89fd8f89ad4e033bce6b98c2",
+      "brand": "Naturium",
+      "title": "Multi-Calm Cream Cleanser",
+      "category": "Cleanser",
+      "description": "Our rich, creamy cleanser is formulated with a soothing complex of colloidal oatmeal (oat kernel flour), glycerin and plant-derived squalane to gently cleanse without stripping skin. This plush formula transforms from a nourishing cream to a milky emulsion, helping calm and condition dry, sensitive and eczema-prone sk…",
+      "tags": [
+        "Cleanser"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_622a5bb516a45bba6e5332f2",
+    "notes": "Live pilot case sampled from public search results (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_622a5bb516a45bba6e5332f2"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_622a5bb516a45bba6e5332f2",
+      "brand": "Naturium",
+      "title": "Multi-Peptide Moisturizer",
+      "category": "Moisturizer",
+      "description": "Our nutrient-dense peptide moisturizer is formulated with our multi-peptide blend, encapsulated ethylated vitamin C and panthenol to target the look of fine lines and wrinkles for a more youthful looking complexion.Our Multi-Peptide Moisturizer is clinically proven to show an improvement in the look of fines lines and…",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_0affab7a55d91e31523ab65e",
+    "notes": "Live pilot case sampled from public search results (Fenty Beauty).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_0affab7a55d91e31523ab65e"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_0affab7a55d91e31523ab65e",
+      "brand": "Fenty Beauty",
+      "title": "Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer Refill",
+      "category": "Moisturizer",
+      "description": "Already have a Hydra Vizor outer holster? Cop a refill of our sheer mineral SPF moisturizer that loves on makeup!",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_dbeffb59754a117fa56b81ed",
+    "notes": "Live pilot case sampled from public search results (Fenty Beauty).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_dbeffb59754a117fa56b81ed"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_dbeffb59754a117fa56b81ed",
+      "brand": "Fenty Beauty",
+      "title": "Cherry Dub Blah 2 Bright 5% AHA Face Mask",
+      "category": "Fragrance",
+      "description": "Go from blah to bright in minutes for the instant pick-me-up your skin craves. This brightening jelly face mask is the cherry on top, with Triple Cherry Complex* and 5% AHAs that clarify and renew, leaving skin soft and smooth.",
+      "tags": [
+        "Fragrance"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_6d5788e5f8d6a753b55fc775",
+    "notes": "Live pilot case sampled from public search results (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_6d5788e5f8d6a753b55fc775"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_6d5788e5f8d6a753b55fc775",
+      "brand": "Murad",
+      "title": "Essential-C Cleanser",
+      "category": "Cleanser",
+      "description": "Energizing gel cleanser with antioxidant vitamin C technology washes away impurities and urban pollution Water/Aqua/Eau, Cocamidopropyl Betaine, Disodium Laureth Sulfosuccinate, Glycerin, Butylene Glycol, Aminomethyl Propanol, Polysorbate 20, Acrylates/C10-30 Alkyl Acrylate Crosspolymer, Panthenol, Phospholipids, Toco…",
+      "tags": [
+        "Cleanser"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_84ea0437b6a6eaadfefd613e",
+    "notes": "Live pilot case sampled from public search results (Fenty Beauty).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_84ea0437b6a6eaadfefd613e"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_84ea0437b6a6eaadfefd613e",
+      "brand": "Fenty Beauty",
+      "title": "The Daily Duo Mini Cleanser + Toner Serum Duo",
+      "category": "Cleanser",
+      "description": "Meet your mini juiced-up multitaskers made to cleanse and tone wherever you go. Gently cleanse and remove makeup with a plush, cream lather that leaves skin clean and soft.",
+      "tags": [
+        "Cleanser"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_f9aacedb8fabd3bdb4df77d1",
+    "notes": "Live pilot case sampled from public search results (Fenty Beauty).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_f9aacedb8fabd3bdb4df77d1"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_f9aacedb8fabd3bdb4df77d1",
+      "brand": "Fenty Beauty",
+      "title": "Grip Trip Mattifying + Blurring Primer",
+      "category": "external",
+      "description": "Meet the makeup gripper that delivers all-day shine-control and blurring. This powerhouse ingredient-packed formula puts an end to makeup meltdowns with its dual-action skincare and primer swirl.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_ee8920efe0236c4e1f560b77",
+    "notes": "Live pilot case sampled from public search results (PIXI BEAUTY).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_ee8920efe0236c4e1f560b77"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_ee8920efe0236c4e1f560b77",
+      "brand": "PIXI BEAUTY",
+      "title": "+C Vit UnderEye Brightener",
+      "category": "external",
+      "description": "Refresh and energize tired eyes with Pixi +C Vit UnderEye Brightener. This blurring eye perfector brightens, soothes and restores radiance in a flash.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_7cd2e963c1c5a0bb68515391",
+    "notes": "Live pilot case sampled from public search results (Beekman 1802).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_7cd2e963c1c5a0bb68515391"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_7cd2e963c1c5a0bb68515391",
+      "brand": "Beekman 1802",
+      "title": "Honeyed Grapefruit Face Wipes",
+      "category": "Fragrance",
+      "description": "Ah, the sweet, refreshing goodness of grapefruit—now for your face! These moisture-rich wipes use natural citrus oil to remove grime & makeup and are packed with goat milk and aloe to refresh and moisturize dry skin.",
+      "tags": [
+        "Fragrance"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_55f9dc6bd5387fcdb05800ef",
+    "notes": "Live pilot case sampled from public search results (INNBEAUTY PROJECT).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_55f9dc6bd5387fcdb05800ef"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_55f9dc6bd5387fcdb05800ef",
+      "brand": "INNBEAUTY PROJECT",
+      "title": "Extreme Cream Eye",
+      "category": "Moisturizer",
+      "description": "The most clinically effective, high performance eye cream on the market. This potent eye treatment goes above and beyond to target loss of firmness, drooping & sagging, puffiness, deep wrinkles and more.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_5837040829d6e6e8b5e72bde",
+    "notes": "Live pilot case sampled from public search results (Fenty Beauty).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_5837040829d6e6e8b5e72bde"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_5837040829d6e6e8b5e72bde",
+      "brand": "Fenty Beauty",
+      "title": "Big On Hydration: Milky Toner, Face Mask + Lip Mask Trio",
+      "category": "Toner",
+      "description": "Whether you're on a red-eye or headed to bed, grab this skincare + lip care trio for replenished, juicy skin. Instantly hydrate, nourish + condition with a milky toner.",
+      "tags": [
+        "Toner"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_0139a5d67996f020b7d61658",
+    "notes": "Live pilot case sampled from public search results (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_0139a5d67996f020b7d61658"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_0139a5d67996f020b7d61658",
+      "brand": "Murad",
+      "title": "Retinol Youth Renewal Night Cream",
+      "category": "Moisturizer",
+      "description": "Improves the look of wrinkles while intensely hydrating Water/Aqua/Eau, Isostearyl Hydroxystearate, Caprylic/Capric Triglyceride, Propanediol, Butylene Glycol, C14-22 Alcohols, Cetyl Alcohol, Dimethicone, Polymethylsilsesquioxane, Niacinamide, Hydrolyzed Yeast Extract, Retinol, Retinyl Propionate, Oleyl Alcohol, Sodiu…",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_e8efe5711d3c8477861d3236",
+    "notes": "Live pilot case sampled from public search results (PIXI BEAUTY).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_e8efe5711d3c8477861d3236"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_e8efe5711d3c8477861d3236",
+      "brand": "PIXI BEAUTY",
+      "title": "Complexion Heroes",
+      "category": "Serum",
+      "description": "Refresh, hydrate and Glow with this makeup trio. Includes On-the-Glow BASE, BRONZER and Correction Concentrate for a flawless, radiant look.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_3854457958964edbdd8bfe5b",
+    "notes": "Live pilot case sampled from public search results (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3854457958964edbdd8bfe5b"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3854457958964edbdd8bfe5b",
+      "brand": "Murad",
+      "title": "Essential-C Firming Radiance Day Cream",
+      "category": "Moisturizer",
+      "description": "Clinically proven to immediately hydrate and nourish, while brightening skin in 4 weeks Water/Aqua/Eau, Glycerin, Ethylhexyl Olivate, Polyglyceryl-6 Distearate, Butylene Glycol, Butyrospermum Parkii (Shea) Butter, Vitis Vinifera (Grape) Seed Oil, Niacinamide, Propanediol, Dipentaerythrityl Hexa C5-9 Acid Esters, Anana…",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_99ee7bd7905d75d9f404a54e",
+    "notes": "Live pilot case sampled from public search results (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_99ee7bd7905d75d9f404a54e"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_99ee7bd7905d75d9f404a54e",
+      "brand": "Naturium",
+      "title": "Retinaldehyde Cream Serum 0.15%",
+      "category": "Serum",
+      "description": "Our results-driven serum is formulated with an increased level of sustained-release retinaldehyde at 0.15%. This next-gen retinol directly converts to retinoic acid, which visibly addresses the look of fine lines, uneven tone and texture.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_cef8b0396118372c4ea059c7",
+    "notes": "Live pilot case sampled from public search results (Fenty Beauty).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_cef8b0396118372c4ea059c7"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_cef8b0396118372c4ea059c7",
+      "brand": "Fenty Beauty",
+      "title": "Fenty Skin Dry Skin Start’rs Full-Size Bundle with Mineral SPF",
+      "category": "Cleanser",
+      "description": "It’s a clean, clinically backed routine made to gently cleanse, snatch pores and deeply hydrate while protecting skin from the sun—perfect for all, especially dry skin. Purify + refine pores with Total Cleans'r Remove-It-All Cleanser Keep skin’s moisture barrier on lock with Fat Water Hydrating Milky Toner Essence Loc…",
+      "tags": [
+        "Cleanser"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_da64dae4a43dca18482b1cf7",
+    "notes": "Live pilot case sampled from public search results (Fenty Beauty).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_da64dae4a43dca18482b1cf7"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_da64dae4a43dca18482b1cf7",
+      "brand": "Fenty Beauty",
+      "title": "Fenty Skin Start’rs Full-Size Bundle",
+      "category": "Cleanser",
+      "description": "Your best skin to the power of three: max-out your daily pore care with this clean, clinically-backed system that tightens the look of pores, brightens, hydrates, smooths—and improves—with every use. GET CLEAR : Detox pores and wash it all off without stripping skin with Total Cleans’r, our 2-in-1 makeup-removing deep…",
+      "tags": [
+        "Cleanser"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_83c2013cadd3c5f2a1eca489",
+    "notes": "Live pilot case sampled from public search results (INNBEAUTY PROJECT).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_83c2013cadd3c5f2a1eca489"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_83c2013cadd3c5f2a1eca489",
+      "brand": "INNBEAUTY PROJECT",
+      "title": "Slushy",
+      "category": "Serum",
+      "description": "For hydrated, Smooth & Poreless looking skin. A unique texture with all the benefits of a serum & moisturizer, in one.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_a1dbd3ccfbbd0e34ded0dcf0",
+    "notes": "Live pilot case sampled from public search results (Naturium).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_a1dbd3ccfbbd0e34ded0dcf0"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_a1dbd3ccfbbd0e34ded0dcf0",
+      "brand": "Naturium",
+      "title": "Multi-Peptide Rich Cream",
+      "category": "Moisturizer",
+      "description": "Our ultra-rich cream is formulated with an advanced multi-peptide blend to intensely nourish, smooth and firm skin's appearance. An innovative combination of palmitoyl pentapeptide-4, copper tripeptide-1 and encapsulated ferulic acid help target fine lines and wrinkles for a more youthful-looking complexion.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_a9ec7261c9f3c77391e2ba27",
+    "notes": "Live pilot case sampled from public search results (PIXI BEAUTY).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_a9ec7261c9f3c77391e2ba27"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_a9ec7261c9f3c77391e2ba27",
+      "brand": "PIXI BEAUTY",
+      "title": "12 Days of Icons Calendar",
+      "category": "external",
+      "description": "Celebrate festive radiance with 12 Pixi favourites to hydrate, brighten and elevate your skin, lips, eyes and overall Glow this season. Grab this new Pixi Advent Calendar before it sells out.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_84a059697ff178378475a0fe",
+    "notes": "Live pilot case sampled from public search results (Fenty Beauty).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_84a059697ff178378475a0fe"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_84a059697ff178378475a0fe",
+      "brand": "Fenty Beauty",
+      "title": "Fenty Skin Dry Skin Start’rs Full-Size Bundle",
+      "category": "Cleanser",
+      "description": "Get a drip of exxxtra hydration, especially on days when your skin is feeling hella parched. This daily pore-busting regimen is a clean, clinically-backed system that tightens the look of pores, hydrates, softens + strengthens skin’s moisture barrier in 3 simple steps.",
+      "tags": [
+        "Cleanser"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_22a273cd014dc3b45b1258e1",
+    "notes": "Live pilot case sampled from public search results (Beekman 1802).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_22a273cd014dc3b45b1258e1"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_22a273cd014dc3b45b1258e1",
+      "brand": "Beekman 1802",
+      "title": "Lavender Face Wipes",
+      "category": "Fragrance",
+      "description": "Get ooh la la clean! With a pack of our goat milk wipes in your purse, gym bag, car (or wherever), you can freshen up anytime!",
+      "tags": [
+        "Fragrance"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_06902b9361903190801cd334",
+    "notes": "Live pilot case sampled from public search results (Beekman 1802).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_06902b9361903190801cd334"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_06902b9361903190801cd334",
+      "brand": "Beekman 1802",
+      "title": "Fresh Air Face Wipes",
+      "category": "Fragrance",
+      "description": "Get ooh la la clean! With a pack of our goat milk wipes in your purse, gym bag, car (or wherever), you can freshen up anytime!",
+      "tags": [
+        "Fragrance"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_344ca2fa3e798ff35e39acce",
+    "notes": "Live pilot case sampled from public search results (Beekman 1802).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_344ca2fa3e798ff35e39acce"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_344ca2fa3e798ff35e39acce",
+      "brand": "Beekman 1802",
+      "title": "Vanilla Absolute Face Wipes",
+      "category": "Fragrance",
+      "description": "Get ooh la la clean! With a pack of our goat milk wipes in your purse, gym bag, car (or wherever), you can freshen up anytime!",
+      "tags": [
+        "Fragrance"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_f3cb447284bc06d9bdde776a",
+    "notes": "Live pilot case sampled from public search results (Skin1004).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_f3cb447284bc06d9bdde776a"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_f3cb447284bc06d9bdde776a",
+      "brand": "Skin1004",
+      "title": "Poremizing Quick Clay Stick Mask",
+      "category": "Powder",
+      "description": "A smooth stick mask with 5 kinds of clays (18% Kaolin) and fine Red bean powder to soak up excess sebum and tightens enlarged pores. Product Benefits: Calming, Pore Tightening, Mild exfoliating Skin Type: Oily, Normal, Combination Key",
+      "tags": [
+        "Powder"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_1167b3a9116bd20eef96bd8f",
+    "notes": "Live pilot case sampled from public search results (Beekman 1802).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_1167b3a9116bd20eef96bd8f"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_1167b3a9116bd20eef96bd8f",
+      "brand": "Beekman 1802",
+      "title": "Oh! Mega Milky Oil Fermented Barrier Boosting Facial Oil",
+      "category": "Moisturizer",
+      "description": "Oh! Mega Milky Oil, our lightweight, fast-absorbing treatment that delivers mega hydration and a lasting glass skin glow —without the grease, heaviness, or pore-clogging you get from traditional oils.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_3673e358171daba9b30f1543",
+    "notes": "Live pilot case sampled from public search results (Beekman 1802).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3673e358171daba9b30f1543"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3673e358171daba9b30f1543",
+      "brand": "Beekman 1802",
+      "title": "Honey & Orange Blossom Face Wipes",
+      "category": "Fragrance",
+      "description": "Get ooh la la clean! With a pack of our goat milk wipes in your purse, gym bag, car (or wherever), you can freshen up anytime.",
+      "tags": [
+        "Fragrance"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_d4b52c2dad8f0c8ac77ff7ac",
+    "notes": "Live pilot case sampled from public search results (Haruharu Wonder).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_d4b52c2dad8f0c8ac77ff7ac"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_d4b52c2dad8f0c8ac77ff7ac",
+      "brand": "Haruharu Wonder",
+      "title": "Daily Soothing Sun Shield SPF50+ PA++++",
+      "category": "external",
+      "description": "Benefits: A white-cast free vegan chemical sun stick with broad spectrum SPF50+ PA++++ to provide UVA and UVB protection to shield skin from sunburn, early aging and environmental stress. Formulated with patented fermented bamboo shoot extract and Ecotin to deliver nourishment and hydration to skin, while replenishing…",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_f68ae6b7ff74dc3ee8f517f4",
+    "notes": "Live pilot case sampled from public search results (INNBEAUTY PROJECT).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_f68ae6b7ff74dc3ee8f517f4"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_f68ae6b7ff74dc3ee8f517f4",
+      "brand": "INNBEAUTY PROJECT",
+      "title": "Calm The Red Down",
+      "category": "Serum",
+      "description": "Calm the Red Down delivers the ultimate solution for redness & blotchiness with 2 formulas in 1 product. Designed to seamlessly fit into any AM or PM routine, this dual-chamber treatment provides instant redness correction and long term results.",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  }
+]

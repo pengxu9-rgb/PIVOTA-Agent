@@ -1,0 +1,232 @@
+[
+  {
+    "case_id": "live_ext_3245669fb069e47c505ddb66",
+    "notes": "Live pilot case sampled from public search results (PIXI BEAUTY).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3245669fb069e47c505ddb66"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_3245669fb069e47c505ddb66",
+      "brand": "PIXI BEAUTY",
+      "title": "+C Vit Brightening Trio",
+      "category": "Lip Balm",
+      "description": "Glow instantly with this Vitamin C infused trio. Includes priming oil, brightening perfector and lip balm for nourished, radiant skin.",
+      "tags": [
+        "Lip Balm"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_2bdac5cdc338cccaae873a5b",
+    "notes": "Live pilot case sampled from public search results (PIXI BEAUTY).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_2bdac5cdc338cccaae873a5b"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_2bdac5cdc338cccaae873a5b",
+      "brand": "PIXI BEAUTY",
+      "title": "Vitamin-C LipPatch",
+      "category": "external",
+      "description": "Instantly hydrating and cooling lip patch.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_711d563a490f37378d057211",
+    "notes": "Live pilot case sampled from public search results (Fenty Beauty).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_711d563a490f37378d057211"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_711d563a490f37378d057211",
+      "brand": "Fenty Beauty",
+      "title": "Lux Balm Ultra-Hydrating Cherry Lip Balm with Barbados Cherry + Vitamin E",
+      "category": "Lip Balm",
+      "description": "Keep talkin' your s***-just make sure you do it with soft, smooth lips. This juicy, Barbados Cherry-powered lip balm brings dry, chapped lips back to life with instant hydration.",
+      "tags": [
+        "Lip Balm"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_72d2c56b07e2af3c3082a0d9",
+    "notes": "Live pilot case sampled from public search results (PIXI BEAUTY).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_72d2c56b07e2af3c3082a0d9"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_72d2c56b07e2af3c3082a0d9",
+      "brand": "PIXI BEAUTY",
+      "title": "Radiant Skin Antioxidant Trio",
+      "category": "external",
+      "description": "Revitalize your skin routine with this glow-boosting trio designed to cleanse, nourish & brighten. Delivering hydration, radiance & protection in every step!",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_2e849c9f45f833f00c888b65",
+    "notes": "Live pilot case sampled from public search results (PIXI BEAUTY).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_2e849c9f45f833f00c888b65"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_2e849c9f45f833f00c888b65",
+      "brand": "PIXI BEAUTY",
+      "title": "Vitamin-C LipPatch (Set of 3)",
+      "category": "external",
+      "description": "Instantly hydrating and cooling lip patch.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_6c2feb5d6e43c9362d6a2254",
+    "notes": "Live pilot case sampled from public search results (https://www.firstaidbeauty.com/products/whole-body-deodorant-cream).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_6c2feb5d6e43c9362d6a2254"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_6c2feb5d6e43c9362d6a2254",
+      "brand": "https://www.firstaidbeauty.com/products/whole-body-deodorant-cream",
+      "title": "Whole Body Deodorant Cream",
+      "category": "Moisturizer",
+      "description": "A whole body deodorant cream with 24-hour odor control. This invisible, aluminum-free formula keeps you feeling dry + fresh with a light citrus scent.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_618a5cf368a153492c14b151",
+    "notes": "Live pilot case sampled from public search results (PIXI BEAUTY).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_618a5cf368a153492c14b151"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_618a5cf368a153492c14b151",
+      "brand": "PIXI BEAUTY",
+      "title": "Mini Vitamin-C Tonic",
+      "category": "Toner",
+      "description": "A daily facial toner that contains Vitamin-C, a potent Antioxidant that is known to boost skin luminosity.",
+      "tags": [
+        "Toner"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_36dbd5cb94c8180355473525",
+    "notes": "Live pilot case sampled from public search results (PIXI BEAUTY).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_36dbd5cb94c8180355473525"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_36dbd5cb94c8180355473525",
+      "brand": "PIXI BEAUTY",
+      "title": "Vitamin-C Trio",
+      "category": "external",
+      "description": "Radiance starts here! Meet the NEW Vitamin-C Trio, your ultimate brightening routine in one easy set.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_5837040829d6e6e8b5e72bde",
+    "notes": "Live pilot case sampled from public search results (Fenty Beauty).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_5837040829d6e6e8b5e72bde"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_5837040829d6e6e8b5e72bde",
+      "brand": "Fenty Beauty",
+      "title": "Big On Hydration: Milky Toner, Face Mask + Lip Mask Trio",
+      "category": "Toner",
+      "description": "Whether you're on a red-eye or headed to bed, grab this skincare + lip care trio for replenished, juicy skin. Instantly hydrate, nourish + condition with a milky toner.",
+      "tags": [
+        "Toner"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_a9ec7261c9f3c77391e2ba27",
+    "notes": "Live pilot case sampled from public search results (PIXI BEAUTY).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_a9ec7261c9f3c77391e2ba27"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_a9ec7261c9f3c77391e2ba27",
+      "brand": "PIXI BEAUTY",
+      "title": "12 Days of Icons Calendar",
+      "category": "external",
+      "description": "Celebrate festive radiance with 12 Pixi favourites to hydrate, brighten and elevate your skin, lips, eyes and overall Glow this season. Grab this new Pixi Advent Calendar before it sells out.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  }
+]

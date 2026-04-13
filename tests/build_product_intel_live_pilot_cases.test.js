@@ -11,6 +11,7 @@ const {
   fetchDiscoveryCandidates,
   fetchPdpResponse,
   hasBadgeEvidence,
+  isBeautyPilotCase,
   loadCoveredProductIdSet,
   loadCoveredProductIdSetFromReport,
   loadManualOverrideProductIdSet,
@@ -84,6 +85,55 @@ describe('build_product_intel_live_pilot_cases', () => {
     expect(Array.from(loadCoveredProductIdSetFromReport(tmpReport))).toEqual(['prod_a']);
   });
 
+  test('loads covered product ids from final reviewed reports in a directory', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const tmpDir = '/tmp/build-product-intel-covered-report-dir';
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.mkdirSync(path.join(tmpDir, 'nested'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, 'compare_gemini3flash.json'),
+      JSON.stringify({
+        rows: [
+          {
+            selected: {
+              bundle: {
+                canonical_product_ref: {
+                  product_id: 'should_ignore',
+                },
+              },
+            },
+          },
+        ],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, 'nested', 'compare_final_reviewed.json'),
+      JSON.stringify({
+        rows: [
+          {
+            selected: {
+              bundle: {
+                canonical_product_ref: {
+                  product_id: 'prod_dir_a',
+                },
+              },
+            },
+          },
+          {
+            baseline: {
+              canonical_product_ref: {
+                product_id: 'prod_dir_b',
+              },
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(Array.from(loadCoveredProductIdSetFromReport(tmpDir)).sort()).toEqual(['prod_dir_a', 'prod_dir_b']);
+  });
+
   test('loads covered product ids from manual overrides', () => {
     const tmpOverrides = '/tmp/build-product-intel-manual-overrides.json';
     require('fs').writeFileSync(
@@ -96,6 +146,30 @@ describe('build_product_intel_live_pilot_cases', () => {
     );
 
     expect(Array.from(loadManualOverrideProductIdSet(tmpOverrides)).sort()).toEqual(['ext_alpha', 'ext_beta']);
+  });
+
+  test('accepts beauty pilot cases and rejects obvious non-beauty drift', () => {
+    expect(
+      isBeautyPilotCase({
+        product: {
+          title: 'Barrier Repair Moisturizer',
+          category: 'Moisturizer',
+          description: 'Ceramide cream for dry skin.',
+          tags: ['skincare'],
+        },
+      }),
+    ).toBe(true);
+
+    expect(
+      isBeautyPilotCase({
+        product: {
+          title: 'Escape-Proof Dog Harness for Small Dogs',
+          category: 'Dog Harness',
+          description: 'Pet supplies for walks.',
+          tags: ['pet supplies'],
+        },
+      }),
+    ).toBe(false);
   });
 
   test('selects a diverse subset across brands and categories', () => {

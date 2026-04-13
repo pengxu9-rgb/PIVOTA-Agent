@@ -1,0 +1,305 @@
+[
+  {
+    "case_id": "live_ext_6867a9623d618fc1ec281452",
+    "notes": "Live pilot case sampled from public search results (Murad).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_6867a9623d618fc1ec281452"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_6867a9623d618fc1ec281452",
+      "brand": "Murad",
+      "title": "Vita-C Glycolic Serum",
+      "category": "Serum",
+      "description": "Gold-stabilized vitamin C and glycolic acid serum for dramatically brighter, healthier-looking skin Water/Aqua/Eau, Glycerin, Caprylic/Capric Triglyceride, Glycolic Acid, Dimethicone, HDI/Trimethylol Hexyllactone Crosspolymer, Diisopropyl Sebacate, C13-16 Isoparaffin, Sodium Hydroxide, Polyacrylate Crosspolymer-6, Lac…",
+      "tags": [
+        "Serum"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": "",
+      "community_signals": {
+        "status": "unavailable"
+      },
+      "evidence_profile": "seller_only"
+    }
+  },
+  {
+    "case_id": "live_ext_863f6f847c2b89f4f6bb4c79",
+    "notes": "Live pilot case sampled from public search results (SKINTIFIC).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_863f6f847c2b89f4f6bb4c79"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_863f6f847c2b89f4f6bb4c79",
+      "brand": "SKINTIFIC",
+      "title": "Glow Bright Day Cream",
+      "category": "Moisturizer",
+      "description": "GLOW BRIGHT DAY CREAM, your daily moisturizer for an instant natural bright, long lasting hydration, and fresh-looking complexion. Instant Buildable Tone-Up to enhance skin’s natural glow without cakey or white cast effect, adjustable tone-up to suit your look.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_ff921a71e82806843dcc67cd",
+    "notes": "Live pilot case sampled from public search results (Fenty Beauty).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_ff921a71e82806843dcc67cd"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_ff921a71e82806843dcc67cd",
+      "brand": "Fenty Beauty",
+      "title": "Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill — 5",
+      "category": "Moisturizer",
+      "description": "Already have a Hydra Vizor refillable case? This is your refill of a moisturizer that works hard, so you don’t have to, instantly boosting skin's hydration.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_711d563a490f37378d057211",
+    "notes": "Live pilot case sampled from public search results (Fenty Beauty).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_711d563a490f37378d057211"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_711d563a490f37378d057211",
+      "brand": "Fenty Beauty",
+      "title": "Lux Balm Ultra-Hydrating Cherry Lip Balm with Barbados Cherry + Vitamin E",
+      "category": "Lip Balm",
+      "description": "Keep talkin' your s***-just make sure you do it with soft, smooth lips. This juicy, Barbados Cherry-powered lip balm brings dry, chapped lips back to life with instant hydration.",
+      "tags": [
+        "Lip Balm"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_72d2c56b07e2af3c3082a0d9",
+    "notes": "Live pilot case sampled from public search results (PIXI BEAUTY).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_72d2c56b07e2af3c3082a0d9"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_72d2c56b07e2af3c3082a0d9",
+      "brand": "PIXI BEAUTY",
+      "title": "Radiant Skin Antioxidant Trio",
+      "category": "external",
+      "description": "Revitalize your skin routine with this glow-boosting trio designed to cleanse, nourish & brighten. Delivering hydration, radiance & protection in every step!",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_2a7f0f4aac89565439078194",
+    "notes": "Live pilot case sampled from public search results (Supergoop!).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_2a7f0f4aac89565439078194"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_2a7f0f4aac89565439078194",
+      "brand": "Supergoop!",
+      "title": "PLAY Antioxidant Body Mist SPF 30 with Vitamin C",
+      "category": "Toner",
+      "description": "A weightless, non-aerosol sunscreen body spray that’s water- & sweat-resistant & leaves skin radiantly glowing.",
+      "tags": [
+        "Toner"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_52bf3996675b121b766c4303",
+    "notes": "Live pilot case sampled from public search results (Supergoop!).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_52bf3996675b121b766c4303"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_52bf3996675b121b766c4303",
+      "brand": "Supergoop!",
+      "title": "PLAY Antioxidant Body Mist SPF 50 with Vitamin C",
+      "category": "Toner",
+      "description": "A weightless, non-aerosol sunscreen body spray that is water & sweat-resistant & leaves skin radiantly glowing.",
+      "tags": [
+        "Toner"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_a13978756fd71db7c7e86c2e",
+    "notes": "Live pilot case sampled from public search results (PIXI BEAUTY).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_a13978756fd71db7c7e86c2e"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_a13978756fd71db7c7e86c2e",
+      "brand": "PIXI BEAUTY",
+      "title": "Pixi Ultimate Starter Kit",
+      "category": "external",
+      "description": "Discover the ultimate Pixi Mini Starter Kit to cleanse, hydrate, prime and add a personalized Glow with mini skincare and makeup favourites. Brightening Clarifying Hydrating Youth Enhancing Glow Enhancing Soothing Brand Story Press Loyalty Program Subscribe & Save Special Offers Flawless Beauty Primer • \"This keeps dr…",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_618a5cf368a153492c14b151",
+    "notes": "Live pilot case sampled from public search results (PIXI BEAUTY).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_618a5cf368a153492c14b151"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_618a5cf368a153492c14b151",
+      "brand": "PIXI BEAUTY",
+      "title": "Mini Vitamin-C Tonic",
+      "category": "Toner",
+      "description": "A daily facial toner that contains Vitamin-C, a potent Antioxidant that is known to boost skin luminosity.",
+      "tags": [
+        "Toner"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_36dbd5cb94c8180355473525",
+    "notes": "Live pilot case sampled from public search results (PIXI BEAUTY).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_36dbd5cb94c8180355473525"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_36dbd5cb94c8180355473525",
+      "brand": "PIXI BEAUTY",
+      "title": "Vitamin-C Trio",
+      "category": "external",
+      "description": "Radiance starts here! Meet the NEW Vitamin-C Trio, your ultimate brightening routine in one easy set.",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_344ca2fa3e798ff35e39acce",
+    "notes": "Live pilot case sampled from public search results (Beekman 1802).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_344ca2fa3e798ff35e39acce"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_344ca2fa3e798ff35e39acce",
+      "brand": "Beekman 1802",
+      "title": "Vanilla Absolute Face Wipes",
+      "category": "Fragrance",
+      "description": "Get ooh la la clean! With a pack of our goat milk wipes in your purse, gym bag, car (or wherever), you can freshen up anytime!",
+      "tags": [
+        "Fragrance"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_1167b3a9116bd20eef96bd8f",
+    "notes": "Live pilot case sampled from public search results (Beekman 1802).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_1167b3a9116bd20eef96bd8f"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_1167b3a9116bd20eef96bd8f",
+      "brand": "Beekman 1802",
+      "title": "Oh! Mega Milky Oil Fermented Barrier Boosting Facial Oil",
+      "category": "Moisturizer",
+      "description": "Oh! Mega Milky Oil, our lightweight, fast-absorbing treatment that delivers mega hydration and a lasting glass skin glow —without the grease, heaviness, or pore-clogging you get from traditional oils.",
+      "tags": [
+        "Moisturizer"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  },
+  {
+    "case_id": "live_ext_d4b52c2dad8f0c8ac77ff7ac",
+    "notes": "Live pilot case sampled from public search results (Haruharu Wonder).",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_d4b52c2dad8f0c8ac77ff7ac"
+    },
+    "product": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_d4b52c2dad8f0c8ac77ff7ac",
+      "brand": "Haruharu Wonder",
+      "title": "Daily Soothing Sun Shield SPF50+ PA++++",
+      "category": "external",
+      "description": "Benefits: A white-cast free vegan chemical sun stick with broad spectrum SPF50+ PA++++ to provide UVA and UVB protection to shield skin from sunburn, early aging and environmental stress. Formulated with patented fermented bamboo shoot extract and Ecotin to deliver nourishment and hydration to skin, while replenishing…",
+      "tags": [
+        "external"
+      ],
+      "texture": "",
+      "finish": "",
+      "ingredients_inci": [],
+      "how_to_use": ""
+    }
+  }
+]

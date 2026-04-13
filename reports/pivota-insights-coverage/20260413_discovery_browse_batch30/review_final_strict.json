@@ -1,0 +1,1353 @@
+{
+  "meta": {
+    "generated_at": "2026-04-13T00:50:03.424Z",
+    "total_rows": 81,
+    "hybrid_gemini": 71,
+    "manual_override": 10,
+    "baseline_only": 0,
+    "pass": 71,
+    "rewrite": 10
+  },
+  "rows": [
+    {
+      "case_id": "live_ext_9d49c27d0d53a1f734405985",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_9d49c27d0d53a1f734405985"
+      },
+      "title": "Naturium Niacinamide Gel Cream 5%",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_d6716f08ba30aa68ed0120db",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_d6716f08ba30aa68ed0120db"
+      },
+      "title": "Haruharu Wonder 5% Niacinamide Radiance Gel Cream / Unscented 40g",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_f2f0f159377aa5d2a9613e32",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_f2f0f159377aa5d2a9613e32"
+      },
+      "title": "Haruharu Wonder 5% Niacinamide Radiance Gel Cream / Unscented",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_d02c475630a8ac959414164a",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_d02c475630a8ac959414164a"
+      },
+      "title": "Round Lab Vita Niacinamide Dark Spot Serum",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_7dde43f585bdccdbb85c9987",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_7dde43f585bdccdbb85c9987"
+      },
+      "title": "Round Lab Vita Niacinamide Dark Spot Cream",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_daaf898179ef2c982fec210b",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_daaf898179ef2c982fec210b"
+      },
+      "title": "Round Lab Vita Niacinamide Dark Spot Serum Mask",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_93dd0ade75cfa764e50af653",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_93dd0ade75cfa764e50af653"
+      },
+      "title": "Skin1004 Niacinamide 10 Boosting Shot Ampoule",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_61beb592d2642087c6cde62d",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_61beb592d2642087c6cde62d"
+      },
+      "title": "Beauty of Joseon Glow Serum : Propolis + Niacinamide",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_01c4ed04453742e87fc916be",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_01c4ed04453742e87fc916be"
+      },
+      "title": "PIXI BEAUTY Roll-On BeautifEYE Serum Original Size",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_2491354e29719351d231f1c1",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_2491354e29719351d231f1c1"
+      },
+      "title": "Fenty Beauty Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill — 4",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_6867a9623d618fc1ec281452",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_6867a9623d618fc1ec281452"
+      },
+      "title": "Murad Vita-C Glycolic Serum",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_78459078c41984b4f03eb5f5",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_78459078c41984b4f03eb5f5"
+      },
+      "title": "Then I Met You Renewing Rich Beauty Cream",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_b63676ffc027492f7e986a71",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_b63676ffc027492f7e986a71"
+      },
+      "title": "Fenty Beauty Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill — 7",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_3245669fb069e47c505ddb66",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_3245669fb069e47c505ddb66"
+      },
+      "title": "PIXI BEAUTY +C Vit Brightening Trio",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Strict human QA override: the brightening trio was over-collapsed into a makeup bucket, so the rewrite keeps the vitamin C set definition explicit.",
+      "selected_mode": "manual_override",
+      "fail_reasons": [
+        "missing_candidate"
+      ]
+    },
+    {
+      "case_id": "live_ext_2935aafbdb707cb9627bb12a",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_2935aafbdb707cb9627bb12a"
+      },
+      "title": "BYOMA Moisturising Gel Cream",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_6172c87c5e9f44a3267dce77",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_6172c87c5e9f44a3267dce77"
+      },
+      "title": "INNBEAUTY PROJECT Green Machine Serum",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_08cdab51db0a83ffaa514f96",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_08cdab51db0a83ffaa514f96"
+      },
+      "title": "Beekman 1802 Mini Oil Eliminating Foaming Gel Cleanser",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_4237c58a7ddf21d66c3136da",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_4237c58a7ddf21d66c3136da"
+      },
+      "title": "Fenty Beauty Hydra Vizor Huez SPF 30 Refillable Tinted Moisturizer Set",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_863f6f847c2b89f4f6bb4c79",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_863f6f847c2b89f4f6bb4c79"
+      },
+      "title": "SKINTIFIC Glow Bright Day Cream",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_320e1c59d56aa230a7996d8b",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_320e1c59d56aa230a7996d8b"
+      },
+      "title": "Fenty Beauty Dew N Plump Hydrating Nectar Glow Serum",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_ff921a71e82806843dcc67cd",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_ff921a71e82806843dcc67cd"
+      },
+      "title": "Fenty Beauty Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill — 5",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_2bdac5cdc338cccaae873a5b",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_2bdac5cdc338cccaae873a5b"
+      },
+      "title": "PIXI BEAUTY Vitamin-C LipPatch",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Strict human QA override: the single lip patch was mislabeled as makeup, so the rewrite keeps it as a targeted lip-care treatment.",
+      "selected_mode": "manual_override",
+      "fail_reasons": [
+        "missing_candidate"
+      ]
+    },
+    {
+      "case_id": "live_ext_711d563a490f37378d057211",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_711d563a490f37378d057211"
+      },
+      "title": "Fenty Beauty Lux Balm Ultra-Hydrating Cherry Lip Balm with Barbados Cherry + Vitamin E",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Strict human QA override: pro pass still left the lip balm framed as a generic makeup product, so the rewrite keeps it as a cherry-led lip-care step.",
+      "selected_mode": "manual_override",
+      "fail_reasons": [
+        "missing_candidate"
+      ]
+    },
+    {
+      "case_id": "live_ext_72d2c56b07e2af3c3082a0d9",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_72d2c56b07e2af3c3082a0d9"
+      },
+      "title": "PIXI BEAUTY Radiant Skin Antioxidant Trio",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Strict human QA override: the antioxidant trio kept collapsing into a generic product label, so the rewrite anchors it as a 3-step radiance set.",
+      "selected_mode": "manual_override",
+      "fail_reasons": [
+        "missing_candidate"
+      ]
+    },
+    {
+      "case_id": "live_ext_2a7f0f4aac89565439078194",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_2a7f0f4aac89565439078194"
+      },
+      "title": "Supergoop! PLAY Antioxidant Body Mist SPF 30 with Vitamin C",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_52bf3996675b121b766c4303",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_52bf3996675b121b766c4303"
+      },
+      "title": "Supergoop! PLAY Antioxidant Body Mist SPF 50 with Vitamin C",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_60bf699a1258676327b5d50b",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_60bf699a1258676327b5d50b"
+      },
+      "title": "Fenty Beauty Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill — 8",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_6c478dfd39b4b7fd70731a1a",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_6c478dfd39b4b7fd70731a1a"
+      },
+      "title": "Fenty Beauty Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill — 3",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_2e849c9f45f833f00c888b65",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_2e849c9f45f833f00c888b65"
+      },
+      "title": "PIXI BEAUTY Vitamin-C LipPatch (Set of 3)",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Strict human QA override: the 3-pack lip patch set was still framed as makeup, so the rewrite keeps it as a multi-piece lip-treatment set.",
+      "selected_mode": "manual_override",
+      "fail_reasons": [
+        "missing_candidate"
+      ]
+    },
+    {
+      "case_id": "live_ext_37d72074ffc0909d307b03c8",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_37d72074ffc0909d307b03c8"
+      },
+      "title": "Beekman 1802 Milk RX Advanced Better Aging Cream",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_bcfc49c06e49e3cf28766ad3",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_bcfc49c06e49e3cf28766ad3"
+      },
+      "title": "Fenty Beauty Cherry Dub BHA Toner with Salicylic Acid + Aloe Juice",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review; remaining weak_routine_fit did not block seller-grounded publish.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [
+        "weak_routine_fit"
+      ]
+    },
+    {
+      "case_id": "live_ext_702ed1fa5de40d0ebf9552c9",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_702ed1fa5de40d0ebf9552c9"
+      },
+      "title": "Fenty Beauty Thicc N Smooth Rich Peptide Eye Cream",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_a13978756fd71db7c7e86c2e",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_a13978756fd71db7c7e86c2e"
+      },
+      "title": "PIXI BEAUTY Pixi Ultimate Starter Kit",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review; remaining weak_routine_fit did not block seller-grounded publish.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [
+        "weak_routine_fit"
+      ]
+    },
+    {
+      "case_id": "live_ext_c28c5385f2c9160838862b86",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_c28c5385f2c9160838862b86"
+      },
+      "title": "Murad Retinal ReSculpt Overnight Cream",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_1a5c7c01e42108d25d893b27",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_1a5c7c01e42108d25d893b27"
+      },
+      "title": "Tom Ford Beauty Architecture Radiance Hydrating Foundation Broad Spectrum SPF 50+",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_6c2feb5d6e43c9362d6a2254",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_6c2feb5d6e43c9362d6a2254"
+      },
+      "title": "https://www.firstaidbeauty.com/products/whole-body-deodorant-cream Whole Body Deodorant Cream",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Strict human QA override: source metadata polluted the brand/title with a URL and misframed the product as moisturizer, so the rewrite normalizes it into a deodorant definition.",
+      "selected_mode": "manual_override",
+      "fail_reasons": [
+        "missing_candidate"
+      ]
+    },
+    {
+      "case_id": "live_ext_e8efc215c572eaf1e3558ecf",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_e8efc215c572eaf1e3558ecf"
+      },
+      "title": "INNBEAUTY PROJECT Pro C Serum",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_99954e44d33d9e13042db1eb",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_99954e44d33d9e13042db1eb"
+      },
+      "title": "INNBEAUTY PROJECT Extreme Cream",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_f52ed300f7d9c83bd06adb55",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_f52ed300f7d9c83bd06adb55"
+      },
+      "title": "INNBEAUTY PROJECT Bright & Tight Eye Cream",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_3e60ea2a4396282e5cb1b9c7",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_3e60ea2a4396282e5cb1b9c7"
+      },
+      "title": "Naturium Vitamin C Complex Cleanser",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_73a06f25367296b53a23af81",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_73a06f25367296b53a23af81"
+      },
+      "title": "Murad Multi-Vitamin Clear Coat Broad Spectrum SPF 50",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_618a5cf368a153492c14b151",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_618a5cf368a153492c14b151"
+      },
+      "title": "PIXI BEAUTY Mini Vitamin-C Tonic",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Strict human QA override: the mini tonic was close but still too generic, so the rewrite makes the travel-size vitamin C toner use-case explicit.",
+      "selected_mode": "manual_override",
+      "fail_reasons": [
+        "missing_candidate"
+      ]
+    },
+    {
+      "case_id": "live_ext_670fd3f47ecd319d143f8c65",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_670fd3f47ecd319d143f8c65"
+      },
+      "title": "KraveBeauty Great Barrier Relief",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_ad1346513bbfbdffbf2136fe",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_ad1346513bbfbdffbf2136fe"
+      },
+      "title": "Fenty Beauty Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill — 6",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_7d1ec8eed3a596dc5b03f435",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_7d1ec8eed3a596dc5b03f435"
+      },
+      "title": "Fenty Beauty Hydra Vizor Mini Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_45a98912b36badb6abe0b7f3",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_45a98912b36badb6abe0b7f3"
+      },
+      "title": "PIXI BEAUTY Vitamin-C Tonic To-Go",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review; remaining weak_routine_fit did not block seller-grounded publish.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [
+        "weak_routine_fit"
+      ]
+    },
+    {
+      "case_id": "live_ext_03246d53c45c6dcddce7894e",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_03246d53c45c6dcddce7894e"
+      },
+      "title": "rhode barrier restore cream",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_36dbd5cb94c8180355473525",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_36dbd5cb94c8180355473525"
+      },
+      "title": "PIXI BEAUTY Vitamin-C Trio",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Strict human QA override: the vitamin C trio still collapsed into a generic product label, so the rewrite keeps it as a coordinated brightening set.",
+      "selected_mode": "manual_override",
+      "fail_reasons": [
+        "missing_candidate"
+      ]
+    },
+    {
+      "case_id": "live_ext_0790a2b67a6237a55b3a44dc",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_0790a2b67a6237a55b3a44dc"
+      },
+      "title": "fenty beauty Fat Water Hydrating Milky Toner Essence with Hyaluronic Acid + Tamarind",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_e4ad75bd225e370109c9adc9",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_e4ad75bd225e370109c9adc9"
+      },
+      "title": "fenty beauty Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_347618bc28b9fdddcb8a3f74",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_347618bc28b9fdddcb8a3f74"
+      },
+      "title": "Fenty Beauty Day + Night Hydrating Routine: Dew N Plump Serum + Slushie Mask",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_a138fbf50be4e0a1397d8360",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_a138fbf50be4e0a1397d8360"
+      },
+      "title": "rhode peptide glazing fluid",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_89fd8f89ad4e033bce6b98c2",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_89fd8f89ad4e033bce6b98c2"
+      },
+      "title": "Naturium Multi-Calm Cream Cleanser",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_622a5bb516a45bba6e5332f2",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_622a5bb516a45bba6e5332f2"
+      },
+      "title": "Naturium Multi-Peptide Moisturizer",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_0affab7a55d91e31523ab65e",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_0affab7a55d91e31523ab65e"
+      },
+      "title": "Fenty Beauty Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer Refill",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_dbeffb59754a117fa56b81ed",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_dbeffb59754a117fa56b81ed"
+      },
+      "title": "Fenty Beauty Cherry Dub Blah 2 Bright 5% AHA Face Mask",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review; remaining weak_routine_fit did not block seller-grounded publish.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [
+        "weak_routine_fit"
+      ]
+    },
+    {
+      "case_id": "live_ext_6d5788e5f8d6a753b55fc775",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_6d5788e5f8d6a753b55fc775"
+      },
+      "title": "Murad Essential-C Cleanser",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_84ea0437b6a6eaadfefd613e",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_84ea0437b6a6eaadfefd613e"
+      },
+      "title": "Fenty Beauty The Daily Duo Mini Cleanser + Toner Serum Duo",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_f9aacedb8fabd3bdb4df77d1",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_f9aacedb8fabd3bdb4df77d1"
+      },
+      "title": "Fenty Beauty Grip Trip Mattifying + Blurring Primer",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review; remaining weak_routine_fit did not block seller-grounded publish.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [
+        "weak_routine_fit"
+      ]
+    },
+    {
+      "case_id": "live_ext_ee8920efe0236c4e1f560b77",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_ee8920efe0236c4e1f560b77"
+      },
+      "title": "PIXI BEAUTY +C Vit UnderEye Brightener",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review; remaining weak_routine_fit did not block seller-grounded publish.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [
+        "weak_routine_fit"
+      ]
+    },
+    {
+      "case_id": "live_ext_7cd2e963c1c5a0bb68515391",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_7cd2e963c1c5a0bb68515391"
+      },
+      "title": "Beekman 1802 Honeyed Grapefruit Face Wipes",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review; remaining weak_routine_fit did not block seller-grounded publish.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [
+        "weak_routine_fit"
+      ]
+    },
+    {
+      "case_id": "live_ext_55f9dc6bd5387fcdb05800ef",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_55f9dc6bd5387fcdb05800ef"
+      },
+      "title": "INNBEAUTY PROJECT Extreme Cream Eye",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_5837040829d6e6e8b5e72bde",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_5837040829d6e6e8b5e72bde"
+      },
+      "title": "Fenty Beauty Big On Hydration: Milky Toner, Face Mask + Lip Mask Trio",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Strict human QA override: the hydration trio was too narrowly collapsed into a mask bucket, so the rewrite keeps the toner-plus-mask set structure explicit.",
+      "selected_mode": "manual_override",
+      "fail_reasons": [
+        "missing_candidate"
+      ]
+    },
+    {
+      "case_id": "live_ext_0139a5d67996f020b7d61658",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_0139a5d67996f020b7d61658"
+      },
+      "title": "Murad Retinol Youth Renewal Night Cream",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_e8efe5711d3c8477861d3236",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_e8efe5711d3c8477861d3236"
+      },
+      "title": "PIXI BEAUTY Complexion Heroes",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_3854457958964edbdd8bfe5b",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_3854457958964edbdd8bfe5b"
+      },
+      "title": "Murad Essential-C Firming Radiance Day Cream",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_99ee7bd7905d75d9f404a54e",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_99ee7bd7905d75d9f404a54e"
+      },
+      "title": "Naturium Retinaldehyde Cream Serum 0.15%",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_cef8b0396118372c4ea059c7",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_cef8b0396118372c4ea059c7"
+      },
+      "title": "Fenty Beauty Fenty Skin Dry Skin Start’rs Full-Size Bundle with Mineral SPF",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_da64dae4a43dca18482b1cf7",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_da64dae4a43dca18482b1cf7"
+      },
+      "title": "Fenty Beauty Fenty Skin Start’rs Full-Size Bundle",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_83c2013cadd3c5f2a1eca489",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_83c2013cadd3c5f2a1eca489"
+      },
+      "title": "INNBEAUTY PROJECT Slushy",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_a1dbd3ccfbbd0e34ded0dcf0",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_a1dbd3ccfbbd0e34ded0dcf0"
+      },
+      "title": "Naturium Multi-Peptide Rich Cream",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_a9ec7261c9f3c77391e2ba27",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_a9ec7261c9f3c77391e2ba27"
+      },
+      "title": "PIXI BEAUTY 12 Days of Icons Calendar",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "rewrite",
+      "review_decision": "rewrite",
+      "rejection_reason": "",
+      "notes": "Strict human QA override: the advent calendar had sales-y intro and a generic makeup label, so the rewrite keeps it as a holiday beauty sampler.",
+      "selected_mode": "manual_override",
+      "fail_reasons": [
+        "missing_candidate"
+      ]
+    },
+    {
+      "case_id": "live_ext_84a059697ff178378475a0fe",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_84a059697ff178378475a0fe"
+      },
+      "title": "Fenty Beauty Fenty Skin Dry Skin Start’rs Full-Size Bundle",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_22a273cd014dc3b45b1258e1",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_22a273cd014dc3b45b1258e1"
+      },
+      "title": "Beekman 1802 Lavender Face Wipes",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review; remaining weak_routine_fit did not block seller-grounded publish.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [
+        "weak_routine_fit"
+      ]
+    },
+    {
+      "case_id": "live_ext_06902b9361903190801cd334",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_06902b9361903190801cd334"
+      },
+      "title": "Beekman 1802 Fresh Air Face Wipes",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review; remaining weak_routine_fit did not block seller-grounded publish.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [
+        "weak_routine_fit"
+      ]
+    },
+    {
+      "case_id": "live_ext_344ca2fa3e798ff35e39acce",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_344ca2fa3e798ff35e39acce"
+      },
+      "title": "Beekman 1802 Vanilla Absolute Face Wipes",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review; remaining weak_routine_fit did not block seller-grounded publish.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [
+        "weak_routine_fit"
+      ]
+    },
+    {
+      "case_id": "live_ext_f3cb447284bc06d9bdde776a",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_f3cb447284bc06d9bdde776a"
+      },
+      "title": "Skin1004 Poremizing Quick Clay Stick Mask",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review; remaining weak_routine_fit did not block seller-grounded publish.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [
+        "weak_routine_fit"
+      ]
+    },
+    {
+      "case_id": "live_ext_1167b3a9116bd20eef96bd8f",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_1167b3a9116bd20eef96bd8f"
+      },
+      "title": "Beekman 1802 Oh! Mega Milky Oil Fermented Barrier Boosting Facial Oil",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_3673e358171daba9b30f1543",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_3673e358171daba9b30f1543"
+      },
+      "title": "Beekman 1802 Honey & Orange Blossom Face Wipes",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review; remaining weak_routine_fit did not block seller-grounded publish.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": [
+        "weak_routine_fit"
+      ]
+    },
+    {
+      "case_id": "live_ext_d4b52c2dad8f0c8ac77ff7ac",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_d4b52c2dad8f0c8ac77ff7ac"
+      },
+      "title": "Haruharu Wonder Daily Soothing Sun Shield SPF50+ PA++++",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    },
+    {
+      "case_id": "live_ext_f68ae6b7ff74dc3ee8f517f4",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_f68ae6b7ff74dc3ee8f517f4"
+      },
+      "title": "INNBEAUTY PROJECT Calm The Red Down",
+      "review_status": "reviewed",
+      "reviewer": "codex",
+      "decision": "pass",
+      "review_decision": "pass",
+      "rejection_reason": "",
+      "notes": "Accepted after strict review.",
+      "selected_mode": "hybrid_gemini",
+      "fail_reasons": []
+    }
+  ]
+}

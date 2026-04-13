@@ -248,8 +248,37 @@ async function loadCoveredProductIdSet(productIds, queryFn = query) {
 
 function loadCoveredProductIdSetFromReport(reportPath) {
   if (!reportPath) return new Set();
-  const report = readJson(reportPath);
-  const rows = asArray(report?.rows);
+  const reportPaths = String(reportPath)
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .flatMap((item) => {
+      const resolved = item;
+      if (!resolved || !fs.existsSync(resolved)) return [];
+      const stat = fs.statSync(resolved);
+      if (stat.isDirectory()) {
+        const discovered = [];
+        const queue = [resolved];
+        while (queue.length) {
+          const current = queue.shift();
+          const entries = fs.readdirSync(current, { withFileTypes: true });
+          for (const entry of entries) {
+            const nextPath = path.join(current, entry.name);
+            if (entry.isDirectory()) {
+              queue.push(nextPath);
+            } else if (entry.isFile() && entry.name === 'compare_final_reviewed.json') {
+              discovered.push(nextPath);
+            }
+          }
+        }
+        return discovered.sort();
+      }
+      return [resolved];
+    });
+  const rows = reportPaths.flatMap((currentReportPath) => {
+    const report = readJson(currentReportPath);
+    return asArray(report?.rows);
+  });
   return new Set(
     rows
       .map((row) =>
@@ -571,6 +600,91 @@ function hasBadgeEvidence(caseRow) {
   });
 }
 
+function isBeautyPilotCase(caseRow) {
+  const product = caseRow?.product && typeof caseRow.product === 'object' ? caseRow.product : {};
+  const text = [
+    product.brand,
+    product.title,
+    product.category,
+    product.description,
+    ...(Array.isArray(product.tags) ? product.tags : []),
+    ...(Array.isArray(product.ingredients_inci) ? product.ingredients_inci : []),
+    product.how_to_use,
+  ]
+    .map((value) => asString(value).toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+
+  if (!text) return false;
+
+  const hasBeautySignal = [
+    /\bskin\s*care\b/,
+    /\bbeauty\b/,
+    /\bcosmetic\b/,
+    /\bmakeup\b/,
+    /\bfragrance\b/,
+    /\bperfume\b/,
+    /\bcologne\b/,
+    /\bserum\b/,
+    /\bcleanser\b/,
+    /\bmoisturi[sz]er\b/,
+    /\bsunscreen\b/,
+    /\bspf\s*\d+/,
+    /\btoner\b/,
+    /\bessence\b/,
+    /\bampoule\b/,
+    /\bmist\b/,
+    /\bmask\b/,
+    /\bbalm\b/,
+    /\bcream\b/,
+    /\blotion\b/,
+    /\boil\b/,
+    /\bwash\b/,
+    /\bscrub\b/,
+    /\bexfoli\w*\b/,
+    /\bpatch(?:es)?\b/,
+    /\blip\b/,
+    /\beye\b/,
+    /\bbody\b/,
+    /\bshampoo\b/,
+    /\bconditioner\b/,
+    /\bscalp\b/,
+    /\bhair\b/,
+    /\bretinol\b/,
+    /\bniacinamide\b/,
+    /\bvitamin c\b/,
+    /\bceramide\b/,
+    /\bhyaluronic\b/,
+    /\bpeptide\b/,
+  ].some((pattern) => pattern.test(text));
+
+  if (!hasBeautySignal) return false;
+
+  const hasExplicitNonBeautySignal = [
+    /\bpet\b/,
+    /\bdog\b/,
+    /\bcat\b/,
+    /\bharness\b/,
+    /\bleash\b/,
+    /\bcollar\b/,
+    /\btoy\b/,
+    /\bcarrier\b/,
+    /\blitter\b/,
+    /\bbowl\b/,
+    /\bapparel\b/,
+    /\bshirt\b/,
+    /\bshoe\b/,
+    /\bbackpack\b/,
+    /\bkeyboard\b/,
+    /\bcharger\b/,
+    /\bcable\b/,
+    /\bphone\b/,
+    /\blaptop\b/,
+  ].some((pattern) => pattern.test(text));
+
+  return !hasExplicitNonBeautySignal;
+}
+
 function selectDiverseCases(cases, { limit, seed, maxPerBrand, maxPerCategory }) {
   const rows = asArray(cases).filter((row) => row && !row.error);
   if (!rows.length) return [];
@@ -832,7 +946,8 @@ async function main() {
     }
   });
 
-  const eligibleCases = args.requireBadgeEvidence ? cases.filter((row) => hasBadgeEvidence(row)) : cases;
+  const beautyCases = cases.filter((row) => isBeautyPilotCase(row));
+  const eligibleCases = args.requireBadgeEvidence ? beautyCases.filter((row) => hasBadgeEvidence(row)) : beautyCases;
   const finalCases = selectDiverseCases(eligibleCases, {
     limit: args.limit,
     seed: args.seed,
@@ -851,6 +966,7 @@ async function main() {
       status: 'ok',
       requested: selectedIds.length,
       built: cases.filter((row) => !row.error).length,
+      filtered_beauty_cases: beautyCases.length,
       selected: finalCases.length,
       filtered_badge_cases: args.requireBadgeEvidence ? eligibleCases.length : undefined,
       excluded_covered: args.excludeCovered ? coveredProductIds.size : 0,
@@ -877,6 +993,7 @@ module.exports = {
   fetchPdpResponse,
   fetchSearchCandidates,
   hasBadgeEvidence,
+  isBeautyPilotCase,
   loadCoveredProductIdSet,
   loadCoveredProductIdSetFromReport,
   loadManualOverrideProductIdSet,

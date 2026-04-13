@@ -1,0 +1,4610 @@
+{
+  "meta": {
+    "generated_at": "2026-04-13T00:49:23.946Z",
+    "contract_version": "pivota.product_intel.v1",
+    "gemini_model": "gemini-3-flash-preview",
+    "gemini_completed": 0,
+    "gemini_skipped": 10,
+    "hybrid_selected": 0,
+    "baseline_only": 10
+  },
+  "rows": [
+    {
+      "case_id": "live_ext_3245669fb069e47c505ddb66",
+      "notes": "Live pilot case sampled from public search results (PIXI BEAUTY).",
+      "manual_override_applied": true,
+      "baseline": {
+        "contract_version": "pivota.product_intel.v1",
+        "display_name": "Pivota Insights",
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_3245669fb069e47c505ddb66"
+        },
+        "product_group_id": null,
+        "product_intel_core": {
+          "display_name": "Pivota Insights",
+          "what_it_is": {
+            "headline": "Makeup product",
+            "body": "Glow instantly with this Vitamin C infused trio. Includes priming oil, brightening perfector and lip balm for nourished, radiant skin."
+          },
+          "best_for": [
+            {
+              "tag": "uneven_tone",
+              "label": "Uneven tone concerns",
+              "confidence": "moderate"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Formula angle",
+              "body": "Glow instantly with this Vitamin C infused trio.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "makeup",
+            "am_pm": [],
+            "pairing_notes": []
+          },
+          "watchouts": [],
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-13T00:49:23.938Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          }
+        },
+        "texture_finish": {
+          "texture": "balm",
+          "finish": "dewy",
+          "sensory_notes": [],
+          "layering_notes": [],
+          "confidence": "moderate",
+          "evidence_profile": "seller_only"
+        },
+        "community_signals": {
+          "status": "unavailable",
+          "unavailable_reason": "insufficient_feedback",
+          "confidence": "low",
+          "evidence_profile": "seller_only"
+        },
+        "recommendation_intents": {
+          "similar": [],
+          "complementary": [],
+          "routine_pairing": [],
+          "underfill_reason": null,
+          "confidence": "low"
+        },
+        "market_signal_badges": [],
+        "external_highlight_signals": [],
+        "quality_state": "limited",
+        "evidence_profile": "seller_only",
+        "source_coverage": {
+          "seller": {
+            "available": true
+          },
+          "formula": {
+            "available": false
+          },
+          "reviews": {
+            "available": false,
+            "count": 0
+          },
+          "creator": {
+            "available": false,
+            "count": 0
+          },
+          "editorial": {
+            "available": false,
+            "count": 0
+          }
+        },
+        "confidence": {
+          "overall": "moderate",
+          "fields": {
+            "what_it_is": "high",
+            "best_for": "moderate",
+            "why_it_stands_out": "moderate",
+            "routine_fit": "moderate",
+            "watchouts": "moderate"
+          }
+        },
+        "freshness": {
+          "generated_at": "2026-04-13T00:49:23.938Z",
+          "source_version": "pivota.product_intel.v1"
+        },
+        "offer_pointers": {
+          "offers_count": 0,
+          "default_offer_id": null,
+          "best_price_offer_id": null,
+          "commerce_modes": []
+        },
+        "provenance": null,
+        "shopping_card": {
+          "contract_version": "pivota.shopping_card.v1",
+          "title": "PIXI BEAUTY +C Vit Brightening Trio",
+          "subtitle": "Makeup Product",
+          "intro": "Glow instantly with this Vitamin C infused trio.",
+          "evidence_profile": "seller_only"
+        },
+        "search_card": {
+          "title_candidate": "PIXI BEAUTY +C Vit Brightening Trio",
+          "compact_candidate": "Makeup Product",
+          "intro_candidate": "Glow instantly with this Vitamin C infused trio."
+        }
+      },
+      "gemini": {
+        "skipped": true,
+        "reason": "skip_gemini_flag"
+      },
+      "manual_override": {
+        "notes": "Strict human QA override: the brightening trio was over-collapsed into a makeup bucket, so the rewrite keeps the vitamin C set definition explicit.",
+        "product_intel_core": {
+          "what_it_is": {
+            "headline": "Vitamin C glow trio",
+            "body": "A 3-piece vitamin C set pairing a priming oil, brightening perfector, and lip balm around a glow-focused routine."
+          },
+          "best_for": [
+            {
+              "tag": "dullness",
+              "label": "Dull or uneven-looking skin",
+              "confidence": "moderate"
+            },
+            {
+              "tag": "glow_prep",
+              "label": "Glow-focused prep routines",
+              "confidence": "moderate"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Three-piece vitamin C format",
+              "body": "Combines face prep, brightening, and lip care into one coordinated set instead of a generic makeup product label.",
+              "evidence_strength": "seller_grounded"
+            },
+            {
+              "headline": "Glow-prep angle",
+              "body": "Frames the trio around a brighter, more radiant finish rather than a single treatment claim.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "routine set",
+            "am_pm": [
+              "am"
+            ],
+            "pairing_notes": [
+              "Use the included products as a glow-prep set before makeup."
+            ]
+          },
+          "watchouts": [
+            {
+              "type": "format",
+              "label": "This is a multi-piece set, not one standalone serum or balm.",
+              "severity": "low"
+            }
+          ]
+        },
+        "shopping_card": {
+          "subtitle": "Vitamin C glow trio",
+          "highlight": "Primer + perfector + lip balm",
+          "intro": "A 3-piece vitamin C set built for glow prep."
+        },
+        "search_card": {
+          "compact_candidate": "Vitamin C glow trio",
+          "highlight_candidate": "Primer + perfector + lip balm",
+          "intro_candidate": "A 3-piece vitamin C set built for glow prep."
+        },
+        "external_highlight_review_status": "rewrite",
+        "external_review_batch": "manual_discovery_browse_batch30_reviewed_2026_04_13"
+      },
+      "quality_gate": {
+        "candidate_available": false,
+        "overall_pass": false,
+        "quality_score": 0,
+        "fail_reasons": [
+          "missing_candidate"
+        ],
+        "field_decisions": {}
+      },
+      "selected": {
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_3245669fb069e47c505ddb66"
+          },
+          "product_group_id": null,
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Vitamin C glow trio",
+              "body": "A 3-piece vitamin C set pairing a priming oil, brightening perfector, and lip balm around a glow-focused routine."
+            },
+            "best_for": [
+              {
+                "tag": "dullness",
+                "label": "Dull or uneven-looking skin",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "glow_prep",
+                "label": "Glow-focused prep routines",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Three-piece vitamin C format",
+                "body": "Combines face prep, brightening, and lip care into one coordinated set instead of a generic makeup product label.",
+                "evidence_strength": "seller_grounded"
+              },
+              {
+                "headline": "Glow-prep angle",
+                "body": "Frames the trio around a brighter, more radiant finish rather than a single treatment claim.",
+                "evidence_strength": "seller_grounded"
+              }
+            ],
+            "routine_fit": {
+              "step": "routine set",
+              "am_pm": [
+                "am"
+              ],
+              "pairing_notes": [
+                "Use the included products as a glow-prep set before makeup."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "format",
+                "label": "This is a multi-piece set, not one standalone serum or balm.",
+                "severity": "low"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-04-13T00:49:23.938Z",
+              "source_version": "pivota.product_intel.v1"
+            },
+            "quality_state": "limited",
+            "evidence_profile": "seller_only",
+            "source_coverage": {
+              "seller": {
+                "available": true
+              },
+              "formula": {
+                "available": false
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "texture": "balm",
+            "finish": "dewy",
+            "sensory_notes": [],
+            "layering_notes": [],
+            "confidence": "moderate",
+            "evidence_profile": "seller_only"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "unavailable_reason": "insufficient_feedback",
+            "confidence": "low",
+            "evidence_profile": "seller_only"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-13T00:49:23.938Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "product_intel_pilot_compare",
+            "generator": "curated_override",
+            "selection_strategy": "curated_override",
+            "gemini_model": null,
+            "field_sources": {
+              "what_it_is": "baseline",
+              "best_for": "baseline",
+              "why_it_stands_out": "baseline",
+              "routine_fit": "baseline",
+              "watchouts": "baseline",
+              "texture_finish": "baseline",
+              "community_signals": "baseline"
+            },
+            "gemini_quality_gate": {
+              "candidate_available": false,
+              "overall_pass": false,
+              "quality_score": 0,
+              "fail_reasons": [
+                "missing_candidate"
+              ],
+              "field_decisions": {}
+            },
+            "override_reason": "Strict human QA override: the brightening trio was over-collapsed into a makeup bucket, so the rewrite keeps the vitamin C set definition explicit.",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "manual_discovery_browse_batch30_reviewed_2026_04_13"
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "PIXI BEAUTY +C Vit Brightening Trio",
+            "subtitle": "Vitamin C Glow Trio",
+            "highlight": "Primer + perfector + lip balm",
+            "intro": "A 3-piece vitamin C set built for glow prep.",
+            "evidence_profile": "seller_only"
+          },
+          "search_card": {
+            "title_candidate": "PIXI BEAUTY +C Vit Brightening Trio",
+            "compact_candidate": "Vitamin C Glow Trio",
+            "highlight_candidate": "Primer + perfector + lip balm",
+            "intro_candidate": "A 3-piece vitamin C set built for glow prep."
+          }
+        },
+        "field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "baseline",
+          "community_signals": "baseline"
+        },
+        "selected_field_count": 5,
+        "selected_mode": "manual_override"
+      },
+      "comparison": {
+        "compared": false,
+        "best_for_overlap": 0,
+        "watchout_overlap": 1,
+        "baseline_highlight_count": 1,
+        "gemini_highlight_count": 0,
+        "gemini_quality": {
+          "candidate_available": false,
+          "overall_pass": false,
+          "quality_score": 0,
+          "fail_reasons": [
+            "missing_candidate"
+          ],
+          "field_decisions": {}
+        },
+        "selected_mode": "manual_override",
+        "selected_field_count": 5,
+        "selected_field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "baseline",
+          "community_signals": "baseline"
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_2bdac5cdc338cccaae873a5b",
+      "notes": "Live pilot case sampled from public search results (PIXI BEAUTY).",
+      "manual_override_applied": true,
+      "baseline": {
+        "contract_version": "pivota.product_intel.v1",
+        "display_name": "Pivota Insights",
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_2bdac5cdc338cccaae873a5b"
+        },
+        "product_group_id": null,
+        "product_intel_core": {
+          "display_name": "Pivota Insights",
+          "what_it_is": {
+            "headline": "Makeup product",
+            "body": "Instantly hydrating and cooling lip patch."
+          },
+          "best_for": [
+            {
+              "tag": "external",
+              "label": "external shoppers",
+              "confidence": "low"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Formula angle",
+              "body": "Instantly hydrating and cooling lip patch.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "makeup",
+            "am_pm": [],
+            "pairing_notes": []
+          },
+          "watchouts": [],
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-13T00:49:23.941Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          }
+        },
+        "texture_finish": null,
+        "community_signals": {
+          "status": "unavailable",
+          "unavailable_reason": "insufficient_feedback",
+          "confidence": "low",
+          "evidence_profile": "seller_only"
+        },
+        "recommendation_intents": {
+          "similar": [],
+          "complementary": [],
+          "routine_pairing": [],
+          "underfill_reason": null,
+          "confidence": "low"
+        },
+        "market_signal_badges": [],
+        "external_highlight_signals": [],
+        "quality_state": "limited",
+        "evidence_profile": "seller_only",
+        "source_coverage": {
+          "seller": {
+            "available": true
+          },
+          "formula": {
+            "available": false
+          },
+          "reviews": {
+            "available": false,
+            "count": 0
+          },
+          "creator": {
+            "available": false,
+            "count": 0
+          },
+          "editorial": {
+            "available": false,
+            "count": 0
+          }
+        },
+        "confidence": {
+          "overall": "moderate",
+          "fields": {
+            "what_it_is": "high",
+            "best_for": "moderate",
+            "why_it_stands_out": "moderate",
+            "routine_fit": "moderate",
+            "watchouts": "moderate"
+          }
+        },
+        "freshness": {
+          "generated_at": "2026-04-13T00:49:23.941Z",
+          "source_version": "pivota.product_intel.v1"
+        },
+        "offer_pointers": {
+          "offers_count": 0,
+          "default_offer_id": null,
+          "best_price_offer_id": null,
+          "commerce_modes": []
+        },
+        "provenance": null,
+        "shopping_card": {
+          "contract_version": "pivota.shopping_card.v1",
+          "title": "PIXI BEAUTY Vitamin-C LipPatch",
+          "subtitle": "Makeup Product",
+          "intro": "Instantly hydrating and cooling lip patch.",
+          "evidence_profile": "seller_only"
+        },
+        "search_card": {
+          "title_candidate": "PIXI BEAUTY Vitamin-C LipPatch",
+          "compact_candidate": "Makeup Product",
+          "intro_candidate": "Instantly hydrating and cooling lip patch."
+        }
+      },
+      "gemini": {
+        "skipped": true,
+        "reason": "skip_gemini_flag"
+      },
+      "manual_override": {
+        "notes": "Strict human QA override: the single lip patch was mislabeled as makeup, so the rewrite keeps it as a targeted lip-care treatment.",
+        "product_intel_core": {
+          "what_it_is": {
+            "headline": "Vitamin C lip patch",
+            "body": "A single-use lip patch made to hydrate and refresh lips with a cooling feel."
+          },
+          "best_for": [
+            {
+              "tag": "dry_lips",
+              "label": "Dry lips needing quick relief",
+              "confidence": "moderate"
+            },
+            {
+              "tag": "lip_prep",
+              "label": "Lip prep before balm or color",
+              "confidence": "moderate"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Patch-format lip care",
+              "body": "Uses a patch format for targeted lip treatment instead of reading like a generic makeup item.",
+              "evidence_strength": "seller_grounded"
+            },
+            {
+              "headline": "Cooling hydration",
+              "body": "Keeps immediate hydration and a refreshed lip feel at the center of the product.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "lip_balm",
+            "am_pm": [
+              "am",
+              "pm"
+            ],
+            "pairing_notes": [
+              "Use as a quick lip-treatment step before balm or lip color."
+            ]
+          },
+          "watchouts": []
+        },
+        "shopping_card": {
+          "subtitle": "Vitamin C lip patch",
+          "highlight": "Cooling lip hydration",
+          "intro": "A lip patch for quick hydration and cooling relief."
+        },
+        "search_card": {
+          "compact_candidate": "Vitamin C lip patch",
+          "highlight_candidate": "Cooling lip hydration",
+          "intro_candidate": "A lip patch for quick hydration and cooling relief."
+        },
+        "external_highlight_review_status": "rewrite",
+        "external_review_batch": "manual_discovery_browse_batch30_reviewed_2026_04_13"
+      },
+      "quality_gate": {
+        "candidate_available": false,
+        "overall_pass": false,
+        "quality_score": 0,
+        "fail_reasons": [
+          "missing_candidate"
+        ],
+        "field_decisions": {}
+      },
+      "selected": {
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_2bdac5cdc338cccaae873a5b"
+          },
+          "product_group_id": null,
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Vitamin C lip patch",
+              "body": "A single-use lip patch made to hydrate and refresh lips with a cooling feel."
+            },
+            "best_for": [
+              {
+                "tag": "dry_lips",
+                "label": "Dry lips needing quick relief",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "lip_prep",
+                "label": "Lip prep before balm or color",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Patch-format lip care",
+                "body": "Uses a patch format for targeted lip treatment instead of reading like a generic makeup item.",
+                "evidence_strength": "seller_grounded"
+              },
+              {
+                "headline": "Cooling hydration",
+                "body": "Keeps immediate hydration and a refreshed lip feel at the center of the product.",
+                "evidence_strength": "seller_grounded"
+              }
+            ],
+            "routine_fit": {
+              "step": "lip_balm",
+              "am_pm": [
+                "am",
+                "pm"
+              ],
+              "pairing_notes": [
+                "Use as a quick lip-treatment step before balm or lip color."
+              ]
+            },
+            "watchouts": [],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-04-13T00:49:23.941Z",
+              "source_version": "pivota.product_intel.v1"
+            },
+            "quality_state": "limited",
+            "evidence_profile": "seller_only",
+            "source_coverage": {
+              "seller": {
+                "available": true
+              },
+              "formula": {
+                "available": false
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": null,
+          "community_signals": {
+            "status": "unavailable",
+            "unavailable_reason": "insufficient_feedback",
+            "confidence": "low",
+            "evidence_profile": "seller_only"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-13T00:49:23.941Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "product_intel_pilot_compare",
+            "generator": "curated_override",
+            "selection_strategy": "curated_override",
+            "gemini_model": null,
+            "field_sources": {
+              "what_it_is": "baseline",
+              "best_for": "baseline",
+              "why_it_stands_out": "baseline",
+              "routine_fit": "baseline",
+              "watchouts": "baseline",
+              "texture_finish": "baseline",
+              "community_signals": "baseline"
+            },
+            "gemini_quality_gate": {
+              "candidate_available": false,
+              "overall_pass": false,
+              "quality_score": 0,
+              "fail_reasons": [
+                "missing_candidate"
+              ],
+              "field_decisions": {}
+            },
+            "override_reason": "Strict human QA override: the single lip patch was mislabeled as makeup, so the rewrite keeps it as a targeted lip-care treatment.",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "manual_discovery_browse_batch30_reviewed_2026_04_13"
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "PIXI BEAUTY Vitamin-C LipPatch",
+            "subtitle": "Vitamin C Lip Patch",
+            "highlight": "Cooling lip hydration",
+            "intro": "A lip patch for quick hydration and cooling relief.",
+            "evidence_profile": "seller_only"
+          },
+          "search_card": {
+            "title_candidate": "PIXI BEAUTY Vitamin-C LipPatch",
+            "compact_candidate": "Vitamin C Lip Patch",
+            "highlight_candidate": "Cooling lip hydration",
+            "intro_candidate": "A lip patch for quick hydration and cooling relief."
+          }
+        },
+        "field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "baseline",
+          "community_signals": "baseline"
+        },
+        "selected_field_count": 5,
+        "selected_mode": "manual_override"
+      },
+      "comparison": {
+        "compared": false,
+        "best_for_overlap": 0,
+        "watchout_overlap": 1,
+        "baseline_highlight_count": 1,
+        "gemini_highlight_count": 0,
+        "gemini_quality": {
+          "candidate_available": false,
+          "overall_pass": false,
+          "quality_score": 0,
+          "fail_reasons": [
+            "missing_candidate"
+          ],
+          "field_decisions": {}
+        },
+        "selected_mode": "manual_override",
+        "selected_field_count": 5,
+        "selected_field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "baseline",
+          "community_signals": "baseline"
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_711d563a490f37378d057211",
+      "notes": "Live pilot case sampled from public search results (Fenty Beauty).",
+      "manual_override_applied": true,
+      "baseline": {
+        "contract_version": "pivota.product_intel.v1",
+        "display_name": "Pivota Insights",
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_711d563a490f37378d057211"
+        },
+        "product_group_id": null,
+        "product_intel_core": {
+          "display_name": "Pivota Insights",
+          "what_it_is": {
+            "headline": "Makeup product",
+            "body": "Keep talkin' your s***-just make sure you do it with soft, smooth lips. This juicy, Barbados Cherry-powered lip balm brings dry, chapped lips back to life with instant hydration."
+          },
+          "best_for": [
+            {
+              "tag": "dryness",
+              "label": "Dry or dehydrated skin",
+              "confidence": "moderate"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Formula angle",
+              "body": "Keep talkin' your s***-just make sure you do it with soft, smooth lips.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "makeup",
+            "am_pm": [],
+            "pairing_notes": []
+          },
+          "watchouts": [],
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-13T00:49:23.942Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          }
+        },
+        "texture_finish": {
+          "texture": "balm",
+          "finish": "",
+          "sensory_notes": [],
+          "layering_notes": [],
+          "confidence": "moderate",
+          "evidence_profile": "seller_only"
+        },
+        "community_signals": {
+          "status": "unavailable",
+          "unavailable_reason": "insufficient_feedback",
+          "confidence": "low",
+          "evidence_profile": "seller_only"
+        },
+        "recommendation_intents": {
+          "similar": [],
+          "complementary": [],
+          "routine_pairing": [],
+          "underfill_reason": null,
+          "confidence": "low"
+        },
+        "market_signal_badges": [],
+        "external_highlight_signals": [],
+        "quality_state": "limited",
+        "evidence_profile": "seller_only",
+        "source_coverage": {
+          "seller": {
+            "available": true
+          },
+          "formula": {
+            "available": false
+          },
+          "reviews": {
+            "available": false,
+            "count": 0
+          },
+          "creator": {
+            "available": false,
+            "count": 0
+          },
+          "editorial": {
+            "available": false,
+            "count": 0
+          }
+        },
+        "confidence": {
+          "overall": "moderate",
+          "fields": {
+            "what_it_is": "high",
+            "best_for": "moderate",
+            "why_it_stands_out": "moderate",
+            "routine_fit": "moderate",
+            "watchouts": "moderate"
+          }
+        },
+        "freshness": {
+          "generated_at": "2026-04-13T00:49:23.942Z",
+          "source_version": "pivota.product_intel.v1"
+        },
+        "offer_pointers": {
+          "offers_count": 0,
+          "default_offer_id": null,
+          "best_price_offer_id": null,
+          "commerce_modes": []
+        },
+        "provenance": null,
+        "shopping_card": {
+          "contract_version": "pivota.shopping_card.v1",
+          "title": "Fenty Beauty Lux Balm Ultra-Hydrating Cherry Lip Balm with Barbados Cherry + Vitamin E",
+          "subtitle": "Makeup Product",
+          "intro": "Keep talkin' your s***-just make sure you do it with soft, smooth lips.",
+          "evidence_profile": "seller_only"
+        },
+        "search_card": {
+          "title_candidate": "Fenty Beauty Lux Balm Ultra-Hydrating Cherry Lip Balm with Barbados Cherry + Vitamin E",
+          "compact_candidate": "Makeup Product",
+          "intro_candidate": "Keep talkin' your s***-just make sure you do it with soft, smooth lips."
+        }
+      },
+      "gemini": {
+        "skipped": true,
+        "reason": "skip_gemini_flag"
+      },
+      "manual_override": {
+        "notes": "Strict human QA override: pro pass still left the lip balm framed as a generic makeup product, so the rewrite keeps it as a cherry-led lip-care step.",
+        "product_intel_core": {
+          "what_it_is": {
+            "headline": "Lip balm",
+            "body": "A hydrating lip balm built around Barbados cherry and vitamin E for softer-feeling lips."
+          },
+          "best_for": [
+            {
+              "tag": "dry_lips",
+              "label": "Dry or chapped lips",
+              "confidence": "moderate"
+            },
+            {
+              "tag": "daily_lip_care",
+              "label": "Everyday lip care",
+              "confidence": "moderate"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Barbados cherry + vitamin E care",
+              "body": "Keeps the formula centered on lip-conditioning ingredients instead of leaving it as a generic makeup add-on.",
+              "evidence_strength": "seller_grounded"
+            },
+            {
+              "headline": "Softening balm finish",
+              "body": "Built as a cushioning lip-care step for dry lips rather than a color product.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "lip_balm",
+            "am_pm": [
+              "am",
+              "pm"
+            ],
+            "pairing_notes": [
+              "Use whenever lips feel dry or need a softer, smoother finish."
+            ]
+          },
+          "watchouts": []
+        },
+        "texture_finish": {
+          "texture": "balm",
+          "finish": "soft sheen",
+          "sensory_notes": [],
+          "layering_notes": [
+            "Use whenever lips feel dry or need a softer, smoother finish."
+          ],
+          "confidence": "moderate",
+          "evidence_profile": "seller_only"
+        },
+        "shopping_card": {
+          "subtitle": "Lip balm",
+          "highlight": "Barbados cherry lip care",
+          "intro": "A hydrating lip balm for softer, smoother lips."
+        },
+        "search_card": {
+          "compact_candidate": "Lip balm",
+          "highlight_candidate": "Barbados cherry lip care",
+          "intro_candidate": "A hydrating lip balm for softer, smoother lips."
+        },
+        "external_highlight_review_status": "rewrite",
+        "external_review_batch": "manual_discovery_browse_batch30_reviewed_2026_04_13"
+      },
+      "quality_gate": {
+        "candidate_available": false,
+        "overall_pass": false,
+        "quality_score": 0,
+        "fail_reasons": [
+          "missing_candidate"
+        ],
+        "field_decisions": {}
+      },
+      "selected": {
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_711d563a490f37378d057211"
+          },
+          "product_group_id": null,
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Lip balm",
+              "body": "A hydrating lip balm built around Barbados cherry and vitamin E for softer-feeling lips."
+            },
+            "best_for": [
+              {
+                "tag": "dry_lips",
+                "label": "Dry or chapped lips",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "daily_lip_care",
+                "label": "Everyday lip care",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Barbados cherry + vitamin E care",
+                "body": "Keeps the formula centered on lip-conditioning ingredients instead of leaving it as a generic makeup add-on.",
+                "evidence_strength": "seller_grounded"
+              },
+              {
+                "headline": "Softening balm finish",
+                "body": "Built as a cushioning lip-care step for dry lips rather than a color product.",
+                "evidence_strength": "seller_grounded"
+              }
+            ],
+            "routine_fit": {
+              "step": "lip_balm",
+              "am_pm": [
+                "am",
+                "pm"
+              ],
+              "pairing_notes": [
+                "Use whenever lips feel dry or need a softer, smoother finish."
+              ]
+            },
+            "watchouts": [],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-04-13T00:49:23.942Z",
+              "source_version": "pivota.product_intel.v1"
+            },
+            "quality_state": "limited",
+            "evidence_profile": "seller_only",
+            "source_coverage": {
+              "seller": {
+                "available": true
+              },
+              "formula": {
+                "available": false
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "texture": "balm",
+            "finish": "soft sheen",
+            "sensory_notes": [],
+            "layering_notes": [
+              "Use whenever lips feel dry or need a softer, smoother finish."
+            ],
+            "confidence": "moderate",
+            "evidence_profile": "seller_only"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "unavailable_reason": "insufficient_feedback",
+            "confidence": "low",
+            "evidence_profile": "seller_only"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-13T00:49:23.942Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "product_intel_pilot_compare",
+            "generator": "curated_override",
+            "selection_strategy": "curated_override",
+            "gemini_model": null,
+            "field_sources": {
+              "what_it_is": "baseline",
+              "best_for": "baseline",
+              "why_it_stands_out": "baseline",
+              "routine_fit": "baseline",
+              "watchouts": "baseline",
+              "texture_finish": "baseline",
+              "community_signals": "baseline"
+            },
+            "gemini_quality_gate": {
+              "candidate_available": false,
+              "overall_pass": false,
+              "quality_score": 0,
+              "fail_reasons": [
+                "missing_candidate"
+              ],
+              "field_decisions": {}
+            },
+            "override_reason": "Strict human QA override: pro pass still left the lip balm framed as a generic makeup product, so the rewrite keeps it as a cherry-led lip-care step.",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "manual_discovery_browse_batch30_reviewed_2026_04_13"
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Fenty Beauty Lux Balm Ultra-Hydrating Cherry Lip Balm with Barbados Cherry + Vitamin E",
+            "subtitle": "Lip Balm",
+            "highlight": "Barbados cherry lip care",
+            "intro": "A hydrating lip balm for softer, smoother lips.",
+            "evidence_profile": "seller_only"
+          },
+          "search_card": {
+            "title_candidate": "Fenty Beauty Lux Balm Ultra-Hydrating Cherry Lip Balm with Barbados Cherry + Vitamin E",
+            "compact_candidate": "Lip Balm",
+            "highlight_candidate": "Barbados cherry lip care",
+            "intro_candidate": "A hydrating lip balm for softer, smoother lips."
+          }
+        },
+        "field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "manual",
+          "community_signals": "baseline"
+        },
+        "selected_field_count": 6,
+        "selected_mode": "manual_override"
+      },
+      "comparison": {
+        "compared": false,
+        "best_for_overlap": 0,
+        "watchout_overlap": 1,
+        "baseline_highlight_count": 1,
+        "gemini_highlight_count": 0,
+        "gemini_quality": {
+          "candidate_available": false,
+          "overall_pass": false,
+          "quality_score": 0,
+          "fail_reasons": [
+            "missing_candidate"
+          ],
+          "field_decisions": {}
+        },
+        "selected_mode": "manual_override",
+        "selected_field_count": 6,
+        "selected_field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "manual",
+          "community_signals": "baseline"
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_72d2c56b07e2af3c3082a0d9",
+      "notes": "Live pilot case sampled from public search results (PIXI BEAUTY).",
+      "manual_override_applied": true,
+      "baseline": {
+        "contract_version": "pivota.product_intel.v1",
+        "display_name": "Pivota Insights",
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_72d2c56b07e2af3c3082a0d9"
+        },
+        "product_group_id": null,
+        "product_intel_core": {
+          "display_name": "Pivota Insights",
+          "what_it_is": {
+            "headline": "Product",
+            "body": "Revitalize your skin routine with this glow-boosting trio designed to cleanse, nourish & brighten. Delivering hydration, radiance & protection in every step!"
+          },
+          "best_for": [
+            {
+              "tag": "uneven_tone",
+              "label": "Uneven tone concerns",
+              "confidence": "moderate"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Formula angle",
+              "body": "Revitalize your skin routine with this glow-boosting trio designed to cleanse, nourish & brighten.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "product",
+            "am_pm": [],
+            "pairing_notes": []
+          },
+          "watchouts": [],
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-13T00:49:23.942Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          }
+        },
+        "texture_finish": {
+          "texture": "",
+          "finish": "dewy",
+          "sensory_notes": [],
+          "layering_notes": [],
+          "confidence": "moderate",
+          "evidence_profile": "seller_only"
+        },
+        "community_signals": {
+          "status": "unavailable",
+          "unavailable_reason": "insufficient_feedback",
+          "confidence": "low",
+          "evidence_profile": "seller_only"
+        },
+        "recommendation_intents": {
+          "similar": [],
+          "complementary": [],
+          "routine_pairing": [],
+          "underfill_reason": null,
+          "confidence": "low"
+        },
+        "market_signal_badges": [],
+        "external_highlight_signals": [],
+        "quality_state": "limited",
+        "evidence_profile": "seller_only",
+        "source_coverage": {
+          "seller": {
+            "available": true
+          },
+          "formula": {
+            "available": false
+          },
+          "reviews": {
+            "available": false,
+            "count": 0
+          },
+          "creator": {
+            "available": false,
+            "count": 0
+          },
+          "editorial": {
+            "available": false,
+            "count": 0
+          }
+        },
+        "confidence": {
+          "overall": "moderate",
+          "fields": {
+            "what_it_is": "high",
+            "best_for": "moderate",
+            "why_it_stands_out": "moderate",
+            "routine_fit": "moderate",
+            "watchouts": "moderate"
+          }
+        },
+        "freshness": {
+          "generated_at": "2026-04-13T00:49:23.942Z",
+          "source_version": "pivota.product_intel.v1"
+        },
+        "offer_pointers": {
+          "offers_count": 0,
+          "default_offer_id": null,
+          "best_price_offer_id": null,
+          "commerce_modes": []
+        },
+        "provenance": null,
+        "shopping_card": {
+          "contract_version": "pivota.shopping_card.v1",
+          "title": "PIXI BEAUTY Radiant Skin Antioxidant Trio",
+          "subtitle": "Product",
+          "intro": "Delivering hydration, radiance & protection in every step!",
+          "evidence_profile": "seller_only"
+        },
+        "search_card": {
+          "title_candidate": "PIXI BEAUTY Radiant Skin Antioxidant Trio",
+          "compact_candidate": "Product",
+          "intro_candidate": "Delivering hydration, radiance & protection in every step!"
+        }
+      },
+      "gemini": {
+        "skipped": true,
+        "reason": "skip_gemini_flag"
+      },
+      "manual_override": {
+        "notes": "Strict human QA override: the antioxidant trio kept collapsing into a generic product label, so the rewrite anchors it as a 3-step radiance set.",
+        "product_intel_core": {
+          "what_it_is": {
+            "headline": "Antioxidant skincare trio",
+            "body": "A 3-step skincare set built to cleanse, nourish, and brighten with an antioxidant-focused routine."
+          },
+          "best_for": [
+            {
+              "tag": "dullness",
+              "label": "Dull or tired-looking skin",
+              "confidence": "moderate"
+            },
+            {
+              "tag": "routine_simplification",
+              "label": "A ready-made brightening set",
+              "confidence": "moderate"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Three-step radiance routine",
+              "body": "Packages cleanse, nourish, and brighten steps together instead of treating the trio like a single undefined product.",
+              "evidence_strength": "seller_grounded"
+            },
+            {
+              "headline": "Antioxidant-led glow angle",
+              "body": "Keeps antioxidant support and skin radiance at the center of the set's positioning.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "routine set",
+            "am_pm": [
+              "am",
+              "pm"
+            ],
+            "pairing_notes": [
+              "Use the included steps in the order listed by the brand."
+            ]
+          },
+          "watchouts": [
+            {
+              "type": "format",
+              "label": "This is a multi-step set, not a single treatment step.",
+              "severity": "low"
+            }
+          ]
+        },
+        "shopping_card": {
+          "subtitle": "Antioxidant skincare trio",
+          "highlight": "3-step cleanse + brighten set",
+          "intro": "A 3-step Pixi set for radiance and antioxidant support."
+        },
+        "search_card": {
+          "compact_candidate": "Antioxidant skincare trio",
+          "highlight_candidate": "3-step cleanse + brighten set",
+          "intro_candidate": "A 3-step Pixi set for radiance and antioxidant support."
+        },
+        "external_highlight_review_status": "rewrite",
+        "external_review_batch": "manual_discovery_browse_batch30_reviewed_2026_04_13"
+      },
+      "quality_gate": {
+        "candidate_available": false,
+        "overall_pass": false,
+        "quality_score": 0,
+        "fail_reasons": [
+          "missing_candidate"
+        ],
+        "field_decisions": {}
+      },
+      "selected": {
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_72d2c56b07e2af3c3082a0d9"
+          },
+          "product_group_id": null,
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Antioxidant skincare trio",
+              "body": "A 3-step skincare set built to cleanse, nourish, and brighten with an antioxidant-focused routine."
+            },
+            "best_for": [
+              {
+                "tag": "dullness",
+                "label": "Dull or tired-looking skin",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "routine_simplification",
+                "label": "A ready-made brightening set",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Three-step radiance routine",
+                "body": "Packages cleanse, nourish, and brighten steps together instead of treating the trio like a single undefined product.",
+                "evidence_strength": "seller_grounded"
+              },
+              {
+                "headline": "Antioxidant-led glow angle",
+                "body": "Keeps antioxidant support and skin radiance at the center of the set's positioning.",
+                "evidence_strength": "seller_grounded"
+              }
+            ],
+            "routine_fit": {
+              "step": "routine set",
+              "am_pm": [
+                "am",
+                "pm"
+              ],
+              "pairing_notes": [
+                "Use the included steps in the order listed by the brand."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "format",
+                "label": "This is a multi-step set, not a single treatment step.",
+                "severity": "low"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-04-13T00:49:23.942Z",
+              "source_version": "pivota.product_intel.v1"
+            },
+            "quality_state": "limited",
+            "evidence_profile": "seller_only",
+            "source_coverage": {
+              "seller": {
+                "available": true
+              },
+              "formula": {
+                "available": false
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "texture": "",
+            "finish": "dewy",
+            "sensory_notes": [],
+            "layering_notes": [],
+            "confidence": "moderate",
+            "evidence_profile": "seller_only"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "unavailable_reason": "insufficient_feedback",
+            "confidence": "low",
+            "evidence_profile": "seller_only"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-13T00:49:23.942Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "product_intel_pilot_compare",
+            "generator": "curated_override",
+            "selection_strategy": "curated_override",
+            "gemini_model": null,
+            "field_sources": {
+              "what_it_is": "baseline",
+              "best_for": "baseline",
+              "why_it_stands_out": "baseline",
+              "routine_fit": "baseline",
+              "watchouts": "baseline",
+              "texture_finish": "baseline",
+              "community_signals": "baseline"
+            },
+            "gemini_quality_gate": {
+              "candidate_available": false,
+              "overall_pass": false,
+              "quality_score": 0,
+              "fail_reasons": [
+                "missing_candidate"
+              ],
+              "field_decisions": {}
+            },
+            "override_reason": "Strict human QA override: the antioxidant trio kept collapsing into a generic product label, so the rewrite anchors it as a 3-step radiance set.",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "manual_discovery_browse_batch30_reviewed_2026_04_13"
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "PIXI BEAUTY Radiant Skin Antioxidant Trio",
+            "subtitle": "Antioxidant Skincare Trio",
+            "highlight": "3-step cleanse + brighten set",
+            "intro": "A 3-step Pixi set for radiance and antioxidant support.",
+            "evidence_profile": "seller_only"
+          },
+          "search_card": {
+            "title_candidate": "PIXI BEAUTY Radiant Skin Antioxidant Trio",
+            "compact_candidate": "Antioxidant Skincare Trio",
+            "highlight_candidate": "3-step cleanse + brighten set",
+            "intro_candidate": "A 3-step Pixi set for radiance and antioxidant support."
+          }
+        },
+        "field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "baseline",
+          "community_signals": "baseline"
+        },
+        "selected_field_count": 5,
+        "selected_mode": "manual_override"
+      },
+      "comparison": {
+        "compared": false,
+        "best_for_overlap": 0,
+        "watchout_overlap": 1,
+        "baseline_highlight_count": 1,
+        "gemini_highlight_count": 0,
+        "gemini_quality": {
+          "candidate_available": false,
+          "overall_pass": false,
+          "quality_score": 0,
+          "fail_reasons": [
+            "missing_candidate"
+          ],
+          "field_decisions": {}
+        },
+        "selected_mode": "manual_override",
+        "selected_field_count": 5,
+        "selected_field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "baseline",
+          "community_signals": "baseline"
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_2e849c9f45f833f00c888b65",
+      "notes": "Live pilot case sampled from public search results (PIXI BEAUTY).",
+      "manual_override_applied": true,
+      "baseline": {
+        "contract_version": "pivota.product_intel.v1",
+        "display_name": "Pivota Insights",
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_2e849c9f45f833f00c888b65"
+        },
+        "product_group_id": null,
+        "product_intel_core": {
+          "display_name": "Pivota Insights",
+          "what_it_is": {
+            "headline": "Makeup product",
+            "body": "Instantly hydrating and cooling lip patch."
+          },
+          "best_for": [
+            {
+              "tag": "external",
+              "label": "external shoppers",
+              "confidence": "low"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Formula angle",
+              "body": "Instantly hydrating and cooling lip patch.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "makeup",
+            "am_pm": [],
+            "pairing_notes": []
+          },
+          "watchouts": [],
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-13T00:49:23.943Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          }
+        },
+        "texture_finish": null,
+        "community_signals": {
+          "status": "unavailable",
+          "unavailable_reason": "insufficient_feedback",
+          "confidence": "low",
+          "evidence_profile": "seller_only"
+        },
+        "recommendation_intents": {
+          "similar": [],
+          "complementary": [],
+          "routine_pairing": [],
+          "underfill_reason": null,
+          "confidence": "low"
+        },
+        "market_signal_badges": [],
+        "external_highlight_signals": [],
+        "quality_state": "limited",
+        "evidence_profile": "seller_only",
+        "source_coverage": {
+          "seller": {
+            "available": true
+          },
+          "formula": {
+            "available": false
+          },
+          "reviews": {
+            "available": false,
+            "count": 0
+          },
+          "creator": {
+            "available": false,
+            "count": 0
+          },
+          "editorial": {
+            "available": false,
+            "count": 0
+          }
+        },
+        "confidence": {
+          "overall": "moderate",
+          "fields": {
+            "what_it_is": "high",
+            "best_for": "moderate",
+            "why_it_stands_out": "moderate",
+            "routine_fit": "moderate",
+            "watchouts": "moderate"
+          }
+        },
+        "freshness": {
+          "generated_at": "2026-04-13T00:49:23.943Z",
+          "source_version": "pivota.product_intel.v1"
+        },
+        "offer_pointers": {
+          "offers_count": 0,
+          "default_offer_id": null,
+          "best_price_offer_id": null,
+          "commerce_modes": []
+        },
+        "provenance": null,
+        "shopping_card": {
+          "contract_version": "pivota.shopping_card.v1",
+          "title": "PIXI BEAUTY Vitamin-C LipPatch (Set of 3)",
+          "subtitle": "Makeup Product",
+          "intro": "Instantly hydrating and cooling lip patch.",
+          "evidence_profile": "seller_only"
+        },
+        "search_card": {
+          "title_candidate": "PIXI BEAUTY Vitamin-C LipPatch (Set of 3)",
+          "compact_candidate": "Makeup Product",
+          "intro_candidate": "Instantly hydrating and cooling lip patch."
+        }
+      },
+      "gemini": {
+        "skipped": true,
+        "reason": "skip_gemini_flag"
+      },
+      "manual_override": {
+        "notes": "Strict human QA override: the 3-pack lip patch set was still framed as makeup, so the rewrite keeps it as a multi-piece lip-treatment set.",
+        "product_intel_core": {
+          "what_it_is": {
+            "headline": "Vitamin C lip patch set",
+            "body": "A set of 3 lip patches built for cooling hydration and quick lip prep."
+          },
+          "best_for": [
+            {
+              "tag": "dry_lips",
+              "label": "Dry lips needing extra care",
+              "confidence": "moderate"
+            },
+            {
+              "tag": "lip_prep",
+              "label": "Pre-event or pre-makeup lip prep",
+              "confidence": "moderate"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Set of 3 lip treatments",
+              "body": "Keeps the product grounded as a multi-piece lip patch set instead of a generic makeup bucket.",
+              "evidence_strength": "seller_grounded"
+            },
+            {
+              "headline": "Cooling hydration angle",
+              "body": "Built around a refreshed, hydrated lip feel before balm or color.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "lip_balm",
+            "am_pm": [
+              "am",
+              "pm"
+            ],
+            "pairing_notes": [
+              "Use one patch as a lip-treatment step before balm or lip color."
+            ]
+          },
+          "watchouts": [
+            {
+              "type": "format",
+              "label": "This is a set of 3 lip patches, not a single balm tube.",
+              "severity": "low"
+            }
+          ]
+        },
+        "shopping_card": {
+          "subtitle": "Vitamin C lip patch set",
+          "highlight": "Set of 3 cooling lip patches",
+          "intro": "A 3-pack lip patch set for cooling hydration."
+        },
+        "search_card": {
+          "compact_candidate": "Vitamin C lip patch set",
+          "highlight_candidate": "Set of 3 cooling lip patches",
+          "intro_candidate": "A 3-pack lip patch set for cooling hydration."
+        },
+        "external_highlight_review_status": "rewrite",
+        "external_review_batch": "manual_discovery_browse_batch30_reviewed_2026_04_13"
+      },
+      "quality_gate": {
+        "candidate_available": false,
+        "overall_pass": false,
+        "quality_score": 0,
+        "fail_reasons": [
+          "missing_candidate"
+        ],
+        "field_decisions": {}
+      },
+      "selected": {
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_2e849c9f45f833f00c888b65"
+          },
+          "product_group_id": null,
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Vitamin C lip patch set",
+              "body": "A set of 3 lip patches built for cooling hydration and quick lip prep."
+            },
+            "best_for": [
+              {
+                "tag": "dry_lips",
+                "label": "Dry lips needing extra care",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "lip_prep",
+                "label": "Pre-event or pre-makeup lip prep",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Set of 3 lip treatments",
+                "body": "Keeps the product grounded as a multi-piece lip patch set instead of a generic makeup bucket.",
+                "evidence_strength": "seller_grounded"
+              },
+              {
+                "headline": "Cooling hydration angle",
+                "body": "Built around a refreshed, hydrated lip feel before balm or color.",
+                "evidence_strength": "seller_grounded"
+              }
+            ],
+            "routine_fit": {
+              "step": "lip_balm",
+              "am_pm": [
+                "am",
+                "pm"
+              ],
+              "pairing_notes": [
+                "Use one patch as a lip-treatment step before balm or lip color."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "format",
+                "label": "This is a set of 3 lip patches, not a single balm tube.",
+                "severity": "low"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-04-13T00:49:23.943Z",
+              "source_version": "pivota.product_intel.v1"
+            },
+            "quality_state": "limited",
+            "evidence_profile": "seller_only",
+            "source_coverage": {
+              "seller": {
+                "available": true
+              },
+              "formula": {
+                "available": false
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": null,
+          "community_signals": {
+            "status": "unavailable",
+            "unavailable_reason": "insufficient_feedback",
+            "confidence": "low",
+            "evidence_profile": "seller_only"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-13T00:49:23.943Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "product_intel_pilot_compare",
+            "generator": "curated_override",
+            "selection_strategy": "curated_override",
+            "gemini_model": null,
+            "field_sources": {
+              "what_it_is": "baseline",
+              "best_for": "baseline",
+              "why_it_stands_out": "baseline",
+              "routine_fit": "baseline",
+              "watchouts": "baseline",
+              "texture_finish": "baseline",
+              "community_signals": "baseline"
+            },
+            "gemini_quality_gate": {
+              "candidate_available": false,
+              "overall_pass": false,
+              "quality_score": 0,
+              "fail_reasons": [
+                "missing_candidate"
+              ],
+              "field_decisions": {}
+            },
+            "override_reason": "Strict human QA override: the 3-pack lip patch set was still framed as makeup, so the rewrite keeps it as a multi-piece lip-treatment set.",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "manual_discovery_browse_batch30_reviewed_2026_04_13"
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "PIXI BEAUTY Vitamin-C LipPatch (Set of 3)",
+            "subtitle": "Vitamin C Lip Patch Set",
+            "highlight": "Set of 3 cooling lip patches",
+            "intro": "A 3-pack lip patch set for cooling hydration.",
+            "evidence_profile": "seller_only"
+          },
+          "search_card": {
+            "title_candidate": "PIXI BEAUTY Vitamin-C LipPatch (Set of 3)",
+            "compact_candidate": "Vitamin C Lip Patch Set",
+            "highlight_candidate": "Set of 3 cooling lip patches",
+            "intro_candidate": "A 3-pack lip patch set for cooling hydration."
+          }
+        },
+        "field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "baseline",
+          "community_signals": "baseline"
+        },
+        "selected_field_count": 5,
+        "selected_mode": "manual_override"
+      },
+      "comparison": {
+        "compared": false,
+        "best_for_overlap": 0,
+        "watchout_overlap": 1,
+        "baseline_highlight_count": 1,
+        "gemini_highlight_count": 0,
+        "gemini_quality": {
+          "candidate_available": false,
+          "overall_pass": false,
+          "quality_score": 0,
+          "fail_reasons": [
+            "missing_candidate"
+          ],
+          "field_decisions": {}
+        },
+        "selected_mode": "manual_override",
+        "selected_field_count": 5,
+        "selected_field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "baseline",
+          "community_signals": "baseline"
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_6c2feb5d6e43c9362d6a2254",
+      "notes": "Live pilot case sampled from public search results (https://www.firstaidbeauty.com/products/whole-body-deodorant-cream).",
+      "manual_override_applied": true,
+      "baseline": {
+        "contract_version": "pivota.product_intel.v1",
+        "display_name": "Pivota Insights",
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_6c2feb5d6e43c9362d6a2254"
+        },
+        "product_group_id": null,
+        "product_intel_core": {
+          "display_name": "Pivota Insights",
+          "what_it_is": {
+            "headline": "Daily moisturizer",
+            "body": "A whole body deodorant cream with 24-hour odor control. This invisible, aluminum-free formula keeps you feeling dry + fresh with a light citrus scent."
+          },
+          "best_for": [
+            {
+              "tag": "dryness",
+              "label": "Dry or dehydrated skin",
+              "confidence": "moderate"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Formula angle",
+              "body": "A whole body deodorant cream with 24-hour odor control.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "moisturizer",
+            "am_pm": [
+              "am",
+              "pm"
+            ],
+            "pairing_notes": [
+              "Layer after watery treatments and before SPF in the daytime."
+            ]
+          },
+          "watchouts": [],
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-13T00:49:23.943Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          }
+        },
+        "texture_finish": {
+          "texture": "cream",
+          "finish": "",
+          "sensory_notes": [],
+          "layering_notes": [
+            "Usually layers after serums and before daytime SPF."
+          ],
+          "confidence": "moderate",
+          "evidence_profile": "seller_only"
+        },
+        "community_signals": {
+          "status": "unavailable",
+          "unavailable_reason": "insufficient_feedback",
+          "confidence": "low",
+          "evidence_profile": "seller_only"
+        },
+        "recommendation_intents": {
+          "similar": [],
+          "complementary": [],
+          "routine_pairing": [],
+          "underfill_reason": null,
+          "confidence": "low"
+        },
+        "market_signal_badges": [],
+        "external_highlight_signals": [],
+        "quality_state": "limited",
+        "evidence_profile": "seller_only",
+        "source_coverage": {
+          "seller": {
+            "available": true
+          },
+          "formula": {
+            "available": false
+          },
+          "reviews": {
+            "available": false,
+            "count": 0
+          },
+          "creator": {
+            "available": false,
+            "count": 0
+          },
+          "editorial": {
+            "available": false,
+            "count": 0
+          }
+        },
+        "confidence": {
+          "overall": "moderate",
+          "fields": {
+            "what_it_is": "high",
+            "best_for": "moderate",
+            "why_it_stands_out": "moderate",
+            "routine_fit": "moderate",
+            "watchouts": "moderate"
+          }
+        },
+        "freshness": {
+          "generated_at": "2026-04-13T00:49:23.943Z",
+          "source_version": "pivota.product_intel.v1"
+        },
+        "offer_pointers": {
+          "offers_count": 0,
+          "default_offer_id": null,
+          "best_price_offer_id": null,
+          "commerce_modes": []
+        },
+        "provenance": null,
+        "shopping_card": {
+          "contract_version": "pivota.shopping_card.v1",
+          "title": "https://www.firstaidbeauty.com/products/whole-body-deodorant-cream Whole Body Deodorant Cream",
+          "subtitle": "Daily Moisturizer",
+          "intro": "A whole body deodorant cream with 24-hour odor control.",
+          "evidence_profile": "seller_only"
+        },
+        "search_card": {
+          "title_candidate": "https://www.firstaidbeauty.com/products/whole-body-deodorant-cream Whole Body Deodorant Cream",
+          "compact_candidate": "Daily Moisturizer",
+          "intro_candidate": "A whole body deodorant cream with 24-hour odor control."
+        }
+      },
+      "gemini": {
+        "skipped": true,
+        "reason": "skip_gemini_flag"
+      },
+      "manual_override": {
+        "notes": "Strict human QA override: source metadata polluted the brand/title with a URL and misframed the product as moisturizer, so the rewrite normalizes it into a deodorant definition.",
+        "product_intel_core": {
+          "what_it_is": {
+            "headline": "Whole-body deodorant",
+            "body": "An aluminum-free deodorant cream made for underarms and other odor-prone areas with all-over body use."
+          },
+          "best_for": [
+            {
+              "tag": "body_care",
+              "label": "Body odor control routines",
+              "confidence": "moderate"
+            },
+            {
+              "tag": "sensitive_skin",
+              "label": "Users avoiding harsher deodorant formats",
+              "confidence": "moderate"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "All-over body format",
+              "body": "Frames the product as a whole-body deodorant cream instead of letting it drift into a face-moisturizer category.",
+              "evidence_strength": "seller_grounded"
+            },
+            {
+              "headline": "Aluminum-free odor control",
+              "body": "Keeps odor control and body-use convenience at the center of the formula story.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "body care",
+            "am_pm": [
+              "am",
+              "pm"
+            ],
+            "pairing_notes": [
+              "Apply to clean, dry odor-prone areas as the deodorant step."
+            ]
+          },
+          "watchouts": []
+        },
+        "texture_finish": {
+          "texture": "cream",
+          "finish": "dry-touch",
+          "sensory_notes": [],
+          "layering_notes": [
+            "Apply to clean, dry odor-prone areas as the deodorant step."
+          ],
+          "confidence": "moderate",
+          "evidence_profile": "seller_only"
+        },
+        "shopping_card": {
+          "title": "First Aid Beauty Whole Body Deodorant Cream",
+          "subtitle": "Whole-body deodorant",
+          "highlight": "Aluminum-free odor control",
+          "intro": "A cream deodorant for underarms and other odor-prone areas."
+        },
+        "search_card": {
+          "title_candidate": "First Aid Beauty Whole Body Deodorant Cream",
+          "compact_candidate": "Whole-body deodorant",
+          "highlight_candidate": "Aluminum-free odor control",
+          "intro_candidate": "A cream deodorant for underarms and other odor-prone areas."
+        },
+        "external_highlight_review_status": "rewrite",
+        "external_review_batch": "manual_discovery_browse_batch30_reviewed_2026_04_13"
+      },
+      "quality_gate": {
+        "candidate_available": false,
+        "overall_pass": false,
+        "quality_score": 0,
+        "fail_reasons": [
+          "missing_candidate"
+        ],
+        "field_decisions": {}
+      },
+      "selected": {
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_6c2feb5d6e43c9362d6a2254"
+          },
+          "product_group_id": null,
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Whole-body deodorant",
+              "body": "An aluminum-free deodorant cream made for underarms and other odor-prone areas with all-over body use."
+            },
+            "best_for": [
+              {
+                "tag": "body_care",
+                "label": "Body odor control routines",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "sensitive_skin",
+                "label": "Users avoiding harsher deodorant formats",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "All-over body format",
+                "body": "Frames the product as a whole-body deodorant cream instead of letting it drift into a face-moisturizer category.",
+                "evidence_strength": "seller_grounded"
+              },
+              {
+                "headline": "Aluminum-free odor control",
+                "body": "Keeps odor control and body-use convenience at the center of the formula story.",
+                "evidence_strength": "seller_grounded"
+              }
+            ],
+            "routine_fit": {
+              "step": "body care",
+              "am_pm": [
+                "am",
+                "pm"
+              ],
+              "pairing_notes": [
+                "Apply to clean, dry odor-prone areas as the deodorant step."
+              ]
+            },
+            "watchouts": [],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-04-13T00:49:23.943Z",
+              "source_version": "pivota.product_intel.v1"
+            },
+            "quality_state": "limited",
+            "evidence_profile": "seller_only",
+            "source_coverage": {
+              "seller": {
+                "available": true
+              },
+              "formula": {
+                "available": false
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "texture": "cream",
+            "finish": "dry-touch",
+            "sensory_notes": [],
+            "layering_notes": [
+              "Apply to clean, dry odor-prone areas as the deodorant step."
+            ],
+            "confidence": "moderate",
+            "evidence_profile": "seller_only"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "unavailable_reason": "insufficient_feedback",
+            "confidence": "low",
+            "evidence_profile": "seller_only"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-13T00:49:23.943Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "product_intel_pilot_compare",
+            "generator": "curated_override",
+            "selection_strategy": "curated_override",
+            "gemini_model": null,
+            "field_sources": {
+              "what_it_is": "baseline",
+              "best_for": "baseline",
+              "why_it_stands_out": "baseline",
+              "routine_fit": "baseline",
+              "watchouts": "baseline",
+              "texture_finish": "baseline",
+              "community_signals": "baseline"
+            },
+            "gemini_quality_gate": {
+              "candidate_available": false,
+              "overall_pass": false,
+              "quality_score": 0,
+              "fail_reasons": [
+                "missing_candidate"
+              ],
+              "field_decisions": {}
+            },
+            "override_reason": "Strict human QA override: source metadata polluted the brand/title with a URL and misframed the product as moisturizer, so the rewrite normalizes it into a deodorant definition.",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "manual_discovery_browse_batch30_reviewed_2026_04_13"
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "https://www.firstaidbeauty.com/products/whole-body-deodorant-cream Whole Body Deodorant Cream",
+            "subtitle": "Whole-Body Deodorant",
+            "highlight": "Aluminum-free odor control",
+            "intro": "A cream deodorant for underarms and other odor-prone areas.",
+            "evidence_profile": "seller_only"
+          },
+          "search_card": {
+            "title_candidate": "https://www.firstaidbeauty.com/products/whole-body-deodorant-cream Whole Body Deodorant Cream",
+            "compact_candidate": "Whole-Body Deodorant",
+            "highlight_candidate": "Aluminum-free odor control",
+            "intro_candidate": "A cream deodorant for underarms and other odor-prone areas."
+          }
+        },
+        "field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "manual",
+          "community_signals": "baseline"
+        },
+        "selected_field_count": 6,
+        "selected_mode": "manual_override"
+      },
+      "comparison": {
+        "compared": false,
+        "best_for_overlap": 0,
+        "watchout_overlap": 1,
+        "baseline_highlight_count": 1,
+        "gemini_highlight_count": 0,
+        "gemini_quality": {
+          "candidate_available": false,
+          "overall_pass": false,
+          "quality_score": 0,
+          "fail_reasons": [
+            "missing_candidate"
+          ],
+          "field_decisions": {}
+        },
+        "selected_mode": "manual_override",
+        "selected_field_count": 6,
+        "selected_field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "manual",
+          "community_signals": "baseline"
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_618a5cf368a153492c14b151",
+      "notes": "Live pilot case sampled from public search results (PIXI BEAUTY).",
+      "manual_override_applied": true,
+      "baseline": {
+        "contract_version": "pivota.product_intel.v1",
+        "display_name": "Pivota Insights",
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_618a5cf368a153492c14b151"
+        },
+        "product_group_id": null,
+        "product_intel_core": {
+          "display_name": "Pivota Insights",
+          "what_it_is": {
+            "headline": "Prep or toner step",
+            "body": "A daily facial toner that contains Vitamin-C, a potent Antioxidant that is known to boost skin luminosity."
+          },
+          "best_for": [
+            {
+              "tag": "uneven_tone",
+              "label": "Uneven tone concerns",
+              "confidence": "moderate"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Formula angle",
+              "body": "A daily facial toner that contains Vitamin-C, a potent Antioxidant that is known to boost skin luminosity.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "toner",
+            "am_pm": [],
+            "pairing_notes": []
+          },
+          "watchouts": [],
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-13T00:49:23.944Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          }
+        },
+        "texture_finish": null,
+        "community_signals": {
+          "status": "unavailable",
+          "unavailable_reason": "insufficient_feedback",
+          "confidence": "low",
+          "evidence_profile": "seller_only"
+        },
+        "recommendation_intents": {
+          "similar": [],
+          "complementary": [],
+          "routine_pairing": [],
+          "underfill_reason": null,
+          "confidence": "low"
+        },
+        "market_signal_badges": [],
+        "external_highlight_signals": [],
+        "quality_state": "limited",
+        "evidence_profile": "seller_only",
+        "source_coverage": {
+          "seller": {
+            "available": true
+          },
+          "formula": {
+            "available": false
+          },
+          "reviews": {
+            "available": false,
+            "count": 0
+          },
+          "creator": {
+            "available": false,
+            "count": 0
+          },
+          "editorial": {
+            "available": false,
+            "count": 0
+          }
+        },
+        "confidence": {
+          "overall": "moderate",
+          "fields": {
+            "what_it_is": "high",
+            "best_for": "moderate",
+            "why_it_stands_out": "moderate",
+            "routine_fit": "moderate",
+            "watchouts": "moderate"
+          }
+        },
+        "freshness": {
+          "generated_at": "2026-04-13T00:49:23.944Z",
+          "source_version": "pivota.product_intel.v1"
+        },
+        "offer_pointers": {
+          "offers_count": 0,
+          "default_offer_id": null,
+          "best_price_offer_id": null,
+          "commerce_modes": []
+        },
+        "provenance": null,
+        "shopping_card": {
+          "contract_version": "pivota.shopping_card.v1",
+          "title": "PIXI BEAUTY Mini Vitamin-C Tonic",
+          "subtitle": "Prep Or Toner Step",
+          "evidence_profile": "seller_only"
+        },
+        "search_card": {
+          "title_candidate": "PIXI BEAUTY Mini Vitamin-C Tonic",
+          "compact_candidate": "Prep Or Toner Step"
+        }
+      },
+      "gemini": {
+        "skipped": true,
+        "reason": "skip_gemini_flag"
+      },
+      "manual_override": {
+        "notes": "Strict human QA override: the mini tonic was close but still too generic, so the rewrite makes the travel-size vitamin C toner use-case explicit.",
+        "product_intel_core": {
+          "what_it_is": {
+            "headline": "Mini vitamin C toner",
+            "body": "A travel-size vitamin C toner for daily brightening and antioxidant support."
+          },
+          "best_for": [
+            {
+              "tag": "dullness",
+              "label": "Dull or uneven-looking skin",
+              "confidence": "moderate"
+            },
+            {
+              "tag": "travel_routine",
+              "label": "Travel-size brightening routines",
+              "confidence": "moderate"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Vitamin C tonic format",
+              "body": "Keeps the product grounded as a brightening tonic step instead of an undefined prep product.",
+              "evidence_strength": "seller_grounded"
+            },
+            {
+              "headline": "Mini size for carry-on routines",
+              "body": "The smaller format makes it easy to keep a familiar toner step in travel kits.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "toner",
+            "am_pm": [
+              "am",
+              "pm"
+            ],
+            "pairing_notes": [
+              "Use after cleansing before serum or moisturizer."
+            ]
+          },
+          "watchouts": []
+        },
+        "shopping_card": {
+          "subtitle": "Mini vitamin C toner",
+          "highlight": "Travel-size glow toner",
+          "intro": "A mini toner for daily brightening and antioxidant support."
+        },
+        "search_card": {
+          "compact_candidate": "Mini vitamin C toner",
+          "highlight_candidate": "Travel-size glow toner",
+          "intro_candidate": "A mini toner for daily brightening and antioxidant support."
+        },
+        "external_highlight_review_status": "rewrite",
+        "external_review_batch": "manual_discovery_browse_batch30_reviewed_2026_04_13"
+      },
+      "quality_gate": {
+        "candidate_available": false,
+        "overall_pass": false,
+        "quality_score": 0,
+        "fail_reasons": [
+          "missing_candidate"
+        ],
+        "field_decisions": {}
+      },
+      "selected": {
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_618a5cf368a153492c14b151"
+          },
+          "product_group_id": null,
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Mini vitamin C toner",
+              "body": "A travel-size vitamin C toner for daily brightening and antioxidant support."
+            },
+            "best_for": [
+              {
+                "tag": "dullness",
+                "label": "Dull or uneven-looking skin",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "travel_routine",
+                "label": "Travel-size brightening routines",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Vitamin C tonic format",
+                "body": "Keeps the product grounded as a brightening tonic step instead of an undefined prep product.",
+                "evidence_strength": "seller_grounded"
+              },
+              {
+                "headline": "Mini size for carry-on routines",
+                "body": "The smaller format makes it easy to keep a familiar toner step in travel kits.",
+                "evidence_strength": "seller_grounded"
+              }
+            ],
+            "routine_fit": {
+              "step": "toner",
+              "am_pm": [
+                "am",
+                "pm"
+              ],
+              "pairing_notes": [
+                "Use after cleansing before serum or moisturizer."
+              ]
+            },
+            "watchouts": [],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-04-13T00:49:23.944Z",
+              "source_version": "pivota.product_intel.v1"
+            },
+            "quality_state": "limited",
+            "evidence_profile": "seller_only",
+            "source_coverage": {
+              "seller": {
+                "available": true
+              },
+              "formula": {
+                "available": false
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": null,
+          "community_signals": {
+            "status": "unavailable",
+            "unavailable_reason": "insufficient_feedback",
+            "confidence": "low",
+            "evidence_profile": "seller_only"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-13T00:49:23.944Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "product_intel_pilot_compare",
+            "generator": "curated_override",
+            "selection_strategy": "curated_override",
+            "gemini_model": null,
+            "field_sources": {
+              "what_it_is": "baseline",
+              "best_for": "baseline",
+              "why_it_stands_out": "baseline",
+              "routine_fit": "baseline",
+              "watchouts": "baseline",
+              "texture_finish": "baseline",
+              "community_signals": "baseline"
+            },
+            "gemini_quality_gate": {
+              "candidate_available": false,
+              "overall_pass": false,
+              "quality_score": 0,
+              "fail_reasons": [
+                "missing_candidate"
+              ],
+              "field_decisions": {}
+            },
+            "override_reason": "Strict human QA override: the mini tonic was close but still too generic, so the rewrite makes the travel-size vitamin C toner use-case explicit.",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "manual_discovery_browse_batch30_reviewed_2026_04_13"
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "PIXI BEAUTY Mini Vitamin-C Tonic",
+            "subtitle": "Mini Vitamin C Toner",
+            "intro": "A mini toner for daily brightening and antioxidant support.",
+            "evidence_profile": "seller_only"
+          },
+          "search_card": {
+            "title_candidate": "PIXI BEAUTY Mini Vitamin-C Tonic",
+            "compact_candidate": "Mini Vitamin C Toner",
+            "intro_candidate": "A mini toner for daily brightening and antioxidant support."
+          }
+        },
+        "field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "baseline",
+          "community_signals": "baseline"
+        },
+        "selected_field_count": 5,
+        "selected_mode": "manual_override"
+      },
+      "comparison": {
+        "compared": false,
+        "best_for_overlap": 0,
+        "watchout_overlap": 1,
+        "baseline_highlight_count": 1,
+        "gemini_highlight_count": 0,
+        "gemini_quality": {
+          "candidate_available": false,
+          "overall_pass": false,
+          "quality_score": 0,
+          "fail_reasons": [
+            "missing_candidate"
+          ],
+          "field_decisions": {}
+        },
+        "selected_mode": "manual_override",
+        "selected_field_count": 5,
+        "selected_field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "baseline",
+          "community_signals": "baseline"
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_36dbd5cb94c8180355473525",
+      "notes": "Live pilot case sampled from public search results (PIXI BEAUTY).",
+      "manual_override_applied": true,
+      "baseline": {
+        "contract_version": "pivota.product_intel.v1",
+        "display_name": "Pivota Insights",
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_36dbd5cb94c8180355473525"
+        },
+        "product_group_id": null,
+        "product_intel_core": {
+          "display_name": "Pivota Insights",
+          "what_it_is": {
+            "headline": "Product",
+            "body": "Radiance starts here! Meet the NEW Vitamin-C Trio, your ultimate brightening routine in one easy set."
+          },
+          "best_for": [
+            {
+              "tag": "uneven_tone",
+              "label": "Uneven tone concerns",
+              "confidence": "moderate"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Formula angle",
+              "body": "Meet the NEW Vitamin-C Trio, your ultimate brightening routine in one easy set.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "product",
+            "am_pm": [],
+            "pairing_notes": []
+          },
+          "watchouts": [],
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-13T00:49:23.944Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          }
+        },
+        "texture_finish": null,
+        "community_signals": {
+          "status": "unavailable",
+          "unavailable_reason": "insufficient_feedback",
+          "confidence": "low",
+          "evidence_profile": "seller_only"
+        },
+        "recommendation_intents": {
+          "similar": [],
+          "complementary": [],
+          "routine_pairing": [],
+          "underfill_reason": null,
+          "confidence": "low"
+        },
+        "market_signal_badges": [],
+        "external_highlight_signals": [],
+        "quality_state": "limited",
+        "evidence_profile": "seller_only",
+        "source_coverage": {
+          "seller": {
+            "available": true
+          },
+          "formula": {
+            "available": false
+          },
+          "reviews": {
+            "available": false,
+            "count": 0
+          },
+          "creator": {
+            "available": false,
+            "count": 0
+          },
+          "editorial": {
+            "available": false,
+            "count": 0
+          }
+        },
+        "confidence": {
+          "overall": "moderate",
+          "fields": {
+            "what_it_is": "high",
+            "best_for": "moderate",
+            "why_it_stands_out": "moderate",
+            "routine_fit": "moderate",
+            "watchouts": "moderate"
+          }
+        },
+        "freshness": {
+          "generated_at": "2026-04-13T00:49:23.944Z",
+          "source_version": "pivota.product_intel.v1"
+        },
+        "offer_pointers": {
+          "offers_count": 0,
+          "default_offer_id": null,
+          "best_price_offer_id": null,
+          "commerce_modes": []
+        },
+        "provenance": null,
+        "shopping_card": {
+          "contract_version": "pivota.shopping_card.v1",
+          "title": "PIXI BEAUTY Vitamin-C Trio",
+          "subtitle": "Product",
+          "intro": "Meet the NEW Vitamin-C Trio, your ultimate brightening routine in one easy set.",
+          "evidence_profile": "seller_only"
+        },
+        "search_card": {
+          "title_candidate": "PIXI BEAUTY Vitamin-C Trio",
+          "compact_candidate": "Product",
+          "intro_candidate": "Meet the NEW Vitamin-C Trio, your ultimate brightening routine in one easy set."
+        }
+      },
+      "gemini": {
+        "skipped": true,
+        "reason": "skip_gemini_flag"
+      },
+      "manual_override": {
+        "notes": "Strict human QA override: the vitamin C trio still collapsed into a generic product label, so the rewrite keeps it as a coordinated brightening set.",
+        "product_intel_core": {
+          "what_it_is": {
+            "headline": "Vitamin C routine trio",
+            "body": "A 3-piece vitamin C set built around a coordinated brightening routine."
+          },
+          "best_for": [
+            {
+              "tag": "dullness",
+              "label": "Dull or uneven-looking skin",
+              "confidence": "moderate"
+            },
+            {
+              "tag": "routine_simplification",
+              "label": "A ready-made brightening set",
+              "confidence": "moderate"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Three-step vitamin C routine",
+              "body": "Keeps the set grounded as a coordinated brightening trio instead of a single vague product type.",
+              "evidence_strength": "seller_grounded"
+            },
+            {
+              "headline": "Set-built glow support",
+              "body": "Frames the trio around an easier all-in-one brightening routine rather than one isolated treatment step.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "routine set",
+            "am_pm": [
+              "am",
+              "pm"
+            ],
+            "pairing_notes": [
+              "Use the included products in order as a brightening-focused set."
+            ]
+          },
+          "watchouts": [
+            {
+              "type": "format",
+              "label": "This is a 3-piece routine set, not one standalone vitamin C serum.",
+              "severity": "low"
+            }
+          ]
+        },
+        "shopping_card": {
+          "subtitle": "Vitamin C routine trio",
+          "highlight": "3-step brightening set",
+          "intro": "A 3-piece Pixi set built for a brighter-looking routine."
+        },
+        "search_card": {
+          "compact_candidate": "Vitamin C routine trio",
+          "highlight_candidate": "3-step brightening set",
+          "intro_candidate": "A 3-piece Pixi set built for a brighter-looking routine."
+        },
+        "external_highlight_review_status": "rewrite",
+        "external_review_batch": "manual_discovery_browse_batch30_reviewed_2026_04_13"
+      },
+      "quality_gate": {
+        "candidate_available": false,
+        "overall_pass": false,
+        "quality_score": 0,
+        "fail_reasons": [
+          "missing_candidate"
+        ],
+        "field_decisions": {}
+      },
+      "selected": {
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_36dbd5cb94c8180355473525"
+          },
+          "product_group_id": null,
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Vitamin C routine trio",
+              "body": "A 3-piece vitamin C set built around a coordinated brightening routine."
+            },
+            "best_for": [
+              {
+                "tag": "dullness",
+                "label": "Dull or uneven-looking skin",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "routine_simplification",
+                "label": "A ready-made brightening set",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Three-step vitamin C routine",
+                "body": "Keeps the set grounded as a coordinated brightening trio instead of a single vague product type.",
+                "evidence_strength": "seller_grounded"
+              },
+              {
+                "headline": "Set-built glow support",
+                "body": "Frames the trio around an easier all-in-one brightening routine rather than one isolated treatment step.",
+                "evidence_strength": "seller_grounded"
+              }
+            ],
+            "routine_fit": {
+              "step": "routine set",
+              "am_pm": [
+                "am",
+                "pm"
+              ],
+              "pairing_notes": [
+                "Use the included products in order as a brightening-focused set."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "format",
+                "label": "This is a 3-piece routine set, not one standalone vitamin C serum.",
+                "severity": "low"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-04-13T00:49:23.944Z",
+              "source_version": "pivota.product_intel.v1"
+            },
+            "quality_state": "limited",
+            "evidence_profile": "seller_only",
+            "source_coverage": {
+              "seller": {
+                "available": true
+              },
+              "formula": {
+                "available": false
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": null,
+          "community_signals": {
+            "status": "unavailable",
+            "unavailable_reason": "insufficient_feedback",
+            "confidence": "low",
+            "evidence_profile": "seller_only"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-13T00:49:23.944Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "product_intel_pilot_compare",
+            "generator": "curated_override",
+            "selection_strategy": "curated_override",
+            "gemini_model": null,
+            "field_sources": {
+              "what_it_is": "baseline",
+              "best_for": "baseline",
+              "why_it_stands_out": "baseline",
+              "routine_fit": "baseline",
+              "watchouts": "baseline",
+              "texture_finish": "baseline",
+              "community_signals": "baseline"
+            },
+            "gemini_quality_gate": {
+              "candidate_available": false,
+              "overall_pass": false,
+              "quality_score": 0,
+              "fail_reasons": [
+                "missing_candidate"
+              ],
+              "field_decisions": {}
+            },
+            "override_reason": "Strict human QA override: the vitamin C trio still collapsed into a generic product label, so the rewrite keeps it as a coordinated brightening set.",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "manual_discovery_browse_batch30_reviewed_2026_04_13"
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "PIXI BEAUTY Vitamin-C Trio",
+            "subtitle": "Vitamin C Routine Trio",
+            "highlight": "3-step brightening set",
+            "intro": "A 3-piece Pixi set built for a brighter-looking routine.",
+            "evidence_profile": "seller_only"
+          },
+          "search_card": {
+            "title_candidate": "PIXI BEAUTY Vitamin-C Trio",
+            "compact_candidate": "Vitamin C Routine Trio",
+            "highlight_candidate": "3-step brightening set",
+            "intro_candidate": "A 3-piece Pixi set built for a brighter-looking routine."
+          }
+        },
+        "field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "baseline",
+          "community_signals": "baseline"
+        },
+        "selected_field_count": 5,
+        "selected_mode": "manual_override"
+      },
+      "comparison": {
+        "compared": false,
+        "best_for_overlap": 0,
+        "watchout_overlap": 1,
+        "baseline_highlight_count": 1,
+        "gemini_highlight_count": 0,
+        "gemini_quality": {
+          "candidate_available": false,
+          "overall_pass": false,
+          "quality_score": 0,
+          "fail_reasons": [
+            "missing_candidate"
+          ],
+          "field_decisions": {}
+        },
+        "selected_mode": "manual_override",
+        "selected_field_count": 5,
+        "selected_field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "baseline",
+          "community_signals": "baseline"
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_5837040829d6e6e8b5e72bde",
+      "notes": "Live pilot case sampled from public search results (Fenty Beauty).",
+      "manual_override_applied": true,
+      "baseline": {
+        "contract_version": "pivota.product_intel.v1",
+        "display_name": "Pivota Insights",
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_5837040829d6e6e8b5e72bde"
+        },
+        "product_group_id": null,
+        "product_intel_core": {
+          "display_name": "Pivota Insights",
+          "what_it_is": {
+            "headline": "Treatment mask",
+            "body": "Whether you're on a red-eye or headed to bed, grab this skincare + lip care trio for replenished, juicy skin. Instantly hydrate, nourish + condition with a milky toner."
+          },
+          "best_for": [
+            {
+              "tag": "uneven_tone",
+              "label": "Uneven tone concerns",
+              "confidence": "moderate"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Formula angle",
+              "body": "Whether you're on a red-eye or headed to bed, grab this skincare + lip care trio for replenished, juicy skin.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "mask",
+            "am_pm": [],
+            "pairing_notes": []
+          },
+          "watchouts": [],
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-13T00:49:23.945Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          }
+        },
+        "texture_finish": null,
+        "community_signals": {
+          "status": "unavailable",
+          "unavailable_reason": "insufficient_feedback",
+          "confidence": "low",
+          "evidence_profile": "seller_only"
+        },
+        "recommendation_intents": {
+          "similar": [],
+          "complementary": [],
+          "routine_pairing": [],
+          "underfill_reason": null,
+          "confidence": "low"
+        },
+        "market_signal_badges": [],
+        "external_highlight_signals": [],
+        "quality_state": "limited",
+        "evidence_profile": "seller_only",
+        "source_coverage": {
+          "seller": {
+            "available": true
+          },
+          "formula": {
+            "available": false
+          },
+          "reviews": {
+            "available": false,
+            "count": 0
+          },
+          "creator": {
+            "available": false,
+            "count": 0
+          },
+          "editorial": {
+            "available": false,
+            "count": 0
+          }
+        },
+        "confidence": {
+          "overall": "moderate",
+          "fields": {
+            "what_it_is": "high",
+            "best_for": "moderate",
+            "why_it_stands_out": "moderate",
+            "routine_fit": "moderate",
+            "watchouts": "moderate"
+          }
+        },
+        "freshness": {
+          "generated_at": "2026-04-13T00:49:23.945Z",
+          "source_version": "pivota.product_intel.v1"
+        },
+        "offer_pointers": {
+          "offers_count": 0,
+          "default_offer_id": null,
+          "best_price_offer_id": null,
+          "commerce_modes": []
+        },
+        "provenance": null,
+        "shopping_card": {
+          "contract_version": "pivota.shopping_card.v1",
+          "title": "Fenty Beauty Big On Hydration: Milky Toner, Face Mask + Lip Mask Trio",
+          "subtitle": "Treatment Mask",
+          "intro": "Instantly hydrate, nourish + condition with a milky toner.",
+          "evidence_profile": "seller_only"
+        },
+        "search_card": {
+          "title_candidate": "Fenty Beauty Big On Hydration: Milky Toner, Face Mask + Lip Mask Trio",
+          "compact_candidate": "Treatment Mask",
+          "intro_candidate": "Instantly hydrate, nourish + condition with a milky toner."
+        }
+      },
+      "gemini": {
+        "skipped": true,
+        "reason": "skip_gemini_flag"
+      },
+      "manual_override": {
+        "notes": "Strict human QA override: the hydration trio was too narrowly collapsed into a mask bucket, so the rewrite keeps the toner-plus-mask set structure explicit.",
+        "product_intel_core": {
+          "what_it_is": {
+            "headline": "Hydration toner + mask trio",
+            "body": "A 3-piece hydration set pairing a milky toner, face mask, and lip mask."
+          },
+          "best_for": [
+            {
+              "tag": "dehydration",
+              "label": "Dehydrated skin or lips",
+              "confidence": "moderate"
+            },
+            {
+              "tag": "overnight_reset",
+              "label": "Extra hydration-focused reset routines",
+              "confidence": "moderate"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Toner + two-mask structure",
+              "body": "Keeps the set grounded as a combined hydration system instead of reducing it to one treatment mask.",
+              "evidence_strength": "seller_grounded"
+            },
+            {
+              "headline": "Face and lip hydration coverage",
+              "body": "Pairs a milky toner with separate face and lip mask steps for a fuller hydration routine.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "routine set",
+            "am_pm": [
+              "pm"
+            ],
+            "pairing_notes": [
+              "Use the toner first, then layer the face and lip masks as directed."
+            ]
+          },
+          "watchouts": [
+            {
+              "type": "format",
+              "label": "This is a multi-step set, not a single face mask jar.",
+              "severity": "low"
+            }
+          ]
+        },
+        "shopping_card": {
+          "subtitle": "Hydration toner + mask trio",
+          "highlight": "Milky toner + face/lip masks",
+          "intro": "A 3-piece hydration set for skin and lips."
+        },
+        "search_card": {
+          "compact_candidate": "Hydration toner + mask trio",
+          "highlight_candidate": "Milky toner + face/lip masks",
+          "intro_candidate": "A 3-piece hydration set for skin and lips."
+        },
+        "external_highlight_review_status": "rewrite",
+        "external_review_batch": "manual_discovery_browse_batch30_reviewed_2026_04_13"
+      },
+      "quality_gate": {
+        "candidate_available": false,
+        "overall_pass": false,
+        "quality_score": 0,
+        "fail_reasons": [
+          "missing_candidate"
+        ],
+        "field_decisions": {}
+      },
+      "selected": {
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_5837040829d6e6e8b5e72bde"
+          },
+          "product_group_id": null,
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Hydration toner + mask trio",
+              "body": "A 3-piece hydration set pairing a milky toner, face mask, and lip mask."
+            },
+            "best_for": [
+              {
+                "tag": "dehydration",
+                "label": "Dehydrated skin or lips",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "overnight_reset",
+                "label": "Extra hydration-focused reset routines",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Toner + two-mask structure",
+                "body": "Keeps the set grounded as a combined hydration system instead of reducing it to one treatment mask.",
+                "evidence_strength": "seller_grounded"
+              },
+              {
+                "headline": "Face and lip hydration coverage",
+                "body": "Pairs a milky toner with separate face and lip mask steps for a fuller hydration routine.",
+                "evidence_strength": "seller_grounded"
+              }
+            ],
+            "routine_fit": {
+              "step": "routine set",
+              "am_pm": [
+                "pm"
+              ],
+              "pairing_notes": [
+                "Use the toner first, then layer the face and lip masks as directed."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "format",
+                "label": "This is a multi-step set, not a single face mask jar.",
+                "severity": "low"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-04-13T00:49:23.945Z",
+              "source_version": "pivota.product_intel.v1"
+            },
+            "quality_state": "limited",
+            "evidence_profile": "seller_only",
+            "source_coverage": {
+              "seller": {
+                "available": true
+              },
+              "formula": {
+                "available": false
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": null,
+          "community_signals": {
+            "status": "unavailable",
+            "unavailable_reason": "insufficient_feedback",
+            "confidence": "low",
+            "evidence_profile": "seller_only"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-13T00:49:23.945Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "product_intel_pilot_compare",
+            "generator": "curated_override",
+            "selection_strategy": "curated_override",
+            "gemini_model": null,
+            "field_sources": {
+              "what_it_is": "baseline",
+              "best_for": "baseline",
+              "why_it_stands_out": "baseline",
+              "routine_fit": "baseline",
+              "watchouts": "baseline",
+              "texture_finish": "baseline",
+              "community_signals": "baseline"
+            },
+            "gemini_quality_gate": {
+              "candidate_available": false,
+              "overall_pass": false,
+              "quality_score": 0,
+              "fail_reasons": [
+                "missing_candidate"
+              ],
+              "field_decisions": {}
+            },
+            "override_reason": "Strict human QA override: the hydration trio was too narrowly collapsed into a mask bucket, so the rewrite keeps the toner-plus-mask set structure explicit.",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "manual_discovery_browse_batch30_reviewed_2026_04_13"
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Fenty Beauty Big On Hydration: Milky Toner, Face Mask + Lip Mask Trio",
+            "subtitle": "Hydration Toner + Mask Trio",
+            "highlight": "Milky toner + face/lip masks",
+            "intro": "A 3-piece hydration set for skin and lips.",
+            "evidence_profile": "seller_only"
+          },
+          "search_card": {
+            "title_candidate": "Fenty Beauty Big On Hydration: Milky Toner, Face Mask + Lip Mask Trio",
+            "compact_candidate": "Hydration Toner + Mask Trio",
+            "highlight_candidate": "Milky toner + face/lip masks",
+            "intro_candidate": "A 3-piece hydration set for skin and lips."
+          }
+        },
+        "field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "baseline",
+          "community_signals": "baseline"
+        },
+        "selected_field_count": 5,
+        "selected_mode": "manual_override"
+      },
+      "comparison": {
+        "compared": false,
+        "best_for_overlap": 0,
+        "watchout_overlap": 1,
+        "baseline_highlight_count": 1,
+        "gemini_highlight_count": 0,
+        "gemini_quality": {
+          "candidate_available": false,
+          "overall_pass": false,
+          "quality_score": 0,
+          "fail_reasons": [
+            "missing_candidate"
+          ],
+          "field_decisions": {}
+        },
+        "selected_mode": "manual_override",
+        "selected_field_count": 5,
+        "selected_field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "baseline",
+          "community_signals": "baseline"
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_a9ec7261c9f3c77391e2ba27",
+      "notes": "Live pilot case sampled from public search results (PIXI BEAUTY).",
+      "manual_override_applied": true,
+      "baseline": {
+        "contract_version": "pivota.product_intel.v1",
+        "display_name": "Pivota Insights",
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_a9ec7261c9f3c77391e2ba27"
+        },
+        "product_group_id": null,
+        "product_intel_core": {
+          "display_name": "Pivota Insights",
+          "what_it_is": {
+            "headline": "Makeup product",
+            "body": "Celebrate festive radiance with 12 Pixi favourites to hydrate, brighten and elevate your skin, lips, eyes and overall Glow this season. Grab this new Pixi Advent Calendar before it sells out."
+          },
+          "best_for": [
+            {
+              "tag": "uneven_tone",
+              "label": "Uneven tone concerns",
+              "confidence": "moderate"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Formula angle",
+              "body": "Celebrate festive radiance with 12 Pixi favourites to hydrate, brighten and elevate your skin, lips, eyes and overall Glow this season.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "makeup",
+            "am_pm": [],
+            "pairing_notes": []
+          },
+          "watchouts": [],
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-13T00:49:23.946Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          }
+        },
+        "texture_finish": {
+          "texture": "",
+          "finish": "dewy",
+          "sensory_notes": [],
+          "layering_notes": [],
+          "confidence": "moderate",
+          "evidence_profile": "seller_only"
+        },
+        "community_signals": {
+          "status": "unavailable",
+          "unavailable_reason": "insufficient_feedback",
+          "confidence": "low",
+          "evidence_profile": "seller_only"
+        },
+        "recommendation_intents": {
+          "similar": [],
+          "complementary": [],
+          "routine_pairing": [],
+          "underfill_reason": null,
+          "confidence": "low"
+        },
+        "market_signal_badges": [],
+        "external_highlight_signals": [],
+        "quality_state": "limited",
+        "evidence_profile": "seller_only",
+        "source_coverage": {
+          "seller": {
+            "available": true
+          },
+          "formula": {
+            "available": false
+          },
+          "reviews": {
+            "available": false,
+            "count": 0
+          },
+          "creator": {
+            "available": false,
+            "count": 0
+          },
+          "editorial": {
+            "available": false,
+            "count": 0
+          }
+        },
+        "confidence": {
+          "overall": "moderate",
+          "fields": {
+            "what_it_is": "high",
+            "best_for": "moderate",
+            "why_it_stands_out": "moderate",
+            "routine_fit": "moderate",
+            "watchouts": "moderate"
+          }
+        },
+        "freshness": {
+          "generated_at": "2026-04-13T00:49:23.946Z",
+          "source_version": "pivota.product_intel.v1"
+        },
+        "offer_pointers": {
+          "offers_count": 0,
+          "default_offer_id": null,
+          "best_price_offer_id": null,
+          "commerce_modes": []
+        },
+        "provenance": null,
+        "shopping_card": {
+          "contract_version": "pivota.shopping_card.v1",
+          "title": "PIXI BEAUTY 12 Days of Icons Calendar",
+          "subtitle": "Makeup Product",
+          "intro": "Grab this new Pixi Advent Calendar before it sells out.",
+          "evidence_profile": "seller_only"
+        },
+        "search_card": {
+          "title_candidate": "PIXI BEAUTY 12 Days of Icons Calendar",
+          "compact_candidate": "Makeup Product",
+          "intro_candidate": "Grab this new Pixi Advent Calendar before it sells out."
+        }
+      },
+      "gemini": {
+        "skipped": true,
+        "reason": "skip_gemini_flag"
+      },
+      "manual_override": {
+        "notes": "Strict human QA override: the advent calendar had sales-y intro and a generic makeup label, so the rewrite keeps it as a holiday beauty sampler.",
+        "product_intel_core": {
+          "what_it_is": {
+            "headline": "Beauty advent calendar",
+            "body": "A 12-piece holiday calendar that samples Pixi favorites across skin, lip, and eye care."
+          },
+          "best_for": [
+            {
+              "tag": "gifting",
+              "label": "Beauty gifting",
+              "confidence": "moderate"
+            },
+            {
+              "tag": "brand_trial",
+              "label": "Sampling the Pixi lineup",
+              "confidence": "moderate"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "12-piece sampler format",
+              "body": "Keeps the calendar grounded as a holiday sampler instead of a generic makeup product.",
+              "evidence_strength": "seller_grounded"
+            },
+            {
+              "headline": "Cross-category Pixi mix",
+              "body": "Covers skin, lip, and eye products for broader brand discovery in one set.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "routine set",
+            "am_pm": [
+              "am",
+              "pm"
+            ],
+            "pairing_notes": [
+              "Treat it as a sampler set and use each item by its own instructions."
+            ]
+          },
+          "watchouts": [
+            {
+              "type": "format",
+              "label": "This is a holiday sampler set, not one single routine step.",
+              "severity": "low"
+            }
+          ]
+        },
+        "shopping_card": {
+          "subtitle": "Beauty advent calendar",
+          "highlight": "12-piece Pixi sampler",
+          "intro": "A holiday calendar packed with 12 Pixi skin, lip, and eye favorites."
+        },
+        "search_card": {
+          "compact_candidate": "Beauty advent calendar",
+          "highlight_candidate": "12-piece Pixi sampler",
+          "intro_candidate": "A holiday calendar packed with 12 Pixi skin, lip, and eye favorites."
+        },
+        "external_highlight_review_status": "rewrite",
+        "external_review_batch": "manual_discovery_browse_batch30_reviewed_2026_04_13"
+      },
+      "quality_gate": {
+        "candidate_available": false,
+        "overall_pass": false,
+        "quality_score": 0,
+        "fail_reasons": [
+          "missing_candidate"
+        ],
+        "field_decisions": {}
+      },
+      "selected": {
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_a9ec7261c9f3c77391e2ba27"
+          },
+          "product_group_id": null,
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Beauty advent calendar",
+              "body": "A 12-piece holiday calendar that samples Pixi favorites across skin, lip, and eye care."
+            },
+            "best_for": [
+              {
+                "tag": "gifting",
+                "label": "Beauty gifting",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "brand_trial",
+                "label": "Sampling the Pixi lineup",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "12-piece sampler format",
+                "body": "Keeps the calendar grounded as a holiday sampler instead of a generic makeup product.",
+                "evidence_strength": "seller_grounded"
+              },
+              {
+                "headline": "Cross-category Pixi mix",
+                "body": "Covers skin, lip, and eye products for broader brand discovery in one set.",
+                "evidence_strength": "seller_grounded"
+              }
+            ],
+            "routine_fit": {
+              "step": "routine set",
+              "am_pm": [
+                "am",
+                "pm"
+              ],
+              "pairing_notes": [
+                "Treat it as a sampler set and use each item by its own instructions."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "format",
+                "label": "This is a holiday sampler set, not one single routine step.",
+                "severity": "low"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-04-13T00:49:23.946Z",
+              "source_version": "pivota.product_intel.v1"
+            },
+            "quality_state": "limited",
+            "evidence_profile": "seller_only",
+            "source_coverage": {
+              "seller": {
+                "available": true
+              },
+              "formula": {
+                "available": false
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "texture": "",
+            "finish": "dewy",
+            "sensory_notes": [],
+            "layering_notes": [],
+            "confidence": "moderate",
+            "evidence_profile": "seller_only"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "unavailable_reason": "insufficient_feedback",
+            "confidence": "low",
+            "evidence_profile": "seller_only"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": false
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-04-13T00:49:23.946Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "product_intel_pilot_compare",
+            "generator": "curated_override",
+            "selection_strategy": "curated_override",
+            "gemini_model": null,
+            "field_sources": {
+              "what_it_is": "baseline",
+              "best_for": "baseline",
+              "why_it_stands_out": "baseline",
+              "routine_fit": "baseline",
+              "watchouts": "baseline",
+              "texture_finish": "baseline",
+              "community_signals": "baseline"
+            },
+            "gemini_quality_gate": {
+              "candidate_available": false,
+              "overall_pass": false,
+              "quality_score": 0,
+              "fail_reasons": [
+                "missing_candidate"
+              ],
+              "field_decisions": {}
+            },
+            "override_reason": "Strict human QA override: the advent calendar had sales-y intro and a generic makeup label, so the rewrite keeps it as a holiday beauty sampler.",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "manual_discovery_browse_batch30_reviewed_2026_04_13"
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "PIXI BEAUTY 12 Days of Icons Calendar",
+            "subtitle": "Beauty Advent Calendar",
+            "highlight": "12-piece Pixi sampler",
+            "intro": "A holiday calendar packed with 12 Pixi skin, lip, and eye favorites.",
+            "evidence_profile": "seller_only"
+          },
+          "search_card": {
+            "title_candidate": "PIXI BEAUTY 12 Days of Icons Calendar",
+            "compact_candidate": "Beauty Advent Calendar",
+            "highlight_candidate": "12-piece Pixi sampler",
+            "intro_candidate": "A holiday calendar packed with 12 Pixi skin, lip, and eye favorites."
+          }
+        },
+        "field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "baseline",
+          "community_signals": "baseline"
+        },
+        "selected_field_count": 5,
+        "selected_mode": "manual_override"
+      },
+      "comparison": {
+        "compared": false,
+        "best_for_overlap": 0,
+        "watchout_overlap": 1,
+        "baseline_highlight_count": 1,
+        "gemini_highlight_count": 0,
+        "gemini_quality": {
+          "candidate_available": false,
+          "overall_pass": false,
+          "quality_score": 0,
+          "fail_reasons": [
+            "missing_candidate"
+          ],
+          "field_decisions": {}
+        },
+        "selected_mode": "manual_override",
+        "selected_field_count": 5,
+        "selected_field_sources": {
+          "what_it_is": "manual",
+          "best_for": "manual",
+          "why_it_stands_out": "manual",
+          "routine_fit": "manual",
+          "watchouts": "manual",
+          "texture_finish": "baseline",
+          "community_signals": "baseline"
+        }
+      }
+    }
+  ]
+}
