@@ -365,10 +365,11 @@ test('shared coarse classifier keeps body cream and beauty tools out of face-moi
   assert.equal(brush.coarse_valid_for_target, false);
 });
 
-test('beauty query bucket treats oil-control treatment asks as skincare without reclassifying lip queries', () => {
+test('beauty query bucket treats oil-control treatment asks as skincare and lip/hair category terms as beauty', () => {
   assert.equal(detectBeautyQueryBucket('oil control treatment'), 'skincare');
   assert.equal(detectBeautyQueryBucket('best sunscreen for oily skin'), 'skincare');
-  assert.equal(detectBeautyQueryBucket('lip treatment'), 'general');
+  assert.equal(detectBeautyQueryBucket('lip treatment'), 'lip_care');
+  assert.equal(detectBeautyQueryBucket('hair oil'), 'haircare');
 });
 
 test('guidance-only moisturizer classifier separates strong/supportive rows from noisy moisturizer-like candidates', () => {

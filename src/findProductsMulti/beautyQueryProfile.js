@@ -76,6 +76,24 @@ function classifyBeautyBucketFromText(text) {
   const q = String(text || '');
   if (!q) return 'other';
 
+  const hasHaircareSignal =
+    /\b(haircare|hair care|shampoo|conditioner|leave[-\s]?in conditioner|hair oil|scalp oil|hair mask|hair serum|scalp serum|hair treatment|dry shampoo)\b/i.test(
+      q,
+    ) ||
+    /护发|護髮|護发|洗发水|洗髮水|护发素|護髮素|发油|髮油|发膜|髮膜|头皮|頭皮|シャンプー|コンディショナー|ヘアオイル/.test(
+      q,
+    );
+  const hasLipCareSignal =
+    /\b(lip balm|lip balms|lip oil|lip oils|lip treatment|lip treatments|lip mask|lip butter|lip conditioner|spf lip)\b/i.test(
+      q,
+    ) ||
+    /润唇|潤唇|唇膜|护唇|護唇|唇部护理|唇部護理|リップバーム|リップオイル/.test(q);
+  const hasBodycareSignal =
+    /\b(body wash|body cleanser|shower gel|bath gel|body lotion|body cream|body oil|body butter)\b/i.test(
+      q,
+    ) ||
+    /沐浴露|身体乳|身體乳|ボディウォッシュ|ボディローション/.test(q);
+
   const hasSkincareTreatmentSignal =
     /\b(serum|toner|essence|ampoule|moisturi(?:z|s)er|cleanser|sunscreen|spf\b|sunblock|face wash|niacinamide|retinol|vitamin c|peptide|ceramide|cica|hyaluronic|salicylic|azelaic|aha|bha|oil control|shine control|congestion|blemish|acne treatment|spot treatment|clarifying|pore care)\b/i.test(
       q,
@@ -101,6 +119,12 @@ function classifyBeautyBucketFromText(text) {
   ) {
     return 'tools';
   }
+  if (hasHaircareSignal) {
+    return 'haircare';
+  }
+  if (hasBodycareSignal) {
+    return 'bodycare';
+  }
   if (hasSkincareTreatmentSignal) {
     return 'skincare';
   }
@@ -118,9 +142,12 @@ function classifyBeautyBucketFromText(text) {
   ) {
     return 'eye_makeup';
   }
+  if (hasLipCareSignal) {
+    return 'lip_care';
+  }
   if (
-    /\b(lipstick|lip\s*tint|lip\s*gloss|lip\s*balm|lip\s*liner|lip)\b/i.test(q) ||
-    /口红|口紅|唇膏|唇彩|唇釉|润唇|潤唇/.test(q)
+    /\b(lipstick|lip\s*tint|lip\s*gloss|lip\s*liner|lip)\b/i.test(q) ||
+    /口红|口紅|唇膏|唇彩|唇釉/.test(q)
   ) {
     return 'lip_makeup';
   }
@@ -145,7 +172,16 @@ function classifyBeautyBucketFromText(text) {
 
 function detectBeautyQueryBucket(queryText) {
   const bucket = classifyBeautyBucketFromText(queryText);
-  if (bucket === 'skincare' || bucket === 'tools' || bucket === 'fragrance') return bucket;
+  if (
+    bucket === 'skincare' ||
+    bucket === 'tools' ||
+    bucket === 'fragrance' ||
+    bucket === 'haircare' ||
+    bucket === 'lip_care' ||
+    bucket === 'bodycare'
+  ) {
+    return bucket;
+  }
   if (
     bucket === 'general' ||
     bucket === 'base_makeup' ||
@@ -164,13 +200,19 @@ function isBeautyBucketCompatibleForQuery(candidateBucket, queryBucket) {
   if (query === 'skincare') return bucket === 'skincare';
   if (query === 'tools') return bucket === 'tools';
   if (query === 'fragrance') return bucket === 'fragrance';
+  if (query === 'haircare') return bucket === 'haircare';
+  if (query === 'lip_care') return bucket === 'lip_care';
+  if (query === 'bodycare') return bucket === 'bodycare';
   if (query === 'general') {
     return (
       bucket === 'base_makeup' ||
       bucket === 'eye_makeup' ||
       bucket === 'lip_makeup' ||
+      bucket === 'lip_care' ||
       bucket === 'skincare' ||
-      bucket === 'fragrance'
+      bucket === 'fragrance' ||
+      bucket === 'haircare' ||
+      bucket === 'bodycare'
     );
   }
   return bucket !== 'other';
@@ -184,7 +226,10 @@ function buildBeautyQueryProfile({ rawQuery, queryClass, intent } = {}) {
   const concernClass = inferBeautyConcernClass(rawQuery, bucket);
   const isBeautyQuery = primaryDomain === 'beauty' || bucket != null;
   const isSpecificBeautyQuery =
-    isBeautyQuery && ['skincare', 'tools', 'fragrance'].includes(String(bucket || ''));
+    isBeautyQuery &&
+    ['skincare', 'tools', 'fragrance', 'haircare', 'lip_care', 'bodycare'].includes(
+      String(bucket || ''),
+    );
   const allowBroadBeautyExpansion = Boolean(isBeautyQuery && bucket === 'general');
   const allowBeautyDiversity = Boolean(
     isBeautyQuery &&
@@ -232,6 +277,15 @@ function getBeautyCacheExpansionTerms(profile) {
   }
   if (bucket === 'fragrance') {
     return ['perfume', 'fragrance', 'parfum', 'cologne', 'body mist', 'eau de parfum'];
+  }
+  if (bucket === 'haircare') {
+    return ['haircare', 'hair care', 'shampoo', 'conditioner', 'hair oil', 'hair mask', 'scalp'];
+  }
+  if (bucket === 'lip_care') {
+    return ['lip balm', 'lip oil', 'lip treatment', 'lip mask', 'lip care'];
+  }
+  if (bucket === 'bodycare') {
+    return ['body wash', 'body cleanser', 'shower gel', 'body lotion', 'body cream'];
   }
   if (profile?.allowBroadBeautyExpansion) {
     return [
