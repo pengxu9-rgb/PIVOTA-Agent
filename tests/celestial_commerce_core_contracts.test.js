@@ -39,10 +39,34 @@ describe('Celestial commerce core source contracts', () => {
 
     const publicOut = applyFindProductsMultiSourceContract(payload, { source: 'search' }, 'find_products_multi');
     expect(publicOut.search.query).toBe('serum');
+    expect(publicOut.search.allow_external_seed).toBe(true);
     expect(publicOut.search.external_seed_strategy).toBe('unified_relevance');
 
     const shoppingOut = applyFindProductsMultiSourceContract(payload, { source: 'shopping_agent' }, 'find_products_multi');
     expect(shoppingOut.search.external_seed_strategy).toBe('unified_relevance');
+  });
+
+  test('public search defaults external seed contract when missing', () => {
+    const app = require('../src/server');
+    const { applyFindProductsMultiSourceContract } = app._debug;
+
+    expect(
+      applyFindProductsMultiSourceContract(
+        {
+          search: {
+            query: 'lip balm',
+          },
+        },
+        { source: 'search' },
+        'find_products_multi',
+      ),
+    ).toEqual({
+      search: {
+        query: 'lip balm',
+        allow_external_seed: true,
+        external_seed_strategy: 'unified_relevance',
+      },
+    });
   });
 
   test('public search query guards leave incoming query params unchanged', () => {
