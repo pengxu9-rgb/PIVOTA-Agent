@@ -1827,7 +1827,11 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       ),
     ).toBe(true);
     expect(resp.body.metadata?.search_trace?.upstream_stage?.called).toBe(false);
-    expect(resp.body.clarification || resp.body.metadata?.strict_empty).toBeTruthy();
+    const hasDecisionGuard = Boolean(resp.body.clarification || resp.body.metadata?.strict_empty);
+    if (!hasDecisionGuard) {
+      console.log('DEBUG_CACHE_IRRELEVANT_RESPONSE', JSON.stringify(resp.body));
+    }
+    expect(hasDecisionGuard).toBeTruthy();
     expect(upstreamSearch.isDone()).toBe(false);
   });
 
