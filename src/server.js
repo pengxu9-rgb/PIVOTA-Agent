@@ -12087,6 +12087,15 @@ function rankBeautyCategoryBrowseFastpathProducts(products, fastpath) {
     .map((row) => row.product);
 }
 
+function buildBeautyBucketMix(products = []) {
+  const mix = {};
+  for (const product of Array.isArray(products) ? products : []) {
+    const bucket = classifyBeautyBucketFromProduct(product) || 'other';
+    mix[bucket] = Number(mix[bucket] || 0) + 1;
+  }
+  return mix;
+}
+
 async function tryCrossMerchantBeautyCategoryBrowseFastpath(
   queryText,
   page = 1,
@@ -12100,16 +12109,65 @@ async function tryCrossMerchantBeautyCategoryBrowseFastpath(
   const safePage = Math.max(1, Number(page || 1));
   const safeLimit = Math.min(Math.max(1, Number(limit || 20)), SEARCH_LIMIT_MAX);
   const offset = (safePage - 1) * safeLimit;
-  const browseLimit = Math.min(Math.max(offset + safeLimit * 8, 80), 100);
+  const browseLimit = Math.min(Math.max(offset + safeLimit * 8, 80), 160);
+  const baseWhere = `
+    (pc.expires_at IS NULL OR pc.expires_at > now())
+    AND ${buildSellableStatusPredicate("pc.product_data->>'status'")}
+    AND mo.status NOT IN ('deleted', 'rejected')
+    AND mo.psp_connected = true
+  `;
+  const matchFields = [
+    "lower(coalesce(pc.product_data->>'title',''))",
+    "lower(coalesce(pc.product_data->>'product_type',''))",
+    "lower(coalesce(pc.product_data->>'description',''))",
+  ];
+  const matchClauses = [];
+  const params = [];
+  let idx = 1;
+  for (const alias of fastpath.queryAliases) {
+    params.push(`%${alias}%`);
+    matchClauses.push(`(${matchFields.map((field) => `${field} LIKE $${idx}`).join(' OR ')})`);
+    idx += 1;
+  }
+  if (matchClauses.length === 0) return null;
   const browseStartedAt = Date.now();
-  const browse = await loadCrossMerchantBrowseFromCache(1, browseLimit, {
-    inStockOnly: options?.inStockOnly !== false,
-  });
+  const browse = await query(
+    `
+      /* beauty_category_browse_fastpath */
+      SELECT pc.merchant_id,
+             mo.business_name AS merchant_name,
+             pc.product_data
+      FROM products_cache pc
+      JOIN merchant_onboarding mo
+        ON mo.merchant_id = pc.merchant_id
+      WHERE ${baseWhere}
+        AND (${matchClauses.join(' OR ')})
+      ORDER BY pc.cached_at DESC NULLS LAST, pc.id DESC
+      LIMIT $${idx}
+    `,
+    [...params, browseLimit],
+  );
   const browseQueryMs = Math.max(0, Date.now() - browseStartedAt);
-  const browseProducts = Array.isArray(browse?.products) ? browse.products : [];
-  const rankedProducts = rankBeautyCategoryBrowseFastpathProducts(browseProducts, fastpath);
+  const browseProducts = (browse?.rows || [])
+    .map((row) => {
+      const product = row.product_data;
+      if (!product) return null;
+      const merchantId = String(row.merchant_id || '').trim();
+      const merchantName = row.merchant_name ? String(row.merchant_name).trim() : '';
+      const out = { ...product };
+      if (merchantId && !out.merchant_id && !out.merchantId) out.merchant_id = merchantId;
+      if (merchantName && !out.merchant_name && !out.merchantName) out.merchant_name = merchantName;
+      return out;
+    })
+    .filter(Boolean)
+    .filter((product) => isProductSellable(product, { inStockOnly: options?.inStockOnly !== false }));
+  const bucketCompatibleProducts = browseProducts.filter((product) =>
+    isBeautyBucketCompatibleForQuery(classifyBeautyBucketFromProduct(product), fastpath.bucket),
+  );
+  const rankedProducts = rankBeautyCategoryBrowseFastpathProducts(bucketCompatibleProducts, fastpath);
   if (rankedProducts.length === 0) return null;
   const pageItems = rankedProducts.slice(offset, offset + safeLimit);
+  await applyShopifyCurrencyOverride(pageItems);
   return {
     products: pageItems,
     total: rankedProducts.length,
@@ -12133,6 +12191,8 @@ async function tryCrossMerchantBeautyCategoryBrowseFastpath(
       applied: true,
       bucket: fastpath.bucket || null,
       filtered_irrelevant_count: Math.max(0, browseProducts.length - rankedProducts.length),
+      bucket_mix_before: buildBeautyBucketMix(browseProducts),
+      bucket_mix_after: buildBeautyBucketMix(rankedProducts),
     },
   };
 }

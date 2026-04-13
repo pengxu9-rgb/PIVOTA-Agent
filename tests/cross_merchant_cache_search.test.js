@@ -199,7 +199,7 @@ describe('cross-merchant cache lexical search', () => {
         if (text.includes('COUNT(*)::int AS total')) {
           throw new Error('lexical count should not run for beauty head-term fastpath');
         }
-        if (text.includes('FROM (') && text.includes('JOIN merchant_onboarding mo')) {
+        if (text.includes('beauty_category_browse_fastpath')) {
           return {
             rows: [
               {
@@ -266,7 +266,7 @@ describe('cross-merchant cache lexical search', () => {
         if (text.includes('COUNT(*)::int AS total')) {
           throw new Error('lexical count should not run for hair oil fastpath');
         }
-        if (text.includes('FROM (') && text.includes('JOIN merchant_onboarding mo')) {
+        if (text.includes('beauty_category_browse_fastpath')) {
           return {
             rows: [
               {
