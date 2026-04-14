@@ -27,6 +27,13 @@ function parseArgs(argv) {
     maxPerBrand: 3,
     maxPerCategory: 4,
     strictReview: true,
+    supplementalProductIds: [],
+    identityBrands: [],
+    identityTopBrands: 0,
+    identityPerBrandLimit: 3,
+    identityMinSourceRows: 1,
+    identityMinReviewRatio: 0,
+    identityBeautyOnly: true,
   };
 
   for (let i = 2; i < argv.length; i += 1) {
@@ -37,6 +44,18 @@ function parseArgs(argv) {
       i += 1;
     } else if (token === '--product-ids' && next) {
       out.productIds = String(next)
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+      i += 1;
+    } else if (token === '--supplemental-product-ids' && next) {
+      out.supplementalProductIds = String(next)
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+      i += 1;
+    } else if (token === '--identity-brands' && next) {
+      out.identityBrands = String(next)
         .split(',')
         .map((item) => item.trim())
         .filter(Boolean);
@@ -91,6 +110,22 @@ function parseArgs(argv) {
       out.requireBadgeEvidence = true;
     } else if (token === '--skip-gemini') {
       out.skipGemini = true;
+    } else if (token === '--identity-top-brands' && next) {
+      out.identityTopBrands = Math.max(0, Number(next) || 0);
+      i += 1;
+    } else if (token === '--identity-per-brand-limit' && next) {
+      out.identityPerBrandLimit = Math.max(0, Number(next) || 0);
+      i += 1;
+    } else if (token === '--identity-min-source-rows' && next) {
+      out.identityMinSourceRows = Math.max(0, Number(next) || 0);
+      i += 1;
+    } else if (token === '--identity-min-review-ratio' && next) {
+      out.identityMinReviewRatio = Number(next) || 0;
+      i += 1;
+    } else if (token === '--identity-beauty-only') {
+      out.identityBeautyOnly = true;
+    } else if (token === '--identity-include-non-beauty') {
+      out.identityBeautyOnly = false;
     } else if (token === '--allow-baseline-only') {
       out.strictReview = false;
     } else if (token === '--model' && next) {
@@ -277,7 +312,17 @@ async function runCoverageBatch(rawArgs = {}) {
     30 * 1000,
     Number(process.env.PIVOTA_INSIGHTS_COVERAGE_CHILD_TIMEOUT_MS || 10 * 60 * 1000) || 10 * 60 * 1000,
   );
-  if (!args.productIds.length && !args.queries.length && !(args.surface && args.pages > 0) && !args.frontendPaths.length) {
+  const hasIdentitySource =
+    args.identityBrands.length ||
+    args.identityTopBrands > 0 ||
+    args.supplementalProductIds.length > 0;
+  if (
+    !args.productIds.length &&
+    !args.queries.length &&
+    !(args.surface && args.pages > 0) &&
+    !args.frontendPaths.length &&
+    !hasIdentitySource
+  ) {
     throw new Error('missing_product_ids_queries_surface_or_frontend_paths');
   }
 
@@ -306,6 +351,9 @@ async function runCoverageBatch(rawArgs = {}) {
   if (args.productIds.length) {
     buildArgs.push('--product-ids', args.productIds.join(','));
   }
+  if (args.supplementalProductIds.length) {
+    buildArgs.push('--supplemental-product-ids', args.supplementalProductIds.join(','));
+  }
   if (args.queries.length) {
     buildArgs.push('--queries', args.queries.join(','));
   }
@@ -323,6 +371,26 @@ async function runCoverageBatch(rawArgs = {}) {
   }
   if (args.manualOverrides) {
     buildArgs.push('--manual-overrides', args.manualOverrides);
+  }
+  if (args.identityBrands.length) {
+    buildArgs.push('--identity-brands', args.identityBrands.join(','));
+  }
+  if (args.identityTopBrands > 0) {
+    buildArgs.push('--identity-top-brands', String(args.identityTopBrands));
+  }
+  if (args.identityPerBrandLimit > 0) {
+    buildArgs.push('--identity-per-brand-limit', String(args.identityPerBrandLimit));
+  }
+  if (args.identityMinSourceRows > 0) {
+    buildArgs.push('--identity-min-source-rows', String(args.identityMinSourceRows));
+  }
+  if (args.identityMinReviewRatio > 0) {
+    buildArgs.push('--identity-min-review-ratio', String(args.identityMinReviewRatio));
+  }
+  if (args.identityBeautyOnly) {
+    buildArgs.push('--identity-beauty-only');
+  } else {
+    buildArgs.push('--identity-include-non-beauty');
   }
   if (args.excludeCovered) buildArgs.push('--exclude-covered');
   if (args.requireBadgeEvidence) buildArgs.push('--require-badge-evidence');

@@ -14,6 +14,7 @@ const {
   loadCoveredProductIdSet,
   loadCoveredProductIdSetFromReport,
   loadManualOverrideProductIdSet,
+  loadMissingIdentityCoverageProductIds,
   parseArgs,
   sampleWithoutReplacement,
   selectDiverseCases,
@@ -34,6 +35,97 @@ describe('build_product_intel_live_pilot_cases', () => {
 
     expect(args.queries).toEqual(['cleanser', 'serum']);
     expect(args.coveredReviewMode).toBe('reviewed');
+  });
+
+  test('defaults identity per-brand limit to 3 when not provided', () => {
+    const args = parseArgs(['node', 'script']);
+    expect(args.identityPerBrandLimit).toBe(3);
+  });
+
+  test('parses identity supplemental args', () => {
+    const args = parseArgs([
+      'node',
+      'script',
+      '--identity-brands',
+      'Naturium,Olehenriksen',
+      '--identity-top-brands',
+      '2',
+      '--identity-per-brand-limit',
+      '4',
+      '--identity-min-source-rows',
+      '3',
+      '--identity-min-review-ratio',
+      '0.5',
+      '--identity-include-non-beauty',
+    ]);
+
+    expect(args.identityBrands).toEqual(['Naturium', 'Olehenriksen']);
+    expect(args.identityTopBrands).toBe(2);
+    expect(args.identityPerBrandLimit).toBe(4);
+    expect(args.identityMinSourceRows).toBe(3);
+    expect(args.identityMinReviewRatio).toBe(0.5);
+    expect(args.identityBeautyOnly).toBe(false);
+  });
+
+  test('loads missing identity candidates from explicit brands', async () => {
+    const rows = await loadMissingIdentityCoverageProductIds({
+      explicitBrands: ['Naturium'],
+      perBrandLimit: 5,
+      queryFn: async (_query, params) => {
+        const refs = Array.isArray(params?.[0]) ? params[0] : [];
+        return {
+          rows: refs.includes('m1:exists_1') ? [{ source_listing_ref: 'm1:exists_1' }] : [],
+        };
+      },
+      summarizeFn: async () => [],
+      fetchBackfillProductsFn: async ({ brandFilter }) =>
+        [
+          { merchant_id: 'm1', product_id: 'missing_1' },
+          { merchant_id: 'm1', product_id: 'exists_1' },
+        ].map((item) => ({ ...item, source_listing_ref: `${item.merchant_id}:${item.product_id}` })),
+    });
+
+    expect(rows).toEqual(['missing_1']);
+    expect(rows).toEqual(expect.not.arrayContaining(['exists_1']));
+  });
+
+  test('loads missing identity candidates from summary top brands', async () => {
+    const usedBrands = [];
+    const rows = await loadMissingIdentityCoverageProductIds({
+      topBrands: 2,
+      perBrandLimit: 2,
+      minReviewRatio: 0.5,
+      minSourceRows: 0,
+      beautyOnly: false,
+      queryFn: async () => ({ rows: [] }),
+      summarizeFn: async () => [
+        {
+          brand_norm: 'alpha',
+          missing_identity_rows: 10,
+          review_ratio: 0.65,
+        },
+        {
+          brand_norm: 'beta',
+          missing_identity_rows: 8,
+          review_ratio: 0.25,
+        },
+      ],
+      fetchBackfillProductsFn: async ({ brandFilter }) => {
+        usedBrands.push(brandFilter);
+        if (brandFilter === 'alpha') {
+          return [
+            { merchant_id: 'm1', product_id: 'p1' },
+            { merchant_id: 'm1', product_id: 'p2' },
+            { merchant_id: 'm1', product_id: 'p3' },
+          ];
+        }
+        return [];
+      },
+    });
+
+    expect(usedBrands).toEqual(['alpha']);
+    expect(rows).toHaveLength(2);
+    expect(rows.every((rowId) => ['p1', 'p2', 'p3'].includes(rowId))).toBe(true);
   });
 
   test('samples deterministically without replacement', () => {

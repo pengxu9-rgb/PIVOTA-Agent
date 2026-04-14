@@ -92,6 +92,31 @@ function parseGeminiModelList(rawModel) {
     addModel(model);
   }
 
+  // Always prioritize 3-flash before 3.1-pro for execution,
+  // regardless of input ordering.
+  const normalizedPrimary = normalizeGeminiModel(GEMINI_PRIMARY_MODEL);
+  const normalizedUpgrade = normalizeGeminiModel(GEMINI_UPGRADE_MODEL);
+  if (list[0] !== normalizedPrimary) {
+    // Move primary model to head, preserving previous relative ordering for others.
+    const withoutPrimary = list.filter((model) => model !== normalizedPrimary);
+    const withoutUpgrade = withoutPrimary.filter((model) => model !== normalizedUpgrade);
+    const fallbackOrder = [];
+    fallbackOrder.push(normalizedPrimary);
+    if (normalizedUpgrade) {
+      fallbackOrder.push(normalizedUpgrade);
+    }
+    return [...new Set([...fallbackOrder, ...withoutUpgrade])];
+  }
+  if (list[1] !== normalizedUpgrade && list.length > 1) {
+    const withoutPrimary = list.filter((model) => model !== normalizedPrimary);
+    const withoutUpgrade = withoutPrimary.filter((model) => model !== normalizedUpgrade);
+    return [
+      normalizedPrimary,
+      normalizedUpgrade,
+      ...withoutUpgrade,
+    ];
+  }
+
   return list;
 }
 
