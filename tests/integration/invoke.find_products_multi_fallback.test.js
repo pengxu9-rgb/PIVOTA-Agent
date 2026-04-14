@@ -404,6 +404,72 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
     );
   });
 
+  test('public search with explicit beauty surface uses discovery bridge instead of v2 upstream', async () => {
+    const discoveryScope = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        products: Array.from({ length: 12 }, (_, idx) => ({
+          merchant_id: `hair_${idx + 1}`,
+          product_id: `shampoo_${idx + 1}`,
+          title: `Repair Shampoo ${idx + 1}`,
+          brand: 'Hair Lab',
+          category: 'Hair Care',
+          product_type: 'Shampoo',
+          inventory_quantity: 10,
+          status: 'active',
+        })),
+      });
+    const v2Scope = nock('http://pivota.test')
+      .post('/agent/v2/products/search')
+      .query(true)
+      .reply(418, { error: 'should_not_call_v2' });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'shampoo',
+            limit: 12,
+            in_stock_only: true,
+            catalog_surface: 'beauty',
+            commerce_surface: 'beauty',
+            allow_external_seed: true,
+            external_seed_strategy: 'unified_relevance',
+          },
+        },
+        metadata: {
+          source: 'search',
+          catalog_surface: 'beauty',
+          commerce_surface: 'beauty',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(discoveryScope.isDone()).toBe(true);
+    expect(v2Scope.isDone()).toBe(false);
+    expect(resp.body.products).toHaveLength(12);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'beauty_discovery_mainline',
+        primary_lane: 'beauty_discovery_mainline',
+        primary_retrieval_contract: 'agent_v1_search_beauty_mainline',
+        public_search_discovery_bridge: true,
+        bridged_operation: 'get_discovery_feed',
+      }),
+    );
+    expect(resp.body.metadata?.route_health).toEqual(
+      expect.objectContaining({
+        primary_path_used: 'beauty_discovery_mainline',
+        fallback_triggered: false,
+        primary_quality_gate_passed: true,
+      }),
+    );
+  });
+
   test('public search category uses a single-pass upstream timeout without timeout retry', async () => {
     process.env.UPSTREAM_RETRY_FIND_PRODUCTS_MULTI_ON_TIMEOUT = 'true';
     process.env.FIND_PRODUCTS_MULTI_UPSTREAM_LOOKUP_TIMEOUT_MS = '3500';

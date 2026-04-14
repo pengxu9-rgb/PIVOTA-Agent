@@ -91,6 +91,112 @@ describe('Celestial commerce core source contracts', () => {
     expect(guarded.external_seed_strategy).toBe('supplement_internal_first');
   });
 
+  test('public explicit beauty category search bridges to discovery mainline unless strict', () => {
+    const app = require('../src/server');
+    const { shouldBridgePublicBeautySearchToDiscovery } = app._debug;
+
+    const base = {
+      operation: 'find_products_multi',
+      metadata: {
+        source: 'search',
+        catalog_surface: 'beauty',
+      },
+      search: {
+        query: 'hair oil',
+        catalog_surface: 'beauty',
+        allow_external_seed: true,
+        external_seed_strategy: 'unified_relevance',
+      },
+      queryText: 'hair oil',
+      queryClass: 'category',
+      invokeSearchRail: 'public_observability',
+    };
+
+    expect(
+      shouldBridgePublicBeautySearchToDiscovery({
+        ...base,
+        strictDecision: { enabled: false },
+      }),
+    ).toBe(true);
+
+    expect(
+      shouldBridgePublicBeautySearchToDiscovery({
+        ...base,
+        strictDecision: { enabled: true },
+      }),
+    ).toBe(false);
+
+    expect(
+      shouldBridgePublicBeautySearchToDiscovery({
+        ...base,
+        search: {
+          query: 'hair oil',
+        },
+        metadata: {
+          source: 'search',
+        },
+        strictDecision: { enabled: false },
+      }),
+    ).toBe(false);
+  });
+
+  test('public beauty discovery bridge preserves partial exact-intent underfill', () => {
+    const app = require('../src/server');
+    const { buildFindProductsMultiDiscoveryBridgeResponse } = app._debug;
+
+    const out = buildFindProductsMultiDiscoveryBridgeResponse({
+      discoveryResponse: {
+        products: [
+          { merchant_id: 'external_seed', product_id: 'ext_hair_oil_1', title: 'Repair Hair Oil' },
+          { merchant_id: 'external_seed', product_id: 'ext_hair_oil_2', title: 'Rosemary Hair Oil' },
+        ],
+        total: 2,
+        metadata: {
+          candidate_source: 'external_seed_compound_intent',
+          compound_intent: 'hair_oil',
+          underfilled_reason: 'public_search_underfilled_exact_intent',
+          route_health: {
+            primary_quality_gate_passed: false,
+          },
+          provider_breakdown: [
+            { provider: 'external_seeds', returned: 2 },
+          ],
+        },
+      },
+      search: { query: 'hair oil' },
+      metadata: {
+        search_request_contract: { primary_lane: 'beauty_discovery_mainline' },
+      },
+      queryText: 'hair oil',
+      page: 1,
+      limit: 12,
+      offset: 0,
+    });
+
+    expect(out.products).toHaveLength(2);
+    expect(out.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'beauty_discovery_mainline',
+        underfilled_reason: 'public_search_underfilled_exact_intent',
+        public_search_discovery_bridge: true,
+      }),
+    );
+    expect(out.metadata.strict_empty).toBeUndefined();
+    expect(out.metadata.route_health).toEqual(
+      expect.objectContaining({
+        primary_quality_gate_passed: false,
+        primary_exact_intent_underfilled_public_beauty: true,
+        fallback_triggered: false,
+      }),
+    );
+    expect(out.metadata.source_breakdown).toEqual(
+      expect.objectContaining({
+        external_seed_count: 2,
+        strategy_applied: 'unified_relevance',
+      }),
+    );
+  });
+
   test('shopping agent loop-break builds a scenario-aware retry query from short user selection', () => {
     const app = require('../src/server');
     const { uiChatBuildLoopBreakRetryArgs } = app._debug;

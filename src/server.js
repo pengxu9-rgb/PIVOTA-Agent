@@ -5002,6 +5002,230 @@ function isPublicBeautyUnifiedMainlineSearch({
   );
 }
 
+function hasExplicitBeautyCatalogSurface(search = {}, metadata = {}) {
+  return (
+    String(
+      firstNonEmptyString(
+        search?.catalog_surface,
+        search?.catalogSurface,
+        metadata?.catalog_surface,
+        metadata?.catalogSurface,
+      ) || '',
+    )
+      .trim()
+      .toLowerCase() === 'beauty'
+  );
+}
+
+function shouldBridgePublicBeautySearchToDiscovery({
+  operation = '',
+  metadata = null,
+  search = null,
+  queryText = '',
+  queryClass = null,
+  intent = null,
+  invokeSearchRail = null,
+  strictDecision = null,
+} = {}) {
+  if (String(operation || '').trim() !== 'find_products_multi') return false;
+  const searchObj =
+    search && typeof search === 'object' && !Array.isArray(search) ? search : {};
+  const metadataObj =
+    metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {};
+  if (!hasExplicitBeautyCatalogSurface(searchObj, metadataObj)) return false;
+  if (strictDecision?.enabled === true) return false;
+  const rawQuery = String(queryText || searchObj.query || searchObj.q || '').trim();
+  if (!rawQuery) return false;
+  if (
+    !isPublicBeautyUnifiedMainlineSearch({
+      operation,
+      metadata: metadataObj,
+      search: searchObj,
+      queryText: rawQuery,
+      queryClass,
+      intent,
+      invokeSearchRail,
+    })
+  ) {
+    return false;
+  }
+  const normalizedQueryClass = String(queryClass || intent?.query_class || '')
+    .trim()
+    .toLowerCase();
+  const fastpath = resolveBeautyCategoryBrowseFastpath(rawQuery, {
+    queryClass: normalizedQueryClass || null,
+  });
+  return Boolean(fastpath || resolvePublicBeautyCompoundIntent(rawQuery));
+}
+
+function buildDiscoveryPayloadFromPublicBeautySearch(search = {}, metadata = {}, queryText = '') {
+  const limit = Math.min(
+    Math.max(1, Number(search?.limit || search?.page_size || search?.pageSize || 24) || 24),
+    SEARCH_LIMIT_MAX,
+  );
+  const offset = Math.max(0, Number(search?.offset || 0) || 0);
+  const page =
+    Number(search?.page || 0) > 0
+      ? Math.max(1, Number(search.page || 1) || 1)
+      : Math.floor(offset / Math.max(1, limit)) + 1;
+  const locale = firstNonEmptyString(
+    search?.locale,
+    search?.language,
+    metadata?.locale,
+    metadata?.language,
+    'en-US',
+  );
+  const debug =
+    search?.debug === true ||
+    metadata?.debug === true ||
+    String(search?.debug || metadata?.debug || '').trim().toLowerCase() === 'true';
+  return {
+    discoveryPayload: {
+      surface: 'browse_products',
+      page,
+      limit,
+      debug,
+      query: { text: String(queryText || search?.query || search?.q || '').trim() },
+      context: {
+        auth_state: 'anonymous',
+        locale,
+        recent_views: [],
+        recent_queries: [],
+      },
+    },
+    page,
+    limit,
+    offset,
+  };
+}
+
+function countDiscoveryProviderReturns(metadata = {}, providerName = '') {
+  const target = String(providerName || '').trim();
+  const providerBreakdown = Array.isArray(metadata?.provider_breakdown)
+    ? metadata.provider_breakdown
+    : [];
+  return providerBreakdown
+    .filter((entry) => String(entry?.provider || '').trim() === target)
+    .reduce((sum, entry) => sum + (Number(entry?.returned || 0) || 0), 0);
+}
+
+function buildFindProductsMultiDiscoveryBridgeResponse({
+  discoveryResponse = null,
+  search = null,
+  metadata = null,
+  queryText = '',
+  page = 1,
+  limit = 24,
+  offset = 0,
+} = {}) {
+  const sourceMetadata =
+    metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {};
+  const discoveryMetadata =
+    discoveryResponse?.metadata &&
+    typeof discoveryResponse.metadata === 'object' &&
+    !Array.isArray(discoveryResponse.metadata)
+      ? discoveryResponse.metadata
+      : {};
+  const products = Array.isArray(discoveryResponse?.products)
+    ? discoveryResponse.products
+    : [];
+  const routeHealth =
+    discoveryMetadata.route_health &&
+    typeof discoveryMetadata.route_health === 'object' &&
+    !Array.isArray(discoveryMetadata.route_health)
+      ? discoveryMetadata.route_health
+      : {};
+  const underfilledReason = firstNonEmptyString(
+    discoveryMetadata.underfilled_reason,
+    discoveryMetadata.strict_empty_reason,
+    routeHealth.underfilled_reason,
+  );
+  const strictEmpty = products.length === 0;
+  const externalSeedCount =
+    Number(discoveryMetadata.external_seed_qualified_count || 0) ||
+    Number(discoveryMetadata?.candidate_counts?.external_seed_products || 0) ||
+    countDiscoveryProviderReturns(discoveryMetadata, 'external_seeds');
+  const internalCount =
+    Number(discoveryMetadata?.candidate_counts?.internal_products || 0) ||
+    countDiscoveryProviderReturns(discoveryMetadata, 'internal_catalog');
+
+  return normalizeAgentProductsListResponse(
+    {
+      status: 'success',
+      success: true,
+      products,
+      total:
+        Number.isFinite(Number(discoveryResponse?.total)) && Number(discoveryResponse.total) >= 0
+          ? Number(discoveryResponse.total)
+          : products.length,
+      page,
+      page_size: products.length,
+      reply: strictEmpty
+        ? "I couldn't build a reliable beauty set from current inventory, so I won't show unrelated products."
+        : null,
+      metadata: {
+        ...discoveryMetadata,
+        query_source: 'beauty_discovery_mainline',
+        primary_lane: 'beauty_discovery_mainline',
+        primary_retrieval_contract: 'agent_v1_search_beauty_mainline',
+        search_request_contract:
+          sourceMetadata.search_request_contract || discoveryMetadata.search_request_contract || null,
+        contract_bridge: {
+          ...(sourceMetadata.contract_bridge &&
+          typeof sourceMetadata.contract_bridge === 'object' &&
+          !Array.isArray(sourceMetadata.contract_bridge)
+            ? sourceMetadata.contract_bridge
+            : {}),
+          attempted_contract: 'agent_v1_search_beauty_mainline',
+          resolved_contract: 'agent_v1_search_beauty_mainline',
+          legacy_fallback: false,
+        },
+        source_breakdown: {
+          ...(discoveryMetadata.source_breakdown &&
+          typeof discoveryMetadata.source_breakdown === 'object' &&
+          !Array.isArray(discoveryMetadata.source_breakdown)
+            ? discoveryMetadata.source_breakdown
+            : {}),
+          internal_count: internalCount,
+          external_seed_count: externalSeedCount,
+          stale_cache_used: false,
+          strategy_applied: 'unified_relevance',
+        },
+        route_health: {
+          ...routeHealth,
+          orchestrator_path: 'local_discovery_bridge',
+          decision_node: 'beauty_discovery_mainline',
+          primary_path_used: 'beauty_discovery_mainline',
+          fallback_triggered: false,
+          fallback_reason: null,
+          final_returned_count: products.length,
+          primary_quality_gate_passed:
+            routeHealth.primary_quality_gate_passed != null
+              ? routeHealth.primary_quality_gate_passed
+              : products.length > 0 && !underfilledReason,
+          primary_underfilled_public_beauty_unified:
+            underfilledReason === 'public_search_underfilled_unified_relevance',
+          primary_exact_intent_underfilled_public_beauty:
+            underfilledReason === 'public_search_underfilled_exact_intent',
+          underfilled_reason: underfilledReason || null,
+        },
+        ...(underfilledReason ? { underfilled_reason: underfilledReason } : {}),
+        ...(strictEmpty
+          ? {
+              strict_empty: true,
+              strict_empty_reason:
+                underfilledReason || 'public_search_discovery_mainline_empty',
+            }
+          : {}),
+        public_search_discovery_bridge: true,
+        bridged_operation: 'get_discovery_feed',
+        bridged_query_text: String(queryText || search?.query || search?.q || '').trim(),
+      },
+    },
+    { limit, offset },
+  );
+}
+
 function buildPublicBeautyUnifiedSearchDedupeKey(product) {
   if (!product || typeof product !== 'object') return '';
   const urlKey =
@@ -18492,6 +18716,104 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     return res.json(enriched);
   }
 
+  if (operation === 'find_products_multi') {
+    const publicBeautySearch = effectivePayload?.search || effectivePayload || {};
+    const originalPublicBeautySearch = payload?.search || payload || {};
+    const publicBeautyQueryText = String(
+      rawUserQuery || publicBeautySearch.query || publicBeautySearch.q || '',
+    ).trim();
+    const publicBeautyStrictDecision = getStrictFindProductsMultiConstraintDecision({
+      search: publicBeautySearch,
+      metadata,
+    });
+    if (
+      hasExplicitBeautyCatalogSurface(originalPublicBeautySearch, metadata) &&
+      shouldBridgePublicBeautySearchToDiscovery({
+        operation,
+        metadata,
+        search: publicBeautySearch,
+        queryText: publicBeautyQueryText,
+        queryClass: traceQueryClass,
+        intent: effectiveIntent,
+        invokeSearchRail,
+        strictDecision: publicBeautyStrictDecision,
+      })
+    ) {
+      const bridgeStartedAtMs = Date.now();
+      const { discoveryPayload, page, limit, offset } =
+        buildDiscoveryPayloadFromPublicBeautySearch(
+          publicBeautySearch,
+          metadata,
+          publicBeautyQueryText,
+        );
+      try {
+        const discoveryResponse = await getDiscoveryFeed(discoveryPayload);
+        const bridgeResponse = buildFindProductsMultiDiscoveryBridgeResponse({
+          discoveryResponse,
+          search: publicBeautySearch,
+          metadata,
+          queryText: publicBeautyQueryText,
+          page,
+          limit,
+          offset,
+        });
+        bridgeResponse.metadata = {
+          ...(bridgeResponse.metadata || {}),
+          route_health: {
+            ...((bridgeResponse.metadata && bridgeResponse.metadata.route_health) || {}),
+            primary_latency_ms: Math.max(0, Date.now() - bridgeStartedAtMs),
+          },
+        };
+        return res.status(200).json(bridgeResponse);
+      } catch (err) {
+        logger.warn(
+          {
+            err: err?.message || String(err),
+            operation,
+            query: publicBeautyQueryText,
+          },
+          'public beauty search discovery bridge failed; returning strict empty',
+        );
+        const reason =
+          err instanceof DiscoveryCatalogUnavailableError
+            ? 'public_search_discovery_catalog_unavailable'
+            : err instanceof DiscoveryValidationError || Number(err?.statusCode) === 400
+              ? 'public_search_discovery_invalid_request'
+              : 'public_search_discovery_bridge_failed';
+        const emptyBridgeResponse = normalizeAuthoritativeSearchNoFallbackResponse(
+          withStrictEmptyFallback({
+            body: null,
+            queryParams: {
+              query: publicBeautyQueryText,
+              limit,
+              offset,
+            },
+            reason,
+            route: 'invoke_public_beauty_discovery_bridge',
+            intent: effectiveIntent,
+            queryClass: traceQueryClass,
+            queryText: publicBeautyQueryText,
+          }),
+          {
+            querySource: 'beauty_discovery_mainline',
+            primaryPath: 'beauty_discovery_mainline',
+            reason,
+            decisionLockReason: 'public_search_no_broad_fallback',
+          },
+        );
+        return res.status(200).json({
+          ...emptyBridgeResponse,
+          metadata: {
+            ...(emptyBridgeResponse.metadata || {}),
+            public_search_discovery_bridge: true,
+            primary_lane: 'beauty_discovery_mainline',
+            primary_retrieval_contract: 'agent_v1_search_beauty_mainline',
+          },
+        });
+      }
+    }
+  }
+
   if (operation === 'get_discovery_feed') {
     try {
       const discoveryResponse = await getDiscoveryFeed(effectivePayload);
@@ -27122,6 +27444,8 @@ module.exports._debug = {
   searchCrossMerchantFromCache,
   mergePublicBeautyUnifiedSearchProducts,
   resolvePublicBeautyCompoundIntent,
+  shouldBridgePublicBeautySearchToDiscovery,
+  buildFindProductsMultiDiscoveryBridgeResponse,
   fetchProductDetailForOffers,
   fetchExternalSeedProductDetailFromDb,
   stripResponseOwnedPdpModulesFromCanonicalPayload,
