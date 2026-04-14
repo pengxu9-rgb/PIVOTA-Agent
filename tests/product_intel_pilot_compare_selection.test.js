@@ -766,12 +766,17 @@ describe('product_intel pilot compare selection', () => {
       rating: 4.8,
       review_count: 412,
     });
-    expect(selected.bundle.community_signals).toEqual({
-      status: 'available',
-      source_counts: {
-        editorial: 4,
-      },
-    });
+    expect(selected.bundle.community_signals).toEqual(
+      expect.objectContaining({
+        status: 'available',
+        top_loves: ['4.8★ average across 412 buyer reviews.'],
+        review_stats: ['4.8★ average across 412 buyer reviews.'],
+        source_counts: expect.objectContaining({
+          reviews: 412,
+          editorial: 4,
+        }),
+      }),
+    );
     expect(selected.bundle.shopping_card).toEqual(
       expect.objectContaining({
         contract_version: 'pivota.shopping_card.v1',

@@ -76,6 +76,8 @@ function parseArgs(argv) {
     candidatePoolMultiplier: 4,
     maxPerBrand: 3,
     maxPerCategory: 4,
+    fetchSourceReviews: String(process.env.PIVOTA_INSIGHTS_FETCH_SOURCE_REVIEWS || '').trim() === '1',
+    sourceReviewTimeoutMs: Math.max(1000, Number(process.env.PIVOTA_INSIGHTS_SOURCE_REVIEW_TIMEOUT_MS || 15000) || 15000),
   };
 
   for (let i = 2; i < argv.length; i += 1) {
@@ -172,6 +174,13 @@ function parseArgs(argv) {
       i += 1;
     } else if (token === '--max-per-category' && next) {
       out.maxPerCategory = Math.max(0, Number(next) || 0);
+      i += 1;
+    } else if (token === '--fetch-source-reviews') {
+      out.fetchSourceReviews = true;
+    } else if (token === '--no-fetch-source-reviews') {
+      out.fetchSourceReviews = false;
+    } else if (token === '--source-review-timeout-ms' && next) {
+      out.sourceReviewTimeoutMs = Math.max(1000, Number(next) || out.sourceReviewTimeoutMs);
       i += 1;
     }
   }
@@ -404,6 +413,139 @@ function extractReviewsPreviewSummary(response) {
   return summary;
 }
 
+function parseReviewNumber(value) {
+  if (value == null || value === '') return null;
+  const parsed = Number(String(value).replace(/[, ]+/g, ''));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function buildReviewBackedCommunitySignals(reviewSummary, fallback = {}) {
+  const summary = normalizeReviewSummary(reviewSummary);
+  const rating = Number(summary?.rating || 0);
+  const reviewCount = Number(summary?.review_count || 0);
+  if (!Number.isFinite(rating) || !Number.isFinite(reviewCount) || rating < 4.5 || reviewCount < 100) {
+    return normalizeCommunitySignals(fallback);
+  }
+  const existing = fallback && typeof fallback === 'object' ? fallback : {};
+  const existingCounts =
+    existing.source_counts && typeof existing.source_counts === 'object' ? existing.source_counts : {};
+  return {
+    ...existing,
+    status: 'available',
+    source_counts: {
+      ...existingCounts,
+      reviews: Math.max(Number(existingCounts.reviews || 0) || 0, reviewCount),
+    },
+    last_refreshed_at: asString(existing.last_refreshed_at || existing.lastRefreshedAt) || new Date().toISOString(),
+  };
+}
+
+function extractReviewSummaryFromTextBlock(block) {
+  const text = asString(block).replace(/&quot;/g, '"');
+  if (!text) return undefined;
+  const ratingMatch =
+    text.match(/["']reviewAverageValue["']\s*:\s*["']?([\d.]+)/i) ||
+    text.match(/["']ratingValue["']\s*:\s*["']?([\d.]+)/i) ||
+    text.match(/["']rating["']\s*:\s*["']?([\d.]+)/i) ||
+    text.match(/["']average_rating["']\s*:\s*["']?([\d.]+)/i);
+  const countMatch =
+    text.match(/["']reviewCount["']\s*:\s*["']?([\d,]+)/i) ||
+    text.match(/["']review_count["']\s*:\s*["']?([\d,]+)/i) ||
+    text.match(/["']total_reviews["']\s*:\s*["']?([\d,]+)/i) ||
+    text.match(/["']ratingCount["']\s*:\s*["']?([\d,]+)/i);
+  return normalizeReviewSummary({
+    rating: parseReviewNumber(ratingMatch?.[1]),
+    review_count: parseReviewNumber(countMatch?.[1]),
+  });
+}
+
+function extractSourceReviewSummaryFromHtml(html) {
+  const source = asString(html).replace(/&quot;/g, '"');
+  if (!source) return undefined;
+  const candidates = [];
+  const pushCandidate = (candidate) => {
+    const normalized = normalizeReviewSummary(candidate);
+    if (!normalized) return;
+    const rating = Number(normalized.rating || 0);
+    const reviewCount = Number(normalized.review_count || 0);
+    if (rating <= 0 && reviewCount <= 0) return;
+    candidates.push(normalized);
+  };
+
+  const okendoBlock = source.match(/okendoProduct\s*=\s*\{[\s\S]{0,2000}?\}/i)?.[0];
+  pushCandidate(extractReviewSummaryFromTextBlock(okendoBlock));
+
+  for (const match of source.matchAll(/["']aggregateRating["']\s*:\s*\{[\s\S]{0,1600}?\}/gi)) {
+    pushCandidate(extractReviewSummaryFromTextBlock(match[0]));
+  }
+
+  for (const match of source.matchAll(/["']reviewCount["']\s*:\s*["']?([\d,]+)["']?[\s\S]{0,320}?["']reviewAverageValue["']\s*:\s*["']?([\d.]+)/gi)) {
+    pushCandidate({ review_count: parseReviewNumber(match[1]), rating: parseReviewNumber(match[2]) });
+  }
+  for (const match of source.matchAll(/["']reviewAverageValue["']\s*:\s*["']?([\d.]+)["']?[\s\S]{0,320}?["']reviewCount["']\s*:\s*["']?([\d,]+)/gi)) {
+    pushCandidate({ rating: parseReviewNumber(match[1]), review_count: parseReviewNumber(match[2]) });
+  }
+
+  candidates.sort((left, right) => {
+    const leftCount = Number(left.review_count || 0);
+    const rightCount = Number(right.review_count || 0);
+    if (leftCount !== rightCount) return rightCount - leftCount;
+    return Number(right.rating || 0) - Number(left.rating || 0);
+  });
+  return candidates[0] || undefined;
+}
+
+function resolveCaseSourceUrl(row) {
+  const product = row?.product && typeof row.product === 'object' ? row.product : {};
+  return asString(
+    product.source_url ||
+      product.product_url ||
+      product.canonical_url ||
+      product.destination_url ||
+      product.external_url ||
+      product.url,
+  );
+}
+
+async function fetchSourceReviewSummary(sourceUrl, { timeoutMs = 15000, httpClient = axios } = {}) {
+  const url = asString(sourceUrl);
+  if (!/^https?:\/\//i.test(url)) return undefined;
+  const response = await httpClient.get(url, {
+    timeout: Math.max(1000, Number(timeoutMs) || 15000),
+    headers: {
+      accept: 'text/html,application/xhtml+xml',
+      'user-agent': 'Mozilla/5.0 PivotaInsightsReviewAudit/1.0',
+    },
+  });
+  return extractSourceReviewSummaryFromHtml(response.data);
+}
+
+async function enrichCaseWithSourceReviewSummary(row, { timeoutMs = 15000 } = {}) {
+  if (!row || typeof row !== 'object' || row.error) return row;
+  const product = row.product && typeof row.product === 'object' ? row.product : {};
+  const existingSummary = normalizeReviewSummary(product.review_summary);
+  if (Number(existingSummary?.rating || 0) > 0 && Number(existingSummary?.review_count || 0) > 0) {
+    return row;
+  }
+  const sourceUrl = resolveCaseSourceUrl(row);
+  if (!sourceUrl) return row;
+  const sourceSummary = await fetchSourceReviewSummary(sourceUrl, { timeoutMs });
+  if (!sourceSummary) return row;
+  const communitySignals = buildReviewBackedCommunitySignals(
+    sourceSummary,
+    product.community_signals,
+  );
+  return {
+    ...row,
+    product: {
+      ...product,
+      review_summary: sourceSummary,
+      ...(communitySignals ? { community_signals: communitySignals } : {}),
+      review_source_url: sourceUrl,
+    },
+  };
+}
+
 function buildPilotCaseFromSearchCandidate(candidate) {
   const row = candidate && typeof candidate === 'object' ? candidate : {};
   const merchantId = asString(row.merchant_id || row.merchantId);
@@ -485,6 +627,9 @@ function buildPilotCaseFromPdpResponse(response, seedCase) {
     });
   const normalizedCommunitySignals =
     normalizeCommunitySignals(productIntel.community_signals) || seedProduct.community_signals;
+  const sourceUrl =
+    asString(product.source_url || product.product_url || product.canonical_url || product.url) ||
+    asString(seedProduct.source_url || seedProduct.product_url || seedProduct.canonical_url || seedProduct.url);
   const displayableBadges = filterDisplayableMarketSignalBadges(
     [
       ...normalizeMarketSignalBadges(productIntel.market_signal_badges),
@@ -514,6 +659,7 @@ function buildPilotCaseFromPdpResponse(response, seedCase) {
       finish: asString(product.finish),
       ingredients_inci: ingredients,
       how_to_use: howToUse,
+      ...(sourceUrl ? { source_url: sourceUrl } : {}),
       review_summary: normalizedReviewSummary,
       ...(normalizedCommunitySignals ? { community_signals: normalizedCommunitySignals } : {}),
       ...(displayableBadges.length ? { market_signal_badges: displayableBadges } : {}),
@@ -545,6 +691,18 @@ function buildPilotCaseFromExternalSeedProduct(product, seedCase) {
     }) ||
     normalizeReviewSummary(seedProduct.review_summary);
   const normalizedCommunitySignals = normalizeCommunitySignals(seedProduct.community_signals);
+  const sourceUrl = asString(
+    product.source_url ||
+      product.product_url ||
+      product.canonical_url ||
+      product.destination_url ||
+      product.external_url ||
+      product.url ||
+      seedProduct.source_url ||
+      seedProduct.product_url ||
+      seedProduct.canonical_url ||
+      seedProduct.url,
+  );
   const displayableBadges = filterDisplayableMarketSignalBadges(
     normalizeMarketSignalBadges(seedProduct.market_signal_badges),
     {
@@ -574,6 +732,7 @@ function buildPilotCaseFromExternalSeedProduct(product, seedCase) {
       finish: asString(product.finish || seedProduct.finish),
       ingredients_inci: ingredients,
       how_to_use: asString(product.how_to_use || product.usage || seedProduct.how_to_use),
+      ...(sourceUrl ? { source_url: sourceUrl } : {}),
       review_summary: normalizedReviewSummary,
       ...(normalizedCommunitySignals ? { community_signals: normalizedCommunitySignals } : {}),
       ...(displayableBadges.length ? { market_signal_badges: displayableBadges } : {}),
@@ -1038,6 +1197,12 @@ async function main() {
         row = buildPilotCaseFromExternalSeedProduct(externalSeedProduct, seedCase);
       }
       if (row) {
+        if (args.fetchSourceReviews) {
+          // eslint-disable-next-line no-await-in-loop
+          row = await enrichCaseWithSourceReviewSummary(row, {
+            timeoutMs: args.sourceReviewTimeoutMs,
+          });
+        }
         cases.push(row);
       } else {
         cases.push({
@@ -1058,7 +1223,16 @@ async function main() {
         const externalSeedProduct = await fetchExternalSeedProduct(productId);
         const fallbackRow = buildPilotCaseFromExternalSeedProduct(externalSeedProduct, seedCase);
         if (fallbackRow) {
-          cases.push(fallbackRow);
+          if (args.fetchSourceReviews) {
+            // eslint-disable-next-line no-await-in-loop
+            cases.push(
+              await enrichCaseWithSourceReviewSummary(fallbackRow, {
+                timeoutMs: args.sourceReviewTimeoutMs,
+              }),
+            );
+          } else {
+            cases.push(fallbackRow);
+          }
           continue;
         }
       } catch {
@@ -1101,6 +1275,7 @@ async function main() {
       filtered_badge_cases: args.requireBadgeEvidence ? eligibleCases.length : undefined,
       excluded_covered: args.excludeCovered ? coveredProductIds.size : 0,
       covered_review_mode: args.excludeCovered ? args.coveredReviewMode : undefined,
+      source_review_fetch: args.fetchSourceReviews,
       out: outputPath,
       product_ids: finalCases.map((row) => row?.canonical_product_ref?.product_id).filter(Boolean),
       query_errors: queryErrors,
@@ -1126,6 +1301,8 @@ module.exports = {
   buildPilotCaseFromPdpResponse,
   buildPilotCaseFromSearchCandidate,
   extractReviewsPreviewSummary,
+  extractSourceReviewSummaryFromHtml,
+  fetchSourceReviewSummary,
   fetchDiscoveryCandidates,
   fetchFrontendProductIds,
   fetchPdpResponse,
@@ -1141,5 +1318,6 @@ module.exports = {
   selectDiverseCases,
   extractProductIdsFromFrontendHtml,
   buildPilotCaseFromExternalSeedProduct,
+  enrichCaseWithSourceReviewSummary,
   fetchExternalSeedProduct,
 };

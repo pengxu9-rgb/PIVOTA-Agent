@@ -738,6 +738,7 @@ function hasStructuredCommunitySignals(product) {
 function readReviewCount(product) {
   const summary =
     asPlainObject(product.review_summary) ||
+    asPlainObject(product.reviewSummary) ||
     asPlainObject(product.reviews_summary) ||
     asPlainObject(product.reviews?.summary);
   const raw =
@@ -749,6 +750,37 @@ function readReviewCount(product) {
     product.reviewCount;
   const value = Number(raw);
   return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function readReviewSummary(product) {
+  return normalizeReviewSummary(
+    product.review_summary ||
+      product.reviewSummary ||
+      product.reviews_summary ||
+      product.reviewsSummary ||
+      product.reviews?.summary ||
+      {
+        rating: product.rating,
+        review_count: product.review_count ?? product.reviewCount,
+      },
+  );
+}
+
+function formatInsightReviewCount(count) {
+  const n = Number(count);
+  if (!Number.isFinite(n) || n <= 0) return '0';
+  if (n >= 1000000) return `${(n / 1000000).toFixed(n >= 10000000 ? 0 : 1)}m`;
+  if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k`;
+  return String(Math.round(n));
+}
+
+function buildVerifiedBuyerReviewStat(reviewSummary) {
+  const review = normalizeReviewSummary(reviewSummary);
+  const rating = Number(review?.rating || 0);
+  const reviewCount = Number(review?.review_count || 0);
+  if (!Number.isFinite(rating) || !Number.isFinite(reviewCount)) return '';
+  if (rating < 4.5 || reviewCount < 100) return '';
+  return `${rating.toFixed(1)}★ average across ${formatInsightReviewCount(reviewCount)} buyer reviews.`;
 }
 
 function buildSourceCoverage(product) {
@@ -792,19 +824,26 @@ function buildSourceCoverage(product) {
 
 function inferEvidenceProfile(sourceCoverage, product) {
   const explicit = asString(product.evidence_profile || product.evidenceProfile).toLowerCase();
+  const reviewsCount = Number(sourceCoverage?.reviews?.count || 0);
+  const creatorCount = Number(sourceCoverage?.creator?.count || 0);
+  const editorialCount = Number(sourceCoverage?.editorial?.count || 0);
+  const communitySignals = hasStructuredCommunitySignals(product);
+
   if (
-    explicit === 'seller_only' ||
-    explicit === 'seller_plus_formula' ||
     explicit === 'mixed' ||
     explicit === 'community_supported'
   ) {
     return explicit;
   }
-
-  const reviewsCount = Number(sourceCoverage?.reviews?.count || 0);
-  const creatorCount = Number(sourceCoverage?.creator?.count || 0);
-  const editorialCount = Number(sourceCoverage?.editorial?.count || 0);
-  const communitySignals = hasStructuredCommunitySignals(product);
+  if (explicit === 'seller_only' || explicit === 'seller_plus_formula') {
+    if (communitySignals || reviewsCount >= 10 || creatorCount >= 5 || editorialCount >= 3) {
+      return 'community_supported';
+    }
+    if (reviewsCount > 0 || creatorCount > 0 || editorialCount > 0) {
+      return 'mixed';
+    }
+    return explicit;
+  }
 
   if (communitySignals || reviewsCount >= 10 || creatorCount >= 5 || editorialCount >= 3) {
     return 'community_supported';
@@ -1135,6 +1174,8 @@ function normalizeCommunitySignals(product, evidenceProfile) {
     asPlainObject(product.communitySignals) ||
     asPlainObject(product.social_signals) ||
     asPlainObject(product.socialSignals);
+  const reviewSummary = readReviewSummary(product);
+  const verifiedReviewStat = buildVerifiedBuyerReviewStat(reviewSummary);
   const reviewCount = readReviewCount(product);
 
   if (evidenceProfile === 'seller_only' || evidenceProfile === 'seller_plus_formula') {
@@ -1154,6 +1195,11 @@ function normalizeCommunitySignals(product, evidenceProfile) {
       community?.typical_positive ||
       community?.typicalPositive,
   );
+  const reviewStats = uniqueStrings([
+    ...normalizeStringList(community?.review_stats || community?.reviewStats),
+    verifiedReviewStat,
+  ]);
+  const mergedTopLoves = uniqueStrings([...reviewStats, ...topLoves]);
   const topComplaints = normalizeStringList(
     community?.top_complaints ||
       community?.topComplaintThemes ||
@@ -1178,7 +1224,7 @@ function normalizeCommunitySignals(product, evidenceProfile) {
   };
 
   const availableSignals =
-    topLoves.length + topComplaints.length + bestFitUsers.length + mixedFeedback.length;
+    mergedTopLoves.length + topComplaints.length + bestFitUsers.length + mixedFeedback.length;
   const totalEvidence =
     normalizedSourceCounts.reviews +
     normalizedSourceCounts.creator_mentions +
@@ -1200,7 +1246,8 @@ function normalizeCommunitySignals(product, evidenceProfile) {
 
   return {
     status: 'available',
-    top_loves: topLoves.slice(0, 4),
+    top_loves: mergedTopLoves.slice(0, 4),
+    ...(reviewStats.length ? { review_stats: reviewStats.slice(0, 2) } : {}),
     top_complaints: topComplaints.slice(0, 4),
     best_fit_users: bestFitUsers.slice(0, 3),
     mixed_feedback: mixedFeedback.slice(0, 3),

@@ -112,6 +112,34 @@ function normalizeAmount(value) {
   return 0;
 }
 
+function normalizeSeedReviewSummary(...values) {
+  for (const value of values) {
+    const source = ensureJsonObject(value);
+    const rating = normalizeAmount(
+      source.rating ??
+        source.rating_value ??
+        source.average_rating ??
+        source.avg_rating ??
+        source.reviewAverageValue,
+    );
+    const reviewCount = normalizeAmount(
+      source.review_count ??
+        source.reviewCount ??
+        source.count ??
+        source.total ??
+        source.total_reviews ??
+        source.review_count_total,
+    );
+    if (rating > 0 || reviewCount > 0) {
+      return {
+        ...(rating > 0 ? { rating } : {}),
+        ...(reviewCount > 0 ? { review_count: reviewCount } : {}),
+      };
+    }
+  }
+  return null;
+}
+
 function shouldTreatAsMinorUnitPrice(rawValue, amount, context = {}) {
   if (!Number.isFinite(amount) || amount < 1000) return false;
 
@@ -1259,6 +1287,14 @@ function buildExternalSeedProduct(row, options = {}) {
     canonicalUrl,
     destinationUrl,
   );
+  const reviewSummary = normalizeSeedReviewSummary(
+    seedData.review_summary,
+    seedData.reviewSummary,
+    snapshot.review_summary,
+    snapshot.reviewSummary,
+    seedData.reviews_summary,
+    snapshot.reviews_summary,
+  );
   const brand = firstNonEmptyString(
     recall.brand,
     seedData.brand,
@@ -1496,6 +1532,7 @@ function buildExternalSeedProduct(row, options = {}) {
     ...(sourcePageType ? { source_page_type: sourcePageType } : {}),
     ...(contentQuality ? { content_quality: contentQuality } : {}),
     ...(sourceUrl ? { source_url: sourceUrl } : {}),
+    ...(reviewSummary ? { review_summary: reviewSummary } : {}),
     ...(pdpFieldCaptureStatus ? { pdp_field_capture_status: pdpFieldCaptureStatus } : {}),
     ...(Object.keys(ingredientIntel).length ? { ingredient_intel: ingredientIntel } : {}),
     ...(ingredientTokens.length ? { ingredient_tokens: ingredientTokens } : {}),
@@ -1613,6 +1650,14 @@ function buildExternalSeedBrandSearchProduct(row) {
         'External',
       ) || 'External',
     ).trim() || 'External';
+  const reviewSummary = normalizeSeedReviewSummary(
+    seedData.review_summary,
+    seedData.reviewSummary,
+    snapshot.review_summary,
+    snapshot.reviewSummary,
+    seedData.reviews_summary,
+    snapshot.reviews_summary,
+  );
 
   return {
     id: externalProductId,
@@ -1636,6 +1681,7 @@ function buildExternalSeedBrandSearchProduct(row) {
     ...(canonicalUrl ? { canonical_url: canonicalUrl } : {}),
     ...(destinationUrl ? { destination_url: destinationUrl } : {}),
     ...(row.id ? { external_seed_id: String(row.id) } : {}),
+    ...(reviewSummary ? { review_summary: reviewSummary } : {}),
     external_seed_recall: recall,
     external_seed_quality_state: protection.quality_state,
     external_seed_suppression_flags: protection.suppression_flags,

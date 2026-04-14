@@ -67,6 +67,30 @@ describe('externalSeedProducts helper', () => {
     );
   });
 
+  test('carries seed review summary into external seed runtime product', () => {
+    const product = buildExternalSeedProduct({
+      id: 'eps_reviewed_seed',
+      external_product_id: 'ext_reviewed_seed',
+      canonical_url: 'https://beautyofjoseon.com/products/glow-replenishing-rice-milk',
+      destination_url: 'https://beautyofjoseon.com/products/glow-replenishing-rice-milk',
+      title: 'Glow Replenishing Rice Milk',
+      seed_data: {
+        brand: 'Beauty of Joseon',
+        snapshot: {
+          review_summary: {
+            reviewCount: '1,404',
+            reviewAverageValue: '4.9',
+          },
+        },
+      },
+    });
+
+    expect(product.review_summary).toEqual({
+      rating: 4.9,
+      review_count: 1404,
+    });
+  });
+
   test('normalizes nested product variants and tuple option fields into named options', () => {
     const row = {
       id: 'eps_nested_variant_1',

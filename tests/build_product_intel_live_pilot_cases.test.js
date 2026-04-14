@@ -1,4 +1,5 @@
 jest.mock('axios', () => ({
+  get: jest.fn(),
   post: jest.fn(),
 }));
 
@@ -6,9 +7,12 @@ const {
   buildPilotCaseFromExternalSeedProduct,
   buildPilotCaseFromPdpResponse,
   buildPilotCaseFromSearchCandidate,
+  enrichCaseWithSourceReviewSummary,
   extractReviewsPreviewSummary,
+  extractSourceReviewSummaryFromHtml,
   extractProductIdsFromFrontendHtml,
   fetchDiscoveryCandidates,
+  fetchSourceReviewSummary,
   fetchPdpResponse,
   hasBadgeEvidence,
   loadCoveredProductIdSet,
@@ -65,6 +69,22 @@ describe('build_product_intel_live_pilot_cases', () => {
     expect(args.identityMinSourceRows).toBe(3);
     expect(args.identityMinReviewRatio).toBe(0.5);
     expect(args.identityBeautyOnly).toBe(false);
+  });
+
+  test('parses source review fetch controls for batch-only source page enrichment', () => {
+    const args = parseArgs([
+      'node',
+      'script',
+      '--fetch-source-reviews',
+      '--source-review-timeout-ms',
+      '9000',
+    ]);
+
+    expect(args.fetchSourceReviews).toBe(true);
+    expect(args.sourceReviewTimeoutMs).toBe(9000);
+
+    const disabled = parseArgs(['node', 'script', '--no-fetch-source-reviews']);
+    expect(disabled.fetchSourceReviews).toBe(false);
   });
 
   test('loads missing identity candidates from explicit brands', async () => {
@@ -467,6 +487,52 @@ describe('build_product_intel_live_pilot_cases', () => {
     ).toBeUndefined();
   });
 
+  test('extracts source review aggregate from Okendo and JSON-LD HTML', () => {
+    expect(
+      extractSourceReviewSummaryFromHtml(`
+        <script>
+          const okendoProduct = {"reviewCount":1404,"reviewAverageValue":"4.9"};
+        </script>
+      `),
+    ).toEqual({
+      rating: 4.9,
+      review_count: 1404,
+    });
+
+    expect(
+      extractSourceReviewSummaryFromHtml(`
+        <script type="application/ld+json">
+          {"@type":"Product","aggregateRating":{"@type":"AggregateRating","ratingValue":"4.8","reviewCount":"1,204"}}
+        </script>
+      `),
+    ).toEqual({
+      rating: 4.8,
+      review_count: 1204,
+    });
+  });
+
+  test('fetches source review aggregate from official product HTML', async () => {
+    axios.get.mockResolvedValueOnce({
+      data: '<script>var okendoProduct = {"reviewCount":1404,"reviewAverageValue":"4.9"};</script>',
+    });
+
+    await expect(
+      fetchSourceReviewSummary('https://beautyofjoseon.com/products/glow-replenishing-rice-milk', {
+        timeoutMs: 5000,
+      }),
+    ).resolves.toEqual({
+      rating: 4.9,
+      review_count: 1404,
+    });
+
+    expect(axios.get).toHaveBeenCalledWith(
+      'https://beautyofjoseon.com/products/glow-replenishing-rice-milk',
+      expect.objectContaining({
+        timeout: 5000,
+      }),
+    );
+  });
+
   test('uses reviews_preview review summary when live PDP exposes review aggregate', () => {
     const response = {
       subject: {
@@ -548,6 +614,43 @@ describe('build_product_intel_live_pilot_cases', () => {
         },
       },
     });
+  });
+
+  test('enriches live pilot case with source page buyer review aggregate', async () => {
+    axios.get.mockResolvedValueOnce({
+      data: '<script>var okendoProduct = {"reviewCount":1404,"reviewAverageValue":"4.9"};</script>',
+    });
+
+    const row = await enrichCaseWithSourceReviewSummary({
+      case_id: 'live_ext_joseon',
+      canonical_product_ref: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_joseon',
+      },
+      product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_joseon',
+        brand: 'Beauty of Joseon',
+        title: 'Glow Replenishing Rice Milk',
+        source_url: 'https://beautyofjoseon.com/products/glow-replenishing-rice-milk',
+      },
+    });
+
+    expect(row.product.review_summary).toEqual({
+      rating: 4.9,
+      review_count: 1404,
+    });
+    expect(row.product.community_signals).toEqual(
+      expect.objectContaining({
+        status: 'available',
+        source_counts: {
+          reviews: 1404,
+        },
+      }),
+    );
+    expect(row.product.review_source_url).toBe(
+      'https://beautyofjoseon.com/products/glow-replenishing-rice-milk',
+    );
   });
 
   test('fetches discovery candidates from get_discovery_feed card surface', async () => {

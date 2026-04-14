@@ -522,7 +522,38 @@ function attachShoppingCard(caseRow, bundle) {
     next.review_summary = reviewSummary;
   }
   if (communitySignals) {
-    next.community_signals = communitySignals;
+    const bundleCommunity = next.community_signals && typeof next.community_signals === 'object'
+      ? next.community_signals
+      : {};
+    const productCounts =
+      communitySignals.source_counts && typeof communitySignals.source_counts === 'object'
+        ? communitySignals.source_counts
+        : {};
+    const bundleCounts =
+      bundleCommunity.source_counts && typeof bundleCommunity.source_counts === 'object'
+        ? bundleCommunity.source_counts
+        : {};
+    next.community_signals = {
+      ...communitySignals,
+      ...bundleCommunity,
+      status: bundleCommunity.status || communitySignals.status,
+      source_counts: {
+        ...productCounts,
+        ...bundleCounts,
+        reviews: Math.max(
+          Number(productCounts.reviews || 0) || 0,
+          Number(bundleCounts.reviews || 0) || 0,
+        ),
+        creator_mentions: Math.max(
+          Number(productCounts.creator_mentions || productCounts.creatorMentions || 0) || 0,
+          Number(bundleCounts.creator_mentions || bundleCounts.creatorMentions || 0) || 0,
+        ),
+        editorial: Math.max(
+          Number(productCounts.editorial || 0) || 0,
+          Number(bundleCounts.editorial || 0) || 0,
+        ),
+      },
+    };
   }
   return next;
 }
@@ -728,6 +759,7 @@ function buildGeminiPrompt(caseRow, baselineDraft) {
     '- Use the Google Search tool before drafting. Search for official brand/product pages, credible retailer pages, editorial/media reviews, review aggregations, and public consumer review patterns for this exact product.',
     '- Treat official/product pages as identity and formula evidence; treat reviews/media only as additive context. Do not use external claims unless the search result supports them.',
     '- If public review/media evidence is weak, mixed, sponsored, or about a sibling product, keep community_signals.status as "unavailable" and do not turn it into a proof badge or hype language.',
+    '- If review_summary includes a high buyer review count and rating, treat that as verified buyer feedback. You may cite the exact rating/count as a factual review stat, but do not invent sentiment themes or positive-percentage breakdowns unless provided.',
     '- Do not invent price, offers, ingredients, ratings, or community feedback.',
     '- evidence_availability is authoritative. If reviews/creator/editorial are all false, community_signals.status must be "unavailable".',
     '- Do not output source_coverage, evidence_profile, quality_state, or freshness. Those are computed separately.',
@@ -1714,8 +1746,37 @@ function buildSelectedBundle(caseRow, baselineBundle, geminiCandidateBundle, qua
     }
   }
 
-  const selectedFieldCount = Object.values(fieldSources).filter((value) => value === generatedFieldSource).length;
-  const humanStandardSelected = generatedFieldSource === 'human_standard' && selectedFieldCount > 0;
+  const humanStandardPatch = (() => {
+    let cached = null;
+    return () => {
+      if (cached !== null) return cached;
+      cached = buildHumanStandardRewriteOutput(
+        caseRow,
+        baselineBundle,
+        geminiCandidateBundle,
+      );
+      return cached;
+    };
+  })();
+  if (hasProblematicGeneratedText(selected.product_intel_core?.what_it_is?.body)) {
+    const patch = humanStandardPatch();
+    if (patch?.product_intel_core?.what_it_is?.body) {
+      selected.product_intel_core.what_it_is = deepClone(patch.product_intel_core.what_it_is);
+      fieldSources.what_it_is = 'human_standard';
+    }
+  }
+  if (Array.isArray(selected.product_intel_core?.watchouts)) {
+    selected.product_intel_core.watchouts = selected.product_intel_core.watchouts.filter(
+      (item) =>
+        asString(item?.label) &&
+        !hasProblematicGeneratedText(item?.label) &&
+        !isLikelyIncompleteNarrativeText(item?.label),
+    );
+  }
+
+  const selectedFieldCount = Object.values(fieldSources).filter((value) => value !== 'baseline').length;
+  const humanStandardSelected = Object.values(fieldSources).some((value) => value === 'human_standard');
+  const geminiSelected = Object.values(fieldSources).some((value) => value === 'gemini');
   const generatedAt = new Date().toISOString();
   if (selectedFieldCount > 0) {
     selected.freshness = {
@@ -1731,7 +1792,9 @@ function buildSelectedBundle(caseRow, baselineBundle, geminiCandidateBundle, qua
     ...(selected.provenance || {}),
     source: 'product_intel_pilot_compare',
     generator: humanStandardSelected
-      ? 'gpt54_human_standard_rewrite'
+      ? geminiSelected
+        ? 'baseline_plus_gemini_plus_human_standard'
+        : 'gpt54_human_standard_rewrite'
       : selectedFieldCount > 0
         ? 'baseline_plus_gemini'
         : 'baseline_only',
@@ -1752,7 +1815,9 @@ function buildSelectedBundle(caseRow, baselineBundle, geminiCandidateBundle, qua
     field_sources: fieldSources,
     selected_field_count: selectedFieldCount,
     selected_mode: humanStandardSelected
-      ? 'human_standard_rewrite'
+      ? geminiSelected
+        ? 'hybrid_gemini_human_standard'
+        : 'human_standard_rewrite'
       : selectedFieldCount > 0
         ? 'hybrid_gemini'
         : 'baseline_only',

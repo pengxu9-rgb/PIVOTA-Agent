@@ -130,6 +130,36 @@ describe('pdp product intel bundle shaping', () => {
     );
   });
 
+  test('draft bundles convert verified buyer review aggregates into community signals', () => {
+    const bundle = buildProductIntelDraftBundle({
+      product: {
+        product_id: 'ext_joseon_rice_milk',
+        merchant_id: 'external_seed',
+        title: 'Glow Replenishing Rice Milk',
+        brand: 'Beauty of Joseon',
+        category: 'Skincare/Toner',
+        description: 'A lightweight toner-style milk for hydration and glow support.',
+        evidence_profile: 'seller_plus_formula',
+        review_summary: {
+          rating: 4.9,
+          review_count: 1404,
+        },
+      },
+    });
+
+    expect(bundle.evidence_profile).toBe('community_supported');
+    expect(bundle.community_signals).toEqual(
+      expect.objectContaining({
+        status: 'available',
+        source_counts: expect.objectContaining({
+          reviews: 1404,
+        }),
+      }),
+    );
+    expect(bundle.community_signals.top_loves[0]).toBe('4.9★ average across 1.4k buyer reviews.');
+    expect(bundle.shopping_card.proof_badge).toBe('4.9★ (1.4k)');
+  });
+
   test('seller-only bundles keep community signals unavailable', () => {
     const bundle = buildProductIntelBundle({
       product: {
