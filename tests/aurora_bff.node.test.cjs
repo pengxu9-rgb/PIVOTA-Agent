@@ -6175,7 +6175,7 @@ test('fetchRecoAlternativesForProduct: anchor precheck hydrates resolved sunscre
           debug: true,
           logger: null,
           options: {
-            recommendation_mode: 'hybrid_fallback',
+            recommendation_mode: 'pool_open_world_mixed',
             disable_synthetic_local_fallback: true,
             ignore_selector_candidates: false,
             skip_anchor_precheck: false,
@@ -6185,6 +6185,7 @@ test('fetchRecoAlternativesForProduct: anchor precheck hydrates resolved sunscre
         assert.equal(out?.ok, true);
         assert.equal(geminiCalled, false);
         assert.equal(out?.source_mode, 'pool_open_world_mixed');
+        assert.equal(out?.recommendation_mode, 'pool_open_world_mixed');
         assert.equal(out?.compare_meta?.open_world_status, 'skipped_sufficient_pool');
         assert.ok(Number(out?.compare_meta?.pool_selected_count || 0) >= 3);
         assert.ok(seenQueries.some((query) => /sun protection|hydration|lightweight finish/i.test(String(query))));

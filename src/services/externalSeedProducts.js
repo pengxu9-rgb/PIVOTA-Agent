@@ -468,6 +468,8 @@ function collectSeedIngredientSignalTokens(seedData, row) {
   const snapshot = ensureJsonObject(parsedSeedData.snapshot);
   const ingredientIntel = ensureJsonObject(parsedSeedData.ingredient_intel);
   const snapshotIngredientIntel = ensureJsonObject(snapshot.ingredient_intel);
+  const derived = ensureJsonObject(parsedSeedData.derived);
+  const recall = ensureJsonObject(derived.recall);
   const science = ensureJsonObject(parsedSeedData.science);
   const snapshotScience = ensureJsonObject(snapshot.science);
   const assessment = ensureJsonObject(parsedSeedData.assessment);
@@ -489,6 +491,7 @@ function collectSeedIngredientSignalTokens(seedData, row) {
     parsedSeedData.ingredient_names,
     parsedSeedData.ingredientNames,
     parsedSeedData.ingredients,
+    recall.ingredient_tokens,
     parsedSeedData.likely_key_ingredients_or_signals,
     parsedSeedData.likelyKeyIngredientsOrSignals,
     science.key_ingredients,
@@ -1580,25 +1583,41 @@ function buildExternalSeedBrandSearchProduct(row) {
   if (!row || typeof row !== 'object') return null;
 
   const seedData = ensureJsonObject(row.seed_data);
-  const snapshot = ensureJsonObject(seedData.snapshot);
-  const recall = resolveExternalSeedRecallDoc({ row, seedData, snapshot });
+  const rowSeedRecall = ensureJsonObject(row.seed_recall);
+  const storedSeedRecall = ensureJsonObject(seedData?.derived?.recall);
+  const effectiveSeedData =
+    Object.keys(storedSeedRecall).length > 0 || Object.keys(rowSeedRecall).length <= 0
+      ? seedData
+      : {
+          ...seedData,
+          derived: {
+            ...ensureJsonObject(seedData?.derived),
+            recall: rowSeedRecall,
+          },
+        };
+  const snapshot = ensureJsonObject(effectiveSeedData.snapshot);
+  const recall = resolveExternalSeedRecallDoc({ row, seedData: effectiveSeedData, snapshot });
   const protection = resolveExternalSeedProtectionContract({
     row,
-    seedData,
+    seedData: effectiveSeedData,
     snapshot,
     stored: recall,
     exclusionFlags: recall.exclusion_flags,
   });
   if (protection.suppression_flags?.exclude_from_recall === true) return null;
   const destinationUrl = String(
-    row.destination_url || snapshot.destination_url || seedData.destination_url || '',
+    row.destination_url || snapshot.destination_url || effectiveSeedData.destination_url || '',
   ).trim();
   const canonicalUrl = String(
-    row.canonical_url || snapshot.canonical_url || seedData.canonical_url || '',
+    row.canonical_url || snapshot.canonical_url || effectiveSeedData.canonical_url || '',
   ).trim();
   const externalProductId =
     String(
-      row.external_product_id || seedData.external_product_id || seedData.product_id || snapshot.product_id || '',
+      row.external_product_id ||
+        effectiveSeedData.external_product_id ||
+        effectiveSeedData.product_id ||
+        snapshot.product_id ||
+        '',
     ).trim() || stableExternalProductId(canonicalUrl || destinationUrl);
   if (!externalProductId) return null;
 
@@ -1608,7 +1627,7 @@ function buildExternalSeedBrandSearchProduct(row) {
       row.title,
       row.seed_title,
       snapshot.title,
-      seedData.title,
+      effectiveSeedData.title,
       canonicalUrl,
       destinationUrl,
       externalProductId,
@@ -1618,18 +1637,18 @@ function buildExternalSeedBrandSearchProduct(row) {
     row.seed_description,
     row.description,
     snapshot.description,
-    seedData.description,
+    effectiveSeedData.description,
   );
   const brand = firstNonEmptyString(
     recall.brand,
     row.seed_brand,
     row.seed_merchant_display_name,
     row.seed_vendor,
-    seedData.brand,
+    effectiveSeedData.brand,
     snapshot.brand,
-    seedData.merchant_display_name,
+    effectiveSeedData.merchant_display_name,
     snapshot.merchant_display_name,
-    seedData.vendor,
+    effectiveSeedData.vendor,
     snapshot.vendor,
     row.brand,
     row.vendor,
@@ -1641,8 +1660,8 @@ function buildExternalSeedBrandSearchProduct(row) {
       row.seed_product_type,
       row.snapshot_category,
       row.snapshot_product_type,
-      seedData.category,
-      seedData.product_type,
+      effectiveSeedData.category,
+      effectiveSeedData.product_type,
       snapshot.category,
       snapshot.product_type,
       row.category,
@@ -1659,23 +1678,23 @@ function buildExternalSeedBrandSearchProduct(row) {
   const imageUrl = firstNonEmptyString(
     row.image_url,
     snapshot.image_url,
-    seedData.image_url,
+    effectiveSeedData.image_url,
   );
   const imageUrls = imageUrl ? [imageUrl] : [];
-  const price = normalizeAmount(row.price_amount ?? seedData.price_amount ?? snapshot.price_amount);
+  const price = normalizeAmount(row.price_amount ?? effectiveSeedData.price_amount ?? snapshot.price_amount);
   const currency = normalizeCurrency(
-    row.price_currency || seedData.price_currency || snapshot.price_currency,
+    row.price_currency || effectiveSeedData.price_currency || snapshot.price_currency,
     'USD',
   );
   const availability = normalizeSeedAvailability(
-    row.availability || seedData.availability || snapshot.availability,
+    row.availability || effectiveSeedData.availability || snapshot.availability,
   );
   const inStock = availabilityToInStock(availability);
   const merchantName =
     String(
       firstNonEmptyString(
         row.seed_merchant_display_name,
-        seedData.merchant_display_name,
+        effectiveSeedData.merchant_display_name,
         snapshot.merchant_display_name,
         brand,
         row.domain,
@@ -1683,11 +1702,11 @@ function buildExternalSeedBrandSearchProduct(row) {
       ) || 'External',
     ).trim() || 'External';
   const reviewSummary = normalizeSeedReviewSummary(
-    seedData.review_summary,
-    seedData.reviewSummary,
+    effectiveSeedData.review_summary,
+    effectiveSeedData.reviewSummary,
     snapshot.review_summary,
     snapshot.reviewSummary,
-    seedData.reviews_summary,
+    effectiveSeedData.reviews_summary,
     snapshot.reviews_summary,
   );
 
