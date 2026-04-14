@@ -243,7 +243,7 @@ describe('RecommendationEngine external candidate fetch', () => {
     ).toBe(true);
   });
 
-  test('uses same-domain seed lookup but still runs broad scans when domain rows may be variant-crowded', async () => {
+  test('uses same-domain seed lookup and skips broad scans when domain rows can fill target', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 
     const queryMock = jest.fn(async (sql, params) => {
@@ -285,6 +285,60 @@ describe('RecommendationEngine external candidate fetch', () => {
           String(product.canonical_url || product.destination_url || '').includes('kravebeauty.com'),
       ),
     ).toBe(true);
+    expect(queryMock.mock.calls.some(([sql]) => String(sql).includes("lower(coalesce(domain, '')) = ANY($4)"))).toBe(true);
+    expect(
+      queryMock.mock.calls.some(([sql]) => String(sql).includes("seed_data->>'brand'")),
+    ).toBe(false);
+  });
+
+  test('falls back to broad scans when same-domain rows underfill target', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryMock = jest.fn(async (sql, params) => {
+      const sqlText = String(sql);
+      if (sqlText.includes("lower(coalesce(domain, '')) = ANY($4)")) {
+        expect(params?.[3]).toEqual(['kravebeauty.com', 'www.kravebeauty.com']);
+        return {
+          rows: Array.from({ length: 2 }).map((_, index) =>
+            ({
+              ...makeExternalRow({
+                id: `eps_domain_underfill_${index}`,
+                external_product_id: `ext_domain_underfill_${index}`,
+                title: `KraveBeauty Domain Underfill Product ${index}`,
+              }),
+              seed_data: undefined,
+            }),
+          ),
+        };
+      }
+      const brandAliases = params?.[3];
+      if (Array.isArray(brandAliases) && brandAliases.includes('kravebeauty')) {
+        return {
+          rows: [
+            makeExternalRow({
+              id: 'eps_brand_fill',
+              external_product_id: 'ext_brand_fill',
+              title: 'KraveBeauty Brand Fill Product',
+            }),
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchExternalCandidates({
+      brandHint: 'KraveBeauty',
+      categoryHint: 'Serum',
+      domainHints: ['https://kravebeauty.com/products/great-barrier-relief'],
+      limit: 12,
+      minFocusedCandidates: 6,
+    });
+
+    expect(products).toHaveLength(3);
     expect(queryMock.mock.calls.some(([sql]) => String(sql).includes("lower(coalesce(domain, '')) = ANY($4)"))).toBe(true);
     expect(
       queryMock.mock.calls.some(([sql]) => String(sql).includes("seed_data->>'brand'")),
@@ -527,6 +581,6 @@ describe('RecommendationEngine external candidate fetch', () => {
       queryMock.mock.calls.some(
         ([sql]) => String(sql).includes("seed_data->>'brand'") || String(sql).includes("seed_data->>'category'"),
       ),
-    ).toBe(true);
+    ).toBe(false);
   });
 });
