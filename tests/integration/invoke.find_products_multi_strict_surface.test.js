@@ -205,6 +205,123 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     expect(externalSeedSql).not.toMatch(/CAST\(COALESCE\(seed_data|seed_data::text/);
   });
 
+  test('strict ingredient budget filtering evaluates each product currency before returning hits', async () => {
+    mockDbRows([
+      seedRow({
+        id: 'seed_usd_niacinamide',
+        external_product_id: 'seed_usd_niacinamide_product',
+        title: 'USD Niacinamide Serum',
+        price_amount: 28,
+        price_currency: 'USD',
+        seed_data: {
+          ...seedRow().seed_data,
+          title: 'USD Niacinamide Serum',
+          price_amount: 28,
+          price_currency: 'USD',
+          variants: [
+            {
+              id: 'seed_usd_variant',
+              title: 'Default Title',
+              price: 28,
+              currency: 'USD',
+              availability: 'in_stock',
+            },
+          ],
+        },
+      }),
+      seedRow({
+        id: 'seed_eur_niacinamide',
+        external_product_id: 'seed_eur_niacinamide_product',
+        title: 'EUR Niacinamide Serum',
+        price_amount: 28,
+        price_currency: 'EUR',
+        seed_data: {
+          ...seedRow().seed_data,
+          title: 'EUR Niacinamide Serum',
+          price_amount: 28,
+          price_currency: 'EUR',
+          variants: [
+            {
+              id: 'seed_eur_variant',
+              title: 'Default Title',
+              price: 28,
+              currency: 'EUR',
+              availability: 'in_stock',
+            },
+          ],
+        },
+      }),
+      seedRow({
+        id: 'seed_eur_eligible_niacinamide',
+        external_product_id: 'seed_eur_eligible_niacinamide_product',
+        title: 'EUR Eligible Niacinamide Serum',
+        price_amount: 20,
+        price_currency: 'EUR',
+        seed_data: {
+          ...seedRow().seed_data,
+          title: 'EUR Eligible Niacinamide Serum',
+          price_amount: 20,
+          price_currency: 'EUR',
+          variants: [
+            {
+              id: 'seed_eur_eligible_variant',
+              title: 'Default Title',
+              price: 20,
+              currency: 'EUR',
+              availability: 'in_stock',
+            },
+          ],
+        },
+      }),
+    ]);
+
+    const legacyInvoke = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+        metadata: { query_source: 'cache_multi_intent' },
+      });
+
+    const app = require('../../src/server');
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'niacinamide serum under $30',
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      })
+      .expect(200);
+
+    expect(legacyInvoke.isDone()).toBe(false);
+    expect(res.body.products.map((product) => product.title)).toEqual(['USD Niacinamide Serum']);
+    expect(res.body.products[0]).toEqual(
+      expect.objectContaining({
+        currency: 'USD',
+      }),
+    );
+    expect(res.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: INGREDIENT_DIRECT_QUERY_SOURCE,
+        ingredient_direct_prefetch_count: 3,
+        ingredient_direct_budget_filtered_out_count: 2,
+        ingredient_direct_budget_currency_filtered_out_count: 1,
+        budget_fx_candidate_currency: 'USD',
+        budget_fx_unresolved: false,
+      }),
+    );
+  });
+
   test('strict ingredient empty responses stay on ingredient direct authority without fallback', async () => {
     mockDbRows([]);
 
