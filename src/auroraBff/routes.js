@@ -66583,13 +66583,13 @@ function buildExternalSeedCompareSearchQueries({ productObj, productInput = '', 
   );
   for (const alias of aliasQueries.slice(0, 1)) pushQuery(alias);
 
-  if (usageRole && target.knownActives.length) {
+  if (usageRole) {
+    pushQuery(usageRole);
+  }
+  if (usageRole && usageRole !== 'sunscreen' && target.knownActives.length) {
     pushQuery(`${target.knownActives[0]} ${usageRole}`);
   } else if (target.knownActives.length) {
     pushQuery(target.knownActives[0]);
-  }
-  if (usageRole) {
-    pushQuery(usageRole);
   }
   if (usageRole && usageRole !== 'unknown' && target.primaryClaims.length && target.textureHints.length) {
     pushQuery(`${target.textureHints[0]} ${target.primaryClaims[0]} ${usageRole}`);
@@ -66609,7 +66609,7 @@ function buildExternalSeedCompareSearchQueries({ productObj, productInput = '', 
   if (stepTerms && target.textureHints.length) {
     pushQuery(`${stepTerms} ${target.textureHints[0]}`);
   }
-  if (usageRole && usageRole !== 'unknown' && target.knownActives.length) {
+  if (usageRole && usageRole !== 'unknown' && usageRole !== 'sunscreen' && target.knownActives.length) {
     pushQuery(`${target.knownActives[0]} ${usageRole}`);
   }
   for (const alias of aliasQueries.slice(1)) pushQuery(alias);
@@ -66989,7 +66989,7 @@ function normalizePoolAlternativeRow(row, {
     targetRole === 'moisturizer' &&
     candidateRole === 'serum' &&
     RECO_ALTERNATIVE_STRONG_BARRIER_BRIDGE_RE.test(targetRoleScopeText) &&
-    RECO_ALTERNATIVE_STRONG_BARRIER_BRIDGE_RE.test(candidateText);
+    RECO_ALTERNATIVE_STRONG_BARRIER_BRIDGE_RE.test(candidateLabel);
   if (
     targetRole &&
     targetRole !== 'unknown' &&
