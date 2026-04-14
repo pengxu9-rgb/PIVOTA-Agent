@@ -141,4 +141,33 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
 
     expect(ingredientsInci?.data?.items).toEqual(['AQUA', '1,2-HEXANEDIOL', 'GLYCERIN']);
   });
+
+  test('preserves raw ingredient numeric INCI commas for external seeds', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_ingredient_raw',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Calming Barrier Serum',
+        description: 'Hydrating serum.',
+        canonical_url: 'https://merchant.example/products/calming-barrier-serum',
+        image_url: 'https://example.com/calming-barrier-serum.png',
+        pdp_ingredients_raw:
+          'Water, Camellia Sinensis Leaf Water, Methylpropanediol, 1,2-Hexanediol, Glycerin',
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const ingredientsInci = payload.modules.find((module) => module.type === 'ingredients_inci');
+
+    expect(ingredientsInci?.data?.items).toEqual([
+      'Water',
+      'Camellia Sinensis Leaf Water',
+      'Methylpropanediol',
+      '1,2-Hexanediol',
+      'Glycerin',
+    ]);
+    expect(ingredientsInci?.data?.items).not.toEqual(expect.arrayContaining(['1', '2-Hexanediol']));
+  });
 });
