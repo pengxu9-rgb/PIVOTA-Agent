@@ -64,6 +64,8 @@ describe('Celestial commerce core source contracts', () => {
       search: {
         query: 'lip balm',
         allow_external_seed: true,
+        catalog_surface: 'beauty',
+        commerce_surface: 'beauty',
         external_seed_strategy: 'unified_relevance',
       },
     });
