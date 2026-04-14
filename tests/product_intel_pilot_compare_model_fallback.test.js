@@ -256,4 +256,71 @@ describe('product_intel_pilot_compare gemini fallback', () => {
     ]);
     expect(result.quality_gate.fail_reasons).not.toContain('incompatible_best_for');
   });
+
+  test('human-standard rewrite does not reuse awkward first-person cleanser seller copy', async () => {
+    process.env.GEMINI_API_KEY = 'fake-key';
+    const weakCleanserResponse = {
+      data: {
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  text: '{"product_intel_core":{"what_it_is":{"headline":"Cleanser","body":"This cleanser has a dense foam bubble texture help to cleanse the skin refreshingly and cleanly by smoothly filling the skin."},"best_for":[{"tag":"daily","label":"Daily cleansing"}],"why_it_stands_out":[{"headline":"Gentle","body":"For all people."}],"watchouts":[],"routine_fit":{"step":"cleanser","pairing_notes":["Use before moisturizer."],"am_pm":["am","pm"]}}}',
+                },
+              ],
+            },
+          },
+        ],
+      },
+    };
+
+    jest.spyOn(axios, 'post').mockResolvedValue(weakCleanserResponse);
+
+    const result = await runGeminiDraft(
+      {
+        case_id: 'cleanser-human-rewrite',
+        product: {
+          title: 'Pine Calming Cica Cleanser',
+          brand: 'Round Lab',
+          category: 'Cleanser',
+          description:
+            'This cleanser has a dense foam bubble texture help to cleanse the skin refreshingly and cleanly by smoothly filling the skin.',
+        },
+      },
+      {
+        evidence_profile: 'seller_only',
+        product_intel_core: {
+          what_it_is: {
+            headline: 'Daily cleanser',
+            body: 'A cleanser focused on removing daily buildup while keeping the routine gentle and practical.',
+          },
+          best_for: [{ tag: 'daily_cleansing', label: 'Daily cleansing' }],
+          why_it_stands_out: [
+            {
+              headline: 'Cleansing comfort',
+              body: 'Supports daily cleansing with a comfort-first profile.',
+              evidence_strength: 'limited',
+            },
+          ],
+          routine_fit: {
+            step: 'cleanser',
+            am_pm: ['am', 'pm'],
+            pairing_notes: ['Use before treatment and moisturizer steps.'],
+          },
+          watchouts: [],
+        },
+        community_signals: {
+          status: 'unavailable',
+        },
+      },
+      'gemini-3-flash-preview',
+    );
+
+    expect(result.model_used).toBe('gpt-5.4-human-standard-rewrite');
+    expect(result.output.product_intel_core.what_it_is.body).toBe(
+      'A cleanser focused on removing daily buildup while keeping the routine gentle and practical.',
+    );
+    expect(result.output.product_intel_core.what_it_is.body).not.toMatch(/texture help|s lightly|\\bour\\b/i);
+  });
 });

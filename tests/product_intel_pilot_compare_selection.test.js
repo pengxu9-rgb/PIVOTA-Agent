@@ -240,6 +240,41 @@ describe('product_intel pilot compare selection', () => {
     ]);
   });
 
+  test('drops non-text best_for objects instead of serializing object placeholders', () => {
+    const normalized = normalizeGeminiDraftOutput({
+      product_intel_core: {
+        what_it_is: {
+          headline: 'Firming cream',
+          body: 'A firming face cream for moisturizer routines.',
+        },
+        best_for: [
+          { tag: { nested: true }, label: { nested: true } },
+          { tag: 'daily_moisture', label: 'Daily moisture support' },
+        ],
+        why_it_stands_out: [
+          {
+            headline: 'Barrier-comfort routine',
+            body: 'Pairs moisturizing care with barrier-comfort claims for daily cream routines.',
+            evidence_strength: 'limited',
+          },
+        ],
+        routine_fit: {
+          step: 'moisturizer',
+          am_pm: ['am', 'pm'],
+          pairing_notes: ['Apply after serum.'],
+        },
+        watchouts: [],
+      },
+      community_signals: {
+        status: 'unavailable',
+      },
+    });
+
+    expect(normalized.product_intel_core.best_for).toEqual([
+      { tag: 'daily_moisture', label: 'Daily moisture support', confidence: 'moderate' },
+    ]);
+  });
+
   test('uses gemini narrative fields when they pass the quality gate', () => {
     const caseRow = {
       case_id: 'pilot_fenty_instant_reset',

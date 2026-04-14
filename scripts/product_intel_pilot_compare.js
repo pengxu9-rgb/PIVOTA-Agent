@@ -250,8 +250,17 @@ function normalizeSellerWhatItIs(text) {
     .replace(/^clinically-inspired\s+/i, 'A ')
     .replace(/^clinically inspired\s+/i, 'A ')
     .replace(/^jumbo[-\s]+sized?,?\s+/i, 'A ')
+    .replace(/\bour\b/gi, "the brand's")
+    .replace(/\bwe\b/gi, 'the brand')
+    .replace(/\bus\b/gi, 'the brand')
     .replace(/^a\s+a\s+/i, 'A ')
     .trim();
+}
+
+function plainTextValue(value) {
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return '';
 }
 
 function isWeakSellerWhatItIsText(text) {
@@ -264,6 +273,19 @@ function isWeakSellerWhatItIsText(text) {
     /\bjumbo[-\s]+size\b/,
     /\bdouble up and save\b/,
     /\bclinically-inspired\b/,
+    /\bmiracle ingredient\b/,
+  ].some((pattern) => pattern.test(normalized));
+}
+
+function hasProblematicGeneratedText(text) {
+  const normalized = asString(text);
+  if (!normalized) return false;
+  return [
+    /\[object Object\]/i,
+    /\b(?:our|we|us)\b/i,
+    /\bmiracle ingredient\b/i,
+    /\bs\s+lightly\b/i,
+    /\btexture\s+help\b/i,
   ].some((pattern) => pattern.test(normalized));
 }
 
@@ -773,11 +795,14 @@ function normalizeGeminiDraftOutput(output) {
   const bestFor = toList(output?.product_intel_core?.best_for)
     .map((item) => {
       const row = item && typeof item === 'object' ? item : null;
-      const label = clampTextAtWordBoundary(row?.label || item, 120);
+      const label = clampTextAtWordBoundary(
+        plainTextValue(row?.label) || plainTextValue(row?.tag) || plainTextValue(item),
+        120,
+      );
       if (!label) return null;
       return {
         tag:
-          asString(row?.tag).slice(0, 80) ||
+          plainTextValue(row?.tag).slice(0, 80) ||
           label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 80) ||
           'fit',
         label,
@@ -935,7 +960,10 @@ function extractActiveTerms(context) {
 function buildHumanStandardWhatItIs(context, baselineBundle) {
   const kind = inferProductKindFromContext(context);
   const activeTerms = extractActiveTerms(context);
-  const usefulDescription = firstUsefulSentence(context.description);
+  const usefulDescriptionRaw = firstUsefulSentence(context.description);
+  const usefulDescription = hasProblematicGeneratedText(usefulDescriptionRaw)
+    ? ''
+    : normalizeSellerWhatItIs(usefulDescriptionRaw);
   const baseHeadline = asString(baselineBundle?.product_intel_core?.what_it_is?.headline);
 
   if (kind === 'lip') {
@@ -979,7 +1007,10 @@ function buildHumanStandardWhatItIs(context, baselineBundle) {
   if (kind === 'cleanser') {
     return {
       headline: /clean/i.test(baseHeadline) ? baseHeadline : 'Daily cleanser',
-      body: usefulDescription || 'A cleanser focused on removing daily buildup while keeping the routine gentle and practical.',
+      body:
+        activeTerms.length
+          ? `A daily cleanser built around ${activeTerms.join(', ')} cues for removing daily buildup while keeping the routine comfortable.`
+          : 'A cleanser focused on removing daily buildup while keeping the routine gentle and practical.',
     };
   }
 
@@ -1520,6 +1551,7 @@ function evaluateGeminiCandidateQuality(baselineBundle, geminiCandidateBundle) {
     sellerOnlyMode &&
     externalEvidenceLanguage &&
     !groundedExternalEvidence;
+  const problematicGeneratedText = hasProblematicGeneratedText(narrativeText);
   const incompatibleBestFor = hasIncompatibleBestForForContext(
     productContext,
     candidateCore.best_for,
@@ -1547,6 +1579,7 @@ function evaluateGeminiCandidateQuality(baselineBundle, geminiCandidateBundle) {
     what_it_is:
       asString(candidateCore.what_it_is?.body).length >= 24 &&
       !sellerOnlyViolation &&
+      !problematicGeneratedText &&
       !(sellerOnlyMode && isWeakSellerWhatItIsText(candidateCore.what_it_is?.body)),
     best_for:
       Array.isArray(candidateCore.best_for) &&
@@ -1557,7 +1590,8 @@ function evaluateGeminiCandidateQuality(baselineBundle, geminiCandidateBundle) {
         bestForOverlap >= 0.15
       ) &&
       !incompatibleBestFor &&
-      !sellerOnlyViolation,
+      !sellerOnlyViolation &&
+      !problematicGeneratedText,
     why_it_stands_out:
       Array.isArray(candidateCore.why_it_stands_out) &&
       candidateCore.why_it_stands_out.length > 0 &&
@@ -1568,14 +1602,17 @@ function evaluateGeminiCandidateQuality(baselineBundle, geminiCandidateBundle) {
           !isLowSignalSellerHighlightText(`${item?.headline || ''} ${item?.body || ''}`) &&
           !(sellerOnlyMode && isGenericSellerHighlightText(`${item?.headline || ''} ${item?.body || ''}`)),
       ) &&
-      !sellerOnlyViolation,
+      !sellerOnlyViolation &&
+      !problematicGeneratedText,
     routine_fit:
       asString(candidateCore.routine_fit?.step) === asString(baselineCore.routine_fit?.step) &&
       (toList(candidateCore.routine_fit?.pairing_notes).length > 0 ||
         toList(candidateCore.routine_fit?.am_pm).length > 0) &&
-      !sellerOnlyViolation,
+      !sellerOnlyViolation &&
+      !problematicGeneratedText,
     watchouts:
       (!sellerOnlyViolation &&
+        !problematicGeneratedText &&
         Array.isArray(candidateCore.watchouts) &&
         candidateCore.watchouts.every((item) => asString(item?.label).length > 0)) ||
       false,
@@ -1592,6 +1629,7 @@ function evaluateGeminiCandidateQuality(baselineBundle, geminiCandidateBundle) {
   const qualityScore = Object.values(fieldDecisions).filter(Boolean).length;
   const failReasons = [];
   if (sellerOnlyViolation) failReasons.push('seller_only_community_language');
+  if (problematicGeneratedText) failReasons.push('problematic_generated_text');
   if (incompatibleBestFor) failReasons.push('incompatible_best_for');
   if (incompleteHighlights) failReasons.push('incomplete_highlight_copy');
   if (!fieldDecisions.what_it_is) failReasons.push('weak_what_it_is');
@@ -1608,6 +1646,7 @@ function evaluateGeminiCandidateQuality(baselineBundle, geminiCandidateBundle) {
     quality_score: qualityScore,
     fail_reasons: failReasons,
     seller_only_violation: sellerOnlyViolation,
+    problematic_generated_text: problematicGeneratedText,
     external_evidence_language: externalEvidenceLanguage,
     grounded_external_evidence: groundedExternalEvidence,
     incompatible_best_for: incompatibleBestFor,
