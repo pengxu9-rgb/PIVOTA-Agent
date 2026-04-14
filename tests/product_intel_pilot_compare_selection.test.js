@@ -419,6 +419,20 @@ describe('product_intel pilot compare selection', () => {
         description: 'A toner-serum step with niacinamide and Barbados cherry for pore and tone care.',
         headline: 'The 2-in-1 formula combines the balancing properties of a toner with the active potency of a',
       },
+      {
+        title: 'Round Lab Birch Moisturizing Intensive Cream',
+        category: 'Skincare/Moisturizer',
+        description:
+          'A cushiony cream with birch sap, ectoin, ceramide NP, cholesterol, and fatty acids for dry, weakened skin.',
+        headline: 'Utilizes the HYDRO KEEP BARRIER™ system, a blend of ceramide NP, cholesterol, and fatty acids,',
+      },
+      {
+        title: 'Round Lab Vita Niacinamide Dark Spot Serum Mask',
+        category: 'Skincare/Sheet Mask',
+        description:
+          'A brightening sheet mask with niacinamide, sea buckthorn, and vitamin C derivatives for uneven-looking tone.',
+        headline: 'Utilizes Triple Vita Activer™, a blend of sea buckthorn and vitamin C derivatives,',
+      },
     ];
 
     for (const [index, item] of cases.entries()) {

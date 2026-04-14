@@ -729,6 +729,8 @@ function clampTextAtWordBoundary(value, maxLength) {
 }
 
 function isLikelyIncompleteNarrativeText(value) {
+  const raw = asString(value);
+  if (/[,;:–—-]\s*$/.test(raw)) return true;
   const normalized = asString(value)
     .replace(/\s+/g, ' ')
     .replace(/[.!?;,:\s]+$/g, '')
