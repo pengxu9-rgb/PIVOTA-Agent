@@ -23416,6 +23416,7 @@ async function callGeminiJsonObjectViaRest({
       route,
       async () => {
         upstreamStartedAt = Date.now();
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent`;
         const controller =
           typeof AbortController === 'function' && Number(timeoutBudget.upstream_timeout_ms || 0) > 0
             ? new AbortController()
@@ -23424,43 +23425,42 @@ async function callGeminiJsonObjectViaRest({
           ? setTimeout(() => controller.abort(), timeoutBudget.upstream_timeout_ms)
           : null;
         try {
-          const response = controller
-            ? await fetch(
-              `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent`,
-              {
-                method: 'POST',
-                headers: {
-                  'content-type': 'application/json',
-                  'x-goog-api-key': apiKey,
-                },
-                body: JSON.stringify(requestBody),
-                signal: controller.signal,
-              },
-            ).catch((err) => {
-              if (err && err.name === 'AbortError') throw buildGeminiUpstreamTimeoutError();
-              throw err;
-            })
-            : await withTimeout(
-              fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent`, {
-                method: 'POST',
-                headers: {
-                  'content-type': 'application/json',
-                  'x-goog-api-key': apiKey,
-                },
-                body: JSON.stringify(requestBody),
-              }),
-              timeoutBudget.upstream_timeout_ms,
-              'GEMINI_UPSTREAM_TIMEOUT',
-            );
+          const response = await axios.post(url, requestBody, {
+            headers: {
+              'content-type': 'application/json',
+              'x-goog-api-key': apiKey,
+            },
+            timeout: Math.max(1, Math.trunc(Number(timeoutBudget.upstream_timeout_ms || 0) || 1)),
+            signal: controller ? controller.signal : undefined,
+            validateStatus: () => true,
+            transitional: { clarifyTimeoutError: true },
+          }).catch((err) => {
+            const code = String(err?.code || '').toUpperCase();
+            const name = String(err?.name || '').toLowerCase();
+            if (
+              code === 'ECONNABORTED' ||
+              code === 'ETIMEDOUT' ||
+              code === 'ERR_CANCELED' ||
+              name === 'aborterror' ||
+              name === 'cancelederror' ||
+              (typeof axios.isCancel === 'function' && axios.isCancel(err))
+            ) {
+              throw buildGeminiUpstreamTimeoutError();
+            }
+            throw err;
+          });
           let responseBody = null;
-          try {
-            responseBody = await response.json();
-          } catch (err) {
-            if (controller && err && err.name === 'AbortError') throw buildGeminiUpstreamTimeoutError();
-            responseBody = null;
+          if (response && typeof response.data === 'string') {
+            try {
+              responseBody = JSON.parse(response.data);
+            } catch {
+              responseBody = null;
+            }
+          } else if (response && response.data && typeof response.data === 'object') {
+            responseBody = response.data;
           }
           return {
-            ok: Boolean(response && response.ok),
+            ok: Number(response && response.status) >= 200 && Number(response && response.status) < 300,
             status: Number(response && response.status) || 0,
             statusText: response && response.statusText ? String(response.statusText) : '',
             responseBody,
