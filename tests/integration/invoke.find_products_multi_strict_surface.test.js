@@ -175,6 +175,8 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
         resolved_contract: 'shop_invoke_strict',
         query_source: INGREDIENT_DIRECT_QUERY_SOURCE,
         ingredient_direct_resolution_variant: expect.any(String),
+        ingredient_direct_prefetch_ms: expect.any(Number),
+        ingredient_direct_prefetch_count: 2,
         ingredient_direct_budget_filter_applied: true,
         ingredient_direct_budget_filtered_out_count: 1,
         strict_constraint_query: true,
@@ -190,6 +192,7 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
         }),
         route_health: expect.objectContaining({
           primary_path_used: 'ingredient_recall_direct',
+          primary_latency_ms: expect.any(Number),
           fallback_triggered: false,
         }),
       }),
@@ -198,6 +201,8 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
       text.includes('FROM external_product_seeds'),
     );
     expect(externalSeedSql).toContain('reviewed_ingredient_ids');
+    expect(externalSeedSql).toContain("seed_data#>>'{derived,recall,ingredient_tokens}'");
+    expect(externalSeedSql).not.toMatch(/CAST\(COALESCE\(seed_data|seed_data::text/);
   });
 
   test('strict ingredient empty responses stay on ingredient direct authority without fallback', async () => {
@@ -252,11 +257,14 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
         resolved_contract: 'shop_invoke_strict',
         query_source: INGREDIENT_DIRECT_QUERY_SOURCE,
         ingredient_direct_resolution_variant: 'direct_empty',
+        ingredient_direct_prefetch_ms: expect.any(Number),
+        ingredient_direct_prefetch_count: 0,
         strict_empty: true,
         strict_constraint_query: true,
         strict_constraint_reason: expect.stringMatching(/ingredient|multi_constraint/),
         route_health: expect.objectContaining({
           primary_path_used: 'ingredient_recall_direct',
+          primary_latency_ms: expect.any(Number),
           fallback_triggered: false,
         }),
       }),

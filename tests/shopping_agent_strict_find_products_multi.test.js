@@ -290,6 +290,8 @@ describe('Shopping agent strict find_products_multi runtime', () => {
 
     expect(query).toHaveBeenCalledTimes(1);
     expect(capturedSql).toContain("seed_data#>>'{derived,recall,ingredient_tokens}'");
+    expect(capturedSql).toContain('retrieval_title');
+    expect(capturedSql).not.toMatch(/CAST\(COALESCE\(seed_data|seed_data::text/);
     expect(out).toHaveLength(1);
     expect(out[0]).toMatchObject({
       product_id: 'ext_good_molecules_niacinamide',

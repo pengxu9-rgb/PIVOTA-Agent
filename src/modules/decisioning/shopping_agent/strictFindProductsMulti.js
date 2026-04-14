@@ -239,19 +239,6 @@ function isStrictBeautyExactLookupQuery({
   return false;
 }
 
-function buildSqlLikeClauses(columnSql, values, params, startIndex) {
-  const clauses = [];
-  let paramIndex = startIndex;
-  for (const value of values) {
-    const normalized = String(value || '').trim().toLowerCase();
-    if (!normalized) continue;
-    params.push(`%${normalized}%`);
-    clauses.push(`${columnSql} LIKE $${paramIndex}`);
-    paramIndex += 1;
-  }
-  return { clauses, nextIndex: paramIndex };
-}
-
 function createStrictFindProductsMultiRuntime(deps = {}) {
   const normalizeSearchTextForMatch =
     typeof deps.normalizeSearchTextForMatch === 'function'
@@ -661,19 +648,9 @@ function createStrictFindProductsMultiRuntime(deps = {}) {
     ];
 
     const params = ['US'];
-    let paramIndex = 2;
-    const titleLike = buildSqlLikeClauses('LOWER(COALESCE(title, \'\'))', textTerms, params, paramIndex);
-    paramIndex = titleLike.nextIndex;
-    const urlLike = buildSqlLikeClauses(
-      'LOWER(COALESCE(canonical_url, \'\'))',
-      textTerms,
-      params,
-      paramIndex,
-    );
-    paramIndex = urlLike.nextIndex;
     params.push(textTerms.map((value) => `%${String(value || '').trim().toLowerCase()}%`).filter(Boolean));
     const recallBind = `$${params.length}`;
-    paramIndex = params.length + 1;
+    const paramIndex = params.length + 1;
     params.push(Math.max(STRICT_FIND_PRODUCTS_MULTI_EXTERNAL_PREFETCH_LIMIT * 3, 24));
 
     const structuredIngredientEvidenceClauses = [
@@ -711,8 +688,7 @@ function createStrictFindProductsMultiRuntime(deps = {}) {
           ${structuredIngredientEvidenceClauses.join(' OR ')}
         )
         AND (
-          ${[...titleLike.clauses, ...urlLike.clauses].join(' OR ')}
-          OR ${buildExternalSeedRecallLikePredicate(recallBind, { includeLegacyFallback: true })}
+          ${buildExternalSeedRecallLikePredicate(recallBind)}
         )
       ORDER BY updated_at DESC, created_at DESC
       LIMIT $${paramIndex}

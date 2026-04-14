@@ -137,6 +137,9 @@ const {
   buildExternalSeedBrandSearchProduct,
 } = require('./services/externalSeedProducts');
 const {
+  buildExternalSeedRecallLikePredicate,
+} = require('./services/externalSeedRecall');
+const {
   runExternalSeedBrandMainlineFastpath,
 } = require('./findProductsExternalSeedBrandFastpath');
 const {
@@ -1322,19 +1325,6 @@ function extractStrictFindProductsMultiSkincareCategoryIntents(queryText) {
   );
 }
 
-function buildSqlLikeClauses(columnSql, values, params, startIndex) {
-  const clauses = [];
-  let paramIndex = startIndex;
-  for (const value of values) {
-    const normalized = String(value || '').trim().toLowerCase();
-    if (!normalized) continue;
-    params.push(`%${normalized}%`);
-    clauses.push(`${columnSql} LIKE $${paramIndex}`);
-    paramIndex += 1;
-  }
-  return { clauses, nextIndex: paramIndex };
-}
-
 function productMatchesStrictIngredientPrefetch(product, { ingredientIntents = [], categoryIntents = [], inStockOnly = true } = {}) {
   if (!product || typeof product !== 'object') return false;
   const productIngredientIds = Array.isArray(product.ingredient_ids)
@@ -1414,23 +1404,9 @@ async function prefetchStrictIngredientExternalSeedCandidates({
   ];
 
   const params = ['US'];
-  let paramIndex = 2;
-  const titleLike = buildSqlLikeClauses('LOWER(COALESCE(title, \'\'))', textTerms, params, paramIndex);
-  paramIndex = titleLike.nextIndex;
-  const urlLike = buildSqlLikeClauses(
-    'LOWER(COALESCE(canonical_url, \'\'))',
-    textTerms,
-    params,
-    paramIndex,
-  );
-  paramIndex = urlLike.nextIndex;
-  const seedDataLike = buildSqlLikeClauses(
-    'LOWER(CAST(COALESCE(seed_data, \'{}\'::jsonb) AS TEXT))',
-    textTerms,
-    params,
-    paramIndex,
-  );
-  paramIndex = seedDataLike.nextIndex;
+  params.push(textTerms.map((value) => `%${String(value || '').trim().toLowerCase()}%`).filter(Boolean));
+  const recallBind = `$${params.length}`;
+  const paramIndex = params.length + 1;
   params.push(Math.max(STRICT_FIND_PRODUCTS_MULTI_EXTERNAL_PREFETCH_LIMIT * 3, 24));
   const structuredIngredientEvidenceClauses = [
     "COALESCE(jsonb_array_length(CASE WHEN jsonb_typeof(COALESCE(seed_data, '{}'::jsonb)->'reviewed_ingredient_ids') = 'array' THEN COALESCE(seed_data, '{}'::jsonb)->'reviewed_ingredient_ids' ELSE '[]'::jsonb END), 0) > 0",
@@ -1467,7 +1443,7 @@ async function prefetchStrictIngredientExternalSeedCandidates({
         ${structuredIngredientEvidenceClauses.join(' OR ')}
       )
       AND (
-        ${[...titleLike.clauses, ...urlLike.clauses, ...seedDataLike.clauses].join(' OR ')}
+        ${buildExternalSeedRecallLikePredicate(recallBind)}
       )
     ORDER BY updated_at DESC, created_at DESC
     LIMIT $${paramIndex}
@@ -21994,11 +21970,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ? Math.floor(Number(search.offset))
             : (safePage - 1) * safeLimit,
         );
+        const strictIngredientPrefetchStartedAt = Date.now();
         const directProducts = await prefetchStrictIngredientExternalSeedCandidates({
           search,
           strictInvokeDecision: strictFindProductsMultiDecision,
           rawQueryText: rawUserQuery || queryText,
         });
+        const strictIngredientPrefetchMs = Math.max(0, Date.now() - strictIngredientPrefetchStartedAt);
         const directBudgetFilter = filterFindProductsMultiDirectProductsByBudget(
           effectiveIntent?.hard_constraints?.price || null,
           directProducts,
@@ -22017,8 +21995,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           invoke_search_rail: 'authoritative_shopping',
           legacy_contract: false,
           service_version: buildServiceVersionMetadata(),
+          ingredient_direct_prefetch_ms: strictIngredientPrefetchMs,
+          ingredient_direct_prefetch_count: directProducts.length,
           ingredient_direct_budget_filter_applied: Boolean(directBudgetFxMetadata),
           ingredient_direct_budget_filtered_out_count: directBudgetFilter.filteredOut,
+          route_health: {
+            primary_path_used: 'ingredient_recall_direct',
+            primary_latency_ms: strictIngredientPrefetchMs,
+            fallback_triggered: false,
+            fallback_reason: null,
+            final_returned_count: pagedDirectProducts.length,
+          },
           ...(directBudgetFxMetadata || {}),
         };
         const directResponse =
