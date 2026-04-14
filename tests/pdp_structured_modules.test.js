@@ -273,6 +273,52 @@ describe('pdpBuilder structured PDP modules', () => {
     );
   });
 
+  test('renders a clean captured external seed PDP description as overview details', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_boj_clean_description',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Calming Barrier Serum',
+        category: 'Serum',
+        image_url: 'https://cdn.example.com/calming-serum.jpg',
+        price: { amount: 12.75, currency: 'USD' },
+        pdp_description_raw: [
+          'Intense Hydration, Instant Calm',
+          'When your complexion calls for extra support, a few drops of Calming Barrier Serum will bring it back in balance.',
+        ].join('\n'),
+        pdp_details_sections: [
+          {
+            heading: 'Intense Hydration, Instant Calm',
+            body: 'When your complexion calls for extra support, a few drops of Calming Barrier Serum will bring it back in balance.',
+            source_kind: 'custom_pdp',
+          },
+          {
+            heading: 'How to Use',
+            body: 'Pat gently after toner.',
+            source_kind: 'custom_pdp',
+          },
+          {
+            heading: 'Ingredients',
+            body: 'Water, 1,2-Hexanediol, Glycerin',
+            source_kind: 'custom_pdp',
+          },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    expect(findModule(payload, 'product_details')?.data?.sections).toEqual([
+      expect.objectContaining({
+        heading: 'Description',
+        content:
+          'When your complexion calls for extra support, a few drops of Calming Barrier Serum will bring it back in balance.',
+      }),
+    ]);
+    expect(findModule(payload, 'product_facts')).toBeFalsy();
+  });
+
   test('merges merchant FAQ and review-derived questions into reviews preview', () => {
     const payload = buildPdpPayload({
       product: {
