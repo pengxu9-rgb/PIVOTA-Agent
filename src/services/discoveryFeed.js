@@ -3376,6 +3376,7 @@ function buildDiscoveryProviderStepSummary({
   externalSeedRawCount,
   externalSeedQualifiedCount,
   externalSeedFilteredCompoundCount,
+  externalSeedFilteredQueryTextCount,
 } = {}) {
   return {
     provider,
@@ -3409,6 +3410,9 @@ function buildDiscoveryProviderStepSummary({
       : {}),
     ...(externalSeedFilteredCompoundCount != null
       ? { external_seed_filtered_compound_count: Number(externalSeedFilteredCompoundCount || 0) }
+      : {}),
+    ...(externalSeedFilteredQueryTextCount != null
+      ? { external_seed_filtered_query_text_count: Number(externalSeedFilteredQueryTextCount || 0) }
       : {}),
     ...(error ? { error: String(error) } : {}),
   };
@@ -4751,6 +4755,15 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
         buildWhereSql: (stageBind) =>
           `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${stageBind(recallTerms.patterns)}::text[])`,
       });
+      if (explicitQueryScopedRecall) {
+        stageDefinitions.push({
+          score: 42,
+          stage: 'recall_summary',
+          cap: Math.max(safeLimit, Math.min(safeLimit * 2, 48)),
+          buildWhereSql: (stageBind) =>
+            `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${stageBind(recallTerms.patterns)}::text[])`,
+        });
+      }
       stageDefinitions.push({
         score: 40,
         stage: 'recall_tokens',
@@ -4763,15 +4776,6 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
           )`;
         },
       });
-      if (explicitQueryScopedRecall) {
-        stageDefinitions.push({
-          score: 34,
-          stage: 'recall_summary',
-          cap: Math.max(safeLimit, Math.min(safeLimit * 2, 48)),
-          buildWhereSql: (stageBind) =>
-            `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${stageBind(recallTerms.patterns)}::text[])`,
-        });
-      }
     }
 
     if (recallTerms.categoryTerms.length > 0) {
@@ -4833,6 +4837,7 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
     const externalSeedStageCounts = [];
     let externalSeedRawCount = 0;
     let externalSeedFilteredCompoundCount = 0;
+    let externalSeedFilteredQueryTextCount = 0;
     const baseSummaryThreshold =
       request?.surface === 'browse_products' && isGenericNoSignalDiscoveryRequest(request, profile)
         ? safeLimit
@@ -4851,12 +4856,13 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
         stage,
         raw_rows: Array.isArray(rows) ? rows.length : 0,
         compound_qualified_rows: 0,
+        query_qualified_rows: 0,
         deduped_rows: 0,
         final_eligible_rows: stagedRows.length,
       };
       externalSeedRawCount += metrics.raw_rows;
       for (const row of Array.isArray(rows) ? rows : []) {
-        if (compoundIntent) {
+        if (compoundIntent || explicitQueryScopedRecall) {
           const product = buildExternalSeedBrandSearchProduct(row);
           const normalized = product
             ? normalizeCandidateProduct(
@@ -4867,13 +4873,24 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
                 stagedRows.length,
               )
             : null;
-          if (!normalized || !matchesBeautyCompoundQueryIntent(normalized, compoundIntent)) {
+          if (!normalized) {
+            externalSeedFilteredQueryTextCount += 1;
+            continue;
+          }
+          if (compoundIntent && !matchesBeautyCompoundQueryIntent(normalized, compoundIntent)) {
             externalSeedFilteredCompoundCount += 1;
+            externalSeedFilteredQueryTextCount += 1;
+            continue;
+          }
+          if (!compoundIntent && !matchesQueryTextCandidate(normalized, request?.query?.text)) {
+            externalSeedFilteredQueryTextCount += 1;
             continue;
           }
           metrics.compound_qualified_rows += 1;
+          metrics.query_qualified_rows += 1;
         } else {
           metrics.compound_qualified_rows += 1;
+          metrics.query_qualified_rows += 1;
         }
         const rowKey = buildDiscoverySeedStageRowKey(row);
         if (!rowKey || seenRowKeys.has(rowKey)) continue;
@@ -4953,21 +4970,22 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
         buildDiscoveryProviderStepSummary({
           provider,
           label,
-	          query: recallTerms.phrases.join(' | '),
-	          limit: safeLimit,
-	          returned: products.length,
-	          status: 200,
-	          latencyMs: Date.now() - stepStartedAt,
-	          market,
-	          marketSource: marketConfig.source,
-	          compoundIntent,
-	          externalSeedStageCounts,
-	          externalSeedRawCount,
-	          externalSeedQualifiedCount: stagedRows.length,
-	          externalSeedFilteredCompoundCount,
-	        }),
-	      ],
-	    };
+          query: recallTerms.phrases.join(' | '),
+          limit: safeLimit,
+          returned: products.length,
+          status: 200,
+          latencyMs: Date.now() - stepStartedAt,
+          market,
+          marketSource: marketConfig.source,
+          compoundIntent,
+          externalSeedStageCounts,
+          externalSeedRawCount,
+          externalSeedQualifiedCount: stagedRows.length,
+          externalSeedFilteredCompoundCount,
+          externalSeedFilteredQueryTextCount,
+        }),
+      ],
+    };
   } catch (err) {
     recordDiscoveryRecallStep({
       surface: request?.surface,
@@ -7862,6 +7880,9 @@ function buildRankDebug({
       ...(step?.external_seed_filtered_compound_count != null
         ? { external_seed_filtered_compound_count: Number(step.external_seed_filtered_compound_count || 0) }
         : {}),
+      ...(step?.external_seed_filtered_query_text_count != null
+        ? { external_seed_filtered_query_text_count: Number(step.external_seed_filtered_query_text_count || 0) }
+        : {}),
       ...(step?.error ? { error: String(step.error) } : {}),
     })),
     provider_breakdown: Array.isArray(providerBreakdown) ? providerBreakdown : [],
@@ -7876,6 +7897,7 @@ function summarizeExternalSeedRecallTelemetry(recallSummary = []) {
     external_seed_raw_count: 0,
     external_seed_qualified_count: 0,
     external_seed_filtered_compound_count: 0,
+    external_seed_filtered_query_text_count: 0,
   };
   for (const step of Array.isArray(recallSummary) ? recallSummary : []) {
     if (!step || typeof step !== 'object') continue;
@@ -7890,6 +7912,10 @@ function summarizeExternalSeedRecallTelemetry(recallSummary = []) {
     summary.external_seed_filtered_compound_count += Math.max(
       0,
       Number(step.external_seed_filtered_compound_count || 0) || 0,
+    );
+    summary.external_seed_filtered_query_text_count += Math.max(
+      0,
+      Number(step.external_seed_filtered_query_text_count || 0) || 0,
     );
   }
   return summary;
@@ -8319,38 +8345,44 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       category_scope_applied: request.scope.categories,
       query_text: request.query.text,
       has_more: hasMore,
-	      facets: {
-	        categories: categoryFacets,
-	      },
-	      filter_counts: filterCounts,
-	      ...(compoundIntent || externalSeedRecallTelemetry.compound_intent
-	        ? { compound_intent: compoundIntent || externalSeedRecallTelemetry.compound_intent }
-	        : {}),
-	      ...(externalSeedRecallTelemetry.external_seed_stage_counts.length > 0
-	        ? { external_seed_stage_counts: externalSeedRecallTelemetry.external_seed_stage_counts }
-	        : {}),
-	      ...(externalSeedRecallTelemetry.external_seed_raw_count > 0
-	        ? { external_seed_raw_count: externalSeedRecallTelemetry.external_seed_raw_count }
-	        : {}),
-	      ...(externalSeedRecallTelemetry.external_seed_qualified_count > 0
-	        ? { external_seed_qualified_count: externalSeedRecallTelemetry.external_seed_qualified_count }
-	        : {}),
-	      ...(externalSeedRecallTelemetry.external_seed_filtered_compound_count > 0
-	        ? {
-	            external_seed_filtered_compound_count:
-	              externalSeedRecallTelemetry.external_seed_filtered_compound_count,
-	          }
-	        : {}),
-	      ...(underfilledReason ? { underfilled_reason: underfilledReason } : {}),
-	      route_health: {
-	        primary_path_used: primaryPathUsed,
-	        fallback_triggered: fallbackTriggered,
-	        fallback_reason: fallbackReason,
-	        primary_quality_gate_passed:
-	          selectedEntries.length > 0 && !exactIntentUnderfilled,
-	        ...(compoundIntent ? { compound_intent: compoundIntent } : {}),
-	        ...(underfilledReason ? { underfilled_reason: underfilledReason } : {}),
-	      },
+      facets: {
+        categories: categoryFacets,
+      },
+      filter_counts: filterCounts,
+      ...(compoundIntent || externalSeedRecallTelemetry.compound_intent
+        ? { compound_intent: compoundIntent || externalSeedRecallTelemetry.compound_intent }
+        : {}),
+      ...(externalSeedRecallTelemetry.external_seed_stage_counts.length > 0
+        ? { external_seed_stage_counts: externalSeedRecallTelemetry.external_seed_stage_counts }
+        : {}),
+      ...(externalSeedRecallTelemetry.external_seed_raw_count > 0
+        ? { external_seed_raw_count: externalSeedRecallTelemetry.external_seed_raw_count }
+        : {}),
+      ...(externalSeedRecallTelemetry.external_seed_qualified_count > 0
+        ? { external_seed_qualified_count: externalSeedRecallTelemetry.external_seed_qualified_count }
+        : {}),
+      ...(externalSeedRecallTelemetry.external_seed_filtered_compound_count > 0
+        ? {
+            external_seed_filtered_compound_count:
+              externalSeedRecallTelemetry.external_seed_filtered_compound_count,
+          }
+        : {}),
+      ...(externalSeedRecallTelemetry.external_seed_filtered_query_text_count > 0
+        ? {
+            external_seed_filtered_query_text_count:
+              externalSeedRecallTelemetry.external_seed_filtered_query_text_count,
+          }
+        : {}),
+      ...(underfilledReason ? { underfilled_reason: underfilledReason } : {}),
+      route_health: {
+        primary_path_used: primaryPathUsed,
+        fallback_triggered: fallbackTriggered,
+        fallback_reason: fallbackReason,
+        primary_quality_gate_passed:
+          selectedEntries.length > 0 && !exactIntentUnderfilled,
+        ...(compoundIntent ? { compound_intent: compoundIntent } : {}),
+        ...(underfilledReason ? { underfilled_reason: underfilledReason } : {}),
+      },
       search_decision: {
         primary_path_used: primaryPathUsed,
         fallback_triggered: fallbackTriggered,
