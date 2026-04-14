@@ -490,6 +490,33 @@ function buildShoppingCardPayload(caseRow, bundle) {
   });
 }
 
+function isUnsafeSelectedCardCopy(value) {
+  const text = asString(value);
+  if (!text) return false;
+  return hasProblematicGeneratedText(text) || isLikelyIncompleteNarrativeText(text);
+}
+
+function dropUnsafeSelectedCardCopy(bundle) {
+  if (!bundle || typeof bundle !== 'object') return bundle;
+  if (bundle.shopping_card && typeof bundle.shopping_card === 'object') {
+    if (isUnsafeSelectedCardCopy(bundle.shopping_card.intro)) {
+      delete bundle.shopping_card.intro;
+    }
+    if (isUnsafeSelectedCardCopy(bundle.shopping_card.highlight)) {
+      delete bundle.shopping_card.highlight;
+    }
+  }
+  if (bundle.search_card && typeof bundle.search_card === 'object') {
+    if (isUnsafeSelectedCardCopy(bundle.search_card.intro_candidate)) {
+      delete bundle.search_card.intro_candidate;
+    }
+    if (isUnsafeSelectedCardCopy(bundle.search_card.highlight_candidate)) {
+      delete bundle.search_card.highlight_candidate;
+    }
+  }
+  return bundle;
+}
+
 function normalizeSelectedReviewSummary(value) {
   const source = value && typeof value === 'object' ? value : {};
   const rating = Number(source.rating || source.average_rating || source.avg_rating || 0) || 0;
@@ -503,7 +530,7 @@ function normalizeSelectedReviewSummary(value) {
 
 function attachShoppingCard(caseRow, bundle) {
   const product = caseRow?.product && typeof caseRow.product === 'object' ? caseRow.product : {};
-  const next = deepClone(bundle);
+  const next = dropUnsafeSelectedCardCopy(deepClone(bundle));
   const shoppingCard = buildShoppingCardPayload(caseRow, next);
   const reviewSummary = normalizeSelectedReviewSummary(product.review_summary);
   const communitySignals =

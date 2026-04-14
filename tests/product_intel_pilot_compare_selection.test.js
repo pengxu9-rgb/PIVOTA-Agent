@@ -438,6 +438,45 @@ describe('product_intel pilot compare selection', () => {
     }
   });
 
+  test('drops unsafe explicit card copy before rebuilding selected card payloads', () => {
+    const caseRow = {
+      case_id: 'unsafe_card_copy',
+      canonical_product_ref: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_unsafe_card_copy',
+      },
+      product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_unsafe_card_copy',
+        brand: 'Beauty of Joseon',
+        title: 'Day Dew Sunscreen 10ml',
+        category: 'Skincare/Sunscreen',
+        description: 'A compact sunscreen for daytime skin-care routines.',
+      },
+    };
+    const baseline = buildProductIntelDraftBundle({
+      product: caseRow.product,
+      canonicalProductRef: caseRow.canonical_product_ref,
+    });
+    baseline.shopping_card = {
+      ...(baseline.shopping_card || {}),
+      intro: 'Meet our most innovative SPF yet- now in a handy 10ml size.',
+      highlight: 'The Dokdo Cleanser is a gentle, s lightly acidic (pH 5.',
+    };
+    baseline.search_card = {
+      ...(baseline.search_card || {}),
+      intro_candidate: 'Meet our most innovative SPF yet- now in a handy 10ml size.',
+      highlight_candidate: 'The Dokdo Cleanser is a gentle, s lightly acidic (pH 5.',
+    };
+
+    const selected = buildSelectedBundle(caseRow, baseline, null, null, 'gemini-test');
+
+    expect(selected.bundle.shopping_card.intro).not.toMatch(/\b(our|we|us)\b|s lightly/i);
+    expect(selected.bundle.search_card.intro_candidate).not.toMatch(/\b(our|we|us)\b|s lightly/i);
+    expect(selected.bundle.shopping_card.highlight || '').not.toMatch(/\b(our|we|us)\b|s lightly/i);
+    expect(selected.bundle.search_card.highlight_candidate || '').not.toMatch(/\b(our|we|us)\b|s lightly/i);
+  });
+
   test('rejects seller-only gemini highlights that are just merchandising or pack-size copy', () => {
     const caseRow = {
       case_id: 'pilot_naturium_jumbo',
