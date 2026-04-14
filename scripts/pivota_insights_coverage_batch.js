@@ -14,6 +14,7 @@ function parseArgs(argv) {
     frontendBaseUrl: 'https://agent.pivota.cc',
     frontendPaths: ['/products'],
     coveredReport: '',
+    coveredReviewMode: 'strict_human',
     manualOverrides: 'scripts/fixtures/product_intel_manual_overrides.json',
     limit: 50,
     perQuery: 24,
@@ -66,6 +67,9 @@ function parseArgs(argv) {
       i += 1;
     } else if (token === '--covered-report' && next) {
       out.coveredReport = next;
+      i += 1;
+    } else if (token === '--covered-review-mode' && next) {
+      out.coveredReviewMode = String(next).trim() || 'strict_human';
       i += 1;
     } else if (token === '--manual-overrides' && next) {
       out.manualOverrides = next;
@@ -173,6 +177,8 @@ function buildReviewPacket(compareReport) {
       },
       review_status: 'pending',
       reviewer: '',
+      reviewer_kind: '',
+      reviewed_at: '',
       decision: 'pending',
       review_decision: 'pending',
       rejection_reason: '',
@@ -281,6 +287,9 @@ async function main() {
   if (args.coveredReport) {
     buildArgs.push('--covered-report', args.coveredReport);
   }
+  if (args.coveredReviewMode) {
+    buildArgs.push('--covered-review-mode', args.coveredReviewMode);
+  }
   if (args.manualOverrides) {
     buildArgs.push('--manual-overrides', args.manualOverrides);
   }
@@ -316,6 +325,7 @@ async function main() {
       compare_markdown: compareMdPath,
       review: reviewPath,
       count: toList(compareReport.rows).length,
+      covered_review_mode: args.coveredReviewMode,
     })}\n`,
   );
 }

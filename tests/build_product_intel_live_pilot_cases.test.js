@@ -41,6 +41,7 @@ describe('build_product_intel_live_pilot_cases', () => {
     expect(args.queryConcurrency).toBe(8);
     expect(args.frontendConcurrency).toBe(3);
     expect(args.pdpConcurrency).toBe(12);
+    expect(args.coveredReviewMode).toBe('strict_human');
   });
 
   test('samples deterministically without replacement', () => {
@@ -55,21 +56,78 @@ describe('build_product_intel_live_pilot_cases', () => {
     expect(third).not.toEqual(first);
   });
 
-  test('loads covered product ids from KB keys', async () => {
-    const covered = await loadCoveredProductIdSet(['prod_a', 'prod_b'], async () => ({
-      rows: [{ kb_key: 'product:prod_a' }],
-    }));
+  test('loads strict-human covered product ids from KB rows', async () => {
+    const covered = await loadCoveredProductIdSet(
+      ['prod_a', 'prod_b', 'prod_c'],
+      async () => ({
+        rows: [
+          {
+            kb_key: 'product:prod_a',
+            source_meta: {
+              review_status: 'completed',
+              review_decision: 'pass',
+              reviewer: 'Human QA',
+            },
+          },
+          {
+            kb_key: 'product:prod_b',
+            source_meta: {
+              review_status: 'completed',
+              review_decision: 'pass',
+              reviewer: 'codex',
+            },
+          },
+          {
+            kb_key: 'product:prod_c',
+            source_meta: {
+              external_highlight_review_status: 'rewrite',
+            },
+          },
+        ],
+      }),
+      'strict_human',
+    );
 
     expect(Array.from(covered)).toEqual(['prod_a']);
   });
 
-  test('loads covered product ids from a compare report', () => {
+  test('loads reviewed coverage from KB rows when assistant and legacy rows are allowed', async () => {
+    const covered = await loadCoveredProductIdSet(
+      ['prod_a', 'prod_b'],
+      async () => ({
+        rows: [
+          {
+            kb_key: 'product:prod_a',
+            source_meta: {
+              review_status: 'completed',
+              review_decision: 'pass',
+              reviewer: 'codex',
+            },
+          },
+          {
+            kb_key: 'product:prod_b',
+            source_meta: {
+              external_highlight_review_status: 'rewrite',
+            },
+          },
+        ],
+      }),
+      'reviewed',
+    );
+
+    expect(Array.from(covered).sort()).toEqual(['prod_a', 'prod_b']);
+  });
+
+  test('loads strict-human covered product ids from a compare report', () => {
     const tmpReport = '/tmp/build-product-intel-covered-report.json';
     require('fs').writeFileSync(
       tmpReport,
       JSON.stringify({
         rows: [
           {
+            review_status: 'completed',
+            review_decision: 'rewrite',
+            reviewer: 'QA reviewer',
             selected: {
               bundle: {
                 canonical_product_ref: {
@@ -78,14 +136,26 @@ describe('build_product_intel_live_pilot_cases', () => {
               },
             },
           },
+          {
+            review_status: 'completed',
+            review_decision: 'rewrite',
+            reviewer: 'codex',
+            selected: {
+              bundle: {
+                canonical_product_ref: {
+                  product_id: 'prod_b',
+                },
+              },
+            },
+          },
         ],
       }),
     );
 
-    expect(Array.from(loadCoveredProductIdSetFromReport(tmpReport))).toEqual(['prod_a']);
+    expect(Array.from(loadCoveredProductIdSetFromReport(tmpReport, 'strict_human'))).toEqual(['prod_a']);
   });
 
-  test('loads covered product ids from final reviewed reports in a directory', () => {
+  test('loads reviewed covered product ids from final reviewed reports in a directory', () => {
     const fs = require('fs');
     const path = require('path');
     const tmpDir = '/tmp/build-product-intel-covered-report-dir';
@@ -112,6 +182,9 @@ describe('build_product_intel_live_pilot_cases', () => {
       JSON.stringify({
         rows: [
           {
+            review_status: 'completed',
+            review_decision: 'rewrite',
+            reviewer: 'codex',
             selected: {
               bundle: {
                 canonical_product_ref: {
@@ -121,6 +194,9 @@ describe('build_product_intel_live_pilot_cases', () => {
             },
           },
           {
+            review_status: 'completed',
+            review_decision: 'pass',
+            reviewer: 'Human QA',
             baseline: {
               canonical_product_ref: {
                 product_id: 'prod_dir_b',
@@ -131,7 +207,7 @@ describe('build_product_intel_live_pilot_cases', () => {
       }),
     );
 
-    expect(Array.from(loadCoveredProductIdSetFromReport(tmpDir)).sort()).toEqual(['prod_dir_a', 'prod_dir_b']);
+    expect(Array.from(loadCoveredProductIdSetFromReport(tmpDir, 'reviewed')).sort()).toEqual(['prod_dir_a', 'prod_dir_b']);
   });
 
   test('loads covered product ids from manual overrides', () => {
@@ -139,13 +215,18 @@ describe('build_product_intel_live_pilot_cases', () => {
     require('fs').writeFileSync(
       tmpOverrides,
       JSON.stringify({
-        'product:ext_alpha': { notes: 'reviewed' },
-        live_ext_beta: { notes: 'reviewed' },
+        'product:ext_alpha': {
+          review_status: 'completed',
+          review_decision: 'rewrite',
+          reviewer: 'Human QA',
+        },
+        live_ext_beta: { external_highlight_review_status: 'rewrite' },
         random_key: { notes: 'ignore' },
       }),
     );
 
-    expect(Array.from(loadManualOverrideProductIdSet(tmpOverrides)).sort()).toEqual(['ext_alpha', 'ext_beta']);
+    expect(Array.from(loadManualOverrideProductIdSet(tmpOverrides, 'strict_human')).sort()).toEqual(['ext_alpha']);
+    expect(Array.from(loadManualOverrideProductIdSet(tmpOverrides, 'reviewed')).sort()).toEqual(['ext_alpha', 'ext_beta']);
   });
 
   test('accepts beauty pilot cases and rejects obvious non-beauty drift', () => {

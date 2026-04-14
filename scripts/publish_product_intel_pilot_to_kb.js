@@ -6,6 +6,9 @@ const path = require('path');
 const { upsertProductIntelKbEntry } = require('../src/auroraBff/productIntelKbStore');
 const { query } = require('../src/db');
 const { PRODUCT_INTEL_CONTRACT_VERSION } = require('../src/pdpProductIntel');
+const {
+  deriveReviewContractFromReportRow,
+} = require('../src/services/pivotaProductIntelReviewPolicy');
 
 function parseArgs(argv) {
   const out = {
@@ -62,6 +65,8 @@ function buildKbEntriesForRow(row) {
   const canonical = selectedBundle?.canonical_product_ref || row?.baseline?.canonical_product_ref || null;
   const productId = asString(canonical?.product_id);
   if (!productId) return [];
+  const reviewContract = deriveReviewContractFromReportRow(row);
+  if (!reviewContract.approved) return [];
 
   const sourceMeta = {
     case_id: asString(row.case_id),
@@ -81,6 +86,13 @@ function buildKbEntriesForRow(row) {
     ),
     external_evidence_model: asString(selectedBundle?.provenance?.external_evidence_model || ''),
     external_review_batch: asString(selectedBundle?.provenance?.external_review_batch || ''),
+    review_contract_version: reviewContract.review_contract_version,
+    review_status: reviewContract.review_status,
+    review_decision: reviewContract.review_decision,
+    reviewer: reviewContract.reviewer,
+    reviewer_kind: reviewContract.reviewer_kind,
+    reviewed_at: reviewContract.reviewed_at,
+    review_tier: reviewContract.review_tier,
   };
 
   const analysis = {
@@ -121,6 +133,17 @@ async function main() {
   const report = readJson(reportPath);
   const rows = pickRows(report, args.caseIds);
   const entries = rows.flatMap((row) => buildKbEntriesForRow(row));
+  const skippedRows = rows
+    .filter((row) => buildKbEntriesForRow(row).length === 0)
+    .map((row) => ({
+      case_id: asString(row?.case_id),
+      product_id: asString(
+        row?.selected?.bundle?.canonical_product_ref?.product_id ||
+          row?.baseline?.canonical_product_ref?.product_id,
+      ),
+      review_status: asString(row?.review_status),
+      review_decision: asString(row?.review_decision || row?.decision),
+    }));
 
   if (args.write) {
     await assertProductIntelKbWritable();
@@ -137,6 +160,7 @@ async function main() {
       report: reportPath,
       rows: rows.map((row) => asString(row.case_id)),
       entries: entries.map((entry) => entry.kb_key),
+      skipped_rows: skippedRows,
     })}\n`,
   );
 }

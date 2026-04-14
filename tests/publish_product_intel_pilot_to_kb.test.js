@@ -7,6 +7,9 @@ describe('publish_product_intel_pilot_to_kb', () => {
   test('builds product-key KB entries from selected bundles', () => {
     const row = {
       case_id: 'pilot_fenty_instant_reset',
+      review_status: 'completed',
+      review_decision: 'rewrite',
+      reviewer: 'Human QA',
       selected: {
         selected_mode: 'hybrid_gemini',
         selected_field_count: 6,
@@ -46,6 +49,28 @@ describe('publish_product_intel_pilot_to_kb', () => {
     expect(entries[0].source_meta.selected_mode).toBe('hybrid_gemini');
     expect(entries[0].source_meta.external_highlight_review_status).toBe('rewrite');
     expect(entries[0].source_meta.external_review_batch).toBe('batch_demo');
+    expect(entries[0].source_meta.review_status).toBe('completed');
+    expect(entries[0].source_meta.review_decision).toBe('rewrite');
+    expect(entries[0].source_meta.reviewer).toBe('Human QA');
+    expect(entries[0].source_meta.review_tier).toBe('strict_human');
+  });
+
+  test('skips rows that have not passed review', () => {
+    const entries = buildKbEntriesForRow({
+      case_id: 'pilot_pending_case',
+      review_status: 'pending',
+      review_decision: 'pending',
+      selected: {
+        bundle: {
+          canonical_product_ref: {
+            merchant_id: 'pilot_brand',
+            product_id: 'pilot_pending_case',
+          },
+        },
+      },
+    });
+
+    expect(entries).toEqual([]);
   });
 
   test('fails fast when the KB write preflight query fails', async () => {
