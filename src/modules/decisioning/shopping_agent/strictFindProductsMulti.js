@@ -1,5 +1,5 @@
 const { extractIntentRuleBased } = require('../../../findProductsMulti/intent');
-const { buildExternalSeedRecallLikePredicate } = require('../../../services/externalSeedRecall');
+const { EXTERNAL_SEED_RECALL_SQL_FIELDS } = require('../../../services/externalSeedRecall');
 
 const STRICT_FIND_PRODUCTS_MULTI_INGREDIENT_PROFILES = Object.freeze({
   ascorbic_acid: Object.freeze({
@@ -636,22 +636,44 @@ function createStrictFindProductsMultiRuntime(deps = {}) {
 
     const queryText = String(rawQueryText || search?.query || '').trim();
     const categoryIntents = extractStrictFindProductsMultiSkincareCategoryIntents(queryText);
+    const ingredientTerms = ingredientIntents.flatMap((value) => {
+      const profile = STRICT_FIND_PRODUCTS_MULTI_INGREDIENT_PROFILES[value] || null;
+      const terms = [
+        value.replace(/_/g, ' '),
+        ...((profile && Array.isArray(profile.aliases)) ? profile.aliases : []),
+      ];
+      if (value === 'ascorbic_acid') {
+        terms.push('ascorbic', 'vitamin');
+      }
+      return terms;
+    });
     const textTerms = [
-      ...ingredientIntents.flatMap((value) => {
-        const profile = STRICT_FIND_PRODUCTS_MULTI_INGREDIENT_PROFILES[value] || null;
-        return [
-          value.replace(/_/g, ' '),
-          ...((profile && Array.isArray(profile.aliases)) ? profile.aliases : []),
-        ];
-      }),
+      ...ingredientTerms,
       ...(categoryIntents.length > 0 ? categoryIntents : STRICT_FIND_PRODUCTS_MULTI_SKINCARE_CATEGORY_TERMS),
     ];
 
-    const params = ['US'];
-    params.push(textTerms.map((value) => `%${String(value || '').trim().toLowerCase()}%`).filter(Boolean));
-    const recallBind = `$${params.length}`;
-    const paramIndex = params.length + 1;
-    params.push(Math.max(STRICT_FIND_PRODUCTS_MULTI_EXTERNAL_PREFETCH_LIMIT * 3, 24));
+    const buildPatterns = (values) =>
+      Array.from(
+        new Set(
+          (Array.isArray(values) ? values : [])
+            .map((value) => `%${String(value || '').trim().toLowerCase()}%`)
+            .filter((value) => value.length > 2),
+        ),
+      );
+    const ingredientPatterns = buildPatterns(ingredientTerms.length > 0 ? ingredientTerms : textTerms);
+    const recallPatterns = buildPatterns(textTerms);
+    if (ingredientPatterns.length === 0 && recallPatterns.length === 0) {
+      return [];
+    }
+
+    const primaryStageLimit = Math.min(
+      240,
+      Math.max(STRICT_FIND_PRODUCTS_MULTI_EXTERNAL_PREFETCH_LIMIT * 17, 160),
+    );
+    const fallbackStageLimit = Math.min(
+      160,
+      Math.max(STRICT_FIND_PRODUCTS_MULTI_EXTERNAL_PREFETCH_LIMIT * 4, 48),
+    );
 
     const structuredIngredientEvidenceClauses = [
       "COALESCE(jsonb_array_length(CASE WHEN jsonb_typeof(COALESCE(seed_data, '{}'::jsonb)->'reviewed_ingredient_ids') = 'array' THEN COALESCE(seed_data, '{}'::jsonb)->'reviewed_ingredient_ids' ELSE '[]'::jsonb END), 0) > 0",
@@ -660,9 +682,45 @@ function createStrictFindProductsMultiRuntime(deps = {}) {
       "COALESCE(jsonb_array_length(CASE WHEN jsonb_typeof(COALESCE(seed_data, '{}'::jsonb)->'snapshot'->'ingredient_ids') = 'array' THEN COALESCE(seed_data, '{}'::jsonb)->'snapshot'->'ingredient_ids' ELSE '[]'::jsonb END), 0) > 0",
       "length(coalesce(seed_data#>>'{derived,recall,ingredient_tokens}', '')) > 0",
     ];
-
-    const sql = `
-      SELECT
+    const seedDataProjection = `
+        jsonb_strip_nulls(jsonb_build_object(
+          'title', coalesce(seed_data#>>'{derived,recall,retrieval_title}', seed_data#>>'{snapshot,title}', seed_data->>'title', title),
+          'description', coalesce(seed_data#>>'{derived,recall,retrieval_summary}', seed_data#>>'{snapshot,description}', seed_data->>'description'),
+          'category', coalesce(seed_data#>>'{derived,recall,category}', seed_data#>>'{snapshot,category}', seed_data->>'category'),
+          'brand', coalesce(seed_data#>>'{derived,recall,brand_name}', seed_data#>>'{snapshot,brand}', seed_data->>'brand', seed_data->>'vendor'),
+          'canonical_url', coalesce(seed_data#>>'{snapshot,canonical_url}', seed_data->>'canonical_url', canonical_url),
+          'destination_url', coalesce(seed_data#>>'{snapshot,destination_url}', seed_data->>'destination_url', destination_url),
+          'image_url', coalesce(seed_data#>>'{snapshot,image_url}', seed_data->>'image_url', image_url),
+          'price_amount', coalesce(seed_data#>>'{snapshot,price_amount}', seed_data->>'price_amount', price_amount::text),
+          'price_currency', coalesce(seed_data#>>'{snapshot,price_currency}', seed_data->>'price_currency', price_currency),
+          'availability', coalesce(seed_data#>>'{snapshot,availability}', seed_data->>'availability', availability),
+          'reviewed_ingredient_ids', CASE WHEN jsonb_typeof(coalesce(seed_data, '{}'::jsonb)->'reviewed_ingredient_ids') = 'array' THEN coalesce(seed_data, '{}'::jsonb)->'reviewed_ingredient_ids' ELSE NULL END,
+          'ingredient_ids', CASE WHEN jsonb_typeof(coalesce(seed_data, '{}'::jsonb)->'ingredient_ids') = 'array' THEN coalesce(seed_data, '{}'::jsonb)->'ingredient_ids' ELSE NULL END,
+          'ingredient_tokens', CASE WHEN jsonb_typeof(coalesce(seed_data, '{}'::jsonb)#>'{derived,recall,ingredient_tokens}') = 'array' THEN coalesce(seed_data, '{}'::jsonb)#>'{derived,recall,ingredient_tokens}' ELSE NULL END,
+          'derived', jsonb_build_object(
+            'recall', jsonb_strip_nulls(jsonb_build_object(
+              'retrieval_title', seed_data#>>'{derived,recall,retrieval_title}',
+              'retrieval_summary', seed_data#>>'{derived,recall,retrieval_summary}',
+              'category', seed_data#>>'{derived,recall,category}',
+              'brand_name', seed_data#>>'{derived,recall,brand_name}',
+              'ingredient_tokens', CASE WHEN jsonb_typeof(coalesce(seed_data, '{}'::jsonb)#>'{derived,recall,ingredient_tokens}') = 'array' THEN coalesce(seed_data, '{}'::jsonb)#>'{derived,recall,ingredient_tokens}' ELSE NULL END
+            ))
+          ),
+          'snapshot', jsonb_strip_nulls(jsonb_build_object(
+            'title', seed_data#>>'{snapshot,title}',
+            'description', seed_data#>>'{snapshot,description}',
+            'category', seed_data#>>'{snapshot,category}',
+            'brand', seed_data#>>'{snapshot,brand}',
+            'canonical_url', seed_data#>>'{snapshot,canonical_url}',
+            'destination_url', seed_data#>>'{snapshot,destination_url}',
+            'image_url', seed_data#>>'{snapshot,image_url}',
+            'price_amount', seed_data#>>'{snapshot,price_amount}',
+            'price_currency', seed_data#>>'{snapshot,price_currency}',
+            'availability', seed_data#>>'{snapshot,availability}'
+          ))
+        )) AS seed_data,
+    `;
+    const selectColumns = `
         id,
         external_product_id,
         market,
@@ -675,11 +733,15 @@ function createStrictFindProductsMultiRuntime(deps = {}) {
         price_amount,
         price_currency,
         availability,
-        seed_data,
+${seedDataProjection}
         status,
         attached_product_key,
         created_at,
         updated_at
+    `;
+    const buildStageSql = (matchSql) => `
+      SELECT
+${selectColumns}
       FROM external_product_seeds
       WHERE status = 'active'
         AND attached_product_key IS NULL
@@ -687,37 +749,88 @@ function createStrictFindProductsMultiRuntime(deps = {}) {
         AND (
           ${structuredIngredientEvidenceClauses.join(' OR ')}
         )
-        AND (
-          ${buildExternalSeedRecallLikePredicate(recallBind)}
-        )
-      ORDER BY updated_at DESC, created_at DESC
-      LIMIT $${paramIndex}
+        AND (${matchSql})
+      ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+      LIMIT $3
     `;
 
+    const stages = [
+      {
+        name: 'ingredient_tokens',
+        patterns: ingredientPatterns,
+        limit: primaryStageLimit,
+        matchSql: `${EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokens} LIKE ANY($2::text[])`,
+      },
+      {
+        name: 'recall_title',
+        patterns: recallPatterns,
+        limit: fallbackStageLimit,
+        matchSql: `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY($2::text[])`,
+      },
+      {
+        name: 'title',
+        patterns: recallPatterns,
+        limit: fallbackStageLimit,
+        matchSql: "lower(coalesce(title, '')) LIKE ANY($2::text[])",
+      },
+      {
+        name: 'recall_summary',
+        patterns: recallPatterns,
+        limit: fallbackStageLimit,
+        matchSql: `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY($2::text[])`,
+      },
+      {
+        name: 'alias_tokens',
+        patterns: recallPatterns,
+        limit: fallbackStageLimit,
+        matchSql: "lower(coalesce(seed_data#>>'{derived,recall,alias_tokens}', '')) LIKE ANY($2::text[])",
+      },
+      {
+        name: 'canonical_url',
+        patterns: recallPatterns,
+        limit: fallbackStageLimit,
+        matchSql: "lower(coalesce(canonical_url, '')) LIKE ANY($2::text[])",
+      },
+      {
+        name: 'destination_url',
+        patterns: recallPatterns,
+        limit: fallbackStageLimit,
+        matchSql: "lower(coalesce(destination_url, '')) LIKE ANY($2::text[])",
+      },
+    ].filter((stage) => Array.isArray(stage.patterns) && stage.patterns.length > 0);
+
     try {
-      const result = await query(sql, params);
       const candidates = [];
       const seen = new Set();
-      for (const row of result?.rows || []) {
-        const product = buildExternalSeedProduct(row);
-        if (!product) continue;
-        product.market = row.market || 'US';
-        product.tool = row.tool || '*';
-        product.external_seed_id = product.external_seed_id || row.id || null;
-        if (
-          !productMatchesStrictIngredientPrefetch(product, {
-            ingredientIntents,
-            categoryIntents,
-            inStockOnly: search?.in_stock_only !== false,
-          })
-        ) {
-          continue;
+      for (const stage of stages) {
+        const result = await query(buildStageSql(stage.matchSql), ['US', stage.patterns, stage.limit]);
+        for (const row of result?.rows || []) {
+          const product = buildExternalSeedProduct(row);
+          if (!product) continue;
+          product.market = row.market || 'US';
+          product.tool = row.tool || '*';
+          product.external_seed_id = product.external_seed_id || row.id || null;
+          if (
+            !productMatchesStrictIngredientPrefetch(product, {
+              ingredientIntents,
+              categoryIntents,
+              inStockOnly: search?.in_stock_only !== false,
+            })
+          ) {
+            continue;
+          }
+          const dedupeKey = String(product.product_id || product.id || '').trim();
+          if (!dedupeKey || seen.has(dedupeKey)) continue;
+          seen.add(dedupeKey);
+          candidates.push(product);
+          if (candidates.length >= STRICT_FIND_PRODUCTS_MULTI_EXTERNAL_PREFETCH_LIMIT) break;
         }
-        const dedupeKey = String(product.product_id || product.id || '').trim();
-        if (!dedupeKey || seen.has(dedupeKey)) continue;
-        seen.add(dedupeKey);
-        candidates.push(product);
-        if (candidates.length >= STRICT_FIND_PRODUCTS_MULTI_EXTERNAL_PREFETCH_LIMIT) break;
+        if (
+          candidates.length >= STRICT_FIND_PRODUCTS_MULTI_EXTERNAL_PREFETCH_LIMIT ||
+          candidates.length > 0
+        ) {
+          break;
+        }
       }
       return candidates;
     } catch (err) {
