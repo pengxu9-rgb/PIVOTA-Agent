@@ -201,6 +201,98 @@ test('reco assistant rewrite prompt frames multi-role selections as routine mix 
   }
 });
 
+test('reco assistant compact prompt keeps same-role comparison payloads under a tight size budget', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  const longDetail =
+    'A barrier-support formula with tamanu oil, ceramides, niacinamide, soothing hydration, redness support, and lightweight comfort for sensitized skin. '.repeat(18);
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'barrier_pick_1',
+            display_name: 'KraveBeauty Great Barrier Relief',
+            brand: 'KraveBeauty',
+            category: 'Moisturizer',
+            short_description: longDetail,
+            description: longDetail,
+            why_this_one: longDetail,
+            key_features: ['Tamanu oil', 'Ceramides', 'Niacinamide', 'Barrier support'],
+            price: { amount: 28, currency: 'USD', unknown: false },
+            matched_role_id: 'barrier_moisturizer',
+            matched_role_label: 'Barrier-support moisturizer',
+          },
+          {
+            product_id: 'barrier_pick_2',
+            display_name: 'Haruharu Wonder Soothing Serum',
+            brand: 'Haruharu Wonder',
+            category: 'Serum',
+            short_description: longDetail,
+            description: longDetail,
+            why_this_one: longDetail,
+            key_features: ['Azelaic acid', 'Ceramide NP', 'Panthenol', 'Squalane'],
+            price: { amount: 22, currency: 'USD', unknown: false },
+            matched_role_id: 'barrier_moisturizer',
+            matched_role_label: 'Barrier-support moisturizer',
+          },
+          {
+            product_id: 'barrier_pick_3',
+            display_name: 'Olehenriksen Après Skin Rich Rescue Barrier Moisturizer with Ceramides',
+            brand: 'Olehenriksen',
+            category: 'Moisturizer',
+            short_description: longDetail,
+            description: longDetail,
+            why_this_one: longDetail,
+            key_features: ['Ceramide NP', 'Panthenol', 'Niacinamide', 'Hyaluronic acid'],
+            price: { amount: 48, currency: 'USD', unknown: false },
+            matched_role_id: 'barrier_moisturizer',
+            matched_role_label: 'Barrier-support moisturizer',
+          },
+        ],
+        roles: [
+          {
+            role_id: 'barrier_moisturizer',
+            label: 'Barrier-support moisturizer',
+            preferred_step: 'moisturizer',
+            why_this_role: 'Support a stripped, irritated barrier.',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'moisturizer',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Barrier moisturizer',
+        resolved_target_step: 'moisturizer',
+        primary_target_id: 'barrier_moisturizer',
+        ranked_targets: [
+          {
+            target_id: 'barrier_moisturizer',
+            ingredient_query: 'Barrier moisturizer',
+            resolved_target_step: 'moisturizer',
+          },
+        ],
+        selected_target_ids: ['barrier_moisturizer'],
+      },
+    );
+    const prompt = __internal.buildRecoAssistantRewritePrompt({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'sensitive', goals: ['barrier support'] },
+      userRequestText: 'My skin gets red easily and stings with strong products. What should I buy first?',
+      compactContext: true,
+    });
+
+    assert.match(prompt, /"prompt_profile":"compact_timeout_retry"/);
+    assert.match(prompt, /Treat the products as same-slot comparison options, not a routine\./);
+    assert.match(prompt, /Pick one best first buy, then compare the other options with one short tradeoff each\./);
+    assert.ok(prompt.length < 7000);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('reco assistant rewrite helper no longer requires base text before availability checks', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {

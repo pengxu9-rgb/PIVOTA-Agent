@@ -51479,43 +51479,48 @@ function inferRecoAssistantSelectedProductRoleMix(recommendations = []) {
   return 'single_product';
 }
 
+function compactRecoAssistantPromptField(value, { maxLen = 96 } = {}) {
+  const [trimmed] = collectRecoPromptTextList([value], { max: 1, maxLen });
+  return trimmed || null;
+}
+
 function buildCompactRecoAssistantWritePlan(writePlan = null) {
   const plan = isPlainObject(writePlan) ? writePlan : null;
   if (!plan) return null;
   return {
-    request_mode: pickFirstTrimmed(plan.request_mode),
-    selected_product_role_mix: pickFirstTrimmed(plan.selected_product_role_mix),
-    target_label: pickFirstTrimmed(plan.target_label),
+    request_mode: compactRecoAssistantPromptField(plan.request_mode, { maxLen: 24 }),
+    selected_product_role_mix: compactRecoAssistantPromptField(plan.selected_product_role_mix, { maxLen: 32 }),
+    target_label: compactRecoAssistantPromptField(plan.target_label, { maxLen: 60 }),
     lead_product: isPlainObject(plan.lead_product)
       ? {
-          name: pickFirstTrimmed(plan.lead_product.name),
-          matched_role_label: pickFirstTrimmed(plan.lead_product.matched_role_label),
-          preferred_step: pickFirstTrimmed(plan.lead_product.preferred_step),
-          role_scope: pickFirstTrimmed(plan.lead_product.role_scope),
-          fit_assessment: pickFirstTrimmed(plan.lead_product.fit_assessment),
-          price_note: pickFirstTrimmed(plan.lead_product.price_note),
-          evidence_dimensions: asStringArray(plan.lead_product.evidence_dimensions, 4),
-          must_use_reason_points: asStringArray(plan.lead_product.must_use_reason_points, 3),
+          name: compactRecoAssistantPromptField(plan.lead_product.name, { maxLen: 90 }),
+          matched_role_label: compactRecoAssistantPromptField(plan.lead_product.matched_role_label, { maxLen: 48 }),
+          preferred_step: compactRecoAssistantPromptField(plan.lead_product.preferred_step, { maxLen: 24 }),
+          role_scope: compactRecoAssistantPromptField(plan.lead_product.role_scope, { maxLen: 24 }),
+          fit_assessment: compactRecoAssistantPromptField(plan.lead_product.fit_assessment, { maxLen: 24 }),
+          price_note: compactRecoAssistantPromptField(plan.lead_product.price_note, { maxLen: 40 }),
+          evidence_dimensions: collectRecoPromptTextList(plan.lead_product.evidence_dimensions, { max: 3, maxLen: 28 }),
+          must_use_reason_points: collectRecoPromptTextList(plan.lead_product.must_use_reason_points, { max: 2, maxLen: 96 }),
         }
       : null,
     support_steps: Array.isArray(plan.support_steps)
       ? plan.support_steps.map((item) => ({
-          name: pickFirstTrimmed(item?.name),
-          matched_role_label: pickFirstTrimmed(item?.matched_role_label),
-          preferred_step: pickFirstTrimmed(item?.preferred_step),
-          role_scope: pickFirstTrimmed(item?.role_scope),
-          fit_assessment: pickFirstTrimmed(item?.fit_assessment),
-          price_note: pickFirstTrimmed(item?.price_note),
-          reason_points: asStringArray(item?.reason_points, 2),
+          name: compactRecoAssistantPromptField(item?.name, { maxLen: 90 }),
+          matched_role_label: compactRecoAssistantPromptField(item?.matched_role_label, { maxLen: 48 }),
+          preferred_step: compactRecoAssistantPromptField(item?.preferred_step, { maxLen: 24 }),
+          role_scope: compactRecoAssistantPromptField(item?.role_scope, { maxLen: 24 }),
+          fit_assessment: compactRecoAssistantPromptField(item?.fit_assessment, { maxLen: 24 }),
+          price_note: compactRecoAssistantPromptField(item?.price_note, { maxLen: 40 }),
+          reason_points: collectRecoPromptTextList(item?.reason_points, { max: 1, maxLen: 96 }),
         })).slice(0, 2)
       : [],
     same_role_options: Array.isArray(plan.same_role_options)
       ? plan.same_role_options.map((item) => ({
-          name: pickFirstTrimmed(item?.name),
-          price_note: pickFirstTrimmed(item?.price_note),
-          tradeoff_note: pickFirstTrimmed(item?.tradeoff_note),
-          reason_points: asStringArray(item?.reason_points, 2),
-          fit_assessment: pickFirstTrimmed(item?.fit_assessment),
+          name: compactRecoAssistantPromptField(item?.name, { maxLen: 90 }),
+          price_note: compactRecoAssistantPromptField(item?.price_note, { maxLen: 40 }),
+          tradeoff_note: compactRecoAssistantPromptField(item?.tradeoff_note, { maxLen: 96 }),
+          reason_points: collectRecoPromptTextList(item?.reason_points, { max: 1, maxLen: 96 }),
+          fit_assessment: compactRecoAssistantPromptField(item?.fit_assessment, { maxLen: 24 }),
         })).slice(0, 2)
       : [],
     writing_requirements: isPlainObject(plan.writing_requirements)
@@ -51564,6 +51569,47 @@ function buildCompactRecoAssistantPromptContext(context = {}) {
     ranked_target_ids: asStringArray(row.ranked_target_ids, 4),
     assistant_write_plan: buildCompactRecoAssistantWritePlan(row.assistant_write_plan),
   };
+}
+
+function buildCompactRecoAssistantPromptLines({
+  requestMode = 'generic',
+  selectedProductRoleMix = 'single_product',
+  retryInstruction = null,
+} = {}) {
+  const lines = [
+    'Return strict JSON only.',
+    'Write one short shopper-facing skincare recommendation explanation aligned to Context.',
+    'Use only products, steps, prices, and claims already present in Context.',
+    'Avoid internal phrasing like "selected products" and avoid generic filler.',
+    'Price may support the recommendation, but pair it with a concrete product-fit reason from Context.',
+    'Compact retry mode: keep the answer tight, prioritize the selected product evidence, and skip optional background detail.',
+  ];
+  if (requestMode === 'buy') {
+    lines.push('Use direct shopping advice tone.');
+    lines.push('Start the first sentence with the lead product name.');
+  } else if (requestMode === 'use_first') {
+    lines.push('Use starting-point advice tone.');
+    lines.push('Start with the lead product name and explain why it is the first step.');
+  } else if (requestMode === 'use') {
+    lines.push('Use practical usage guidance tone.');
+  }
+  if (selectedProductRoleMix === 'single_product') {
+    lines.push('Stay on one product only. Use exactly 2 sentences.');
+  } else if (selectedProductRoleMix === 'same_role_comparison') {
+    lines.push('Treat the products as same-slot comparison options, not a routine.');
+    lines.push('Pick one best first buy, then compare the other options with one short tradeoff each.');
+    lines.push('Use at most 3 sentences.');
+  } else {
+    lines.push('Treat the products as different routine steps, not interchangeable substitutes.');
+    lines.push('Name the lead product first, then explain each support step briefly.');
+    lines.push('Use at most 3 sentences.');
+  }
+  if (retryInstruction) {
+    lines.push('Previous draft failed the quality gate.');
+    lines.push(`Fix required: ${retryInstruction}`);
+  }
+  lines.push('Schema: { "assistant_text": string }');
+  return lines;
 }
 
 function describeRecoAssistantRewriteFailureReason(reason) {
@@ -51905,73 +51951,75 @@ function buildRecoAssistantRewritePrompt({
   };
   const context = compactContext ? buildCompactRecoAssistantPromptContext(fullContext) : fullContext;
   const retryInstruction = describeRecoAssistantRewriteFailureReason(retryReason);
-  return [
-    'Return strict JSON only.',
-    'Write one recommendation assistant message that is natural, specific, concise, and aligned to the final payload.',
-    'Address the user_request directly and respond to the user\'s real complaint first.',
-    'If request_mode is "buy", use direct shopping advice tone.',
-    'If request_mode is "buy", start the first sentence with the lead product name rather than a generic concern summary.',
-    'If request_mode is "buy" and there is one selected product, the first sentence must directly recommend that product by name.',
-    'If request_mode is "buy" and selected_product_role_mix is "same_role_comparison", the first sentence must name the best first buy and signal that the remaining picks are same-slot comparison options.',
-    'If request_mode is "buy" and selected_product_role_mix is "routine_mix", the first sentence must name the best first buy and frame the remaining picks as routine add-ons from other roles; only same-role products may be same-slot alternatives.',
-    'If selected_product_role_mix is "single_product", stay on one clear recommendation and do not frame the answer as a routine or a comparison set.',
-    'If selected_product_role_mix is "single_product", sentence 2 must explain why that one product matches the concern using concrete evidence from Context.',
-    'If selected_product_role_mix is "routine_mix", make it clear these are different routine steps, not interchangeable substitutes, and do not use the phrase "selected products".',
-    'If request_mode is "buy" and there is one selected product with no secondary targets, use exactly 2 sentences.',
-    'If selected_product_role_mix is "same_role_comparison", present a concise horizontal comparison and name each selected product exactly once if space allows.',
-    'If selected_product_role_mix is "same_role_comparison", compare lower-priced versus higher-priced options only inside the same role when price_order_summary supports it.',
-    'If selected_product_role_mix is "routine_mix", present a basic routine by role or step, and do not imply products from different roles are interchangeable.',
-    'If selected_product_role_mix is "routine_mix", use selected_product_details.role_scope, matched_role_label, and preferred_step to label what each product is doing in the routine.',
-    'For multiple selected products, choose one best first buy when the context supports it, then use compare_highlights or pivota_insights to explain tradeoffs.',
-    'For routine_mix buy answers, explain the lead product with at least two available dimensions from Context: role match, formula/ingredient/texture evidence, and price/value.',
-    'Use assistant_write_plan.lead_product.must_use_reason_points as the preferred reason list for the lead recommendation when available.',
-    'If assistant_write_plan.lead_product.price_note exists, pair it with at least one non-price reason from assistant_write_plan.lead_product.must_use_reason_points.',
-    'If assistant_write_plan.support_steps is non-empty, justify each support step with its own reason_points instead of using a generic closing summary.',
-    'If assistant_write_plan.same_role_options is non-empty, use their tradeoff_note or reason_points to explain how they differ from the lead pick.',
-    'If selected_product_details.reviewed_insight_available is false for a product, treat why_this_one, key_features, best_for, and description_snippet as product-record evidence only; do not imply independent review, clinical, or community proof.',
-    'Do not discuss alternatives/dupes pros and cons unless alternatives_count is greater than 0 or compare_highlights/pivota_insights provide explicit tradeoff evidence.',
-    'If known_price_count is 2 or more, compare price/value or ROI in plain shopper terms using only listed prices; do not compute per-use ROI, percentages, or size-normalized value unless Context provides size and usage data.',
-    'Price may support a recommendation, but price alone is not enough; pair it with at least one concrete fit, formula, texture, ingredient, or use-case reason from Context.',
-    'Use price_order_summary and selected_product_details.price_position to explain lower-cost first buys versus higher-cost support steps or upgrades when Context supports that framing.',
-    'Do not open with "start with" unless request_mode is "use_first".',
-    'If request_mode is "use_first", use starting-point advice tone.',
-    'If request_mode is "use_first" and there is one selected product with no secondary targets, use exactly 2 sentences.',
-    'If request_mode is "use", use practical product guidance tone.',
-    'If request_mode is "use" and there is one selected product with no secondary targets, use exactly 2 sentences.',
-    'Use selected_product_details.description_snippet and selected_product_details.evidence_points as the primary concrete reason layer when available.',
-    'Use selected_product_details.why_this_one, selected_product_details.best_for, and selected_product_details.key_features as supporting context when available.',
-    'Use selected_product_details.compare_highlights and selected_product_details.pivota_insights when available; do not invent highlights that are absent from Context.',
-    'Do not call something the best first buy unless the same sentence or the next sentence gives a concrete reason from description_snippet, evidence_points, compare_highlights, or pivota_insights.',
-    'If selected_product_details.fit_assessment is "soft_match" or comparison_fill_reason is present, frame that product as a softer or broader alternative instead of an equally direct match.',
-    'If selected_product_details.tradeoff_hint exists, honor it.',
-    'Prefer product-specific evidence over generic role language when both are available.',
-    'For single-direction answers, sentence 2 should explain the fit in shopper-facing language instead of repeating the question.',
-    'Do not end with a generic closing sentence like "these steps support your skin" or "together they help balance the routine".',
-    'Only mention targets, ingredients, steps, and product names that already exist in Context.',
-    'Do not invent products, targets, routines, claims, or benefits beyond Context.',
-    'If there is one selected product, keep a single main direction.',
-    'If selected_target_ids has length 1, secondary_targets is empty, and selected_product_role_mix is not "routine_mix", do not add future routine-building suggestions or extra steps.',
-    'If secondary targets exist, mention them briefly and explicitly as secondary.',
-    'If confidence_level is low, keep the wording conservative and non-definitive.',
-    'Use plain shopper-facing skincare language. Avoid vague phrases like "surface activity".',
-    'Avoid generic filler like "great choice", "balanced complexion", or "solution for oiliness".',
-    'Do not add unsupported benefits like pore-minimizing unless they already appear in Context.',
-    'Do not mention "Direction 1/2/3", generic shopping filler, or any product not in selected_products.',
-    'Do not use internal phrases or internal framing such as "Primary recommendation focus" or "Products actually selected this time".',
-    ...(compactContext
-      ? [
-        'Compact retry mode: keep the answer tight, prioritize the selected product evidence, and skip optional background detail.',
-      ]
-      : []),
-    ...(retryInstruction
-      ? [
-        'Previous draft failed the quality gate.',
-        `Fix required: ${retryInstruction}`,
-      ]
-      : []),
-    'Schema: { "assistant_text": string }',
-    `Context: ${JSON.stringify(context)}`,
-  ].join('\n');
+  const lines = compactContext
+    ? buildCompactRecoAssistantPromptLines({
+      requestMode,
+      selectedProductRoleMix,
+      retryInstruction,
+    })
+    : [
+      'Return strict JSON only.',
+      'Write one recommendation assistant message that is natural, specific, concise, and aligned to the final payload.',
+      'Address the user_request directly and respond to the user\'s real complaint first.',
+      'If request_mode is "buy", use direct shopping advice tone.',
+      'If request_mode is "buy", start the first sentence with the lead product name rather than a generic concern summary.',
+      'If request_mode is "buy" and there is one selected product, the first sentence must directly recommend that product by name.',
+      'If request_mode is "buy" and selected_product_role_mix is "same_role_comparison", the first sentence must name the best first buy and signal that the remaining picks are same-slot comparison options.',
+      'If request_mode is "buy" and selected_product_role_mix is "routine_mix", the first sentence must name the best first buy and frame the remaining picks as routine add-ons from other roles; only same-role products may be same-slot alternatives.',
+      'If selected_product_role_mix is "single_product", stay on one clear recommendation and do not frame the answer as a routine or a comparison set.',
+      'If selected_product_role_mix is "single_product", sentence 2 must explain why that one product matches the concern using concrete evidence from Context.',
+      'If selected_product_role_mix is "routine_mix", make it clear these are different routine steps, not interchangeable substitutes, and do not use the phrase "selected products".',
+      'If request_mode is "buy" and there is one selected product with no secondary targets, use exactly 2 sentences.',
+      'If selected_product_role_mix is "same_role_comparison", present a concise horizontal comparison and name each selected product exactly once if space allows.',
+      'If selected_product_role_mix is "same_role_comparison", compare lower-priced versus higher-priced options only inside the same role when price_order_summary supports it.',
+      'If selected_product_role_mix is "routine_mix", present a basic routine by role or step, and do not imply products from different roles are interchangeable.',
+      'If selected_product_role_mix is "routine_mix", use selected_product_details.role_scope, matched_role_label, and preferred_step to label what each product is doing in the routine.',
+      'For multiple selected products, choose one best first buy when the context supports it, then use compare_highlights or pivota_insights to explain tradeoffs.',
+      'For routine_mix buy answers, explain the lead product with at least two available dimensions from Context: role match, formula/ingredient/texture evidence, and price/value.',
+      'Use assistant_write_plan.lead_product.must_use_reason_points as the preferred reason list for the lead recommendation when available.',
+      'If assistant_write_plan.lead_product.price_note exists, pair it with at least one non-price reason from assistant_write_plan.lead_product.must_use_reason_points.',
+      'If assistant_write_plan.support_steps is non-empty, justify each support step with its own reason_points instead of using a generic closing summary.',
+      'If assistant_write_plan.same_role_options is non-empty, use their tradeoff_note or reason_points to explain how they differ from the lead pick.',
+      'If selected_product_details.reviewed_insight_available is false for a product, treat why_this_one, key_features, best_for, and description_snippet as product-record evidence only; do not imply independent review, clinical, or community proof.',
+      'Do not discuss alternatives/dupes pros and cons unless alternatives_count is greater than 0 or compare_highlights/pivota_insights provide explicit tradeoff evidence.',
+      'If known_price_count is 2 or more, compare price/value or ROI in plain shopper terms using only listed prices; do not compute per-use ROI, percentages, or size-normalized value unless Context provides size and usage data.',
+      'Price may support a recommendation, but price alone is not enough; pair it with at least one concrete fit, formula, texture, ingredient, or use-case reason from Context.',
+      'Use price_order_summary and selected_product_details.price_position to explain lower-cost first buys versus higher-cost support steps or upgrades when Context supports that framing.',
+      'Do not open with "start with" unless request_mode is "use_first".',
+      'If request_mode is "use_first", use starting-point advice tone.',
+      'If request_mode is "use_first" and there is one selected product with no secondary targets, use exactly 2 sentences.',
+      'If request_mode is "use", use practical product guidance tone.',
+      'If request_mode is "use" and there is one selected product with no secondary targets, use exactly 2 sentences.',
+      'Use selected_product_details.description_snippet and selected_product_details.evidence_points as the primary concrete reason layer when available.',
+      'Use selected_product_details.why_this_one, selected_product_details.best_for, and selected_product_details.key_features as supporting context when available.',
+      'Use selected_product_details.compare_highlights and selected_product_details.pivota_insights when available; do not invent highlights that are absent from Context.',
+      'Do not call something the best first buy unless the same sentence or the next sentence gives a concrete reason from description_snippet, evidence_points, compare_highlights, or pivota_insights.',
+      'If selected_product_details.fit_assessment is "soft_match" or comparison_fill_reason is present, frame that product as a softer or broader alternative instead of an equally direct match.',
+      'If selected_product_details.tradeoff_hint exists, honor it.',
+      'Prefer product-specific evidence over generic role language when both are available.',
+      'For single-direction answers, sentence 2 should explain the fit in shopper-facing language instead of repeating the question.',
+      'Do not end with a generic closing sentence like "these steps support your skin" or "together they help balance the routine".',
+      'Only mention targets, ingredients, steps, and product names that already exist in Context.',
+      'Do not invent products, targets, routines, claims, or benefits beyond Context.',
+      'If there is one selected product, keep a single main direction.',
+      'If selected_target_ids has length 1, secondary_targets is empty, and selected_product_role_mix is not "routine_mix", do not add future routine-building suggestions or extra steps.',
+      'If secondary targets exist, mention them briefly and explicitly as secondary.',
+      'If confidence_level is low, keep the wording conservative and non-definitive.',
+      'Use plain shopper-facing skincare language. Avoid vague phrases like "surface activity".',
+      'Avoid generic filler like "great choice", "balanced complexion", or "solution for oiliness".',
+      'Do not add unsupported benefits like pore-minimizing unless they already appear in Context.',
+      'Do not mention "Direction 1/2/3", generic shopping filler, or any product not in selected_products.',
+      'Do not use internal phrases or internal framing such as "Primary recommendation focus" or "Products actually selected this time".',
+      ...(retryInstruction
+        ? [
+          'Previous draft failed the quality gate.',
+          `Fix required: ${retryInstruction}`,
+        ]
+        : []),
+      'Schema: { "assistant_text": string }',
+    ];
+  lines.push(`Context: ${JSON.stringify(context)}`);
+  return lines.join('\n');
 }
 
 function extractRecoAssistantLeadSentence(text) {
