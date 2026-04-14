@@ -666,6 +666,55 @@ describe('find_products_multi context building', () => {
     }
   });
 
+  test('public short beauty category query skips semantic rewrite budget entirely', async () => {
+    jest.resetModules();
+    jest.doMock('../src/findProductsMulti/intentLlm', () => {
+      const actual = jest.requireActual('../src/findProductsMulti/intentLlm');
+      return {
+        ...actual,
+        extractIntentWithMeta: jest.fn(() => {
+          throw new Error('semantic rewrite should be skipped for public category search');
+        }),
+      };
+    });
+
+    try {
+      // eslint-disable-next-line global-require
+      const { buildFindProductsMultiContext: buildPublicCategoryContext } = require('../src/findProductsMulti/policy');
+      const out = await buildPublicCategoryContext({
+        payload: {
+          search: {
+            query: 'hair oil',
+            limit: 6,
+            in_stock_only: true,
+          },
+          user: { recent_queries: [] },
+          messages: [{ role: 'user', content: 'hair oil' }],
+        },
+        metadata: {
+          source: 'search',
+        },
+      });
+
+      expect(out.expansion_meta.semantic_rewrite_timeout_ms).toBe(0);
+      expect(out.expansion_meta.query_class).toBe('category');
+      expect(out.expansion_meta.semantic_rewrite_result).toEqual(
+        expect.objectContaining({
+          applied: false,
+          fallback_reason: 'semantic_rewrite_skipped_public_category_search',
+        }),
+      );
+      expect(out.adjustedPayload.search).toEqual(
+        expect.objectContaining({
+          query: 'hair oil',
+        }),
+      );
+    } finally {
+      jest.dontMock('../src/findProductsMulti/intentLlm');
+      jest.resetModules();
+    }
+  });
+
   test('framework generic semantic contract prioritizes role-aligned treatment query before raw concern text', async () => {
     const { adjustedPayload, expansion_meta } = await buildFindProductsMultiContext({
       payload: {
