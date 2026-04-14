@@ -1272,6 +1272,7 @@ test('reco assistant rewrite retries gemini timeout with compact prompt context'
           ok: false,
           reason: 'GEMINI_JSON_TIMEOUT',
           timeout_stage: 'upstream',
+          meta: { gate_wait_ms: 23, upstream_ms: 1800, total_ms: 1823 },
           provider: 'gemini',
           effective_model: 'gemini-3-flash-preview',
         };
@@ -1283,6 +1284,7 @@ test('reco assistant rewrite retries gemini timeout with compact prompt context'
             'KraveBeauty Great Barrier Relief is the product to buy first for barrier support. Its tamanu oil, niacinamide, and ceramides directly target a stripped, irritated barrier without adding extra routine filler.',
         },
         parse_status: 'parsed',
+        meta: { gate_wait_ms: 5, upstream_ms: 640, total_ms: 645 },
         provider: 'gemini',
         effective_model: 'gemini-3-flash-preview',
       };
@@ -1308,6 +1310,19 @@ test('reco assistant rewrite retries gemini timeout with compact prompt context'
     assert.match(prompts[0], /"prompt_profile":"compact_timeout_retry"/);
     assert.match(prompts[1], /"prompt_profile":"compact_timeout_retry"/);
     assert.match(prompts[1], /Compact retry mode: keep the answer tight/);
+    assert.equal(rewrite.attempt_count, 2);
+    assert.equal(rewrite.attempts?.length, 2);
+    assert.equal(rewrite.attempts?.[0]?.ok, false);
+    assert.equal(rewrite.attempts?.[0]?.reason, 'GEMINI_JSON_TIMEOUT');
+    assert.equal(rewrite.attempts?.[0]?.timeout_stage, 'upstream');
+    assert.equal(rewrite.attempts?.[0]?.compact_context, true);
+    assert.equal(rewrite.attempts?.[0]?.effective_timeout_ms, timeouts[0]);
+    assert.equal(rewrite.attempts?.[0]?.max_output_tokens, maxTokens[0]);
+    assert.equal(rewrite.attempts?.[0]?.upstream_ms, 1800);
+    assert.ok(rewrite.attempts?.[0]?.prompt_bytes > 0);
+    assert.equal(rewrite.attempts?.[1]?.ok, true);
+    assert.equal(rewrite.attempts?.[1]?.reason, null);
+    assert.equal(rewrite.attempts?.[1]?.upstream_ms, 640);
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
     if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;

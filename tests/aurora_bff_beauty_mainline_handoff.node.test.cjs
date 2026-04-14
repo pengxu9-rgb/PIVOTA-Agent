@@ -1493,7 +1493,20 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
       observed.rewriteDeadlineAtMs = deadlineAtMs;
       observed.rewriteBaseText = baseText;
       observed.rewriteUserRequestText = userRequestText;
-      return { text: '', llm_used: false, reason: 'test_passthrough' };
+      return {
+        text: '',
+        llm_used: false,
+        reason: 'test_passthrough',
+        attempt_count: 1,
+        attempts: [
+          {
+            attempt_index: 1,
+            compact_context: true,
+            effective_timeout_ms: 1200,
+            reason: 'test_passthrough',
+          },
+        ],
+      };
     },
     classifyBeautyMainlineHandoffFallback: () => ({
       reason: 'unreachable',
@@ -1543,6 +1556,7 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
   assert.equal(timingLedger?.selector_applied, false);
   assert.equal(timingLedger?.rewrite_attempted, true);
   assert.equal(timingLedger?.rewrite_llm_used, false);
+  assert.equal(timingLedger?.rewrite_attempt_count, 1);
   assert.equal(Number.isFinite(timingLedger?.planner_ms), true);
   assert.equal(Number.isFinite(timingLedger?.handoff_ms), true);
   assert.equal(Number.isFinite(timingLedger?.selector_ms), true);
@@ -1562,6 +1576,14 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
   assert.equal(result?.envelope?.assistant_message, null);
   assert.equal(payload?.recommendation_meta?.assistant_rewrite_llm_used, false);
   assert.equal(payload?.recommendation_meta?.assistant_rewrite_reason, 'test_passthrough');
+  assert.deepEqual(payload?.recommendation_meta?.assistant_rewrite_attempts, [
+    {
+      attempt_index: 1,
+      compact_context: true,
+      effective_timeout_ms: 1200,
+      reason: 'test_passthrough',
+    },
+  ]);
 });
 
 test('beauty chat mainline entry gives rewrite a fresh bounded deadline after slow upstream work', async () => {

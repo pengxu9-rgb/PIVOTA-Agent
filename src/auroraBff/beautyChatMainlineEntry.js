@@ -220,6 +220,9 @@ function buildBeautyChatMainlineTimingLedger({
     selector_applied: pickFirstTrimmed(selectorApplied?.winner_source).toLowerCase() === 'llm_selector',
     rewrite_attempted: rewrite?.attempted === true,
     rewrite_llm_used: rewrite?.llm_used === true,
+    rewrite_attempt_count: Number.isFinite(Number(rewrite?.attempt_count))
+      ? Math.max(0, Math.trunc(Number(rewrite.attempt_count)))
+      : 0,
   };
 }
 
@@ -708,6 +711,10 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
             assistantRewrite?.llm_used === true;
           hardPathPayloadBundle.payload.recommendation_meta.assistant_rewrite_reason =
             pickFirstTrimmed(assistantRewrite?.reason) || null;
+          if (Array.isArray(assistantRewrite?.attempts) && assistantRewrite.attempts.length > 0) {
+            hardPathPayloadBundle.payload.recommendation_meta.assistant_rewrite_attempts =
+              assistantRewrite.attempts.slice(0, 3);
+          }
           if (assistantRewrite?.llm_used === true) {
             hardPathPayloadBundle.payload.recommendation_meta.assistant_rewrite_provider =
               pickFirstTrimmed(assistantRewrite?.provider) || null;
@@ -730,6 +737,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
             rewrite: {
               attempted: typeof maybeRewriteRecoAssistantTextWithLlm === 'function',
               llm_used: assistantRewrite?.llm_used === true,
+              attempt_count: assistantRewrite?.attempt_count,
             },
           }),
         );

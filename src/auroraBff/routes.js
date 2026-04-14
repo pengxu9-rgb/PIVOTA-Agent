@@ -31897,6 +31897,7 @@ function normalizeStructuredSummaryFailure(result, fallbackReason = 'llm_call_fa
     failure_detail: row.detail ? String(row.detail).trim() : null,
     parse_status: row.parse_status ? String(row.parse_status).trim() : null,
     timeout_stage: row.timeout_stage ? String(row.timeout_stage).trim() : null,
+    meta: isPlainObject(row.meta) ? row.meta : null,
   };
 }
 
@@ -32010,6 +32011,7 @@ async function callStructuredSummaryJson({
       timeout_stage: null,
       failure_reason: null,
       failure_detail: null,
+      meta: isPlainObject(result?.meta) ? result.meta : null,
     };
   }
 
@@ -32043,6 +32045,7 @@ async function callStructuredSummaryJson({
     timeout_stage: result.timeout_stage ? String(result.timeout_stage).trim() : null,
     failure_reason: null,
     failure_detail: null,
+    meta: isPlainObject(result?.meta) ? result.meta : null,
   };
 }
 
@@ -52300,6 +52303,12 @@ async function maybeRewriteRecoAssistantTextWithLlm({
     ),
   );
   if (!names.length || !primaryTarget) return { text: fallbackText, llm_used: false, reason: 'missing_primary_payload' };
+  const rewriteAttempts = [];
+  const finishRewrite = (out = {}) => ({
+    ...out,
+    attempt_count: rewriteAttempts.length,
+    attempts: rewriteAttempts.slice(0, 3),
+  });
 
   try {
     const normalizedDeadlineAtMs = Number(deadlineAtMs);
@@ -52319,7 +52328,16 @@ async function maybeRewriteRecoAssistantTextWithLlm({
       maxOutputTokensOverride = null,
     } = {}) => {
       const remainingBudgetMs = getRemainingBudgetMs();
+      const attemptIndex = rewriteAttempts.length + 1;
       if (Number.isFinite(remainingBudgetMs) && remainingBudgetMs <= 250) {
+        rewriteAttempts.push({
+          attempt_index: attemptIndex,
+          skipped: true,
+          reason: 'rewrite_budget_exhausted',
+          remaining_budget_ms: Math.max(0, Math.trunc(remainingBudgetMs)),
+          retry_reason: pickFirstTrimmed(retryReason) || null,
+          compact_context: compactContext === true,
+        });
         return { ok: false, reason: 'rewrite_budget_exhausted' };
       }
       const effectiveRewriteTimeoutMs = Number.isFinite(remainingBudgetMs)
@@ -52335,24 +52353,63 @@ async function maybeRewriteRecoAssistantTextWithLlm({
         : Number.isFinite(Number(timeoutCapMs)) && Number(timeoutCapMs) > 0
           ? Math.trunc(Number(timeoutCapMs))
           : AURORA_RECO_ASSISTANT_REWRITE_TIMEOUT_MS;
+      const effectiveMaxOutputTokens =
+        Number.isFinite(Number(maxOutputTokensOverride)) && Number(maxOutputTokensOverride) > 0
+          ? Math.trunc(Number(maxOutputTokensOverride))
+          : AURORA_RECO_ASSISTANT_REWRITE_MAX_OUTPUT_TOKENS;
+      const userPromptText = buildRecoAssistantRewritePrompt({
+        payload,
+        language,
+        profile,
+        userRequestText,
+        retryReason,
+        compactContext,
+      });
+      const attemptTrace = {
+        attempt_index: attemptIndex,
+        retry_reason: pickFirstTrimmed(retryReason) || null,
+        compact_context: compactContext === true,
+        timeout_cap_ms: Number.isFinite(Number(timeoutCapMs)) && Number(timeoutCapMs) > 0
+          ? Math.trunc(Number(timeoutCapMs))
+          : null,
+        effective_timeout_ms: effectiveRewriteTimeoutMs,
+        remaining_budget_ms: Number.isFinite(remainingBudgetMs) ? Math.max(0, Math.trunc(remainingBudgetMs)) : null,
+        max_output_tokens: effectiveMaxOutputTokens,
+        prompt_bytes: Buffer.byteLength(userPromptText, 'utf8'),
+        request_mode: requestMode,
+        selected_product_role_mix: selectedProductRoleMix,
+      };
+      const attemptStartedAtMs = Date.now();
+      const finalizeAttempt = (fields = {}) => {
+        const resultMeta = isPlainObject(fields.meta) ? fields.meta : {};
+        rewriteAttempts.push({
+          ...attemptTrace,
+          ok: fields.ok === true,
+          reason: pickFirstTrimmed(fields.reason) || null,
+          provider: pickFirstTrimmed(fields.provider) || null,
+          model: pickFirstTrimmed(fields.model) || null,
+          parse_status: pickFirstTrimmed(fields.parse_status) || null,
+          timeout_stage: pickFirstTrimmed(fields.timeout_stage, resultMeta.timeout_stage) || null,
+          gate_wait_ms: Number.isFinite(Number(resultMeta.gate_wait_ms))
+            ? Math.max(0, Math.trunc(Number(resultMeta.gate_wait_ms)))
+            : null,
+          upstream_ms: Number.isFinite(Number(resultMeta.upstream_ms))
+            ? Math.max(0, Math.trunc(Number(resultMeta.upstream_ms)))
+            : null,
+          total_ms: Number.isFinite(Number(resultMeta.total_ms))
+            ? Math.max(0, Math.trunc(Number(resultMeta.total_ms)))
+            : null,
+          duration_ms: Math.max(0, Date.now() - attemptStartedAtMs),
+        });
+      };
       const result = await callStructuredSummaryJson({
         llmProvider: AURORA_PRODUCT_INTEL_LLM_PROVIDER,
         llmModel: AURORA_PRODUCT_INTEL_LLM_MODEL,
         systemPrompt: 'You rewrite skincare recommendation explanations. Output strict JSON only.',
-        userPrompt: buildRecoAssistantRewritePrompt({
-          payload,
-          language,
-          profile,
-          userRequestText,
-          retryReason,
-          compactContext,
-        }),
+        userPrompt: userPromptText,
         responseSchema: RECO_ASSISTANT_REWRITE_JSON_SCHEMA,
         timeoutMs: effectiveRewriteTimeoutMs,
-        maxOutputTokens:
-          Number.isFinite(Number(maxOutputTokensOverride)) && Number(maxOutputTokensOverride) > 0
-            ? Math.trunc(Number(maxOutputTokensOverride))
-            : AURORA_RECO_ASSISTANT_REWRITE_MAX_OUTPUT_TOKENS,
+        maxOutputTokens: effectiveMaxOutputTokens,
         route: 'aurora_reco_assistant_rewrite',
         thinkingLevel: rewriteThinkingLevel,
       });
@@ -52370,6 +52427,15 @@ async function maybeRewriteRecoAssistantTextWithLlm({
         secondaryTargets,
       });
       if (!candidateText) {
+        finalizeAttempt({
+          ok: false,
+          reason: result && result.failure_reason ? result.failure_reason : 'empty_rewrite',
+          provider: result?.provider || null,
+          model: result?.model || null,
+          parse_status: parseStatus,
+          timeout_stage: result?.timeout_stage || null,
+          meta: result?.meta || null,
+        });
         return {
           ok: false,
           reason: result && result.failure_reason ? result.failure_reason : 'empty_rewrite',
@@ -52388,6 +52454,15 @@ async function maybeRewriteRecoAssistantTextWithLlm({
         requestMode,
       });
       if (!validation.ok) {
+        finalizeAttempt({
+          ok: false,
+          reason: validation.reason,
+          provider: result?.provider || null,
+          model: result?.model || null,
+          parse_status: parseStatus,
+          timeout_stage: result?.timeout_stage || null,
+          meta: result?.meta || null,
+        });
         return {
           ok: false,
           reason: validation.reason,
@@ -52397,6 +52472,15 @@ async function maybeRewriteRecoAssistantTextWithLlm({
           candidate_text: candidateText,
         };
       }
+      finalizeAttempt({
+        ok: true,
+        reason: null,
+        provider: result.provider || null,
+        model: result.model || null,
+        parse_status: parseStatus,
+        timeout_stage: result?.timeout_stage || null,
+        meta: result?.meta || null,
+      });
       return {
         ok: true,
         text: candidateText,
@@ -52432,21 +52516,21 @@ async function maybeRewriteRecoAssistantTextWithLlm({
         : null,
     });
     if (firstAttempt.ok) {
-      return {
+      return finishRewrite({
         text: firstAttempt.text,
         llm_used: true,
         provider: firstAttempt.provider || null,
         model: firstAttempt.model || null,
         parse_status: firstAttempt.parse_status,
         reason: null,
-      };
+      });
     }
     if (!shouldRetryRecoAssistantRewrite(firstAttempt.reason)) {
-      return { text: fallbackText, llm_used: false, reason: firstAttempt.reason };
+      return finishRewrite({ text: fallbackText, llm_used: false, reason: firstAttempt.reason });
     }
     const remainingBudgetMs = getRemainingBudgetMs();
     if (Number.isFinite(remainingBudgetMs) && remainingBudgetMs <= 350) {
-      return { text: fallbackText, llm_used: false, reason: firstAttempt.reason };
+      return finishRewrite({ text: fallbackText, llm_used: false, reason: firstAttempt.reason });
     }
     const firstAttemptReason = String(firstAttempt.reason || '').trim().toLowerCase();
     const useCompactRetry =
@@ -52471,22 +52555,22 @@ async function maybeRewriteRecoAssistantTextWithLlm({
         : null,
     });
     if (retryAttempt.ok) {
-      return {
+      return finishRewrite({
         text: retryAttempt.text,
         llm_used: true,
         provider: retryAttempt.provider || firstAttempt.provider || null,
         model: retryAttempt.model || firstAttempt.model || null,
         parse_status: retryAttempt.parse_status || firstAttempt.parse_status,
         reason: null,
-      };
+      });
     }
-    return { text: fallbackText, llm_used: false, reason: retryAttempt.reason || firstAttempt.reason };
+    return finishRewrite({ text: fallbackText, llm_used: false, reason: retryAttempt.reason || firstAttempt.reason });
   } catch (err) {
-    return {
+    return finishRewrite({
       text: fallbackText,
       llm_used: false,
       reason: err && err.code ? String(err.code) : 'rewrite_exception',
-    };
+    });
   }
 }
 
