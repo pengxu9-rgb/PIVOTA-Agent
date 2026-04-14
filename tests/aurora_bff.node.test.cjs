@@ -8190,7 +8190,10 @@ test('fetchRecoAlternativesForProduct: open_world_only filters off-target visibl
                 product_type: 'sunscreen',
                 similarity_score: 82,
                 reasons: ['Serum sunscreen alternative for daily UV protection.'],
-                tradeoff_notes: ['Also talks about dark spots in catalog copy.'],
+                tradeoff_notes: [
+                  'Higher SPF level may increase sensitivity risk.',
+                  'Also talks about dark spots in catalog copy.',
+                ],
               },
             ],
           },
@@ -8232,7 +8235,7 @@ test('fetchRecoAlternativesForProduct: open_world_only filters off-target visibl
           'Combines smoother texture with daytime sun protection in one morning step.',
           'Infused with ginger extract, this serum protects against environmental factors without leaving a white cast for any skin tone.',
         ]);
-        assert.deepEqual(out.alternatives[0]?.tradeoff_notes || [], []);
+        assert.deepEqual(out.alternatives[0]?.tradeoff_notes || [], ['Higher SPF level']);
         assert.equal(out.alternatives[0]?.metadata?.off_target_visible_claims_filtered, true);
       } finally {
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;

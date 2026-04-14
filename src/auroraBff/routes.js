@@ -67535,7 +67535,12 @@ function shouldDropRecoAlternativeOffTargetVisibleClaim(value, { targetSignals =
     !hasAllowedFamily &&
     !allowedFamilies.has('acne_pore') &&
     /\b(acne|breakouts?|blemish(?:es)?|clog(?:ged)?|pores?|breakout[-\s]?prone)\b/i.test(text);
-  return hasUnallowedAcneOnlyClaim;
+  if (hasUnallowedAcneOnlyClaim) return true;
+  const hasUnallowedSensitivityOnlyClaim =
+    !hasAllowedFamily &&
+    !allowedFamilies.has('sensitivity_redness') &&
+    /\b(redness|sensitive|sensitized|irritat(?:e|ion)|stinging?|red[-\s]?prone)\b/i.test(text);
+  return hasUnallowedSensitivityOnlyClaim;
 }
 
 function redactRecoAlternativeOffTargetVisibleClaim(value, { targetSignals = null } = {}) {
@@ -67572,8 +67577,19 @@ function redactRecoAlternativeOffTargetVisibleClaim(value, { targetSignals = nul
       .replace(new RegExp(`\\b(?:${agingTerms})\\s+(?:and|or|plus)\\s+`, 'gi'), '')
       .replace(new RegExp(`\\s*,\\s*(?:${agingTerms})\\b`, 'gi'), '');
   }
+  if (!allowedFamilies.has('sensitivity_redness')) {
+    const sensitivityTerms = 'redness|sensitive(?:\\s+skin(?:\\s+profiles?)?)?|sensitized|irritat(?:e|ion)|stinging?|red[-\\s]?prone';
+    next = next
+      .replace(new RegExp(`\\s+(?:and|or|plus)\\s+(?:${sensitivityTerms})\\b`, 'gi'), '')
+      .replace(new RegExp(`\\b(?:${sensitivityTerms})\\s+(?:and|or|plus)\\s+`, 'gi'), '')
+      .replace(new RegExp(`,?\\s+including\\s+(?:${sensitivityTerms})\\b`, 'gi'), '')
+      .replace(/\s+which may increase (?:the )?(?:risk of )?(?:irritation|sensitivity)(?: risk)?\.?/gi, '')
+      .replace(/\s+may increase (?:the )?(?:risk of )?(?:irritation|sensitivity)(?: risk)?\.?/gi, '')
+      .replace(new RegExp(`\\s*,\\s*(?:${sensitivityTerms})\\b`, 'gi'), '');
+  }
   next = next
     .replace(/\s+([.,;:!?])/g, '$1')
+    .replace(/,\s*$/g, '')
     .replace(/\s{2,}/g, ' ')
     .trim();
   if (!next) return '';
