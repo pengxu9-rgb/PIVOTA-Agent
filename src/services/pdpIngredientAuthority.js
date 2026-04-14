@@ -158,6 +158,7 @@ function splitIngredientText(text) {
     const ch = source[index];
     const prev = source[index - 1] || '';
     const next = source[index + 1] || '';
+    const nextNonSpace = source.slice(index + 1).match(/\S/)?.[0] || '';
     if (ch === '(') {
       depth += 1;
       current += ch;
@@ -168,7 +169,7 @@ function splitIngredientText(text) {
       current += ch;
       continue;
     }
-    const numericChemicalComma = ch === ',' && /\d/.test(prev) && /\d/.test(next);
+    const numericChemicalComma = ch === ',' && /\d/.test(prev) && /\d/.test(nextNonSpace);
     const delimiter =
       !numericChemicalComma &&
       (ch === ';' ||
