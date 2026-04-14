@@ -673,6 +673,14 @@ async function loadMissingIdentityCoverageProductIds({
   const normalizedPerBrandLimit = Math.max(0, Number(perBrandLimit) || 0);
   const normalizedMinSourceRows = Math.max(0, Number(minSourceRows) || 0);
   const normalizedMinReviewRatio = Math.max(0, Math.min(1, Number(minReviewRatio) || 0));
+  const brandSampleLimit = Math.min(
+    2000,
+    Math.max(200, normalizedPerBrandLimit * 100),
+  );
+  const summaryBrandLimit = Math.min(
+    500,
+    Math.max(120, normalizedTopBrands * 100),
+  );
   if (normalizedTopBrands <= 0 && !toList(explicitBrands).length) return [];
 
   const targetBrands = new Set(
@@ -682,6 +690,7 @@ async function loadMissingIdentityCoverageProductIds({
   if (!targetBrands.size && normalizedTopBrands > 0 && typeof summarizeFn === 'function') {
     const coverageRows = await summarizeFn({
       limit: normalizedTopBrands,
+      ...(summaryBrandLimit > normalizedTopBrands ? { limit: summaryBrandLimit } : {}),
       minSourceRows: normalizedMinSourceRows,
       beautyOnly,
       ...(typeof queryFn === 'function' ? { queryFn } : {}),
@@ -711,7 +720,7 @@ async function loadMissingIdentityCoverageProductIds({
   for (const brand of targetBrands) {
     const rows = await fetchBackfillProductsFn({
       brandFilter: brand,
-      limit: normalizedPerBrandLimit * 3,
+      limit: brandSampleLimit,
       ...(typeof queryFn === 'function' ? { queryFn } : {}),
     });
     const sourceRefs = toList(rows)
