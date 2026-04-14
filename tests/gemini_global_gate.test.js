@@ -116,4 +116,37 @@ describe('geminiGlobalGate timeout hybrid policy', () => {
     expect(snap.gate.circuitOpen).toBe(false);
     expect(snap._debug.timeout_tracker.timeoutStreak).toBe(1);
   });
+
+  test('queue timeout cancels semaphore wait without leaking a slot', async () => {
+    const gate = createGeminiGlobalGate({
+      concurrencyMax: 1,
+      ratePerMin: 1000,
+      circuitFailThreshold: 10,
+      circuitCooldownMs: 60_000,
+      timeoutStreakThreshold: 10,
+      timeoutMinSamples: 100,
+      timeoutRatioThresholdPct: 100,
+      timeoutWindowMs: 60_000,
+    });
+
+    let releaseFirst;
+    const first = gate.withGate(
+      'unit_queue_timeout',
+      async () => new Promise((resolve) => {
+        releaseFirst = resolve;
+      }),
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+
+    await expect(
+      gate.withGate('unit_queue_timeout', async () => 'should_not_run', { queueTimeoutMs: 10 }),
+    ).rejects.toMatchObject({
+      code: 'GEMINI_QUEUE_TIMEOUT',
+      timeout_stage: 'queue',
+    });
+
+    releaseFirst('first_done');
+    await expect(first).resolves.toBe('first_done');
+    await expect(gate.withGate('unit_queue_timeout', async () => 'ok', { queueTimeoutMs: 50 })).resolves.toBe('ok');
+  });
 });

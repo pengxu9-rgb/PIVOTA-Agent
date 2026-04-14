@@ -34,16 +34,32 @@ function createSemaphore(max) {
     if (next) next();
   }
 
-  async function acquire() {
+  async function acquire({ timeoutMs = 0 } = {}) {
     if (inUse < limit) {
       inUse += 1;
       return release;
     }
-    return new Promise((resolve) => {
-      queue.push(() => {
+    const normalizedTimeoutMs = Number.isFinite(Number(timeoutMs)) ? Math.max(0, Math.trunc(Number(timeoutMs))) : 0;
+    return new Promise((resolve, reject) => {
+      let timer = null;
+      let settled = false;
+      const entry = () => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
         inUse += 1;
         resolve(release);
-      });
+      };
+      queue.push(entry);
+      if (normalizedTimeoutMs > 0) {
+        timer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          const index = queue.indexOf(entry);
+          if (index >= 0) queue.splice(index, 1);
+          reject(new GeminiGateError('GEMINI_QUEUE_TIMEOUT', `Gemini global gate queue timeout after ${normalizedTimeoutMs}ms`));
+        }, normalizedTimeoutMs);
+      }
     });
   }
 
@@ -380,8 +396,11 @@ function createGeminiGlobalGate({
     };
   }
 
-  async function withGate(route, fn, { bypassCircuit = false } = {}) {
+  async function withGate(route, fn, { bypassCircuit = false, queueTimeoutMs = 0 } = {}) {
     const startedAt = Date.now();
+    const normalizedQueueTimeoutMs = Number.isFinite(Number(queueTimeoutMs))
+      ? Math.max(0, Math.trunc(Number(queueTimeoutMs)))
+      : 0;
     let probe = null;
     if (!bypassCircuit) {
       probe = circuit.beginProbeIfAllowed();
@@ -393,7 +412,16 @@ function createGeminiGlobalGate({
 
     const gotToken = bucket.take();
     if (!gotToken) {
-      const waited = await bucket.waitForToken(3000);
+      const elapsedBeforeTokenWaitMs = Date.now() - startedAt;
+      const remainingQueueMs = normalizedQueueTimeoutMs > 0
+        ? Math.max(0, normalizedQueueTimeoutMs - elapsedBeforeTokenWaitMs)
+        : 0;
+      const tokenWaitTimeoutMs = normalizedQueueTimeoutMs > 0
+        ? Math.max(1, Math.min(3000, remainingQueueMs))
+        : 3000;
+      const waited = remainingQueueMs === 0 && normalizedQueueTimeoutMs > 0
+        ? false
+        : await bucket.waitForToken(tokenWaitTimeoutMs);
       if (!waited) {
         if (probe && probe.probe) circuit.endProbe();
         metrics.record({ route, status: 'rate_limited', latencyMs: Date.now() - startedAt });
@@ -401,7 +429,41 @@ function createGeminiGlobalGate({
       }
     }
 
-    const release = await semaphore.acquire();
+    const elapsedBeforeAcquireMs = Date.now() - startedAt;
+    const acquireTimeoutMs = normalizedQueueTimeoutMs > 0
+      ? Math.max(1, normalizedQueueTimeoutMs - elapsedBeforeAcquireMs)
+      : 0;
+    if (normalizedQueueTimeoutMs > 0 && acquireTimeoutMs <= 1 && elapsedBeforeAcquireMs >= normalizedQueueTimeoutMs) {
+      if (probe && probe.probe) circuit.endProbe();
+      recordTimeoutSample(true);
+      metrics.record({ route, status: 'timeout', latencyMs: Date.now() - startedAt });
+      const err = new GeminiGateError('GEMINI_QUEUE_TIMEOUT', `Gemini global gate queue timeout after ${normalizedQueueTimeoutMs}ms`);
+      err.timeout_stage = 'queue';
+      err.meta = {
+        gate_wait_ms: Math.max(0, Date.now() - startedAt),
+        upstream_ms: 0,
+        total_ms: Math.max(0, Date.now() - startedAt),
+      };
+      throw err;
+    }
+    let release;
+    try {
+      release = await semaphore.acquire({ timeoutMs: acquireTimeoutMs });
+    } catch (err) {
+      if (probe && probe.probe) circuit.endProbe();
+      const timedOut = isTimeout(err);
+      if (timedOut) {
+        err.timeout_stage = err.timeout_stage || 'queue';
+        err.meta = err.meta || {
+          gate_wait_ms: Math.max(0, Date.now() - startedAt),
+          upstream_ms: 0,
+          total_ms: Math.max(0, Date.now() - startedAt),
+        };
+        recordTimeoutSample(true);
+      }
+      metrics.record({ route, status: timedOut ? 'timeout' : 'error', latencyMs: Date.now() - startedAt });
+      throw err;
+    }
     try {
       const result = await fn();
       recordTimeoutSample(false);

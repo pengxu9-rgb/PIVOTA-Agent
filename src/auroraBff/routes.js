@@ -23400,21 +23400,25 @@ async function callGeminiJsonObjectViaRest({
       1,
       Number(timeoutBudget.queue_timeout_ms || 0) + Number(timeoutBudget.upstream_timeout_ms || 0),
     );
-    const gatePromise = gate.withGate(route, async () => {
-      upstreamStartedAt = Date.now();
-      return await withTimeout(
-        fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent`, {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            'x-goog-api-key': apiKey,
-          },
-          body: JSON.stringify(requestBody),
-        }),
-        timeoutBudget.upstream_timeout_ms,
-        'GEMINI_UPSTREAM_TIMEOUT',
-      );
-    });
+    const gatePromise = gate.withGate(
+      route,
+      async () => {
+        upstreamStartedAt = Date.now();
+        return await withTimeout(
+          fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent`, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              'x-goog-api-key': apiKey,
+            },
+            body: JSON.stringify(requestBody),
+          }),
+          timeoutBudget.upstream_timeout_ms,
+          'GEMINI_UPSTREAM_TIMEOUT',
+        );
+      },
+      { queueTimeoutMs: timeoutBudget.queue_timeout_ms || totalTimeoutMs },
+    );
     let response;
     try {
       response = await withTimeout(gatePromise, totalTimeoutMs, 'GEMINI_TOTAL_TIMEOUT');

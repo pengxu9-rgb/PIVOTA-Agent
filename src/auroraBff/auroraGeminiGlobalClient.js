@@ -100,6 +100,12 @@ async function callAuroraGeminiGenerateContentWithMeta({
   const gate = getGeminiGlobalGate();
   const startedAt = Date.now();
   let upstreamStartedAt = startedAt;
+  const normalizedTotalTimeoutMs = (() => {
+    const queueMs = Number.isFinite(Number(queueTimeoutMs)) ? Math.max(0, Math.trunc(Number(queueTimeoutMs))) : 0;
+    const upstreamMs = Number.isFinite(Number(upstreamTimeoutMs)) ? Math.max(0, Math.trunc(Number(upstreamTimeoutMs))) : 0;
+    if (queueMs > 0 || upstreamMs > 0) return Math.max(1, queueMs + upstreamMs);
+    return 0;
+  })();
   const gatePromise = gate.withGate(
     route,
     async () => {
@@ -107,14 +113,8 @@ async function callAuroraGeminiGenerateContentWithMeta({
       const upstreamPromise = resolved.client.models.generateContent(request);
       return await withTimeoutCode(upstreamPromise, upstreamTimeoutMs, 'GEMINI_UPSTREAM_TIMEOUT');
     },
-    { bypassCircuit },
+    { bypassCircuit, queueTimeoutMs: normalizedTotalTimeoutMs || queueTimeoutMs },
   );
-  const normalizedTotalTimeoutMs = (() => {
-    const queueMs = Number.isFinite(Number(queueTimeoutMs)) ? Math.max(0, Math.trunc(Number(queueTimeoutMs))) : 0;
-    const upstreamMs = Number.isFinite(Number(upstreamTimeoutMs)) ? Math.max(0, Math.trunc(Number(upstreamTimeoutMs))) : 0;
-    if (queueMs > 0 || upstreamMs > 0) return Math.max(1, queueMs + upstreamMs);
-    return 0;
-  })();
   const response = await withTimeoutCode(gatePromise, normalizedTotalTimeoutMs, 'GEMINI_TOTAL_TIMEOUT', (err) => {
     const now = Date.now();
     const timedOutUpstream = upstreamStartedAt > startedAt;
