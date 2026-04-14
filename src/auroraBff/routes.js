@@ -67004,9 +67004,11 @@ function normalizePoolAlternativeRow(row, {
     ? 0.72
     : candidateRole === targetRole
       ? 1
-      : candidateRole === 'unknown'
-        ? 0.58
-        : 0.18;
+      : allowBarrierSerumRoleBridge
+        ? 0.86
+        : candidateRole === 'unknown'
+          ? 0.58
+          : 0.18;
   const titleActiveMatch = ['serum', 'treatment', 'sunscreen'].includes(targetRole)
     ? computeRecoAlternativeTitleActiveMatchScore(ingredientTokens, candidateLabel)
     : 0;
@@ -68062,7 +68064,7 @@ function isCatalogVerifiedRecoAlternative(row) {
   return String(item.grounding_status || '').trim().toLowerCase() === 'catalog_verified';
 }
 
-function filterRecoAlternativesVisibleAuthorityRows(rows, { minGrounded = 2 } = {}) {
+function filterRecoAlternativesVisibleAuthorityRows(rows, { minGrounded = 1 } = {}) {
   const list = Array.isArray(rows) ? rows.filter((row) => isPlainObject(row)) : [];
   const grounded = list.filter(isCatalogVerifiedRecoAlternative);
   const minimum = Math.max(1, Math.trunc(Number(minGrounded) || 2));
