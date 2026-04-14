@@ -526,9 +526,35 @@ function splitIngredientsItemsFromText(text) {
     .replace(/^ingredients(?:\s*\(inci\))?[:\s-]*/i, '')
     .trim();
   if (!normalized) return [];
+  const items = [];
+  let current = '';
+  let depth = 0;
+  for (let index = 0; index < normalized.length; index += 1) {
+    const ch = normalized[index];
+    const prev = normalized[index - 1] || '';
+    const nextNonSpace = normalized.slice(index + 1).match(/\S/)?.[0] || '';
+    if (ch === '(') {
+      depth += 1;
+      current += ch;
+      continue;
+    }
+    if (ch === ')') {
+      depth = Math.max(0, depth - 1);
+      current += ch;
+      continue;
+    }
+    const numericChemicalComma = ch === ',' && /\d/.test(prev) && /\d/.test(nextNonSpace);
+    const delimiter = !numericChemicalComma && (ch === '\n' || ch === ';' || (ch === ',' && depth === 0));
+    if (delimiter) {
+      if (current.trim()) items.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  if (current.trim()) items.push(current.trim());
   return uniqueNonEmptyStrings(
-    normalized
-      .split(/\n+|;|,(?![^()]*\))/)
+    items
       .map((item) => cleanStructuredToken(item))
       .filter((item) => item.length > 1),
   );
@@ -566,8 +592,9 @@ function buildIngredientsModuleData(candidates, fallbackTitle) {
     if (!candidate) continue;
     const rawText = pickStructuredText(candidate);
     const atomicItems = collectAtomicItems(candidate);
+    const structuredItems = !atomicItems.length && !rawText ? normalizeStructuredItems(candidate) : [];
     const items = uniqueNonEmptyStrings([
-      ...(atomicItems.length ? atomicItems : normalizeStructuredItems(candidate)),
+      ...(atomicItems.length ? atomicItems : structuredItems),
       ...(atomicItems.length ? [] : splitIngredientsItemsFromText(rawText)),
     ]);
     if (!items.length && !rawText) continue;
