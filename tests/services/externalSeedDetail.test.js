@@ -1,10 +1,15 @@
 const {
   findExternalSeedProductById,
   looksLikeStableExternalSeedId,
+  _internals,
 } = require('../../src/services/externalSeedDetail');
 const { stableExternalProductId } = require('../../src/services/externalSeedProducts');
 
 describe('externalSeedDetail', () => {
+  beforeEach(() => {
+    _internals.resetExternalSeedDetailCache();
+  });
+
   test('resolves an external seed product by direct stored product id fields', async () => {
     const calls = [];
     const row = {
@@ -52,7 +57,7 @@ describe('externalSeedDetail', () => {
     expect(calls[0]).toMatch(/external_product_id = \$1/i);
   });
 
-  test('falls back to scan recent rows for stable hashed ext ids', async () => {
+  test('uses SQL-side stable hash lookup for stable hashed ext ids before broad scan', async () => {
     const canonicalUrl = 'https://brand.example/products/hash-only-serum';
     const productId = stableExternalProductId(canonicalUrl);
     const row = {
@@ -95,6 +100,92 @@ describe('externalSeedDetail', () => {
         title: 'Hash Only Serum',
       }),
     );
+    expect(queryFn).toHaveBeenCalledTimes(2);
+    expect(queryFn.mock.calls[1][0]).toMatch(/sha256/i);
+  });
+
+  test('falls back to bounded scan when stable hash lookup misses', async () => {
+    const canonicalUrl = 'https://brand.example/products/hash-scan-fallback-serum';
+    const productId = stableExternalProductId(canonicalUrl);
+    const row = {
+      id: 'seed_row_hash_fallback',
+      external_product_id: null,
+      market: 'US',
+      tool: '*',
+      destination_url: canonicalUrl,
+      canonical_url: canonicalUrl,
+      domain: 'brand.example',
+      title: 'Hash Scan Fallback Serum',
+      image_url: 'https://brand.example/hash-scan-fallback-serum.jpg',
+      price_amount: 42,
+      price_currency: 'USD',
+      availability: 'in stock',
+      seed_data: {
+        merchant_display_name: 'Brand Example',
+        snapshot: {
+          title: 'Hash Scan Fallback Serum',
+          canonical_url: canonicalUrl,
+        },
+      },
+    };
+    const queryFn = jest
+      .fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [row] });
+
+    const product = await findExternalSeedProductById({
+      productId,
+      queryFn,
+      scanLimit: 200,
+    });
+
+    expect(product).toEqual(
+      expect.objectContaining({
+        product_id: productId,
+        merchant_id: 'external_seed',
+        external_seed_id: 'seed_row_hash_fallback',
+        title: 'Hash Scan Fallback Serum',
+      }),
+    );
+    expect(queryFn).toHaveBeenCalledTimes(3);
+    expect(queryFn.mock.calls[2][0]).toMatch(/LIMIT \$1/i);
+  });
+
+  test('caches stable hashed external seed lookup results', async () => {
+    const canonicalUrl = 'https://brand.example/products/hash-cache-serum';
+    const productId = stableExternalProductId(canonicalUrl);
+    const row = {
+      id: 'seed_row_hash_cache',
+      external_product_id: null,
+      market: 'US',
+      tool: '*',
+      destination_url: canonicalUrl,
+      canonical_url: canonicalUrl,
+      domain: 'brand.example',
+      title: 'Hash Cache Serum',
+      image_url: 'https://brand.example/hash-cache-serum.jpg',
+      price_amount: 42,
+      price_currency: 'USD',
+      availability: 'in stock',
+      seed_data: {
+        merchant_display_name: 'Brand Example',
+        snapshot: {
+          title: 'Hash Cache Serum',
+          canonical_url: canonicalUrl,
+        },
+      },
+    };
+    const queryFn = jest
+      .fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [row] });
+
+    const first = await findExternalSeedProductById({ productId, queryFn, scanLimit: 200 });
+    const second = await findExternalSeedProductById({ productId, queryFn, scanLimit: 200 });
+
+    expect(first).toEqual(expect.objectContaining({ product_id: productId }));
+    expect(second).toEqual(expect.objectContaining({ product_id: productId }));
     expect(queryFn).toHaveBeenCalledTimes(2);
   });
 

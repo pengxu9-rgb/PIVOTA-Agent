@@ -2851,10 +2851,7 @@ async function fetchProductDetailForOffers(args) {
   const checkoutToken = args?.checkoutToken;
   const surfaceUpstreamErrors = args?.surfaceUpstreamErrors === true;
   const bypassCache = args?.bypassCache === true;
-  const useMemoryCache =
-    PRODUCT_DETAIL_CACHE_ENABLED &&
-    !bypassCache &&
-    merchantId !== EXTERNAL_SEED_MERCHANT_ID;
+  const useMemoryCache = PRODUCT_DETAIL_CACHE_ENABLED && !bypassCache;
   if (!merchantId || !productId) return null;
 
   const cacheKey = JSON.stringify({
