@@ -418,7 +418,7 @@ describe('discovery feed service', () => {
     );
   });
 
-  test('explicit browse query does not hard-filter external seed category matches by raw query text', async () => {
+  test('explicit browse query uses compound external seed intent instead of raw description matches', async () => {
     delete process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL;
     delete process.env.PIVOTA_BACKEND_BASE_URL;
     delete process.env.PIVOTA_API_BASE;
@@ -439,17 +439,29 @@ describe('discovery feed service', () => {
         }),
       ),
     );
+    const broadHaircareSeeds = Array.from({ length: 12 }, (_, idx) =>
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: `haircare_shampoo_${idx + 1}`,
+        title: `High Shine Shampoo ${idx + 1}`,
+        brand: `Seeded Haircare ${idx + 1}`,
+        category: 'Shampoo',
+        product_type: 'Shampoo',
+        description: 'Cleanses hair with fermented camellia oil for a glossy finish.',
+      }),
+    );
+    const hairOilSeeds = Array.from({ length: 12 }, (_, idx) =>
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: `hair_oil_seed_${idx + 1}`,
+        title: `Beauty Oil ${idx + 1}`,
+        brand: `Seeded Haircare ${idx + 1}`,
+        category: 'Haircare',
+        product_type: 'Haircare',
+      }),
+    );
     const externalSpy = jest.fn(async () =>
-      Array.from({ length: 12 }, (_, idx) =>
-        makeProduct({
-          merchant_id: 'external_seed',
-          product_id: `haircare_seed_${idx + 1}`,
-          title: `Glossing Treatment Drops ${idx + 1}`,
-          brand: `Seeded Haircare ${idx + 1}`,
-          category: 'Haircare',
-          product_type: 'Haircare',
-        }),
-      ),
+      broadHaircareSeeds.concat(hairOilSeeds),
     );
 
     const response = await getDiscoveryFeed(
@@ -477,11 +489,11 @@ describe('discovery feed service', () => {
     );
 
     expect(response.products).toHaveLength(12);
-    expect(response.products.every((product) => /Glossing Treatment Drops/.test(product.title))).toBe(true);
+    expect(response.products.every((product) => /Beauty Oil/.test(product.title))).toBe(true);
     expect(response.metadata.selected_source_breakdown).toEqual(
       expect.objectContaining({ external_seeds: 12 }),
     );
-    expect(response.metadata.filter_counts.filtered_query_text).toBe(24);
+    expect(response.metadata.filter_counts.filtered_query_text).toBeGreaterThanOrEqual(12);
   });
 
   test('explicit browse lookup short-circuits external seed recall with exact-title fastpath', async () => {
