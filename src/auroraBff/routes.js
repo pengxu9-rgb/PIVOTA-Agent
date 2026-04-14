@@ -65417,7 +65417,7 @@ function normalizeRecoPromptNarrative(value) {
 function inferRecoAlternativesUsageRole(...values) {
   const text = values.filter(Boolean).join(' ').toLowerCase();
   if (!text) return 'unknown';
-  if (/\b(spf|sunscreen|sun fluid|sun cream|sun lotion|uv)\b/.test(text)) return 'sunscreen';
+  if (/\b(spf\s*\d{2,3}\+?|spf|sunscreen|sun fluid|sun cream|sun lotion|sun serum|sun gel|sun milk|uv)\b/.test(text)) return 'sunscreen';
   if (/\b(cleanser|cleansing|face wash|foam wash|gel cleanser|wash)\b/.test(text)) return 'cleanser';
   if (/\b(toner|mist)\b/.test(text)) return 'toner';
   if (/\b(essence)\b/.test(text)) return 'essence';
@@ -66773,6 +66773,8 @@ const RECO_ALTERNATIVE_STRONG_TONE_INTENT_RE =
 const RECO_ALTERNATIVE_STRONG_AGING_INTENT_RE = /\b(wrinkles?|fine[-\s]?lines?|anti[-\s]?aging|retinol|retinoid|firm(?:ing)?)\b/i;
 const RECO_ALTERNATIVE_STRONG_SENSITIVITY_INTENT_RE = /\b(redness|sensitive|sensitized|sooth(?:e|ing)?|calm(?:ing)?|irritat(?:e|ion)|stinging?|red[-\s]?prone)\b/i;
 const RECO_ALTERNATIVE_STRONG_ACNE_INTENT_RE = /\b(acne|breakouts?|blemish(?:es)?|clog(?:ged)?|pores?|breakout[-\s]?prone)\b/i;
+const RECO_ALTERNATIVE_STRONG_BARRIER_BRIDGE_RE =
+  /\b(barrier|ceramides?|repair|cica|centella|panthenol|tamanu|lipids?|cholesterol|fatty\s+acids?)\b/i;
 
 function buildRecoAlternativePoolCandidateText(normalized) {
   const row = isPlainObject(normalized) ? normalized : {};
@@ -66957,17 +66959,25 @@ function normalizePoolAlternativeRow(row, {
   if (anchorToken && productId && productId.toLowerCase() === anchorToken) return null;
   if (anchorLabel && candidateLabel.trim().toLowerCase() === String(anchorLabel || '').trim().toLowerCase()) return null;
 
-  const explicitCategoryRole = inferRecoAlternativesUsageRole(normalized.category);
-  const candidateRole = explicitCategoryRole !== 'unknown'
-    ? explicitCategoryRole
-    : inferRecoAlternativesUsageRole(
-        normalized.display_name,
-        normalized.name,
-        normalized.category,
-        candidateLabel,
-      );
-  const targetRole = String(targetSignals?.usageRole || '').trim().toLowerCase();
   const candidateText = buildRecoAlternativePoolCandidateText(normalized);
+  const labelRole = inferRecoAlternativesUsageRole(
+    normalized.display_name,
+    normalized.name,
+    candidateLabel,
+  );
+  const explicitCategoryRole = inferRecoAlternativesUsageRole(normalized.category, normalized.product_type);
+  const candidateRole = labelRole === 'sunscreen'
+    ? labelRole
+    : explicitCategoryRole !== 'unknown'
+      ? explicitCategoryRole
+      : labelRole !== 'unknown'
+        ? labelRole
+        : inferRecoAlternativesUsageRole(
+            normalized.category,
+            normalized.product_type,
+            candidateText,
+          );
+  const targetRole = String(targetSignals?.usageRole || '').trim().toLowerCase();
   const targetRoleScopeText = [
     targetSignals?.roleScope,
     ...(Array.isArray(targetSignals?.primaryClaims) ? targetSignals.primaryClaims : []),
@@ -66978,8 +66988,8 @@ function normalizePoolAlternativeRow(row, {
   const allowBarrierSerumRoleBridge =
     targetRole === 'moisturizer' &&
     candidateRole === 'serum' &&
-    /\b(?:barrier|ceramides?|hyaluronic|hydrating|hydration|repair|calm|sooth)\b/i.test(targetRoleScopeText) &&
-    /\b(?:barrier|ceramides?|hyaluronic|hydrating|hydration|repair|calm|sooth)\b/i.test(candidateText);
+    RECO_ALTERNATIVE_STRONG_BARRIER_BRIDGE_RE.test(targetRoleScopeText) &&
+    RECO_ALTERNATIVE_STRONG_BARRIER_BRIDGE_RE.test(candidateText);
   if (
     targetRole &&
     targetRole !== 'unknown' &&
