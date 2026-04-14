@@ -128,6 +128,34 @@ describe('build_product_intel_live_pilot_cases', () => {
     expect(rows.every((rowId) => ['p1', 'p2', 'p3'].includes(rowId))).toBe(true);
   });
 
+  test('finds missing identity rows even when missing rows are deep in fetch results', async () => {
+    const totalCandidates = Array.from({ length: 300 }).map((_, index) => `ext_${index}`);
+    const allCoveredRefs = new Set(totalCandidates.slice(0, 250).map((productId) => `external_seed:${productId}`));
+    const fetchCalls = [];
+    const rows = await loadMissingIdentityCoverageProductIds({
+      explicitBrands: ['Moyu'],
+      perBrandLimit: 5,
+      queryFn: async (_query, params) => ({
+        rows: Array.isArray(params?.[0])
+          ? params[0]
+              .filter((ref) => allCoveredRefs.has(ref))
+              .map((source_listing_ref) => ({ source_listing_ref }))
+          : [],
+      }),
+      fetchBackfillProductsFn: async ({ limit }) => {
+        fetchCalls.push(limit);
+        return totalCandidates.slice(0, limit).map((productId) => ({
+          merchant_id: 'external_seed',
+          product_id: productId,
+        }));
+      },
+      summarizeFn: async () => [],
+    });
+
+    expect(rows.length).toBeGreaterThanOrEqual(5);
+    expect(fetchCalls.every((value) => value >= 200)).toBe(true);
+  });
+
   test('samples deterministically without replacement', () => {
     const input = ['a', 'b', 'c', 'd', 'e', 'e'];
     const first = sampleWithoutReplacement(input, 3, 'seed-1');
