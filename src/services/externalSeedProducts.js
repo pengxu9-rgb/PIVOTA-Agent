@@ -635,6 +635,29 @@ function normalizeOptionNameKey(name) {
     .trim();
 }
 
+const VARIANT_OPTION_QUERY_PARAM_LABELS = new Map([
+  ['size', 'Size'],
+  ['option', 'Option'],
+  ['color', 'Color'],
+  ['colour', 'Color'],
+  ['shade', 'Shade'],
+  ['scent', 'Scent'],
+  ['pack', 'Pack'],
+  ['count', 'Count'],
+  ['quantity', 'Quantity'],
+  ['qty', 'Quantity'],
+  ['volume', 'Size'],
+  ['format', 'Format'],
+  ['finish', 'Finish'],
+  ['style', 'Style'],
+]);
+
+function getVariantOptionQueryParamLabel(name) {
+  const normalized = normalizeOptionNameKey(name);
+  if (!normalized) return '';
+  return VARIANT_OPTION_QUERY_PARAM_LABELS.get(normalized) || '';
+}
+
 function isCombinedColorSizeOptionName(name) {
   const normalized = normalizeOptionNameKey(name);
   return normalized.includes('color') && normalized.includes('size');
@@ -696,6 +719,67 @@ function normalizeOptionEntries(options) {
   });
 
   return out;
+}
+
+function collectVariantOptionsFromUrl(value) {
+  const raw = normalizeHttpUrl(value);
+  if (!raw) return [];
+  try {
+    const parsed = new URL(raw);
+    const out = [];
+    const seen = new Set();
+    for (const [key, paramValue] of parsed.searchParams.entries()) {
+      const label = getVariantOptionQueryParamLabel(key);
+      const valueText = normalizeOptionText(paramValue);
+      if (!label || !valueText) continue;
+      const dedupeKey = `${label.toLowerCase()}|${valueText.toLowerCase()}`;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      out.push({ name: label, value: valueText });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+function collectVariantOptionsFromRawVariantUrl(rawVariant) {
+  const urls = [
+    rawVariant?.deep_link,
+    rawVariant?.url,
+    rawVariant?.product_url,
+  ];
+  for (const url of urls) {
+    const options = collectVariantOptionsFromUrl(url);
+    if (options.length > 0) return options;
+  }
+  return [];
+}
+
+function isSkuLikeVariantText(value, rawVariant) {
+  const normalized = normalizeOptionText(value).toLowerCase();
+  if (!normalized) return false;
+  const identityTokens = [
+    rawVariant?.sku,
+    rawVariant?.sku_id,
+    rawVariant?.variant_sku,
+    rawVariant?.variant_id,
+    rawVariant?.id,
+  ]
+    .map((item) => normalizeOptionText(item).toLowerCase())
+    .filter(Boolean);
+  if (identityTokens.includes(normalized)) return true;
+  return /^[a-z]*\d[a-z0-9-]*$/i.test(normalized) && normalized.length >= 4 && !/\s/.test(normalized);
+}
+
+function shouldPreferUrlVariantOptions(options, urlOptions, rawVariant) {
+  if (!urlOptions.length) return false;
+  if (!options.length) return true;
+  return options.every((option) => {
+    const optionName = normalizeOptionNameKey(option?.name);
+    if (!['offer', 'option', 'variant', 'sku', 'sku id'].includes(optionName)) return false;
+    return isSkuLikeVariantText(option?.value, rawVariant);
+  });
 }
 
 function collectSeedImageUrls(seedData, row) {
@@ -764,7 +848,10 @@ function collectVariantHintTokensFromUrl(value) {
       const normalizedKey = normalizeVariantHintToken(key);
       const normalizedValue = normalizeVariantHintToken(paramValue);
       if (!normalizedValue) continue;
-      if (!['v', 'variant', 'variant_id', 'sku', 'sku_id', 'pid'].includes(normalizedKey)) {
+      if (
+        !['v', 'variant', 'variant_id', 'sku', 'sku_id', 'pid'].includes(normalizedKey) &&
+        !getVariantOptionQueryParamLabel(key)
+      ) {
         continue;
       }
       out.push(normalizedValue);
@@ -877,6 +964,28 @@ function resolveSelectedSeedVariant({
   let candidate = null;
   if (explicitMatches.length === 1) {
     candidate = explicitMatches[0];
+  } else if (explicitMatches.length > 1) {
+    const priceMatchIds = new Set(
+      priceMatches.map((variant) => String(variant?.variant_id || variant?.id || '').trim()).filter(Boolean),
+    );
+    const imageMatchIds = new Set(
+      imageMatches.map((variant) => String(variant?.variant_id || variant?.id || '').trim()).filter(Boolean),
+    );
+    const priceNarrowed = priceMatchIds.size
+      ? explicitMatches.filter((variant) =>
+          priceMatchIds.has(String(variant?.variant_id || variant?.id || '').trim()),
+        )
+      : [];
+    const imageNarrowed = imageMatchIds.size
+      ? explicitMatches.filter((variant) =>
+          imageMatchIds.has(String(variant?.variant_id || variant?.id || '').trim()),
+        )
+      : [];
+    if (priceNarrowed.length === 1) {
+      candidate = priceNarrowed[0];
+    } else if (imageNarrowed.length === 1) {
+      candidate = imageNarrowed[0];
+    }
   } else if (!explicitMatches.length && imageMatches.length === 1 && priceMatches.length === 1) {
     const imageVariantId = String(imageMatches[0]?.variant_id || imageMatches[0]?.id || '').trim();
     const priceVariantId = String(priceMatches[0]?.variant_id || priceMatches[0]?.id || '').trim();
@@ -999,6 +1108,7 @@ function stripLegacyVariantContainers(seedData) {
 }
 
 function normalizeOptions(rawVariant, optionName, optionValue, productOptionNames = []) {
+  const urlOptions = collectVariantOptionsFromRawVariantUrl(rawVariant);
   const directOptionSources = [
     rawVariant?.options,
     rawVariant?.choices,
@@ -1011,20 +1121,26 @@ function normalizeOptions(rawVariant, optionName, optionValue, productOptionName
   for (const source of directOptionSources) {
     if (Array.isArray(source)) {
       const normalized = normalizeOptionEntries(source);
-      if (normalized.length > 0) return normalized;
+      if (normalized.length > 0) {
+        return shouldPreferUrlVariantOptions(normalized, urlOptions, rawVariant) ? urlOptions : normalized;
+      }
     }
 
     if (source && typeof source === 'object') {
       const normalized = normalizeOptionEntries(
         Object.entries(source).map(([name, value]) => ({ name, value })),
       );
-      if (normalized.length > 0) return normalized;
+      if (normalized.length > 0) {
+        return shouldPreferUrlVariantOptions(normalized, urlOptions, rawVariant) ? urlOptions : normalized;
+      }
     }
   }
 
   if (Array.isArray(rawVariant?.options)) {
     const normalized = normalizeOptionEntries(rawVariant.options);
-    if (normalized.length > 0) return normalized;
+    if (normalized.length > 0) {
+      return shouldPreferUrlVariantOptions(normalized, urlOptions, rawVariant) ? urlOptions : normalized;
+    }
   }
 
   const tupleOptions = normalizeOptionEntries(
@@ -1044,10 +1160,12 @@ function normalizeOptions(rawVariant, optionName, optionValue, productOptionName
     const direct = normalizeOptionEntries([
       { name: optionName || 'Variant', value: optionValue || 'Default' },
     ]);
-    if (direct.length > 0) return direct;
+    if (direct.length > 0) {
+      return shouldPreferUrlVariantOptions(direct, urlOptions, rawVariant) ? urlOptions : direct;
+    }
   }
 
-  return [];
+  return urlOptions;
 }
 
 function normalizeSeedVariants(seedData, row) {
@@ -1073,9 +1191,6 @@ function normalizeSeedVariants(seedData, row) {
         rawVariant.sku || rawVariant.sku_id || rawVariant.variant_sku || rawVariant.variant_id || rawVariant.id || '',
       ).trim();
       const variantId = String(rawVariant.variant_id || rawVariant.id || sku || `seed-variant-${idx + 1}`).trim();
-      const title =
-        String(rawVariant.title || rawVariant.name || optionValue || sku || `Variant ${idx + 1}`).trim() ||
-        `Variant ${idx + 1}`;
       const currency = normalizeCurrency(
         rawVariant.currency || rawVariant.price_currency || rawVariant.pricing?.current?.currency,
         fallbackCurrency,
@@ -1131,6 +1246,12 @@ function normalizeSeedVariants(seedData, row) {
       const normalizedImageUrls = narrowedImageUrls.length > 0 ? narrowedImageUrls : productImageUrls;
       const imageUrl = normalizedImageUrls[0];
       const options = normalizeOptions(rawVariant, optionName, optionValue, productOptionNames);
+      const rawTitle = String(rawVariant.title || rawVariant.name || optionValue || sku || '').trim();
+      const inferredTitle = options.map((option) => option.value).filter(Boolean).join(' / ');
+      const title =
+        (rawTitle && !isSkuLikeVariantText(rawTitle, rawVariant) ? rawTitle : inferredTitle) ||
+        rawTitle ||
+        `Variant ${idx + 1}`;
       const url = normalizeHttpUrl(rawVariant.deep_link || rawVariant.url || rawVariant.product_url);
       const availability = normalizeSeedAvailability(rawAvailability);
       const description = String(

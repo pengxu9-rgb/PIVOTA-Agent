@@ -1613,7 +1613,7 @@ async function fetchExternalCandidates({
     );
     out.push(...brandFieldMatches);
     const brandFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
-    if (brandFocusedCandidates.length > 0) {
+    if (brandFocusedCandidates.length >= safeMinFocusedCandidates) {
       return brandFocusedCandidates.slice(0, safeLimit * 3);
     }
 
@@ -1627,7 +1627,7 @@ async function fetchExternalCandidates({
       : [];
     out.push(...brandTitleMatches);
     const titleFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
-    if (titleFocusedCandidates.length > 0) {
+    if (titleFocusedCandidates.length >= safeMinFocusedCandidates) {
       return titleFocusedCandidates.slice(0, safeLimit * 3);
     }
   }
