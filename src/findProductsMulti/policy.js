@@ -298,6 +298,36 @@ function resolveSemanticRewriteTimeoutMs(semanticContract = null) {
   return FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_TIMEOUT_MS;
 }
 
+function isShortBeautyCategoryHeadQuery(queryText = '') {
+  const normalized = String(queryText || '').trim().toLowerCase();
+  if (!normalized) return false;
+  if (/[?!,:;]/.test(normalized)) return false;
+  if (normalized.length > 48) return false;
+  if (
+    /\b(best|recommend|routine|products?|need|help|for|with|without|under|below|over|budget|skin|concern|gift)\b/.test(
+      normalized,
+    )
+  ) {
+    return false;
+  }
+  const tokens = normalized.split(/\s+/).filter(Boolean);
+  if (tokens.length === 0 || tokens.length > 3) return false;
+  return tokens.every((token) => /^[a-z0-9][a-z0-9+\-]*$/.test(token));
+}
+
+function shouldSkipPublicBeautyCategorySemanticRewrite({
+  source = '',
+  rawQuery = '',
+  brandLike = false,
+  beautyQueryProfile = null,
+} = {}) {
+  if (String(source || '').trim().toLowerCase() !== 'search') return false;
+  if (brandLike) return false;
+  if (!isShortBeautyCategoryHeadQuery(rawQuery)) return false;
+  const profile = beautyQueryProfile || buildBeautyQueryProfile({ rawQuery });
+  return Boolean(profile?.isSpecificBeautyQuery);
+}
+
 // Reason codes (atomic; safe to log/aggregate).
 const REASON_CODES = {
   OBJ_EXACT: 'OBJ_EXACT',
@@ -4296,12 +4326,25 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     String(search?.concern_class || search?.concernClass || '').trim() ||
     String(semanticContract?.concern_class || semanticContract?.concernClass || '').trim() ||
     String(buildBeautyQueryProfile({ rawQuery: latestUserQuery })?.concernClass || '').trim();
+  const preIntentBeautyQueryProfile = buildBeautyQueryProfile({ rawQuery: latestUserQuery });
   const preIntentBrandDetection = detectBrandEntities(latestUserQuery, { candidateProducts: [] });
   const publicBrandSearchSemanticRewriteSkip =
     String(metadata?.source || '').trim().toLowerCase() === 'search' &&
     Boolean(preIntentBrandDetection?.brand_like) &&
     !hasExplicitCategoryHint(latestUserQuery, null);
-  const semanticRewriteTimeoutMs = publicBrandSearchSemanticRewriteSkip
+  const publicShortBeautyCategorySemanticRewriteSkip =
+    shouldSkipPublicBeautyCategorySemanticRewrite({
+      source: metadata?.source,
+      rawQuery: latestUserQuery,
+      brandLike: Boolean(preIntentBrandDetection?.brand_like),
+      beautyQueryProfile: preIntentBeautyQueryProfile,
+    });
+  const publicSemanticRewriteSkipReason = publicBrandSearchSemanticRewriteSkip
+    ? 'semantic_rewrite_skipped_brand_search'
+    : publicShortBeautyCategorySemanticRewriteSkip
+    ? 'semantic_rewrite_skipped_public_category_search'
+    : null;
+  const semanticRewriteTimeoutMs = publicSemanticRewriteSkipReason
     ? 0
     : resolveSemanticRewriteTimeoutMs(semanticContract);
   const resolveIntentLlmExecutionPlan =
@@ -4379,9 +4422,7 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     intentWithMeta =
       semanticRewriteTimeoutMs <= 0
         ? buildSkippedSemanticRewriteIntentWithMeta(
-            publicBrandSearchSemanticRewriteSkip
-              ? 'semantic_rewrite_skipped_brand_search'
-              : 'semantic_rewrite_skipped_exact_lookup',
+            publicSemanticRewriteSkipReason || 'semantic_rewrite_skipped_exact_lookup',
           )
         : await Promise.race([
             extractIntentWithMeta(latestUserQuery, recentQueries, recentMessages, {
