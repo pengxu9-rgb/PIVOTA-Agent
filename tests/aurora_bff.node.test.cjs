@@ -6426,6 +6426,28 @@ test('fetchRecoAlternativesForProduct: thin role-scope moisturizer anchors do no
                 description: 'Niacinamide serum for excess oil and pores.',
               },
               {
+                product_id: 'ext_inkey_niacinamide',
+                merchant_id: 'external_seed',
+                brand: 'The Inkey List',
+                name: '10% Niacinamide Serum',
+                display_name: '10% Niacinamide Serum',
+                product_type: 'Serum',
+                category: 'Serum',
+                retrieval_source: 'external_seed',
+                description: 'Hydrating serum with niacinamide and hyaluronic support for excess oil.',
+              },
+              {
+                product_id: 'ext_skin1004_niacinamide_ampoule',
+                merchant_id: 'external_seed',
+                brand: 'Skin1004',
+                name: 'Niacinamide 10 Boosting Shot Ampoule',
+                display_name: 'Niacinamide 10 Boosting Shot Ampoule',
+                product_type: 'Serum',
+                category: 'Serum',
+                retrieval_source: 'external_seed',
+                description: 'Calming hydrating ampoule with niacinamide for pores and shine.',
+              },
+              {
                 product_id: 'ext_haruharu_retinal_serum',
                 merchant_id: 'external_seed',
                 brand: 'Haruharu Wonder',
@@ -6624,7 +6646,7 @@ test('fetchRecoAlternativesForProduct: thin role-scope moisturizer anchors do no
         assert.equal(out?.compare_meta?.open_world_status, 'skipped_sufficient_pool');
         assert.ok(seenQueries.some((query) => /\bmoisturizer\b/i.test(String(query))));
         const names = out.alternatives.map((row) => String(row?.product?.name || row?.name || ''));
-        assert.equal(names.some((name) => /Niacinamide|Retinal|Eye/i.test(name)), false);
+        assert.equal(names.some((name) => /Niacinamide|Retinal|Eye|Boosting Shot Ampoule/i.test(name)), false);
         assert.equal(names.some((name) => /dark spot|radiance/i.test(name)), false);
         assert.equal(names.some((name) => /tinted moisturizer/i.test(name)), false);
         assert.equal(out.alternatives.every((row) => /moisturizer/i.test(String(row?.product?.category || ''))), true);
@@ -6822,6 +6844,143 @@ test('fetchRecoAlternativesForProduct: grounded pool folds promo and subscriptio
         const brands = out.alternatives.map((row) => String(row?.product?.brand || row?.brand || ''));
         assert.ok(brands.filter((brand) => /round lab/i.test(brand)).length <= 2);
         assert.ok(new Set(brands.map((brand) => brand.toLowerCase()).filter(Boolean)).size >= 2);
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        axios.get = originalGet;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('fetchRecoAlternativesForProduct: sunscreen titles beat seed category drift in grounded pool role inference', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED: 'false',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      axios.get = async (url) => {
+        if (!isProductsSearchUrl(url)) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: 'ext_haruharu_airyfit',
+                merchant_id: 'external_seed',
+                brand: 'Haruharu Wonder',
+                name: 'Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented',
+                display_name: 'Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented',
+                product_type: 'Serum',
+                category: 'Serum',
+                retrieval_source: 'external_seed',
+                key_features: ['Airy sunscreen', 'Daily UV protection', 'Unscented finish'],
+                short_description: 'A lightweight face sunscreen with an airy finish.',
+                canonical_product_ref: {
+                  product_id: 'ext_haruharu_airyfit',
+                  merchant_id: 'external_seed',
+                },
+              },
+              {
+                product_id: 'ext_round_lab_mild_up',
+                merchant_id: 'external_seed',
+                brand: 'Round Lab',
+                name: 'Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum',
+                display_name: 'Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum',
+                product_type: 'Serum',
+                category: 'Serum',
+                retrieval_source: 'external_seed',
+                key_features: ['Mild-up sunscreen', 'Daily UV protection'],
+                short_description: 'A straightforward sunscreen for daily UV protection.',
+                canonical_product_ref: {
+                  product_id: 'ext_round_lab_mild_up',
+                  merchant_id: 'external_seed',
+                },
+              },
+              {
+                product_id: 'ext_lrp_aox',
+                merchant_id: 'external_seed',
+                brand: 'La Roche-Posay',
+                name: 'Anthelios AOX Daily Antioxidant Face Serum SPF 50',
+                display_name: 'Anthelios AOX Daily Antioxidant Face Serum SPF 50',
+                product_type: 'Serum',
+                category: 'Serum',
+                retrieval_source: 'external_seed',
+                key_features: ['Antioxidant SPF', 'Face serum texture'],
+                short_description: 'A sunscreen serum for daily UV protection.',
+                canonical_product_ref: {
+                  product_id: 'ext_lrp_aox',
+                  merchant_id: 'external_seed',
+                },
+              },
+            ],
+          },
+        };
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { __internal } = routeModule;
+        let geminiCalled = false;
+        __internal.__setCallGeminiJsonObjectForTest(async () => {
+          geminiCalled = true;
+          throw new Error('provider should not run when title-grounded sunscreen pool is sufficient');
+        });
+
+        const out = await __internal.fetchRecoAlternativesForProduct({
+          ctx: {
+            lang: 'EN',
+            request_id: 'req_sunscreen_seed_category_drift',
+            trace_id: 'trace_sunscreen_seed_category_drift',
+          },
+          profileSummary: null,
+          recentLogs: [],
+          productInput: 'SKINTIFIC Matte Fit Serum Sunscreen SPF 50+ PA++++',
+          productObj: {
+            product_id: 'ext_skintific_matte_fit',
+            merchant_id: 'external_seed',
+            brand: 'SKINTIFIC',
+            name: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+            display_name: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+            product_type: 'sunscreen',
+            category: 'sunscreen',
+            role_scope: 'daily_sunscreen_finish_fit',
+            selected_target_id: 'daily_sunscreen_finish_fit',
+            key_features: ['Matte finish', 'Serum sunscreen', 'Daily UV protection'],
+            short_description: 'A matte serum sunscreen for oily-skin routines.',
+          },
+          anchorId: 'ext_skintific_matte_fit',
+          maxTotal: 3,
+          candidatePool: [],
+          debug: true,
+          logger: null,
+          options: {
+            recommendation_mode: 'pool_open_world_mixed',
+            disable_synthetic_local_fallback: true,
+            skip_anchor_precheck: true,
+          },
+        });
+
+        assert.equal(out?.ok, true);
+        assert.equal(geminiCalled, false);
+        assert.equal(out?.compare_meta?.open_world_status, 'skipped_sufficient_pool');
+        assert.equal(out?.compare_meta?.pool_recall_status, 'full');
+        const names = out.alternatives.map((row) => String(row?.product?.name || row?.name || ''));
+        assert.equal(out.alternatives.length, 3);
+        assert.ok(names.some((name) => /Moisture Airyfit Daily Sunscreen/i.test(name)));
+        assert.ok(names.some((name) => /Birch Mild-Up Sunscreen/i.test(name)));
       } finally {
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
         loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
