@@ -745,4 +745,49 @@ describe('RecommendationEngine external candidate fetch', () => {
       ),
     ).toBe(false);
   });
+
+  test('uses internal category-focused candidates before recent merchant rows', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryMock = jest.fn(async (sql, params) => {
+      if (
+        String(sql).includes('FROM products_cache') &&
+        String(sql).includes("product_data->>'product_type'") &&
+        Array.isArray(params?.[2]) &&
+        params[2].includes('serum')
+      ) {
+        return {
+          rows: [
+            {
+              product_data: {
+                merchant_id: 'merch_marketplace',
+                product_id: 'internal_serum_match',
+                title: 'The Ordinary Niacinamide 10% + Zinc 1%',
+                vendor: 'The Ordinary',
+                product_type: 'Serum',
+                price: 12,
+                currency: 'USD',
+                inventory_quantity: 10,
+                status: 'active',
+              },
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchInternalCandidates({
+      merchantId: 'merch_marketplace',
+      categoryHint: 'Serum',
+      limit: 6,
+    });
+
+    expect(products.map((item) => item.product_id)).toEqual(['internal_serum_match']);
+    expect(queryMock).toHaveBeenCalledTimes(1);
+  });
 });

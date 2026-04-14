@@ -208,6 +208,57 @@ describe('RecommendationEngine (PDP)', () => {
     expect(result.items.map((item) => item.product_id)).toEqual(['ext_lip_color']);
   });
 
+  test('dedupes same-title similar candidates without relying on identity rows', () => {
+    const base = makeProduct({
+      merchant_id: 'external_seed',
+      product_id: 'ext_base_quad',
+      title: 'Runway Eye Color Quad Creme',
+      brand: 'Tom Ford Beauty',
+      category: 'Eyeshadow',
+      price: 96,
+      source: 'external_seed',
+    });
+
+    const external = [
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_foundation_a',
+        title: 'Architecture Soft Matte Blurring Foundation',
+        brand: 'Tom Ford Beauty',
+        category: 'Foundation',
+        price: 96,
+        source: 'external_seed',
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_foundation_b',
+        title: 'Architecture Soft Matte Blurring Foundation',
+        brand: 'Tom Ford Beauty',
+        category: 'Foundation',
+        price: 96,
+        source: 'external_seed',
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_lip_color',
+        title: 'Fucking Fabulous Lip Color',
+        brand: 'Tom Ford Beauty',
+        category: 'Lip Color',
+        price: 65,
+        source: 'external_seed',
+      }),
+    ];
+
+    const out = pickLayeredRecommendations({
+      baseProduct: base,
+      internalCandidates: [],
+      externalCandidates: external,
+      k: 6,
+    });
+
+    expect(out.items.map((item) => item.product_id)).toEqual(['ext_foundation_a', 'ext_lip_color']);
+  });
+
   test('dedupes similar candidates by live identity exact group and product line', async () => {
     const result = await recommend({
       pdp_product: {

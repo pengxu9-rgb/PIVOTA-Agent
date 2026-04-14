@@ -1233,7 +1233,7 @@ function pickLayeredRecommendations({
   const uniqueCandidates = uniqueByKey(rawCandidates, (c) => `${c.features.merchantId}::${c.features.productId}`);
 
   // Avoid excessive work.
-  const candidates = uniqueCandidates
+  const sortedCandidates = uniqueCandidates
     .sort((a, b) => {
       if (a.layerPriority !== b.layerPriority) return a.layerPriority - b.layerPriority;
       if (confidenceRank(a.confidence) !== confidenceRank(b.confidence)) {
@@ -1241,7 +1241,12 @@ function pickLayeredRecommendations({
       }
       if (a.score !== b.score) return b.score - a.score;
       return a.features.productId.localeCompare(b.features.productId);
-    })
+    });
+  const titleUniqueCandidates = uniqueByKey(
+    sortedCandidates,
+    (c) => buildRecommendationTitleDedupeKey(c.product) || `${c.features.merchantId}::${c.features.productId}`,
+  );
+  const candidates = titleUniqueCandidates
     .slice(0, 400);
 
   const layerCounts = {};
@@ -1347,9 +1352,10 @@ function pickLayeredRecommendations({
   };
 }
 
-async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId }) {
+async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId, categoryHint }) {
   const mid = String(merchantId || '').trim();
   const safeLimit = Math.min(Math.max(1, Number(limit || 120)), 400);
+  const categoryAliases = buildNormalizedAliases(categoryHint);
 
   // In MOCK mode we may not have DATABASE_URL configured; use in-memory mock catalog
   // so PDP recommendations are still non-empty and fast locally.
@@ -1377,6 +1383,39 @@ async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId })
     }
   }
   const out = [];
+
+  try {
+    if (mid && mid !== EXTERNAL_SEED_MERCHANT_ID && categoryAliases.length) {
+      const res = await query(
+        `
+          SELECT product_data
+          FROM products_cache
+          WHERE merchant_id = $1
+            AND (expires_at IS NULL OR expires_at > now())
+            AND COALESCE(lower(product_data->>'status'), 'active') = 'active'
+            AND (
+              lower(coalesce(product_data->>'category', '')) = ANY($3)
+              OR lower(coalesce(product_data->>'product_type', '')) = ANY($3)
+              OR lower(coalesce(product_data->>'productType', '')) = ANY($3)
+              OR lower(coalesce(product_data->'platform_metadata'->>'product_type', '')) = ANY($3)
+            )
+          ORDER BY cached_at DESC NULLS LAST, id DESC
+          LIMIT $2
+        `,
+        [mid, Math.min(safeLimit * 2, 200), categoryAliases],
+      );
+      for (const row of res.rows || []) {
+        if (row?.product_data) out.push(toCandidate(row.product_data, { merchant_id: mid }));
+      }
+      const focused = uniqueByKey(out.filter(Boolean), (p) => `${getMerchantId(p)}::${getProductId(p)}`);
+      if (focused.length > 0) return focused.slice(0, safeLimit * 4);
+    }
+  } catch (err) {
+    logger.warn(
+      { err: err?.message || String(err), merchantId: mid, categoryHint },
+      'recommendations internal focused query failed',
+    );
+  }
 
   try {
     if (mid && mid !== EXTERNAL_SEED_MERCHANT_ID) {
@@ -1867,6 +1906,7 @@ async function recommend({
             merchantId: getMerchantId(baseProduct),
             limit: Math.max(60, safeK * 10),
             excludeMerchantId: getMerchantId(baseProduct),
+            categoryHint: baseLeaf,
           })
         : Promise.resolve([]),
     PDP_RECS_INTERNAL_FETCH_TIMEOUT_MS,
@@ -2115,6 +2155,7 @@ module.exports = {
     getParentCategory,
     isExternalProduct,
     fetchExternalCandidates,
+    fetchInternalCandidates,
     enrichExternalBaseProduct,
     extractProductDomains,
     normalizeHostname,
