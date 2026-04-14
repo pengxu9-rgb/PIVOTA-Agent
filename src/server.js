@@ -4872,6 +4872,16 @@ function resolvePublicBeautyUnifiedMinAcceptCount(requestedLimit = 20) {
   return safeRequestedLimit >= 8 ? 8 : safeRequestedLimit;
 }
 
+function resolvePublicBeautyCompoundIntent(queryText = '') {
+  const normalized = normalizeSearchTextForMatch(queryText);
+  if (!normalized) return null;
+  const tokens = new Set(tokenizeSearchTextForMatch(normalized));
+  if (normalized === 'hair oil' || (tokens.has('hair') && tokens.has('oil'))) return 'hair_oil';
+  if (normalized === 'lip balm' || (tokens.has('lip') && tokens.has('balm'))) return 'lip_balm';
+  if (normalized === 'lip oil' || (tokens.has('lip') && tokens.has('oil'))) return 'lip_oil';
+  return null;
+}
+
 function shouldForcePublicBeautyUnifiedExternalSeedContract(search = {}, metadata = {}) {
   if (!shouldDefaultPublicSearchExternalSeedContract(search, metadata)) return false;
   const queryText = String(search?.query || search?.q || '').trim();
@@ -22244,12 +22254,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               )
             : internalProductsForRecall;
           const internalProductsAfterAnchor = leashAnchoredInternalProducts;
-          const preferInternalBeautyCategoryCache =
-            cacheUsedBeautyCategoryBrowseFastpath && internalProductsAfterAnchor.length > 0;
-          const preferInternalSpecificBeautyCache =
-            internalProductsAfterAnchor.length > 0 &&
-            (cacheBeautyQueryProfile?.isSpecificBeautyQuery === true ||
-              preferInternalBeautyCategoryCache);
+	          const preferInternalBeautyCategoryCache =
+	            cacheUsedBeautyCategoryBrowseFastpath && internalProductsAfterAnchor.length > 0;
+	          const preferInternalSpecificBeautyCache =
+	            !publicBeautyUnifiedSearch &&
+	            internalProductsAfterAnchor.length > 0 &&
+	            (cacheBeautyQueryProfile?.isSpecificBeautyQuery === true ||
+	              preferInternalBeautyCategoryCache);
           const safeResultLimit = Math.max(1, Number(limit || 20));
           const needsPrimaryFillSupplement = internalProductsAfterAnchor.length < safeResultLimit;
           const shouldSkipExternalSupplementForPetHarness =
@@ -25108,9 +25119,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         !primaryQualityGate.accepted &&
         !primaryBrandLike &&
         !primaryHasExternalSeed;
-      const publicBeautyUnifiedMinAcceptCount = publicBeautyUnifiedSearch
-        ? resolvePublicBeautyUnifiedMinAcceptCount(requestedLimit)
-        : 0;
+	      const publicBeautyUnifiedMinAcceptCount = publicBeautyUnifiedSearch
+	        ? resolvePublicBeautyUnifiedMinAcceptCount(requestedLimit)
+	        : 0;
+	      const publicBeautyCompoundIntent = publicBeautyUnifiedSearch
+	        ? resolvePublicBeautyCompoundIntent(queryText)
+	        : null;
       const primaryMonocultureSignal = detectAuroraExternalSeedMonoculture({
         normalized: upstreamData,
         queryText,
@@ -25119,24 +25133,41 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const primaryMonoculture = Boolean(primaryMonocultureSignal.detected);
       const primaryIrrelevant =
         Boolean(queryText) && ((primaryUsableCount > 0 && !primaryRelevant) || primaryMonoculture);
-      const primaryUnderfilledPublicBeautyUnified =
-        operation === 'find_products_multi' &&
-        publicBeautyUnifiedSearch &&
-        requestedFindProductsMultiPage === 1 &&
-        primaryUsableCount > 0 &&
-        primaryUsableCount < publicBeautyUnifiedMinAcceptCount;
-      const shouldFallback =
-        primaryUnusable ||
-        primaryIrrelevant ||
-        primaryLowQualityNonempty ||
-        primaryUnderfilledPublicBeautyUnified;
+	      const primaryUnderfilledPublicBeautyUnified =
+	        operation === 'find_products_multi' &&
+	        publicBeautyUnifiedSearch &&
+	        !publicBeautyCompoundIntent &&
+	        requestedFindProductsMultiPage === 1 &&
+	        primaryUsableCount > 0 &&
+	        primaryUsableCount < publicBeautyUnifiedMinAcceptCount;
+	      const primaryExactIntentUnderfilledPublicBeauty =
+	        operation === 'find_products_multi' &&
+	        publicBeautyUnifiedSearch &&
+	        Boolean(publicBeautyCompoundIntent) &&
+	        requestedFindProductsMultiPage === 1 &&
+	        primaryUsableCount > 0 &&
+	        primaryUsableCount < requestedLimit;
+	      const primaryUnderfilledReason = primaryExactIntentUnderfilledPublicBeauty
+	        ? 'public_search_underfilled_exact_intent'
+	        : primaryUnderfilledPublicBeautyUnified
+	          ? 'public_search_underfilled_unified_relevance'
+	          : null;
+	      const disableSecondaryFallbackForPublicBeautyCompound =
+	        publicBeautyUnifiedSearch && Boolean(publicBeautyCompoundIntent);
+	      const shouldFallback =
+	        !disableSecondaryFallbackForPublicBeautyCompound &&
+	        (primaryUnusable ||
+	          primaryIrrelevant ||
+	          primaryLowQualityNonempty ||
+	          primaryUnderfilledPublicBeautyUnified);
       const forceInvokeFallbackForFragrance =
         hasFragranceQuerySignal(queryText) &&
         (primaryUsableCount === 0 || primaryLowQualityNonempty);
-      const primaryQualityGatePassed =
-        !primaryLowQualityNonempty &&
-        !primaryUnderfilledPublicBeautyUnified &&
-        primaryUsableCount > 0;
+	      const primaryQualityGatePassed =
+	        !primaryLowQualityNonempty &&
+	        !primaryUnderfilledPublicBeautyUnified &&
+	        !primaryExactIntentUnderfilledPublicBeauty &&
+	        primaryUsableCount > 0;
       const secondarySkipBrandLike = Boolean(
         detectBrandEntities(queryText, { candidateProducts: [] })?.brand_like,
       );
@@ -25690,14 +25721,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            semantic_retry_actual_attempted: semanticRetryActualAttempted,
 	            semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
 	            semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
-	            primary_quality_gate_passed: primaryQualityGatePassed,
+		            primary_quality_gate_passed: primaryQualityGatePassed,
 	            primary_quality_score:
 	              Number.isFinite(Number(primaryQualityScore)) && Number(primaryQualityScore) >= 0
 	                ? Number(primaryQualityScore)
 	                : null,
-	            low_quality_nonempty_detected: primaryLowQualityNonempty,
-	            primary_underfilled_public_beauty_unified: primaryUnderfilledPublicBeautyUnified,
-	            internal_raw_count: routeHealthInternalCount,
+		            low_quality_nonempty_detected: primaryLowQualityNonempty,
+		            primary_underfilled_public_beauty_unified: primaryUnderfilledPublicBeautyUnified,
+		            primary_exact_intent_underfilled_public_beauty: primaryExactIntentUnderfilledPublicBeauty,
+		            ...(publicBeautyCompoundIntent ? { compound_intent: publicBeautyCompoundIntent } : {}),
+		            ...(primaryUnderfilledReason ? { underfilled_reason: primaryUnderfilledReason } : {}),
+		            internal_raw_count: routeHealthInternalCount,
 	            external_raw_count: routeHealthExternalCount,
 	            merged_pre_limit_count: mergedPreLimitCount,
 		            supplement_attempted: supplementAttempted,
@@ -25723,8 +25757,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	                    ? Number(primaryQualityScore)
 	                    : null,
 	                low_quality_nonempty_detected: Boolean(primaryLowQualityNonempty),
-	                primary_underfilled_public_beauty_unified: primaryUnderfilledPublicBeautyUnified,
-	                internal_raw_count: routeHealthInternalCount,
+		                primary_underfilled_public_beauty_unified: primaryUnderfilledPublicBeautyUnified,
+		                primary_exact_intent_underfilled_public_beauty: primaryExactIntentUnderfilledPublicBeauty,
+		                ...(publicBeautyCompoundIntent ? { compound_intent: publicBeautyCompoundIntent } : {}),
+		                ...(primaryUnderfilledReason ? { underfilled_reason: primaryUnderfilledReason } : {}),
+		                internal_raw_count: routeHealthInternalCount,
                 external_raw_count: routeHealthExternalCount,
                 merged_pre_limit_count: mergedPreLimitCount,
 	                supplement_attempted: supplementAttempted,
@@ -25774,14 +25811,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 semantic_retry_actual_attempted: semanticRetryActualAttempted,
 		            semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
 	            semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
-	            primary_quality_gate_passed: primaryQualityGatePassed,
+		            primary_quality_gate_passed: primaryQualityGatePassed,
 	            primary_quality_score:
 	              Number.isFinite(Number(primaryQualityScore)) && Number(primaryQualityScore) >= 0
 	                ? Number(primaryQualityScore)
 	                : null,
-	            low_quality_nonempty_detected: primaryLowQualityNonempty,
-	            primary_underfilled_public_beauty_unified: primaryUnderfilledPublicBeautyUnified,
-	            internal_raw_count: routeHealthInternalCount,
+		            low_quality_nonempty_detected: primaryLowQualityNonempty,
+		            primary_underfilled_public_beauty_unified: primaryUnderfilledPublicBeautyUnified,
+		            primary_exact_intent_underfilled_public_beauty: primaryExactIntentUnderfilledPublicBeauty,
+		            ...(publicBeautyCompoundIntent ? { compound_intent: publicBeautyCompoundIntent } : {}),
+		            ...(primaryUnderfilledReason ? { underfilled_reason: primaryUnderfilledReason } : {}),
+		            internal_raw_count: routeHealthInternalCount,
 	            external_raw_count: routeHealthExternalCount,
 	            merged_pre_limit_count: mergedPreLimitCount,
 		            supplement_attempted: supplementAttempted,
@@ -25807,8 +25847,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	                    ? Number(primaryQualityScore)
 	                    : null,
 	                low_quality_nonempty_detected: Boolean(primaryLowQualityNonempty),
-	                primary_underfilled_public_beauty_unified: primaryUnderfilledPublicBeautyUnified,
-	                internal_raw_count: routeHealthInternalCount,
+		                primary_underfilled_public_beauty_unified: primaryUnderfilledPublicBeautyUnified,
+		                primary_exact_intent_underfilled_public_beauty: primaryExactIntentUnderfilledPublicBeauty,
+		                ...(publicBeautyCompoundIntent ? { compound_intent: publicBeautyCompoundIntent } : {}),
+		                ...(primaryUnderfilledReason ? { underfilled_reason: primaryUnderfilledReason } : {}),
+		                internal_raw_count: routeHealthInternalCount,
                 external_raw_count: routeHealthExternalCount,
                 merged_pre_limit_count: mergedPreLimitCount,
 	                supplement_attempted: supplementAttempted,
@@ -26548,10 +26591,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             Number.isFinite(Number(searchDecision?.ambiguity_score_pre))
               ? Number(searchDecision.ambiguity_score_pre)
               : traceAmbiguityScorePre,
-          ambiguityScorePost: searchDecision?.ambiguity_score_post,
-          clarifyTriggered: hasClarification || Boolean(searchDecision?.clarify_triggered),
-          degradeFlags: routeDegradeFlags,
-        }),
+	          ambiguityScorePost: searchDecision?.ambiguity_score_post,
+	          clarifyTriggered: hasClarification || Boolean(searchDecision?.clarify_triggered),
+	          degradeFlags: routeDegradeFlags,
+	          primaryQualityGatePassed:
+	            existingMeta?.primary_quality_gate_passed != null
+	              ? existingMeta.primary_quality_gate_passed
+	              : existingMeta?.route_health?.primary_quality_gate_passed,
+	          primaryQualityScore: existingMeta?.primary_quality_score,
+	          lowQualityNonemptyDetected: existingMeta?.low_quality_nonempty_detected,
+	        }),
         search_trace: buildSearchTrace({
           traceId: gatewayRequestId,
           rawQuery: queryText,
@@ -27031,6 +27080,7 @@ module.exports._debug = {
   searchCreatorSellableFromCache,
   searchCrossMerchantFromCache,
   mergePublicBeautyUnifiedSearchProducts,
+  resolvePublicBeautyCompoundIntent,
   fetchProductDetailForOffers,
   fetchExternalSeedProductDetailFromDb,
   stripResponseOwnedPdpModulesFromCanonicalPayload,

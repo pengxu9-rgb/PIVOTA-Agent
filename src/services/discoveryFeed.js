@@ -282,6 +282,66 @@ const BEAUTY_INTEREST_CATEGORY_BY_PHRASE = Object.freeze({
     verticals: ['makeup'],
   },
 });
+const EXPLICIT_BEAUTY_COMPOUND_INTENT_RULES = Object.freeze({
+  hair_oil: Object.freeze({
+    id: 'hair_oil',
+    label: 'hair oil',
+    phrases: ['hair oil'],
+    primaryPositive: ['hair oil'],
+    weakPositive: ['hair treatment', 'hair care', 'haircare'],
+    verticals: ['haircare'],
+    conjunctionTokens: ['hair', 'oil'],
+    positiveTitleTokens: ['oil'],
+    suppressedTokenCategories: ['hair', 'oil'],
+    negativeClasses: [
+      'shampoo',
+      'conditioner',
+      'moisturizer',
+      'moisturiser',
+      'cream',
+      'toner',
+      'mist',
+      'fragrance',
+      'fragrance mist',
+      'hair styling',
+      'styling',
+      'clip',
+      'clips',
+      'pin',
+      'pins',
+      'scrunchie',
+      'scrunchies',
+      'brush',
+      'comb',
+      'accessory',
+      'accessories',
+    ],
+  }),
+  lip_balm: Object.freeze({
+    id: 'lip_balm',
+    label: 'lip balm',
+    phrases: ['lip balm'],
+    primaryPositive: ['lip balm'],
+    weakPositive: ['lip treatment', 'lip care'],
+    verticals: ['makeup'],
+    conjunctionTokens: ['lip', 'balm'],
+    positiveTitleTokens: ['balm'],
+    suppressedTokenCategories: ['lip', 'balm'],
+    negativeClasses: ['lipstick', 'mascara', 'foundation', 'fragrance', 'brush', 'clip', 'pins'],
+  }),
+  lip_oil: Object.freeze({
+    id: 'lip_oil',
+    label: 'lip oil',
+    phrases: ['lip oil'],
+    primaryPositive: ['lip oil'],
+    weakPositive: ['lip treatment', 'lip care'],
+    verticals: ['makeup'],
+    conjunctionTokens: ['lip', 'oil'],
+    positiveTitleTokens: ['oil'],
+    suppressedTokenCategories: ['lip', 'oil'],
+    negativeClasses: ['lipstick', 'mascara', 'foundation', 'fragrance', 'brush', 'clip', 'pins'],
+  }),
+});
 const GENERIC_DISCOVERY_QUERY_TOKENS = new Set([
   'beauty',
   'skincare',
@@ -1039,6 +1099,17 @@ function buildDiscoveryLikePatternsFromTerms(phrases = [], tokens = [], { phrase
 function resolveBeautyInterestPhraseHint(phrase) {
   const normalized = normalizeText(phrase || '');
   if (!normalized) return { categories: [], verticals: [] };
+  const compoundIntent = resolveExplicitBeautyCompoundIntent(normalized);
+  const compoundRule = compoundIntent ? EXPLICIT_BEAUTY_COMPOUND_INTENT_RULES[compoundIntent] : null;
+  if (compoundRule) {
+    return {
+      categories: [...compoundRule.primaryPositive, ...compoundRule.weakPositive],
+      primaryCategories: compoundRule.primaryPositive,
+      weakCategories: compoundRule.weakPositive,
+      verticals: compoundRule.verticals,
+      compoundIntent,
+    };
+  }
   const exactHint = BEAUTY_INTEREST_CATEGORY_BY_PHRASE[normalized];
   if (exactHint) return exactHint;
 
@@ -3278,6 +3349,11 @@ function buildDiscoveryProviderStepSummary({
   market,
   marketSource,
   warningCodes,
+  compoundIntent,
+  externalSeedStageCounts,
+  externalSeedRawCount,
+  externalSeedQualifiedCount,
+  externalSeedFilteredCompoundCount,
 } = {}) {
   return {
     provider,
@@ -3298,6 +3374,19 @@ function buildDiscoveryProviderStepSummary({
     ...(marketSource ? { market_source: String(marketSource) } : {}),
     ...(Array.isArray(warningCodes) && warningCodes.length > 0
       ? { warning_codes: uniqStrings(warningCodes, 12) }
+      : {}),
+    ...(compoundIntent ? { compound_intent: String(compoundIntent) } : {}),
+    ...(Array.isArray(externalSeedStageCounts) && externalSeedStageCounts.length > 0
+      ? { external_seed_stage_counts: externalSeedStageCounts }
+      : {}),
+    ...(externalSeedRawCount != null
+      ? { external_seed_raw_count: Number(externalSeedRawCount || 0) }
+      : {}),
+    ...(externalSeedQualifiedCount != null
+      ? { external_seed_qualified_count: Number(externalSeedQualifiedCount || 0) }
+      : {}),
+    ...(externalSeedFilteredCompoundCount != null
+      ? { external_seed_filtered_compound_count: Number(externalSeedFilteredCompoundCount || 0) }
       : {}),
     ...(error ? { error: String(error) } : {}),
   };
@@ -3621,15 +3710,18 @@ async function fetchExternalSeedCandidates({
             provider,
             label: 'external_seed_pool',
             query: phrases.join(' | '),
-            limit: safeLimit,
-            returned: products.length,
-            status: 200,
-            latencyMs: Date.now() - stepStartedAt,
-            market,
-            marketSource: marketConfig.source,
-          }),
-        ],
-      };
+	            limit: safeLimit,
+	            returned: products.length,
+	            status: 200,
+	            latencyMs: Date.now() - stepStartedAt,
+	            market,
+	            marketSource: marketConfig.source,
+	            compoundIntent: isExplicitQueryScopedBrowseRequest(request)
+	              ? resolveExplicitBeautyCompoundIntent(request?.query?.text)
+	              : null,
+	          }),
+	        ],
+	      };
     } catch (err) {
       const failureReason = classifyDiscoveryQueryError(err);
       recordDiscoveryRecallStep({
@@ -3886,6 +3978,12 @@ function buildBeautyInterestRecallTerms(request, profile, queries = []) {
   const tokenSet = new Set(tokens);
   const categoryTerms = new Set();
   const verticalTerms = new Set();
+  const primaryCategoryTerms = new Set();
+  const weakCategoryTerms = new Set();
+  const compoundIntent = isExplicitQueryScopedBrowseRequest(request)
+    ? resolveExplicitBeautyCompoundIntent(request?.query?.text)
+    : null;
+  const compoundRule = compoundIntent ? EXPLICIT_BEAUTY_COMPOUND_INTENT_RULES[compoundIntent] : null;
 
   const addCategoryTerms = (items = []) => {
     for (const item of Array.isArray(items) ? items : []) {
@@ -3901,13 +3999,35 @@ function buildBeautyInterestRecallTerms(request, profile, queries = []) {
     }
   };
 
+  const addCompoundCategoryTerms = (items = [], targetSet) => {
+    for (const item of Array.isArray(items) ? items : []) {
+      const normalized = normalizeText(item || '');
+      if (!normalized) continue;
+      categoryTerms.add(normalized);
+      targetSet.add(normalized);
+    }
+  };
+
   for (const phrase of uniqStrings([...effectiveQueries, ...searchTerms.phrases], 12)) {
     const hint = resolveBeautyInterestPhraseHint(phrase);
+    if (hint.compoundIntent && hint.compoundIntent === compoundIntent) {
+      addCompoundCategoryTerms(hint.primaryCategories, primaryCategoryTerms);
+      addCompoundCategoryTerms(hint.weakCategories, weakCategoryTerms);
+      addVerticalTerms(hint.verticals);
+      continue;
+    }
     addCategoryTerms(hint.categories);
     addVerticalTerms(hint.verticals);
   }
 
   for (const token of tokenSet) {
+    if (
+      compoundRule &&
+      Array.isArray(compoundRule.suppressedTokenCategories) &&
+      compoundRule.suppressedTokenCategories.includes(token)
+    ) {
+      continue;
+    }
     addCategoryTerms(BEAUTY_INTEREST_CATEGORY_BY_TOKEN[token] || []);
   }
 
@@ -3942,7 +4062,14 @@ function buildBeautyInterestRecallTerms(request, profile, queries = []) {
     tokens: searchTerms.tokens,
     patterns: patternTerms,
     categoryTerms: Array.from(categoryTerms).slice(0, 12),
+    primaryCategoryTerms: Array.from(primaryCategoryTerms).slice(0, 8),
+    weakCategoryTerms: Array.from(weakCategoryTerms).slice(0, 8),
     verticalTerms: Array.from(verticalTerms).slice(0, 6),
+    compoundIntent,
+    compoundPhrases: compoundRule ? compoundRule.phrases.slice() : [],
+    compoundConjunctionTokens: compoundRule ? compoundRule.conjunctionTokens.slice() : [],
+    compoundPositiveTitleTokens: compoundRule ? compoundRule.positiveTitleTokens.slice() : [],
+    compoundNegativeClasses: compoundRule ? compoundRule.negativeClasses.slice() : [],
   };
 }
 
@@ -4001,6 +4128,133 @@ function buildBeautyInterestSeedSelect() {
       ''
     ), 1200) AS seed_description
   `;
+}
+
+function buildExternalSeedCompoundLikePatterns(values = []) {
+  return uniqStrings(
+    (Array.isArray(values) ? values : [])
+      .map((value) => normalizeText(value || ''))
+      .filter(Boolean)
+      .flatMap((value) => {
+        const words = value.split(/\s+/).filter(Boolean);
+        return words.length > 1 ? [`%${value}%`, `%${words.join('%')}%`] : [`%${value}%`];
+      }),
+    12,
+  );
+}
+
+function buildExternalSeedTitlePositiveSql(stageBind, recallTerms) {
+  const positivePatterns = buildExternalSeedCompoundLikePatterns(recallTerms.compoundPositiveTitleTokens);
+  if (positivePatterns.length <= 0) return '';
+  const patternBind = stageBind(positivePatterns);
+  return `(
+    ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${patternBind}::text[])
+    OR lower(coalesce(title, '')) LIKE ANY(${patternBind}::text[])
+  )`;
+}
+
+function buildExternalSeedConjunctionSql(stageBind, recallTerms) {
+  const tokens = uniqStrings(recallTerms.compoundConjunctionTokens, 4);
+  if (tokens.length <= 0) return '';
+  return tokens
+    .map((token) => {
+      const bind = stageBind(`%${normalizeText(token)}%`);
+      return `(
+        ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ${bind}
+        OR lower(coalesce(title, '')) LIKE ${bind}
+        OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} LIKE ${bind}
+      )`;
+    })
+    .join(' AND ');
+}
+
+function buildCompoundBeautySeedStageDefinitions(recallTerms, safeLimit) {
+  const stageCap = Math.max(safeLimit, Math.min(safeLimit * 2, 120));
+  const definitions = [];
+  const exactPatterns = buildExternalSeedCompoundLikePatterns(
+    recallTerms.compoundPhrases && recallTerms.compoundPhrases.length > 0
+      ? recallTerms.compoundPhrases
+      : recallTerms.phrases,
+  );
+  const primaryCategoryTerms = uniqStrings(recallTerms.primaryCategoryTerms, 8);
+  const weakCategoryTerms = uniqStrings(recallTerms.weakCategoryTerms, 8);
+  const verticalTerms = uniqStrings(recallTerms.verticalTerms, 6);
+
+  if (exactPatterns.length > 0) {
+    definitions.push({
+      score: 90,
+      stage: 'recall_compound_exact_title',
+      cap: stageCap,
+      buildWhereSql: (stageBind) => {
+        const patternBind = stageBind(exactPatterns);
+        return `(
+          ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${patternBind}::text[])
+          OR lower(coalesce(title, '')) LIKE ANY(${patternBind}::text[])
+        )`;
+      },
+    });
+  }
+
+  if (primaryCategoryTerms.length > 0) {
+    definitions.push({
+      score: 80,
+      stage: 'recall_compound_primary_category',
+      cap: stageCap,
+      buildWhereSql: (stageBind) =>
+        `${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} = ANY(${stageBind(primaryCategoryTerms)}::text[])`,
+    });
+  }
+
+  if (weakCategoryTerms.length > 0) {
+    definitions.push({
+      score: 70,
+      stage: 'recall_compound_weak_category',
+      cap: stageCap,
+      buildWhereSql: (stageBind) => {
+        const positiveSql = buildExternalSeedTitlePositiveSql(stageBind, recallTerms);
+        if (!positiveSql) return '';
+        return `(
+          ${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} = ANY(${stageBind(weakCategoryTerms)}::text[])
+          AND ${positiveSql}
+        )`;
+      },
+    });
+  }
+
+  if (verticalTerms.length > 0) {
+    definitions.push({
+      score: 60,
+      stage: 'recall_compound_weak_vertical',
+      cap: stageCap,
+      buildWhereSql: (stageBind) => {
+        const positiveSql = buildExternalSeedTitlePositiveSql(stageBind, recallTerms);
+        if (!positiveSql) return '';
+        return `(
+          ${EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical} = ANY(${stageBind(verticalTerms)}::text[])
+          AND ${positiveSql}
+        )`;
+      },
+    });
+  }
+
+  definitions.push({
+    score: 50,
+    stage: 'recall_compound_title_conjunction',
+    cap: stageCap,
+    buildWhereSql: (stageBind) => buildExternalSeedConjunctionSql(stageBind, recallTerms),
+  });
+
+  if (exactPatterns.length > 0) {
+    definitions.push({
+      score: 30,
+      stage: 'recall_compound_summary',
+      cap: stageCap,
+      buildWhereSql: (stageBind) =>
+        `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${stageBind(exactPatterns)}::text[])`,
+    });
+  }
+
+  return definitions;
 }
 
 function buildDiscoverySeedStageRowKey(row) {
@@ -4461,57 +4715,62 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
       AND market = $1
       AND (tool = '*' OR tool = $2)
   `;
-  const stageDefinitions = [];
   const explicitQueryScopedRecall = isExplicitQueryScopedBrowseRequest(request);
-  if (recallTerms.patterns.length > 0) {
-    stageDefinitions.push({
-      score: 48,
-      stage: 'recall_title',
-      cap: Math.max(safeLimit, Math.min(safeLimit * 2, 48)),
-      buildWhereSql: (stageBind) =>
-        `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${stageBind(recallTerms.patterns)}::text[])`,
-    });
-    stageDefinitions.push({
-      score: 40,
-      stage: 'recall_tokens',
-      cap: Math.max(safeLimit, Math.min(safeLimit * 2, 48)),
-      buildWhereSql: (stageBind) => {
-        const patternBind = stageBind(recallTerms.patterns);
-        return `(
-          ${EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokens} LIKE ANY(${patternBind}::text[])
-          OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY(${patternBind}::text[])
-        )`;
-      },
-    });
-    if (explicitQueryScopedRecall) {
+  const compoundIntent = explicitQueryScopedRecall ? recallTerms.compoundIntent : null;
+  const stageDefinitions = compoundIntent
+    ? buildCompoundBeautySeedStageDefinitions(recallTerms, safeLimit)
+    : [];
+  if (!compoundIntent) {
+    if (recallTerms.patterns.length > 0) {
       stageDefinitions.push({
-        score: 34,
-        stage: 'recall_summary',
+        score: 48,
+        stage: 'recall_title',
         cap: Math.max(safeLimit, Math.min(safeLimit * 2, 48)),
         buildWhereSql: (stageBind) =>
-          `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${stageBind(recallTerms.patterns)}::text[])`,
+          `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${stageBind(recallTerms.patterns)}::text[])`,
+      });
+      stageDefinitions.push({
+        score: 40,
+        stage: 'recall_tokens',
+        cap: Math.max(safeLimit, Math.min(safeLimit * 2, 48)),
+        buildWhereSql: (stageBind) => {
+          const patternBind = stageBind(recallTerms.patterns);
+          return `(
+            ${EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokens} LIKE ANY(${patternBind}::text[])
+            OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY(${patternBind}::text[])
+          )`;
+        },
+      });
+      if (explicitQueryScopedRecall) {
+        stageDefinitions.push({
+          score: 34,
+          stage: 'recall_summary',
+          cap: Math.max(safeLimit, Math.min(safeLimit * 2, 48)),
+          buildWhereSql: (stageBind) =>
+            `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${stageBind(recallTerms.patterns)}::text[])`,
+        });
+      }
+    }
+
+    if (recallTerms.categoryTerms.length > 0) {
+      stageDefinitions.push({
+        score: 36,
+        stage: 'recall_category',
+        cap: Math.max(safeLimit, Math.min(safeLimit * 2, 48)),
+        buildWhereSql: (stageBind) =>
+          `${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} = ANY(${stageBind(recallTerms.categoryTerms)}::text[])`,
       });
     }
-  }
 
-  if (recallTerms.categoryTerms.length > 0) {
-    stageDefinitions.push({
-      score: 36,
-      stage: 'recall_category',
-      cap: Math.max(safeLimit, Math.min(safeLimit * 2, 48)),
-      buildWhereSql: (stageBind) =>
-        `${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} = ANY(${stageBind(recallTerms.categoryTerms)}::text[])`,
-    });
-  }
-
-  if (recallTerms.verticalTerms.length > 0) {
-    stageDefinitions.push({
-      score: 18,
-      stage: 'recall_vertical',
-      cap: Math.max(safeLimit, Math.min(safeLimit * 2, 36)),
-      buildWhereSql: (stageBind) =>
-        `${EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical} = ANY(${stageBind(recallTerms.verticalTerms)}::text[])`,
-    });
+    if (recallTerms.verticalTerms.length > 0) {
+      stageDefinitions.push({
+        score: 18,
+        stage: 'recall_vertical',
+        cap: Math.max(safeLimit, Math.min(safeLimit * 2, 36)),
+        buildWhereSql: (stageBind) =>
+          `${EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical} = ANY(${stageBind(recallTerms.verticalTerms)}::text[])`,
+      });
+    }
   }
 
   const shouldRunSummaryFallback =
@@ -4549,23 +4808,60 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
     const stagedRows = [];
     const seenRowKeys = new Set();
     const seenSqlIds = new Set();
+    const externalSeedStageCounts = [];
+    let externalSeedRawCount = 0;
+    let externalSeedFilteredCompoundCount = 0;
     const summaryThreshold =
       request?.surface === 'browse_products' && isGenericNoSignalDiscoveryRequest(request, profile)
         ? safeLimit
         : Math.min(safeLimit, Math.max(4, getPrimaryPathEnoughThreshold(request)));
-    const appendRows = (rows = []) => {
+    const qualifiedTarget = compoundIntent
+      ? Math.min(safeLimit, Math.max((request?.limit || 0) * 2, 24))
+      : summaryThreshold;
+    const shouldStopStages = () => stagedRows.length >= (compoundIntent ? qualifiedTarget : summaryThreshold);
+    const appendRows = (rows = [], stage = 'unknown') => {
+      const metrics = {
+        stage,
+        raw_rows: Array.isArray(rows) ? rows.length : 0,
+        compound_qualified_rows: 0,
+        deduped_rows: 0,
+        final_eligible_rows: stagedRows.length,
+      };
+      externalSeedRawCount += metrics.raw_rows;
       for (const row of Array.isArray(rows) ? rows : []) {
+        if (compoundIntent) {
+          const product = buildExternalSeedBrandSearchProduct(row);
+          const normalized = product
+            ? normalizeCandidateProduct(
+                {
+                  ...product,
+                  __discovery_provider: productProvider,
+                },
+                stagedRows.length,
+              )
+            : null;
+          if (!normalized || !matchesBeautyCompoundQueryIntent(normalized, compoundIntent)) {
+            externalSeedFilteredCompoundCount += 1;
+            continue;
+          }
+          metrics.compound_qualified_rows += 1;
+        } else {
+          metrics.compound_qualified_rows += 1;
+        }
         const rowKey = buildDiscoverySeedStageRowKey(row);
         if (!rowKey || seenRowKeys.has(rowKey)) continue;
         seenRowKeys.add(rowKey);
         const sqlId = buildDiscoverySeedStageSqlId(row);
         if (sqlId) seenSqlIds.add(sqlId);
         stagedRows.push(row);
+        metrics.deduped_rows += 1;
         if (stagedRows.length >= safeLimit) break;
       }
+      metrics.final_eligible_rows = stagedRows.length;
+      externalSeedStageCounts.push(metrics);
     };
     const runStage = async ({ buildWhereSql, score, stage, cap }) => {
-      if (typeof buildWhereSql !== 'function' || stagedRows.length >= safeLimit) return;
+      if (typeof buildWhereSql !== 'function' || stagedRows.length >= safeLimit || shouldStopStages()) return;
       const stageParams = [market, tool];
       const stageBind = (value) => {
         stageParams.push(value);
@@ -4590,16 +4886,16 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
       }
       const limitBind = stageBind(clampInt(cap, safeLimit, 12, Math.max(safeLimit, cap)));
       sql += `
-        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
+        ORDER BY match_score DESC, updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
         LIMIT ${limitBind}
       `;
       const res = await query(sql, stageParams);
-      appendRows(Array.isArray(res?.rows) ? res.rows : []);
+      appendRows(Array.isArray(res?.rows) ? res.rows : [], stage);
     };
 
     for (const stageDefinition of stageDefinitions) {
       await runStage(stageDefinition);
-      if (stagedRows.length >= summaryThreshold) break;
+      if (shouldStopStages()) break;
     }
 
     if (shouldRunSummaryFallback && stagedRows.length < summaryThreshold) {
@@ -4630,16 +4926,21 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
         buildDiscoveryProviderStepSummary({
           provider,
           label,
-          query: recallTerms.phrases.join(' | '),
-          limit: safeLimit,
-          returned: products.length,
-          status: 200,
-          latencyMs: Date.now() - stepStartedAt,
-          market,
-          marketSource: marketConfig.source,
-        }),
-      ],
-    };
+	          query: recallTerms.phrases.join(' | '),
+	          limit: safeLimit,
+	          returned: products.length,
+	          status: 200,
+	          latencyMs: Date.now() - stepStartedAt,
+	          market,
+	          marketSource: marketConfig.source,
+	          compoundIntent,
+	          externalSeedStageCounts,
+	          externalSeedRawCount,
+	          externalSeedQualifiedCount: stagedRows.length,
+	          externalSeedFilteredCompoundCount,
+	        }),
+	      ],
+	    };
   } catch (err) {
     recordDiscoveryRecallStep({
       surface: request?.surface,
@@ -4747,8 +5048,8 @@ function isHighQualityProviderCandidate(candidate, request, profile) {
   if (!candidate) return false;
   if (
     isExplicitQueryScopedBrowseRequest(request) &&
-    candidate?.provider === 'external_seeds' &&
-    !matchesExternalSeedCompoundQueryIntent(candidate, resolveExplicitBeautyCompoundIntent(request?.query?.text))
+    resolveExplicitBeautyCompoundIntent(request?.query?.text) &&
+    !matchesBeautyCompoundQueryIntent(candidate, resolveExplicitBeautyCompoundIntent(request?.query?.text))
   ) {
     return false;
   }
@@ -4809,6 +5110,15 @@ function hasSufficientProviderCandidates(products = [], { request, profile, enou
 function resolveExternalSeedProviderLimit(request, safeLimit) {
   const fetchCap = getDiscoveryCandidateFetchCap(request);
   const cappedSafeLimit = clampInt(safeLimit, fetchCap, 12, fetchCap);
+  const compoundIntent = isExplicitQueryScopedBrowseRequest(request)
+    ? resolveExplicitBeautyCompoundIntent(request?.query?.text)
+    : null;
+  if (compoundIntent) {
+    const requestedLimit = Math.max(1, Number(request?.limit || 0) || 12);
+    const page = Math.max(1, Number(request?.page || 0) || 1);
+    const providerLimit = Math.max(page * requestedLimit + requestedLimit * 2, 120);
+    return Math.min(fetchCap, providerLimit);
+  }
   if (request?.surface === 'browse_products') {
     const prefetchFloor = Math.min(resolveGenericBrowsePrefetchFloor(request), cappedSafeLimit);
     const browseNeed = Math.max(
@@ -4870,9 +5180,16 @@ async function loadCatalogCandidates({
   let primaryPathUsed = useBeautyInterestMainline ? 'beauty_interest_mainline' : 'multi_provider';
   let fallbackTriggered = false;
   let fallbackReason = null;
+  const compoundIntent = isExplicitQueryScopedBrowseRequest(request)
+    ? resolveExplicitBeautyCompoundIntent(request?.query?.text)
+    : null;
 
   const mergeProducts = (products = []) => {
     for (const product of Array.isArray(products) ? products : []) {
+      if (compoundIntent) {
+        const normalized = normalizeCandidateProduct(product, mergedProducts.length);
+        if (!normalized || !matchesBeautyCompoundQueryIntent(normalized, compoundIntent)) continue;
+      }
       const key = buildDiscoveryProviderMergeKey(product);
       if (!key || seenKeys.has(key)) continue;
       seenKeys.add(key);
@@ -5504,8 +5821,20 @@ function textHasNormalizedToken(text, token) {
   return new RegExp(`(?:^|\\s)${normalizedToken.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\s|$)`).test(normalized);
 }
 
-function matchesExternalSeedCompoundQueryIntent(candidate, intent) {
+function hasAnyNormalizedClassToken(text, items = []) {
+  const normalized = normalizeText(text || '');
+  if (!normalized) return false;
+  return (Array.isArray(items) ? items : []).some((item) => {
+    const value = normalizeText(item || '');
+    if (!value) return false;
+    if (value.includes(' ')) return normalized.includes(value);
+    return textHasNormalizedToken(normalized, value);
+  });
+}
+
+function matchesBeautyCompoundQueryIntent(candidate, intent) {
   if (!intent) return true;
+  const rule = EXPLICIT_BEAUTY_COMPOUND_INTENT_RULES[intent] || null;
   const raw = candidate?.raw || {};
   const titleText = normalizeText([raw.title, raw.name, raw.external_seed_recall?.retrieval_title].filter(Boolean).join(' '));
   const categoryText = normalizeText(
@@ -5522,31 +5851,31 @@ function matchesExternalSeedCompoundQueryIntent(candidate, intent) {
       .join(' '),
   );
   const strongText = buildExternalSeedStrongQueryText(candidate);
+  const negativeClasses = rule?.negativeClasses || [];
 
   if (intent === 'hair_oil') {
+    if (hasAnyNormalizedClassToken([categoryText, titleText].join(' '), negativeClasses)) return false;
     if (strongText.includes('hair oil')) return true;
-    const categoryLooksHair = categoryText.includes('haircare') || categoryText.includes('hair care') || textHasNormalizedToken(categoryText, 'hair');
-    const categoryLooksNonOilForm =
-      textHasNormalizedToken(categoryText, 'shampoo') ||
-      textHasNormalizedToken(categoryText, 'conditioner') ||
-      textHasNormalizedToken(categoryText, 'moisturizer') ||
-      textHasNormalizedToken(categoryText, 'cream') ||
-      textHasNormalizedToken(categoryText, 'toner') ||
-      textHasNormalizedToken(categoryText, 'mist') ||
-      textHasNormalizedToken(categoryText, 'fragrance') ||
-      textHasNormalizedToken(categoryText, 'styling');
-    if (categoryLooksNonOilForm && !strongText.includes('hair oil')) return false;
+    if (hasAnyNormalizedClassToken(categoryText, rule?.primaryPositive || [])) return true;
+    const categoryLooksHair =
+      categoryText.includes('haircare') ||
+      categoryText.includes('hair care') ||
+      textHasNormalizedToken(categoryText, 'hair');
     return categoryLooksHair && textHasNormalizedToken(titleText, 'oil');
   }
 
   if (intent === 'lip_balm') {
+    if (hasAnyNormalizedClassToken([categoryText, titleText].join(' '), negativeClasses)) return false;
     if (strongText.includes('lip balm')) return true;
+    if (hasAnyNormalizedClassToken(categoryText, rule?.primaryPositive || [])) return true;
     const categoryLooksLip = textHasNormalizedToken(categoryText, 'lip') || categoryText.includes('lip care');
     return categoryLooksLip && textHasNormalizedToken(titleText, 'balm');
   }
 
   if (intent === 'lip_oil') {
+    if (hasAnyNormalizedClassToken([categoryText, titleText].join(' '), negativeClasses)) return false;
     if (strongText.includes('lip oil')) return true;
+    if (hasAnyNormalizedClassToken(categoryText, rule?.primaryPositive || [])) return true;
     const categoryLooksLip = textHasNormalizedToken(categoryText, 'lip') || categoryText.includes('lip care');
     return categoryLooksLip && textHasNormalizedToken(titleText, 'oil');
   }
@@ -5554,14 +5883,18 @@ function matchesExternalSeedCompoundQueryIntent(candidate, intent) {
   return true;
 }
 
+function matchesExternalSeedCompoundQueryIntent(candidate, intent) {
+  return matchesBeautyCompoundQueryIntent(candidate, intent);
+}
+
 function shouldFilterBrowseCandidateByQueryText(candidate, queryText, options = {}) {
   if (!String(queryText || '').trim()) return false;
-  if (options?.explicitQueryScoped === true && candidate?.provider === 'external_seeds') {
+  if (options?.explicitQueryScoped === true) {
     const domain = String(candidate?.domain || 'unknown').trim();
     if (!COLD_START_DEFERRED_DOMAINS.has(domain) && candidate?.beautyBucket !== 'tools') {
       const compoundIntent = resolveExplicitBeautyCompoundIntent(queryText);
       return compoundIntent
-        ? !matchesExternalSeedCompoundQueryIntent(candidate, compoundIntent)
+        ? !matchesBeautyCompoundQueryIntent(candidate, compoundIntent)
         : !matchesQueryTextCandidate(candidate, queryText);
     }
   }
@@ -7477,11 +7810,50 @@ function buildRankDebug({
       ...(Array.isArray(step?.warning_codes) && step.warning_codes.length > 0
         ? { warning_codes: uniqStrings(step.warning_codes, 12) }
         : {}),
+      ...(step?.compound_intent ? { compound_intent: String(step.compound_intent) } : {}),
+      ...(Array.isArray(step?.external_seed_stage_counts) && step.external_seed_stage_counts.length > 0
+        ? { external_seed_stage_counts: step.external_seed_stage_counts }
+        : {}),
+      ...(step?.external_seed_raw_count != null
+        ? { external_seed_raw_count: Number(step.external_seed_raw_count || 0) }
+        : {}),
+      ...(step?.external_seed_qualified_count != null
+        ? { external_seed_qualified_count: Number(step.external_seed_qualified_count || 0) }
+        : {}),
+      ...(step?.external_seed_filtered_compound_count != null
+        ? { external_seed_filtered_compound_count: Number(step.external_seed_filtered_compound_count || 0) }
+        : {}),
       ...(step?.error ? { error: String(step.error) } : {}),
     })),
     provider_breakdown: Array.isArray(providerBreakdown) ? providerBreakdown : [],
     filter_counts: filterCounts && typeof filterCounts === 'object' ? filterCounts : {},
   };
+}
+
+function summarizeExternalSeedRecallTelemetry(recallSummary = []) {
+  const summary = {
+    compound_intent: null,
+    external_seed_stage_counts: [],
+    external_seed_raw_count: 0,
+    external_seed_qualified_count: 0,
+    external_seed_filtered_compound_count: 0,
+  };
+  for (const step of Array.isArray(recallSummary) ? recallSummary : []) {
+    if (!step || typeof step !== 'object') continue;
+    if (!summary.compound_intent && step.compound_intent) {
+      summary.compound_intent = String(step.compound_intent);
+    }
+    if (Array.isArray(step.external_seed_stage_counts)) {
+      summary.external_seed_stage_counts.push(...step.external_seed_stage_counts);
+    }
+    summary.external_seed_raw_count += Math.max(0, Number(step.external_seed_raw_count || 0) || 0);
+    summary.external_seed_qualified_count += Math.max(0, Number(step.external_seed_qualified_count || 0) || 0);
+    summary.external_seed_filtered_compound_count += Math.max(
+      0,
+      Number(step.external_seed_filtered_compound_count || 0) || 0,
+    );
+  }
+  return summary;
 }
 
 async function getDiscoveryFeed(payload = {}, options = {}) {
@@ -7847,21 +8219,33 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       count: selectedEntries.length,
     });
 
-    const selectionLatencyMs = Date.now() - startedAt;
-    const hasMore =
-      request.surface === 'browse_products'
-        ? cursorInfo.has_next_page
-        : eligiblePoolCount > request.page * request.limit;
-    const selectedSourceBreakdown = selectedEntries.reduce(
-      (acc, entry) => {
-        const provider = String(entry?.candidate?.provider || '').trim() || 'unknown';
-        acc[provider] = Number(acc[provider] || 0) + 1;
-        return acc;
-      },
-      {},
-    );
-    const metadata = {
-      discovery_strategy: strategy,
+	    const selectionLatencyMs = Date.now() - startedAt;
+	    const hasMore =
+	      request.surface === 'browse_products'
+	        ? cursorInfo.has_next_page
+	        : eligiblePoolCount > request.page * request.limit;
+	    const selectedSourceBreakdown = selectedEntries.reduce(
+	      (acc, entry) => {
+	        const provider = String(entry?.candidate?.provider || '').trim() || 'unknown';
+	        acc[provider] = Number(acc[provider] || 0) + 1;
+	        return acc;
+	      },
+	      {},
+	    );
+	    const externalSeedRecallTelemetry = summarizeExternalSeedRecallTelemetry(recallSummary);
+	    const compoundIntent = isExplicitQueryScopedBrowseRequest(request)
+	      ? resolveExplicitBeautyCompoundIntent(request?.query?.text)
+	      : null;
+	    const exactIntentUnderfilled =
+	      Boolean(compoundIntent) &&
+	      request.surface === 'browse_products' &&
+	      selectedEntries.length > 0 &&
+	      selectedEntries.length < request.limit;
+	    const underfilledReason = exactIntentUnderfilled
+	      ? 'public_search_underfilled_exact_intent'
+	      : null;
+	    const metadata = {
+	      discovery_strategy: strategy,
       personalization_source: personalizationSource,
       history_items_used: profile.historyItemsUsed,
       query_items_used: Number(profile.queryItemsUsed || 0),
@@ -7896,15 +8280,38 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       category_scope_applied: request.scope.categories,
       query_text: request.query.text,
       has_more: hasMore,
-      facets: {
-        categories: categoryFacets,
-      },
-      filter_counts: filterCounts,
-      route_health: {
-        primary_path_used: primaryPathUsed,
-        fallback_triggered: fallbackTriggered,
-        fallback_reason: fallbackReason,
-      },
+	      facets: {
+	        categories: categoryFacets,
+	      },
+	      filter_counts: filterCounts,
+	      ...(compoundIntent || externalSeedRecallTelemetry.compound_intent
+	        ? { compound_intent: compoundIntent || externalSeedRecallTelemetry.compound_intent }
+	        : {}),
+	      ...(externalSeedRecallTelemetry.external_seed_stage_counts.length > 0
+	        ? { external_seed_stage_counts: externalSeedRecallTelemetry.external_seed_stage_counts }
+	        : {}),
+	      ...(externalSeedRecallTelemetry.external_seed_raw_count > 0
+	        ? { external_seed_raw_count: externalSeedRecallTelemetry.external_seed_raw_count }
+	        : {}),
+	      ...(externalSeedRecallTelemetry.external_seed_qualified_count > 0
+	        ? { external_seed_qualified_count: externalSeedRecallTelemetry.external_seed_qualified_count }
+	        : {}),
+	      ...(externalSeedRecallTelemetry.external_seed_filtered_compound_count > 0
+	        ? {
+	            external_seed_filtered_compound_count:
+	              externalSeedRecallTelemetry.external_seed_filtered_compound_count,
+	          }
+	        : {}),
+	      ...(underfilledReason ? { underfilled_reason: underfilledReason } : {}),
+	      route_health: {
+	        primary_path_used: primaryPathUsed,
+	        fallback_triggered: fallbackTriggered,
+	        fallback_reason: fallbackReason,
+	        primary_quality_gate_passed:
+	          selectedEntries.length > 0 && !exactIntentUnderfilled,
+	        ...(compoundIntent ? { compound_intent: compoundIntent } : {}),
+	        ...(underfilledReason ? { underfilled_reason: underfilledReason } : {}),
+	      },
       search_decision: {
         primary_path_used: primaryPathUsed,
         fallback_triggered: fallbackTriggered,
@@ -8059,6 +8466,7 @@ module.exports = {
     buildDiscoveryContextCacheKey,
     buildDiscoveryDatabaseSearchTerms,
     buildBeautyInterestRecallTerms,
+    buildCompoundBeautySeedStageDefinitions,
     buildDiscoveryInterestQuery,
     buildDiscoveryRecallPlan,
     buildDiscoveryProviderMergeKey,
@@ -8076,6 +8484,9 @@ module.exports = {
     loadCatalogCandidates,
     hydrateDiscoveryCandidateProductIntel,
     matchesQueryTextCandidate,
+    matchesBeautyCompoundQueryIntent,
+    resolveExplicitBeautyCompoundIntent,
+    resolveExternalSeedProviderLimit,
     shouldFilterBrowseCandidateByQueryText,
     matchesBrandScopeCandidate,
     shouldUseDiscoveryExternalSeedExactTitleFastpath,

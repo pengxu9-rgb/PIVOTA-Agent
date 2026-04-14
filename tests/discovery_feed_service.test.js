@@ -243,14 +243,18 @@ describe('discovery feed service', () => {
 
     const recallTerms = _internals.buildBeautyInterestRecallTerms(request, profile, ['hair oil']);
 
-    expect(recallTerms.patterns).toEqual(expect.arrayContaining(['%hair oil%', '%hair%oil%']));
-    expect(recallTerms.patterns).not.toContain('%hair%');
-    expect(recallTerms.patterns).not.toContain('%oil%');
-    expect(recallTerms.categoryTerms).toEqual(
-      expect.arrayContaining(['hair oil', 'haircare']),
-    );
-    expect(recallTerms.verticalTerms).toEqual(expect.arrayContaining(['haircare']));
-  });
+	    expect(recallTerms.patterns).toEqual(expect.arrayContaining(['%hair oil%', '%hair%oil%']));
+	    expect(recallTerms.patterns).not.toContain('%hair%');
+	    expect(recallTerms.patterns).not.toContain('%oil%');
+	    expect(recallTerms.compoundIntent).toBe('hair_oil');
+	    expect(recallTerms.primaryCategoryTerms).toEqual(expect.arrayContaining(['hair oil']));
+	    expect(recallTerms.primaryCategoryTerms).not.toContain('haircare');
+	    expect(recallTerms.weakCategoryTerms).toEqual(
+	      expect.arrayContaining(['hair treatment', 'hair care', 'haircare']),
+	    );
+	    expect(recallTerms.categoryTerms).toEqual(expect.arrayContaining(['hair oil', 'haircare']));
+	    expect(recallTerms.verticalTerms).toEqual(expect.arrayContaining(['haircare']));
+	  });
 
   test('explicit browse query uses staged external seed mainline without cold-start beauty fallback terms', async () => {
     delete process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL;
@@ -571,11 +575,12 @@ describe('discovery feed service', () => {
 
     expect(response.products).toHaveLength(12);
     expect(response.products.every((product) => /Beauty Oil/.test(product.title))).toBe(true);
-    expect(response.metadata.selected_source_breakdown).toEqual(
-      expect.objectContaining({ external_seeds: 12 }),
-    );
-    expect(response.metadata.filter_counts.filtered_query_text).toBeGreaterThanOrEqual(12);
-  });
+	    expect(response.metadata.selected_source_breakdown).toEqual(
+	      expect.objectContaining({ external_seeds: 12 }),
+	    );
+	    expect(response.metadata.candidate_counts.raw).toBe(12);
+	    expect(response.metadata.filter_counts.filtered_query_text || 0).toBe(0);
+	  });
 
   test('explicit browse lookup short-circuits external seed recall with exact-title fastpath', async () => {
     jest.resetModules();
@@ -6366,8 +6371,8 @@ describe('discovery feed service', () => {
     );
   });
 
-  test('anonymous cold-start fastpath skips summary-stage DB recall when generic recall terms miss', async () => {
-    jest.resetModules();
+	  test('anonymous cold-start fastpath skips summary-stage DB recall when generic recall terms miss', async () => {
+	    jest.resetModules();
     const prevDatabaseUrl = process.env.DATABASE_URL;
     process.env.DATABASE_URL = 'postgres://discovery-fastpath-test';
     const dbQueryMock = jest.fn(async () => ({ rows: [] }));
@@ -6412,10 +6417,200 @@ describe('discovery feed service', () => {
     } finally {
       if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
       else process.env.DATABASE_URL = prevDatabaseUrl;
-    }
+	    }
+	  });
+
+	  test('explicit compound browse continues DB stages until qualified rows fill target', async () => {
+	    jest.resetModules();
+	    const prevDatabaseUrl = process.env.DATABASE_URL;
+	    process.env.DATABASE_URL = 'postgres://discovery-compound-stage-test';
+	    const requiredColumns = [
+	      { table_name: 'products_cache', column_name: 'id' },
+	      { table_name: 'products_cache', column_name: 'merchant_id' },
+	      { table_name: 'products_cache', column_name: 'product_data' },
+	      { table_name: 'products_cache', column_name: 'expires_at' },
+	      { table_name: 'products_cache', column_name: 'cached_at' },
+	      { table_name: 'external_product_seeds', column_name: 'id' },
+	      { table_name: 'external_product_seeds', column_name: 'external_product_id' },
+	      { table_name: 'external_product_seeds', column_name: 'destination_url' },
+	      { table_name: 'external_product_seeds', column_name: 'canonical_url' },
+	      { table_name: 'external_product_seeds', column_name: 'title' },
+	      { table_name: 'external_product_seeds', column_name: 'seed_data' },
+	      { table_name: 'external_product_seeds', column_name: 'market' },
+	      { table_name: 'external_product_seeds', column_name: 'tool' },
+	      { table_name: 'external_product_seeds', column_name: 'status' },
+	      { table_name: 'external_product_seeds', column_name: 'attached_product_key' },
+	      { table_name: 'external_product_seeds', column_name: 'updated_at' },
+	      { table_name: 'external_product_seeds', column_name: 'created_at' },
+	    ];
+	    const requiredIndexes = [
+	      'idx_external_product_seeds_recall_title_trgm',
+	      'idx_external_product_seeds_recall_summary_trgm',
+	      'idx_external_product_seeds_recall_category_vertical_recency',
+	      'idx_external_product_seeds_recall_vertical_recency',
+	      'idx_external_product_seeds_recall_ingredient_tokens_trgm',
+	      'idx_external_product_seeds_recall_alias_tokens_trgm',
+	    ].map((indexname) => ({ tablename: 'external_product_seeds', indexname }));
+	    const junkRows = Array.from({ length: 12 }, (_, index) =>
+	      makeExternalSeedRow({
+	        id: `junk_${index + 1}`,
+	        title: `High Shine Shampoo ${index + 1}`,
+	        category: 'Shampoo',
+	        product_type: 'Shampoo',
+	        description: 'Cleanses hair with camellia oil for shine.',
+	      }),
+	    );
+	    const exactRows = Array.from({ length: 24 }, (_, index) =>
+	      makeExternalSeedRow({
+	        id: `oil_${index + 1}`,
+	        title: `Beauty Oil ${index + 1}`,
+	        category: 'Haircare',
+	        product_type: 'Haircare',
+	        description: 'Lightweight hair oil for glossy ends.',
+	      }),
+	    );
+	    const dbQueryMock = jest
+	      .fn()
+	      .mockResolvedValueOnce({ rows: requiredColumns })
+	      .mockResolvedValueOnce({ rows: requiredIndexes })
+	      .mockResolvedValueOnce({ rows: junkRows })
+	      .mockResolvedValueOnce({ rows: [] })
+	      .mockResolvedValueOnce({ rows: exactRows });
+	    jest.doMock('../src/db', () => ({
+	      query: dbQueryMock,
+	    }));
+
+	    try {
+	      const { buildDiscoveryProfile: freshBuildDiscoveryProfile, _internals: freshInternals } = require('../src/services/discoveryFeed');
+	      freshInternals.resetDiscoveryDependencyProbeCache();
+	      const request = freshInternals.normalizeDiscoveryRequest({
+	        surface: 'browse_products',
+	        page: 1,
+	        limit: 12,
+	        query: {
+	          text: 'hair oil',
+	        },
+	        context: {
+	          auth_state: 'anonymous',
+	          locale: 'en-US',
+	          recent_views: [],
+	          recent_queries: [],
+	        },
+	      });
+
+	      const result = await freshInternals.fetchBeautyInterestExternalSeedFastpathCandidates({
+	        request,
+	        profile: freshBuildDiscoveryProfile(request.context),
+	        queries: ['hair oil'],
+	        limit: freshInternals.resolveExternalSeedProviderLimit(request, 36),
+	        providerName: 'external_seeds',
+	        productProvider: 'external_seeds',
+	        stepName: 'external_seed_pool',
+	        label: 'external_seed_pool',
+	      });
+
+	      expect(result.products).toHaveLength(24);
+	      expect(result.products.every((product) => /Beauty Oil/.test(product.title))).toBe(true);
+	      expect(dbQueryMock).toHaveBeenCalledTimes(5);
+	      expect(result.recallSummary[0]).toEqual(
+	        expect.objectContaining({
+	          compound_intent: 'hair_oil',
+	          external_seed_qualified_count: 24,
+	          external_seed_filtered_compound_count: 12,
+	        }),
+	      );
+	      expect(result.recallSummary[0].external_seed_stage_counts).toEqual(
+	        expect.arrayContaining([
+	          expect.objectContaining({
+	            stage: 'recall_compound_exact_title',
+	            raw_rows: 12,
+	            compound_qualified_rows: 0,
+	          }),
+	          expect.objectContaining({
+	            stage: 'recall_compound_weak_category',
+	            raw_rows: 24,
+	            compound_qualified_rows: 24,
+	          }),
+	        ]),
+	      );
+	    } finally {
+	      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+	      else process.env.DATABASE_URL = prevDatabaseUrl;
+	    }
+	  });
+
+  test('hair oil compound matcher rejects exact-phrase shampoo fragrance and accessory noise', () => {
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
+            title: 'Shine Hair Oil Shampoo',
+            external_seed_recall: {
+              retrieval_title: 'shine hair oil shampoo',
+              category: 'Shampoo',
+              vertical: 'Hair Care',
+            },
+          },
+          category: 'shampoo',
+          parentCategory: 'hair care',
+        },
+        'hair_oil',
+      ),
+    ).toBe(false);
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
+            title: 'Hair Oil Fragrance Mist',
+            external_seed_recall: {
+              retrieval_title: 'hair oil fragrance mist',
+              category: 'Fragrance Mist',
+              vertical: 'Fragrance',
+            },
+          },
+          category: 'fragrance mist',
+          parentCategory: 'hair care',
+        },
+        'hair_oil',
+      ),
+    ).toBe(false);
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
+            title: 'Hair Oil Clip Set',
+            external_seed_recall: {
+              retrieval_title: 'hair oil clip set',
+              category: 'Accessories',
+              vertical: 'Hair Care',
+            },
+          },
+          category: 'accessories',
+          parentCategory: 'hair care',
+        },
+        'hair_oil',
+      ),
+    ).toBe(false);
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
+            title: 'Rosemary Hair Oil',
+            external_seed_recall: {
+              retrieval_title: 'rosemary hair oil',
+              category: 'Haircare',
+              vertical: 'Haircare',
+            },
+          },
+          category: 'haircare',
+          parentCategory: 'haircare',
+        },
+        'hair_oil',
+      ),
+    ).toBe(true);
   });
 
-  test('anonymous browse fastpath fills stable corpus beyond first-page coverage before stopping DB stages', async () => {
+	  test('anonymous browse fastpath fills stable corpus beyond first-page coverage before stopping DB stages', async () => {
     jest.resetModules();
     const prevDatabaseUrl = process.env.DATABASE_URL;
     process.env.DATABASE_URL = 'postgres://discovery-fastpath-test';
