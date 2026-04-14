@@ -61,6 +61,56 @@ describe('pdpBuilder structured PDP modules', () => {
     expect(urls.some((url) => url.includes('plpbanner'))).toBe(false);
   });
 
+  test('media_gallery keeps external seed product gallery when size variants share one image', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_boj_daily_tinted',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Daily Tinted Fluid Sunscreen DN350',
+        image_url:
+          'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/DTFS_DN350_Thumbnail_1.jpg',
+        image_urls: [
+          'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/DTFS_DN350_Thumbnail_1.jpg',
+          'https://beautyofjoseon.com/cdn/shop/files/Untitled_design_95.jpg?width=180',
+          'https://beautyofjoseon.com/cdn/shop/files/skin_prep_dry_skin.png?width=180',
+        ],
+        variants: [
+          {
+            variant_id: '52402575442292',
+            title: '1.69 fl. oz. (50ml)',
+            image_url:
+              'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/DTFS_DN350_Thumbnail_1.jpg',
+            price: { amount: 10, currency: 'USD' },
+          },
+          {
+            variant_id: '52402575475060',
+            title: '0.23 fl. oz. (7ml)',
+            image_url:
+              'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/DTFS_DN350_Thumbnail_1.jpg',
+            price: { amount: 2, currency: 'USD' },
+          },
+        ],
+        price: { amount: 10, currency: 'USD' },
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const mediaGallery = findModule(payload, 'media_gallery');
+    const urls = Array.isArray(mediaGallery?.data?.items)
+      ? mediaGallery.data.items.map((item) => item.url)
+      : [];
+
+    expect(urls).toEqual([
+      'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/DTFS_DN350_Thumbnail_1.jpg',
+      'https://beautyofjoseon.com/cdn/shop/files/Untitled_design_95.jpg?width=180',
+      'https://beautyofjoseon.com/cdn/shop/files/skin_prep_dry_skin.png?width=180',
+    ]);
+    expect(payload.product.image_urls).toEqual(urls);
+    expect(payload.product.images).toEqual(urls);
+  });
+
   test('emits additive beauty modules from structured ingredient fields and carries brand story separately', () => {
     const payload = buildPdpPayload({
       product: {

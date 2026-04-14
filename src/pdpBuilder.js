@@ -831,8 +831,38 @@ function buildMediaItems(product, variants) {
   };
 
   const primaryVariantImages = readVariantImages(primaryVariant);
+  const productImageKeys = new Set(
+    images
+      .map((img) => normalizePdpImageUrl(typeof img === 'string' ? img : img?.url || img?.image_url))
+      .map((url) => buildPdpImageDedupeKey(url))
+      .filter(Boolean),
+  );
+  const primaryVariantImageKeys = new Set(
+    primaryVariantImages
+      .map((value) => buildPdpImageDedupeKey(value))
+      .filter(Boolean),
+  );
+  const variantImageKeys = new Set();
+  variants.forEach((variant) => {
+    readVariantImages(variant)
+      .map((value) => buildPdpImageDedupeKey(value))
+      .filter(Boolean)
+      .forEach((key) => variantImageKeys.add(key));
+  });
+  const allVariantImagesMatchPrimary =
+    primaryVariantImageKeys.size > 0 &&
+    variantImageKeys.size > 0 &&
+    Array.from(variantImageKeys).every((key) => primaryVariantImageKeys.has(key));
+  const shouldKeepProductGalleryForSharedVariantImage =
+    isExternalSeedLikeProduct(product) &&
+    primaryVariantImageKeys.size <= 1 &&
+    productImageKeys.size > primaryVariantImageKeys.size &&
+    allVariantImagesMatchPrimary;
   const hasAuthoritativeVariantGallery =
-    Array.isArray(variants) && variants.length > 1 && primaryVariantImages.some((value) => buildPdpImageDedupeKey(value));
+    Array.isArray(variants) &&
+    variants.length > 1 &&
+    primaryVariantImages.some((value) => buildPdpImageDedupeKey(value)) &&
+    !shouldKeepProductGalleryForSharedVariantImage;
 
   media.forEach((m) => {
     const url = normalizePdpImageUrl(m.url || m.image_url || m.src);
@@ -1731,6 +1761,11 @@ function buildPdpPayload(args) {
   const descriptionText = resolveProductDescriptionText(product, detailSections);
   const brandStoryText = resolveBrandStoryText(product, detailSections);
   const mediaItems = buildMediaItems(product, variants);
+  const mediaImageUrls = uniqueNonEmptyStrings(
+    mediaItems
+      .filter((item) => String(item?.type || 'image').trim().toLowerCase() === 'image')
+      .map((item) => item?.url),
+  );
   const previewItems = Array.isArray(product.line_preview_images)
     ? product.line_preview_images
         .map((item) => {
@@ -1896,6 +1931,8 @@ function buildPdpPayload(args) {
       brand: brandLabel ? { name: brandLabel } : undefined,
       category_path: inferCategoryPath(product),
       image_url: normalizePdpImageUrl(product.image_url || product.image) || undefined,
+      image_urls: mediaImageUrls.length ? mediaImageUrls : undefined,
+      images: mediaImageUrls.length ? mediaImageUrls : undefined,
       tags: Array.isArray(product.tags) ? product.tags : undefined,
       department: product.department || undefined,
       source: productSource || undefined,
