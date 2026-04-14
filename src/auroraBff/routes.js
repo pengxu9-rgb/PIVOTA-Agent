@@ -66967,14 +66967,33 @@ function normalizePoolAlternativeRow(row, {
         candidateLabel,
       );
   const targetRole = String(targetSignals?.usageRole || '').trim().toLowerCase();
-  if (targetRole && targetRole !== 'unknown' && candidateRole && candidateRole !== 'unknown' && candidateRole !== targetRole) {
+  const candidateText = buildRecoAlternativePoolCandidateText(normalized);
+  const targetRoleScopeText = [
+    targetSignals?.roleScope,
+    ...(Array.isArray(targetSignals?.primaryClaims) ? targetSignals.primaryClaims : []),
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+  const allowBarrierSerumRoleBridge =
+    targetRole === 'moisturizer' &&
+    candidateRole === 'serum' &&
+    /\b(?:barrier|ceramides?|hyaluronic|hydrating|hydration|repair|calm|sooth)\b/i.test(targetRoleScopeText) &&
+    /\b(?:barrier|ceramides?|hyaluronic|hydrating|hydration|repair|calm|sooth)\b/i.test(candidateText);
+  if (
+    targetRole &&
+    targetRole !== 'unknown' &&
+    candidateRole &&
+    candidateRole !== 'unknown' &&
+    candidateRole !== targetRole &&
+    !allowBarrierSerumRoleBridge
+  ) {
     return null;
   }
   if (!isRecoAlternativeFormFactorCompatible(normalized, { targetSignals })) {
     return null;
   }
 
-  const candidateText = buildRecoAlternativePoolCandidateText(normalized);
   const nameOverlap = computeTokenJaccardScore(anchorNameTokens, tokenizeProductTextForSimilarity(candidateLabel)) || 0;
   const ingredientOverlap = computeExternalSeedSignalOverlap(ingredientTokens, candidateText);
   const claimOverlap = computeExternalSeedSignalOverlap(claimTokens, candidateText);
@@ -67007,7 +67026,8 @@ function normalizePoolAlternativeRow(row, {
     cosmeticFinishPenalty -
     concernIntentPenalty,
   );
-  if (mixedScore < 0.55) return null;
+  const minimumPoolScore = targetRole === 'sunscreen' && candidateRole === 'sunscreen' ? 0.5 : 0.55;
+  if (mixedScore < minimumPoolScore) return null;
 
   const pdpUrl = extractCandidateOpenUrl(normalized);
   const pdpOpen = normalized.canonical_product_ref
