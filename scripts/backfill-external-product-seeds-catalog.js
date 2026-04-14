@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const crypto = require('node:crypto');
+const fs = require('node:fs');
 const axios = require('axios');
 const { query, withClient } = require('../src/db');
 const { lookupExternalSeedImageOverride } = require('../src/services/externalSeedImageOverrides');
@@ -34,6 +35,23 @@ function argValue(name) {
 
 function hasFlag(name) {
   return process.argv.includes(`--${name}`);
+}
+
+function parseDelimitedIds(value) {
+  return Array.from(
+    new Set(
+      String(value || '')
+        .split(/[\s,]+/)
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+function readDelimitedIdsFile(filePath) {
+  const path = normalizeNonEmptyString(filePath);
+  if (!path) return [];
+  return parseDelimitedIds(fs.readFileSync(path, 'utf8'));
 }
 
 function normalizeNonEmptyString(value) {
@@ -233,6 +251,15 @@ function collectVariantImageUrls(variant) {
   ]);
 }
 
+function collectProductImageUrls(product) {
+  return sanitizeSeedImageUrls([
+    ...(Array.isArray(product?.image_urls) ? product.image_urls : []),
+    ...(Array.isArray(product?.images) ? product.images : []),
+    product?.image_url,
+    product?.image,
+  ]);
+}
+
 function isDecorativeSeedImageUrl(value) {
   const normalized = normalizeUrlLike(value).toLowerCase();
   if (!normalized) return false;
@@ -274,6 +301,12 @@ function sanitizeSeedImageUrls(values) {
     out.push(normalized);
   }
   return out;
+}
+
+function shouldMergeProductGalleryForSelectedVariant(selectedVariantImageUrls, productImageUrls) {
+  if (!Array.isArray(selectedVariantImageUrls) || selectedVariantImageUrls.length !== 1) return false;
+  if (!Array.isArray(productImageUrls) || productImageUrls.length <= 1) return false;
+  return normalizeComparableImageKey(selectedVariantImageUrls[0]) === normalizeComparableImageKey(productImageUrls[0]);
 }
 
 function normalizeDetailSectionHeading(value) {
@@ -693,17 +726,24 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   const selectedVariantId = getVariantId(selectedSnapshotVariant);
   const selectedVariantTitle = getVariantTitle(selectedSnapshotVariant);
   const selectedVariantImageUrls = collectVariantImageUrls(selectedSnapshotVariant);
+  const representativeProductImageUrls = collectProductImageUrls(representativeProduct);
   const hasLiveVariantImages =
     Array.isArray(response?.variants) &&
     response.variants.length > 0 &&
     effectiveSnapshotVariants.some((variant) => Array.isArray(variant.image_urls) && variant.image_urls.length > 0);
+  const selectedVariantUsesProductGallery = shouldMergeProductGalleryForSelectedVariant(
+    selectedVariantImageUrls,
+    representativeProductImageUrls,
+  );
   const extractedImageUrls = sanitizeSeedImageUrls([
     ...(selectedVariantImageUrls.length > 0 ? selectedVariantImageUrls : []),
+    ...(selectedVariantImageUrls.length > 0 && selectedVariantUsesProductGallery
+      ? representativeProductImageUrls
+      : []),
     ...(selectedVariantImageUrls.length > 0 || selectedSnapshotVariant
       ? []
       : [
-          ...(Array.isArray(representativeProduct?.image_urls) ? representativeProduct.image_urls : []),
-          representativeProduct?.image_url,
+          ...representativeProductImageUrls,
           ...(hasLiveVariantImages ? effectiveSnapshotVariants.flatMap((variant) => variant.image_urls || []) : []),
         ]),
   ]);
@@ -1225,7 +1265,12 @@ async function fetchRows(options) {
     seedIdsBind = addParam(options.seedIds.map((value) => normalizeNonEmptyString(value)).filter(Boolean));
     where.push(`id::text = ANY(${seedIdsBind}::text[])`);
   }
+  let externalProductIdsBind = null;
   if (options.externalProductId) where.push(`external_product_id = ${addParam(options.externalProductId)}`);
+  if (Array.isArray(options.externalProductIds) && options.externalProductIds.length > 0) {
+    externalProductIdsBind = addParam(options.externalProductIds.map((value) => normalizeNonEmptyString(value)).filter(Boolean));
+    where.push(`external_product_id = ANY(${externalProductIdsBind}::text[])`);
+  }
   if (options.domain) where.push(`domain = ${addParam(options.domain)}`);
   if (options.brand) where.push(`lower(coalesce(seed_data->>'brand', '')) = lower(${addParam(options.brand)})`);
 
@@ -1264,6 +1309,8 @@ async function fetchRows(options) {
     ORDER BY ${
       seedIdsBind
         ? `array_position(${seedIdsBind}::text[], id::text) ASC NULLS LAST, updated_at DESC NULLS LAST, created_at DESC NULLS LAST`
+        : externalProductIdsBind
+          ? `array_position(${externalProductIdsBind}::text[], external_product_id::text) ASC NULLS LAST, updated_at DESC NULLS LAST, created_at DESC NULLS LAST`
         : 'updated_at DESC NULLS LAST, created_at DESC NULLS LAST'
     }
     LIMIT ${limitBind}
@@ -1422,9 +1469,18 @@ async function main() {
   const limit = Math.max(1, Math.min(Number(argValue('limit') || 50), 1000));
   const offset = Math.max(0, Number(argValue('offset') || 0));
   const concurrency = Math.max(1, Math.min(Number(argValue('concurrency') || 3), 10));
+  const externalProductId = argValue('external-product-id') || argValue('externalProductId') || null;
+  const externalProductIds = Array.from(
+    new Set([
+      ...parseDelimitedIds(argValue('external-product-ids') || argValue('externalProductIds') || ''),
+      ...readDelimitedIdsFile(argValue('external-product-ids-file') || argValue('externalProductIdsFile') || ''),
+    ]),
+  );
+  if (externalProductId && externalProductIds.length > 0) externalProductIds.unshift(externalProductId);
   const options = {
     seedId: argValue('seed-id') || argValue('seedId') || null,
-    externalProductId: argValue('external-product-id') || argValue('externalProductId') || null,
+    externalProductId: externalProductIds.length > 0 ? null : externalProductId,
+    externalProductIds,
     domain: argValue('domain') || null,
     brand: argValue('brand') || null,
     market: normalizeNonEmptyString(argValue('market') || 'US').toUpperCase(),
@@ -1476,6 +1532,8 @@ module.exports = {
   fetchRows,
   processRow,
   pickSeedTargetUrl,
+  parseDelimitedIds,
+  readDelimitedIdsFile,
   buildExtractRequestBody,
   chooseRepresentativeProduct,
   buildSeedUpdatePayload,

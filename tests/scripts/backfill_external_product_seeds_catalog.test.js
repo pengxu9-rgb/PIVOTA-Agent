@@ -8,9 +8,14 @@ const {
   normalizeComparableUrlKey,
   normalizeTargetUrlForMarket,
   recoverTargetUrlFromDiagnostics,
+  parseDelimitedIds,
 } = require('../../scripts/backfill-external-product-seeds-catalog');
 
 describe('backfill-external-product-seeds-catalog', () => {
+  test('parses external product id lists from comma or newline input', () => {
+    expect(parseDelimitedIds('ext_a, ext_b\next_a\n\next_c')).toEqual(['ext_a', 'ext_b', 'ext_c']);
+  });
+
   test('prefers canonical URL when building extract target', () => {
     const row = {
       canonical_url: 'https://example.com/p/canonical-product',
@@ -1113,8 +1118,94 @@ describe('backfill-external-product-seeds-catalog', () => {
     );
     expect(payload.nextRow.price_amount).toBe(44);
     expect(payload.nextRow.image_url).toBe('https://cdn.example.com/refill.jpg');
+    expect(payload.nextRow.seed_data.image_urls).toEqual(['https://cdn.example.com/refill.jpg']);
     expect(payload.nextRow.seed_data.selected_variant_id).toBe('41148734701616');
     expect(payload.nextRow.seed_data.variant_title).toBe('Refill');
     expect(buildVariantSeedRows(row, payload)).toEqual([]);
+  });
+
+  test('merges product gallery when selected variant only repeats the product thumbnail', () => {
+    const row = {
+      id: 'eps_boj_daily_tinted_dn350',
+      external_product_id: 'ext_7b89e40cf21f7b8782783e15',
+      market: 'US',
+      tool: 'creator_agents',
+      title: 'Daily Tinted Fluid Sunscreen DN350',
+      canonical_url: 'https://beautyofjoseon.com/products/daily-tinted-fluid-sunscreen-dn350',
+      destination_url: 'https://beautyofjoseon.com/products/daily-tinted-fluid-sunscreen-dn350',
+      image_url: 'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/DTFS_DN350_Thumbnail_1.jpg',
+      price_amount: 10,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        brand: 'Beauty of Joseon',
+        selected_variant_id: '52402575442292',
+        snapshot: {
+          canonical_url: 'https://beautyofjoseon.com/products/daily-tinted-fluid-sunscreen-dn350',
+          selected_variant_id: '52402575442292',
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: 'Daily Tinted Fluid Sunscreen DN350',
+            url: 'https://beautyofjoseon.com/products/daily-tinted-fluid-sunscreen-dn350',
+            image_url: 'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/DTFS_DN350_Thumbnail_1.jpg?v=1763453373',
+            image_urls: [
+              'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/DTFS_DN350_Thumbnail_1.jpg?v=1763453373',
+              'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/Daily-Tinted-Fluid-Sunscreen-DN350_Beauty-of-Joseon_59516391-51502368031092.jpg?v=1763451773',
+              'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/241127JOSEON0307_1.webp?v=1770142124',
+            ],
+            variants: [
+              {
+                id: '52402575442292',
+                sku: '01BU013',
+                option_name: 'Size',
+                option_value: '1.69 fl. oz. (50ml)',
+                price: '10.00',
+                currency: 'USD',
+                stock: 'In Stock',
+                product_url: 'https://beautyofjoseon.com/products/daily-tinted-fluid-sunscreen-dn350',
+                image_url: 'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/DTFS_DN350_Thumbnail_1.jpg?v=1763453373',
+                image_urls: [
+                  'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/DTFS_DN350_Thumbnail_1.jpg?v=1763453373',
+                ],
+              },
+              {
+                id: '52402575475060',
+                sku: '01BU027',
+                option_name: 'Size',
+                option_value: '0.23 fl. oz. (7ml)',
+                price: '2.00',
+                currency: 'USD',
+                stock: 'In Stock',
+                product_url: 'https://beautyofjoseon.com/products/daily-tinted-fluid-sunscreen-dn350',
+                image_url: 'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/DTFS_DN350_Thumbnail_1.jpg?v=1763453373',
+                image_urls: [
+                  'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/DTFS_DN350_Thumbnail_1.jpg?v=1763453373',
+                ],
+              },
+            ],
+          },
+        ],
+        variants: [],
+        diagnostics: {},
+      },
+      'https://beautyofjoseon.com/products/daily-tinted-fluid-sunscreen-dn350',
+    );
+
+    expect(payload.nextRow.image_url).toBe(
+      'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/DTFS_DN350_Thumbnail_1.jpg',
+    );
+    expect(payload.nextRow.seed_data.image_urls).toEqual([
+      'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/DTFS_DN350_Thumbnail_1.jpg',
+      'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/Daily-Tinted-Fluid-Sunscreen-DN350_Beauty-of-Joseon_59516391-51502368031092.jpg',
+      'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/241127JOSEON0307_1.webp',
+    ]);
+    expect(payload.nextRow.seed_data.snapshot.image_urls).toEqual(payload.nextRow.seed_data.image_urls);
   });
 });
