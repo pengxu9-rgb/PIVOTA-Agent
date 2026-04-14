@@ -8,6 +8,17 @@ describe('pivota_insights_coverage_batch', () => {
       '--limit',
       '40',
       '--skip-gemini',
+      '--identity-beauty-only',
+      '--identity-brands',
+      'Naturium,Olehenriksen',
+      '--identity-top-brands',
+      '3',
+      '--identity-per-brand-limit',
+      '2',
+      '--identity-min-source-rows',
+      '4',
+      '--identity-min-review-ratio',
+      '0.5',
     ]);
 
     expect(args.surface).toBe('');
@@ -20,6 +31,18 @@ describe('pivota_insights_coverage_batch', () => {
     expect(args.excludeCovered).toBe(true);
     expect(args.skipGemini).toBe(true);
     expect(args.model).toBe('gemini-3-flash-preview');
+    expect(args.identityBeautyOnly).toBe(true);
+    expect(args.identityBrands).toEqual(['Naturium', 'Olehenriksen']);
+    expect(args.identityTopBrands).toBe(3);
+    expect(args.identityPerBrandLimit).toBe(2);
+    expect(args.identityMinSourceRows).toBe(4);
+    expect(args.identityMinReviewRatio).toBe(0.5);
+  });
+
+  test('defaults identity per-brand limit to 3 when not provided', () => {
+    const args = parseArgs(['node', 'script']);
+
+    expect(args.identityPerBrandLimit).toBe(3);
   });
 
   test('parses explicit product ids for manual expansion batches', () => {

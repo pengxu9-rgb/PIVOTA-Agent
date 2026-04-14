@@ -6,6 +6,10 @@ const axios = require('axios');
 const { closePool, query } = require('../src/db');
 const { buildExternalSeedProduct } = require('../src/services/externalSeedProducts');
 const {
+  summarizePdpIdentityCoverageByBrand,
+  _internals: pdpIdentityInternals = {},
+} = require('../src/services/pdpIdentityGraph');
+const {
   filterDisplayableMarketSignalBadges,
   hasDisplayableBadgeEvidence,
   normalizeCommunitySignals: normalizeEvidenceCommunitySignals,
@@ -18,6 +22,11 @@ const {
   isCoveredByReviewMode,
   normalizeReviewMode,
 } = require('../src/services/pivotaProductIntelReviewPolicy');
+
+const pdpIdentityFetchBackfillProducts =
+  typeof pdpIdentityInternals.fetchBackfillProducts === 'function'
+    ? pdpIdentityInternals.fetchBackfillProducts
+    : null;
 
 function buildGatewayHeaders() {
   const apiKey = String(
@@ -43,6 +52,8 @@ function parseArgs(argv) {
   const out = {
     gatewayUrl: process.env.PIVOTA_GATEWAY_URL || 'https://agent.pivota.cc/api/gateway',
     productIds: [],
+    identityBrands: [],
+    supplementalProductIds: [],
     queries: [],
     surface: '',
     pages: 0,
@@ -54,6 +65,11 @@ function parseArgs(argv) {
     limit: 10,
     perQuery: 12,
     seed: String(process.env.PRODUCT_INTEL_PILOT_SEED || '20260408'),
+    identityTopBrands: 0,
+    identityPerBrandLimit: 3,
+    identityMinSourceRows: 1,
+    identityMinReviewRatio: 0,
+    identityBeautyOnly: false,
     out: '',
     requireBadgeEvidence: false,
     excludeCovered: false,
@@ -70,6 +86,18 @@ function parseArgs(argv) {
       i += 1;
     } else if (token === '--product-ids' && next) {
       out.productIds = String(next)
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+      i += 1;
+    } else if (token === '--identity-brands' && next) {
+      out.identityBrands = String(next)
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+      i += 1;
+    } else if (token === '--supplemental-product-ids' && next) {
+      out.supplementalProductIds = String(next)
         .split(',')
         .map((item) => item.trim())
         .filter(Boolean);
@@ -113,6 +141,22 @@ function parseArgs(argv) {
     } else if (token === '--seed' && next) {
       out.seed = String(next);
       i += 1;
+    } else if (token === '--identity-top-brands' && next) {
+      out.identityTopBrands = Math.max(0, Number(next) || 0);
+      i += 1;
+    } else if (token === '--identity-per-brand-limit' && next) {
+      out.identityPerBrandLimit = Math.max(0, Number(next) || 0);
+      i += 1;
+    } else if (token === '--identity-min-source-rows' && next) {
+      out.identityMinSourceRows = Math.max(0, Number(next) || 0);
+      i += 1;
+    } else if (token === '--identity-min-review-ratio' && next) {
+      out.identityMinReviewRatio = Number(next) || 0;
+      i += 1;
+    } else if (token === '--identity-beauty-only') {
+      out.identityBeautyOnly = true;
+    } else if (token === '--identity-include-non-beauty') {
+      out.identityBeautyOnly = false;
     } else if (token === '--out' && next) {
       out.out = next;
       i += 1;
@@ -161,6 +205,10 @@ function asString(value) {
 }
 
 function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function toList(value) {
   return Array.isArray(value) ? value : [];
 }
 
@@ -584,6 +632,117 @@ function hasBadgeEvidence(caseRow) {
   });
 }
 
+async function loadExistingIdentityRefsForProductRefs(productRefs, queryFn = query) {
+  const normalizedRefs = Array.from(new Set(toList(productRefs).map(asString).filter(Boolean)));
+  if (!normalizedRefs.length || typeof queryFn !== 'function') return new Set();
+
+  try {
+    const response = await queryFn(
+      `
+        SELECT source_listing_ref
+        FROM pdp_identity_listing
+        WHERE source_listing_ref = ANY($1::text[])
+      `,
+      [normalizedRefs],
+    );
+    return new Set(
+      toList(response?.rows).map((row) => asString(row?.source_listing_ref)).filter(Boolean),
+    );
+  } catch (err) {
+    if (asString(err?.code) === '42P01' || asString(err?.code) === 'NO_DATABASE') {
+      return new Set();
+    }
+    throw err;
+  }
+}
+
+async function loadMissingIdentityCoverageProductIds({
+  explicitBrands = [],
+  topBrands = 0,
+  perBrandLimit = 0,
+  minSourceRows = 1,
+  minReviewRatio = 0,
+  beautyOnly = false,
+  seed = '20260408',
+  queryFn = query,
+  summarizeFn = summarizePdpIdentityCoverageByBrand,
+  fetchBackfillProductsFn = pdpIdentityFetchBackfillProducts,
+} = {}) {
+  if (typeof fetchBackfillProductsFn !== 'function') return [];
+  const normalizedTopBrands = Math.max(0, Number(topBrands) || 0);
+  const normalizedPerBrandLimit = Math.max(0, Number(perBrandLimit) || 0);
+  const normalizedMinSourceRows = Math.max(0, Number(minSourceRows) || 0);
+  const normalizedMinReviewRatio = Math.max(0, Math.min(1, Number(minReviewRatio) || 0));
+  if (normalizedTopBrands <= 0 && !toList(explicitBrands).length) return [];
+
+  const targetBrands = new Set(
+    toList(explicitBrands).map((item) => asString(item).toLowerCase()).filter(Boolean),
+  );
+
+  if (!targetBrands.size && normalizedTopBrands > 0 && typeof summarizeFn === 'function') {
+    const coverageRows = await summarizeFn({
+      limit: normalizedTopBrands,
+      minSourceRows: normalizedMinSourceRows,
+      beautyOnly,
+      ...(typeof queryFn === 'function' ? { queryFn } : {}),
+    });
+    coverageRows
+      .filter((row) => {
+        const missingRows = toFiniteNumber(row?.missing_identity_rows) || 0;
+        const reviewRatio = Number(row?.review_ratio || 0);
+        return missingRows > 0 && reviewRatio >= normalizedMinReviewRatio;
+      })
+      .sort((left, right) => {
+        const leftMissing = toFiniteNumber(left?.missing_identity_rows) || 0;
+        const rightMissing = toFiniteNumber(right?.missing_identity_rows) || 0;
+        if (leftMissing !== rightMissing) return rightMissing - leftMissing;
+        return asString(left?.brand_norm).localeCompare(asString(right?.brand_norm));
+      })
+      .slice(0, normalizedTopBrands)
+      .forEach((row) => {
+        const brand = asString(row?.brand_norm).toLowerCase();
+        if (brand) targetBrands.add(brand);
+      });
+  }
+
+  if (!targetBrands.size || !normalizedPerBrandLimit) return [];
+
+  const allCandidates = [];
+  for (const brand of targetBrands) {
+    const rows = await fetchBackfillProductsFn({
+      brandFilter: brand,
+      limit: normalizedPerBrandLimit * 3,
+      ...(typeof queryFn === 'function' ? { queryFn } : {}),
+    });
+    const sourceRefs = toList(rows)
+      .map((row) =>
+        asString(row?.merchant_id && row?.product_id ? `${row.merchant_id}:${row.product_id}` : ''),
+      )
+      .filter(Boolean);
+
+    const existingRefs = await loadExistingIdentityRefsForProductRefs(sourceRefs, queryFn);
+    const missing = toList(rows)
+      .map((row) => ({
+        sourceRef: asString(
+          row?.merchant_id && row?.product_id ? `${row.merchant_id}:${row.product_id}` : '',
+        ),
+        productId: asString(row?.product_id),
+      }))
+      .filter((item) => item.productId && item.sourceRef && !existingRefs.has(item.sourceRef))
+      .map((item) => item.productId);
+
+    allCandidates.push(
+      ...sampleWithoutReplacement(
+        [...new Set(missing)],
+        normalizedPerBrandLimit,
+        `${seed}-identity-brand-${brand}`,
+      ),
+    );
+  }
+
+  return [...new Set(allCandidates)];
+}
+
 function selectDiverseCases(cases, { limit, seed, maxPerBrand, maxPerCategory }) {
   const rows = asArray(cases).filter((row) => row && !row.error);
   if (!rows.length) return [];
@@ -799,6 +958,59 @@ async function main() {
     seedCases = selectedIds.map((id) => byProductId.get(id)).filter(Boolean);
   }
 
+  const hasIdentitySignal = Boolean(
+    args.supplementalProductIds.length ||
+      args.identityBrands.length ||
+      args.identityTopBrands > 0,
+  );
+  let supplementalIds = [...args.supplementalProductIds];
+  if (hasIdentitySignal) {
+    const missingCoverageIds = await loadMissingIdentityCoverageProductIds({
+      explicitBrands: args.identityBrands,
+      topBrands: args.identityTopBrands,
+      perBrandLimit: args.identityPerBrandLimit,
+      minSourceRows: args.identityMinSourceRows,
+      minReviewRatio: args.identityMinReviewRatio,
+      beautyOnly: args.identityBeautyOnly === true,
+      seed: args.seed,
+      queryFn: query,
+      summarizeFn: summarizePdpIdentityCoverageByBrand,
+      fetchBackfillProductsFn: pdpIdentityFetchBackfillProducts,
+    }).catch(() => []);
+    supplementalIds = supplementalIds.concat(missingCoverageIds);
+  }
+
+  const selectionPoolLimit = Math.max(
+    args.limit,
+    Math.trunc(args.limit * args.candidatePoolMultiplier),
+  );
+  const mergedIds = Array.from(
+    new Set([
+      ...selectedIds,
+      ...toList(supplementalIds).map((item) => asString(item)).filter(Boolean),
+    ]),
+  );
+
+  if (mergedIds.length) {
+    if (args.excludeCovered) {
+      const poolCoveredIds = await loadCoveredProductIdSet(
+        mergedIds,
+        query,
+        args.coveredReviewMode,
+      ).catch(() => new Set());
+      const allCovered = new Set([
+        ...poolCoveredIds,
+        ...reportCoveredProductIds,
+        ...manualOverrideProductIds,
+      ]);
+      selectedIds = mergedIds.filter((id) => !allCovered.has(id));
+      coveredProductIds = allCovered;
+    } else {
+      selectedIds = mergedIds;
+    }
+    selectedIds = sampleWithoutReplacement(selectedIds, selectionPoolLimit, args.seed);
+  }
+
   if (!selectedIds.length) {
     throw new Error('missing_product_ids_or_queries');
   }
@@ -913,6 +1125,8 @@ module.exports = {
   loadCoveredProductIdSet,
   loadCoveredProductIdSetFromReport,
   loadManualOverrideProductIdSet,
+  loadExistingIdentityRefsForProductRefs,
+  loadMissingIdentityCoverageProductIds,
   parseArgs,
   sampleWithoutReplacement,
   selectDiverseCases,
