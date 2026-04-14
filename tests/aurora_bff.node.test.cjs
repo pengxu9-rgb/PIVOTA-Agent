@@ -7294,7 +7294,7 @@ test('fetchRecoAlternativesForProduct: open_world_only grounds unresolved search
                 name: '10% Niacinamide Booster',
                 product_type: 'serum',
                 similarity_score: 79,
-                reasons: ['Regulates oil production and improves skin tone with the same hero active.'],
+                reasons: ['Regulates oil production skin tone with the same hero active.'],
                 tradeoff_notes: ['Formula concentration differs from the anchor.'],
               },
             ],
