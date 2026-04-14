@@ -229,6 +229,48 @@ function isGenericSellerHighlightText(text) {
   ].some((pattern) => pattern.test(normalized));
 }
 
+function normalizeQualityLabel(text) {
+  return asString(text)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isGenericWhatItIsHeadline(text) {
+  const normalized = normalizeQualityLabel(text);
+  if (!normalized) return false;
+  return [
+    normalizeQualityLabel(PIVOTA_INSIGHTS_DISPLAY_NAME),
+    'pivota insight',
+    'product insight',
+    'product insights',
+    'cleansing product',
+    'skincare product',
+    'beauty product',
+  ].includes(normalized);
+}
+
+function isWeakBestForForPublish(bestFor) {
+  const items = toList(bestFor)
+    .map((item) => ({
+      label: normalizeQualityLabel(item?.label || item?.tag || item),
+      confidence: normalizeQualityLabel(item?.confidence),
+    }))
+    .filter((item) => item.label);
+  if (!items.length) return true;
+
+  const weakItem = (item) => {
+    if (/^product fit shoppers?$/.test(item.label)) return true;
+    if (/^(serum|cleanser|moisturizer|sunscreen|toner|essence|cream|lip|fragrance|makeup|skincare) shoppers?$/.test(item.label)) {
+      return true;
+    }
+    return item.confidence === 'low' && /\b(shoppers?|routines?|users?)$/.test(item.label);
+  };
+
+  return items.every(weakItem);
+}
+
 function stripSellerMerchandisingLead(text) {
   return asString(text)
     .replace(/^double up and save with\s+/i, '')
@@ -1076,11 +1118,12 @@ function buildHumanStandardWhatItIs(context, baselineBundle) {
   }
   if (kind === 'cleanser') {
     return {
-      headline: /clean/i.test(baseHeadline) ? baseHeadline : 'Daily cleanser',
+      headline: /cleanser/i.test(baseHeadline) ? baseHeadline : 'Daily cleanser',
       body:
-        activeTerms.length
+        usefulDescription ||
+        (activeTerms.length
           ? `A daily cleanser built around ${activeTerms.join(', ')} cues for removing daily buildup while keeping the routine comfortable.`
-          : 'A cleanser focused on removing daily buildup while keeping the routine gentle and practical.',
+          : 'A cleanser focused on removing daily buildup while keeping the routine gentle and practical.'),
     };
   }
 
@@ -1115,6 +1158,7 @@ function buildHumanStandardBestFor(context, baselineBundle) {
   }
   if (kind === 'serum') {
     if (text.includes('tone') || text.includes('vitamin c')) return [item('uneven_tone', 'Uneven tone concerns'), item('texture_refinement', 'Texture-smoothing routines')];
+    if (/\b(sebum|pore|pores|congestion|breakout|acne|propolis)\b/.test(text)) return [item('oil_control', 'Oiliness and visible pores'), item('breakout_prone', 'Breakout-prone routines')];
     return [item('targeted_treatment', 'Targeted treatment routines')];
   }
   if (kind === 'moisturizer') {
@@ -1635,6 +1679,9 @@ function evaluateGeminiCandidateQuality(baselineBundle, geminiCandidateBundle) {
     candidateCore.best_for,
   );
   const incompleteHighlights = hasIncompleteHighlightCopy(candidateCore.why_it_stands_out);
+  const weakCandidateWhatItIsHeadline = isGenericWhatItIsHeadline(candidateCore.what_it_is?.headline);
+  const weakBaselineBestFor = isWeakBestForForPublish(baselineCore.best_for);
+  const weakCandidateBestFor = isWeakBestForForPublish(candidateCore.best_for);
 
   const bestForOverlap = Number(
     jaccardOverlap(
@@ -1652,16 +1699,19 @@ function evaluateGeminiCandidateQuality(baselineBundle, geminiCandidateBundle) {
   const fieldDecisions = {
     what_it_is:
       asString(candidateCore.what_it_is?.body).length >= 24 &&
+      !weakCandidateWhatItIsHeadline &&
       !sellerOnlyViolation &&
       !problematicGeneratedText &&
       !(sellerOnlyMode && isWeakSellerWhatItIsText(candidateCore.what_it_is?.body)),
     best_for:
       Array.isArray(candidateCore.best_for) &&
       candidateCore.best_for.length > 0 &&
+      !weakCandidateBestFor &&
       (
         !baselineCore.best_for?.length ||
         baselineBundle.evidence_profile !== 'community_supported' ||
-        bestForOverlap >= 0.15
+        bestForOverlap >= 0.15 ||
+        weakBaselineBestFor
       ) &&
       !incompatibleBestFor &&
       !sellerOnlyViolation &&
@@ -1706,6 +1756,8 @@ function evaluateGeminiCandidateQuality(baselineBundle, geminiCandidateBundle) {
   if (problematicGeneratedText) failReasons.push('problematic_generated_text');
   if (incompatibleBestFor) failReasons.push('incompatible_best_for');
   if (incompleteHighlights) failReasons.push('incomplete_highlight_copy');
+  if (weakCandidateWhatItIsHeadline) failReasons.push('generic_what_it_is_headline');
+  if (weakCandidateBestFor) failReasons.push('weak_best_for_taxonomy_fallback');
   if (!fieldDecisions.what_it_is) failReasons.push('weak_what_it_is');
   if (!fieldDecisions.best_for) failReasons.push('weak_best_for');
   if (!fieldDecisions.why_it_stands_out) failReasons.push('weak_highlights');
@@ -1810,6 +1862,32 @@ function buildSelectedBundle(caseRow, baselineBundle, geminiCandidateBundle, qua
     if (patch?.product_intel_core?.what_it_is?.body) {
       selected.product_intel_core.what_it_is = deepClone(patch.product_intel_core.what_it_is);
       fieldSources.what_it_is = 'human_standard';
+    }
+  }
+  const generatedUnsafeForRepair =
+    Boolean(quality?.seller_only_violation) || Boolean(quality?.problematic_generated_text);
+  if (
+    !generatedUnsafeForRepair &&
+    isGenericWhatItIsHeadline(selected.product_intel_core?.what_it_is?.headline)
+  ) {
+    const patch = humanStandardPatch();
+    if (
+      patch?.product_intel_core?.what_it_is?.headline &&
+      !isGenericWhatItIsHeadline(patch.product_intel_core.what_it_is.headline)
+    ) {
+      selected.product_intel_core.what_it_is = deepClone(patch.product_intel_core.what_it_is);
+      fieldSources.what_it_is = 'human_standard';
+    }
+  }
+  if (!generatedUnsafeForRepair && isWeakBestForForPublish(selected.product_intel_core?.best_for)) {
+    const patch = humanStandardPatch();
+    if (
+      Array.isArray(patch?.product_intel_core?.best_for) &&
+      patch.product_intel_core.best_for.length &&
+      !isWeakBestForForPublish(patch.product_intel_core.best_for)
+    ) {
+      selected.product_intel_core.best_for = deepClone(patch.product_intel_core.best_for);
+      fieldSources.best_for = 'human_standard';
     }
   }
   if (hasIncompleteHighlightCopy(selected.product_intel_core?.why_it_stands_out)) {

@@ -471,6 +471,191 @@ describe('product_intel pilot compare selection', () => {
     }
   });
 
+  test('rejects generic Pivota Insights what-it-is headlines from generated candidates', () => {
+    const caseRow = {
+      case_id: 'generic_pivota_headline',
+      canonical_product_ref: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_generic_pivota_headline',
+      },
+      product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_generic_pivota_headline',
+        brand: 'Beauty of Joseon',
+        title: 'Green Plum Refreshing Cleanser',
+        category: 'Cleanser',
+        description:
+          'A pH-balanced gentle daily cleanser with plum and mung bean extracts that deeply cleanses and refreshes while supporting your moisture barrier. Read More.',
+        review_summary: {
+          rating: 4.9,
+          review_count: 2065,
+        },
+      },
+    };
+    const baseline = buildProductIntelDraftBundle({
+      product: caseRow.product,
+      canonicalProductRef: caseRow.canonical_product_ref,
+    });
+    const geminiOutput = {
+      product_intel_core: {
+        what_it_is: {
+          headline: 'Pivota Insights',
+          body: "A gentle, slightly acidic daily cleanser formulated with 24% plum water and 3% mung bean extract to lift away impurities while protecting the skin's natural moisture barrier.",
+        },
+        best_for: [
+          { tag: 'sensitive_skin', label: 'Sensitive skin', confidence: 'moderate' },
+        ],
+        why_it_stands_out: [
+          {
+            headline: 'Low-pH cleansing',
+            body: 'Uses a low-pH cleansing profile to avoid the tight feel often caused by harsher foaming cleansers.',
+            evidence_strength: 'limited',
+          },
+        ],
+        routine_fit: {
+          step: 'cleanser',
+          am_pm: ['am', 'pm'],
+          pairing_notes: ['Use before treatment and moisturizer steps.'],
+        },
+        watchouts: [],
+      },
+      texture_finish: {
+        texture: 'gel',
+        finish: 'clean',
+      },
+      community_signals: {
+        status: 'available',
+        top_loves: ['4.9★ average across 2.1k buyer reviews.'],
+      },
+    };
+
+    const candidate = mergeGeminiDraftIntoBaseline(caseRow, baseline, geminiOutput, 'gemini-test');
+    const quality = evaluateGeminiCandidateQuality(baseline, candidate);
+    const selected = buildSelectedBundle(caseRow, baseline, candidate, quality, 'gemini-test');
+
+    expect(quality.field_decisions.what_it_is).toBe(false);
+    expect(quality.fail_reasons).toContain('generic_what_it_is_headline');
+    expect(selected.field_sources.what_it_is).toBe('human_standard');
+    expect(selected.bundle.product_intel_core.what_it_is.headline).toBe('Daily cleanser');
+    expect(selected.bundle.product_intel_core.what_it_is.body).not.toMatch(/Read More/i);
+  });
+
+  test('allows specific generated best-for when community-supported baseline is a weak taxonomy fallback', () => {
+    const caseRow = {
+      case_id: 'weak_baseline_best_for',
+      canonical_product_ref: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_weak_baseline_best_for',
+      },
+      product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_weak_baseline_best_for',
+        brand: 'Beauty of Joseon',
+        title: 'Glow Serum : Propolis + Niacinamide',
+        category: 'Serum',
+        description:
+          'A cushiony smoothing serum with niacinamide and propolis extract that helps refine pores, hydrate, and calm reactive skin for a glassy glow. Read More.',
+        review_summary: {
+          rating: 4.9,
+          review_count: 1575,
+        },
+      },
+    };
+    const baseline = buildProductIntelDraftBundle({
+      product: caseRow.product,
+      canonicalProductRef: caseRow.canonical_product_ref,
+    });
+    baseline.product_intel_core.best_for = [
+      { tag: 'serum', label: 'Serum shoppers', confidence: 'low' },
+    ];
+    const geminiOutput = {
+      product_intel_core: {
+        what_it_is: {
+          headline: 'Treatment serum',
+          body: 'A concentrated serum formulated with 60% propolis extract and 2% niacinamide to manage sebum production and refine the appearance of pores.',
+        },
+        best_for: [
+          {
+            tag: 'oil_control',
+            label: 'Oily or combination skin types prone to congestion',
+            confidence: 'moderate',
+          },
+          {
+            tag: 'redness',
+            label: 'Skin experiencing redness or inflammation',
+            confidence: 'moderate',
+          },
+        ],
+        why_it_stands_out: [
+          {
+            headline: 'Propolis and niacinamide blend',
+            body: 'Combines propolis extract with niacinamide to address sebum, pore appearance, and visible calm in one serum step.',
+            evidence_strength: 'limited',
+          },
+        ],
+        routine_fit: {
+          step: 'serum',
+          am_pm: ['am', 'pm'],
+          pairing_notes: ['Apply before moisturizer.'],
+        },
+        watchouts: [],
+      },
+      texture_finish: {
+        texture: 'serum',
+        finish: 'dewy',
+      },
+      community_signals: {
+        status: 'available',
+        top_loves: ['4.9★ average across 1.6k buyer reviews.'],
+      },
+    };
+
+    const candidate = mergeGeminiDraftIntoBaseline(caseRow, baseline, geminiOutput, 'gemini-test');
+    const quality = evaluateGeminiCandidateQuality(baseline, candidate);
+    const selected = buildSelectedBundle(caseRow, baseline, candidate, quality, 'gemini-test');
+
+    expect(baseline.evidence_profile).toBe('community_supported');
+    expect(quality.field_decisions.best_for).toBe(true);
+    expect(selected.field_sources.best_for).toBe('gemini');
+    expect(selected.bundle.product_intel_core.best_for.map((item) => item.label)).toContain(
+      'Oily or combination skin types prone to congestion',
+    );
+  });
+
+  test('repairs selected weak baseline best-for with human-standard output when no generated candidate is usable', () => {
+    const caseRow = {
+      case_id: 'weak_baseline_best_for_repair',
+      canonical_product_ref: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_weak_baseline_best_for_repair',
+      },
+      product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_weak_baseline_best_for_repair',
+        brand: 'Beauty of Joseon',
+        title: 'Glow Serum : Propolis + Niacinamide',
+        category: 'Serum',
+        description:
+          'A cushiony smoothing serum with niacinamide and propolis extract that helps refine pores, hydrate, and calm reactive skin for a glassy glow. Read More.',
+      },
+    };
+    const baseline = buildProductIntelDraftBundle({
+      product: caseRow.product,
+      canonicalProductRef: caseRow.canonical_product_ref,
+    });
+    baseline.product_intel_core.best_for = [
+      { tag: 'serum', label: 'Serum shoppers', confidence: 'low' },
+    ];
+
+    const selected = buildSelectedBundle(caseRow, baseline, null, null, 'gemini-test');
+
+    expect(selected.field_sources.best_for).toBe('human_standard');
+    expect(selected.bundle.product_intel_core.best_for.map((item) => item.label)).toEqual([
+      'Oiliness and visible pores',
+      'Breakout-prone routines',
+    ]);
+  });
+
   test('drops unsafe explicit card copy before rebuilding selected card payloads', () => {
     const caseRow = {
       case_id: 'unsafe_card_copy',
