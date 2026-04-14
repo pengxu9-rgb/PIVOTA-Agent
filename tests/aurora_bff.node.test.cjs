@@ -5813,6 +5813,34 @@ test('reco alternatives target signals and query plan retain sunscreen compare c
   }
 });
 
+test('reco alternatives target signals prefer role-scope over noisy narrative form words', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const product = {
+      product_id: '10008793153864',
+      merchant_id: 'merch_efbc46b4619cfbdf',
+      name: 'KraveBeauty Great Barrier Relief',
+      display_name: 'KraveBeauty Great Barrier Relief',
+      category: 'moisturizer',
+      product_type: 'moisturizer',
+      role_scope: 'hydrating_barrier_moisturizer',
+      selected_target_id: 'hydrating_barrier_moisturizer',
+      description: 'A barrier-repair serum for over-sensitized or irritated skin, built around tamanu oil, niacinamide, and ceramides.',
+    };
+
+    const signals = __internal.buildRecoAlternativesTargetSignals(product, {
+      productInput: 'KraveBeauty Great Barrier Relief',
+      lang: 'EN',
+    });
+    const localRole = __internal.buildRecoAlternativesLocalSeedSearchRole(signals);
+
+    assert.equal(signals.usageRole, 'moisturizer');
+    assert.equal(localRole.preferred_step, 'moisturizer');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('/v1/reco/alternatives: external_seed sunscreen compare recalls pool hits from richer anchor signals before provider', async () => {
   return withEnv(
     {
@@ -6408,6 +6436,21 @@ test('fetchRecoAlternativesForProduct: thin role-scope moisturizer anchors do no
                 description: 'Retinal serum for firmness and fine lines.',
               },
               {
+                product_id: 'ext_boj_eye_serum',
+                merchant_id: 'external_seed',
+                brand: 'Beauty of Joseon',
+                name: 'Revive Eye Serum : Ginseng + Retinal',
+                display_name: 'Revive Eye Serum : Ginseng + Retinal',
+                product_type: 'Serum',
+                category: 'Serum',
+                retrieval_source: 'external_seed',
+                description: 'Eye serum for the under-eye area.',
+                canonical_product_ref: {
+                  product_id: 'ext_boj_eye_serum',
+                  merchant_id: 'external_seed',
+                },
+              },
+              {
                 product_id: 'ext_neutrogena_hydro_boost',
                 merchant_id: 'external_seed',
                 brand: 'Neutrogena',
@@ -6512,7 +6555,11 @@ test('fetchRecoAlternativesForProduct: thin role-scope moisturizer anchors do no
             merchant_id: 'merch_efbc46b4619cfbdf',
             name: 'KraveBeauty Great Barrier Relief',
             display_name: 'KraveBeauty Great Barrier Relief',
+            category: 'moisturizer',
+            product_type: 'moisturizer',
             role_scope: 'hydrating_barrier_moisturizer',
+            selected_target_id: 'hydrating_barrier_moisturizer',
+            description: 'A barrier-repair serum for over-sensitized or irritated skin, built around tamanu oil, niacinamide, and ceramides.',
           },
           anchorId: '10008793153864',
           maxTotal: 3,
@@ -6531,7 +6578,7 @@ test('fetchRecoAlternativesForProduct: thin role-scope moisturizer anchors do no
         assert.equal(out?.compare_meta?.open_world_status, 'skipped_sufficient_pool');
         assert.ok(seenQueries.some((query) => /\bmoisturizer\b/i.test(String(query))));
         const names = out.alternatives.map((row) => String(row?.product?.name || row?.name || ''));
-        assert.equal(names.some((name) => /Niacinamide|Retinal|Serum/i.test(name)), false);
+        assert.equal(names.some((name) => /Niacinamide|Retinal|Serum|Eye/i.test(name)), false);
         assert.equal(names.some((name) => /tinted moisturizer/i.test(name)), false);
         assert.equal(out.alternatives.every((row) => /moisturizer/i.test(String(row?.product?.category || ''))), true);
       } finally {
@@ -9062,6 +9109,36 @@ test('/v1/reco/alternatives: catalog product-card hybrid uses grounded search po
                 url: 'https://example.com/good-molecules-niacinamide',
               },
               {
+                product_id: 'boj_revive_serum',
+                merchant_id: 'external_seed',
+                brand: 'Beauty of Joseon',
+                name: 'Revive Serum : Ginseng + Snail Mucin',
+                display_name: 'Revive Serum : Ginseng + Snail Mucin',
+                product_type: 'serum',
+                category: 'Serum',
+                retrieval_source: 'external_seed',
+                canonical_product_ref: {
+                  product_id: 'boj_revive_serum',
+                  merchant_id: 'external_seed',
+                },
+                url: 'https://example.com/boj-revive-serum',
+              },
+              {
+                product_id: 'boj_eye_serum',
+                merchant_id: 'external_seed',
+                brand: 'Beauty of Joseon',
+                name: 'Revive Eye Serum : Ginseng + Retinal',
+                display_name: 'Revive Eye Serum : Ginseng + Retinal',
+                product_type: 'serum',
+                category: 'Serum',
+                retrieval_source: 'external_seed',
+                canonical_product_ref: {
+                  product_id: 'boj_eye_serum',
+                  merchant_id: 'external_seed',
+                },
+                url: 'https://example.com/boj-eye-serum',
+              },
+              {
                 product_id: 'inkey_niac',
                 merchant_id: 'merch_alt',
                 brand: 'The Inkey List',
@@ -9168,9 +9245,11 @@ test('/v1/reco/alternatives: catalog product-card hybrid uses grounded search po
         assert.equal(geminiCalls, 0);
         const names = resp.body.alternatives.map((alt) => String(alt?.product?.name || alt?.name || ''));
         assert.equal(names.some((name) => /cherry dub|cleanser/i.test(name)), false);
+        assert.equal(names.some((name) => /\beye serum\b/i.test(name)), false);
         assert.equal(names.some((name) => /niacinamide 10% \+ zinc/i.test(name)), false);
         assert.equal(names.some((name) => /\bduo\b|\bjumbo\b/i.test(name)), false);
         assert.ok(names.some((name) => /niacinamide serum/i.test(name)));
+        assert.ok(names.slice(0, 3).every((name) => /niacinamide|zinc/i.test(name)), JSON.stringify(names));
       } finally {
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
         loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
