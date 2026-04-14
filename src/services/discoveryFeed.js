@@ -1055,6 +1055,16 @@ function resolveBeautyInterestPhraseHint(phrase) {
   return { categories: [], verticals: [] };
 }
 
+function resolveExplicitBeautyCompoundIntent(queryText) {
+  const normalized = normalizeText(queryText || '');
+  if (!normalized) return null;
+  const tokens = new Set(tokenizeDiscoverySearchText(normalized));
+  if (normalized === 'hair oil' || (tokens.has('hair') && tokens.has('oil'))) return 'hair_oil';
+  if (normalized === 'lip balm' || (tokens.has('lip') && tokens.has('balm'))) return 'lip_balm';
+  if (normalized === 'lip oil' || (tokens.has('lip') && tokens.has('oil'))) return 'lip_oil';
+  return null;
+}
+
 function compactBrandToken(value) {
   return normalizeBrandText(value).replace(/\s+/g, '');
 }
@@ -4735,6 +4745,13 @@ function buildProviderBreakdown(results = []) {
 
 function isHighQualityProviderCandidate(candidate, request, profile) {
   if (!candidate) return false;
+  if (
+    isExplicitQueryScopedBrowseRequest(request) &&
+    candidate?.provider === 'external_seeds' &&
+    !matchesExternalSeedCompoundQueryIntent(candidate, resolveExplicitBeautyCompoundIntent(request?.query?.text))
+  ) {
+    return false;
+  }
 
   if (request?.surface === 'home_hot_deals' && !profile?.hasInterestSignals) {
     return candidate.domain === 'beauty' && candidate.beautyBucket !== 'tools';
@@ -5463,12 +5480,93 @@ function matchesQueryTextCandidate(candidate, queryText) {
   return tokenHits >= Math.max(1, Math.ceil(queryTokens.length * 0.6));
 }
 
+function buildExternalSeedStrongQueryText(candidate) {
+  const raw = candidate?.raw || {};
+  const recall = raw.external_seed_recall || {};
+  return normalizeText(
+    [
+      raw.title,
+      raw.name,
+      recall.retrieval_title,
+      candidate?.category,
+      candidate?.parentCategory,
+      raw.category,
+      raw.product_type,
+      raw.productType,
+      recall.category,
+      recall.vertical,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+}
+
+function textHasNormalizedToken(text, token) {
+  const normalized = normalizeText(text || '');
+  const normalizedToken = normalizeText(token || '');
+  if (!normalized || !normalizedToken) return false;
+  return new RegExp(`(?:^|\\s)${normalizedToken.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\s|$)`).test(normalized);
+}
+
+function matchesExternalSeedCompoundQueryIntent(candidate, intent) {
+  if (!intent) return true;
+  const raw = candidate?.raw || {};
+  const titleText = normalizeText([raw.title, raw.name, raw.external_seed_recall?.retrieval_title].filter(Boolean).join(' '));
+  const categoryText = normalizeText(
+    [
+      candidate?.category,
+      candidate?.parentCategory,
+      raw.category,
+      raw.product_type,
+      raw.productType,
+      raw.external_seed_recall?.category,
+      raw.external_seed_recall?.vertical,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+  const strongText = buildExternalSeedStrongQueryText(candidate);
+
+  if (intent === 'hair_oil') {
+    if (strongText.includes('hair oil')) return true;
+    const categoryLooksHair = categoryText.includes('haircare') || categoryText.includes('hair care') || textHasNormalizedToken(categoryText, 'hair');
+    const categoryLooksNonOilForm =
+      textHasNormalizedToken(categoryText, 'shampoo') ||
+      textHasNormalizedToken(categoryText, 'conditioner') ||
+      textHasNormalizedToken(categoryText, 'moisturizer') ||
+      textHasNormalizedToken(categoryText, 'cream') ||
+      textHasNormalizedToken(categoryText, 'toner') ||
+      textHasNormalizedToken(categoryText, 'mist') ||
+      textHasNormalizedToken(categoryText, 'fragrance') ||
+      textHasNormalizedToken(categoryText, 'styling');
+    if (categoryLooksNonOilForm && !strongText.includes('hair oil')) return false;
+    return categoryLooksHair && textHasNormalizedToken(titleText, 'oil');
+  }
+
+  if (intent === 'lip_balm') {
+    if (strongText.includes('lip balm')) return true;
+    const categoryLooksLip = textHasNormalizedToken(categoryText, 'lip') || categoryText.includes('lip care');
+    return categoryLooksLip && textHasNormalizedToken(titleText, 'balm');
+  }
+
+  if (intent === 'lip_oil') {
+    if (strongText.includes('lip oil')) return true;
+    const categoryLooksLip = textHasNormalizedToken(categoryText, 'lip') || categoryText.includes('lip care');
+    return categoryLooksLip && textHasNormalizedToken(titleText, 'oil');
+  }
+
+  return true;
+}
+
 function shouldFilterBrowseCandidateByQueryText(candidate, queryText, options = {}) {
   if (!String(queryText || '').trim()) return false;
   if (options?.explicitQueryScoped === true && candidate?.provider === 'external_seeds') {
     const domain = String(candidate?.domain || 'unknown').trim();
     if (!COLD_START_DEFERRED_DOMAINS.has(domain) && candidate?.beautyBucket !== 'tools') {
-      return false;
+      const compoundIntent = resolveExplicitBeautyCompoundIntent(queryText);
+      return compoundIntent
+        ? !matchesExternalSeedCompoundQueryIntent(candidate, compoundIntent)
+        : !matchesQueryTextCandidate(candidate, queryText);
     }
   }
   return !matchesQueryTextCandidate(candidate, queryText);
