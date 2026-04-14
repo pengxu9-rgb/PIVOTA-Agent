@@ -5216,6 +5216,139 @@ describe('discovery feed service', () => {
     expect(_internals.matchesQueryTextCandidate(candidate, 'vitamin c')).toBe(true);
   });
 
+  test('explicit non-compound browse keeps running seed stages until query-qualified rows fill target', async () => {
+    jest.resetModules();
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = 'postgres://discovery-noncompound-query-stage-test';
+    const requiredColumns = [
+      { table_name: 'products_cache', column_name: 'id' },
+      { table_name: 'products_cache', column_name: 'merchant_id' },
+      { table_name: 'products_cache', column_name: 'product_data' },
+      { table_name: 'products_cache', column_name: 'expires_at' },
+      { table_name: 'products_cache', column_name: 'cached_at' },
+      { table_name: 'external_product_seeds', column_name: 'id' },
+      { table_name: 'external_product_seeds', column_name: 'external_product_id' },
+      { table_name: 'external_product_seeds', column_name: 'destination_url' },
+      { table_name: 'external_product_seeds', column_name: 'canonical_url' },
+      { table_name: 'external_product_seeds', column_name: 'title' },
+      { table_name: 'external_product_seeds', column_name: 'seed_data' },
+      { table_name: 'external_product_seeds', column_name: 'market' },
+      { table_name: 'external_product_seeds', column_name: 'tool' },
+      { table_name: 'external_product_seeds', column_name: 'status' },
+      { table_name: 'external_product_seeds', column_name: 'attached_product_key' },
+      { table_name: 'external_product_seeds', column_name: 'updated_at' },
+      { table_name: 'external_product_seeds', column_name: 'created_at' },
+    ];
+    const requiredIndexes = [
+      'idx_external_product_seeds_recall_title_trgm',
+      'idx_external_product_seeds_recall_summary_trgm',
+      'idx_external_product_seeds_recall_category_vertical_recency',
+      'idx_external_product_seeds_recall_vertical_recency',
+      'idx_external_product_seeds_recall_ingredient_tokens_trgm',
+      'idx_external_product_seeds_recall_alias_tokens_trgm',
+    ].map((indexname) => ({ tablename: 'external_product_seeds', indexname }));
+    const titleRows = Array.from({ length: 6 }, (_, index) =>
+      makeExternalSeedRow({
+        id: `vitamin_title_${index + 1}`,
+        title: `Vitamin C Serum ${index + 1}`,
+        category: 'Serum',
+        product_type: 'Serum',
+        description: 'Vitamin C brightening serum.',
+      }),
+    );
+    const broadTokenRows = Array.from({ length: 20 }, (_, index) =>
+      makeExternalSeedRow({
+        id: `peptide_noise_${index + 1}`,
+        title: `Peptide Serum ${index + 1}`,
+        category: 'Serum',
+        product_type: 'Serum',
+        description: 'Firming peptide treatment.',
+      }),
+    );
+    const categoryRows = Array.from({ length: 12 }, (_, index) =>
+      makeExternalSeedRow({
+        id: `vitamin_category_${index + 1}`,
+        title: `Vitamin C Treatment ${index + 1}`,
+        category: 'Treatment',
+        product_type: 'Treatment',
+        description: 'Vitamin C antioxidant treatment.',
+      }),
+    );
+    const dbQueryMock = jest
+      .fn()
+      .mockResolvedValueOnce({ rows: requiredColumns })
+      .mockResolvedValueOnce({ rows: requiredIndexes })
+      .mockResolvedValueOnce({ rows: titleRows })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: broadTokenRows })
+      .mockResolvedValueOnce({ rows: categoryRows });
+    jest.doMock('../src/db', () => ({
+      query: dbQueryMock,
+    }));
+
+    try {
+      const {
+        buildDiscoveryProfile: freshBuildDiscoveryProfile,
+        _internals: freshInternals,
+      } = require('../src/services/discoveryFeed');
+      freshInternals.resetDiscoveryDependencyProbeCache();
+      const request = freshInternals.normalizeDiscoveryRequest({
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        query: {
+          text: 'vitamin c',
+        },
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      });
+
+      const result = await freshInternals.fetchBeautyInterestExternalSeedFastpathCandidates({
+        request,
+        profile: freshBuildDiscoveryProfile(request.context),
+        queries: ['vitamin c'],
+        limit: freshInternals.resolveExternalSeedProviderLimit(request, 60),
+        providerName: 'external_seeds',
+        productProvider: 'external_seeds',
+        stepName: 'external_seed_pool',
+        label: 'external_seed_pool',
+      });
+
+      expect(result.products).toHaveLength(18);
+      expect(result.products.every((product) => /Vitamin C/.test(product.title))).toBe(true);
+      expect(dbQueryMock).toHaveBeenCalledTimes(6);
+      expect(result.recallSummary[0]).toEqual(
+        expect.objectContaining({
+          external_seed_qualified_count: 18,
+          external_seed_filtered_query_text_count: 20,
+        }),
+      );
+      expect(result.recallSummary[0].external_seed_stage_counts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            stage: 'recall_tokens',
+            raw_rows: 20,
+            query_qualified_rows: 0,
+            final_eligible_rows: 6,
+          }),
+          expect.objectContaining({
+            stage: 'recall_category',
+            raw_rows: 12,
+            query_qualified_rows: 12,
+            final_eligible_rows: 18,
+          }),
+        ]),
+      );
+    } finally {
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+    }
+  });
+
   test('browse_products debug mode records a non-blocking catalog serving shadow summary', async () => {
     jest.resetModules();
     process.env.CATALOG_SERVING_INDEX_BASE_URL = 'https://catalog-shadow.example';
