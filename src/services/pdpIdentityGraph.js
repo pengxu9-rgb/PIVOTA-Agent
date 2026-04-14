@@ -32,12 +32,21 @@ const PDP_IDENTITY_GRAPH_ENABLED =
   String(process.env.PDP_IDENTITY_GRAPH_ENABLED || '').trim().toLowerCase() === 'true';
 const PDP_IDENTITY_GRAPH_AUTO_ENABLE_LIVE =
   String(process.env.PDP_IDENTITY_GRAPH_AUTO_ENABLE_LIVE || '').trim().toLowerCase() === 'true';
-const PDP_IDENTITY_GRAPH_BRAND_ALLOWLIST = new Set(
-  String(process.env.PDP_IDENTITY_GRAPH_BRAND_ALLOWLIST || '')
-    .split(',')
-    .map((item) => normalizeResolverText(item))
-    .filter(Boolean),
-);
+const PDP_IDENTITY_GRAPH_CONFIGURED_BRAND_ALLOWLIST = String(
+  process.env.PDP_IDENTITY_GRAPH_BRAND_ALLOWLIST || '',
+)
+  .split(',')
+  .map((item) => normalizeResolverText(item))
+  .filter(Boolean);
+const PDP_IDENTITY_GRAPH_CURATED_BRAND_ALLOWLIST_ADDITIONS = Object.freeze([
+  'beauty of joseon',
+]);
+const PDP_IDENTITY_GRAPH_BRAND_ALLOWLIST = new Set([
+  ...PDP_IDENTITY_GRAPH_CONFIGURED_BRAND_ALLOWLIST,
+  ...(PDP_IDENTITY_GRAPH_CONFIGURED_BRAND_ALLOWLIST.length
+    ? PDP_IDENTITY_GRAPH_CURATED_BRAND_ALLOWLIST_ADDITIONS
+    : []),
+]);
 const PDP_IDENTITY_GRAPH_REVIEW_QUEUE_LIMIT = Math.max(
   1,
   Math.min(1000, Number(process.env.PDP_IDENTITY_GRAPH_REVIEW_QUEUE_LIMIT || 250) || 250),
