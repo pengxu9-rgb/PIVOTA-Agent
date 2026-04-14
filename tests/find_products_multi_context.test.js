@@ -283,6 +283,36 @@ describe('find_products_multi context building', () => {
     expect(intent.query_class).toBe('category');
   });
 
+  test.each(['lip balm', 'hair oil', 'shampoo', 'lip treatment'])(
+    'broad beauty head term %s stays on beauty category instead of exploratory clarify',
+    (query) => {
+      const intent = extractIntentRuleBased(query, [], []);
+      expect(intent.primary_domain).toBe('beauty');
+      expect(intent.target_object.type).toBe('human');
+      expect(intent.query_class).toBe('category');
+      expect(intent.ambiguity.needs_clarification).toBe(false);
+    },
+  );
+
+  test.each(['lip balm', 'hair oil', 'shampoo', 'lip treatment'])(
+    'context build keeps %s on raw beauty category query',
+    async (query) => {
+      const { adjustedPayload, expansion_meta, intent } = await buildFindProductsMultiContext({
+        payload: {
+          search: { query },
+          user: { recent_queries: [] },
+          messages: [{ role: 'user', content: query }],
+        },
+        metadata: { source: 'search' },
+      });
+
+      expect(String(adjustedPayload?.search?.query || '')).toBe(query);
+      expect(intent?.primary_domain).toBe('beauty');
+      expect(expansion_meta?.query_class).toBe('category');
+      expect(Number(expansion_meta?.ambiguity_score_pre || 1)).toBeLessThan(0.4);
+    },
+  );
+
   test('face sunscreen expansion adds SPF-oriented skincare terms', async () => {
     const { adjustedPayload, expansion_meta } = await buildFindProductsMultiContext({
       payload: {
