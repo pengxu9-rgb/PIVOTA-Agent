@@ -91,6 +91,23 @@ describe('pdpIngredientAuthority', () => {
     );
   });
 
+  test('keeps comma-separated numeric ingredient prefixes together when spaces are present', () => {
+    const authority = buildAuthoritativeIngredientView({
+      pdp_ingredients_raw:
+        'Full Ingredient List: Water, 1, 2-Hexanediol, Glycerin, PEG-60 Hydrogenated Castor Oil.',
+    });
+
+    expect(authority.items).toEqual(
+      expect.arrayContaining([
+        'Water',
+        '1, 2-Hexanediol',
+        'Glycerin',
+        'PEG-60 Hydrogenated Castor Oil',
+      ]),
+    );
+    expect(authority.items).not.toEqual(expect.arrayContaining(['1', '2-Hexanediol']));
+  });
+
   test('reads body-based seed details sections when collecting authority', () => {
     const authority = buildAuthoritativeIngredientView({
       seed_data: {

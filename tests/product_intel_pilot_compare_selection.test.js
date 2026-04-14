@@ -452,6 +452,14 @@ describe('product_intel pilot compare selection', () => {
           'A brightening sheet mask with niacinamide, sea buckthorn, and vitamin C derivatives for uneven-looking tone.',
         headline: 'Utilizes Triple Vita Activer™, a blend of sea buckthorn and vitamin C derivatives,',
       },
+      {
+        title: 'Beauty of Joseon Calming Barrier Serum',
+        category: 'Skincare/Serum',
+        description:
+          'A calming serum with green tea water, niacinamide, sodium hyaluronate, panthenol, centella, and ceramide NP.',
+        headline:
+          'Features Green Tea-HA™, an exclusive complex that delivers antioxidant benefits alongside deep',
+      },
     ];
 
     for (const [index, item] of cases.entries()) {
