@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const Module = require('node:module');
+const { EventEmitter } = require('node:events');
 
 process.env.AURORA_BFF_USE_MOCK = 'true';
 process.env.AURORA_DECISION_BASE_URL = '';
@@ -528,38 +529,49 @@ test('reco assistant rewrite uses REST executor for same-role use comparisons wi
     if (request === '@google/genai') {
       throw new Error('Reco assistant rewrite should not use the Gemini SDK executor');
     }
-    if (request === 'axios') {
-      const realAxios = originalLoad.call(this, request, parent, isMain);
-      return Object.assign(function axiosMock(...args) {
-        return realAxios(...args);
-      }, realAxios, {
-        post: async (url, body, config = {}) => {
-          capturedUrl = String(url || '');
-          capturedBody = body;
-          capturedConfig = config;
-          return {
-            status: 200,
-            statusText: 'OK',
-            data: {
-              candidates: [
-                {
-                  finishReason: 'STOP',
-                  content: {
-                    parts: [
-                      {
-                        text: JSON.stringify({
-                          assistant_text:
-                            'KraveBeauty Great Barrier Relief is the best starting point because it supports your barrier without a heavy finish, while Soothing Serum is a lighter same-step option.',
-                        }),
-                      },
-                    ],
-                  },
-                },
-              ],
-            },
+    if (request === 'https') {
+      return {
+        request: (options = {}, onResponse) => {
+          capturedUrl = `${options.protocol || 'https:'}//${options.hostname || ''}${options.path || ''}`;
+          capturedConfig = options;
+          const req = new EventEmitter();
+          req.write = (chunk) => {
+            capturedBody = JSON.parse(String(chunk || '{}'));
           };
+          req.end = () => {
+            process.nextTick(() => {
+              const res = new EventEmitter();
+              res.statusCode = 200;
+              res.statusMessage = 'OK';
+              res.setEncoding = () => {};
+              onResponse(res);
+              res.emit('data', JSON.stringify({
+                candidates: [
+                  {
+                    finishReason: 'STOP',
+                    content: {
+                      parts: [
+                        {
+                          text: JSON.stringify({
+                            assistant_text:
+                              'KraveBeauty Great Barrier Relief is the best starting point because it supports your barrier without a heavy finish, while Soothing Serum is a lighter same-step option.',
+                          }),
+                        },
+                      ],
+                    },
+                  },
+                ],
+              }));
+              res.emit('end');
+            });
+          };
+          req.setTimeout = () => req;
+          req.destroy = (err) => {
+            if (err) req.emit('error', err);
+          };
+          return req;
         },
-      });
+      };
     }
     return originalLoad.call(this, request, parent, isMain);
   };
@@ -616,12 +628,10 @@ test('reco assistant rewrite uses REST executor for same-role use comparisons wi
 
     assert.equal(rewrite.llm_used, true);
     assert.match(capturedUrl, /generativelanguage\.googleapis\.com\/v1beta\/models\/gemini-3-flash-preview:generateContent/);
-    assert.equal(capturedConfig?.adapter, 'http');
+    assert.equal(capturedConfig?.method, 'POST');
     assert.equal(capturedConfig?.headers?.['x-goog-api-key'], 'test-gemini-key');
-    assert.ok(capturedConfig?.signal, 'REST executor should carry an abort signal');
-    assert.ok(Number(capturedConfig?.timeout) > 0, 'REST executor should carry an axios timeout');
-    assert.equal(capturedConfig?.responseType, 'text');
-    assert.ok(Array.isArray(capturedConfig?.transformResponse), 'REST executor should disable automatic JSON transform');
+    assert.equal(capturedConfig?.headers?.['content-type'], 'application/json');
+    assert.ok(Number(capturedConfig?.timeout) > 0, 'REST executor should carry a native request timeout');
     assert.equal(capturedBody?.generationConfig?.thinkingConfig?.thinkingLevel, 'minimal');
     assert.equal(rewrite.attempts?.[0]?.thinking_level, 'minimal');
     assert.equal(rewrite.attempts?.[0]?.selection_source, 'local_gemini_rest_direct');

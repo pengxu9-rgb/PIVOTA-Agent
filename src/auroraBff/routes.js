@@ -2,6 +2,7 @@ const axios = require('axios');
 const sharp = require('sharp');
 const fs = require('fs');
 const crypto = require('crypto');
+const https = require('https');
 const os = require('os');
 const path = require('path');
 const { z } = require('zod');
@@ -23323,6 +23324,85 @@ function normalizeGeminiRestModelName(model) {
     .replace(/^publishers\/google\/models\//i, '');
 }
 
+function postGeminiRestGenerateContent({ url, apiKey, requestBody, timeoutMs = 3000, signal } = {}) {
+  const endpoint = new URL(String(url || ''));
+  const bodyText = JSON.stringify(requestBody || {});
+  const hardTimeoutMs = Math.max(1, Math.trunc(Number(timeoutMs) || 1));
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let req = null;
+    const settle = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      if (signal && typeof signal.removeEventListener === 'function') {
+        signal.removeEventListener('abort', onAbort);
+      }
+      fn(value);
+    };
+    const buildCanceledError = () => {
+      const err = new Error('Gemini REST request aborted');
+      err.code = 'ERR_CANCELED';
+      return err;
+    };
+    const buildTimeoutError = () => {
+      const err = new Error(`Gemini REST request timed out after ${hardTimeoutMs}ms`);
+      err.code = 'ETIMEDOUT';
+      return err;
+    };
+    function onAbort() {
+      const err = buildCanceledError();
+      if (req && typeof req.destroy === 'function') req.destroy(err);
+      settle(reject, err);
+    }
+    if (signal && signal.aborted) {
+      settle(reject, buildCanceledError());
+      return;
+    }
+    req = https.request(
+      {
+        protocol: endpoint.protocol,
+        hostname: endpoint.hostname,
+        port: endpoint.port || undefined,
+        path: `${endpoint.pathname}${endpoint.search || ''}`,
+        method: 'POST',
+        headers: {
+          accept: 'application/json',
+          'content-type': 'application/json',
+          'content-length': Buffer.byteLength(bodyText),
+          'x-goog-api-key': apiKey,
+        },
+        timeout: hardTimeoutMs,
+      },
+      (res) => {
+        let responseText = '';
+        if (typeof res.setEncoding === 'function') res.setEncoding('utf8');
+        res.on('data', (chunk) => {
+          responseText += String(chunk || '');
+        });
+        res.on('end', () => {
+          settle(resolve, {
+            status: Number(res.statusCode) || 0,
+            statusText: res.statusMessage ? String(res.statusMessage) : '',
+            data: responseText,
+          });
+        });
+        res.on('error', (err) => settle(reject, err));
+      },
+    );
+    req.on('timeout', () => {
+      const err = buildTimeoutError();
+      if (req && typeof req.destroy === 'function') req.destroy(err);
+      settle(reject, err);
+    });
+    req.on('error', (err) => settle(reject, err));
+    if (signal && typeof signal.addEventListener === 'function') {
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
+    req.write(bodyText);
+    req.end();
+  });
+}
+
 async function callGeminiJsonObjectViaRest({
   resolvedModel,
   requestedModel,
@@ -23439,18 +23519,12 @@ async function callGeminiJsonObjectViaRest({
           ? setTimeout(() => controller.abort(), upstreamTimeoutMs)
           : null;
         try {
-          const requestPromise = axios.post(url, requestBody, {
-            adapter: 'http',
-            headers: {
-              'content-type': 'application/json',
-              'x-goog-api-key': apiKey,
-            },
-            timeout: upstreamTimeoutMs,
+          const requestPromise = postGeminiRestGenerateContent({
+            url,
+            apiKey,
+            requestBody,
+            timeoutMs: upstreamTimeoutMs,
             signal: controller ? controller.signal : undefined,
-            responseType: 'text',
-            transformResponse: [(data) => data],
-            validateStatus: () => true,
-            transitional: { clarifyTimeoutError: true },
           });
           const response = await withTimeout(requestPromise, upstreamTimeoutMs, 'GEMINI_UPSTREAM_TIMEOUT')
             .catch((err) => {
