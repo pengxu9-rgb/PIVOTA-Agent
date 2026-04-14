@@ -15707,53 +15707,64 @@
     "external_highlight_review_status": "rewrite",
     "external_review_batch": "strict_quality_audit_2026_04_11"
   },
-  "live_ext_a29393bd005135c81f47dade": {
-    "notes": "Strict human QA override: manually reviewed and rewritten after automated audit failure.",
+  "product:9886499864904": {
+    "notes": "Assistant-reviewed seller-grounded override for Aurora beauty mainline oily-skin recommendation quality.",
+    "review_status": "completed",
+    "review_decision": "rewrite",
+    "reviewer": "Codex",
+    "reviewer_kind": "assistant",
+    "reviewed_at": "2026-04-14T09:58:00.000Z",
     "product_intel_core": {
       "what_it_is": {
-        "headline": "Moisturizer",
-        "body": "A moisturizer for dryness or barrier-support routines, centered on hyaluronic acid, niacinamide and ceramides."
+        "headline": "Oil-control serum",
+        "body": "A water-based serum built around 10% niacinamide and zinc PCA for excess oil, uneven texture and visible pore concerns."
       },
       "best_for": [
         {
-          "tag": "dryness_barrier",
-          "label": "Dryness or barrier support",
+          "tag": "oil_control",
+          "label": "Excess oil or midday shine",
           "confidence": "moderate"
         },
         {
-          "tag": "sensitive_skin",
-          "label": "Sensitive or easily stressed skin",
+          "tag": "pores_texture",
+          "label": "Visible pores or uneven texture",
           "confidence": "moderate"
         },
         {
-          "tag": "brightness_tone",
-          "label": "Dullness or uneven tone",
+          "tag": "budget_first_serum",
+          "label": "A focused first serum step",
           "confidence": "moderate"
         }
       ],
       "why_it_stands_out": [
         {
-          "headline": "Hyaluronic Acid + Niacinamide + Ceramides",
-          "body": "Keeps hyaluronic acid, niacinamide and ceramides at the center of the formula.",
+          "headline": "Niacinamide + zinc pairing",
+          "body": "The product record centers 10% niacinamide with zinc PCA, matching oily-skin shine and visible pore concerns.",
           "evidence_strength": "seller_grounded"
         },
         {
-          "headline": "Barrier-conscious use case",
-          "body": "Oriented toward comfort and barrier support rather than a harsh treatment feel.",
+          "headline": "Direct fit for shine and pores",
+          "body": "The listing describes support for excess oil, uneven texture and pore appearance, so the reason to buy is more specific than a generic serum step.",
           "evidence_strength": "seller_grounded"
         }
       ],
       "routine_fit": {
-        "step": "moisturizer",
+        "step": "serum",
         "am_pm": [
           "am",
           "pm"
         ],
         "pairing_notes": [
-          "Use after cleansing and before SPF in daytime routines."
+          "Use before moisturizer; follow with sunscreen when used in the morning."
         ]
       },
-      "watchouts": [],
+      "watchouts": [
+        {
+          "type": "use_cadence",
+          "label": "Introduce gradually if your skin is easily irritated by active serums.",
+          "severity": "low"
+        }
+      ],
       "confidence": {
         "overall": "moderate",
         "fields": {
@@ -15765,8 +15776,8 @@
         }
       },
       "freshness": {
-        "generated_at": "2026-04-11T14:25:40.905Z",
-        "source_version": "manual_quality_override_20260411"
+        "generated_at": "2026-04-14T09:58:00.000Z",
+        "source_version": "manual_quality_override_20260414"
       },
       "quality_state": "limited",
       "evidence_profile": "seller_only",
@@ -15792,9 +15803,249 @@
       }
     },
     "texture_finish": {
-      "texture": "oil",
-      "finish": "glowy",
+      "texture": "water-based serum",
+      "finish": "lightweight",
       "sensory_notes": [],
+      "layering_notes": [
+        "Layer before moisturizer and daytime SPF."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Oil-control serum",
+      "highlight": "Niacinamide + zinc",
+      "intro": "A focused serum for excess oil, texture and visible pores."
+    },
+    "search_card": {
+      "compact_candidate": "Oil-control serum",
+      "highlight_candidate": "Niacinamide + zinc",
+      "intro_candidate": "A focused serum for excess oil, texture and visible pores."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "main_reco_quality_audit_2026_04_14"
+  },
+  "product:ext_bbe1ff8884f06d874bbccbd8": {
+    "notes": "Assistant-reviewed seller-grounded override for Aurora beauty mainline oily-skin recommendation quality.",
+    "review_status": "completed",
+    "review_decision": "rewrite",
+    "reviewer": "Codex",
+    "reviewer_kind": "assistant",
+    "reviewed_at": "2026-04-14T09:58:00.000Z",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "SPF 45 serum sunscreen",
+        "body": "A lightweight SPF 45 sunscreen serum for daytime UV protection and hydration, with a no-white-cast seller claim."
+      },
+      "best_for": [
+        {
+          "tag": "daily_sunscreen",
+          "label": "Daily UV protection",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "lightweight_spf",
+          "label": "A serum-like sunscreen step",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "oily_combo_routine",
+          "label": "Oily or combination routines that avoid heavy SPF feel",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Serum-like SPF 45 texture",
+          "body": "The product record describes an SPF 45 sunscreen serum, so it gives the daytime routine UV protection without using a heavy cream sunscreen.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Wearability cue",
+          "body": "The listing calls out a lightweight feel, hydration and no white cast, which are practical reasons it can work as the final daytime step.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "sunscreen",
+        "am_pm": [
+          "am"
+        ],
+        "pairing_notes": [
+          "Apply as the final morning skincare step before UV exposure.",
+          "Reapply during continued UV exposure according to the product directions."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "reapplication",
+          "label": "The listing directs reapplication during continued UV exposure and after water exposure, towel-drying, swimming or heavy perspiration.",
+          "severity": "medium"
+        },
+        {
+          "type": "water_resistance",
+          "label": "Use a water-resistant sunscreen if swimming or sweating.",
+          "severity": "medium"
+        }
+      ],
+      "confidence": {
+        "overall": "moderate",
+        "fields": {
+          "what_it_is": "moderate",
+          "best_for": "moderate",
+          "why_it_stands_out": "moderate",
+          "routine_fit": "moderate",
+          "watchouts": "moderate"
+        }
+      },
+      "freshness": {
+        "generated_at": "2026-04-14T09:58:00.000Z",
+        "source_version": "manual_quality_override_20260414"
+      },
+      "quality_state": "limited",
+      "evidence_profile": "seller_only",
+      "source_coverage": {
+        "seller": {
+          "available": true
+        },
+        "formula": {
+          "available": true
+        },
+        "reviews": {
+          "available": false,
+          "count": 0
+        },
+        "creator": {
+          "available": false,
+          "count": 0
+        },
+        "editorial": {
+          "available": false,
+          "count": 0
+        }
+      }
+    },
+    "texture_finish": {
+      "texture": "serum sunscreen",
+      "finish": "lightweight",
+      "sensory_notes": [
+        "no white cast claim in seller listing"
+      ],
+      "layering_notes": [
+        "Use as the final morning skincare step."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "SPF 45 serum sunscreen",
+      "highlight": "Lightweight SPF step",
+      "intro": "A lightweight sunscreen serum for daily UV protection."
+    },
+    "search_card": {
+      "compact_candidate": "SPF 45 serum sunscreen",
+      "highlight_candidate": "Lightweight SPF step",
+      "intro_candidate": "A lightweight sunscreen serum for daily UV protection."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "main_reco_quality_audit_2026_04_14"
+  },
+  "live_ext_a29393bd005135c81f47dade": {
+    "notes": "Assistant-reviewed seller-grounded override for Aurora beauty mainline oily-skin recommendation quality.",
+    "review_status": "completed",
+    "review_decision": "rewrite",
+    "reviewer": "Codex",
+    "reviewer_kind": "assistant",
+    "reviewed_at": "2026-04-14T09:58:00.000Z",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Lightweight gel-cream moisturizer",
+        "body": "A lightweight gel-cream moisturizer for oily or combination routines, using hyaluronic acid, ceramides and niacinamide to support hydration without a heavy feel."
+      },
+      "best_for": [
+        {
+          "tag": "oily_combo_hydration",
+          "label": "Oily or combination skin needing hydration",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "lightweight_moisturizer",
+          "label": "Lightweight moisturizer support",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "barrier_support",
+          "label": "Barrier-support routine step",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Lightweight non-comedogenic feel",
+          "body": "The product record calls out oily and combo skin fit, plus an ultra-sheer, non-comedogenic and breathable feel.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Hydration plus barrier support",
+          "body": "Hyaluronic acid, ceramides, niacinamide and glycerin make the reason for this support step more specific than generic moisturizer coverage.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "moisturizer",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use after cleansing and before SPF in daytime routines."
+        ]
+      },
+      "watchouts": [],
+      "confidence": {
+        "overall": "moderate",
+        "fields": {
+          "what_it_is": "moderate",
+          "best_for": "moderate",
+          "why_it_stands_out": "moderate",
+          "routine_fit": "moderate",
+          "watchouts": "moderate"
+        }
+      },
+      "freshness": {
+        "generated_at": "2026-04-14T09:58:00.000Z",
+        "source_version": "manual_quality_override_20260414"
+      },
+      "quality_state": "limited",
+      "evidence_profile": "seller_only",
+      "source_coverage": {
+        "seller": {
+          "available": true
+        },
+        "formula": {
+          "available": true
+        },
+        "reviews": {
+          "available": false,
+          "count": 0
+        },
+        "creator": {
+          "available": false,
+          "count": 0
+        },
+        "editorial": {
+          "available": false,
+          "count": 0
+        }
+      }
+    },
+    "texture_finish": {
+      "texture": "gel cream",
+      "finish": "lightweight dewy",
+      "sensory_notes": [
+        "ultra-sheer",
+        "breathable feel"
+      ],
       "layering_notes": [
         "Use after cleansing and before SPF in daytime routines."
       ],
@@ -15802,51 +16053,56 @@
       "evidence_profile": "seller_only"
     },
     "shopping_card": {
-      "subtitle": "Moisturizer",
-      "highlight": "With hyaluronic acid",
-      "intro": "A moisturizer for dryness or barrier support."
+      "subtitle": "Lightweight gel-cream moisturizer",
+      "highlight": "Light hydration step",
+      "intro": "A gel-cream moisturizer for oily or combination routines."
     },
     "search_card": {
-      "compact_candidate": "Moisturizer",
-      "highlight_candidate": "With hyaluronic acid",
-      "intro_candidate": "A moisturizer for dryness or barrier support."
+      "compact_candidate": "Lightweight moisturizer",
+      "highlight_candidate": "Light hydration step",
+      "intro_candidate": "A gel-cream moisturizer for oily or combination routines."
     },
     "external_highlight_review_status": "rewrite",
-    "external_review_batch": "strict_quality_audit_2026_04_11"
+    "external_review_batch": "main_reco_quality_audit_2026_04_14"
   },
   "product:ext_a29393bd005135c81f47dade": {
-    "notes": "Strict human QA override: manually reviewed and rewritten after automated audit failure.",
+    "notes": "Assistant-reviewed seller-grounded override for Aurora beauty mainline oily-skin recommendation quality.",
+    "review_status": "completed",
+    "review_decision": "rewrite",
+    "reviewer": "Codex",
+    "reviewer_kind": "assistant",
+    "reviewed_at": "2026-04-14T09:58:00.000Z",
     "product_intel_core": {
       "what_it_is": {
-        "headline": "Moisturizer",
-        "body": "A moisturizer for dryness or barrier-support routines, centered on hyaluronic acid, niacinamide and ceramides."
+        "headline": "Lightweight gel-cream moisturizer",
+        "body": "A lightweight gel-cream moisturizer for oily or combination routines, using hyaluronic acid, ceramides and niacinamide to support hydration without a heavy feel."
       },
       "best_for": [
         {
-          "tag": "dryness_barrier",
-          "label": "Dryness or barrier support",
+          "tag": "oily_combo_hydration",
+          "label": "Oily or combination skin needing hydration",
           "confidence": "moderate"
         },
         {
-          "tag": "sensitive_skin",
-          "label": "Sensitive or easily stressed skin",
+          "tag": "lightweight_moisturizer",
+          "label": "Lightweight moisturizer support",
           "confidence": "moderate"
         },
         {
-          "tag": "brightness_tone",
-          "label": "Dullness or uneven tone",
+          "tag": "barrier_support",
+          "label": "Barrier-support routine step",
           "confidence": "moderate"
         }
       ],
       "why_it_stands_out": [
         {
-          "headline": "Hyaluronic Acid + Niacinamide + Ceramides",
-          "body": "Keeps hyaluronic acid, niacinamide and ceramides at the center of the formula.",
+          "headline": "Lightweight non-comedogenic feel",
+          "body": "The product record calls out oily and combo skin fit, plus an ultra-sheer, non-comedogenic and breathable feel.",
           "evidence_strength": "seller_grounded"
         },
         {
-          "headline": "Barrier-conscious use case",
-          "body": "Oriented toward comfort and barrier support rather than a harsh treatment feel.",
+          "headline": "Hydration plus barrier support",
+          "body": "Hyaluronic acid, ceramides, niacinamide and glycerin make the reason for this support step more specific than generic moisturizer coverage.",
           "evidence_strength": "seller_grounded"
         }
       ],
@@ -15872,8 +16128,8 @@
         }
       },
       "freshness": {
-        "generated_at": "2026-04-11T14:25:40.905Z",
-        "source_version": "manual_quality_override_20260411"
+        "generated_at": "2026-04-14T09:58:00.000Z",
+        "source_version": "manual_quality_override_20260414"
       },
       "quality_state": "limited",
       "evidence_profile": "seller_only",
@@ -15899,9 +16155,12 @@
       }
     },
     "texture_finish": {
-      "texture": "oil",
-      "finish": "glowy",
-      "sensory_notes": [],
+      "texture": "gel cream",
+      "finish": "lightweight dewy",
+      "sensory_notes": [
+        "ultra-sheer",
+        "breathable feel"
+      ],
       "layering_notes": [
         "Use after cleansing and before SPF in daytime routines."
       ],
@@ -15909,17 +16168,17 @@
       "evidence_profile": "seller_only"
     },
     "shopping_card": {
-      "subtitle": "Moisturizer",
-      "highlight": "With hyaluronic acid",
-      "intro": "A moisturizer for dryness or barrier support."
+      "subtitle": "Lightweight gel-cream moisturizer",
+      "highlight": "Light hydration step",
+      "intro": "A gel-cream moisturizer for oily or combination routines."
     },
     "search_card": {
-      "compact_candidate": "Moisturizer",
-      "highlight_candidate": "With hyaluronic acid",
-      "intro_candidate": "A moisturizer for dryness or barrier support."
+      "compact_candidate": "Lightweight moisturizer",
+      "highlight_candidate": "Light hydration step",
+      "intro_candidate": "A gel-cream moisturizer for oily or combination routines."
     },
     "external_highlight_review_status": "rewrite",
-    "external_review_batch": "strict_quality_audit_2026_04_11"
+    "external_review_batch": "main_reco_quality_audit_2026_04_14"
   },
   "live_ext_0ace092e3cb5d4cc0e714a7b": {
     "notes": "Strict human QA override: manually reviewed and rewritten after automated audit failure.",
