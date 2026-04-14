@@ -354,6 +354,84 @@ describe('product_intel pilot compare selection', () => {
     expect(selected.bundle.evidence_profile).toBe(baseline.evidence_profile);
   });
 
+  test('repairs selected truncated highlight headlines with human-standard rewrite', () => {
+    const cases = [
+      {
+        title: 'Round Lab 1025 Dokdo Cleanser + Dokdo Toner 200ml',
+        category: 'Skincare/Cleanser',
+        description: 'A cleanser and toner set for daily cleansing and hydration routines.',
+        headline: 'Utilizes mineral-rich water sourced from 5,000 feet below sea level, containing 72 types of',
+      },
+      {
+        title: 'INNBEAUTY PROJECT Glaze Lip Oil',
+        category: 'Lip Oil',
+        description: 'A glossy lip oil for lip shine and comfort.',
+        headline: 'Functions as a hybrid lip treatment, delivering the visual finish of a gloss alongside the',
+      },
+      {
+        title: 'INNBEAUTY PROJECT Green Machine Serum',
+        category: 'Skincare/Serum',
+        description: 'A serum-oil product with vitamin C, tranexamic acid, and niacinamide.',
+        headline: 'Combines the fast absorption of a serum with the barrier-nourishing properties of an oil in a',
+      },
+      {
+        title: 'Fenty Skin Fat Water Niacinamide Pore-Refining Toner Serum',
+        category: 'Skincare/Toner',
+        description: 'A toner-serum step with niacinamide and Barbados cherry for pore and tone care.',
+        headline: 'The 2-in-1 formula combines the balancing properties of a toner with the active potency of a',
+      },
+    ];
+
+    for (const [index, item] of cases.entries()) {
+      const caseRow = {
+        case_id: `truncated_highlight_${index}`,
+        canonical_product_ref: {
+          merchant_id: 'external_seed',
+          product_id: `ext_truncated_${index}`,
+        },
+        product: {
+          merchant_id: 'external_seed',
+          product_id: `ext_truncated_${index}`,
+          brand: item.title.split(' ')[0],
+          title: item.title,
+          category: item.category,
+          description: item.description,
+        },
+      };
+      const baseline = buildProductIntelDraftBundle({
+        product: caseRow.product,
+        canonicalProductRef: caseRow.canonical_product_ref,
+      });
+      const candidate = JSON.parse(JSON.stringify(baseline));
+      candidate.product_intel_core.why_it_stands_out = [
+        {
+          headline: item.headline,
+          body: `${item.headline} complete explanatory body for the generated highlight.`,
+          evidence_strength: 'limited',
+        },
+      ];
+      const quality = {
+        candidate_available: true,
+        field_decisions: {
+          what_it_is: false,
+          best_for: false,
+          why_it_stands_out: true,
+          routine_fit: false,
+          watchouts: false,
+          texture_finish: false,
+          community_signals: false,
+        },
+      };
+
+      const selected = buildSelectedBundle(caseRow, baseline, candidate, quality, 'gemini-test');
+      const selectedHeadline = selected.bundle.product_intel_core.why_it_stands_out[0].headline;
+
+      expect(selected.field_sources.why_it_stands_out).toBe('human_standard');
+      expect(selectedHeadline).not.toBe(item.headline);
+      expect(selectedHeadline).not.toMatch(/\b(?:a|an|the|and|or|of|in|to|with|for)$/i);
+    }
+  });
+
   test('rejects seller-only gemini highlights that are just merchandising or pack-size copy', () => {
     const caseRow = {
       case_id: 'pilot_naturium_jumbo',

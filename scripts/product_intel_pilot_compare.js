@@ -658,7 +658,7 @@ function isLikelyIncompleteNarrativeText(value) {
   if (/\b[a-z]$/.test(normalized) && /\b(?:radian|irritat|refin|disrupt|protect|bright|hydr|sooth|calm|blemish|hyperpigment)$/.test(normalized)) {
     return true;
   }
-  return /\b(?:and|or|to|with|without|while|featuring|including|into|for|from|by|as|that|visible|support|supports|target|targets|provide|provides|deliver|delivers|improve|improves|reduce|reduces|calm|calms|derived)\b$/.test(
+  return /\b(?:a|an|the|and|or|of|in|to|with|without|while|featuring|including|into|for|from|by|as|that|visible|support|supports|target|targets|provide|provides|deliver|delivers|improve|improves|reduce|reduces|calm|calms|derived)\b$/.test(
     normalized,
   );
 }
@@ -1557,6 +1557,14 @@ function hasMeaningfulTextureFinish(textureFinish) {
   );
 }
 
+function hasIncompleteHighlightCopy(highlights) {
+  return toList(highlights).some(
+    (item) =>
+      isLikelyIncompleteNarrativeText(item?.headline) ||
+      isLikelyIncompleteNarrativeText(item?.body),
+  );
+}
+
 function evaluateGeminiCandidateQuality(baselineBundle, geminiCandidateBundle) {
   if (!baselineBundle || !geminiCandidateBundle) {
     return {
@@ -1588,11 +1596,7 @@ function evaluateGeminiCandidateQuality(baselineBundle, geminiCandidateBundle) {
     productContext,
     candidateCore.best_for,
   );
-  const incompleteHighlights = toList(candidateCore.why_it_stands_out).some(
-    (item) =>
-      isLikelyIncompleteNarrativeText(item?.headline) ||
-      isLikelyIncompleteNarrativeText(item?.body),
-  );
+  const incompleteHighlights = hasIncompleteHighlightCopy(candidateCore.why_it_stands_out);
 
   const bestForOverlap = Number(
     jaccardOverlap(
@@ -1763,6 +1767,26 @@ function buildSelectedBundle(caseRow, baselineBundle, geminiCandidateBundle, qua
     if (patch?.product_intel_core?.what_it_is?.body) {
       selected.product_intel_core.what_it_is = deepClone(patch.product_intel_core.what_it_is);
       fieldSources.what_it_is = 'human_standard';
+    }
+  }
+  if (hasIncompleteHighlightCopy(selected.product_intel_core?.why_it_stands_out)) {
+    const patch = humanStandardPatch();
+    const patchHighlights = toList(patch?.product_intel_core?.why_it_stands_out).filter(
+      (item) =>
+        asString(item?.headline) &&
+        asString(item?.body) &&
+        !hasProblematicGeneratedText(`${item.headline} ${item.body}`) &&
+        !isLikelyIncompleteNarrativeText(item.headline) &&
+        !isLikelyIncompleteNarrativeText(item.body),
+    );
+    if (patchHighlights.length) {
+      selected.product_intel_core.why_it_stands_out = deepClone(patchHighlights);
+      fieldSources.why_it_stands_out = 'human_standard';
+    } else {
+      selected.product_intel_core.why_it_stands_out = deepClone(
+        baselineBundle.product_intel_core?.why_it_stands_out || [],
+      );
+      fieldSources.why_it_stands_out = 'baseline';
     }
   }
   if (Array.isArray(selected.product_intel_core?.watchouts)) {
