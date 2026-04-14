@@ -20,9 +20,6 @@ describe('product_intel_pilot_compare gemini fallback', () => {
     expect(parseGeminiModelList('models/gemini-3-pro-preview,gemini-2.5-flash')).toEqual([
       'gemini-3-flash-preview',
       'gemini-3.1-pro-preview',
-      'gemini-3-pro-preview',
-      'gemini-2.5-flash',
-      'gemini-2.0-flash',
     ]);
   });
 
@@ -72,6 +69,11 @@ describe('product_intel_pilot_compare gemini fallback', () => {
                   },
                 ],
               },
+              groundingMetadata: {
+                webSearchQueries: ['Demo serum reviews'],
+                groundingChunks: [{ web: { uri: 'https://example.com/demo-serum', title: 'Demo serum review' } }],
+                groundingSupports: [{ groundingChunkIndices: [0] }],
+              },
             },
           ],
         },
@@ -101,9 +103,16 @@ describe('product_intel_pilot_compare gemini fallback', () => {
     expect(result.model_used).toBe('gemini-3.1-pro-preview');
     expect(result.model_candidates).toContain('gemini-3.1-pro-preview');
     expect(result.attempted_models).toEqual(['gemini-3-flash-preview', 'gemini-3.1-pro-preview']);
+    expect(postMock.mock.calls[1][1].tools).toEqual([{ google_search: {} }]);
+    expect(result.output.gemini_grounding).toEqual(
+      expect.objectContaining({
+        has_grounding: true,
+        web_search_queries: ['Demo serum reviews'],
+      }),
+    );
   });
 
-  test('uses simulated human rewrite when flash and pro both fail quality gate', async () => {
+  test('uses GPT-5.4 human-standard rewrite when flash and pro both fail quality gate', async () => {
     process.env.GEMINI_API_KEY = 'fake-key';
     const strongBaseline = {
       evidence_profile: 'seller_only',
@@ -164,7 +173,7 @@ describe('product_intel_pilot_compare gemini fallback', () => {
 
     const result = await runGeminiDraft(
       {
-        case_id: 'simulated-rewrite-case',
+        case_id: 'human-standard-rewrite-case',
         product: {
           title: 'Demo serum',
           brand: 'Demo',
@@ -176,9 +185,75 @@ describe('product_intel_pilot_compare gemini fallback', () => {
 
     expect(postMock).toHaveBeenCalledTimes(2);
     expect(result.skipped).toBe(false);
-    expect(result.model_used).toBe('simulated_human_rewrite');
-    expect(result.selection_strategy).toBe('gemini_simulated_rewrite');
+    expect(result.model_used).toBe('gpt-5.4-human-standard-rewrite');
+    expect(result.selection_strategy).toBe('gpt54_human_standard_rewrite');
     expect(result.attempted_models).toEqual(['gemini-3-flash-preview', 'gemini-3.1-pro-preview']);
     expect(result.quality_gate.overall_pass).toBe(true);
+    expect(result.quality_gate.human_standard_rewrite).toBe(true);
+  });
+
+  test('human-standard rewrite fixes lip-product best_for category mismatch after Gemini fails quality', async () => {
+    process.env.GEMINI_API_KEY = 'fake-key';
+    const weakLipResponse = {
+      data: {
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  text: '{"product_intel_core":{"what_it_is":{"headline":"Glossy lip oil","body":"A glossy lip oil positioned for softness, shine, and fuller-looking lips without a sticky finish."},"best_for":[{"tag":"oil_control","label":"Oily or combination skin"}],"why_it_stands_out":[{"headline":"Lip oil","body":"For all people."}],"watchouts":[],"routine_fit":{"step":"lip treatment","pairing_notes":["Use on lips."],"am_pm":["am","pm"]}}}',
+                },
+              ],
+            },
+          },
+        ],
+      },
+    };
+
+    jest.spyOn(axios, 'post').mockResolvedValue(weakLipResponse);
+
+    const result = await runGeminiDraft(
+      {
+        case_id: 'lip-oil-human-rewrite',
+        product: {
+          title: 'Glaze Lip Oil',
+          brand: 'INNBEAUTY PROJECT',
+          category: 'Lip Oil',
+          description: 'A glossy lip oil for shine, softness, and a plumper-looking lip finish.',
+        },
+      },
+      {
+        evidence_profile: 'seller_only',
+        product_intel_core: {
+          what_it_is: {
+            headline: 'Glossy lip oil',
+            body: 'A glossy lip oil for shine and soft-feeling lips.',
+          },
+          best_for: [{ tag: 'lip_shine', label: 'Lip shine' }],
+          why_it_stands_out: [
+            {
+              headline: 'Lip shine',
+              body: 'Targets shine and lip comfort.',
+              evidence_strength: 'limited',
+            },
+          ],
+          routine_fit: {
+            step: 'lip treatment',
+            am_pm: ['am', 'pm'],
+            pairing_notes: ['Use on lips.'],
+          },
+          watchouts: [],
+        },
+        community_signals: { status: 'unavailable' },
+      },
+      'gemini-3-flash-preview',
+    );
+
+    expect(result.model_used).toBe('gpt-5.4-human-standard-rewrite');
+    expect(result.output.product_intel_core.best_for.map((item) => item.label)).toEqual([
+      'Glossy lip shine',
+      'Soft-feeling lip comfort',
+    ]);
+    expect(result.quality_gate.fail_reasons).not.toContain('incompatible_best_for');
   });
 });
