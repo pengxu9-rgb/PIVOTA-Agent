@@ -260,6 +260,28 @@ const BEAUTY_INTEREST_CATEGORY_BY_TOKEN = Object.freeze({
   conditioner: ['conditioner', 'hair care'],
   hair: ['hair care'],
 });
+const BEAUTY_INTEREST_CATEGORY_BY_PHRASE = Object.freeze({
+  'hair oil': {
+    categories: ['hair oil', 'hair treatment', 'hair care', 'haircare'],
+    verticals: ['haircare'],
+  },
+  'haircare': {
+    categories: ['hair care', 'haircare'],
+    verticals: ['haircare'],
+  },
+  'hair care': {
+    categories: ['hair care', 'haircare'],
+    verticals: ['haircare'],
+  },
+  'lip balm': {
+    categories: ['lip balm', 'lip treatment', 'lip care', 'lip oil', 'makeup'],
+    verticals: ['makeup'],
+  },
+  'lip oil': {
+    categories: ['lip oil', 'lip balm', 'lip treatment', 'makeup'],
+    verticals: ['makeup'],
+  },
+});
 const GENERIC_DISCOVERY_QUERY_TOKENS = new Set([
   'beauty',
   'skincare',
@@ -982,6 +1004,55 @@ function buildDiscoveryDatabaseSearchTerms(values = [], options = {}) {
     phrases: effectivePhrases,
     tokens,
   };
+}
+
+function buildDiscoveryLikePatternsFromTerms(phrases = [], tokens = [], { phraseOnlyForMultiword = false } = {}) {
+  const phrasePatterns = [];
+  const tokenPatterns = [];
+  let hasMultiwordPhrase = false;
+
+  for (const phrase of Array.isArray(phrases) ? phrases : []) {
+    const normalized = normalizeText(phrase || '');
+    if (!normalized || normalized.length < 3) continue;
+    const words = normalized.split(/\s+/).filter(Boolean);
+    if (words.length > 1) hasMultiwordPhrase = true;
+    phrasePatterns.push(`%${normalized}%`);
+    if (words.length > 1) {
+      phrasePatterns.push(`%${words.join('%')}%`);
+    }
+  }
+
+  for (const token of Array.isArray(tokens) ? tokens : []) {
+    const normalized = normalizeText(token || '');
+    if (!normalized || normalized.length < 3) continue;
+    tokenPatterns.push(`%${normalized}%`);
+  }
+
+  return uniqStrings(
+    phraseOnlyForMultiword && hasMultiwordPhrase
+      ? phrasePatterns
+      : phrasePatterns.concat(tokenPatterns),
+    16,
+  );
+}
+
+function resolveBeautyInterestPhraseHint(phrase) {
+  const normalized = normalizeText(phrase || '');
+  if (!normalized) return { categories: [], verticals: [] };
+  const exactHint = BEAUTY_INTEREST_CATEGORY_BY_PHRASE[normalized];
+  if (exactHint) return exactHint;
+
+  const tokens = new Set(tokenizeDiscoverySearchText(normalized));
+  if (tokens.has('hair') && tokens.has('oil')) {
+    return BEAUTY_INTEREST_CATEGORY_BY_PHRASE['hair oil'];
+  }
+  if (tokens.has('lip') && tokens.has('balm')) {
+    return BEAUTY_INTEREST_CATEGORY_BY_PHRASE['lip balm'];
+  }
+  if (tokens.has('lip') && tokens.has('oil')) {
+    return BEAUTY_INTEREST_CATEGORY_BY_PHRASE['lip oil'];
+  }
+  return { categories: [], verticals: [] };
 }
 
 function compactBrandToken(value) {
@@ -3813,6 +3884,19 @@ function buildBeautyInterestRecallTerms(request, profile, queries = []) {
     }
   };
 
+  const addVerticalTerms = (items = []) => {
+    for (const item of Array.isArray(items) ? items : []) {
+      const normalized = normalizeText(item || '');
+      if (normalized) verticalTerms.add(normalized);
+    }
+  };
+
+  for (const phrase of uniqStrings([...effectiveQueries, ...searchTerms.phrases], 12)) {
+    const hint = resolveBeautyInterestPhraseHint(phrase);
+    addCategoryTerms(hint.categories);
+    addVerticalTerms(hint.verticals);
+  }
+
   for (const token of tokenSet) {
     addCategoryTerms(BEAUTY_INTEREST_CATEGORY_BY_TOKEN[token] || []);
   }
@@ -3838,18 +3922,15 @@ function buildBeautyInterestRecallTerms(request, profile, queries = []) {
     categoryTerms.add('serum');
   }
 
-  const patternTerms = uniqStrings(
-    [...searchTerms.phrases, ...searchTerms.tokens]
-      .map((value) => normalizeText(value || ''))
-      .filter((value) => value.length >= 3),
-    12,
-  );
+  const patternTerms = buildDiscoveryLikePatternsFromTerms(searchTerms.phrases, searchTerms.tokens, {
+    phraseOnlyForMultiword: isExplicitQueryScopedBrowseRequest(request),
+  });
 
   return {
     queries: effectiveQueries,
     phrases: searchTerms.phrases,
     tokens: searchTerms.tokens,
-    patterns: patternTerms.map((value) => `%${value}%`),
+    patterns: patternTerms,
     categoryTerms: Array.from(categoryTerms).slice(0, 12),
     verticalTerms: Array.from(verticalTerms).slice(0, 6),
   };
@@ -4371,6 +4452,7 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
       AND (tool = '*' OR tool = $2)
   `;
   const stageDefinitions = [];
+  const explicitQueryScopedRecall = isExplicitQueryScopedBrowseRequest(request);
   if (recallTerms.patterns.length > 0) {
     stageDefinitions.push({
       score: 48,
@@ -4391,6 +4473,15 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
         )`;
       },
     });
+    if (explicitQueryScopedRecall) {
+      stageDefinitions.push({
+        score: 34,
+        stage: 'recall_summary',
+        cap: Math.max(safeLimit, Math.min(safeLimit * 2, 48)),
+        buildWhereSql: (stageBind) =>
+          `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${stageBind(recallTerms.patterns)}::text[])`,
+      });
+    }
   }
 
   if (recallTerms.categoryTerms.length > 0) {
@@ -4414,7 +4505,7 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
   }
 
   const shouldRunSummaryFallback =
-    recallTerms.patterns.length > 0 && !isGenericNoSignalDiscoveryRequest(request, profile);
+    recallTerms.patterns.length > 0 && !explicitQueryScopedRecall && !isGenericNoSignalDiscoveryRequest(request, profile);
   if (stageDefinitions.length === 0 && !shouldRunSummaryFallback) {
     recordDiscoveryRecallStep({
       surface: request?.surface,
@@ -5372,6 +5463,17 @@ function matchesQueryTextCandidate(candidate, queryText) {
   return tokenHits >= Math.max(1, Math.ceil(queryTokens.length * 0.6));
 }
 
+function shouldFilterBrowseCandidateByQueryText(candidate, queryText, options = {}) {
+  if (!String(queryText || '').trim()) return false;
+  if (options?.explicitQueryScoped === true && candidate?.provider === 'external_seeds') {
+    const domain = String(candidate?.domain || 'unknown').trim();
+    if (!COLD_START_DEFERRED_DOMAINS.has(domain) && candidate?.beautyBucket !== 'tools') {
+      return false;
+    }
+  }
+  return !matchesQueryTextCandidate(candidate, queryText);
+}
+
 function getDiscoveryCategoryFacetKey(candidate) {
   const normalized = normalizeText(
     candidate?.raw?.product_type ||
@@ -6058,6 +6160,7 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
   const profile = options.profile || null;
   const sort = normalizeDiscoverySort(options.sort);
   const brandScoped = options.brandScoped === true;
+  const explicitQueryScoped = options.explicitQueryScoped === true;
   const queryText = String(options.queryText || '').trim();
   const categoryScope = normalizeDiscoveryCategories(options.categories, 12);
   const coldStartCuration = isGenericAnonymousBrowseColdStart(profile, {
@@ -6083,7 +6186,7 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
       if (decisions) decisions.set(entry.candidate.key, 'filtered_recent_view');
       continue;
     }
-    if (queryText && !matchesQueryTextCandidate(entry.candidate, queryText)) {
+    if (shouldFilterBrowseCandidateByQueryText(entry.candidate, queryText, { explicitQueryScoped })) {
       if (decisions) decisions.set(entry.candidate.key, 'filtered_query_text');
       continue;
     }
@@ -6154,7 +6257,7 @@ function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options
   const corpusOrderedInternalDeferred = [...orderedInternalDeferred];
 
   for (const entry of recentViewDeferred) {
-    if (queryText && !matchesQueryTextCandidate(entry.candidate, queryText)) {
+    if (shouldFilterBrowseCandidateByQueryText(entry.candidate, queryText, { explicitQueryScoped })) {
       continue;
     }
     if (shouldDeferInternalCatalogCandidate(entry.candidate, profile)) {
@@ -7596,6 +7699,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
           profile,
           sort: request.sort,
           brandScoped: brandScopeAliases.length > 0,
+          explicitQueryScoped: isExplicitQueryScopedBrowseRequest(request),
           queryText: request.query.text,
           categories: request.scope.categories,
         },
@@ -7860,6 +7964,7 @@ module.exports = {
     buildDiscoveryExactTitleLookupVariants,
     buildDiscoveryContextCacheKey,
     buildDiscoveryDatabaseSearchTerms,
+    buildBeautyInterestRecallTerms,
     buildDiscoveryInterestQuery,
     buildDiscoveryRecallPlan,
     buildDiscoveryProviderMergeKey,
@@ -7877,6 +7982,7 @@ module.exports = {
     loadCatalogCandidates,
     hydrateDiscoveryCandidateProductIntel,
     matchesQueryTextCandidate,
+    shouldFilterBrowseCandidateByQueryText,
     matchesBrandScopeCandidate,
     shouldUseDiscoveryExternalSeedExactTitleFastpath,
     normalizeDiscoveryRequest,
