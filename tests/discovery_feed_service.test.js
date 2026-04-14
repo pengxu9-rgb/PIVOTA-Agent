@@ -5443,6 +5443,121 @@ describe('discovery feed service', () => {
     }
   });
 
+  test('explicit narrow browse query skips broad category and vertical seed stages', async () => {
+    jest.resetModules();
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = 'postgres://discovery-narrow-query-stage-test';
+    const requiredColumns = [
+      { table_name: 'products_cache', column_name: 'id' },
+      { table_name: 'products_cache', column_name: 'merchant_id' },
+      { table_name: 'products_cache', column_name: 'product_data' },
+      { table_name: 'products_cache', column_name: 'expires_at' },
+      { table_name: 'products_cache', column_name: 'cached_at' },
+      { table_name: 'external_product_seeds', column_name: 'id' },
+      { table_name: 'external_product_seeds', column_name: 'external_product_id' },
+      { table_name: 'external_product_seeds', column_name: 'destination_url' },
+      { table_name: 'external_product_seeds', column_name: 'canonical_url' },
+      { table_name: 'external_product_seeds', column_name: 'title' },
+      { table_name: 'external_product_seeds', column_name: 'seed_data' },
+      { table_name: 'external_product_seeds', column_name: 'market' },
+      { table_name: 'external_product_seeds', column_name: 'tool' },
+      { table_name: 'external_product_seeds', column_name: 'status' },
+      { table_name: 'external_product_seeds', column_name: 'attached_product_key' },
+      { table_name: 'external_product_seeds', column_name: 'updated_at' },
+      { table_name: 'external_product_seeds', column_name: 'created_at' },
+    ];
+    const requiredIndexes = [
+      'idx_external_product_seeds_recall_title_trgm',
+      'idx_external_product_seeds_recall_summary_trgm',
+      'idx_external_product_seeds_recall_category_vertical_recency',
+      'idx_external_product_seeds_recall_vertical_recency',
+      'idx_external_product_seeds_recall_ingredient_tokens_trgm',
+      'idx_external_product_seeds_recall_alias_tokens_trgm',
+    ].map((indexname) => ({ tablename: 'external_product_seeds', indexname }));
+    const titleRows = [
+      makeExternalSeedRow({
+        id: 'vitamin_c_body_wash_exact',
+        title: 'The Brightener Vitamin C Brightening Body Wash',
+        category: 'Body Wash',
+        product_type: 'Body Wash',
+        description: 'Vitamin C brightening body wash.',
+      }),
+    ];
+    const dbQueryMock = jest
+      .fn()
+      .mockResolvedValueOnce({ rows: requiredColumns })
+      .mockResolvedValueOnce({ rows: requiredIndexes })
+      .mockResolvedValueOnce({ rows: titleRows })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+    jest.doMock('../src/db', () => ({
+      query: dbQueryMock,
+    }));
+
+    try {
+      const {
+        buildDiscoveryProfile: freshBuildDiscoveryProfile,
+        _internals: freshInternals,
+      } = require('../src/services/discoveryFeed');
+      freshInternals.resetDiscoveryDependencyProbeCache();
+      const request = freshInternals.normalizeDiscoveryRequest({
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        query: {
+          text: 'vitamin c body wash',
+        },
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      });
+
+      expect(
+        freshInternals.shouldSkipBroadStructuredSeedStagesForExplicitQuery(
+          request,
+          freshInternals.buildBeautyInterestRecallTerms(
+            request,
+            freshBuildDiscoveryProfile(request.context),
+            ['vitamin c body wash'],
+          ),
+        ),
+      ).toBe(true);
+
+      const result = await freshInternals.fetchBeautyInterestExternalSeedFastpathCandidates({
+        request,
+        profile: freshBuildDiscoveryProfile(request.context),
+        queries: ['vitamin c body wash'],
+        limit: freshInternals.resolveExternalSeedProviderLimit(request, 60),
+        providerName: 'external_seeds',
+        productProvider: 'external_seeds',
+        stepName: 'external_seed_pool',
+        label: 'external_seed_pool',
+      });
+
+      expect(result.products).toHaveLength(1);
+      expect(result.products[0].title).toBe('The Brightener Vitamin C Brightening Body Wash');
+      expect(dbQueryMock).toHaveBeenCalledTimes(5);
+      expect(result.recallSummary[0]).toEqual(
+        expect.objectContaining({
+          external_seed_qualified_count: 1,
+        }),
+      );
+      expect(result.recallSummary[0].external_seed_stage_counts.map((entry) => entry.stage)).toEqual([
+        'recall_title',
+        'recall_summary',
+        'recall_tokens',
+      ]);
+    } finally {
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+      jest.dontMock('../src/db');
+      jest.resetModules();
+    }
+  });
+
   test('browse_products debug mode records a non-blocking catalog serving shadow summary', async () => {
     jest.resetModules();
     process.env.CATALOG_SERVING_INDEX_BASE_URL = 'https://catalog-shadow.example';

@@ -4153,6 +4153,28 @@ function buildBeautyInterestRecallTerms(request, profile, queries = []) {
   };
 }
 
+const EXPLICIT_QUERY_BROAD_STAGE_STOPWORDS = new Set([
+  'and',
+  'for',
+  'with',
+  'the',
+  'a',
+  'an',
+  'of',
+  'to',
+]);
+
+function shouldSkipBroadStructuredSeedStagesForExplicitQuery(request, recallTerms = {}) {
+  if (!isExplicitQueryScopedBrowseRequest(request)) return false;
+  if (recallTerms?.compoundIntent) return false;
+  const normalizedQuery = normalizeText(request?.query?.text || '');
+  if (!normalizedQuery) return false;
+  const queryTokens = tokenizeDiscoverySearchText(normalizedQuery).filter(
+    (token) => !EXPLICIT_QUERY_BROAD_STAGE_STOPWORDS.has(token),
+  );
+  return queryTokens.length >= 3;
+}
+
 function buildBeautyInterestSeedSelect() {
   return `
     id,
@@ -4840,6 +4862,10 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
   const stageDefinitions = compoundIntent
     ? buildCompoundBeautySeedStageDefinitions(recallTerms, safeLimit)
     : [];
+  const skipBroadStructuredStages = shouldSkipBroadStructuredSeedStagesForExplicitQuery(
+    request,
+    recallTerms,
+  );
   if (!compoundIntent) {
     if (recallTerms.patterns.length > 0) {
       stageDefinitions.push({
@@ -4872,7 +4898,7 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
       });
     }
 
-    if (recallTerms.categoryTerms.length > 0) {
+    if (recallTerms.categoryTerms.length > 0 && !skipBroadStructuredStages) {
       stageDefinitions.push({
         score: 36,
         stage: 'recall_category',
@@ -4882,7 +4908,7 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
       });
     }
 
-    if (recallTerms.verticalTerms.length > 0) {
+    if (recallTerms.verticalTerms.length > 0 && !skipBroadStructuredStages) {
       stageDefinitions.push({
         score: 18,
         stage: 'recall_vertical',
@@ -8720,6 +8746,7 @@ module.exports = {
     buildDiscoveryDatabaseSearchTerms,
     buildBeautyInterestRecallTerms,
     buildCompoundBeautySeedStageDefinitions,
+    shouldSkipBroadStructuredSeedStagesForExplicitQuery,
     buildDiscoveryInterestQuery,
     buildDiscoveryRecallPlan,
     buildDiscoveryProviderMergeKey,
