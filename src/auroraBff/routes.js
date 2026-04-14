@@ -66499,6 +66499,7 @@ function inferRecoAlternativeFormFactor(...values) {
   if (/\bstick\b/.test(text)) return 'stick';
   if (/\b(?:spray|mist)\b/.test(text)) return 'spray';
   if (/\bfluid\b/.test(text)) return 'fluid';
+  if (/\bmask\b/.test(text)) return 'mask';
   if (/\bserum\b/.test(text)) return 'serum';
   if (/\b(?:gel cream|gel-cream|water cream|water-gel|gel)\b/.test(text)) return 'gel';
   if (/\blotion\b/.test(text)) return 'lotion';
@@ -66536,6 +66537,7 @@ function isRecoAlternativeFormFactorCompatible(candidate, { targetSignals = null
   if (!targetForm) return candidateForm !== 'body';
   if (candidateForm === targetForm) return true;
   if (candidateForm === 'body') return false;
+  if (candidateForm === 'mask') return false;
   if (['serum', 'fluid', 'gel', 'lotion', 'cream'].includes(targetForm) && ['stick', 'spray'].includes(candidateForm)) {
     return false;
   }
@@ -66544,6 +66546,11 @@ function isRecoAlternativeFormFactorCompatible(candidate, { targetSignals = null
 
 const RECO_ALTERNATIVE_COSMETIC_FINISH_SIGNAL_RE = /\b(glow(?:screen)?|radiance|radiant|illuminat\w*|lumin(?:ous|izer)?|tinted|shimmer|pearlescent|soft[-\s]?radiance|bronz\w*|highlight\w*)\b/i;
 const RECO_ALTERNATIVE_FINISH_DROPS_SIGNAL_RE = /\bdrops?\b/i;
+const RECO_ALTERNATIVE_STRONG_TONE_INTENT_RE =
+  /\b(dark\s*spots?|hyperpigmentation|uneven\s+tone|tone[-\s]?correct\w*|brighten(?:ing)?|radiance|radiant|glow(?:ing)?|txa|tranexamic|alpha[-\s]?arbutin|vitamin\s*c)\b/i;
+const RECO_ALTERNATIVE_STRONG_AGING_INTENT_RE = /\b(wrinkles?|fine[-\s]?lines?|anti[-\s]?aging|retinol|retinoid|firm(?:ing)?)\b/i;
+const RECO_ALTERNATIVE_STRONG_SENSITIVITY_INTENT_RE = /\b(redness|sensitive|sensitized|sooth(?:e|ing)?|calm(?:ing)?|irritat(?:e|ion)|stinging?|red[-\s]?prone)\b/i;
+const RECO_ALTERNATIVE_STRONG_ACNE_INTENT_RE = /\b(acne|breakouts?|blemish(?:es)?|clog(?:ged)?|pores?|breakout[-\s]?prone)\b/i;
 
 function buildRecoAlternativePoolCandidateText(normalized) {
   const row = isPlainObject(normalized) ? normalized : {};
@@ -66601,6 +66608,60 @@ function computeRecoAlternativeCosmeticFinishPenalty(targetSignals, candidateTex
   let penalty = 0.06;
   if (RECO_ALTERNATIVE_FINISH_DROPS_SIGNAL_RE.test(candidateHaystack)) penalty += 0.02;
   return Math.min(0.12, penalty);
+}
+
+function buildRecoAlternativeAnchorConcernText(targetSignals) {
+  return [
+    targetSignals?.roleScope,
+    targetSignals?.usageRole,
+    targetSignals?.productType,
+    targetSignals?.category,
+    targetSignals?.name,
+    ...(Array.isArray(targetSignals?.explicitClaims) ? targetSignals.explicitClaims : []),
+    ...(Array.isArray(targetSignals?.heroIngredients) ? targetSignals.heroIngredients : []),
+    ...(Array.isArray(targetSignals?.knownActives) ? targetSignals.knownActives : []),
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+}
+
+function computeRecoAlternativeConcernIntentPenalty(targetSignals, candidateText, candidateLabel) {
+  const targetText = buildRecoAlternativeAnchorConcernText(targetSignals);
+  const targetFamilies = collectRecoAssistantConcernFamilies(targetText);
+  if (!targetFamilies.size) return 0;
+  const targetRole = String(targetSignals?.usageRole || '').trim().toLowerCase();
+  if (targetRole === 'sunscreen') return 0;
+  const candidateHaystack = [candidateLabel, candidateText]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+  if (!candidateHaystack) return 0;
+  const candidateFamilies = collectRecoAssistantConcernFamilies(candidateHaystack);
+  if (!candidateFamilies.size) return 0;
+  const hasAllowedFamily = Array.from(candidateFamilies).some((family) => targetFamilies.has(family));
+  let penalty = 0;
+
+  if (!targetFamilies.has('tone_brightening')) {
+    if (RECO_ALTERNATIVE_STRONG_TONE_INTENT_RE.test(String(candidateLabel || ''))) {
+      penalty = Math.max(penalty, hasAllowedFamily ? 0.18 : 0.28);
+    } else if (RECO_ALTERNATIVE_STRONG_TONE_INTENT_RE.test(candidateHaystack)) {
+      penalty = Math.max(penalty, hasAllowedFamily ? 0.12 : 0.22);
+    }
+  }
+  if (!targetFamilies.has('aging_texture') && RECO_ALTERNATIVE_STRONG_AGING_INTENT_RE.test(candidateHaystack)) {
+    penalty = Math.max(penalty, hasAllowedFamily ? 0.12 : 0.22);
+  }
+  if (!targetFamilies.has('sensitivity_redness') && RECO_ALTERNATIVE_STRONG_SENSITIVITY_INTENT_RE.test(candidateHaystack)) {
+    penalty = Math.max(penalty, hasAllowedFamily ? 0.06 : 0.14);
+  }
+  if (!targetFamilies.has('acne_pore') && RECO_ALTERNATIVE_STRONG_ACNE_INTENT_RE.test(candidateHaystack)) {
+    penalty = Math.max(penalty, hasAllowedFamily ? 0.06 : 0.14);
+  }
+  if (!(penalty > 0) && !hasAllowedFamily) {
+    penalty = 0.08;
+  }
+  return Math.min(0.3, penalty);
 }
 
 function applyRecoAlternativeCosmeticFinishPenaltyToRow(row, {
@@ -66682,6 +66743,7 @@ function normalizePoolAlternativeRow(row, {
   const claimOverlap = computeExternalSeedSignalOverlap(claimTokens, candidateText);
   const textureOverlap = computeExternalSeedSignalOverlap(textureTokens, candidateText);
   const cosmeticFinishPenalty = computeRecoAlternativeCosmeticFinishPenalty(targetSignals, candidateText, candidateLabel);
+  const concernIntentPenalty = computeRecoAlternativeConcernIntentPenalty(targetSignals, candidateText, candidateLabel);
   const roleScore = !targetRole || targetRole === 'unknown'
     ? 0.72
     : candidateRole === targetRole
@@ -66699,7 +66761,8 @@ function normalizePoolAlternativeRow(row, {
     textureOverlap * 0.06 +
     stableIdBonus +
     retrievalBonus -
-    cosmeticFinishPenalty,
+    cosmeticFinishPenalty -
+    concernIntentPenalty,
   );
   if (mixedScore < 0.55) return null;
 
@@ -66761,6 +66824,9 @@ function normalizePoolAlternativeRow(row, {
         cosmeticFinishPenalty > 0
           ? 'Finish leans more cosmetic than the anchor, so it ranks lower for a straightforward sunscreen compare.'
           : '',
+        concernIntentPenalty > 0
+          ? 'Concern focus is less aligned with the anchor, so it ranks lower.'
+          : '',
       ],
       2,
     ),
@@ -66770,12 +66836,18 @@ function normalizePoolAlternativeRow(row, {
       compare_stage: 'pool_only',
       retrieval_source: normalized.retrieval_source || null,
       raw_similarity_score: Number(mixedScore.toFixed(3)),
-      ...(cosmeticFinishPenalty > 0
-        ? {
-            cosmetic_finish_penalty: Number(cosmeticFinishPenalty.toFixed(3)),
-            ranking_signals_used: ['cosmetic_finish_mismatch_penalty'],
-          }
-        : {}),
+      ...(cosmeticFinishPenalty > 0 ? { cosmetic_finish_penalty: Number(cosmeticFinishPenalty.toFixed(3)) } : {}),
+      ...(concernIntentPenalty > 0 ? { concern_intent_penalty: Number(concernIntentPenalty.toFixed(3)) } : {}),
+      ...(
+        cosmeticFinishPenalty > 0 || concernIntentPenalty > 0
+          ? {
+              ranking_signals_used: uniqCaseInsensitiveStrings([
+                cosmeticFinishPenalty > 0 ? 'cosmetic_finish_mismatch_penalty' : '',
+                concernIntentPenalty > 0 ? 'concern_intent_mismatch_penalty' : '',
+              ], 4),
+            }
+          : {}
+      ),
     },
     _mixed_score: mixedScore,
   }, normalized);
