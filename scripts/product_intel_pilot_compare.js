@@ -21,14 +21,11 @@ const {
 
 const GEMINI_PRIMARY_MODEL = 'gemini-3-flash-preview';
 const GEMINI_UPGRADE_MODEL = 'gemini-3.1-pro-preview';
-const GEMINI_SIMULATED_HUMAN_REWRITE_MODEL = 'simulated_human_rewrite';
+const GPT54_HUMAN_STANDARD_REWRITE_MODEL = 'gpt-5.4-human-standard-rewrite';
 
 const GEMINI_MODEL_DEFAULTS = [
   GEMINI_PRIMARY_MODEL,
   GEMINI_UPGRADE_MODEL,
-  'gemini-3-pro-preview',
-  'gemini-2.5-flash',
-  'gemini-2.0-flash',
 ];
 
 function parseArgs(argv) {
@@ -67,57 +64,8 @@ function parseArgs(argv) {
   return out;
 }
 
-function parseGeminiModelList(rawModel) {
-  const parts = asString(rawModel)
-    .split(',')
-    .map((item) => asString(item).toLowerCase())
-    .filter(Boolean)
-    .map((item) => item.replace(/^models\//, ''));
-
-  const defaults = GEMINI_MODEL_DEFAULTS.map((model) => asString(model).toLowerCase());
-  const list = [];
-  const seen = new Set();
-
-  const addModel = (model) => {
-    const normalized = asString(model).toLowerCase().replace(/^models\//, '');
-    if (!normalized || seen.has(normalized)) return;
-    seen.add(normalized);
-    list.push(normalized);
-  };
-
-  for (const model of parts.length ? parts : defaults) {
-    addModel(model);
-  }
-  for (const model of defaults) {
-    addModel(model);
-  }
-
-  // Always prioritize 3-flash before 3.1-pro for execution,
-  // regardless of input ordering.
-  const normalizedPrimary = normalizeGeminiModel(GEMINI_PRIMARY_MODEL);
-  const normalizedUpgrade = normalizeGeminiModel(GEMINI_UPGRADE_MODEL);
-  if (list[0] !== normalizedPrimary) {
-    // Move primary model to head, preserving previous relative ordering for others.
-    const withoutPrimary = list.filter((model) => model !== normalizedPrimary);
-    const withoutUpgrade = withoutPrimary.filter((model) => model !== normalizedUpgrade);
-    const fallbackOrder = [];
-    fallbackOrder.push(normalizedPrimary);
-    if (normalizedUpgrade) {
-      fallbackOrder.push(normalizedUpgrade);
-    }
-    return [...new Set([...fallbackOrder, ...withoutUpgrade])];
-  }
-  if (list[1] !== normalizedUpgrade && list.length > 1) {
-    const withoutPrimary = list.filter((model) => model !== normalizedPrimary);
-    const withoutUpgrade = withoutPrimary.filter((model) => model !== normalizedUpgrade);
-    return [
-      normalizedPrimary,
-      normalizedUpgrade,
-      ...withoutUpgrade,
-    ];
-  }
-
-  return list;
+function parseGeminiModelList(_rawModel) {
+  return GEMINI_MODEL_DEFAULTS.map((model) => normalizeGeminiModel(model));
 }
 
 function normalizeGeminiModel(rawModel) {
@@ -140,6 +88,11 @@ async function invokeGeminiDraft(model, prompt) {
         ],
       },
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      tools: [
+        {
+          google_search: {},
+        },
+      ],
       generationConfig: {
         temperature: 0,
         responseMimeType: 'application/json',
@@ -148,13 +101,19 @@ async function invokeGeminiDraft(model, prompt) {
     { timeout: 45000 },
   );
 
+  const candidate = response?.data?.candidates?.[0] || {};
   const text =
-    response?.data?.candidates?.[0]?.content?.parts
+    candidate?.content?.parts
       .map((part) => part?.text)
       .filter(Boolean)
       .join('\n') || '';
 
-  return normalizeGeminiDraftOutput(extractJsonObject(text));
+  const normalized = normalizeGeminiDraftOutput(extractJsonObject(text));
+  const grounding = normalizeGeminiGroundingMetadata(candidate.groundingMetadata);
+  if (grounding.has_grounding) {
+    normalized.gemini_grounding = grounding;
+  }
+  return normalized;
 }
 
 function extractModelError(err) {
@@ -165,6 +124,34 @@ function extractModelError(err) {
     return `model_call_failed_${status}${bodyMessage ? `:${bodyMessage}` : ''}`;
   }
   return asString(err?.code || err?.message || err) || 'gemini_failed';
+}
+
+function normalizeGeminiGroundingMetadata(value) {
+  const source = value && typeof value === 'object' ? value : {};
+  const webSources = toList(source.groundingChunks)
+    .map((chunk) => {
+      const web = chunk?.web && typeof chunk.web === 'object' ? chunk.web : {};
+      const uri = asString(web.uri);
+      const title = asString(web.title);
+      if (!uri && !title) return null;
+      return {
+        uri,
+        title,
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 12);
+  const webSearchQueries = toList(source.webSearchQueries)
+    .map((item) => asString(item))
+    .filter(Boolean)
+    .slice(0, 8);
+
+  return {
+    has_grounding: webSources.length > 0 || webSearchQueries.length > 0,
+    web_search_queries: webSearchQueries,
+    web_sources: webSources,
+    support_count: toList(source.groundingSupports).length,
+  };
 }
 
 function resolvePath(rootDir, target) {
@@ -278,6 +265,51 @@ function isWeakSellerWhatItIsText(text) {
     /\bdouble up and save\b/,
     /\bclinically-inspired\b/,
   ].some((pattern) => pattern.test(normalized));
+}
+
+function inferProductKindFromContext(context) {
+  const text = `${context?.title || ''} ${context?.category || ''} ${(context?.tags || []).join(' ')}`.toLowerCase();
+  if (/\b(lip|lipstick|lip oil|lip balm|lip color|gloss|glaze)\b/.test(text)) return 'lip';
+  if (/\b(fragrance|perfume|parfum|eau de parfum|edt|scent)\b/.test(text)) return 'fragrance';
+  if (/\b(foundation|concealer|skin tint|tint|base|cc stick)\b/.test(text)) return 'complexion_makeup';
+  if (/\b(cleanser|cleansing|face wash|wash)\b/.test(text)) return 'cleanser';
+  if (/\b(sunscreen|spf|uv)\b/.test(text)) return 'sunscreen';
+  if (/\b(moisturizer|moisturising|moisturizing|cream|gel-cream|lotion)\b/.test(text)) return 'moisturizer';
+  if (/\b(serum|ampoule|treatment|essence)\b/.test(text)) return 'serum';
+  return 'product';
+}
+
+function hasExternalEvidenceLanguage(text) {
+  return /\b(users?|people|reviewers?|customers?|community|viral|tiktok|reddit|social media|creators?|editors?|media|review aggregates?|consumer reviews?)\b/i.test(
+    asString(text),
+  );
+}
+
+function hasGroundingEvidence(bundle) {
+  const grounding = bundle?.gemini_grounding || bundle?.provenance?.gemini_grounding;
+  return Boolean(
+    grounding?.has_grounding &&
+      (
+        toList(grounding.web_sources).length > 0 ||
+        toList(grounding.web_search_queries).length > 0
+      ),
+  );
+}
+
+function hasIncompatibleBestForForContext(context, bestFor) {
+  const kind = inferProductKindFromContext(context || {});
+  const text = toList(bestFor)
+    .flatMap((item) => [item?.tag, item?.label])
+    .map((item) => asString(item).toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+  if (!text) return false;
+
+  const facialSkinConcern =
+    /\b(oily|oil[-_\s]?control|combination skin|acne|pores?|dry skin|dehydrated skin|sensitive skin|redness|dullness|uneven tone|fine lines?|barrier)\b/i;
+  if ((kind === 'lip' || kind === 'fragrance') && facialSkinConcern.test(text)) return true;
+  if (kind === 'complexion_makeup' && /\bcleanser|cleansing|wash|serum step|moisturizer step\b/i.test(text)) return true;
+  return false;
 }
 
 function toList(value) {
@@ -528,6 +560,29 @@ function normalizeEvidenceAvailability(flags) {
   };
 }
 
+function cleanProductText(value) {
+  return asString(value)
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/^OFFICIAL:\s*/i, '')
+    .replace(/\s*\/\/\/\s*SOCIAL HIGHLIGHTS:[\s\S]*$/i, '')
+    .replace(/\s*SOCIAL HIGHLIGHTS:[\s\S]*$/i, '')
+    .replace(/[.…]{2,}$/g, '.')
+    .trim();
+}
+
+function buildProductContext(caseRow) {
+  const product = caseRow?.product && typeof caseRow.product === 'object' ? caseRow.product : {};
+  return {
+    brand: asString(product.brand),
+    title: asString(product.title || product.name),
+    category: asString(product.category || product.product_type),
+    description: cleanProductText(product.description),
+    ingredients: toList(product.ingredients_inci || product.ingredients),
+    tags: toList(product.tags),
+  };
+}
+
 function buildFactsPack(caseRow, baselineDraft) {
   const product = caseRow && typeof caseRow.product === 'object' ? caseRow.product : {};
   const reviewSummary =
@@ -550,7 +605,8 @@ function buildFactsPack(caseRow, baselineDraft) {
     title: asString(product.title || product.name),
     brand: asString(product.brand),
     category: asString(product.category || product.product_type),
-    description: asString(product.description),
+    source_url: asString(product.url || product.product_url || product.canonical_url || product.external_url),
+    description: cleanProductText(product.description),
     tags: toList(product.tags),
     texture: asString(product.texture),
     finish: asString(product.finish),
@@ -584,6 +640,9 @@ function buildGeminiPrompt(caseRow, baselineDraft) {
     '',
     'Hard rules:',
     '- Ground every field only in the supplied product facts.',
+    '- Use the Google Search tool before drafting. Search for official brand/product pages, credible retailer pages, editorial/media reviews, review aggregations, and public consumer review patterns for this exact product.',
+    '- Treat official/product pages as identity and formula evidence; treat reviews/media only as additive context. Do not use external claims unless the search result supports them.',
+    '- If public review/media evidence is weak, mixed, sponsored, or about a sibling product, keep community_signals.status as "unavailable" and do not turn it into a proof badge or hype language.',
     '- Do not invent price, offers, ingredients, ratings, or community feedback.',
     '- evidence_availability is authoritative. If reviews/creator/editorial are all false, community_signals.status must be "unavailable".',
     '- Do not output source_coverage, evidence_profile, quality_state, or freshness. Those are computed separately.',
@@ -609,10 +668,42 @@ function buildGeminiPrompt(caseRow, baselineDraft) {
     '- product_intel_core.watchouts',
     '- texture_finish',
     '- community_signals',
+    '- external_evidence_summary. Include short source-grounded notes only; use [] when unsupported.',
     '',
     'Product facts:',
     JSON.stringify(factsPack, null, 2),
   ].join('\n');
+}
+
+function normalizeExternalEvidenceSummary(value) {
+  const source = value && typeof value === 'object' ? value : {};
+  const normalizeNotes = (items) =>
+    toList(items)
+      .map((item) => {
+        if (item && typeof item === 'object') {
+          const sourceType = asString(item.source_type || item.source || item.type).slice(0, 80);
+          const note = asString(item.note || item.summary || item.claim || item.text).slice(0, 220);
+          const url = asString(item.url || item.uri).slice(0, 500);
+          if (!note && !url) return null;
+          return {
+            ...(sourceType ? { source_type: sourceType } : {}),
+            ...(note ? { note } : {}),
+            ...(url ? { url } : {}),
+          };
+        }
+        const note = asString(item).slice(0, 220);
+        return note ? { note } : null;
+      })
+      .filter(Boolean)
+      .slice(0, 6);
+
+  return {
+    official_pages: normalizeNotes(source.official_pages),
+    retailer_pages: normalizeNotes(source.retailer_pages),
+    editorial_media_reviews: normalizeNotes(source.editorial_media_reviews || source.media_reviews),
+    consumer_review_patterns: normalizeNotes(source.consumer_review_patterns || source.public_reviews),
+    caveats: normalizeNotes(source.caveats),
+  };
 }
 
 function normalizeGeminiDraftOutput(output) {
@@ -734,182 +825,306 @@ function normalizeGeminiDraftOutput(output) {
     },
     texture_finish: textureFinish,
     community_signals: communitySignals,
+    external_evidence_summary: normalizeExternalEvidenceSummary(output?.external_evidence_summary),
   };
 }
 
-function buildSimulatedHumanRewriteOutput(caseRow, baselineBundle, geminiOutput) {
-  if (!baselineBundle || !geminiOutput) return null;
-  const caseId = asString(caseRow?.case_id);
-  const baselineCore = baselineBundle.product_intel_core || {};
-  const baselineCommunity = baselineBundle.community_signals || {};
-  const geminiCore = geminiOutput.product_intel_core || {};
-  const geminiCommunity = geminiOutput.community_signals || {};
-  const baseRoutine = baselineCore.routine_fit || {};
-  const rewriteRoutine = geminiCore.routine_fit || {};
-  const baselineBody = asString(baselineCore.what_it_is?.body);
-  const baselineHeadline = asString(baselineCore.what_it_is?.headline);
-  const rewrittenBody = asString(geminiCore.what_it_is?.body).length >= 24
-    ? asString(geminiCore.what_it_is?.body)
-    : baselineBody;
-  const rewrittenHeadline = asString(geminiCore.what_it_is?.headline).length >= 10
-    ? asString(geminiCore.what_it_is?.headline)
-    : baselineHeadline || PIVOTA_INSIGHTS_DISPLAY_NAME;
+function firstUsefulSentence(text) {
+  const cleaned = cleanProductText(text)
+    .replace(/\b(as seen on|trending on|viral hit|instagram favorite|influencers are obsessed)\b[\s\S]*$/i, '')
+    .trim();
+  const match = cleaned.match(/^(.{40,260}?[.!?])(\s|$)/);
+  if (match) return match[1].trim();
+  return cleaned.length >= 40 ? cleaned.slice(0, 260).trim() : '';
+}
 
-  const bestForFromGemini = toList(geminiCore.best_for)
-    .map((item) => {
-      const label = asString(item?.label);
-      if (!label) return null;
-      return {
-        tag: asString(item?.tag) || label.toLowerCase().replace(/\s+/g, '_').slice(0, 80),
-        label: label.slice(0, 120),
-        confidence: asString(item?.confidence) || 'moderate',
-      };
-    })
-    .filter(Boolean)
-    .slice(0, 4);
-  const bestForFallback = toList(baselineCore.best_for)
-    .map((item) => ({
-      tag: asString(item?.tag) || asString(item?.label).toLowerCase().replace(/\s+/g, '_').slice(0, 80),
-      label: asString(item?.label).slice(0, 120),
-      confidence: asString(item?.confidence) || 'moderate',
+function extractActiveTerms(context) {
+  const source = `${context?.description || ''} ${toList(context?.ingredients).join(' ')}`.toLowerCase();
+  const terms = [
+    'vitamin c',
+    'retinol',
+    'niacinamide',
+    'hyaluronic acid',
+    'salicylic acid',
+    'squalane',
+    'glycerin',
+    'ceramide',
+    'peptide',
+    'azelaic acid',
+    'birch',
+    'zinc oxide',
+    'blood orange',
+    'patchouli',
+    'sandalwood',
+    'rose',
+    'vanilla',
+    'leather',
+    'peach',
+  ];
+  return terms.filter((term) => source.includes(term)).slice(0, 6);
+}
+
+function buildHumanStandardWhatItIs(context, baselineBundle) {
+  const kind = inferProductKindFromContext(context);
+  const activeTerms = extractActiveTerms(context);
+  const usefulDescription = firstUsefulSentence(context.description);
+  const baseHeadline = asString(baselineBundle?.product_intel_core?.what_it_is?.headline);
+
+  if (kind === 'lip') {
+    return {
+      headline: /lip/i.test(baseHeadline) ? baseHeadline : 'Glossy lip oil',
+      body: 'A lip product focused on glossy shine, soft-feeling lips, and a fuller-looking finish.',
+    };
+  }
+  if (kind === 'fragrance') {
+    return {
+      headline: /fragrance|parfum|scent/i.test(baseHeadline) ? baseHeadline : 'Fragrance profile',
+      body: usefulDescription || `A fragrance product${activeTerms.length ? ` built around ${activeTerms.join(', ')} notes` : ''}.`,
+    };
+  }
+  if (kind === 'complexion_makeup') {
+    return {
+      headline: /foundation|tint|makeup|base/i.test(baseHeadline) ? baseHeadline : 'Complexion makeup',
+      body: usefulDescription || 'A complexion makeup product focused on coverage, finish, and tone-evening wear.',
+    };
+  }
+  if (kind === 'moisturizer') {
+    return {
+      headline: /cream|moistur/i.test(baseHeadline) ? baseHeadline : 'Daily moisturizer',
+      body: usefulDescription || 'A daily moisturizer focused on hydration, comfort, and barrier-supportive skin care.',
+    };
+  }
+  if (kind === 'sunscreen') {
+    return {
+      headline: /spf|sunscreen/i.test(baseHeadline) ? baseHeadline : 'Daily sunscreen',
+      body: usefulDescription || 'A daily sunscreen product focused on UV protection within a daytime skin-care routine.',
+    };
+  }
+  if (kind === 'serum') {
+    return {
+      headline: /serum|treatment/i.test(baseHeadline) ? baseHeadline : 'Treatment serum',
+      body:
+        usefulDescription ||
+        `A treatment serum${activeTerms.length ? ` built around ${activeTerms.join(', ')}` : ''} for targeted skin-care routines.`,
+    };
+  }
+  if (kind === 'cleanser') {
+    return {
+      headline: /clean/i.test(baseHeadline) ? baseHeadline : 'Daily cleanser',
+      body: usefulDescription || 'A cleanser focused on removing daily buildup while keeping the routine gentle and practical.',
+    };
+  }
+
+  return {
+    headline: baseHeadline || 'Product insight',
+    body: usefulDescription || asString(baselineBundle?.product_intel_core?.what_it_is?.body) || 'A product-level insight grounded in the available listing facts.',
+  };
+}
+
+function buildHumanStandardBestFor(context, baselineBundle) {
+  const kind = inferProductKindFromContext(context);
+  const text = `${context?.title || ''} ${context?.category || ''} ${context?.description || ''}`.toLowerCase();
+  const item = (tag, label) => ({ tag, label, confidence: 'moderate' });
+
+  if (kind === 'lip') {
+    return [item('lip_shine', 'Glossy lip shine'), item('lip_comfort', 'Soft-feeling lip comfort')];
+  }
+  if (kind === 'fragrance') {
+    return [item('fragrance_wear', 'Fragrance wear'), item('scent_preference', 'Scent-profile shoppers')];
+  }
+  if (kind === 'complexion_makeup') {
+    return [
+      item(text.includes('matte') ? 'soft_matte_finish' : 'complexion_finish', text.includes('matte') ? 'Soft-matte finish' : 'Complexion finish'),
+      item('coverage_preferences', 'Coverage-focused makeup routines'),
+    ];
+  }
+  if (kind === 'sunscreen') {
+    return [item('daily_uv_protection', 'Daily UV protection'), item('daytime_routines', 'Daytime skin-care routines')];
+  }
+  if (kind === 'cleanser') {
+    return [item('daily_cleansing', 'Daily cleansing'), item('comfortable_cleanse', 'Comfort-focused cleansing routines')];
+  }
+  if (kind === 'serum') {
+    if (text.includes('tone') || text.includes('vitamin c')) return [item('uneven_tone', 'Uneven tone concerns'), item('texture_refinement', 'Texture-smoothing routines')];
+    return [item('targeted_treatment', 'Targeted treatment routines')];
+  }
+  if (kind === 'moisturizer') {
+    return [
+      item(text.includes('barrier') ? 'barrier_comfort' : 'dryness', text.includes('barrier') ? 'Barrier-comfort routines' : 'Dry or dehydrated skin'),
+      item('daily_moisture', 'Daily moisture support'),
+    ];
+  }
+
+  const baselineBestFor = toList(baselineBundle?.product_intel_core?.best_for)
+    .map((entry) => ({
+      tag: asString(entry?.tag || entry?.label).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 80) || 'fit',
+      label: asString(entry?.label || entry?.tag).slice(0, 120),
+      confidence: asString(entry?.confidence) || 'moderate',
     }))
-    .filter((item) => item.label)
-    .slice(0, 4);
+    .filter((entry) => entry.label && !hasIncompatibleBestForForContext(context, [entry]))
+    .slice(0, 3);
+  return baselineBestFor.length ? baselineBestFor : [item('product_fit', 'Product-fit shoppers')];
+}
 
-  const highlightsFromGemini = toList(geminiCore.why_it_stands_out)
-    .map((item) => {
-      const headline = asString(item?.headline);
-      const body = asString(item?.body);
-      if (!headline || !body) return null;
-      if (headline.length < 8 || body.length < 20) return null;
-      if (isLowSignalSellerHighlightText(`${headline} ${body}`)) return null;
-      if (isGenericSellerHighlightText(`${headline} ${body}`)) return null;
-      return {
-        headline: headline.slice(0, 80),
-        body: body.slice(0, 220),
-        evidence_strength: ['strong', 'moderate', 'limited', 'uncertain'].includes(
-          asString(item?.evidence_strength).toLowerCase(),
-        )
-          ? asString(item?.evidence_strength).toLowerCase()
-          : 'moderate',
-      };
-    })
-    .filter(Boolean)
-    .slice(0, 4);
-  const highlightsFallback = toList(baselineCore.why_it_stands_out)
-    .map((item) => ({
-      headline: asString(item?.headline).slice(0, 80),
-      body: asString(item?.body).slice(0, 220),
-      evidence_strength: asString(item?.evidence_strength) || 'limited',
-    }))
-    .filter((item) => item.headline && item.body)
-    .slice(0, 4);
+function buildHumanStandardHighlights(context) {
+  const kind = inferProductKindFromContext(context);
+  const activeTerms = extractActiveTerms(context);
+  const text = `${context?.title || ''} ${context?.description || ''}`.toLowerCase();
+  const highlight = (headline, body, evidenceStrength = 'seller_grounded') => ({
+    headline,
+    body,
+    evidence_strength: evidenceStrength,
+  });
 
-  const watchoutsFromGemini = toList(geminiCore.watchouts)
+  if (kind === 'lip') {
+    return [
+      highlight('Gloss and lip comfort', 'Targets shine, softness, and a fuller-looking lip finish in one lip-oil step.'),
+    ];
+  }
+  if (kind === 'fragrance') {
+    return [
+      highlight(
+        'Scent-note structure',
+        activeTerms.length
+          ? `Defines the scent around ${activeTerms.join(', ')} notes for shoppers comparing fragrance profiles.`
+          : 'Anchors the fragrance in scent profile and wear context for shoppers comparing fragrance styles.',
+      ),
+    ];
+  }
+  if (kind === 'complexion_makeup') {
+    return [
+      highlight(
+        text.includes('matte') ? 'Soft-matte finish' : 'Coverage and finish focus',
+        text.includes('spf')
+          ? 'Combines complexion coverage with SPF-positioned daytime wear for routines that need both coverage and sun-care cues.'
+          : 'Anchors the product in coverage, finish, and shade-use context for complexion makeup routines.',
+      ),
+    ];
+  }
+  if (kind === 'moisturizer') {
+    return [
+      highlight(
+        text.includes('birch') ? 'Birch hydration focus' : 'Hydration and comfort',
+        text.includes('barrier')
+          ? 'Pairs moisturizing care with barrier-comfort claims for daily cream routines.'
+          : 'Works as a daily moisture step with comfort-first skin-care use.',
+      ),
+    ];
+  }
+  if (kind === 'sunscreen') {
+    return [
+      highlight('Daytime UV step', 'Anchors the product in daily UV protection and daytime layering context.'),
+    ];
+  }
+  if (kind === 'serum') {
+    return [
+      highlight(
+        activeTerms.length > 1 ? 'Multi-active treatment scope' : 'Targeted treatment scope',
+        activeTerms.length > 1
+          ? `Combines ${activeTerms.join(', ')} for a targeted treatment step.`
+          : 'Supports targeted treatment routines with the available active and concern cues.',
+      ),
+    ];
+  }
+  if (kind === 'cleanser') {
+    return [
+      highlight('Cleansing comfort', 'Supports daily cleansing with a comfort-first profile.'),
+    ];
+  }
+  return [
+    highlight('Listing-grounded use', 'Defines the product around the title, category, and available listing description.'),
+  ].filter((item) => !isGenericSellerHighlightText(`${item.headline} ${item.body}`));
+}
+
+function buildHumanStandardWatchouts(context, baselineBundle) {
+  const kind = inferProductKindFromContext(context);
+  if (kind === 'sunscreen') {
+    return [{ type: 'spf', label: 'Reapply as needed for extended daytime exposure.', severity: 'medium' }];
+  }
+  if (kind === 'serum' && /\b(retinol|salicylic acid|acid)\b/i.test(`${context?.description || ''} ${toList(context?.ingredients).join(' ')}`)) {
+    return [{ type: 'active_blend', label: 'Introduce gradually if your routine already includes retinoids or exfoliating acids.', severity: 'medium' }];
+  }
+  return toList(baselineBundle?.product_intel_core?.watchouts)
     .map((item) => ({
       type: asString(item?.type).slice(0, 80) || 'watchout',
       label: asString(item?.label).slice(0, 160),
       severity: ['low', 'medium', 'high'].includes(asString(item?.severity).toLowerCase())
         ? asString(item?.severity).toLowerCase()
-        : 'medium',
+        : 'low',
     }))
     .filter((item) => item.label)
-    .slice(0, 4);
-  const watchoutsFallback = toList(baselineCore.watchouts)
-    .map((item) => ({
-      type: asString(item?.type).slice(0, 80) || 'watchout',
-      label: asString(item?.label).slice(0, 160),
-      severity: asString(item?.severity) || 'medium',
-    }))
-    .filter((item) => item.label)
-    .slice(0, 4);
+    .slice(0, 3);
+}
 
-  const textureFromGemini = geminiOutput.texture_finish && typeof geminiOutput.texture_finish === 'object'
-    ? {
-        texture: asString(geminiOutput.texture_finish.texture).slice(0, 120),
-        finish: asString(geminiOutput.texture_finish.finish).slice(0, 120),
-        sensory_notes: toList(geminiOutput.texture_finish.sensory_notes)
-          .map((item) => asString(item).slice(0, 120))
-          .filter(Boolean)
-          .slice(0, 4),
-        layering_notes: toList(geminiOutput.texture_finish.layering_notes)
-          .map((item) => asString(item).slice(0, 160))
-          .filter(Boolean)
-          .slice(0, 4),
-      }
-    : baselineBundle.texture_finish || null;
+function buildHumanStandardPairingNotes(kind) {
+  if (kind === 'lip') return ['Use as a lip finishing step or reapply when shine and comfort fade.'];
+  if (kind === 'fragrance') return ['Apply to pulse points and adjust amount based on scent intensity preference.'];
+  if (kind === 'complexion_makeup') return ['Apply in the complexion makeup step and choose shade/coverage separately.'];
+  if (kind === 'sunscreen') return ['Use as the last morning skin-care step before makeup.'];
+  if (kind === 'moisturizer') return ['Apply after treatment steps; use SPF afterward in the morning.'];
+  if (kind === 'serum') return ['Apply before moisturizer; use SPF in the morning when using active treatments.'];
+  if (kind === 'cleanser') return ['Use before treatment and moisturizer steps.'];
+  return ['Use according to the product category and seller directions.'];
+}
 
-  const rewrite = {
+function buildHumanStandardRewriteOutput(caseRow, baselineBundle, geminiOutput) {
+  if (!baselineBundle) return null;
+  const context = buildProductContext(caseRow);
+  const baselineCore = baselineBundle.product_intel_core || {};
+  const baselineRoutine = baselineCore.routine_fit || {};
+  const grounding = geminiOutput?.gemini_grounding || null;
+  const externalEvidenceSummary = geminiOutput?.external_evidence_summary || null;
+  const whatItIs = buildHumanStandardWhatItIs(context, baselineBundle);
+  const bestFor = buildHumanStandardBestFor(context, baselineBundle);
+  const highlights = buildHumanStandardHighlights(context).filter(
+    (item) =>
+      item &&
+      asString(item.body).length >= 20 &&
+      !isLowSignalSellerHighlightText(`${item.headline} ${item.body}`) &&
+      !isGenericSellerHighlightText(`${item.headline} ${item.body}`),
+  );
+  const routineStep = asString(baselineRoutine.step);
+  const kind = inferProductKindFromContext(context);
+
+  return {
     product_intel_core: {
-      what_it_is: {
-        headline: rewrittenHeadline.slice(0, 120),
-        body: rewrittenBody.slice(0, 400) || rewrittenHeadline,
-      },
-      best_for: bestForFromGemini.length > 0 ? bestForFromGemini : bestForFallback,
-      why_it_stands_out: highlightsFromGemini.length > 0 ? highlightsFromGemini : highlightsFallback,
+      what_it_is: whatItIs,
+      best_for: bestFor,
+      why_it_stands_out: highlights.length ? highlights : toList(baselineCore.why_it_stands_out).slice(0, 1),
       routine_fit: {
-        step: asString(rewriteRoutine.step || baseRoutine.step).slice(0, 80),
-        am_pm: toList(rewriteRoutine.am_pm)
-          .map((item) => asString(item).toLowerCase())
-          .filter((item) => item === 'am' || item === 'pm')
-          .slice(0, 2),
-        pairing_notes: toList(rewriteRoutine.pairing_notes)
-          .map((item) => asString(item).slice(0, 160))
-          .filter(Boolean)
-          .slice(0, 4),
+        step: routineStep,
+        am_pm: toList(baselineRoutine.am_pm).length
+          ? toList(baselineRoutine.am_pm)
+          : kind === 'sunscreen'
+            ? ['am']
+            : kind === 'fragrance'
+              ? ['pm']
+              : ['am', 'pm'],
+        pairing_notes: toList(baselineRoutine.pairing_notes).length
+          ? toList(baselineRoutine.pairing_notes)
+          : buildHumanStandardPairingNotes(kind),
       },
-      watchouts: watchoutsFromGemini.length > 0 ? watchoutsFromGemini : watchoutsFallback,
+      watchouts: buildHumanStandardWatchouts(context, baselineBundle),
     },
-    texture_finish: textureFromGemini,
-    community_signals: {
-      status:
-        asString(geminiCommunity.status).toLowerCase() === 'available'
-          ? 'available'
-          : asString(baselineCommunity.status).toLowerCase() === 'available'
-            ? 'available'
-            : 'unavailable',
-      unavailable_reason: asString(geminiCommunity.unavailable_reason) || null,
-      top_loves: toList(geminiCommunity.top_loves).map((item) => asString(item).slice(0, 160)).filter(Boolean).slice(0, 4),
-      top_complaints: toList(geminiCommunity.top_complaints)
-        .map((item) => asString(item).slice(0, 160))
-        .filter(Boolean)
-        .slice(0, 4),
-      best_fit_users: toList(geminiCommunity.best_fit_users)
-        .map((item) => asString(item).slice(0, 160))
-        .filter(Boolean)
-        .slice(0, 3),
-      mixed_feedback: toList(geminiCommunity.mixed_feedback)
-        .map((item) => asString(item).slice(0, 180))
-        .filter(Boolean)
-        .slice(0, 3),
-    },
-    simulated_human_rewrite: true,
-    simulated_case_id: caseId,
+    texture_finish:
+      geminiOutput?.texture_finish && typeof geminiOutput.texture_finish === 'object'
+        ? geminiOutput.texture_finish
+        : baselineBundle.texture_finish || null,
+    community_signals:
+      baselineBundle.community_signals?.status === 'available'
+        ? deepClone(baselineBundle.community_signals)
+        : {
+            status: 'unavailable',
+            unavailable_reason: grounding?.has_grounding
+              ? 'grounded_public_consensus_not_reviewed_for_display'
+              : 'insufficient_feedback',
+          },
+    external_evidence_summary: externalEvidenceSummary || normalizeExternalEvidenceSummary(null),
+    ...(grounding?.has_grounding ? { gemini_grounding: grounding } : {}),
+    human_standard_rewrite: true,
+    reviewer_model: GPT54_HUMAN_STANDARD_REWRITE_MODEL,
+    case_id: asString(caseRow?.case_id),
   };
-
-  if (
-    rewrite.community_signals.status === 'unavailable' &&
-    asString(baselineCommunity.status).toLowerCase() === 'available'
-  ) {
-    rewrite.community_signals.top_loves = toList(baselineCommunity.top_loves)
-      .map((item) => asString(item).slice(0, 160))
-      .filter(Boolean)
-      .slice(0, 4);
-    rewrite.community_signals.top_complaints = toList(baselineCommunity.top_complaints)
-      .map((item) => asString(item).slice(0, 160))
-      .filter(Boolean)
-      .slice(0, 4);
-    rewrite.community_signals.best_fit_users = toList(baselineCommunity.best_fit_users)
-      .map((item) => asString(item).slice(0, 160))
-      .filter(Boolean)
-      .slice(0, 3);
-    rewrite.community_signals.mixed_feedback = toList(baselineCommunity.mixed_feedback)
-      .map((item) => asString(item).slice(0, 180))
-      .filter(Boolean)
-      .slice(0, 3);
-  }
-
-  return rewrite;
 }
 
 async function runGeminiDraft(caseRow, baselineDraft, model) {
@@ -977,46 +1192,48 @@ async function runGeminiDraft(caseRow, baselineDraft, model) {
     };
   }
 
-  if (upgradeResult.output) {
-    const simulatedRewriteOutput = buildSimulatedHumanRewriteOutput(
+  const rewriteSeedOutput = upgradeResult.output || primaryResult.output || null;
+  if (rewriteSeedOutput || baselineDraft) {
+    const humanRewriteOutput = buildHumanStandardRewriteOutput(
       caseRow,
       baselineDraft,
-      upgradeResult.output,
+      rewriteSeedOutput,
     );
-    if (simulatedRewriteOutput) {
-      const simulatedMerged = mergeGeminiDraftIntoBaseline(
+    if (humanRewriteOutput) {
+      const humanRewriteMerged = mergeGeminiDraftIntoBaseline(
         caseRow,
         baselineDraft,
-        simulatedRewriteOutput,
-        GEMINI_SIMULATED_HUMAN_REWRITE_MODEL,
+        humanRewriteOutput,
+        GPT54_HUMAN_STANDARD_REWRITE_MODEL,
       );
-      const simulatedQuality = evaluateGeminiCandidateQuality(
+      const humanRewriteQuality = evaluateGeminiCandidateQuality(
         baselineDraft,
-        simulatedMerged,
+        humanRewriteMerged,
       );
-      if (simulatedQuality.overall_pass) {
+      if (humanRewriteQuality.overall_pass) {
         return {
           skipped: false,
-          output: simulatedRewriteOutput,
-          model_used: GEMINI_SIMULATED_HUMAN_REWRITE_MODEL,
+          output: humanRewriteOutput,
+          model_used: GPT54_HUMAN_STANDARD_REWRITE_MODEL,
           model_candidates: modelCandidates,
           attempted_models: attemptedModels,
           quality_gate: {
-            ...simulatedQuality,
-            simulated_human_rewrite: true,
+            ...humanRewriteQuality,
+            human_standard_rewrite: true,
+            human_standard_reviewer_model: GPT54_HUMAN_STANDARD_REWRITE_MODEL,
           },
-          selection_strategy: 'gemini_simulated_rewrite',
+          selection_strategy: 'gpt54_human_standard_rewrite',
         };
       }
       return {
         skipped: true,
-        reason: `gemini_quality_rewrite_failed:${(upgradeResult.quality_gate?.fail_reasons || []).join('|')}`,
+        reason: `human_standard_rewrite_failed:${(humanRewriteQuality.fail_reasons || []).join('|')}`,
         output: null,
         model_used: null,
         model_candidates: modelCandidates,
         attempted_models: attemptedModels,
-        quality_gate: simulatedQuality,
-        selection_strategy: 'gemini_quality_rewrite_failed',
+        quality_gate: humanRewriteQuality,
+        selection_strategy: 'human_standard_rewrite_failed',
       };
     }
   }
@@ -1058,6 +1275,7 @@ function mergeGeminiDraftIntoBaseline(caseRow, baselineBundle, geminiOutput, mod
   if (!baselineBundle || !geminiOutput) return null;
   const generatedAt = new Date().toISOString();
   const merged = deepClone(baselineBundle);
+  const productContext = buildProductContext(caseRow);
   const baselineCore = baselineBundle.product_intel_core || {};
   const baselineCommunity = baselineBundle.community_signals || {};
   const geminiCore = geminiOutput.product_intel_core || {};
@@ -1146,6 +1364,13 @@ function mergeGeminiDraftIntoBaseline(caseRow, baselineBundle, geminiOutput, mod
     };
   }
 
+  if (geminiOutput.external_evidence_summary) {
+    merged.external_evidence_summary = deepClone(geminiOutput.external_evidence_summary);
+  }
+  if (geminiOutput.gemini_grounding?.has_grounding) {
+    merged.gemini_grounding = deepClone(geminiOutput.gemini_grounding);
+  }
+
   merged.quality_state = baselineBundle.quality_state || 'limited';
   merged.evidence_profile = baselineBundle.evidence_profile || null;
   merged.source_coverage = baselineBundle.source_coverage || null;
@@ -1160,6 +1385,13 @@ function mergeGeminiDraftIntoBaseline(caseRow, baselineBundle, geminiOutput, mod
     generator: 'gemini_candidate',
     model,
     case_id: asString(caseRow?.case_id),
+    product_context: productContext,
+    ...(geminiOutput.gemini_grounding?.has_grounding
+      ? { gemini_grounding: deepClone(geminiOutput.gemini_grounding) }
+      : {}),
+    ...(geminiOutput.external_evidence_summary
+      ? { external_evidence_summary: deepClone(geminiOutput.external_evidence_summary) }
+      : {}),
   };
 
   return merged;
@@ -1209,15 +1441,21 @@ function evaluateGeminiCandidateQuality(baselineBundle, geminiCandidateBundle) {
   const candidateCore = geminiCandidateBundle.product_intel_core || {};
   const baselineCommunity = baselineBundle.community_signals || {};
   const candidateCommunity = geminiCandidateBundle.community_signals || {};
+  const productContext = geminiCandidateBundle?.provenance?.product_context || {};
   const sellerOnlyMode =
     baselineBundle.evidence_profile === 'seller_only' ||
     baselineBundle.evidence_profile === 'seller_plus_formula';
   const narrativeText = flattenBundleNarrative(geminiCandidateBundle);
+  const externalEvidenceLanguage = hasExternalEvidenceLanguage(narrativeText);
+  const groundedExternalEvidence = hasGroundingEvidence(geminiCandidateBundle);
   const sellerOnlyViolation =
     sellerOnlyMode &&
-    /\b(users?|people|reviewers?|customers?|community|viral|tiktok|reddit|social media)\b/i.test(
-      narrativeText,
-    );
+    externalEvidenceLanguage &&
+    !groundedExternalEvidence;
+  const incompatibleBestFor = hasIncompatibleBestForForContext(
+    productContext,
+    candidateCore.best_for,
+  );
 
   const bestForOverlap = Number(
     jaccardOverlap(
@@ -1245,6 +1483,7 @@ function evaluateGeminiCandidateQuality(baselineBundle, geminiCandidateBundle) {
         baselineBundle.evidence_profile !== 'community_supported' ||
         bestForOverlap >= 0.15
       ) &&
+      !incompatibleBestFor &&
       !sellerOnlyViolation,
     why_it_stands_out:
       Array.isArray(candidateCore.why_it_stands_out) &&
@@ -1279,6 +1518,7 @@ function evaluateGeminiCandidateQuality(baselineBundle, geminiCandidateBundle) {
   const qualityScore = Object.values(fieldDecisions).filter(Boolean).length;
   const failReasons = [];
   if (sellerOnlyViolation) failReasons.push('seller_only_community_language');
+  if (incompatibleBestFor) failReasons.push('incompatible_best_for');
   if (!fieldDecisions.what_it_is) failReasons.push('weak_what_it_is');
   if (!fieldDecisions.best_for) failReasons.push('weak_best_for');
   if (!fieldDecisions.why_it_stands_out) failReasons.push('weak_highlights');
@@ -1293,6 +1533,9 @@ function evaluateGeminiCandidateQuality(baselineBundle, geminiCandidateBundle) {
     quality_score: qualityScore,
     fail_reasons: failReasons,
     seller_only_violation: sellerOnlyViolation,
+    external_evidence_language: externalEvidenceLanguage,
+    grounded_external_evidence: groundedExternalEvidence,
+    incompatible_best_for: incompatibleBestFor,
     best_for_overlap: bestForOverlap,
     watchout_overlap: watchoutOverlap,
     field_decisions: fieldDecisions,
@@ -1301,6 +1544,10 @@ function evaluateGeminiCandidateQuality(baselineBundle, geminiCandidateBundle) {
 
 function buildSelectedBundle(caseRow, baselineBundle, geminiCandidateBundle, quality, model) {
   const selected = deepClone(baselineBundle);
+  const generatedFieldSource =
+    normalizeGeminiModel(model) === normalizeGeminiModel(GPT54_HUMAN_STANDARD_REWRITE_MODEL)
+      ? 'human_standard'
+      : 'gemini';
   const fieldSources = {
     what_it_is: 'baseline',
     best_for: 'baseline',
@@ -1316,43 +1563,44 @@ function buildSelectedBundle(caseRow, baselineBundle, geminiCandidateBundle, qua
       selected.product_intel_core.what_it_is = deepClone(
         geminiCandidateBundle.product_intel_core.what_it_is,
       );
-      fieldSources.what_it_is = 'gemini';
+      fieldSources.what_it_is = generatedFieldSource;
     }
     if (quality.field_decisions.best_for) {
       selected.product_intel_core.best_for = deepClone(
         geminiCandidateBundle.product_intel_core.best_for,
       );
-      fieldSources.best_for = 'gemini';
+      fieldSources.best_for = generatedFieldSource;
     }
     if (quality.field_decisions.why_it_stands_out) {
       selected.product_intel_core.why_it_stands_out = deepClone(
         geminiCandidateBundle.product_intel_core.why_it_stands_out,
       );
-      fieldSources.why_it_stands_out = 'gemini';
+      fieldSources.why_it_stands_out = generatedFieldSource;
     }
     if (quality.field_decisions.routine_fit) {
       selected.product_intel_core.routine_fit = deepClone(
         geminiCandidateBundle.product_intel_core.routine_fit,
       );
-      fieldSources.routine_fit = 'gemini';
+      fieldSources.routine_fit = generatedFieldSource;
     }
     if (quality.field_decisions.watchouts) {
       selected.product_intel_core.watchouts = deepClone(
         geminiCandidateBundle.product_intel_core.watchouts,
       );
-      fieldSources.watchouts = 'gemini';
+      fieldSources.watchouts = generatedFieldSource;
     }
     if (quality.field_decisions.texture_finish) {
       selected.texture_finish = deepClone(geminiCandidateBundle.texture_finish);
-      fieldSources.texture_finish = 'gemini';
+      fieldSources.texture_finish = generatedFieldSource;
     }
     if (quality.field_decisions.community_signals) {
       selected.community_signals = deepClone(geminiCandidateBundle.community_signals);
-      fieldSources.community_signals = 'gemini';
+      fieldSources.community_signals = generatedFieldSource;
     }
   }
 
-  const selectedFieldCount = Object.values(fieldSources).filter((value) => value === 'gemini').length;
+  const selectedFieldCount = Object.values(fieldSources).filter((value) => value === generatedFieldSource).length;
+  const humanStandardSelected = generatedFieldSource === 'human_standard' && selectedFieldCount > 0;
   const generatedAt = new Date().toISOString();
   if (selectedFieldCount > 0) {
     selected.freshness = {
@@ -1367,7 +1615,11 @@ function buildSelectedBundle(caseRow, baselineBundle, geminiCandidateBundle, qua
   selected.provenance = {
     ...(selected.provenance || {}),
     source: 'product_intel_pilot_compare',
-    generator: selectedFieldCount > 0 ? 'baseline_plus_gemini' : 'baseline_only',
+    generator: humanStandardSelected
+      ? 'gpt54_human_standard_rewrite'
+      : selectedFieldCount > 0
+        ? 'baseline_plus_gemini'
+        : 'baseline_only',
     selection_strategy: 'baseline_first_gemini_guarded',
     gemini_model: geminiCandidateBundle ? model : null,
     field_sources: fieldSources,
@@ -1384,7 +1636,11 @@ function buildSelectedBundle(caseRow, baselineBundle, geminiCandidateBundle, qua
     bundle: attachShoppingCard(caseRow, selected),
     field_sources: fieldSources,
     selected_field_count: selectedFieldCount,
-    selected_mode: selectedFieldCount > 0 ? 'hybrid_gemini' : 'baseline_only',
+    selected_mode: humanStandardSelected
+      ? 'human_standard_rewrite'
+      : selectedFieldCount > 0
+        ? 'hybrid_gemini'
+        : 'baseline_only',
   };
 }
 
@@ -1516,6 +1772,7 @@ function buildMarkdownReport(rows, meta) {
     `Gemini completed: ${meta.gemini_completed}`,
     `Gemini skipped: ${meta.gemini_skipped}`,
     `Hybrid selected: ${meta.hybrid_selected}`,
+    `Human-standard rewrites: ${meta.human_standard_rewrites || 0}`,
     `Baseline only: ${meta.baseline_only}`,
     '',
   ];
@@ -1628,7 +1885,8 @@ async function main() {
     gemini_completed: reportRows.filter((row) => row.gemini && row.gemini.skipped === false).length,
     gemini_skipped: reportRows.filter((row) => row.gemini && row.gemini.skipped !== false).length,
     hybrid_selected: reportRows.filter((row) => row.selected?.selected_mode === 'hybrid_gemini').length,
-    baseline_only: reportRows.filter((row) => row.selected?.selected_mode !== 'hybrid_gemini').length,
+    human_standard_rewrites: reportRows.filter((row) => row.selected?.selected_mode === 'human_standard_rewrite').length,
+    baseline_only: reportRows.filter((row) => row.selected?.selected_mode === 'baseline_only').length,
   };
 
   writeJson(jsonOut, { meta, rows: reportRows });

@@ -142,6 +142,61 @@ describe('product_intel pilot compare selection', () => {
     expect(selected.field_sources.what_it_is).toBe('baseline');
   });
 
+  test('rejects category-incompatible best_for labels for lip products', () => {
+    const caseRow = {
+      case_id: 'pilot_lip_oil_bad_fit',
+      canonical_product_ref: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_lip_oil_bad_fit',
+      },
+      product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_lip_oil_bad_fit',
+        brand: 'INNBEAUTY PROJECT',
+        title: 'Glaze Lip Oil',
+        category: 'Lip Oil',
+        description: 'A glossy lip oil for shine, softness, and a plumper-looking lip finish.',
+      },
+    };
+
+    const baseline = buildProductIntelDraftBundle({
+      product: caseRow.product,
+      canonicalProductRef: caseRow.canonical_product_ref,
+    });
+
+    const geminiOutput = {
+      product_intel_core: {
+        what_it_is: {
+          headline: 'Glossy lip oil',
+          body: 'A glossy lip oil positioned for softness, shine, and fuller-looking lips without a sticky finish.',
+        },
+        best_for: [{ tag: 'oil_control', label: 'Oily or combination skin', confidence: 'moderate' }],
+        why_it_stands_out: [
+          {
+            headline: 'Lip-oil finish focus',
+            body: 'Targets shine, softness, and a fuller-looking lip finish in one lip-oil step.',
+            evidence_strength: 'moderate',
+          },
+        ],
+        routine_fit: {
+          step: 'lip treatment',
+          am_pm: ['am', 'pm'],
+          pairing_notes: ['Use as a lip finishing step.'],
+        },
+        watchouts: [],
+      },
+      community_signals: {
+        status: 'unavailable',
+      },
+    };
+
+    const candidate = mergeGeminiDraftIntoBaseline(caseRow, baseline, geminiOutput, 'gemini-test');
+    const quality = evaluateGeminiCandidateQuality(baseline, candidate);
+
+    expect(quality.field_decisions.best_for).toBe(false);
+    expect(quality.fail_reasons).toContain('incompatible_best_for');
+  });
+
   test('uses gemini narrative fields when they pass the quality gate', () => {
     const caseRow = {
       case_id: 'pilot_fenty_instant_reset',
