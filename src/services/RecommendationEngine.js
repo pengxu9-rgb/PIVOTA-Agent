@@ -1591,8 +1591,25 @@ async function fetchExternalCandidates({
     }
   }
 
+  async function runTimedExternalQuery(queryName, task) {
+    return withSoftTimeout(
+      Promise.resolve().then(task),
+      PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS,
+      [],
+      (timeoutMs) => {
+        logger.warn(
+          { timeout_ms: timeoutMs, query: queryName, brand, category },
+          'recommendations external query timed out',
+        );
+      },
+    );
+  }
+
   const out = [];
-  const domainMatches = await runDomainQuery(Math.min(safeLimit, Math.max(12, safeMinFocusedCandidates * 2)));
+  const domainMatches = await runTimedExternalQuery(
+    'external_domain',
+    () => runDomainQuery(Math.min(safeLimit, Math.max(12, safeMinFocusedCandidates * 2))),
+  );
   out.push(...domainMatches);
   const domainFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
   if (domainFocusedCandidates.length >= safeMinFocusedCandidates) {
@@ -1600,20 +1617,23 @@ async function fetchExternalCandidates({
   }
 
   if (brand) {
-    const brandFieldMatches = await runQuery(
-      `AND (
-            lower(coalesce(seed_data->>'brand','')) = ANY($4)
-            OR lower(coalesce(seed_data->>'brand_name','')) = ANY($4)
-            OR lower(coalesce(seed_data->>'vendor','')) = ANY($4)
-            OR lower(coalesce(seed_data->>'vendor_name','')) = ANY($4)
-            OR lower(coalesce(seed_data->'snapshot'->>'brand','')) = ANY($4)
-            OR lower(coalesce(seed_data->'snapshot'->>'vendor','')) = ANY($4)
-            OR regexp_replace(lower(coalesce(seed_data->>'brand','')), '[^a-z0-9]+', '', 'g') = ANY($4)
-            OR regexp_replace(lower(coalesce(seed_data->>'vendor','')), '[^a-z0-9]+', '', 'g') = ANY($4)
-          )`,
-      [brandAliases],
-      Math.min(120, safeLimit),
+    const brandFieldMatches = await runTimedExternalQuery(
       'external_brand_fields',
+      () => runQuery(
+        `AND (
+              lower(coalesce(seed_data->>'brand','')) = ANY($4)
+              OR lower(coalesce(seed_data->>'brand_name','')) = ANY($4)
+              OR lower(coalesce(seed_data->>'vendor','')) = ANY($4)
+              OR lower(coalesce(seed_data->>'vendor_name','')) = ANY($4)
+              OR lower(coalesce(seed_data->'snapshot'->>'brand','')) = ANY($4)
+              OR lower(coalesce(seed_data->'snapshot'->>'vendor','')) = ANY($4)
+              OR regexp_replace(lower(coalesce(seed_data->>'brand','')), '[^a-z0-9]+', '', 'g') = ANY($4)
+              OR regexp_replace(lower(coalesce(seed_data->>'vendor','')), '[^a-z0-9]+', '', 'g') = ANY($4)
+            )`,
+        [brandAliases],
+        Math.min(120, safeLimit),
+        'external_brand_fields',
+      ),
     );
     out.push(...brandFieldMatches);
     const brandFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
@@ -1622,11 +1642,14 @@ async function fetchExternalCandidates({
     }
 
     const brandTitleMatches = compactBrand
-      ? await runQuery(
-          `AND regexp_replace(lower(coalesce(seed_data->'snapshot'->>'title','')), '[^a-z0-9]+', '', 'g') LIKE '%' || $4 || '%'`,
-          [compactBrand],
-          Math.min(80, safeLimit),
+      ? await runTimedExternalQuery(
           'external_brand_title',
+          () => runQuery(
+            `AND regexp_replace(lower(coalesce(seed_data->'snapshot'->>'title','')), '[^a-z0-9]+', '', 'g') LIKE '%' || $4 || '%'`,
+            [compactBrand],
+            Math.min(80, safeLimit),
+            'external_brand_title',
+          ),
         )
       : [];
     out.push(...brandTitleMatches);
@@ -1637,19 +1660,22 @@ async function fetchExternalCandidates({
   }
 
   const categoryMatches = category
-    ? await runQuery(
-        `AND (
-            lower(coalesce(seed_data->>'category','')) = ANY($4)
-            OR lower(coalesce(seed_data->>'product_type','')) = ANY($4)
-            OR lower(coalesce(seed_data->>'productType','')) = ANY($4)
-            OR lower(coalesce(seed_data->'product'->>'category','')) = ANY($4)
-            OR lower(coalesce(seed_data->'snapshot'->>'category','')) = ANY($4)
-            OR lower(coalesce(seed_data->'snapshot'->>'product_type','')) = ANY($4)
-            OR lower(coalesce(seed_data->'snapshot'->>'productType','')) = ANY($4)
-          )`,
-        [categoryAliases],
-        Math.min(120, safeLimit),
+    ? await runTimedExternalQuery(
         'external_category',
+        () => runQuery(
+          `AND (
+              lower(coalesce(seed_data->>'category','')) = ANY($4)
+              OR lower(coalesce(seed_data->>'product_type','')) = ANY($4)
+              OR lower(coalesce(seed_data->>'productType','')) = ANY($4)
+              OR lower(coalesce(seed_data->'product'->>'category','')) = ANY($4)
+              OR lower(coalesce(seed_data->'snapshot'->>'category','')) = ANY($4)
+              OR lower(coalesce(seed_data->'snapshot'->>'product_type','')) = ANY($4)
+              OR lower(coalesce(seed_data->'snapshot'->>'productType','')) = ANY($4)
+            )`,
+          [categoryAliases],
+          Math.min(120, safeLimit),
+          'external_category',
+        ),
       )
     : [];
 
@@ -1660,8 +1686,9 @@ async function fetchExternalCandidates({
       .filter((value) => String(value || '').trim().length >= 3)
       .map((value) => `%${value}%`);
     const categoryTitleMatches = categoryLikePatterns.length
-      ? await withSoftTimeout(
-          runQuery(
+      ? await runTimedExternalQuery(
+          'external_category_title',
+          () => runQuery(
             `AND attached_product_key IS NULL
               AND (
                 lower(coalesce(seed_data->'derived'->'recall'->>'retrieval_title','')) LIKE ANY($4::text[])
@@ -1673,14 +1700,6 @@ async function fetchExternalCandidates({
             Math.min(180, safeLimit),
             'external_category_title',
           ),
-          PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS,
-          [],
-          (timeoutMs) => {
-            logger.warn(
-              { timeout_ms: timeoutMs, category },
-              'recommendations external category-title query timed out',
-            );
-          },
         )
       : [];
     out.push(...categoryTitleMatches);
@@ -1688,16 +1707,9 @@ async function fetchExternalCandidates({
   }
   const hasFocusedCandidates = focusedCandidates.length >= safeMinFocusedCandidates;
   if (!hasFocusedCandidates) {
-    const recent = await withSoftTimeout(
-      runQuery('', [], Math.min(240, safeLimit), 'external_recent'),
-      PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS,
-      [],
-      (timeoutMs) => {
-        logger.warn(
-          { timeout_ms: timeoutMs, category },
-          'recommendations external recent underfill query timed out',
-        );
-      },
+    const recent = await runTimedExternalQuery(
+      'external_recent',
+      () => runQuery('', [], Math.min(240, safeLimit), 'external_recent'),
     );
     out.push(...recent);
   }

@@ -535,8 +535,8 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(products.map((product) => product.product_id)).toContain('ext_good_molecules_base_only');
     expect(products.map((product) => product.product_id)).not.toContain('ext_slow_title_serum');
     expect(warn).toHaveBeenCalledWith(
-      expect.objectContaining({ timeout_ms: 50, category: 'serum' }),
-      'recommendations external category-title query timed out',
+      expect.objectContaining({ timeout_ms: 50, query: 'external_category_title', category: 'serum' }),
+      'recommendations external query timed out',
     );
   });
 
