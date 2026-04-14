@@ -67578,6 +67578,13 @@ function maybeApplyOpenWorldAlternativeVisibleCopy(row, { targetSignals = null }
   };
 }
 
+function hasRecoAlternativeBareSkinToneCorrectionClaim(value) {
+  const text = String(value || '').trim();
+  if (!text) return false;
+  if (!/\bskin\s+tone\b/i.test(text)) return false;
+  return !/\b(?:all|any|every)\s+skin\s+tones?\b/i.test(text);
+}
+
 function shouldDropRecoAlternativeOffTargetVisibleClaim(value, { targetSignals = null } = {}) {
   const text = String(value || '').trim();
   if (!text) return false;
@@ -67596,7 +67603,10 @@ function shouldDropRecoAlternativeOffTargetVisibleClaim(value, { targetSignals =
   if (!claimFamilies.size) return false;
   const hasUnallowedToneClaim =
     !allowedFamilies.has('tone_brightening') &&
-    /\b(dull(?:ness)?|uneven\s+tone|dark\s+spots?|hyperpigmentation|brighten(?:ing)?|radiance|radiant|glow(?:ing)?|improv(?:e|es|ing)\s+(?:the\s+look\s+of\s+)?skin\s+tone|even(?:s|ing)?\s+skin\s+tone)\b/i.test(text);
+    (
+      /\b(dull(?:ness)?|uneven\s+tone|dark\s+spots?|hyperpigmentation|brighten(?:ing)?|radiance|radiant|glow(?:ing)?|improv(?:e|es|ing)\s+(?:the\s+look\s+of\s+)?skin\s+tone|even(?:s|ing)?\s+skin\s+tone)\b/i.test(text) ||
+      hasRecoAlternativeBareSkinToneCorrectionClaim(text)
+    );
   if (hasUnallowedToneClaim) return true;
   const hasUnallowedAgingClaim =
     !allowedFamilies.has('aging_texture') &&
@@ -67635,12 +67645,22 @@ function redactRecoAlternativeOffTargetVisibleClaim(value, { targetSignals = nul
   }
   let next = text;
   if (!allowedFamilies.has('tone_brightening')) {
-    const toneTerms = 'dull(?:ness)?|uneven\\s+tone|dark\\s+spots?|hyperpigmentation|brighten(?:ing)?|radiance|radiant|glow(?:ing)?(?:\\s+skin)?|improv(?:e|es|ing)\\s+(?:the\\s+look\\s+of\\s+)?skin\\s+tone|even(?:s|ing)?\\s+skin\\s+tone';
+    const protectedSkinToneFitPhrases = [];
+    next = next.replace(/\b(?:all|any|every)\s+skin\s+tones?\b/gi, (match) => {
+      const token = `__reco_alt_skin_tone_fit_${protectedSkinToneFitPhrases.length}__`;
+      protectedSkinToneFitPhrases.push({ token, match });
+      return token;
+    });
+    const toneTerms = 'dull(?:ness)?|uneven\\s+tone|dark\\s+spots?|hyperpigmentation|brighten(?:ing)?|radiance|radiant|glow(?:ing)?(?:\\s+skin)?|improv(?:e|es|ing)\\s+(?:the\\s+look\\s+of\\s+)?skin\\s+tone|even(?:s|ing)?\\s+skin\\s+tone|skin\\s+tone';
     next = next
       .replace(new RegExp(`\\s+(?:and|or|plus)\\s+(?:${toneTerms})\\b`, 'gi'), '')
       .replace(new RegExp(`\\b(?:${toneTerms})\\s+(?:and|or|plus)\\s+`, 'gi'), '')
       .replace(new RegExp(`\\s+for\\s+(?:${toneTerms})\\b`, 'gi'), '')
-      .replace(new RegExp(`\\s*,\\s*(?:${toneTerms})\\b`, 'gi'), '');
+      .replace(new RegExp(`\\s*,\\s*(?:${toneTerms})\\b`, 'gi'), '')
+      .replace(new RegExp(`\\s+(?:${toneTerms})(?=\\s+with\\b|[.;:]|$)`, 'gi'), '');
+    for (const item of protectedSkinToneFitPhrases) {
+      next = next.replace(item.token, item.match);
+    }
   }
   if (!allowedFamilies.has('aging_texture')) {
     const agingTerms = 'wrinkles?|fine[-\\s]?lines?(?:\\s+support)?|aging|anti[-\\s]?aging|roughness|retinol|retinoid';
