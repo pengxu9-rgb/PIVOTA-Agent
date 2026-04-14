@@ -2633,13 +2633,35 @@ function resolveDiscoveryCandidateLimit(request) {
   if (request?.surface === 'browse_products') {
     const pageNeed = request.page * request.limit + Math.max(request.limit, 24);
     const genericBrowsePrefetchFloor = resolveGenericBrowsePrefetchFloor(request);
+    const explicitBrowseCursorPrefetch = resolveExplicitBrowseCursorPrefetchNeed(request);
     if (hasBrandScope(request)) {
       return clampInt(Math.max(pageNeed, 48), 72, 48, fetchCap);
     }
-    return clampInt(Math.max(pageNeed, genericBrowsePrefetchFloor), 72, 24, fetchCap);
+    return clampInt(
+      Math.max(pageNeed, genericBrowsePrefetchFloor, explicitBrowseCursorPrefetch),
+      72,
+      24,
+      fetchCap,
+    );
   }
   const homeNeed = Math.max(request?.limit * 4, 48);
   return clampInt(homeNeed, 48, 24, fetchCap);
+}
+
+function resolveExplicitBrowseCursorPrefetchNeed(request, multiplier = 4) {
+  if (!isExplicitQueryScopedBrowseRequest(request)) return 0;
+  if (!request?.cursor) return 0;
+  const fetchCap = getDiscoveryCandidateFetchCap(request);
+  const safeLimit = clampInt(request?.limit, 24, 1, 120);
+  const safeMultiplier = clampInt(multiplier, 4, 1, 8);
+  const absoluteOffset = getDiscoveryCursorAbsoluteOffset(request.cursor, safeLimit);
+  return Math.min(fetchCap, absoluteOffset + safeLimit * safeMultiplier);
+}
+
+function resolveExplicitBrowseCursorQualifiedTarget(request, safeLimit) {
+  const target = resolveExplicitBrowseCursorPrefetchNeed(request, 2);
+  if (!target) return 0;
+  return Math.min(Math.max(0, Number(safeLimit || 0) || 0), target);
 }
 
 function isBehaviorlessGenericBrowseRequest(request) {
@@ -4811,12 +4833,17 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
     const externalSeedStageCounts = [];
     let externalSeedRawCount = 0;
     let externalSeedFilteredCompoundCount = 0;
-    const summaryThreshold =
+    const baseSummaryThreshold =
       request?.surface === 'browse_products' && isGenericNoSignalDiscoveryRequest(request, profile)
         ? safeLimit
         : Math.min(safeLimit, Math.max(4, getPrimaryPathEnoughThreshold(request)));
+    const cursorQualifiedTarget = resolveExplicitBrowseCursorQualifiedTarget(request, safeLimit);
+    const summaryThreshold = Math.min(
+      safeLimit,
+      Math.max(baseSummaryThreshold, cursorQualifiedTarget),
+    );
     const qualifiedTarget = compoundIntent
-      ? Math.min(safeLimit, Math.max((request?.limit || 0) * 2, 24))
+      ? Math.min(safeLimit, Math.max((request?.limit || 0) * 2, 24, cursorQualifiedTarget))
       : summaryThreshold;
     const shouldStopStages = () => stagedRows.length >= (compoundIntent ? qualifiedTarget : summaryThreshold);
     const appendRows = (rows = [], stage = 'unknown') => {
@@ -5116,14 +5143,20 @@ function resolveExternalSeedProviderLimit(request, safeLimit) {
   if (compoundIntent) {
     const requestedLimit = Math.max(1, Number(request?.limit || 0) || 12);
     const page = Math.max(1, Number(request?.page || 0) || 1);
-    const providerLimit = Math.max(page * requestedLimit + requestedLimit * 2, 120);
+    const providerLimit = Math.max(
+      page * requestedLimit + requestedLimit * 2,
+      resolveExplicitBrowseCursorPrefetchNeed(request),
+      120,
+    );
     return Math.min(fetchCap, providerLimit);
   }
   if (request?.surface === 'browse_products') {
     const prefetchFloor = Math.min(resolveGenericBrowsePrefetchFloor(request), cappedSafeLimit);
+    const explicitBrowseCursorPrefetch = resolveExplicitBrowseCursorPrefetchNeed(request);
     const browseNeed = Math.max(
       (request?.page || 1) * (request?.limit || 0) + (request?.limit || 0),
       prefetchFloor,
+      explicitBrowseCursorPrefetch,
       18,
     );
     return clampInt(browseNeed, Math.min(cappedSafeLimit, 48), 12, cappedSafeLimit);
