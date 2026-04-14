@@ -125,22 +125,50 @@ function buildBrandLookupVariants(value) {
   };
 }
 
-function buildBrandDomainGuessCandidates(brand, market = ASYNC_BACKFILL_MARKET) {
+function buildProductSlugGuessCandidates(preferredTitles = [], limit = 3) {
+  return uniqueStrings(
+    (Array.isArray(preferredTitles) ? preferredTitles : [])
+      .map((value) => String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/&/g, ' and ')
+        .replace(/%/g, ' percent ')
+        .replace(/\+/g, ' plus ')
+        .replace(/[’']/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .replace(/-{2,}/g, '-'))
+      .filter(Boolean),
+    limit,
+  );
+}
+
+function buildBrandDomainGuessCandidates(brand, market = ASYNC_BACKFILL_MARKET, preferredTitles = []) {
   const normalized = normalizeBrand(brand);
   const compact = normalizeBrandCompact(brand);
   const hyphenated = normalized.replace(/\s+/g, '-');
+  const productSlugs = buildProductSlugGuessCandidates(preferredTitles, 3);
   const candidates = [];
   for (const host of [compact, hyphenated]) {
     const safeHost = String(host || '').trim().replace(/^-+|-+$/g, '');
     if (!safeHost) continue;
+    for (const slug of productSlugs) {
+      candidates.push(`https://v1.${safeHost}.com/products/${slug}`);
+      candidates.push(`https://${safeHost}.com/products/${slug}`);
+      candidates.push(`https://www.${safeHost}.com/products/${slug}`);
+    }
     candidates.push(`https://${safeHost}.com`);
     candidates.push(`https://www.${safeHost}.com`);
     if (String(market || '').trim().toUpperCase() === 'US') {
+      for (const slug of productSlugs) {
+        candidates.push(`https://${safeHost}.us/products/${slug}`);
+        candidates.push(`https://www.${safeHost}.us/products/${slug}`);
+      }
       candidates.push(`https://${safeHost}.us`);
       candidates.push(`https://www.${safeHost}.us`);
     }
   }
-  return uniqueStrings(candidates, 8);
+  return uniqueStrings(candidates, productSlugs.length ? 18 : 8);
 }
 
 function getAxiosResponseUrl(resp) {
@@ -151,7 +179,7 @@ function getAxiosResponseUrl(resp) {
   );
 }
 
-async function discoverBrandSourcePlanByGuess({ brand, market = ASYNC_BACKFILL_MARKET, logger } = {}) {
+async function discoverBrandSourcePlanByGuess({ brand, market = ASYNC_BACKFILL_MARKET, preferredTitles = [], logger } = {}) {
   if (!ASYNC_BACKFILL_SOURCE_DISCOVERY_ENABLED) {
     return { ok: false, reason: 'source_discovery_disabled', primaryDomain: '', fallbackDomains: [] };
   }
@@ -159,7 +187,7 @@ async function discoverBrandSourcePlanByGuess({ brand, market = ASYNC_BACKFILL_M
   if (!compactBrand) {
     return { ok: false, reason: 'brand_missing', primaryDomain: '', fallbackDomains: [] };
   }
-  const candidates = buildBrandDomainGuessCandidates(brand, market);
+  const candidates = buildBrandDomainGuessCandidates(brand, market, preferredTitles);
   for (const candidateUrl of candidates) {
     try {
       // eslint-disable-next-line no-await-in-loop
@@ -174,13 +202,20 @@ async function discoverBrandSourcePlanByGuess({ brand, market = ASYNC_BACKFILL_M
         },
       });
       const resolvedUrl = getAxiosResponseUrl(resp);
+      const candidateParsed = new URL(candidateUrl);
       const parsed = new URL(resolvedUrl || candidateUrl);
       const hostCompact = normalizeBrandCompact(parsed.hostname.replace(/^www\./i, ''));
       if (!hostCompact) continue;
       if (!hostCompact.includes(compactBrand) && !compactBrand.includes(hostCompact)) continue;
+      const candidateHasPath = Boolean(candidateParsed.pathname && candidateParsed.pathname !== '/');
+      const resolvedHasPath = Boolean(parsed.pathname && parsed.pathname !== '/');
+      if (candidateHasPath && !resolvedHasPath) continue;
+      const sourceUrl = candidateHasPath
+        ? `${parsed.protocol}//${parsed.host}${parsed.pathname}${parsed.search || ''}`.replace(/\/+$/, '')
+        : `${parsed.protocol}//${parsed.host}`.replace(/\/+$/, '');
       return {
         ok: true,
-        primaryDomain: `${parsed.protocol}//${parsed.host}`.replace(/\/+$/, ''),
+        primaryDomain: sourceUrl,
         primaryRole: 'guessed_official',
         fallbackDomains: [],
       };
@@ -305,7 +340,7 @@ function buildCoverageGroups(rows, market = ASYNC_BACKFILL_MARKET) {
   };
 }
 
-async function resolveBrandSourcePlanDefault({ brand, market = ASYNC_BACKFILL_MARKET, logger = null } = {}) {
+async function resolveBrandSourcePlanDefault({ brand, market = ASYNC_BACKFILL_MARKET, preferredTitles = [], logger = null } = {}) {
   if (!getPool()) {
     return { ok: false, reason: 'no_database', primaryDomain: '', fallbackDomains: [] };
   }
@@ -399,7 +434,7 @@ async function resolveBrandSourcePlanDefault({ brand, market = ASYNC_BACKFILL_MA
 
   let guessedOfficial = null;
   if (!uniquePrimary[0]) {
-    guessedOfficial = await discoverBrandSourcePlanByGuess({ brand, market, logger });
+    guessedOfficial = await discoverBrandSourcePlanByGuess({ brand, market, preferredTitles, logger });
   }
   const guessedDomain = guessedOfficial?.ok ? ensureHttpUrl(guessedOfficial.primaryDomain) : '';
   const primaryDomain = uniquePrimary[0] || guessedDomain || uniqueFallback[0] || '';
@@ -795,9 +830,66 @@ async function runPostApplyEnrichmentDefault({
   };
 }
 
+async function fetchBackfillSourceManifest({ brand, market, preferredTitles, sourceSpec, extractLimit, logger }) {
+  try {
+    const extractDoc = await fetchBrandCatalog({
+      brand,
+      domain: sourceSpec.domain,
+      market,
+      limit: extractLimit,
+      catalogBaseUrl: process.env.CATALOG_INTELLIGENCE_BASE_URL,
+    });
+    return buildManifestFromExtract({
+      brand,
+      domain: sourceSpec.domain,
+      market,
+      limit: ASYNC_BACKFILL_MANIFEST_LIMIT,
+      preferredTitles,
+      extractDoc,
+      sourceRole: sourceSpec.sourceRole,
+    });
+  } catch (err) {
+    logger?.warn?.(
+      {
+        err: err?.message || String(err),
+        brand,
+        domain: sourceSpec.domain,
+      },
+      'aurora bff: alternatives authority backfill extract failed',
+    );
+    return buildEmptySourceManifest({
+      brand,
+      domain: sourceSpec.domain,
+      market,
+      preferredTitles,
+      sourceRole: sourceSpec.sourceRole,
+      err,
+    });
+  }
+}
+
+function buildPreferredRepairManifest({ brand, primaryDomain, fallbackDomains, market, preferredTitles, sourceManifests }) {
+  const rawManifest = buildManifestFromSourceAttempts({
+    brand,
+    domain: primaryDomain,
+    fallbackDomains,
+    market,
+    limit: ASYNC_BACKFILL_MANIFEST_LIMIT,
+    preferredTitles,
+    sourceManifests,
+  });
+  return filterManifestForPreferredRepair(rawManifest, preferredTitles);
+}
+
+function sourceSpecExists(sourceSpecs = [], domain) {
+  const key = ensureHttpUrl(domain).toLowerCase();
+  if (!key) return true;
+  return (Array.isArray(sourceSpecs) ? sourceSpecs : []).some((sourceSpec) => ensureHttpUrl(sourceSpec?.domain).toLowerCase() === key);
+}
+
 async function runBackfillJobDefault({ brand, market, preferredTitles, sourcePlan, logger } = {}) {
   const primaryDomain = ensureHttpUrl(sourcePlan?.primaryDomain);
-  const fallbackDomains = uniqueStrings(sourcePlan?.fallbackDomains || [], 8).map((value) => ensureHttpUrl(value)).filter(Boolean);
+  let fallbackDomains = uniqueStrings(sourcePlan?.fallbackDomains || [], 8).map((value) => ensureHttpUrl(value)).filter(Boolean);
   if (!primaryDomain) {
     return {
       status: 'skipped_no_domain',
@@ -812,65 +904,73 @@ async function runBackfillJobDefault({ brand, market, preferredTitles, sourcePla
   const jobDir = path.join(ensureOutDir(), `${stamp}_${safeBrandKey}`);
   fs.mkdirSync(jobDir, { recursive: true });
 
-  const sourceSpecs = [
+  let sourceSpecs = [
     { domain: primaryDomain, sourceRole: sourcePlan?.primaryRole || 'primary' },
     ...fallbackDomains.map((domain) => ({ domain, sourceRole: 'secondary_fallback' })),
   ];
   const sourceManifests = [];
   const extractLimit = computeExtractLimit(ASYNC_BACKFILL_MANIFEST_LIMIT, preferredTitles);
   for (const sourceSpec of sourceSpecs) {
-    try {
-      // eslint-disable-next-line no-await-in-loop
-      const extractDoc = await fetchBrandCatalog({
-        brand,
-        domain: sourceSpec.domain,
-        market,
-        limit: extractLimit,
-        catalogBaseUrl: process.env.CATALOG_INTELLIGENCE_BASE_URL,
-      });
-      sourceManifests.push(
-        buildManifestFromExtract({
-          brand,
-          domain: sourceSpec.domain,
-          market,
-          limit: ASYNC_BACKFILL_MANIFEST_LIMIT,
-          preferredTitles,
-          extractDoc,
-          sourceRole: sourceSpec.sourceRole,
-        }),
-      );
-    } catch (err) {
-      logger?.warn?.(
-        {
-          err: err?.message || String(err),
-          brand,
-          domain: sourceSpec.domain,
-        },
-        'aurora bff: alternatives authority backfill extract failed',
-      );
-      sourceManifests.push(
-        buildEmptySourceManifest({
-          brand,
-          domain: sourceSpec.domain,
-          market,
-          preferredTitles,
-          sourceRole: sourceSpec.sourceRole,
-          err,
-        }),
-      );
-    }
+    // eslint-disable-next-line no-await-in-loop
+    sourceManifests.push(await fetchBackfillSourceManifest({
+      brand,
+      market,
+      preferredTitles,
+      sourceSpec,
+      extractLimit,
+      logger,
+    }));
   }
 
-  const rawManifest = buildManifestFromSourceAttempts({
+  let manifest = buildPreferredRepairManifest({
     brand,
-    domain: primaryDomain,
+    primaryDomain,
     fallbackDomains,
     market,
-    limit: ASYNC_BACKFILL_MANIFEST_LIMIT,
     preferredTitles,
     sourceManifests,
   });
-  const manifest = filterManifestForPreferredRepair(rawManifest, preferredTitles);
+
+  if (!Array.isArray(manifest.items) || manifest.items.length <= 0) {
+    const discovered = await discoverBrandSourcePlanByGuess({ brand, market, preferredTitles, logger });
+    const discoveredDomains = uniqueStrings(
+      [
+        discovered?.ok ? discovered.primaryDomain : '',
+        ...(Array.isArray(discovered?.fallbackDomains) ? discovered.fallbackDomains : []),
+      ],
+      8,
+    )
+      .map((value) => ensureHttpUrl(value))
+      .filter((domain) => domain && !sourceSpecExists(sourceSpecs, domain));
+    if (discoveredDomains.length > 0) {
+      fallbackDomains = uniqueStrings([...fallbackDomains, ...discoveredDomains], 8);
+      const discoveredSpecs = discoveredDomains.map((domain) => ({
+        domain,
+        sourceRole: pickFirstTrimmed(discovered?.primaryRole, 'guessed_official'),
+      }));
+      sourceSpecs = [...sourceSpecs, ...discoveredSpecs];
+      for (const sourceSpec of discoveredSpecs) {
+        // eslint-disable-next-line no-await-in-loop
+        sourceManifests.push(await fetchBackfillSourceManifest({
+          brand,
+          market,
+          preferredTitles,
+          sourceSpec,
+          extractLimit,
+          logger,
+        }));
+      }
+      manifest = buildPreferredRepairManifest({
+        brand,
+        primaryDomain,
+        fallbackDomains,
+        market,
+        preferredTitles,
+        sourceManifests,
+      });
+    }
+  }
+
   const manifestPath = path.join(jobDir, 'brand-manifest.json');
   writeJson(manifestPath, manifest);
 
