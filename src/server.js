@@ -14511,26 +14511,76 @@ function resolveFindProductsMultiBudgetConstraintForDirectPath(
   return resolveBudgetConstraintForCurrency(priceConstraint, candidateCurrency);
 }
 
+function resolveDirectBudgetCandidateCurrency(priceConstraint, product) {
+  const sourceCurrency = getProductPriceCurrency(
+    { currency: priceConstraint?.currency },
+    '',
+  );
+  return getProductPriceCurrency(product, sourceCurrency || 'USD');
+}
+
+function chooseDirectBudgetResponseCurrency(priceConstraint, eligible = []) {
+  const sourceCurrency = getProductPriceCurrency(
+    { currency: priceConstraint?.currency },
+    '',
+  );
+  const counts = new Map();
+  for (const item of eligible) {
+    const currency = String(item?.currency || '').trim().toUpperCase();
+    if (!currency) continue;
+    counts.set(currency, (counts.get(currency) || 0) + 1);
+  }
+  // This strict direct rail currently recalls US-market external seeds; keep the
+  // response in a single currency and preserve the established USD-normalized
+  // budget contract when USD candidates are available.
+  if (counts.has('USD')) return 'USD';
+  if (sourceCurrency && counts.has(sourceCurrency)) return sourceCurrency;
+  const [best] = Array.from(counts.entries()).sort((left, right) => {
+    const countDelta = Number(right[1] || 0) - Number(left[1] || 0);
+    if (countDelta !== 0) return countDelta;
+    return String(left[0]).localeCompare(String(right[0]));
+  });
+  return best?.[0] || sourceCurrency || '';
+}
+
 function filterFindProductsMultiDirectProductsByBudget(priceConstraint, products = []) {
   const list = Array.isArray(products) ? products : [];
-  const resolution = resolveFindProductsMultiBudgetConstraintForDirectPath(
-    priceConstraint,
-    list,
-    list,
-  );
   if (!priceConstraint || (priceConstraint.min == null && priceConstraint.max == null)) {
+    const resolution = resolveFindProductsMultiBudgetConstraintForDirectPath(
+      priceConstraint,
+      list,
+      list,
+    );
     return { products: list, resolution, filteredOut: 0 };
   }
-  if (!resolution.constraint) {
-    return { products: [], resolution, filteredOut: list.length };
+
+  const eligible = [];
+  let firstResolution = null;
+  for (const product of list) {
+    const currency = resolveDirectBudgetCandidateCurrency(priceConstraint, product);
+    const resolution = resolveBudgetConstraintForCurrency(priceConstraint, currency);
+    if (!firstResolution) firstResolution = resolution;
+    if (!resolution.constraint) continue;
+    if (!isWithinPriceConstraint(getProductPriceMajor(product), resolution.constraint)) continue;
+    eligible.push({ product, currency, resolution });
   }
-  const filtered = list.filter((product) =>
-    isWithinPriceConstraint(getProductPriceMajor(product), resolution.constraint),
-  );
+
+  const responseCurrency = chooseDirectBudgetResponseCurrency(priceConstraint, eligible);
+  const responseProducts = responseCurrency
+    ? eligible
+        .filter((item) => String(item.currency || '').trim().toUpperCase() === responseCurrency)
+        .map((item) => item.product)
+    : [];
+  const responseResolution =
+    responseCurrency
+      ? resolveBudgetConstraintForCurrency(priceConstraint, responseCurrency)
+      : firstResolution || resolveFindProductsMultiBudgetConstraintForDirectPath(priceConstraint, list, list);
+  const currencyFilteredOut = Math.max(0, eligible.length - responseProducts.length);
   return {
-    products: filtered,
-    resolution,
-    filteredOut: Math.max(0, list.length - filtered.length),
+    products: responseProducts,
+    resolution: responseResolution,
+    filteredOut: Math.max(0, list.length - responseProducts.length),
+    currencyFilteredOut,
   };
 }
 
@@ -22127,6 +22177,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           ingredient_direct_prefetch_count: directProducts.length,
           ingredient_direct_budget_filter_applied: Boolean(directBudgetFxMetadata),
           ingredient_direct_budget_filtered_out_count: directBudgetFilter.filteredOut,
+          ingredient_direct_budget_currency_filtered_out_count: directBudgetFilter.currencyFilteredOut || 0,
           route_health: {
             primary_path_used: 'ingredient_recall_direct',
             primary_latency_ms: strictIngredientPrefetchMs,
