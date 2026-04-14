@@ -6250,7 +6250,7 @@ test('__internal: framework pool does not let moisturizer-signaled serum metadat
   assert.equal(state.candidate_drop_stage, 'weak_viable_pool');
 });
 
-test('__internal: framework pool clears support-only selected recommendations when the primary role is unmatched', async () => {
+test('__internal: framework pool keeps authoritative support recommendations when the primary role is unmatched', async () => {
   const { __internal } = loadRoutesFresh();
   const state = __internal.finalizeConcernFrameworkCandidatePools(
     [
@@ -6298,11 +6298,15 @@ test('__internal: framework pool clears support-only selected recommendations wh
   );
 
   assert.equal(state.primary_role_matched, false);
-  assert.equal(state.selected_candidate_count, 0);
-  assert.equal(Array.isArray(state.selected_recommendations) ? state.selected_recommendations.length : 0, 0);
+  assert.equal(state.primary_missing_authoritative_support_selected, true);
+  assert.equal(state.selected_candidate_count, 1);
+  assert.equal(Array.isArray(state.selected_recommendations) ? state.selected_recommendations.length : 0, 1);
   assert.equal(state.pre_llm_selected_candidate_count, 1);
   assert.equal(state.best_available_role_id, 'daily_sunscreen');
-  assert.equal(state.weak_viable_pool, true);
+  assert.equal(state.weak_viable_pool, false);
+  assert.equal(state.viable_pool_strength, 'strong');
+  assert.equal(state.family_match_type, 'framework_support_authoritative');
+  assert.equal(state.target_fidelity_level, 'partial');
 });
 
 test('__internal: step-aware sunscreen query ladder drops noisy acne and alias-only queries', () => {

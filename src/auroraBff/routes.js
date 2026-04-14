@@ -19979,6 +19979,8 @@ function buildBeautyMainlineLocalCandidatePoolSummary({
     viable_candidate_count: Number(candidateState?.viable_candidate_count || 0),
     selected_candidate_count: Number(candidateState?.selected_candidate_count || 0),
     primary_role_matched: candidateState?.primary_role_matched === true,
+    primary_missing_authoritative_support_selected:
+      candidateState?.primary_missing_authoritative_support_selected === true,
     viable_pool_strength: String(candidateState?.viable_pool_strength || '').trim().toLowerCase() || 'empty',
     weak_viable_pool: candidateState?.weak_viable_pool === true,
     candidate_drop_stage: pickFirstTrimmed(candidateState?.candidate_drop_stage) || null,
@@ -21243,8 +21245,14 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     return Boolean(roleId && roleId !== primaryRoleId);
   }).length;
   const bestAvailableRecommendation = selected[0] || null;
-  const surfacedRecommendations = primaryRoleMatched ? selected : [];
-  const hasWeakViablePool = viable.length > 0 && !primaryRoleMatched;
+  const roleCoverageSelected = selected.length > 0 && routineSupportFillCount > 0;
+  const primaryMissingButAuthoritativeSupportSelected = !primaryRoleMatched && roleCoverageSelected;
+  const surfacedRecommendations = primaryRoleMatched
+    ? selected
+    : primaryMissingButAuthoritativeSupportSelected
+      ? selected
+      : [];
+  const hasWeakViablePool = viable.length > 0 && !primaryRoleMatched && !primaryMissingButAuthoritativeSupportSelected;
   const rawSourceCounts = summarizeConcernFrameworkSourceCounts(deduped);
   const viableSourceCounts = summarizeConcernFrameworkSourceCounts(viable);
   const selectedSourceCounts = summarizeConcernFrameworkSourceCounts(surfacedRecommendations);
@@ -21262,6 +21270,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     ) || null,
     primary_role_id: primaryRoleId || null,
     primary_role_matched: primaryRoleMatched,
+    primary_missing_authoritative_support_selected: primaryMissingButAuthoritativeSupportSelected,
     best_available_role_id: pickFirstTrimmed(
       bestAvailableRecommendation?.matched_role_id,
       bestAvailableRecommendation?.matchedRoleId,
@@ -21289,24 +21298,36 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     hard_reject: hardReject,
     soft_mismatch: softMismatch,
     viable,
-    viable_pool_strength: primaryRoleMatched ? 'strong' : hasWeakViablePool ? 'weak' : 'empty',
+    viable_pool_strength: surfacedRecommendations.length > 0 ? 'strong' : hasWeakViablePool ? 'weak' : 'empty',
     weak_viable_pool: hasWeakViablePool,
-    family_match_type: primaryRoleMatched ? 'framework_exact' : hasWeakViablePool ? 'framework_partial' : 'framework_failed',
+    family_match_type: primaryRoleMatched
+      ? 'framework_exact'
+      : primaryMissingButAuthoritativeSupportSelected
+        ? 'framework_support_authoritative'
+        : hasWeakViablePool
+          ? 'framework_partial'
+          : 'framework_failed',
     item_target_fidelity: surfacedRecommendations.map((item) => Number(item.framework_score || 0)),
     group_target_fidelity: primarySelectedRecommendations.length
       ? primarySelectedRecommendations.map((item) => Number(item.framework_score || 0))
       : [],
-    target_fidelity_level: primaryRoleMatched ? 'satisfied' : hasWeakViablePool ? 'partial' : 'failed',
-    overall_target_fidelity_satisfied: primaryRoleMatched,
-    target_fidelity_satisfied: primaryRoleMatched,
-    top_candidates_converged: primaryRoleMatched,
-    same_family_strong_viable_exists: primaryRoleMatched,
-    same_family_success_threshold_met: primaryRoleMatched,
+    target_fidelity_level: primaryRoleMatched
+      ? 'satisfied'
+      : primaryMissingButAuthoritativeSupportSelected
+        ? 'partial'
+        : hasWeakViablePool
+          ? 'partial'
+          : 'failed',
+    overall_target_fidelity_satisfied: primaryRoleMatched || primaryMissingButAuthoritativeSupportSelected,
+    target_fidelity_satisfied: primaryRoleMatched || primaryMissingButAuthoritativeSupportSelected,
+    top_candidates_converged: primaryRoleMatched || primaryMissingButAuthoritativeSupportSelected,
+    same_family_strong_viable_exists: primaryRoleMatched || primaryMissingButAuthoritativeSupportSelected,
+    same_family_success_threshold_met: primaryRoleMatched || primaryMissingButAuthoritativeSupportSelected,
     hard_constraint_conflict: false,
     constraint_conflict: false,
     average_context_fit_score: 0,
     artifact_context_applied: false,
-    terminal_success: primaryRoleMatched && surfacedRecommendations.length > 0,
+    terminal_success: surfacedRecommendations.length > 0,
     reco_policy_version: RECOMMENDATION_RECO_POLICY_V1,
     role_conflict_present: hasWeakViablePool,
     late_conflict_without_override: hasWeakViablePool,

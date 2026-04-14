@@ -1033,7 +1033,7 @@ test('handoffRecoToBeautyMainlineSearch preserves local empty result without pro
   }
 });
 
-test('handoffRecoToBeautyMainlineSearch marks support-only viable pools as weak viable instead of no-recall empty', async () => {
+test('handoffRecoToBeautyMainlineSearch keeps authoritative support roles when primary recall is missing', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     __internal.__setRouteDependencyOverridesForTest({
@@ -1101,22 +1101,29 @@ test('handoffRecoToBeautyMainlineSearch marks support-only viable pools as weak 
       deadlineAtMs: Date.now() + 15000,
     });
 
-    assert.deepEqual(out.recommendations, []);
+    assert.deepEqual(
+      out.recommendations.map((item) => item.product_id),
+      ['support_moist_1', 'support_spf_1'],
+    );
     assert.equal(
       out.searchResult?.metadata?.candidate_pool_summary?.weak_viable_pool,
-      true,
+      false,
     );
     assert.equal(
       out.searchResult?.metadata?.candidate_pool_summary?.viable_pool_strength,
-      'weak',
+      'strong',
+    );
+    assert.equal(
+      out.searchResult?.metadata?.candidate_pool_summary?.primary_missing_authoritative_support_selected,
+      true,
     );
     assert.equal(
       out.searchResult?.metadata?.search_stage_ledger?.candidate_drop_stage,
-      'weak_viable_pool',
+      'none',
     );
     assert.equal(
-      out.searchResult?.metadata?.search_stage_ledger?.primary_failure_stage,
-      'weak_viable_pool',
+      out.searchResult?.metadata?.search_stage_ledger?.primary_failure_stage ?? null,
+      null,
     );
   } finally {
     __internal.__resetRouteDependencyOverridesForTest();
@@ -1568,6 +1575,7 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
   assert.equal(Number.isFinite(observed.handoffDeadlineAtMs), true);
   assert.equal(Number.isFinite(observed.rewriteDeadlineAtMs), true);
   assert.ok(observed.handoffDeadlineAtMs >= observed.plannerDeadlineAtMs);
+  assert.ok(observed.handoffDeadlineAtMs - observed.plannerDeadlineAtMs >= 2500);
   assert.ok(observed.rewriteDeadlineAtMs > observed.handoffDeadlineAtMs);
   assert.equal(Number.isFinite(observed.rewriteInvokedAtMs), true);
   assert.ok(observed.rewriteDeadlineAtMs - observed.rewriteInvokedAtMs >= 4500);
