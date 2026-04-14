@@ -21332,6 +21332,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   let crossMerchantCacheProtectedResponse = null;
   let queryParams = {};
   let strictCommerceFindProductsMulti = false;
+  let shoppingFreshMainlineSearch = false;
   let strictFindProductsMultiDecision = {
     enabled: false,
     catalogSurface: null,
@@ -21343,7 +21344,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     let creatorHumanApparelDirectRouteDebug = null;
     let crossMerchantCacheRouteDebug = null;
     let creatorCacheSearchResponse = null;
-    const shoppingFreshMainlineSearch =
+    shoppingFreshMainlineSearch =
       (operation === 'find_products' || operation === 'find_products_multi') &&
       invokeSearchRail === 'authoritative_shopping';
     let resolvedOfferId = null;
@@ -24971,6 +24972,35 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
 
       if (shouldFallback && !shoppingFreshMainlineSearch) {
+        const suppressPublicRecallFallback = isFallbackSuppressedSearchRail(invokeSearchRail);
+        if (suppressPublicRecallFallback) {
+          const publicStrictEmptyReason =
+            primaryIrrelevant
+              ? primaryMonoculture
+                ? 'public_search_primary_monoculture'
+                : 'public_search_primary_irrelevant'
+              : primaryLowQualityNonempty
+              ? 'public_search_primary_low_quality'
+              : 'public_search_primary_strict_empty';
+          upstreamData = normalizeAuthoritativeSearchNoFallbackResponse(
+            withStrictEmptyFallback({
+              body: null,
+              queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
+              reason: publicStrictEmptyReason,
+              upstreamStatus: response.status,
+              route: 'invoke_public_search_primary_strict_empty',
+              intent: effectiveIntent,
+              queryClass: traceQueryClass,
+              queryText,
+            }),
+            {
+              querySource: 'agent_products_search',
+              primaryPath: 'upstream_stage',
+              reason: publicStrictEmptyReason,
+              decisionLockReason: 'public_search_no_clarify',
+            },
+          );
+        } else {
         let replacedByFallback = false;
 
         if (allowResolverFallback && !skipSecondaryFallback) {
@@ -25207,6 +25237,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               };
             }
           }
+        }
         }
       }
 

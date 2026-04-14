@@ -396,6 +396,80 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
     );
   });
 
+  test('public search low-quality category hits fail strict-empty without semantic-retry clarification', async () => {
+    const primaryScope = nock('http://pivota.test')
+      .post('/agent/v2/products/search')
+      .query((query) => {
+        return (
+          String(query.search_all_merchants || '') === 'true' &&
+          String(query.query || '') === 'hair oil' &&
+          String(query.allow_external_seed || '') === 'true' &&
+          String(query.external_seed_strategy || '') === 'unified_relevance'
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'ext_glaze_lip_oil',
+            canonical_title: 'Glaze Lip Oil',
+            canonical_category: 'external',
+            brand: 'INNBEAUTY PROJECT',
+            offers: [
+              {
+                offer_id: 'offer::external_seed::lip_oil',
+                merchant_id: 'external_seed',
+                variant_id: 'var_lip_oil',
+                price: '22.0',
+                currency: 'USD',
+                availability: { in_stock: true },
+                source_type: 'external_seed',
+              },
+            ],
+            provenance: {
+              merchant_id: 'external_seed',
+              merchant_name: 'External',
+              source_type: 'external_seed',
+            },
+          },
+        ],
+        total: 1,
+        metadata: {
+          query_source: 'agent_products_search',
+        },
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'hair oil',
+            limit: 6,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'search',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(primaryScope.isDone()).toBe(true);
+    expect(resp.body.clarification).toBeFalsy();
+    expect(resp.body.reason_codes || []).not.toContain('AMBIGUITY_CLARIFY');
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_search',
+        strict_empty: true,
+        strict_empty_reason: 'public_search_primary_irrelevant',
+      }),
+    );
+  });
+
   test('shopping_agent explicit legacy_contracts is isolated as legacy_internal', async () => {
     const queryText = 'ipsa';
     const productId = '9886500127048';
