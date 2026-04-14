@@ -52591,11 +52591,11 @@ async function maybeRewriteRecoAssistantTextWithLlm({
 
     const preferCompactPrimaryAttempt = recommendations.length <= 3;
     const minimumCompactRetryWindowMs = 1400;
-    const compactOutputTokenCap = selectedProductRoleMix === 'same_role_comparison' ? 180 : 220;
+    const compactOutputTokenCap = selectedProductRoleMix === 'same_role_comparison' ? 260 : 220;
     const preferredPrimaryTimeoutCapMs =
       preferCompactPrimaryAttempt
         ? Math.min(
-          selectedProductRoleMix === 'same_role_comparison' ? 1800 : 2200,
+          selectedProductRoleMix === 'same_role_comparison' ? 2400 : 2200,
           AURORA_RECO_ASSISTANT_REWRITE_TIMEOUT_MS,
         )
         : Math.min(3200, AURORA_RECO_ASSISTANT_REWRITE_TIMEOUT_MS);

@@ -494,6 +494,7 @@ test('reco assistant rewrite skips minimal thinking for same-role use comparison
     assert.equal(capturedArgs?.thinkingLevel ?? null, null);
     assert.ok(capturedArgs?.queueTimeoutMs > 0);
     assert.ok(capturedArgs?.upstreamTimeoutMs > 0);
+    assert.equal(capturedArgs?.maxOutputTokens, 260);
     assert.equal(rewrite.llm_used, true);
     assert.match(String(rewrite.text || ''), /KraveBeauty Great Barrier Relief/);
   } finally {
@@ -612,6 +613,7 @@ test('reco assistant rewrite uses REST executor for same-role use comparisons wi
     assert.ok(capturedInit?.signal, 'REST executor should carry an abort signal');
     assert.equal(rewrite.attempts?.[0]?.thinking_level ?? null, null);
     assert.equal(rewrite.attempts?.[0]?.selection_source, 'local_gemini_rest_direct');
+    assert.equal(rewrite.attempts?.[0]?.max_output_tokens, 260);
   } finally {
     global.fetch = originalFetch;
     Module._load = originalLoad;
