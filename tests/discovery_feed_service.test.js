@@ -5056,6 +5056,145 @@ describe('discovery feed service', () => {
     expect(response.products.map((product) => product.product_id)).toEqual(['serum_1', 'serum_2']);
   });
 
+  test('explicit query browse cursor expands provider prefetch before ending the catalog', async () => {
+    const prevEnv = {
+      DISCOVERY_PRODUCTS_SEARCH_BASE_URL: process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL,
+      PIVOTA_BACKEND_BASE_URL: process.env.PIVOTA_BACKEND_BASE_URL,
+      PIVOTA_API_BASE: process.env.PIVOTA_API_BASE,
+      DISCOVERY_PRODUCTS_SEARCH_API_KEY: process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY,
+      PIVOTA_BACKEND_AGENT_API_KEY: process.env.PIVOTA_BACKEND_AGENT_API_KEY,
+      PIVOTA_API_KEY: process.env.PIVOTA_API_KEY,
+      SHOP_GATEWAY_AGENT_API_KEY: process.env.SHOP_GATEWAY_AGENT_API_KEY,
+      PIVOTA_AGENT_API_KEY: process.env.PIVOTA_AGENT_API_KEY,
+      AGENT_API_KEY: process.env.AGENT_API_KEY,
+    };
+    for (const key of Object.keys(prevEnv)) {
+      delete process.env[key];
+    }
+
+    const externalProducts = Array.from({ length: 240 }, (_, idx) =>
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: `external_serum_${idx + 1}`,
+        title: `Barrier Serum ${idx + 1}`,
+        brand: `Seeded ${idx + 1}`,
+        category: 'Skincare',
+        product_type: 'Serum',
+      }),
+    );
+    const externalSpy = jest.fn(async ({ limit }) => externalProducts.slice(0, limit));
+    const basePayload = {
+      surface: 'browse_products',
+      limit: 24,
+      query: {
+        text: 'serum',
+      },
+      context: {
+        auth_state: 'anonymous',
+        locale: 'en-US',
+        recent_views: [],
+        recent_queries: [],
+      },
+    };
+
+    try {
+      const pageOne = await getDiscoveryFeed(basePayload, {
+        providerOverrides: {
+          external_seeds: externalSpy,
+        },
+      });
+      const pageTwo = await getDiscoveryFeed(
+        {
+          ...basePayload,
+          limit: 36,
+          cursor: pageOne.cursor_info.next_cursor,
+        },
+        {
+          providerOverrides: {
+            external_seeds: externalSpy,
+          },
+        },
+      );
+      const pageThree = await getDiscoveryFeed(
+        {
+          ...basePayload,
+          limit: 36,
+          cursor: pageTwo.cursor_info.next_cursor,
+        },
+        {
+          providerOverrides: {
+            external_seeds: externalSpy,
+          },
+        },
+      );
+      const pageFour = await getDiscoveryFeed(
+        {
+          ...basePayload,
+          limit: 36,
+          cursor: pageThree.cursor_info.next_cursor,
+        },
+        {
+          providerOverrides: {
+            external_seeds: externalSpy,
+          },
+        },
+      );
+
+      expect(externalSpy.mock.calls.map(([arg]) => arg.limit)).toEqual([48, 168, 204, 240]);
+      expect(pageOne.products).toHaveLength(24);
+      expect(pageTwo.products).toHaveLength(36);
+      expect(pageThree.products).toHaveLength(36);
+      expect(pageFour.products).toHaveLength(36);
+      expect(pageFour.products[0].product_id).toBe('external_serum_97');
+      expect(pageFour.cursor_info).toEqual(
+        expect.objectContaining({
+          has_next_page: true,
+          serving_mode: 'exhaustive',
+        }),
+      );
+    } finally {
+      for (const [key, value] of Object.entries(prevEnv)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+
+  test('compound query browse cursor uses absolute offset for external seed prefetch', () => {
+    const baseRequest = _internals.normalizeDiscoveryRequest({
+      surface: 'browse_products',
+      limit: 24,
+      query: {
+        text: 'lip balm',
+      },
+      context: {
+        auth_state: 'anonymous',
+        locale: 'en-US',
+        recent_views: [],
+        recent_queries: [],
+      },
+    });
+    const cursor = _internals.buildDiscoveryCursor(baseRequest, 'exhaustive', 96, 96);
+    const request = _internals.normalizeDiscoveryRequest({
+      surface: 'browse_products',
+      limit: 36,
+      cursor,
+      query: {
+        text: 'lip balm',
+      },
+      context: {
+        auth_state: 'anonymous',
+        locale: 'en-US',
+        recent_views: [],
+        recent_queries: [],
+      },
+    });
+
+    expect(_internals.resolveExplicitBeautyCompoundIntent(request.query.text)).toBe('lip_balm');
+    expect(_internals.resolveDiscoveryCandidateLimit(request)).toBe(240);
+    expect(_internals.resolveExternalSeedProviderLimit(request, 240)).toBe(240);
+  });
+
   test('browse_products debug mode records a non-blocking catalog serving shadow summary', async () => {
     jest.resetModules();
     process.env.CATALOG_SERVING_INDEX_BASE_URL = 'https://catalog-shadow.example';
