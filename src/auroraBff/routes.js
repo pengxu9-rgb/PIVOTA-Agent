@@ -52406,9 +52406,13 @@ async function maybeRewriteRecoAssistantTextWithLlm({
       secondaryTargets.length === 0
       && selectedProductRoleMix !== 'routine_mix';
     const minimumCompactRetryWindowMs = 1400;
+    const compactOutputTokenCap = selectedProductRoleMix === 'same_role_comparison' ? 180 : 220;
     const preferredPrimaryTimeoutCapMs =
       preferCompactPrimaryAttempt
-        ? Math.min(2200, AURORA_RECO_ASSISTANT_REWRITE_TIMEOUT_MS)
+        ? Math.min(
+          selectedProductRoleMix === 'same_role_comparison' ? 1800 : 2200,
+          AURORA_RECO_ASSISTANT_REWRITE_TIMEOUT_MS,
+        )
         : Math.min(3200, AURORA_RECO_ASSISTANT_REWRITE_TIMEOUT_MS);
     const remainingBeforeFirstAttemptMs = getRemainingBudgetMs();
     const firstAttemptTimeoutCapMs = Number.isFinite(remainingBeforeFirstAttemptMs)
@@ -52422,7 +52426,7 @@ async function maybeRewriteRecoAssistantTextWithLlm({
       timeoutCapMs: firstAttemptTimeoutCapMs,
       compactContext: preferCompactPrimaryAttempt,
       maxOutputTokensOverride: preferCompactPrimaryAttempt
-        ? Math.min(220, AURORA_RECO_ASSISTANT_REWRITE_MAX_OUTPUT_TOKENS)
+        ? Math.min(compactOutputTokenCap, AURORA_RECO_ASSISTANT_REWRITE_MAX_OUTPUT_TOKENS)
         : null,
     });
     if (firstAttempt.ok) {
@@ -52445,7 +52449,11 @@ async function maybeRewriteRecoAssistantTextWithLlm({
     const firstAttemptReason = String(firstAttempt.reason || '').trim().toLowerCase();
     const useCompactRetry =
       preferCompactPrimaryAttempt
+      || firstAttemptReason === 'rewrite_buy_lead_not_direct'
+      || firstAttemptReason === 'rewrite_buy_lead_not_product_first'
       || firstAttemptReason === 'rewrite_templated_routine_bridge'
+      || firstAttemptReason === 'rewrite_stiff_selection_framing'
+      || firstAttemptReason === 'rewrite_generic_routine_wrapup'
       || firstAttemptReason === 'gemini_json_timeout'
       || firstAttemptReason === 'parse_truncated_json'
       || firstAttemptReason === 'empty_rewrite';
@@ -52457,7 +52465,7 @@ async function maybeRewriteRecoAssistantTextWithLlm({
       compactContext: useCompactRetry,
       timeoutCapMs: retryTimeoutCapMs,
       maxOutputTokensOverride: useCompactRetry
-        ? Math.min(220, AURORA_RECO_ASSISTANT_REWRITE_MAX_OUTPUT_TOKENS)
+        ? Math.min(compactOutputTokenCap, AURORA_RECO_ASSISTANT_REWRITE_MAX_OUTPUT_TOKENS)
         : null,
     });
     if (retryAttempt.ok) {
