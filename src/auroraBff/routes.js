@@ -66415,12 +66415,12 @@ function mergeRecoAlternativesForHybrid(primary, fallback, { maxTotal = 3, prefe
 function computeRecoAlternativeExperienceQualityBonus(row) {
   const item = isPlainObject(row) ? row : {};
   let bonus = 0;
-  if (pickRecoProductIntelBundle(item) || pickRecoPivotaInsights(item)) bonus += 0.04;
+  if (pickRecoProductIntelBundle(item) || pickRecoPivotaInsights(item)) bonus += 0.012;
   const compareHighlightCount = asStringArray(item.compare_highlights, 4).length;
-  if (compareHighlightCount >= 2) bonus += 0.02;
-  else if (compareHighlightCount === 1) bonus += 0.01;
-  if (pickRecoShoppingCardPayload(item) || pickRecoSearchCardPayload(item)) bonus += 0.01;
-  return Math.min(0.07, bonus);
+  if (compareHighlightCount >= 2) bonus += 0.004;
+  else if (compareHighlightCount === 1) bonus += 0.002;
+  if (pickRecoShoppingCardPayload(item) || pickRecoSearchCardPayload(item)) bonus += 0.004;
+  return Math.min(0.02, bonus);
 }
 
 function maybeAnnotateRecoAlternativeExperienceQuality(row) {
@@ -89360,6 +89360,8 @@ const __internal = {
   buildRecoAlternativesTargetSignals,
   buildRecoAlternativesLocalSeedSearchRole,
   buildExternalSeedCompareSearchQueries,
+  computeRecoAlternativeExperienceQualityBonus,
+  sortRecoAlternativesByMixedScore,
   buildProductInputText,
   buildRecoAlternativesCandidatePool,
   applyIngredientRecoConstraint,

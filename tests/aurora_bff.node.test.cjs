@@ -10368,7 +10368,47 @@ test('/v1/reco/alternatives: external_seed mixed compare recovers pretty truncat
   );
 });
 
-test('/v1/reco/alternatives: external_seed compare ranks reviewed insight rows over sparse grounded rows', async () => {
+test('sortRecoAlternativesByMixedScore does not let reviewed insight bonus outrank clearly stronger relevance', () => {
+  const moduleId = require.resolve('../src/auroraBff/routes');
+  delete require.cache[moduleId];
+  try {
+    const { __internal } = require('../src/auroraBff/routes');
+    const sorted = __internal.sortRecoAlternativesByMixedScore(
+      [
+        {
+          product: { product_id: 'ext_boj_calming', name: 'Calming Barrier Serum' },
+          grounding_status: 'catalog_verified',
+          similarity_score: 69,
+          _mixed_score: 0.69,
+          product_intel: {
+            product_intel_core: {
+              what_it_is: { headline: 'Serum', body: 'Seller-grounded barrier serum.' },
+            },
+            shopping_card: {
+              title: 'Beauty of Joseon Calming Barrier Serum',
+              subtitle: 'Barrier serum',
+            },
+          },
+        },
+        {
+          product: { product_id: 'ext_good_molecules', name: 'Niacinamide Serum' },
+          grounding_status: 'catalog_verified',
+          similarity_score: 72,
+          _mixed_score: 0.72,
+        },
+      ],
+      { useExperienceQualityBonus: true },
+    );
+
+    assert.equal(sorted[0]?.product?.product_id, 'ext_good_molecules');
+    assert.ok(Number(sorted[1]?.metadata?.evidence_quality_bonus || 0) > 0);
+    assert.ok(Number(sorted[1]?.metadata?.evidence_quality_bonus || 0) <= 0.02);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('/v1/reco/alternatives: external_seed compare uses reviewed insight as close-tie signal only', async () => {
   return withEnv(
     {
       AURORA_BFF_RETENTION_DAYS: '0',
@@ -10443,7 +10483,7 @@ test('/v1/reco/alternatives: external_seed compare ranks reviewed insight rows o
                 brand: 'Skin1004',
                 name: 'Madagascar Centella Hyalu-Cica Water-Fit Sun Serum SPF50+',
                 product_type: 'sunscreen',
-                similarity_score: 64,
+                similarity_score: 63,
                 reasons: ['Features a very similar lightweight serum-like consistency.'],
                 tradeoff_notes: ['Authority row is sparse and lacks reviewed compare highlights.'],
               },

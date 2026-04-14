@@ -21,7 +21,7 @@ const {
 
 const GEMINI_PRIMARY_MODEL = 'gemini-3-flash-preview';
 const GEMINI_UPGRADE_MODEL = 'gemini-3.1-pro-preview';
-const GPT54_HUMAN_STANDARD_REWRITE_MODEL = 'gpt-5.4-human-standard-rewrite';
+const HUMAN_STANDARD_REWRITE_MODEL = 'deterministic-human-standard-rewrite';
 
 const GEMINI_MODEL_DEFAULTS = [
   GEMINI_PRIMARY_MODEL,
@@ -334,6 +334,10 @@ function hasProblematicGeneratedText(text) {
   if (!normalized) return false;
   return [
     /\[object Object\]/i,
+    /\[\d+(?:\.\d+)?\]/,
+    /[a-z]\d+%[a-z]/i,
+    /\b[a-z]{8,}(?:and|to|of|with)[a-z]{8,}\b/i,
+    /\b(?:combinationand|skintypesseeking|uneventone|anddullness|deliversa)\w*\b/i,
     /\b(?:our|we|us)\b/i,
     /\bmiracle ingredient\b/i,
     /\bs\s+lightly\b/i,
@@ -1345,7 +1349,7 @@ function buildHumanStandardRewriteOutput(caseRow, baselineBundle, geminiOutput) 
     external_evidence_summary: externalEvidenceSummary || normalizeExternalEvidenceSummary(null),
     ...(grounding?.has_grounding ? { gemini_grounding: grounding } : {}),
     human_standard_rewrite: true,
-    reviewer_model: GPT54_HUMAN_STANDARD_REWRITE_MODEL,
+    reviewer_model: HUMAN_STANDARD_REWRITE_MODEL,
     case_id: asString(caseRow?.case_id),
   };
 }
@@ -1427,7 +1431,7 @@ async function runGeminiDraft(caseRow, baselineDraft, model) {
         caseRow,
         baselineDraft,
         humanRewriteOutput,
-        GPT54_HUMAN_STANDARD_REWRITE_MODEL,
+        HUMAN_STANDARD_REWRITE_MODEL,
       );
       const humanRewriteQuality = evaluateGeminiCandidateQuality(
         baselineDraft,
@@ -1437,15 +1441,15 @@ async function runGeminiDraft(caseRow, baselineDraft, model) {
         return {
           skipped: false,
           output: humanRewriteOutput,
-          model_used: GPT54_HUMAN_STANDARD_REWRITE_MODEL,
+          model_used: HUMAN_STANDARD_REWRITE_MODEL,
           model_candidates: modelCandidates,
           attempted_models: attemptedModels,
           quality_gate: {
             ...humanRewriteQuality,
             human_standard_rewrite: true,
-            human_standard_reviewer_model: GPT54_HUMAN_STANDARD_REWRITE_MODEL,
+            human_standard_reviewer_model: HUMAN_STANDARD_REWRITE_MODEL,
           },
-          selection_strategy: 'gpt54_human_standard_rewrite',
+          selection_strategy: 'deterministic_human_standard_rewrite',
         };
       }
       return {
@@ -1796,7 +1800,7 @@ function evaluateGeminiCandidateQuality(baselineBundle, geminiCandidateBundle) {
 function buildSelectedBundle(caseRow, baselineBundle, geminiCandidateBundle, quality, model) {
   const selected = deepClone(baselineBundle);
   const generatedFieldSource =
-    normalizeGeminiModel(model) === normalizeGeminiModel(GPT54_HUMAN_STANDARD_REWRITE_MODEL)
+    normalizeGeminiModel(model) === normalizeGeminiModel(HUMAN_STANDARD_REWRITE_MODEL)
       ? 'human_standard'
       : 'gemini';
   const fieldSources = {
@@ -1949,7 +1953,7 @@ function buildSelectedBundle(caseRow, baselineBundle, geminiCandidateBundle, qua
     generator: humanStandardSelected
       ? geminiSelected
         ? 'baseline_plus_gemini_plus_human_standard'
-        : 'gpt54_human_standard_rewrite'
+        : 'deterministic_human_standard_rewrite'
       : selectedFieldCount > 0
         ? 'baseline_plus_gemini'
         : 'baseline_only',

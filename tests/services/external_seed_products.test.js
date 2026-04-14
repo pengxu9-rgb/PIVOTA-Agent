@@ -873,6 +873,45 @@ describe('externalSeedProducts helper', () => {
     expect(product.product_type).toBe('Eyeshadow');
   });
 
+  test('classifies sunscreen authority rows from title even when seed category is polluted', () => {
+    const rows = [
+      {
+        id: 'eps_haruharu_airyfit',
+        external_product_id: 'ext_haruharu_airyfit',
+        canonical_url: 'https://haruharuwonder.com/products/black-rice-moisture-airyfit-daily-sunscreen',
+        destination_url: 'https://haruharuwonder.com/products/black-rice-moisture-airyfit-daily-sunscreen',
+        domain: 'haruharuwonder.com',
+        title: 'Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented',
+        category: 'Fragrance',
+        seed_data: {
+          brand: 'Haruharu Wonder',
+          snapshot: {
+            title: 'Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented',
+            category: 'Fragrance',
+          },
+        },
+      },
+      {
+        id: 'eps_round_lab_birch',
+        external_product_id: 'ext_round_lab_birch',
+        canonical_url: 'https://roundlab.com/products/birch-moisturizing-mild-up-sunscreen-spf-50-pa',
+        destination_url: 'https://roundlab.com/products/birch-moisturizing-mild-up-sunscreen-spf-50-pa',
+        domain: 'roundlab.com',
+        title: 'Birch Moisturizing Mild-Up Sunscreen SPF 50+, PA++++',
+        seed_data: {
+          brand: 'Round Lab',
+          snapshot: {
+            title: 'Birch Moisturizing Mild-Up Sunscreen SPF 50+, PA++++',
+          },
+        },
+      },
+    ];
+
+    const products = rows.map((row) => buildExternalSeedProduct(row));
+    expect(products.map((product) => product.category)).toEqual(['Sunscreen', 'Sunscreen']);
+    expect(products.map((product) => product.product_type)).toEqual(['Sunscreen', 'Sunscreen']);
+  });
+
   test('does not infer powder from ingredient-style description mentions when title surface is non-powder', () => {
     const bananaStick = buildExternalSeedProduct({
       id: 'eps_ole_banana_cc_stick',

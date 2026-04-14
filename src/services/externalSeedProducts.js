@@ -15,13 +15,16 @@ const {
 } = require('./pdpIngredientAuthority');
 
 const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
+const SUNSCREEN_CATEGORY_RE =
+  /\b(sunscreen|sun\s*screen|broad\s+spectrum|spf\s*\d{2,3}\+?|pa\s*\+{2,4}|sun\s+(?:serum|fluid|cream|gel|milk|stick)|uv\s*(?:protection|shield|defen[cs]e|lock))\b/i;
 const BEAUTY_CATEGORY_PATTERNS = [
   ['Brush', /\b(brush|makeup brush|foundation brush|powder brush|blush brush|shader brush|kabuki)\b/i],
   ['Shampoo', /\b(shampoo|dry shampoo|clarifying shampoo)\b/i],
   ['Conditioner', /\b(conditioner|deep conditioner|leave-in conditioner|leave in conditioner)\b/i],
   ['Hair Styling', /\b(edge control|styling gel|hair-thickening|hair thickening|detangling spray|hair clip|hair clips|edge styling)\b/i],
   ['Hair Care', /\b(hair care|hair repair|repair bundle|maintenance crew|detangling|leave-in|leave in|hair)\b/i],
-  ['Fragrance', /\b(fragrance|perfume|parfum|eau de parfum|eau de toilette|cologne|scent)\b/i],
+  ['Sunscreen', SUNSCREEN_CATEGORY_RE],
+  ['Fragrance', /\b(perfume|parfum|eau de parfum|eau de toilette|cologne|scent)\b|\bfragrance\b(?![-\s]?free)\b/i],
   ['Cleanser', /\b(cleanser|cleansing|face wash|facial wash|cleansing milk|cleansing foam|cleansing gel|wash)\b/i],
   ['Toner', /\b(toner|mist|pad)\b/i],
   [
@@ -56,7 +59,7 @@ const STRONG_ACTIVE_SOLUTION_INGREDIENT_IDS = new Set([
   'benzoyl_peroxide',
 ]);
 const PRICE_MINOR_UNIT_HINT_RE =
-  /\b(fragrance|perfume|parfum|cologne|shampoo|conditioner|cleanser|toner|moisturizer|cream|serum|concealer|foundation|powder|mascara|lip|brow|hair|beauty|bundle|treatment|spot[-\s]?target(?:ing|ed)?|blemish|acne|salicylic|bha|aha|clarifying)\b/i;
+  /\b(fragrance|perfume|parfum|cologne|sunscreen|sun\s*screen|spf|broad\s+spectrum|sun\s+(?:serum|fluid|cream|gel|milk|stick)|uv\s*(?:protection|shield|defen[cs]e|lock)|shampoo|conditioner|cleanser|toner|moisturizer|cream|serum|concealer|foundation|powder|mascara|lip|brow|hair|beauty|bundle|treatment|spot[-\s]?target(?:ing|ed)?|blemish|acne|salicylic|bha|aha|clarifying)\b/i;
 
 function stableExternalProductId(url) {
   const u = String(url || '').trim();
@@ -311,12 +314,14 @@ function inferExternalSeedBeautyCategory({
   ingredientIds,
 } = {}) {
   const explicit = normalizeExplicitBeautyCategory(explicitCategory);
-  if (explicit) return explicit;
-
   const primarySurfaceText = [title, canonicalUrl, destinationUrl]
     .map((value) => String(value || '').trim())
     .filter(Boolean)
     .join(' ');
+  if (explicit) {
+    if (explicit === 'Fragrance' && SUNSCREEN_CATEGORY_RE.test(primarySurfaceText)) return 'Sunscreen';
+    return explicit;
+  }
   const descriptionText = String(description || '').trim();
   const surfaceText = [primarySurfaceText, descriptionText].filter(Boolean).join(' ');
   if (!surfaceText) return '';
