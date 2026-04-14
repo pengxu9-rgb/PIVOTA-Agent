@@ -5329,11 +5329,7 @@ async function loadCatalogCandidates({
     : 'sufficient_primary_candidates';
 
   if (isExplicitQueryScopedBrowseRequest(request)) {
-    if (shouldSkipExternalSeeds) {
-      pushSkippedExternalSeedProviderResult(externalSkipReason);
-    } else {
-      await fetchExternalSeedProviderResult();
-    }
+    await fetchExternalSeedProviderResult();
 
     const shouldSkipInternalAfterExternal =
       shouldSkipInternal ||
