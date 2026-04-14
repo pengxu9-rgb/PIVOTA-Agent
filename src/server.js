@@ -2851,8 +2851,9 @@ async function fetchProductDetailForOffers(args) {
   const checkoutToken = args?.checkoutToken;
   const surfaceUpstreamErrors = args?.surfaceUpstreamErrors === true;
   const bypassCache = args?.bypassCache === true;
-  const useMemoryCache = PRODUCT_DETAIL_CACHE_ENABLED && !bypassCache;
   if (!merchantId || !productId) return null;
+  const isExternalSeedDetailRead = merchantId === EXTERNAL_SEED_MERCHANT_ID;
+  const useMemoryCache = PRODUCT_DETAIL_CACHE_ENABLED && !bypassCache && !isExternalSeedDetailRead;
 
   const cacheKey = JSON.stringify({
     merchantId,
@@ -2860,7 +2861,7 @@ async function fetchProductDetailForOffers(args) {
     hasCheckoutToken: Boolean(checkoutToken),
   });
 
-  if (PRODUCT_DETAIL_CACHE_ENABLED && !bypassCache && !useMemoryCache) {
+  if (PRODUCT_DETAIL_CACHE_ENABLED && !useMemoryCache) {
     PRODUCT_DETAIL_CACHE_METRICS.bypasses += 1;
   }
 
@@ -3410,6 +3411,7 @@ async function buildOffersFromGroupMembers(args) {
   const productGroupId = args?.productGroupId ? String(args.productGroupId).trim() : null;
   const groupMembers = Array.isArray(args?.members) ? args.members : [];
   const checkoutToken = args?.checkoutToken;
+  const bypassCache = args?.bypassCache === true;
   const limit = Math.min(Math.max(1, Number(args?.limit || groupMembers.length || 10) || 10), 50);
   const preferredMerchantId = args?.preferredMerchantId ? String(args.preferredMerchantId).trim() : null;
 
@@ -3459,6 +3461,7 @@ async function buildOffersFromGroupMembers(args) {
           merchantId: m.merchant_id,
           productId: m.product_id,
           checkoutToken,
+          bypassCache,
         }).catch(() => null);
         return product ? { member: m, product } : null;
       }),
@@ -16529,6 +16532,7 @@ async function resolveProductIntelInvokeContext({
     merchantId: canonicalProductRef.merchant_id,
     productId: canonicalProductRef.product_id,
     checkoutToken,
+    bypassCache,
   });
   if (!product) {
     const err = new Error('Product not found');
@@ -19941,6 +19945,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		          merchantId: requestedMerchantId,
 		          productId,
 		          checkoutToken,
+		          bypassCache,
 		        });
 	        precheckEntryProductMissing = !precheckedMerchantProduct;
 	        if (precheckEntryProductMissing) {
@@ -20039,6 +20044,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		              merchantId: canonicalProductRef.merchant_id,
 	              productId: canonicalProductRef.product_id,
 	              checkoutToken,
+                bypassCache,
                 surfaceUpstreamErrors: true,
 	            });
 	      markPdpV2Phase('fetch_canonical_product', fetchCanonicalProductStartedAt);
@@ -20321,6 +20327,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	                  productGroupId,
                   members: groupMembers,
                   checkoutToken,
+                  bypassCache,
                   limit: payload?.offers?.limit || 10,
                   preferredMerchantId: requestedMerchantId || null,
                 })
@@ -21273,6 +21280,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		            merchantId: requestedMerchantId,
 		            productId,
 		            checkoutToken,
+		            bypassCache,
 		          });
 		          if (anchorDetail) {
 		            anchor = {
@@ -21384,6 +21392,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		                merchantId: m.merchant_id,
 		                productId: m.product_id,
 		                checkoutToken,
+		                bypassCache,
 		              }).catch(() => null),
 		            ),
 		          );
@@ -23667,6 +23676,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     merchantId,
                     productId,
                     checkoutToken,
+                    bypassCache,
                   }).catch(() => null)
                 : null) || { merchant_id: merchantId || null, product_id: productId };
 

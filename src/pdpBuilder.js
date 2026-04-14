@@ -866,19 +866,9 @@ function buildMediaItems(product, variants) {
   });
 
   if (hasAuthoritativeVariantGallery) {
-    const pushVariantGallery = (variant, includePrimaryHero) => {
-      const variantImages = readVariantImages(variant);
-      const heroKey = buildPdpImageDedupeKey(variant?.image_url || variantImages[0]);
-      variantImages
-        .filter((variantImage) => buildPdpImageDedupeKey(variantImage) !== heroKey)
-        .forEach((variantImage) => pushImageItem(variantImage, { alt_text: product.title }));
-      if (includePrimaryHero && heroKey) {
-        pushImageItem(variant?.image_url || variantImages[0], { alt_text: product.title });
-      }
-    };
-
-    pushVariantGallery(primaryVariant, true);
-    variants.slice(1).forEach((variant) => pushVariantGallery(variant, false));
+    primaryVariantImages.forEach((variantImage) => {
+      pushImageItem(variantImage, { alt_text: product.title });
+    });
 
     if (items.length) return items;
   }
