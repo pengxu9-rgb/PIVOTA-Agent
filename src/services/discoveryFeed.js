@@ -4894,8 +4894,14 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
         ? safeLimit
         : Math.min(safeLimit, Math.max(4, getPrimaryPathEnoughThreshold(request)));
     const requestedLimit = Math.max(1, Number(request?.limit || 0) || 12);
-    const isFirstPageWithoutCursor =
-      !request?.cursor && Math.max(1, Number(request?.page || 0) || 1) <= 1;
+    const requestedPage = Math.max(1, Number(request?.page || 0) || 1);
+    const currentPageAbsoluteOffset = request?.cursor
+      ? getDiscoveryCursorAbsoluteOffset(request.cursor, requestedLimit)
+      : (requestedPage - 1) * requestedLimit;
+    const currentPageCoverageTarget = Math.min(
+      safeLimit,
+      Math.max(requestedLimit, currentPageAbsoluteOffset + requestedLimit),
+    );
     const cursorQualifiedTarget = resolveExplicitBrowseCursorQualifiedTarget(request, safeLimit);
     const summaryThreshold = Math.min(
       safeLimit,
@@ -4904,9 +4910,9 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
     const qualifiedTarget = compoundIntent
       ? Math.min(safeLimit, Math.max(requestedLimit * 2, 24, cursorQualifiedTarget))
       : summaryThreshold;
-    let compoundExactStageSatisfiedFirstPage = false;
+    let compoundExactStageSatisfiedCurrentPage = false;
     const shouldStopStages = () =>
-      compoundExactStageSatisfiedFirstPage ||
+      compoundExactStageSatisfiedCurrentPage ||
       stagedRows.length >= (compoundIntent ? qualifiedTarget : summaryThreshold);
     const appendRows = (rows = [], stage = 'unknown') => {
       const metrics = {
@@ -4962,11 +4968,10 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
       externalSeedStageCounts.push(metrics);
       if (
         compoundIntent &&
-        isFirstPageWithoutCursor &&
         stage === 'recall_compound_exact_title' &&
-        stagedRows.length >= requestedLimit
+        stagedRows.length >= currentPageCoverageTarget
       ) {
-        compoundExactStageSatisfiedFirstPage = true;
+        compoundExactStageSatisfiedCurrentPage = true;
       }
     };
     const runStage = async ({ buildWhereSql, score, stage, cap }) => {
