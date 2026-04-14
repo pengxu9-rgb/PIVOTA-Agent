@@ -68715,6 +68715,7 @@ async function fetchRecoAlternativesForExternalSeedProduct({
     'Each alternative must include a real brand, a real product name, anchor-linked reasons, and at least one concrete tradeoff or uncertainty.',
     'Reject makeup, tools, fragrance, body-only items, haircare, and placeholder products.',
     'Do not choose generic same-step products. For treatment/serum anchors, every alternative must share a named active or the same functional claim.',
+    'If pool_summary is present, do not return a product whose brand and name duplicate or lightly reformat any pool_summary item; open-world suggestions must add new candidates.',
     'For name-only open-world products, stay conservative: use product name, category, role, price, and availability tradeoffs only. Do not assert unseen ingredients, UV filter type, fragrance, alcohol, irritation, pilling, clinical claims, or exact finish unless supplied in the payload.',
     'Return at most 3 alternatives. Use 1 concise reason and 1 concise tradeoff note per item.',
   ].join('\n');
@@ -68733,9 +68734,13 @@ async function fetchRecoAlternativesForExternalSeedProduct({
       notes: targetSignals.notes,
     },
     pool_summary: poolSummary,
+    excluded_pool_products: poolSummary.map((row) => ({
+      brand: row.brand || null,
+      name: row.name || null,
+    })).filter((row) => row.brand || row.name),
     task: {
-      max_alternatives: Math.max(2, Math.min(3, limit - poolCandidates.length > 0 ? limit - poolCandidates.length : 3)),
-      selection_rule: 'Prefer Pivota product-pool candidates when they are already strong, then use open-world suggestions to fill the remaining best-score slots.',
+      max_alternatives: Math.min(3, Math.max(2, limit)),
+      selection_rule: 'Prefer Pivota product-pool candidates when they are already strong; use open-world suggestions only to add unique non-duplicate candidates for any remaining slots.',
     },
   };
 

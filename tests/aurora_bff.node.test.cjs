@@ -9270,14 +9270,31 @@ test('/v1/reco/alternatives: hybrid supplements thin grounded pool with Gemini 3
             recommendation_mode: 'hybrid_fallback',
             disable_synthetic_local_fallback: true,
             product: {
-              product_id: '9886499864904',
-              merchant_id: 'merch_ordinary',
+              product_id: 'ext_the_ordinary_niacinamide_anchor',
+              merchant_id: 'external_seed',
               brand: 'The Ordinary',
               name: 'Niacinamide 10% + Zinc 1%',
               product_type: 'serum',
               category: 'Serum',
               ingredients: ['Niacinamide', 'Zinc PCA'],
               claims: ['oil control', 'pore care'],
+              alternatives: [
+                {
+                  product_id: 'ext_byoma_clarifying_serum',
+                  merchant_id: 'external_seed',
+                  brand: 'BYOMA',
+                  name: 'Clarifying Serum',
+                  display_name: 'Clarifying Serum',
+                  product_type: 'serum',
+                  category: 'Serum',
+                  retrieval_source: 'external_seed',
+                  key_features: ['Niacinamide', 'oil control', 'pore care'],
+                  canonical_product_ref: {
+                    product_id: 'ext_byoma_clarifying_serum',
+                    merchant_id: 'external_seed',
+                  },
+                },
+              ],
             },
           });
 
@@ -9287,8 +9304,15 @@ test('/v1/reco/alternatives: hybrid supplements thin grounded pool with Gemini 3
         assert.equal(resp.body?.compare_meta?.open_world_status, 'success');
         assert.equal(resp.body?.llm_trace?.provider_model, 'gemini-3-flash-preview');
         assert.equal(geminiRequest?.model, 'gemini-3-flash-preview');
+        const geminiPayload = JSON.parse(geminiRequest?.userPrompt || '{}');
+        assert.equal(geminiPayload?.task?.max_alternatives, 3);
+        assert.equal(Array.isArray(geminiPayload?.excluded_pool_products), true);
+        assert.equal(
+          geminiPayload.excluded_pool_products.length,
+          Array.isArray(geminiPayload?.pool_summary) ? geminiPayload.pool_summary.length : 0,
+        );
         assert.ok(Number(resp.body?.compare_meta?.open_world_selected_count || 0) >= 2);
-        assert.ok(resp.body.alternatives.every((alt) => String(alt?.candidate_origin || '') === 'open_world'));
+        assert.ok(resp.body.alternatives.some((alt) => String(alt?.candidate_origin || '') === 'pool'));
       } finally {
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
         loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
