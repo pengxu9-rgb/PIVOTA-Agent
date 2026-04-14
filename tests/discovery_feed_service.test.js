@@ -512,6 +512,100 @@ describe('discovery feed service', () => {
     );
   });
 
+  test('explicit narrow browse query uses external seed mainline without products_search or internal broad pool', async () => {
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
+    process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY = 'bridge-key';
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+    delete process.env.PIVOTA_API_BASE;
+    delete process.env.PIVOTA_BACKEND_AGENT_API_KEY;
+    delete process.env.PIVOTA_API_KEY;
+    delete process.env.DATABASE_URL;
+
+    const externalSpy = jest.fn(async () => [
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'vitamin_c_body_wash_exact',
+        title: 'The Brightener Vitamin C Brightening Body Wash',
+        brand: 'Naturium',
+        category: 'Body Wash',
+        product_type: 'Body Wash',
+      }),
+    ]);
+    const internalSpy = jest.fn(async () => [
+      makeProduct({
+        merchant_id: 'internal_catalog',
+        product_id: 'broad_cleanser_noise',
+        title: 'Generic Cleanser',
+        category: 'Cleanser',
+        product_type: 'Cleanser',
+      }),
+    ]);
+
+    const productsSearchScope = nock('http://discovery-catalog.test')
+      .matchHeader('x-agent-api-key', 'bridge-key')
+      .matchHeader('x-api-key', 'bridge-key')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        products: [
+          makeProduct({
+            merchant_id: 'products_search',
+            product_id: 'products_search_noise',
+            title: 'Generic Vitamin C Serum',
+            category: 'Serum',
+            product_type: 'Serum',
+          }),
+        ],
+      });
+
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        debug: true,
+        query: {
+          text: 'vitamin c body wash',
+        },
+        context: {
+          auth_state: 'anonymous',
+          recent_views: [],
+          recent_queries: [],
+          locale: 'en-US',
+        },
+      },
+      {
+        providerOverrides: {
+          internal_catalog: internalSpy,
+          external_seeds: externalSpy,
+        },
+      },
+    );
+
+    expect(productsSearchScope.isDone()).toBe(false);
+    expect(externalSpy).toHaveBeenCalledTimes(1);
+    expect(internalSpy).not.toHaveBeenCalled();
+    expect(response.products.map((product) => product.title)).toEqual([
+      'The Brightener Vitamin C Brightening Body Wash',
+    ]);
+    expect(response.metadata.candidate_source).toBe('external_seed_narrow_query');
+    expect(response.metadata.provider_breakdown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ provider: 'external_seeds', successful: true, returned: 1 }),
+        expect.objectContaining({
+          provider: 'products_search',
+          skipped: true,
+          skip_reason: 'explicit_narrow_external_seed_mainline',
+        }),
+        expect.objectContaining({
+          provider: 'internal_catalog',
+          skipped: true,
+          skip_reason: 'explicit_narrow_external_seed_mainline',
+        }),
+      ]),
+    );
+  });
+
   test('explicit browse query does not let broad internal catalog matches starve external seed candidates', async () => {
     delete process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL;
     delete process.env.PIVOTA_BACKEND_BASE_URL;
@@ -5539,7 +5633,7 @@ describe('discovery feed service', () => {
 
       expect(result.products).toHaveLength(1);
       expect(result.products[0].title).toBe('The Brightener Vitamin C Brightening Body Wash');
-      expect(dbQueryMock).toHaveBeenCalledTimes(5);
+      expect(dbQueryMock).toHaveBeenCalledTimes(3);
       expect(result.recallSummary[0]).toEqual(
         expect.objectContaining({
           external_seed_qualified_count: 1,
@@ -5547,8 +5641,6 @@ describe('discovery feed service', () => {
       );
       expect(result.recallSummary[0].external_seed_stage_counts.map((entry) => entry.stage)).toEqual([
         'recall_title',
-        'recall_summary',
-        'recall_tokens',
       ]);
     } finally {
       if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
