@@ -8912,6 +8912,27 @@ test('buildExternalSeedCompareSearchQueries: avoids duplicate role queries and p
     assert.ok(Array.isArray(queries));
     assert.ok(queries.some((item) => /niacinamide serum/i.test(String(item || ''))));
     assert.equal(queries.some((item) => /\bserum serum\b/i.test(String(item || ''))), false);
+    const thinTreatmentQueries = __internal.buildExternalSeedCompareSearchQueries({
+      productObj: {
+        brand: 'The Ordinary',
+        name: 'Niacinamide 10% + Zinc 1%',
+        role_scope: 'oil_control_treatment',
+      },
+      productInput: 'The Ordinary Niacinamide 10% + Zinc 1%',
+      lang: 'EN',
+    });
+    assert.ok(thinTreatmentQueries.slice(0, 3).some((item) => /niacinamide serum/i.test(String(item || ''))));
+    assert.equal(thinTreatmentQueries.some((item) => /\bunknown\b/i.test(String(item || ''))), false);
+    const thinSunscreenQueries = __internal.buildExternalSeedCompareSearchQueries({
+      productObj: {
+        brand: 'SKINTIFIC',
+        name: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+        role_scope: 'daily_sunscreen_finish_fit',
+      },
+      productInput: 'SKINTIFIC Matte Fit Serum Sunscreen SPF 50+ PA++++',
+      lang: 'EN',
+    });
+    assert.ok(thinSunscreenQueries.slice(0, 3).some((item) => /^sunscreen$/i.test(String(item || ''))));
   } finally {
     delete require.cache[moduleId];
   }

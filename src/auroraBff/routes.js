@@ -65441,6 +65441,17 @@ function inferRecoAlternativesUsageRoleFromRoleScope(roleScope) {
   return '';
 }
 
+function inferRecoAlternativesSearchUsageRole(targetSignals) {
+  const target = isPlainObject(targetSignals) ? targetSignals : {};
+  const usageRole = String(target.usageRole || '').trim().toLowerCase().replace(/_/g, ' ');
+  if (usageRole && usageRole !== 'unknown') return usageRole;
+  const roleScopeText = String(target.roleScope || '').trim().toLowerCase().replace(/[_-]+/g, ' ');
+  const roleScopeRole = inferRecoAlternativesUsageRoleFromRoleScope(roleScopeText);
+  if (roleScopeRole) return roleScopeRole;
+  if (/\b(?:oil control|tone|mark|acne|pore|treatment)\b/.test(roleScopeText)) return 'serum';
+  return '';
+}
+
 function inferRecoAlternativesClaimHints(...values) {
   const text = values.filter(Boolean).join(' ').toLowerCase();
   const out = [];
@@ -66425,12 +66436,15 @@ function buildExternalSeedCompareSearchQueries({ productObj, productInput = '', 
   const target = identity.targetSignals;
   const out = [];
   const seen = new Set();
-  const usageRole = String(target.usageRole || '').trim().replace(/_/g, ' ');
+  const usageRole = inferRecoAlternativesSearchUsageRole(target);
   const stepTerms = uniqCaseInsensitiveStrings(
     [
       target.productType,
       usageRole,
-    ].filter(Boolean),
+    ].filter((value) => {
+      const token = String(value || '').trim().toLowerCase();
+      return token && token !== 'unknown';
+    }),
     2,
   ).join(' ');
   const pushQuery = (raw) => {
@@ -66448,14 +66462,19 @@ function buildExternalSeedCompareSearchQueries({ productObj, productInput = '', 
   );
   for (const alias of aliasQueries.slice(0, 1)) pushQuery(alias);
 
+  if (usageRole && target.knownActives.length) {
+    pushQuery(`${target.knownActives[0]} ${usageRole}`);
+  } else if (target.knownActives.length) {
+    pushQuery(target.knownActives[0]);
+  }
+  if (usageRole) {
+    pushQuery(usageRole);
+  }
   if (usageRole && usageRole !== 'unknown' && target.primaryClaims.length && target.textureHints.length) {
     pushQuery(`${target.textureHints[0]} ${target.primaryClaims[0]} ${usageRole}`);
   }
   if (usageRole && usageRole !== 'unknown' && target.primaryClaims.length) {
     pushQuery(`${target.primaryClaims[0]} ${usageRole}`);
-  }
-  if (usageRole && usageRole !== 'unknown' && target.knownActives.length) {
-    pushQuery(`${target.knownActives[0]} ${usageRole}`);
   }
   if (usageRole && usageRole !== 'unknown' && target.textureHints.length) {
     pushQuery(`${target.textureHints[0]} ${usageRole}`);
@@ -66912,6 +66931,21 @@ async function collectExternalSeedPoolAlternatives({
   for (const row of embeddedPool) candidateRows.push(row);
 
   const queriesToRun = queryPlan.slice(0, Math.max(2, Math.min(4, normalizedLimit)));
+  const localSeedResults = await Promise.allSettled(
+    queriesToRun.map((query) => searchLocalExternalSeedProducts({
+      query,
+      limit: 8,
+      logger,
+      transportPolicyMode: 'reco_alternatives_pool',
+      role: identity.targetSignals?.roleScope || null,
+      preferredStep: identity.targetSignals?.usageRole || '',
+    })),
+  );
+  for (const result of localSeedResults) {
+    const searched = result.status === 'fulfilled' ? result.value : null;
+    const list = Array.isArray(searched?.products) ? searched.products : [];
+    for (const row of list) candidateRows.push(row);
+  }
   const searchResults = await Promise.allSettled(
     queriesToRun.map((query) => searchPivotaBackendProducts({
       query,
