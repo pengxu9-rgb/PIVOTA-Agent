@@ -333,6 +333,87 @@ describe('discovery feed service', () => {
     );
   });
 
+  test('explicit browse query keeps external seeds enabled even when products_search is already sufficient', async () => {
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
+    process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY = 'bridge-key';
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+    delete process.env.PIVOTA_API_BASE;
+    delete process.env.PIVOTA_BACKEND_AGENT_API_KEY;
+    delete process.env.PIVOTA_API_KEY;
+    delete process.env.DATABASE_URL;
+
+    const productsSearchProducts = Array.from({ length: 24 }, (_, idx) =>
+      makeProduct({
+        merchant_id: 'products_search',
+        product_id: `search_lip_balm_${idx + 1}`,
+        title: `Search Lip Balm ${idx + 1}`,
+        brand: `Search Beauty ${idx + 1}`,
+        category: 'Lip Balm',
+        product_type: 'Lip Balm',
+      }),
+    );
+    const internalSpy = jest.fn(async () => []);
+    const externalSpy = jest.fn(async () =>
+      Array.from({ length: 12 }, (_, idx) =>
+        makeProduct({
+          merchant_id: 'external_seed',
+          product_id: `seed_lip_balm_${idx + 1}`,
+          title: `Seed Lip Balm ${idx + 1}`,
+          brand: `Seed Beauty ${idx + 1}`,
+          category: 'Lip Balm',
+          product_type: 'Lip Balm',
+        }),
+      ),
+    );
+
+    nock('http://discovery-catalog.test')
+      .matchHeader('x-agent-api-key', 'bridge-key')
+      .matchHeader('x-api-key', 'bridge-key')
+      .get('/agent/v1/products/search')
+      .query((query) => String(query.query || '') === 'lip balm')
+      .reply(200, { products: productsSearchProducts });
+
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        debug: true,
+        query: {
+          text: 'lip balm',
+        },
+        context: {
+          auth_state: 'anonymous',
+          recent_views: [],
+          recent_queries: [],
+          locale: 'en-US',
+        },
+      },
+      {
+        providerOverrides: {
+          internal_catalog: internalSpy,
+          external_seeds: externalSpy,
+        },
+      },
+    );
+
+    expect(nock.isDone()).toBe(true);
+    expect(externalSpy).toHaveBeenCalledTimes(1);
+    expect(internalSpy).not.toHaveBeenCalled();
+    expect(response.products).toHaveLength(12);
+    expect(response.metadata.provider_breakdown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ provider: 'products_search', successful: true, returned: 24 }),
+        expect.objectContaining({ provider: 'external_seeds', successful: true, returned: 12 }),
+        expect.objectContaining({
+          provider: 'internal_catalog',
+          skipped: true,
+          skip_reason: 'sufficient_explicit_query_external_candidates',
+        }),
+      ]),
+    );
+  });
+
   test('explicit browse query does not let broad internal catalog matches starve external seed candidates', async () => {
     delete process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL;
     delete process.env.PIVOTA_BACKEND_BASE_URL;
