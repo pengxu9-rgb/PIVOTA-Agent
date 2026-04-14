@@ -24341,8 +24341,9 @@ async function callGeminiJsonObject({
 }
 let callGeminiJsonObjectImpl = callGeminiJsonObject;
 
-async function callGeminiTextResponse({
-  model,
+async function callGeminiTextResponseViaRest({
+  resolvedModel,
+  requestedModel,
   systemPrompt,
   userPrompt,
   timeoutMs = 3000,
@@ -24351,23 +24352,19 @@ async function callGeminiTextResponse({
   route = 'aurora_routes_text',
   queueTimeoutMs = 0,
   upstreamTimeoutMs = 0,
-  ignoreForceModel = false,
   thinkingBudget = undefined,
 } = {}) {
-  const gemini = getGeminiClient();
-  if (!gemini || !gemini.client) {
+  const apiKey = pickAuroraGeminiApiKey(AURORA_GEMINI_KEY_FEATURE_ENV);
+  if (!apiKey) {
     return {
       ok: false,
-      reason: gemini && gemini.init_error ? String(gemini.init_error) : 'gemini_client_unavailable',
+      reason: 'gemini_client_unavailable',
+      provider: 'gemini',
+      requested_model: requestedModel,
+      effective_model: resolvedModel,
+      selection_source: 'local_gemini_rest_direct',
     };
   }
-  const requestedModel = String(model || ANALYSIS_STORY_MODEL_GEMINI).trim() || ANALYSIS_STORY_MODEL_GEMINI;
-  const resolvedModel =
-    ignoreForceModel === true
-      ? requestedModel
-      : AURORA_DIAG_FORCE_GEMINI
-        ? AURORA_DIAG_FORCE_GEMINI_MODEL
-        : requestedModel;
   const systemText = String(systemPrompt || 'Return plain text only.').trim();
   const userText = String(userPrompt || '').trim();
   const promptText = `${systemText}\n\n${userText}`;
@@ -24380,54 +24377,207 @@ async function callGeminiTextResponse({
     queueMs: queueTimeoutMs,
     upstreamMs: upstreamTimeoutMs || timeoutMs,
   });
-  try {
-    const built = await callAuroraGeminiGenerateContentWithMeta({
-      featureEnvVar: AURORA_GEMINI_KEY_FEATURE_ENV,
-      route,
-      queueTimeoutMs: timeoutBudget.queue_timeout_ms,
-      upstreamTimeoutMs: timeoutBudget.upstream_timeout_ms,
-      request: {
-        model: resolvedModel,
-        systemInstruction: {
-          parts: [{ text: systemText }],
-        },
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              {
-                text: userText,
-              },
-            ],
-          },
-        ],
-        config: {
-          temperature,
-          thinkingConfig: {
-            includeThoughts: false,
-            ...(Number.isFinite(thinkingBudget) ? { thinkingBudget: Math.max(0, Math.trunc(thinkingBudget)) } : {}),
-          },
-          ...(effectiveMaxOutputTokens ? { maxOutputTokens: effectiveMaxOutputTokens } : {}),
-        },
+  const modelName = normalizeGeminiRestModelName(resolvedModel || requestedModel || ANALYSIS_STORY_MODEL_GEMINI);
+  const requestBody = {
+    contents: [
+      {
+        role: 'user',
+        parts: [{ text: userText }],
       },
-    });
-    const response = built && built.response ? built.response : null;
-    const finishReason = extractGeminiFinishReason(response);
-    const qaMeta = normalizeQaTimeoutMeta(built && built.meta ? built.meta : {}, {
+    ],
+    generationConfig: {
+      temperature,
+      ...(effectiveMaxOutputTokens ? { maxOutputTokens: effectiveMaxOutputTokens } : {}),
+    },
+  };
+  if (systemText) {
+    requestBody.systemInstruction = {
+      parts: [{ text: systemText }],
+    };
+  }
+  const thinkingConfig = {};
+  if (Number.isFinite(thinkingBudget)) thinkingConfig.thinkingBudget = Math.trunc(Number(thinkingBudget));
+  if (Object.keys(thinkingConfig).length > 0) {
+    thinkingConfig.includeThoughts = false;
+    requestBody.generationConfig.thinkingConfig = thinkingConfig;
+  }
+  try {
+    const gate = getGeminiGlobalGate();
+    const startedAt = Date.now();
+    let upstreamStartedAt = startedAt;
+    const buildGeminiUpstreamTimeoutError = () => {
+      const now = Date.now();
+      const err = new Error(`GEMINI_UPSTREAM_TIMEOUT after ${timeoutBudget.upstream_timeout_ms}ms`);
+      err.code = 'GEMINI_UPSTREAM_TIMEOUT';
+      err.timeout_stage = 'upstream';
+      err.meta = {
+        gate_wait_ms: Math.max(0, upstreamStartedAt - startedAt),
+        upstream_ms: Math.max(0, now - upstreamStartedAt),
+        total_ms: Math.max(0, now - startedAt),
+      };
+      return err;
+    };
+    const totalTimeoutMs = Math.max(
+      1,
+      Number(timeoutBudget.queue_timeout_ms || 0) + Number(timeoutBudget.upstream_timeout_ms || 0),
+    );
+    const isGeminiRestTransportTimeout = (err) => {
+      const code = String(err?.code || '').toUpperCase();
+      const name = String(err?.name || '').toLowerCase();
+      return (
+        code === 'GEMINI_UPSTREAM_TIMEOUT' ||
+        code === 'ECONNABORTED' ||
+        code === 'ETIMEDOUT' ||
+        code === 'ERR_CANCELED' ||
+        name === 'aborterror' ||
+        name === 'cancelederror' ||
+        (typeof axios.isCancel === 'function' && axios.isCancel(err))
+      );
+    };
+    const gatePromise = gate.withGate(
       route,
-      model: resolvedModel,
-      promptBytes,
-      schemaBytes: 0,
-      maxOutputTokens: effectiveMaxOutputTokens,
-      resultReason: finishReason === 'MAX_TOKENS' ? 'gemini_text_max_tokens' : 'ok',
-    });
-    const text = await extractTextFromGeminiResponse(response);
+      async () => {
+        upstreamStartedAt = Date.now();
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent`;
+        const upstreamHardTimeoutMs = Math.max(1, Math.trunc(Number(timeoutBudget.upstream_timeout_ms || 0) || 1));
+        const controller =
+          typeof AbortController === 'function' && upstreamHardTimeoutMs > 0
+            ? new AbortController()
+            : null;
+        const timer = controller
+          ? setTimeout(() => controller.abort(), upstreamHardTimeoutMs)
+          : null;
+        try {
+          const requestPromise = postGeminiRestGenerateContent({
+            url,
+            apiKey,
+            requestBody,
+            timeoutMs: upstreamHardTimeoutMs,
+            signal: controller ? controller.signal : undefined,
+          });
+          const response = await withTimeout(requestPromise, upstreamHardTimeoutMs, 'GEMINI_UPSTREAM_TIMEOUT')
+            .catch((err) => {
+              if (isGeminiRestTransportTimeout(err)) {
+                if (controller) controller.abort();
+                throw buildGeminiUpstreamTimeoutError();
+              }
+              throw err;
+            });
+          let responseBody = null;
+          if (response && typeof response.data === 'string') {
+            try {
+              responseBody = JSON.parse(response.data);
+            } catch {
+              responseBody = null;
+            }
+          } else if (response && response.data && typeof response.data === 'object') {
+            responseBody = response.data;
+          }
+          return {
+            ok: Number(response && response.status) >= 200 && Number(response && response.status) < 300,
+            status: Number(response && response.status) || 0,
+            statusText: response && response.statusText ? String(response.statusText) : '',
+            responseBody,
+          };
+        } catch (err) {
+          if (isGeminiRestTransportTimeout(err)) {
+            if (controller) controller.abort();
+            throw buildGeminiUpstreamTimeoutError();
+          }
+          throw err;
+        } finally {
+          if (timer) clearTimeout(timer);
+        }
+      },
+      { queueTimeoutMs: timeoutBudget.queue_timeout_ms || totalTimeoutMs },
+    );
+    let response;
+    try {
+      response = await withTimeout(gatePromise, totalTimeoutMs, 'GEMINI_TOTAL_TIMEOUT');
+    } catch (err) {
+      if (String(err?.code || '').trim().toUpperCase() === 'GEMINI_TOTAL_TIMEOUT') {
+        const now = Date.now();
+        const timedOutUpstream = upstreamStartedAt > startedAt;
+        err.code = timedOutUpstream ? 'GEMINI_UPSTREAM_TIMEOUT' : 'GEMINI_QUEUE_TIMEOUT';
+        err.timeout_stage = timedOutUpstream ? 'upstream' : 'queue';
+        err.meta = {
+          gate_wait_ms: timedOutUpstream ? Math.max(0, upstreamStartedAt - startedAt) : Math.max(0, now - startedAt),
+          upstream_ms: timedOutUpstream ? Math.max(0, now - upstreamStartedAt) : 0,
+          total_ms: Math.max(0, now - startedAt),
+        };
+      }
+      throw err;
+    }
+    const finishedAt = Date.now();
+    const totalMs = Math.max(0, finishedAt - startedAt);
+    const upstreamMs = Math.max(0, finishedAt - upstreamStartedAt);
+    const gateWaitMs = Math.max(0, totalMs - upstreamMs);
+    const responseBody = response && typeof response === 'object' ? response.responseBody : null;
+    if (!response || response.ok !== true) {
+      const detailMessage =
+        pickFirstTrimmed(
+          responseBody?.error?.message,
+          responseBody?.error?.status,
+          response?.statusText,
+        ) || `status=${response?.status || 0}`;
+      const failedMeta = normalizeQaTimeoutMeta(
+        {
+          gate_wait_ms: gateWaitMs,
+          upstream_ms: upstreamMs,
+          total_ms: totalMs,
+        },
+        {
+          route,
+          model: resolvedModel,
+          promptBytes,
+          schemaBytes: 0,
+          maxOutputTokens: effectiveMaxOutputTokens,
+          resultReason: 'gemini_http_error',
+          detail: detailMessage,
+        },
+      );
+      if (shouldTrackQaRoute(route)) recordQaRouteObservability(failedMeta);
+      return {
+        ok: false,
+        reason: 'gemini_http_error',
+        detail: detailMessage,
+        raw_text: responseBody ? JSON.stringify(responseBody) : null,
+        finish_reason: null,
+        timeout_stage: null,
+        meta: failedMeta,
+        gate_wait_ms: failedMeta.gate_wait_ms,
+        upstream_ms: failedMeta.upstream_ms,
+        total_ms: failedMeta.total_ms,
+        provider: 'gemini',
+        requested_model: requestedModel,
+        effective_model: resolvedModel,
+        selection_source: 'local_gemini_rest_direct',
+      };
+    }
+    const finishReason = extractGeminiFinishReason(responseBody);
+    const qaMeta = normalizeQaTimeoutMeta(
+      {
+        gate_wait_ms: gateWaitMs,
+        upstream_ms: upstreamMs,
+        total_ms: totalMs,
+      },
+      {
+        route,
+        model: resolvedModel,
+        promptBytes,
+        schemaBytes: 0,
+        maxOutputTokens: effectiveMaxOutputTokens,
+        resultReason: finishReason === 'MAX_TOKENS' ? 'gemini_text_max_tokens' : 'ok',
+      },
+    );
+    const text = await extractTextFromGeminiResponse(responseBody);
     const trimmedText = String(text || '').trim();
     if (!trimmedText) {
       const emptyMeta = {
         ...qaMeta,
         result_reason: 'gemini_text_empty',
       };
+      if (shouldTrackQaRoute(route)) recordQaRouteObservability(emptyMeta);
       return {
         ok: false,
         reason: 'gemini_text_empty',
@@ -24441,9 +24591,10 @@ async function callGeminiTextResponse({
         provider: 'gemini',
         requested_model: requestedModel,
         effective_model: resolvedModel,
-        selection_source: 'local_gemini_direct',
+        selection_source: 'local_gemini_rest_direct',
       };
     }
+    if (shouldTrackQaRoute(route)) recordQaRouteObservability(qaMeta);
     return {
       ok: true,
       text: trimmedText,
@@ -24457,7 +24608,7 @@ async function callGeminiTextResponse({
       provider: 'gemini',
       requested_model: requestedModel,
       effective_model: resolvedModel,
-      selection_source: 'local_gemini_direct',
+      selection_source: 'local_gemini_rest_direct',
     };
   } catch (err) {
     const classified = buildGeminiJsonTimeoutResult(err, 'gemini_error');
@@ -24474,6 +24625,7 @@ async function callGeminiTextResponse({
         detail: classified.detail,
       },
     );
+    if (shouldTrackQaRoute(route)) recordQaRouteObservability(failedMeta);
     return {
       ok: false,
       reason: classified.reason,
@@ -24486,9 +24638,44 @@ async function callGeminiTextResponse({
       provider: 'gemini',
       requested_model: requestedModel,
       effective_model: resolvedModel,
-      selection_source: 'local_gemini_direct',
+      selection_source: 'local_gemini_rest_direct',
     };
   }
+}
+
+async function callGeminiTextResponse({
+  model,
+  systemPrompt,
+  userPrompt,
+  timeoutMs = 3000,
+  temperature = 0,
+  maxOutputTokens = null,
+  route = 'aurora_routes_text',
+  queueTimeoutMs = 0,
+  upstreamTimeoutMs = 0,
+  ignoreForceModel = false,
+  thinkingBudget = undefined,
+} = {}) {
+  const requestedModel = String(model || ANALYSIS_STORY_MODEL_GEMINI).trim() || ANALYSIS_STORY_MODEL_GEMINI;
+  const resolvedModel =
+    ignoreForceModel === true
+      ? requestedModel
+      : AURORA_DIAG_FORCE_GEMINI
+        ? AURORA_DIAG_FORCE_GEMINI_MODEL
+        : requestedModel;
+  return callGeminiTextResponseViaRest({
+    resolvedModel,
+    requestedModel,
+    systemPrompt,
+    userPrompt,
+    timeoutMs,
+    temperature,
+    maxOutputTokens,
+    route,
+    queueTimeoutMs,
+    upstreamTimeoutMs,
+    thinkingBudget,
+  });
 }
 let callGeminiTextResponseImpl = callGeminiTextResponse;
 
@@ -58996,17 +59183,51 @@ async function runConcernSemanticPlanner({
       const attemptTimeoutMs = Number.isFinite(remainingBudgetMs)
         ? Math.max(250, Math.min(defaultAttemptTimeoutMs, Math.trunc(remainingBudgetMs)))
         : defaultAttemptTimeoutMs;
-      const plannerResponse = await callGeminiTextResponseImpl({
-        model: attempt.model,
-        systemPrompt: promptBundle.systemPrompt,
-        userPrompt: promptBundle.userPrompt,
-        timeoutMs: Math.min(RECO_UPSTREAM_TIMEOUT_MS, attemptTimeoutMs),
-        temperature: 0.1,
-        maxOutputTokens: 1100,
-        route: 'aurora_concern_semantic_plan_plain_text',
-        ignoreForceModel: true,
-        thinkingBudget: 384,
-      });
+      const effectiveAttemptTimeoutMs = Math.min(RECO_UPSTREAM_TIMEOUT_MS, attemptTimeoutMs);
+      let plannerResponse;
+      try {
+        plannerResponse = await withTimeout(
+          Promise.resolve().then(() => callGeminiTextResponseImpl({
+            model: attempt.model,
+            systemPrompt: promptBundle.systemPrompt,
+            userPrompt: promptBundle.userPrompt,
+            timeoutMs: effectiveAttemptTimeoutMs,
+            temperature: 0.1,
+            maxOutputTokens: 1100,
+            route: 'aurora_concern_semantic_plan_plain_text',
+            ignoreForceModel: true,
+            thinkingBudget: 384,
+          })),
+          effectiveAttemptTimeoutMs,
+          'GEMINI_UPSTREAM_TIMEOUT',
+        );
+      } catch (err) {
+        anyTimeout = true;
+        const classified = buildGeminiJsonTimeoutResult(err, 'gemini_error');
+        plannerResponse = {
+          ok: false,
+          reason: classified.reason,
+          detail: classified.detail,
+          timeout_stage: classified.timeout_stage,
+          provider: 'gemini',
+          requested_model: attempt.model,
+          effective_model: attempt.model,
+          selection_source: 'local_gemini_rest_direct',
+          meta: normalizeQaTimeoutMeta(
+            err && err.meta && typeof err.meta === 'object' ? err.meta : {},
+            {
+              route: 'aurora_concern_semantic_plan_plain_text',
+              model: attempt.model,
+              promptBytes: Buffer.byteLength(query, 'utf8'),
+              schemaBytes: 0,
+              maxOutputTokens: 1100,
+              resultReason: classified.reason,
+              timeoutStage: classified.timeout_stage,
+              detail: classified.detail,
+            },
+          ),
+        };
+      }
       trace.planner_used = true;
       lastPlannerResponse = plannerResponse;
       const llmRouteMeta = {
@@ -59014,7 +59235,7 @@ async function runConcernSemanticPlanner({
         requested_model: pickFirstTrimmed(plannerResponse?.requested_model, attempt.model) || null,
         effective_provider: pickFirstTrimmed(plannerResponse?.provider, attempt.provider) || null,
         effective_model: pickFirstTrimmed(plannerResponse?.effective_model, attempt.model) || null,
-        selection_source: pickFirstTrimmed(plannerResponse?.selection_source) || 'local_gemini_direct',
+        selection_source: pickFirstTrimmed(plannerResponse?.selection_source) || 'local_gemini_rest_direct',
       };
       const modelPolicyTrace = validateAuroraMainlineModelSelection({
         requestedProvider: llmRouteMeta.requested_provider,
