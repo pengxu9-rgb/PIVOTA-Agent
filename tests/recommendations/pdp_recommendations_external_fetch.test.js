@@ -291,6 +291,48 @@ describe('RecommendationEngine external candidate fetch', () => {
     ).toBe(false);
   });
 
+  test('uses brand-focused seeds before broad category scans when brand rows can fill target', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryMock = jest.fn(async (sql, params) => {
+      const sqlText = String(sql);
+      const brandAliases = params?.[3];
+      if (Array.isArray(brandAliases) && brandAliases.includes('winona')) {
+        return {
+          rows: Array.from({ length: 6 }).map((_, index) =>
+            makeExternalRow({
+              id: `eps_winona_${index}`,
+              external_product_id: `ext_winona_${index}`,
+              title: `Winona Repair Product ${index}`,
+              brand: 'Winona',
+              category: 'Serum',
+              domain: 'winona.com',
+            }),
+          ),
+        };
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchExternalCandidates({
+      brandHint: 'Winona',
+      categoryHint: 'Serum',
+      limit: 12,
+      minFocusedCandidates: 6,
+    });
+
+    expect(products).toHaveLength(6);
+    expect(products.every((product) => product.brand === 'Winona')).toBe(true);
+    expect(queryMock.mock.calls.some(([sql]) => String(sql).includes("seed_data->>'brand'"))).toBe(true);
+    expect(
+      queryMock.mock.calls.some(([sql]) => String(sql).includes("seed_data->>'category'")),
+    ).toBe(false);
+  });
+
   test('falls back to broad scans when same-domain rows underfill target', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 
@@ -444,7 +486,6 @@ describe('RecommendationEngine external candidate fetch', () => {
         product_id: 'base_1',
         title: 'Brand Serum',
         brand: 'Brand',
-        category_path: ['Beauty', 'Serum'],
         price: 30,
         inventory_quantity: 10,
         status: 'active',

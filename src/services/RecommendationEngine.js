@@ -1546,10 +1546,9 @@ async function fetchExternalCandidates({
     return domainFocusedCandidates.slice(0, safeLimit * 3);
   }
 
-  const [brandMatches, categoryMatches] = await Promise.all([
-    brand
-      ? runQuery(
-          `AND (
+  if (brand) {
+    const brandMatches = await runQuery(
+      `AND (
             lower(coalesce(seed_data->>'brand','')) = ANY($4)
             OR lower(coalesce(seed_data->>'brand_name','')) = ANY($4)
             OR lower(coalesce(seed_data->>'vendor','')) = ANY($4)
@@ -1560,14 +1559,20 @@ async function fetchExternalCandidates({
             OR regexp_replace(lower(coalesce(seed_data->>'vendor','')), '[^a-z0-9]+', '', 'g') = ANY($4)
             OR regexp_replace(lower(coalesce(seed_data->'snapshot'->>'title','')), '[^a-z0-9]+', '', 'g') LIKE '%' || $5 || '%'
           )`,
-          [brandAliases, compactBrand],
-          Math.min(120, safeLimit),
-          'external_brand',
-        )
-      : Promise.resolve([]),
-    category
-      ? runQuery(
-          `AND (
+      [brandAliases, compactBrand],
+      Math.min(120, safeLimit),
+      'external_brand',
+    );
+    out.push(...brandMatches);
+    const brandFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
+    if (brandFocusedCandidates.length >= safeMinFocusedCandidates) {
+      return brandFocusedCandidates.slice(0, safeLimit * 3);
+    }
+  }
+
+  const categoryMatches = category
+    ? await runQuery(
+        `AND (
             lower(coalesce(seed_data->>'category','')) = ANY($4)
             OR lower(coalesce(seed_data->>'product_type','')) = ANY($4)
             OR lower(coalesce(seed_data->>'productType','')) = ANY($4)
@@ -1576,14 +1581,13 @@ async function fetchExternalCandidates({
             OR lower(coalesce(seed_data->'snapshot'->>'product_type','')) = ANY($4)
             OR lower(coalesce(seed_data->'snapshot'->>'productType','')) = ANY($4)
           )`,
-          [categoryAliases],
-          Math.min(120, safeLimit),
-          'external_category',
-        )
-      : Promise.resolve([]),
-  ]);
+        [categoryAliases],
+        Math.min(120, safeLimit),
+        'external_category',
+      )
+    : [];
 
-  out.push(...brandMatches, ...categoryMatches);
+  out.push(...categoryMatches);
   const focusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
   const hasFocusedCandidates = focusedCandidates.length > 0;
   if (!hasFocusedCandidates) {
