@@ -82,6 +82,26 @@ function clampBeautyMainlineStageBudgetMs(value, { minMs = 0, maxMs = 0, fallbac
   return Math.max(min, Math.min(max, normalized));
 }
 
+function withBeautyMainlineTimeout(promise, timeoutMs, code = 'BEAUTY_MAINLINE_TIMEOUT') {
+  const hardTimeoutMs =
+    Number.isFinite(Number(timeoutMs)) && Number(timeoutMs) > 0
+      ? Math.max(1, Math.trunc(Number(timeoutMs)))
+      : 1;
+  let timer = null;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        const err = new Error(`${code} after ${hardTimeoutMs}ms`);
+        err.code = code;
+        reject(err);
+      }, hardTimeoutMs);
+    }),
+  ]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
 function resolveBeautyChatPlannerDeadlineAtMs({
   nowMs = Date.now(),
   handoffDeadlineAtMs = 0,
@@ -97,10 +117,10 @@ function resolveBeautyChatPlannerDeadlineAtMs({
     maxMs: 8000,
     fallbackMs: 5000,
   });
-  const budgetCapMs = clampBeautyMainlineStageBudgetMs(Math.trunc(Number(budgetMs || 0) * 0.25), {
+  const budgetCapMs = clampBeautyMainlineStageBudgetMs(Math.trunc(Number(budgetMs || 0) * 0.35), {
     minMs: 1800,
-    maxMs: 3200,
-    fallbackMs: 2600,
+    maxMs: 4600,
+    fallbackMs: 3600,
   });
   const latestDeadlineBeforeRetrieval = normalizedHandoffDeadlineAtMs - normalizedRetrievalReserveMs;
   return Math.min(
@@ -425,15 +445,20 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
       } else {
         const plannerStartedAtMs = Date.now();
         try {
-          const concernPlanOut = await runConcernSemanticPlanner({
-            ctx,
-            logger,
-            requestText: pickFirstTrimmed(recoRequestMessage, message),
-            focus: hardPathRecoFocusForMainline,
-            profileSummary,
-            recommendationTaskContext: latestRecoContextFromSession,
-            deadlineAtMs: plannerDeadlineAtMs,
-          });
+          const plannerTimeoutMs = Math.max(1, plannerDeadlineAtMs - Date.now());
+          const concernPlanOut = await withBeautyMainlineTimeout(
+            Promise.resolve().then(() => runConcernSemanticPlanner({
+              ctx,
+              logger,
+              requestText: pickFirstTrimmed(recoRequestMessage, message),
+              focus: hardPathRecoFocusForMainline,
+              profileSummary,
+              recommendationTaskContext: latestRecoContextFromSession,
+              deadlineAtMs: plannerDeadlineAtMs,
+            })),
+            plannerTimeoutMs,
+            'BEAUTY_CHAT_PLANNER_TIMEOUT',
+          );
           hardPathPlannerTrace =
             concernPlanOut?.trace && typeof concernPlanOut.trace === 'object' && !Array.isArray(concernPlanOut.trace)
               ? concernPlanOut.trace
