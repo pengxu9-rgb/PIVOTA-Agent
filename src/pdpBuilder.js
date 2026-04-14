@@ -934,6 +934,34 @@ const BRAND_STORY_SECTION_RE = /(?:brand story|our story|about the brand)/i;
 const FACT_DETAIL_SECTION_RE =
   /^(benefits?|clinical results?|results?|proven results?|key ingredients?|why it works|texture|finish|best for|formulation|what else you should know|good to know)$/i;
 
+function hasCapturedExternalSeedPdpNarrative(product) {
+  if (!isExternalSeedLikeProduct(product)) return false;
+  if (asNonEmptyString(product.pdp_description_raw)) return true;
+  return Array.isArray(product.pdp_details_sections) && product.pdp_details_sections.length > 0;
+}
+
+function normalizeTextKey(value) {
+  return asNonEmptyString(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function looksLikeCapturedExternalSeedNarrativeSoup(product, text, detailSections = []) {
+  if (!hasCapturedExternalSeedPdpNarrative(product)) return false;
+  const normalized = normalizeTextKey(text);
+  if (!normalized) return false;
+
+  const capturedRaw = normalizeTextKey(product.pdp_description_raw);
+  if (capturedRaw && normalized === capturedRaw) return true;
+
+  const headings = (Array.isArray(detailSections) ? detailSections : [])
+    .map((section) => normalizeTextKey(section?.heading))
+    .filter((heading) => heading && !STRUCTURED_DETAIL_SECTION_RE.test(heading));
+  const headingHits = headings.filter((heading) => heading.length >= 6 && normalized.includes(heading));
+  return normalized.length > 420 && headingHits.length >= 2;
+}
+
 function normalizeDetailSectionHeading(value) {
   const heading = asNonEmptyString(value);
   if (!heading) return '';
@@ -993,7 +1021,12 @@ function collectStructuredDetailSections(product) {
 
 function resolveProductDescriptionText(product, detailSections = collectStructuredDetailSections(product)) {
   const explicitPdpDescription = asNonEmptyString(product.pdp_description_raw);
-  if (explicitPdpDescription) return explicitPdpDescription;
+  if (
+    explicitPdpDescription &&
+    !looksLikeCapturedExternalSeedNarrativeSoup(product, explicitPdpDescription, detailSections)
+  ) {
+    return explicitPdpDescription;
+  }
 
   const structuredDescription =
     typeof product.description === 'string'
@@ -1002,7 +1035,14 @@ function resolveProductDescriptionText(product, detailSections = collectStructur
         ? product.description.text || product.description.raw_text || ''
         : '';
   const normalizedDescription = stripHtml(structuredDescription || '');
-  if (normalizedDescription) return normalizedDescription;
+  if (
+    normalizedDescription &&
+    !looksLikeCapturedExternalSeedNarrativeSoup(product, normalizedDescription, detailSections)
+  ) {
+    return normalizedDescription;
+  }
+
+  if (hasCapturedExternalSeedPdpNarrative(product)) return '';
 
   const overviewSection =
     detailSections.find((section) => OVERVIEW_DETAIL_SECTION_RE.test(section.heading)) ||
@@ -1016,12 +1056,15 @@ function resolveProductDescriptionText(product, detailSections = collectStructur
 }
 
 function resolveBrandStoryText(product, detailSections = collectStructuredDetailSections(product)) {
+  if (hasCapturedExternalSeedPdpNarrative(product)) return '';
   const explicit = asNonEmptyString(product.brand_story || product.brandStory);
   if (explicit) return explicit;
   return detailSections.find((section) => BRAND_STORY_SECTION_RE.test(section.heading))?.content || '';
 }
 
 function buildDetailSections(product, detailSections = collectStructuredDetailSections(product)) {
+  if (hasCapturedExternalSeedPdpNarrative(product)) return [];
+
   const sections = [];
   const desc = resolveProductDescriptionText(product, detailSections);
   if (desc) {
@@ -1064,6 +1107,8 @@ function buildDetailSections(product, detailSections = collectStructuredDetailSe
 }
 
 function buildProductFactsSections(product, detailSections = collectStructuredDetailSections(product)) {
+  if (hasCapturedExternalSeedPdpNarrative(product)) return [];
+
   return detailSections
     .filter((section) => FACT_DETAIL_SECTION_RE.test(section.heading) && !BRAND_STORY_SECTION_RE.test(section.heading))
     .map((section) => ({
