@@ -66626,6 +66626,7 @@ function inferRecoAlternativeFormFactor(...values) {
   if (/\b(?:spray|mist)\b/.test(text)) return 'spray';
   if (/\bfluid\b/.test(text)) return 'fluid';
   if (/\bmask\b/.test(text)) return 'mask';
+  if (/\btinted\s+moisturi[sz]er\b/.test(text)) return 'tinted_moisturizer';
   if (/\bserum\b/.test(text)) return 'serum';
   if (/\b(?:gel cream|gel-cream|water cream|water-gel|gel)\b/.test(text)) return 'gel';
   if (/\blotion\b/.test(text)) return 'lotion';
@@ -66660,6 +66661,21 @@ function isRecoAlternativeFormFactorCompatible(candidate, { targetSignals = null
     targetSignals?.notes,
     Array.isArray(targetSignals?.textureHints) ? targetSignals.textureHints : [],
   );
+  if (candidateForm === 'tinted_moisturizer') {
+    const targetText = [
+      targetSignals?.roleScope,
+      targetSignals?.name,
+      targetSignals?.productType,
+      targetSignals?.category,
+      targetSignals?.notes,
+      ...(Array.isArray(targetSignals?.textureHints) ? targetSignals.textureHints : []),
+      ...(Array.isArray(targetSignals?.primaryClaims) ? targetSignals.primaryClaims : []),
+    ]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+      .join(' ');
+    return /\b(tinted|coverage|makeup|base|primer)\b/i.test(targetText);
+  }
   if (!targetForm) return candidateForm !== 'body';
   if (candidateForm === targetForm) return true;
   if (candidateForm === 'body') return false;

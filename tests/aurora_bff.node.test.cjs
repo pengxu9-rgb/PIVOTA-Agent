@@ -6423,6 +6423,36 @@ test('fetchRecoAlternativesForProduct: thin role-scope moisturizer anchors do no
                 },
               },
               {
+                product_id: 'ext_rare_beauty_tinted_moisturizer',
+                merchant_id: 'external_seed',
+                brand: 'rare beauty',
+                name: 'Positive Light Tinted Moisturizer',
+                display_name: 'Positive Light Tinted Moisturizer',
+                product_type: 'Moisturizer',
+                category: 'Moisturizer',
+                retrieval_source: 'external_seed',
+                description: 'Tinted complexion coverage moisturizer.',
+                canonical_product_ref: {
+                  product_id: 'ext_rare_beauty_tinted_moisturizer',
+                  merchant_id: 'external_seed',
+                },
+              },
+              {
+                product_id: 'ext_rare_beauty_tinted_moisturizer_spf',
+                merchant_id: 'external_seed',
+                brand: 'rare beauty',
+                name: 'Positive Light Tinted Moisturizer SPF 20',
+                display_name: 'Positive Light Tinted Moisturizer SPF 20',
+                product_type: 'Moisturizer',
+                category: 'Moisturizer',
+                retrieval_source: 'external_seed',
+                description: 'Tinted complexion coverage moisturizer with SPF.',
+                canonical_product_ref: {
+                  product_id: 'ext_rare_beauty_tinted_moisturizer_spf',
+                  merchant_id: 'external_seed',
+                },
+              },
+              {
                 product_id: 'ext_pc_electrolyte_moisturizer',
                 merchant_id: 'external_seed',
                 brand: "Paula's Choice",
@@ -6502,6 +6532,7 @@ test('fetchRecoAlternativesForProduct: thin role-scope moisturizer anchors do no
         assert.ok(seenQueries.some((query) => /\bmoisturizer\b/i.test(String(query))));
         const names = out.alternatives.map((row) => String(row?.product?.name || row?.name || ''));
         assert.equal(names.some((name) => /Niacinamide|Retinal|Serum/i.test(name)), false);
+        assert.equal(names.some((name) => /tinted moisturizer/i.test(name)), false);
         assert.equal(out.alternatives.every((row) => /moisturizer/i.test(String(row?.product?.category || ''))), true);
       } finally {
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
