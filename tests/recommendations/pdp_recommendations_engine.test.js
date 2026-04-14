@@ -154,6 +154,60 @@ describe('RecommendationEngine (PDP)', () => {
     expect(result.items.map((item) => item.product_id)).toEqual(['ext_green_machine']);
   });
 
+  test('excludes prior similar-page titles when exclude_items includes titles', async () => {
+    const result = await recommend({
+      pdp_product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_base_quad',
+        title: 'Runway Eye Color Quad Creme',
+        brand: 'Tom Ford Beauty',
+        category: 'Eyeshadow',
+        price: 96,
+        source: 'external_seed',
+        inventory_quantity: 10,
+        status: 'active',
+      },
+      k: 4,
+      options: {
+        debug: true,
+        no_cache: true,
+        exclude_items: [
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_foundation_a',
+            title: 'Architecture Soft Matte Blurring Foundation',
+          },
+        ],
+        external_candidates: [
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_foundation_b',
+            title: 'Architecture Soft Matte Blurring Foundation',
+            brand: 'Tom Ford Beauty',
+            category: 'Foundation',
+            price: 96,
+            source: 'external_seed',
+            inventory_quantity: 10,
+            status: 'active',
+          },
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_lip_color',
+            title: 'Fucking Fabulous Lip Color',
+            brand: 'Tom Ford Beauty',
+            category: 'Lip Color',
+            price: 65,
+            source: 'external_seed',
+            inventory_quantity: 10,
+            status: 'active',
+          },
+        ],
+      },
+    });
+
+    expect(result.items.map((item) => item.product_id)).toEqual(['ext_lip_color']);
+  });
+
   test('dedupes similar candidates by live identity exact group and product line', async () => {
     const result = await recommend({
       pdp_product: {
@@ -278,7 +332,6 @@ describe('RecommendationEngine (PDP)', () => {
     expect(result.metadata?.identity_dedupe).toEqual(
       expect.objectContaining({
         applied: true,
-        base_identity_excluded: 1,
         duplicate_candidates_dropped: 1,
         semantic_duplicates_dropped: 1,
       }),

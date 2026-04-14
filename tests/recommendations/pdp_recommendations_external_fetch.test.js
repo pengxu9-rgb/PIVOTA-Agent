@@ -462,6 +462,83 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(elapsedMs).toBeLessThan(520);
   });
 
+  test('does not skip external seeds when raw internal pool is large but low quality', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryMock = jest.fn((sql) => {
+      const sqlText = String(sql);
+      if (sqlText.includes('FROM products_cache')) {
+        return Promise.resolve({
+          rows: Array.from({ length: 40 }).map((_, index) => ({
+            merchant_id: `merch_other_${index}`,
+            product_data: {
+              merchant_id: `merch_other_${index}`,
+              product_id: `internal_other_${index}`,
+              title: `Other Brand Tool ${index}`,
+              brand: 'OtherBrand',
+              category_path: ['Accessories', 'Tools'],
+              price: 80 + index,
+              inventory_quantity: 10,
+              status: 'active',
+            },
+          })),
+        });
+      }
+      if (sqlText.includes('FROM external_product_seeds')) {
+        return Promise.resolve({
+          rows: [
+            makeExternalRow({
+              id: 'eps_winona_1',
+              external_product_id: 'ext_winona_1',
+              title: 'Winona Soothing Repair Cream',
+              brand: 'Winona',
+              category: 'Serum',
+              domain: 'winona.com',
+            }),
+            makeExternalRow({
+              id: 'eps_winona_2',
+              external_product_id: 'ext_winona_2',
+              title: 'Winona Barrier Repair Serum',
+              brand: 'Winona',
+              category: 'Serum',
+              domain: 'winona.com',
+            }),
+          ],
+        });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { recommend, _internals } = require('../../src/services/RecommendationEngine');
+    _internals.resetCache();
+    const result = await recommend({
+      pdp_product: {
+        merchant_id: 'merch_winona',
+        product_id: 'winona_serum',
+        title: 'Winona Soothing Repair Serum',
+        brand: 'Winona',
+        category_path: ['Beauty', 'Serum'],
+        price: 29,
+        inventory_quantity: 10,
+        status: 'active',
+      },
+      k: 4,
+      options: {
+        debug: true,
+        no_cache: true,
+      },
+    });
+
+    expect(result.debug?.fetch_strategy?.external_skipped).toBe(false);
+    expect(result.debug?.fetch_strategy?.external_skip_internal_quality_count).toBe(0);
+    expect(result.items.map((item) => item.product_id)).toEqual(
+      expect.arrayContaining(['ext_winona_1', 'ext_winona_2']),
+    );
+  });
+
   test('recommend uses same-domain external seeds for external PDPs before broad scans and keeps similar non-empty', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 

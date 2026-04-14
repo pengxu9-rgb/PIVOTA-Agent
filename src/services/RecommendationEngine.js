@@ -391,12 +391,19 @@ function buildRecommendationSemanticDedupeKey(product) {
   return `${brand}::${title}`;
 }
 
+function buildRecommendationTitleDedupeKey(product) {
+  return normalizeText(product?.title || product?.name);
+}
+
 function buildExcludedCandidateState(items = []) {
   const exactKeys = new Set();
   const productIds = new Set();
+  const titleKeys = new Set();
 
   for (const item of Array.isArray(items) ? items : []) {
     const productId = getProductId(item);
+    const titleKey = buildRecommendationTitleDedupeKey(item);
+    if (titleKey) titleKeys.add(titleKey);
     if (!productId) continue;
     const merchantId = getMerchantId(item);
     const parentExternalProductId = getParentExternalProductId(item);
@@ -408,20 +415,22 @@ function buildExcludedCandidateState(items = []) {
     if (parentExternalProductId) productIds.add(parentExternalProductId);
   }
 
-  return { exactKeys, productIds };
+  return { exactKeys, productIds, titleKeys };
 }
 
 function mergeExcludedCandidateStates(...states) {
   const exactKeys = new Set();
   const productIds = new Set();
+  const titleKeys = new Set();
 
   for (const state of states) {
     if (!state || typeof state !== 'object') continue;
     for (const key of state.exactKeys || []) exactKeys.add(key);
     for (const productId of state.productIds || []) productIds.add(productId);
+    for (const titleKey of state.titleKeys || []) titleKeys.add(titleKey);
   }
 
-  return { exactKeys, productIds };
+  return { exactKeys, productIds, titleKeys };
 }
 
 function isExcludedCandidate(product, state) {
@@ -431,6 +440,8 @@ function isExcludedCandidate(product, state) {
   if (state.productIds?.has(productId)) return true;
   const parentExternalProductId = getParentExternalProductId(product);
   if (parentExternalProductId && state.productIds?.has(parentExternalProductId)) return true;
+  const titleKey = buildRecommendationTitleDedupeKey(product);
+  if (titleKey && state.titleKeys?.has(titleKey)) return true;
   const merchantId = getMerchantId(product);
   return merchantId ? state.exactKeys?.has(`${merchantId}::${productId}`) === true : false;
 }
@@ -959,6 +970,36 @@ function buildCandidateFeatures(candidateProduct, baseCurrency) {
     vertical: verticalSignal.vertical || UNKNOWN_VERTICAL,
     verticalInferred: Boolean(verticalSignal.inferred),
   };
+}
+
+function countExternalSkipEligibleInternalCandidates(baseProduct, internalCandidates) {
+  const base = buildBaseFeatures(baseProduct);
+  if (!Array.isArray(internalCandidates) || !internalCandidates.length) return 0;
+  const seen = new Set();
+  let count = 0;
+
+  for (const candidate of internalCandidates) {
+    if (!candidate || typeof candidate !== 'object') continue;
+    if (!isSellable(candidate, { inStockOnly: true })) continue;
+    const key = buildCandidateKey(candidate);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    const features = buildCandidateFeatures(candidate, base.currency);
+    const scoreDetail = scoreCandidate(base, features);
+    const sameKnownVertical =
+      base.vertical !== UNKNOWN_VERTICAL &&
+      features.vertical !== UNKNOWN_VERTICAL &&
+      base.vertical === features.vertical;
+    if (
+      scoreDetail.brandMatch ||
+      scoreDetail.leafMatch ||
+      (sameKnownVertical && scoreDetail.tokenOverlap >= 0.12)
+    ) {
+      count += 1;
+    }
+  }
+
+  return count;
 }
 
 function confidenceRank(level) {
@@ -1846,13 +1887,17 @@ async function recommend({
   const internalCandidates = await internalCandidatesTask;
 
   const internalCount = Array.isArray(internalCandidates) ? internalCandidates.length : 0;
+  const externalSkipEligibleInternalCount = countExternalSkipEligibleInternalCandidates(
+    baseProduct,
+    internalCandidates,
+  );
   const skipExternalMin = Math.max(
     PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_ABS,
     Math.ceil(safeK * PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_MULTIPLIER),
   );
   const shouldSkipExternal =
     !providedExternal &&
-    internalCount >= skipExternalMin &&
+    externalSkipEligibleInternalCount >= skipExternalMin &&
     baseSemanticStrong &&
     !baseProductIsExternal;
 
@@ -1983,6 +2028,7 @@ async function recommend({
         external_timed_out: externalTimedOut,
         external_skipped: shouldSkipExternal,
         external_skip_min_candidates: skipExternalMin,
+        external_skip_internal_quality_count: externalSkipEligibleInternalCount,
         base_semantic_strong: baseSemanticStrong,
         base_product_is_external: baseProductIsExternal,
       },
