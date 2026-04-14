@@ -52406,10 +52406,7 @@ async function maybeRewriteRecoAssistantTextWithLlm({
       llmProvider: AURORA_PRODUCT_INTEL_LLM_PROVIDER,
       llmModel: AURORA_PRODUCT_INTEL_LLM_MODEL,
     });
-    const routeStableRewriteThinkingLevel =
-      (requestMode === 'use' || requestMode === 'use_first') && selectedProductRoleMix === 'same_role_comparison'
-        ? null
-        : rewriteThinkingLevel;
+    const routeStableRewriteThinkingLevel = rewriteThinkingLevel;
     const executeRewriteAttempt = async ({
       retryReason = null,
       timeoutCapMs = null,

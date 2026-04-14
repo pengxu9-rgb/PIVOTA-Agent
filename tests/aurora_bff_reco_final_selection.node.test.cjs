@@ -420,7 +420,7 @@ test('reco assistant rewrite uses minimal thinking for gemini 3 structured outpu
   }
 });
 
-test('reco assistant rewrite skips minimal thinking for same-role use comparisons', async () => {
+test('reco assistant rewrite keeps minimal thinking for same-role use comparisons', async () => {
   const prevMock = process.env.AURORA_BFF_USE_MOCK;
   const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
   const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
@@ -491,7 +491,7 @@ test('reco assistant rewrite skips minimal thinking for same-role use comparison
       allowLockedSelectionRewrite: true,
     });
 
-    assert.equal(capturedArgs?.thinkingLevel ?? null, null);
+    assert.equal(capturedArgs?.thinkingLevel, 'minimal');
     assert.ok(capturedArgs?.queueTimeoutMs > 0);
     assert.ok(capturedArgs?.upstreamTimeoutMs > 0);
     assert.equal(capturedArgs?.maxOutputTokens, 260);
@@ -509,7 +509,7 @@ test('reco assistant rewrite skips minimal thinking for same-role use comparison
   }
 });
 
-test('reco assistant rewrite uses REST executor for same-role use comparisons without minimal thinking', async () => {
+test('reco assistant rewrite uses REST executor for same-role use comparisons with minimal thinking', async () => {
   const prevMock = process.env.AURORA_BFF_USE_MOCK;
   const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
   const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
@@ -611,7 +611,7 @@ test('reco assistant rewrite uses REST executor for same-role use comparisons wi
     assert.match(capturedUrl, /generativelanguage\.googleapis\.com\/v1beta\/models\/gemini-3-flash-preview:generateContent/);
     assert.equal(capturedInit?.method, 'POST');
     assert.ok(capturedInit?.signal, 'REST executor should carry an abort signal');
-    assert.equal(rewrite.attempts?.[0]?.thinking_level ?? null, null);
+    assert.equal(rewrite.attempts?.[0]?.thinking_level, 'minimal');
     assert.equal(rewrite.attempts?.[0]?.selection_source, 'local_gemini_rest_direct');
     assert.equal(rewrite.attempts?.[0]?.max_output_tokens, 260);
   } finally {
