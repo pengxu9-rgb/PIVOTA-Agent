@@ -4972,9 +4972,13 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
       Math.max(requestedLimit, currentPageAbsoluteOffset + requestedLimit),
     );
     const cursorQualifiedTarget = resolveExplicitBrowseCursorQualifiedTarget(request, safeLimit);
+    const explicitQueryMainlineThreshold =
+      explicitQueryScopedRecall && !compoundIntent
+        ? resolveExplicitQueryExternalSeedMainlineAcceptThreshold(request, safeLimit)
+        : baseSummaryThreshold;
     const summaryThreshold = Math.min(
       safeLimit,
-      Math.max(baseSummaryThreshold, cursorQualifiedTarget),
+      Math.max(explicitQueryMainlineThreshold, cursorQualifiedTarget),
     );
     const qualifiedTarget = compoundIntent
       ? Math.min(safeLimit, Math.max(requestedLimit * 2, 24, cursorQualifiedTarget))
@@ -5306,6 +5310,28 @@ function resolveExplicitQueryInternalSkipEnoughThreshold(request, enoughThreshol
     Number(enoughThreshold || bufferedNeed) || bufferedNeed,
     Math.max(requestedLimit, bufferedNeed),
   );
+}
+
+function resolveExplicitQueryExternalSeedMainlineAcceptThreshold(request, safeLimit) {
+  if (!isExplicitQueryScopedBrowseRequest(request)) return Number.POSITIVE_INFINITY;
+  const fetchCap = Math.max(1, Number(safeLimit || 0) || getDiscoveryCandidateFetchCap(request));
+  const requestedLimit = clampInt(request?.limit, 12, 1, 48);
+  const minAcceptCount = requestedLimit >= 8 ? 8 : requestedLimit;
+  const cursorOffset = request?.cursor
+    ? getDiscoveryCursorAbsoluteOffset(request.cursor, requestedLimit)
+    : null;
+  const page = Math.max(1, Number(request?.page || 0) || 1);
+  const pageOffset =
+    cursorOffset != null && Number.isFinite(cursorOffset)
+      ? Math.max(0, cursorOffset)
+      : (page - 1) * requestedLimit;
+  return Math.min(fetchCap, Math.max(minAcceptCount, pageOffset + minAcceptCount));
+}
+
+function hasSufficientExplicitQueryExternalSeedMainline(products = [], { request, safeLimit } = {}) {
+  if (!isExplicitQueryScopedBrowseRequest(request)) return false;
+  const threshold = resolveExplicitQueryExternalSeedMainlineAcceptThreshold(request, safeLimit);
+  return Array.isArray(products) && products.length >= threshold;
 }
 
 function resolveExternalSeedProviderLimit(request, safeLimit) {
@@ -5883,12 +5909,27 @@ async function loadCatalogCandidates({
     } else if (explicitNarrowQueryMainline) {
       await fetchExternalSeedProviderResult();
     } else {
-      const [productsSearchResult, externalSeedResult] = await Promise.all([
-        fetchProductsSearchProviderResult(),
-        loadExternalSeedProviderResult(),
-      ]);
-      appendProviderResult(productsSearchResult);
-      appendProviderResult(externalSeedResult);
+      await fetchExternalSeedProviderResult();
+      if (
+        hasSufficientExplicitQueryExternalSeedMainline(mergedProducts, {
+          request,
+          safeLimit,
+        })
+      ) {
+        candidateSource = 'external_seed_query_mainline';
+        primaryPathUsed = 'external_seed_query_mainline';
+        providerResults.push(
+          buildSkippedProviderResult('products_search', {
+            label: getProviderLabel('products_search'),
+            query: providerQueries.join(' | '),
+            limit: safeLimit,
+            skipReason: 'sufficient_explicit_query_external_seed_mainline',
+          }),
+        );
+        pushSkippedInternalProviderResult('sufficient_explicit_query_external_seed_mainline');
+        return finalizeProviderResult();
+      }
+      appendProviderResult(await fetchProductsSearchProviderResult());
     }
 
     if (compoundIntent && mergedProducts.length > 0) {
@@ -8791,6 +8832,7 @@ module.exports = {
     matchesQueryTextCandidate,
     matchesBeautyCompoundQueryIntent,
     resolveExplicitBeautyCompoundIntent,
+    resolveExplicitQueryExternalSeedMainlineAcceptThreshold,
     resolveExternalSeedProviderLimit,
     shouldFilterBrowseCandidateByQueryText,
     matchesBrandScopeCandidate,
