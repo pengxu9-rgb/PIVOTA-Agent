@@ -182,7 +182,9 @@ describe('pivota external highlights pipeline', () => {
       generatedReport,
       {
         coverage_ext_demo_1: {
+          review_status: 'reviewed',
           review_decision: 'rewrite',
+          reviewer: 'Human QA',
           notes: 'tighten card highlight',
           rewrite: {
             shopping_card: {
@@ -199,7 +201,11 @@ describe('pivota external highlights pipeline', () => {
 
     expect(reviewedReport.rows[0]).toEqual(
       expect.objectContaining({
+        review_status: 'completed',
         review_decision: 'rewrite',
+        reviewer: 'Human QA',
+        reviewer_kind: 'human',
+        review_tier: 'strict_human',
         selected: expect.objectContaining({
           selected_mode: 'external_highlight_rewrite',
         }),

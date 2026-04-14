@@ -9,6 +9,9 @@ const {
 const {
   buildHighlightSourcesSummary,
 } = require('../src/services/pivotaEvidenceSignals');
+const {
+  deriveReviewContractFromReportRow,
+} = require('../src/services/pivotaProductIntelReviewPolicy');
 
 function parseArgs(argv) {
   const out = {
@@ -99,6 +102,11 @@ function reviewGeneratedReport(generatedReport, decisionLookup = {}, reviewBatch
         notes,
         reviewBatch,
       });
+      const reviewContract = deriveReviewContractFromReportRow({
+        ...decisionRow,
+        review_status: decisionRow.review_status || 'completed',
+        review_decision: reviewDecision,
+      });
       return {
         case_id: asString(row.case_id),
         canonical_product_ref: row?.canonical_product_ref || null,
@@ -123,9 +131,13 @@ function reviewGeneratedReport(generatedReport, decisionLookup = {}, reviewBatch
         highlight_sources_summary: buildHighlightSourcesSummary(
           reviewedBundle?.external_highlight_signals,
         ),
-        review_status: 'completed',
+        review_status: reviewContract.review_status || 'completed',
         decision: reviewDecision,
-        review_decision: reviewDecision,
+        review_decision: reviewContract.review_decision || reviewDecision,
+        reviewer: reviewContract.reviewer,
+        reviewer_kind: reviewContract.reviewer_kind,
+        reviewed_at: reviewContract.reviewed_at,
+        review_tier: reviewContract.review_tier,
         rejection_reason: rejectionReason,
         notes,
       };

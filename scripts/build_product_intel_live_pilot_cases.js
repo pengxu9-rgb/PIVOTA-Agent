@@ -12,6 +12,12 @@ const {
   normalizeMarketSignalBadges: normalizeEvidenceMarketSignalBadges,
   normalizeReviewSummary: normalizeEvidenceReviewSummary,
 } = require('../src/services/pivotaEvidenceSignals');
+const {
+  deriveReviewContractFromManualOverride,
+  deriveReviewContractFromReportRow,
+  isCoveredByReviewMode,
+  normalizeReviewMode,
+} = require('../src/services/pivotaProductIntelReviewPolicy');
 
 function buildGatewayHeaders() {
   const apiKey = String(
@@ -43,6 +49,8 @@ function parseArgs(argv) {
     frontendBaseUrl: 'https://agent.pivota.cc',
     frontendPaths: [],
     coveredReport: '',
+    manualOverrides: '',
+    coveredReviewMode: 'strict_human',
     limit: 10,
     perQuery: 12,
     seed: String(process.env.PRODUCT_INTEL_PILOT_SEED || '20260408'),
@@ -89,6 +97,12 @@ function parseArgs(argv) {
       i += 1;
     } else if (token === '--covered-report' && next) {
       out.coveredReport = next;
+      i += 1;
+    } else if (token === '--manual-overrides' && next) {
+      out.manualOverrides = next;
+      i += 1;
+    } else if (token === '--covered-review-mode' && next) {
+      out.coveredReviewMode = normalizeReviewMode(next);
       i += 1;
     } else if (token === '--limit' && next) {
       out.limit = Math.max(1, Number(next) || 10);
@@ -183,14 +197,15 @@ function sampleWithoutReplacement(values, limit, seed) {
   return arr.slice(0, limit);
 }
 
-async function loadCoveredProductIdSet(productIds, queryFn = query) {
+async function loadCoveredProductIdSet(productIds, queryFn = query, reviewMode = 'strict_human') {
   const ids = Array.from(new Set(asArray(productIds).map((item) => asString(item)).filter(Boolean)));
   if (!ids.length || typeof queryFn !== 'function') return new Set();
   const keys = ids.map((id) => `product:${id}`);
+  const normalizedMode = normalizeReviewMode(reviewMode);
   try {
     const res = await queryFn(
       `
-        SELECT kb_key
+        SELECT kb_key, source_meta
         FROM aurora_product_intel_kb
         WHERE kb_key = ANY($1::text[])
       `,
@@ -199,6 +214,7 @@ async function loadCoveredProductIdSet(productIds, queryFn = query) {
     const rows = res && Array.isArray(res.rows) ? res.rows : [];
     return new Set(
       rows
+        .filter((row) => isCoveredByReviewMode(row?.source_meta, normalizedMode))
         .map((row) => asString(row.kb_key).replace(/^product:/, ''))
         .filter(Boolean),
     );
@@ -209,12 +225,43 @@ async function loadCoveredProductIdSet(productIds, queryFn = query) {
   }
 }
 
-function loadCoveredProductIdSetFromReport(reportPath) {
+function loadCoveredProductIdSetFromReport(reportPath, reviewMode = 'strict_human') {
   if (!reportPath) return new Set();
-  const report = readJson(reportPath);
-  const rows = asArray(report?.rows);
+  const normalizedMode = normalizeReviewMode(reviewMode);
+  const reportPaths = String(reportPath)
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .flatMap((item) => {
+      const resolved = item;
+      if (!resolved || !fs.existsSync(resolved)) return [];
+      const stat = fs.statSync(resolved);
+      if (stat.isDirectory()) {
+        const discovered = [];
+        const queue = [resolved];
+        while (queue.length) {
+          const current = queue.shift();
+          const entries = fs.readdirSync(current, { withFileTypes: true });
+          for (const entry of entries) {
+            const nextPath = path.join(current, entry.name);
+            if (entry.isDirectory()) {
+              queue.push(nextPath);
+            } else if (entry.isFile() && entry.name === 'compare_final_reviewed.json') {
+              discovered.push(nextPath);
+            }
+          }
+        }
+        return discovered.sort();
+      }
+      return [resolved];
+    });
+  const rows = reportPaths.flatMap((currentReportPath) => {
+    const report = readJson(currentReportPath);
+    return asArray(report?.rows);
+  });
   return new Set(
     rows
+      .filter((row) => isCoveredByReviewMode(deriveReviewContractFromReportRow(row), normalizedMode))
       .map((row) =>
         asString(
           row?.selected?.bundle?.canonical_product_ref?.product_id ||
@@ -222,6 +269,22 @@ function loadCoveredProductIdSetFromReport(reportPath) {
             row?.canonical_product_ref?.product_id,
         ),
       )
+      .filter(Boolean),
+  );
+}
+
+function loadManualOverrideProductIdSet(manualOverridesPath, reviewMode = 'strict_human') {
+  if (!manualOverridesPath || !fs.existsSync(manualOverridesPath)) return new Set();
+  const overrides = readJson(manualOverridesPath);
+  return new Set(
+    Object.entries(overrides || {})
+      .filter(([, value]) =>
+        isCoveredByReviewMode(deriveReviewContractFromManualOverride(value), reviewMode),
+      )
+      .map(([key]) => {
+        const match = String(key || '').match(/^(?:product:|live_)(ext_[A-Za-z0-9]+)/);
+        return match ? match[1] : '';
+      })
       .filter(Boolean),
   );
 }
@@ -647,7 +710,14 @@ async function main() {
   const queryErrors = [];
   let coveredProductIds = new Set();
   const coveredReportPath = resolvePath(rootDir, args.coveredReport);
-  const reportCoveredProductIds = loadCoveredProductIdSetFromReport(coveredReportPath);
+  const reportCoveredProductIds = loadCoveredProductIdSetFromReport(
+    coveredReportPath,
+    args.coveredReviewMode,
+  );
+  const manualOverrideProductIds = loadManualOverrideProductIdSet(
+    resolvePath(rootDir, args.manualOverrides),
+    args.coveredReviewMode,
+  );
 
   if (!selectedIds.length && (args.queries.length || (args.surface && args.pages > 0) || args.frontendPaths.length)) {
     const candidates = [];
@@ -715,8 +785,12 @@ async function main() {
     const byProductId = new Map(dedupedCases.map((row) => [row.canonical_product_ref.product_id, row]));
     let candidateIds = Array.from(byProductId.keys());
     if (args.excludeCovered) {
-      coveredProductIds = await loadCoveredProductIdSet(candidateIds).catch(() => new Set());
-      const allCovered = new Set([...coveredProductIds, ...reportCoveredProductIds]);
+      coveredProductIds = await loadCoveredProductIdSet(
+        candidateIds,
+        query,
+        args.coveredReviewMode,
+      ).catch(() => new Set());
+      const allCovered = new Set([...coveredProductIds, ...reportCoveredProductIds, ...manualOverrideProductIds]);
       candidateIds = candidateIds.filter((id) => !allCovered.has(id));
       coveredProductIds = allCovered;
     }
@@ -805,6 +879,7 @@ async function main() {
       selected: finalCases.length,
       filtered_badge_cases: args.requireBadgeEvidence ? eligibleCases.length : undefined,
       excluded_covered: args.excludeCovered ? coveredProductIds.size : 0,
+      covered_review_mode: args.excludeCovered ? args.coveredReviewMode : undefined,
       out: outputPath,
       product_ids: finalCases.map((row) => row?.canonical_product_ref?.product_id).filter(Boolean),
       query_errors: queryErrors,
@@ -830,6 +905,8 @@ module.exports = {
   hasBadgeEvidence,
   loadCoveredProductIdSet,
   loadCoveredProductIdSetFromReport,
+  loadManualOverrideProductIdSet,
+  parseArgs,
   sampleWithoutReplacement,
   selectDiverseCases,
   extractProductIdsFromFrontendHtml,
