@@ -23,6 +23,27 @@ function withTimeoutCode(promise, timeoutMs, timeoutCode, onTimeout = null) {
   });
 }
 
+function withGeminiSdkHttpTimeout(request, timeoutMs) {
+  const ms = Number.isFinite(Number(timeoutMs)) ? Math.max(0, Math.trunc(Number(timeoutMs))) : 0;
+  if (!ms || !request || typeof request !== 'object' || Array.isArray(request)) return request;
+  const config = request.config && typeof request.config === 'object' && !Array.isArray(request.config)
+    ? request.config
+    : {};
+  const httpOptions = config.httpOptions && typeof config.httpOptions === 'object' && !Array.isArray(config.httpOptions)
+    ? config.httpOptions
+    : {};
+  return {
+    ...request,
+    config: {
+      ...config,
+      httpOptions: {
+        ...httpOptions,
+        timeout: ms,
+      },
+    },
+  };
+}
+
 function hasAuroraGeminiApiKey(featureEnvVar) {
   try {
     const gate = getGeminiGlobalGate();
@@ -110,7 +131,9 @@ async function callAuroraGeminiGenerateContentWithMeta({
     route,
     async () => {
       upstreamStartedAt = Date.now();
-      const upstreamPromise = resolved.client.models.generateContent(request);
+      const upstreamPromise = resolved.client.models.generateContent(
+        withGeminiSdkHttpTimeout(request, upstreamTimeoutMs),
+      );
       return await withTimeoutCode(upstreamPromise, upstreamTimeoutMs, 'GEMINI_UPSTREAM_TIMEOUT');
     },
     { bypassCircuit, queueTimeoutMs: normalizedTotalTimeoutMs || queueTimeoutMs },
