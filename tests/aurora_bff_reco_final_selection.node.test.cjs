@@ -708,6 +708,82 @@ test('reco assistant rewrite accepts direct buy copy with shopper-facing oil-con
   }
 });
 
+test('reco assistant rewrite accepts product-first buy copy with recommendation semantics', async () => {
+  const prevMock = process.env.AURORA_BFF_USE_MOCK;
+  const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+  const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+  process.env.AURORA_BFF_USE_MOCK = 'false';
+  process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = 'gemini';
+  process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = 'gemini-3-flash-preview';
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'oily_pick_1',
+            display_name: 'GoalSkin Oil Control Serum',
+            brand: 'GoalSkin',
+            category: 'Serum',
+            short_description: 'Helps reduce visible shine without feeling heavy.',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'treatment',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Oil-control treatment',
+        resolved_target_step: 'treatment',
+        primary_target_id: 'oil_control_treatment',
+        ranked_targets: [
+          {
+            target_id: 'oil_control_treatment',
+            ingredient_query: 'Oil-control treatment',
+            resolved_target_step: 'treatment',
+          },
+        ],
+        selected_target_ids: ['oil_control_treatment'],
+      },
+    );
+    __internal.__setCallGeminiJsonObjectForTest(async () => ({
+      ok: true,
+      json: {
+        assistant_text:
+          'GoalSkin Oil Control Serum is the strongest option for oily skin. It targets excess shine without adding heaviness.',
+      },
+      parse_status: 'parsed',
+      provider: 'gemini',
+      effective_model: 'gemini-3-flash-preview',
+    }));
+
+    const rewrite = await __internal.maybeRewriteRecoAssistantTextWithLlm({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily', goals: ['oil control'] },
+      userRequestText: 'What product should I buy?',
+      allowLockedSelectionRewrite: true,
+    });
+
+    assert.equal(rewrite.llm_used, true);
+    assert.equal(rewrite.reason, null);
+    assert.equal(
+      rewrite.text,
+      'GoalSkin Oil Control Serum is the strongest option for oily skin. It targets excess shine without adding heaviness.',
+    );
+  } finally {
+    __internal.__resetCallGeminiJsonObjectForTest();
+    if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
+    else process.env.AURORA_BFF_USE_MOCK = prevMock;
+    if (prevProvider === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = prevProvider;
+    if (prevModel === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = prevModel;
+    delete require.cache[moduleId];
+  }
+});
+
 test('reco assistant rewrite retries buy drafts that bury the lead product after a concern opener', async () => {
   const prevMock = process.env.AURORA_BFF_USE_MOCK;
   const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
@@ -788,6 +864,7 @@ test('reco assistant rewrite retries buy drafts that bury the lead product after
     assert.equal(rewrite.llm_used, true);
     assert.equal(rewrite.reason, null);
     assert.match(prompts[1], /Fix required: Start the first sentence with the lead product name/);
+    assert.match(prompts[1], /best first buy because/);
     assert.equal(
       rewrite.text,
       'GoalSkin Oil Control Serum is the product to buy first for oily skin. It helps reduce visible shine without feeling heavy.',
@@ -911,6 +988,7 @@ test('reco assistant rewrite uses compact retry when routine-mix buy copy buries
     assert.equal(rewrite.llm_used, true);
     assert.equal(rewrite.reason, null);
     assert.match(prompts[1], /Fix required: Start the first sentence with the lead product name/);
+    assert.match(prompts[1], /best first buy because/);
     assert.match(prompts[1], /"prompt_profile":"compact_timeout_retry"/);
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();

@@ -51587,6 +51587,7 @@ function buildCompactRecoAssistantPromptLines({
   if (requestMode === 'buy') {
     lines.push('Use direct shopping advice tone.');
     lines.push('Start the first sentence with the lead product name.');
+    lines.push('The first sentence must use direct buy/pick language, ideally: "<lead product name> is your best first buy because ...".');
   } else if (requestMode === 'use_first') {
     lines.push('Use starting-point advice tone.');
     lines.push('Start with the lead product name and explain why it is the first step.');
@@ -51619,7 +51620,7 @@ function describeRecoAssistantRewriteFailureReason(reason) {
     return 'Start the first sentence with the lead product name, then give the buy recommendation and reason.';
   }
   if (normalized === 'rewrite_buy_lead_not_direct') {
-    return 'Open with a direct buy recommendation that names the lead product in the first sentence.';
+    return 'Open with the exact lead product name and a direct buy line, ideally "<lead product name> is your best first buy because ...".';
   }
   if (normalized === 'rewrite_buy_addon_filler') {
     return 'Do not pad the answer with future routine-building filler.';
@@ -51963,6 +51964,7 @@ function buildRecoAssistantRewritePrompt({
       'Address the user_request directly and respond to the user\'s real complaint first.',
       'If request_mode is "buy", use direct shopping advice tone.',
       'If request_mode is "buy", start the first sentence with the lead product name rather than a generic concern summary.',
+      'If request_mode is "buy", the first sentence must use direct buy/pick language, ideally: "<lead product name> is your best first buy because ...".',
       'If request_mode is "buy" and there is one selected product, the first sentence must directly recommend that product by name.',
       'If request_mode is "buy" and selected_product_role_mix is "same_role_comparison", the first sentence must name the best first buy and signal that the remaining picks are same-slot comparison options.',
       'If request_mode is "buy" and selected_product_role_mix is "routine_mix", the first sentence must name the best first buy and frame the remaining picks as routine add-ons from other roles; only same-role products may be same-slot alternatives.',
@@ -52133,7 +52135,9 @@ function assistantTextHasDirectBuyLead(text, names) {
   const lead = String(text || '').trim();
   if (!lead) return false;
   const mentionsSelectedProduct = assistantTextMentionsAny(lead, names);
-  const usesBuyLanguage = /\b(buy|buying|pick|choose|get|go with|recommend|recommended)\b/i.test(lead)
+  const usesBuyLanguage = /\b(buy|buying|pick|picks|choose|get|go with|recommend|recommended|recommendation)\b/i.test(lead)
+    || /\b(top|lead|first|best)\s+(pick|choice|option|buy)\b/i.test(lead)
+    || /\b(best|strongest|most direct)\s+(fit|match|option|choice)\b/i.test(lead)
     || /(买|购买|入手|下单|推荐)/i.test(lead);
   const opensWithUseFirstLanguage = /\b(start with|start\b)\b/i.test(lead) || /(先用|先从)/i.test(lead);
   return mentionsSelectedProduct && usesBuyLanguage && !opensWithUseFirstLanguage;
