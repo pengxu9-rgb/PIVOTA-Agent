@@ -7362,7 +7362,7 @@ test('fetchRecoAlternativesForProduct: open_world_only grounds unresolved search
         assert.equal(out.alternatives[0]?.metadata?.name_only_copy_sanitized, undefined);
         assert.deepEqual(
           out.alternatives[0]?.reasons,
-          ['Targets oiliness and uneven tone with the same hero active.'],
+          ['Targets oiliness with the same hero active.'],
         );
         assert.deepEqual(
           out.alternatives[0]?.tradeoff_notes,
@@ -8123,6 +8123,113 @@ test('fetchRecoAlternativesForProduct: open_world_only preserves reviewed highli
           out.alternatives[0]?.pivota_insights?.why_it_stands_out?.[0]?.body,
           'Multiple shoppers mention the ultra-light fluid finish.',
         );
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        axios.get = originalGet;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('fetchRecoAlternativesForProduct: open_world_only filters off-target visible claims on grounded rows', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      GEMINI_API_KEY: 'test_gemini_key',
+      AURORA_DIAG_FORCE_GEMINI: 'true',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED: 'false',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      axios.get = async (url) => {
+        if (!isProductsSearchUrl(url)) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: 'ext_lrp_anthelios',
+                merchant_id: 'external_seed',
+                brand: 'La Roche-Posay',
+                name: 'Anthelios AOX Antioxidant Serum SPF 50',
+                display_name: 'Anthelios AOX Antioxidant Serum SPF 50',
+                product_type: 'Sunscreen',
+                category: 'Sunscreen',
+                compare_highlights: [
+                  'Lightweight serum sunscreen texture.',
+                  'Improves the look of fine lines and dark spots.',
+                ],
+              },
+            ],
+          },
+        };
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { __internal } = routeModule;
+        __internal.__setCallGeminiJsonObjectForTest(async () => ({
+          ok: true,
+          json: {
+            alternatives: [
+              {
+                brand: 'La Roche-Posay',
+                name: 'Anthelios AOX Antioxidant Serum SPF 50',
+                product_type: 'sunscreen',
+                similarity_score: 82,
+                reasons: ['Serum sunscreen alternative for daily UV protection.'],
+                tradeoff_notes: ['Also talks about dark spots in catalog copy.'],
+              },
+            ],
+          },
+        }));
+
+        const out = await __internal.fetchRecoAlternativesForProduct({
+          ctx: {
+            lang: 'EN',
+            request_id: 'req_open_world_filtered_highlights',
+            trace_id: 'trace_open_world_filtered_highlights',
+          },
+          profileSummary: null,
+          recentLogs: [],
+          productInput: 'The Ordinary UV Filters SPF 45 Serum',
+          productObj: {
+            brand: 'The Ordinary',
+            name: 'UV Filters SPF 45 Serum',
+            product_type: 'sunscreen',
+            category: 'Sunscreen',
+            role_scope: 'daily_sunscreen',
+            claims: ['daily sunscreen'],
+          },
+          anchorId: '',
+          maxTotal: 3,
+          candidatePool: [],
+          logger: null,
+          options: {
+            recommendation_mode: 'open_world_only',
+            profile_mode: 'anchor_only',
+            disable_fallback: true,
+            disable_synthetic_local_fallback: true,
+            ignore_selector_candidates: true,
+            skip_anchor_precheck: true,
+          },
+        });
+
+        assert.equal(out.alternatives[0]?.grounding_status, 'catalog_verified');
+        assert.deepEqual(out.alternatives[0]?.compare_highlights, ['Lightweight serum sunscreen texture.']);
+        assert.deepEqual(out.alternatives[0]?.tradeoff_notes || [], []);
+        assert.equal(out.alternatives[0]?.metadata?.off_target_visible_claims_filtered, true);
       } finally {
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
         loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();

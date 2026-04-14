@@ -51733,7 +51733,7 @@ function buildRecoAssistantPromptPriceDiagnostics(items = []) {
 }
 
 const RECO_ASSISTANT_CONCERN_FAMILY_PATTERNS = Object.freeze([
-  ['oil_control', /\b(oil|oily|shine|sebum|greasy|mattif|zinc\s*pca|zinc)\b/i],
+  ['oil_control', /\b(oil|oily|oiliness|shine|sebum|greasy|mattif|zinc\s*pca|zinc)\b/i],
   ['tone_brightening', /\b(dull(?:ness)?|uneven\s+tone|dark\s+spots?|hyperpigmentation|brighten(?:ing)?|radiance|radiant|glow)\b/i],
   ['acne_pore', /\b(acne|breakouts?|blemish(?:es)?|clog(?:ged)?|pores?)\b/i],
   ['hydration_barrier', /\b(hydrat(?:e|ing|ion)?|moistur(?:e|ize|izer|izing)?|barrier|dry(?:ness)?|dehydrat(?:ed|ion)?|ceramides?|glycerin|hyaluronic)\b/i],
@@ -65507,6 +65507,16 @@ function buildRecoAlternativesTargetSignals(product, { productInput = '', lang =
     productInput,
   );
   const brand = pickFirstTrimmed(row.brand, row.manufacturer, sku.brand, sku.manufacturer);
+  const roleScope = pickFirstTrimmed(
+    row.role_scope,
+    row.selected_target_id,
+    row.matched_role_id,
+    row.matchedRoleId,
+    sku.role_scope,
+    sku.selected_target_id,
+    sku.matched_role_id,
+    sku.matchedRoleId,
+  );
   const keyFeatureSignals = collectRecoPromptTextList(
     [
       ...(Array.isArray(row.key_features) ? row.key_features : []),
@@ -65697,8 +65707,10 @@ function buildRecoAlternativesTargetSignals(product, { productInput = '', lang =
     category,
     productType,
     usageRole,
+    roleScope: roleScope || null,
     heroIngredients,
     knownActives,
+    explicitClaims,
     primaryClaims,
     textureHints,
     notes,
@@ -67494,8 +67506,123 @@ function maybeApplyOpenWorldAlternativeVisibleCopy(row, { targetSignals = null }
   };
 }
 
+function shouldDropRecoAlternativeOffTargetVisibleClaim(value, { targetSignals = null } = {}) {
+  const text = String(value || '').trim();
+  if (!text) return false;
+  const targetText = [
+    targetSignals?.roleScope,
+    targetSignals?.usageRole,
+    targetSignals?.productType,
+    targetSignals?.category,
+    ...(Array.isArray(targetSignals?.explicitClaims) ? targetSignals.explicitClaims : []),
+    ...(Array.isArray(targetSignals?.heroIngredients) ? targetSignals.heroIngredients : []),
+    ...(Array.isArray(targetSignals?.knownActives) ? targetSignals.knownActives : []),
+  ].filter(Boolean).join(' ');
+  const allowedFamilies = collectRecoAssistantConcernFamilies(targetText);
+  if (!allowedFamilies.size) return false;
+  const claimFamilies = collectRecoAssistantConcernFamilies(text);
+  if (!claimFamilies.size) return false;
+  const hasUnallowedToneClaim =
+    !allowedFamilies.has('tone_brightening') &&
+    /\b(dull(?:ness)?|uneven\s+tone|dark\s+spots?|hyperpigmentation|brighten(?:ing)?|radiance|radiant|glow)\b/i.test(text);
+  if (hasUnallowedToneClaim) return true;
+  const hasUnallowedAgingClaim =
+    !allowedFamilies.has('aging_texture') &&
+    /\b(wrinkles?|fine\s+lines?|aging|anti[-\s]?aging|roughness|retinol|retinoid)\b/i.test(text);
+  return hasUnallowedAgingClaim;
+}
+
+function redactRecoAlternativeOffTargetVisibleClaim(value, { targetSignals = null } = {}) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  const targetText = [
+    targetSignals?.roleScope,
+    targetSignals?.usageRole,
+    targetSignals?.productType,
+    targetSignals?.category,
+    ...(Array.isArray(targetSignals?.explicitClaims) ? targetSignals.explicitClaims : []),
+    ...(Array.isArray(targetSignals?.heroIngredients) ? targetSignals.heroIngredients : []),
+    ...(Array.isArray(targetSignals?.knownActives) ? targetSignals.knownActives : []),
+  ].filter(Boolean).join(' ');
+  const allowedFamilies = collectRecoAssistantConcernFamilies(targetText);
+  const claimFamilies = collectRecoAssistantConcernFamilies(text);
+  const hasAllowedFamily = Array.from(claimFamilies).some((family) => allowedFamilies.has(family));
+  if (!hasAllowedFamily) {
+    return shouldDropRecoAlternativeOffTargetVisibleClaim(text, { targetSignals }) ? '' : text;
+  }
+  let next = text;
+  if (!allowedFamilies.has('tone_brightening')) {
+    const toneTerms = 'dull(?:ness)?|uneven\\s+tone|dark\\s+spots?|hyperpigmentation|brighten(?:ing)?|radiance|radiant|glow';
+    next = next
+      .replace(new RegExp(`\\s+(?:and|or|plus)\\s+(?:${toneTerms})\\b`, 'gi'), '')
+      .replace(new RegExp(`\\b(?:${toneTerms})\\s+(?:and|or|plus)\\s+`, 'gi'), '')
+      .replace(new RegExp(`\\s*,\\s*(?:${toneTerms})\\b`, 'gi'), '');
+  }
+  if (!allowedFamilies.has('aging_texture')) {
+    const agingTerms = 'wrinkles?|fine\\s+lines?|aging|anti[-\\s]?aging|roughness|retinol|retinoid';
+    next = next
+      .replace(new RegExp(`\\s+(?:and|or|plus)\\s+(?:${agingTerms})\\b`, 'gi'), '')
+      .replace(new RegExp(`\\b(?:${agingTerms})\\s+(?:and|or|plus)\\s+`, 'gi'), '')
+      .replace(new RegExp(`\\s*,\\s*(?:${agingTerms})\\b`, 'gi'), '');
+  }
+  next = next
+    .replace(/\s+([.,;:!?])/g, '$1')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  if (!next) return '';
+  if (shouldDropRecoAlternativeOffTargetVisibleClaim(next, { targetSignals })) return '';
+  const redactedFamilies = collectRecoAssistantConcernFamilies(next);
+  const stillHasAllowedFamily = Array.from(redactedFamilies).some((family) => allowedFamilies.has(family));
+  return stillHasAllowedFamily ? next : '';
+}
+
+function filterRecoAlternativeOffTargetVisibleCopy(row, { targetSignals = null } = {}) {
+  const item = isPlainObject(row) ? row : null;
+  if (!item) return row;
+  const next = { ...item };
+  let droppedCount = 0;
+  const filterField = (field, max = 4) => {
+    const original = asStringArray(next[field], max);
+    if (!original.length) return;
+    const filtered = [];
+    let changedCount = 0;
+    for (const value of original) {
+      const redacted = redactRecoAlternativeOffTargetVisibleClaim(value, { targetSignals });
+      if (!redacted) {
+        changedCount += 1;
+        continue;
+      }
+      if (redacted !== value) changedCount += 1;
+      filtered.push(redacted);
+    }
+    droppedCount += changedCount;
+    if (filtered.length) next[field] = filtered;
+    else delete next[field];
+  };
+  filterField('reasons', 4);
+  filterField('compare_highlights', 5);
+  filterField('tradeoff_notes', 4);
+  if (!Array.isArray(next.reasons) || !next.reasons.length) {
+    const role = pickFirstTrimmed(targetSignals?.usageRole, targetSignals?.productType, targetSignals?.category);
+    if (role) next.reasons = [`Same ${String(role).replace(/_/g, ' ').toLowerCase()} step as the anchor.`];
+  }
+  if (droppedCount <= 0) return item;
+  return {
+    ...next,
+    metadata: {
+      ...(item.metadata && typeof item.metadata === 'object' && !Array.isArray(item.metadata) ? item.metadata : {}),
+      off_target_visible_claims_filtered: true,
+      off_target_visible_claims_dropped: droppedCount,
+    },
+  };
+}
+
 function applyOpenWorldAlternativeVisibleCopy(rows, { targetSignals = null } = {}) {
-  return (Array.isArray(rows) ? rows : []).map((row) => maybeApplyOpenWorldAlternativeVisibleCopy(row, { targetSignals }));
+  return (Array.isArray(rows) ? rows : []).map((row) =>
+    filterRecoAlternativeOffTargetVisibleCopy(
+      maybeApplyOpenWorldAlternativeVisibleCopy(row, { targetSignals }),
+      { targetSignals },
+    ));
 }
 
 function isCatalogVerifiedRecoAlternative(row) {

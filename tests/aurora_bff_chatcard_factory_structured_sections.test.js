@@ -437,6 +437,45 @@ describe('aurora chatCardFactory structured sections for adapter inputs', () => 
     expect(() => ChatCardSchema.parse(cards[0])).not.toThrow();
   });
 
+  test('recommendations card prefers target-aligned why copy over off-target product description claims', () => {
+    const cards = mapLegacyCardToSpecCards(
+      {
+        type: 'recommendations',
+        card_id: 'legacy_recommendations_off_target_copy',
+        payload: {
+          recommendation_meta: {
+            selected_target_ids: ['oil_control_treatment'],
+            ranked_targets: [
+              {
+                target_id: 'oil_control_treatment',
+                target_label: 'Oil-control treatment',
+              },
+            ],
+          },
+          recommendations: [
+            {
+              product_id: 'prod_niacinamide',
+              merchant_id: 'merchant_niacinamide',
+              brand: 'The Ordinary',
+              name: 'Niacinamide 10% + Zinc 1%',
+              matched_role_id: 'oil_control_treatment',
+              matched_role_label: 'Oil-control treatment',
+              why_this_one: 'This serum targets dullness and uneven tone.',
+              best_for: ['Best for excess oil and mid-day shine'],
+              key_features: ['Oil-control support', 'Zinc 1%'],
+              price: { amount: 12, currency: 'USD', unknown: false },
+            },
+          ],
+        },
+      },
+      { requestId: 'req_card_factory_off_target_copy', language: 'EN', index: 0 },
+    );
+
+    const product = cards[0].payload.sections[0].products[0];
+    expect(product.why_this_one).toMatch(/excess oil|mid-day shine|oil-control/i);
+    expect(product.why_this_one).not.toMatch(/dullness|uneven tone/i);
+  });
+
   test('offers_resolved shares the rich product row contract and mirrors it into payload.sections', () => {
     const cards = mapLegacyCardToSpecCards(
       {
