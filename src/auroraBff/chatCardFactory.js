@@ -186,6 +186,55 @@ function buildRecommendationComparisonMode({ row, defaultComparisonMode = '', pe
   return 'routine_mix';
 }
 
+const RECOMMENDATION_CARD_CONCERN_FAMILY_PATTERNS = Object.freeze([
+  ['oil_control', /\b(oil|oily|oiliness|shine|sebum|greasy|mattif|zinc\s*pca|zinc|oil[-\s]?control)\b/i],
+  ['tone_brightening', /\b(dull(?:ness)?|uneven\s+tone|dark\s+spots?|hyperpigmentation|brighten(?:ing)?|radiance|radiant|glow)\b/i],
+  ['acne_pore', /\b(acne|breakouts?|blemish(?:es)?|clog(?:ged)?|pores?)\b/i],
+  ['hydration_barrier', /\b(hydrat(?:e|ing|ion)?|moistur(?:e|ize|izer|izing)?|barrier|dry(?:ness)?|dehydrat(?:ed|ion)?|ceramides?|glycerin|hyaluronic)\b/i],
+  ['sunscreen_uv', /\b(spf|sunscreen|sun\s*screen|uv|sun\s+protection|white\s+cast|broad\s+spectrum)\b/i],
+  ['sensitivity_redness', /\b(redness|sensitive|sensitized|sooth(?:e|ing)?|calm(?:ing)?|irritat(?:e|ion)|stinging?)\b/i],
+  ['aging_texture', /\b(wrinkles?|fine\s+lines?|aging|anti[-\s]?aging|texture|roughness|retinol|retinoid)\b/i],
+]);
+
+function collectRecommendationCardConcernFamilies(value) {
+  const text = String(value || '').trim();
+  const families = new Set();
+  if (!text) return families;
+  for (const [family, pattern] of RECOMMENDATION_CARD_CONCERN_FAMILY_PATTERNS) {
+    if (pattern.test(text)) families.add(family);
+  }
+  return families;
+}
+
+function scoreRecommendationCardCopyForTarget(value, { targetText = '', originalIndex = 0 } = {}) {
+  const text = String(value || '').trim();
+  if (!text) return Number.NEGATIVE_INFINITY;
+  const targetFamilies = collectRecommendationCardConcernFamilies(targetText);
+  const copyFamilies = collectRecommendationCardConcernFamilies(text);
+  let score = 100 - (Number.isFinite(Number(originalIndex)) ? Number(originalIndex) * 0.01 : 0);
+  if (!targetFamilies.size || !copyFamilies.size) return score;
+  for (const family of copyFamilies) {
+    score += targetFamilies.has(family) ? 24 : -34;
+  }
+  if (copyFamilies.has('tone_brightening') && !targetFamilies.has('tone_brightening')) score -= 28;
+  return score;
+}
+
+function pickTargetAlignedRecommendationCardCopy(values = [], { targetText = '' } = {}) {
+  const candidates = normalizeStringList(values, 10);
+  if (!candidates.length) return '';
+  return candidates
+    .map((value, index) => ({
+      value,
+      score: scoreRecommendationCardCopyForTarget(value, { targetText, originalIndex: index }),
+    }))
+    .sort((left, right) => {
+      const scoreDiff = Number(right.score || 0) - Number(left.score || 0);
+      if (scoreDiff !== 0) return scoreDiff;
+      return candidates.indexOf(left.value) - candidates.indexOf(right.value);
+    })[0]?.value || candidates[0] || '';
+}
+
 function flattenRecommendationProductSource(raw) {
   const row = isPlainObject(raw) ? raw : {};
   const sku = isPlainObject(row.sku) ? row.sku : {};
@@ -352,11 +401,6 @@ function normalizeRecommendationProductCard(raw, options = {}) {
     row.key_features || row.keyFeatures || row.actives || row.key_ingredients || row.keyIngredients,
     6,
   );
-  const whyThisOne =
-    asString(row.why_this_one) ||
-    asString(row.reason) ||
-    asString(row.short_description) ||
-    asString(row.shortDescription);
   const comparisonMode = buildRecommendationComparisonMode({
     row,
     defaultComparisonMode,
@@ -367,6 +411,26 @@ function normalizeRecommendationProductCard(raw, options = {}) {
     asString(row.matchedRoleLabel) ||
     asString(roleLabelById.get(matchedRoleId)) ||
     humanizeRoleId(matchedRoleId);
+  const whyThisOne = pickTargetAlignedRecommendationCardCopy(
+    [
+      row.why_this_one,
+      row.whyThisOne,
+      row.reason,
+      ...bestFor,
+      ...keyFeatures,
+      row.short_description,
+      row.shortDescription,
+    ],
+    {
+      targetText: [
+        matchedRoleId,
+        matchedRoleLabel,
+        ...bestFor,
+        ...keyFeatures,
+        asString(row.category) || asString(row.step) || asString(row.routine_slot),
+      ].join(' '),
+    },
+  );
   const selfKey = recommendationProductIdentityKey(row);
   const sameRoleCandidates = matchedRoleId
     ? asRecordArray(peerCandidatesByRoleId.get(matchedRoleId), 12).filter((candidate) => {
