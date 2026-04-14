@@ -2309,6 +2309,19 @@ function buildDiscoveryBrandScopedQuery(request) {
   return buildDiscoveryQueryTerms([primaryBrand, queryText], 2).join(' ').trim();
 }
 
+function getExplicitDiscoveryQueryText(request) {
+  return buildDiscoverySearchPhraseSet([request?.query?.text], 1)[0] || '';
+}
+
+function isExplicitQueryScopedBrowseRequest(request) {
+  return (
+    request?.surface === 'browse_products' &&
+    Boolean(getExplicitDiscoveryQueryText(request)) &&
+    !hasBrandScope(request) &&
+    !hasDiscoveryCategoryScope(request)
+  );
+}
+
 function buildDiscoveryInterestQuery(request, profile) {
   if (profile?.dominantDomain === 'beauty') {
     return buildBeautyPersonalizedQueries(request, profile).primary;
@@ -2413,7 +2426,7 @@ function buildDiscoverySeededBrowseQuery(request, profile) {
 
 function buildDiscoveryProviderQueries(request, profile) {
   const brandQuery = buildDiscoveryBrandScopedQuery(request);
-  const explicitQuery = buildDiscoverySearchPhraseSet([request?.query?.text], 1)[0] || '';
+  const explicitQuery = getExplicitDiscoveryQueryText(request);
   const withExplicitQuery = (queries = [], limit = 4) =>
     explicitQuery
       ? buildDiscoverySearchPhraseSet([explicitQuery, ...(Array.isArray(queries) ? queries : [queries])], limit)
@@ -2421,6 +2434,10 @@ function buildDiscoveryProviderQueries(request, profile) {
 
   if (Array.isArray(request?.scope?.brand_names) && request.scope.brand_names.length > 0) {
     return withExplicitQuery([brandQuery], 3);
+  }
+
+  if (isExplicitQueryScopedBrowseRequest(request)) {
+    return [explicitQuery];
   }
 
   if (!profile?.hasInterestSignals) {
@@ -4698,6 +4715,10 @@ function resolveExternalSeedProviderLimit(request, safeLimit) {
 }
 
 function buildExternalSeedProviderQueries(request, profile, queries = []) {
+  const explicitQuery = getExplicitDiscoveryQueryText(request);
+  if (explicitQuery && isExplicitQueryScopedBrowseRequest(request)) {
+    return [explicitQuery];
+  }
   const prioritized = prioritizeDiscoveryRecallQueries(queries);
   if (!prioritized.length) return [];
   if (!profile?.hasInterestSignals) return prioritized.slice(0, 2);
@@ -5162,13 +5183,25 @@ async function loadCatalogCandidates({
     );
   } else {
     try {
-      const externalResult = await fetchExternalSeedCandidates({
-        request,
-        profile,
-        queries: externalProviderQueries,
-        limit: externalProviderLimit,
-        fetchFn: providerOverrides?.external_seeds || null,
-      });
+      const externalResult = isExplicitQueryScopedBrowseRequest(request)
+        ? await fetchBeautyInterestExternalSeedFastpathCandidates({
+            request,
+            profile,
+            queries: externalProviderQueries,
+            limit: externalProviderLimit,
+            fetchFn: providerOverrides?.external_seeds || null,
+            providerName: 'external_seeds',
+            productProvider: 'external_seeds',
+            stepName: 'external_seed_pool',
+            label: 'external_seed_pool',
+          })
+        : await fetchExternalSeedCandidates({
+            request,
+            profile,
+            queries: externalProviderQueries,
+            limit: externalProviderLimit,
+            fetchFn: providerOverrides?.external_seeds || null,
+          });
       const normalizedExternalResult = {
         provider: 'external_seeds',
         products: externalResult.products,
