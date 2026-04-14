@@ -61,7 +61,7 @@ describe('pdpBuilder structured PDP modules', () => {
     expect(urls.some((url) => url.includes('plpbanner'))).toBe(false);
   });
 
-  test('emits additive beauty modules from structured ingredient fields without duplicating legacy product_details', () => {
+  test('emits additive beauty modules from structured ingredient fields and carries brand story separately', () => {
     const payload = buildPdpPayload({
       product: {
         product_id: 'p_structured_1',
@@ -119,13 +119,18 @@ describe('pdpBuilder structured PDP modules', () => {
       expect.objectContaining({
         title: 'How to use',
         raw_text: 'Massage onto clean skin. Use twice daily.',
-        steps: ['Massage onto clean skin', 'Use twice daily.'],
+        steps: ['Massage onto clean skin.', 'Use twice daily.'],
       }),
     );
 
     const factHeadings = factsModule?.data?.sections?.map((section) => section.heading) || [];
-    expect(factHeadings).toEqual(['Clinical Results', 'Brand Story']);
-    expect(detailsModule).toBeFalsy();
+    expect(factHeadings).toEqual(['Clinical Results']);
+    expect(detailsModule?.data?.sections).toEqual([
+      expect.objectContaining({
+        heading: 'Description',
+        content: 'A barrier-supporting cream designed for dry, reactive skin.',
+      }),
+    ]);
     expect(factHeadings).not.toContain('Ingredients');
     expect(factHeadings).not.toContain('How to Use');
   });
@@ -174,5 +179,52 @@ describe('pdpBuilder structured PDP modules', () => {
       }),
     ]);
     expect(findModule(payload, 'product_details')).toBeFalsy();
+  });
+
+  test('merges merchant FAQ and review-derived questions into reviews preview', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'p_reviews_faq',
+        merchant_id: 'external_seed',
+        title: 'Glow Replenishing Rice Milk',
+        image_url: 'https://cdn.example.com/rice-milk.jpg',
+        price: { amount: 14.4, currency: 'USD' },
+        pdp_faq_items: [
+          {
+            question: 'Can I use this every day?',
+            answer: 'Yes, it is gentle enough for daily use.',
+            source_kind: 'merchant_faq',
+          },
+        ],
+        review_summary: {
+          scale: 5,
+          rating: 4.7,
+          review_count: 126,
+          preview_items: [
+            {
+              review_id: 'r1',
+              title: 'Can I use this every day?',
+              text: 'Yes, I use it morning and night and it stays lightweight.',
+            },
+            {
+              review_id: 'r2',
+              title: 'Can I use this every day?',
+              text: 'Yes, I use it every day and it feels gentle on oily skin.',
+            },
+          ],
+        },
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    expect(findModule(payload, 'reviews_preview')?.data?.questions).toEqual([
+      expect.objectContaining({
+        question: 'Can I use this every day?',
+        answer: 'Yes, it is gentle enough for daily use.',
+        source: 'merchant_faq',
+        source_label: 'Official FAQ',
+      }),
+    ]);
   });
 });

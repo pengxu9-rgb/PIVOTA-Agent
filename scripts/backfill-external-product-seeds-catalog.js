@@ -276,12 +276,33 @@ function sanitizeSeedImageUrls(values) {
   return out;
 }
 
+function normalizeDetailSectionHeading(value) {
+  const heading = normalizeNonEmptyString(value);
+  if (!heading) return '';
+  if (/^(?:product details?|details?|about(?: the product)?|description)$/i.test(heading)) return 'Details';
+  if (/^(?:benefits?|why it works|what it does|why we love it)$/i.test(heading)) return 'Benefits';
+  if (/^(?:key ingredients?|highlight(?:ed)? ingredients?|ingredients story)$/i.test(heading)) {
+    return 'Key Ingredients';
+  }
+  if (/^(?:clinical(?: results?| claims?)?|results?|proven results?)$/i.test(heading)) {
+    return 'Clinical Results';
+  }
+  if (/^(?:how to use|how to apply|directions?|usage)$/i.test(heading)) return 'How to Use';
+  if (/^(?:ingredients?|ingredients and safety|ingredient list|full ingredients?|full ingredient list|inci)$/i.test(heading)) {
+    return 'Ingredients';
+  }
+  if (/^(?:faq|frequently asked questions?|q(?:uestions)?\s*&\s*a|questions?)$/i.test(heading)) {
+    return 'FAQ';
+  }
+  return heading;
+}
+
 function normalizeDetailsSections(value, maxItems = 24) {
   const items = Array.isArray(value) ? value : [];
   const out = [];
   const seen = new Set();
   for (const item of items) {
-    const heading = normalizeNonEmptyString(item?.heading);
+    const heading = normalizeDetailSectionHeading(item?.heading);
     const body = normalizeNonEmptyString(item?.body);
     const sourceKind = normalizeNonEmptyString(item?.source_kind || item?.sourceKind) || 'unknown';
     if (!heading || !body) continue;
@@ -292,6 +313,36 @@ function normalizeDetailsSections(value, maxItems = 24) {
       heading,
       body,
       source_kind: sourceKind,
+    });
+    if (out.length >= Math.max(1, Number(maxItems) || 24)) break;
+  }
+  return out;
+}
+
+function normalizeFaqItems(value, maxItems = 24) {
+  const items = Array.isArray(value) ? value : [];
+  const out = [];
+  const seen = new Set();
+  for (const item of items) {
+    const question = normalizeNonEmptyString(item?.question)
+      .replace(/^(?:q(?:uestion)?\s*[:/-]\s*)/i, '')
+      .trim();
+    const answer = normalizeNonEmptyString(item?.answer)
+      .replace(/^(?:a(?:nswer)?\s*[:/-]\s*)/i, '')
+      .trim();
+    const sourceKind = normalizeNonEmptyString(item?.source_kind || item?.sourceKind) || 'merchant_faq';
+    const sourceUrl = normalizeUrlLike(item?.source_url || item?.sourceUrl);
+    const sourceTitle = normalizeNonEmptyString(item?.source_title || item?.sourceTitle);
+    if (!question || !answer) continue;
+    const key = `${question.toLowerCase()}|${answer.toLowerCase()}|${sourceKind.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      question,
+      answer,
+      source_kind: sourceKind,
+      ...(sourceUrl ? { source_url: sourceUrl } : {}),
+      ...(sourceTitle ? { source_title: sourceTitle } : {}),
     });
     if (out.length >= Math.max(1, Number(maxItems) || 24)) break;
   }
@@ -332,6 +383,7 @@ function deriveFieldCaptureStatus(reportedStatus, fields) {
     ingredients_raw: normalizeNonEmptyString(fields?.ingredients_raw),
     active_ingredients_raw: normalizeNonEmptyString(fields?.active_ingredients_raw),
     how_to_use_raw: normalizeNonEmptyString(fields?.how_to_use_raw),
+    faq_items: Array.isArray(fields?.faq_items) ? fields.faq_items : [],
   };
 
   if (truthyFields.description_raw) next.description_raw = 'present';
@@ -339,6 +391,7 @@ function deriveFieldCaptureStatus(reportedStatus, fields) {
   if (truthyFields.ingredients_raw) next.ingredients_raw = 'present';
   if (truthyFields.active_ingredients_raw) next.active_ingredients_raw = 'present';
   if (truthyFields.how_to_use_raw) next.how_to_use_raw = 'present';
+  if (truthyFields.faq_items.length > 0) next.faq_items = 'present';
 
   return Object.keys(next).length > 0 ? next : null;
 }
@@ -562,6 +615,9 @@ function comparableSeedData(value) {
     ...(Array.isArray(next.pdp_details_sections)
       ? { pdp_details_sections: normalizeDetailsSections(next.pdp_details_sections) }
       : {}),
+    ...(Array.isArray(next.pdp_faq_items)
+      ? { pdp_faq_items: normalizeFaqItems(next.pdp_faq_items) }
+      : {}),
     ...(Array.isArray(next.variants) ? { variants: normalizeSeedVariants(next, null) } : {}),
     ingredient_intel: {
       ...rootIngredientIntel,
@@ -575,6 +631,9 @@ function comparableSeedData(value) {
       extracted_at: null,
       ...(Array.isArray(snapshot.pdp_details_sections)
         ? { pdp_details_sections: normalizeDetailsSections(snapshot.pdp_details_sections) }
+        : {}),
+      ...(Array.isArray(snapshot.pdp_faq_items)
+        ? { pdp_faq_items: normalizeFaqItems(snapshot.pdp_faq_items) }
         : {}),
       ...(Array.isArray(snapshot.variants) ? { variants: normalizeSeedVariants(snapshot, null) } : {}),
       ingredient_intel: {
@@ -692,6 +751,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   const pdpIngredientsRaw = normalizeNonEmptyString(representativeProduct?.ingredients_raw);
   const pdpActiveIngredientsRaw = normalizeNonEmptyString(representativeProduct?.active_ingredients_raw);
   const pdpHowToUseRaw = normalizeNonEmptyString(representativeProduct?.how_to_use_raw);
+  const pdpFaqItems = normalizeFaqItems(representativeProduct?.faq_items);
   const nextPdpDescriptionRaw =
     productDescriptionRaw ||
     normalizeNonEmptyString(seedData.pdp_description_raw || snapshot.pdp_description_raw);
@@ -712,6 +772,14 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   const nextPdpHowToUseRaw =
     pdpHowToUseRaw ||
     normalizeNonEmptyString(seedData.pdp_how_to_use_raw || snapshot.pdp_how_to_use_raw);
+  const nextPdpFaqItems =
+    pdpFaqItems.length > 0
+      ? pdpFaqItems
+      : normalizeFaqItems(
+          Array.isArray(seedData.pdp_faq_items) && seedData.pdp_faq_items.length > 0
+            ? seedData.pdp_faq_items
+            : snapshot.pdp_faq_items,
+        );
   const pdpFieldCaptureStatus = deriveFieldCaptureStatus(
     normalizeFieldCaptureStatus(representativeProduct?.field_capture_status) ||
       normalizeFieldCaptureStatus(seedData.pdp_field_capture_status) ||
@@ -722,6 +790,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
       ingredients_raw: nextPdpIngredientsRaw,
       active_ingredients_raw: nextPdpActiveIngredientsRaw,
       how_to_use_raw: nextPdpHowToUseRaw,
+      faq_items: nextPdpFaqItems,
     },
   );
   const suppressStaleDescriptionFallback =
@@ -790,6 +859,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     ...(nextPdpIngredientsRaw ? { pdp_ingredients_raw: nextPdpIngredientsRaw } : {}),
     ...(nextPdpActiveIngredientsRaw ? { pdp_active_ingredients_raw: nextPdpActiveIngredientsRaw } : {}),
     ...(nextPdpHowToUseRaw ? { pdp_how_to_use_raw: nextPdpHowToUseRaw } : {}),
+    ...(nextPdpFaqItems.length > 0 ? { pdp_faq_items: nextPdpFaqItems } : {}),
     ...(selectedVariantId ? { selected_variant_id: selectedVariantId, default_variant_id: selectedVariantId } : {}),
     ...(selectedVariantTitle && !isDefaultVariantTitle(selectedVariantTitle) ? { variant_title: selectedVariantTitle } : {}),
     ...(nextDescriptionOrigin ? { seed_description_origin: nextDescriptionOrigin } : {}),
@@ -820,6 +890,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     ...(nextPdpIngredientsRaw ? { pdp_ingredients_raw: nextPdpIngredientsRaw } : {}),
     ...(nextPdpActiveIngredientsRaw ? { pdp_active_ingredients_raw: nextPdpActiveIngredientsRaw } : {}),
     ...(nextPdpHowToUseRaw ? { pdp_how_to_use_raw: nextPdpHowToUseRaw } : {}),
+    ...(nextPdpFaqItems.length > 0 ? { pdp_faq_items: nextPdpFaqItems } : {}),
     ...(selectedVariantId ? { selected_variant_id: selectedVariantId, default_variant_id: selectedVariantId } : {}),
     ...(selectedVariantTitle && !isDefaultVariantTitle(selectedVariantTitle) ? { variant_title: selectedVariantTitle } : {}),
     ...(nextDescriptionOrigin ? { seed_description_origin: nextDescriptionOrigin } : {}),

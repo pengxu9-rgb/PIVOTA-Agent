@@ -350,6 +350,13 @@ describe('backfill-external-product-seeds-catalog', () => {
             ingredients_raw: 'Titanium Dioxide 3.4%, Zinc Oxide 14.37%',
             active_ingredients_raw: 'Titanium Dioxide, Zinc Oxide',
             how_to_use_raw: 'Apply before sun exposure.',
+            faq_items: [
+              {
+                question: 'Can I wear this every day?',
+                answer: 'Yes, apply before sun exposure as part of your daytime routine.',
+                source_kind: 'merchant_faq',
+              },
+            ],
             field_capture_status: {
               description_raw: 'present',
               details_sections: 'present',
@@ -370,12 +377,34 @@ describe('backfill-external-product-seeds-catalog', () => {
     expect(payload.nextRow.seed_data.pdp_ingredients_raw).toBe('Titanium Dioxide 3.4%, Zinc Oxide 14.37%');
     expect(payload.nextRow.seed_data.pdp_active_ingredients_raw).toBe('Titanium Dioxide, Zinc Oxide');
     expect(payload.nextRow.seed_data.pdp_how_to_use_raw).toBe('Apply before sun exposure.');
+    expect(payload.nextRow.seed_data.pdp_faq_items).toEqual([
+      {
+        question: 'Can I wear this every day?',
+        answer: 'Yes, apply before sun exposure as part of your daytime routine.',
+        source_kind: 'merchant_faq',
+      },
+    ]);
     expect(payload.nextRow.seed_data.seed_description_origin).toBe('pdp_product_description');
+    expect(payload.nextRow.seed_data.pdp_field_capture_status).toEqual({
+      description_raw: 'present',
+      details_sections: 'present',
+      ingredients_raw: 'present',
+      active_ingredients_raw: 'present',
+      how_to_use_raw: 'present',
+      faq_items: 'present',
+    });
     expect(payload.nextRow.seed_data.snapshot.pdp_details_sections).toEqual([
       {
         heading: 'Ingredients',
         body: 'Titanium Dioxide 3.4%, Zinc Oxide 14.37%',
         source_kind: 'accordion_ingredients',
+      },
+    ]);
+    expect(payload.nextRow.seed_data.snapshot.pdp_faq_items).toEqual([
+      {
+        question: 'Can I wear this every day?',
+        answer: 'Yes, apply before sun exposure as part of your daytime routine.',
+        source_kind: 'merchant_faq',
       },
     ]);
   });
