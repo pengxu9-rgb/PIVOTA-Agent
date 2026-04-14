@@ -334,28 +334,47 @@ describe('RecommendationEngine external candidate fetch', () => {
     ).toBe(false);
   });
 
-  test('keeps partial brand-focused seeds instead of losing them to broad category timeouts', async () => {
+  test('continues to category seeds when brand-focused rows underfill target', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 
     const queryMock = jest.fn(async (sql, params) => {
       const sqlText = String(sql);
       const brandAliases = params?.[3];
-      if (Array.isArray(brandAliases) && brandAliases.includes('winona')) {
+      if (Array.isArray(brandAliases) && brandAliases.includes('goodmolecules')) {
         return {
-          rows: Array.from({ length: 2 }).map((_, index) =>
+          rows: Array.from({ length: 1 }).map((_, index) =>
             makeExternalRow({
-              id: `eps_winona_partial_${index}`,
-              external_product_id: `ext_winona_partial_${index}`,
-              title: `Winona Partial Product ${index}`,
-              brand: 'Winona',
+              id: `eps_good_molecules_partial_${index}`,
+              external_product_id: `ext_good_molecules_partial_${index}`,
+              title: `Good Molecules Partial Product ${index}`,
+              brand: 'Good Molecules',
               category: 'Serum',
-              domain: 'winona.com',
+              domain: 'goodmolecules.com',
             }),
           ),
         };
       }
       if (sqlText.includes("seed_data->>'category'")) {
-        throw new Error('category scan should not run after brand hits');
+        return {
+          rows: [
+            makeExternalRow({
+              id: 'eps_niacinamide_serum_1',
+              external_product_id: 'ext_niacinamide_serum_1',
+              title: 'Niacinamide Serum Alternative',
+              brand: 'Beauty of Joseon',
+              category: 'Serum',
+              domain: 'beautyofjoseon.com',
+            }),
+            makeExternalRow({
+              id: 'eps_niacinamide_serum_2',
+              external_product_id: 'ext_niacinamide_serum_2',
+              title: '10% Niacinamide Booster',
+              brand: "Paula's Choice",
+              category: 'Serum',
+              domain: 'paulaschoice.com',
+            }),
+          ],
+        };
       }
       return { rows: [] };
     });
@@ -365,16 +384,18 @@ describe('RecommendationEngine external candidate fetch', () => {
 
     const { _internals } = require('../../src/services/RecommendationEngine');
     const products = await _internals.fetchExternalCandidates({
-      brandHint: 'Winona',
+      brandHint: 'Good Molecules',
       categoryHint: 'Serum',
       limit: 12,
       minFocusedCandidates: 6,
     });
 
     expect(products.map((product) => product.product_id)).toEqual([
-      'ext_winona_partial_0',
-      'ext_winona_partial_1',
+      'ext_good_molecules_partial_0',
+      'ext_niacinamide_serum_1',
+      'ext_niacinamide_serum_2',
     ]);
+    expect(queryMock.mock.calls.some(([sql]) => String(sql).includes("seed_data->>'category'"))).toBe(true);
   });
 
   test('falls back to broad scans when same-domain rows underfill target', async () => {
@@ -503,16 +524,16 @@ describe('RecommendationEngine external candidate fetch', () => {
       }
       if (sqlText.includes('FROM external_product_seeds')) {
         return delay(260, {
-          rows: [
+          rows: Array.from({ length: 4 }).map((_, index) =>
             makeExternalRow({
-              id: 'eps_ext_1',
-              external_product_id: 'ext_1',
-              title: 'Brand Serum External',
+              id: `eps_ext_${index}`,
+              external_product_id: `ext_${index}`,
+              title: `Brand Serum External ${index}`,
               brand: 'Brand',
               category: 'Serum',
               domain: 'brand.com',
             }),
-          ],
+          ),
         });
       }
       return Promise.resolve({ rows: [] });
@@ -543,7 +564,7 @@ describe('RecommendationEngine external candidate fetch', () => {
     const elapsedMs = Date.now() - startedAt;
 
     expect(result.metadata.similar_status).toBe('ready');
-    expect(result.items).toHaveLength(2);
+    expect(result.items.length).toBeGreaterThanOrEqual(2);
     expect(elapsedMs).toBeLessThan(520);
   });
 

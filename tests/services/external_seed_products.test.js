@@ -151,6 +151,90 @@ describe('externalSeedProducts helper', () => {
     ]);
   });
 
+  test('uses explicit variant query params when external seed options are SKU-only', () => {
+    const row = {
+      id: 'eps_good_molecules_niacinamide',
+      external_product_id: 'ext_good_molecules_niacinamide',
+      canonical_url: 'https://www.goodmolecules.com/products/niacinamide-serum',
+      destination_url: 'https://v1.goodmolecules.com/products/niacinamide-serum?Size=30ml&Option=Single',
+      domain: 'v1.goodmolecules.com',
+      title: 'Niacinamide Serum',
+      price_amount: 6,
+      price_currency: 'USD',
+      seed_data: {
+        brand: 'Good Molecules',
+        snapshot: {
+          variants: [
+            {
+              id: '0d95bc75608b',
+              sku: '62835',
+              url: 'https://v1.goodmolecules.com/products/niacinamide-serum?Size=30ml&Option=Single',
+              option_name: 'Offer',
+              option_value: '62835',
+              price: '6.00',
+              currency: 'USD',
+              stock: 'In Stock',
+            },
+            {
+              id: 'dd900dd84932',
+              sku: '62835-2',
+              url: 'https://v1.goodmolecules.com/products/niacinamide-serum?Size=30ml&Option=2-Pack',
+              option_name: 'Offer',
+              option_value: '62835-2',
+              price: '12.00',
+              currency: 'USD',
+              stock: 'In Stock',
+            },
+            {
+              id: 'd61150ebb38e',
+              sku: '74080',
+              deep_link:
+                'https://v1.goodmolecules.com/products/niacinamide-serum?Size=75ml&Option=Single&utm_source=pivota',
+              option_name: 'Offer',
+              option_value: '74080',
+              price: '12.00',
+              currency: 'USD',
+              stock: 'In Stock',
+            },
+          ],
+        },
+      },
+    };
+
+    const product = buildExternalSeedProduct(row);
+
+    expect(product.selected_variant_id).toBe('0d95bc75608b');
+    expect(product.variants[0]).toEqual(
+      expect.objectContaining({
+        variant_id: '0d95bc75608b',
+        sku: '62835',
+        title: '30ml / Single',
+        options: [
+          { name: 'Size', value: '30ml' },
+          { name: 'Option', value: 'Single' },
+        ],
+      }),
+    );
+    expect(product.variants[1]).toEqual(
+      expect.objectContaining({
+        title: '30ml / 2-Pack',
+        options: [
+          { name: 'Size', value: '30ml' },
+          { name: 'Option', value: '2-Pack' },
+        ],
+      }),
+    );
+    expect(product.variants[2]).toEqual(
+      expect.objectContaining({
+        title: '75ml / Single',
+        options: [
+          { name: 'Size', value: '75ml' },
+          { name: 'Option', value: 'Single' },
+        ],
+      }),
+    );
+  });
+
   test('infers selected variant from destination url variant token for external seeds', () => {
     const row = {
       id: 'eps_guerlain_variant_1',
