@@ -94,6 +94,8 @@ const DISCOVERY_EXTERNAL_SEED_REQUIRED_INDEXES = [
   'idx_external_product_seeds_recall_ingredient_tokens_trgm',
   'idx_external_product_seeds_recall_alias_tokens_trgm',
 ];
+const DISCOVERY_EXTERNAL_SEED_INDEXED_RECALL_CATEGORY_SQL =
+  "lower(coalesce(seed_data->'derived'->'recall'->>'category', ''))";
 const DISCOVERY_PROVIDER_ORDER = [
   'beauty_interest_mainline',
   'products_search',
@@ -4221,7 +4223,6 @@ function buildExternalSeedTitlePositiveSql(stageBind, recallTerms, options = {})
   const includeSummary = options?.includeSummary === true;
   return `(
     ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${patternBind}::text[])
-    OR lower(coalesce(title, '')) LIKE ANY(${patternBind}::text[])
     ${includeSummary ? `OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${patternBind}::text[])` : ''}
   )`;
 }
@@ -4234,8 +4235,7 @@ function buildExternalSeedConjunctionSql(stageBind, recallTerms) {
       const bind = stageBind(`%${normalizeText(token)}%`);
       return `(
         ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ${bind}
-        OR lower(coalesce(title, '')) LIKE ${bind}
-        OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} LIKE ${bind}
+        OR ${DISCOVERY_EXTERNAL_SEED_INDEXED_RECALL_CATEGORY_SQL} LIKE ${bind}
       )`;
     })
     .join(' AND ');
@@ -4270,7 +4270,7 @@ function buildCompoundBeautySeedStageDefinitions(recallTerms, safeLimit) {
           const categoryClauses = [];
           if (hairCategoryTerms.length > 0) {
             categoryClauses.push(
-              `${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} = ANY(${stageBind(hairCategoryTerms)}::text[])`,
+              `${DISCOVERY_EXTERNAL_SEED_INDEXED_RECALL_CATEGORY_SQL} = ANY(${stageBind(hairCategoryTerms)}::text[])`,
             );
           }
           if (verticalTerms.length > 0) {
@@ -4298,7 +4298,6 @@ function buildCompoundBeautySeedStageDefinitions(recallTerms, safeLimit) {
         const patternBind = stageBind(exactPatterns);
         return `(
           ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${patternBind}::text[])
-          OR lower(coalesce(title, '')) LIKE ANY(${patternBind}::text[])
         )`;
       },
     });
@@ -4310,7 +4309,7 @@ function buildCompoundBeautySeedStageDefinitions(recallTerms, safeLimit) {
       stage: 'recall_compound_primary_category',
       cap: stageCap,
       buildWhereSql: (stageBind) =>
-        `${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} = ANY(${stageBind(primaryCategoryTerms)}::text[])`,
+        `${DISCOVERY_EXTERNAL_SEED_INDEXED_RECALL_CATEGORY_SQL} = ANY(${stageBind(primaryCategoryTerms)}::text[])`,
     });
   }
 
@@ -4325,7 +4324,7 @@ function buildCompoundBeautySeedStageDefinitions(recallTerms, safeLimit) {
         });
         if (!positiveSql) return '';
         return `(
-          ${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} = ANY(${stageBind(weakCategoryTerms)}::text[])
+          ${DISCOVERY_EXTERNAL_SEED_INDEXED_RECALL_CATEGORY_SQL} = ANY(${stageBind(weakCategoryTerms)}::text[])
           AND ${positiveSql}
         )`;
       },
