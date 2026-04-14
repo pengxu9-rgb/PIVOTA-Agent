@@ -6246,9 +6246,15 @@ test('fetchRecoAlternativesForProduct: grounded sunscreen pool ranks texture-ali
     async () => {
       const axios = require('axios');
       const originalGet = axios.get;
-      axios.get = async (url) => {
+      const seenQueries = [];
+      axios.get = async (url, config = {}) => {
         if (!isProductsSearchUrl(url)) {
           throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        const queryText = String(config?.params?.q || config?.params?.query || config?.params?.text || '').trim();
+        seenQueries.push(queryText);
+        if (!/^sunscreen$/i.test(queryText)) {
+          return { status: 200, data: { products: [] } };
         }
         return {
           status: 200,
@@ -6673,9 +6679,15 @@ test('fetchRecoAlternativesForProduct: grounded pool folds promo and subscriptio
     async () => {
       const axios = require('axios');
       const originalGet = axios.get;
-      axios.get = async (url) => {
+      const seenQueries = [];
+      axios.get = async (url, config = {}) => {
         if (!isProductsSearchUrl(url)) {
           throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        const queryText = String(config?.params?.q || config?.params?.query || config?.params?.text || '').trim();
+        seenQueries.push(queryText);
+        if (!/^sunscreen$/i.test(queryText)) {
+          return { status: 200, data: { products: [] } };
         }
         return {
           status: 200,
@@ -6867,9 +6879,15 @@ test('fetchRecoAlternativesForProduct: sunscreen titles beat seed category drift
     async () => {
       const axios = require('axios');
       const originalGet = axios.get;
-      axios.get = async (url) => {
+      const seenQueries = [];
+      axios.get = async (url, config = {}) => {
         if (!isProductsSearchUrl(url)) {
           throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        const queryText = String(config?.params?.q || config?.params?.query || config?.params?.text || '').trim();
+        seenQueries.push(queryText);
+        if (!/^sunscreen$/i.test(queryText)) {
+          return { status: 200, data: { products: [] } };
         }
         return {
           status: 200,
@@ -6958,8 +6976,8 @@ test('fetchRecoAlternativesForProduct: sunscreen titles beat seed category drift
             category: 'sunscreen',
             role_scope: 'daily_sunscreen_finish_fit',
             selected_target_id: 'daily_sunscreen_finish_fit',
-            key_features: ['Matte finish', 'Serum sunscreen', 'Daily UV protection'],
-            short_description: 'A matte serum sunscreen for oily-skin routines.',
+            key_features: ['Ceramide NP', 'Niacinamide', 'Zinc PCA', 'Vitamin C (Ascorbic acid)'],
+            description: 'Oil-controlling, non-greasy sunscreen with Oat Extract and Zinc PCA for oily and acne-prone skin.',
           },
           anchorId: 'ext_skintific_matte_fit',
           maxTotal: 3,
@@ -6977,6 +6995,7 @@ test('fetchRecoAlternativesForProduct: sunscreen titles beat seed category drift
         assert.equal(geminiCalled, false);
         assert.equal(out?.compare_meta?.open_world_status, 'skipped_sufficient_pool');
         assert.equal(out?.compare_meta?.pool_recall_status, 'full');
+        assert.ok(seenQueries.slice(0, 3).some((query) => /^sunscreen$/i.test(String(query || ''))));
         const names = out.alternatives.map((row) => String(row?.product?.name || row?.name || ''));
         assert.equal(out.alternatives.length, 3);
         assert.ok(names.some((name) => /Moisture Airyfit Daily Sunscreen/i.test(name)));
@@ -9260,6 +9279,21 @@ test('buildExternalSeedCompareSearchQueries: avoids duplicate role queries and p
       lang: 'EN',
     });
     assert.ok(thinSunscreenQueries.slice(0, 3).some((item) => /^sunscreen$/i.test(String(item || ''))));
+    const productionLikeSunscreenQueries = __internal.buildExternalSeedCompareSearchQueries({
+      productObj: {
+        brand: 'SKINTIFIC',
+        name: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+        category: 'sunscreen',
+        product_type: 'sunscreen',
+        role_scope: 'daily_sunscreen_finish_fit',
+        key_features: ['Ceramide NP', 'Niacinamide', 'Zinc PCA', 'Vitamin C (Ascorbic acid)'],
+        description: 'Oil-controlling, non-greasy sunscreen with Oat Extract and Zinc PCA for oily and acne-prone skin.',
+      },
+      productInput: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+      lang: 'EN',
+    });
+    assert.ok(productionLikeSunscreenQueries.slice(0, 3).some((item) => /^sunscreen$/i.test(String(item || ''))));
+    assert.equal(productionLikeSunscreenQueries.slice(0, 3).some((item) => /^niacinamide sunscreen$/i.test(String(item || ''))), false);
     const thinSunscreenLocalSeedRole = __internal.buildRecoAlternativesLocalSeedSearchRole({
       roleScope: 'daily_sunscreen_finish_fit',
       usageRole: 'unknown',
