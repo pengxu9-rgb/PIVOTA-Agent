@@ -52406,9 +52406,7 @@ async function maybeRewriteRecoAssistantTextWithLlm({
       };
     };
 
-    const preferCompactPrimaryAttempt =
-      secondaryTargets.length === 0
-      && selectedProductRoleMix !== 'routine_mix';
+    const preferCompactPrimaryAttempt = recommendations.length <= 3;
     const minimumCompactRetryWindowMs = 1400;
     const compactOutputTokenCap = selectedProductRoleMix === 'same_role_comparison' ? 180 : 220;
     const preferredPrimaryTimeoutCapMs =

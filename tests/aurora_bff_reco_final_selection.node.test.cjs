@@ -987,6 +987,7 @@ test('reco assistant rewrite uses compact retry when routine-mix buy copy buries
     assert.equal(callCount, 2);
     assert.equal(rewrite.llm_used, true);
     assert.equal(rewrite.reason, null);
+    assert.match(prompts[0], /"prompt_profile":"compact_timeout_retry"/);
     assert.match(prompts[1], /Fix required: Start the first sentence with the lead product name/);
     assert.match(prompts[1], /best first buy because/);
     assert.match(prompts[1], /"prompt_profile":"compact_timeout_retry"/);
