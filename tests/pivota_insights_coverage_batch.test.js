@@ -15,9 +15,11 @@ describe('pivota_insights_coverage_batch', () => {
     expect(args.frontendPaths).toEqual(['/products']);
     expect(args.manualOverrides).toBe('scripts/fixtures/product_intel_manual_overrides.json');
     expect(args.coveredReviewMode).toBe('strict_human');
+    expect(args.strictReview).toBe(true);
     expect(args.limit).toBe(40);
     expect(args.excludeCovered).toBe(true);
     expect(args.skipGemini).toBe(true);
+    expect(args.model).toBe('gemini-3-flash-preview');
   });
 
   test('parses explicit product ids for manual expansion batches', () => {
@@ -120,6 +122,38 @@ describe('pivota_insights_coverage_batch', () => {
           },
         ],
       },
+    });
+  });
+
+  test('rejects strict-review baseline_only rows', () => {
+    const packet = buildReviewPacket({
+      rows: [
+        {
+          case_id: 'strict_reject_case',
+          selected: {
+            selected_mode: 'baseline_only',
+            bundle: {
+              canonical_product_ref: {
+                merchant_id: 'external_seed',
+                product_id: 'ext_reject',
+              },
+              evidence_profile: 'seller_only',
+              quality_state: 'limited',
+            },
+          },
+        },
+      ],
+    });
+
+    expect(packet.meta.report_cases).toBe(1);
+    expect(packet.meta.strict_review).toBe(true);
+    expect(packet.meta.pending).toBe(0);
+    expect(packet.rows[0]).toMatchObject({
+      case_id: 'strict_reject_case',
+      review_status: 'rejected',
+      review_decision: 'reject',
+      decision: 'reject',
+      rejection_reason: 'Strict review policy requires non-baseline selected mode',
     });
   });
 });

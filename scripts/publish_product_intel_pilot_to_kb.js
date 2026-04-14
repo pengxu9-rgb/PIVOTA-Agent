@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 
 const { upsertProductIntelKbEntry } = require('../src/auroraBff/productIntelKbStore');
-const { query } = require('../src/db');
+const { closePool, query } = require('../src/db');
 const { PRODUCT_INTEL_CONTRACT_VERSION } = require('../src/pdpProductIntel');
 const {
   deriveReviewContractFromReportRow,
@@ -67,6 +67,8 @@ function buildKbEntriesForRow(row) {
   if (!productId) return [];
   const reviewContract = deriveReviewContractFromReportRow(row);
   if (!reviewContract.approved) return [];
+  const selectedMode = asString(row?.selected?.selected_mode);
+  if (selectedMode === 'baseline_only') return [];
 
   const sourceMeta = {
     case_id: asString(row.case_id),
@@ -166,10 +168,17 @@ async function main() {
 }
 
 if (require.main === module) {
-  main().catch((err) => {
-    process.stderr.write(`${err && err.stack ? err.stack : String(err)}\n`);
-    process.exit(1);
-  });
+  main()
+    .catch((err) => {
+      process.stderr.write(`${err && err.stack ? err.stack : String(err)}\n`);
+      process.exitCode = 1;
+    })
+    .finally(async () => {
+      await closePool().catch(() => {});
+      if (process.exitCode && process.exitCode !== 0) {
+        process.exit(process.exitCode);
+      }
+    });
 }
 
 module.exports = {

@@ -23,9 +23,10 @@ function parseArgs(argv) {
     excludeCovered: true,
     requireBadgeEvidence: false,
     skipGemini: false,
-    model: String(process.env.PIVOTA_PRODUCT_INTEL_MODEL || 'gemini-3-pro-preview'),
+    model: String(process.env.PIVOTA_PRODUCT_INTEL_MODEL || 'gemini-3-flash-preview'),
     maxPerBrand: 3,
     maxPerCategory: 4,
+    strictReview: true,
   };
 
   for (let i = 2; i < argv.length; i += 1) {
@@ -90,6 +91,8 @@ function parseArgs(argv) {
       out.requireBadgeEvidence = true;
     } else if (token === '--skip-gemini') {
       out.skipGemini = true;
+    } else if (token === '--allow-baseline-only') {
+      out.strictReview = false;
     } else if (token === '--model' && next) {
       out.model = String(next);
       i += 1;
@@ -179,26 +182,35 @@ function runNodeScript(scriptPath, args, options = {}) {
   });
 }
 
-function buildReviewPacket(compareReport) {
+function buildReviewPacket(compareReport, options = {}) {
+  const strictReview = options.strictReview !== false;
   const rows = toList(compareReport?.rows);
   const packetRows = rows.map((row) => {
     const bundle = row?.selected?.bundle || {};
     const product = bundle?.canonical_product_ref || row?.baseline?.canonical_product_ref || {};
     const core = bundle?.product_intel_core || {};
     const shoppingCard = bundle?.shopping_card || {};
+    const selectedMode = asString(row?.selected?.selected_mode);
+    const strictRejection = strictReview && selectedMode === 'baseline_only';
+    const reviewStatus = strictRejection ? 'rejected' : 'pending';
+    const reviewDecision = strictRejection ? 'reject' : 'pending';
+    const rejectionReason = strictRejection
+      ? 'Strict review policy requires non-baseline selected mode'
+      : '';
+
     return {
       case_id: asString(row?.case_id),
       product_ref: {
         merchant_id: asString(product.merchant_id),
         product_id: asString(product.product_id),
       },
-      review_status: 'pending',
+      review_status: reviewStatus,
       reviewer: '',
       reviewer_kind: '',
       reviewed_at: '',
-      decision: 'pending',
-      review_decision: 'pending',
-      rejection_reason: '',
+      decision: reviewDecision,
+      review_decision: reviewDecision,
+      rejection_reason: rejectionReason,
       notes: '',
       selected_mode: asString(row?.selected?.selected_mode),
       field_sources: row?.selected?.field_sources || {},
@@ -248,7 +260,8 @@ function buildReviewPacket(compareReport) {
     meta: {
       generated_at: new Date().toISOString(),
       report_cases: packetRows.length,
-      pending: packetRows.length,
+      pending: packetRows.filter((item) => asString(item.review_status) === 'pending').length,
+      strict_review: strictReview,
     },
     rows: packetRows,
   };
@@ -335,7 +348,7 @@ async function runCoverageBatch(rawArgs = {}) {
   });
 
   const compareReport = readJson(compareJsonPath);
-  const reviewPacket = buildReviewPacket(compareReport);
+  const reviewPacket = buildReviewPacket(compareReport, { strictReview: args.strictReview });
   writeJson(reviewPath, reviewPacket);
 
   return {
