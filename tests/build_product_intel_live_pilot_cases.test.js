@@ -452,6 +452,56 @@ describe('build_product_intel_live_pilot_cases', () => {
     });
   });
 
+  test('builds product intel cases from nested canonical PDP modules and drops truncated descriptions', () => {
+    const response = {
+      subject: {
+        canonical_product_ref: {
+          merchant_id: 'external_seed',
+          product_id: 'ext_daily_tinted',
+        },
+      },
+      modules: [
+        {
+          type: 'canonical',
+          data: {
+            pdp_payload: {
+              product: {
+                title: 'Daily Tinted Fluid Sunscreen DN350',
+                brand: { name: 'Beauty of Joseon' },
+                category_path: ['external'],
+                description:
+                  'Meet the Tint + SPF You’ll Actually Wear Naturally radiant, this tinted fluid sunscreen feels like ski…',
+              },
+              modules: [
+                {
+                  type: 'how_to_use',
+                  data: {
+                    title: 'How to use',
+                    steps: ['Shake well before use.', 'Apply as the last morning skin-care step.'],
+                  },
+                },
+                {
+                  type: 'ingredients_inci',
+                  data: {
+                    items: ['Zinc Oxide', 'Glycerin'],
+                  },
+                },
+              ],
+            },
+          },
+        },
+      ],
+    };
+
+    const row = buildPilotCaseFromPdpResponse(response);
+
+    expect(row.product.description).toBe('');
+    expect(row.product.how_to_use).toBe(
+      'Shake well before use. Apply as the last morning skin-care step.',
+    );
+    expect(row.product.ingredients_inci).toEqual(['Zinc Oxide', 'Glycerin']);
+  });
+
   test('extracts review summary from reviews_preview module', () => {
     expect(
       extractReviewsPreviewSummary({

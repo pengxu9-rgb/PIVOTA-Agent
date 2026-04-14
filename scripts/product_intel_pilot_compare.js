@@ -745,6 +745,14 @@ function isLikelyIncompleteNarrativeText(value) {
   );
 }
 
+function cleanProductDescriptionForIntel(value) {
+  const cleaned = cleanProductText(value);
+  if (!cleaned) return '';
+  if (/…$|\.\.\.$/.test(cleaned)) return '';
+  if (isLikelyIncompleteNarrativeText(cleaned)) return '';
+  return cleaned;
+}
+
 function buildCompactHighlightHeadline(headlineValue, fallbackValue, maxLength = 96) {
   const source = cleanProductText(headlineValue) || cleanProductText(fallbackValue);
   if (!source) return '';
@@ -775,7 +783,7 @@ function buildProductContext(caseRow) {
     brand: asString(product.brand),
     title: asString(product.title || product.name),
     category: asString(product.category || product.product_type),
-    description: cleanProductText(product.description),
+    description: cleanProductDescriptionForIntel(product.description),
     ingredients: toList(product.ingredients_inci || product.ingredients),
     tags: toList(product.tags),
   };
@@ -804,7 +812,7 @@ function buildFactsPack(caseRow, baselineDraft) {
     brand: asString(product.brand),
     category: asString(product.category || product.product_type),
     source_url: asString(product.url || product.product_url || product.canonical_url || product.external_url),
-    description: cleanProductText(product.description),
+    description: cleanProductDescriptionForIntel(product.description),
     tags: toList(product.tags),
     texture: asString(product.texture),
     finish: asString(product.finish),

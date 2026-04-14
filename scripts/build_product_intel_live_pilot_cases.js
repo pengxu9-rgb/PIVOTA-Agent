@@ -221,6 +221,20 @@ function toList(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function normalizeProductIntelDescription(value) {
+  const text = asString(value).replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  if (/…$|\.\.\.$/.test(text)) return '';
+  if (
+    /\b(?:a|an|the|and|or|of|in|to|with|without|while|featuring|including|into|for|from|by|as|that|visible|support|supports|target|targets|provide|provides|deliver|delivers|improve|improves|reduce|reduces|calm|calms|derived|based|skin|ski)$/i.test(
+      text.replace(/[.!?;,:\s]+$/g, ''),
+    )
+  ) {
+    return '';
+  }
+  return text;
+}
+
 function toFiniteNumber(value) {
   const num = Number(value);
   return Number.isFinite(num) ? num : null;
@@ -392,9 +406,29 @@ function extractDetailsText(detailsModule, pattern) {
   return '';
 }
 
+function extractStructuredModuleText(module) {
+  const data = module?.data && typeof module.data === 'object' ? module.data : {};
+  const direct = asString(data.raw_text || data.rawText || data.text || data.body || data.content);
+  if (direct) return direct;
+  const items = [
+    ...asArray(data.steps),
+    ...asArray(data.items),
+    ...asArray(data.ingredients_inci),
+    ...asArray(data.ingredients),
+  ]
+    .map((item) => asString(item?.inci || item?.name || item?.text || item))
+    .filter(Boolean);
+  return items.join(' ');
+}
+
+function extractCanonicalPayload(response) {
+  const canonicalModule = findModule(response?.modules, 'canonical');
+  return canonicalModule?.data?.pdp_payload || null;
+}
+
 function extractCanonicalProduct(response) {
   const canonicalModule = findModule(response?.modules, 'canonical');
-  return canonicalModule?.data?.pdp_payload?.product || canonicalModule?.data?.product || null;
+  return extractCanonicalPayload(response)?.product || canonicalModule?.data?.product || null;
 }
 
 function extractReviewsPreviewSummary(response) {
@@ -597,8 +631,16 @@ function buildPilotCaseFromPdpResponse(response, seedCase) {
   const product = extractCanonicalProduct(response);
   if (!product || !canonicalRef?.product_id) return null;
 
-  const detailsModule = findModule(response?.modules, 'product_details');
-  const ingredientsModule = findModule(response?.modules, 'ingredients_inci');
+  const canonicalPayloadModules = asArray(extractCanonicalPayload(response)?.modules);
+  const detailsModule =
+    findModule(response?.modules, 'product_details') ||
+    findModule(canonicalPayloadModules, 'product_details');
+  const ingredientsModule =
+    findModule(response?.modules, 'ingredients_inci') ||
+    findModule(canonicalPayloadModules, 'ingredients_inci');
+  const howToUseModule =
+    findModule(response?.modules, 'how_to_use') ||
+    findModule(canonicalPayloadModules, 'how_to_use');
   const intelModule = findModule(response?.modules, 'product_intel');
   const productIntel = intelModule?.data || {};
   const reviewsPreviewSummary = extractReviewsPreviewSummary(response);
@@ -607,10 +649,13 @@ function buildPilotCaseFromPdpResponse(response, seedCase) {
   const brand = normalizeBrandName(product.brand);
   const categoryPath = asArray(product.category_path).map((item) => asString(item)).filter(Boolean);
   const category = categoryPath.length ? categoryPath.join('/') : asString(product.category || product.product_type);
-  const howToUse = extractDetailsText(detailsModule, /how to use|directions/i);
+  const howToUse =
+    extractStructuredModuleText(howToUseModule) ||
+    extractDetailsText(detailsModule, /how to use|directions/i);
   const overview = extractDetailsText(detailsModule, /overview|details|description/i);
   const ingredients = asArray(
-    ingredientsModule?.data?.ingredients_inci ||
+    ingredientsModule?.data?.items ||
+      ingredientsModule?.data?.ingredients_inci ||
       ingredientsModule?.data?.ingredients ||
       product.ingredients_inci ||
       product.ingredients,
@@ -653,7 +698,10 @@ function buildPilotCaseFromPdpResponse(response, seedCase) {
       brand: brand || asString(seedProduct.brand),
       title: asString(product.title || product.name) || asString(seedProduct.title),
       category: category || asString(seedProduct.category),
-      description: asString(product.description || overview) || asString(seedProduct.description),
+      description:
+        normalizeProductIntelDescription(product.description) ||
+        normalizeProductIntelDescription(overview) ||
+        normalizeProductIntelDescription(seedProduct.description),
       tags: mergeLists(seedProduct.tags, categoryPath),
       texture: asString(product.texture),
       finish: asString(product.finish),
@@ -726,12 +774,14 @@ function buildPilotCaseFromExternalSeedProduct(product, seedCase) {
       brand,
       title: asString(product.title || product.name || seedProduct.title),
       category,
-      description: asString(product.description || seedProduct.description),
+      description:
+        normalizeProductIntelDescription(product.description) ||
+        normalizeProductIntelDescription(seedProduct.description),
       tags: mergeLists(seedProduct.tags, categoryPath, product.alias_tokens, product.ingredient_tokens),
       texture: asString(product.texture || seedProduct.texture),
       finish: asString(product.finish || seedProduct.finish),
       ingredients_inci: ingredients,
-      how_to_use: asString(product.how_to_use || product.usage || seedProduct.how_to_use),
+      how_to_use: asString(product.how_to_use || product.pdp_how_to_use_raw || product.usage || seedProduct.how_to_use),
       ...(sourceUrl ? { source_url: sourceUrl } : {}),
       review_summary: normalizedReviewSummary,
       ...(normalizedCommunitySignals ? { community_signals: normalizedCommunitySignals } : {}),

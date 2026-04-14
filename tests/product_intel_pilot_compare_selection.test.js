@@ -3,12 +3,31 @@ const {
   mergeGeminiDraftIntoBaseline,
   evaluateGeminiCandidateQuality,
   buildSelectedBundle,
+  buildFactsPack,
   applyManualOverrideToSelected,
   buildShoppingCardPayload,
   normalizeGeminiDraftOutput,
 } = require('../scripts/product_intel_pilot_compare');
 
 describe('product_intel pilot compare selection', () => {
+  test('drops truncated PDP narrative descriptions from Gemini facts packs', () => {
+    const facts = buildFactsPack({
+      case_id: 'live_ext_daily_tinted',
+      product: {
+        title: 'Daily Tinted Fluid Sunscreen DN350',
+        category: 'external',
+        description:
+          'Meet the Tint + SPF You’ll Actually Wear Naturally radiant, this tinted fluid sunscreen feels like ski…',
+        how_to_use: 'Shake well before use.',
+        ingredients_inci: ['Zinc Oxide'],
+      },
+    });
+
+    expect(facts.description).toBe('');
+    expect(facts.how_to_use).toBe('Shake well before use.');
+    expect(facts.ingredients_inci).toEqual(['Zinc Oxide']);
+  });
+
   test('keeps deterministic evidence fields and suppresses fake community output', () => {
     const caseRow = {
       case_id: 'pilot_naturium_dew_glow_spf50',
