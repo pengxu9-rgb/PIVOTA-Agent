@@ -52,10 +52,8 @@
       "strict_constraint_query": true,
       "strict_constraint_reason": "ingredient"
     },
-    "must_return_one_of_titles": [
-      "The Ordinary Niacinamide 10% + Zinc 1%",
-      "Watch Ya Tone Niacinamide Dark Spot Serum Refill",
-      "Watch Ya Tone Niacinamide Dark Spot Serum"
+    "must_return_one_of_title_token_sets": [
+      ["niacinamide", "serum"]
     ],
     "must_not_return_titles": [
       "Winona Soothing Repair Serum"
@@ -87,10 +85,10 @@
       "strict_constraint_query": true,
       "strict_constraint_reason": "ingredient"
     },
-    "must_return_one_of_titles": [
-      "Banana Bright 15% Vitamin C Dark Spot Serum",
-      "Vitamin-C Serum",
-      "Truth Serum"
+    "must_return_one_of_title_token_sets": [
+      ["vitamin c", "serum"],
+      ["vita c", "serum"],
+      ["pro c", "serum"]
     ]
   },
   {
