@@ -402,6 +402,9 @@ test('reco assistant rewrite uses minimal thinking for gemini 3 structured outpu
     });
 
     assert.equal(capturedArgs?.thinkingLevel, 'minimal');
+    assert.ok(capturedArgs?.queueTimeoutMs > 0);
+    assert.ok(capturedArgs?.queueTimeoutMs < capturedArgs?.timeoutMs);
+    assert.equal(capturedArgs?.upstreamTimeoutMs, capturedArgs.timeoutMs - capturedArgs.queueTimeoutMs);
     assert.equal(rewrite.llm_used, true);
     assert.match(String(rewrite.text || ''), /GoalSkin Oil Control Serum/);
   } finally {

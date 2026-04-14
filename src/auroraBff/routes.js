@@ -25422,7 +25422,6 @@ function withTimeout(promise, timeoutMs, timeoutCode) {
       err.code = timeoutCode || 'TIMEOUT';
       reject(err);
     }, ms);
-    if (timer && typeof timer.unref === 'function') timer.unref();
   });
   return Promise.race([promise, timeoutPromise]).finally(() => {
     if (timer) clearTimeout(timer);
@@ -31977,6 +31976,8 @@ async function callStructuredSummaryJson({
   userPrompt,
   responseSchema,
   timeoutMs,
+  queueTimeoutMs = 0,
+  upstreamTimeoutMs = 0,
   maxOutputTokens,
   route,
   thinkingLevel,
@@ -32024,6 +32025,8 @@ async function callStructuredSummaryJson({
     systemPrompt,
     userPrompt,
     timeoutMs,
+    queueTimeoutMs,
+    upstreamTimeoutMs,
     temperature: 0,
     maxOutputTokens,
     responseSchema,
@@ -52278,6 +52281,25 @@ function shouldRetryRecoAssistantRewrite(reason) {
     || normalized === 'rewrite_failed_alignment_guard';
 }
 
+function splitRecoAssistantRewriteAttemptTimeout(totalMs) {
+  const total = Number.isFinite(Number(totalMs)) ? Math.max(1, Math.trunc(Number(totalMs))) : 0;
+  if (!total) {
+    return { queue_timeout_ms: 0, upstream_timeout_ms: 0 };
+  }
+  const queueTimeoutMs = Math.max(
+    1,
+    Math.min(
+      400,
+      Math.max(220, Math.trunc(total * 0.18)),
+      Math.max(1, total - 250),
+    ),
+  );
+  return {
+    queue_timeout_ms: queueTimeoutMs,
+    upstream_timeout_ms: Math.max(1, total - queueTimeoutMs),
+  };
+}
+
 async function maybeRewriteRecoAssistantTextWithLlm({
   payload,
   language,
@@ -52361,6 +52383,7 @@ async function maybeRewriteRecoAssistantTextWithLlm({
         Number.isFinite(Number(maxOutputTokensOverride)) && Number(maxOutputTokensOverride) > 0
           ? Math.trunc(Number(maxOutputTokensOverride))
           : AURORA_RECO_ASSISTANT_REWRITE_MAX_OUTPUT_TOKENS;
+      const rewriteTimeoutBudget = splitRecoAssistantRewriteAttemptTimeout(effectiveRewriteTimeoutMs);
       const userPromptText = buildRecoAssistantRewritePrompt({
         payload,
         language,
@@ -52377,6 +52400,8 @@ async function maybeRewriteRecoAssistantTextWithLlm({
           ? Math.trunc(Number(timeoutCapMs))
           : null,
         effective_timeout_ms: effectiveRewriteTimeoutMs,
+        queue_timeout_ms: rewriteTimeoutBudget.queue_timeout_ms,
+        upstream_timeout_ms: rewriteTimeoutBudget.upstream_timeout_ms,
         remaining_budget_ms: Number.isFinite(remainingBudgetMs) ? Math.max(0, Math.trunc(remainingBudgetMs)) : null,
         max_output_tokens: effectiveMaxOutputTokens,
         prompt_bytes: Buffer.byteLength(userPromptText, 'utf8'),
@@ -52413,6 +52438,8 @@ async function maybeRewriteRecoAssistantTextWithLlm({
         userPrompt: userPromptText,
         responseSchema: RECO_ASSISTANT_REWRITE_JSON_SCHEMA,
         timeoutMs: effectiveRewriteTimeoutMs,
+        queueTimeoutMs: rewriteTimeoutBudget.queue_timeout_ms,
+        upstreamTimeoutMs: rewriteTimeoutBudget.upstream_timeout_ms,
         maxOutputTokens: effectiveMaxOutputTokens,
         route: 'aurora_reco_assistant_rewrite',
         thinkingLevel: rewriteThinkingLevel,
