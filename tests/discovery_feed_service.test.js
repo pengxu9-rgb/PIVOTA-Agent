@@ -310,12 +310,22 @@ describe('discovery feed service', () => {
     const recallSummaryText = JSON.stringify(response.metadata.rank_debug.recall_summary);
 
     expect(response.products).toHaveLength(12);
-    expect(internalSpy).toHaveBeenCalledTimes(1);
+    expect(internalSpy).not.toHaveBeenCalled();
     expect(externalSpy).toHaveBeenCalledTimes(1);
     expect(externalCall.queries).toEqual(['lip balm']);
     expect(recallSummaryText).not.toMatch(/niacinamide|vitamin c|barrier moisturizer/i);
     expect(response.metadata.provider_breakdown).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({
+          provider: 'products_search',
+          skipped: true,
+          skip_reason: 'explicit_compound_external_seed_mainline',
+        }),
+        expect.objectContaining({
+          provider: 'internal_catalog',
+          skipped: true,
+          skip_reason: 'explicit_compound_external_seed_mainline',
+        }),
         expect.objectContaining({ provider: 'external_seeds', successful: true, returned: 12 }),
       ]),
     );
@@ -324,7 +334,8 @@ describe('discovery feed service', () => {
         expect.objectContaining({
           provider: 'products_search',
           label: 'products_search_pool',
-          failure_reason: 'missing_base_url',
+          skipped: true,
+          skip_reason: 'explicit_compound_external_seed_mainline',
         }),
         expect.objectContaining({
           provider: 'external_seeds',
@@ -401,18 +412,22 @@ describe('discovery feed service', () => {
       },
     );
 
-    expect(nock.isDone()).toBe(true);
+    expect(nock.isDone()).toBe(false);
     expect(externalSpy).toHaveBeenCalledTimes(1);
     expect(internalSpy).not.toHaveBeenCalled();
     expect(response.products).toHaveLength(12);
     expect(response.metadata.provider_breakdown).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ provider: 'products_search', successful: true, returned: 24 }),
+        expect.objectContaining({
+          provider: 'products_search',
+          skipped: true,
+          skip_reason: 'explicit_compound_external_seed_mainline',
+        }),
         expect.objectContaining({ provider: 'external_seeds', successful: true, returned: 12 }),
         expect.objectContaining({
           provider: 'internal_catalog',
           skipped: true,
-          skip_reason: 'sufficient_explicit_query_external_candidates',
+          skip_reason: 'explicit_compound_external_seed_mainline',
         }),
       ]),
     );
@@ -477,7 +492,7 @@ describe('discovery feed service', () => {
     );
 
     expect(externalSpy).toHaveBeenCalledTimes(1);
-    expect(internalSpy).toHaveBeenCalledTimes(1);
+    expect(internalSpy).not.toHaveBeenCalled();
     expect(response.products).toHaveLength(12);
     expect(response.products.every((product) => /hair oil/i.test(product.title))).toBe(true);
     expect(response.metadata.selected_source_breakdown).toEqual(
@@ -496,8 +511,8 @@ describe('discovery feed service', () => {
           provider: 'internal_catalog',
           label: 'internal_catalog_pool',
           query: 'hair oil',
-          returned: 48,
-          status: 200,
+          skipped: true,
+          skip_reason: 'explicit_compound_external_seed_mainline',
         }),
       ]),
     );
@@ -6766,9 +6781,7 @@ describe('discovery feed service', () => {
 	      .fn()
 	      .mockResolvedValueOnce({ rows: requiredColumns })
 	      .mockResolvedValueOnce({ rows: requiredIndexes })
-	      .mockResolvedValueOnce({ rows: junkRows })
-	      .mockResolvedValueOnce({ rows: [] })
-	      .mockResolvedValueOnce({ rows: exactRows });
+	      .mockResolvedValueOnce({ rows: [...junkRows, ...exactRows] });
 	    jest.doMock('../src/db', () => ({
 	      query: dbQueryMock,
 	    }));
@@ -6804,7 +6817,7 @@ describe('discovery feed service', () => {
 
 	      expect(result.products).toHaveLength(24);
 	      expect(result.products.every((product) => /Beauty Oil/.test(product.title))).toBe(true);
-	      expect(dbQueryMock).toHaveBeenCalledTimes(5);
+	      expect(dbQueryMock).toHaveBeenCalledTimes(3);
 	      expect(result.recallSummary[0]).toEqual(
 	        expect.objectContaining({
 	          compound_intent: 'hair_oil',
@@ -6815,13 +6828,8 @@ describe('discovery feed service', () => {
 	      expect(result.recallSummary[0].external_seed_stage_counts).toEqual(
 	        expect.arrayContaining([
 	          expect.objectContaining({
-	            stage: 'recall_compound_exact_title',
-	            raw_rows: 12,
-	            compound_qualified_rows: 0,
-	          }),
-	          expect.objectContaining({
-	            stage: 'recall_compound_weak_category',
-	            raw_rows: 24,
+	            stage: 'recall_compound_hair_oil_main',
+	            raw_rows: 36,
 	            compound_qualified_rows: 24,
 	          }),
 	        ]),
@@ -7039,6 +7047,25 @@ describe('discovery feed service', () => {
       _internals.matchesBeautyCompoundQueryIntent(
         {
           raw: {
+            title: 'Hydrating Recovery Oil',
+            description: 'This ultra-lightweight oil nourishes, brightens and balances skin.',
+            external_seed_recall: {
+              retrieval_title: 'Hydrating Recovery Oil',
+              retrieval_summary: 'This ultra-lightweight oil nourishes, brightens and balances skin.',
+              retrieval_body: 'Supports the skin barrier with botanical oils including jojoba and rosehip.',
+              vertical: 'haircare',
+            },
+          },
+          category: 'external',
+          parentCategory: '',
+        },
+        'hair_oil',
+      ),
+    ).toBe(false);
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
             title: 'Moisturizing Set',
             description: 'Includes an Ultra-Nourishing Lip Balm and dry oil.',
             external_seed_recall: {
@@ -7103,9 +7130,9 @@ describe('discovery feed service', () => {
     const profile = buildDiscoveryProfile(request.context);
     const recallTerms = _internals.buildBeautyInterestRecallTerms(request, profile, ['hair oil']);
     const stages = _internals.buildCompoundBeautySeedStageDefinitions(recallTerms, 120);
-    const weakVerticalStage = stages.find((stage) => stage.stage === 'recall_compound_weak_vertical');
+    const hairOilMainStage = stages.find((stage) => stage.stage === 'recall_compound_hair_oil_main');
     const boundValues = [];
-    const sql = weakVerticalStage.buildWhereSql((value) => {
+    const sql = hairOilMainStage.buildWhereSql((value) => {
       boundValues.push(value);
       return `$${boundValues.length}`;
     });
@@ -7113,6 +7140,130 @@ describe('discovery feed service', () => {
     expect(recallTerms.compoundPositiveTitleTokens).toEqual(expect.arrayContaining(['oil', 'huile']));
     expect(sql).toContain("seed_data->'derived'->'recall'->>'retrieval_summary'");
     expect(boundValues.flat()).toEqual(expect.arrayContaining(['%oil%', '%huile%']));
+  });
+
+  test('hair oil provider preserves full stored recall body for compound filtering', async () => {
+    jest.resetModules();
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = 'postgres://discovery-hair-oil-recall-body-test';
+    const requiredColumns = [
+      { table_name: 'products_cache', column_name: 'id' },
+      { table_name: 'products_cache', column_name: 'merchant_id' },
+      { table_name: 'products_cache', column_name: 'product_data' },
+      { table_name: 'products_cache', column_name: 'expires_at' },
+      { table_name: 'products_cache', column_name: 'cached_at' },
+      { table_name: 'external_product_seeds', column_name: 'id' },
+      { table_name: 'external_product_seeds', column_name: 'external_product_id' },
+      { table_name: 'external_product_seeds', column_name: 'destination_url' },
+      { table_name: 'external_product_seeds', column_name: 'canonical_url' },
+      { table_name: 'external_product_seeds', column_name: 'title' },
+      { table_name: 'external_product_seeds', column_name: 'seed_data' },
+      { table_name: 'external_product_seeds', column_name: 'market' },
+      { table_name: 'external_product_seeds', column_name: 'tool' },
+      { table_name: 'external_product_seeds', column_name: 'status' },
+      { table_name: 'external_product_seeds', column_name: 'attached_product_key' },
+      { table_name: 'external_product_seeds', column_name: 'updated_at' },
+      { table_name: 'external_product_seeds', column_name: 'created_at' },
+    ];
+    const requiredIndexes = [
+      'idx_external_product_seeds_recall_title_trgm',
+      'idx_external_product_seeds_recall_summary_trgm',
+      'idx_external_product_seeds_recall_category_vertical_recency',
+      'idx_external_product_seeds_recall_vertical_recency',
+      'idx_external_product_seeds_recall_ingredient_tokens_trgm',
+      'idx_external_product_seeds_recall_alias_tokens_trgm',
+    ].map((indexname) => ({ tablename: 'external_product_seeds', indexname }));
+    const hairOilRow = {
+      id: 'eps_huile_or_florale',
+      external_product_id: 'ext_huile_or_florale',
+      destination_url: 'https://us.nuxe.com/products/huile-prodigieuse-or-florale-1',
+      canonical_url: 'https://us.nuxe.com/products/huile-prodigieuse-or-florale-1',
+      domain: 'us.nuxe.com',
+      title: 'Huile Prodigieuse® Or Florale',
+      image_url: 'https://cdn.example.com/huile.jpg',
+      price_amount: 34,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      updated_at: '2026-04-12T10:00:00Z',
+      created_at: '2026-04-12T09:00:00Z',
+      seed_brand: 'NUXE',
+      seed_category: '',
+      seed_product_type: '',
+      seed_description:
+        'This shimmering dry oil with natural-origin pearly particles infuses all skin types with an iridescent glow.',
+      seed_recall: {
+        retrieval_title: 'Huile Prodigieuse® Or Florale',
+        retrieval_summary:
+          'This shimmering dry oil with natural-origin pearly particles infuses all skin types with an iridescent glow.',
+        retrieval_body:
+          'This shimmering dry oil moisturizes, gives a satin feel and illuminates the face, body and hair in a single step.',
+        brand: 'NUXE',
+        category: null,
+        vertical: 'haircare',
+        alias_tokens: ['huile', 'prodigieuse', 'or', 'florale'],
+      },
+    };
+    const dbQueryMock = jest
+      .fn()
+      .mockResolvedValueOnce({ rows: requiredColumns })
+      .mockResolvedValueOnce({ rows: requiredIndexes })
+      .mockResolvedValueOnce({ rows: [hairOilRow] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    jest.doMock('../src/db', () => ({
+      query: dbQueryMock,
+    }));
+
+    try {
+      const {
+        buildDiscoveryProfile: freshBuildDiscoveryProfile,
+        _internals: freshInternals,
+      } = require('../src/services/discoveryFeed');
+      freshInternals.resetDiscoveryDependencyProbeCache();
+      const request = freshInternals.normalizeDiscoveryRequest({
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        query: {
+          text: 'hair oil',
+        },
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      });
+
+      const result = await freshInternals.fetchBeautyInterestExternalSeedFastpathCandidates({
+        request,
+        profile: freshBuildDiscoveryProfile(request.context),
+        queries: ['hair oil'],
+        limit: 24,
+        providerName: 'external_seeds',
+        productProvider: 'external_seeds',
+        stepName: 'external_seed_pool',
+        label: 'external_seed_pool',
+      });
+
+      expect(result.products).toHaveLength(1);
+      expect(result.products[0].title).toBe('Huile Prodigieuse® Or Florale');
+      expect(result.recallSummary[0].external_seed_stage_counts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            stage: 'recall_compound_hair_oil_main',
+            raw_rows: 1,
+            compound_qualified_rows: 1,
+            deduped_rows: 1,
+          }),
+        ]),
+      );
+    } finally {
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+      jest.dontMock('../src/db');
+      jest.resetModules();
+    }
   });
 
   test('lip oil external seed stages do not use summary recall', () => {

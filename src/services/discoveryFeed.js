@@ -4157,6 +4157,7 @@ function buildBeautyInterestSeedSelect() {
     availability,
     updated_at,
     created_at,
+    seed_data->'derived'->'recall' AS seed_recall,
     coalesce(
       seed_data->'derived'->'recall'->>'brand',
       seed_data->>'brand',
@@ -4252,6 +4253,41 @@ function buildCompoundBeautySeedStageDefinitions(recallTerms, safeLimit) {
   const weakCategoryTerms = uniqStrings(recallTerms.weakCategoryTerms, 8);
   const verticalTerms = uniqStrings(recallTerms.verticalTerms, 6);
   const includeSummaryPositive = recallTerms.compoundIntent === 'hair_oil';
+
+  if (recallTerms.compoundIntent === 'hair_oil') {
+    const hairCategoryTerms = uniqStrings([...primaryCategoryTerms, ...weakCategoryTerms], 12);
+    const positivePatterns = buildExternalSeedCompoundLikePatterns(recallTerms.compoundPositiveTitleTokens);
+    if ((hairCategoryTerms.length > 0 || verticalTerms.length > 0) && positivePatterns.length > 0) {
+      definitions.push({
+        score: 70,
+        stage: 'recall_compound_hair_oil_main',
+        cap: stageCap,
+        buildWhereSql: (stageBind) => {
+          const positiveWhereSql = buildExternalSeedTitlePositiveSql(stageBind, recallTerms, {
+            includeSummary: true,
+          });
+          if (!positiveWhereSql) return '';
+          const categoryClauses = [];
+          if (hairCategoryTerms.length > 0) {
+            categoryClauses.push(
+              `${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} = ANY(${stageBind(hairCategoryTerms)}::text[])`,
+            );
+          }
+          if (verticalTerms.length > 0) {
+            categoryClauses.push(
+              `${EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical} = ANY(${stageBind(verticalTerms)}::text[])`,
+            );
+          }
+          if (categoryClauses.length <= 0) return '';
+          return `(
+            (${categoryClauses.join(' OR ')})
+            AND ${positiveWhereSql}
+          )`;
+        },
+      });
+    }
+    return definitions;
+  }
 
   if (exactPatterns.length > 0) {
     definitions.push({
@@ -5572,23 +5608,34 @@ async function loadCatalogCandidates({
     return finalizeProviderResult();
   }
 
-  try {
-    const searchResult = await loadProductsSearchCandidates({
-      request,
-      profile,
-      limit: safeLimit,
-    });
-    const productsSearchResult = {
-      provider: 'products_search',
-      products: annotateProviderProducts('products_search', searchResult?.products || []),
-      recallSummary: Array.isArray(searchResult?.recallSummary)
-        ? searchResult.recallSummary.map((step) => ({ provider: 'products_search', ...step }))
-        : [],
-    };
-    providerResults.push(productsSearchResult);
-    mergeProducts(productsSearchResult.products);
-  } catch (err) {
-    providerResults.push(buildProviderErrorResult('products_search', err));
+  if (compoundIntent) {
+    providerResults.push(
+      buildSkippedProviderResult('products_search', {
+        label: getProviderLabel('products_search'),
+        query: providerQueries.join(' | '),
+        limit: safeLimit,
+        skipReason: 'explicit_compound_external_seed_mainline',
+      }),
+    );
+  } else {
+    try {
+      const searchResult = await loadProductsSearchCandidates({
+        request,
+        profile,
+        limit: safeLimit,
+      });
+      const productsSearchResult = {
+        provider: 'products_search',
+        products: annotateProviderProducts('products_search', searchResult?.products || []),
+        recallSummary: Array.isArray(searchResult?.recallSummary)
+          ? searchResult.recallSummary.map((step) => ({ provider: 'products_search', ...step }))
+          : [],
+      };
+      providerResults.push(productsSearchResult);
+      mergeProducts(productsSearchResult.products);
+    } catch (err) {
+      providerResults.push(buildProviderErrorResult('products_search', err));
+    }
   }
 
   const shouldSkipBrandScopedExpansion = shouldSkipBrandScopedProviderExpansion(mergedProducts, {
@@ -5768,6 +5815,13 @@ async function loadCatalogCandidates({
 
   if (isExplicitQueryScopedBrowseRequest(request)) {
     await fetchExternalSeedProviderResult();
+
+    if (compoundIntent && mergedProducts.length > 0) {
+      candidateSource = 'external_seed_compound_intent';
+      primaryPathUsed = 'external_seed_compound_intent';
+      pushSkippedInternalProviderResult('explicit_compound_external_seed_mainline');
+      return finalizeProviderResult();
+    }
 
     const shouldSkipInternalAfterExternal =
       shouldSkipInternal ||
@@ -5968,41 +6022,52 @@ function matchesBeautyCompoundQueryIntent(candidate, intent) {
       raw.product_type,
       raw.productType,
       raw.external_seed_recall?.category,
-      raw.external_seed_recall?.vertical,
     ]
       .filter(Boolean)
       .join(' '),
   );
+  const verticalText = normalizeText(raw.external_seed_recall?.vertical || '');
+  const combinedCategoryText = normalizeText([categoryText, verticalText].filter(Boolean).join(' '));
   const negativeClasses = rule?.negativeClasses || [];
 
   if (intent === 'hair_oil') {
-    if (hasAnyNormalizedClassToken([categoryText, titleText].join(' '), negativeClasses)) return false;
+    if (hasAnyNormalizedClassToken([combinedCategoryText, titleText].join(' '), negativeClasses)) return false;
     if (titleText.includes('hair oil')) return true;
-    if (hasAnyNormalizedClassToken(categoryText, rule?.primaryPositive || [])) return true;
-    const categoryLooksHair =
+    if (hasAnyNormalizedClassToken(combinedCategoryText, rule?.primaryPositive || [])) return true;
+    const structuredCategoryLooksHair =
       categoryText.includes('haircare') ||
       categoryText.includes('hair care') ||
       textHasNormalizedToken(categoryText, 'hair');
-    return categoryLooksHair && (hasOilIntentToken(titleText) || hasOilIntentToken(summaryText));
+    const verticalLooksHair =
+      verticalText.includes('haircare') ||
+      verticalText.includes('hair care') ||
+      textHasNormalizedToken(verticalText, 'hair');
+    const titleOrSummaryMentionsHair =
+      textHasNormalizedToken(titleText, 'hair') || textHasNormalizedToken(summaryText, 'hair');
+    const hasOilSignal = hasOilIntentToken(titleText) || hasOilIntentToken(summaryText);
+    return Boolean(
+      (structuredCategoryLooksHair && hasOilSignal) ||
+        (verticalLooksHair && titleOrSummaryMentionsHair && hasOilSignal),
+    );
   }
 
   if (intent === 'lip_balm') {
-    if (hasAnyNormalizedClassToken([categoryText, titleText].join(' '), negativeClasses)) return false;
+    if (hasAnyNormalizedClassToken([combinedCategoryText, titleText].join(' '), negativeClasses)) return false;
     if (titleText.includes('lip balm')) return true;
     const categoryLooksLip =
-      textHasNormalizedToken(categoryText, 'lip') ||
-      categoryText.includes('lip care') ||
-      hasAnyNormalizedClassToken(categoryText, rule?.primaryPositive || []);
+      textHasNormalizedToken(combinedCategoryText, 'lip') ||
+      combinedCategoryText.includes('lip care') ||
+      hasAnyNormalizedClassToken(combinedCategoryText, rule?.primaryPositive || []);
     return categoryLooksLip && textHasNormalizedToken(titleText, 'balm');
   }
 
   if (intent === 'lip_oil') {
-    if (hasAnyNormalizedClassToken([categoryText, titleText].join(' '), negativeClasses)) return false;
+    if (hasAnyNormalizedClassToken([combinedCategoryText, titleText].join(' '), negativeClasses)) return false;
     if (titleText.includes('lip oil')) return true;
     const categoryLooksLip =
-      textHasNormalizedToken(categoryText, 'lip') ||
-      categoryText.includes('lip care') ||
-      hasAnyNormalizedClassToken(categoryText, rule?.primaryPositive || []);
+      textHasNormalizedToken(combinedCategoryText, 'lip') ||
+      combinedCategoryText.includes('lip care') ||
+      hasAnyNormalizedClassToken(combinedCategoryText, rule?.primaryPositive || []);
     return categoryLooksLip && hasOilIntentToken(titleText);
   }
 
