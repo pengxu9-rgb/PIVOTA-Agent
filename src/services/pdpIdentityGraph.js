@@ -249,6 +249,97 @@ function parsePackToken(text) {
   return '';
 }
 
+const SHADE_FAMILY_CONTEXT_TOKENS = Object.freeze([
+  'base',
+  'bb cream',
+  'blush',
+  'bronzer',
+  'complexion',
+  'concealer',
+  'contour',
+  'corrector',
+  'coverage',
+  'eye shadow',
+  'eyeshadow',
+  'foundation',
+  'glow tint',
+  'highlighter',
+  'lip',
+  'lipstick',
+  'makeup',
+  'powder',
+  'shade',
+  'skin tint',
+  'tint',
+  'tinted',
+  'tone',
+]);
+
+function normalizeShadeCodeToken(value) {
+  const compact = normalizeAxisValue(value).replace(/[^a-z0-9]+/gi, '').toLowerCase();
+  if (!compact) return '';
+  if (/^(?:spf|pa|uv|upf)\d+/i.test(compact)) return '';
+  if (/^(?:[a-z]{2,3}\d{2,4}[a-z]?|\d{2,4}[a-z]{1,2})$/i.test(compact)) return compact;
+  return '';
+}
+
+function extractTrailingShadeCodeToken(value) {
+  const normalized = normalizeAxisValue(value);
+  if (!normalized) return '';
+  const tokens = normalized.split(/\s+/g).filter(Boolean);
+  for (let idx = tokens.length - 1; idx >= Math.max(0, tokens.length - 4); idx -= 1) {
+    const code = normalizeShadeCodeToken(tokens[idx]);
+    if (code) return code;
+  }
+  return '';
+}
+
+function hasShadeFamilyContext(product) {
+  const haystack = normalizeTitleToken(
+    collectDeepStrings([
+      product?.title,
+      product?.name,
+      product?.display_name,
+      product?.subtitle,
+      product?.product_type,
+      product?.category,
+      product?.category_path,
+      product?.department,
+      product?.tags,
+    ]).join(' '),
+  );
+  if (!haystack) return false;
+  return SHADE_FAMILY_CONTEXT_TOKENS.some((token) => {
+    const normalizedToken = normalizeTitleToken(token);
+    if (!normalizedToken) return false;
+    const escaped = normalizedToken.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+    return new RegExp(`\\b${escaped}\\b`, 'i').test(haystack);
+  });
+}
+
+function extractMultiPageShadeFamilyCandidate(product) {
+  if (!hasShadeFamilyContext(product)) return null;
+  const title = firstNonEmptyString(product?.title, product?.name, product?.display_name);
+  const titleCode = extractTrailingShadeCodeToken(title);
+  if (!titleCode) return null;
+
+  const officialUrl = extractOfficialUrl(product);
+  const officialHandle = extractOfficialHandle(product, officialUrl);
+  const handleCode = extractTrailingShadeCodeToken(officialHandle);
+  if (handleCode && handleCode !== titleCode) return null;
+
+  const strippedTitleCore = stripAxisTokensFromTitle(title, { shade: titleCode });
+  const titleCore = normalizeTitleToken(strippedTitleCore);
+  if (!titleCore || titleCore === normalizeTitleToken(title)) return null;
+
+  return {
+    axis: 'shade',
+    value: titleCode,
+    title_core_norm: titleCore,
+    ...(officialHandle ? { official_handle: officialHandle } : {}),
+  };
+}
+
 function pickIdentityVariant(product) {
   const defaultVariantId = firstNonEmptyString(
     product?.default_variant_id,
@@ -478,7 +569,11 @@ function extractVariantAxes(product) {
   const volume =
     inferredGenericAxis.volume || parseQuantityToken(joined, ['ml', 'm l', 'g', 'kg', 'oz', 'fl oz']);
   const pack = inferredGenericAxis.pack || parsePackToken(joined);
-  const shade = parseNamedAxisFromOptions(product, ['shade', 'tone', 'hue']) || inferredGenericAxis.shade;
+  const shadeFamily = extractMultiPageShadeFamilyCandidate(product);
+  const shade =
+    parseNamedAxisFromOptions(product, ['shade', 'tone', 'hue']) ||
+    inferredGenericAxis.shade ||
+    shadeFamily?.value;
   const color = parseNamedAxisFromOptions(product, ['color', 'colour']) || inferredGenericAxis.color;
   const normalized = {
     ...(size ? { size } : {}),
@@ -643,6 +738,26 @@ function extractSoftIdentity(product, axes) {
   };
 }
 
+function buildProductLineKey({
+  strongIdentity,
+  softIdentity,
+  sourceListingRef,
+  variantFamily,
+} = {}) {
+  if (variantFamily?.title_core_norm && softIdentity?.brand_norm) {
+    return `variant_family:${softIdentity.brand_norm}:${variantFamily.title_core_norm}`;
+  }
+  return (
+    (strongIdentity?.official_domain && strongIdentity?.official_handle
+      ? `${strongIdentity.official_domain}:${strongIdentity.official_handle}`
+      : '') ||
+    (softIdentity?.brand_norm && softIdentity?.title_core_norm
+      ? `${softIdentity.brand_norm}:${softIdentity.title_core_norm}`
+      : '') ||
+    sourceListingRef
+  );
+}
+
 function computeIdentityConfidence({ sourceTier, strongIdentity, softIdentity, axes }) {
   let score = sourceTier === 'brand' ? 0.6 : 0.42;
   if (Array.isArray(strongIdentity?.gtins) && strongIdentity.gtins.length > 0) score += 0.2;
@@ -682,6 +797,7 @@ function buildIdentityListingFromProduct({
   const axes = extractVariantAxes(normalizedProduct);
   const strongIdentity = extractStrongIdentity(normalizedProduct, axes);
   const softIdentity = extractSoftIdentity(normalizedProduct, axes);
+  const variantFamily = extractMultiPageShadeFamilyCandidate(normalizedProduct);
   const sourceTier = chooseSourceTier(normalizedProduct, sourceKind);
   const identityConfidence = computeIdentityConfidence({
     sourceTier,
@@ -689,14 +805,12 @@ function buildIdentityListingFromProduct({
     softIdentity,
     axes,
   });
-  const lineKey =
-    (strongIdentity.official_domain && strongIdentity.official_handle
-      ? `${strongIdentity.official_domain}:${strongIdentity.official_handle}`
-      : '') ||
-    (softIdentity.brand_norm && softIdentity.title_core_norm
-      ? `${softIdentity.brand_norm}:${softIdentity.title_core_norm}`
-      : '') ||
-    sourceListingRef;
+  const lineKey = buildProductLineKey({
+    strongIdentity,
+    softIdentity,
+    sourceListingRef,
+    variantFamily,
+  });
   let matchedByRule = 'singleton_source_ref';
   let matchBasis = [];
   let reviewRequired = false;
@@ -774,7 +888,18 @@ function buildIdentityListingFromProduct({
     review_reason_codes: reviewReasonCodes,
     source_payload: normalizedProduct,
     review_summary: reviewSummary,
-    source_meta: asPlainObject(sourceMeta) || {},
+    source_meta: {
+      ...(asPlainObject(sourceMeta) || {}),
+      ...(variantFamily
+        ? {
+            variant_family: {
+              axis: variantFamily.axis,
+              value: variantFamily.value,
+              title_core_norm: variantFamily.title_core_norm,
+            },
+          }
+        : {}),
+    },
   };
 }
 
@@ -2549,6 +2674,7 @@ module.exports = {
     extractStrongIdentity,
     extractSoftIdentity,
     normalizeTitleCore,
+    extractMultiPageShadeFamilyCandidate,
     buildReviewScopeMetadata,
     aggregateReviewSummary,
     applyIdentityOverrides,

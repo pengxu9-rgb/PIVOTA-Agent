@@ -141,6 +141,78 @@ describe('pdpIdentityGraph', () => {
     );
   });
 
+  test('buildIdentityListingFromProduct groups multi-page shade siblings into one product line', () => {
+    const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
+
+    const buildTintedSunscreen = (shadeCode, variantId) =>
+      buildIdentityListingFromProduct({
+        merchantId: 'external_seed',
+        productId: `ext_boj_${shadeCode.toLowerCase()}`,
+        sourceKind: 'external_seed',
+        product: {
+          title: `Daily Tinted Fluid Sunscreen ${shadeCode}`,
+          brand: 'Beauty of Joseon',
+          source_url: `https://beautyofjoseon.com/products/daily-tinted-fluid-sunscreen-${shadeCode.toLowerCase()}`,
+          variants: [
+            {
+              variant_id: variantId,
+              title: '1.69 fl. oz. (50ml)',
+              option_name: 'Size',
+              option_value: '1.69 fl. oz. (50ml)',
+            },
+            {
+              variant_id: `${variantId}-mini`,
+              title: '0.23 fl. oz. (7ml)',
+              option_name: 'Size',
+              option_value: '0.23 fl. oz. (7ml)',
+            },
+          ],
+        },
+      });
+
+    const dn350 = buildTintedSunscreen('DN350', '52402575442292');
+    const dn310 = buildTintedSunscreen('DN310', '52402483560820');
+
+    expect(dn350.identity_status).toBe('approved');
+    expect(dn350.variant_axes).toEqual({
+      size: '1 69 fl oz 50ml',
+      volume: '69floz',
+      shade: 'dn350',
+      multi_variant: true,
+    });
+    expect(dn310.variant_axes.shade).toBe('dn310');
+    expect(dn350.title_core_norm).toBe('daily tinted fluid sunscreen');
+    expect(dn310.title_core_norm).toBe('daily tinted fluid sunscreen');
+    expect(dn350.sellable_item_group_id).not.toBe(dn310.sellable_item_group_id);
+    expect(dn350.product_line_id).toBe(dn310.product_line_id);
+    expect(dn350.review_family_id).toBe(dn310.review_family_id);
+    expect(dn350.source_meta.variant_family).toEqual({
+      axis: 'shade',
+      value: 'dn350',
+      title_core_norm: 'daily tinted fluid sunscreen',
+    });
+  });
+
+  test('buildIdentityListingFromProduct does not strip formula-like alphanumeric titles without shade context', () => {
+    const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
+
+    const listing = buildIdentityListingFromProduct({
+      merchantId: 'external_seed',
+      productId: 'ext_vitamin_c23',
+      sourceKind: 'external_seed',
+      product: {
+        title: 'Vitamin C23 Serum',
+        brand: 'Example Labs',
+        source_url: 'https://example.com/products/vitamin-c23-serum',
+        variants: [{ variant_id: 'v1', title: 'Default Title' }],
+      },
+    });
+
+    expect(listing.variant_axes).toEqual({ multi_variant: false });
+    expect(listing.title_core_norm).toBe('vitamin c23 serum');
+    expect(listing.source_meta.variant_family).toBeUndefined();
+  });
+
   test('buildIdentityListingFromProduct canonicalizes official URL host before conflict checks', () => {
     const { buildIdentityListingFromProduct, _internals } = require('../../src/services/pdpIdentityGraph');
 
