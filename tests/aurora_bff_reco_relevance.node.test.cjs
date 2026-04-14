@@ -328,7 +328,7 @@ function buildConcernPlannerMock({
 } = {}) {
   return async ({ query = '' } = {}) => {
     const prompt = String(query || '');
-    if (prompt.includes('PROMPT_VERSION=concern_semantic_plan_v1')) {
+    if (/PROMPT_VERSION=concern_semantic_plan_v[12]/.test(prompt)) {
       return { answer: JSON.stringify(plannerResult || buildConcernSemanticPlanFixture()) };
     }
     if (prompt.includes('PROMPT_VERSION=concern_selector_race_v1')) {
@@ -355,7 +355,7 @@ function buildConcernPlannerMock({
 function buildConcernPlannerTimeoutMock() {
   return async ({ query = '' } = {}) => {
     const prompt = String(query || '');
-    if (prompt.includes('PROMPT_VERSION=concern_semantic_plan_v1')) {
+    if (/PROMPT_VERSION=concern_semantic_plan_v[12]/.test(prompt)) {
       throw new Error('planner timeout');
     }
     return {
@@ -368,7 +368,7 @@ function buildConcernPlannerTimeoutMock() {
 
 function isConcernSemanticPlannerPromptParts({ systemPrompt = '', userPrompt = '' } = {}) {
   const prompt = `${String(systemPrompt || '')}\n${String(userPrompt || '')}`;
-  return prompt.includes('PROMPT_VERSION=concern_semantic_plan_v1');
+  return /PROMPT_VERSION=concern_semantic_plan_v[12]/.test(prompt);
 }
 
 function isConcernSelectorPromptParts({ systemPrompt = '', userPrompt = '' } = {}) {

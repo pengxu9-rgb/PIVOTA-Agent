@@ -11,18 +11,18 @@ function pickFirstTrimmed(...values) {
 }
 
 function shouldUseBeautyChatMainlinePlanner(targetContext = null) {
+  const entryType = String(targetContext?.entry_type || 'chat').trim().toLowerCase();
+  if (entryType && entryType !== 'chat') return false;
   const intentMode = String(targetContext?.intent_mode || '').trim().toLowerCase();
-  if (intentMode !== 'generic_concern') return false;
-  if (targetContext?.step_aware_intent && targetContext?.resolved_target_step) return false;
+  if (new Set(['exact_product', 'specific_product', 'pdp_open']).has(intentMode)) return false;
+  if (intentMode === 'generic_concern') return true;
+  if (intentMode === 'explicit_role' || intentMode === 'generic') return true;
+  if (targetContext?.step_aware_intent && targetContext?.resolved_target_step) return true;
   return Array.isArray(targetContext?.framework_roles) && targetContext.framework_roles.length > 0;
 }
 
 function canUseDeterministicBeautyChatPlannerFallback(targetContext = null) {
-  if (!shouldUseBeautyChatMainlinePlanner(targetContext)) return false;
-  const primaryRoleId = String(targetContext?.primary_role_id || '').trim();
-  if (!primaryRoleId) return false;
-  return Array.isArray(targetContext?.framework_roles)
-    && targetContext.framework_roles.some((role) => String(role?.role_id || '').trim() === primaryRoleId);
+  return false;
 }
 
 function normalizeBeautyChatPlannerTargetContext(baseTargetContext = null, plannerTargetContext = null) {
@@ -324,6 +324,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
       focus: hardPathRecoFocusForMainline,
       text: recoRequestMessage || message,
       entryType: 'chat',
+      profileSummary,
     });
     const hardPathBeautyRecoOwnership = isBeautyOwnedChatRecoRequest({
       typedRecoOwnershipKeepsV1Mainline,
@@ -406,13 +407,20 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
               : null;
           hardPathPlannerSemanticPlan = plannerSemanticPlan;
           if (plannerSemanticPlan) {
+            const plannerTargetContext = buildConcernTargetContextFromSemanticPlan(plannerSemanticPlan, {
+              text: pickFirstTrimmed(recoRequestMessage, message),
+              focus: hardPathRecoFocusForMainline,
+              entryType: 'chat',
+            });
             effectivePlannerTargetContext = normalizeBeautyChatPlannerTargetContext(
               hardPathRecoTargetContext,
-              buildConcernTargetContextFromSemanticPlan(plannerSemanticPlan, {
-                text: pickFirstTrimmed(recoRequestMessage, message),
-                focus: hardPathRecoFocusForMainline,
-                entryType: 'chat',
-              }),
+              isPlainObject(plannerTargetContext)
+                ? {
+                    ...plannerTargetContext,
+                    mainline_fallback_policy: 'strict_no_runtime_fallback',
+                    semantic_planner_required: true,
+                  }
+                : plannerTargetContext,
             );
           }
         } catch (err) {
@@ -435,7 +443,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
               trace_id: ctx?.trace_id,
               err: err?.message || String(err),
             },
-            'aurora bff: beauty chat mainline planner failed; fallback target context used',
+            'aurora bff: beauty chat mainline planner failed; fail-closed before deterministic target fallback',
           );
         } finally {
           hardPathTiming.plannerMs = elapsedBeautyChatStageMs(plannerStartedAtMs);
@@ -455,7 +463,11 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
             targetContext: hardPathRecoTargetContext,
             envelope: buildBeautyMainlineHandoffFallbackEnvelope({
               ctx,
-              fallback: plannerBlock,
+              fallback: {
+                ...plannerBlock,
+                fallback_or_gate_blocked: true,
+                planner_failure_class: pickFirstTrimmed(hardPathPlannerTrace?.planner_failure_class) || 'planner_untrusted',
+              },
               suggestedChips: [],
             }),
           };

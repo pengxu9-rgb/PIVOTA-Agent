@@ -2,7 +2,7 @@
 
 const crypto = require('crypto');
 
-const CONCERN_PLANNER_PROMPT_VERSION = 'concern_semantic_plan_v1';
+const CONCERN_PLANNER_PROMPT_VERSION = 'concern_semantic_plan_v2';
 const CONCERN_SEMANTIC_PLAN_NORMALIZER_VERSION = 'concern_semantic_plan_normalizer_v1';
 
 function isPlainObject(value) {
@@ -70,6 +70,43 @@ function inferSlotForStep(step) {
   return 'care';
 }
 
+function collectConcernRoleOntologyRows(plan = null) {
+  const source = isPlainObject(plan) ? plan : {};
+  const rawOntology = Array.isArray(source.role_ontology?.roles)
+    ? source.role_ontology.roles
+    : Array.isArray(source.role_ontology)
+      ? source.role_ontology
+      : [];
+  const out = [];
+  const seen = new Set();
+  const addRole = (role) => {
+    if (!isPlainObject(role)) return;
+    const roleId = pickFirstTrimmed(role.role_id);
+    if (!roleId || seen.has(roleId)) return;
+    seen.add(roleId);
+    out.push(role);
+  };
+  for (const role of rawOntology) addRole(role);
+  for (const role of Array.isArray(source.core_roles) ? source.core_roles : []) addRole(role);
+  for (const role of Array.isArray(source.support_roles) ? source.support_roles : []) addRole(role);
+  return out;
+}
+
+function buildPlannerRoleContextRows(plan = null) {
+  return collectConcernRoleOntologyRows(plan)
+    .map((role) => ({
+      role_id: pickFirstTrimmed(role?.role_id) || null,
+      label: pickFirstTrimmed(role?.label) || null,
+      preferred_step: normalizeRecoTargetStep(role?.preferred_step) || pickFirstTrimmed(role?.preferred_step) || null,
+      why_this_role: pickFirstTrimmed(role?.why_this_role) || null,
+      query_terms: asStringArray(role?.query_terms, 4),
+      fit_keywords: asStringArray(role?.fit_keywords, 6),
+      ingredient_hypotheses: asStringArray(role?.ingredient_hypotheses, 4),
+    }))
+    .filter((role) => role.role_id)
+    .slice(0, 24);
+}
+
 function buildConcernSemanticPlanTextPromptBundle({
   requestText = '',
   focus = '',
@@ -82,6 +119,8 @@ function buildConcernSemanticPlanTextPromptBundle({
   const profile = isPlainObject(profileSummary) ? profileSummary : {};
   const taskContext = isPlainObject(recommendationTaskContext) ? recommendationTaskContext : null;
   const plan = isPlainObject(fallbackPlan) ? fallbackPlan : {};
+  const roleContextRows = buildPlannerRoleContextRows(plan);
+  const roleIds = roleContextRows.map((role) => role.role_id).filter(Boolean);
   const contextPayload = {
     request_text: String(requestText || '').trim(),
     focus: String(focus || '').trim() || null,
@@ -92,9 +131,10 @@ function buildConcernSemanticPlanTextPromptBundle({
       goals: Array.isArray(profile.goals) ? profile.goals : [],
     },
     allowed_role_ids: {
-      core: Array.isArray(plan.core_roles) ? plan.core_roles.map((role) => pickFirstTrimmed(role?.role_id)).filter(Boolean).slice(0, 3) : [],
-      support: Array.isArray(plan.support_roles) ? plan.support_roles.map((role) => pickFirstTrimmed(role?.role_id)).filter(Boolean).slice(0, 2) : [],
+      core: roleIds,
+      support: roleIds,
     },
+    canonical_role_ontology: roleContextRows,
     task_context: taskContext && taskContext.snapshot_fields_used
       ? {
           context_mode: String(taskContext.context_mode || '').trim() || null,
@@ -108,36 +148,28 @@ function buildConcernSemanticPlanTextPromptBundle({
         `[PROMPT_VERSION=${CONCERN_PLANNER_PROMPT_VERSION}]`,
         '角色：严格的护肤通用关切规划器。',
         '任务：只给出第一轮护理框架，不推荐具体商品。',
-        '只输出纯文本。优先使用以下键名；也接受简短 bullets 或 numbered list，但语义必须等价：',
-        'PRIMARY_CONCERN: ...',
-        'CORE_ROLE_IDS: role_id | role_id | role_id',
-        'SUPPORT_ROLE_IDS: role_id | role_id',
-        'INGREDIENT_HYPOTHESES: item | item | item',
-        'PRODUCT_TYPE_HYPOTHESES: item | item | item',
-        'ROUTINE_SHELL_HINTS: AM=role_id,role_id; PM=role_id,role_id; OPTIONAL=role_id',
+        '只输出 JSON object，不要 markdown，不要解释。Schema：',
+        '{"primary_concern":string,"primary_role_id":string,"support_role_ids":[string],"routine_mode":"routine_mix|same_role_comparison|single_product","query_intents":[{"role_id":string,"intent":string,"query_terms":[string]}],"must_satisfy_constraints":[string],"comparison_mode":"routine_mix|same_role_comparison|single_product","evidence_needed":[string],"ingredient_hypotheses":[string],"product_type_hypotheses":[string]}',
         '规则：',
-        '- 只能使用 context.allowed_role_ids 里的 role_id。',
-        '- 先决定 core roles，再决定 optional support roles。',
-        '- support roles 不能替代 core roles。',
-        '- 不要返回 JSON。',
+        '- 只能使用 context.canonical_role_ontology / context.allowed_role_ids 里的 role_id。',
+        '- 不要被 fallback 的初始顺序束缚；请基于用户真实主诉选择最贴合的 primary role。',
+        '- 如果用户明确问防晒、妆前叠加、闷热通勤或 SPF，防晒/肤感适配角色可以成为 primary role。',
+        '- 如果用户问痘印、色沉、肤色不均，不要把它简化成 acne/oil-control，除非用户真的在问长痘或堵塞。',
+        '- routine_mix 时 support_role_ids 是需要被检索和展示的 routine support role，不是可忽略注释。',
         '- 不要返回品牌、SKU、价格、链接。',
       ]
     : [
         `[PROMPT_VERSION=${CONCERN_PLANNER_PROMPT_VERSION}]`,
         'Role: strict skincare generic-concern planner.',
         'Task: return only the first-turn care framework, not specific products.',
-        'Output plain text only. Prefer these headings; short bullets or numbered lines are also acceptable if the meaning stays explicit:',
-        'PRIMARY_CONCERN: ...',
-        'CORE_ROLE_IDS: role_id | role_id | role_id',
-        'SUPPORT_ROLE_IDS: role_id | role_id',
-        'INGREDIENT_HYPOTHESES: item | item | item',
-        'PRODUCT_TYPE_HYPOTHESES: item | item | item',
-        'ROUTINE_SHELL_HINTS: AM=role_id,role_id; PM=role_id,role_id; OPTIONAL=role_id',
+        'Output a JSON object only. No markdown, no explanation. Schema:',
+        '{"primary_concern":string,"primary_role_id":string,"support_role_ids":[string],"routine_mode":"routine_mix|same_role_comparison|single_product","query_intents":[{"role_id":string,"intent":string,"query_terms":[string]}],"must_satisfy_constraints":[string],"comparison_mode":"routine_mix|same_role_comparison|single_product","evidence_needed":[string],"ingredient_hypotheses":[string],"product_type_hypotheses":[string]}',
         'Rules:',
-        '- Only use role_ids from context.allowed_role_ids.',
-        '- Decide core roles first, then optional support roles.',
-        '- Support roles cannot replace core roles.',
-        '- Do not return JSON.',
+        '- Only use role_ids from context.canonical_role_ontology / context.allowed_role_ids.',
+        '- Do not anchor on the fallback order; choose the primary role from the user’s real complaint.',
+        '- If the user explicitly asks about sunscreen, SPF, commute, humidity, white cast, or under-makeup wear, a sunscreen finish-fit role may be primary.',
+        '- If the user asks about post-breakout marks, dark spots, or uneven tone, do not collapse it into acne/oil-control unless active breakouts or clogged pores are actually requested.',
+        '- In routine_mix, support_role_ids are routine support roles that should be retrieved and shown, not optional commentary.',
         '- Do not return brands, SKUs, prices, or links.',
       ];
   return {
@@ -152,6 +184,11 @@ function matchFallbackRoleFromToken(token, fallbackRoles = []) {
   if (!normalizedToken) return null;
   for (const role of Array.isArray(fallbackRoles) ? fallbackRoles : []) {
     if (!isPlainObject(role)) continue;
+    const normalizedRoleId = normalizeConcernRoleHint(role.role_id);
+    if (normalizedRoleId && normalizedRoleId === normalizedToken) return role;
+  }
+  for (const role of Array.isArray(fallbackRoles) ? fallbackRoles : []) {
+    if (!isPlainObject(role)) continue;
     const candidates = uniqCaseInsensitiveStrings([
       role.role_id,
       role.label,
@@ -160,7 +197,11 @@ function matchFallbackRoleFromToken(token, fallbackRoles = []) {
     ], 12)
       .map((value) => normalizeConcernRoleHint(value))
       .filter(Boolean);
-    if (candidates.some((candidate) => candidate === normalizedToken || normalizedToken.includes(candidate) || candidate.includes(normalizedToken))) {
+    if (candidates.some((candidate) => {
+      if (candidate === normalizedToken) return true;
+      if (candidate.length < 12) return false;
+      return normalizedToken.includes(candidate) || candidate.includes(normalizedToken);
+    })) {
       return role;
     }
   }
@@ -192,6 +233,22 @@ function extractLineValue(text, labels = []) {
     }
   }
   return '';
+}
+
+function parseConcernPlannerJsonPayload(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return null;
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidate = fenced ? fenced[1].trim() : raw;
+  const start = candidate.indexOf('{');
+  const end = candidate.lastIndexOf('}');
+  if (start < 0 || end <= start) return null;
+  try {
+    const parsed = JSON.parse(candidate.slice(start, end + 1));
+    return isPlainObject(parsed) ? parsed : null;
+  } catch (_err) {
+    return null;
+  }
 }
 
 function parseRoutineShellHints(value, { coreRoles = [], supportRoles = [] } = {}) {
@@ -344,54 +401,82 @@ function normalizeConcernSemanticPlanFromText(text, { fallbackPlan, requestText 
       selection_owner_state: 'fallback',
     };
   }
-  const primaryConcern = extractLineValue(answerText, ['PRIMARY_CONCERN', 'PRIMARY CONCERN']) || basePlan.primary_concern;
-  const coreRoleLine = extractLineValue(answerText, ['CORE_ROLE_IDS', 'CORE ROLES', 'CORE ROLE IDS']);
-  const supportRoleLine = extractLineValue(answerText, ['SUPPORT_ROLE_IDS', 'SUPPORT ROLES', 'SUPPORT ROLE IDS']);
-  const ingredientLine = extractLineValue(answerText, ['INGREDIENT_HYPOTHESES', 'INGREDIENTS', 'INGREDIENT DIRECTIONS']);
-  const productTypeLine = extractLineValue(answerText, ['PRODUCT_TYPE_HYPOTHESES', 'PRODUCT TYPES', 'PRODUCT TYPE DIRECTIONS']);
-  const routineShellLine = extractLineValue(answerText, ['ROUTINE_SHELL_HINTS', 'ROUTINE SHELL', 'ROUTINE']);
+  const jsonPayload = parseConcernPlannerJsonPayload(answerText);
+  const jsonPrimaryRoleId = pickFirstTrimmed(jsonPayload?.primary_role_id, jsonPayload?.primaryRoleId);
+  const jsonSupportRoleIds = asStringArray(jsonPayload?.support_role_ids || jsonPayload?.supportRoleIds, 6);
+  const jsonCoreRoleIds = asStringArray(jsonPayload?.core_role_ids || jsonPayload?.coreRoleIds, 6);
+  const primaryConcern = pickFirstTrimmed(
+    jsonPayload?.primary_concern,
+    jsonPayload?.primaryConcern,
+  ) || extractLineValue(answerText, ['PRIMARY_CONCERN', 'PRIMARY CONCERN']) || basePlan.primary_concern;
+  const coreRoleLine = jsonPayload
+    ? uniqCaseInsensitiveStrings([
+        jsonPrimaryRoleId,
+        ...jsonCoreRoleIds,
+        ...jsonSupportRoleIds,
+      ], 6).join(' | ')
+    : extractLineValue(answerText, ['CORE_ROLE_IDS', 'CORE ROLES', 'CORE ROLE IDS']);
+  const supportRoleLine = jsonPayload
+    ? jsonSupportRoleIds.join(' | ')
+    : extractLineValue(answerText, ['SUPPORT_ROLE_IDS', 'SUPPORT ROLES', 'SUPPORT ROLE IDS']);
+  const ingredientLine = jsonPayload
+    ? asStringArray(jsonPayload.ingredient_hypotheses || jsonPayload.ingredientHypotheses, 12).join(' | ')
+    : extractLineValue(answerText, ['INGREDIENT_HYPOTHESES', 'INGREDIENTS', 'INGREDIENT DIRECTIONS']);
+  const productTypeLine = jsonPayload
+    ? asStringArray(jsonPayload.product_type_hypotheses || jsonPayload.productTypeHypotheses, 8).join(' | ')
+    : extractLineValue(answerText, ['PRODUCT_TYPE_HYPOTHESES', 'PRODUCT TYPES', 'PRODUCT TYPE DIRECTIONS']);
+  const routineShellLine = jsonPayload
+    ? pickFirstTrimmed(jsonPayload.routine_shell_hints, jsonPayload.routineShellHints)
+    : extractLineValue(answerText, ['ROUTINE_SHELL_HINTS', 'ROUTINE SHELL', 'ROUTINE']);
   const explicitCoreRoleTokens = splitSectionTokens(coreRoleLine);
   const explicitSupportRoleTokens = splitSectionTokens(supportRoleLine);
   const explicitIngredientHypotheses = splitSectionTokens(ingredientLine);
   const explicitProductTypeHypotheses = splitSectionTokens(productTypeLine);
+  const ontologyRoles = collectConcernRoleOntologyRows(basePlan);
+  const fallbackCoreRoles = Array.isArray(basePlan.core_roles) ? basePlan.core_roles : [];
+  const fallbackSupportRoles = Array.isArray(basePlan.support_roles) ? basePlan.support_roles : [];
+  const coreRoleCatalog = ontologyRoles.length ? ontologyRoles : fallbackCoreRoles;
+  const supportRoleCatalog = ontologyRoles.length ? ontologyRoles : fallbackSupportRoles;
 
   let coreRoles = normalizeConcernRoleRows(splitSectionTokens(coreRoleLine), {
-    fallbackRoles: Array.isArray(basePlan.core_roles) ? basePlan.core_roles : [],
+    fallbackRoles: coreRoleCatalog,
     supportOnly: false,
   });
   let supportRoles = normalizeConcernRoleRows(splitSectionTokens(supportRoleLine), {
-    fallbackRoles: Array.isArray(basePlan.support_roles) ? basePlan.support_roles : [],
+    fallbackRoles: supportRoleCatalog,
     supportOnly: true,
   });
 
   if (coreRoles.length === 0) {
-    coreRoles = (Array.isArray(basePlan.core_roles) ? basePlan.core_roles : [])
+    const coreScoringText = String(answerText || '').split(/optional\s+support|optional\s*:/i)[0] || answerText;
+    coreRoles = coreRoleCatalog
       .map((role) => ({
         role,
-        match: scoreConcernSemanticRoleFromText(answerText, role),
+        match: scoreConcernSemanticRoleFromText(coreScoringText, role),
       }))
       .filter((item) => item.match.matched || item.match.score >= 2)
       .sort((left, right) => {
+        const scoreDiff = Number(right?.match?.score || 0) - Number(left?.match?.score || 0);
+        if (scoreDiff !== 0) return scoreDiff;
         const leftIndex = Number.isFinite(left?.match?.first_index) ? Number(left.match.first_index) : Number.POSITIVE_INFINITY;
         const rightIndex = Number.isFinite(right?.match?.first_index) ? Number(right.match.first_index) : Number.POSITIVE_INFINITY;
         const leftHasIndex = Number.isFinite(leftIndex);
         const rightHasIndex = Number.isFinite(rightIndex);
         if (leftHasIndex && rightHasIndex && leftIndex !== rightIndex) return leftIndex - rightIndex;
         if (leftHasIndex !== rightHasIndex) return leftHasIndex ? -1 : 1;
-        const scoreDiff = Number(right?.match?.score || 0) - Number(left?.match?.score || 0);
-        if (scoreDiff !== 0) return scoreDiff;
         return Number(left?.role?.rank || 0) - Number(right?.role?.rank || 0);
       })
       .map((item) => item.role)
       .slice(0, 3);
   }
   if (supportRoles.length === 0) {
-    supportRoles = (Array.isArray(basePlan.support_roles) ? basePlan.support_roles : [])
+    supportRoles = supportRoleCatalog
       .map((role) => ({
         role,
         match: scoreConcernSemanticRoleFromText(answerText, role),
       }))
       .filter((item) => item.match.score >= 1)
+      .filter((item) => !coreRoles.some((role) => role?.role_id === item?.role?.role_id))
       .sort((left, right) => {
         const scoreDiff = Number(right?.match?.score || 0) - Number(left?.match?.score || 0);
         if (scoreDiff !== 0) return scoreDiff;
@@ -404,6 +489,9 @@ function normalizeConcernSemanticPlanFromText(text, { fallbackPlan, requestText 
       .map((item) => item.role)
       .slice(0, 2);
   }
+  supportRoles = supportRoles
+    .filter((role) => role && !coreRoles.some((coreRole) => coreRole?.role_id === role?.role_id))
+    .slice(0, 2);
 
   const routineShellHints = parseRoutineShellHints(routineShellLine, { coreRoles, supportRoles });
   const hasRoutineShellHints =
@@ -425,7 +513,17 @@ function normalizeConcernSemanticPlanFromText(text, { fallbackPlan, requestText 
   ], 8);
   const routineShell = buildRoutineShell({ coreRoles, supportRoles, shellHints: routineShellHints });
   const trusted =
-    (explicitCoreRoleTokens.length > 0 && coreRoles.length > 0)
+    Boolean(jsonPayload && jsonPrimaryRoleId && coreRoles.length > 0)
+    || (
+      Boolean(jsonPayload)
+      && coreRoles.length > 0
+      && (
+        jsonSupportRoleIds.length > 0
+        || asStringArray(jsonPayload.query_intents || jsonPayload.queryIntents, 8).length > 0
+        || asStringArray(jsonPayload.evidence_needed || jsonPayload.evidenceNeeded, 8).length > 0
+      )
+    )
+    || (explicitCoreRoleTokens.length > 0 && coreRoles.length > 0)
     || (hasFrameworkScaffold && coreRoles.length >= 2)
     || (
       hasFrameworkScaffold
@@ -465,14 +563,27 @@ function normalizeConcernSemanticPlanFromText(text, { fallbackPlan, requestText 
     primary_concern: primaryConcern || basePlan.primary_concern,
     core_roles: coreRoles,
     support_roles: supportRoles,
+    role_ontology: isPlainObject(basePlan.role_ontology) ? basePlan.role_ontology : null,
     ingredient_hypotheses: ingredientHypotheses.length ? ingredientHypotheses : asStringArray(basePlan.ingredient_hypotheses, 12),
     product_type_hypotheses: productTypeHypotheses.length ? productTypeHypotheses : asStringArray(basePlan.product_type_hypotheses, 8),
     frequency_policy: routineShell.frequency,
     routine_shell: routineShell,
+    routine_mode: pickFirstTrimmed(jsonPayload?.routine_mode, jsonPayload?.routineMode) || null,
+    query_intents: Array.isArray(jsonPayload?.query_intents)
+      ? jsonPayload.query_intents.filter((item) => isPlainObject(item)).slice(0, 8)
+      : Array.isArray(jsonPayload?.queryIntents)
+        ? jsonPayload.queryIntents.filter((item) => isPlainObject(item)).slice(0, 8)
+        : [],
+    must_satisfy_constraints: asStringArray(jsonPayload?.must_satisfy_constraints || jsonPayload?.mustSatisfyConstraints, 8),
+    comparison_mode: pickFirstTrimmed(jsonPayload?.comparison_mode, jsonPayload?.comparisonMode) || null,
+    evidence_needed: asStringArray(jsonPayload?.evidence_needed || jsonPayload?.evidenceNeeded, 8),
     selection_constraints: {
       ...(isPlainObject(basePlan.selection_constraints) ? basePlan.selection_constraints : {}),
       support_cannot_replace_core: true,
       allow_price_tiers: false,
+      ...(pickFirstTrimmed(jsonPayload?.comparison_mode, jsonPayload?.comparisonMode)
+        ? { comparison_mode: pickFirstTrimmed(jsonPayload?.comparison_mode, jsonPayload?.comparisonMode) }
+        : {}),
     },
     selection_owner_source: 'llm_concern_planner',
     selection_owner_state: 'trusted',

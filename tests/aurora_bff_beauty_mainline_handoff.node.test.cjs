@@ -28,10 +28,10 @@ test('deriveBeautyMainlineHandoff keeps explicit sunscreen asks on step-aware su
     });
 
     assert.equal(out.targetContext?.resolved_target_step, 'sunscreen');
-    assert.equal(out.targetContext?.primary_role_id, 'daily_sunscreen');
+    assert.equal(out.targetContext?.primary_role_id, 'daily_sunscreen_finish_fit');
     assert.equal(out.semanticContract?.planner_mode, 'step_aware');
     assert.equal(out.semanticContract?.target_step_family, 'sunscreen');
-    assert.equal(out.semanticContract?.primary_role_id, 'daily_sunscreen');
+    assert.equal(out.semanticContract?.primary_role_id, 'daily_sunscreen_finish_fit');
     assert.equal(out.semanticContract?.semantic_family, 'sunscreen');
     assert.deepEqual(out.semanticContract?.ingredient_hypotheses, ['UV filters']);
   } finally {
@@ -142,7 +142,7 @@ test('handoffRecoToBeautyMainlineSearch passes sunscreen-aligned contract to bac
     assert.equal(captured?.transportPolicy?.primary_attempt_timeout_cap_ms, 2500);
     assert.equal(captured?.timeoutMs, 65000);
     assert.equal(captured?.semanticContract?.planner_mode, 'step_aware');
-    assert.equal(captured?.semanticContract?.primary_role_id, 'daily_sunscreen');
+    assert.equal(captured?.semanticContract?.primary_role_id, 'daily_sunscreen_finish_fit');
     assert.deepEqual(captured?.semanticContract?.ingredient_hypotheses, ['UV filters']);
     assert.deepEqual(
       out.recommendations.map((item) => item.display_name),
@@ -493,7 +493,7 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
         'oil free moisturizer',
         'oil control sunscreen',
         'lightweight sunscreen oily skin',
-        'spf oily skin',
+        'lightweight sunscreen',
       ],
     );
     assert.deepEqual(
@@ -833,7 +833,7 @@ test('handoffRecoToBeautyMainlineSearch skips primary external seed when interna
         'oil free moisturizer',
         'oil control sunscreen',
         'lightweight sunscreen oily skin',
-        'spf oily skin',
+        'lightweight sunscreen',
       ],
     );
     assert.deepEqual(
@@ -1893,10 +1893,11 @@ test('beauty chat mainline entry returns only llm rewrite prose on successful re
   );
 });
 
-test('beauty chat mainline entry falls back to deterministic generic-concern target context when planner is untrusted', async () => {
+test('beauty chat mainline entry fail-closes before deterministic target fallback when planner is untrusted', async () => {
   const observed = {
     handoffTargetContext: null,
     plannerMeta: null,
+    fallback: null,
   };
   const runtime = createBeautyChatMainlineEntryRuntime({
     RECO_CATALOG_GROUNDED_ENABLED: true,
@@ -2007,8 +2008,16 @@ test('beauty chat mainline entry falls back to deterministic generic-concern tar
     classifyBeautyMainlineHandoffFallback: () => ({
       reason: 'unreachable',
     }),
-    buildBeautyMainlineHandoffFallbackEnvelope: () => ({
-      cards: [],
+    buildBeautyMainlineHandoffFallbackEnvelope: ({ fallback }) => ({
+      cards: [
+        {
+          type: 'confidence_notice',
+          payload: {
+            mainline_status: 'needs_more_context',
+            recommendation_meta: fallback,
+          },
+        },
+      ],
     }),
     looksLikeRecommendationRequest: () => true,
     sendChatEnvelope: async () => null,
@@ -2031,19 +2040,12 @@ test('beauty chat mainline entry falls back to deterministic generic-concern tar
   });
 
   assert.equal(result?.handled, true);
-  assert.equal(observed.handoffTargetContext?.framework_owner_source, 'generic_concern_framework_resolver');
-  assert.equal(observed.handoffTargetContext?.primary_role_id, 'oil_control_treatment');
-  assert.equal(observed.plannerMeta?.chat_planner_failure_class, 'planner_untrusted');
-  assert.equal(observed.plannerMeta?.chat_planner_fallback_used, true);
-  assert.equal(result?.envelope?.cards?.[0]?.payload?.mainline_status, 'grounded_success');
-  assert.equal(
-    result?.envelope?.cards?.[0]?.payload?.metadata?.search_stage_ledger?.chat_mainline_timing?.planner_fallback_used,
-    true,
-  );
-  assert.equal(
-    result?.envelope?.cards?.[0]?.payload?.metadata?.search_stage_ledger?.chat_mainline_timing?.rewrite_attempted,
-    false,
-  );
+  assert.equal(observed.handoffTargetContext, null);
+  assert.equal(observed.plannerMeta, null);
+  assert.equal(result?.envelope?.cards?.[0]?.type, 'confidence_notice');
+  assert.equal(result?.envelope?.cards?.[0]?.payload?.mainline_status, 'needs_more_context');
+  assert.equal(result?.envelope?.cards?.[0]?.payload?.recommendation_meta?.products_empty_reason, 'planner_untrusted');
+  assert.equal(result?.envelope?.cards?.[0]?.payload?.recommendation_meta?.fallback_or_gate_blocked, true);
 });
 
 test('beauty chat mainline entry lets llm selector rerank only grounded primary-role candidates', async () => {

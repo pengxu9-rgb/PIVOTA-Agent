@@ -136,7 +136,23 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
       ...(pickFirstTrimmed(fallbackMeta.source_mode) ? { source_mode: pickFirstTrimmed(fallbackMeta.source_mode) } : {}),
       ...(pickFirstTrimmed(fallbackMeta.products_empty_reason) ? { products_empty_reason: pickFirstTrimmed(fallbackMeta.products_empty_reason) } : {}),
       ...(pickFirstTrimmed(fallbackMeta.telemetry_failure_reason) ? { telemetry_failure_reason: pickFirstTrimmed(fallbackMeta.telemetry_failure_reason) } : {}),
+      ...(pickFirstTrimmed(fallbackMeta.planner_failure_class) ? { planner_failure_class: pickFirstTrimmed(fallbackMeta.planner_failure_class) } : {}),
+      ...(fallbackMeta.fallback_or_gate_blocked === true ? { fallback_or_gate_blocked: true } : {}),
     };
+    const details = [
+      `fallback_reason: ${
+        pickFirstTrimmed(
+          fallbackMeta.fallback_reason,
+          'beauty_mainline_handoff_unavailable',
+        ) || 'beauty_mainline_handoff_unavailable'
+      }`,
+    ];
+    if (pickFirstTrimmed(fallbackMeta.planner_failure_class)) {
+      details.push(`planner_failure_class: ${pickFirstTrimmed(fallbackMeta.planner_failure_class)}`);
+    }
+    if (fallbackMeta.fallback_or_gate_blocked === true) {
+      details.push('fallback_or_gate_blocked: true');
+    }
     const noticePayload = buildConfidenceNoticeCardPayload({
       language: ctx?.lang,
       reason:
@@ -148,14 +164,7 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
         rationale: ['beauty_mainline_handoff_controlled_fallback'],
       },
       actions: ['retry_recommendations', 'update_current_routine'],
-      details: [
-        `fallback_reason: ${
-          pickFirstTrimmed(
-            fallbackMeta.fallback_reason,
-            'beauty_mainline_handoff_unavailable',
-          ) || 'beauty_mainline_handoff_unavailable'
-        }`,
-      ],
+      details,
     });
     return buildEnvelope(ctx, {
       assistant_message: makeAssistantMessage(

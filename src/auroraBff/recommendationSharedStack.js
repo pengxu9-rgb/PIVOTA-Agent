@@ -30,7 +30,7 @@ const RECOMMENDATION_STEP_QUERY_POLICY_V1 = 'recommendation_step_query_policy_v1
 const RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1 = 'recommendation_viable_threshold_policy_v1';
 const RECOMMENDATION_RECO_POLICY_V1 = 'recommendation_step_aware_reco_policy_v1';
 const CONCERN_FRAMEWORK_POLICY_V1 = 'recommendation_concern_framework_policy_v1';
-const CONCERN_SEMANTIC_PLAN_VERSION = 'concern_semantic_plan_v1';
+const CONCERN_SEMANTIC_PLAN_VERSION = 'concern_semantic_plan_v2';
 const REQUEST_CONTEXT_SIGNATURE_VERSION = 'request_context_signature_v1';
 const CANDIDATE_POOL_SIGNATURE_VERSION = 'recommendation_viable_pool_signature_v1';
 const RAW_CANDIDATE_POOL_DEBUG_SIGNATURE_VERSION = 'recommendation_raw_pool_debug_signature_v1';
@@ -323,9 +323,15 @@ function collectConcernFrameworkSignals({ text = '', focus = '', profileSummary 
     oily: /\boily\b|oil control|oil[-\s]?balance|mattify|mattifying|anti-shine|出油|油皮|控油|sebum|shine|greasy/.test(haystack),
     acne: /\bacne\b|\bbreakout\b|blemish|spot|pore|痘|闭口|粉刺|毛孔/.test(haystack),
     dry: /\bdry\b|dehydrat|干燥|缺水|起皮|脱皮/.test(haystack),
+    dehydrated: /dehydrat|缺水|tight|thirsty skin|water[-\s]?light|水润/.test(haystack),
+    dull: /\bdull\b|brightness|brighten|radiance|glow|uneven tone|暗沉|提亮|透亮/.test(haystack),
+    tone_marks: /post[-\s]?(?:breakout|acne)|acne mark|breakout mark|dark spot|hyperpigmentation|uneven tone|tone mark|marks?|痘印|色沉|斑/.test(haystack),
     redness: /redness|flush|泛红|发红|红血丝/.test(haystack),
     sensitive: /\bsensitive\b|敏感|刺激|stinging|reactive/.test(haystack),
     barrier: /barrier|repair|修护|屏障|受损|impaired/.test(haystack),
+    sunscreen: /sunscreen|spf|uv|sun protection|防晒|通勤|commute/.test(haystack),
+    makeup_layering: /under makeup|makeup|pilling|pill\b|balls up|rolls off|layering|layers?|妆前|搓泥|卡粉/.test(haystack),
+    humid: /humid|humidity|hot weather|sweat|commute|闷热|潮湿|出汗/.test(haystack),
   };
 }
 
@@ -384,204 +390,317 @@ function buildConcernRoleDescriptor({
   };
 }
 
+function buildCanonicalConcernRoleOntology({ isCn = false } = {}) {
+  return [
+    buildConcernRoleDescriptor({
+      roleId: 'oil_control_treatment',
+      rank: 10,
+      preferredStep: 'treatment',
+      labelEn: 'Oil-control treatment',
+      labelZh: '控油功效产品',
+      whyEn: 'Use a targeted treatment to manage excess shine, sebum, congestion, or clogged pores.',
+      whyZh: '用针对性的功效步骤处理出油、油光、堵塞和毛孔问题。',
+      queryTerms: ['oil control serum', 'oil balance serum', 'shine control serum', 'mattifying serum', 'balancing serum oily skin', 'niacinamide serum oily skin'],
+      alternateSteps: ['serum'],
+      fitKeywords: ['oil control', 'oil balance', 'shine control', 'mattifying', 'mattify', 'sebum', 'balancing', 'anti-shine', 'clarifying', 'pores'],
+      ingredientHypotheses: ['Niacinamide', 'Zinc PCA', 'Salicylic acid'],
+      productTypeHypotheses: ['treatment', 'serum'],
+      frequency: 'daily_once_or_twice',
+      routineSlots: ['am', 'pm'],
+      isCn,
+    }),
+    buildConcernRoleDescriptor({
+      roleId: 'acne_clogged_pore_treatment',
+      rank: 11,
+      preferredStep: 'treatment',
+      labelEn: 'Acne and clogged-pore treatment',
+      labelZh: '痘痘与堵塞毛孔功效产品',
+      whyEn: 'Prioritize a blemish or clogged-pore treatment when the ask is about breakouts, congestion, or clogged pores.',
+      whyZh: '当主诉是痘痘、闭口或毛孔堵塞时，优先用针对堵塞和瑕疵的功效产品。',
+      queryTerms: ['salicylic acid serum clogged pores', 'acne treatment serum', 'blemish treatment', 'clarifying serum clogged pores', 'pore clearing serum'],
+      alternateSteps: ['serum'],
+      fitKeywords: ['salicylic acid', 'bha', 'blemish', 'acne', 'clogged pores', 'congestion', 'pore clearing', 'clarifying'],
+      ingredientHypotheses: ['Salicylic acid', 'Niacinamide', 'Zinc PCA'],
+      productTypeHypotheses: ['treatment', 'serum'],
+      frequency: 'daily_or_alternate_nights',
+      routineSlots: ['pm'],
+      isCn,
+    }),
+    buildConcernRoleDescriptor({
+      roleId: 'lightweight_moisturizer',
+      rank: 20,
+      preferredStep: 'moisturizer',
+      labelEn: 'Lightweight moisturizer',
+      labelZh: '轻薄保湿',
+      whyEn: 'Keep hydration light and breathable so skin stays balanced without feeling heavy.',
+      whyZh: '保湿需要轻薄透气，维持水油平衡但不要厚重闷脸。',
+      queryTerms: ['lightweight moisturizer oily skin', 'gel cream oily skin', 'barrier lotion oily skin', 'oil free gel moisturizer'],
+      fitKeywords: ['lightweight', 'gel cream', 'water gel', 'breathable', 'barrier lotion', 'oil-free', 'non-greasy'],
+      ingredientHypotheses: ['Glycerin', 'Ceramide NP', 'Panthenol'],
+      productTypeHypotheses: ['moisturizer'],
+      frequency: 'daily_twice',
+      routineSlots: ['am', 'pm'],
+      isCn,
+    }),
+    buildConcernRoleDescriptor({
+      roleId: 'daily_sunscreen',
+      rank: 30,
+      preferredStep: 'sunscreen',
+      labelEn: 'Daily sunscreen',
+      labelZh: '日常防晒',
+      whyEn: 'Use daily UV protection as the daytime support step for most routines.',
+      whyZh: '把日常防晒作为多数护理流程的白天支持步骤。',
+      queryTerms: ['daily sunscreen skincare', 'broad spectrum sunscreen', 'lightweight sunscreen'],
+      fitKeywords: ['spf', 'uv filters', 'broad spectrum', 'lightweight', 'non-greasy'],
+      ingredientHypotheses: ['UV filters'],
+      productTypeHypotheses: ['sunscreen'],
+      frequency: 'daily_am',
+      routineSlots: ['am'],
+      isCn,
+    }),
+    buildConcernRoleDescriptor({
+      roleId: 'daily_sunscreen_finish_fit',
+      rank: 31,
+      preferredStep: 'sunscreen',
+      labelEn: 'Daily sunscreen with finish fit',
+      labelZh: '妆效友好的日常防晒',
+      whyEn: 'Make sunscreen the lead role when the user asks about SPF, commute, humidity, makeup layering, white cast, or greasy finish.',
+      whyZh: '当用户问 SPF、通勤、闷热、妆前叠加、泛白或油腻肤感时，让防晒成为主角色。',
+      queryTerms: ['sunscreen under makeup', 'lightweight sunscreen oily skin', 'non greasy sunscreen', 'invisible fluid sunscreen', 'serum sunscreen spf', 'matte sunscreen humid weather'],
+      alternateSteps: ['serum'],
+      fitKeywords: ['under makeup', 'lightweight', 'non-greasy', 'no white cast', 'invisible', 'fluid', 'serum sunscreen', 'humidity', 'matte', 'sweat'],
+      ingredientHypotheses: ['UV filters'],
+      productTypeHypotheses: ['sunscreen', 'serum'],
+      frequency: 'daily_am',
+      routineSlots: ['am'],
+      isCn,
+    }),
+    buildConcernRoleDescriptor({
+      roleId: 'hydrating_barrier_moisturizer',
+      rank: 40,
+      preferredStep: 'moisturizer',
+      labelEn: 'Hydrating barrier moisturizer',
+      labelZh: '补水屏障保湿',
+      whyEn: 'Use a moisturizer that supports hydration, comfort, and barrier recovery for dry, flaky, or sensitized skin.',
+      whyZh: '针对干燥、起皮或不耐受，优先选择兼顾补水、舒适度和屏障支持的保湿产品。',
+      queryTerms: ['hydrating moisturizer dry skin', 'barrier repair moisturizer', 'ceramide cream sensitive skin', 'winter flaky skin moisturizer', 'soothing moisturizer'],
+      fitKeywords: ['hydrating', 'barrier repair', 'ceramide', 'soothing', 'sensitive skin', 'fragrance free', 'flaky', 'dry skin'],
+      ingredientHypotheses: ['Ceramide NP', 'Panthenol', 'Glycerin', 'Squalane'],
+      productTypeHypotheses: ['moisturizer'],
+      frequency: 'daily_twice',
+      routineSlots: ['am', 'pm'],
+      isCn,
+    }),
+    buildConcernRoleDescriptor({
+      roleId: 'barrier_moisturizer',
+      rank: 41,
+      preferredStep: 'moisturizer',
+      labelEn: 'Barrier-support moisturizer',
+      labelZh: '屏障修护保湿',
+      whyEn: 'Use a barrier-first moisturizer to reduce irritation and improve baseline comfort.',
+      whyZh: '先用屏障修护保湿把耐受和舒适度稳住。',
+      queryTerms: ['barrier repair moisturizer', 'ceramide cream sensitive skin', 'soothing moisturizer'],
+      fitKeywords: ['barrier repair', 'ceramide', 'soothing', 'sensitive skin', 'fragrance free'],
+      ingredientHypotheses: ['Ceramide NP', 'Panthenol', 'Glycerin'],
+      productTypeHypotheses: ['moisturizer'],
+      frequency: 'daily_twice',
+      routineSlots: ['am', 'pm'],
+      isCn,
+    }),
+    buildConcernRoleDescriptor({
+      roleId: 'hydrating_serum_or_essence',
+      rank: 42,
+      preferredStep: 'serum',
+      labelEn: 'Hydrating serum or essence',
+      labelZh: '补水精华或精华水',
+      whyEn: 'Use a hydration layer when skin feels dehydrated, dull, tight, or water-deficient.',
+      whyZh: '当皮肤缺水、暗沉或紧绷时，加入补水型精华或精华水。',
+      queryTerms: ['hydrating serum dehydrated skin', 'hyaluronic acid serum', 'hydrating essence dull skin', 'water fit serum', 'plumping hydrating serum'],
+      alternateSteps: ['treatment'],
+      fitKeywords: ['hydrating', 'dehydrated', 'hyaluronic acid', 'essence', 'plumping', 'water fit', 'dull skin'],
+      ingredientHypotheses: ['Hyaluronic acid', 'Glycerin', 'Panthenol'],
+      productTypeHypotheses: ['serum', 'treatment'],
+      frequency: 'daily_once_or_twice',
+      routineSlots: ['am', 'pm'],
+      isCn,
+    }),
+    buildConcernRoleDescriptor({
+      roleId: 'tone_mark_treatment',
+      rank: 50,
+      preferredStep: 'treatment',
+      labelEn: 'Tone and post-breakout mark treatment',
+      labelZh: '肤色与痘印功效产品',
+      whyEn: 'Use a tone-support treatment when the ask is post-breakout marks, uneven tone, dark spots, or dullness.',
+      whyZh: '当主诉是痘印、肤色不均、色沉或暗沉时，优先选肤色支持类功效产品。',
+      queryTerms: ['post acne marks serum', 'dark spot serum', 'tone correcting serum', 'brightening serum', 'uneven tone treatment'],
+      alternateSteps: ['serum'],
+      fitKeywords: ['post acne marks', 'dark spots', 'hyperpigmentation', 'uneven tone', 'brightening', 'tone correcting', 'marks'],
+      ingredientHypotheses: ['Azelaic acid', 'Niacinamide', 'Vitamin C', 'Tranexamic acid'],
+      productTypeHypotheses: ['treatment', 'serum'],
+      frequency: 'daily_once',
+      routineSlots: ['pm'],
+      isCn,
+    }),
+    buildConcernRoleDescriptor({
+      roleId: 'layering_compatible_moisturizer_or_spf',
+      rank: 60,
+      preferredStep: 'moisturizer',
+      labelEn: 'Layering-compatible moisturizer or SPF',
+      labelZh: '适合叠加妆前的保湿或防晒',
+      whyEn: 'Prioritize a non-pilling, makeup-compatible moisturizer or SPF when the complaint is product rolling, pilling, or bad layering.',
+      whyZh: '当用户主诉搓泥、叠加不顺或妆前不服帖时，优先选妆前兼容的保湿或防晒角色。',
+      queryTerms: ['lightweight moisturizer under makeup', 'non pilling moisturizer', 'sunscreen under makeup', 'gel cream under makeup', 'makeup compatible spf'],
+      alternateSteps: ['sunscreen'],
+      fitKeywords: ['under makeup', 'non-pilling', 'pilling', 'layering', 'lightweight', 'gel cream', 'makeup compatible', 'smooth finish'],
+      ingredientHypotheses: ['Glycerin', 'Panthenol', 'UV filters'],
+      productTypeHypotheses: ['moisturizer', 'sunscreen'],
+      frequency: 'daily_am',
+      routineSlots: ['am'],
+      isCn,
+    }),
+    buildConcernRoleDescriptor({
+      roleId: 'soothing_treatment',
+      rank: 70,
+      preferredStep: 'treatment',
+      labelEn: 'Soothing treatment',
+      labelZh: '舒缓功效产品',
+      whyEn: 'Add a gentle soothing treatment if redness or reactivity is still active.',
+      whyZh: '如果泛红和敏感还在，补一个温和舒缓的功效步骤。',
+      queryTerms: ['soothing serum sensitive skin', 'cica serum redness', 'panthenol treatment'],
+      alternateSteps: ['serum'],
+      fitKeywords: ['soothing', 'cica', 'panthenol', 'redness', 'calming'],
+      ingredientHypotheses: ['Panthenol', 'Madecassoside'],
+      productTypeHypotheses: ['treatment', 'serum'],
+      frequency: 'daily_once',
+      routineSlots: ['pm'],
+      isCn,
+    }),
+    buildConcernRoleDescriptor({
+      roleId: 'supporting_moisturizer',
+      rank: 80,
+      preferredStep: 'moisturizer',
+      labelEn: 'Supporting moisturizer',
+      labelZh: '配套保湿',
+      whyEn: 'Pair the active step with a moisturizer that keeps the routine tolerable.',
+      whyZh: '搭配一个能稳住耐受的保湿步骤。',
+      queryTerms: ['supporting moisturizer skincare', 'barrier moisturizer', 'light moisturizer'],
+      fitKeywords: ['barrier', 'light moisturizer', 'supportive'],
+      ingredientHypotheses: ['Glycerin', 'Ceramide NP'],
+      productTypeHypotheses: ['moisturizer'],
+      frequency: 'daily_twice',
+      routineSlots: ['am', 'pm'],
+      isCn,
+    }),
+    buildConcernRoleDescriptor({
+      roleId: 'targeted_treatment',
+      rank: 90,
+      preferredStep: 'treatment',
+      labelEn: 'Targeted treatment',
+      labelZh: '针对性功效产品',
+      whyEn: 'Start with the role that addresses the main skin concern directly.',
+      whyZh: '先上最针对当前问题的功效步骤。',
+      queryTerms: ['targeted treatment skincare', 'skin concern serum', 'treatment skincare'],
+      alternateSteps: ['serum'],
+      fitKeywords: ['targeted', 'treatment', 'serum'],
+      ingredientHypotheses: ['Niacinamide'],
+      productTypeHypotheses: ['treatment', 'serum'],
+      frequency: 'daily_once',
+      routineSlots: ['pm'],
+      isCn,
+    }),
+    buildConcernRoleDescriptor({
+      roleId: 'hydrating_mask_support',
+      rank: 100,
+      preferredStep: 'mask',
+      labelEn: 'Optional hydrating mask',
+      labelZh: '可选补水面膜',
+      whyEn: 'Only add an occasional mask if skin also feels dehydrated or tight.',
+      whyZh: '只有在同时缺水或紧绷时，才补充偶尔使用的补水面膜。',
+      queryTerms: ['hydrating mask dehydrated skin', 'smoothing mask dehydrated skin'],
+      fitKeywords: ['hydrating mask', 'soothing mask', 'smoothing mask', 'overnight mask'],
+      ingredientHypotheses: ['Hyaluronic acid', 'Panthenol'],
+      productTypeHypotheses: ['mask'],
+      frequency: 'optional_weekly',
+      routineSlots: ['optional', 'pm'],
+      supportOnly: true,
+      isCn,
+    }),
+  ];
+}
+
+function cloneConcernRoleForPlan(role, { rank = null, supportOnly = null } = {}) {
+  if (!role || typeof role !== 'object' || Array.isArray(role)) return null;
+  return {
+    ...role,
+    ...(Number.isFinite(Number(rank)) ? { rank: Number(rank) } : {}),
+    ...(supportOnly != null ? { support_only: supportOnly === true } : {}),
+  };
+}
+
+function pickConcernRole(roleById, roleId, options = {}) {
+  const role = roleById.get(String(roleId || '').trim());
+  return cloneConcernRoleForPlan(role, options);
+}
+
 function buildConcernSemanticPlanFallback({ text = '', focus = '', profileSummary = null } = {}) {
   const signals = collectConcernFrameworkSignals({ text, focus, profileSummary });
   const isCn = /[\u4e00-\u9fff]/.test(`${text} ${focus}`);
+  const roleOntology = buildCanonicalConcernRoleOntology({ isCn });
+  const roleById = new Map(roleOntology.map((role) => [String(role?.role_id || '').trim(), role]));
   const coreRoles = [];
   const supportRoles = [];
+  const addCoreRole = (roleId, rank) => {
+    const role = pickConcernRole(roleById, roleId, { rank, supportOnly: false });
+    if (role && !coreRoles.some((item) => item.role_id === role.role_id)) coreRoles.push(role);
+  };
+  const addSupportRole = (roleId, rank) => {
+    const role = pickConcernRole(roleById, roleId, { rank, supportOnly: true });
+    if (role && !supportRoles.some((item) => item.role_id === role.role_id)) supportRoles.push(role);
+  };
 
-  if (signals.oily || signals.acne) {
-    coreRoles.push(
-      buildConcernRoleDescriptor({
-        roleId: 'oil_control_treatment',
-        rank: 1,
-        preferredStep: 'treatment',
-        labelEn: 'Oil-control treatment',
-        labelZh: '控油功效产品',
-        whyEn: 'Start with a targeted oil-control step to manage shine, congestion, or clogged pores.',
-        whyZh: '先用针对控油和毛孔的功效产品，把出油和堵塞问题压住。',
-        queryTerms: ['oil control serum', 'oil balance serum', 'shine control serum', 'mattifying serum', 'balancing serum oily skin'],
-        alternateSteps: ['serum'],
-        fitKeywords: ['oil control', 'oil balance', 'shine control', 'mattifying', 'mattify', 'sebum', 'balancing', 'anti-shine', 'blemish', 'acne', 'congestion', 'clogged pores', 'pores', 'clarifying'],
-        ingredientHypotheses: ['Niacinamide', 'Zinc PCA', 'Salicylic acid'],
-        productTypeHypotheses: ['treatment', 'serum'],
-        frequency: 'daily_once_or_twice',
-        routineSlots: ['am', 'pm'],
-        isCn,
-      }),
-    );
-    coreRoles.push(
-      buildConcernRoleDescriptor({
-        roleId: 'lightweight_moisturizer',
-        rank: 2,
-        preferredStep: 'moisturizer',
-        labelEn: 'Lightweight moisturizer',
-        labelZh: '轻薄保湿',
-        whyEn: 'Keep hydration light and breathable so skin stays balanced without feeling heavy.',
-        whyZh: '保湿需要轻薄透气，维持水油平衡但不要厚重闷脸。',
-        queryTerms: ['lightweight moisturizer oily skin', 'gel cream oily skin', 'barrier lotion oily skin'],
-        fitKeywords: ['lightweight', 'gel cream', 'water gel', 'breathable', 'barrier lotion', 'oil-free'],
-        ingredientHypotheses: ['Glycerin', 'Ceramide NP', 'Panthenol'],
-        productTypeHypotheses: ['moisturizer'],
-        frequency: 'daily_twice',
-        routineSlots: ['am', 'pm'],
-        isCn,
-      }),
-    );
-    coreRoles.push(
-      buildConcernRoleDescriptor({
-        roleId: 'daily_sunscreen',
-        rank: 3,
-        preferredStep: 'sunscreen',
-        labelEn: 'Daily sunscreen',
-        labelZh: '日常防晒',
-        whyEn: 'Daytime UV protection still matters, but it is supporting care rather than the first fix.',
-        whyZh: '白天防晒仍然重要，但它是支持步骤，不是第一优先修复点。',
-        queryTerms: ['oil control sunscreen', 'lightweight sunscreen oily skin', 'spf oily skin'],
-        fitKeywords: ['oil control', 'lightweight', 'uv filters', 'spf', 'non-greasy'],
-        ingredientHypotheses: ['UV filters'],
-        productTypeHypotheses: ['sunscreen'],
-        frequency: 'daily_am',
-        routineSlots: ['am'],
-        isCn,
-      }),
-    );
+  if (signals.sunscreen) {
+    addCoreRole('daily_sunscreen_finish_fit', 1);
+    addCoreRole(signals.makeup_layering ? 'layering_compatible_moisturizer_or_spf' : signals.oily || signals.humid ? 'lightweight_moisturizer' : 'hydrating_barrier_moisturizer', 2);
+    if (signals.oily || signals.acne) addCoreRole('oil_control_treatment', 3);
+  } else if (signals.makeup_layering) {
+    addCoreRole('layering_compatible_moisturizer_or_spf', 1);
+    addCoreRole(signals.oily ? 'lightweight_moisturizer' : 'hydrating_barrier_moisturizer', 2);
+    addCoreRole('daily_sunscreen_finish_fit', 3);
+  } else if (signals.tone_marks) {
+    addCoreRole('tone_mark_treatment', 1);
+    addCoreRole('daily_sunscreen', 2);
+    addCoreRole(signals.oily ? 'lightweight_moisturizer' : 'hydrating_barrier_moisturizer', 3);
+  } else if (signals.dull || signals.dehydrated) {
+    addCoreRole('hydrating_serum_or_essence', 1);
+    addCoreRole('hydrating_barrier_moisturizer', 2);
+    addCoreRole(signals.dull ? 'tone_mark_treatment' : 'daily_sunscreen', 3);
+    if (signals.dull) addSupportRole('daily_sunscreen', 1);
+  } else if (signals.oily || signals.acne) {
+    addCoreRole(signals.acne && !signals.oily ? 'acne_clogged_pore_treatment' : 'oil_control_treatment', 1);
+    addCoreRole('lightweight_moisturizer', 2);
+    addCoreRole('daily_sunscreen', 3);
     if (signals.dry || signals.barrier) {
-      supportRoles.push(
-        buildConcernRoleDescriptor({
-          roleId: 'hydrating_mask_support',
-          rank: 1,
-          preferredStep: 'mask',
-          labelEn: 'Optional hydrating mask',
-          labelZh: '可选补水面膜',
-          whyEn: 'Only add an occasional mask if oily skin also feels dehydrated or tight.',
-          whyZh: '只有在油皮同时缺水或紧绷时，才补充偶尔使用的补水面膜。',
-          queryTerms: ['hydrating mask dehydrated oily skin', 'smoothing mask oily dehydrated skin'],
-          fitKeywords: ['hydrating mask', 'soothing mask', 'smoothing mask', 'overnight mask'],
-          ingredientHypotheses: ['Hyaluronic acid', 'Panthenol'],
-          productTypeHypotheses: ['mask'],
-          frequency: 'optional_weekly',
-          routineSlots: ['optional', 'pm'],
-          supportOnly: true,
-          isCn,
-        }),
-      );
+      addSupportRole('hydrating_mask_support', 1);
     }
   } else if (signals.barrier || signals.sensitive || signals.redness || signals.dry) {
-    coreRoles.push(
-      buildConcernRoleDescriptor({
-        roleId: 'barrier_moisturizer',
-        rank: 1,
-        preferredStep: 'moisturizer',
-        labelEn: 'Barrier-support moisturizer',
-        labelZh: '屏障修护保湿',
-        whyEn: 'Use a barrier-first moisturizer to reduce irritation and improve baseline comfort.',
-        whyZh: '先用屏障修护保湿把耐受和舒适度稳住。',
-        queryTerms: ['barrier repair moisturizer', 'ceramide cream sensitive skin', 'soothing moisturizer'],
-        fitKeywords: ['barrier repair', 'ceramide', 'soothing', 'sensitive skin', 'fragrance free'],
-        ingredientHypotheses: ['Ceramide NP', 'Panthenol', 'Glycerin'],
-        productTypeHypotheses: ['moisturizer'],
-        frequency: 'daily_twice',
-        routineSlots: ['am', 'pm'],
-        isCn,
-      }),
-    );
-    coreRoles.push(
-      buildConcernRoleDescriptor({
-        roleId: 'soothing_treatment',
-        rank: 2,
-        preferredStep: 'treatment',
-        labelEn: 'Soothing treatment',
-        labelZh: '舒缓功效产品',
-        whyEn: 'Add a gentle soothing treatment if redness or reactivity is still active.',
-        whyZh: '如果泛红和敏感还在，补一个温和舒缓的功效步骤。',
-        queryTerms: ['soothing serum sensitive skin', 'cica serum redness', 'panthenol treatment'],
-        alternateSteps: ['serum'],
-        fitKeywords: ['soothing', 'cica', 'panthenol', 'redness', 'calming'],
-        ingredientHypotheses: ['Panthenol', 'Madecassoside'],
-        productTypeHypotheses: ['treatment', 'serum'],
-        frequency: 'daily_once',
-        routineSlots: ['pm'],
-        isCn,
-      }),
-    );
-    coreRoles.push(
-      buildConcernRoleDescriptor({
-        roleId: 'daily_sunscreen',
-        rank: 3,
-        preferredStep: 'sunscreen',
-        labelEn: 'Daily sunscreen',
-        labelZh: '日常防晒',
-        whyEn: 'Protect the routine during the day while the barrier is recovering.',
-        whyZh: '在白天保护修护流程，避免恢复期继续受刺激。',
-        queryTerms: ['sensitive skin sunscreen', 'barrier sunscreen', 'spf sensitive skin'],
-        fitKeywords: ['sensitive skin', 'barrier', 'spf', 'lightweight'],
-        ingredientHypotheses: ['UV filters'],
-        productTypeHypotheses: ['sunscreen'],
-        frequency: 'daily_am',
-        routineSlots: ['am'],
-        isCn,
-      }),
-    );
+    addCoreRole('hydrating_barrier_moisturizer', 1);
+    addCoreRole('soothing_treatment', 2);
+    addCoreRole('daily_sunscreen', 3);
   } else {
-    coreRoles.push(
-      buildConcernRoleDescriptor({
-        roleId: 'targeted_treatment',
-        rank: 1,
-        preferredStep: 'treatment',
-        labelEn: 'Targeted treatment',
-        labelZh: '针对性功效产品',
-        whyEn: 'Start with the role that addresses the main skin concern directly.',
-        whyZh: '先上最针对当前问题的功效步骤。',
-        queryTerms: ['targeted treatment skincare', 'skin concern serum', 'treatment skincare'],
-        alternateSteps: ['serum'],
-        fitKeywords: ['targeted', 'treatment', 'serum'],
-        ingredientHypotheses: ['Niacinamide'],
-        productTypeHypotheses: ['treatment', 'serum'],
-        frequency: 'daily_once',
-        routineSlots: ['pm'],
-        isCn,
-      }),
-    );
-    coreRoles.push(
-      buildConcernRoleDescriptor({
-        roleId: 'supporting_moisturizer',
-        rank: 2,
-        preferredStep: 'moisturizer',
-        labelEn: 'Supporting moisturizer',
-        labelZh: '配套保湿',
-        whyEn: 'Pair the active step with a moisturizer that keeps the routine tolerable.',
-        whyZh: '搭配一个能稳住耐受的保湿步骤。',
-        queryTerms: ['supporting moisturizer skincare', 'barrier moisturizer', 'light moisturizer'],
-        fitKeywords: ['barrier', 'light moisturizer', 'supportive'],
-        ingredientHypotheses: ['Glycerin', 'Ceramide NP'],
-        productTypeHypotheses: ['moisturizer'],
-        frequency: 'daily_twice',
-        routineSlots: ['am', 'pm'],
-        isCn,
-      }),
-    );
-    coreRoles.push(
-      buildConcernRoleDescriptor({
-        roleId: 'daily_sunscreen',
-        rank: 3,
-        preferredStep: 'sunscreen',
-        labelEn: 'Daily sunscreen',
-        labelZh: '日常防晒',
-        whyEn: 'Protect the routine during the day so the treatment work is not undermined.',
-        whyZh: '白天用防晒把前面的护理效果保住。',
-        queryTerms: ['daily sunscreen skincare', 'broad spectrum sunscreen'],
-        fitKeywords: ['spf', 'uv filters', 'broad spectrum'],
-        ingredientHypotheses: ['UV filters'],
-        productTypeHypotheses: ['sunscreen'],
-        frequency: 'daily_am',
-        routineSlots: ['am'],
-        isCn,
-      }),
-    );
+    addCoreRole('targeted_treatment', 1);
+    addCoreRole('supporting_moisturizer', 2);
+    addCoreRole('daily_sunscreen', 3);
   }
 
-  const primaryConcern = signals.oily || signals.acne
+  const primaryConcern = signals.makeup_layering
+    ? (isCn ? '叠加与妆前兼容' : 'layering and makeup compatibility')
+    : signals.sunscreen
+      ? (isCn ? '防晒肤感与日间适配' : 'sunscreen finish and daytime fit')
+      : signals.tone_marks
+        ? (isCn ? '肤色与痘印支持' : 'tone and post-breakout mark support')
+        : signals.dull || signals.dehydrated
+          ? (isCn ? '补水与提亮支持' : 'hydration and brightness support')
+          : signals.oily || signals.acne
     ? (isCn ? '油脂分泌与堵塞' : 'oil control and congestion')
     : signals.barrier || signals.sensitive || signals.redness || signals.dry
       ? (isCn ? '屏障与敏感稳定' : 'barrier support and tolerance')
@@ -629,6 +748,10 @@ function buildConcernSemanticPlanFallback({ text = '', focus = '', profileSummar
     primary_concern: primaryConcern,
     core_roles: coreRoles,
     support_roles: supportRoles,
+    role_ontology: {
+      version: 'beauty_canonical_role_ontology_v2',
+      roles: roleOntology,
+    },
     ingredient_hypotheses: ingredientHypotheses,
     product_type_hypotheses: productTypeHypotheses,
     frequency_policy: routineShell.frequency,

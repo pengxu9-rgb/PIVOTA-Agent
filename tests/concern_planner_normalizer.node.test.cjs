@@ -16,7 +16,7 @@ const {
   resolveConcernMainlineFailure,
 } = require('../src/auroraBff/failureClassifier');
 
-test('concern planner normalizer builds a plain-text planner prompt instead of JSON-only contract', () => {
+test('concern planner normalizer builds a structured JSON planner prompt with full role ontology', () => {
   const fallbackPlan = buildConcernSemanticPlanFallback({
     text: 'im oily skin, what product should i use?',
     focus: '',
@@ -29,9 +29,57 @@ test('concern planner normalizer builds a plain-text planner prompt instead of J
   });
 
   assert.match(prompt.systemPrompt, new RegExp(`PROMPT_VERSION=${CONCERN_PLANNER_PROMPT_VERSION}`));
-  assert.match(prompt.systemPrompt, /Output plain text only/i);
-  assert.match(prompt.systemPrompt, /CORE_ROLE_IDS:/);
-  assert.doesNotMatch(prompt.systemPrompt, /Output minimum JSON only/i);
+  assert.match(prompt.systemPrompt, /Output a JSON object only/i);
+  assert.match(prompt.systemPrompt, /primary_role_id/);
+  assert.match(prompt.systemPrompt, /support_role_ids/);
+  assert.doesNotMatch(prompt.systemPrompt, /Output plain text only/i);
+  const contextPayload = JSON.parse(String(prompt.userPrompt || '').replace(/^context=/, ''));
+  assert.ok(
+    contextPayload.canonical_role_ontology.some((role) => role.role_id === 'daily_sunscreen_finish_fit'),
+  );
+  assert.ok(
+    contextPayload.allowed_role_ids.core.includes('tone_mark_treatment'),
+  );
+});
+
+test('concern planner normalizer trusts JSON output selecting ontology roles outside fallback order', () => {
+  const fallbackPlan = buildConcernSemanticPlanFallback({
+    text: 'I have oily skin and wear makeup every day. What sunscreen should I buy?',
+    profileSummary: { skinType: 'oily', goals: ['oil control'] },
+  });
+  const normalized = normalizeConcernSemanticPlanFromText(
+    JSON.stringify({
+      primary_concern: 'sunscreen finish and daytime fit',
+      primary_role_id: 'daily_sunscreen_finish_fit',
+      support_role_ids: ['lightweight_moisturizer'],
+      routine_mode: 'routine_mix',
+      query_intents: [
+        {
+          role_id: 'daily_sunscreen_finish_fit',
+          intent: 'sunscreen under makeup for oily skin',
+          query_terms: ['sunscreen under makeup', 'lightweight sunscreen oily skin'],
+        },
+      ],
+      must_satisfy_constraints: ['non-greasy finish', 'works under makeup'],
+      comparison_mode: 'routine_mix',
+      evidence_needed: ['finish', 'layering compatibility', 'price'],
+      ingredient_hypotheses: ['UV filters'],
+      product_type_hypotheses: ['sunscreen'],
+    }),
+    {
+      fallbackPlan,
+      requestText: 'I have oily skin and wear makeup every day. What sunscreen should I buy?',
+    },
+  );
+
+  assert.equal(normalized.selection_owner_source, 'llm_concern_planner');
+  assert.equal(normalized.selection_owner_state, 'trusted');
+  assert.deepEqual(
+    normalized.core_roles.map((role) => role.role_id),
+    ['daily_sunscreen_finish_fit', 'lightweight_moisturizer'],
+  );
+  assert.equal(normalized.comparison_mode, 'routine_mix');
+  assert.deepEqual(normalized.evidence_needed, ['finish', 'layering compatibility', 'price']);
 });
 
 test('concern planner normalizer trusts keyed plain-text output and produces a semantic plan', () => {
