@@ -65452,6 +65452,15 @@ function inferRecoAlternativesSearchUsageRole(targetSignals) {
   return '';
 }
 
+function pickRecoAlternativesAuthoritativeUsageRole({ roleScope, structuralUsageRole, inferredUsageRole } = {}) {
+  const roleScopeRole = inferRecoAlternativesUsageRoleFromRoleScope(roleScope);
+  if (roleScopeRole) return roleScopeRole;
+  const structuralRole = String(structuralUsageRole || '').trim().toLowerCase();
+  if (structuralRole && structuralRole !== 'unknown') return structuralRole;
+  const noisyRole = String(inferredUsageRole || '').trim().toLowerCase();
+  return noisyRole && noisyRole !== 'unknown' ? noisyRole : 'unknown';
+}
+
 function buildRecoAlternativesLocalSeedSearchRole(targetSignals) {
   const target = isPlainObject(targetSignals) ? targetSignals : {};
   const searchUsageRole = inferRecoAlternativesSearchUsageRole(target);
@@ -65740,6 +65749,11 @@ function buildRecoAlternativesTargetSignals(product, { productInput = '', lang =
     5,
   );
 
+  const structuralUsageRole = inferRecoAlternativesUsageRole(
+    name,
+    category,
+    productType,
+  );
   const inferredUsageRole = inferRecoAlternativesUsageRole(
     name,
     category,
@@ -65748,10 +65762,11 @@ function buildRecoAlternativesTargetSignals(product, { productInput = '', lang =
     narrativeSignals.join(' '),
     primaryClaims.join(' '),
   );
-  const roleScopeUsageRole = inferRecoAlternativesUsageRoleFromRoleScope(roleScope);
-  const usageRole = inferredUsageRole && inferredUsageRole !== 'unknown'
-    ? inferredUsageRole
-    : (roleScopeUsageRole || inferredUsageRole);
+  const usageRole = pickRecoAlternativesAuthoritativeUsageRole({
+    roleScope,
+    structuralUsageRole,
+    inferredUsageRole,
+  });
   const notes = pickFirstTrimmed(
     row.notes,
     row.anchor_notes,
@@ -66620,6 +66635,19 @@ function computeExternalSeedSignalOverlap(tokens, sourceText) {
   return clamp01Score(hits / Math.max(1, expected.length));
 }
 
+function computeRecoAlternativeTitleActiveMatchScore(tokens, candidateLabel) {
+  const haystack = String(candidateLabel || '').trim().toLowerCase();
+  if (!haystack) return 0;
+  const expected = collectRecoAlternativeMeaningfulTokens(tokens)
+    .filter((token) => !RECO_ALTERNATIVE_GROUNDING_GENERIC_TOKEN_SET.has(token));
+  if (!expected.length) return 0;
+  let hits = 0;
+  for (const token of expected) {
+    if (haystack.includes(token)) hits += 1;
+  }
+  return clamp01Score(hits / Math.max(1, expected.length));
+}
+
 function inferRecoAlternativeFormFactor(...values) {
   const text = values
     .flatMap((value) => Array.isArray(value) ? value : [value])
@@ -66640,6 +66668,24 @@ function inferRecoAlternativeFormFactor(...values) {
   return '';
 }
 
+function isRecoAlternativeEyeAreaMismatch(candidateText, targetSignals = null) {
+  const candidate = String(candidateText || '').trim();
+  if (!/\beye(?:\s+(?:serum|cream|gel|treatment|mask|balm))?\b/i.test(candidate)) return false;
+  const targetText = [
+    targetSignals?.roleScope,
+    targetSignals?.usageRole,
+    targetSignals?.name,
+    targetSignals?.productType,
+    targetSignals?.category,
+    targetSignals?.notes,
+    ...(Array.isArray(targetSignals?.primaryClaims) ? targetSignals.primaryClaims : []),
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+  return !/\beye(?:\s+(?:serum|cream|gel|treatment|mask|balm))?\b/i.test(targetText);
+}
+
 function isRecoAlternativeFormFactorCompatible(candidate, { targetSignals = null } = {}) {
   const row = isPlainObject(candidate) ? candidate : {};
   const joined = [
@@ -66658,6 +66704,7 @@ function isRecoAlternativeFormFactorCompatible(candidate, { targetSignals = null
     .join(' ');
   if (!joined) return true;
   if (FACIAL_FRAMEWORK_SCOPE_BLOCK_RE.test(joined)) return false;
+  if (isRecoAlternativeEyeAreaMismatch(joined, targetSignals)) return false;
   const candidateForm = inferRecoAlternativeFormFactor(joined);
   if (!candidateForm) return true;
   const targetForm = inferRecoAlternativeFormFactor(
@@ -66890,6 +66937,7 @@ function normalizePoolAlternativeRow(row, {
   const ingredientOverlap = computeExternalSeedSignalOverlap(ingredientTokens, candidateText);
   const claimOverlap = computeExternalSeedSignalOverlap(claimTokens, candidateText);
   const textureOverlap = computeExternalSeedSignalOverlap(textureTokens, candidateText);
+  const titleActiveMatch = computeRecoAlternativeTitleActiveMatchScore(ingredientTokens, candidateLabel);
   const cosmeticFinishPenalty = computeRecoAlternativeCosmeticFinishPenalty(targetSignals, candidateText, candidateLabel);
   const concernIntentPenalty = computeRecoAlternativeConcernIntentPenalty(targetSignals, candidateText, candidateLabel);
   const roleScore = !targetRole || targetRole === 'unknown'
@@ -66905,6 +66953,7 @@ function normalizePoolAlternativeRow(row, {
     roleScore * 0.44 +
     nameOverlap * 0.14 +
     ingredientOverlap * 0.18 +
+    titleActiveMatch * 0.08 +
     claimOverlap * 0.12 +
     textureOverlap * 0.06 +
     stableIdBonus +
@@ -66956,6 +67005,7 @@ function normalizePoolAlternativeRow(row, {
         roleScore >= 0.9 && targetRole && targetRole !== 'unknown'
           ? `Same ${targetRole} step in the Pivota product pool.`
           : '',
+        titleActiveMatch >= 0.34 ? 'Names the anchor hero active directly.' : '',
         ingredientOverlap >= 0.34 ? 'Matches key active or ingredient signals from the anchor.' : '',
         claimOverlap >= 0.34 ? 'Overlaps the anchor use case and claims.' : '',
         textureOverlap >= 0.34 ? 'Texture profile is close to the anchor.' : '',
@@ -66984,12 +67034,14 @@ function normalizePoolAlternativeRow(row, {
       compare_stage: 'pool_only',
       retrieval_source: normalized.retrieval_source || null,
       raw_similarity_score: Number(mixedScore.toFixed(3)),
+      ...(titleActiveMatch > 0 ? { title_active_match: Number(titleActiveMatch.toFixed(3)) } : {}),
       ...(cosmeticFinishPenalty > 0 ? { cosmetic_finish_penalty: Number(cosmeticFinishPenalty.toFixed(3)) } : {}),
       ...(concernIntentPenalty > 0 ? { concern_intent_penalty: Number(concernIntentPenalty.toFixed(3)) } : {}),
       ...(
-        cosmeticFinishPenalty > 0 || concernIntentPenalty > 0
+        titleActiveMatch > 0 || cosmeticFinishPenalty > 0 || concernIntentPenalty > 0
           ? {
               ranking_signals_used: uniqCaseInsensitiveStrings([
+                titleActiveMatch > 0 ? 'title_active_match_bonus' : '',
                 cosmeticFinishPenalty > 0 ? 'cosmetic_finish_mismatch_penalty' : '',
                 concernIntentPenalty > 0 ? 'concern_intent_mismatch_penalty' : '',
               ], 4),
