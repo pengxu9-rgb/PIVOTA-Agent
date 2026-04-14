@@ -51,6 +51,9 @@ const {
 const { inferMerchantIdFromProductId } = require('./productIntelResolve');
 const { buildStructuredPdpIngredientModules } = require('./services/pdpIngredientAuthority');
 const {
+  hydrateProductWithReviewedIngredientAuthority,
+} = require('./services/pdpReviewedIngredientAuthority');
+const {
   maybeBuildLiveSyntheticPdp,
   backfillPdpIdentityGraph,
   promotePdpIdentityLiveRead,
@@ -20526,6 +20529,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          review_summary: reviewSummaryResult.value,
 	        };
 	      }
+
+      if (wantsActiveIngredients || wantsIngredientsInci || wantsProductIntel) {
+        const reviewedIngredientAuthorityStartedAt = Date.now();
+        canonicalProductForPdp = await hydrateProductWithReviewedIngredientAuthority({
+          product: canonicalProductForPdp,
+          canonicalProductRef,
+        }).catch(() => canonicalProductForPdp);
+        markPdpV2Phase('reviewed_ingredient_authority', reviewedIngredientAuthorityStartedAt);
+      }
 
 	      let relatedProducts = [];
 	      let relatedProductsEnvelope = null;
