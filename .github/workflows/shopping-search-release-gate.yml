@@ -44,12 +44,16 @@ on:
       - "src/modules/decisioning/shopping_agent/**"
       - "src/modules/orchestration/aurora_beauty/index.js"
       - "src/observability/discoveryMetrics.js"
+      - "src/pdpBuilder.js"
+      - "src/pdpProductIntel.js"
       - "src/services/discoveryFeed.js"
       - "src/services/catalogServingGateway.js"
       - "src/services/catalogServingIndex.js"
       - "src/services/ingredientSkuEvidence.js"
       - "src/services/externalSeedProducts.js"
       - "src/services/externalSeedHarvesterBridge.js"
+      - "src/services/pdpIngredientAuthority.js"
+      - "src/services/pdpReviewedIngredientAuthority.js"
       - "tests/discovery_feed_smoke_script.test.js"
       - "tests/discovery_feed_service.test.js"
       - "tests/server.health.test.js"
@@ -71,6 +75,11 @@ on:
       - "tests/services/external_seed_brand_fastpath.test.js"
       - "tests/services/external_seed_products.test.js"
       - "tests/services/external_seed_harvester_bridge.test.js"
+      - "tests/services/pdp_ingredient_authority.test.js"
+      - "tests/pdp_builder_structured_modules.test.js"
+      - "tests/pdp_structured_modules.test.js"
+      - "tests/pdp_product_intel_modules.test.js"
+      - "tests/pdp_product_intel_kb_hydration.test.js"
       - "tests/verify_deployed_commit_matches_script.test.js"
   pull_request:
     branches:
@@ -104,12 +113,16 @@ on:
       - "src/modules/decisioning/shopping_agent/**"
       - "src/modules/orchestration/aurora_beauty/index.js"
       - "src/observability/discoveryMetrics.js"
+      - "src/pdpBuilder.js"
+      - "src/pdpProductIntel.js"
       - "src/services/discoveryFeed.js"
       - "src/services/catalogServingGateway.js"
       - "src/services/catalogServingIndex.js"
       - "src/services/ingredientSkuEvidence.js"
       - "src/services/externalSeedProducts.js"
       - "src/services/externalSeedHarvesterBridge.js"
+      - "src/services/pdpIngredientAuthority.js"
+      - "src/services/pdpReviewedIngredientAuthority.js"
       - "tests/discovery_feed_smoke_script.test.js"
       - "tests/discovery_feed_service.test.js"
       - "tests/server.health.test.js"
@@ -131,6 +144,11 @@ on:
       - "tests/services/external_seed_brand_fastpath.test.js"
       - "tests/services/external_seed_products.test.js"
       - "tests/services/external_seed_harvester_bridge.test.js"
+      - "tests/services/pdp_ingredient_authority.test.js"
+      - "tests/pdp_builder_structured_modules.test.js"
+      - "tests/pdp_structured_modules.test.js"
+      - "tests/pdp_product_intel_modules.test.js"
+      - "tests/pdp_product_intel_kb_hydration.test.js"
       - "tests/verify_deployed_commit_matches_script.test.js"
 
 concurrency:
@@ -189,6 +207,11 @@ jobs:
             tests/shopping_agent_strict_find_products_multi.test.js \
             tests/services/external_seed_products.test.js \
             tests/services/external_seed_harvester_bridge.test.js \
+            tests/services/pdp_ingredient_authority.test.js \
+            tests/pdp_builder_structured_modules.test.js \
+            tests/pdp_structured_modules.test.js \
+            tests/pdp_product_intel_modules.test.js \
+            tests/pdp_product_intel_kb_hydration.test.js \
             tests/find_products_multi_policy.test.js \
             tests/discovery_feed_service.test.js \
             tests/discovery_feed_smoke_script.test.js \
