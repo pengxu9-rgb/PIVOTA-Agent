@@ -1999,6 +1999,12 @@ function applyManualOverrideToSelected(caseRow, selectedResult, manualOverride) 
   assignManualField('routine_fit', manualCore.routine_fit);
   assignManualField('watchouts', manualCore.watchouts);
 
+  ['confidence', 'freshness', 'quality_state', 'evidence_profile', 'source_coverage'].forEach((field) => {
+    if (manualCore[field] == null) return;
+    core[field] = deepClone(manualCore[field]);
+    bundle[field] = deepClone(manualCore[field]);
+  });
+
   if (manualOverride.texture_finish && typeof manualOverride.texture_finish === 'object') {
     bundle.texture_finish = deepClone(manualOverride.texture_finish);
     fieldSources.texture_finish = 'manual';

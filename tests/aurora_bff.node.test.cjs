@@ -6184,7 +6184,7 @@ test('fetchRecoAlternativesForProduct: anchor precheck hydrates resolved sunscre
 
         assert.equal(out?.ok, true);
         assert.equal(geminiCalled, false);
-        assert.equal(out?.source_mode, 'hybrid_fallback');
+        assert.equal(out?.source_mode, 'pool_open_world_mixed');
         assert.equal(out?.compare_meta?.open_world_status, 'skipped_sufficient_pool');
         assert.ok(Number(out?.compare_meta?.pool_selected_count || 0) >= 3);
         assert.ok(seenQueries.some((query) => /sun protection|hydration|lightweight finish/i.test(String(query))));
@@ -6765,7 +6765,7 @@ test('/v1/reco/alternatives: aurora product-card surface defaults to grounded hy
 
         assert.equal(resp.status, 200);
         assert.equal(Array.isArray(resp.body?.alternatives), true);
-        assert.equal(resp.body?.source_mode, 'hybrid_fallback');
+        assert.equal(resp.body?.source_mode, 'pool_open_world_mixed');
         assert.equal(resp.body?.fallback_source, null);
         assert.equal(resp.body?.failure_class, null);
         assert.equal(resp.body.alternatives.length, 2);
@@ -8655,14 +8655,14 @@ test('/v1/reco/alternatives: catalog product-card hybrid uses grounded search po
                 url: 'https://example.com/inkey-niacinamide',
               },
               {
-                product_id: 'ole_niac',
+                product_id: 'naturium_niac',
                 merchant_id: 'merch_alt',
-                brand: 'Olehenriksen',
-                name: 'Peach Glaze Glow Niacinamide Serum',
-                display_name: 'Peach Glaze Glow Niacinamide Serum',
+                brand: 'Naturium',
+                name: 'Niacinamide Serum 12% Plus Zinc 2%',
+                display_name: 'Niacinamide Serum 12% Plus Zinc 2%',
                 product_type: 'serum',
                 category: 'Serum',
-                url: 'https://example.com/ole-niacinamide',
+                url: 'https://example.com/naturium-niacinamide-zinc',
               },
               {
                 product_id: 'gm_niac_duo',
@@ -8743,7 +8743,7 @@ test('/v1/reco/alternatives: catalog product-card hybrid uses grounded search po
           });
 
         assert.equal(resp.status, 200);
-        assert.equal(resp.body?.source_mode, 'hybrid_fallback');
+        assert.equal(resp.body?.source_mode, 'pool_open_world_mixed');
         assert.equal(resp.body?.fallback_source, null);
         assert.equal(resp.body?.failure_class, null);
         assert.equal(resp.body?.compare_meta?.open_world_status, 'skipped_sufficient_pool');
@@ -8865,7 +8865,7 @@ test('/v1/reco/alternatives: hybrid supplements thin grounded pool with Gemini 3
           });
 
         assert.equal(resp.status, 200);
-        assert.equal(resp.body?.source_mode, 'hybrid_fallback');
+        assert.equal(resp.body?.source_mode, 'pool_open_world_mixed');
         assert.equal(resp.body?.failure_class, null);
         assert.equal(resp.body?.compare_meta?.open_world_status, 'success');
         assert.equal(resp.body?.llm_trace?.provider_model, 'gemini-3-flash-preview');
@@ -8964,7 +8964,6 @@ test('/v1/reco/alternatives: hybrid does not let weak same-step pool rows outran
             ],
           },
         }));
-
         const app = express();
         app.use(express.json({ limit: '1mb' }));
         mountAuroraBffRoutes(app, { logger: null });
@@ -8995,7 +8994,7 @@ test('/v1/reco/alternatives: hybrid does not let weak same-step pool rows outran
           });
 
         assert.equal(resp.status, 200);
-        assert.equal(resp.body?.source_mode, 'hybrid_fallback');
+        assert.equal(resp.body?.source_mode, 'pool_open_world_mixed');
         assert.equal(resp.body?.compare_meta?.open_world_status, 'success');
         assert.equal(resp.body?.alternatives?.length, 3);
         const names = resp.body.alternatives.map((alt) => String(alt?.product?.name || alt?.name || ''));
@@ -9170,7 +9169,6 @@ test('/v1/reco/alternatives: hybrid treats off-target tone pool rows as insuffic
             ],
           },
         }));
-
         const app = express();
         app.use(express.json({ limit: '1mb' }));
         mountAuroraBffRoutes(app, { logger: null });
@@ -9203,7 +9201,7 @@ test('/v1/reco/alternatives: hybrid treats off-target tone pool rows as insuffic
           });
 
         assert.equal(resp.status, 200);
-        assert.equal(resp.body?.source_mode, 'hybrid_fallback');
+        assert.equal(resp.body?.source_mode, 'pool_open_world_mixed');
         assert.equal(resp.body?.compare_meta?.open_world_status, 'success');
         assert.notEqual(resp.body?.compare_meta?.open_world_status, 'skipped_sufficient_pool');
         assert.ok(Number(resp.body?.compare_meta?.open_world_grounded_count || 0) >= 2);
@@ -10113,6 +10111,38 @@ test('/v1/reco/alternatives: external llm_seed compare mixes pool and open-world
             ],
           },
         }));
+        __internal.__setResolveProductRefForTest(async (args = {}) => {
+          const query = String(args?.query || '').toLowerCase();
+          if (query.includes('skinceuticals') || query.includes('blemish + age')) {
+            return {
+              resolved: true,
+              product_ref: {
+                product_id: 'ext_skinceuticals_blemish_age_defense',
+                merchant_id: 'external_seed',
+              },
+              confidence: 0.91,
+              reason: 'resolved',
+            };
+          }
+          if (query.includes('the ordinary') || query.includes('niacinamide')) {
+            return {
+              resolved: true,
+              product_ref: {
+                product_id: '9886499864904',
+                merchant_id: 'merch_efbc46b4619cfbdf',
+              },
+              confidence: 0.91,
+              reason: 'resolved',
+            };
+          }
+          return {
+            resolved: false,
+            product_ref: null,
+            confidence: 0,
+            reason: 'no_candidates',
+            candidates: [],
+          };
+        });
 
         const app = express();
         app.use(express.json({ limit: '1mb' }));
@@ -10152,6 +10182,7 @@ test('/v1/reco/alternatives: external llm_seed compare mixes pool and open-world
       } finally {
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
         loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        loaded?.__internal?.__resetResolveProductRefForTest?.();
         axios.get = originalGet;
         delete require.cache[moduleId];
       }

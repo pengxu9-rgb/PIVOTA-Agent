@@ -234,6 +234,121 @@ describe('ingredientProductRecall', () => {
     expect(out.diagnostics.ingredient_direct_main_path_status).toBe('direct_hit');
   });
 
+  test('brand-anchored ingredient query keeps matching external seed even when generic ingredient hits are enough', async () => {
+    jest.doMock('../../src/services/pciKbClient', () => ({
+      kbQuery: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('to_regclass')) {
+          return { rows: [{ table_name: 'pci_kb.sku_ingredients' }] };
+        }
+        return { rows: [] };
+      }),
+    }));
+
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        const now = new Date().toISOString();
+        if (text.includes('FROM products_cache pc')) {
+          return {
+            rows: [
+              {
+                merchant_id: 'external_seed',
+                merchant_name: 'The Ordinary',
+                product_data: {
+                  product_id: 'ext_the_ordinary_niacinamide',
+                  title: 'The Ordinary Niacinamide 10% + Zinc 1%',
+                  brand: 'The Ordinary',
+                  category: 'Serum',
+                  url: 'https://theordinary.example.com/products/niacinamide',
+                  canonical_url: 'https://theordinary.example.com/products/niacinamide',
+                  ingredient_tokens: ['niacinamide'],
+                  status: 'active',
+                },
+                cached_at: now,
+              },
+              {
+                merchant_id: 'external_seed',
+                merchant_name: 'Fenty Beauty',
+                product_data: {
+                  product_id: 'ext_fenty_watch_ya_tone',
+                  title: 'Watch Ya Tone Niacinamide Dark Spot Serum Refill',
+                  brand: 'Fenty Beauty',
+                  category: 'Serum',
+                  url: 'https://fenty.example.com/products/watch-ya-tone-refill',
+                  canonical_url: 'https://fenty.example.com/products/watch-ya-tone-refill',
+                  ingredient_tokens: ['niacinamide'],
+                  status: 'active',
+                },
+                cached_at: now,
+              },
+            ],
+          };
+        }
+        if (!text.includes('FROM external_product_seeds')) return { rows: [] };
+        if (!text.includes('position(') || !text.includes("coalesce(attached_product_key, '') = ''")) {
+          return { rows: [] };
+        }
+        return {
+          rows: [
+            {
+              id: 'seed_good_molecules',
+              external_product_id: 'ext_good_molecules_niacinamide',
+              destination_url: 'https://v1.goodmolecules.com/products/niacinamide-serum',
+              canonical_url: 'https://v1.goodmolecules.com/products/niacinamide-serum',
+              domain: 'v1.goodmolecules.com',
+              title: 'Niacinamide Serum',
+              image_url: 'https://goodmolecules.example.com/niacinamide.jpg',
+              price_amount: 6,
+              price_currency: 'USD',
+              availability: 'in stock',
+              attached_product_key: null,
+              seed_data: {
+                brand: 'Good Molecules',
+                category: 'Serum',
+                derived: {
+                  recall: {
+                    brand: 'Good Molecules',
+                    retrieval_title: 'Niacinamide Serum',
+                    retrieval_summary: 'A 10% niacinamide serum for smoother-looking skin and visible pores.',
+                    ingredient_tokens: ['niacinamide'],
+                    alias_tokens: ['Good Molecules Niacinamide Serum', 'goodmolecules niacinamide'],
+                  },
+                },
+                snapshot: {
+                  title: 'Niacinamide Serum',
+                  description: 'A 10% niacinamide serum for smoother-looking skin and visible pores.',
+                  brand: 'Good Molecules',
+                  category: 'Serum',
+                  canonical_url: 'https://v1.goodmolecules.com/products/niacinamide-serum',
+                  destination_url: 'https://v1.goodmolecules.com/products/niacinamide-serum',
+                },
+              },
+              updated_at: now,
+              created_at: now,
+            },
+          ],
+        };
+      }),
+    }));
+
+    const { recallIngredientProducts } = require('../../src/services/ingredientProductRecall');
+    const out = await recallIngredientProducts({
+      query: 'Good Molecules Niacinamide Serum',
+      ingredientId: 'niacinamide',
+      targetStepFamily: 'serum',
+      limit: 5,
+      minimumDirectProductCount: 2,
+    });
+
+    expect(out.products.map((row) => row.title || row.name)).toContain('Niacinamide Serum');
+    expect(out.products[0]?.brand || out.products[0]?.vendor).toBe('Good Molecules');
+    expect(out.diagnostics.unattached_seed_recall_attempted).toBe(true);
+    expect(out.diagnostics.unattached_seed_recall_recovered).toBe(1);
+    expect(out.diagnostics.ingredient_direct_main_path_status).toBe('direct_hit');
+    expect(out.diagnostics.family_fallback_used).toBe(false);
+  });
+
   test('keeps routine-safe default behavior when exact ingredient recall is empty', async () => {
     jest.doMock('../../src/services/pciKbClient', () => ({
       kbQuery: jest.fn(async (sql) => {

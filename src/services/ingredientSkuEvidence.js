@@ -1039,6 +1039,134 @@ function buildSeedStageSqlId(row) {
   return /^\d+$/.test(id) ? id : null;
 }
 
+function normalizeCompactBrandText(value) {
+  return normalizeIngredientRecallText(value).replace(/[^a-z0-9]+/g, '');
+}
+
+function collectSeedRowBrandCandidates(row = {}) {
+  const seedData = row?.seed_data && typeof row.seed_data === 'object' ? row.seed_data : {};
+  const snapshot = seedData.snapshot && typeof seedData.snapshot === 'object' ? seedData.snapshot : {};
+  return uniqStrings([
+    row?.brand,
+    row?.seed_brand,
+    seedData.brand,
+    seedData.brand_name,
+    seedData.vendor,
+    seedData.vendor_name,
+    snapshot.brand,
+    snapshot.brand_name,
+    snapshot.vendor,
+    snapshot.vendor_name,
+  ], 12);
+}
+
+function seedRowBrandMatchesQuery(row = {}, queryText = '') {
+  const queryCompact = normalizeCompactBrandText(queryText);
+  if (!queryCompact) return false;
+  return collectSeedRowBrandCandidates(row).some((brand) => {
+    const brandCompact = normalizeCompactBrandText(brand);
+    return brandCompact.length >= 4 && queryCompact.includes(brandCompact);
+  });
+}
+
+function hasPotentialBrandAnchoredIngredientQuery(queryText = '', profile = null) {
+  let remaining = normalizeIngredientRecallText(queryText);
+  if (!remaining) return false;
+  const removePhrase = (phrase) => {
+    const normalizedPhrase = normalizeIngredientRecallText(phrase);
+    if (!normalizedPhrase) return;
+    remaining = remaining.replace(new RegExp(`\\b${normalizedPhrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g'), ' ');
+  };
+  (Array.isArray(profile?.exact_phrases) ? profile.exact_phrases : []).forEach(removePhrase);
+  (Array.isArray(profile?.alias_phrases) ? profile.alias_phrases : []).forEach(removePhrase);
+  const residualTokens = normalizeIngredientRecallText(remaining)
+    .split(/\s+/)
+    .filter(
+      (token) =>
+        token.length >= 4 &&
+        ![
+          'serum',
+          'cream',
+          'gel',
+          'skin',
+          'care',
+          'skincare',
+          'treatment',
+          'moisturizer',
+          'moisturiser',
+          'sunscreen',
+          'best',
+          'buy',
+          'under',
+          'with',
+          'from',
+          'for',
+        ].includes(token),
+    );
+  return residualTokens.length > 0;
+}
+
+async function fetchBrandAnchoredUnattachedSeedRowsByPatterns({
+  queryText = '',
+  patterns = [],
+  market = DEFAULT_MARKET,
+  tool = DEFAULT_TOOL,
+  limit = 24,
+  inStockOnly = false,
+} = {}) {
+  const normalizedPatterns = uniqStrings(patterns, 24);
+  const queryCompact = normalizeCompactBrandText(queryText);
+  if (!normalizedPatterns.length || queryCompact.length < 4) return [];
+  const safeLimit = Math.max(6, Number(limit) || 24);
+  const marketValue = String(market || DEFAULT_MARKET).trim().toUpperCase() || DEFAULT_MARKET;
+  const toolValue = String(tool || DEFAULT_TOOL).trim() || DEFAULT_TOOL;
+  const brandCompactExpr = `regexp_replace(${EXTERNAL_SEED_RECALL_SQL_FIELDS.brand}, '[^a-z0-9]+', '', 'g')`;
+  const availabilityFilter = inStockOnly
+    ? `AND coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')`
+    : '';
+  const res = await runAppQuery(
+    `
+      SELECT
+        id,
+        external_product_id,
+        destination_url,
+        canonical_url,
+        domain,
+        title,
+        image_url,
+        price_amount,
+        price_currency,
+        availability,
+        seed_data,
+        attached_product_key,
+        updated_at,
+        created_at
+      FROM external_product_seeds
+      WHERE status = 'active'
+        AND market = $1
+        AND (tool = '*' OR tool = $2)
+        AND coalesce(attached_product_key, '') = ''
+        ${availabilityFilter}
+        AND length(${brandCompactExpr}) >= 4
+        AND position(${brandCompactExpr} in $3::text) > 0
+        AND (
+          lower(coalesce(title, '')) LIKE ANY($4::text[])
+          OR lower(coalesce(seed_data->>'title', '')) LIKE ANY($4::text[])
+          OR lower(coalesce(seed_data->'snapshot'->>'title', '')) LIKE ANY($4::text[])
+          OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY($4::text[])
+          OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY($4::text[])
+          OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalBody} LIKE ANY($4::text[])
+          OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokens} LIKE ANY($4::text[])
+          OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY($4::text[])
+        )
+      ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
+      LIMIT $5
+    `,
+    [marketValue, toolValue, queryCompact, normalizedPatterns, safeLimit],
+  );
+  return (Array.isArray(res?.rows) ? res.rows : []).filter((row) => seedRowBrandMatchesQuery(row, queryText));
+}
+
 function mapSeedRowToRecallProduct(row, sourceTag) {
   const product = buildExternalSeedProduct(row);
   if (!product) return null;
@@ -1618,6 +1746,7 @@ function stabilizeIngredientRecallProducts(products, { recallProfile = null, tar
         (recallMeta ? Math.max(0, Number(recallMeta.evidence?.kb_explicit || 0)) : 0) +
         exactHits +
         aliasHits;
+      const sourceTag = String(recallMeta?.source_tag || '').trim();
       const surfaceExplicitHits = exactHits + aliasHits;
       const candidateStep = recallMeta?.candidate_step || resolveRecallCandidateStep(product);
       const familyRelation = normalizedTargetStepFamily
@@ -1637,6 +1766,7 @@ function stabilizeIngredientRecallProducts(products, { recallProfile = null, tar
       const refill = /\brefill\b/.test(titleText);
       const obviousNoise = INGREDIENT_RECALL_OBVIOUS_NOISE_RE.test(titleText);
       let score = 0;
+      if (sourceTag === 'unattached_seed_brand_anchored') score += 120;
       if (familyRelation === 'same_family') score += 80;
       else if (familyRelation === 'adjacent_family') score -= 20;
       else if (normalizedTargetStepFamily && !candidateStep) score -= 8;
@@ -2137,6 +2267,7 @@ function resolveSourceRank(sourceTag) {
   if (sourceTag === 'kb_attached_seed') return 480;
   if (sourceTag === 'kb_named_attached_seed_target_anchored') return 450;
   if (sourceTag === 'kb_named_attached_seed') return 430;
+  if (sourceTag === 'unattached_seed_brand_anchored') return 420;
   if (sourceTag === 'attached_seed_target_anchored') return 390;
   if (sourceTag === 'attached_seed') return 360;
   if (sourceTag === 'kb_named_products_cache_target_anchored') return 350;
@@ -2459,6 +2590,26 @@ async function recallIngredientProductsFromProfile({
       useKbEvidence: true,
     });
   }
+
+  if (
+    shouldProbeInitialProductsCache &&
+    hasPotentialBrandAnchoredIngredientQuery(query, profile)
+  ) {
+    diagnostics.unattached_seed_recall_attempted = true;
+    const brandAnchoredUnattachedRows = await fetchBrandAnchoredUnattachedSeedRowsByPatterns({
+      queryText: query,
+      patterns: uniqStrings([...targetAnchoredExplicitPatterns, ...explicitPatterns], 24),
+      market,
+      tool,
+      limit: resolveRecallFetchLimit(profile, limit, 3, 24, 48),
+      inStockOnly,
+    });
+    diagnostics.unattached_seed_recall_recovered = brandAnchoredUnattachedRows.length > 0 ? 1 : 0;
+    if (brandAnchoredUnattachedRows.length > 0) {
+      addRows(brandAnchoredUnattachedRows, 'unattached_seed_brand_anchored');
+    }
+  }
+
   let candidates = rankIngredientRecallCandidates(explicitCandidates, { minimumDirectProductCount });
   let stabilizedProducts = buildStabilizedIngredientRecallProducts(candidates, {
     profile,

@@ -1073,6 +1073,15 @@ describe('product_intel pilot compare selection', () => {
         search_card: {
           highlight_candidate: 'Brightening actives in a cream step',
         },
+        product_intel_core: {
+          quality_state: 'limited',
+          evidence_profile: 'seller_only',
+          source_coverage: {
+            seller: { available: true },
+            formula: { available: false },
+            reviews: { available: false, count: 0 },
+          },
+        },
         external_highlight_review_status: 'rewrite',
         external_review_batch: 'manual_card_highlight_2026_04_10',
       },
@@ -1081,6 +1090,15 @@ describe('product_intel pilot compare selection', () => {
     expect(overridden.selected_mode).toBe('manual_override');
     expect(overridden.bundle.shopping_card.highlight).toBe('Brightening actives in a cream step');
     expect(overridden.bundle.search_card.highlight_candidate).toBe('Brightening actives in a cream step');
+    expect(overridden.bundle.quality_state).toBe('limited');
+    expect(overridden.bundle.evidence_profile).toBe('seller_only');
+    expect(overridden.bundle.source_coverage).toEqual(
+      expect.objectContaining({
+        seller: { available: true },
+        formula: { available: false },
+      }),
+    );
+    expect(overridden.bundle.product_intel_core.evidence_profile).toBe('seller_only');
     expect(overridden.bundle.provenance.external_highlight_review_status).toBe('rewrite');
     expect(overridden.bundle.provenance.external_review_batch).toBe('manual_card_highlight_2026_04_10');
   });
