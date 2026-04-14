@@ -51734,12 +51734,12 @@ function buildRecoAssistantPromptPriceDiagnostics(items = []) {
 
 const RECO_ASSISTANT_CONCERN_FAMILY_PATTERNS = Object.freeze([
   ['oil_control', /\b(oil|oily|oiliness|shine|sebum|greasy|mattif|zinc\s*pca|zinc)\b/i],
-  ['tone_brightening', /\b(dull(?:ness)?|uneven\s+tone|dark\s+spots?|hyperpigmentation|brighten(?:ing)?|radiance|radiant|glow)\b/i],
+  ['tone_brightening', /\b(dull(?:ness)?|uneven\s+tone|dark\s+spots?|hyperpigmentation|brighten(?:ing)?|radiance|radiant|glow(?:ing)?)\b/i],
   ['acne_pore', /\b(acne|breakouts?|blemish(?:es)?|clog(?:ged)?|pores?)\b/i],
   ['hydration_barrier', /\b(hydrat(?:e|ing|ion)?|moistur(?:e|ize|izer|izing)?|barrier|dry(?:ness)?|dehydrat(?:ed|ion)?|ceramides?|glycerin|hyaluronic)\b/i],
   ['sunscreen_uv', /\b(spf|sunscreen|sun\s*screen|uv|sun\s+protection|white\s+cast|broad\s+spectrum)\b/i],
   ['sensitivity_redness', /\b(redness|sensitive|sensitized|sooth(?:e|ing)?|calm(?:ing)?|irritat(?:e|ion)|stinging?)\b/i],
-  ['aging_texture', /\b(wrinkles?|fine\s+lines?|aging|anti[-\s]?aging|texture|roughness|retinol|retinoid)\b/i],
+  ['aging_texture', /\b(wrinkles?|fine[-\s]?lines?|aging|anti[-\s]?aging|texture|roughness|retinol|retinoid)\b/i],
 ]);
 
 function collectRecoAssistantConcernFamilies(value) {
@@ -67524,12 +67524,18 @@ function shouldDropRecoAlternativeOffTargetVisibleClaim(value, { targetSignals =
   if (!claimFamilies.size) return false;
   const hasUnallowedToneClaim =
     !allowedFamilies.has('tone_brightening') &&
-    /\b(dull(?:ness)?|uneven\s+tone|dark\s+spots?|hyperpigmentation|brighten(?:ing)?|radiance|radiant|glow)\b/i.test(text);
+    /\b(dull(?:ness)?|uneven\s+tone|dark\s+spots?|hyperpigmentation|brighten(?:ing)?|radiance|radiant|glow(?:ing)?)\b/i.test(text);
   if (hasUnallowedToneClaim) return true;
   const hasUnallowedAgingClaim =
     !allowedFamilies.has('aging_texture') &&
-    /\b(wrinkles?|fine\s+lines?|aging|anti[-\s]?aging|roughness|retinol|retinoid)\b/i.test(text);
-  return hasUnallowedAgingClaim;
+    /\b(wrinkles?|fine[-\s]?lines?|aging|anti[-\s]?aging|roughness|retinol|retinoid)\b/i.test(text);
+  if (hasUnallowedAgingClaim) return true;
+  const hasAllowedFamily = Array.from(claimFamilies).some((family) => allowedFamilies.has(family));
+  const hasUnallowedAcneOnlyClaim =
+    !hasAllowedFamily &&
+    !allowedFamilies.has('acne_pore') &&
+    /\b(acne|breakouts?|blemish(?:es)?|clog(?:ged)?|pores?|breakout[-\s]?prone)\b/i.test(text);
+  return hasUnallowedAcneOnlyClaim;
 }
 
 function redactRecoAlternativeOffTargetVisibleClaim(value, { targetSignals = null } = {}) {
@@ -67552,14 +67558,15 @@ function redactRecoAlternativeOffTargetVisibleClaim(value, { targetSignals = nul
   }
   let next = text;
   if (!allowedFamilies.has('tone_brightening')) {
-    const toneTerms = 'dull(?:ness)?|uneven\\s+tone|dark\\s+spots?|hyperpigmentation|brighten(?:ing)?|radiance|radiant|glow';
+    const toneTerms = 'dull(?:ness)?|uneven\\s+tone|dark\\s+spots?|hyperpigmentation|brighten(?:ing)?|radiance|radiant|glow(?:ing)?(?:\\s+skin)?';
     next = next
       .replace(new RegExp(`\\s+(?:and|or|plus)\\s+(?:${toneTerms})\\b`, 'gi'), '')
       .replace(new RegExp(`\\b(?:${toneTerms})\\s+(?:and|or|plus)\\s+`, 'gi'), '')
+      .replace(new RegExp(`\\s+for\\s+(?:${toneTerms})\\b`, 'gi'), '')
       .replace(new RegExp(`\\s*,\\s*(?:${toneTerms})\\b`, 'gi'), '');
   }
   if (!allowedFamilies.has('aging_texture')) {
-    const agingTerms = 'wrinkles?|fine\\s+lines?|aging|anti[-\\s]?aging|roughness|retinol|retinoid';
+    const agingTerms = 'wrinkles?|fine[-\\s]?lines?(?:\\s+support)?|aging|anti[-\\s]?aging|roughness|retinol|retinoid';
     next = next
       .replace(new RegExp(`\\s+(?:and|or|plus)\\s+(?:${agingTerms})\\b`, 'gi'), '')
       .replace(new RegExp(`\\b(?:${agingTerms})\\s+(?:and|or|plus)\\s+`, 'gi'), '')
