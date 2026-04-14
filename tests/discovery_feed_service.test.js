@@ -5195,6 +5195,27 @@ describe('discovery feed service', () => {
     expect(_internals.resolveExternalSeedProviderLimit(request, 240)).toBe(240);
   });
 
+  test('query text matcher honors external seed recall text for vitamin c candidates', () => {
+    const candidate = _internals.normalizeCandidateProduct(
+      {
+        merchant_id: 'external_seed',
+        product_id: 'seed_c_vit_1',
+        title: '+C Vit Priming Oil',
+        category: 'Face Oil',
+        product_type: 'Oil',
+        external_seed_recall: {
+          retrieval_title: 'vitamin c priming oil',
+          retrieval_summary: 'antioxidant vitamin c face oil for glow',
+          category: 'Vitamin C',
+          vertical: 'Skincare',
+        },
+      },
+      0,
+    );
+
+    expect(_internals.matchesQueryTextCandidate(candidate, 'vitamin c')).toBe(true);
+  });
+
   test('browse_products debug mode records a non-blocking catalog serving shadow summary', async () => {
     jest.resetModules();
     process.env.CATALOG_SERVING_INDEX_BASE_URL = 'https://catalog-shadow.example';
