@@ -130,6 +130,32 @@ describe('Celestial commerce core source contracts', () => {
       shouldBridgePublicBeautySearchToDiscovery({
         ...base,
         search: {
+          ...base.search,
+          query: 'vitamin c',
+        },
+        queryText: 'vitamin c',
+        queryClass: 'exploratory',
+        strictDecision: { enabled: false },
+      }),
+    ).toBe(true);
+
+    expect(
+      shouldBridgePublicBeautySearchToDiscovery({
+        ...base,
+        search: {
+          ...base.search,
+          query: 'vitamin c body wash',
+        },
+        queryText: 'vitamin c body wash',
+        queryClass: 'attribute',
+        strictDecision: { enabled: false },
+      }),
+    ).toBe(true);
+
+    expect(
+      shouldBridgePublicBeautySearchToDiscovery({
+        ...base,
+        search: {
           query: 'hair oil',
         },
         metadata: {

@@ -5144,13 +5144,7 @@ function shouldBridgePublicBeautySearchToDiscovery({
   ) {
     return false;
   }
-  const normalizedQueryClass = String(queryClass || intent?.query_class || '')
-    .trim()
-    .toLowerCase();
-  const fastpath = resolveBeautyCategoryBrowseFastpath(rawQuery, {
-    queryClass: normalizedQueryClass || null,
-  });
-  return Boolean(fastpath || resolvePublicBeautyCompoundIntent(rawQuery));
+  return true;
 }
 
 function buildDiscoveryPayloadFromPublicBeautySearch(search = {}, metadata = {}, queryText = '') {
