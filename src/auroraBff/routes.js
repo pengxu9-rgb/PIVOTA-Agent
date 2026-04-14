@@ -65424,9 +65424,21 @@ function inferRecoAlternativesUsageRole(...values) {
   if (/\b(serum|ampoule)\b/.test(text)) return 'serum';
   if (/\b(moisturizer|moisturiser|cream|lotion|gel cream|water gel|emulsion)\b/.test(text)) return 'moisturizer';
   if (/\b(mask)\b/.test(text)) return 'mask';
-  if (/\b(facial oil|face oil|oil)\b/.test(text)) return 'oil';
+  if (/\b(facial oil|face oil|treatment oil|beauty oil|marula oil|squalane oil|rosehip oil)\b/.test(text)) return 'oil';
   if (/\b(treatment|exfoliant|peel|spot|retinol|retinoid|acid)\b/.test(text)) return 'treatment';
   return 'unknown';
+}
+
+function inferRecoAlternativesUsageRoleFromRoleScope(roleScope) {
+  const text = String(roleScope || '').trim().toLowerCase().replace(/[_-]+/g, ' ');
+  if (!text) return '';
+  if (/\b(spf|sunscreen|sun)\b/.test(text)) return 'sunscreen';
+  if (/\bcleanser\b/.test(text)) return 'cleanser';
+  if (/\btoner\b/.test(text)) return 'toner';
+  if (/\bessence\b/.test(text) && !/\bserum\b/.test(text)) return 'essence';
+  if (/\bserum\b/.test(text)) return 'serum';
+  if (/\bmoisturizer|moisturiser|cream|lotion|barrier\b/.test(text)) return 'moisturizer';
+  return '';
 }
 
 function inferRecoAlternativesClaimHints(...values) {
@@ -65672,7 +65684,7 @@ function buildRecoAlternativesTargetSignals(product, { productInput = '', lang =
     5,
   );
 
-  const usageRole = inferRecoAlternativesUsageRole(
+  const inferredUsageRole = inferRecoAlternativesUsageRole(
     name,
     category,
     productType,
@@ -65680,6 +65692,10 @@ function buildRecoAlternativesTargetSignals(product, { productInput = '', lang =
     narrativeSignals.join(' '),
     primaryClaims.join(' '),
   );
+  const roleScopeUsageRole = inferRecoAlternativesUsageRoleFromRoleScope(roleScope);
+  const usageRole = inferredUsageRole && inferredUsageRole !== 'unknown'
+    ? inferredUsageRole
+    : (roleScopeUsageRole || inferredUsageRole);
   const notes = pickFirstTrimmed(
     row.notes,
     row.anchor_notes,
@@ -66072,6 +66088,8 @@ function getRecoAlternativeIdentityKeys(row) {
   const brand = pickFirstTrimmed(product.brand, item.brand);
   const name = pickFirstTrimmed(product.display_name, product.displayName, product.name, item.display_name, item.displayName, item.name);
   if (brand || name) push('name', `${brand || ''}::${name || ''}`);
+  const coreKey = getRecoAlternativeComparableCoreKey(item);
+  if (coreKey) keys.push(`core:${coreKey}`);
   return uniqCaseInsensitiveStrings(keys, 8);
 }
 
@@ -66083,10 +66101,13 @@ function getRecoAlternativeComparableCoreKey(row) {
     pickFirstTrimmed(product.display_name, product.displayName, product.name, item.display_name, item.displayName, item.name),
   );
   name = name
+    .replace(/\[[^\]]*(?:deal|subscription|subscribe|shade|refill)[^\]]*\]/g, ' ')
+    .replace(/\b(?:deal|subscription|subscribe(?:\s*(?:and|&)\s*save)?)\b/g, ' ')
     .replace(/\brefill(?:\s+(?:pouch|pack|pod|cartridge|bottle))?\b/g, ' ')
     .replace(/\b(?:pouch|pack|pod|cartridge|bottle)\s+refill\b/g, ' ')
     .replace(/\breplacement\s+(?:pouch|pack|pod|cartridge|bottle)\b/g, ' ')
     .replace(/\b(?:duo|bundle|kit|set\s+of\s+\d+|value\s+set|jumbo|mini|travel\s+size)\b/g, ' ')
+    .replace(/\b(?:dy|ln|mp|mn|lp|dn|md|lt|deep|fair|light|medium|tan)\s*\d{2,4}\b/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
   return brand || name ? `${brand}::${name}` : '';
@@ -66111,7 +66132,7 @@ function isRecoAlternativePackagingVariant(row) {
     .filter(Boolean)
     .join(' ');
   if (!text) return false;
-  return /\b(?:refill(?:\s+(?:pouch|pack|pod|cartridge|bottle))?|(?:pouch|pack|pod|cartridge|bottle)\s+refill|replacement\s+(?:pouch|pack|pod|cartridge|bottle)|duo|bundle|kit|set\s+of\s+\d+|value\s+set|jumbo|mini|travel\s+size)\b/i.test(text);
+  return /\b(?:deal|subscription|subscribe(?:\s*(?:and|&)\s*save)?|refill(?:\s+(?:pouch|pack|pod|cartridge|bottle))?|(?:pouch|pack|pod|cartridge|bottle)\s+refill|replacement\s+(?:pouch|pack|pod|cartridge|bottle)|duo|bundle|kit|set\s+of\s+\d+|value\s+set|jumbo|mini|travel\s+size|(?:dy|ln|mp|mn|lp|dn|md|lt)\s*\d{2,4})\b/i.test(text);
 }
 
 function mergeRecoAlternativeDuplicateRows(existing, incoming) {
@@ -66125,7 +66146,17 @@ function mergeRecoAlternativeDuplicateRows(existing, incoming) {
   const rightCatalog =
     String(right.grounding_status || '').trim() === 'catalog_verified' ||
     Boolean(pickFirstTrimmed(rightProduct.product_id, rightProduct.sku_id, rightProduct.pdp_url, rightProduct.url, right.pdp_open));
-  const base = rightCatalog && !leftCatalog ? right : left;
+  const leftVariant = isRecoAlternativePackagingVariant(left);
+  const rightVariant = isRecoAlternativePackagingVariant(right);
+  const base = rightCatalog && !leftCatalog
+    ? right
+    : leftCatalog && !rightCatalog
+      ? left
+      : leftVariant && !rightVariant
+        ? right
+        : rightVariant && !leftVariant
+          ? left
+          : left;
   const support = base === right ? left : right;
   const baseProduct = getRecoAlternativeProductObject(base);
   const supportProduct = getRecoAlternativeProductObject(support);
@@ -66422,6 +66453,9 @@ function buildExternalSeedCompareSearchQueries({ productObj, productInput = '', 
   }
   if (usageRole && usageRole !== 'unknown' && target.primaryClaims.length) {
     pushQuery(`${target.primaryClaims[0]} ${usageRole}`);
+  }
+  if (usageRole && usageRole !== 'unknown' && target.knownActives.length) {
+    pushQuery(`${target.knownActives[0]} ${usageRole}`);
   }
   if (usageRole && usageRole !== 'unknown' && target.textureHints.length) {
     pushQuery(`${target.textureHints[0]} ${usageRole}`);
