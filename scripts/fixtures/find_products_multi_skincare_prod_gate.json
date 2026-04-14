@@ -8,6 +8,7 @@
     "require_primary_path": true,
     "allow_strict_empty": false,
     "allowed_query_sources": [
+      "agent_products_search",
       "cache_cross_merchant_search"
     ],
     "allow_zero_results": false,
