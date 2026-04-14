@@ -226,6 +226,32 @@ describe('discovery feed service', () => {
     });
   });
 
+  test('explicit beauty seed recall keeps multi-word query phrases ahead of broad token patterns', () => {
+    const request = _internals.normalizeDiscoveryRequest({
+      surface: 'browse_products',
+      query: {
+        text: 'hair oil',
+      },
+      context: {
+        auth_state: 'anonymous',
+        recent_views: [],
+        recent_queries: [],
+        locale: 'en-US',
+      },
+    });
+    const profile = buildDiscoveryProfile(request.context);
+
+    const recallTerms = _internals.buildBeautyInterestRecallTerms(request, profile, ['hair oil']);
+
+    expect(recallTerms.patterns).toEqual(expect.arrayContaining(['%hair oil%', '%hair%oil%']));
+    expect(recallTerms.patterns).not.toContain('%hair%');
+    expect(recallTerms.patterns).not.toContain('%oil%');
+    expect(recallTerms.categoryTerms).toEqual(
+      expect.arrayContaining(['hair oil', 'haircare']),
+    );
+    expect(recallTerms.verticalTerms).toEqual(expect.arrayContaining(['haircare']));
+  });
+
   test('explicit browse query uses staged external seed mainline without cold-start beauty fallback terms', async () => {
     delete process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL;
     delete process.env.PIVOTA_BACKEND_BASE_URL;
@@ -390,6 +416,72 @@ describe('discovery feed service', () => {
         }),
       ]),
     );
+  });
+
+  test('explicit browse query does not hard-filter external seed category matches by raw query text', async () => {
+    delete process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL;
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+    delete process.env.PIVOTA_API_BASE;
+    delete process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY;
+    delete process.env.PIVOTA_BACKEND_AGENT_API_KEY;
+    delete process.env.PIVOTA_API_KEY;
+    delete process.env.DATABASE_URL;
+
+    const internalSpy = jest.fn(async () =>
+      Array.from({ length: 24 }, (_, idx) =>
+        makeProduct({
+          merchant_id: 'internal_catalog',
+          product_id: `horse_hair_brush_${idx + 1}`,
+          title: `Horse Hair Makeup Brush ${idx + 1}`,
+          brand: 'Brush House',
+          category: 'Makeup Brush',
+          product_type: 'Makeup Brush',
+        }),
+      ),
+    );
+    const externalSpy = jest.fn(async () =>
+      Array.from({ length: 12 }, (_, idx) =>
+        makeProduct({
+          merchant_id: 'external_seed',
+          product_id: `haircare_seed_${idx + 1}`,
+          title: `Glossing Treatment Drops ${idx + 1}`,
+          brand: `Seeded Haircare ${idx + 1}`,
+          category: 'Haircare',
+          product_type: 'Haircare',
+        }),
+      ),
+    );
+
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        debug: true,
+        query: {
+          text: 'hair oil',
+        },
+        context: {
+          auth_state: 'anonymous',
+          recent_views: [],
+          recent_queries: [],
+          locale: 'en-US',
+        },
+      },
+      {
+        providerOverrides: {
+          internal_catalog: internalSpy,
+          external_seeds: externalSpy,
+        },
+      },
+    );
+
+    expect(response.products).toHaveLength(12);
+    expect(response.products.every((product) => /Glossing Treatment Drops/.test(product.title))).toBe(true);
+    expect(response.metadata.selected_source_breakdown).toEqual(
+      expect.objectContaining({ external_seeds: 12 }),
+    );
+    expect(response.metadata.filter_counts.filtered_query_text).toBe(24);
   });
 
   test('explicit browse lookup short-circuits external seed recall with exact-title fastpath', async () => {
