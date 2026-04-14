@@ -243,8 +243,18 @@ function stripSellerMerchandisingLead(text) {
     .trim();
 }
 
-function normalizeSellerWhatItIs(text) {
+function decodeCommonHtmlEntities(text) {
   return asString(text)
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&rsquo;/gi, "'")
+    .replace(/&ldquo;|&rdquo;/gi, '"');
+}
+
+function normalizeSellerWhatItIs(text) {
+  return cleanProductText(text)
     .replace(/^our\s+/i, 'A ')
     .replace(/^this\s+/i, 'A ')
     .replace(/^clinically-inspired\s+/i, 'A ')
@@ -641,12 +651,13 @@ function normalizeEvidenceAvailability(flags) {
 }
 
 function cleanProductText(value) {
-  return asString(value)
+  return decodeCommonHtmlEntities(value)
     .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
     .replace(/^OFFICIAL:\s*/i, '')
     .replace(/\s*\/\/\/\s*SOCIAL HIGHLIGHTS:[\s\S]*$/i, '')
     .replace(/\s*SOCIAL HIGHLIGHTS:[\s\S]*$/i, '')
+    .replace(/\bRead More\.?$/i, '')
     .replace(/[.…]{2,}$/g, '.')
     .trim();
 }
@@ -1789,6 +1800,11 @@ function buildSelectedBundle(caseRow, baselineBundle, geminiCandidateBundle, qua
       return cached;
     };
   })();
+  if (selected.product_intel_core?.what_it_is?.body) {
+    selected.product_intel_core.what_it_is.body = normalizeSellerWhatItIs(
+      selected.product_intel_core.what_it_is.body,
+    );
+  }
   if (hasProblematicGeneratedText(selected.product_intel_core?.what_it_is?.body)) {
     const patch = humanStandardPatch();
     if (patch?.product_intel_core?.what_it_is?.body) {

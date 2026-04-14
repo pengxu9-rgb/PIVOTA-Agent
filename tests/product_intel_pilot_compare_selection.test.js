@@ -240,6 +240,39 @@ describe('product_intel pilot compare selection', () => {
     ]);
   });
 
+  test('normalizes Gemini body text by removing storefront read-more copy and HTML entities', () => {
+    const normalized = normalizeGeminiDraftOutput({
+      product_intel_core: {
+        what_it_is: {
+          headline: 'Prep or toner step',
+          body:
+            'A hydrating toner that helps balance sebum for skin that&#39;s glowy, not greasy. Read More.',
+        },
+        best_for: [{ tag: 'oil_control', label: 'Oily or combination skin' }],
+        why_it_stands_out: [
+          {
+            headline: 'Dual-layer toner format',
+            body: 'Pairs hydration and oil-balancing cues in one prep step.',
+            evidence_strength: 'limited',
+          },
+        ],
+        routine_fit: {
+          step: 'toner',
+          am_pm: ['am', 'pm'],
+          pairing_notes: ['Use after cleansing.'],
+        },
+        watchouts: [],
+      },
+      community_signals: {
+        status: 'unavailable',
+      },
+    });
+
+    expect(normalized.product_intel_core.what_it_is.body).toBe(
+      "A hydrating toner that helps balance sebum for skin that's glowy, not greasy.",
+    );
+  });
+
   test('drops non-text best_for objects instead of serializing object placeholders', () => {
     const normalized = normalizeGeminiDraftOutput({
       product_intel_core: {
