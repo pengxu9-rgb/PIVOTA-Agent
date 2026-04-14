@@ -9011,6 +9011,216 @@ test('/v1/reco/alternatives: hybrid does not let weak same-step pool rows outran
   );
 });
 
+test('/v1/reco/alternatives: hybrid treats off-target tone pool rows as insufficient for oily serum anchors', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      GEMINI_API_KEY: 'test_gemini_key',
+      AURORA_DIAG_FORCE_GEMINI: 'true',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED: 'false',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      const offTargetPoolRows = [
+        {
+          product_id: '9886499864904',
+          merchant_id: 'merch_ordinary',
+          brand: 'The Ordinary',
+          name: 'Niacinamide 10% + Zinc 1%',
+          display_name: 'Niacinamide 10% + Zinc 1%',
+          product_type: 'serum',
+          category: 'Serum',
+        },
+        {
+          product_id: 'round_lab_dark_spot_serum',
+          merchant_id: 'external_seed',
+          brand: 'Round Lab',
+          name: 'Vita Niacinamide Dark Spot Serum',
+          display_name: 'Vita Niacinamide Dark Spot Serum',
+          product_type: 'serum',
+          category: 'Serum',
+          retrieval_source: 'external_seed',
+          description: 'A brightening serum for dark spots, radiance, and uneven tone.',
+          compare_highlights: ['Best for Uneven tone concerns'],
+        },
+        {
+          product_id: 'round_lab_dark_spot_serum_mask',
+          merchant_id: 'external_seed',
+          brand: 'Round Lab',
+          name: 'Vita Niacinamide Dark Spot Serum Mask',
+          display_name: 'Vita Niacinamide Dark Spot Serum Mask',
+          product_type: 'mask',
+          category: 'Serum Mask',
+          retrieval_source: 'external_seed',
+          description: 'A serum mask for brightening and dark spot care.',
+          compare_highlights: ['Single-use mask format for uneven tone.'],
+        },
+        {
+          product_id: 'haruharu_txa_gel_serum',
+          merchant_id: 'external_seed',
+          brand: 'Haruharu Wonder',
+          name: '4% TXA Gel Serum / Unscented',
+          display_name: '4% TXA Gel Serum / Unscented',
+          product_type: 'serum',
+          category: 'Serum',
+          retrieval_source: 'external_seed',
+          description: 'A tranexamic-acid gel serum focused on tone correction and radiance.',
+          compare_highlights: ['TXA-led tone support.'],
+        },
+        {
+          product_id: 'haruharu_soothing_serum',
+          merchant_id: 'external_seed',
+          brand: 'Haruharu Wonder',
+          name: 'Soothing Serum',
+          display_name: 'Soothing Serum',
+          product_type: 'serum',
+          category: 'Serum',
+          retrieval_source: 'external_seed',
+          description: 'A calming serum for sensitive skin and redness-prone routines.',
+          compare_highlights: ['Best for Sensitive skin'],
+        },
+      ];
+      const groundedOpenWorldRows = [
+        {
+          product_id: 'inkey_niacinamide_serum',
+          merchant_id: 'external_seed',
+          brand: 'The Inkey List',
+          name: 'Niacinamide Serum',
+          display_name: 'Niacinamide Serum',
+          product_type: 'serum',
+          category: 'Serum',
+          retrieval_source: 'external_seed',
+          description: 'Niacinamide serum for oil control, sebum balance, and visible shine.',
+          compare_highlights: ['Niacinamide-led oil-control serum.'],
+        },
+        {
+          product_id: 'naturium_niacinamide_zinc_serum',
+          merchant_id: 'external_seed',
+          brand: 'Naturium',
+          name: 'Niacinamide Serum 12% Plus Zinc 2%',
+          display_name: 'Niacinamide Serum 12% Plus Zinc 2%',
+          product_type: 'serum',
+          category: 'Serum',
+          retrieval_source: 'external_seed',
+          description: 'Niacinamide plus zinc serum for oily skin, pores, and shine.',
+          compare_highlights: ['Keeps the niacinamide plus zinc oil-control logic.'],
+        },
+        {
+          product_id: 'paulas_choice_10_niacinamide_booster',
+          merchant_id: 'external_seed',
+          brand: "Paula's Choice",
+          name: '10% Niacinamide Booster',
+          display_name: '10% Niacinamide Booster',
+          product_type: 'serum',
+          category: 'Serum',
+          retrieval_source: 'external_seed',
+          description: '10% niacinamide booster for visible pores, uneven-looking texture, and excess oil.',
+          compare_highlights: ['Similar 10% niacinamide strength with pore and oil-control positioning.'],
+        },
+      ];
+      axios.get = async (url, config) => {
+        if (!isProductsSearchUrl(url)) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        const query = String(config?.params?.query || '').toLowerCase();
+        const products = /inkey|naturium|paula/.test(query)
+          ? groundedOpenWorldRows
+          : offTargetPoolRows;
+        return { status: 200, data: { products } };
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { mountAuroraBffRoutes, __internal } = routeModule;
+        __internal.__setCallGeminiJsonObjectForTest(async () => ({
+          ok: true,
+          json: {
+            alternatives: [
+              {
+                brand: 'The Inkey List',
+                name: 'Niacinamide Serum',
+                product_type: 'serum',
+                similarity_score: 82,
+                reasons: ['Niacinamide-led serum role overlaps with the anchor for oil control.'],
+                tradeoff_notes: ['Does not include the same zinc support.'],
+              },
+              {
+                brand: 'Naturium',
+                name: 'Niacinamide Serum 12% Plus Zinc 2%',
+                product_type: 'serum',
+                similarity_score: 81,
+                reasons: ['Keeps the niacinamide and zinc direction for shine and pores.'],
+                tradeoff_notes: ['Higher active percentage may feel stronger than the anchor.'],
+              },
+              {
+                brand: "Paula's Choice",
+                name: '10% Niacinamide Booster',
+                product_type: 'serum',
+                similarity_score: 78,
+                reasons: ['Same 10% niacinamide concentration for pores and shine.'],
+                tradeoff_notes: ['Booster-style usage and usually a higher price.'],
+              },
+            ],
+          },
+        }));
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/reco/alternatives')
+          .set({
+            'X-Aurora-UID': 'test_uid_alt_oily_tone_pool',
+            'X-Trace-ID': 'test_trace_alt_oily_tone_pool',
+            'X-Brief-ID': 'test_brief_alt_oily_tone_pool',
+            'X-Lang': 'EN',
+          })
+          .send({
+            product_input: 'The Ordinary Niacinamide 10% + Zinc 1%',
+            max_total: 6,
+            recommendation_mode: 'hybrid_fallback',
+            disable_synthetic_local_fallback: true,
+            product: {
+              product_id: '9886499864904',
+              merchant_id: 'merch_ordinary',
+              brand: 'The Ordinary',
+              name: 'Niacinamide 10% + Zinc 1%',
+              product_type: 'serum',
+              category: 'Serum',
+              role_scope: 'oil_control_treatment',
+              ingredients: ['Niacinamide', 'Zinc PCA'],
+              claims: ['oil control', 'pore care'],
+              key_features: ['Best for excess oil and mid-day shine'],
+            },
+          });
+
+        assert.equal(resp.status, 200);
+        assert.equal(resp.body?.source_mode, 'hybrid_fallback');
+        assert.equal(resp.body?.compare_meta?.open_world_status, 'success');
+        assert.notEqual(resp.body?.compare_meta?.open_world_status, 'skipped_sufficient_pool');
+        assert.ok(Number(resp.body?.compare_meta?.open_world_grounded_count || 0) >= 2);
+        const names = resp.body.alternatives.map((alt) => String(alt?.product?.name || alt?.name || ''));
+        assert.equal(names.some((name) => /dark spot|txa|soothing serum|serum mask/i.test(name)), false);
+        assert.ok(names.some((name) => /The Inkey List|Niacinamide Serum/i.test(name)));
+        assert.ok(names.some((name) => /Naturium|Paula's Choice|10% Niacinamide Booster/i.test(name)));
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        axios.get = originalGet;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
 test('/v1/reco/alternatives: external llm_seed compare returns deterministic pool results when open-world provider fails', async () => {
   return withEnv(
     {
