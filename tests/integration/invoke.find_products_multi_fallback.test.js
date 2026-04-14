@@ -497,7 +497,7 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
     expect(resp.body.metadata?.route_health?.primary_latency_ms).toBeLessThan(7000);
   });
 
-  test('public search underfilled beauty category hits fail strict-empty without semantic-retry clarification', async () => {
+  test('public search underfilled exact beauty intent returns partial products without fallback', async () => {
     const primaryScope = nock('http://pivota.test')
       .post('/agent/v2/products/search')
       .query((query) => {
@@ -548,22 +548,27 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
         },
       });
 
-    expect(resp.status).toBe(200);
-    expect(primaryScope.isDone()).toBe(true);
-    expect(resp.body.clarification).toBeFalsy();
-    expect(resp.body.reason_codes || []).not.toContain('AMBIGUITY_CLARIFY');
-    expect(resp.body.metadata).toEqual(
-      expect.objectContaining({
-        query_source: 'agent_products_search',
-        strict_empty: true,
-        strict_empty_reason: 'public_search_underfilled_unified_relevance',
-        primary_underfilled_public_beauty_unified: true,
-      }),
-    );
-    expect(resp.body.metadata?.route_health?.primary_quality_gate_passed).toBe(false);
-    expect(resp.body.metadata?.route_health?.fallback_triggered).toBe(false);
-    expect(resp.body.metadata?.proxy_search_fallback?.applied).not.toBe(true);
-  });
+	    expect(resp.status).toBe(200);
+	    expect(primaryScope.isDone()).toBe(true);
+	    expect(resp.body.clarification).toBeFalsy();
+	    expect(resp.body.reason_codes || []).not.toContain('AMBIGUITY_CLARIFY');
+	    expect(resp.body.products).toHaveLength(2);
+	    expect(resp.body.metadata).toEqual(
+	      expect.objectContaining({
+	        query_source: 'agent_products_v2',
+	        compound_intent: 'hair_oil',
+	        underfilled_reason: 'public_search_underfilled_exact_intent',
+	        primary_underfilled_public_beauty_unified: false,
+	        primary_exact_intent_underfilled_public_beauty: true,
+	      }),
+	    );
+	    expect(resp.body.metadata?.strict_empty).not.toBe(true);
+	    expect(resp.body.metadata?.route_health?.primary_quality_gate_passed).toBe(false);
+	    expect(resp.body.metadata?.route_health?.underfilled_reason).toBe('public_search_underfilled_exact_intent');
+	    expect(resp.body.metadata?.route_health?.fallback_triggered).toBe(false);
+	    expect(resp.body.metadata?.supplement_attempted).toBe(false);
+	    expect(resp.body.metadata?.proxy_search_fallback?.applied).not.toBe(true);
+	  });
 
   test('shopping_agent explicit legacy_contracts is isolated as legacy_internal', async () => {
     const queryText = 'ipsa';
