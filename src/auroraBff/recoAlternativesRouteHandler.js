@@ -44,7 +44,7 @@ function createRecoAlternativesRouteHandlerRuntime(deps = {}) {
       const includeDebugFromHeader = debugHeaderRaw == null || debugHeaderRaw === '' ? null : coerceBoolean(debugHeaderRaw);
       const includeDebug = includeDebugFromHeader == null ? Boolean(parsed.data.include_debug) : includeDebugFromHeader;
       const disableSyntheticLocalFallback = parsed.data.disable_synthetic_local_fallback !== false;
-      const recommendationMode = String(parsed.data.recommendation_mode || '').trim() || 'hybrid_fallback';
+      const recommendationMode = String(parsed.data.recommendation_mode || '').trim() || 'pool_open_world_mixed';
       const maxTotal = Number.isFinite(Number(parsed.data.max_total))
         ? Math.max(1, Math.min(8, Math.trunc(Number(parsed.data.max_total))))
         : 6;

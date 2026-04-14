@@ -65245,7 +65245,7 @@ function normalizeAlternativesProfileMode(raw) {
 
 function normalizeRecoAlternativesMode(raw) {
   const token = String(raw || '').trim().toLowerCase();
-  if (token === 'hybrid_fallback') return 'hybrid_fallback';
+  if (token === 'hybrid_fallback' || token === 'pool_open_world_mixed') return 'pool_open_world_mixed';
   if (token === 'open_world_only') return 'open_world_only';
   return 'pool_only';
 }
@@ -68749,7 +68749,7 @@ async function fetchRecoAlternativesForProduct({
   const disableSyntheticLocalFallback = opts.disable_synthetic_local_fallback === true;
   const ignoreSelectorCandidates = opts.ignore_selector_candidates === true;
   const allowAnchorlessOpenWorld = recommendationMode !== 'pool_only';
-  const usesOpenWorldPrompt = recommendationMode === 'hybrid_fallback' || recommendationMode === 'open_world_only';
+  const usesOpenWorldPrompt = recommendationMode === 'pool_open_world_mixed' || recommendationMode === 'open_world_only';
 
   const inputText = String(productInput || '').trim();
   let effectiveProductObj = productObj && typeof productObj === 'object' && !Array.isArray(productObj) ? productObj : null;
@@ -69058,7 +69058,7 @@ async function fetchRecoAlternativesForProduct({
             ok: true,
             alternatives: selectorGroundedAlternatives,
             field_missing: [],
-            source_mode: recommendationMode === 'hybrid_fallback' ? 'pool_open_world_mixed' : 'selector_grounded',
+            source_mode: recommendationMode === 'pool_open_world_mixed' ? 'pool_open_world_mixed' : 'selector_grounded',
             fallback_source: null,
             refresh_pending: false,
             refresh_after_ms: 0,
@@ -69131,7 +69131,7 @@ async function fetchRecoAlternativesForProduct({
           ok: true,
           alternatives: selectorGroundedAlternatives,
           field_missing: [],
-          source_mode: recommendationMode === 'hybrid_fallback' ? 'pool_open_world_mixed' : 'selector_grounded',
+          source_mode: recommendationMode === 'pool_open_world_mixed' ? 'pool_open_world_mixed' : 'selector_grounded',
           fallback_source: null,
           refresh_pending: false,
           refresh_after_ms: 0,
@@ -69186,7 +69186,7 @@ async function fetchRecoAlternativesForProduct({
   );
   let groundedPoolAlternatives = selectorGroundedAlternatives;
   let groundedPoolMeta = null;
-  if (recommendationMode === 'hybrid_fallback' && !ignoreSelectorCandidates) {
+  if (recommendationMode === 'pool_open_world_mixed' && !ignoreSelectorCandidates) {
     try {
       const pool = await collectExternalSeedPoolAlternatives({
         ctx,
@@ -69224,7 +69224,7 @@ async function fetchRecoAlternativesForProduct({
       };
     }
   }
-  if (recommendationMode === 'hybrid_fallback') {
+  if (recommendationMode === 'pool_open_world_mixed') {
     const limit = Math.max(1, Math.min(8, Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 6));
     const sufficientGroundedCount = Math.min(3, limit);
     if (groundedPoolAlternatives.length >= sufficientGroundedCount) {
@@ -69454,14 +69454,14 @@ async function fetchRecoAlternativesForProduct({
           : 'provider_error';
     recordAuroraRecoLlmCall({ stage: 'alternatives', outcome: llmFailureClass });
     if (selectorGroundedAlternatives.length) {
-      const alternatives = recommendationMode === 'hybrid_fallback'
+      const alternatives = recommendationMode === 'pool_open_world_mixed'
         ? mergeRecoAlternativesForHybrid([], selectorGroundedAlternatives, { maxTotal })
         : selectorGroundedAlternatives;
       return {
         ok: true,
         alternatives,
         field_missing: [],
-        source_mode: recommendationMode === 'hybrid_fallback' ? 'pool_open_world_mixed' : 'selector_grounded',
+        source_mode: recommendationMode === 'pool_open_world_mixed' ? 'pool_open_world_mixed' : 'selector_grounded',
         fallback_source: null,
         refresh_pending: false,
         refresh_after_ms: 0,
@@ -69544,7 +69544,7 @@ async function fetchRecoAlternativesForProduct({
     lang: ctx.lang,
     maxTotal: maxTotal ?? 3,
   });
-  if (recommendationMode === 'hybrid_fallback') {
+  if (recommendationMode === 'pool_open_world_mixed') {
     mapped = mergeRecoAlternativesForHybrid(mapped, selectorGroundedAlternatives, { maxTotal });
   }
   const upstreamNoResultReason = pickFirstTrimmed(
@@ -69596,14 +69596,14 @@ async function fetchRecoAlternativesForProduct({
   }
 
   if (selectorGroundedAlternatives.length) {
-    const alternatives = recommendationMode === 'hybrid_fallback'
+    const alternatives = recommendationMode === 'pool_open_world_mixed'
       ? mergeRecoAlternativesForHybrid([], selectorGroundedAlternatives, { maxTotal })
       : selectorGroundedAlternatives;
     return {
       ok: true,
       alternatives,
       field_missing: [],
-      source_mode: recommendationMode === 'hybrid_fallback' ? 'pool_open_world_mixed' : 'selector_grounded',
+      source_mode: recommendationMode === 'pool_open_world_mixed' ? 'pool_open_world_mixed' : 'selector_grounded',
       fallback_source: null,
       refresh_pending: false,
       refresh_after_ms: 0,
