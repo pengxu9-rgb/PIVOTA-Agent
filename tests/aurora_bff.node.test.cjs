@@ -6970,6 +6970,8 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
         );
         assert.equal(geminiRequest?.maxOutputTokens, 3072);
         assert.equal(geminiRequest?.timeoutMs, 12000);
+        assert.equal(geminiRequest?.queueTimeoutMs, 3000);
+        assert.equal(geminiRequest?.upstreamTimeoutMs, 9000);
         assert.equal(geminiRequest?.responseJsonSchema?.properties?.alternatives?.maxItems, 3);
         const payload = JSON.parse(geminiRequest?.userPrompt || '{}');
         assert.equal(payload?.task?.max_alternatives, 3);
@@ -6989,6 +6991,142 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
         decisionModule.auroraChat = originalAuroraChat;
         delete require.cache[moduleId];
         delete require.cache[decisionModuleId];
+      }
+    },
+  );
+});
+
+test('fetchRecoAlternativesForProduct: open_world local Gemini uses REST executor with split timeout budget', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      GEMINI_API_KEY: 'test_gemini_key',
+      AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL: 'gemini-3-flash-preview',
+      AURORA_RECO_ALTERNATIVES_OPEN_WORLD_TIMEOUT_MS: '12000',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+    },
+    async () => {
+      const Module = require('module');
+      const EventEmitter = require('events');
+      const axios = require('axios');
+      const originalLoad = Module._load;
+      const originalGet = axios.get;
+      let capturedUrl = '';
+      let capturedBody = null;
+      let capturedConfig = null;
+      axios.get = async () => ({ status: 200, data: { products: [] } });
+      Module._load = function patchedLoad(request, parent, isMain) {
+        if (request === '@google/genai') {
+          throw new Error('Reco alternatives open-world should not use the Gemini SDK executor');
+        }
+        if (request === 'https') {
+          return {
+            request: (options = {}, onResponse) => {
+              capturedUrl = `${options.protocol || 'https:'}//${options.hostname || ''}${options.path || ''}`;
+              capturedConfig = options;
+              const req = new EventEmitter();
+              req.write = (chunk) => {
+                capturedBody = JSON.parse(String(chunk || '{}'));
+              };
+              req.end = () => {
+                process.nextTick(() => {
+                  const res = new EventEmitter();
+                  res.statusCode = 200;
+                  res.statusMessage = 'OK';
+                  res.setEncoding = () => {};
+                  onResponse(res);
+                  res.emit('data', JSON.stringify({
+                    candidates: [
+                      {
+                        finishReason: 'STOP',
+                        content: {
+                          parts: [
+                            {
+                              text: JSON.stringify({
+                                alternatives: [
+                                  {
+                                    brand: 'Good Molecules',
+                                    name: 'Niacinamide Serum',
+                                    product_type: 'serum',
+                                    similarity_score: 72,
+                                    reasons: ['Niacinamide-led serum role overlaps with the anchor.'],
+                                    tradeoff_notes: ['Formula details still need verification.'],
+                                  },
+                                ],
+                              }),
+                            },
+                          ],
+                        },
+                      },
+                    ],
+                  }));
+                  res.emit('end');
+                });
+              };
+              req.setTimeout = () => req;
+              req.destroy = (err) => {
+                if (err) req.emit('error', err);
+              };
+              return req;
+            },
+          };
+        }
+        return originalLoad.call(this, request, parent, isMain);
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const { __internal } = require('../src/auroraBff/routes');
+        const out = await __internal.fetchRecoAlternativesForProduct({
+          ctx: {
+            lang: 'EN',
+            request_id: 'req_open_world_rest',
+            trace_id: 'trace_open_world_rest',
+          },
+          profileSummary: null,
+          recentLogs: [],
+          productInput: 'The Ordinary Niacinamide 10% + Zinc 1%',
+          productObj: {
+            brand: 'The Ordinary',
+            name: 'Niacinamide 10% + Zinc 1%',
+            product_type: 'serum',
+            category: 'Serum',
+            ingredients: ['Niacinamide', 'Zinc PCA'],
+            claims: ['oil control'],
+          },
+          anchorId: '',
+          maxTotal: 3,
+          candidatePool: [],
+          logger: null,
+          options: {
+            recommendation_mode: 'open_world_only',
+            profile_mode: 'anchor_only',
+            disable_fallback: true,
+            disable_synthetic_local_fallback: true,
+            ignore_selector_candidates: true,
+            skip_anchor_precheck: true,
+          },
+        });
+
+        assert.equal(out?.llm_trace?.source_mode, 'local_gemini_open_world');
+        assert.match(capturedUrl, /generativelanguage\.googleapis\.com\/v1beta\/models\/gemini-3-flash-preview:generateContent/);
+        assert.equal(capturedConfig?.method, 'POST');
+        assert.equal(capturedConfig?.timeout, 9000);
+        assert.equal(capturedConfig?.headers?.['x-goog-api-key'], 'test_gemini_key');
+        assert.equal(capturedBody?.generationConfig?.responseMimeType, 'application/json');
+        assert.equal(capturedBody?.generationConfig?.responseSchema?.properties?.alternatives?.type, 'array');
+        assert.equal(
+          capturedBody?.generationConfig?.responseSchema?.properties?.alternatives?.items?.properties?.product_type?.type,
+          'string',
+        );
+      } finally {
+        Module._load = originalLoad;
+        axios.get = originalGet;
+        delete require.cache[moduleId];
       }
     },
   );
@@ -9001,6 +9139,8 @@ test('/v1/reco/alternatives: external_seed product-card rows use mixed compare p
         assert.equal(geminiRequest?.model, 'gemini-3-flash-preview');
         assert.equal(geminiRequest?.maxOutputTokens, 3072);
         assert.equal(geminiRequest?.timeoutMs, 12000);
+        assert.equal(geminiRequest?.queueTimeoutMs, 3000);
+        assert.equal(geminiRequest?.upstreamTimeoutMs, 9000);
         assert.equal(geminiRequest?.responseJsonSchema?.properties?.alternatives?.maxItems, 3);
         assert.equal(geminiRequest?.responseJsonSchema?.properties?.alternatives?.items?.properties?.product_type?.type, 'string');
         assert.equal(geminiRequest?.responseJsonSchema?.properties?.alternatives?.items?.properties?.product_type?.nullable, true);

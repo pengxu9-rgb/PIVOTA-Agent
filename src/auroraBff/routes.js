@@ -19323,6 +19323,8 @@ function buildRecoProductEvidencePoints({
       ...(Array.isArray(base.keyIngredients) ? base.keyIngredients : []),
       ...(Array.isArray(base.best_for) ? base.best_for : []),
       ...(Array.isArray(base.bestFor) ? base.bestFor : []),
+      pickFirstTrimmed(base.best_for, base.bestFor),
+      pickFirstTrimmed(base.why_this_one, base.whyThisOne, base.reason),
       ...(Array.isArray(pivotaInsights?.best_for) ? pivotaInsights.best_for : []),
       ...(Array.isArray(intelCore?.best_for) ? intelCore.best_for : []),
     ],
@@ -24170,7 +24172,8 @@ async function callGeminiJsonObject({
   const normalizedThinkingLevel = String(thinkingLevel || '').trim().toLowerCase();
   const normalizedRoute = String(route || '').trim();
   const forceRestExecutor =
-    normalizedRoute === 'aurora_reco_assistant_rewrite';
+    normalizedRoute === 'aurora_reco_assistant_rewrite' ||
+    normalizedRoute === 'aurora_reco_alternatives_open_world';
   if (normalizedThinkingLevel || forceRestExecutor) {
     return callGeminiJsonObjectViaRest({
       resolvedModel,
@@ -51729,9 +51732,105 @@ function buildRecoAssistantPromptPriceDiagnostics(items = []) {
   };
 }
 
+const RECO_ASSISTANT_CONCERN_FAMILY_PATTERNS = Object.freeze([
+  ['oil_control', /\b(oil|oily|shine|sebum|greasy|mattif|zinc\s*pca|zinc)\b/i],
+  ['tone_brightening', /\b(dull(?:ness)?|uneven\s+tone|dark\s+spots?|hyperpigmentation|brighten(?:ing)?|radiance|radiant|glow)\b/i],
+  ['acne_pore', /\b(acne|breakouts?|blemish(?:es)?|clog(?:ged)?|pores?)\b/i],
+  ['hydration_barrier', /\b(hydrat(?:e|ing|ion)?|moistur(?:e|ize|izer|izing)?|barrier|dry(?:ness)?|dehydrat(?:ed|ion)?|ceramides?|glycerin|hyaluronic)\b/i],
+  ['sunscreen_uv', /\b(spf|sunscreen|sun\s*screen|uv|sun\s+protection|white\s+cast|broad\s+spectrum)\b/i],
+  ['sensitivity_redness', /\b(redness|sensitive|sensitized|sooth(?:e|ing)?|calm(?:ing)?|irritat(?:e|ion)|stinging?)\b/i],
+  ['aging_texture', /\b(wrinkles?|fine\s+lines?|aging|anti[-\s]?aging|texture|roughness|retinol|retinoid)\b/i],
+]);
+
+function collectRecoAssistantConcernFamilies(value) {
+  const text = String(value || '').trim();
+  if (!text) return new Set();
+  const families = new Set();
+  for (const [family, pattern] of RECO_ASSISTANT_CONCERN_FAMILY_PATTERNS) {
+    if (pattern.test(text)) families.add(family);
+  }
+  return families;
+}
+
+function buildRecoAssistantEvidenceTargetText(detail = {}, fallbackText = '') {
+  const item = isPlainObject(detail) ? detail : {};
+  return [
+    fallbackText,
+    item.user_request,
+    item.target_label,
+    item.matched_role_id,
+    item.matched_role_label,
+    item.preferred_step,
+    item.best_for,
+    item.role_scope,
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+}
+
+function scoreRecoAssistantEvidenceForTarget(value, {
+  targetText = '',
+  originalIndex = 0,
+} = {}) {
+  const text = String(value || '').trim();
+  if (!text) return Number.NEGATIVE_INFINITY;
+  const targetFamilies = collectRecoAssistantConcernFamilies(targetText);
+  const evidenceFamilies = collectRecoAssistantConcernFamilies(text);
+  let score = 100 - (Number.isFinite(Number(originalIndex)) ? Number(originalIndex) * 0.01 : 0);
+  if (evidenceFamilies.size > 0 && targetFamilies.size > 0) {
+    let aligned = 0;
+    let offTarget = 0;
+    for (const family of evidenceFamilies) {
+      if (targetFamilies.has(family)) aligned += 1;
+      else offTarget += 1;
+    }
+    score += aligned * 24;
+    score -= offTarget * 34;
+  }
+  if (/\b(niacinamide|zinc|salicylic|ceramide|glycerin|hyaluronic|spf|uv)\b/i.test(text)) score += 6;
+  if (/\b(oil-control|oil control|excess oil|visible shine|mid-day shine|sebum|matte|non-greasy)\b/i.test(text)) score += 12;
+  if (
+    /\b(dull(?:ness)?|uneven\s+tone|dark\s+spots?|hyperpigmentation|brighten(?:ing)?|radiance|radiant|glow)\b/i.test(text)
+    && !/\b(dull(?:ness)?|uneven\s+tone|dark\s+spots?|hyperpigmentation|brighten(?:ing)?|radiance|radiant|glow)\b/i.test(String(targetText || ''))
+  ) {
+    score -= 28;
+  }
+  return score;
+}
+
+function rankRecoAssistantEvidenceForTarget(values = [], {
+  targetText = '',
+  max = 4,
+} = {}) {
+  const candidates = uniqCaseInsensitiveStrings(
+    (Array.isArray(values) ? values : [])
+      .map((value) => String(value || '').trim())
+      .filter(Boolean),
+    Math.max(2, max * 2),
+  );
+  if (!candidates.length) return [];
+  return candidates
+    .map((value, index) => ({
+      value,
+      score: scoreRecoAssistantEvidenceForTarget(value, {
+        targetText,
+        originalIndex: index,
+      }),
+    }))
+    .sort((left, right) => {
+      const scoreDiff = Number(right.score || 0) - Number(left.score || 0);
+      if (scoreDiff !== 0) return scoreDiff;
+      return candidates.indexOf(left.value) - candidates.indexOf(right.value);
+    })
+    .map((entry) => entry.value)
+    .slice(0, Math.max(2, max));
+}
+
 function buildRecoAssistantReasonPoints(detail, { max = 4 } = {}) {
   const item = isPlainObject(detail) ? detail : {};
-  return uniqCaseInsensitiveStrings(
+  const targetText = buildRecoAssistantEvidenceTargetText(item, item.evidence_target_text);
+  return rankRecoAssistantEvidenceForTarget(
     collectRecoPromptTextList(
       [
         ...(Array.isArray(item.evidence_points) ? item.evidence_points : []),
@@ -51742,9 +51841,9 @@ function buildRecoAssistantReasonPoints(detail, { max = 4 } = {}) {
         pickFirstTrimmed(item.description_snippet),
         pickFirstTrimmed(item.short_description),
       ],
-      { max: Math.max(2, max), maxLen: 120 },
+      { max: Math.max(4, max * 2), maxLen: 120 },
     ),
-    Math.max(2, max),
+    { targetText, max: Math.max(2, max) },
   );
 }
 
@@ -51947,6 +52046,7 @@ function buildCompactRecoAssistantPromptContext(context = {}) {
     language: pickFirstTrimmed(row.language),
     prompt_profile: 'compact_timeout_retry',
     profile_summary: isPlainObject(row.profile_summary) ? row.profile_summary : null,
+    user_relevant_concern_families: asStringArray(row.user_relevant_concern_families, 6),
     primary_target: isPlainObject(row.primary_target) ? row.primary_target : null,
     secondary_targets: Array.isArray(row.secondary_targets) ? row.secondary_targets.slice(0, 2) : [],
     selected_products: asStringArray(row.selected_products, 3),
@@ -51988,6 +52088,7 @@ function buildCompactRecoAssistantPromptLines({
     'Return strict JSON only.',
     'Write one short shopper-facing skincare recommendation explanation aligned to Context.',
     'Use only products, steps, prices, and claims already present in Context.',
+    'If product evidence contains extra concern claims outside user_relevant_concern_families, omit those extra claims.',
     'Avoid internal phrasing like "selected products" and avoid generic filler.',
     'Price may support the recommendation, but pair it with a concrete product-fit reason from Context.',
     'Compact retry mode: keep the answer tight, prioritize the selected product evidence, and skip optional background detail.',
@@ -52050,6 +52151,9 @@ function describeRecoAssistantRewriteFailureReason(reason) {
   }
   if (normalized === 'rewrite_failed_alignment_guard') {
     return 'Tighten alignment to the selected products, the target concern, and the final payload.';
+  }
+  if (normalized === 'rewrite_off_target_concern_claim') {
+    return 'Remove extra concern claims that are not in the user request or selected target roles; use only target-aligned evidence_points.';
   }
   if (normalized === 'empty_rewrite') {
     return 'Return a non-empty assistant_text in strict JSON.';
@@ -52125,6 +52229,19 @@ function buildRecoAssistantRewritePrompt({
     const shoppingCard = pickRecoShoppingCardPayload(item);
     const searchCard = pickRecoSearchCardPayload(item);
     const pivotaInsights = pickRecoPivotaInsights(item);
+    const evidenceTargetText = [
+      pickFirstTrimmed(userRequestText, payload?.recommendation_meta?.request_text, payload?.request_text),
+      primaryTargetLabel,
+      matchedRoleId,
+      matchedRole?.label,
+      matchedRole?.why_this_role,
+      matchedRole?.preferred_step,
+      item.matched_role_label,
+      item.matchedRoleLabel,
+    ]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+      .join(' ');
     const baseDescriptionSnippet = pickRecoSpecificNarrativeSnippet({
       row: item,
       stableAnchorProduct,
@@ -52143,7 +52260,11 @@ function buildRecoAssistantRewritePrompt({
       searchCard,
       max: 5,
     });
-    const descriptionSnippet = pickFirstTrimmed(evidencePoints[0], baseDescriptionSnippet);
+    const rankedEvidencePoints = rankRecoAssistantEvidenceForTarget(evidencePoints, {
+      targetText: evidenceTargetText,
+      max: 5,
+    });
+    const descriptionSnippet = pickFirstTrimmed(rankedEvidencePoints[0], baseDescriptionSnippet);
     const alternativesCount = Math.max(
       0,
       Number.isFinite(Number(item.alternatives_count))
@@ -52205,7 +52326,8 @@ function buildRecoAssistantRewritePrompt({
         3,
       ),
       alternatives_count: alternativesCount,
-      evidence_points: evidencePoints,
+      evidence_points: rankedEvidencePoints,
+      evidence_target_text: evidenceTargetText || null,
       reviewed_insight_available: Boolean(productIntel || pivotaInsights),
       pivota_insights: (() => {
         if (!pivotaInsights) return null;
@@ -52285,9 +52407,17 @@ function buildRecoAssistantRewritePrompt({
     requestMode,
     targetLabel: primaryTargetLabel || null,
   });
+  const userRelevantConcernText = [
+    pickFirstTrimmed(userRequestText, payload?.recommendation_meta?.request_text, payload?.request_text),
+    primaryTargetLabel,
+    primaryTarget && primaryTarget.target_id,
+    ...secondaryTargets.map((target) => pickFirstTrimmed(target && target.target_id, target && target.ingredient_query)),
+    ...frameworkRoles.map((role) => pickFirstTrimmed(role.label, role.why_this_role, role.role_id)),
+  ].filter(Boolean).join(' ');
   const fullContext = {
     language: lang,
     profile_summary: summarizeProfileForAnswer(profile, lang),
+    user_relevant_concern_families: Array.from(collectRecoAssistantConcernFamilies(userRelevantConcernText)),
     primary_target: primaryTarget
       ? {
           target_id: pickFirstTrimmed(primaryTarget.target_id),
@@ -52379,6 +52509,7 @@ function buildRecoAssistantRewritePrompt({
       'If selected_product_role_mix is "single_product", stay on one clear recommendation and do not frame the answer as a routine or a comparison set.',
       'If selected_product_role_mix is "single_product", sentence 2 must explain why that one product matches the concern using concrete evidence from Context.',
       'If selected_product_role_mix is "routine_mix", make it clear these are different routine steps, not interchangeable substitutes, and do not use the phrase "selected products".',
+      'If selected_product_role_mix is "routine_mix", explicitly treat them as different steps in a basic routine and not the same type of product.',
       'If request_mode is "buy" and there is one selected product with no secondary targets, use exactly 2 sentences.',
       'If selected_product_role_mix is "same_role_comparison", present a concise horizontal comparison and name each selected product exactly once if space allows.',
       'If selected_product_role_mix is "same_role_comparison", compare lower-priced versus higher-priced options only inside the same role when price_order_summary supports it.',
@@ -52403,6 +52534,8 @@ function buildRecoAssistantRewritePrompt({
       'Use selected_product_details.description_snippet and selected_product_details.evidence_points as the primary concrete reason layer when available.',
       'Use selected_product_details.why_this_one, selected_product_details.best_for, and selected_product_details.key_features as supporting context when available.',
       'Use selected_product_details.compare_highlights and selected_product_details.pivota_insights when available; do not invent highlights that are absent from Context.',
+      'If a product record includes extra concern claims that are not in user_relevant_concern_families, omit those extra claims and use the target-aligned evidence_points instead.',
+      'For oily-skin/oil-control asks, do not mention dullness, uneven tone, dark spots, glow, or brightening unless tone/brightening is an explicit target in Context.',
       'Do not call something the best first buy unless the same sentence or the next sentence gives a concrete reason from description_snippet, evidence_points, compare_highlights, or pivota_insights.',
       'If selected_product_details.fit_assessment is "soft_match" or comparison_fill_reason is present, frame that product as a softer or broader alternative instead of an equally direct match.',
       'If selected_product_details.tradeoff_hint exists, honor it.',
@@ -52512,6 +52645,41 @@ function assistantTextMentionsRecoTargetSemantics(text, primaryTarget) {
   }
   if (/\b(redness|sensitive|soothing|calm)/i.test(targetText)) {
     return /\b(redness|sensitive|soothing|calm|comfort)/i.test(haystack);
+  }
+  return false;
+}
+
+function assistantTextUsesOffTargetRecoConcern(text, {
+  payload = null,
+  primaryTarget = null,
+  secondaryTargets = [],
+} = {}) {
+  const raw = String(text || '').trim();
+  if (!raw) return false;
+  const frameworkSummary = isPlainObject(payload?.framework_summary) ? payload.framework_summary : {};
+  const roles = Array.isArray(payload?.roles) ? payload.roles : [];
+  const targetText = [
+    frameworkSummary.concern_text,
+    frameworkSummary.primary_role_label,
+    primaryTarget && primaryTarget.target_id,
+    primaryTarget && primaryTarget.ingredient_query,
+    primaryTarget && primaryTarget.ingredient_id,
+    primaryTarget && primaryTarget.resolved_target_step,
+    ...secondaryTargets.map((target) => pickFirstTrimmed(
+      target && target.target_id,
+      target && target.ingredient_query,
+      target && target.ingredient_id,
+      target && target.resolved_target_step,
+    )),
+    ...roles.map((role) => pickFirstTrimmed(role?.role_id, role?.label, role?.why_this_role, role?.preferred_step)),
+  ].filter(Boolean).join(' ');
+  const allowedFamilies = collectRecoAssistantConcernFamilies(targetText);
+  if (!allowedFamilies.size) return false;
+  const textFamilies = collectRecoAssistantConcernFamilies(raw);
+  if (!textFamilies.size) return false;
+  for (const family of textFamilies) {
+    if (allowedFamilies.has(family)) continue;
+    if (family === 'tone_brightening' || family === 'aging_texture') return true;
   }
   return false;
 }
@@ -52635,6 +52803,11 @@ function validateRecoAssistantRewriteCandidate({
     && !selectedProductRoutineMix
     && assistantTextUsesFutureRoutineUpsell(text);
   const usesVagueBenefitLanguage = assistantTextUsesVagueRecoBenefitLanguage(text);
+  const usesOffTargetConcernClaim = assistantTextUsesOffTargetRecoConcern(text, {
+    payload,
+    primaryTarget,
+    secondaryTargets,
+  });
   if (
     !mentionsSelectedProduct
     || !mentionsPrimaryTarget
@@ -52650,6 +52823,7 @@ function validateRecoAssistantRewriteCandidate({
     || usesStiffSelectionFraming
     || usesSingleProductRoutineFraming
     || usesGenericRoutineWrapup
+    || usesOffTargetConcernClaim
   ) {
     if (buyLeadNotProductFirst) return { ok: false, reason: 'rewrite_buy_lead_not_product_first' };
     if (buyLeadNotDirect) return { ok: false, reason: 'rewrite_buy_lead_not_direct' };
@@ -52659,6 +52833,7 @@ function validateRecoAssistantRewriteCandidate({
     if (usesStiffSelectionFraming) return { ok: false, reason: 'rewrite_stiff_selection_framing' };
     if (usesSingleProductRoutineFraming) return { ok: false, reason: 'rewrite_single_product_routine_framing' };
     if (usesGenericRoutineWrapup) return { ok: false, reason: 'rewrite_generic_routine_wrapup' };
+    if (usesOffTargetConcernClaim) return { ok: false, reason: 'rewrite_off_target_concern_claim' };
     return { ok: false, reason: 'rewrite_failed_alignment_guard' };
   }
   return { ok: true, reason: null };
@@ -52676,6 +52851,7 @@ function shouldRetryRecoAssistantRewrite(reason) {
     || normalized === 'rewrite_stiff_selection_framing'
     || normalized === 'rewrite_single_product_routine_framing'
     || normalized === 'rewrite_generic_routine_wrapup'
+    || normalized === 'rewrite_off_target_concern_claim'
     || normalized === 'rewrite_failed_alignment_guard';
 }
 
@@ -67683,6 +67859,21 @@ function getRecoAlternativesOpenWorldTimeoutMs() {
   return Math.max(3000, Math.min(20000, Math.trunc(raw)));
 }
 
+function getRecoAlternativesOpenWorldQueueTimeoutMs(timeoutMs = getRecoAlternativesOpenWorldTimeoutMs()) {
+  const total = Math.max(3000, Math.min(20000, Number.isFinite(Number(timeoutMs)) ? Math.trunc(Number(timeoutMs)) : 12000));
+  const raw = Number(process.env.AURORA_RECO_ALTERNATIVES_OPEN_WORLD_QUEUE_TIMEOUT_MS);
+  if (Number.isFinite(raw)) {
+    return Math.max(500, Math.min(Math.max(500, total - 1500), Math.trunc(raw)));
+  }
+  return Math.max(1000, Math.min(3500, Math.trunc(total * 0.25)));
+}
+
+function getRecoAlternativesOpenWorldUpstreamTimeoutMs(timeoutMs, queueTimeoutMs) {
+  const total = Math.max(3000, Math.min(20000, Number.isFinite(Number(timeoutMs)) ? Math.trunc(Number(timeoutMs)) : 12000));
+  const queue = Math.max(0, Math.min(total - 1, Number.isFinite(Number(queueTimeoutMs)) ? Math.trunc(Number(queueTimeoutMs)) : 0));
+  return Math.max(1500, total - queue);
+}
+
 function buildRecoAlternativesOpenWorldUserPayload({ ctx, productInput, productObj, maxTotal } = {}) {
   const langCode = normalizeRecoPromptLanguage(ctx?.lang || 'EN');
   const targetSignals = buildRecoAlternativesTargetSignals(productObj, {
@@ -67841,6 +68032,8 @@ async function fetchRecoAlternativesForLocalGeminiOpenWorld({
   const model = getRecoAlternativesOpenWorldModel();
   const maxOutputTokens = getRecoAlternativesOpenWorldMaxOutputTokens();
   const timeoutMs = getRecoAlternativesOpenWorldTimeoutMs();
+  const queueTimeoutMs = getRecoAlternativesOpenWorldQueueTimeoutMs(timeoutMs);
+  const upstreamTimeoutMs = getRecoAlternativesOpenWorldUpstreamTimeoutMs(timeoutMs, queueTimeoutMs);
   const systemPrompt = [
     'You are a strict skincare alternatives selector.',
     'Output STRICT JSON only.',
@@ -67864,6 +68057,8 @@ async function fetchRecoAlternativesForLocalGeminiOpenWorld({
       systemPrompt,
       userPrompt: JSON.stringify(userPayload, null, 2),
       timeoutMs,
+      queueTimeoutMs,
+      upstreamTimeoutMs,
       temperature: 0.2,
       maxOutputTokens,
       responseJsonSchema: buildExternalSeedOpenWorldSchema(),
@@ -68030,6 +68225,8 @@ async function fetchRecoAlternativesForExternalSeedProduct({
   const openWorldModel = getRecoAlternativesOpenWorldModel();
   const maxOutputTokens = getRecoAlternativesOpenWorldMaxOutputTokens();
   const timeoutMs = getRecoAlternativesOpenWorldTimeoutMs();
+  const queueTimeoutMs = getRecoAlternativesOpenWorldQueueTimeoutMs(timeoutMs);
+  const upstreamTimeoutMs = getRecoAlternativesOpenWorldUpstreamTimeoutMs(timeoutMs, queueTimeoutMs);
   const pool = await collectExternalSeedPoolAlternatives({
     ctx,
     productInput,
@@ -68129,6 +68326,8 @@ async function fetchRecoAlternativesForExternalSeedProduct({
         systemPrompt,
         userPrompt: JSON.stringify(userPayload, null, 2),
         timeoutMs,
+        queueTimeoutMs,
+        upstreamTimeoutMs,
         temperature: 0.2,
         maxOutputTokens,
         responseJsonSchema: buildExternalSeedOpenWorldSchema(),
