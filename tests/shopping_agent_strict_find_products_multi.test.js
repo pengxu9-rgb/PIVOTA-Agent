@@ -290,12 +290,58 @@ describe('Shopping agent strict find_products_multi runtime', () => {
 
     expect(query).toHaveBeenCalledTimes(1);
     expect(capturedSql).toContain("seed_data#>>'{derived,recall,ingredient_tokens}'");
-    expect(capturedSql).toContain('retrieval_title');
     expect(capturedSql).not.toMatch(/CAST\(COALESCE\(seed_data|seed_data::text/);
     expect(out).toHaveLength(1);
     expect(out[0]).toMatchObject({
       product_id: 'ext_good_molecules_niacinamide',
       external_seed_id: 'seed_good_molecules',
+    });
+  });
+
+  test('prefetch falls back to recall title only when ingredient-token stage is empty', async () => {
+    const capturedSql = [];
+    const fallbackRows = [
+      {
+        id: 'seed_title_recall_niacinamide',
+        market: 'US',
+        tool: 'harvester',
+        product: {
+          product_id: 'ext_title_recall_niacinamide',
+          title: 'Niacinamide Serum',
+          category: 'serum',
+          ingredient_tokens: ['niacinamide'],
+          external_seed_recall: {
+            ingredient_tokens: ['niacinamide'],
+          },
+          in_stock: true,
+        },
+      },
+    ];
+    const { runtime, query } = createTestRuntime({
+      query: jest.fn(async (sql) => {
+        capturedSql.push(String(sql || ''));
+        return { rows: capturedSql.length === 1 ? [] : fallbackRows };
+      }),
+    });
+
+    const decision = runtime.getStrictFindProductsMultiConstraintDecision({
+      search: { query: 'niacinamide serum', in_stock_only: true },
+      metadata: { catalog_surface: 'agent_api' },
+    });
+    const out = await runtime.prefetchStrictIngredientExternalSeedCandidates({
+      search: { query: 'niacinamide serum', in_stock_only: true },
+      strictInvokeDecision: decision,
+      rawQueryText: 'niacinamide serum',
+    });
+
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(capturedSql[0]).toContain("AND (lower(coalesce(seed_data#>>'{derived,recall,ingredient_tokens}', '')) LIKE ANY($2::text[]))");
+    expect(capturedSql[1]).toContain("AND (lower(coalesce(seed_data->'derived'->'recall'->>'retrieval_title', '')) LIKE ANY($2::text[]))");
+    expect(capturedSql.join('\n')).not.toMatch(/CAST\(COALESCE\(seed_data|seed_data::text/);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({
+      product_id: 'ext_title_recall_niacinamide',
+      external_seed_id: 'seed_title_recall_niacinamide',
     });
   });
 
