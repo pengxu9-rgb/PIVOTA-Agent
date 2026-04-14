@@ -75,6 +75,40 @@ function createBeautyChatMainlineBudget({ budgetMs = 0 } = {}) {
   };
 }
 
+function clampBeautyMainlineStageBudgetMs(value, { minMs = 0, maxMs = 0, fallbackMs = 0 } = {}) {
+  const normalized = Number.isFinite(Number(value)) ? Math.trunc(Number(value)) : Math.trunc(Number(fallbackMs) || 0);
+  const min = Math.max(0, Math.trunc(Number(minMs) || 0));
+  const max = Math.max(min, Math.trunc(Number(maxMs) || min));
+  return Math.max(min, Math.min(max, normalized));
+}
+
+function resolveBeautyChatPlannerDeadlineAtMs({
+  nowMs = Date.now(),
+  handoffDeadlineAtMs = 0,
+  retrievalReserveMs = 0,
+  budgetMs = 0,
+} = {}) {
+  const normalizedNowMs = Number.isFinite(Number(nowMs)) ? Math.trunc(Number(nowMs)) : Date.now();
+  const normalizedHandoffDeadlineAtMs = Number.isFinite(Number(handoffDeadlineAtMs))
+    ? Math.trunc(Number(handoffDeadlineAtMs))
+    : normalizedNowMs;
+  const normalizedRetrievalReserveMs = clampBeautyMainlineStageBudgetMs(retrievalReserveMs, {
+    minMs: 1200,
+    maxMs: 8000,
+    fallbackMs: 5000,
+  });
+  const budgetCapMs = clampBeautyMainlineStageBudgetMs(Math.trunc(Number(budgetMs || 0) * 0.25), {
+    minMs: 1800,
+    maxMs: 3200,
+    fallbackMs: 2600,
+  });
+  const latestDeadlineBeforeRetrieval = normalizedHandoffDeadlineAtMs - normalizedRetrievalReserveMs;
+  return Math.min(
+    normalizedNowMs + budgetCapMs,
+    latestDeadlineBeforeRetrieval,
+  );
+}
+
 function pickBeautyRecoProductId(row) {
   return pickFirstTrimmed(row?.product_id, row?.productId, row?.sku?.product_id, row?.sku?.productId);
 }
@@ -360,13 +394,11 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
       ),
     );
     const handoffDeadlineAtMs = hardPathBudget.deadlineAtMs - rewriteReserveMs;
-    const plannerReserveMs = Math.max(
-      3000,
-      rewriteReserveMs,
-      Number.isFinite(Number(RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS))
-        ? Math.trunc(Number(RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS))
-        : 0,
-    );
+    const retrievalReserveMs = clampBeautyMainlineStageBudgetMs(RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS, {
+      minMs: 2500,
+      maxMs: 8000,
+      fallbackMs: 5000,
+    });
     let hardPathPlannerTrace = null;
     let hardPathPlannerSemanticPlan = null;
     let effectivePlannerTargetContext = hardPathRecoTargetContext;
@@ -375,7 +407,12 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
       typeof runConcernSemanticPlanner === 'function' &&
       typeof buildConcernTargetContextFromSemanticPlan === 'function'
     ) {
-      const plannerDeadlineAtMs = hardPathBudget.deadlineAtMs - plannerReserveMs;
+      const plannerDeadlineAtMs = resolveBeautyChatPlannerDeadlineAtMs({
+        nowMs: Date.now(),
+        handoffDeadlineAtMs,
+        retrievalReserveMs,
+        budgetMs: hardPathBudget.budgetMs,
+      });
       if (plannerDeadlineAtMs <= Date.now() + 250) {
         hardPathPlannerTrace = {
           planner_used: false,
