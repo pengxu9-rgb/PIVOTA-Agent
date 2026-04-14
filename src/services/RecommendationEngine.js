@@ -45,6 +45,10 @@ const PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS = Math.max(
   50,
   parseTimeoutMs(process.env.PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS, 700),
 );
+const PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS = Math.max(
+  PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS,
+  parseTimeoutMs(process.env.PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS, 3800),
+);
 const PDP_RECS_IDENTITY_DEDUPE_TIMEOUT_MS = Math.max(
   100,
   parseTimeoutMs(process.env.PDP_RECS_IDENTITY_DEDUPE_TIMEOUT_MS, 450),
@@ -1591,10 +1595,10 @@ async function fetchExternalCandidates({
     }
   }
 
-  async function runTimedExternalQuery(queryName, task) {
+  async function runTimedExternalQuery(queryName, task, timeoutMs = PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS) {
     return withSoftTimeout(
       Promise.resolve().then(task),
-      PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS,
+      timeoutMs,
       [],
       (timeoutMs) => {
         logger.warn(
@@ -1692,14 +1696,12 @@ async function fetchExternalCandidates({
             `AND attached_product_key IS NULL
               AND (
                 lower(coalesce(seed_data->'derived'->'recall'->>'retrieval_title','')) LIKE ANY($4::text[])
-                OR lower(coalesce(seed_data->'derived'->'recall'->>'retrieval_summary','')) LIKE ANY($4::text[])
-                OR lower(coalesce(seed_data#>>'{derived,recall,ingredient_tokens}', '')) LIKE ANY($4::text[])
-                OR lower(coalesce(seed_data#>>'{derived,recall,alias_tokens}', '')) LIKE ANY($4::text[])
               )`,
             [categoryLikePatterns],
             Math.min(180, safeLimit),
             'external_category_title',
           ),
+          PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS,
         )
       : [];
     out.push(...categoryTitleMatches);

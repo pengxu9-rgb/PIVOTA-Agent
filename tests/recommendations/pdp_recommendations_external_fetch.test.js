@@ -38,6 +38,7 @@ describe('RecommendationEngine external candidate fetch', () => {
     delete process.env.DATABASE_URL;
     delete process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET;
     delete process.env.PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS;
+    delete process.env.PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS;
   });
 
   test('matches normalized brand fastpath and dedupes overlapping brand/category rows', async () => {
@@ -426,6 +427,7 @@ describe('RecommendationEngine external candidate fetch', () => {
         expect(params?.[3]).toEqual(expect.arrayContaining(['%serum%']));
         expect(sqlText).toContain('attached_product_key IS NULL');
         expect(sqlText).not.toContain("lower(coalesce(title, '')) LIKE");
+        expect(sqlText).not.toContain("retrieval_summary");
         return {
           rows: [
             makeExternalRow({
@@ -478,6 +480,7 @@ describe('RecommendationEngine external candidate fetch', () => {
   test('keeps focused candidates when category-token underfill query times out', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
     process.env.PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS = '50';
+    process.env.PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS = '50';
 
     const queryMock = jest.fn(async (sql, params) => {
       const sqlText = String(sql);
