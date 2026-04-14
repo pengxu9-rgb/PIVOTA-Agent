@@ -468,6 +468,8 @@ function collectSeedIngredientSignalTokens(seedData, row) {
   const snapshot = ensureJsonObject(parsedSeedData.snapshot);
   const ingredientIntel = ensureJsonObject(parsedSeedData.ingredient_intel);
   const snapshotIngredientIntel = ensureJsonObject(snapshot.ingredient_intel);
+  const derived = ensureJsonObject(parsedSeedData.derived);
+  const recall = ensureJsonObject(derived.recall);
   const science = ensureJsonObject(parsedSeedData.science);
   const snapshotScience = ensureJsonObject(snapshot.science);
   const assessment = ensureJsonObject(parsedSeedData.assessment);
@@ -489,6 +491,7 @@ function collectSeedIngredientSignalTokens(seedData, row) {
     parsedSeedData.ingredient_names,
     parsedSeedData.ingredientNames,
     parsedSeedData.ingredients,
+    recall.ingredient_tokens,
     parsedSeedData.likely_key_ingredients_or_signals,
     parsedSeedData.likelyKeyIngredientsOrSignals,
     science.key_ingredients,

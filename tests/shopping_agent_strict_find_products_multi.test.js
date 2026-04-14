@@ -251,6 +251,52 @@ describe('Shopping agent strict find_products_multi runtime', () => {
     });
   });
 
+  test('prefetch accepts external seed recall-doc ingredient tokens without root ingredient ids', async () => {
+    let capturedSql = '';
+    const rows = [
+      {
+        id: 'seed_good_molecules',
+        market: 'US',
+        tool: 'harvester',
+        product: {
+          product_id: 'ext_good_molecules_niacinamide',
+          title: 'Niacinamide Serum',
+          brand: 'Good Molecules',
+          category: 'serum',
+          ingredient_tokens: ['niacinamide'],
+          external_seed_recall: {
+            ingredient_tokens: ['niacinamide'],
+          },
+          in_stock: true,
+        },
+      },
+    ];
+    const { runtime, query } = createTestRuntime({
+      query: jest.fn(async (sql) => {
+        capturedSql = String(sql || '');
+        return { rows };
+      }),
+    });
+
+    const decision = runtime.getStrictFindProductsMultiConstraintDecision({
+      search: { query: 'Good Molecules Niacinamide Serum', in_stock_only: true },
+      metadata: { catalog_surface: 'agent_api' },
+    });
+    const out = await runtime.prefetchStrictIngredientExternalSeedCandidates({
+      search: { query: 'Good Molecules Niacinamide Serum', in_stock_only: true },
+      strictInvokeDecision: decision,
+      rawQueryText: 'Good Molecules Niacinamide Serum',
+    });
+
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(capturedSql).toContain("seed_data#>>'{derived,recall,ingredient_tokens}'");
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({
+      product_id: 'ext_good_molecules_niacinamide',
+      external_seed_id: 'seed_good_molecules',
+    });
+  });
+
   test('builds strict invoke body with normalized surface and raw query carry-through', async () => {
     const { runtime } = createTestRuntime({ hasDatabaseUrl: false });
     const strictInvokeDecision = runtime.getStrictFindProductsMultiConstraintDecision({

@@ -539,11 +539,31 @@ function createStrictFindProductsMultiRuntime(deps = {}) {
     const productIngredientIds = Array.isArray(product.ingredient_ids)
       ? product.ingredient_ids.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean)
       : [];
-    if (
-      ingredientIntents.length > 0 &&
-      !ingredientIntents.every((intent) => productIngredientIds.includes(intent))
-    ) {
-      return false;
+    const productIngredientText = normalizeSearchTextForMatch(
+      [
+        ...(Array.isArray(product.ingredient_tokens) ? product.ingredient_tokens : []),
+        ...(Array.isArray(product.key_ingredients) ? product.key_ingredients : []),
+        ...(Array.isArray(product.active_ingredients) ? product.active_ingredients : []),
+        ...(Array.isArray(product.external_seed_recall?.ingredient_tokens)
+          ? product.external_seed_recall.ingredient_tokens
+          : []),
+      ]
+        .filter(Boolean)
+        .join(' '),
+    );
+    if (ingredientIntents.length > 0) {
+      const hasEveryIngredientIntent = ingredientIntents.every((intent) => {
+        if (productIngredientIds.includes(intent)) return true;
+        const profile = STRICT_FIND_PRODUCTS_MULTI_INGREDIENT_PROFILES[intent] || null;
+        const targetTerms = [
+          intent.replace(/_/g, ' '),
+          ...((profile && Array.isArray(profile.aliases)) ? profile.aliases : []),
+        ]
+          .map((term) => normalizeSearchTextForMatch(term))
+          .filter(Boolean);
+        return targetTerms.some((term) => productIngredientText.includes(term));
+      });
+      if (!hasEveryIngredientIntent) return false;
     }
 
     const visibilityHaystack = normalizeSearchTextForMatch(
@@ -661,6 +681,7 @@ function createStrictFindProductsMultiRuntime(deps = {}) {
       "COALESCE(jsonb_array_length(CASE WHEN jsonb_typeof(COALESCE(seed_data, '{}'::jsonb)->'ingredient_ids') = 'array' THEN COALESCE(seed_data, '{}'::jsonb)->'ingredient_ids' ELSE '[]'::jsonb END), 0) > 0",
       "COALESCE(jsonb_array_length(CASE WHEN jsonb_typeof(COALESCE(seed_data, '{}'::jsonb)->'snapshot'->'reviewed_ingredient_ids') = 'array' THEN COALESCE(seed_data, '{}'::jsonb)->'snapshot'->'reviewed_ingredient_ids' ELSE '[]'::jsonb END), 0) > 0",
       "COALESCE(jsonb_array_length(CASE WHEN jsonb_typeof(COALESCE(seed_data, '{}'::jsonb)->'snapshot'->'ingredient_ids') = 'array' THEN COALESCE(seed_data, '{}'::jsonb)->'snapshot'->'ingredient_ids' ELSE '[]'::jsonb END), 0) > 0",
+      "length(coalesce(seed_data#>>'{derived,recall,ingredient_tokens}', '')) > 0",
     ];
 
     const sql = `
