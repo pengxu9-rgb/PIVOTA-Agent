@@ -65523,6 +65523,29 @@ function inferRecoAlternativesClaimHints(...values) {
   return out;
 }
 
+function normalizeRecoAlternativePrimaryClaimsForRoleScope(claims, roleScope) {
+  const list = uniqCaseInsensitiveStrings(Array.isArray(claims) ? claims : [], 6);
+  const roleText = String(roleScope || '').trim().toLowerCase().replace(/[_-]+/g, ' ');
+  if (!list.length || !roleText) return list;
+  if (/\b(?:hydrating|barrier|moisturizer|moisturiser|cream|lotion)\b/.test(roleText)) {
+    const scoped = list.filter((claim) =>
+      /\b(?:hydrat\w*|moist\w*|barrier|ceramides?|glycerin|hyaluronic|sooth\w*|calm\w*|redness|sensitive|lightweight|non[-\s]?comedogenic|gel|water)\b/i.test(
+        String(claim || ''),
+      ),
+    );
+    return scoped.length ? uniqCaseInsensitiveStrings(scoped, 6) : list;
+  }
+  if (/\b(?:sunscreen|spf|sun|uv)\b/.test(roleText)) {
+    const scoped = list.filter((claim) =>
+      /\b(?:spf|sun|uv|protection|white\s*cast|matte|oil[-\s]?control|non[-\s]?greasy|lightweight|hydrat\w*)\b/i.test(
+        String(claim || ''),
+      ),
+    );
+    return scoped.length ? uniqCaseInsensitiveStrings(scoped, 6) : list;
+  }
+  return list;
+}
+
 function inferRecoAlternativesTextureHints(...values) {
   const text = values.filter(Boolean).join(' ').toLowerCase();
   const out = [];
@@ -65685,7 +65708,10 @@ function buildRecoAlternativesTargetSignals(product, { productInput = '', lang =
     narrativeSignals.join(' '),
     heroIngredients.join(' '),
   );
-  const primaryClaims = uniqCaseInsensitiveStrings([...claimHints, ...explicitClaims], 6);
+  const primaryClaims = normalizeRecoAlternativePrimaryClaimsForRoleScope(
+    uniqCaseInsensitiveStrings([...claimHints, ...explicitClaims], 6),
+    roleScope,
+  );
 
   const explicitKnownActives = collectRecoPromptTextList(
     [
@@ -66937,7 +66963,6 @@ function normalizePoolAlternativeRow(row, {
   const ingredientOverlap = computeExternalSeedSignalOverlap(ingredientTokens, candidateText);
   const claimOverlap = computeExternalSeedSignalOverlap(claimTokens, candidateText);
   const textureOverlap = computeExternalSeedSignalOverlap(textureTokens, candidateText);
-  const titleActiveMatch = computeRecoAlternativeTitleActiveMatchScore(ingredientTokens, candidateLabel);
   const cosmeticFinishPenalty = computeRecoAlternativeCosmeticFinishPenalty(targetSignals, candidateText, candidateLabel);
   const concernIntentPenalty = computeRecoAlternativeConcernIntentPenalty(targetSignals, candidateText, candidateLabel);
   const roleScore = !targetRole || targetRole === 'unknown'
@@ -66947,6 +66972,9 @@ function normalizePoolAlternativeRow(row, {
       : candidateRole === 'unknown'
         ? 0.58
         : 0.18;
+  const titleActiveMatch = ['serum', 'treatment', 'sunscreen'].includes(targetRole)
+    ? computeRecoAlternativeTitleActiveMatchScore(ingredientTokens, candidateLabel)
+    : 0;
   const stableIdBonus = normalized.canonical_product_ref || normalized.product_group_id ? 0.1 : productId ? 0.06 : 0;
   const retrievalBonus = normalized.retrieval_source === 'catalog' ? 0.06 : 0.03;
   const mixedScore = clamp01Score(

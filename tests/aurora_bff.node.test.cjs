@@ -5835,6 +5835,7 @@ test('reco alternatives target signals prefer role-scope over noisy narrative fo
     const localRole = __internal.buildRecoAlternativesLocalSeedSearchRole(signals);
 
     assert.equal(signals.usageRole, 'moisturizer');
+    assert.equal(signals.primaryClaims.some((claim) => /bright/i.test(String(claim || ''))), false);
     assert.equal(localRole.preferred_step, 'moisturizer');
   } finally {
     delete require.cache[moduleId];
@@ -6466,6 +6467,36 @@ test('fetchRecoAlternativesForProduct: thin role-scope moisturizer anchors do no
                 },
               },
               {
+                product_id: 'ext_round_lab_dark_spot_cream',
+                merchant_id: 'external_seed',
+                brand: 'Round Lab',
+                name: 'Vita Niacinamide Dark Spot Cream',
+                display_name: 'Vita Niacinamide Dark Spot Cream',
+                product_type: 'Moisturizer',
+                category: 'Moisturizer',
+                retrieval_source: 'external_seed',
+                description: 'Brightening dark spot cream with niacinamide for uneven tone.',
+                canonical_product_ref: {
+                  product_id: 'ext_round_lab_dark_spot_cream',
+                  merchant_id: 'external_seed',
+                },
+              },
+              {
+                product_id: 'ext_haruharu_radiance_gel_cream',
+                merchant_id: 'external_seed',
+                brand: 'Haruharu Wonder',
+                name: '5% Niacinamide Radiance Gel Cream / Unscented',
+                display_name: '5% Niacinamide Radiance Gel Cream / Unscented',
+                product_type: 'Moisturizer',
+                category: 'Moisturizer',
+                retrieval_source: 'external_seed',
+                description: 'Radiance gel cream for brightening and uneven tone.',
+                canonical_product_ref: {
+                  product_id: 'ext_haruharu_radiance_gel_cream',
+                  merchant_id: 'external_seed',
+                },
+              },
+              {
                 product_id: 'ext_rare_beauty_tinted_moisturizer',
                 merchant_id: 'external_seed',
                 brand: 'rare beauty',
@@ -6579,6 +6610,7 @@ test('fetchRecoAlternativesForProduct: thin role-scope moisturizer anchors do no
         assert.ok(seenQueries.some((query) => /\bmoisturizer\b/i.test(String(query))));
         const names = out.alternatives.map((row) => String(row?.product?.name || row?.name || ''));
         assert.equal(names.some((name) => /Niacinamide|Retinal|Serum|Eye/i.test(name)), false);
+        assert.equal(names.some((name) => /dark spot|radiance/i.test(name)), false);
         assert.equal(names.some((name) => /tinted moisturizer/i.test(name)), false);
         assert.equal(out.alternatives.every((row) => /moisturizer/i.test(String(row?.product?.category || ''))), true);
       } finally {
