@@ -52,6 +52,7 @@ on:
       - "src/services/ingredientSkuEvidence.js"
       - "src/services/externalSeedProducts.js"
       - "src/services/externalSeedHarvesterBridge.js"
+      - "src/services/RecommendationEngine.js"
       - "src/services/pdpIngredientAuthority.js"
       - "src/services/pdpReviewedIngredientAuthority.js"
       - "tests/discovery_feed_smoke_script.test.js"
@@ -75,6 +76,7 @@ on:
       - "tests/services/external_seed_brand_fastpath.test.js"
       - "tests/services/external_seed_products.test.js"
       - "tests/services/external_seed_harvester_bridge.test.js"
+      - "tests/recommendations/**"
       - "tests/services/pdp_ingredient_authority.test.js"
       - "tests/pdp_builder_structured_modules.test.js"
       - "tests/pdp_structured_modules.test.js"
@@ -121,6 +123,7 @@ on:
       - "src/services/ingredientSkuEvidence.js"
       - "src/services/externalSeedProducts.js"
       - "src/services/externalSeedHarvesterBridge.js"
+      - "src/services/RecommendationEngine.js"
       - "src/services/pdpIngredientAuthority.js"
       - "src/services/pdpReviewedIngredientAuthority.js"
       - "tests/discovery_feed_smoke_script.test.js"
@@ -144,6 +147,7 @@ on:
       - "tests/services/external_seed_brand_fastpath.test.js"
       - "tests/services/external_seed_products.test.js"
       - "tests/services/external_seed_harvester_bridge.test.js"
+      - "tests/recommendations/**"
       - "tests/services/pdp_ingredient_authority.test.js"
       - "tests/pdp_builder_structured_modules.test.js"
       - "tests/pdp_structured_modules.test.js"
@@ -207,6 +211,8 @@ jobs:
             tests/shopping_agent_strict_find_products_multi.test.js \
             tests/services/external_seed_products.test.js \
             tests/services/external_seed_harvester_bridge.test.js \
+            tests/recommendations/pdp_recommendations_external_fetch.test.js \
+            tests/find_similar_products_mainline_wrapper.test.js \
             tests/services/pdp_ingredient_authority.test.js \
             tests/pdp_builder_structured_modules.test.js \
             tests/pdp_structured_modules.test.js \

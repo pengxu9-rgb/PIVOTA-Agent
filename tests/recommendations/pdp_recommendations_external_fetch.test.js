@@ -423,6 +423,8 @@ describe('RecommendationEngine external candidate fetch', () => {
       }
       if (sqlText.includes("seed_data->'derived'->'recall'->>'retrieval_title'")) {
         expect(params?.[3]).toEqual(expect.arrayContaining(['%serum%']));
+        expect(sqlText).toContain('attached_product_key IS NULL');
+        expect(sqlText).not.toContain("lower(coalesce(title, '')) LIKE");
         return {
           rows: [
             makeExternalRow({
