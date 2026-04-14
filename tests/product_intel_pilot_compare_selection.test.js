@@ -375,6 +375,12 @@ describe('product_intel pilot compare selection', () => {
         headline: 'Combines the fast absorption of a serum with the barrier-nourishing properties of an oil in a',
       },
       {
+        title: 'INNBEAUTY PROJECT Green Machine Serum',
+        category: 'Skincare/Serum',
+        description: 'A serum-oil product with vitamin C, tranexamic acid, and niacinamide.',
+        headline: 'Utilizes an oil-jelly architecture that provides both deep serum penetration and oil-based',
+      },
+      {
         title: 'Fenty Skin Fat Water Niacinamide Pore-Refining Toner Serum',
         category: 'Skincare/Toner',
         description: 'A toner-serum step with niacinamide and Barbados cherry for pore and tone care.',

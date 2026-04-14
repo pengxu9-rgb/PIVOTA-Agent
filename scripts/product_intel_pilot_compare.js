@@ -658,7 +658,7 @@ function isLikelyIncompleteNarrativeText(value) {
   if (/\b[a-z]$/.test(normalized) && /\b(?:radian|irritat|refin|disrupt|protect|bright|hydr|sooth|calm|blemish|hyperpigment)$/.test(normalized)) {
     return true;
   }
-  return /\b(?:a|an|the|and|or|of|in|to|with|without|while|featuring|including|into|for|from|by|as|that|visible|support|supports|target|targets|provide|provides|deliver|delivers|improve|improves|reduce|reduces|calm|calms|derived)\b$/.test(
+  return /\b(?:a|an|the|and|or|of|in|to|with|without|while|featuring|including|into|for|from|by|as|that|visible|support|supports|target|targets|provide|provides|deliver|delivers|improve|improves|reduce|reduces|calm|calms|derived|based)\b$/.test(
     normalized,
   );
 }
