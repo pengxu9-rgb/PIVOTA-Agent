@@ -9903,6 +9903,7 @@ function getUiChatLlmClient() {
 // This keeps the gateway responsive while being more tolerant of
 // occasional slow product/search slowness.
 async function callUpstreamWithOptionalRetry(operation, axiosConfig, options = {}) {
+  const disableTimeoutRetry = options?.disableTimeoutRetry === true;
   const timeoutRetryableOps = [
     'find_products',
     'find_similar_products',
@@ -10029,6 +10030,7 @@ async function callUpstreamWithOptionalRetry(operation, axiosConfig, options = {
       // Timeout retry (legacy behavior): one retry for read-heavy search operations.
       if (
         err.code === 'ECONNABORTED' &&
+        !disableTimeoutRetry &&
         timeoutRetryableOps.includes(operation) &&
         attempt === 1
       ) {
@@ -23846,9 +23848,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     const upstreamBudgetMsForSearch = shouldUseShortSearchBudget
       ? FIND_PRODUCTS_MULTI_UPSTREAM_LOOKUP_TIMEOUT_MS
       : FIND_PRODUCTS_MULTI_UPSTREAM_DEFAULT_TIMEOUT_MS;
+    const singlePassPublicSearchPrimary =
+      operation === 'find_products_multi' && invokeSearchRail === 'public_observability';
     const axiosTimeout =
       operation === 'find_products_multi'
-        ? Math.min(getUpstreamTimeoutMs(operation), upstreamBudgetMsForSearch)
+        ? singlePassPublicSearchPrimary
+          ? getUpstreamTimeoutMs(operation)
+          : Math.min(getUpstreamTimeoutMs(operation), upstreamBudgetMsForSearch)
         : getUpstreamTimeoutMs(operation);
 
     const axiosConfig = {
@@ -23985,6 +23991,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const startedAt = measureCheckout ? Date.now() : 0;
       try {
         return await callUpstreamWithOptionalRetry(op, config, {
+          disableTimeoutRetry:
+            singlePassPublicSearchPrimary && String(op || '').trim().toLowerCase() === 'find_products_multi',
           onRetry: () => {
             if (measureCheckout) gatewayRetryCount += 1;
           },
