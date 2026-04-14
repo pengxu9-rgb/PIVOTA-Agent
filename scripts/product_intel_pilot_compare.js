@@ -571,6 +571,69 @@ function cleanProductText(value) {
     .trim();
 }
 
+function clampTextAtWordBoundary(value, maxLength) {
+  const normalized = asString(value).replace(/\s+/g, ' ').trim();
+  const max = Math.max(1, Number(maxLength) || 1);
+  if (normalized.length <= max) return normalized;
+
+  const slice = normalized.slice(0, max + 1);
+  const sentenceBoundary = Math.max(
+    slice.lastIndexOf('.'),
+    slice.lastIndexOf('!'),
+    slice.lastIndexOf('?'),
+    slice.lastIndexOf(';'),
+  );
+  if (sentenceBoundary >= Math.min(80, Math.floor(max * 0.55))) {
+    return slice.slice(0, sentenceBoundary + 1).trim();
+  }
+
+  const wordBoundary = slice.lastIndexOf(' ');
+  const truncated = slice
+    .slice(0, wordBoundary >= Math.min(32, Math.floor(max * 0.35)) ? wordBoundary : max)
+    .replace(/[\s,;:–—-]+$/g, '')
+    .trim();
+  return truncated || normalized.slice(0, max).trim();
+}
+
+function isLikelyIncompleteNarrativeText(value) {
+  const normalized = asString(value)
+    .replace(/\s+/g, ' ')
+    .replace(/[.!?;,:\s]+$/g, '')
+    .trim()
+    .toLowerCase();
+  if (!normalized) return false;
+  if (/\b[a-z]$/.test(normalized) && /\b(?:radian|irritat|refin|disrupt|protect|bright|hydr|sooth|calm|blemish|hyperpigment)$/.test(normalized)) {
+    return true;
+  }
+  return /\b(?:and|or|to|with|without|while|featuring|including|into|for|from|by|as|that|visible|support|supports|target|targets|provide|provides|deliver|delivers|improve|improves|reduce|reduces|calm|calms)\b$/.test(
+    normalized,
+  );
+}
+
+function buildCompactHighlightHeadline(headlineValue, fallbackValue, maxLength = 96) {
+  const source = cleanProductText(headlineValue) || cleanProductText(fallbackValue);
+  if (!source) return '';
+  if (source.length <= maxLength && !isLikelyIncompleteNarrativeText(source)) return source;
+
+  const splitIfShortened = (pattern) => {
+    const parts = source.split(pattern);
+    return parts.length > 1 ? parts[0] : '';
+  };
+  const candidates = [
+    splitIfShortened(/\s+to\s+/i),
+    splitIfShortened(/\s+while\s+/i),
+    splitIfShortened(/\s+without\s+/i),
+    splitIfShortened(/\s+so\s+/i),
+    splitIfShortened(/[—–:]/),
+    splitIfShortened(/,\s+(?:while|with|featuring|including)\s+/i),
+    splitIfShortened(/[.!?;]/),
+  ]
+    .map((item) => clampTextAtWordBoundary(item, maxLength))
+    .filter((item) => item.length >= 18 && !isLikelyIncompleteNarrativeText(item));
+
+  return candidates[0] || clampTextAtWordBoundary(source, maxLength);
+}
+
 function buildProductContext(caseRow) {
   const product = caseRow?.product && typeof caseRow.product === 'object' ? caseRow.product : {};
   return {
@@ -710,7 +773,7 @@ function normalizeGeminiDraftOutput(output) {
   const bestFor = toList(output?.product_intel_core?.best_for)
     .map((item) => {
       const row = item && typeof item === 'object' ? item : null;
-      const label = asString(row?.label || item).slice(0, 120);
+      const label = clampTextAtWordBoundary(row?.label || item, 120);
       if (!label) return null;
       return {
         tag:
@@ -727,12 +790,12 @@ function normalizeGeminiDraftOutput(output) {
   const highlights = toList(output?.product_intel_core?.why_it_stands_out)
     .map((item) => {
       const row = item && typeof item === 'object' ? item : null;
-      const headline = asString(row?.headline).slice(0, 120);
-      const body = asString(row?.body || item).slice(0, 240);
+      const body = clampTextAtWordBoundary(row?.body || item, 240);
+      const headline = buildCompactHighlightHeadline(row?.headline, body, 96);
       if (!headline && !body) return null;
       const evidenceStrengthRaw = asString(row?.evidence_strength).toLowerCase();
       return {
-        headline: headline || body.slice(0, 120),
+        headline: headline || buildCompactHighlightHeadline(body, body, 96),
         body,
         evidence_strength: ['strong', 'moderate', 'limited', 'uncertain'].includes(evidenceStrengthRaw)
           ? evidenceStrengthRaw
@@ -743,14 +806,16 @@ function normalizeGeminiDraftOutput(output) {
       (item) =>
         item &&
         !isLowSignalSellerHighlightText(`${item.headline} ${item.body}`) &&
-        !isGenericSellerHighlightText(`${item.headline} ${item.body}`),
+        !isGenericSellerHighlightText(`${item.headline} ${item.body}`) &&
+        !isLikelyIncompleteNarrativeText(item.headline) &&
+        !isLikelyIncompleteNarrativeText(item.body),
     )
     .slice(0, 4);
 
   const watchouts = toList(output?.product_intel_core?.watchouts)
     .map((item) => {
       const row = item && typeof item === 'object' ? item : null;
-      const label = asString(row?.label || item).slice(0, 160);
+      const label = clampTextAtWordBoundary(row?.label || item, 160);
       if (!label) return null;
       const severityRaw = asString(row?.severity).toLowerCase();
       return {
@@ -768,11 +833,11 @@ function normalizeGeminiDraftOutput(output) {
           texture: asString(output.texture_finish.texture) || null,
           finish: asString(output.texture_finish.finish) || null,
           sensory_notes: toList(output.texture_finish.sensory_notes)
-            .map((item) => asString(item).slice(0, 120))
+            .map((item) => clampTextAtWordBoundary(item, 120))
             .filter(Boolean)
             .slice(0, 4),
           layering_notes: toList(output.texture_finish.layering_notes)
-            .map((item) => asString(item).slice(0, 160))
+            .map((item) => clampTextAtWordBoundary(item, 160))
             .filter(Boolean)
             .slice(0, 4),
         }
@@ -783,19 +848,19 @@ function normalizeGeminiDraftOutput(output) {
     status: communityStatusRaw === 'available' ? 'available' : 'unavailable',
     unavailable_reason: asString(output?.community_signals?.unavailable_reason) || null,
     top_loves: toList(output?.community_signals?.top_loves)
-      .map((item) => asString(item).slice(0, 160))
+      .map((item) => clampTextAtWordBoundary(item, 160))
       .filter(Boolean)
       .slice(0, 4),
     top_complaints: toList(output?.community_signals?.top_complaints)
-      .map((item) => asString(item).slice(0, 160))
+      .map((item) => clampTextAtWordBoundary(item, 160))
       .filter(Boolean)
       .slice(0, 4),
     best_fit_users: toList(output?.community_signals?.best_fit_users)
-      .map((item) => asString(item).slice(0, 160))
+      .map((item) => clampTextAtWordBoundary(item, 160))
       .filter(Boolean)
       .slice(0, 3),
     mixed_feedback: toList(output?.community_signals?.mixed_feedback)
-      .map((item) => asString(item).slice(0, 180))
+      .map((item) => clampTextAtWordBoundary(item, 180))
       .filter(Boolean)
       .slice(0, 3),
   };
@@ -804,20 +869,23 @@ function normalizeGeminiDraftOutput(output) {
     product_intel_core: {
       what_it_is: {
         headline:
-          asString(output?.product_intel_core?.what_it_is?.headline).slice(0, 120) ||
+          clampTextAtWordBoundary(output?.product_intel_core?.what_it_is?.headline, 120) ||
           PIVOTA_INSIGHTS_DISPLAY_NAME,
-        body: normalizeSellerWhatItIs(asString(output?.product_intel_core?.what_it_is?.body)).slice(0, 400),
+        body: clampTextAtWordBoundary(
+          normalizeSellerWhatItIs(asString(output?.product_intel_core?.what_it_is?.body)),
+          400,
+        ),
       },
       best_for: bestFor,
       why_it_stands_out: highlights,
       routine_fit: {
-        step: asString(output?.product_intel_core?.routine_fit?.step).slice(0, 80),
+        step: clampTextAtWordBoundary(output?.product_intel_core?.routine_fit?.step, 80),
         am_pm: toList(output?.product_intel_core?.routine_fit?.am_pm)
           .map((item) => asString(item).toLowerCase())
           .filter((item) => item === 'am' || item === 'pm')
           .slice(0, 2),
         pairing_notes: toList(output?.product_intel_core?.routine_fit?.pairing_notes)
-          .map((item) => asString(item).slice(0, 160))
+          .map((item) => clampTextAtWordBoundary(item, 160))
           .filter(Boolean)
           .slice(0, 4),
       },
@@ -1456,6 +1524,11 @@ function evaluateGeminiCandidateQuality(baselineBundle, geminiCandidateBundle) {
     productContext,
     candidateCore.best_for,
   );
+  const incompleteHighlights = toList(candidateCore.why_it_stands_out).some(
+    (item) =>
+      isLikelyIncompleteNarrativeText(item?.headline) ||
+      isLikelyIncompleteNarrativeText(item?.body),
+  );
 
   const bestForOverlap = Number(
     jaccardOverlap(
@@ -1488,6 +1561,7 @@ function evaluateGeminiCandidateQuality(baselineBundle, geminiCandidateBundle) {
     why_it_stands_out:
       Array.isArray(candidateCore.why_it_stands_out) &&
       candidateCore.why_it_stands_out.length > 0 &&
+      !incompleteHighlights &&
       candidateCore.why_it_stands_out.some(
         (item) =>
           asString(item?.body).length >= 20 &&
@@ -1519,6 +1593,7 @@ function evaluateGeminiCandidateQuality(baselineBundle, geminiCandidateBundle) {
   const failReasons = [];
   if (sellerOnlyViolation) failReasons.push('seller_only_community_language');
   if (incompatibleBestFor) failReasons.push('incompatible_best_for');
+  if (incompleteHighlights) failReasons.push('incomplete_highlight_copy');
   if (!fieldDecisions.what_it_is) failReasons.push('weak_what_it_is');
   if (!fieldDecisions.best_for) failReasons.push('weak_best_for');
   if (!fieldDecisions.why_it_stands_out) failReasons.push('weak_highlights');
@@ -1536,6 +1611,7 @@ function evaluateGeminiCandidateQuality(baselineBundle, geminiCandidateBundle) {
     external_evidence_language: externalEvidenceLanguage,
     grounded_external_evidence: groundedExternalEvidence,
     incompatible_best_for: incompatibleBestFor,
+    incomplete_highlights: incompleteHighlights,
     best_for_overlap: bestForOverlap,
     watchout_overlap: watchoutOverlap,
     field_decisions: fieldDecisions,

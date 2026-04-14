@@ -5,6 +5,7 @@ const {
   buildSelectedBundle,
   applyManualOverrideToSelected,
   buildShoppingCardPayload,
+  normalizeGeminiDraftOutput,
 } = require('../scripts/product_intel_pilot_compare');
 
 describe('product_intel pilot compare selection', () => {
@@ -195,6 +196,48 @@ describe('product_intel pilot compare selection', () => {
 
     expect(quality.field_decisions.best_for).toBe(false);
     expect(quality.fail_reasons).toContain('incompatible_best_for');
+  });
+
+  test('normalizes long Gemini highlight headlines into complete compact phrases', () => {
+    const normalized = normalizeGeminiDraftOutput({
+      product_intel_core: {
+        what_it_is: {
+          headline: 'Treatment serum',
+          body: 'A lightweight serum for uneven tone and visible dark spots.',
+        },
+        best_for: [{ tag: 'uneven_tone', label: 'Uneven tone concerns' }],
+        why_it_stands_out: [
+          {
+            headline:
+              'Combines niacinamide and tranexamic acid with a vitamin-rich complex to target hyperpigmentation and support skin radiance.',
+            body:
+              'Combines niacinamide and tranexamic acid with a vitamin-rich complex to target hyperpigmentation and support skin radiance.',
+            evidence_strength: 'limited',
+          },
+          {
+            headline:
+              'Combines a Pine Cica Activer complex—featuring pine leaf extract and five centella asiatica compounds—to calm visible redness and irritation during cleansing.',
+            body:
+              'Combines a Pine Cica Activer complex—featuring pine leaf extract and five centella asiatica compounds—to calm visible redness and irritation during cleansing.',
+            evidence_strength: 'limited',
+          },
+        ],
+        routine_fit: {
+          step: 'serum',
+          am_pm: ['am', 'pm'],
+          pairing_notes: ['Apply before moisturizer.'],
+        },
+        watchouts: [],
+      },
+      community_signals: {
+        status: 'unavailable',
+      },
+    });
+
+    expect(normalized.product_intel_core.why_it_stands_out.map((item) => item.headline)).toEqual([
+      'Combines niacinamide and tranexamic acid with a vitamin-rich complex',
+      'Combines a Pine Cica Activer complex',
+    ]);
   });
 
   test('uses gemini narrative fields when they pass the quality gate', () => {
