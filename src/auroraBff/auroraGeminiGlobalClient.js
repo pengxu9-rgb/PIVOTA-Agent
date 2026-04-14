@@ -17,7 +17,6 @@ function withTimeoutCode(promise, timeoutMs, timeoutCode, onTimeout = null) {
       if (typeof onTimeout === 'function') onTimeout(err);
       reject(err);
     }, ms);
-    if (timer && typeof timer.unref === 'function') timer.unref();
   });
   return Promise.race([promise, timeoutPromise]).finally(() => {
     if (timer) clearTimeout(timer);
