@@ -218,10 +218,154 @@ describe('discovery feed service', () => {
     const plan = _internals.buildDiscoveryRecallPlan(request, profile, 48);
 
     expect(Array.isArray(plan)).toBe(true);
+    expect(plan).toHaveLength(1);
     expect(plan[0]).toMatchObject({
       label: 'browse_pool',
       query: 'Naturium The Brightener Vitamin C Brightening Body Wash',
     });
+  });
+
+  test('explicit browse query uses staged external seed mainline without cold-start beauty fallback terms', async () => {
+    jest.resetModules();
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = 'postgres://explicit-query-external-fastpath';
+    delete process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL;
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+    delete process.env.PIVOTA_API_BASE;
+    delete process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY;
+    delete process.env.PIVOTA_BACKEND_AGENT_API_KEY;
+    delete process.env.PIVOTA_API_KEY;
+
+    const columnRows = [
+      ...['id', 'merchant_id', 'product_data', 'expires_at', 'cached_at'].map((columnName) => ({
+        table_name: 'products_cache',
+        column_name: columnName,
+      })),
+      ...[
+        'id',
+        'external_product_id',
+        'destination_url',
+        'canonical_url',
+        'title',
+        'seed_data',
+        'market',
+        'tool',
+        'status',
+        'attached_product_key',
+        'updated_at',
+        'created_at',
+      ].map((columnName) => ({
+        table_name: 'external_product_seeds',
+        column_name: columnName,
+      })),
+    ];
+    const indexRows = [
+      'idx_external_product_seeds_recall_title_trgm',
+      'idx_external_product_seeds_recall_summary_trgm',
+      'idx_external_product_seeds_recall_category_vertical_recency',
+      'idx_external_product_seeds_recall_vertical_recency',
+      'idx_external_product_seeds_recall_ingredient_tokens_trgm',
+      'idx_external_product_seeds_recall_alias_tokens_trgm',
+    ].map((indexname) => ({
+      tablename: 'external_product_seeds',
+      indexname,
+    }));
+    const externalRows = Array.from({ length: 12 }, (_, idx) =>
+      makeExternalSeedRow({
+        id: `eps_lip_balm_${idx + 1}`,
+        external_product_id: `ext_lip_balm_${idx + 1}`,
+        title: `Lip Balm ${idx + 1}`,
+        brand: `Seeded Beauty ${idx + 1}`,
+        category: 'Lip Balm',
+        product_type: 'Lip Balm',
+        description: 'Moisturizing lip balm for daily care.',
+      }),
+    );
+    const dbQueryMock = jest.fn(async (sql) => {
+      const text = String(sql || '');
+      if (text.includes('information_schema.columns')) {
+        return { rows: columnRows };
+      }
+      if (text.includes('pg_indexes')) {
+        return { rows: indexRows };
+      }
+      if (text.includes('COUNT(DISTINCT') && text.includes('FROM filtered')) {
+        return { rows: [{ total: 12 }] };
+      }
+      if (text.includes('FROM external_product_seeds') && text.includes('match_stage')) {
+        return { rows: externalRows };
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../src/db', () => ({
+      query: dbQueryMock,
+    }));
+
+    try {
+      const fresh = require('../src/services/discoveryFeed');
+      const internalSpy = jest.fn(async () => []);
+      const response = await fresh.getDiscoveryFeed(
+        {
+          surface: 'browse_products',
+          page: 1,
+          limit: 12,
+          debug: true,
+          query: {
+            text: 'lip balm',
+          },
+          context: {
+            auth_state: 'anonymous',
+            recent_views: [],
+            recent_queries: [],
+            locale: 'en-US',
+          },
+        },
+        {
+          providerOverrides: {
+            internal_catalog: internalSpy,
+          },
+        },
+      );
+
+      const externalStageCalls = dbQueryMock.mock.calls.filter(([sql]) => {
+        const text = String(sql || '');
+        return text.includes('FROM external_product_seeds') && text.includes('match_stage');
+      });
+      const externalStageParams = JSON.stringify(externalStageCalls[0]?.[1] || []);
+
+      expect(response.products).toHaveLength(12);
+      expect(internalSpy).toHaveBeenCalledTimes(1);
+      expect(externalStageCalls).toHaveLength(1);
+      expect(String(externalStageCalls[0][0])).not.toContain('WITH source');
+      expect(externalStageParams).toContain('%lip balm%');
+      expect(externalStageParams).not.toMatch(/niacinamide|vitamin c|barrier moisturizer/i);
+      expect(response.metadata.provider_breakdown).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ provider: 'external_seeds', successful: true, returned: 12 }),
+        ]),
+      );
+      expect(response.metadata.rank_debug.recall_summary).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            provider: 'products_search',
+            label: 'products_search_pool',
+            failure_reason: 'missing_base_url',
+          }),
+          expect.objectContaining({
+            provider: 'external_seeds',
+            label: 'external_seed_pool',
+            query: 'lip balm',
+            status: 200,
+            returned: 12,
+          }),
+        ]),
+      );
+    } finally {
+      jest.dontMock('../src/db');
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+    }
   });
 
   test('explicit browse lookup short-circuits external seed recall with exact-title fastpath', async () => {
