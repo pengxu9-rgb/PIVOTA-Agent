@@ -419,6 +419,94 @@ test('reco assistant rewrite uses minimal thinking for gemini 3 structured outpu
   }
 });
 
+test('reco assistant rewrite skips minimal thinking for same-role use comparisons', async () => {
+  const prevMock = process.env.AURORA_BFF_USE_MOCK;
+  const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+  const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+  process.env.AURORA_BFF_USE_MOCK = 'false';
+  process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = 'gemini';
+  process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = 'gemini-3-flash-preview';
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'barrier_pick_1',
+            display_name: 'KraveBeauty Great Barrier Relief',
+            brand: 'KraveBeauty',
+            category: 'Serum',
+            matched_role_id: 'barrier_moisturizer',
+            role_scope: 'barrier_moisturizer',
+          },
+          {
+            product_id: 'barrier_pick_2',
+            display_name: 'Soothing Serum',
+            brand: 'Haruharu Wonder',
+            category: 'Serum',
+            matched_role_id: 'barrier_moisturizer',
+            role_scope: 'barrier_moisturizer',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'moisturizer',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Barrier moisturizer',
+        resolved_target_step: 'moisturizer',
+        primary_target_id: 'barrier_moisturizer',
+        ranked_targets: [
+          {
+            target_id: 'barrier_moisturizer',
+            ingredient_query: 'Barrier moisturizer',
+            resolved_target_step: 'moisturizer',
+          },
+        ],
+        selected_target_ids: ['barrier_moisturizer'],
+      },
+    );
+    let capturedArgs = null;
+    __internal.__setCallGeminiJsonObjectForTest(async (args = {}) => {
+      capturedArgs = args;
+      return {
+        ok: true,
+        json: {
+          assistant_text:
+            'KraveBeauty Great Barrier Relief is the best starting point because it gives barrier support without a heavy finish, while Soothing Serum is a lighter alternative.',
+        },
+        parse_status: 'parsed',
+        provider: 'gemini',
+        effective_model: args.model,
+      };
+    });
+
+    const rewrite = await __internal.maybeRewriteRecoAssistantTextWithLlm({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'sensitive', goals: ['barrier support'] },
+      userRequestText: 'What should I use first for retinoid dryness?',
+      allowLockedSelectionRewrite: true,
+    });
+
+    assert.equal(capturedArgs?.thinkingLevel ?? null, null);
+    assert.ok(capturedArgs?.queueTimeoutMs > 0);
+    assert.ok(capturedArgs?.upstreamTimeoutMs > 0);
+    assert.equal(rewrite.llm_used, true);
+    assert.match(String(rewrite.text || ''), /KraveBeauty Great Barrier Relief/);
+  } finally {
+    __internal.__resetCallGeminiJsonObjectForTest();
+    if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
+    else process.env.AURORA_BFF_USE_MOCK = prevMock;
+    if (prevProvider === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = prevProvider;
+    if (prevModel === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = prevModel;
+    delete require.cache[moduleId];
+  }
+});
+
 test('reco assistant rewrite recovers truncated raw json when assistant_text is recoverable', async () => {
   const prevMock = process.env.AURORA_BFF_USE_MOCK;
   const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;

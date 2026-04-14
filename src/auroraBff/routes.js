@@ -52399,6 +52399,10 @@ async function maybeRewriteRecoAssistantTextWithLlm({
       llmProvider: AURORA_PRODUCT_INTEL_LLM_PROVIDER,
       llmModel: AURORA_PRODUCT_INTEL_LLM_MODEL,
     });
+    const routeStableRewriteThinkingLevel =
+      (requestMode === 'use' || requestMode === 'use_first') && selectedProductRoleMix === 'same_role_comparison'
+        ? null
+        : rewriteThinkingLevel;
     const executeRewriteAttempt = async ({
       retryReason = null,
       timeoutCapMs = null,
@@ -52459,6 +52463,7 @@ async function maybeRewriteRecoAssistantTextWithLlm({
         prompt_bytes: Buffer.byteLength(userPromptText, 'utf8'),
         request_mode: requestMode,
         selected_product_role_mix: selectedProductRoleMix,
+        thinking_level: routeStableRewriteThinkingLevel || null,
       };
       const attemptStartedAtMs = Date.now();
       const finalizeAttempt = (fields = {}) => {
@@ -52494,7 +52499,7 @@ async function maybeRewriteRecoAssistantTextWithLlm({
         upstreamTimeoutMs: rewriteTimeoutBudget.upstream_timeout_ms,
         maxOutputTokens: effectiveMaxOutputTokens,
         route: 'aurora_reco_assistant_rewrite',
-        thinkingLevel: rewriteThinkingLevel,
+        thinkingLevel: routeStableRewriteThinkingLevel,
       });
       let candidateText = String(result && result.json && result.json.assistant_text || '').trim();
       let parseStatus = result && result.parse_status ? String(result.parse_status).trim() : null;
