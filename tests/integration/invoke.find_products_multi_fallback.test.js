@@ -364,7 +364,7 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
         payload: {
           search: {
             query: 'lip balm',
-            limit: 10,
+            limit: 1,
             in_stock_only: true,
           },
         },
@@ -431,8 +431,38 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
             source: 'external_seed',
             title: 'Repair Hair Oil',
           },
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_hair_oil_2',
+            source: 'external_seed',
+            title: 'Rosemary Scalp Hair Oil',
+          },
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_hair_oil_3',
+            source: 'external_seed',
+            title: 'Shine Finish Hair Oil',
+          },
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_hair_oil_4',
+            source: 'external_seed',
+            title: 'Argan Repair Hair Oil',
+          },
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_hair_oil_5',
+            source: 'external_seed',
+            title: 'Overnight Bonding Hair Oil',
+          },
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_hair_oil_6',
+            source: 'external_seed',
+            title: 'Lightweight Hair Oil Mist',
+          },
         ],
-        total: 1,
+        total: 6,
         metadata: {
           query_source: 'agent_products_v2',
         },
@@ -457,20 +487,17 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
 
     expect(resp.status).toBe(200);
     expect(primaryScope.isDone()).toBe(true);
-    expect(resp.body.products).toHaveLength(1);
-    expect(resp.body.products[0]).toEqual(
-      expect.objectContaining({
-        product_id: 'ext_hair_oil_1',
-        merchant_id: 'external_seed',
-      }),
-    );
+    expect(resp.body.products).toHaveLength(6);
+    expect(resp.body.products[0]).toEqual(expect.objectContaining({ merchant_id: 'external_seed' }));
+    expect(resp.body.metadata?.strict_empty).not.toBe(true);
     expect(resp.body.metadata?.semantic_retry_applied).not.toBe(true);
     expect(resp.body.metadata?.fallback_route).toBeFalsy();
+    expect(resp.body.metadata?.route_health?.primary_quality_gate_passed).toBe(true);
     expect(resp.body.metadata?.route_health?.primary_latency_ms).toBeGreaterThanOrEqual(4000);
     expect(resp.body.metadata?.route_health?.primary_latency_ms).toBeLessThan(7000);
   });
 
-  test('public search low-quality category hits fail strict-empty without semantic-retry clarification', async () => {
+  test('public search underfilled beauty category hits fail strict-empty without semantic-retry clarification', async () => {
     const primaryScope = nock('http://pivota.test')
       .post('/agent/v2/products/search')
       .query((query) => {
@@ -486,31 +513,21 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
         success: true,
         products: [
           {
-            product_id: 'ext_glaze_lip_oil',
-            canonical_title: 'Glaze Lip Oil',
-            canonical_category: 'external',
-            brand: 'INNBEAUTY PROJECT',
-            offers: [
-              {
-                offer_id: 'offer::external_seed::lip_oil',
-                merchant_id: 'external_seed',
-                variant_id: 'var_lip_oil',
-                price: '22.0',
-                currency: 'USD',
-                availability: { in_stock: true },
-                source_type: 'external_seed',
-              },
-            ],
-            provenance: {
-              merchant_id: 'external_seed',
-              merchant_name: 'External',
-              source_type: 'external_seed',
-            },
+            product_id: 'ext_hair_oil_1',
+            merchant_id: 'external_seed',
+            source: 'external_seed',
+            title: 'Repair Hair Oil',
+          },
+          {
+            product_id: 'ext_hair_oil_2',
+            merchant_id: 'external_seed',
+            source: 'external_seed',
+            title: 'Rosemary Hair Oil',
           },
         ],
-        total: 1,
+        total: 2,
         metadata: {
-          query_source: 'agent_products_search',
+          query_source: 'agent_products_v2',
         },
       });
 
@@ -539,9 +556,13 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
       expect.objectContaining({
         query_source: 'agent_products_search',
         strict_empty: true,
-        strict_empty_reason: 'public_search_primary_irrelevant',
+        strict_empty_reason: 'public_search_underfilled_unified_relevance',
+        primary_underfilled_public_beauty_unified: true,
       }),
     );
+    expect(resp.body.metadata?.route_health?.primary_quality_gate_passed).toBe(false);
+    expect(resp.body.metadata?.route_health?.fallback_triggered).toBe(false);
+    expect(resp.body.metadata?.proxy_search_fallback?.applied).not.toBe(true);
   });
 
   test('shopping_agent explicit legacy_contracts is isolated as legacy_internal', async () => {

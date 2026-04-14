@@ -144,13 +144,10 @@ function createFindProductsSearchRouteEntryRuntime(deps = {}) {
         },
       );
     if (defaultPublicSearchExternalSeed) {
-      const existingAllowExternalSeed = rawSearch?.allow_external_seed ?? rawSearch?.allowExternalSeed;
-      const existingExternalSeedStrategy =
-        rawSearch?.external_seed_strategy || rawSearch?.externalSeedStrategy;
       payload.search = {
         ...rawSearch,
-        ...(existingAllowExternalSeed === undefined ? { allow_external_seed: true } : {}),
-        ...(existingExternalSeedStrategy ? {} : { external_seed_strategy: 'unified_relevance' }),
+        allow_external_seed: true,
+        external_seed_strategy: 'unified_relevance',
       };
     }
     const searchRequestContract =
@@ -241,7 +238,6 @@ function createFindProductsSearchRouteEntryRuntime(deps = {}) {
           ? payload.metadata
           : routeMetadata;
       const shouldDefaultAllowExternalSeed =
-        existingAllowExternalSeed === undefined &&
         shouldDefaultBeautyMainlineExternalSeed(
           payload?.search && typeof payload.search === 'object' && !Array.isArray(payload.search)
             ? payload.search
@@ -249,11 +245,8 @@ function createFindProductsSearchRouteEntryRuntime(deps = {}) {
           publicBeautyMainlineBypass.semanticContract,
         );
       const shouldSetExternalSeedStrategy =
-        !existingExternalSeedStrategy &&
-        (
-          shouldDefaultAllowExternalSeed ||
-          parseRouteBoolean(existingAllowExternalSeed) === true
-        );
+        shouldDefaultAllowExternalSeed ||
+        parseRouteBoolean(existingAllowExternalSeed) === true;
       payload.search = {
         ...(payload?.search && typeof payload.search === 'object' && !Array.isArray(payload.search)
           ? payload.search
