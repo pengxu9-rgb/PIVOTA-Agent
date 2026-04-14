@@ -1657,12 +1657,12 @@ async function fetchExternalCandidates({
       .map((value) => `%${value}%`);
     const categoryTitleMatches = categoryLikePatterns.length
       ? await runQuery(
-          `AND (
-              lower(coalesce(title, '')) LIKE ANY($4)
-              OR lower(coalesce(seed_data->>'title','')) LIKE ANY($4)
-              OR lower(coalesce(seed_data->'snapshot'->>'title','')) LIKE ANY($4)
-              OR lower(coalesce(seed_data->'derived'->'recall'->>'retrieval_title','')) LIKE ANY($4)
-              OR lower(coalesce(seed_data->'derived'->'recall'->>'retrieval_summary','')) LIKE ANY($4)
+          `AND attached_product_key IS NULL
+            AND (
+              lower(coalesce(seed_data->'derived'->'recall'->>'retrieval_title','')) LIKE ANY($4::text[])
+              OR lower(coalesce(seed_data->'derived'->'recall'->>'retrieval_summary','')) LIKE ANY($4::text[])
+              OR lower(coalesce(seed_data#>>'{derived,recall,ingredient_tokens}', '')) LIKE ANY($4::text[])
+              OR lower(coalesce(seed_data#>>'{derived,recall,alias_tokens}', '')) LIKE ANY($4::text[])
             )`,
           [categoryLikePatterns],
           Math.min(180, safeLimit),
