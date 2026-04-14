@@ -1010,12 +1010,11 @@ function looksLikeCapturedExternalSeedNarrativeSoup(product, text, detailSection
   if (!normalized) return false;
 
   const capturedRaw = normalizeTextKey(product.pdp_description_raw);
-  if (capturedRaw && normalized === capturedRaw) return true;
-
   const headings = (Array.isArray(detailSections) ? detailSections : [])
     .map((section) => normalizeTextKey(section?.heading))
     .filter((heading) => heading && !STRUCTURED_DETAIL_SECTION_RE.test(heading));
   const headingHits = headings.filter((heading) => heading.length >= 6 && normalized.includes(heading));
+  if (capturedRaw && normalized === capturedRaw) return headingHits.length >= 2;
   return normalized.length > 420 && headingHits.length >= 2;
 }
 
@@ -1082,6 +1081,15 @@ function resolveProductDescriptionText(product, detailSections = collectStructur
     explicitPdpDescription &&
     !looksLikeCapturedExternalSeedNarrativeSoup(product, explicitPdpDescription, detailSections)
   ) {
+    const overviewSection = detailSections.find(
+      (section) =>
+        !STRUCTURED_DETAIL_SECTION_RE.test(section.heading) &&
+        !FACT_DETAIL_SECTION_RE.test(section.heading) &&
+        !BRAND_STORY_SECTION_RE.test(section.heading) &&
+        section.content &&
+        normalizeTextKey(explicitPdpDescription).includes(normalizeTextKey(section.content)),
+    );
+    if (overviewSection?.content) return overviewSection.content;
     return explicitPdpDescription;
   }
 
@@ -1120,10 +1128,9 @@ function resolveBrandStoryText(product, detailSections = collectStructuredDetail
 }
 
 function buildDetailSections(product, detailSections = collectStructuredDetailSections(product)) {
-  if (hasCapturedExternalSeedPdpNarrative(product)) return [];
-
   const sections = [];
   const desc = resolveProductDescriptionText(product, detailSections);
+  if (hasCapturedExternalSeedPdpNarrative(product) && !desc) return [];
   if (desc) {
     sections.push({
       heading: 'Description',
@@ -1132,6 +1139,7 @@ function buildDetailSections(product, detailSections = collectStructuredDetailSe
       collapsed_by_default: false,
     });
   }
+  if (hasCapturedExternalSeedPdpNarrative(product)) return sections;
 
   detailSections
     .filter((section) => {
