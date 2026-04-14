@@ -6580,6 +6580,36 @@ test('fetchRecoAlternativesForProduct: grounded pool folds promo and subscriptio
                 },
               },
               {
+                product_id: 'ext_round_lab_birch_mildup',
+                merchant_id: 'external_seed',
+                brand: 'Round Lab',
+                name: 'Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum',
+                display_name: 'Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum',
+                product_type: 'Sunscreen',
+                category: 'Sunscreen',
+                retrieval_source: 'external_seed',
+                description: 'Mild-up daily sunscreen with UV protection.',
+                canonical_product_ref: {
+                  product_id: 'ext_round_lab_birch_mildup',
+                  merchant_id: 'external_seed',
+                },
+              },
+              {
+                product_id: 'ext_round_lab_birch_moisturizing_mildup',
+                merchant_id: 'external_seed',
+                brand: 'Round Lab',
+                name: 'Birch Moisturizing Mild-Up Sunscreen SPF 50+, PA++++',
+                display_name: 'Birch Moisturizing Mild-Up Sunscreen SPF 50+, PA++++',
+                product_type: 'Sunscreen',
+                category: 'Sunscreen',
+                retrieval_source: 'external_seed',
+                description: 'Moisturizing mild-up sunscreen with daily UV protection.',
+                canonical_product_ref: {
+                  product_id: 'ext_round_lab_birch_moisturizing_mildup',
+                  merchant_id: 'external_seed',
+                },
+              },
+              {
                 product_id: 'ext_haruharu_airyfit',
                 merchant_id: 'external_seed',
                 brand: 'Haruharu Wonder',
@@ -6664,6 +6694,9 @@ test('fetchRecoAlternativesForProduct: grounded pool folds promo and subscriptio
         const names = out.alternatives.map((row) => String(row?.product?.name || row?.name || ''));
         assert.equal(names.filter((name) => /Birch Moisturizing Sunscreen/i.test(name)).length, 1);
         assert.equal(names.some((name) => /\bdeal\b|subscription/i.test(name)), false);
+        const brands = out.alternatives.map((row) => String(row?.product?.brand || row?.brand || ''));
+        assert.ok(brands.filter((brand) => /round lab/i.test(brand)).length <= 2);
+        assert.ok(new Set(brands.map((brand) => brand.toLowerCase()).filter(Boolean)).size >= 2);
       } finally {
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
         loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
@@ -8923,6 +8956,16 @@ test('buildExternalSeedCompareSearchQueries: avoids duplicate role queries and p
     });
     assert.ok(thinTreatmentQueries.slice(0, 3).some((item) => /niacinamide serum/i.test(String(item || ''))));
     assert.equal(thinTreatmentQueries.some((item) => /\bunknown\b/i.test(String(item || ''))), false);
+    const thinTreatmentLocalSeedRole = __internal.buildRecoAlternativesLocalSeedSearchRole({
+      roleScope: 'oil_control_treatment',
+      usageRole: 'unknown',
+      primaryClaims: ['oil control'],
+      knownActives: ['niacinamide'],
+      textureHints: ['serum texture'],
+    });
+    assert.equal(thinTreatmentLocalSeedRole.rank, 2);
+    assert.equal(thinTreatmentLocalSeedRole.preferred_step, 'serum');
+    assert.ok(thinTreatmentLocalSeedRole.fit_keywords.includes('niacinamide'));
     const thinSunscreenQueries = __internal.buildExternalSeedCompareSearchQueries({
       productObj: {
         brand: 'SKINTIFIC',
@@ -8933,6 +8976,14 @@ test('buildExternalSeedCompareSearchQueries: avoids duplicate role queries and p
       lang: 'EN',
     });
     assert.ok(thinSunscreenQueries.slice(0, 3).some((item) => /^sunscreen$/i.test(String(item || ''))));
+    const thinSunscreenLocalSeedRole = __internal.buildRecoAlternativesLocalSeedSearchRole({
+      roleScope: 'daily_sunscreen_finish_fit',
+      usageRole: 'unknown',
+      primaryClaims: ['oil control'],
+      textureHints: ['matte finish'],
+    });
+    assert.equal(thinSunscreenLocalSeedRole.rank, 2);
+    assert.equal(thinSunscreenLocalSeedRole.preferred_step, 'sunscreen');
   } finally {
     delete require.cache[moduleId];
   }

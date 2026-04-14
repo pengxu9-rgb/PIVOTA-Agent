@@ -65452,6 +65452,51 @@ function inferRecoAlternativesSearchUsageRole(targetSignals) {
   return '';
 }
 
+function buildRecoAlternativesLocalSeedSearchRole(targetSignals) {
+  const target = isPlainObject(targetSignals) ? targetSignals : {};
+  const searchUsageRole = inferRecoAlternativesSearchUsageRole(target);
+  const preferredStep =
+    normalizeRecoTargetStep(searchUsageRole) ||
+    normalizeRecoTargetStep(target.usageRole) ||
+    normalizeRecoTargetStep(target.productType) ||
+    normalizeRecoTargetStep(target.category) ||
+    '';
+  const roleScope = pickFirstTrimmed(target.roleScope);
+  const queryTerms = uniqCaseInsensitiveStrings(
+    [
+      ...(Array.isArray(target.primaryClaims) ? target.primaryClaims : []),
+      ...(Array.isArray(target.knownActives) ? target.knownActives : []),
+    ],
+    8,
+  );
+  const fitKeywords = uniqCaseInsensitiveStrings(
+    [
+      ...(Array.isArray(target.textureHints) ? target.textureHints : []),
+      ...(Array.isArray(target.heroIngredients) ? target.heroIngredients : []),
+      ...(Array.isArray(target.knownActives) ? target.knownActives : []),
+    ],
+    8,
+  );
+  const productTypeHypotheses = uniqCaseInsensitiveStrings(
+    [
+      target.productType,
+      target.category,
+      preferredStep,
+      searchUsageRole,
+    ],
+    6,
+  );
+  return {
+    role_id: roleScope || (preferredStep ? `reco_alternatives_${preferredStep}` : 'reco_alternatives_pool'),
+    label: roleScope ? roleScope.replace(/[_-]+/g, ' ') : `${preferredStep || 'product'} alternatives`,
+    preferred_step: preferredStep,
+    rank: 2,
+    query_terms: queryTerms,
+    fit_keywords: fitKeywords,
+    product_type_hypotheses: productTypeHypotheses,
+  };
+}
+
 function inferRecoAlternativesClaimHints(...values) {
   const text = values.filter(Boolean).join(' ').toLowerCase();
   const out = [];
@@ -66235,6 +66280,35 @@ function isRecoAlternativeWeakPoolOnly(row) {
   return rawScore > 0 && rawScore < 0.68;
 }
 
+function getRecoAlternativeBrandToken(row) {
+  const item = row && typeof row === 'object' && !Array.isArray(row) ? row : {};
+  const product = getRecoAlternativeProductObject(item);
+  return normalizeRecoNameToken(pickFirstTrimmed(product.brand, item.brand));
+}
+
+function diversifyRecoAlternativesByBrand(rows, { maxTotal = 3 } = {}) {
+  const limit = Math.max(1, Math.min(8, Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 3));
+  const list = (Array.isArray(rows) ? rows : []).filter((row) => row && typeof row === 'object' && !Array.isArray(row));
+  const brandSet = new Set(list.map((row) => getRecoAlternativeBrandToken(row)).filter(Boolean));
+  if (brandSet.size <= 1 || limit <= 1) return list.slice(0, limit);
+
+  const maxPerBrand = limit <= 2 ? 1 : Math.max(1, limit - 1);
+  const out = [];
+  const deferred = [];
+  const brandCounts = new Map();
+  for (const row of list) {
+    const brand = getRecoAlternativeBrandToken(row);
+    const count = brand ? brandCounts.get(brand) || 0 : 0;
+    if (brand && count >= maxPerBrand) {
+      deferred.push(row);
+      continue;
+    }
+    out.push(row);
+    if (brand) brandCounts.set(brand, count + 1);
+  }
+  return [...out, ...deferred].slice(0, limit);
+}
+
 function finalizeRecoAlternativesForCompetitiveQuality(rows, { maxTotal = 3 } = {}) {
   const limit = Math.max(1, Math.min(8, Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 3));
   const list = (Array.isArray(rows) ? rows : []).filter((row) => row && typeof row === 'object' && !Array.isArray(row));
@@ -66258,9 +66332,8 @@ function finalizeRecoAlternativesForCompetitiveQuality(rows, { maxTotal = 3 } = 
     }
     if (sufficientStrongNonVariantCount && isRecoAlternativeWeakPoolOnly(row)) continue;
     out.push(row);
-    if (out.length >= limit) break;
   }
-  return out.slice(0, limit);
+  return diversifyRecoAlternativesByBrand(out, { maxTotal: limit });
 }
 
 function mergeRecoAlternativesForHybrid(primary, fallback, { maxTotal = 3, preferBestScore = false } = {}) {
@@ -66906,6 +66979,41 @@ function normalizePoolAlternativeRow(row, {
   }, normalized);
 }
 
+function normalizeExternalSeedPoolCandidateRows(candidateRows, {
+  identity,
+  anchorId = '',
+} = {}) {
+  const deduped = [];
+  const seen = new Set();
+  for (const row of Array.isArray(candidateRows) ? candidateRows : []) {
+    const normalized = normalizePoolAlternativeRow(row, {
+      targetSignals: identity?.targetSignals,
+      anchorLabel: identity?.anchorLabel,
+      anchorNameTokens: Array.isArray(identity?.anchorNameTokens) ? identity.anchorNameTokens : [],
+      ingredientTokens: Array.isArray(identity?.ingredientTokens) ? identity.ingredientTokens : [],
+      claimTokens: Array.isArray(identity?.claimTokens) ? identity.claimTokens : [],
+      textureTokens: Array.isArray(identity?.textureTokens) ? identity.textureTokens : [],
+      anchorId,
+    });
+    if (!normalized) continue;
+    const identityKeys = getRecoAlternativeIdentityKeys(normalized);
+    const dedupeKey = identityKeys.find((key) => String(key || '').startsWith('pid:')) ||
+      identityKeys.find((key) => String(key || '').startsWith('sku:')) ||
+      identityKeys.find((key) => String(key || '').startsWith('url:')) ||
+      identityKeys.find((key) => String(key || '').startsWith('name:'));
+    if (!dedupeKey || seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    deduped.push(normalized);
+  }
+
+  deduped.sort((left, right) => {
+    const scoreDiff = Number(right?._mixed_score || 0) - Number(left?._mixed_score || 0);
+    if (scoreDiff !== 0) return scoreDiff;
+    return String(left?.product?.name || '').localeCompare(String(right?.product?.name || ''));
+  });
+  return deduped;
+}
+
 async function collectExternalSeedPoolAlternatives({
   ctx,
   productInput,
@@ -66922,6 +67030,9 @@ async function collectExternalSeedPoolAlternatives({
   });
   const normalizedLimit = Math.max(3, Math.min(6, Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 3));
   const candidateRows = [];
+  let localCandidateRowCount = 0;
+  let backendCandidateRowCount = 0;
+  let backendSearchSkipped = false;
   const embeddedPool = buildRecoAlternativesCandidatePool({
     sharedCandidates: [],
     productObj,
@@ -66931,74 +67042,69 @@ async function collectExternalSeedPoolAlternatives({
   for (const row of embeddedPool) candidateRows.push(row);
 
   const queriesToRun = queryPlan.slice(0, Math.max(2, Math.min(4, normalizedLimit)));
+  const localSeedSearchRole = buildRecoAlternativesLocalSeedSearchRole(identity.targetSignals);
   const localSeedResults = await Promise.allSettled(
     queriesToRun.map((query) => searchLocalExternalSeedProducts({
       query,
-      limit: 8,
+      limit: 12,
       logger,
       transportPolicyMode: 'reco_alternatives_pool',
-      role: identity.targetSignals?.roleScope || null,
-      preferredStep: identity.targetSignals?.usageRole || '',
+      role: localSeedSearchRole,
+      preferredStep: localSeedSearchRole.preferred_step,
     })),
   );
   for (const result of localSeedResults) {
     const searched = result.status === 'fulfilled' ? result.value : null;
     const list = Array.isArray(searched?.products) ? searched.products : [];
-    for (const row of list) candidateRows.push(row);
-  }
-  const searchResults = await Promise.allSettled(
-    queriesToRun.map((query) => searchPivotaBackendProducts({
-      query,
-      limit: 8,
-      logger,
-      timeoutMs: 1100,
-      minTimeoutMs: 220,
-      mode: 'main_path',
-      allowExternalSeed: true,
-      externalSeedStrategy: 'supplement_internal_first',
-      fastMode: true,
-    })),
-  );
-  for (const result of searchResults) {
-    const searched = result.status === 'fulfilled' ? result.value : null;
-    const list = Array.isArray(searched?.products) ? searched.products : [];
+    localCandidateRowCount += list.length;
     for (const row of list) candidateRows.push(row);
   }
 
-  const deduped = [];
-  const seen = new Set();
-  for (const row of candidateRows) {
-    const normalized = normalizePoolAlternativeRow(row, {
-      targetSignals: identity.targetSignals,
-      anchorLabel: identity.anchorLabel,
-      anchorNameTokens: identity.anchorNameTokens,
-      ingredientTokens: identity.ingredientTokens,
-      claimTokens: identity.claimTokens,
-      textureTokens: identity.textureTokens,
-      anchorId,
-    });
-    if (!normalized) continue;
-    const product = isPlainObject(normalized.product) ? normalized.product : {};
-    const dedupeKey = pickFirstTrimmed(
-      product.product_id,
-      product.sku_id,
-      product.brand && product.name ? `${product.brand}:${product.name}` : product.name,
-    ).toLowerCase();
-    if (!dedupeKey || seen.has(dedupeKey)) continue;
-    seen.add(dedupeKey);
-    deduped.push(normalized);
+  let deduped = normalizeExternalSeedPoolCandidateRows(candidateRows, { identity, anchorId });
+  const localCompetitiveRows = finalizeRecoAlternativesForCompetitiveQuality(deduped, { maxTotal: normalizedLimit });
+  if (localCompetitiveRows.length >= Math.min(3, normalizedLimit)) {
+    backendSearchSkipped = true;
+  } else {
+    const searchResults = await Promise.allSettled(
+      queriesToRun.map((query) => searchPivotaBackendProducts({
+        query,
+        limit: 8,
+        logger,
+        timeoutMs: 1100,
+        minTimeoutMs: 220,
+        mode: 'main_path',
+        allowExternalSeed: true,
+        externalSeedStrategy: 'supplement_internal_first',
+        fastMode: true,
+        transportPolicy: {
+          mode: 'reco_alternatives_pool_http_supplement',
+          include_local_fallback: false,
+          include_self_proxy: false,
+          max_base_urls: 1,
+          max_paths: 1,
+          allow_secondary_base_failover: false,
+          allow_secondary_path_failover: false,
+          actual_http_attempt_limit_per_query: 1,
+        },
+      })),
+    );
+    for (const result of searchResults) {
+      const searched = result.status === 'fulfilled' ? result.value : null;
+      const list = Array.isArray(searched?.products) ? searched.products : [];
+      backendCandidateRowCount += list.length;
+      for (const row of list) candidateRows.push(row);
+    }
+    deduped = normalizeExternalSeedPoolCandidateRows(candidateRows, { identity, anchorId });
   }
-
-  deduped.sort((left, right) => {
-    const scoreDiff = Number(right?._mixed_score || 0) - Number(left?._mixed_score || 0);
-    if (scoreDiff !== 0) return scoreDiff;
-    return String(left?.product?.name || '').localeCompare(String(right?.product?.name || ''));
-  });
 
   return {
     identity,
     queries: queryPlan,
     executed_queries: queriesToRun,
+    local_authority_candidate_count: localCandidateRowCount,
+    backend_authority_candidate_count: backendCandidateRowCount,
+    backend_authority_search_skipped: backendSearchSkipped,
+    local_authority_search_role: localSeedSearchRole,
     candidates: await hydrateRecoAlternativesAuthorityExperienceRows(
       deduped.slice(0, Math.max(normalizedLimit, 6)),
     ),
@@ -68754,6 +68860,10 @@ async function fetchRecoAlternativesForExternalSeedProduct({
     hidden_unresolved_count: visibleAlternatives.hidden_unresolved_count,
     ranking_mode: 'best_score_mixed',
     pool_recall_status: poolCandidates.length >= 3 ? 'full' : poolCandidates.length > 0 ? 'partial' : 'empty',
+    pool_local_authority_candidate_count: Number(pool?.local_authority_candidate_count) || 0,
+    pool_backend_authority_candidate_count: Number(pool?.backend_authority_candidate_count) || 0,
+    pool_backend_authority_search_skipped: pool?.backend_authority_search_skipped === true,
+    pool_local_authority_preferred_step: pickFirstTrimmed(pool?.local_authority_search_role?.preferred_step) || null,
     open_world_status: openWorldStatus,
     open_world_role: 'coverage_supplement',
     authority_backfill: backfillLedger,
@@ -69279,6 +69389,10 @@ async function fetchRecoAlternativesForProduct({
         executed_query_count: Array.isArray(pool?.executed_queries) ? pool.executed_queries.length : 0,
         searched_pool_candidate_count: searchedPoolAlternatives.length,
         pool_recall_status: searchedPoolAlternatives.length >= 3 ? 'full' : searchedPoolAlternatives.length > 0 ? 'partial' : 'empty',
+        pool_local_authority_candidate_count: Number(pool?.local_authority_candidate_count) || 0,
+        pool_backend_authority_candidate_count: Number(pool?.backend_authority_candidate_count) || 0,
+        pool_backend_authority_search_skipped: pool?.backend_authority_search_skipped === true,
+        pool_local_authority_preferred_step: pickFirstTrimmed(pool?.local_authority_search_role?.preferred_step) || null,
       };
     } catch (err) {
       groundedPoolMeta = {
@@ -89084,6 +89198,7 @@ const __internal = {
   buildAuroraProductRecommendationsQuery,
   buildAuroraRecoAlternativesQuery,
   buildRecoAlternativesTargetSignals,
+  buildRecoAlternativesLocalSeedSearchRole,
   buildExternalSeedCompareSearchQueries,
   buildProductInputText,
   buildRecoAlternativesCandidatePool,
