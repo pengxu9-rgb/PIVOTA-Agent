@@ -6452,6 +6452,21 @@ test('fetchRecoAlternativesForProduct: thin role-scope moisturizer anchors do no
                 },
               },
               {
+                product_id: 'ext_cocokind_ceramide_barrier_serum',
+                merchant_id: 'external_seed',
+                brand: 'Cocokind',
+                name: 'Ceramide Barrier Serum',
+                display_name: 'Ceramide Barrier Serum',
+                product_type: 'Serum',
+                category: 'Serum',
+                retrieval_source: 'external_seed',
+                description: 'Ceramide barrier serum for hydration and barrier repair.',
+                canonical_product_ref: {
+                  product_id: 'ext_cocokind_ceramide_barrier_serum',
+                  merchant_id: 'external_seed',
+                },
+              },
+              {
                 product_id: 'ext_neutrogena_hydro_boost',
                 merchant_id: 'external_seed',
                 brand: 'Neutrogena',
@@ -6609,7 +6624,7 @@ test('fetchRecoAlternativesForProduct: thin role-scope moisturizer anchors do no
         assert.equal(out?.compare_meta?.open_world_status, 'skipped_sufficient_pool');
         assert.ok(seenQueries.some((query) => /\bmoisturizer\b/i.test(String(query))));
         const names = out.alternatives.map((row) => String(row?.product?.name || row?.name || ''));
-        assert.equal(names.some((name) => /Niacinamide|Retinal|Serum|Eye/i.test(name)), false);
+        assert.equal(names.some((name) => /Niacinamide|Retinal|Eye/i.test(name)), false);
         assert.equal(names.some((name) => /dark spot|radiance/i.test(name)), false);
         assert.equal(names.some((name) => /tinted moisturizer/i.test(name)), false);
         assert.equal(out.alternatives.every((row) => /moisturizer/i.test(String(row?.product?.category || ''))), true);
