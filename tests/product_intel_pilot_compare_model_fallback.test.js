@@ -185,8 +185,8 @@ describe('product_intel_pilot_compare gemini fallback', () => {
 
     expect(postMock).toHaveBeenCalledTimes(2);
     expect(result.skipped).toBe(false);
-    expect(result.model_used).toBe('gpt-5.4-human-standard-rewrite');
-    expect(result.selection_strategy).toBe('gpt54_human_standard_rewrite');
+    expect(result.model_used).toBe('deterministic-human-standard-rewrite');
+    expect(result.selection_strategy).toBe('deterministic_human_standard_rewrite');
     expect(result.attempted_models).toEqual(['gemini-3-flash-preview', 'gemini-3.1-pro-preview']);
     expect(result.quality_gate.overall_pass).toBe(true);
     expect(result.quality_gate.human_standard_rewrite).toBe(true);
@@ -249,7 +249,7 @@ describe('product_intel_pilot_compare gemini fallback', () => {
       'gemini-3-flash-preview',
     );
 
-    expect(result.model_used).toBe('gpt-5.4-human-standard-rewrite');
+    expect(result.model_used).toBe('deterministic-human-standard-rewrite');
     expect(result.output.product_intel_core.best_for.map((item) => item.label)).toEqual([
       'Glossy lip shine',
       'Soft-feeling lip comfort',
@@ -317,7 +317,7 @@ describe('product_intel_pilot_compare gemini fallback', () => {
       'gemini-3-flash-preview',
     );
 
-    expect(result.model_used).toBe('gpt-5.4-human-standard-rewrite');
+    expect(result.model_used).toBe('deterministic-human-standard-rewrite');
     expect(result.output.product_intel_core.what_it_is.body).toBe(
       'A cleanser focused on removing daily buildup while keeping the routine gentle and practical.',
     );

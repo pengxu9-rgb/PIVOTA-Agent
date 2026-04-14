@@ -854,6 +854,70 @@ describe('product_intel pilot compare selection', () => {
     expect(quality.fail_reasons).toContain('weak_highlights');
   });
 
+  test('rejects malformed Gemini copy with citation and missing-space artifacts', () => {
+    const caseRow = {
+      case_id: 'pilot_malformed_gemini_copy',
+      canonical_product_ref: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_good_molecules_niacinamide',
+      },
+      product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_good_molecules_niacinamide',
+        brand: 'Good Molecules',
+        title: 'Niacinamide Serum',
+        category: 'Serum',
+        description: 'A serum with 10% niacinamide for pores, texture, and uneven tone.',
+      },
+    };
+
+    const baseline = buildProductIntelDraftBundle({
+      product: caseRow.product,
+      canonicalProductRef: caseRow.canonical_product_ref,
+    });
+
+    const geminiOutput = {
+      product_intel_core: {
+        what_it_is: {
+          headline: 'Pivota Insights',
+          body: 'A water-based serum formulated with 10% niacinamide for pores and uneven tone.',
+        },
+        best_for: [
+          {
+            tag: 'combinationandoilyskintypesseekingporeandtexturerefinement_1_1',
+            label: 'Combinationandoilyskintypesseekingporeandtexturerefinement[1.1].',
+            confidence: 'moderate',
+          },
+        ],
+        why_it_stands_out: [
+          {
+            headline: 'Deliversa10%concentrationofniacinamidetotargetenlargedpores, uneventone, anddullness[1.1].',
+            body: 'Deliversa10%concentrationofniacinamidetotargetenlargedpores, uneventone, anddullness[1.1].',
+            evidence_strength: 'limited',
+          },
+        ],
+        routine_fit: {
+          step: 'serum',
+          am_pm: ['am', 'pm'],
+          pairing_notes: ['Apply before moisturizer; follow with SPF if used in the morning.'],
+        },
+        watchouts: [],
+      },
+      community_signals: {
+        status: 'unavailable',
+      },
+    };
+
+    const candidate = mergeGeminiDraftIntoBaseline(caseRow, baseline, geminiOutput, 'gemini-test');
+    const quality = evaluateGeminiCandidateQuality(baseline, candidate);
+
+    expect(quality.overall_pass).toBe(false);
+    expect(quality.problematic_generated_text).toBe(true);
+    expect(quality.fail_reasons).toContain('problematic_generated_text');
+    expect(quality.field_decisions.best_for).toBe(false);
+    expect(quality.field_decisions.why_it_stands_out).toBe(false);
+  });
+
   test('rejects seller-only gemini highlights that use positioning or story language instead of product substance', () => {
     const caseRow = {
       case_id: 'pilot_positioning_copy',
