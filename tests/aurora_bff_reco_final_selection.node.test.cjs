@@ -1829,6 +1829,112 @@ test('reco assistant rewrite retries routine-mix drafts that end in a generic cl
   }
 });
 
+test('reco assistant rewrite retries oily buy drafts that use off-target tone claims', async () => {
+  const prevMock = process.env.AURORA_BFF_USE_MOCK;
+  const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+  const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+  process.env.AURORA_BFF_USE_MOCK = 'false';
+  process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = 'gemini';
+  process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = 'gemini-3-flash-preview';
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'oily_pick_1',
+            display_name: 'GoalSkin Oil Control Serum',
+            brand: 'GoalSkin',
+            category: 'Serum',
+            short_description: 'A lightweight oil-control serum for visible shine.',
+            why_this_one: 'Direct oil-control support for visible shine.',
+            price: { amount: 12, currency: 'USD', unknown: false },
+            matched_role_id: 'oil_control_treatment',
+            matched_role_label: 'Oil-control treatment',
+          },
+        ],
+        roles: [
+          {
+            role_id: 'oil_control_treatment',
+            label: 'Oil-control treatment',
+            preferred_step: 'treatment',
+            why_this_role: 'Reduce excess sebum and visible shine.',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'treatment',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Oil-control treatment',
+        resolved_target_step: 'treatment',
+        primary_target_id: 'oil_control_treatment',
+        ranked_targets: [
+          {
+            target_id: 'oil_control_treatment',
+            ingredient_query: 'Oil-control treatment',
+            resolved_target_step: 'treatment',
+          },
+        ],
+        selected_target_ids: ['oil_control_treatment'],
+      },
+    );
+    const prompts = [];
+    let callCount = 0;
+    __internal.__setCallGeminiJsonObjectForTest(async (args = {}) => {
+      callCount += 1;
+      prompts.push(String(args.userPrompt || ''));
+      if (callCount === 1) {
+        return {
+          ok: true,
+          json: {
+            assistant_text:
+              'GoalSkin Oil Control Serum is your best first buy because it targets dullness and uneven tone while helping oily skin.',
+          },
+          parse_status: 'parsed',
+          provider: 'gemini',
+          effective_model: 'gemini-3-flash-preview',
+        };
+      }
+      return {
+        ok: true,
+        json: {
+          assistant_text:
+            'GoalSkin Oil Control Serum is your best first buy because it is the direct oil-control step for visible shine and costs $12.',
+        },
+        parse_status: 'parsed',
+        provider: 'gemini',
+        effective_model: 'gemini-3-flash-preview',
+      };
+    });
+
+    const rewrite = await __internal.maybeRewriteRecoAssistantTextWithLlm({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily', goals: ['oil control'] },
+      userRequestText: 'im oily skin. what product should i buy?',
+      allowLockedSelectionRewrite: true,
+    });
+
+    assert.equal(callCount, 2);
+    assert.equal(rewrite.llm_used, true);
+    assert.equal(rewrite.reason, null);
+    assert.match(prompts[1], /Fix required: Remove extra concern claims/);
+    assert.doesNotMatch(String(rewrite.text || ''), /dullness|uneven tone/i);
+    assert.match(String(rewrite.text || ''), /visible shine|oil-control/i);
+  } finally {
+    __internal.__resetCallGeminiJsonObjectForTest();
+    if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
+    else process.env.AURORA_BFF_USE_MOCK = prevMock;
+    if (prevProvider === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = prevProvider;
+    if (prevModel === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = prevModel;
+    delete require.cache[moduleId];
+  }
+});
+
 test('beauty mainline reco rows promote visible nested product fields to top level', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {

@@ -5986,6 +5986,64 @@ test('__internal: reco assistant rewrite prompt exposes routine roles and price 
   );
 });
 
+test('__internal: reco assistant rewrite prompt prioritizes target-aligned evidence over off-target product claims', async () => {
+  const { __internal } = loadRoutesFresh();
+  const prompt = __internal.buildRecoAssistantRewritePrompt({
+    language: 'EN',
+    userRequestText: 'im oily skin. what product should i buy?',
+    profile: { skinType: 'oily', goals: ['oil control'] },
+    payload: {
+      roles: [
+        {
+          role_id: 'oil_control_treatment',
+          label: 'Oil-control treatment',
+          why_this_role: 'Start with a targeted oil-control step to manage shine.',
+          preferred_step: 'treatment',
+          rank: 1,
+          slot: 'pm',
+        },
+      ],
+      recommendation_meta: {
+        primary_target_id: 'oil_control_treatment',
+        selected_target_ids: ['oil_control_treatment'],
+        ranked_targets: [
+          {
+            target_id: 'oil_control_treatment',
+            ingredient_query: 'Oil-control treatment',
+            resolved_target_step: 'treatment',
+          },
+        ],
+      },
+      recommendations: [
+        {
+          display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+          brand: 'The Ordinary',
+          category: 'Serum',
+          matched_role_id: 'oil_control_treatment',
+          matched_role_label: 'Oil-control treatment',
+          price: { amount: 12, currency: 'USD' },
+          description: 'This serum contains a high concentration of niacinamide and zinc PCA to target dullness and uneven tone.',
+          why_this_one: 'Direct oil-control support for visible shine.',
+          best_for: 'Best for excess oil and mid-day shine',
+          key_features: ['Niacinamide 10%', 'Zinc 1%', 'Oil-control support'],
+        },
+      ],
+    },
+  });
+
+  assert.match(prompt, /omit those extra claims and use the target-aligned evidence_points/i);
+  assert.match(prompt, /do not mention dullness, uneven tone, dark spots, glow, or brightening/i);
+  const context = extractRecoRewritePromptContext(prompt);
+  assert.deepEqual(context.user_relevant_concern_families, ['oil_control']);
+  assert.match(String(context.selected_product_details[0]?.evidence_points?.[0] || ''), /oil-control|visible shine/i);
+  assert.ok(
+    context.assistant_write_plan?.lead_product?.must_use_reason_points?.some((item) =>
+      /Direct oil-control support for visible shine/i.test(String(item || '')),
+    ),
+  );
+  assert.doesNotMatch(String(context.assistant_write_plan?.lead_product?.must_use_reason_points?.[0] || ''), /dullness|uneven tone/i);
+});
+
 test('__internal: reco assistant rewrite prompt exposes same-role price comparison context', async () => {
   const { __internal } = loadRoutesFresh();
   const prompt = __internal.buildRecoAssistantRewritePrompt({
