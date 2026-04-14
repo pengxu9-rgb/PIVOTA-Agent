@@ -20124,7 +20124,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	                '',
 	            ).trim();
 	            if (!reviewPlatform || !reviewPlatformProductId) return null;
-	            return fetchReviewSummaryCached({
+	            return await fetchReviewSummaryCached({
 	              merchantId: canonicalProductRef.merchant_id,
 	              platform: reviewPlatform,
 	              platformProductId: reviewPlatformProductId,
@@ -20144,7 +20144,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            const moduleStartedAt = Date.now();
 	            try {
 	            const limit = payload?.similar?.limit || payload?.recommendations?.limit || 6;
-	            return fetchSimilarProductsDeduped({
+	            return await fetchSimilarProductsDeduped({
               pdp_product: canonicalProductForPdp,
               k: limit,
               locale:

@@ -1380,9 +1380,19 @@ async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId })
   return uniqueByKey(out.filter(Boolean), (p) => `${getMerchantId(p)}::${getProductId(p)}`).slice(0, safeLimit * 4);
 }
 
-async function fetchExternalCandidates({ brandHint, categoryHint, domainHints = [], limit }) {
+async function fetchExternalCandidates({
+  brandHint,
+  categoryHint,
+  domainHints = [],
+  limit,
+  minFocusedCandidates = 6,
+}) {
   if (!process.env.DATABASE_URL) return [];
   const safeLimit = Math.min(Math.max(1, Number(limit || 180)), 500);
+  const safeMinFocusedCandidates = Math.max(
+    1,
+    Math.min(30, Number(minFocusedCandidates || 6) || 6),
+  );
   const market = String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
   const tool = 'creator_agents';
 
@@ -1488,8 +1498,12 @@ async function fetchExternalCandidates({ brandHint, categoryHint, domainHints = 
   }
 
   const out = [];
-  const domainMatches = await runDomainQuery(12);
+  const domainMatches = await runDomainQuery(Math.min(safeLimit, Math.max(12, safeMinFocusedCandidates * 2)));
   out.push(...domainMatches);
+  const domainFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
+  if (domainFocusedCandidates.length >= safeMinFocusedCandidates) {
+    return domainFocusedCandidates.slice(0, safeLimit * 3);
+  }
 
   const [brandMatches, categoryMatches] = await Promise.all([
     brand
@@ -1529,7 +1543,8 @@ async function fetchExternalCandidates({ brandHint, categoryHint, domainHints = 
   ]);
 
   out.push(...brandMatches, ...categoryMatches);
-  const hasFocusedCandidates = out.length > 0;
+  const focusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
+  const hasFocusedCandidates = focusedCandidates.length > 0;
   if (!hasFocusedCandidates) {
     const recent = await runQuery('', [], Math.min(240, safeLimit), 'external_recent');
     out.push(...recent);
@@ -1807,6 +1822,7 @@ async function recommend({
           categoryHint: baseLeaf,
           domainHints: baseDomains,
           limit: Math.max(120, safeK * 15),
+          minFocusedCandidates: safeK,
         }),
     effectiveExternalFetchTimeoutMs,
     [],
