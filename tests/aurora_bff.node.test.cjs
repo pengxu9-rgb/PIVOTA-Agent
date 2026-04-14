@@ -8165,8 +8165,9 @@ test('fetchRecoAlternativesForProduct: open_world_only filters off-target visibl
                 product_type: 'Sunscreen',
                 category: 'Sunscreen',
                 compare_highlights: [
-                  'Lightweight serum sunscreen texture.',
-                  'Improves the look of fine lines and dark spots.',
+                  'Combines smoother texture and fine-line support with daytime sun protection in one morning step.',
+                  'Infused with ginger extract for glowing skin, this serum protects against environmental factors without leaving a white cast for any skin tone.',
+                  'Best for Breakout-prone skin',
                 ],
               },
             ],
@@ -8227,7 +8228,10 @@ test('fetchRecoAlternativesForProduct: open_world_only filters off-target visibl
         });
 
         assert.equal(out.alternatives[0]?.grounding_status, 'catalog_verified');
-        assert.deepEqual(out.alternatives[0]?.compare_highlights, ['Lightweight serum sunscreen texture.']);
+        assert.deepEqual(out.alternatives[0]?.compare_highlights, [
+          'Combines smoother texture with daytime sun protection in one morning step.',
+          'Infused with ginger extract, this serum protects against environmental factors without leaving a white cast for any skin tone.',
+        ]);
         assert.deepEqual(out.alternatives[0]?.tradeoff_notes || [], []);
         assert.equal(out.alternatives[0]?.metadata?.off_target_visible_claims_filtered, true);
       } finally {
