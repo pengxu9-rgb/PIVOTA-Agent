@@ -333,6 +333,49 @@ describe('RecommendationEngine external candidate fetch', () => {
     ).toBe(false);
   });
 
+  test('keeps partial brand-focused seeds instead of losing them to broad category timeouts', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryMock = jest.fn(async (sql, params) => {
+      const sqlText = String(sql);
+      const brandAliases = params?.[3];
+      if (Array.isArray(brandAliases) && brandAliases.includes('winona')) {
+        return {
+          rows: Array.from({ length: 2 }).map((_, index) =>
+            makeExternalRow({
+              id: `eps_winona_partial_${index}`,
+              external_product_id: `ext_winona_partial_${index}`,
+              title: `Winona Partial Product ${index}`,
+              brand: 'Winona',
+              category: 'Serum',
+              domain: 'winona.com',
+            }),
+          ),
+        };
+      }
+      if (sqlText.includes("seed_data->>'category'")) {
+        throw new Error('category scan should not run after brand hits');
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchExternalCandidates({
+      brandHint: 'Winona',
+      categoryHint: 'Serum',
+      limit: 12,
+      minFocusedCandidates: 6,
+    });
+
+    expect(products.map((product) => product.product_id)).toEqual([
+      'ext_winona_partial_0',
+      'ext_winona_partial_1',
+    ]);
+  });
+
   test('falls back to broad scans when same-domain rows underfill target', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 

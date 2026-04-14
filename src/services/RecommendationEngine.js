@@ -1565,7 +1565,7 @@ async function fetchExternalCandidates({
     );
     out.push(...brandMatches);
     const brandFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
-    if (brandFocusedCandidates.length >= safeMinFocusedCandidates) {
+    if (brandFocusedCandidates.length > 0) {
       return brandFocusedCandidates.slice(0, safeLimit * 3);
     }
   }
