@@ -398,6 +398,80 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(queryMock.mock.calls.some(([sql]) => String(sql).includes("seed_data->>'category'"))).toBe(true);
   });
 
+  test('uses title category tokens when structured category rows underfill target', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryMock = jest.fn(async (sql, params) => {
+      const sqlText = String(sql);
+      const brandAliases = params?.[3];
+      if (Array.isArray(brandAliases) && brandAliases.includes('goodmolecules')) {
+        return {
+          rows: [
+            makeExternalRow({
+              id: 'eps_good_molecules_base_only',
+              external_product_id: 'ext_good_molecules_base_only',
+              title: 'Good Molecules Niacinamide Serum',
+              brand: 'Good Molecules',
+              category: 'Serum',
+              domain: 'goodmolecules.com',
+            }),
+          ],
+        };
+      }
+      if (sqlText.includes("seed_data->>'category'")) {
+        return { rows: [] };
+      }
+      if (sqlText.includes("seed_data->'derived'->'recall'->>'retrieval_title'")) {
+        expect(params?.[3]).toEqual(expect.arrayContaining(['%serum%']));
+        return {
+          rows: [
+            makeExternalRow({
+              id: 'eps_title_serum_1',
+              external_product_id: 'ext_title_serum_1',
+              title: 'Glow Serum : Propolis + Niacinamide',
+              brand: 'Beauty of Joseon',
+              category: '',
+              domain: 'beautyofjoseon.com',
+            }),
+            makeExternalRow({
+              id: 'eps_title_serum_2',
+              external_product_id: 'ext_title_serum_2',
+              title: '10% Niacinamide Serum',
+              brand: 'The Inkey List',
+              category: '',
+              domain: 'theinkeylist.com',
+            }),
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchExternalCandidates({
+      brandHint: 'Good Molecules',
+      categoryHint: 'Serum',
+      limit: 12,
+      minFocusedCandidates: 6,
+    });
+
+    expect(products.map((product) => product.product_id)).toEqual(
+      expect.arrayContaining([
+        'ext_good_molecules_base_only',
+        'ext_title_serum_1',
+        'ext_title_serum_2',
+      ]),
+    );
+    expect(
+      queryMock.mock.calls.some(([sql]) =>
+        String(sql).includes("seed_data->'derived'->'recall'->>'retrieval_title'"),
+      ),
+    ).toBe(true);
+  });
+
   test('falls back to broad scans when same-domain rows underfill target', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 

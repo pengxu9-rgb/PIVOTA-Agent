@@ -1650,8 +1650,29 @@ async function fetchExternalCandidates({
     : [];
 
   out.push(...categoryMatches);
-  const focusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
-  const hasFocusedCandidates = focusedCandidates.length > 0;
+  let focusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
+  if (category && focusedCandidates.length < safeMinFocusedCandidates) {
+    const categoryLikePatterns = categoryAliases
+      .filter((value) => String(value || '').trim().length >= 3)
+      .map((value) => `%${value}%`);
+    const categoryTitleMatches = categoryLikePatterns.length
+      ? await runQuery(
+          `AND (
+              lower(coalesce(title, '')) LIKE ANY($4)
+              OR lower(coalesce(seed_data->>'title','')) LIKE ANY($4)
+              OR lower(coalesce(seed_data->'snapshot'->>'title','')) LIKE ANY($4)
+              OR lower(coalesce(seed_data->'derived'->'recall'->>'retrieval_title','')) LIKE ANY($4)
+              OR lower(coalesce(seed_data->'derived'->'recall'->>'retrieval_summary','')) LIKE ANY($4)
+            )`,
+          [categoryLikePatterns],
+          Math.min(180, safeLimit),
+          'external_category_title',
+        )
+      : [];
+    out.push(...categoryTitleMatches);
+    focusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
+  }
+  const hasFocusedCandidates = focusedCandidates.length >= safeMinFocusedCandidates;
   if (!hasFocusedCandidates) {
     const recent = await runQuery('', [], Math.min(240, safeLimit), 'external_recent');
     out.push(...recent);
