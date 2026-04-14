@@ -6713,8 +6713,8 @@ describe('discovery feed service', () => {
 	    }
 	  });
 
-	  test('explicit compound browse continues DB stages until qualified rows fill target', async () => {
-	    jest.resetModules();
+		  test('explicit compound browse continues DB stages until qualified rows fill target', async () => {
+		    jest.resetModules();
 	    const prevDatabaseUrl = process.env.DATABASE_URL;
 	    process.env.DATABASE_URL = 'postgres://discovery-compound-stage-test';
 	    const requiredColumns = [
@@ -6829,8 +6829,103 @@ describe('discovery feed service', () => {
 	    } finally {
 	      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
 	      else process.env.DATABASE_URL = prevDatabaseUrl;
-	    }
-	  });
+		    }
+		  });
+
+  test('explicit compound browse stops after exact title covers first page', async () => {
+    jest.resetModules();
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = 'postgres://discovery-compound-exact-stop-test';
+    const requiredColumns = [
+      { table_name: 'products_cache', column_name: 'id' },
+      { table_name: 'products_cache', column_name: 'merchant_id' },
+      { table_name: 'products_cache', column_name: 'product_data' },
+      { table_name: 'products_cache', column_name: 'expires_at' },
+      { table_name: 'products_cache', column_name: 'cached_at' },
+      { table_name: 'external_product_seeds', column_name: 'id' },
+      { table_name: 'external_product_seeds', column_name: 'external_product_id' },
+      { table_name: 'external_product_seeds', column_name: 'destination_url' },
+      { table_name: 'external_product_seeds', column_name: 'canonical_url' },
+      { table_name: 'external_product_seeds', column_name: 'title' },
+      { table_name: 'external_product_seeds', column_name: 'seed_data' },
+      { table_name: 'external_product_seeds', column_name: 'market' },
+      { table_name: 'external_product_seeds', column_name: 'tool' },
+      { table_name: 'external_product_seeds', column_name: 'status' },
+      { table_name: 'external_product_seeds', column_name: 'attached_product_key' },
+      { table_name: 'external_product_seeds', column_name: 'updated_at' },
+      { table_name: 'external_product_seeds', column_name: 'created_at' },
+    ];
+    const requiredIndexes = [
+      'idx_external_product_seeds_recall_title_trgm',
+      'idx_external_product_seeds_recall_summary_trgm',
+      'idx_external_product_seeds_recall_category_vertical_recency',
+      'idx_external_product_seeds_recall_vertical_recency',
+      'idx_external_product_seeds_recall_ingredient_tokens_trgm',
+      'idx_external_product_seeds_recall_alias_tokens_trgm',
+    ].map((indexname) => ({ tablename: 'external_product_seeds', indexname }));
+    const exactRows = Array.from({ length: 12 }, (_, index) =>
+      makeExternalSeedRow({
+        id: `lip_oil_${index + 1}`,
+        title: `Glow Lip Oil ${index + 1}`,
+        category: 'Lip Oil',
+        product_type: 'Lip Oil',
+        description: 'A glossy lip oil.',
+      }),
+    );
+    const dbQueryMock = jest
+      .fn()
+      .mockResolvedValueOnce({ rows: requiredColumns })
+      .mockResolvedValueOnce({ rows: requiredIndexes })
+      .mockResolvedValueOnce({ rows: exactRows });
+    jest.doMock('../src/db', () => ({
+      query: dbQueryMock,
+    }));
+
+    try {
+      const { buildDiscoveryProfile: freshBuildDiscoveryProfile, _internals: freshInternals } = require('../src/services/discoveryFeed');
+      freshInternals.resetDiscoveryDependencyProbeCache();
+      const request = freshInternals.normalizeDiscoveryRequest({
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        query: {
+          text: 'lip oil',
+        },
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      });
+
+      const result = await freshInternals.fetchBeautyInterestExternalSeedFastpathCandidates({
+        request,
+        profile: freshBuildDiscoveryProfile(request.context),
+        queries: ['lip oil'],
+        limit: freshInternals.resolveExternalSeedProviderLimit(request, 36),
+        providerName: 'external_seeds',
+        productProvider: 'external_seeds',
+        stepName: 'external_seed_pool',
+        label: 'external_seed_pool',
+      });
+
+      expect(result.products).toHaveLength(12);
+      expect(dbQueryMock).toHaveBeenCalledTimes(3);
+      expect(result.recallSummary[0].external_seed_stage_counts).toEqual([
+        expect.objectContaining({
+          stage: 'recall_compound_exact_title',
+          raw_rows: 12,
+          compound_qualified_rows: 12,
+        }),
+      ]);
+    } finally {
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+      jest.dontMock('../src/db');
+      jest.resetModules();
+    }
+  });
 
   test('hair oil compound matcher rejects exact-phrase shampoo fragrance and accessory noise', () => {
     expect(
@@ -6900,10 +6995,147 @@ describe('discovery feed service', () => {
         },
         'hair_oil',
       ),
+	    ).toBe(true);
+	  });
+
+  test('compound matcher keeps hair oil summary recall and rejects lip bundle noise', () => {
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
+            title: 'Huile Prodigieuse® Florale',
+            description: 'Precious botanical oils nourish face, body and hair in a single step.',
+            external_seed_recall: {
+              retrieval_title: 'Huile Prodigieuse® Florale',
+              retrieval_summary: 'Nourish, replenish and beautify the skin of your face, body and your hair with botanical oils.',
+              vertical: 'haircare',
+            },
+          },
+          category: 'haircare',
+          parentCategory: 'haircare',
+        },
+        'hair_oil',
+      ),
+    ).toBe(true);
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
+            title: 'Intense Nourishing Cream',
+            description: 'Nourishes hair with camellia oil.',
+            external_seed_recall: {
+              retrieval_title: 'Intense Nourishing Cream',
+              retrieval_summary: 'Transform your hair with camellia oil.',
+              vertical: 'haircare',
+            },
+          },
+          category: 'haircare',
+          parentCategory: 'haircare',
+        },
+        'hair_oil',
+      ),
+    ).toBe(false);
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
+            title: 'Moisturizing Set',
+            description: 'Includes an Ultra-Nourishing Lip Balm and dry oil.',
+            external_seed_recall: {
+              retrieval_title: 'Moisturizing Set',
+              retrieval_summary: 'Includes an Ultra-Nourishing Lip Balm and dry oil.',
+              vertical: 'makeup',
+            },
+          },
+          category: 'lip balm',
+          parentCategory: 'makeup',
+        },
+        'lip_balm',
+      ),
+    ).toBe(false);
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
+            title: 'Lip Oil Gift Set',
+            external_seed_recall: {
+              retrieval_title: 'Lip Oil Gift Set',
+              vertical: 'makeup',
+            },
+          },
+          category: 'makeup',
+          parentCategory: 'makeup',
+        },
+        'lip_oil',
+      ),
+    ).toBe(false);
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
+            title: 'Protective & Nourishing Lip Balm',
+            external_seed_recall: {
+              retrieval_title: 'Protective & Nourishing Lip Balm',
+              vertical: 'makeup',
+            },
+          },
+          category: 'lip balm',
+          parentCategory: 'makeup',
+        },
+        'lip_balm',
+      ),
     ).toBe(true);
   });
 
-	  test('anonymous browse fastpath fills stable corpus beyond first-page coverage before stopping DB stages', async () => {
+  test('hair oil weak external seed stages can use summary oil signals', () => {
+    const request = _internals.normalizeDiscoveryRequest({
+      surface: 'browse_products',
+      query: {
+        text: 'hair oil',
+      },
+      context: {
+        auth_state: 'anonymous',
+        recent_views: [],
+        recent_queries: [],
+        locale: 'en-US',
+      },
+    });
+    const profile = buildDiscoveryProfile(request.context);
+    const recallTerms = _internals.buildBeautyInterestRecallTerms(request, profile, ['hair oil']);
+    const stages = _internals.buildCompoundBeautySeedStageDefinitions(recallTerms, 120);
+    const weakVerticalStage = stages.find((stage) => stage.stage === 'recall_compound_weak_vertical');
+    const boundValues = [];
+    const sql = weakVerticalStage.buildWhereSql((value) => {
+      boundValues.push(value);
+      return `$${boundValues.length}`;
+    });
+
+    expect(recallTerms.compoundPositiveTitleTokens).toEqual(expect.arrayContaining(['oil', 'huile']));
+    expect(sql).toContain("seed_data->'derived'->'recall'->>'retrieval_summary'");
+    expect(boundValues.flat()).toEqual(expect.arrayContaining(['%oil%', '%huile%']));
+  });
+
+  test('lip oil external seed stages do not use summary recall', () => {
+    const request = _internals.normalizeDiscoveryRequest({
+      surface: 'browse_products',
+      query: {
+        text: 'lip oil',
+      },
+      context: {
+        auth_state: 'anonymous',
+        recent_views: [],
+        recent_queries: [],
+        locale: 'en-US',
+      },
+    });
+    const profile = buildDiscoveryProfile(request.context);
+    const recallTerms = _internals.buildBeautyInterestRecallTerms(request, profile, ['lip oil']);
+    const stages = _internals.buildCompoundBeautySeedStageDefinitions(recallTerms, 120);
+
+    expect(stages.map((stage) => stage.stage)).not.toContain('recall_compound_summary');
+  });
+
+			  test('anonymous browse fastpath fills stable corpus beyond first-page coverage before stopping DB stages', async () => {
     jest.resetModules();
     const prevDatabaseUrl = process.env.DATABASE_URL;
     process.env.DATABASE_URL = 'postgres://discovery-fastpath-test';

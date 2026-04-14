@@ -291,7 +291,7 @@ const EXPLICIT_BEAUTY_COMPOUND_INTENT_RULES = Object.freeze({
     weakPositive: ['hair treatment', 'hair care', 'haircare'],
     verticals: ['haircare'],
     conjunctionTokens: ['hair', 'oil'],
-    positiveTitleTokens: ['oil'],
+    positiveTitleTokens: ['oil', 'huile'],
     suppressedTokenCategories: ['hair', 'oil'],
     negativeClasses: [
       'shampoo',
@@ -327,7 +327,29 @@ const EXPLICIT_BEAUTY_COMPOUND_INTENT_RULES = Object.freeze({
     conjunctionTokens: ['lip', 'balm'],
     positiveTitleTokens: ['balm'],
     suppressedTokenCategories: ['lip', 'balm'],
-    negativeClasses: ['lipstick', 'mascara', 'foundation', 'fragrance', 'brush', 'clip', 'pins'],
+    negativeClasses: [
+      'lipstick',
+      'mascara',
+      'foundation',
+      'fragrance',
+      'brush',
+      'clip',
+      'pins',
+      'giftset',
+      'gift set',
+      'set',
+      'kit',
+      'bundle',
+      'duo',
+      'trio',
+      'routine',
+      'essentials',
+      'pr box',
+      'box',
+      'bag',
+      'pouch',
+      'keychain',
+    ],
   }),
   lip_oil: Object.freeze({
     id: 'lip_oil',
@@ -339,7 +361,29 @@ const EXPLICIT_BEAUTY_COMPOUND_INTENT_RULES = Object.freeze({
     conjunctionTokens: ['lip', 'oil'],
     positiveTitleTokens: ['oil'],
     suppressedTokenCategories: ['lip', 'oil'],
-    negativeClasses: ['lipstick', 'mascara', 'foundation', 'fragrance', 'brush', 'clip', 'pins'],
+    negativeClasses: [
+      'lipstick',
+      'mascara',
+      'foundation',
+      'fragrance',
+      'brush',
+      'clip',
+      'pins',
+      'giftset',
+      'gift set',
+      'set',
+      'kit',
+      'bundle',
+      'duo',
+      'trio',
+      'routine',
+      'essentials',
+      'pr box',
+      'box',
+      'bag',
+      'pouch',
+      'keychain',
+    ],
   }),
 });
 const GENERIC_DISCOVERY_QUERY_TOKENS = new Set([
@@ -4169,13 +4213,15 @@ function buildExternalSeedCompoundLikePatterns(values = []) {
   );
 }
 
-function buildExternalSeedTitlePositiveSql(stageBind, recallTerms) {
+function buildExternalSeedTitlePositiveSql(stageBind, recallTerms, options = {}) {
   const positivePatterns = buildExternalSeedCompoundLikePatterns(recallTerms.compoundPositiveTitleTokens);
   if (positivePatterns.length <= 0) return '';
   const patternBind = stageBind(positivePatterns);
+  const includeSummary = options?.includeSummary === true;
   return `(
     ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${patternBind}::text[])
     OR lower(coalesce(title, '')) LIKE ANY(${patternBind}::text[])
+    ${includeSummary ? `OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${patternBind}::text[])` : ''}
   )`;
 }
 
@@ -4205,6 +4251,7 @@ function buildCompoundBeautySeedStageDefinitions(recallTerms, safeLimit) {
   const primaryCategoryTerms = uniqStrings(recallTerms.primaryCategoryTerms, 8);
   const weakCategoryTerms = uniqStrings(recallTerms.weakCategoryTerms, 8);
   const verticalTerms = uniqStrings(recallTerms.verticalTerms, 6);
+  const includeSummaryPositive = recallTerms.compoundIntent === 'hair_oil';
 
   if (exactPatterns.length > 0) {
     definitions.push({
@@ -4237,7 +4284,9 @@ function buildCompoundBeautySeedStageDefinitions(recallTerms, safeLimit) {
       stage: 'recall_compound_weak_category',
       cap: stageCap,
       buildWhereSql: (stageBind) => {
-        const positiveSql = buildExternalSeedTitlePositiveSql(stageBind, recallTerms);
+        const positiveSql = buildExternalSeedTitlePositiveSql(stageBind, recallTerms, {
+          includeSummary: includeSummaryPositive,
+        });
         if (!positiveSql) return '';
         return `(
           ${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} = ANY(${stageBind(weakCategoryTerms)}::text[])
@@ -4253,7 +4302,9 @@ function buildCompoundBeautySeedStageDefinitions(recallTerms, safeLimit) {
       stage: 'recall_compound_weak_vertical',
       cap: stageCap,
       buildWhereSql: (stageBind) => {
-        const positiveSql = buildExternalSeedTitlePositiveSql(stageBind, recallTerms);
+        const positiveSql = buildExternalSeedTitlePositiveSql(stageBind, recallTerms, {
+          includeSummary: includeSummaryPositive,
+        });
         if (!positiveSql) return '';
         return `(
           ${EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical} = ANY(${stageBind(verticalTerms)}::text[])
@@ -4270,7 +4321,7 @@ function buildCompoundBeautySeedStageDefinitions(recallTerms, safeLimit) {
     buildWhereSql: (stageBind) => buildExternalSeedConjunctionSql(stageBind, recallTerms),
   });
 
-  if (exactPatterns.length > 0) {
+  if (recallTerms.compoundIntent === 'hair_oil' && exactPatterns.length > 0) {
     definitions.push({
       score: 30,
       stage: 'recall_compound_summary',
@@ -4842,15 +4893,21 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
       request?.surface === 'browse_products' && isGenericNoSignalDiscoveryRequest(request, profile)
         ? safeLimit
         : Math.min(safeLimit, Math.max(4, getPrimaryPathEnoughThreshold(request)));
+    const requestedLimit = Math.max(1, Number(request?.limit || 0) || 12);
+    const isFirstPageWithoutCursor =
+      !request?.cursor && Math.max(1, Number(request?.page || 0) || 1) <= 1;
     const cursorQualifiedTarget = resolveExplicitBrowseCursorQualifiedTarget(request, safeLimit);
     const summaryThreshold = Math.min(
       safeLimit,
       Math.max(baseSummaryThreshold, cursorQualifiedTarget),
     );
     const qualifiedTarget = compoundIntent
-      ? Math.min(safeLimit, Math.max((request?.limit || 0) * 2, 24, cursorQualifiedTarget))
+      ? Math.min(safeLimit, Math.max(requestedLimit * 2, 24, cursorQualifiedTarget))
       : summaryThreshold;
-    const shouldStopStages = () => stagedRows.length >= (compoundIntent ? qualifiedTarget : summaryThreshold);
+    let compoundExactStageSatisfiedFirstPage = false;
+    const shouldStopStages = () =>
+      compoundExactStageSatisfiedFirstPage ||
+      stagedRows.length >= (compoundIntent ? qualifiedTarget : summaryThreshold);
     const appendRows = (rows = [], stage = 'unknown') => {
       const metrics = {
         stage,
@@ -4903,6 +4960,14 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
       }
       metrics.final_eligible_rows = stagedRows.length;
       externalSeedStageCounts.push(metrics);
+      if (
+        compoundIntent &&
+        isFirstPageWithoutCursor &&
+        stage === 'recall_compound_exact_title' &&
+        stagedRows.length >= requestedLimit
+      ) {
+        compoundExactStageSatisfiedFirstPage = true;
+      }
     };
     const runStage = async ({ buildWhereSql, score, stage, cap }) => {
       if (typeof buildWhereSql !== 'function' || stagedRows.length >= safeLimit || shouldStopStages()) return;
@@ -5850,27 +5915,6 @@ function matchesQueryTextCandidate(candidate, queryText) {
   return tokenHits >= Math.max(1, Math.ceil(queryTokens.length * 0.6));
 }
 
-function buildExternalSeedStrongQueryText(candidate) {
-  const raw = candidate?.raw || {};
-  const recall = raw.external_seed_recall || {};
-  return normalizeText(
-    [
-      raw.title,
-      raw.name,
-      recall.retrieval_title,
-      candidate?.category,
-      candidate?.parentCategory,
-      raw.category,
-      raw.product_type,
-      raw.productType,
-      recall.category,
-      recall.vertical,
-    ]
-      .filter(Boolean)
-      .join(' '),
-  );
-}
-
 function textHasNormalizedToken(text, token) {
   const normalized = normalizeText(text || '');
   const normalizedToken = normalizeText(token || '');
@@ -5889,11 +5933,28 @@ function hasAnyNormalizedClassToken(text, items = []) {
   });
 }
 
+function hasOilIntentToken(text) {
+  return (
+    textHasNormalizedToken(text, 'oil') ||
+    textHasNormalizedToken(text, 'oils') ||
+    textHasNormalizedToken(text, 'huile')
+  );
+}
+
 function matchesBeautyCompoundQueryIntent(candidate, intent) {
   if (!intent) return true;
   const rule = EXPLICIT_BEAUTY_COMPOUND_INTENT_RULES[intent] || null;
   const raw = candidate?.raw || {};
   const titleText = normalizeText([raw.title, raw.name, raw.external_seed_recall?.retrieval_title].filter(Boolean).join(' '));
+  const summaryText = normalizeText(
+    [
+      raw.description,
+      raw.external_seed_recall?.retrieval_summary,
+      raw.external_seed_recall?.retrieval_body,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
   const categoryText = normalizeText(
     [
       candidate?.category,
@@ -5907,34 +5968,37 @@ function matchesBeautyCompoundQueryIntent(candidate, intent) {
       .filter(Boolean)
       .join(' '),
   );
-  const strongText = buildExternalSeedStrongQueryText(candidate);
   const negativeClasses = rule?.negativeClasses || [];
 
   if (intent === 'hair_oil') {
     if (hasAnyNormalizedClassToken([categoryText, titleText].join(' '), negativeClasses)) return false;
-    if (strongText.includes('hair oil')) return true;
+    if (titleText.includes('hair oil')) return true;
     if (hasAnyNormalizedClassToken(categoryText, rule?.primaryPositive || [])) return true;
     const categoryLooksHair =
       categoryText.includes('haircare') ||
       categoryText.includes('hair care') ||
       textHasNormalizedToken(categoryText, 'hair');
-    return categoryLooksHair && textHasNormalizedToken(titleText, 'oil');
+    return categoryLooksHair && (hasOilIntentToken(titleText) || hasOilIntentToken(summaryText));
   }
 
   if (intent === 'lip_balm') {
     if (hasAnyNormalizedClassToken([categoryText, titleText].join(' '), negativeClasses)) return false;
-    if (strongText.includes('lip balm')) return true;
-    if (hasAnyNormalizedClassToken(categoryText, rule?.primaryPositive || [])) return true;
-    const categoryLooksLip = textHasNormalizedToken(categoryText, 'lip') || categoryText.includes('lip care');
+    if (titleText.includes('lip balm')) return true;
+    const categoryLooksLip =
+      textHasNormalizedToken(categoryText, 'lip') ||
+      categoryText.includes('lip care') ||
+      hasAnyNormalizedClassToken(categoryText, rule?.primaryPositive || []);
     return categoryLooksLip && textHasNormalizedToken(titleText, 'balm');
   }
 
   if (intent === 'lip_oil') {
     if (hasAnyNormalizedClassToken([categoryText, titleText].join(' '), negativeClasses)) return false;
-    if (strongText.includes('lip oil')) return true;
-    if (hasAnyNormalizedClassToken(categoryText, rule?.primaryPositive || [])) return true;
-    const categoryLooksLip = textHasNormalizedToken(categoryText, 'lip') || categoryText.includes('lip care');
-    return categoryLooksLip && textHasNormalizedToken(titleText, 'oil');
+    if (titleText.includes('lip oil')) return true;
+    const categoryLooksLip =
+      textHasNormalizedToken(categoryText, 'lip') ||
+      categoryText.includes('lip care') ||
+      hasAnyNormalizedClassToken(categoryText, rule?.primaryPositive || []);
+    return categoryLooksLip && hasOilIntentToken(titleText);
   }
 
   return true;
