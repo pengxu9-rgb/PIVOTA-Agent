@@ -20949,6 +20949,29 @@ function buildConcernFrameworkComparisonFillCandidates({
     }));
 }
 
+function hasStrictBeautyMainlineNoRuntimeFallbackPolicy(targetContext = null) {
+  if (!isPlainObject(targetContext)) return false;
+  return String(targetContext?.mainline_fallback_policy || '').trim().toLowerCase() === 'strict_no_runtime_fallback'
+    || targetContext?.semantic_planner_required === true;
+}
+
+function shouldAllowConcernFrameworkComparisonFill(targetContext = null, orderedRoles = []) {
+  const roles = Array.isArray(orderedRoles)
+    ? orderedRoles.filter((role) => String(role?.role_id || '').trim())
+    : [];
+  const semanticPlan = isPlainObject(targetContext?.semantic_plan) ? targetContext.semantic_plan : null;
+  const comparisonMode = String(
+    pickFirstTrimmed(
+      targetContext?.comparison_mode,
+      semanticPlan?.comparison_mode,
+      semanticPlan?.selection_constraints?.comparison_mode,
+    ) || '',
+  ).trim().toLowerCase();
+  if (comparisonMode === 'same_role_comparison' || comparisonMode === 'same_role') return true;
+  if (!hasStrictBeautyMainlineNoRuntimeFallbackPolicy(targetContext)) return true;
+  return roles.length <= 1;
+}
+
 function classifyConcernFrameworkNegativeAuthority(product, role = null) {
   const roleObj = isPlainObject(role) ? role : null;
   const queryText = uniqCaseInsensitiveStrings([
@@ -21186,7 +21209,8 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     if (selected.length >= 3) break;
   }
   const strictPrimarySelectedCount = selected.length;
-  const comparisonFillCandidates = strictPrimarySelectedCount > 0
+  const comparisonFillAllowed = shouldAllowConcernFrameworkComparisonFill(targetContext, orderedRoles);
+  const comparisonFillCandidates = strictPrimarySelectedCount > 0 && comparisonFillAllowed
     ? buildConcernFrameworkComparisonFillCandidates({
         softMismatch,
         primaryRoleId,
@@ -21250,6 +21274,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     external_seed_used_count: externalSeedUsedCount,
     comparison_fill_applied: comparisonFillCount > 0,
     comparison_fill_count: comparisonFillCount,
+    comparison_fill_allowed: comparisonFillAllowed,
     comparison_slot_reserved: reserveComparisonSlot,
     routine_support_fill_applied: routineSupportFillCount > 0,
     routine_support_fill_count: routineSupportFillCount,
@@ -22774,12 +22799,13 @@ async function buildRecoGenerateFromCatalog({
   const selectedCandidates = Array.isArray(candidateState.selected_recommendations)
     ? candidateState.selected_recommendations
     : [];
-  const frameworkFallbackSelectedCandidates = frameworkMode && selectedCandidates.length === 0
+  const suppressRuntimeFallbackSurfacing = hasStrictBeautyMainlineNoRuntimeFallbackPolicy(targetContext);
+  const frameworkFallbackSuppressedCandidates = frameworkMode && selectedCandidates.length === 0
     ? (Array.isArray(candidateState.viable_candidate_pool)
       ? candidateState.viable_candidate_pool.filter((item) => Number(item?.framework_score || 0) >= 0.72).slice(0, 1)
       : [])
     : [];
-  const stepAwareFallbackSelectedCandidates =
+  const stepAwareFallbackSuppressedCandidates =
     !frameworkMode && targetContext?.step_aware_intent && selectedCandidates.length === 0
       ? (Array.isArray(candidateState.soft_mismatch)
         ? candidateState.soft_mismatch
@@ -22814,6 +22840,8 @@ async function buildRecoGenerateFromCatalog({
           }))
         : [])
       : [];
+  const frameworkFallbackSelectedCandidates = suppressRuntimeFallbackSurfacing ? [] : frameworkFallbackSuppressedCandidates;
+  const stepAwareFallbackSelectedCandidates = suppressRuntimeFallbackSurfacing ? [] : stepAwareFallbackSuppressedCandidates;
   const surfacedCandidates =
     selectedCandidates.length > 0
       ? selectedCandidates
@@ -23035,6 +23063,14 @@ async function buildRecoGenerateFromCatalog({
     selected_candidate_count: Number(candidateState.selected_candidate_count || 0),
     surfaced_candidate_count: surfacedCandidates.length,
     fallback_surfaced_candidate_count: Math.max(0, surfacedCandidates.length - selectedCandidates.length),
+    fallback_or_gate_blocked: suppressRuntimeFallbackSurfacing && selectedCandidates.length === 0 && (
+      frameworkFallbackSuppressedCandidates.length > 0 ||
+      stepAwareFallbackSuppressedCandidates.length > 0
+    ),
+    suppressed_runtime_fallback_candidate_count:
+      suppressRuntimeFallbackSurfacing && selectedCandidates.length === 0
+        ? frameworkFallbackSuppressedCandidates.length + stepAwareFallbackSuppressedCandidates.length
+        : 0,
     fallback_surfaced_reason:
       selectedCandidates.length > 0
         ? null

@@ -10,6 +10,7 @@ const {
   GROUP_SEMANTICS_VERSION,
   resolveRecommendationTargetContext,
   canonicalizeGenericConcernQuery,
+  buildConcernSemanticPlanFallback,
   buildSameFamilyQueryLevels,
   finalizeRecommendationCandidatePools,
   shouldStopStepAwareBroadening,
@@ -67,7 +68,7 @@ test('generic single-product chat asks resolve into a framework-first role plan 
   assert.equal(targetContext.intent_mode, 'generic_concern');
   assert.equal(targetContext.framework_owner_source, 'generic_concern_framework_resolver');
   assert.equal(targetContext.framework_owner_state, 'trusted');
-  assert.equal(targetContext.semantic_plan?.semantic_plan_version, 'concern_semantic_plan_v1');
+  assert.equal(targetContext.semantic_plan?.semantic_plan_version, 'concern_semantic_plan_v2');
   assert.equal(targetContext.semantic_plan?.selection_owner_source, 'rule_concern_planner_fallback');
   assert.equal(targetContext.primary_role_id, 'oil_control_treatment');
   assert.deepEqual(
@@ -80,13 +81,40 @@ test('generic single-product chat asks resolve into a framework-first role plan 
   assert.deepEqual(targetContext.semantic_plan?.routine_shell?.optional_support_roles, []);
   const primaryRole = targetContext.framework_roles[0];
   assert.equal(primaryRole.role_id, 'oil_control_treatment');
-  assert.equal(primaryRole.query_terms.includes('niacinamide serum oily skin'), false);
+  assert.equal(primaryRole.query_terms.includes('niacinamide serum oily skin'), true);
   assert.ok(primaryRole.query_terms.includes('oil control serum'));
   assert.ok(primaryRole.query_terms.includes('shine control serum'));
   assert.ok(primaryRole.fit_keywords.includes('oil control'));
   assert.ok(primaryRole.fit_keywords.includes('mattifying'));
-  assert.ok(primaryRole.fit_keywords.includes('acne'));
+  assert.ok(primaryRole.fit_keywords.includes('pores'));
   assert.ok(primaryRole.ingredient_hypotheses.includes('Salicylic acid'));
+});
+
+test('concern semantic scaffold routes broad-suite drift samples into canonical v2 roles', () => {
+  const sunscreenPlan = buildConcernSemanticPlanFallback({
+    text: 'I have oily skin and wear makeup every day. What sunscreen product should I buy?',
+    profileSummary: { skinType: 'oily', goals: ['oil control'] },
+  });
+  assert.equal(sunscreenPlan.core_roles[0]?.role_id, 'daily_sunscreen_finish_fit');
+
+  const marksPlan = buildConcernSemanticPlanFallback({
+    text: 'What should I buy for post-breakout marks?',
+    profileSummary: { goals: ['even tone'] },
+  });
+  assert.equal(marksPlan.core_roles[0]?.role_id, 'tone_mark_treatment');
+  assert.ok(marksPlan.core_roles.some((role) => role.role_id === 'daily_sunscreen'));
+
+  const dehydratedPlan = buildConcernSemanticPlanFallback({
+    text: 'My skin looks dull and dehydrated. What should I buy?',
+    profileSummary: { goals: ['hydration', 'brightness'] },
+  });
+  assert.equal(dehydratedPlan.core_roles[0]?.role_id, 'hydrating_serum_or_essence');
+  assert.ok(dehydratedPlan.core_roles.some((role) => role.role_id === 'hydrating_barrier_moisturizer'));
+
+  const pillingPlan = buildConcernSemanticPlanFallback({
+    text: 'My makeup keeps pilling. What product should I use first?',
+  });
+  assert.equal(pillingPlan.core_roles[0]?.role_id, 'layering_compatible_moisturizer_or_spf');
 });
 
 test('generic single-product concern helper canonicalizes singular broad asks to plural wording', () => {
