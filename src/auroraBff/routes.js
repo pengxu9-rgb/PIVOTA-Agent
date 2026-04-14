@@ -66204,6 +66204,7 @@ function getRecoAlternativeComparableCoreKey(row) {
     .replace(/\b(?:pouch|pack|pod|cartridge|bottle)\s+refill\b/g, ' ')
     .replace(/\breplacement\s+(?:pouch|pack|pod|cartridge|bottle)\b/g, ' ')
     .replace(/\b(?:duo|bundle|kit|set\s+of\s+\d+|value\s+set|jumbo|mini|travel\s+size)\b/g, ' ')
+    .replace(/\b\d+(?:\.\d+)?\s*(?:ml|mL|g|oz|fl\.?\s*oz)\b/g, ' ')
     .replace(/\b(?:dy|ln|mp|mn|lp|dn|md|lt|deep|fair|light|medium|tan)\s*\d{2,4}\b/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -66229,7 +66230,7 @@ function isRecoAlternativePackagingVariant(row) {
     .filter(Boolean)
     .join(' ');
   if (!text) return false;
-  return /\b(?:deal|subscription|subscribe(?:\s*(?:and|&)\s*save)?|refill(?:\s+(?:pouch|pack|pod|cartridge|bottle))?|(?:pouch|pack|pod|cartridge|bottle)\s+refill|replacement\s+(?:pouch|pack|pod|cartridge|bottle)|duo|bundle|kit|set\s+of\s+\d+|value\s+set|jumbo|mini|travel\s+size|(?:dy|ln|mp|mn|lp|dn|md|lt)\s*\d{2,4})\b/i.test(text);
+  return /\b(?:deal|subscription|subscribe(?:\s*(?:and|&)\s*save)?|refill(?:\s+(?:pouch|pack|pod|cartridge|bottle))?|(?:pouch|pack|pod|cartridge|bottle)\s+refill|replacement\s+(?:pouch|pack|pod|cartridge|bottle)|duo|bundle|kit|set\s+of\s+\d+|value\s+set|jumbo|mini|travel\s+size|\d+(?:\.\d+)?\s*(?:ml|mL|g|oz|fl\.?\s*oz)|(?:dy|ln|mp|mn|lp|dn|md|lt)\s*\d{2,4})\b/i.test(text);
 }
 
 function mergeRecoAlternativeDuplicateRows(existing, incoming) {
@@ -66863,6 +66864,13 @@ function computeRecoAlternativeConcernIntentPenalty(targetSignals, candidateText
   const hasAllowedFamily = Array.from(candidateFamilies).some((family) => targetFamilies.has(family));
   let penalty = 0;
 
+  if (
+    targetRole === 'moisturizer' &&
+    !targetFamilies.has('tone_brightening') &&
+    RECO_ALTERNATIVE_STRONG_TONE_INTENT_RE.test(String(candidateLabel || ''))
+  ) {
+    penalty = Math.max(penalty, 0.3);
+  }
   if (!targetFamilies.has('tone_brightening')) {
     if (RECO_ALTERNATIVE_STRONG_TONE_INTENT_RE.test(String(candidateLabel || ''))) {
       penalty = Math.max(penalty, hasAllowedFamily ? 0.18 : 0.28);
@@ -66883,6 +66891,14 @@ function computeRecoAlternativeConcernIntentPenalty(targetSignals, candidateText
     penalty = 0.08;
   }
   return Math.min(0.3, penalty);
+}
+
+function computeRecoAlternativeSameRoleLabelMatchScore(targetRole, candidateLabel) {
+  const role = String(targetRole || '').trim().toLowerCase();
+  const label = String(candidateLabel || '').trim();
+  if (!role || role === 'unknown' || !label) return 0;
+  if (role === 'sunscreen') return /\b(?:sunscreen|spf|sun\s*(?:screen|cream|fluid|serum)?|uv)\b/i.test(label) ? 1 : 0;
+  return 0;
 }
 
 function applyRecoAlternativeCosmeticFinishPenaltyToRow(row, {
@@ -66975,6 +66991,7 @@ function normalizePoolAlternativeRow(row, {
   const titleActiveMatch = ['serum', 'treatment', 'sunscreen'].includes(targetRole)
     ? computeRecoAlternativeTitleActiveMatchScore(ingredientTokens, candidateLabel)
     : 0;
+  const sameRoleLabelMatch = computeRecoAlternativeSameRoleLabelMatchScore(targetRole, candidateLabel);
   const stableIdBonus = normalized.canonical_product_ref || normalized.product_group_id ? 0.1 : productId ? 0.06 : 0;
   const retrievalBonus = normalized.retrieval_source === 'catalog' ? 0.06 : 0.03;
   const mixedScore = clamp01Score(
@@ -66982,6 +66999,7 @@ function normalizePoolAlternativeRow(row, {
     nameOverlap * 0.14 +
     ingredientOverlap * 0.18 +
     titleActiveMatch * 0.08 +
+    sameRoleLabelMatch * 0.06 +
     claimOverlap * 0.12 +
     textureOverlap * 0.06 +
     stableIdBonus +
@@ -67033,6 +67051,7 @@ function normalizePoolAlternativeRow(row, {
         roleScore >= 0.9 && targetRole && targetRole !== 'unknown'
           ? `Same ${targetRole} step in the Pivota product pool.`
           : '',
+        sameRoleLabelMatch >= 0.9 ? `Names the ${targetRole} role directly.` : '',
         titleActiveMatch >= 0.34 ? 'Names the anchor hero active directly.' : '',
         ingredientOverlap >= 0.34 ? 'Matches key active or ingredient signals from the anchor.' : '',
         claimOverlap >= 0.34 ? 'Overlaps the anchor use case and claims.' : '',
@@ -67062,13 +67081,15 @@ function normalizePoolAlternativeRow(row, {
       compare_stage: 'pool_only',
       retrieval_source: normalized.retrieval_source || null,
       raw_similarity_score: Number(mixedScore.toFixed(3)),
+      ...(sameRoleLabelMatch > 0 ? { same_role_label_match: Number(sameRoleLabelMatch.toFixed(3)) } : {}),
       ...(titleActiveMatch > 0 ? { title_active_match: Number(titleActiveMatch.toFixed(3)) } : {}),
       ...(cosmeticFinishPenalty > 0 ? { cosmetic_finish_penalty: Number(cosmeticFinishPenalty.toFixed(3)) } : {}),
       ...(concernIntentPenalty > 0 ? { concern_intent_penalty: Number(concernIntentPenalty.toFixed(3)) } : {}),
       ...(
-        titleActiveMatch > 0 || cosmeticFinishPenalty > 0 || concernIntentPenalty > 0
+        sameRoleLabelMatch > 0 || titleActiveMatch > 0 || cosmeticFinishPenalty > 0 || concernIntentPenalty > 0
           ? {
               ranking_signals_used: uniqCaseInsensitiveStrings([
+                sameRoleLabelMatch > 0 ? 'same_role_label_match_bonus' : '',
                 titleActiveMatch > 0 ? 'title_active_match_bonus' : '',
                 cosmeticFinishPenalty > 0 ? 'cosmetic_finish_mismatch_penalty' : '',
                 concernIntentPenalty > 0 ? 'concern_intent_mismatch_penalty' : '',
