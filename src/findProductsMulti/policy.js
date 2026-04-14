@@ -4713,6 +4713,15 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
 	      }
       } else if (intent?.primary_domain === 'beauty') {
       const fragranceQueryDetected = hasFragranceQuerySignal(q);
+      const beautyBucket = String(
+        buildBeautyQueryProfile({
+          rawQuery: q,
+          queryClass,
+          intent,
+        })?.bucket || '',
+      )
+        .trim()
+        .toLowerCase();
 	      const wantsSkincare =
 	        /护肤|護膚|skincare|skin\s*care|serum|toner|essence|moisturizer|cleanser|sunscreen|cream/i.test(
 	          q,
@@ -4746,6 +4755,9 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
         if (lang === 'es') extra.push('fragancia', 'perfume');
         if (lang === 'fr') extra.push('parfum', 'fragrance');
         if (lang === 'ja') extra.push('香水', 'フレグランス');
+      } else if (!brandQueryWithoutCategory && ['haircare', 'lip_care', 'bodycare'].includes(beautyBucket)) {
+        // Keep specific beauty category heads literal so public search stays on the category fastpath
+        // instead of drifting into generic makeup expansion.
       } else if (!brandQueryWithoutCategory && wantsSkincare) {
         extra.push('skincare');
         if (wantsSunscreen) {
