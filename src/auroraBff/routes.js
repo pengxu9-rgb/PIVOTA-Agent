@@ -24016,7 +24016,10 @@ async function callGeminiJsonObject({
         ? responseJsonSchema
         : null;
   const normalizedThinkingLevel = String(thinkingLevel || '').trim().toLowerCase();
-  if (normalizedThinkingLevel) {
+  const normalizedRoute = String(route || '').trim();
+  const forceRestExecutor =
+    normalizedRoute === 'aurora_reco_assistant_rewrite';
+  if (normalizedThinkingLevel || forceRestExecutor) {
     return callGeminiJsonObjectViaRest({
       resolvedModel,
       requestedModel,
@@ -24030,7 +24033,7 @@ async function callGeminiJsonObject({
       queueTimeoutMs,
       upstreamTimeoutMs,
       thinkingBudget,
-      thinkingLevel: normalizedThinkingLevel,
+      thinkingLevel: normalizedThinkingLevel || undefined,
     });
   }
   const gemini = getGeminiClient();
@@ -32056,6 +32059,7 @@ async function callStructuredSummaryJson({
         model: effectiveModel,
         json: null,
         raw_text: result && result.raw_text ? String(result.raw_text) : null,
+        selection_source: result?.selection_source || null,
         ...normalizeStructuredSummaryFailure(result, 'openai_json_failed'),
       };
     }
@@ -32069,6 +32073,7 @@ async function callStructuredSummaryJson({
       failure_reason: null,
       failure_detail: null,
       meta: isPlainObject(result?.meta) ? result.meta : null,
+      selection_source: result?.selection_source || null,
     };
   }
 
@@ -32092,6 +32097,7 @@ async function callStructuredSummaryJson({
       model: effectiveModel,
       json: null,
       raw_text: result && result.raw_text ? String(result.raw_text) : null,
+      selection_source: result?.selection_source || null,
       ...normalizeStructuredSummaryFailure(result, 'gemini_json_failed'),
     };
   }
@@ -32105,6 +32111,7 @@ async function callStructuredSummaryJson({
     failure_reason: null,
     failure_detail: null,
     meta: isPlainObject(result?.meta) ? result.meta : null,
+    selection_source: result?.selection_source || null,
   };
 }
 
@@ -52474,6 +52481,7 @@ async function maybeRewriteRecoAssistantTextWithLlm({
           reason: pickFirstTrimmed(fields.reason) || null,
           provider: pickFirstTrimmed(fields.provider) || null,
           model: pickFirstTrimmed(fields.model) || null,
+          selection_source: pickFirstTrimmed(fields.selection_source) || null,
           parse_status: pickFirstTrimmed(fields.parse_status) || null,
           timeout_stage: pickFirstTrimmed(fields.timeout_stage, resultMeta.timeout_stage) || null,
           gate_wait_ms: Number.isFinite(Number(resultMeta.gate_wait_ms))
@@ -52520,6 +52528,7 @@ async function maybeRewriteRecoAssistantTextWithLlm({
           reason: result && result.failure_reason ? result.failure_reason : 'empty_rewrite',
           provider: result?.provider || null,
           model: result?.model || null,
+          selection_source: result?.selection_source || null,
           parse_status: parseStatus,
           timeout_stage: result?.timeout_stage || null,
           meta: result?.meta || null,
@@ -52547,6 +52556,7 @@ async function maybeRewriteRecoAssistantTextWithLlm({
           reason: validation.reason,
           provider: result?.provider || null,
           model: result?.model || null,
+          selection_source: result?.selection_source || null,
           parse_status: parseStatus,
           timeout_stage: result?.timeout_stage || null,
           meta: result?.meta || null,
@@ -52565,6 +52575,7 @@ async function maybeRewriteRecoAssistantTextWithLlm({
         reason: null,
         provider: result.provider || null,
         model: result.model || null,
+        selection_source: result?.selection_source || null,
         parse_status: parseStatus,
         timeout_stage: result?.timeout_stage || null,
         meta: result?.meta || null,

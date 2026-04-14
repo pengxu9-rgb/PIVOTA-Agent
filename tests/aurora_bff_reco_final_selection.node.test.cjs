@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const Module = require('node:module');
 
 process.env.AURORA_BFF_USE_MOCK = 'true';
 process.env.AURORA_DECISION_BASE_URL = '';
@@ -503,6 +504,125 @@ test('reco assistant rewrite skips minimal thinking for same-role use comparison
     else process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = prevProvider;
     if (prevModel === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
     else process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = prevModel;
+    delete require.cache[moduleId];
+  }
+});
+
+test('reco assistant rewrite uses REST executor for same-role use comparisons without minimal thinking', async () => {
+  const prevMock = process.env.AURORA_BFF_USE_MOCK;
+  const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+  const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+  const prevGeminiKey = process.env.AURORA_VISION_GEMINI_API_KEY;
+  const originalFetch = global.fetch;
+  const originalLoad = Module._load;
+  let capturedUrl = '';
+  let capturedInit = null;
+
+  process.env.AURORA_BFF_USE_MOCK = 'false';
+  process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = 'gemini';
+  process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = 'gemini-3-flash-preview';
+  process.env.AURORA_VISION_GEMINI_API_KEY = 'test-gemini-key';
+
+  global.fetch = async (url, init = {}) => {
+    capturedUrl = String(url || '');
+    capturedInit = init;
+    return {
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => ({
+        candidates: [
+          {
+            finishReason: 'STOP',
+            content: {
+              parts: [
+                {
+                  text: JSON.stringify({
+                    assistant_text:
+                      'KraveBeauty Great Barrier Relief is the best starting point because it supports your barrier without a heavy finish, while Soothing Serum is a lighter same-step option.',
+                  }),
+                },
+              ],
+            },
+          },
+        ],
+      }),
+    };
+  };
+  Module._load = function patchedLoad(request, parent, isMain) {
+    if (request === '@google/genai') {
+      throw new Error('Reco assistant rewrite should not use the Gemini SDK executor');
+    }
+    return originalLoad.call(this, request, parent, isMain);
+  };
+
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'barrier_pick_1',
+            display_name: 'KraveBeauty Great Barrier Relief',
+            brand: 'KraveBeauty',
+            category: 'Serum',
+            matched_role_id: 'barrier_moisturizer',
+            role_scope: 'barrier_moisturizer',
+          },
+          {
+            product_id: 'barrier_pick_2',
+            display_name: 'Soothing Serum',
+            brand: 'Haruharu Wonder',
+            category: 'Serum',
+            matched_role_id: 'barrier_moisturizer',
+            role_scope: 'barrier_moisturizer',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'moisturizer',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Barrier moisturizer',
+        resolved_target_step: 'moisturizer',
+        primary_target_id: 'barrier_moisturizer',
+        ranked_targets: [
+          {
+            target_id: 'barrier_moisturizer',
+            ingredient_query: 'Barrier moisturizer',
+            resolved_target_step: 'moisturizer',
+          },
+        ],
+        selected_target_ids: ['barrier_moisturizer'],
+      },
+    );
+
+    const rewrite = await __internal.maybeRewriteRecoAssistantTextWithLlm({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'sensitive', goals: ['barrier support'] },
+      userRequestText: 'What should I use first for retinoid dryness?',
+      allowLockedSelectionRewrite: true,
+    });
+
+    assert.equal(rewrite.llm_used, true);
+    assert.match(capturedUrl, /generativelanguage\.googleapis\.com\/v1beta\/models\/gemini-3-flash-preview:generateContent/);
+    assert.equal(capturedInit?.method, 'POST');
+    assert.ok(capturedInit?.signal, 'REST executor should carry an abort signal');
+    assert.equal(rewrite.attempts?.[0]?.thinking_level ?? null, null);
+    assert.equal(rewrite.attempts?.[0]?.selection_source, 'local_gemini_rest_direct');
+  } finally {
+    global.fetch = originalFetch;
+    Module._load = originalLoad;
+    if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
+    else process.env.AURORA_BFF_USE_MOCK = prevMock;
+    if (prevProvider === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = prevProvider;
+    if (prevModel === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = prevModel;
+    if (prevGeminiKey === undefined) delete process.env.AURORA_VISION_GEMINI_API_KEY;
+    else process.env.AURORA_VISION_GEMINI_API_KEY = prevGeminiKey;
     delete require.cache[moduleId];
   }
 });
