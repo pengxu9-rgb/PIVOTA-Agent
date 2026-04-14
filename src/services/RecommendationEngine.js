@@ -1148,6 +1148,16 @@ function pickLayeredRecommendations({
       priority: 4,
       predicate: (c) => c.tokenOverlap >= 0.18,
     },
+    {
+      id: 'L5',
+      name: 'same_vertical_token_overlap',
+      priority: 5,
+      predicate: (c, features, baseFeatures) =>
+        baseFeatures.vertical !== UNKNOWN_VERTICAL &&
+        features.vertical !== UNKNOWN_VERTICAL &&
+        baseFeatures.vertical === features.vertical &&
+        c.tokenOverlap >= 0.12,
+    },
   ];
 
   const layerById = Object.fromEntries(layers.map((layer) => [layer.id, layer]));

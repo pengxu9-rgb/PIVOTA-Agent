@@ -359,6 +359,38 @@ describe('RecommendationEngine (PDP)', () => {
     expect(out.items.every((p) => (_internals.getLeafCategory(p) || '').includes('sweater'))).toBe(true);
   });
 
+  test('allows same-vertical token-overlap candidates when stricter layers underfill', () => {
+    const base = makeProduct({
+      merchant_id: 'merch_winona',
+      product_id: 'BASE_WINONA',
+      title: 'Winona Soothing Repair Serum',
+      brand: 'Winona',
+      category_path: ['Beauty', 'Serum'],
+      price: 29,
+    });
+
+    const internal = [
+      makeProduct({
+        merchant_id: 'merch_other',
+        product_id: 'OTHER_BARRIER',
+        title: 'Moisturizer',
+        brand: 'OtherBrand',
+        category_path: ['Beauty', 'Cream'],
+        price: 55,
+      }),
+    ];
+
+    const out = pickLayeredRecommendations({
+      baseProduct: base,
+      internalCandidates: internal,
+      externalCandidates: [],
+      k: 3,
+    });
+
+    expect(out.items.map((item) => item.product_id)).toEqual(['OTHER_BARRIER']);
+    expect(out.items[0].reason).toBe('L5:internal:same_vertical_token_overlap');
+  });
+
   test('d) cold product stays empty when there are no confident direct matches', () => {
     const base = makeProduct({
       merchant_id: 'merch_store',
