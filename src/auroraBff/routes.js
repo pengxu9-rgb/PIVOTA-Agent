@@ -23396,6 +23396,18 @@ async function callGeminiJsonObjectViaRest({
     const gate = getGeminiGlobalGate();
     const startedAt = Date.now();
     let upstreamStartedAt = startedAt;
+    const buildGeminiUpstreamTimeoutError = () => {
+      const now = Date.now();
+      const err = new Error(`GEMINI_UPSTREAM_TIMEOUT after ${timeoutBudget.upstream_timeout_ms}ms`);
+      err.code = 'GEMINI_UPSTREAM_TIMEOUT';
+      err.timeout_stage = 'upstream';
+      err.meta = {
+        gate_wait_ms: Math.max(0, upstreamStartedAt - startedAt),
+        upstream_ms: Math.max(0, now - upstreamStartedAt),
+        total_ms: Math.max(0, now - startedAt),
+      };
+      return err;
+    };
     const totalTimeoutMs = Math.max(
       1,
       Number(timeoutBudget.queue_timeout_ms || 0) + Number(timeoutBudget.upstream_timeout_ms || 0),
@@ -23404,18 +23416,58 @@ async function callGeminiJsonObjectViaRest({
       route,
       async () => {
         upstreamStartedAt = Date.now();
-        return await withTimeout(
-          fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent`, {
-            method: 'POST',
-            headers: {
-              'content-type': 'application/json',
-              'x-goog-api-key': apiKey,
-            },
-            body: JSON.stringify(requestBody),
-          }),
-          timeoutBudget.upstream_timeout_ms,
-          'GEMINI_UPSTREAM_TIMEOUT',
-        );
+        const controller =
+          typeof AbortController === 'function' && Number(timeoutBudget.upstream_timeout_ms || 0) > 0
+            ? new AbortController()
+            : null;
+        const timer = controller
+          ? setTimeout(() => controller.abort(), timeoutBudget.upstream_timeout_ms)
+          : null;
+        try {
+          const response = controller
+            ? await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent`,
+              {
+                method: 'POST',
+                headers: {
+                  'content-type': 'application/json',
+                  'x-goog-api-key': apiKey,
+                },
+                body: JSON.stringify(requestBody),
+                signal: controller.signal,
+              },
+            ).catch((err) => {
+              if (err && err.name === 'AbortError') throw buildGeminiUpstreamTimeoutError();
+              throw err;
+            })
+            : await withTimeout(
+              fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent`, {
+                method: 'POST',
+                headers: {
+                  'content-type': 'application/json',
+                  'x-goog-api-key': apiKey,
+                },
+                body: JSON.stringify(requestBody),
+              }),
+              timeoutBudget.upstream_timeout_ms,
+              'GEMINI_UPSTREAM_TIMEOUT',
+            );
+          let responseBody = null;
+          try {
+            responseBody = await response.json();
+          } catch (err) {
+            if (controller && err && err.name === 'AbortError') throw buildGeminiUpstreamTimeoutError();
+            responseBody = null;
+          }
+          return {
+            ok: Boolean(response && response.ok),
+            status: Number(response && response.status) || 0,
+            statusText: response && response.statusText ? String(response.statusText) : '',
+            responseBody,
+          };
+        } finally {
+          if (timer) clearTimeout(timer);
+        }
       },
       { queueTimeoutMs: timeoutBudget.queue_timeout_ms || totalTimeoutMs },
     );
@@ -23440,14 +23492,14 @@ async function callGeminiJsonObjectViaRest({
     const totalMs = Math.max(0, finishedAt - startedAt);
     const upstreamMs = Math.max(0, finishedAt - upstreamStartedAt);
     const gateWaitMs = Math.max(0, totalMs - upstreamMs);
-    const responseBody = await response.json().catch(() => null);
-    if (!response.ok) {
+    const responseBody = response && typeof response === 'object' ? response.responseBody : null;
+    if (!response || response.ok !== true) {
       const detailMessage =
         pickFirstTrimmed(
           responseBody?.error?.message,
           responseBody?.error?.status,
-          response.statusText,
-        ) || `status=${response.status}`;
+          response?.statusText,
+        ) || `status=${response?.status || 0}`;
       const failedMeta = normalizeQaTimeoutMeta(
         {
           gate_wait_ms: gateWaitMs,
