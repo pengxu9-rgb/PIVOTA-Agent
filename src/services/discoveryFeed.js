@@ -4980,8 +4980,10 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
       ? Math.min(safeLimit, Math.max(requestedLimit * 2, 24, cursorQualifiedTarget))
       : summaryThreshold;
     let compoundExactStageSatisfiedCurrentPage = false;
+    let explicitNarrowTitleStageSatisfied = false;
     const shouldStopStages = () =>
       compoundExactStageSatisfiedCurrentPage ||
+      explicitNarrowTitleStageSatisfied ||
       stagedRows.length >= (compoundIntent ? qualifiedTarget : summaryThreshold);
     const appendRows = (rows = [], stage = 'unknown') => {
       const metrics = {
@@ -5041,6 +5043,9 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
         stagedRows.length >= currentPageCoverageTarget
       ) {
         compoundExactStageSatisfiedCurrentPage = true;
+      }
+      if (!compoundIntent && skipBroadStructuredStages && stage === 'recall_title' && stagedRows.length > 0) {
+        explicitNarrowTitleStageSatisfied = true;
       }
     };
     const runStage = async ({ buildWhereSql, score, stage, cap }) => {
@@ -5868,9 +5873,14 @@ async function loadCatalogCandidates({
   const externalSkipReason = useBeautyInterestMainline
     ? 'beauty_interest_mainline_primary_used'
     : 'sufficient_primary_candidates';
+  const explicitNarrowQueryMainline = shouldSkipBroadStructuredSeedStagesForExplicitQuery(request, {
+    compoundIntent,
+  });
 
   if (explicitQueryScoped) {
     if (compoundIntent) {
+      await fetchExternalSeedProviderResult();
+    } else if (explicitNarrowQueryMainline) {
       await fetchExternalSeedProviderResult();
     } else {
       const [productsSearchResult, externalSeedResult] = await Promise.all([
@@ -5885,6 +5895,21 @@ async function loadCatalogCandidates({
       candidateSource = 'external_seed_compound_intent';
       primaryPathUsed = 'external_seed_compound_intent';
       pushSkippedInternalProviderResult('explicit_compound_external_seed_mainline');
+      return finalizeProviderResult();
+    }
+
+    if (explicitNarrowQueryMainline && mergedProducts.length > 0) {
+      candidateSource = 'external_seed_narrow_query';
+      primaryPathUsed = 'external_seed_narrow_query';
+      providerResults.push(
+        buildSkippedProviderResult('products_search', {
+          label: getProviderLabel('products_search'),
+          query: providerQueries.join(' | '),
+          limit: safeLimit,
+          skipReason: 'explicit_narrow_external_seed_mainline',
+        }),
+      );
+      pushSkippedInternalProviderResult('explicit_narrow_external_seed_mainline');
       return finalizeProviderResult();
     }
 
