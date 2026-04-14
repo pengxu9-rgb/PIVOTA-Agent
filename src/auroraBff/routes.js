@@ -23412,48 +23412,63 @@ async function callGeminiJsonObjectViaRest({
       1,
       Number(timeoutBudget.queue_timeout_ms || 0) + Number(timeoutBudget.upstream_timeout_ms || 0),
     );
+    const isGeminiRestTransportTimeout = (err) => {
+      const code = String(err?.code || '').toUpperCase();
+      const name = String(err?.name || '').toLowerCase();
+      return (
+        code === 'GEMINI_UPSTREAM_TIMEOUT' ||
+        code === 'ECONNABORTED' ||
+        code === 'ETIMEDOUT' ||
+        code === 'ERR_CANCELED' ||
+        name === 'aborterror' ||
+        name === 'cancelederror' ||
+        (typeof axios.isCancel === 'function' && axios.isCancel(err))
+      );
+    };
     const gatePromise = gate.withGate(
       route,
       async () => {
         upstreamStartedAt = Date.now();
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent`;
+        const upstreamTimeoutMs = Math.max(1, Math.trunc(Number(timeoutBudget.upstream_timeout_ms || 0) || 1));
         const controller =
-          typeof AbortController === 'function' && Number(timeoutBudget.upstream_timeout_ms || 0) > 0
+          typeof AbortController === 'function' && upstreamTimeoutMs > 0
             ? new AbortController()
             : null;
         const timer = controller
-          ? setTimeout(() => controller.abort(), timeoutBudget.upstream_timeout_ms)
+          ? setTimeout(() => controller.abort(), upstreamTimeoutMs)
           : null;
         try {
-          const response = await axios.post(url, requestBody, {
+          const requestPromise = axios.post(url, requestBody, {
+            adapter: 'http',
             headers: {
               'content-type': 'application/json',
               'x-goog-api-key': apiKey,
             },
-            timeout: Math.max(1, Math.trunc(Number(timeoutBudget.upstream_timeout_ms || 0) || 1)),
+            timeout: upstreamTimeoutMs,
             signal: controller ? controller.signal : undefined,
+            responseType: 'text',
+            transformResponse: [(data) => data],
             validateStatus: () => true,
             transitional: { clarifyTimeoutError: true },
-          }).catch((err) => {
-            const code = String(err?.code || '').toUpperCase();
-            const name = String(err?.name || '').toLowerCase();
-            if (
-              code === 'ECONNABORTED' ||
-              code === 'ETIMEDOUT' ||
-              code === 'ERR_CANCELED' ||
-              name === 'aborterror' ||
-              name === 'cancelederror' ||
-              (typeof axios.isCancel === 'function' && axios.isCancel(err))
-            ) {
-              throw buildGeminiUpstreamTimeoutError();
-            }
-            throw err;
           });
+          const response = await withTimeout(requestPromise, upstreamTimeoutMs, 'GEMINI_UPSTREAM_TIMEOUT')
+            .catch((err) => {
+              if (isGeminiRestTransportTimeout(err)) {
+                if (controller) controller.abort();
+                throw buildGeminiUpstreamTimeoutError();
+              }
+              throw err;
+            });
+          if (timer) clearTimeout(timer);
           let responseBody = null;
           if (response && typeof response.data === 'string') {
             try {
               responseBody = JSON.parse(response.data);
-            } catch {
+            } catch (err) {
+              if (controller && isGeminiRestTransportTimeout(err)) {
+                throw buildGeminiUpstreamTimeoutError();
+              }
               responseBody = null;
             }
           } else if (response && response.data && typeof response.data === 'object') {
@@ -23465,6 +23480,12 @@ async function callGeminiJsonObjectViaRest({
             statusText: response && response.statusText ? String(response.statusText) : '',
             responseBody,
           };
+        } catch (err) {
+          if (isGeminiRestTransportTimeout(err)) {
+            if (controller) controller.abort();
+            throw buildGeminiUpstreamTimeoutError();
+          }
+          throw err;
         } finally {
           if (timer) clearTimeout(timer);
         }

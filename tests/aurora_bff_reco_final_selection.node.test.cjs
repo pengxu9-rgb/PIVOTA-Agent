@@ -616,9 +616,12 @@ test('reco assistant rewrite uses REST executor for same-role use comparisons wi
 
     assert.equal(rewrite.llm_used, true);
     assert.match(capturedUrl, /generativelanguage\.googleapis\.com\/v1beta\/models\/gemini-3-flash-preview:generateContent/);
+    assert.equal(capturedConfig?.adapter, 'http');
     assert.equal(capturedConfig?.headers?.['x-goog-api-key'], 'test-gemini-key');
     assert.ok(capturedConfig?.signal, 'REST executor should carry an abort signal');
     assert.ok(Number(capturedConfig?.timeout) > 0, 'REST executor should carry an axios timeout');
+    assert.equal(capturedConfig?.responseType, 'text');
+    assert.ok(Array.isArray(capturedConfig?.transformResponse), 'REST executor should disable automatic JSON transform');
     assert.equal(capturedBody?.generationConfig?.thinkingConfig?.thinkingLevel, 'minimal');
     assert.equal(rewrite.attempts?.[0]?.thinking_level, 'minimal');
     assert.equal(rewrite.attempts?.[0]?.selection_source, 'local_gemini_rest_direct');
