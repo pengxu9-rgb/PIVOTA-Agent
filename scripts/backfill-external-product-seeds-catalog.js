@@ -2,6 +2,8 @@
 
 const crypto = require('node:crypto');
 const fs = require('node:fs');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const axios = require('axios');
 const { query, withClient } = require('../src/db');
 const { lookupExternalSeedImageOverride } = require('../src/services/externalSeedImageOverrides');
@@ -304,9 +306,19 @@ function sanitizeSeedImageUrls(values) {
 }
 
 function shouldMergeProductGalleryForSelectedVariant(selectedVariantImageUrls, productImageUrls) {
-  if (!Array.isArray(selectedVariantImageUrls) || selectedVariantImageUrls.length !== 1) return false;
-  if (!Array.isArray(productImageUrls) || productImageUrls.length <= 1) return false;
-  return normalizeComparableImageKey(selectedVariantImageUrls[0]) === normalizeComparableImageKey(productImageUrls[0]);
+  const selectedKeys = uniqueStrings(
+    (Array.isArray(selectedVariantImageUrls) ? selectedVariantImageUrls : [])
+      .map(normalizeComparableImageKey)
+      .filter(Boolean),
+  );
+  const productKeys = uniqueStrings(
+    (Array.isArray(productImageUrls) ? productImageUrls : [])
+      .map(normalizeComparableImageKey)
+      .filter(Boolean),
+  );
+  if (selectedKeys.length === 0 || productKeys.length <= selectedKeys.length) return false;
+  if (selectedKeys.length === 1) return selectedKeys[0] === productKeys[0];
+  return selectedKeys.every((key) => productKeys.includes(key));
 }
 
 function normalizeDetailSectionHeading(value) {
@@ -1465,6 +1477,135 @@ async function mapWithConcurrency(items, concurrency, fn) {
   return results;
 }
 
+function collectBackfilledExternalProductIds(results, { includeDryRun = false } = {}) {
+  const allowStatuses = includeDryRun ? new Set(['updated', 'dry_run']) : new Set(['updated']);
+  return uniqueStrings(
+    (Array.isArray(results) ? results : [])
+      .filter((result) => result && allowStatuses.has(result.status))
+      .flatMap((result) => [
+        result?.row?.external_product_id,
+        result?.payload?.nextRow?.external_product_id,
+        result?.payload?.nextRow?.seed_data?.external_product_id,
+        ...(Array.isArray(result?.payload?.variant_seed_rows)
+          ? result.payload.variant_seed_rows.map((row) => row?.external_product_id)
+          : []),
+      ]),
+  );
+}
+
+async function filterProductIdsMissingPivotaInsights(productIds) {
+  const ids = uniqueStrings(productIds);
+  if (ids.length === 0) return { missing_product_ids: [], check_error: null };
+
+  try {
+    const keys = ids.map((id) => `product:${id}`);
+    const res = await query(
+      `
+        SELECT kb_key
+        FROM aurora_product_intel_kb
+        WHERE kb_key = ANY($1::text[])
+          AND last_error IS NULL
+          AND (
+            analysis ? 'product_intel_v1'
+            OR analysis ? 'product_intel'
+          )
+      `,
+      [keys],
+    );
+    const covered = new Set(
+      (res.rows || [])
+        .map((row) => normalizeNonEmptyString(row?.kb_key).replace(/^product:/, ''))
+        .filter(Boolean),
+    );
+    return {
+      missing_product_ids: ids.filter((id) => !covered.has(id)),
+      check_error: null,
+    };
+  } catch (error) {
+    return {
+      missing_product_ids: ids,
+      check_error: normalizeNonEmptyString(error?.message || error),
+    };
+  }
+}
+
+function runPivotaInsightsCoverageForProductIds(productIds, options = {}) {
+  const ids = uniqueStrings(productIds);
+  if (ids.length === 0) {
+    return { status: 'skipped', reason: 'no_missing_products', product_ids: [] };
+  }
+
+  const rootDir = path.resolve(__dirname, '..');
+  const generatedAt = new Date().toISOString().replace(/[:.]/g, '-');
+  const outDir = normalizeNonEmptyString(options.outDir) ||
+    path.join(rootDir, 'reports', 'pivota-insights-backfill', generatedAt);
+  const args = [
+    path.join(rootDir, 'scripts', 'pivota_insights_coverage_batch.js'),
+    '--product-ids',
+    ids.join(','),
+    '--out-dir',
+    outDir,
+  ];
+  if (options.skipGemini) args.push('--skip-gemini');
+
+  const child = spawnSync(process.execPath, args, {
+    cwd: rootDir,
+    env: process.env,
+    encoding: 'utf8',
+    maxBuffer: 20 * 1024 * 1024,
+  });
+  const stdout = normalizeNonEmptyString(child.stdout);
+  const stderr = normalizeNonEmptyString(child.stderr);
+  if (child.status !== 0) {
+    return {
+      status: 'failed',
+      product_ids: ids,
+      out_dir: outDir,
+      exit_code: child.status,
+      error: stderr || stdout || 'pivota_insights_coverage_failed',
+    };
+  }
+
+  let parsed = null;
+  try {
+    parsed = stdout ? JSON.parse(stdout) : null;
+  } catch {
+    parsed = null;
+  }
+
+  return {
+    status: 'ok',
+    product_ids: ids,
+    out_dir: outDir,
+    result: parsed || stdout,
+  };
+}
+
+async function preparePivotaInsightsForBackfill(results, options = {}) {
+  if (options.dryRun) return { status: 'skipped', reason: 'dry_run' };
+  if (options.skipInsights) return { status: 'skipped', reason: 'skip_insights' };
+
+  const productIds = collectBackfilledExternalProductIds(results);
+  const missingCheck = await filterProductIdsMissingPivotaInsights(productIds);
+  if (missingCheck.missing_product_ids.length === 0) {
+    return {
+      status: 'skipped',
+      reason: 'already_covered',
+      product_ids: productIds,
+      check_error: missingCheck.check_error,
+    };
+  }
+
+  return {
+    ...runPivotaInsightsCoverageForProductIds(missingCheck.missing_product_ids, {
+      outDir: options.insightsOutDir,
+      skipGemini: options.insightsSkipGemini,
+    }),
+    checked_product_ids: productIds,
+    check_error: missingCheck.check_error,
+  };
+}
+
 async function main() {
   const limit = Math.max(1, Math.min(Number(argValue('limit') || 50), 1000));
   const offset = Math.max(0, Number(argValue('offset') || 0));
@@ -1489,6 +1630,9 @@ async function main() {
     concurrency,
     dryRun: hasFlag('dry-run') || hasFlag('dryRun'),
     expandVariants: hasFlag('expand-variants') || hasFlag('expandVariants'),
+    skipInsights: hasFlag('skip-insights') || hasFlag('skipInsights'),
+    insightsOutDir: argValue('insights-out-dir') || argValue('insightsOutDir') || '',
+    insightsSkipGemini: hasFlag('insights-skip-gemini') || hasFlag('insightsSkipGemini'),
     baseUrl: DEFAULT_CATALOG_BASE_URL,
   };
 
@@ -1508,6 +1652,12 @@ async function main() {
     ),
   };
   console.log(JSON.stringify(summary, null, 2));
+
+  const insightsCoverage = await preparePivotaInsightsForBackfill(results, options);
+  console.log(JSON.stringify({ pivota_insights: insightsCoverage }, null, 2));
+  if (insightsCoverage.status === 'failed') {
+    process.exitCode = 1;
+  }
 
   if (summary.failed > 0) {
     const failed = results
@@ -1544,4 +1694,8 @@ module.exports = {
   normalizeTargetUrlForMarket,
   recoverTargetUrlFromDiagnostics,
   sanitizeSeedImageUrls,
+  collectBackfilledExternalProductIds,
+  filterProductIdsMissingPivotaInsights,
+  preparePivotaInsightsForBackfill,
+  runPivotaInsightsCoverageForProductIds,
 };

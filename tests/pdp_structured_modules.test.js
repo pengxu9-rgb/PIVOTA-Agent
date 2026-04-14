@@ -181,6 +181,48 @@ describe('pdpBuilder structured PDP modules', () => {
     expect(findModule(payload, 'product_details')).toBeFalsy();
   });
 
+  test('does not render captured external seed narrative as generic details or facts', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_boj_text_soup',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Daily Tinted Fluid Sunscreen DN350',
+        category: 'Sunscreen',
+        image_url: 'https://cdn.example.com/daily-tinted.jpg',
+        price: { amount: 10, currency: 'USD' },
+        pdp_description_raw: [
+          'Rice-Infused Hydration',
+          'This formula helps hydrate.',
+          '',
+          'Secret Sebum-Control Layer',
+          'The fluid helps control sebum.',
+          '',
+          'How to Use',
+          'Shake well and apply as the last skincare step.',
+        ].join('\n'),
+        pdp_details_sections: [
+          { heading: 'Rice-Infused Hydration', body: 'This formula helps hydrate.', source_kind: 'custom_pdp' },
+          { heading: 'Secret Sebum-Control Layer', body: 'The fluid helps control sebum.', source_kind: 'custom_pdp' },
+          { heading: 'How to Use', body: 'Shake well and apply as the last skincare step.', source_kind: 'custom_pdp' },
+          { heading: 'Clinical Results', body: 'User test results after two weeks.', source_kind: 'custom_pdp' },
+        ],
+        pdp_how_to_use_raw: 'Shake well and apply as the last skincare step.',
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    expect(payload.product.description).toBe('');
+    expect(findModule(payload, 'product_details')).toBeFalsy();
+    expect(findModule(payload, 'product_facts')).toBeFalsy();
+    expect(findModule(payload, 'how_to_use')?.data).toEqual(
+      expect.objectContaining({
+        raw_text: 'Shake well and apply as the last skincare step.',
+      }),
+    );
+  });
+
   test('merges merchant FAQ and review-derived questions into reviews preview', () => {
     const payload = buildPdpPayload({
       product: {
