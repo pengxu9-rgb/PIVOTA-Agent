@@ -36,6 +36,14 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
         process.env.FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE,
       STRICT_FIND_PRODUCTS_MULTI_AUTO_CONSTRAINT_ENABLED:
         process.env.STRICT_FIND_PRODUCTS_MULTI_AUTO_CONSTRAINT_ENABLED,
+      UPSTREAM_RETRY_FIND_PRODUCTS_MULTI_ON_TIMEOUT:
+        process.env.UPSTREAM_RETRY_FIND_PRODUCTS_MULTI_ON_TIMEOUT,
+      FIND_PRODUCTS_MULTI_UPSTREAM_LOOKUP_TIMEOUT_MS:
+        process.env.FIND_PRODUCTS_MULTI_UPSTREAM_LOOKUP_TIMEOUT_MS,
+      FIND_PRODUCTS_MULTI_UPSTREAM_DEFAULT_TIMEOUT_MS:
+        process.env.FIND_PRODUCTS_MULTI_UPSTREAM_DEFAULT_TIMEOUT_MS,
+      UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS:
+        process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS,
     };
 
     process.env.PIVOTA_API_BASE = 'http://pivota.test';
@@ -394,6 +402,72 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
         ]),
       }),
     );
+  });
+
+  test('public search category uses a single-pass upstream timeout without timeout retry', async () => {
+    process.env.UPSTREAM_RETRY_FIND_PRODUCTS_MULTI_ON_TIMEOUT = 'true';
+    process.env.FIND_PRODUCTS_MULTI_UPSTREAM_LOOKUP_TIMEOUT_MS = '3500';
+    process.env.FIND_PRODUCTS_MULTI_UPSTREAM_DEFAULT_TIMEOUT_MS = '4500';
+    process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS = '6500';
+
+    const primaryScope = nock('http://pivota.test')
+      .post('/agent/v2/products/search')
+      .query((query) => {
+        return (
+          String(query.search_all_merchants || '') === 'true' &&
+          String(query.query || '') === 'hair oil' &&
+          String(query.allow_external_seed || '') === 'true' &&
+          String(query.external_seed_strategy || '') === 'unified_relevance'
+        );
+      })
+      .delay(4000)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_hair_oil_1',
+            source: 'external_seed',
+            title: 'Repair Hair Oil',
+          },
+        ],
+        total: 1,
+        metadata: {
+          query_source: 'agent_products_v2',
+        },
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'hair oil',
+            limit: 6,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'search',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(primaryScope.isDone()).toBe(true);
+    expect(resp.body.products).toHaveLength(1);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'ext_hair_oil_1',
+        merchant_id: 'external_seed',
+      }),
+    );
+    expect(resp.body.metadata?.semantic_retry_applied).not.toBe(true);
+    expect(resp.body.metadata?.fallback_route).toBeFalsy();
+    expect(resp.body.metadata?.route_health?.primary_latency_ms).toBeGreaterThanOrEqual(4000);
+    expect(resp.body.metadata?.route_health?.primary_latency_ms).toBeLessThan(7000);
   });
 
   test('public search low-quality category hits fail strict-empty without semantic-retry clarification', async () => {
