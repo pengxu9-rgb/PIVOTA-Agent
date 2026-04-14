@@ -19,9 +19,13 @@ const {
   buildShoppingCardPayload: buildServiceShoppingCardPayload,
 } = require('../src/services/pivotaShoppingCard');
 
+const GEMINI_PRIMARY_MODEL = 'gemini-3-flash-preview';
+const GEMINI_UPGRADE_MODEL = 'gemini-3.1-pro-preview';
+const GEMINI_SIMULATED_HUMAN_REWRITE_MODEL = 'simulated_human_rewrite';
+
 const GEMINI_MODEL_DEFAULTS = [
-  'gemini-3.1-pro-preview',
-  'gemini-3-flash-preview',
+  GEMINI_PRIMARY_MODEL,
+  GEMINI_UPGRADE_MODEL,
   'gemini-3-pro-preview',
   'gemini-2.5-flash',
   'gemini-2.0-flash',
@@ -89,6 +93,43 @@ function parseGeminiModelList(rawModel) {
   }
 
   return list;
+}
+
+function normalizeGeminiModel(rawModel) {
+  return asString(rawModel).toLowerCase().replace(/^models\//, '');
+}
+
+function buildGeminiModelCallUrl(model) {
+  return `${geminiBaseUrl()}/v1beta/models/${encodeURIComponent(normalizeGeminiModel(model))}:generateContent?key=${encodeURIComponent(geminiApiKey())}`;
+}
+
+async function invokeGeminiDraft(model, prompt) {
+  const response = await axios.post(
+    buildGeminiModelCallUrl(model),
+    {
+      systemInstruction: {
+        parts: [
+          {
+            text: 'You are a strict JSON generator. Output JSON only. No markdown, no extra keys, no prose.',
+          },
+        ],
+      },
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: 0,
+        responseMimeType: 'application/json',
+      },
+    },
+    { timeout: 45000 },
+  );
+
+  const text =
+    response?.data?.candidates?.[0]?.content?.parts
+      .map((part) => part?.text)
+      .filter(Boolean)
+      .join('\n') || '';
+
+  return normalizeGeminiDraftOutput(extractJsonObject(text));
 }
 
 function extractModelError(err) {
@@ -671,60 +712,320 @@ function normalizeGeminiDraftOutput(output) {
   };
 }
 
+function buildSimulatedHumanRewriteOutput(caseRow, baselineBundle, geminiOutput) {
+  if (!baselineBundle || !geminiOutput) return null;
+  const caseId = asString(caseRow?.case_id);
+  const baselineCore = baselineBundle.product_intel_core || {};
+  const baselineCommunity = baselineBundle.community_signals || {};
+  const geminiCore = geminiOutput.product_intel_core || {};
+  const geminiCommunity = geminiOutput.community_signals || {};
+  const baseRoutine = baselineCore.routine_fit || {};
+  const rewriteRoutine = geminiCore.routine_fit || {};
+  const baselineBody = asString(baselineCore.what_it_is?.body);
+  const baselineHeadline = asString(baselineCore.what_it_is?.headline);
+  const rewrittenBody = asString(geminiCore.what_it_is?.body).length >= 24
+    ? asString(geminiCore.what_it_is?.body)
+    : baselineBody;
+  const rewrittenHeadline = asString(geminiCore.what_it_is?.headline).length >= 10
+    ? asString(geminiCore.what_it_is?.headline)
+    : baselineHeadline || PIVOTA_INSIGHTS_DISPLAY_NAME;
+
+  const bestForFromGemini = toList(geminiCore.best_for)
+    .map((item) => {
+      const label = asString(item?.label);
+      if (!label) return null;
+      return {
+        tag: asString(item?.tag) || label.toLowerCase().replace(/\s+/g, '_').slice(0, 80),
+        label: label.slice(0, 120),
+        confidence: asString(item?.confidence) || 'moderate',
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 4);
+  const bestForFallback = toList(baselineCore.best_for)
+    .map((item) => ({
+      tag: asString(item?.tag) || asString(item?.label).toLowerCase().replace(/\s+/g, '_').slice(0, 80),
+      label: asString(item?.label).slice(0, 120),
+      confidence: asString(item?.confidence) || 'moderate',
+    }))
+    .filter((item) => item.label)
+    .slice(0, 4);
+
+  const highlightsFromGemini = toList(geminiCore.why_it_stands_out)
+    .map((item) => {
+      const headline = asString(item?.headline);
+      const body = asString(item?.body);
+      if (!headline || !body) return null;
+      if (headline.length < 8 || body.length < 20) return null;
+      if (isLowSignalSellerHighlightText(`${headline} ${body}`)) return null;
+      if (isGenericSellerHighlightText(`${headline} ${body}`)) return null;
+      return {
+        headline: headline.slice(0, 80),
+        body: body.slice(0, 220),
+        evidence_strength: ['strong', 'moderate', 'limited', 'uncertain'].includes(
+          asString(item?.evidence_strength).toLowerCase(),
+        )
+          ? asString(item?.evidence_strength).toLowerCase()
+          : 'moderate',
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 4);
+  const highlightsFallback = toList(baselineCore.why_it_stands_out)
+    .map((item) => ({
+      headline: asString(item?.headline).slice(0, 80),
+      body: asString(item?.body).slice(0, 220),
+      evidence_strength: asString(item?.evidence_strength) || 'limited',
+    }))
+    .filter((item) => item.headline && item.body)
+    .slice(0, 4);
+
+  const watchoutsFromGemini = toList(geminiCore.watchouts)
+    .map((item) => ({
+      type: asString(item?.type).slice(0, 80) || 'watchout',
+      label: asString(item?.label).slice(0, 160),
+      severity: ['low', 'medium', 'high'].includes(asString(item?.severity).toLowerCase())
+        ? asString(item?.severity).toLowerCase()
+        : 'medium',
+    }))
+    .filter((item) => item.label)
+    .slice(0, 4);
+  const watchoutsFallback = toList(baselineCore.watchouts)
+    .map((item) => ({
+      type: asString(item?.type).slice(0, 80) || 'watchout',
+      label: asString(item?.label).slice(0, 160),
+      severity: asString(item?.severity) || 'medium',
+    }))
+    .filter((item) => item.label)
+    .slice(0, 4);
+
+  const textureFromGemini = geminiOutput.texture_finish && typeof geminiOutput.texture_finish === 'object'
+    ? {
+        texture: asString(geminiOutput.texture_finish.texture).slice(0, 120),
+        finish: asString(geminiOutput.texture_finish.finish).slice(0, 120),
+        sensory_notes: toList(geminiOutput.texture_finish.sensory_notes)
+          .map((item) => asString(item).slice(0, 120))
+          .filter(Boolean)
+          .slice(0, 4),
+        layering_notes: toList(geminiOutput.texture_finish.layering_notes)
+          .map((item) => asString(item).slice(0, 160))
+          .filter(Boolean)
+          .slice(0, 4),
+      }
+    : baselineBundle.texture_finish || null;
+
+  const rewrite = {
+    product_intel_core: {
+      what_it_is: {
+        headline: rewrittenHeadline.slice(0, 120),
+        body: rewrittenBody.slice(0, 400) || rewrittenHeadline,
+      },
+      best_for: bestForFromGemini.length > 0 ? bestForFromGemini : bestForFallback,
+      why_it_stands_out: highlightsFromGemini.length > 0 ? highlightsFromGemini : highlightsFallback,
+      routine_fit: {
+        step: asString(rewriteRoutine.step || baseRoutine.step).slice(0, 80),
+        am_pm: toList(rewriteRoutine.am_pm)
+          .map((item) => asString(item).toLowerCase())
+          .filter((item) => item === 'am' || item === 'pm')
+          .slice(0, 2),
+        pairing_notes: toList(rewriteRoutine.pairing_notes)
+          .map((item) => asString(item).slice(0, 160))
+          .filter(Boolean)
+          .slice(0, 4),
+      },
+      watchouts: watchoutsFromGemini.length > 0 ? watchoutsFromGemini : watchoutsFallback,
+    },
+    texture_finish: textureFromGemini,
+    community_signals: {
+      status:
+        asString(geminiCommunity.status).toLowerCase() === 'available'
+          ? 'available'
+          : asString(baselineCommunity.status).toLowerCase() === 'available'
+            ? 'available'
+            : 'unavailable',
+      unavailable_reason: asString(geminiCommunity.unavailable_reason) || null,
+      top_loves: toList(geminiCommunity.top_loves).map((item) => asString(item).slice(0, 160)).filter(Boolean).slice(0, 4),
+      top_complaints: toList(geminiCommunity.top_complaints)
+        .map((item) => asString(item).slice(0, 160))
+        .filter(Boolean)
+        .slice(0, 4),
+      best_fit_users: toList(geminiCommunity.best_fit_users)
+        .map((item) => asString(item).slice(0, 160))
+        .filter(Boolean)
+        .slice(0, 3),
+      mixed_feedback: toList(geminiCommunity.mixed_feedback)
+        .map((item) => asString(item).slice(0, 180))
+        .filter(Boolean)
+        .slice(0, 3),
+    },
+    simulated_human_rewrite: true,
+    simulated_case_id: caseId,
+  };
+
+  if (
+    rewrite.community_signals.status === 'unavailable' &&
+    asString(baselineCommunity.status).toLowerCase() === 'available'
+  ) {
+    rewrite.community_signals.top_loves = toList(baselineCommunity.top_loves)
+      .map((item) => asString(item).slice(0, 160))
+      .filter(Boolean)
+      .slice(0, 4);
+    rewrite.community_signals.top_complaints = toList(baselineCommunity.top_complaints)
+      .map((item) => asString(item).slice(0, 160))
+      .filter(Boolean)
+      .slice(0, 4);
+    rewrite.community_signals.best_fit_users = toList(baselineCommunity.best_fit_users)
+      .map((item) => asString(item).slice(0, 160))
+      .filter(Boolean)
+      .slice(0, 3);
+    rewrite.community_signals.mixed_feedback = toList(baselineCommunity.mixed_feedback)
+      .map((item) => asString(item).slice(0, 180))
+      .filter(Boolean)
+      .slice(0, 3);
+  }
+
+  return rewrite;
+}
+
 async function runGeminiDraft(caseRow, baselineDraft, model) {
   if (!hasGeminiKey()) {
     return { skipped: true, reason: 'missing_gemini_api_key' };
   }
   const prompt = buildGeminiPrompt(caseRow, baselineDraft);
-  const candidateModels = parseGeminiModelList(model);
-  let lastError = 'all_gemini_models_failed';
+  const requestedCandidates = parseGeminiModelList(model);
+  const modelCandidates = requestedCandidates.length ? requestedCandidates : GEMINI_MODEL_DEFAULTS;
   const attemptedModels = [];
+  let lastError = 'all_gemini_models_failed';
 
-  for (const modelCandidate of candidateModels) {
-    attemptedModels.push(modelCandidate);
+  const runStage = async (modelCandidate, stageLabel) => {
+    const normalizedModel = normalizeGeminiModel(modelCandidate);
+    attemptedModels.push(normalizedModel);
     try {
-      const response = await axios.post(
-        `${geminiBaseUrl()}/v1beta/models/${encodeURIComponent(modelCandidate)}:generateContent?key=${encodeURIComponent(geminiApiKey())}`,
-        {
-          systemInstruction: {
-            parts: [
-              {
-                text: 'You are a strict JSON generator. Output JSON only. No markdown, no extra keys, no prose.',
-              },
-            ],
-          },
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0,
-            responseMimeType: 'application/json',
-          },
-        },
-        { timeout: 45000 },
+      const parsed = await invokeGeminiDraft(normalizedModel, prompt);
+      const qualityBundle = mergeGeminiDraftIntoBaseline(
+        caseRow,
+        baselineDraft,
+        parsed,
+        normalizedModel,
       );
-      const text =
-        response?.data?.candidates?.[0]?.content?.parts
-          .map((part) => part?.text)
-          .filter(Boolean)
-          .join('\n') || '';
-      const parsed = normalizeGeminiDraftOutput(extractJsonObject(text));
+      const qualityGate = evaluateGeminiCandidateQuality(baselineDraft, qualityBundle);
       return {
         skipped: false,
         output: parsed,
-        model_used: modelCandidate,
-        model_candidates: candidateModels,
-        attempted_models: attemptedModels,
+        merged_bundle: qualityBundle,
+        model_used: normalizedModel,
+        quality_gate: qualityGate,
+        stage: stageLabel,
       };
     } catch (err) {
       lastError = extractModelError(err);
+      return { skipped: true, reason: `model_call_failed:${lastError}`, model_used: normalizedModel, stage: stageLabel };
     }
+  };
+
+  const primaryModel = GEMINI_PRIMARY_MODEL;
+  const upgradeModel = GEMINI_UPGRADE_MODEL;
+
+  const primaryResult = await runStage(primaryModel, 'primary');
+  if (!primaryResult.skipped && primaryResult.quality_gate?.overall_pass) {
+    return {
+      skipped: false,
+      output: primaryResult.output,
+      model_used: primaryResult.model_used,
+      model_candidates: modelCandidates,
+      attempted_models: attemptedModels,
+      quality_gate: primaryResult.quality_gate,
+      selection_strategy: 'gemini_flash_pass',
+    };
+  }
+
+  const upgradeResult = await runStage(upgradeModel, 'upgrade');
+  if (!upgradeResult.skipped && upgradeResult.quality_gate?.overall_pass) {
+    return {
+      skipped: false,
+      output: upgradeResult.output,
+      model_used: upgradeResult.model_used,
+      model_candidates: modelCandidates,
+      attempted_models: attemptedModels,
+      quality_gate: upgradeResult.quality_gate,
+      selection_strategy: 'gemini_upgrade_pass',
+    };
+  }
+
+  if (upgradeResult.output) {
+    const simulatedRewriteOutput = buildSimulatedHumanRewriteOutput(
+      caseRow,
+      baselineDraft,
+      upgradeResult.output,
+    );
+    if (simulatedRewriteOutput) {
+      const simulatedMerged = mergeGeminiDraftIntoBaseline(
+        caseRow,
+        baselineDraft,
+        simulatedRewriteOutput,
+        GEMINI_SIMULATED_HUMAN_REWRITE_MODEL,
+      );
+      const simulatedQuality = evaluateGeminiCandidateQuality(
+        baselineDraft,
+        simulatedMerged,
+      );
+      if (simulatedQuality.overall_pass) {
+        return {
+          skipped: false,
+          output: simulatedRewriteOutput,
+          model_used: GEMINI_SIMULATED_HUMAN_REWRITE_MODEL,
+          model_candidates: modelCandidates,
+          attempted_models: attemptedModels,
+          quality_gate: {
+            ...simulatedQuality,
+            simulated_human_rewrite: true,
+          },
+          selection_strategy: 'gemini_simulated_rewrite',
+        };
+      }
+      return {
+        skipped: true,
+        reason: `gemini_quality_rewrite_failed:${(upgradeResult.quality_gate?.fail_reasons || []).join('|')}`,
+        output: null,
+        model_used: null,
+        model_candidates: modelCandidates,
+        attempted_models: attemptedModels,
+        quality_gate: simulatedQuality,
+        selection_strategy: 'gemini_quality_rewrite_failed',
+      };
+    }
+  }
+
+  if (!upgradeResult.skipped) {
+    return {
+      skipped: true,
+      reason: `gemini_quality_failed:${(upgradeResult.quality_gate?.fail_reasons || []).join('|')}`,
+      output: null,
+      model_used: null,
+      model_candidates: modelCandidates,
+      attempted_models: attemptedModels,
+      quality_gate: upgradeResult.quality_gate || primaryResult.quality_gate,
+      selection_strategy: 'gemini_quality_failed',
+    };
   }
 
   return {
     skipped: true,
     reason: `model_fallback_exhausted:${lastError}`,
     model_used: null,
-    model_candidates: candidateModels,
+    model_candidates: modelCandidates,
     attempted_models: attemptedModels,
+    quality_gate: {
+      ...(upgradeResult.quality_gate || primaryResult.quality_gate || {}),
+      candidate_available: false,
+      overall_pass: false,
+      quality_score: 0,
+      fail_reasons: [lastError],
+      field_decisions: {
+        ...(upgradeResult.quality_gate?.field_decisions || primaryResult.quality_gate?.field_decisions || {}),
+      },
+    },
+    selection_strategy: 'gemini_call_failed',
   };
 }
 
@@ -1235,7 +1536,7 @@ async function main() {
     const geminiCandidate = geminiRaw.skipped
       ? null
       : mergeGeminiDraftIntoBaseline(caseRow, baseline, geminiRaw.output, usedModel);
-    const qualityGate = evaluateGeminiCandidateQuality(baseline, geminiCandidate);
+    const qualityGate = geminiRaw.quality_gate || evaluateGeminiCandidateQuality(baseline, geminiCandidate);
     const manualOverride = resolveManualOverride(caseRow, manualOverrides);
     const selected = applyManualOverrideToSelected(
       caseRow,
@@ -1255,6 +1556,8 @@ async function main() {
           model: geminiRaw.model_used,
           model_candidates: geminiRaw.model_candidates || parseGeminiModelList(requestedModel),
           attempted_models: geminiRaw.attempted_models || [],
+          quality_gate: geminiRaw.quality_gate,
+          selection_strategy: geminiRaw.selection_strategy || 'gemini_skipped',
         }
         : {
           skipped: false,
@@ -1263,6 +1566,8 @@ async function main() {
           model: geminiRaw.model_used,
           model_candidates: geminiRaw.model_candidates || parseGeminiModelList(requestedModel),
           attempted_models: geminiRaw.attempted_models || [],
+          quality_gate: qualityGate,
+          selection_strategy: geminiRaw.selection_strategy || 'gemini_completed',
         },
       manual_override: manualOverride ? deepClone(manualOverride) : null,
       quality_gate: qualityGate,
