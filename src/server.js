@@ -1188,6 +1188,18 @@ function extractStrictFindProductsMultiIngredientIntents(queryText, beautyQueryP
   return intents;
 }
 
+function resolveStrictFindProductsMultiIngredientIntentTerms(ingredientId) {
+  const normalizedIngredientId = String(ingredientId || '').trim().toLowerCase();
+  if (!normalizedIngredientId) return [];
+  const out = [normalizedIngredientId.replace(/_/g, ' ')];
+  for (const [term, mappedIngredientId] of Object.entries(STRICT_FIND_PRODUCTS_MULTI_INGREDIENT_ALIASES)) {
+    if (mappedIngredientId !== normalizedIngredientId) continue;
+    const normalizedTerm = normalizeSearchTextForMatch(term);
+    if (normalizedTerm && !out.includes(normalizedTerm)) out.push(normalizedTerm);
+  }
+  return out;
+}
+
 function extractStrictFindProductsMultiShadeOptionIntents(queryText, beautyQueryProfile = null) {
   const normalizedQuery = normalizeSearchTextForMatch(String(queryText || ''));
   if (!normalizedQuery) return [];
@@ -1328,8 +1340,26 @@ function productMatchesStrictIngredientPrefetch(product, { ingredientIntents = [
   const productIngredientIds = Array.isArray(product.ingredient_ids)
     ? product.ingredient_ids.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean)
     : [];
-  if (ingredientIntents.length > 0 && !ingredientIntents.every((intent) => productIngredientIds.includes(intent))) {
-    return false;
+  const productIngredientText = normalizeSearchTextForMatch(
+    [
+      ...(Array.isArray(product.ingredient_tokens) ? product.ingredient_tokens : []),
+      ...(Array.isArray(product.key_ingredients) ? product.key_ingredients : []),
+      ...(Array.isArray(product.active_ingredients) ? product.active_ingredients : []),
+      ...(Array.isArray(product.external_seed_recall?.ingredient_tokens)
+        ? product.external_seed_recall.ingredient_tokens
+        : []),
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+  if (ingredientIntents.length > 0) {
+    const hasEveryIngredientIntent = ingredientIntents.every((intent) => {
+      if (productIngredientIds.includes(intent)) return true;
+      return resolveStrictFindProductsMultiIngredientIntentTerms(intent).some((term) =>
+        productIngredientText.includes(term),
+      );
+    });
+    if (!hasEveryIngredientIntent) return false;
   }
 
   const visibilityHaystack = normalizeSearchTextForMatch(
@@ -1379,7 +1409,7 @@ async function prefetchStrictIngredientExternalSeedCandidates({
   const queryText = String(rawQueryText || search?.query || '').trim();
   const categoryIntents = extractStrictFindProductsMultiSkincareCategoryIntents(queryText);
   const textTerms = [
-    ...ingredientIntents.map((value) => value.replace(/_/g, ' ')),
+    ...ingredientIntents.flatMap((value) => resolveStrictFindProductsMultiIngredientIntentTerms(value)),
     ...(categoryIntents.length > 0 ? categoryIntents : STRICT_FIND_PRODUCTS_MULTI_SKINCARE_CATEGORY_TERMS),
   ];
 
@@ -1407,6 +1437,7 @@ async function prefetchStrictIngredientExternalSeedCandidates({
     "COALESCE(jsonb_array_length(CASE WHEN jsonb_typeof(COALESCE(seed_data, '{}'::jsonb)->'ingredient_ids') = 'array' THEN COALESCE(seed_data, '{}'::jsonb)->'ingredient_ids' ELSE '[]'::jsonb END), 0) > 0",
     "COALESCE(jsonb_array_length(CASE WHEN jsonb_typeof(COALESCE(seed_data, '{}'::jsonb)->'snapshot'->'reviewed_ingredient_ids') = 'array' THEN COALESCE(seed_data, '{}'::jsonb)->'snapshot'->'reviewed_ingredient_ids' ELSE '[]'::jsonb END), 0) > 0",
     "COALESCE(jsonb_array_length(CASE WHEN jsonb_typeof(COALESCE(seed_data, '{}'::jsonb)->'snapshot'->'ingredient_ids') = 'array' THEN COALESCE(seed_data, '{}'::jsonb)->'snapshot'->'ingredient_ids' ELSE '[]'::jsonb END), 0) > 0",
+    "length(coalesce(seed_data#>>'{derived,recall,ingredient_tokens}', '')) > 0",
   ];
 
   const sql = `

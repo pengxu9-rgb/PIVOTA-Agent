@@ -95,7 +95,7 @@ function buildIngredientIntentDirectBaseMetadata({
     unattached_seed_recall_attempted: diagnostics.unattached_seed_recall_attempted === true,
     unattached_seed_recall_recovered: Math.max(
       0,
-      Number(diagnostics.unattached_seed_recovered || 0) || 0,
+      Number(diagnostics.unattached_seed_recall_recovered || 0) || 0,
     ),
     family_fallback_attempted: diagnostics.family_fallback_attempted === true,
     family_fallback_recovered: Math.max(
