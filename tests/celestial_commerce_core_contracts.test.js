@@ -67,6 +67,8 @@ describe('Celestial commerce core source contracts', () => {
         catalog_surface: 'beauty',
         commerce_surface: 'beauty',
         external_seed_strategy: 'unified_relevance',
+        catalog_surface: 'beauty',
+        commerce_surface: 'beauty',
       },
     });
   });
