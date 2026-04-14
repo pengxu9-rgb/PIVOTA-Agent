@@ -618,7 +618,7 @@ const RecoAlternativesRequestSchema = z
     ingredient_context: z.record(z.string(), z.any()).optional(),
     anchor_product_id: z.string().min(1).max(180).optional(),
     max_total: z.number().int().min(1).max(8).optional(),
-    recommendation_mode: z.enum(['pool_only', 'hybrid_fallback', 'open_world_only']).optional(),
+    recommendation_mode: z.enum(['pool_only', 'pool_open_world_mixed', 'hybrid_fallback', 'open_world_only']).optional(),
     disable_synthetic_local_fallback: z.boolean().optional(),
     include_debug: z.boolean().optional(),
   })
