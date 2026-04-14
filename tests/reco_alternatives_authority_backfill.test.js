@@ -2,6 +2,8 @@ describe('recoAlternativesAuthorityBackfill', () => {
   afterEach(() => {
     jest.resetModules();
     jest.dontMock('../src/db');
+    jest.dontMock('axios');
+    jest.dontMock('../scripts/build_beauty_brand_external_seed_manifest.cjs');
   });
 
   test('dedupes punctuated brand variants into the same backfill job key', () => {
@@ -12,6 +14,19 @@ describe('recoAlternativesAuthorityBackfill', () => {
     expect(
       backfill._internals.buildBackfillJobKey({ brand: "Paula's Choice", market: 'US' }),
     ).toBe(backfill._internals.buildBackfillJobKey({ brand: 'Paulas Choice', market: 'US' }));
+  });
+
+  test('builds official direct product source guesses for preferred titles', () => {
+    const backfill = require('../src/auroraBff/recoAlternativesAuthorityBackfill');
+    const candidates = backfill._internals.buildBrandDomainGuessCandidates(
+      'Good Molecules',
+      'US',
+      ['Niacinamide Serum'],
+    );
+
+    expect(candidates).toContain('https://v1.goodmolecules.com/products/niacinamide-serum');
+    expect(candidates).toContain('https://goodmolecules.com/products/niacinamide-serum');
+    expect(candidates).toContain('https://www.goodmolecules.us/products/niacinamide-serum');
   });
 
   test('resolves source plans for punctuated brands through normalized authority lookups', async () => {
@@ -146,6 +161,86 @@ describe('recoAlternativesAuthorityBackfill', () => {
       fallbackDomains: ['https://www.ulta.com/p/anthelios-aox-daily-antioxidant-face-serum-spf-50-xlsImpprod12101063'],
     });
     expect(axiosGet).toHaveBeenCalled();
+  });
+
+  test('recovers async backfill with a discovered official product source when the primary source is empty', async () => {
+    const actualManifest = jest.requireActual('../scripts/build_beauty_brand_external_seed_manifest.cjs');
+    const fetchBrandCatalog = jest.fn(async ({ domain }) => {
+      if (String(domain).includes('v1.goodmolecules.com/products/niacinamide-serum')) {
+        return {
+          diagnostics: { discovery_strategy: 'seed_page', failure_category: null, block_provider: null },
+          products: [
+            {
+              title: 'Niacinamide Serum',
+              url: 'https://www.goodmolecules.com/products/niacinamide-serum',
+              image_url: 'https://cdn.example.com/good-molecules-niacinamide.jpg',
+              price: '$6.00',
+              currency: 'USD',
+              availability: 'in stock',
+              description: 'Good Molecules Niacinamide Serum product page.',
+            },
+          ],
+        };
+      }
+      return {
+        diagnostics: { discovery_strategy: null, failure_category: 'dead_sitemap', block_provider: null },
+        products: [],
+      };
+    });
+    const axiosGet = jest.fn(async (url) => {
+      if (String(url).includes('v1.goodmolecules.com/products/niacinamide-serum')) {
+        return {
+          status: 200,
+          data: '<html><title>Niacinamide Serum</title></html>',
+          config: { url },
+          request: {
+            res: {
+              responseUrl: 'https://v1.goodmolecules.com/products/niacinamide-serum',
+            },
+          },
+        };
+      }
+      throw new Error('not reachable');
+    });
+
+    jest.doMock('../src/db', () => ({
+      getPool: () => null,
+      query: jest.fn(),
+    }));
+    jest.doMock('../scripts/build_beauty_brand_external_seed_manifest.cjs', () => ({
+      ...actualManifest,
+      fetchBrandCatalog,
+    }));
+    jest.doMock('axios', () => ({
+      get: axiosGet,
+    }));
+
+    const backfill = require('../src/auroraBff/recoAlternativesAuthorityBackfill');
+    const result = await backfill._internals.runBackfillJobDefault({
+      brand: 'Good Molecules',
+      market: 'US',
+      preferredTitles: ['Niacinamide Serum'],
+      sourcePlan: {
+        ok: true,
+        primaryDomain: 'https://www.goodmolecules.us',
+        primaryRole: 'primary',
+        fallbackDomains: [],
+      },
+      logger: null,
+    });
+
+    expect(result.status).toBe('completed');
+    expect(result.mode).toBe('dry_run');
+    expect(result.source_plan.fallback_domains).toContain('https://v1.goodmolecules.com/products/niacinamide-serum');
+    expect(fetchBrandCatalog).toHaveBeenCalledWith(expect.objectContaining({
+      domain: 'https://www.goodmolecules.us',
+    }));
+    expect(fetchBrandCatalog).toHaveBeenCalledWith(expect.objectContaining({
+      domain: 'https://v1.goodmolecules.com/products/niacinamide-serum',
+    }));
+    expect(result.apply_summary).toMatchObject({
+      mode: 'dry_run',
+    });
   });
 
   test('filters runtime coverage repair manifests to preferred-alias rows only', () => {
