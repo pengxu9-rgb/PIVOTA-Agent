@@ -9382,7 +9382,9 @@ function shouldUseCreatorBeautyMainlineInternalPrimitive({
   rawUserQuery = '',
 } = {}) {
   if (String(operation || '').trim().toLowerCase() !== 'find_products_multi') return false;
-  if (!isCreatorInvokeSource(metadata?.source)) return false;
+  const creatorInvokeSource = isCreatorInvokeSource(metadata?.source);
+  const publicSearchSource = isPublicSearchSource(metadata?.source);
+  if (!creatorInvokeSource && !publicSearchSource) return false;
   if (hasExplicitLegacyInvokeContracts(metadata)) return false;
   if (resolveSearchPrimaryLaneFromMetadata(metadata).toLowerCase() !== 'beauty_discovery_mainline') {
     return false;
@@ -9390,7 +9392,20 @@ function shouldUseCreatorBeautyMainlineInternalPrimitive({
   const searchObj =
     search && typeof search === 'object' && !Array.isArray(search) ? search : {};
   const queryText = firstNonEmptyString(rawUserQuery, searchObj.query, searchObj.q);
-  if (!looksLikeBroadBeautyDiscoveryQuery(queryText)) return false;
+  const searchRequestContract = getSearchRequestContractFromMetadata(metadata);
+  const contractQueryClass = String(
+    searchRequestContract?.policy?.timeout_budget?.query_class || metadata?.query_class || '',
+  )
+    .trim()
+    .toLowerCase();
+  const publicBeautyCategoryFastpath =
+    publicSearchSource &&
+    resolveBeautyCategoryBrowseFastpath(queryText, {
+      queryClass: contractQueryClass || null,
+    });
+  if (!publicBeautyCategoryFastpath && !looksLikeBroadBeautyDiscoveryQuery(queryText)) {
+    return false;
+  }
   if (String(searchObj.merchant_id || searchObj.merchantId || '').trim()) return false;
   const merchantIdsRaw = searchObj.merchant_ids || searchObj.merchantIds;
   const merchantIds = Array.isArray(merchantIdsRaw)
@@ -9405,6 +9420,9 @@ function shouldUseCreatorBeautyMainlineInternalPrimitive({
     searchObj.max_price != null
   ) {
     return false;
+  }
+  if (publicSearchSource) {
+    return Boolean(publicBeautyCategoryFastpath);
   }
   return true;
 }

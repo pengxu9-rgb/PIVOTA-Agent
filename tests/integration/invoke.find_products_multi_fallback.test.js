@@ -311,23 +311,13 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
     expect(resp.body.metadata?.search_trace?.expanded_query).toBe('oil control treatment');
   });
 
-  test('public search defaults external seed contract on the real invoke -> v2 upstream path', async () => {
+  test('public beauty category search defaults external seed contract on the internal primitive path', async () => {
     let upstreamRequestBody = null;
-    let upstreamQuery = null;
 
     const primaryScope = nock('http://pivota.test')
-      .post('/agent/v2/products/search', (body) => {
+      .post('/agent/internal/products/search', (body) => {
         upstreamRequestBody = body;
         return true;
-      })
-      .query((query) => {
-        upstreamQuery = query;
-        return (
-          String(query.search_all_merchants || '') === 'true' &&
-          String(query.query || '') === 'lip balm' &&
-          String(query.allow_external_seed || '') === 'true' &&
-          String(query.external_seed_strategy || '') === 'unified_relevance'
-        );
       })
       .reply(200, function replySearchV2(_, body) {
         return {
@@ -346,6 +336,16 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
             query_source: 'agent_products_v2',
           },
         };
+      });
+
+    const legacyV2Scope = nock('http://pivota.test')
+      .post('/agent/v2/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
       });
 
     const app = require('../../src/server');
@@ -367,18 +367,12 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
 
     expect(resp.status).toBe(200);
     expect(primaryScope.isDone()).toBe(true);
-    expect(upstreamQuery).toEqual(
-      expect.objectContaining({
-        query: 'lip balm',
-        search_all_merchants: 'true',
-        allow_external_seed: 'true',
-        external_seed_strategy: 'unified_relevance',
-      }),
-    );
+    expect(legacyV2Scope.isDone()).toBe(false);
     expect(upstreamRequestBody).toEqual(
       expect.objectContaining({
         query: 'lip balm',
         search_all_merchants: true,
+        catalog_surface: 'beauty',
         allow_external_seed: true,
         external_seed_strategy: 'unified_relevance',
       }),
