@@ -13,6 +13,8 @@ describe('pivota_insights_coverage_batch', () => {
     expect(args.surface).toBe('');
     expect(args.pages).toBe(0);
     expect(args.frontendPaths).toEqual(['/products']);
+    expect(args.manualOverrides).toBe('scripts/fixtures/product_intel_manual_overrides.json');
+    expect(args.coveredReviewMode).toBe('strict_human');
     expect(args.limit).toBe(40);
     expect(args.excludeCovered).toBe(true);
     expect(args.skipGemini).toBe(true);
@@ -83,6 +85,8 @@ describe('pivota_insights_coverage_batch', () => {
       },
       review_status: 'pending',
       reviewer: '',
+      reviewer_kind: '',
+      reviewed_at: '',
       decision: 'pending',
       notes: '',
       selected_mode: 'manual_override',
