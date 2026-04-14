@@ -1547,7 +1547,7 @@ async function fetchExternalCandidates({
   }
 
   if (brand) {
-    const brandMatches = await runQuery(
+    const brandFieldMatches = await runQuery(
       `AND (
             lower(coalesce(seed_data->>'brand','')) = ANY($4)
             OR lower(coalesce(seed_data->>'brand_name','')) = ANY($4)
@@ -1557,16 +1557,29 @@ async function fetchExternalCandidates({
             OR lower(coalesce(seed_data->'snapshot'->>'vendor','')) = ANY($4)
             OR regexp_replace(lower(coalesce(seed_data->>'brand','')), '[^a-z0-9]+', '', 'g') = ANY($4)
             OR regexp_replace(lower(coalesce(seed_data->>'vendor','')), '[^a-z0-9]+', '', 'g') = ANY($4)
-            OR regexp_replace(lower(coalesce(seed_data->'snapshot'->>'title','')), '[^a-z0-9]+', '', 'g') LIKE '%' || $5 || '%'
           )`,
-      [brandAliases, compactBrand],
+      [brandAliases],
       Math.min(120, safeLimit),
-      'external_brand',
+      'external_brand_fields',
     );
-    out.push(...brandMatches);
+    out.push(...brandFieldMatches);
     const brandFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
     if (brandFocusedCandidates.length > 0) {
       return brandFocusedCandidates.slice(0, safeLimit * 3);
+    }
+
+    const brandTitleMatches = compactBrand
+      ? await runQuery(
+          `AND regexp_replace(lower(coalesce(seed_data->'snapshot'->>'title','')), '[^a-z0-9]+', '', 'g') LIKE '%' || $4 || '%'`,
+          [compactBrand],
+          Math.min(80, safeLimit),
+          'external_brand_title',
+        )
+      : [];
+    out.push(...brandTitleMatches);
+    const titleFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
+    if (titleFocusedCandidates.length > 0) {
+      return titleFocusedCandidates.slice(0, safeLimit * 3);
     }
   }
 

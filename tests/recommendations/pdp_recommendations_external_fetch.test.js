@@ -85,7 +85,8 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(
       queryMock.mock.calls.some(([sql]) =>
         String(sql).includes("seed_data->>'vendor'") &&
-        String(sql).includes("seed_data->'snapshot'->>'title'") &&
+        String(sql).includes("seed_data->'snapshot'->>'brand'") &&
+        !String(sql).includes("seed_data->'snapshot'->>'title'") &&
         !String(sql).includes('attached_product_key IS NULL'),
       ),
     ).toBe(true);
