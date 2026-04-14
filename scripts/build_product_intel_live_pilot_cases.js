@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
-const { query } = require('../src/db');
+const { closePool, query } = require('../src/db');
 const { buildExternalSeedProduct } = require('../src/services/externalSeedProducts');
 const {
   filterDisplayableMarketSignalBadges,
@@ -888,10 +888,17 @@ async function main() {
 }
 
 if (require.main === module) {
-  main().catch((err) => {
-    process.stderr.write(`${err && err.stack ? err.stack : String(err)}\n`);
-    process.exit(1);
-  });
+  main()
+    .catch((err) => {
+      process.stderr.write(`${err && err.stack ? err.stack : String(err)}\n`);
+      process.exitCode = 1;
+    })
+    .finally(async () => {
+      await closePool().catch(() => {});
+      if (process.exitCode && process.exitCode !== 0) {
+        process.exit(process.exitCode);
+      }
+    });
 }
 
 module.exports = {

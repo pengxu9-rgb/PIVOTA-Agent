@@ -73,6 +73,31 @@ describe('publish_product_intel_pilot_to_kb', () => {
     expect(entries).toEqual([]);
   });
 
+  test('skips strict baseline_only selected rows', () => {
+    const entries = buildKbEntriesForRow({
+      case_id: 'pilot_baseline_only_case',
+      review_status: 'completed',
+      review_decision: 'pass',
+      selected: {
+        selected_mode: 'baseline_only',
+        bundle: {
+          canonical_product_ref: {
+            merchant_id: 'pilot_baseline',
+            product_id: 'pilot_baseline_only_case',
+          },
+          product_intel_core: {
+            what_it_is: {
+              headline: 'Baseline item',
+              body: 'Used for testing strict publish checks.',
+            },
+          },
+        },
+      },
+    });
+
+    expect(entries).toEqual([]);
+  });
+
   test('fails fast when the KB write preflight query fails', async () => {
     await expect(
       assertProductIntelKbWritable(async () => {
