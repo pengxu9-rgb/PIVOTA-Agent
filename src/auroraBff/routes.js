@@ -66407,7 +66407,13 @@ function getRecoAlternativeMixedRankingScore(row, { useExperienceQualityBonus = 
     : normalizeMaybePercentScore(row?.similarity_score);
   const safeBase = Number.isFinite(baseScore) ? clamp01Score(baseScore) : 0;
   const bonus = useExperienceQualityBonus ? computeRecoAlternativeExperienceQualityBonus(row) : 0;
-  return clamp01Score(safeBase + bonus);
+  const grounding = String(row?.grounding_status || '').trim().toLowerCase();
+  const authorityAdjustment = grounding === 'catalog_verified'
+    ? 0.08
+    : grounding === 'name_only'
+      ? -0.16
+      : 0;
+  return clamp01Score(safeBase + bonus + authorityAdjustment);
 }
 
 function sortRecoAlternativesByMixedScore(rows, { useExperienceQualityBonus = false } = {}) {
