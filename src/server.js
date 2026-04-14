@@ -4867,6 +4867,208 @@ function decideGenericSkincareCachePreference({
   };
 }
 
+function resolvePublicBeautyUnifiedMinAcceptCount(requestedLimit = 20) {
+  const safeRequestedLimit = Math.min(
+    Math.max(1, Number(requestedLimit || 20) || 20),
+    SEARCH_LIMIT_MAX,
+  );
+  return safeRequestedLimit >= 8 ? 8 : safeRequestedLimit;
+}
+
+function shouldForcePublicBeautyUnifiedExternalSeedContract(search = {}, metadata = {}) {
+  if (!shouldDefaultPublicSearchExternalSeedContract(search, metadata)) return false;
+  const queryText = String(search?.query || search?.q || '').trim();
+  if (!queryText) return false;
+  const beautyQueryProfile = buildBeautyQueryProfile({ rawQuery: queryText });
+  return Boolean(beautyQueryProfile?.isBeautyQuery);
+}
+
+function isPublicBeautyUnifiedMainlineSearch({
+  operation = '',
+  metadata = null,
+  search = null,
+  queryText = '',
+  queryClass = null,
+  intent = null,
+  invokeSearchRail = null,
+} = {}) {
+  if (String(operation || '').trim().toLowerCase() !== 'find_products_multi') return false;
+  const normalizedMetadata =
+    metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {};
+  const normalizedSearch =
+    search && typeof search === 'object' && !Array.isArray(search) ? search : {};
+  const rail = String(
+    invokeSearchRail ||
+      normalizedMetadata.invoke_search_rail ||
+      resolveInvokeSearchRailFromMetadata(normalizedMetadata) ||
+      '',
+  )
+    .trim()
+    .toLowerCase();
+  if (
+    rail !== 'public_observability' &&
+    !isPublicSearchSource(normalizedMetadata?.source) &&
+    !isPublicSearchRouteMetadata(normalizedMetadata) &&
+    !isPublicBeautyMainlineSearchRoute(normalizedMetadata)
+  ) {
+    return false;
+  }
+  if (parseQueryBoolean(normalizedSearch.product_only ?? normalizedSearch.productOnly) === true) {
+    return false;
+  }
+  if (
+    parseQueryBoolean(
+      normalizedSearch.local_mainline_child ?? normalizedSearch.localMainlineChild,
+    ) === true
+  ) {
+    return false;
+  }
+  if (hasStrictInvokeCatalogSurface(normalizedSearch, normalizedMetadata)) return false;
+  const uiSurface = normalizeSearchUiSurface(
+    normalizedMetadata?.ui_surface ||
+      normalizedMetadata?.uiSurface ||
+      normalizedSearch?.ui_surface ||
+      normalizedSearch?.uiSurface,
+  );
+  if (uiSurface === 'ingredient_plan_guidance_only') return false;
+  const rawQuery = String(queryText || normalizedSearch?.query || normalizedSearch?.q || '').trim();
+  if (!rawQuery) return false;
+  const anchorTokens = extractSearchAnchorTokens(rawQuery);
+  if (isLookupStyleSearchQuery(rawQuery, anchorTokens) || isKnownLookupAliasQuery(rawQuery)) {
+    return false;
+  }
+  const normalizedQueryClass = String(queryClass || intent?.query_class || '')
+    .trim()
+    .toLowerCase();
+  const beautyQueryProfile = buildBeautyQueryProfile({
+    rawQuery,
+    queryClass: normalizedQueryClass || undefined,
+    intent,
+  });
+  if (!beautyQueryProfile?.isBeautyQuery) return false;
+  const fastpath = resolveBeautyCategoryBrowseFastpath(rawQuery, {
+    queryClass: normalizedQueryClass || beautyQueryProfile?.queryClass,
+  });
+  if (fastpath) return true;
+  const brandLike = Boolean(detectBrandEntities(rawQuery, { candidateProducts: [] })?.brand_like);
+  const tokenCount = tokenizeSearchTextForMatch(rawQuery).length;
+  return Boolean(
+    beautyQueryProfile?.isSpecificBeautyQuery &&
+      ['category', 'exploratory', 'attribute', ''].includes(normalizedQueryClass) &&
+      tokenCount > 0 &&
+      tokenCount <= 3 &&
+      !brandLike,
+  );
+}
+
+function buildPublicBeautyUnifiedSearchDedupeKey(product) {
+  if (!product || typeof product !== 'object') return '';
+  const urlKey =
+    normalizeSearchProductUrlForDedupe(product.canonical_url) ||
+    normalizeSearchProductUrlForDedupe(product.destination_url) ||
+    normalizeSearchProductUrlForDedupe(product.external_url) ||
+    normalizeSearchProductUrlForDedupe(product.url);
+  if (urlKey) return urlKey;
+  const brandKey = extractSearchProductBrandToken(product);
+  const titleKey = normalizeSearchProductTitleForDedupe(product);
+  if (brandKey && titleKey) return `${brandKey}::${titleKey}`;
+  if (titleKey) return titleKey;
+  return buildSearchProductKey(product);
+}
+
+function mergePublicBeautyUnifiedOfferLists(leftOffers = [], rightOffers = []) {
+  const offers = [];
+  const seen = new Set();
+  const pushOffer = (offer) => {
+    if (!offer || typeof offer !== 'object') return;
+    const offerKey = String(
+      offer.offer_id ||
+        offer.offerId ||
+        `${offer.merchant_id || offer.merchantId || ''}::${offer.variant_id || offer.variantId || ''}::${offer.sku_id || offer.skuId || ''}::${offer.product_id || offer.productId || ''}::${offer.url || offer.destination_url || offer.external_url || ''}`,
+    ).trim();
+    if (offerKey && seen.has(offerKey)) return;
+    if (offerKey) seen.add(offerKey);
+    offers.push(offer);
+  };
+  for (const offer of Array.isArray(leftOffers) ? leftOffers : []) pushOffer(offer);
+  for (const offer of Array.isArray(rightOffers) ? rightOffers : []) pushOffer(offer);
+  return offers;
+}
+
+function mergePublicBeautyUnifiedDuplicateProduct(primary, duplicate) {
+  if (!primary || typeof primary !== 'object') return duplicate;
+  if (!duplicate || typeof duplicate !== 'object') return primary;
+  const merged = { ...primary };
+  const mergedOffers = mergePublicBeautyUnifiedOfferLists(primary.offers, duplicate.offers);
+  if (mergedOffers.length > 0) {
+    merged.offers = mergedOffers;
+  }
+  const mergedSources = Array.from(
+    new Set(
+      [
+        ...(Array.isArray(primary.merged_sources) ? primary.merged_sources : []),
+        primary.source,
+        duplicate.source,
+        primary.merchant_id || primary.merchantId,
+        duplicate.merchant_id || duplicate.merchantId,
+      ]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean),
+    ),
+  );
+  if (mergedSources.length > 0) {
+    merged.merged_sources = mergedSources;
+  }
+  const mergedProvenance = [
+    ...(Array.isArray(primary.merged_provenance) ? primary.merged_provenance : []),
+    ...(primary.provenance && typeof primary.provenance === 'object' ? [primary.provenance] : []),
+    ...(duplicate.provenance && typeof duplicate.provenance === 'object' ? [duplicate.provenance] : []),
+  ];
+  if (mergedProvenance.length > 0) {
+    merged.merged_provenance = mergedProvenance;
+  }
+  if (!merged.provenance && duplicate.provenance && typeof duplicate.provenance === 'object') {
+    merged.provenance = duplicate.provenance;
+  }
+  return merged;
+}
+
+function mergePublicBeautyUnifiedSearchProducts(products = [], { limit = null } = {}) {
+  const list = Array.isArray(products) ? products : [];
+  if (list.length <= 1) return list.slice();
+  const safeLimit =
+    limit == null
+      ? null
+      : Math.min(Math.max(1, Number(limit || 0) || 0), SEARCH_LIMIT_MAX);
+  const seenProductKeys = new Set();
+  const mergedByDedupeKey = new Map();
+  const ordered = [];
+  for (const product of list) {
+    if (!product || typeof product !== 'object') continue;
+    const productKey = buildSearchProductKey(product);
+    if (productKey && seenProductKeys.has(productKey)) continue;
+    if (productKey) seenProductKeys.add(productKey);
+    const dedupeKey = buildPublicBeautyUnifiedSearchDedupeKey(product);
+    if (!dedupeKey) {
+      ordered.push(product);
+      if (safeLimit && ordered.length >= safeLimit) break;
+      continue;
+    }
+    if (!mergedByDedupeKey.has(dedupeKey)) {
+      mergedByDedupeKey.set(dedupeKey, ordered.length);
+      ordered.push(product);
+    } else {
+      const existingIndex = mergedByDedupeKey.get(dedupeKey);
+      ordered[existingIndex] = mergePublicBeautyUnifiedDuplicateProduct(
+        ordered[existingIndex],
+        product,
+      );
+    }
+    if (safeLimit && ordered.length >= safeLimit) break;
+  }
+  return ordered;
+}
+
 function withSearchDiagnostics(body, diagnostics = {}) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return body;
   const metadata =
@@ -5088,8 +5290,15 @@ function withSearchDiagnostics(body, diagnostics = {}) {
       ? routeHealth.low_quality_nonempty_detected
       : metadata.low_quality_nonempty_detected,
   );
+  const strictEmptyForHealth = Boolean(
+    diagnostics.strict_empty === true ||
+      metadata.strict_empty === true ||
+      String(diagnostics.strict_empty_reason || metadata.strict_empty_reason || '').trim(),
+  );
   routeHealth.low_quality_nonempty_detected = lowQualityNonemptyDerived || lowQualityReasonHint;
-  if (lowQualityReasonHint) {
+  if (strictEmptyForHealth || bodyProductsForHealth.length === 0) {
+    routeHealth.primary_quality_gate_passed = false;
+  } else if (lowQualityReasonHint) {
     routeHealth.primary_quality_gate_passed = false;
   } else {
     routeHealth.primary_quality_gate_passed = Boolean(
@@ -5993,20 +6202,16 @@ function applyFindProductsMultiSourceContract(rawPayload, metadata = {}, operati
     payload.search && typeof payload.search === 'object' && !Array.isArray(payload.search)
       ? { ...payload.search }
       : {};
-  if (!shouldDefaultPublicSearchExternalSeedContract(search, metadata)) {
+  if (!shouldForcePublicBeautyUnifiedExternalSeedContract(search, metadata)) {
     return rawPayload;
   }
-  const explicitAllowExternalSeed = parseQueryBoolean(
-    search.allow_external_seed ?? search.allowExternalSeed,
-  );
-  const explicitExternalSeedStrategy = firstQueryParamValue(
-    search.external_seed_strategy ?? search.externalSeedStrategy,
-  );
-  if (explicitAllowExternalSeed === undefined) {
-    search.allow_external_seed = true;
+  search.allow_external_seed = true;
+  search.external_seed_strategy = 'unified_relevance';
+  if (!firstNonEmptyString(search.catalog_surface, search.catalogSurface)) {
+    search.catalog_surface = 'beauty';
   }
-  if (!explicitExternalSeedStrategy) {
-    search.external_seed_strategy = 'unified_relevance';
+  if (!firstNonEmptyString(search.commerce_surface, search.commerceSurface)) {
+    search.commerce_surface = 'beauty';
   }
   payload.search = search;
   return payload;
@@ -12973,6 +13178,7 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
   const offset = (safePage - 1) * safeLimit;
   const q = String(queryText || '').trim().toLowerCase();
   const inStockOnly = options?.inStockOnly !== false;
+  const publicBeautyUnifiedSearch = options?.publicBeautyUnifiedSearch === true;
   const normalizedQueryClass = String(
     options?.queryClass || options?.intent?.query_class || '',
   )
@@ -13026,6 +13232,8 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
   const brandLikeQuery = Boolean(detectBrandEntities(queryText, { candidateProducts: [] })?.brand_like);
   const allowRelaxedNoOnboardingFallback =
     !beautyQueryProfile?.isBeautyQuery || lookupLikeQuery || brandLikeQuery;
+  const skipLexicalCountForPublicBeauty =
+    publicBeautyUnifiedSearch && beautyQueryProfile?.isBeautyQuery === true;
   const buildQueryFilter = (fieldPrefix = 'pc.') => {
     const matchFields = [
       `lower(coalesce(${fieldPrefix}product_data->>'title',''))`,
@@ -13157,14 +13365,19 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
   `;
 
   const retrievalSources = [];
-  const [strictCountQuery, strictRowsQuery] = await Promise.all([
-    runCacheSql('lexical_cache', 'count', countSql, strictFilter.params),
-    runCacheSql('lexical_cache', 'rows', rowsSql, [...strictFilter.params, pageOffset, pageFetch]),
-  ]);
-  const countRes = strictCountQuery.result;
+  const strictRowsQuery = await runCacheSql(
+    'lexical_cache',
+    'rows',
+    rowsSql,
+    [...strictFilter.params, pageOffset, pageFetch],
+  );
   const rowsRes = strictRowsQuery.result;
-
-  const strictTotal = Number(countRes.rows?.[0]?.total || 0);
+  const strictCountQuery = skipLexicalCountForPublicBeauty
+    ? null
+    : await runCacheSql('lexical_cache', 'count', countSql, strictFilter.params);
+  const strictTotal = skipLexicalCountForPublicBeauty
+    ? Number(rowsRes.rows?.length || 0)
+    : Number(strictCountQuery?.result?.rows?.[0]?.total || 0);
   const strictRanked = toRankedUniqueProducts(rowsRes.rows || []);
   const strictFiltered = applyBeautySpecificFilter(strictRanked.products);
   retrievalSources.push({
@@ -13174,7 +13387,8 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
     candidate_count: strictRanked.candidateCount,
     total: strictTotal,
     filtered_irrelevant_count: strictFiltered.filtered_irrelevant_count,
-    count_query_ms: strictCountQuery.timing.duration_ms,
+    count_query_ms: strictCountQuery?.timing?.duration_ms || 0,
+    count_query_skipped: skipLexicalCountForPublicBeauty,
     rows_query_ms: strictRowsQuery.timing.duration_ms,
   });
 
@@ -13193,6 +13407,7 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
   }
 
   const runBeautyBrowseFallback = async (relaxedTotal = 0) => {
+    if (publicBeautyUnifiedSearch) return null;
     if (!hasBeautyMakeupSearchSignal(q)) return null;
     const beautySignalFilter = buildBeautySignalSql(1);
     const beautyRowsSql = `
@@ -13245,12 +13460,35 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
       source: 'lexical_cache_relaxed_no_onboarding',
       used: false,
       skipped: true,
-      reason: 'beauty_query_skip_relaxed_no_onboarding',
+      reason: publicBeautyUnifiedSearch
+        ? 'public_beauty_unified_skip_relaxed_no_onboarding'
+        : 'beauty_query_skip_relaxed_no_onboarding',
     });
-    const beautyFallbackResult = await runBeautyBrowseFallback(0);
-    if (beautyFallbackResult) {
-      return beautyFallbackResult;
+    if (!publicBeautyUnifiedSearch) {
+      const beautyFallbackResult = await runBeautyBrowseFallback(0);
+      if (beautyFallbackResult) {
+        return beautyFallbackResult;
+      }
     }
+    return {
+      products: [],
+      total: strictTotal,
+      page: safePage,
+      page_size: 0,
+      retrieval_sources: retrievalSources,
+      query_terms: terms,
+      beauty_query_bucket: beautyQueryProfile?.bucket || null,
+      internal_filter_debug: applyBeautySpecificFilter([]),
+    };
+  }
+
+  if (publicBeautyUnifiedSearch && beautyQueryProfile?.isBeautyQuery === true) {
+    retrievalSources.push({
+      source: 'lexical_cache_relaxed_no_onboarding',
+      used: false,
+      skipped: true,
+      reason: 'public_beauty_unified_skip_relaxed_no_onboarding',
+    });
     return {
       products: [],
       total: strictTotal,
@@ -21332,6 +21570,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   }
 
   let crossMerchantCacheProtectedResponse = null;
+  let crossMerchantCacheRecallResponse = null;
   let queryParams = {};
   let strictCommerceFindProductsMulti = false;
   let shoppingFreshMainlineSearch = false;
@@ -21891,6 +22130,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         queryClass: cachePolicyQueryClass,
         intent: effectiveIntent,
       });
+      const publicBeautyUnifiedSearch = isPublicBeautyUnifiedMainlineSearch({
+        operation,
+        metadata,
+        search,
+        queryText: cacheQueryText,
+        queryClass: cachePolicyQueryClass,
+        intent: effectiveIntent,
+        invokeSearchRail,
+      });
       const preferRawBeautyCacheQuery =
         cacheBeautyQueryProfile?.isSpecificBeautyQuery &&
         ['attribute', 'category', 'lookup'].includes(String(cachePolicyQueryClass || ''));
@@ -21924,6 +22172,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 intent: effectiveIntent,
                 queryClass: cachePolicyQueryClass,
                 beautyQueryProfile,
+                publicBeautyUnifiedSearch,
               }),
               remainingBudgetMs,
               stageLabel,
@@ -21937,6 +22186,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           );
           let cacheQueryMode = preferRawBeautyCacheQuery ? 'raw_first' : null;
           if (
+            !publicBeautyUnifiedSearch &&
             preferRawBeautyCacheQuery &&
             expandedCacheSearchQueryText &&
             expandedCacheSearchQueryText !== cacheQueryText
@@ -22248,6 +22498,35 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           );
           const unifiedRelevanceRequested = normalizedSeedStrategyForCache === 'unified_relevance';
           const externalCount = effectiveProducts.filter((p) => isExternalSeedProduct(p)).length;
+          const publicBeautyUnifiedMinAcceptCount = publicBeautyUnifiedSearch
+            ? resolvePublicBeautyUnifiedMinAcceptCount(safeResultLimit)
+            : 0;
+          const cacheUnderfilledForPublicBeautyUnified =
+            publicBeautyUnifiedSearch &&
+            effectiveProducts.length > 0 &&
+            effectiveProducts.length < publicBeautyUnifiedMinAcceptCount;
+          if (publicBeautyUnifiedSearch && effectiveProducts.length > 0) {
+            crossMerchantCacheRecallResponse = {
+              products: effectiveProducts,
+              total: Math.max(Number(fromCache.total || 0), effectiveProducts.length),
+              page: fromCache.page,
+              page_size: effectiveProducts.length,
+              reply: null,
+              metadata: {
+                query_source: supplementMeta.applied
+                  ? 'cache_cross_merchant_search_supplemented'
+                  : 'cache_cross_merchant_search',
+                fetched_at: new Date().toISOString(),
+                source_breakdown: {
+                  internal_count: effectiveProducts.filter((product) => !isExternalSeedProduct(product)).length,
+                  external_seed_count: effectiveProducts.filter((product) => isExternalSeedProduct(product)).length,
+                  stale_cache_used: false,
+                  strategy_applied: normalizedSeedStrategyForCache || 'unified_relevance',
+                },
+                ...(fromCache.retrieval_sources ? { retrieval_sources: fromCache.retrieval_sources } : {}),
+              },
+            };
+          }
           crossMerchantCacheRouteDebug = {
             attempted: true,
             mode: 'search',
@@ -22279,6 +22558,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             internal_bucket_mix_before: fromCache?.internal_filter_debug?.bucket_mix_before || null,
             internal_bucket_mix_after: fromCache?.internal_filter_debug?.bucket_mix_after || null,
             supplement: supplementMeta,
+            public_beauty_unified_search: publicBeautyUnifiedSearch,
+            public_beauty_min_accept_count: publicBeautyUnifiedMinAcceptCount || null,
           };
           const merchantsReturned = uniqueStrings(
             effectiveProducts.map((p) => p?.merchant_id || p?.merchantId),
@@ -22397,13 +22678,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             Boolean(cacheQueryText) &&
             externalCount <= 0 &&
             !isLookupQuery &&
-            !preferInternalSpecificBeautyCache;
+            (!preferInternalSpecificBeautyCache || publicBeautyUnifiedSearch);
           if (cacheMissingExternalForUnified) {
+            effectiveCacheHit = false;
+          }
+          if (cacheUnderfilledForPublicBeautyUnified) {
             effectiveCacheHit = false;
           }
           const cacheStrictEmptyBypassReason =
             cacheMissingExternalForUnified
               ? 'missing_external_for_unified'
+              : cacheUnderfilledForPublicBeautyUnified
+                ? 'public_search_underfilled_unified_relevance'
               : cacheRejectedLowQuality
                 ? 'cache_rejected_low_quality'
                 : cacheBrandLikeQuery
@@ -22430,6 +22716,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             crossMerchantCacheRouteDebug.cache_rejected_low_quality = cacheRejectedLowQuality;
             crossMerchantCacheRouteDebug.cache_missing_external_for_unified =
               cacheMissingExternalForUnified;
+            crossMerchantCacheRouteDebug.cache_underfilled_public_beauty_unified =
+              cacheUnderfilledForPublicBeautyUnified;
             crossMerchantCacheRouteDebug.cache_strict_empty_bypassed = bypassCacheStrictEmptyForUnified;
             crossMerchantCacheRouteDebug.cache_strict_empty_bypass_reason = cacheStrictEmptyBypassReason;
             crossMerchantCacheRouteDebug.force_search_first_for_expanded_query =
@@ -24441,6 +24729,39 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             }),
           };
         }
+        if (
+          !response &&
+          operation === 'find_products_multi' &&
+          invokeSearchRail === 'public_observability'
+        ) {
+          const publicPrimaryExceptionReason =
+            err?.code === 'ECONNABORTED'
+              ? 'public_search_primary_timeout'
+              : 'public_search_primary_exception';
+          response = {
+            status: 200,
+            data: normalizeAuthoritativeSearchNoFallbackResponse(
+              withStrictEmptyFallback({
+                body: null,
+                queryParams,
+                reason: publicPrimaryExceptionReason,
+                upstreamStatus,
+                upstreamCode: upstreamCode || err?.code || null,
+                upstreamMessage: upstreamMessage || err?.message || null,
+                route: 'public_search_primary_exception',
+                intent: effectiveIntent,
+                queryClass: traceQueryClass,
+                queryText,
+              }),
+              {
+                querySource: 'agent_products_search',
+                primaryPath: 'upstream_stage',
+                reason: publicPrimaryExceptionReason,
+                decisionLockReason: 'public_search_no_clarify',
+              },
+            ),
+          };
+        }
         if (response) {
           // Explicit strict commerce surfaces must not fall back to legacy search paths.
         } else {
@@ -24696,6 +25017,78 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       !(operation === 'find_products_multi' && strictCommerceFindProductsMulti)
     ) {
       const queryText = String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim();
+      const requestedLimit = Math.min(
+        Math.max(1, Number(queryParams?.limit || queryParams?.page_size || 20) || 20),
+        SEARCH_LIMIT_MAX,
+      );
+      const requestedOffset = Math.max(0, Number(queryParams?.offset || 0) || 0);
+      const requestedPageFromPayload = Number(queryParams?.page || 0) || 0;
+      const requestedFindProductsMultiPage =
+        requestedPageFromPayload > 0
+          ? requestedPageFromPayload
+          : Math.floor(requestedOffset / Math.max(1, requestedLimit)) + 1;
+      const publicBeautyUnifiedSearch = isPublicBeautyUnifiedMainlineSearch({
+        operation,
+        metadata,
+        search: effectivePayload?.search || effectivePayload || {},
+        queryText,
+        queryClass: traceQueryClass,
+        intent: effectiveIntent,
+        invokeSearchRail,
+      });
+      if (
+        operation === 'find_products_multi' &&
+        publicBeautyUnifiedSearch &&
+        crossMerchantCacheRecallResponse &&
+        Array.isArray(crossMerchantCacheRecallResponse.products) &&
+        crossMerchantCacheRecallResponse.products.length > 0
+      ) {
+        const upstreamProducts = Array.isArray(upstreamData?.products) ? upstreamData.products : [];
+        const mergedUnifiedProducts = mergePublicBeautyUnifiedSearchProducts(
+          [
+            ...crossMerchantCacheRecallResponse.products,
+            ...upstreamProducts,
+          ],
+          { limit: requestedLimit },
+        );
+        const mergedUnifiedExternalCount = mergedUnifiedProducts.filter((product) =>
+          isExternalSeedProduct(product),
+        ).length;
+        upstreamData = normalizeAgentProductsListResponse(
+          {
+            ...(upstreamData && typeof upstreamData === 'object' && !Array.isArray(upstreamData)
+              ? upstreamData
+              : {}),
+            products: mergedUnifiedProducts,
+            total: Math.max(
+              Number(upstreamData?.total || 0) || 0,
+              Number(crossMerchantCacheRecallResponse?.total || 0) || 0,
+              mergedUnifiedProducts.length,
+            ),
+            metadata: {
+              ...(upstreamData?.metadata && typeof upstreamData.metadata === 'object'
+                ? upstreamData.metadata
+                : {}),
+              source_breakdown: {
+                internal_count: Math.max(0, mergedUnifiedProducts.length - mergedUnifiedExternalCount),
+                external_seed_count: mergedUnifiedExternalCount,
+                stale_cache_used: false,
+                strategy_applied: 'unified_relevance',
+              },
+              unified_recall_merge: {
+                applied: true,
+                cache_contributor_count: crossMerchantCacheRecallResponse.products.length,
+                upstream_contributor_count: upstreamProducts.length,
+                merged_count: mergedUnifiedProducts.length,
+              },
+            },
+          },
+          {
+            limit: queryParams?.limit,
+            offset: queryParams?.offset,
+          },
+        );
+      }
       const primaryUsableCount = countUsableSearchProducts(upstreamData?.products);
       const primaryUnusable = Boolean(queryText) && shouldFallbackProxySearch(upstreamData, response.status);
       const primaryRelevant = queryText ? isProxySearchFallbackRelevant(upstreamData, queryText) : true;
@@ -24718,6 +25111,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         !primaryQualityGate.accepted &&
         !primaryBrandLike &&
         !primaryHasExternalSeed;
+      const publicBeautyUnifiedMinAcceptCount = publicBeautyUnifiedSearch
+        ? resolvePublicBeautyUnifiedMinAcceptCount(requestedLimit)
+        : 0;
       const primaryMonocultureSignal = detectAuroraExternalSeedMonoculture({
         normalized: upstreamData,
         queryText,
@@ -24726,21 +25122,24 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const primaryMonoculture = Boolean(primaryMonocultureSignal.detected);
       const primaryIrrelevant =
         Boolean(queryText) && ((primaryUsableCount > 0 && !primaryRelevant) || primaryMonoculture);
-      const shouldFallback = primaryUnusable || primaryIrrelevant || primaryLowQualityNonempty;
+      const primaryUnderfilledPublicBeautyUnified =
+        operation === 'find_products_multi' &&
+        publicBeautyUnifiedSearch &&
+        requestedFindProductsMultiPage === 1 &&
+        primaryUsableCount > 0 &&
+        primaryUsableCount < publicBeautyUnifiedMinAcceptCount;
+      const shouldFallback =
+        primaryUnusable ||
+        primaryIrrelevant ||
+        primaryLowQualityNonempty ||
+        primaryUnderfilledPublicBeautyUnified;
       const forceInvokeFallbackForFragrance =
         hasFragranceQuerySignal(queryText) &&
         (primaryUsableCount === 0 || primaryLowQualityNonempty);
-      const primaryQualityGatePassed = !primaryLowQualityNonempty && primaryUsableCount > 0;
-      const requestedLimit = Math.min(
-        Math.max(1, Number(queryParams?.limit || queryParams?.page_size || 20) || 20),
-        SEARCH_LIMIT_MAX,
-      );
-      const requestedOffset = Math.max(0, Number(queryParams?.offset || 0) || 0);
-      const requestedPageFromPayload = Number(queryParams?.page || 0) || 0;
-      const requestedFindProductsMultiPage =
-        requestedPageFromPayload > 0
-          ? requestedPageFromPayload
-          : Math.floor(requestedOffset / Math.max(1, requestedLimit)) + 1;
+      const primaryQualityGatePassed =
+        !primaryLowQualityNonempty &&
+        !primaryUnderfilledPublicBeautyUnified &&
+        primaryUsableCount > 0;
       const secondarySkipBrandLike = Boolean(
         detectBrandEntities(queryText, { candidateProducts: [] })?.brand_like,
       );
@@ -24793,6 +25192,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         queryText &&
         response.status >= 200 &&
         response.status < 300 &&
+        !publicBeautyUnifiedSearch &&
         !shouldFallback &&
         primaryUsableCount < requestedLimit &&
         FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE !== 'off'
@@ -24983,7 +25383,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         const suppressPublicRecallFallback = isFallbackSuppressedSearchRail(invokeSearchRail);
         if (suppressPublicRecallFallback) {
           const publicStrictEmptyReason =
-            primaryIrrelevant
+            primaryUnderfilledPublicBeautyUnified
+              ? 'public_search_underfilled_unified_relevance'
+              : primaryIrrelevant
               ? primaryMonoculture
                 ? 'public_search_primary_monoculture'
                 : 'public_search_primary_irrelevant'
@@ -25297,6 +25699,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	                ? Number(primaryQualityScore)
 	                : null,
 	            low_quality_nonempty_detected: primaryLowQualityNonempty,
+	            primary_underfilled_public_beauty_unified: primaryUnderfilledPublicBeautyUnified,
 	            internal_raw_count: routeHealthInternalCount,
 	            external_raw_count: routeHealthExternalCount,
 	            merged_pre_limit_count: mergedPreLimitCount,
@@ -25318,12 +25721,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	                semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
 	                semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
                 primary_quality_gate_passed: primaryQualityGatePassed,
-                primary_quality_score:
-                  Number.isFinite(Number(primaryQualityScore)) && Number(primaryQualityScore) >= 0
-                    ? Number(primaryQualityScore)
-                    : null,
-                low_quality_nonempty_detected: Boolean(primaryLowQualityNonempty),
-                internal_raw_count: routeHealthInternalCount,
+	                primary_quality_score:
+	                  Number.isFinite(Number(primaryQualityScore)) && Number(primaryQualityScore) >= 0
+	                    ? Number(primaryQualityScore)
+	                    : null,
+	                low_quality_nonempty_detected: Boolean(primaryLowQualityNonempty),
+	                primary_underfilled_public_beauty_unified: primaryUnderfilledPublicBeautyUnified,
+	                internal_raw_count: routeHealthInternalCount,
                 external_raw_count: routeHealthExternalCount,
                 merged_pre_limit_count: mergedPreLimitCount,
 	                supplement_attempted: supplementAttempted,
@@ -25372,13 +25776,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		            semantic_retry_applied: Boolean(semanticRetryApplied),
                 semantic_retry_actual_attempted: semanticRetryActualAttempted,
 		            semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
-		            semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
+	            semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
 	            primary_quality_gate_passed: primaryQualityGatePassed,
 	            primary_quality_score:
 	              Number.isFinite(Number(primaryQualityScore)) && Number(primaryQualityScore) >= 0
 	                ? Number(primaryQualityScore)
 	                : null,
 	            low_quality_nonempty_detected: primaryLowQualityNonempty,
+	            primary_underfilled_public_beauty_unified: primaryUnderfilledPublicBeautyUnified,
 	            internal_raw_count: routeHealthInternalCount,
 	            external_raw_count: routeHealthExternalCount,
 	            merged_pre_limit_count: mergedPreLimitCount,
@@ -25400,12 +25805,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	                semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
 	                semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
                 primary_quality_gate_passed: primaryQualityGatePassed,
-                primary_quality_score:
-                  Number.isFinite(Number(primaryQualityScore)) && Number(primaryQualityScore) >= 0
-                    ? Number(primaryQualityScore)
-                    : null,
-                low_quality_nonempty_detected: Boolean(primaryLowQualityNonempty),
-                internal_raw_count: routeHealthInternalCount,
+	                primary_quality_score:
+	                  Number.isFinite(Number(primaryQualityScore)) && Number(primaryQualityScore) >= 0
+	                    ? Number(primaryQualityScore)
+	                    : null,
+	                low_quality_nonempty_detected: Boolean(primaryLowQualityNonempty),
+	                primary_underfilled_public_beauty_unified: primaryUnderfilledPublicBeautyUnified,
+	                internal_raw_count: routeHealthInternalCount,
                 external_raw_count: routeHealthExternalCount,
                 merged_pre_limit_count: mergedPreLimitCount,
 	                supplement_attempted: supplementAttempted,
@@ -26627,6 +27033,7 @@ module.exports._debug = {
   loadCreatorSellableFromCache,
   searchCreatorSellableFromCache,
   searchCrossMerchantFromCache,
+  mergePublicBeautyUnifiedSearchProducts,
   fetchProductDetailForOffers,
   fetchExternalSeedProductDetailFromDb,
   stripResponseOwnedPdpModulesFromCanonicalPayload,

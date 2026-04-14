@@ -237,3 +237,22 @@ test('public beauty discovery route defaults external seed on mainline queries',
     ['external_seed_supplement', 'coverage_supplement'],
   );
 });
+
+test('public beauty route forces unified external seed even when query disables it explicitly', () => {
+  const runtime = buildRuntime();
+  const routePlan = runtime.prepareAgentProductsSearchRoute({
+    query: {
+      query: 'serum',
+      source: 'search',
+      catalog_surface: 'beauty',
+      allow_external_seed: 'false',
+      external_seed_strategy: 'legacy',
+    },
+  });
+
+  assert.equal(routePlan.invalid, false);
+  assert.equal(routePlan.payload.search.allow_external_seed, true);
+  assert.equal(routePlan.payload.search.external_seed_strategy, 'unified_relevance');
+  assert.equal(routePlan.payload.search.catalog_surface, 'beauty');
+  assert.equal(routePlan.payload.search.commerce_surface, 'beauty');
+});

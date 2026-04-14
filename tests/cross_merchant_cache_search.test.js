@@ -375,4 +375,90 @@ describe('cross-merchant cache lexical search', () => {
       ]),
     );
   });
+
+  test('public beauty unified cache miss skips relaxed no-onboarding and beauty browse fallback', async () => {
+    jest.doMock('../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        const isStrictJoin = text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo');
+        const isRelaxedQuery =
+          !text.includes('JOIN merchant_onboarding mo') && text.includes('FROM products_cache');
+
+        if (text.includes('COUNT(*)::int AS total')) {
+          throw new Error('public beauty unified cache stage should not run lexical count');
+        }
+        if (text.includes('beauty_category_browse_fastpath')) {
+          return { rows: [] };
+        }
+        if (isRelaxedQuery) {
+          throw new Error('relaxed no-onboarding fallback should not run for public beauty unified search');
+        }
+        if (isStrictJoin && text.includes('~*')) {
+          throw new Error('beauty_browse_fallback should not run for public beauty unified search');
+        }
+        if (isStrictJoin) {
+          return { rows: [] };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const app = require('../src/server');
+    const { searchCrossMerchantFromCache } = app._debug;
+
+    const result = await searchCrossMerchantFromCache('shampoo', 1, 10, {
+      inStockOnly: true,
+      publicBeautyUnifiedSearch: true,
+    });
+
+    expect(result.products || []).toEqual([]);
+    expect(result.retrieval_sources || []).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: 'lexical_cache',
+          count: 0,
+          count_query_skipped: true,
+        }),
+        expect.objectContaining({
+          source: 'lexical_cache_relaxed_no_onboarding',
+          used: false,
+          skipped: true,
+          reason: 'public_beauty_unified_skip_relaxed_no_onboarding',
+        }),
+      ]),
+    );
+    expect((result.retrieval_sources || []).some((item) => item?.source === 'beauty_browse_fallback')).toBe(false);
+  });
+
+  test('public beauty unified merge helper collapses duplicate offers into one card', async () => {
+    const app = require('../src/server');
+    const { mergePublicBeautyUnifiedSearchProducts } = app._debug;
+
+    const merged = mergePublicBeautyUnifiedSearchProducts([
+      {
+        product_id: 'ext_lip_1',
+        source: 'external_seed',
+        title: 'Barrier Repair Lip Balm',
+        canonical_url: 'https://seed.test/products/barrier-repair-lip-balm',
+        offers: [{ offer_id: 'offer::1', merchant_id: 'external_seed' }],
+      },
+      {
+        product_id: 'ext_lip_2',
+        source: 'external_seed',
+        title: 'Barrier Repair Lip Balm',
+        canonical_url: 'https://seed.test/products/barrier-repair-lip-balm',
+        offers: [{ offer_id: 'offer::2', merchant_id: 'external_seed' }],
+      },
+    ], { limit: 10 });
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toEqual(
+      expect.objectContaining({
+        canonical_url: 'https://seed.test/products/barrier-repair-lip-balm',
+        merged_sources: expect.arrayContaining(['external_seed']),
+      }),
+    );
+    expect(Array.isArray(merged[0]?.offers)).toBe(true);
+    expect(merged[0].offers).toHaveLength(2);
+  });
 });

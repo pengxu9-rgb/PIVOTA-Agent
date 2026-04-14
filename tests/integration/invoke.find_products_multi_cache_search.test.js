@@ -1237,7 +1237,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         min_count: 1,
       }),
     );
-    expect(resp.body.metadata?.retrieval_sources || []).toEqual(
+    expect(resp.body.metadata?.route_debug?.cross_merchant_cache?.retrieval_sources || []).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           source: 'beauty_category_browse_fastpath',
@@ -1250,16 +1250,17 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(upstreamSearch.isDone()).toBe(false);
   });
 
-  test('public source=search serum contract stays internal-first and emits cache-stage diagnostics', async () => {
+  test('public source=search serum cache contributors do not short-circuit unified external recall', async () => {
     process.env.SEARCH_EXTERNAL_HARD_RULE_PRUNE = 'true';
+    let upstreamRequestBody = null;
 
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
         const text = String(sql || '');
         if (text.includes('COUNT(*)::int AS total')) {
-          return { rows: [{ total: 4 }] };
+          throw new Error('public beauty unified cache stage should not run lexical count');
         }
-        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+        if (text.includes('beauty_category_browse_fastpath')) {
           return {
             rows: [
               {
@@ -1293,13 +1294,19 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
             ],
           };
         }
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return { rows: [] };
+        }
         return { rows: [] };
       },
     }));
 
-    const externalSupplement = nock('http://pivota.test')
-      .get('/agent/v1/products/search')
-      .query((q) => String(q.merchant_id || '') === 'external_seed' && String(q.query || '').includes('serum'))
+    const upstreamSearch = nock('http://pivota.test')
+      .post('/agent/v2/products/search', (body) => {
+        upstreamRequestBody = body;
+        return true;
+      })
+      .query(true)
       .reply(200, {
         status: 'success',
         success: true,
@@ -1314,8 +1321,31 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
             product_type: 'external',
             status: 'active',
           },
+          {
+            id: 'ext_serum_2',
+            product_id: 'ext_serum_2',
+            merchant_id: 'external_seed',
+            source: 'external_seed',
+            title: 'Peptide Barrier Serum',
+            description: 'peptide serum for bounce and repair',
+            product_type: 'external',
+            status: 'active',
+          },
+          {
+            id: 'ext_serum_3',
+            product_id: 'ext_serum_3',
+            merchant_id: 'external_seed',
+            source: 'external_seed',
+            title: 'Vitamin C Glow Serum',
+            description: 'brightening serum for daily glow',
+            product_type: 'external',
+            status: 'active',
+          },
         ],
-        total: 1,
+        total: 3,
+        metadata: {
+          query_source: 'agent_products_v2',
+        },
       });
 
     const app = require('../../src/server');
@@ -1337,20 +1367,43 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       });
 
     expect(resp.status).toBe(200);
+    expect(upstreamSearch.isDone()).toBe(true);
+    expect(upstreamRequestBody).toEqual(
+      expect.objectContaining({
+        query: expect.stringContaining('serum'),
+        search_all_merchants: true,
+        allow_external_seed: true,
+        external_seed_strategy: 'unified_relevance',
+      }),
+    );
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
-        query_source: 'cache_cross_merchant_search',
+        query_source: expect.stringMatching(/^agent_products_/),
         source_breakdown: expect.objectContaining({
           internal_count: 2,
-          external_seed_count: 0,
+          external_seed_count: 3,
+        }),
+        unified_recall_merge: expect.objectContaining({
+          applied: true,
+          cache_contributor_count: 2,
+          upstream_contributor_count: 3,
+          merged_count: 5,
         }),
         service_version: expect.objectContaining({
           service: expect.any(String),
           build_id: expect.any(String),
         }),
         cache_stage_attempted: true,
-        cache_stage_selected_source: 'internal_cache',
         cache_stage_beauty_bucket: 'skincare',
+      }),
+    );
+    expect(resp.body.metadata?.route_debug?.cross_merchant_cache).toEqual(
+      expect.objectContaining({
+        beauty_query_bucket: 'skincare',
+        beauty_category_fastpath: true,
+        cache_hit: false,
+        cache_missing_external_for_unified: true,
+        public_beauty_unified_search: true,
       }),
     );
     expect(Array.isArray(resp.body.metadata?.cache_stage_query_terms)).toBe(true);
@@ -1368,7 +1421,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         ]),
       }),
     );
-    expect(resp.body.metadata?.retrieval_sources || []).toEqual(
+    expect(resp.body.metadata?.route_debug?.cross_merchant_cache?.retrieval_sources || []).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           source: 'beauty_category_browse_fastpath',
@@ -1381,12 +1434,180 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       expect.arrayContaining([
         'Winona Soothing Repair Serum',
         'The Ordinary Niacinamide 10% + Zinc 1%',
+        'Watch Ya Tone Niacinamide Dark Spot Serum Refill',
+        'Peptide Barrier Serum',
+        'Vitamin C Glow Serum',
       ]),
     );
-    expect((resp.body.products || []).every((item) => String(item?.merchant_id || '') !== 'external_seed')).toBe(
+    expect(resp.body.products).toHaveLength(5);
+    expect((resp.body.products || []).some((item) => String(item?.merchant_id || '') === 'external_seed')).toBe(
       true,
     );
-    expect(externalSupplement.isDone()).toBe(false);
+  });
+
+  test('public source=search lip balm merges duplicate external offers into one unified card', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) {
+          throw new Error('public beauty unified cache stage should not run lexical count');
+        }
+        if (text.includes('beauty_category_browse_fastpath')) {
+          return {
+            rows: [
+              {
+                merchant_id: 'merch_lip',
+                merchant_name: 'Lip Care Shop',
+                product_data: {
+                  id: 'prod_lip_internal_1',
+                  product_id: 'prod_lip_internal_1',
+                  merchant_id: 'merch_lip',
+                  title: 'Daily Barrier Lip Balm',
+                  description: 'Comforting lip balm for dry lips',
+                  product_type: 'Lip Balm',
+                  destination_url: 'https://internal.test/products/daily-barrier-lip-balm',
+                  status: 'published',
+                  inventory_quantity: 5,
+                },
+              },
+            ],
+          };
+        }
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return { rows: [] };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .post('/agent/v2/products/search')
+      .query((query) => {
+        return (
+          String(query.search_all_merchants || '') === 'true' &&
+          String(query.query || '') === 'lip balm' &&
+          String(query.allow_external_seed || '') === 'true' &&
+          String(query.external_seed_strategy || '') === 'unified_relevance'
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'ext_lip_1',
+            merchant_id: 'external_seed',
+            source: 'external_seed',
+            title: 'Barrier Repair Lip Balm',
+            canonical_url: 'https://seed.test/products/barrier-repair-lip-balm',
+            offers: [
+              {
+                offer_id: 'offer::external_seed::lip_balm::1',
+                merchant_id: 'external_seed',
+                source_type: 'external_seed',
+              },
+            ],
+          },
+          {
+            product_id: 'ext_lip_2',
+            merchant_id: 'external_seed',
+            source: 'external_seed',
+            title: 'Barrier Repair Lip Balm',
+            canonical_url: 'https://seed.test/products/barrier-repair-lip-balm',
+            offers: [
+              {
+                offer_id: 'offer::external_seed::lip_balm::2',
+                merchant_id: 'external_seed',
+                source_type: 'external_seed',
+              },
+            ],
+          },
+          {
+            product_id: 'ext_lip_3',
+            merchant_id: 'external_seed',
+            source: 'external_seed',
+            title: 'Vanilla Lip Balm',
+            canonical_url: 'https://seed.test/products/vanilla-lip-balm',
+            offers: [
+              {
+                offer_id: 'offer::external_seed::vanilla_lip_balm',
+                merchant_id: 'external_seed',
+                source_type: 'external_seed',
+              },
+            ],
+          },
+          {
+            product_id: 'ext_lip_4',
+            merchant_id: 'external_seed',
+            source: 'external_seed',
+            title: 'Overnight Lip Mask',
+            canonical_url: 'https://seed.test/products/overnight-lip-mask',
+            offers: [
+              {
+                offer_id: 'offer::external_seed::overnight_lip_mask',
+                merchant_id: 'external_seed',
+                source_type: 'external_seed',
+              },
+            ],
+          },
+        ],
+        total: 4,
+        metadata: {
+          query_source: 'agent_products_v2',
+        },
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'lip balm',
+            page: 1,
+            limit: 4,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'search',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(upstreamSearch.isDone()).toBe(true);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: expect.stringMatching(/^agent_products_/),
+        source_breakdown: expect.objectContaining({
+          internal_count: 1,
+          external_seed_count: 3,
+        }),
+        unified_recall_merge: expect.objectContaining({
+          applied: true,
+          merged_count: 4,
+        }),
+      }),
+    );
+    expect(resp.body.metadata?.route_debug?.cross_merchant_cache).toEqual(
+      expect.objectContaining({
+        cache_hit: false,
+        cache_missing_external_for_unified: true,
+        public_beauty_unified_search: true,
+      }),
+    );
+    expect(resp.body.products).toHaveLength(4);
+    const mergedLipBalm = (resp.body.products || []).find((item) =>
+      String(item?.title || item?.canonical_title || '') === 'Barrier Repair Lip Balm'
+    );
+    expect(mergedLipBalm).toEqual(
+      expect.objectContaining({
+        canonical_url: 'https://seed.test/products/barrier-repair-lip-balm',
+      }),
+    );
+    expect(Array.isArray(mergedLipBalm?.offers)).toBe(true);
+    expect(mergedLipBalm.offers).toHaveLength(2);
   });
 
   test('serum cache preference helper replaces external-only upstream with internal skincare cache', async () => {
