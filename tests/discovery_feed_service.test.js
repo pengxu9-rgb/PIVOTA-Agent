@@ -134,6 +134,7 @@ describe('discovery feed service', () => {
     _internals.resetBrowsePoolCache();
     _internals.resetBrowseCatalogCountCache();
     _internals.resetDiscoveryDependencyProbeCache();
+    _internals.resetProductIntelKbStoreCache();
     nock.cleanAll();
   });
 
@@ -226,146 +227,169 @@ describe('discovery feed service', () => {
   });
 
   test('explicit browse query uses staged external seed mainline without cold-start beauty fallback terms', async () => {
-    jest.resetModules();
-    const prevDatabaseUrl = process.env.DATABASE_URL;
-    process.env.DATABASE_URL = 'postgres://explicit-query-external-fastpath';
     delete process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL;
     delete process.env.PIVOTA_BACKEND_BASE_URL;
     delete process.env.PIVOTA_API_BASE;
     delete process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY;
     delete process.env.PIVOTA_BACKEND_AGENT_API_KEY;
     delete process.env.PIVOTA_API_KEY;
+    delete process.env.DATABASE_URL;
 
-    const columnRows = [
-      ...['id', 'merchant_id', 'product_data', 'expires_at', 'cached_at'].map((columnName) => ({
-        table_name: 'products_cache',
-        column_name: columnName,
+    const internalSpy = jest.fn(async () => []);
+    const externalSpy = jest.fn(async ({ queries }) =>
+      Array.from({ length: 12 }, (_, idx) =>
+        makeProduct({
+          merchant_id: 'external_seed',
+          product_id: `lip_balm_${idx + 1}`,
+          title: `Lip Balm ${idx + 1}`,
+          brand: `Seeded Beauty ${idx + 1}`,
+          category: 'Lip Balm',
+          product_type: 'Lip Balm',
+        }),
+      ).map((product) => ({
+        ...product,
+        observed_queries: queries,
       })),
-      ...[
-        'id',
-        'external_product_id',
-        'destination_url',
-        'canonical_url',
-        'title',
-        'seed_data',
-        'market',
-        'tool',
-        'status',
-        'attached_product_key',
-        'updated_at',
-        'created_at',
-      ].map((columnName) => ({
-        table_name: 'external_product_seeds',
-        column_name: columnName,
-      })),
-    ];
-    const indexRows = [
-      'idx_external_product_seeds_recall_title_trgm',
-      'idx_external_product_seeds_recall_summary_trgm',
-      'idx_external_product_seeds_recall_category_vertical_recency',
-      'idx_external_product_seeds_recall_vertical_recency',
-      'idx_external_product_seeds_recall_ingredient_tokens_trgm',
-      'idx_external_product_seeds_recall_alias_tokens_trgm',
-    ].map((indexname) => ({
-      tablename: 'external_product_seeds',
-      indexname,
-    }));
-    const externalRows = Array.from({ length: 12 }, (_, idx) =>
-      makeExternalSeedRow({
-        id: `eps_lip_balm_${idx + 1}`,
-        external_product_id: `ext_lip_balm_${idx + 1}`,
-        title: `Lip Balm ${idx + 1}`,
-        brand: `Seeded Beauty ${idx + 1}`,
-        category: 'Lip Balm',
-        product_type: 'Lip Balm',
-        description: 'Moisturizing lip balm for daily care.',
-      }),
     );
-    const dbQueryMock = jest.fn(async (sql) => {
-      const text = String(sql || '');
-      if (text.includes('information_schema.columns')) {
-        return { rows: columnRows };
-      }
-      if (text.includes('pg_indexes')) {
-        return { rows: indexRows };
-      }
-      if (text.includes('COUNT(DISTINCT') && text.includes('FROM filtered')) {
-        return { rows: [{ total: 12 }] };
-      }
-      if (text.includes('FROM external_product_seeds') && text.includes('match_stage')) {
-        return { rows: externalRows };
-      }
-      return { rows: [] };
-    });
 
-    jest.doMock('../src/db', () => ({
-      query: dbQueryMock,
-    }));
-
-    try {
-      const fresh = require('../src/services/discoveryFeed');
-      const internalSpy = jest.fn(async () => []);
-      const response = await fresh.getDiscoveryFeed(
-        {
-          surface: 'browse_products',
-          page: 1,
-          limit: 12,
-          debug: true,
-          query: {
-            text: 'lip balm',
-          },
-          context: {
-            auth_state: 'anonymous',
-            recent_views: [],
-            recent_queries: [],
-            locale: 'en-US',
-          },
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        debug: true,
+        query: {
+          text: 'lip balm',
         },
-        {
-          providerOverrides: {
-            internal_catalog: internalSpy,
-          },
+        context: {
+          auth_state: 'anonymous',
+          recent_views: [],
+          recent_queries: [],
+          locale: 'en-US',
         },
-      );
+      },
+      {
+        providerOverrides: {
+          internal_catalog: internalSpy,
+          external_seeds: externalSpy,
+        },
+      },
+    );
 
-      const externalStageCalls = dbQueryMock.mock.calls.filter(([sql]) => {
-        const text = String(sql || '');
-        return text.includes('FROM external_product_seeds') && text.includes('match_stage');
-      });
-      const externalStageParams = JSON.stringify(externalStageCalls[0]?.[1] || []);
+    const externalCall = externalSpy.mock.calls[0]?.[0] || {};
+    const recallSummaryText = JSON.stringify(response.metadata.rank_debug.recall_summary);
 
-      expect(response.products).toHaveLength(12);
-      expect(internalSpy).toHaveBeenCalledTimes(1);
-      expect(externalStageCalls).toHaveLength(1);
-      expect(String(externalStageCalls[0][0])).not.toContain('WITH source');
-      expect(externalStageParams).toContain('%lip balm%');
-      expect(externalStageParams).not.toMatch(/niacinamide|vitamin c|barrier moisturizer/i);
-      expect(response.metadata.provider_breakdown).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ provider: 'external_seeds', successful: true, returned: 12 }),
-        ]),
-      );
-      expect(response.metadata.rank_debug.recall_summary).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            provider: 'products_search',
-            label: 'products_search_pool',
-            failure_reason: 'missing_base_url',
-          }),
-          expect.objectContaining({
-            provider: 'external_seeds',
-            label: 'external_seed_pool',
-            query: 'lip balm',
-            status: 200,
-            returned: 12,
-          }),
-        ]),
-      );
-    } finally {
-      jest.dontMock('../src/db');
-      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
-      else process.env.DATABASE_URL = prevDatabaseUrl;
-    }
+    expect(response.products).toHaveLength(12);
+    expect(internalSpy).toHaveBeenCalledTimes(1);
+    expect(externalSpy).toHaveBeenCalledTimes(1);
+    expect(externalCall.queries).toEqual(['lip balm']);
+    expect(recallSummaryText).not.toMatch(/niacinamide|vitamin c|barrier moisturizer/i);
+    expect(response.metadata.provider_breakdown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ provider: 'external_seeds', successful: true, returned: 12 }),
+      ]),
+    );
+    expect(response.metadata.rank_debug.recall_summary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          provider: 'products_search',
+          label: 'products_search_pool',
+          failure_reason: 'missing_base_url',
+        }),
+        expect.objectContaining({
+          provider: 'external_seeds',
+          label: 'external_seed_pool',
+          query: 'lip balm',
+          status: 200,
+          returned: 12,
+        }),
+      ]),
+    );
+  });
+
+  test('explicit browse query does not let broad internal catalog matches starve external seed candidates', async () => {
+    delete process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL;
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+    delete process.env.PIVOTA_API_BASE;
+    delete process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY;
+    delete process.env.PIVOTA_BACKEND_AGENT_API_KEY;
+    delete process.env.PIVOTA_API_KEY;
+    delete process.env.DATABASE_URL;
+
+    const internalSpy = jest.fn(async () =>
+      Array.from({ length: 48 }, (_, idx) =>
+        makeProduct({
+          merchant_id: 'internal_catalog',
+          product_id: `horse_hair_brush_${idx + 1}`,
+          title: `Horse Hair Makeup Brush ${idx + 1}`,
+          brand: 'Brush House',
+          category: 'Makeup Brush',
+          product_type: 'Makeup Brush',
+        }),
+      ),
+    );
+    const externalSpy = jest.fn(async () =>
+      Array.from({ length: 12 }, (_, idx) =>
+        makeProduct({
+          merchant_id: 'external_seed',
+          product_id: `hair_oil_${idx + 1}`,
+          title: `Nourishing Hair Oil ${idx + 1}`,
+          brand: `Seeded Haircare ${idx + 1}`,
+          category: 'Hair Oil',
+          product_type: 'Hair Oil',
+        }),
+      ),
+    );
+
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        debug: true,
+        query: {
+          text: 'hair oil',
+        },
+        context: {
+          auth_state: 'anonymous',
+          recent_views: [],
+          recent_queries: [],
+          locale: 'en-US',
+        },
+      },
+      {
+        providerOverrides: {
+          internal_catalog: internalSpy,
+          external_seeds: externalSpy,
+        },
+      },
+    );
+
+    expect(externalSpy).toHaveBeenCalledTimes(1);
+    expect(internalSpy).toHaveBeenCalledTimes(1);
+    expect(response.products).toHaveLength(12);
+    expect(response.products.every((product) => /hair oil/i.test(product.title))).toBe(true);
+    expect(response.metadata.selected_source_breakdown).toEqual(
+      expect.objectContaining({ external_seeds: 12 }),
+    );
+    expect(response.metadata.rank_debug.recall_summary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          provider: 'external_seeds',
+          label: 'external_seed_pool',
+          query: 'hair oil',
+          returned: 12,
+          status: 200,
+        }),
+        expect.objectContaining({
+          provider: 'internal_catalog',
+          label: 'internal_catalog_pool',
+          query: 'hair oil',
+          returned: 48,
+          status: 200,
+        }),
+      ]),
+    );
   });
 
   test('explicit browse lookup short-circuits external seed recall with exact-title fastpath', async () => {

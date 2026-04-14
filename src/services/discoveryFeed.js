@@ -5140,16 +5140,29 @@ async function loadCatalogCandidates({
       qualityThreshold,
     });
 
-  if (shouldSkipInternal) {
+  const pushSkippedInternalProviderResult = (skipReason) => {
     providerResults.push(
       buildSkippedProviderResult('internal_catalog', {
         label: getProviderLabel('internal_catalog'),
         query: providerQueries.join(' | '),
         limit: internalProviderLimit,
-        skipReason: 'sufficient_primary_candidates',
+        skipReason,
       }),
     );
-  } else {
+  };
+
+  const pushSkippedExternalSeedProviderResult = (skipReason) => {
+    providerResults.push(
+      buildSkippedProviderResult('external_seeds', {
+        label: getProviderLabel('external_seeds'),
+        query: externalProviderQueries.join(' | '),
+        limit: externalProviderLimit,
+        skipReason,
+      }),
+    );
+  };
+
+  const fetchInternalProviderResult = async () => {
     try {
       const internalResult = await fetchInternalCatalogCandidates({
         request,
@@ -5168,20 +5181,9 @@ async function loadCatalogCandidates({
     } catch (err) {
       providerResults.push(buildProviderErrorResult('internal_catalog', err));
     }
-  }
+  };
 
-  if (shouldSkipExternalSeeds) {
-    providerResults.push(
-      buildSkippedProviderResult('external_seeds', {
-        label: getProviderLabel('external_seeds'),
-        query: externalProviderQueries.join(' | '),
-        limit: externalProviderLimit,
-        skipReason: useBeautyInterestMainline
-          ? 'beauty_interest_mainline_primary_used'
-          : 'sufficient_primary_candidates',
-      }),
-    );
-  } else {
+  const fetchExternalSeedProviderResult = async () => {
     try {
       const externalResult = isExplicitQueryScopedBrowseRequest(request)
         ? await fetchBeautyInterestExternalSeedFastpathCandidates({
@@ -5212,6 +5214,47 @@ async function loadCatalogCandidates({
     } catch (err) {
       providerResults.push(buildProviderErrorResult('external_seeds', err));
     }
+  };
+
+  const externalSkipReason = useBeautyInterestMainline
+    ? 'beauty_interest_mainline_primary_used'
+    : 'sufficient_primary_candidates';
+
+  if (isExplicitQueryScopedBrowseRequest(request)) {
+    if (shouldSkipExternalSeeds) {
+      pushSkippedExternalSeedProviderResult(externalSkipReason);
+    } else {
+      await fetchExternalSeedProviderResult();
+    }
+
+    const shouldSkipInternalAfterExternal =
+      shouldSkipInternal ||
+      hasSufficientProviderCandidates(mergedProducts, {
+        request,
+        profile,
+        enoughThreshold,
+        qualityThreshold,
+      });
+    if (shouldSkipInternalAfterExternal) {
+      pushSkippedInternalProviderResult(
+        shouldSkipInternal ? 'sufficient_primary_candidates' : 'sufficient_explicit_query_external_candidates',
+      );
+    } else {
+      await fetchInternalProviderResult();
+    }
+    return finalizeProviderResult();
+  }
+
+  if (shouldSkipInternal) {
+    pushSkippedInternalProviderResult('sufficient_primary_candidates');
+  } else {
+    await fetchInternalProviderResult();
+  }
+
+  if (shouldSkipExternalSeeds) {
+    pushSkippedExternalSeedProviderResult(externalSkipReason);
+  } else {
+    await fetchExternalSeedProviderResult();
   }
 
   return finalizeProviderResult();
@@ -7854,6 +7897,9 @@ module.exports = {
       discoveryDbDependencyProbeCache.value = null;
       discoveryDbDependencyProbeCache.expiresAt = 0;
       discoveryDbDependencyProbeCache.pending = null;
+    },
+    resetProductIntelKbStoreCache: () => {
+      productIntelKbStore = null;
     },
     resetBrowsePoolCache: () => browsePoolCache.clear(),
     resetBrowseCatalogCountCache: () => browseCatalogCountCache.clear(),
