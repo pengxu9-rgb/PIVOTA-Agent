@@ -7294,7 +7294,7 @@ test('fetchRecoAlternativesForProduct: open_world_only grounds unresolved search
                 name: '10% Niacinamide Booster',
                 product_type: 'serum',
                 similarity_score: 79,
-                reasons: ['Targets oiliness and uneven tone with the same hero active.'],
+                reasons: ['Regulates oil production and improves skin tone with the same hero active.'],
                 tradeoff_notes: ['Formula concentration differs from the anchor.'],
               },
             ],
@@ -7362,7 +7362,7 @@ test('fetchRecoAlternativesForProduct: open_world_only grounds unresolved search
         assert.equal(out.alternatives[0]?.metadata?.name_only_copy_sanitized, undefined);
         assert.deepEqual(
           out.alternatives[0]?.reasons,
-          ['Targets oiliness with the same hero active.'],
+          ['Regulates oil production with the same hero active.'],
         );
         assert.deepEqual(
           out.alternatives[0]?.tradeoff_notes,
