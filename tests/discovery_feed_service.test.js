@@ -433,6 +433,85 @@ describe('discovery feed service', () => {
     );
   });
 
+  test('explicit non-compound browse starts external seed recall without waiting for products_search', async () => {
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
+    process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY = 'bridge-key';
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+    delete process.env.PIVOTA_API_BASE;
+    delete process.env.PIVOTA_BACKEND_AGENT_API_KEY;
+    delete process.env.PIVOTA_API_KEY;
+    delete process.env.DATABASE_URL;
+
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const productsSearchProducts = [];
+    let externalStartedAt = 0;
+    const externalSpy = jest.fn(async () => {
+      externalStartedAt = Date.now();
+      await sleep(120);
+      return Array.from({ length: 18 }, (_, idx) =>
+        makeProduct({
+          merchant_id: 'external_seed',
+          product_id: `seed_serum_${idx + 1}`,
+          title: `Seed Serum ${idx + 1}`,
+          brand: `Seed Beauty ${idx + 1}`,
+          category: 'Skincare',
+          product_type: 'Serum',
+        }),
+      );
+    });
+    const internalSpy = jest.fn(async () => []);
+
+    nock('http://discovery-catalog.test')
+      .matchHeader('x-agent-api-key', 'bridge-key')
+      .matchHeader('x-api-key', 'bridge-key')
+      .get('/agent/v1/products/search')
+      .query((query) => String(query.query || '') === 'serum')
+      .delay(120)
+      .reply(200, { products: productsSearchProducts });
+
+    const startedAt = Date.now();
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        debug: true,
+        query: {
+          text: 'serum',
+        },
+        context: {
+          auth_state: 'anonymous',
+          recent_views: [],
+          recent_queries: [],
+          locale: 'en-US',
+        },
+      },
+      {
+        providerOverrides: {
+          internal_catalog: internalSpy,
+          external_seeds: externalSpy,
+        },
+      },
+    );
+
+    expect(nock.isDone()).toBe(true);
+    expect(externalSpy).toHaveBeenCalledTimes(1);
+    expect(externalStartedAt - startedAt).toBeLessThan(80);
+    expect(internalSpy).not.toHaveBeenCalled();
+    expect(response.products).toHaveLength(12);
+    expect(response.metadata.provider_breakdown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ provider: 'products_search', successful: true, returned: 0 }),
+        expect.objectContaining({ provider: 'external_seeds', successful: true, returned: 18 }),
+        expect.objectContaining({
+          provider: 'internal_catalog',
+          skipped: true,
+          skip_reason: 'sufficient_explicit_query_external_candidates',
+        }),
+      ]),
+    );
+  });
+
   test('explicit browse query does not let broad internal catalog matches starve external seed candidates', async () => {
     delete process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL;
     delete process.env.PIVOTA_BACKEND_BASE_URL;
@@ -5755,6 +5834,70 @@ describe('discovery feed service', () => {
       );
       expect(externalSpy).toHaveBeenCalled();
       expect(elapsedMs).toBeLessThan(220);
+    } finally {
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+    }
+  });
+
+  test('explicit browse query skips stable catalog count and uses runtime corpus total', async () => {
+    jest.resetModules();
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = 'postgres://browse-query-count-skip-test';
+
+    const dbQueryMock = jest.fn(async (sql) => {
+      const text = String(sql || '');
+      if (text.includes('COUNT(DISTINCT') && text.includes('FROM filtered')) {
+        throw new Error('stable count should not run for explicit query browse');
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../src/db', () => ({
+      query: dbQueryMock,
+    }));
+
+    try {
+      const fresh = require('../src/services/discoveryFeed');
+      const response = await fresh.getDiscoveryFeed(
+        {
+          surface: 'browse_products',
+          page: 1,
+          limit: 4,
+          query: { text: 'lip balm' },
+          context: {
+            auth_state: 'anonymous',
+            locale: 'en-US',
+            recent_views: [],
+            recent_queries: [],
+          },
+        },
+        {
+          candidateProducts: Array.from({ length: 5 }, (_, idx) =>
+            makeProduct({
+              merchant_id: 'external_seed',
+              product_id: `lip_balm_${idx + 1}`,
+              title: `Lip Balm ${idx + 1}`,
+              brand: `Brand ${idx + 1}`,
+              category: 'Lip Care',
+              product_type: 'Lip Balm',
+            }),
+          ),
+        },
+      );
+
+      expect(response.total).toBe(5);
+      expect(response.metadata).toEqual(
+        expect.objectContaining({
+          corpus_total_count: 5,
+          runtime_corpus_count: 5,
+          count_source: 'runtime_corpus_query_scoped',
+        }),
+      );
+      const countQueries = dbQueryMock.mock.calls
+        .map(([sql]) => String(sql || ''))
+        .filter((text) => text.includes('COUNT(DISTINCT') && text.includes('FROM filtered'));
+      expect(countQueries).toHaveLength(0);
     } finally {
       if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
       else process.env.DATABASE_URL = prevDatabaseUrl;

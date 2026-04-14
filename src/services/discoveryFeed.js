@@ -1512,6 +1512,14 @@ async function countStableBrowseCatalogTotal(request, { queryFn = query, useCach
   return null;
 }
 
+function shouldUseStableBrowseCatalogTotal(request) {
+  if (!request || request.surface !== 'browse_products') return false;
+  // Public /products?q= already has a bounded recall pool and cursor. The
+  // stable total query scans broad JSON text and can dominate live latency.
+  if (isExplicitQueryScopedBrowseRequest(request)) return false;
+  return true;
+}
+
 function resolveBrandDirectCandidateLimit(request, limit) {
   const safeLimit = clampInt(
     limit,
@@ -5257,6 +5265,18 @@ function hasSufficientProviderCandidates(products = [], { request, profile, enou
   );
 }
 
+function resolveExplicitQueryInternalSkipEnoughThreshold(request, enoughThreshold) {
+  if (!isExplicitQueryScopedBrowseRequest(request)) return enoughThreshold;
+  const requestedLimit = Math.max(1, Number(request?.limit || 0) || 12);
+  const requestedPage = Math.max(1, Number(request?.page || 0) || 1);
+  const currentPageNeed = requestedPage * requestedLimit;
+  const bufferedNeed = currentPageNeed + Math.ceil(requestedLimit * 0.5);
+  return Math.min(
+    Number(enoughThreshold || bufferedNeed) || bufferedNeed,
+    Math.max(requestedLimit, bufferedNeed),
+  );
+}
+
 function resolveExternalSeedProviderLimit(request, safeLimit) {
   const fetchCap = getDiscoveryCandidateFetchCap(request);
   const cappedSafeLimit = clampInt(safeLimit, fetchCap, 12, fetchCap);
@@ -5336,7 +5356,8 @@ async function loadCatalogCandidates({
   let primaryPathUsed = useBeautyInterestMainline ? 'beauty_interest_mainline' : 'multi_provider';
   let fallbackTriggered = false;
   let fallbackReason = null;
-  const compoundIntent = isExplicitQueryScopedBrowseRequest(request)
+  const explicitQueryScoped = isExplicitQueryScopedBrowseRequest(request);
+  const compoundIntent = explicitQueryScoped
     ? resolveExplicitBeautyCompoundIntent(request?.query?.text)
     : null;
 
@@ -5378,6 +5399,31 @@ async function loadCatalogCandidates({
       }),
     ],
   });
+
+  const appendProviderResult = (result) => {
+    if (!result || typeof result !== 'object') return;
+    providerResults.push(result);
+    mergeProducts(result.products);
+  };
+
+  const fetchProductsSearchProviderResult = async () => {
+    try {
+      const searchResult = await loadProductsSearchCandidates({
+        request,
+        profile,
+        limit: safeLimit,
+      });
+      return {
+        provider: 'products_search',
+        products: annotateProviderProducts('products_search', searchResult?.products || []),
+        recallSummary: Array.isArray(searchResult?.recallSummary)
+          ? searchResult.recallSummary.map((step) => ({ provider: 'products_search', ...step }))
+          : [],
+      };
+    } catch (err) {
+      return buildProviderErrorResult('products_search', err);
+    }
+  };
 
   const finalizeProviderResult = () => {
     const recallSummary = providerResults.flatMap((result) =>
@@ -5616,25 +5662,8 @@ async function loadCatalogCandidates({
         skipReason: 'explicit_compound_external_seed_mainline',
       }),
     );
-  } else {
-    try {
-      const searchResult = await loadProductsSearchCandidates({
-        request,
-        profile,
-        limit: safeLimit,
-      });
-      const productsSearchResult = {
-        provider: 'products_search',
-        products: annotateProviderProducts('products_search', searchResult?.products || []),
-        recallSummary: Array.isArray(searchResult?.recallSummary)
-          ? searchResult.recallSummary.map((step) => ({ provider: 'products_search', ...step }))
-          : [],
-      };
-      providerResults.push(productsSearchResult);
-      mergeProducts(productsSearchResult.products);
-    } catch (err) {
-      providerResults.push(buildProviderErrorResult('products_search', err));
-    }
+  } else if (!explicitQueryScoped) {
+    appendProviderResult(await fetchProductsSearchProviderResult());
   }
 
   const shouldSkipBrandScopedExpansion = shouldSkipBrandScopedProviderExpansion(mergedProducts, {
@@ -5775,9 +5804,9 @@ async function loadCatalogCandidates({
     }
   };
 
-  const fetchExternalSeedProviderResult = async () => {
+  const loadExternalSeedProviderResult = async () => {
     try {
-      const externalResult = isExplicitQueryScopedBrowseRequest(request)
+      const externalResult = explicitQueryScoped
         ? await fetchBeautyInterestExternalSeedFastpathCandidates({
             request,
             profile,
@@ -5796,24 +5825,35 @@ async function loadCatalogCandidates({
             limit: externalProviderLimit,
             fetchFn: providerOverrides?.external_seeds || null,
           });
-      const normalizedExternalResult = {
+      return {
         provider: 'external_seeds',
         products: externalResult.products,
         recallSummary: externalResult.recallSummary,
       };
-      providerResults.push(normalizedExternalResult);
-      mergeProducts(normalizedExternalResult.products);
     } catch (err) {
-      providerResults.push(buildProviderErrorResult('external_seeds', err));
+      return buildProviderErrorResult('external_seeds', err);
     }
+  };
+
+  const fetchExternalSeedProviderResult = async () => {
+    appendProviderResult(await loadExternalSeedProviderResult());
   };
 
   const externalSkipReason = useBeautyInterestMainline
     ? 'beauty_interest_mainline_primary_used'
     : 'sufficient_primary_candidates';
 
-  if (isExplicitQueryScopedBrowseRequest(request)) {
-    await fetchExternalSeedProviderResult();
+  if (explicitQueryScoped) {
+    if (compoundIntent) {
+      await fetchExternalSeedProviderResult();
+    } else {
+      const [productsSearchResult, externalSeedResult] = await Promise.all([
+        fetchProductsSearchProviderResult(),
+        loadExternalSeedProviderResult(),
+      ]);
+      appendProviderResult(productsSearchResult);
+      appendProviderResult(externalSeedResult);
+    }
 
     if (compoundIntent && mergedProducts.length > 0) {
       candidateSource = 'external_seed_compound_intent';
@@ -5822,12 +5862,16 @@ async function loadCatalogCandidates({
       return finalizeProviderResult();
     }
 
+    const internalSkipEnoughThreshold = resolveExplicitQueryInternalSkipEnoughThreshold(
+      request,
+      enoughThreshold,
+    );
     const shouldSkipInternalAfterExternal =
       shouldSkipInternal ||
       hasSufficientProviderCandidates(mergedProducts, {
         request,
         profile,
-        enoughThreshold,
+        enoughThreshold: internalSkipEnoughThreshold,
         qualityThreshold,
       });
     if (shouldSkipInternalAfterExternal) {
@@ -8074,8 +8118,9 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       strategy === 'personalized_interest' ? profile.personalizationSource : 'none';
     const candidateLimit = options.candidateLimit || resolveDiscoveryCandidateLimit(request);
     const brandScopeAliases = buildBrandScopeAliases(request.scope?.brand_names || []);
+    const useStableBrowseCatalogCount = shouldUseStableBrowseCatalogTotal(request);
     const stableBrowseCatalogCountPromise =
-      request.surface === 'browse_products'
+      useStableBrowseCatalogCount
         ? countStableBrowseCatalogTotal(request)
         : Promise.resolve(null);
     const shouldUseBrandDirectPrimary =
@@ -8391,7 +8436,11 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       const stableBrowseCatalogCount = await stableBrowseCatalogCountPromise;
       total = stableBrowseCatalogCount?.total ?? runtimeCorpusCount;
       corpusTotalCount = total;
-      countSource = stableBrowseCatalogCount?.source || 'runtime_corpus_fallback';
+      countSource =
+        stableBrowseCatalogCount?.source ||
+        (!useStableBrowseCatalogCount && isExplicitQueryScopedBrowseRequest(request)
+          ? 'runtime_corpus_query_scoped'
+          : 'runtime_corpus_fallback');
       shadowServingSummary = await maybeReadCatalogServingShadow(request, selectedEntries);
     }
 
