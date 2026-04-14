@@ -37,6 +37,7 @@ describe('RecommendationEngine external candidate fetch', () => {
     jest.clearAllMocks();
     delete process.env.DATABASE_URL;
     delete process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET;
+    delete process.env.PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS;
   });
 
   test('matches normalized brand fastpath and dedupes overlapping brand/category rows', async () => {
@@ -472,6 +473,71 @@ describe('RecommendationEngine external candidate fetch', () => {
         String(sql).includes("seed_data->'derived'->'recall'->>'retrieval_title'"),
       ),
     ).toBe(true);
+  });
+
+  test('keeps focused candidates when category-token underfill query times out', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+    process.env.PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS = '50';
+
+    const queryMock = jest.fn(async (sql, params) => {
+      const sqlText = String(sql);
+      const brandAliases = params?.[3];
+      if (Array.isArray(brandAliases) && brandAliases.includes('goodmolecules')) {
+        return {
+          rows: [
+            makeExternalRow({
+              id: 'eps_good_molecules_base_only',
+              external_product_id: 'ext_good_molecules_base_only',
+              title: 'Good Molecules Niacinamide Serum',
+              brand: 'Good Molecules',
+              category: 'Serum',
+              domain: 'goodmolecules.com',
+            }),
+          ],
+        };
+      }
+      if (sqlText.includes("seed_data->>'category'")) {
+        return { rows: [] };
+      }
+      if (sqlText.includes("seed_data->'derived'->'recall'->>'retrieval_title'")) {
+        return new Promise((resolve) => {
+          setTimeout(() => {
+            resolve({
+              rows: [
+                makeExternalRow({
+                  id: 'eps_slow_title_serum',
+                  external_product_id: 'ext_slow_title_serum',
+                  title: 'Slow Serum Candidate',
+                  brand: 'Slow Brand',
+                  category: '',
+                  domain: 'slow.example',
+                }),
+              ],
+            });
+          }, 120);
+        });
+      }
+      return { rows: [] };
+    });
+
+    const warn = jest.fn();
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn, info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchExternalCandidates({
+      brandHint: 'Good Molecules',
+      categoryHint: 'Serum',
+      limit: 12,
+      minFocusedCandidates: 6,
+    });
+
+    expect(products.map((product) => product.product_id)).toContain('ext_good_molecules_base_only');
+    expect(products.map((product) => product.product_id)).not.toContain('ext_slow_title_serum');
+    expect(warn).toHaveBeenCalledWith(
+      expect.objectContaining({ timeout_ms: 50, category: 'serum' }),
+      'recommendations external category-title query timed out',
+    );
   });
 
   test('falls back to broad scans when same-domain rows underfill target', async () => {
