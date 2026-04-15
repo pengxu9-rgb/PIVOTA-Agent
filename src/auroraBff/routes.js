@@ -8312,6 +8312,11 @@ function buildLocalExternalSeedSupportCombinedQuery({
       score: 40,
       whereSql: `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${patternBind}::text[])`,
     });
+    addStage({
+      stage: 'support_raw_title',
+      score: 36,
+      whereSql: `lower(coalesce(title, '')) LIKE ANY(${patternBind}::text[])`,
+    });
   }
 
   if (stageWhereClauses.length === 0) {
