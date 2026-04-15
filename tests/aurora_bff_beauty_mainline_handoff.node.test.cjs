@@ -1279,6 +1279,74 @@ test('handoffRecoToBeautyMainlineSearch interleaves support external queries acr
   }
 });
 
+test('runConcernSemanticPlanner uses structured Gemini JSON with minimal thinking', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    let capturedArgs = null;
+    __internal.__setCallGeminiJsonObjectForTest(async (args = {}) => {
+      capturedArgs = args;
+      return {
+        ok: true,
+        json: {
+          primary_concern: 'dry tight skin after washing',
+          primary_role_id: 'hydrating_barrier_moisturizer',
+          support_role_ids: ['hydrating_serum_or_essence', 'daily_sunscreen'],
+          routine_mode: 'routine_mix',
+          query_intents: [
+            {
+              role_id: 'hydrating_barrier_moisturizer',
+              intent: 'barrier repair moisturizer',
+              query_terms: ['barrier repair moisturizer'],
+            },
+            {
+              role_id: 'hydrating_serum_or_essence',
+              intent: 'hydrating serum',
+              query_terms: ['hyaluronic acid serum'],
+            },
+            {
+              role_id: 'daily_sunscreen',
+              intent: 'daily sunscreen',
+              query_terms: ['daily sunscreen'],
+            },
+          ],
+          must_satisfy_constraints: ['start with barrier support', 'avoid over-stripping'],
+          comparison_mode: 'routine_mix',
+          evidence_needed: ['barrier support', 'hydration', 'daily UV protection'],
+          ingredient_hypotheses: ['ceramides', 'hyaluronic acid'],
+          product_type_hypotheses: ['moisturizer', 'serum', 'sunscreen'],
+        },
+        parse_status: 'parsed',
+        provider: 'gemini',
+        requested_model: args.model,
+        effective_model: args.model,
+        selection_source: 'local_gemini_rest_direct',
+      };
+    });
+
+    const out = await __internal.runConcernSemanticPlanner({
+      ctx: { lang: 'EN', request_id: 'req_structured_planner_test' },
+      requestText: 'my skin feels dry and tight after washing, what should i use first?',
+      focus: '',
+      deadlineAtMs: Date.now() + 5000,
+    });
+
+    assert.equal(capturedArgs?.route, 'aurora_concern_semantic_plan_json');
+    assert.equal(capturedArgs?.thinkingLevel, 'minimal');
+    assert.equal(capturedArgs?.maxOutputTokens, 700);
+    assert.equal(capturedArgs?.responseSchema?.type, 'object');
+    assert.equal(out.trace?.planner_failure_class, null);
+    assert.equal(out.trace?.planner_attempts?.[0]?.structured_contract, 'json_object');
+    assert.equal(out.semanticPlan?.selection_owner_state, 'trusted');
+    assert.deepEqual(
+      out.semanticPlan?.core_roles?.map((role) => role?.role_id).slice(0, 3),
+      ['hydrating_barrier_moisturizer', 'hydrating_serum_or_essence', 'daily_sunscreen'],
+    );
+  } finally {
+    __internal.__resetCallGeminiJsonObjectForTest();
+    delete require.cache[moduleId];
+  }
+});
+
 test('handoffRecoToBeautyMainlineSearch exposes raw candidate pool sources when only the strong internal winner is selected', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
