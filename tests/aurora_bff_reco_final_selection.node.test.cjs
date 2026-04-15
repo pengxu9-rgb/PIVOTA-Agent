@@ -86,6 +86,7 @@ test('reco assistant rewrite prompt omits deterministic base text and carries re
     assert.match(prompt, /Use selected_product_details\.compare_highlights and selected_product_details\.pivota_insights when available; do not invent highlights that are absent from Context\./);
     assert.match(prompt, /Use selected_product_details\.description_snippet and selected_product_details\.evidence_points as the primary concrete reason layer when available\./);
     assert.match(prompt, /Do not call something the best first buy unless the same sentence or the next sentence gives a concrete reason/);
+    assert.match(prompt, /Never write ungrammatical fragments like "because a serum\.\.\."/);
     assert.match(prompt, /If selected_product_details\.fit_assessment is "soft_match" or comparison_fill_reason is present, frame that product as a softer or broader alternative instead of an equally direct match\./);
     assert.match(prompt, /Prefer product-specific evidence over generic role language when both are available\./);
     assert.match(prompt, /If request_mode is "buy" and there is one selected product with no secondary targets, use exactly 2 sentences\./);
@@ -1004,7 +1005,7 @@ test('reco assistant rewrite rejects candidate-pool product names that are not f
     assert.equal(rewrite.llm_used, true);
     assert.equal(rewrite.reason, null);
     assert.match(rewrite.text, /First Aid Beauty Dark Spot Serum with Niacinamide is your best first buy/);
-    assert.match(rewrite.text, /because a niacinamide serum/);
+    assert.match(rewrite.text, /because it is a niacinamide serum/);
     assert.doesNotMatch(rewrite.text, /because (A|An|The)\b/);
     assert.doesNotMatch(rewrite.text, /because (niacinamide|brightening|vitamin c|oil-control support|oil control support)\b/i);
     assert.match(rewrite.text, /Jurlique Brightening Serum/);
@@ -1041,6 +1042,249 @@ test('reco assistant reason fragment strips duplicated renderer scaffolding', ()
     assert.equal(leadReason, 'it provides essential daily UV protection in a lightweight serum formula');
     assert.equal(supportReason, 'multi-benefit serum designed to soothe, hydrate, and renew your skin barrier');
   } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('reco assistant rewrite uses structured retry for generic routine wrap-up', async () => {
+  const prevMock = process.env.AURORA_BFF_USE_MOCK;
+  const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+  const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+  process.env.AURORA_BFF_USE_MOCK = 'false';
+  process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = 'gemini';
+  process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = 'gemini-3-flash-preview';
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'fab_gel_cream',
+            display_name: 'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+            brand: 'First Aid Beauty',
+            category: 'Moisturizer',
+            matched_role_id: 'layering_compatible_moisturizer_or_spf',
+            matched_role_label: 'Layering-compatible moisturizer or SPF',
+            short_description: 'An ultra-sheer, non-comedogenic gel cream that layers cleanly under makeup.',
+          },
+          {
+            product_id: 'naturium_ha',
+            display_name: 'Quadruple Hyaluronic Acid Serum 5% - Jumbo',
+            brand: 'Naturium',
+            category: 'Serum',
+            matched_role_id: 'hydrating_serum_or_essence',
+            matched_role_label: 'Hydrating serum or essence',
+            short_description: 'A lightweight hyaluronic acid serum for dehydration support.',
+          },
+          {
+            product_id: 'skintific_spf',
+            display_name: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+            brand: 'SKINTIFIC',
+            category: 'Sunscreen',
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            short_description: 'A matte SPF 50+ serum sunscreen for under-makeup daytime wear.',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'moisturizer',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Layering-compatible moisturizer or SPF',
+        resolved_target_step: 'moisturizer',
+        primary_target_id: 'layering_compatible_moisturizer_or_spf',
+        ranked_targets: [
+          {
+            target_id: 'layering_compatible_moisturizer_or_spf',
+            ingredient_query: 'Layering-compatible moisturizer or SPF',
+            resolved_target_step: 'moisturizer',
+          },
+          {
+            target_id: 'hydrating_serum_or_essence',
+            ingredient_query: 'Hydrating serum or essence',
+            resolved_target_step: 'serum',
+          },
+          {
+            target_id: 'daily_sunscreen_finish_fit',
+            ingredient_query: 'Daily sunscreen with finish fit',
+            resolved_target_step: 'sunscreen',
+          },
+        ],
+        selected_target_ids: [
+          'layering_compatible_moisturizer_or_spf',
+          'hydrating_serum_or_essence',
+          'daily_sunscreen_finish_fit',
+        ],
+      },
+    );
+    const schemas = [];
+    let callCount = 0;
+    __internal.__setCallGeminiJsonObjectForTest(async (args = {}) => {
+      callCount += 1;
+      schemas.push(args.responseSchema || null);
+      if (callCount === 1) {
+        return {
+          ok: true,
+          json: {
+            assistant_text: [
+              'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides is the most practical pick for layering compatibility because it has an ultra-sheer, non-comedogenic gel-cream texture.',
+              'Quadruple Hyaluronic Acid Serum 5% - Jumbo covers the hydrating serum step because it adds lightweight hydration.',
+              'Matte Fit Serum Sunscreen SPF 50+ PA++++ covers daytime sunscreen because it protects with SPF 50.',
+              'Together, these products support the routine and keep skin breathable.',
+            ].join(' '),
+          },
+          parse_status: 'parsed',
+          provider: 'gemini',
+          effective_model: 'gemini-3-flash-preview',
+        };
+      }
+      return {
+        ok: true,
+        json: {
+          lead_reason: 'it has an ultra-sheer, non-comedogenic gel-cream texture for smoother layering',
+          support_reasons: [
+            'it adds lightweight hyaluronic-acid hydration without changing the routine into a heavy layer',
+            'it gives matte SPF 50+ daytime protection for under-makeup wear',
+          ],
+        },
+        parse_status: 'parsed',
+        provider: 'gemini',
+        effective_model: 'gemini-3-flash-preview',
+      };
+    });
+
+    const rewrite = await __internal.maybeRewriteRecoAssistantTextWithLlm({
+      payload,
+      language: 'EN',
+      profile: { goals: ['smooth layering'] },
+      userRequestText: 'My makeup pills. What should I use?',
+      allowLockedSelectionRewrite: true,
+    });
+
+    assert.equal(callCount, 2);
+    assert.equal(rewrite.llm_used, true);
+    assert.equal(rewrite.reason, null);
+    assert.equal(schemas[1]?.required?.includes('lead_reason'), true);
+    assert.match(rewrite.text, /Hydrating Dewy Gel Cream Moisturizer/);
+    assert.match(rewrite.text, /Matte Fit Serum Sunscreen SPF 50\+ PA\+\+\+\+/);
+    assert.doesNotMatch(rewrite.text, /Together, these products support/);
+  } finally {
+    __internal.__resetCallGeminiJsonObjectForTest();
+    if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
+    else process.env.AURORA_BFF_USE_MOCK = prevMock;
+    if (prevProvider === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = prevProvider;
+    if (prevModel === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = prevModel;
+    delete require.cache[moduleId];
+  }
+});
+
+test('reco assistant structured retry does not render without valid JSON', async () => {
+  const prevMock = process.env.AURORA_BFF_USE_MOCK;
+  const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+  const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+  process.env.AURORA_BFF_USE_MOCK = 'false';
+  process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = 'gemini';
+  process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = 'gemini-3-flash-preview';
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'fab_gel_cream',
+            display_name: 'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+            brand: 'First Aid Beauty',
+            category: 'Moisturizer',
+            matched_role_id: 'layering_compatible_moisturizer_or_spf',
+            matched_role_label: 'Layering-compatible moisturizer or SPF',
+            short_description: 'An ultra-sheer, non-comedogenic gel cream that layers cleanly under makeup.',
+          },
+          {
+            product_id: 'skintific_spf',
+            display_name: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+            brand: 'SKINTIFIC',
+            category: 'Sunscreen',
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            short_description: 'A matte SPF 50+ serum sunscreen for under-makeup daytime wear.',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'moisturizer',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Layering-compatible moisturizer or SPF',
+        resolved_target_step: 'moisturizer',
+        primary_target_id: 'layering_compatible_moisturizer_or_spf',
+        ranked_targets: [
+          {
+            target_id: 'layering_compatible_moisturizer_or_spf',
+            ingredient_query: 'Layering-compatible moisturizer or SPF',
+            resolved_target_step: 'moisturizer',
+          },
+          {
+            target_id: 'daily_sunscreen_finish_fit',
+            ingredient_query: 'Daily sunscreen with finish fit',
+            resolved_target_step: 'sunscreen',
+          },
+        ],
+        selected_target_ids: ['layering_compatible_moisturizer_or_spf', 'daily_sunscreen_finish_fit'],
+      },
+    );
+    let callCount = 0;
+    __internal.__setCallGeminiJsonObjectForTest(async () => {
+      callCount += 1;
+      if (callCount === 1) {
+        return {
+          ok: true,
+          json: {
+            assistant_text: [
+              'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides is the most practical pick for layering compatibility because it has an ultra-sheer gel-cream texture.',
+              'Together, these products support the routine and keep skin breathable.',
+            ].join(' '),
+          },
+          parse_status: 'parsed',
+          provider: 'gemini',
+          effective_model: 'gemini-3-flash-preview',
+        };
+      }
+      return {
+        ok: false,
+        reason: 'GEMINI_JSON_TIMEOUT',
+        json: null,
+        parse_status: null,
+        timeout_stage: 'upstream',
+        provider: 'gemini',
+        effective_model: 'gemini-3-flash-preview',
+      };
+    });
+
+    const rewrite = await __internal.maybeRewriteRecoAssistantTextWithLlm({
+      payload,
+      language: 'EN',
+      profile: { goals: ['smooth layering'] },
+      userRequestText: 'My makeup pills. What should I use?',
+      allowLockedSelectionRewrite: true,
+    });
+
+    assert.equal(callCount, 2);
+    assert.equal(rewrite.llm_used, false);
+    assert.equal(rewrite.reason, 'GEMINI_JSON_TIMEOUT');
+    assert.equal(rewrite.text, '');
+  } finally {
+    __internal.__resetCallGeminiJsonObjectForTest();
+    if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
+    else process.env.AURORA_BFF_USE_MOCK = prevMock;
+    if (prevProvider === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = prevProvider;
+    if (prevModel === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = prevModel;
     delete require.cache[moduleId];
   }
 });
@@ -1804,7 +2048,7 @@ test('reco assistant rewrite retries routine drafts that use stiff selected-prod
   }
 });
 
-test('reco assistant rewrite retries gemini timeout with compact prompt context', async () => {
+test('reco assistant rewrite retries gemini timeout with structured reason prompt context', async () => {
   const prevMock = process.env.AURORA_BFF_USE_MOCK;
   const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
   const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
@@ -1866,8 +2110,9 @@ test('reco assistant rewrite retries gemini timeout with compact prompt context'
       return {
         ok: true,
         json: {
-          assistant_text:
-            'KraveBeauty Great Barrier Relief is the product to buy first for barrier support. Its tamanu oil, niacinamide, and ceramides directly target a stripped, irritated barrier without adding extra routine filler.',
+          lead_reason:
+            'it uses tamanu oil, niacinamide, and ceramides for barrier support without adding extra routine filler',
+          support_reasons: [],
         },
         parse_status: 'parsed',
         meta: { gate_wait_ms: 5, upstream_ms: 640, total_ms: 645 },
@@ -1889,13 +2134,13 @@ test('reco assistant rewrite retries gemini timeout with compact prompt context'
     assert.equal(rewrite.llm_used, true);
     assert.equal(rewrite.reason, null);
     assert.ok(maxTokens[0] > 0);
-    assert.equal(maxTokens[0], maxTokens[1]);
+    assert.equal(maxTokens[1], 140);
     assert.ok(timeouts[0] > 0 && timeouts[0] < 4500);
     assert.ok(timeouts[1] >= 1400);
     assert.ok(timeouts[1] < timeouts[0]);
     assert.match(prompts[0], /"prompt_profile":"compact_timeout_retry"/);
-    assert.match(prompts[1], /"prompt_profile":"compact_timeout_retry"/);
-    assert.match(prompts[1], /Compact retry mode: keep the answer tight/);
+    assert.match(prompts[1], /"prompt_profile":"strict_selected_only_retry"/);
+    assert.match(prompts[1], /Do not write the final assistant message\./);
     assert.equal(rewrite.attempt_count, 2);
     assert.equal(rewrite.attempts?.length, 2);
     assert.equal(rewrite.attempts?.[0]?.ok, false);
@@ -2145,8 +2390,12 @@ test('reco assistant rewrite retries routine-mix drafts that end in a generic cl
       return {
         ok: true,
         json: {
-          assistant_text:
-            'Buy The Ordinary Niacinamide 10% + Zinc 1% first for oily skin because it is the direct oil-control step, pairs niacinamide with zinc, and costs $12. The other two picks are different routine steps, not substitutes: LightLab Oil-Free Gel Cream is your lightweight moisturizer step for breathable hydration, and SunLab Daily SPF 50 Fluid is your sunscreen step for daily UV protection without a heavy finish.',
+          lead_reason:
+            'it is the direct oil-control step, pairs niacinamide with zinc, and costs $12',
+          support_reasons: [
+            'it is a breathable gel moisturizer for oily skin',
+            'it is a lightweight daily sunscreen fluid with no white cast',
+          ],
         },
         parse_status: 'parsed',
         provider: 'gemini',
@@ -2167,7 +2416,8 @@ test('reco assistant rewrite retries routine-mix drafts that end in a generic cl
     assert.equal(rewrite.reason, null);
     assert.match(prompts[1], /Previous draft failed the quality gate\./);
     assert.match(prompts[1], /Fix required: Do not end with a generic routine wrap-up\./);
-    assert.match(String(rewrite.text || ''), /Buy The Ordinary Niacinamide 10% \+ Zinc 1% first/);
+    assert.match(String(rewrite.text || ''), /The Ordinary Niacinamide 10% \+ Zinc 1% is your best first buy/);
+    assert.match(prompts[1], /Do not write the final assistant message\./);
     assert.doesNotMatch(String(rewrite.text || ''), /These secondary steps support your oily skin/i);
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
@@ -2252,8 +2502,9 @@ test('reco assistant rewrite retries oily buy drafts that use off-target tone cl
       return {
         ok: true,
         json: {
-          assistant_text:
-            'GoalSkin Oil Control Serum is your best first buy because it is the direct oil-control step for visible shine and costs $12.',
+          lead_reason:
+            'it is the direct oil-control step for visible shine and costs $12',
+          support_reasons: [],
         },
         parse_status: 'parsed',
         provider: 'gemini',
