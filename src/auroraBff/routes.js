@@ -54526,7 +54526,7 @@ function normalizeRecoAssistantReasonFragment(value, {
     .replace(/\b(this|that)\s+product\b/ig, 'it')
     .replace(/\b(the|this|that)\s+(lead|selected)\s+(pick|product|option)\b/ig, 'it')
     .replace(/\b(product|option)\s+(is|as)\b/ig, 'it $2')
-    .replace(/^(?:is\s+)?(?:your\s+)?(?:best\s+first\s+buy|top\s+pick|lead\s+pick|first\s+choice|best\s+choice)(?:\s+for\s+[^,.]{1,90})?\s+because\s+/i, '')
+    .replace(/^(?:is\s+)?(?:(?:your|the)\s+)?(?:best\s+first\s+buy|top\s+pick|lead\s+pick|first\s+choice|best\s+choice|strongest\s+pick|strongest\s+choice|strongest\s+option|top\s+choice|top\s+option|most\s+direct\s+fit)(?:\s+for\s+[^,.]{1,90})?\s+because\s+/i, '')
     .replace(/^(?:because\s+)?(?:follow|pair|complete|start)\s+(?:with\s+)?(?:it|this|the\s+product)?\s*/i, '')
     .replace(/\s+/g, ' ')
     .replace(/^[\s,;:.\-–—]+/, '')
@@ -54747,7 +54747,7 @@ function renderRecoAssistantStructuredReasonRewrite({
       ? `Start with ${selectedNames[0]}${targetPhrase} because ${grammaticalLeadReason}`
       : requestMode === 'use'
         ? `${selectedNames[0]} is the most practical pick${targetPhrase} because ${grammaticalLeadReason}`
-        : `${selectedNames[0]} is your best first buy${targetPhrase} because ${grammaticalLeadReason}`;
+        : `${selectedNames[0]} is the most direct fit${targetPhrase} because ${grammaticalLeadReason}`;
   if (selectedNames.length === 1) {
     return [
       formatRecoAssistantStructuredSentence(leadSentence),

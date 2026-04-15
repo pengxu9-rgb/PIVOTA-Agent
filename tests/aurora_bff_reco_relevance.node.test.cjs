@@ -6577,6 +6577,10 @@ test('__internal: reco assistant rewrite guard rejects duplicate buy framing and
     requestMode: 'buy',
   });
   assert.equal(unreviewedProof.reason, 'rewrite_unreviewed_proof_claim');
+  assert.equal(
+    __internal.normalizeRecoAssistantReasonFragment('is the most direct fit because it uses hyaluronic acid and panthenol.'),
+    'it uses hyaluronic acid and panthenol',
+  );
 });
 
 test('__internal: reco assistant rewrite prompt exposes same-role price comparison context', async () => {
