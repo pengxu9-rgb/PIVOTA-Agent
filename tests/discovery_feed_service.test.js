@@ -522,6 +522,8 @@ describe('discovery feed service', () => {
     expect(internalSpy).not.toHaveBeenCalled();
     expect(response.products).toHaveLength(10);
     expect(response.metadata.candidate_source).toBe('external_seed_query_mainline');
+    expect(response.metadata.underfilled_reason).toBe('public_search_underfilled_unified_relevance');
+    expect(response.metadata.route_health.primary_quality_gate_passed).toBe(false);
     expect(response.metadata.provider_breakdown).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ provider: 'external_seeds', successful: true, returned: 10 }),
@@ -612,6 +614,59 @@ describe('discovery feed service', () => {
         expect.objectContaining({ provider: 'products_search', successful: true, returned: 8 }),
       ]),
     );
+    expect(response.metadata.route_health.primary_quality_gate_passed).toBe(true);
+    expect(response.metadata.underfilled_reason).toBeUndefined();
+  });
+
+  test('explicit compound browse marks partial page as exact-intent underfilled', async () => {
+    delete process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL;
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+    delete process.env.PIVOTA_API_BASE;
+    delete process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY;
+    delete process.env.PIVOTA_BACKEND_AGENT_API_KEY;
+    delete process.env.PIVOTA_API_KEY;
+    delete process.env.DATABASE_URL;
+
+    const externalSpy = jest.fn(async () => [
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'hair_mask_1',
+        title: 'Intensive Repair Hair Mask',
+        brand: 'Seed Beauty',
+        category: 'Hair Mask',
+        product_type: 'Hair Mask',
+      }),
+    ]);
+
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        debug: true,
+        query: {
+          text: 'hair mask',
+        },
+        context: {
+          auth_state: 'anonymous',
+          recent_views: [],
+          recent_queries: [],
+          locale: 'en-US',
+        },
+      },
+      {
+        providerOverrides: {
+          internal_catalog: jest.fn(async () => []),
+          external_seeds: externalSpy,
+        },
+      },
+    );
+
+    expect(externalSpy).toHaveBeenCalledTimes(1);
+    expect(response.products).toHaveLength(1);
+    expect(response.metadata.compound_intent).toBe('hair_mask');
+    expect(response.metadata.underfilled_reason).toBe('public_search_underfilled_exact_intent');
+    expect(response.metadata.route_health.primary_quality_gate_passed).toBe(false);
   });
 
   test('explicit narrow browse query uses external seed mainline without products_search or internal broad pool', async () => {
@@ -5578,6 +5633,45 @@ describe('discovery feed service', () => {
     expect(_internals.matchesQueryTextCandidate(candidate, 'vitamin c')).toBe(true);
   });
 
+  test('query text matcher removes broad beauty merch and tool noise unless explicitly requested', () => {
+    const makeupBag = _internals.normalizeCandidateProduct(
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'makeup_bag_1',
+        title: 'Puffy Makeup Bag - Mauve',
+        category: 'Makeup',
+        product_type: 'Bag',
+      }),
+      0,
+    );
+    const foundationBrush = _internals.normalizeCandidateProduct(
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'foundation_brush_1',
+        title: 'Liquid Touch Foundation Brush',
+        category: 'Makeup Tools',
+        product_type: 'Brush',
+      }),
+      0,
+    );
+    const giftCard = _internals.normalizeCandidateProduct(
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'beauty_gift_card_1',
+        title: 'Rare Beauty E-Gift Card',
+        category: 'Makeup',
+        product_type: 'Gift Card',
+      }),
+      0,
+    );
+
+    expect(_internals.matchesQueryTextCandidate(makeupBag, 'makeup')).toBe(false);
+    expect(_internals.matchesQueryTextCandidate(makeupBag, 'makeup bag')).toBe(true);
+    expect(_internals.matchesQueryTextCandidate(foundationBrush, 'foundation')).toBe(false);
+    expect(_internals.matchesQueryTextCandidate(foundationBrush, 'foundation brush')).toBe(true);
+    expect(_internals.matchesQueryTextCandidate(giftCard, 'beauty')).toBe(false);
+  });
+
   test('explicit non-compound browse keeps running seed stages until query-qualified rows fill target', async () => {
     jest.resetModules();
     const prevDatabaseUrl = process.env.DATABASE_URL;
@@ -7601,6 +7695,172 @@ describe('discovery feed service', () => {
       jest.dontMock('../src/db');
       jest.resetModules();
     }
+  });
+
+  test('explicit beauty compound intent recognizes face wash, hair mask, dry shampoo, and scalp serum', () => {
+    expect(_internals.resolveExplicitBeautyCompoundIntent('face wash')).toBe('face_wash');
+    expect(_internals.resolveExplicitBeautyCompoundIntent('hair mask')).toBe('hair_mask');
+    expect(_internals.resolveExplicitBeautyCompoundIntent('dry shampoo')).toBe('dry_shampoo');
+    expect(_internals.resolveExplicitBeautyCompoundIntent('scalp serum')).toBe('scalp_serum');
+
+    const request = _internals.normalizeDiscoveryRequest({
+      surface: 'browse_products',
+      query: {
+        text: 'face wash',
+      },
+      context: {
+        auth_state: 'anonymous',
+        recent_views: [],
+        recent_queries: [],
+        locale: 'en-US',
+      },
+    });
+    const profile = buildDiscoveryProfile(request.context);
+    const recallTerms = _internals.buildBeautyInterestRecallTerms(request, profile, ['face wash']);
+
+    expect(recallTerms.compoundIntent).toBe('face_wash');
+    expect(recallTerms.primaryCategoryTerms).toEqual(expect.arrayContaining(['face wash']));
+    expect(recallTerms.weakCategoryTerms).toEqual(expect.arrayContaining(['cleanser']));
+    expect(recallTerms.verticalTerms).toEqual(expect.arrayContaining(['skincare']));
+  });
+
+  test('new compound beauty matchers keep exact intent and reject broad noise', () => {
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
+            title: 'Foaming Face Wash',
+            external_seed_recall: {
+              retrieval_title: 'foaming face wash',
+              category: 'Face Wash',
+              vertical: 'Skincare',
+            },
+          },
+          category: 'face wash',
+          parentCategory: 'skincare',
+        },
+        'face_wash',
+      ),
+    ).toBe(true);
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
+            title: 'Oud Wood Hand and Body Wash',
+            external_seed_recall: {
+              retrieval_title: 'oud wood hand and body wash',
+              category: 'Body Wash',
+              vertical: 'Skincare',
+            },
+          },
+          category: 'body wash',
+          parentCategory: 'skincare',
+        },
+        'face_wash',
+      ),
+    ).toBe(false);
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
+            title: 'Round Foundation Brush',
+            external_seed_recall: {
+              retrieval_title: 'round foundation brush',
+              category: 'Tool',
+              vertical: 'Makeup',
+            },
+          },
+          category: 'tool',
+          parentCategory: 'makeup',
+        },
+        'face_wash',
+      ),
+    ).toBe(false);
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
+            title: 'Intensive Repair Hair Mask',
+            external_seed_recall: {
+              retrieval_title: 'intensive repair hair mask',
+              category: 'Hair Mask',
+              vertical: 'Haircare',
+            },
+          },
+          category: 'hair mask',
+          parentCategory: 'haircare',
+        },
+        'hair_mask',
+      ),
+    ).toBe(true);
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
+            title: 'The Imposter Invisi-Boost Volumizing Dry Shampoo Powder',
+            external_seed_recall: {
+              retrieval_title: 'the imposter invisi-boost volumizing dry shampoo powder',
+              category: 'Dry Shampoo',
+              vertical: 'Haircare',
+            },
+          },
+          category: 'dry shampoo',
+          parentCategory: 'haircare',
+        },
+        'dry_shampoo',
+      ),
+    ).toBe(true);
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
+            title: 'Oil Control Duo: Dry Shampoo',
+            external_seed_recall: {
+              retrieval_title: 'oil control duo dry shampoo',
+              category: 'Dry Shampoo',
+              vertical: 'Haircare',
+            },
+          },
+          category: 'dry shampoo',
+          parentCategory: 'haircare',
+        },
+        'dry_shampoo',
+      ),
+    ).toBe(false);
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
+            title: 'Rosemary Scalp Serum',
+            external_seed_recall: {
+              retrieval_title: 'rosemary scalp serum',
+              category: 'Scalp Treatment',
+              vertical: 'Haircare',
+            },
+          },
+          category: 'scalp treatment',
+          parentCategory: 'haircare',
+        },
+        'scalp_serum',
+      ),
+    ).toBe(true);
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
+            title: 'Complete Pre-Wash Scalp Oil',
+            external_seed_recall: {
+              retrieval_title: 'complete pre-wash scalp oil',
+              category: 'Hair Oil',
+              vertical: 'Haircare',
+            },
+          },
+          category: 'hair oil',
+          parentCategory: 'haircare',
+        },
+        'scalp_serum',
+      ),
+    ).toBe(false);
   });
 
   test('hair oil compound matcher rejects exact-phrase shampoo fragrance and accessory noise', () => {

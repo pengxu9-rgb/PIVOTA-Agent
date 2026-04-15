@@ -258,13 +258,24 @@ const BEAUTY_INTEREST_CATEGORY_BY_TOKEN = Object.freeze({
   powder: ['powder', 'makeup'],
   fragrance: ['fragrance'],
   perfume: ['fragrance'],
+  brow: ['makeup'],
+  brows: ['makeup'],
   shampoo: ['shampoo', 'hair care'],
   conditioner: ['conditioner', 'hair care'],
+  scalp: ['hair care'],
   hair: ['hair care'],
 });
 const BEAUTY_INTEREST_CATEGORY_BY_PHRASE = Object.freeze({
+  'face wash': {
+    categories: ['face wash', 'cleanser'],
+    verticals: ['skincare'],
+  },
   'hair oil': {
     categories: ['hair oil', 'hair treatment', 'hair care', 'haircare'],
+    verticals: ['haircare'],
+  },
+  'hair mask': {
+    categories: ['hair mask', 'hair treatment', 'hair care', 'haircare'],
     verticals: ['haircare'],
   },
   'haircare': {
@@ -275,6 +286,14 @@ const BEAUTY_INTEREST_CATEGORY_BY_PHRASE = Object.freeze({
     categories: ['hair care', 'haircare'],
     verticals: ['haircare'],
   },
+  'dry shampoo': {
+    categories: ['dry shampoo', 'shampoo', 'hair care', 'haircare'],
+    verticals: ['haircare'],
+  },
+  'scalp serum': {
+    categories: ['scalp serum', 'scalp treatment', 'hair care', 'haircare'],
+    verticals: ['haircare'],
+  },
   'lip balm': {
     categories: ['lip balm', 'lip treatment', 'lip care', 'lip oil', 'makeup'],
     verticals: ['makeup'],
@@ -283,8 +302,59 @@ const BEAUTY_INTEREST_CATEGORY_BY_PHRASE = Object.freeze({
     categories: ['lip oil', 'lip balm', 'lip treatment', 'makeup'],
     verticals: ['makeup'],
   },
+  'body wash': {
+    categories: ['body wash', 'body cleanser', 'body care'],
+    verticals: ['skincare'],
+  },
+  'body oil': {
+    categories: ['body oil', 'body care'],
+    verticals: ['skincare'],
+  },
+  'brow gel': {
+    categories: ['brow gel', 'makeup'],
+    verticals: ['makeup'],
+  },
 });
 const EXPLICIT_BEAUTY_COMPOUND_INTENT_RULES = Object.freeze({
+  face_wash: Object.freeze({
+    id: 'face_wash',
+    label: 'face wash',
+    phrases: ['face wash'],
+    primaryPositive: ['face wash'],
+    weakPositive: ['cleanser', 'gel cleanser', 'foaming cleanser', 'cream cleanser', 'cleansing gel', 'cleansing foam'],
+    verticals: ['skincare'],
+    conjunctionTokens: ['face', 'wash'],
+    positiveTitleTokens: ['wash', 'cleanser'],
+    suppressedTokenCategories: ['face', 'wash'],
+    negativeClasses: [
+      'body wash',
+      'hand wash',
+      'brush',
+      'brushes',
+      'tool',
+      'tools',
+      'sponge',
+      'sponges',
+      'applicator',
+      'applicators',
+      'cloth',
+      'cloths',
+      'wipe',
+      'wipes',
+      'set',
+      'sets',
+      'kit',
+      'kits',
+      'bundle',
+      'bundles',
+      'duo',
+      'trio',
+      'bag',
+      'pouch',
+      'shampoo',
+      'conditioner',
+    ],
+  }),
   hair_oil: Object.freeze({
     id: 'hair_oil',
     label: 'hair oil',
@@ -332,6 +402,102 @@ const EXPLICIT_BEAUTY_COMPOUND_INTENT_RULES = Object.freeze({
       'comb',
       'accessory',
       'accessories',
+    ],
+  }),
+  hair_mask: Object.freeze({
+    id: 'hair_mask',
+    label: 'hair mask',
+    phrases: ['hair mask'],
+    primaryPositive: ['hair mask'],
+    weakPositive: ['hair treatment', 'hair care', 'haircare'],
+    verticals: ['haircare'],
+    conjunctionTokens: ['hair', 'mask'],
+    positiveTitleTokens: ['mask', 'masque'],
+    suppressedTokenCategories: ['hair', 'mask'],
+    negativeClasses: [
+      'shampoo',
+      'conditioner',
+      'brush',
+      'brushes',
+      'tool',
+      'tools',
+      'clip',
+      'clips',
+      'pin',
+      'pins',
+      'set',
+      'sets',
+      'kit',
+      'kits',
+      'bundle',
+      'bundles',
+      'duo',
+      'trio',
+      'leave in',
+      'leave-in',
+      'milk',
+      'hair milk',
+    ],
+  }),
+  dry_shampoo: Object.freeze({
+    id: 'dry_shampoo',
+    label: 'dry shampoo',
+    phrases: ['dry shampoo'],
+    primaryPositive: ['dry shampoo'],
+    weakPositive: ['shampoo', 'hair care', 'haircare'],
+    verticals: ['haircare'],
+    conjunctionTokens: ['dry', 'shampoo'],
+    positiveTitleTokens: ['dry shampoo'],
+    suppressedTokenCategories: ['dry', 'shampoo'],
+    negativeClasses: [
+      'conditioner',
+      'mask',
+      'masks',
+      'pre shampoo',
+      'pre-shampoo',
+      'brush',
+      'brushes',
+      'tool',
+      'tools',
+      'set',
+      'sets',
+      'kit',
+      'kits',
+      'bundle',
+      'bundles',
+      'duo',
+      'trio',
+    ],
+  }),
+  scalp_serum: Object.freeze({
+    id: 'scalp_serum',
+    label: 'scalp serum',
+    phrases: ['scalp serum'],
+    primaryPositive: ['scalp serum'],
+    weakPositive: ['scalp treatment', 'scalp care', 'hair care', 'haircare'],
+    verticals: ['haircare'],
+    conjunctionTokens: ['scalp', 'serum'],
+    positiveTitleTokens: ['serum'],
+    suppressedTokenCategories: ['scalp', 'serum'],
+    negativeClasses: [
+      'shampoo',
+      'conditioner',
+      'mask',
+      'masks',
+      'oil',
+      'oils',
+      'brush',
+      'brushes',
+      'tool',
+      'tools',
+      'set',
+      'sets',
+      'kit',
+      'kits',
+      'bundle',
+      'bundles',
+      'duo',
+      'trio',
     ],
   }),
   lip_balm: Object.freeze({
@@ -403,6 +569,59 @@ const EXPLICIT_BEAUTY_COMPOUND_INTENT_RULES = Object.freeze({
     ],
   }),
 });
+const EXPLICIT_BEAUTY_BROWSE_GENERIC_NOISE_CLASSES = Object.freeze([
+  'gift card',
+  'gift cards',
+  'e gift card',
+  'e gift cards',
+  'egift card',
+  'egift cards',
+  'giftset',
+  'gift set',
+  'sample card',
+  'sample cards',
+  'sample',
+  'samples',
+  'sampler',
+  'starter set',
+  'set',
+  'sets',
+  'kit',
+  'kits',
+  'bundle',
+  'bundles',
+  'duo',
+  'duos',
+  'trio',
+  'trios',
+  'routine',
+  'essentials',
+  'bag',
+  'bags',
+  'pouch',
+  'pouches',
+  'tote',
+  'totes',
+  'sticker',
+  'stickers',
+  'keychain',
+  'merch',
+  'merchandise',
+]);
+const EXPLICIT_BEAUTY_BROWSE_TOOL_CLASSES = Object.freeze([
+  'tool',
+  'tools',
+  'brush',
+  'brushes',
+  'sponge',
+  'sponges',
+  'applicator',
+  'applicators',
+  'comb',
+  'combs',
+  'puff',
+  'puffs',
+]);
 const GENERIC_DISCOVERY_QUERY_TOKENS = new Set([
   'beauty',
   'skincare',
@@ -1178,6 +1397,18 @@ function resolveBeautyInterestPhraseHint(phrase) {
   if (tokens.has('hair') && tokens.has('oil')) {
     return BEAUTY_INTEREST_CATEGORY_BY_PHRASE['hair oil'];
   }
+  if (tokens.has('face') && tokens.has('wash')) {
+    return BEAUTY_INTEREST_CATEGORY_BY_PHRASE['face wash'];
+  }
+  if (tokens.has('hair') && tokens.has('mask')) {
+    return BEAUTY_INTEREST_CATEGORY_BY_PHRASE['hair mask'];
+  }
+  if (tokens.has('dry') && tokens.has('shampoo')) {
+    return BEAUTY_INTEREST_CATEGORY_BY_PHRASE['dry shampoo'];
+  }
+  if (tokens.has('scalp') && tokens.has('serum')) {
+    return BEAUTY_INTEREST_CATEGORY_BY_PHRASE['scalp serum'];
+  }
   if (tokens.has('lip') && tokens.has('balm')) {
     return BEAUTY_INTEREST_CATEGORY_BY_PHRASE['lip balm'];
   }
@@ -1191,7 +1422,11 @@ function resolveExplicitBeautyCompoundIntent(queryText) {
   const normalized = normalizeText(queryText || '');
   if (!normalized) return null;
   const tokens = new Set(tokenizeDiscoverySearchText(normalized));
+  if (normalized === 'face wash' || (tokens.has('face') && tokens.has('wash'))) return 'face_wash';
   if (normalized === 'hair oil' || (tokens.has('hair') && tokens.has('oil'))) return 'hair_oil';
+  if (normalized === 'hair mask' || (tokens.has('hair') && tokens.has('mask'))) return 'hair_mask';
+  if (normalized === 'dry shampoo' || (tokens.has('dry') && tokens.has('shampoo'))) return 'dry_shampoo';
+  if (normalized === 'scalp serum' || (tokens.has('scalp') && tokens.has('serum'))) return 'scalp_serum';
   if (normalized === 'lip balm' || (tokens.has('lip') && tokens.has('balm'))) return 'lip_balm';
   if (normalized === 'lip oil' || (tokens.has('lip') && tokens.has('oil'))) return 'lip_oil';
   return null;
@@ -5412,6 +5647,18 @@ function hasSufficientExplicitQueryExternalSeedMainline(products = [], { request
   return Array.isArray(products) && products.length >= threshold;
 }
 
+function resolvePublicBrowseUnderfilledReason(request, selectedCount = 0) {
+  if (request?.surface !== 'browse_products') return null;
+  if (!isExplicitQueryScopedBrowseRequest(request)) return null;
+  const resolvedCount = Math.max(0, Number(selectedCount || 0) || 0);
+  if (resolvedCount <= 0) return null;
+  const requestedLimit = Math.max(1, Number(request?.limit || 0) || 12);
+  if (resolvedCount >= requestedLimit) return null;
+  return resolveExplicitBeautyCompoundIntent(request?.query?.text)
+    ? 'public_search_underfilled_exact_intent'
+    : 'public_search_underfilled_unified_relevance';
+}
+
 function resolveExternalSeedProviderLimit(request, safeLimit) {
   const fetchCap = getDiscoveryCandidateFetchCap(request);
   const cappedSafeLimit = clampInt(safeLimit, fetchCap, 12, fetchCap);
@@ -6158,21 +6405,13 @@ function matchesQueryTextCandidate(candidate, queryText) {
   const normalizedQuery = normalizeText(queryText || '');
   if (!normalizedQuery) return true;
 
+  if (shouldFilterExplicitBeautyBrowseNoiseCandidate(candidate, normalizedQuery)) return false;
+
   const candidateText = normalizeText(
     [
-      candidate?.raw?.title,
-      candidate?.raw?.name,
-      candidate?.raw?.description,
-      candidate?.raw?.brand,
-      candidate?.raw?.external_seed_recall?.retrieval_title,
-      candidate?.raw?.external_seed_recall?.retrieval_summary,
-      candidate?.raw?.external_seed_recall?.category,
-      candidate?.raw?.external_seed_recall?.vertical,
+      buildDiscoveryCandidateQueryFilterText(candidate),
       candidate?.raw?.external_seed_recall?.ingredient_tokens,
       candidate?.raw?.external_seed_recall?.alias_tokens,
-      candidate?.brand,
-      candidate?.category,
-      candidate?.parentCategory,
     ]
       .filter(Boolean)
       .join(' '),
@@ -6213,6 +6452,53 @@ function hasOilIntentToken(text) {
   );
 }
 
+function buildDiscoveryCandidateQueryFilterText(candidate) {
+  return normalizeText(
+    [
+      candidate?.raw?.title,
+      candidate?.raw?.name,
+      candidate?.raw?.description,
+      candidate?.raw?.brand,
+      candidate?.raw?.category,
+      candidate?.raw?.product_type,
+      candidate?.raw?.productType,
+      candidate?.raw?.external_seed_recall?.retrieval_title,
+      candidate?.raw?.external_seed_recall?.retrieval_summary,
+      candidate?.raw?.external_seed_recall?.retrieval_body,
+      candidate?.raw?.external_seed_recall?.category,
+      candidate?.raw?.external_seed_recall?.vertical,
+      candidate?.brand,
+      candidate?.category,
+      candidate?.parentCategory,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+}
+
+function shouldFilterExplicitBeautyBrowseNoiseCandidate(candidate, queryText) {
+  const normalizedQuery = normalizeText(queryText || '');
+  if (!normalizedQuery) return false;
+  if (candidate?.domain !== 'beauty' && !candidate?.beautyBucket) return false;
+
+  const candidateText = buildDiscoveryCandidateQueryFilterText(candidate);
+  if (!candidateText) return false;
+
+  const queryAllowsTools = hasAnyNormalizedClassToken(normalizedQuery, EXPLICIT_BEAUTY_BROWSE_TOOL_CLASSES);
+  if (
+    !queryAllowsTools &&
+    (candidate?.beautyBucket === 'tools' ||
+      hasAnyNormalizedClassToken(candidateText, EXPLICIT_BEAUTY_BROWSE_TOOL_CLASSES))
+  ) {
+    return true;
+  }
+
+  return EXPLICIT_BEAUTY_BROWSE_GENERIC_NOISE_CLASSES.some((noiseClass) => {
+    if (!hasAnyNormalizedClassToken(candidateText, [noiseClass])) return false;
+    return !hasAnyNormalizedClassToken(normalizedQuery, [noiseClass]);
+  });
+}
+
 function matchesBeautyCompoundQueryIntent(candidate, intent) {
   if (!intent) return true;
   const rule = EXPLICIT_BEAUTY_COMPOUND_INTENT_RULES[intent] || null;
@@ -6243,6 +6529,16 @@ function matchesBeautyCompoundQueryIntent(candidate, intent) {
   const combinedCategoryText = normalizeText([categoryText, verticalText].filter(Boolean).join(' '));
   const negativeClasses = rule?.negativeClasses || [];
 
+  if (intent === 'face_wash') {
+    if (hasAnyNormalizedClassToken([combinedCategoryText, titleText].join(' '), negativeClasses)) return false;
+    if (titleText.includes('face wash')) return true;
+    const categoryLooksCleanser =
+      hasAnyNormalizedClassToken(combinedCategoryText, rule?.primaryPositive || []) ||
+      hasAnyNormalizedClassToken(combinedCategoryText, rule?.weakPositive || []) ||
+      textHasNormalizedToken(combinedCategoryText, 'cleanser');
+    return categoryLooksCleanser && hasAnyNormalizedClassToken(titleText, rule?.positiveTitleTokens || []);
+  }
+
   if (intent === 'hair_oil') {
     if (hasAnyNormalizedClassToken([combinedCategoryText, titleText].join(' '), negativeClasses)) return false;
     if (titleText.includes('hair oil')) return true;
@@ -6263,6 +6559,38 @@ function matchesBeautyCompoundQueryIntent(candidate, intent) {
       titleHasOilSignal &&
         (structuredCategoryLooksHair || (verticalLooksHair && titleOrSummaryMentionsHair)),
     );
+  }
+
+  if (intent === 'hair_mask') {
+    if (hasAnyNormalizedClassToken([combinedCategoryText, titleText].join(' '), negativeClasses)) return false;
+    if (titleText.includes('hair mask')) return true;
+    const categoryLooksHair =
+      hasAnyNormalizedClassToken(combinedCategoryText, rule?.primaryPositive || []) ||
+      hasAnyNormalizedClassToken(combinedCategoryText, rule?.weakPositive || []) ||
+      textHasNormalizedToken(combinedCategoryText, 'hair');
+    return categoryLooksHair && hasAnyNormalizedClassToken(titleText, rule?.positiveTitleTokens || []);
+  }
+
+  if (intent === 'dry_shampoo') {
+    if (hasAnyNormalizedClassToken([combinedCategoryText, titleText].join(' '), negativeClasses)) return false;
+    if (titleText.includes('dry shampoo')) return true;
+    const categoryLooksHair =
+      hasAnyNormalizedClassToken(combinedCategoryText, rule?.primaryPositive || []) ||
+      hasAnyNormalizedClassToken(combinedCategoryText, rule?.weakPositive || []) ||
+      textHasNormalizedToken(combinedCategoryText, 'shampoo');
+    return categoryLooksHair && hasAnyNormalizedClassToken(titleText, rule?.positiveTitleTokens || []);
+  }
+
+  if (intent === 'scalp_serum') {
+    if (hasAnyNormalizedClassToken([combinedCategoryText, titleText].join(' '), negativeClasses)) return false;
+    if (titleText.includes('scalp serum')) return true;
+    const categoryLooksScalp =
+      hasAnyNormalizedClassToken(combinedCategoryText, rule?.primaryPositive || []) ||
+      hasAnyNormalizedClassToken(combinedCategoryText, rule?.weakPositive || []) ||
+      textHasNormalizedToken(combinedCategoryText, 'scalp');
+    const titleOrSummaryHasScalp =
+      textHasNormalizedToken(titleText, 'scalp') || textHasNormalizedToken(summaryText, 'scalp');
+    return categoryLooksScalp && titleOrSummaryHasScalp && textHasNormalizedToken(titleText, 'serum');
   }
 
   if (intent === 'lip_balm') {
@@ -8664,14 +8992,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
 	    const compoundIntent = isExplicitQueryScopedBrowseRequest(request)
 	      ? resolveExplicitBeautyCompoundIntent(request?.query?.text)
 	      : null;
-	    const exactIntentUnderfilled =
-	      Boolean(compoundIntent) &&
-	      request.surface === 'browse_products' &&
-	      selectedEntries.length > 0 &&
-	      selectedEntries.length < request.limit;
-	    const underfilledReason = exactIntentUnderfilled
-	      ? 'public_search_underfilled_exact_intent'
-	      : null;
+	    const underfilledReason = resolvePublicBrowseUnderfilledReason(request, selectedEntries.length);
 	    const metadata = {
 	      discovery_strategy: strategy,
       personalization_source: personalizationSource,
@@ -8740,15 +9061,15 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
           }
         : {}),
       ...(underfilledReason ? { underfilled_reason: underfilledReason } : {}),
-      route_health: {
-        primary_path_used: primaryPathUsed,
-        fallback_triggered: fallbackTriggered,
-        fallback_reason: fallbackReason,
-        primary_quality_gate_passed:
-          selectedEntries.length > 0 && !exactIntentUnderfilled,
-        ...(compoundIntent ? { compound_intent: compoundIntent } : {}),
-        ...(underfilledReason ? { underfilled_reason: underfilledReason } : {}),
-      },
+	      route_health: {
+	        primary_path_used: primaryPathUsed,
+	        fallback_triggered: fallbackTriggered,
+	        fallback_reason: fallbackReason,
+	        primary_quality_gate_passed:
+	          selectedEntries.length > 0 && !underfilledReason,
+	        ...(compoundIntent ? { compound_intent: compoundIntent } : {}),
+	        ...(underfilledReason ? { underfilled_reason: underfilledReason } : {}),
+	      },
       search_decision: {
         primary_path_used: primaryPathUsed,
         fallback_triggered: fallbackTriggered,
@@ -8928,6 +9249,7 @@ module.exports = {
     resolveExplicitBeautyCompoundIntent,
     resolveExplicitBrowseStageQueryCap,
     resolveExplicitQueryExternalSeedMainlineAcceptThreshold,
+    resolvePublicBrowseUnderfilledReason,
     resolveExternalSeedProviderLimit,
     shouldFilterBrowseCandidateByQueryText,
     matchesBrandScopeCandidate,
