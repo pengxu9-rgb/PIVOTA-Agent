@@ -95,7 +95,7 @@ function classifyBeautyBucketFromText(text) {
     /沐浴露|身体乳|身體乳|ボディウォッシュ|ボディローション/.test(q);
 
   const hasSkincareTreatmentSignal =
-    /\b(serum|toner|essence|ampoule|moisturi(?:z|s)er|cleanser|sunscreen|spf\b|sunblock|face wash|niacinamide|retinol|vitamin c|peptide|ceramide|cica|hyaluronic|salicylic|azelaic|aha|bha|oil control|shine control|congestion|blemish|acne treatment|spot treatment|clarifying|pore care)\b/i.test(
+    /\b(serum|toner|essence|ampoule|moisturi(?:z|s)er|cleanser|sunscreen|spf\b|sunblock|face wash|niacinamide|retinol|vitamin c|peptide|ceramide|cica|hyaluronic|salicylic|azelaic|glycolic|lactic acid|aha|bha|exfoliant|exfoliating|exfoliator|resurfacing|peel|oil control|shine control|congestion|blemish|acne treatment|spot treatment|clarifying|pore care)\b/i.test(
       q,
     ) ||
     /护肤|護膚|精华|精華|化妆水|化妝水|乳液|洁面|潔面|防晒|防曬|日焼け止め|美容液|洗顔料/.test(
@@ -129,6 +129,14 @@ function classifyBeautyBucketFromText(text) {
     return 'skincare';
   }
   if (
+    /\b(blush|blusher|bronzer|contour|highlighter|highlighting|illuminator|luminizer|luminiser|face palette)\b/i.test(
+      q,
+    ) ||
+    /腮红|腮紅|修容|阴影|陰影|高光|打亮/.test(q)
+  ) {
+    return 'cheek_makeup';
+  }
+  if (
     /\b(foundation|concealer|primer|powder|cushion|bb\s*cream|cc\s*cream|setting\s*powder)\b/i.test(
       q,
     ) ||
@@ -152,7 +160,7 @@ function classifyBeautyBucketFromText(text) {
     return 'lip_makeup';
   }
   if (
-    /\b(skincare|skin care|serum|toner|essence|ampoule|moisturi(?:z|s)er|cream|cleanser|sunscreen|spf\b|sunblock|face wash|mask)\b/i.test(
+    /\b(skincare|skin care|serum|toner|essence|ampoule|moisturi(?:z|s)er|cream|cleanser|sunscreen|spf\b|sunblock|face wash|mask|exfoliant|exfoliating|exfoliator|resurfacing|peel)\b/i.test(
       q,
     ) ||
     /护肤|護膚|精华|精華|化妆水|化妝水|乳液|面霜|洁面|潔面|防晒|防曬|日焼け止め|美容液|洗顔料|クリーム/.test(
@@ -185,6 +193,7 @@ function detectBeautyQueryBucket(queryText) {
   if (
     bucket === 'general' ||
     bucket === 'base_makeup' ||
+    bucket === 'cheek_makeup' ||
     bucket === 'eye_makeup' ||
     bucket === 'lip_makeup'
   ) {
@@ -204,11 +213,13 @@ function isBeautyBucketCompatibleForQuery(candidateBucket, queryBucket) {
   if (query === 'lip_care') return bucket === 'lip_care';
   if (query === 'bodycare') return bucket === 'bodycare';
   if (query === 'base_makeup') return bucket === 'base_makeup';
+  if (query === 'cheek_makeup') return bucket === 'cheek_makeup' || bucket === 'base_makeup';
   if (query === 'eye_makeup') return bucket === 'eye_makeup';
   if (query === 'lip_makeup') return bucket === 'lip_makeup' || bucket === 'lip_care';
   if (query === 'general') {
     return (
       bucket === 'base_makeup' ||
+      bucket === 'cheek_makeup' ||
       bucket === 'eye_makeup' ||
       bucket === 'lip_makeup' ||
       bucket === 'lip_care' ||
@@ -238,6 +249,7 @@ function buildBeautyQueryProfile({ rawQuery, queryClass, intent } = {}) {
       'lip_care',
       'bodycare',
       'base_makeup',
+      'cheek_makeup',
       'eye_makeup',
       'lip_makeup',
     ].includes(String(bucket || ''));
@@ -281,7 +293,20 @@ function getBeautyCacheExpansionTerms(profile) {
           'peptide',
           'dark spot',
         ]
-      : ['skincare', 'serum', 'toner', 'moisturizer', 'sunscreen', 'cleanser', 'cream'];
+      : [
+          'skincare',
+          'serum',
+          'toner',
+          'moisturizer',
+          'sunscreen',
+          'cleanser',
+          'cream',
+          'exfoliant',
+          'exfoliating',
+          'glycolic',
+          'bha',
+          'aha',
+        ];
   }
   if (bucket === 'tools') {
     return ['makeup', 'cosmetic', 'beauty', 'brush', 'sponge', 'puff', 'applicator'];
@@ -300,6 +325,9 @@ function getBeautyCacheExpansionTerms(profile) {
   }
   if (bucket === 'base_makeup') {
     return ['foundation', 'concealer', 'primer', 'powder', 'skin tint', 'bb cream', 'cc cream'];
+  }
+  if (bucket === 'cheek_makeup') {
+    return ['blush', 'bronzer', 'contour', 'highlighter', 'illuminator', 'luminizer', 'face palette'];
   }
   if (bucket === 'eye_makeup') {
     return ['mascara', 'eyeliner', 'eyeshadow', 'eye shadow', 'brow', 'eyebrow'];

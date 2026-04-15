@@ -38,7 +38,8 @@ const BUNDLE_RE = /\b(bundle)\b/i;
 const DUO_RE = /\b(duo)\b/i;
 const SET_RE = /\b(set)\b/i;
 const KIT_RE = /\b(kit)\b/i;
-const ROUTINE_BUNDLE_RE = /\b(routine|regimen|ritual|system)\b/i;
+const ROUTINE_BUNDLE_RE =
+  /\b(?:routine|regimen|ritual|system)\s+(?:set|kit|bundle|duo|trio|collection|pack)\b|\b(?:set|kit|bundle|duo|trio|collection|pack)\s+(?:routine|regimen|ritual|system)\b/i;
 const SAMPLE_RE = /\b(sample|mini|travel size|trial size)\b/i;
 const TINT_RE = /\b(skin tint|tinted|tint(ed)? moisturizer|bb cream|cc cream|foundation|concealer)\b/i;
 const PEEL_RE = /\b(peel|exfoliant|exfoliating|resurfacing)\b/i;
@@ -950,7 +951,11 @@ function classifySharedSunscreenTargetRelevance({
   if (!candidateHasSunscreenCue) {
     return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'spf_missing' };
   }
-  if (tintedMakeupLike) {
+  if (
+    tintedMakeupLike &&
+    !strongPrimarySunscreen &&
+    coarse.candidate_step !== 'sunscreen'
+  ) {
     return { offer_type: offerType, target_relevance_class: 'adjacent_noise', noise_reason: 'tint' };
   }
   if (strongPrimarySunscreen || (coarse.candidate_step === 'sunscreen' && !serumShapedSunscreen)) {

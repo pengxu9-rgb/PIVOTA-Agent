@@ -4337,7 +4337,7 @@ test('__internal: local external seed support-role patterns avoid bare fit keywo
   assert.equal(patterns.includes('%oil free moisturizer%'), true);
 });
 
-test('__internal: local external seed support-role search uses lean title authority recall before broad text recall', async () => {
+test('__internal: local external seed support-role search uses precise category-positive recall before broad text recall', async () => {
   const { __internal } = loadRoutesFresh();
   const observedQueries = [];
   const makeRow = (id, title, price) => ({
@@ -4351,8 +4351,8 @@ test('__internal: local external seed support-role search uses lean title author
     price_amount: price,
     price_currency: 'USD',
     availability: 'in_stock',
-    match_stage: 'support_recall_title',
-    match_score: 48,
+    match_stage: 'support_category_positive',
+    match_score: 54,
     seed_data: {
       derived: {
         recall: {
@@ -4401,19 +4401,168 @@ test('__internal: local external seed support-role search uses lean title author
   assert.equal(out.ok, true);
   assert.equal(out.local_external_seed_search_mode, 'staged_support_fastpath');
   assert.equal(observedQueries.length, 1);
-  assert.match(observedQueries[0].sql, /support_recall_title/);
+  assert.match(observedQueries[0].sql, /support_category_positive/);
+  assert.match(observedQueries[0].sql, /category/);
+  assert.match(observedQueries[0].sql, /retrieval_title/i);
+  assert.match(observedQueries[0].sql, /alias_tokens/i);
+  assert.match(observedQueries[0].sql, /ingredient_tokens/i);
   assert.doesNotMatch(observedQueries[0].sql, /seed_data::text/i);
-  assert.doesNotMatch(observedQueries[0].sql, /retrieval_summary/i);
-  assert.doesNotMatch(observedQueries[0].sql, /alias_tokens/i);
-  assert.doesNotMatch(observedQueries[0].sql, /ingredient_tokens/i);
-  assert.deepEqual(observedQueries[0].params[2].slice(0, 2), [
-    '%lightweight moisturizer oily skin%',
-    '%lightweight moisturizer%',
+  assert.deepEqual(observedQueries[0].params[2], [
+    'moisturizer',
+    'moisturiser',
+    'cream',
+    'gel cream',
+    'gel-cream',
+    'lotion',
+    'emulsion',
   ]);
-  assert.equal(out.local_external_seed_stage_debug[0]?.stage, 'support_recall_title');
+  assert.ok(observedQueries[0].params[3].includes('%gel cream%'));
+  assert.ok(observedQueries[0].params[3].includes('%oil-free%'));
+  assert.equal(out.local_external_seed_stage_debug[0]?.stage, 'support_category_positive');
+  assert.equal(out.local_external_seed_stage_debug[0]?.stop_after_any_match, true);
   assert.equal(out.products.length, 2);
-  assert.equal(out.products[0].retrieval_match_stage, 'support_recall_title');
-  assert.match(out.products[0].retrieval_reason, /support_recall_title/);
+  assert.equal(out.products[0].retrieval_match_stage, 'support_category_positive');
+  assert.match(out.products[0].retrieval_reason, /support_category_positive/);
+});
+
+test('__internal: local external seed primary hydration-serum search uses category-positive recall before title scan', async () => {
+  const { __internal } = loadRoutesFresh();
+  const observedQueries = [];
+  const out = await __internal.searchLocalExternalSeedProducts({
+    query: 'hyaluronic acid serum',
+    limit: 2,
+    role: {
+      role_id: 'hydrating_serum_or_essence',
+      rank: 1,
+      preferred_step: 'serum',
+      query_terms: ['hyaluronic acid serum', 'hydrating serum'],
+      fit_keywords: ['hyaluronic acid', 'hydrating', 'plumping'],
+      product_type_hypotheses: ['serum', 'essence'],
+    },
+    preferredStep: 'serum',
+    queryFn: async (sql, params) => {
+      observedQueries.push({ sql: String(sql || ''), params });
+      return {
+        rows: [
+          {
+            id: '301',
+            external_product_id: 'ext_hydrating_serum_301',
+            destination_url: 'https://example.com/products/ha-serum',
+            canonical_url: 'https://example.com/products/ha-serum',
+            domain: 'example.com',
+            title: 'Hyaluronic Acid Hydrating Serum',
+            image_url: 'https://example.com/products/ha-serum.jpg',
+            price_amount: 16,
+            price_currency: 'USD',
+            availability: 'in_stock',
+            match_stage: 'support_category_positive',
+            match_score: 54,
+            seed_data: {
+              derived: {
+                recall: {
+                  retrieval_title: 'Hyaluronic Acid Hydrating Serum',
+                  retrieval_summary: 'A hydrating serum with sodium hyaluronate.',
+                  ingredient_tokens: ['hyaluronic acid', 'sodium hyaluronate'],
+                  category: 'serum',
+                  vertical: 'skincare',
+                },
+              },
+              snapshot: {
+                title: 'Hyaluronic Acid Hydrating Serum',
+                description: 'Hydrating serum for dehydrated skin.',
+                category: 'Serum',
+              },
+            },
+            updated_at: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+          },
+        ],
+      };
+    },
+  });
+
+  assert.equal(out.ok, true);
+  assert.equal(observedQueries.length, 1);
+  assert.match(observedQueries[0].sql, /support_category_positive/);
+  assert.doesNotMatch(observedQueries[0].sql, /seed_data::text/i);
+  assert.deepEqual(observedQueries[0].params[2], ['serum', 'treatment', 'ampoule', 'essence']);
+  assert.ok(observedQueries[0].params[3].includes('%hyaluronic acid%'));
+  assert.ok(observedQueries[0].params[3].includes('%sodium hyaluronate%'));
+  assert.equal(out.local_external_seed_stage_debug[0]?.stage, 'support_category_positive');
+  assert.equal(out.local_external_seed_stage_debug[0]?.stop_after_any_match, true);
+  assert.equal(out.products[0].retrieval_match_stage, 'support_category_positive');
+});
+
+test('__internal: local external seed support-role search uses exact category head for broad sunscreen recall', async () => {
+  const { __internal } = loadRoutesFresh();
+  const observedQueries = [];
+  const out = await __internal.searchLocalExternalSeedProducts({
+    query: 'sunscreen',
+    limit: 2,
+    role: {
+      role_id: 'daily_sunscreen',
+      rank: 2,
+      preferred_step: 'sunscreen',
+      query_terms: ['sunscreen', 'spf fluid'],
+      fit_keywords: ['spf', 'uv protection'],
+      product_type_hypotheses: ['sunscreen'],
+    },
+    preferredStep: 'sunscreen',
+    queryFn: async (sql, params) => {
+      observedQueries.push({ sql: String(sql || ''), params });
+      return {
+        rows: [
+          {
+            id: '201',
+            external_product_id: 'ext_support_sunscreen_201',
+            destination_url: 'https://example.com/products/daily-spf-fluid',
+            canonical_url: 'https://example.com/products/daily-spf-fluid',
+            domain: 'example.com',
+            title: 'Daily SPF Fluid',
+            image_url: 'https://example.com/products/daily-spf-fluid.jpg',
+            price_amount: 24,
+            price_currency: 'USD',
+            availability: 'in_stock',
+            match_stage: 'support_category_exact',
+            match_score: 56,
+            seed_data: {
+              derived: {
+                recall: {
+                  retrieval_title: 'Daily SPF Fluid sunscreen',
+                  retrieval_summary: 'A lightweight daily sunscreen.',
+                  category: 'sunscreen',
+                  vertical: 'skincare',
+                },
+              },
+              snapshot: {
+                title: 'Daily SPF Fluid',
+                description: 'Lightweight SPF for daily use.',
+                category: 'Sunscreen',
+              },
+            },
+            updated_at: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+          },
+        ],
+      };
+    },
+  });
+
+  assert.equal(out.ok, true);
+  assert.equal(out.local_external_seed_search_mode, 'staged_support_fastpath');
+  assert.equal(observedQueries.length, 1);
+  assert.match(observedQueries[0].sql, /support_category_exact/);
+  assert.match(observedQueries[0].sql, /category/);
+  assert.doesNotMatch(observedQueries[0].sql, /retrieval_title/i);
+  assert.deepEqual(observedQueries[0].params[2], [
+    'sunscreen',
+    'spf',
+    'sun care',
+    'sun protection',
+    'uv protection',
+  ]);
+  assert.equal(out.local_external_seed_stage_debug[0]?.stage, 'support_category_exact');
+  assert.equal(out.products[0].retrieval_match_stage, 'support_category_exact');
 });
 
 test('__internal: framework recall exhausts primary planned sources before support stages when mock recall never yields a candidate', async () => {
@@ -4661,6 +4810,23 @@ test('__internal: tri-state skincare classifier only hard rejects explicit non-s
   );
   assert.equal(
     recoShared.classifySkincareCandidateDomain({
+      name: 'Daily Tinted Fluid Sunscreen LP110',
+      category: 'makeup',
+      product_type: 'sunscreen',
+      short_description: 'A daily tinted fluid sunscreen designed to sit well under makeup.',
+    }),
+    'explicit_face_skincare',
+  );
+  assert.equal(
+    recoShared.classifySkincareCandidateDomain({
+      name: 'SPF foundation',
+      category: 'makeup',
+      product_type: 'foundation',
+    }),
+    'explicit_non_skincare',
+  );
+  assert.equal(
+    recoShared.classifySkincareCandidateDomain({
       name: 'Warm Fall/Winter Padded Winter Vest for Dogs & Cats',
       category: 'moisturizer',
     }),
@@ -4682,6 +4848,96 @@ test('__internal: tri-state skincare classifier only hard rejects explicit non-s
     }),
     true,
   );
+});
+
+test('__internal: framework pool keeps tinted sunscreen authoritative instead of boundary-rejecting makeup-adjacent copy', () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'tinted_sunscreen_lp110',
+        merchant_id: 'external_seed',
+        brand: 'Example SPF',
+        display_name: 'Daily Tinted Fluid Sunscreen LP110',
+        category: 'makeup',
+        product_type: 'sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_query: 'sunscreen',
+        retrieval_step: 'sunscreen',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        benefit_tags: ['broad spectrum', 'spf 50', 'lightweight'],
+        short_description: 'A daily tinted fluid sunscreen designed to sit well under makeup.',
+        description: 'Use as the last step in your morning routine before makeup.',
+      },
+    ],
+    {
+      targetContext: {
+        framework_id: 'recofw_test_tinted_sunscreen_boundary',
+        primary_role_id: 'daily_sunscreen_finish_fit',
+        framework_roles: [
+          {
+            role_id: 'daily_sunscreen_finish_fit',
+            rank: 1,
+            preferred_step: 'sunscreen',
+            label: 'Daily sunscreen finish fit',
+            query_terms: ['sunscreen', 'spf fluid'],
+            fit_keywords: ['sunscreen', 'spf', 'broad spectrum', 'lightweight'],
+            product_type_hypotheses: ['sunscreen'],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(state.raw_candidate_count, 1);
+  assert.equal(state.hard_reject_count, 0);
+  assert.equal(state.selected_recommendations[0]?.product_id, 'tinted_sunscreen_lp110');
+  assert.equal(state.selected_recommendations[0]?.matched_role_id, 'daily_sunscreen_finish_fit');
+});
+
+test('__internal: framework pool keeps external-seed exact serum recall viable for hydrating serum primary', () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'external_hydrating_serum_sparse_1',
+        merchant_id: 'external_seed',
+        brand: 'Example Lab',
+        display_name: 'Cloud Water Serum',
+        category: 'serum',
+        product_type: 'serum',
+        retrieval_source: 'external_seed',
+        retrieval_query: 'hyaluronic acid serum',
+        retrieval_step: 'serum',
+        retrieval_role_id: 'hydrating_serum_or_essence',
+        search_aliases: ['hyaluronic acid serum'],
+      },
+    ],
+    {
+      targetContext: {
+        framework_id: 'recofw_test_hydrating_serum_external_sparse',
+        primary_role_id: 'hydrating_serum_or_essence',
+        framework_roles: [
+          {
+            role_id: 'hydrating_serum_or_essence',
+            rank: 1,
+            preferred_step: 'serum',
+            label: 'Hydrating serum or essence',
+            query_terms: ['hyaluronic acid serum', 'hydrating serum'],
+            fit_keywords: ['hydrating', 'hydration', 'plumping'],
+            ingredient_hypotheses: ['Hyaluronic Acid', 'Sodium Hyaluronate'],
+            product_type_hypotheses: ['serum', 'essence', 'ampoule'],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.equal(state.weak_viable_pool, false);
+  assert.equal(state.selected_recommendations[0]?.product_id, 'external_hydrating_serum_sparse_1');
+  assert.equal(state.selected_recommendations[0]?.matched_role_id, 'hydrating_serum_or_essence');
+  assert.ok(Number(state.selected_recommendations[0]?.framework_score || 0) >= 0.48);
 });
 
 test('__internal: framework pool rejects generic ingredient serum as an oil-control top pick without semantic role evidence', async () => {
@@ -6205,6 +6461,83 @@ test('__internal: reco assistant rewrite prompt prioritizes target-aligned evide
   assert.doesNotMatch(String(context.assistant_write_plan?.lead_product?.must_use_reason_points?.[0] || ''), /dullness|uneven tone/i);
 });
 
+test('__internal: reco assistant rewrite prompt carries reviewed insight watchouts and pairing notes', async () => {
+  const { __internal } = loadRoutesFresh();
+  const prompt = __internal.buildRecoAssistantRewritePrompt({
+    language: 'EN',
+    userRequestText: 'I need sunscreen under makeup in humid weather. What should I buy?',
+    profile: { skinType: 'oily', goals: ['daily sunscreen'] },
+    payload: {
+      roles: [
+        {
+          role_id: 'daily_sunscreen_finish_fit',
+          label: 'Daily sunscreen finish fit',
+          why_this_role: 'Find a sunscreen that sits well under makeup without feeling heavy.',
+          preferred_step: 'sunscreen',
+          rank: 1,
+          slot: 'am',
+        },
+      ],
+      recommendation_meta: {
+        primary_target_id: 'daily_sunscreen_finish_fit',
+        selected_target_ids: ['daily_sunscreen_finish_fit'],
+        ranked_targets: [
+          {
+            target_id: 'daily_sunscreen_finish_fit',
+            ingredient_query: 'Daily sunscreen finish fit',
+            resolved_target_step: 'sunscreen',
+          },
+        ],
+      },
+      recommendations: [
+        {
+          display_name: 'Daily Tinted Fluid Sunscreen DY300',
+          brand: 'Beauty of Joseon',
+          category: 'Sunscreen',
+          matched_role_id: 'daily_sunscreen_finish_fit',
+          matched_role_label: 'Daily sunscreen finish fit',
+          price: { amount: 10, currency: 'USD' },
+          product_intel: {
+            product_intel_core: {
+              what_it_is: {
+                body: 'A tinted SPF 40 fluid sunscreen with zinc oxide and shine-control cues.',
+              },
+              why_it_stands_out: [
+                {
+                  headline: 'SPF plus tint',
+                  body: 'The seller record describes SPF 40 protection in a tinted fluid that works as the final daytime step.',
+                },
+              ],
+              routine_fit: {
+                step: 'sunscreen',
+                pairing_notes: ['Use as the final daytime skincare step before makeup.'],
+              },
+              watchouts: [
+                {
+                  type: 'shade_match',
+                  label: 'Because it is tinted, shade match matters.',
+                  severity: 'medium',
+                },
+              ],
+            },
+          },
+        },
+      ],
+    },
+  });
+
+  assert.match(prompt, /Use selected_product_details\.insight_watchouts only as concise tradeoff\/caveat evidence/i);
+  const context = extractRecoRewritePromptContext(prompt);
+  assert.equal(context.selected_product_details[0]?.reviewed_insight_available, true);
+  assert.equal(context.selected_product_details[0]?.insight_watchouts?.[0]?.label, 'Because it is tinted, shade match matters.');
+  assert.deepEqual(context.selected_product_details[0]?.routine_pairing_notes, [
+    'Use as the final daytime skincare step before makeup.',
+  ]);
+  assert.deepEqual(context.assistant_write_plan?.lead_product?.watchout_points, [
+    'Because it is tinted, shade match matters.',
+  ]);
+});
+
 test('__internal: reco assistant rewrite prompt exposes same-role price comparison context', async () => {
   const { __internal } = loadRoutesFresh();
   const prompt = __internal.buildRecoAssistantRewritePrompt({
@@ -6469,7 +6802,7 @@ test('__internal: framework pool does not let moisturizer-signaled serum metadat
   assert.equal(state.candidate_drop_stage, 'weak_viable_pool');
 });
 
-test('__internal: framework pool keeps authoritative support recommendations when the primary role is unmatched', async () => {
+test('__internal: framework pool fail-closes support-only recommendations when the primary role is unmatched', async () => {
   const { __internal } = loadRoutesFresh();
   const state = __internal.finalizeConcernFrameworkCandidatePools(
     [
@@ -6517,14 +6850,14 @@ test('__internal: framework pool keeps authoritative support recommendations whe
   );
 
   assert.equal(state.primary_role_matched, false);
-  assert.equal(state.primary_missing_authoritative_support_selected, true);
-  assert.equal(state.selected_candidate_count, 1);
-  assert.equal(Array.isArray(state.selected_recommendations) ? state.selected_recommendations.length : 0, 1);
+  assert.equal(state.primary_missing_authoritative_support_selected, false);
+  assert.equal(state.selected_candidate_count, 0);
+  assert.equal(Array.isArray(state.selected_recommendations) ? state.selected_recommendations.length : 0, 0);
   assert.equal(state.pre_llm_selected_candidate_count, 1);
   assert.equal(state.best_available_role_id, 'daily_sunscreen');
-  assert.equal(state.weak_viable_pool, false);
-  assert.equal(state.viable_pool_strength, 'strong');
-  assert.equal(state.family_match_type, 'framework_support_authoritative');
+  assert.equal(state.weak_viable_pool, true);
+  assert.equal(state.viable_pool_strength, 'weak');
+  assert.equal(state.family_match_type, 'framework_partial');
   assert.equal(state.target_fidelity_level, 'partial');
 });
 

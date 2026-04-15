@@ -4,6 +4,10 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 
+const {
+  deriveReviewContractFromReportRow,
+} = require('../src/services/pivotaProductIntelReviewPolicy');
+
 function parseArgs(argv) {
   const out = {
     gatewayUrl: process.env.PIVOTA_GATEWAY_URL || 'https://agent.pivota.cc/api/gateway',
@@ -252,9 +256,19 @@ function buildReviewPacket(compareReport, options = {}) {
     const core = bundle?.product_intel_core || {};
     const shoppingCard = bundle?.shopping_card || {};
     const selectedMode = asString(row?.selected?.selected_mode);
+    const reviewContract = deriveReviewContractFromReportRow(row);
+    const approvedReview = reviewContract.approved === true;
     const strictRejection = strictReview && selectedMode === 'baseline_only';
-    const reviewStatus = strictRejection ? 'rejected' : 'pending';
-    const reviewDecision = strictRejection ? 'reject' : 'pending';
+    const reviewStatus = strictRejection
+      ? 'rejected'
+      : approvedReview
+        ? asString(reviewContract.review_status) || 'completed'
+        : 'pending';
+    const reviewDecision = strictRejection
+      ? 'reject'
+      : approvedReview
+        ? asString(reviewContract.review_decision || reviewContract.legacy_review_status) || 'pass'
+        : 'pending';
     const rejectionReason = strictRejection
       ? 'Strict review policy requires non-baseline selected mode'
       : '';
@@ -266,9 +280,9 @@ function buildReviewPacket(compareReport, options = {}) {
         product_id: asString(product.product_id),
       },
       review_status: reviewStatus,
-      reviewer: '',
-      reviewer_kind: '',
-      reviewed_at: '',
+      reviewer: strictRejection ? '' : asString(reviewContract.reviewer),
+      reviewer_kind: strictRejection ? '' : asString(reviewContract.reviewer_kind),
+      reviewed_at: strictRejection ? '' : asString(reviewContract.reviewed_at),
       decision: reviewDecision,
       review_decision: reviewDecision,
       rejection_reason: rejectionReason,

@@ -687,7 +687,7 @@ function buildHowToUseModuleData(candidates, fallbackTitle) {
     return {
       title: pickStructuredTitle(candidate, fallbackTitle),
       ...(rawText ? { raw_text: rawText } : {}),
-      steps,
+      steps: steps.slice(0, 6),
       ...extractStructuredSourceMeta(candidate),
     };
   }
@@ -1309,6 +1309,7 @@ function buildProductOverviewSections(product, detailSections = collectStructure
 function buildSupplementalDetailSections(product, detailSections = collectStructuredDetailSections(product)) {
   const sections = [];
   const desc = resolveProductDescriptionText(product, detailSections);
+  const descKey = normalizeTextKey(desc);
   const capturedNarrativeSoup = looksLikeCapturedExternalSeedNarrativeSoup(
     product,
     product.pdp_description_raw,
@@ -1320,8 +1321,9 @@ function buildSupplementalDetailSections(product, detailSections = collectStruct
       if (FACT_DETAIL_SECTION_RE.test(section.heading)) return false;
       if (BRAND_STORY_SECTION_RE.test(section.heading)) return false;
       if (OVERVIEW_DETAIL_SECTION_RE.test(section.heading)) return false;
-      if (capturedNarrativeSoup) return false;
       if (desc && section.content === desc) return false;
+      if (descKey && normalizeTextKey(section.content) === descKey) return false;
+      if (capturedNarrativeSoup && looksLikeSectionSoupText(section.content)) return false;
       return true;
     })
     .forEach((section) => {
@@ -1505,7 +1507,11 @@ function reconcileActiveIngredientsWithInci(product, candidate, data, ingredient
       ? {
           source_origin: data.source_origin || 'ingredients_inci',
           source_quality_status:
-            data.source_quality_status === 'high' ? data.source_quality_status : 'derived_from_inci',
+            inferredSunscreenActives.length
+              ? 'regulatory_active'
+              : data.source_quality_status === 'high'
+                ? data.source_quality_status
+                : 'derived_from_inci',
         }
       : {}),
   };
@@ -1546,7 +1552,7 @@ function buildActiveIngredients(product, ingredientsInci) {
       title: 'Active ingredients',
       items: inferredSunscreenActives,
       source_origin: 'ingredients_inci',
-      source_quality_status: 'derived_from_inci',
+      source_quality_status: 'regulatory_active',
     };
   }
 
@@ -1558,16 +1564,21 @@ function buildHowToUse(product) {
   const detailSectionHowToUse =
     detailSections.find((section) => /^(how to use|how to apply|directions?|usage)$/i.test(section.heading))
       ?.content || '';
-  return buildHowToUseModuleData(
-    [
-      product.pdp_how_to_use_raw,
-      detailSectionHowToUse,
+  const candidates = [
+    product.pdp_how_to_use_raw,
+    detailSectionHowToUse,
+  ];
+  if (!isExternalSeedLikeProduct(product)) {
+    candidates.push(
       product.how_to_use,
       product.howToUse,
       product.directions,
       product.instructions,
       product.usage,
-    ],
+    );
+  }
+  return buildHowToUseModuleData(
+    candidates,
     'How to use',
   );
 }
@@ -2292,6 +2303,9 @@ function buildRecommendations(items, currencyFallback) {
       product_id: p.product_id || p.id,
       merchant_id: p.merchant_id || p.merchant?.id || p.merchant_uuid,
       title: p.title || p.name,
+      description: asNonEmptyString(p.description) || undefined,
+      category: asNonEmptyString(p.category) || undefined,
+      product_type: asNonEmptyString(p.product_type || p.productType) || undefined,
       image_url:
         normalizePdpImageUrl(p.image_url || p.image || (Array.isArray(p.images) ? p.images[0] : undefined)) ||
         undefined,
@@ -2299,6 +2313,16 @@ function buildRecommendations(items, currencyFallback) {
         amount: normalizeAmount(p.price),
         currency: normalizeCurrency(p, currencyFallback),
       },
+      card_title: asNonEmptyString(p.card_title || p.cardTitle) || undefined,
+      card_subtitle: asNonEmptyString(p.card_subtitle || p.cardSubtitle) || undefined,
+      card_highlight: asNonEmptyString(p.card_highlight || p.cardHighlight) || undefined,
+      card_badge: asNonEmptyString(p.card_badge || p.cardBadge) || undefined,
+      shopping_card: p.shopping_card && typeof p.shopping_card === 'object' ? p.shopping_card : undefined,
+      search_card: p.search_card && typeof p.search_card === 'object' ? p.search_card : undefined,
+      external_highlight_signals: Array.isArray(p.external_highlight_signals)
+        ? p.external_highlight_signals
+        : undefined,
+      card_highlight_status: asNonEmptyString(p.card_highlight_status || p.cardHighlightStatus) || undefined,
       // Additive fields (safe for older clients to ignore).
       source: p.source || p.recommendation_source || undefined,
       reason: p.reason || p.recommendation_reason || undefined,

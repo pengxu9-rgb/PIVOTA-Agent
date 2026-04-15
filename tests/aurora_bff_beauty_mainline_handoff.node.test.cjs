@@ -1858,7 +1858,7 @@ test('handoffRecoToBeautyMainlineSearch preserves local empty result without pro
   }
 });
 
-test('handoffRecoToBeautyMainlineSearch keeps authoritative support roles when primary recall is missing', async () => {
+test('handoffRecoToBeautyMainlineSearch fail-closes support-only rows when primary recall is missing', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     __internal.__setRouteDependencyOverridesForTest({
@@ -1928,27 +1928,27 @@ test('handoffRecoToBeautyMainlineSearch keeps authoritative support roles when p
 
     assert.deepEqual(
       out.recommendations.map((item) => item.product_id),
-      ['support_moist_1', 'support_spf_1'],
+      [],
     );
     assert.equal(
       out.searchResult?.metadata?.candidate_pool_summary?.weak_viable_pool,
-      false,
-    );
-    assert.equal(
-      out.searchResult?.metadata?.candidate_pool_summary?.viable_pool_strength,
-      'strong',
-    );
-    assert.equal(
-      out.searchResult?.metadata?.candidate_pool_summary?.primary_missing_authoritative_support_selected,
       true,
     );
     assert.equal(
+      out.searchResult?.metadata?.candidate_pool_summary?.viable_pool_strength,
+      'weak',
+    );
+    assert.equal(
+      out.searchResult?.metadata?.candidate_pool_summary?.primary_missing_authoritative_support_selected,
+      false,
+    );
+    assert.equal(
       out.searchResult?.metadata?.search_stage_ledger?.candidate_drop_stage,
-      'none',
+      'weak_viable_pool',
     );
     assert.equal(
       out.searchResult?.metadata?.search_stage_ledger?.primary_failure_stage ?? null,
-      null,
+      'weak_viable_pool',
     );
   } finally {
     __internal.__resetRouteDependencyOverridesForTest();

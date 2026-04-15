@@ -235,6 +235,15 @@ function isHumanReviewedProductIntelBundle(bundle) {
   if (generator === 'strict_human_manual_rewrite') return true;
   if (hasHumanField && qualityGate?.human_standard_rewrite === true) return true;
   if (
+    reviewerKind === 'assistant' &&
+    reviewStatus === 'completed' &&
+    ['pass', 'rewrite', 'seller_only_fallback'].includes(reviewDecision) &&
+    selectedStrategy === 'curated_override' &&
+    ['seller_only', 'seller_plus_formula'].includes(sourceEvidenceProfile)
+  ) {
+    return true;
+  }
+  if (
     provenanceSource === 'aurora_product_intel_kb' &&
     sourceQualityState === 'verified' &&
     sourceEvidenceProfile === 'pivota_reviewed'

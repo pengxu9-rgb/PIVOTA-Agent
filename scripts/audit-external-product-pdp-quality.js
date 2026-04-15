@@ -95,6 +95,19 @@ function buildAuthoritativePayload(operation, payload = {}) {
           merchant_id: 'external_seed',
           product_id: normalizeNonEmptyString(payload.product_id),
         },
+        include: [
+          'canonical',
+          'product_intel',
+          'product_details',
+          'product_facts',
+          'active_ingredients',
+          'ingredients_inci',
+          'how_to_use',
+          'reviews_preview',
+          'similar',
+          'variant_selector',
+          'offers',
+        ],
         options: {
           ...ensureJsonObject(payload.options),
           debug: true,
@@ -348,6 +361,7 @@ async function auditRow(row, { catalogBaseUrl, gatewayUrl, imageHealthEnabled = 
     extractorProduct: extractor.product || {},
     livePayload,
     liveResponse: ensureJsonObject(livePdp),
+    seedData,
     expectedPrice: variantScopedSeed ? row.price_amount : null,
     imageHealth,
   });
@@ -361,6 +375,8 @@ async function auditRow(row, { catalogBaseUrl, gatewayUrl, imageHealthEnabled = 
   });
   const similarGate = buildSimilarGate({
     similarResponse: ensureJsonObject(similar),
+    livePayload,
+    liveResponse: ensureJsonObject(livePdp),
     exclusionFlags: recall.exclusion_flags || {},
   });
   return buildExternalSeedQualityResult({

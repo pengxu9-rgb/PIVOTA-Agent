@@ -4004,6 +4004,24 @@ function normalizeRecoInsightHighlight(item) {
   };
 }
 
+function normalizeRecoInsightWatchout(item) {
+  if (!item) return null;
+  if (typeof item === 'string') {
+    const label = pickFirstTrimmed(item);
+    return label ? { label } : null;
+  }
+  if (!isPlainObject(item)) return null;
+  const label = pickFirstTrimmed(item.label, item.body, item.text, item.description, item.issue, item.title);
+  if (!label) return null;
+  return {
+    label,
+    ...(pickFirstTrimmed(item.type, item.category) ? { type: pickFirstTrimmed(item.type, item.category) } : {}),
+    ...(pickFirstTrimmed(item.severity, item.risk_level, item.riskLevel)
+      ? { severity: pickFirstTrimmed(item.severity, item.risk_level, item.riskLevel) }
+      : {}),
+  };
+}
+
 function normalizeRecoPivotaInsights(raw, productIntel = null) {
   const explicit = isPlainObject(raw) ? raw : null;
   const intel = productIntel && isPlainObject(productIntel) ? productIntel : null;
@@ -4044,11 +4062,61 @@ function normalizeRecoPivotaInsights(raw, productIntel = null) {
       .filter(Boolean),
     4,
   );
-  if (!whatItIs && whyItStandsOut.length === 0 && bestFor.length === 0) return null;
+  const watchoutsRaw = Array.isArray(explicit?.watchouts)
+    ? explicit.watchouts
+    : Array.isArray(explicit?.watchOuts)
+      ? explicit.watchOuts
+      : Array.isArray(core?.watchouts)
+        ? core.watchouts
+        : Array.isArray(core?.watchOuts)
+          ? core.watchOuts
+          : [];
+  const watchouts = watchoutsRaw
+    .map(normalizeRecoInsightWatchout)
+    .filter(Boolean)
+    .slice(0, 3);
+  const routineFitRaw =
+    isPlainObject(explicit?.routine_fit) ? explicit.routine_fit
+      : isPlainObject(explicit?.routineFit) ? explicit.routineFit
+        : isPlainObject(core?.routine_fit) ? core.routine_fit
+          : isPlainObject(core?.routineFit) ? core.routineFit
+            : null;
+  let routineFit = routineFitRaw
+    ? {
+        ...(pickFirstTrimmed(routineFitRaw.step) ? { step: pickFirstTrimmed(routineFitRaw.step) } : {}),
+        ...(Array.isArray(routineFitRaw.pairing_notes) || Array.isArray(routineFitRaw.pairingNotes)
+          ? {
+              pairing_notes: uniqCaseInsensitiveStrings(
+                [
+                  ...(Array.isArray(routineFitRaw.pairing_notes) ? routineFitRaw.pairing_notes : []),
+                  ...(Array.isArray(routineFitRaw.pairingNotes) ? routineFitRaw.pairingNotes : []),
+                ].map((item) => pickFirstTrimmed(item)).filter(Boolean),
+                3,
+              ),
+            }
+          : {}),
+      }
+    : null;
+  if (
+    routineFit &&
+    !routineFit.step &&
+    (!Array.isArray(routineFit.pairing_notes) || routineFit.pairing_notes.length === 0)
+  ) {
+    routineFit = null;
+  }
+  if (
+    !whatItIs &&
+    whyItStandsOut.length === 0 &&
+    bestFor.length === 0 &&
+    watchouts.length === 0 &&
+    !routineFit
+  ) return null;
   return {
     ...(whatItIs ? { what_it_is: whatItIs } : {}),
     ...(whyItStandsOut.length ? { why_it_stands_out: whyItStandsOut } : {}),
     ...(bestFor.length ? { best_for: bestFor } : {}),
+    ...(watchouts.length ? { watchouts } : {}),
+    ...(routineFit ? { routine_fit: routineFit } : {}),
   };
 }
 
@@ -8271,96 +8339,187 @@ function buildLocalExternalSeedSupportCategoryTerms({ role = null, preferredStep
   return uniqCaseInsensitiveStrings(terms, 10);
 }
 
-function buildLocalExternalSeedSupportCombinedQuery({
+function buildLocalExternalSeedExactCategoryHeadTerms({ query = '', categoryTerms = [] } = {}) {
+  const normalizedQuery = String(query || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  if (!normalizedQuery) return [];
+  const terms = uniqCaseInsensitiveStrings(categoryTerms, 10)
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean);
+  const pickTerms = (allowed) => {
+    const allowedSet = new Set(allowed);
+    return terms.filter((term) => allowedSet.has(term));
+  };
+  if (['sunscreen', 'daily sunscreen', 'broad spectrum sunscreen', 'spf'].includes(normalizedQuery)) {
+    return pickTerms(['sunscreen', 'spf', 'sun care', 'sun protection', 'uv protection']);
+  }
+  if (['moisturizer', 'moisturiser'].includes(normalizedQuery)) {
+    return pickTerms(['moisturizer', 'moisturiser', 'cream', 'lotion', 'emulsion']);
+  }
+  return [];
+}
+
+function buildLocalExternalSeedCategoryPositiveStage({
+  query = '',
+  role = null,
+  preferredStep = '',
+  categoryTerms = [],
+} = {}) {
+  const step = normalizeRecoTargetStep(preferredStep || role?.preferred_step);
+  const haystack = [
+    query,
+    role?.role_id,
+    role?.label,
+    role?.preferred_step,
+    ...(Array.isArray(role?.query_terms) ? role.query_terms : []),
+    ...(Array.isArray(role?.fit_keywords) ? role.fit_keywords : []),
+    ...(Array.isArray(role?.product_type_hypotheses) ? role.product_type_hypotheses : []),
+  ]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+  if (!haystack) return null;
+
+  const terms = uniqCaseInsensitiveStrings(categoryTerms, 10)
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean);
+  const pickTerms = (allowed) => {
+    const allowedSet = new Set(allowed);
+    return terms.filter((term) => allowedSet.has(term));
+  };
+  const addPatterns = (...values) =>
+    uniqCaseInsensitiveStrings(
+      values
+        .flat()
+        .map((value) => String(value || '').trim().toLowerCase())
+        .filter((value) => value.length >= 3),
+      12,
+    ).map((value) => `%${value}%`);
+
+  if (
+    step === 'moisturizer'
+    && /\b(gel[-\s]?cream|water[-\s]?(gel|cream)|oil[-\s]?free|lightweight|moisturi[sz]er|cream|lotion|emulsion|barrier|hydrating|hydration)\b/.test(haystack)
+  ) {
+    const positivePatterns = addPatterns(
+      /\bgel[-\s]?cream\b/.test(haystack) ? ['gel cream', 'gel-cream', 'water gel', 'water cream'] : [],
+      /\boil[-\s]?free\b/.test(haystack) ? ['oil free', 'oil-free'] : [],
+      /\blightweight\b/.test(haystack) ? ['lightweight'] : [],
+      /\bbarrier\b/.test(haystack) ? ['barrier', 'repair'] : [],
+      /\bhydrat/.test(haystack) ? ['hydrating', 'hydration'] : [],
+      ['moisturizer', 'moisturiser', 'cream', 'lotion', 'emulsion'],
+    );
+    const categories = pickTerms(['moisturizer', 'moisturiser', 'cream', 'gel cream', 'gel-cream', 'lotion', 'emulsion']);
+    if (categories.length && positivePatterns.length) {
+      return { categoryTerms: categories, positivePatterns };
+    }
+  }
+
+  if (
+    (step === 'serum' || step === 'treatment')
+    && /\b(hyaluronic|sodium hyaluronate|hydrating|hydration|serum|essence|ampoule)\b/.test(haystack)
+  ) {
+    const preciseHydrationPatterns = addPatterns(
+      /\bhyaluronic\b/.test(haystack) ? ['hyaluronic acid', 'hyaluronic', 'sodium hyaluronate'] : [],
+      /\bhydrat/.test(haystack) ? ['hydrating', 'hydration'] : [],
+      /\bessence\b/.test(haystack) ? ['essence'] : [],
+      /\bampoule\b/.test(haystack) ? ['ampoule'] : [],
+    );
+    const categories = pickTerms(['serum', 'treatment', 'ampoule', 'essence']);
+    if (categories.length && preciseHydrationPatterns.length) {
+      return { categoryTerms: categories, positivePatterns: preciseHydrationPatterns };
+    }
+  }
+
+  return null;
+}
+
+function buildLocalExternalSeedSupportStageDefinitions({
   patterns = [],
   categoryTerms = [],
   safeLimit = 6,
-  market,
-  tool,
+  query = '',
+  role = null,
+  preferredStep = '',
 } = {}) {
-  const params = [market, tool];
-  const stageOrder = [];
-  const stageWhereClauses = [];
-  const scoreClauses = [];
-  const stageClauses = [];
-  const bind = (value) => {
-    params.push(value);
-    return `$${params.length}`;
+  const stageDefinitions = [];
+  const addStage = ({ stage, score, buildWhereSql, stopAfterAnyMatch = false }) => {
+    const stageName = String(stage || '').trim();
+    if (!stageName || typeof buildWhereSql !== 'function') return;
+    stageDefinitions.push({
+      stage: stageName,
+      score: Number(score || 0),
+      cap: Math.max(1, Number(safeLimit) || 1),
+      buildWhereSql,
+      stopAfterAnyMatch: stopAfterAnyMatch === true,
+    });
   };
 
-  const addStage = ({ stage, score, whereSql }) => {
-    const stageName = String(stage || '').trim();
-    const normalizedWhereSql = String(whereSql || '').trim();
-    if (!stageName || !normalizedWhereSql) return;
-    stageOrder.push(stageName);
-    stageWhereClauses.push(`(${normalizedWhereSql})`);
-    scoreClauses.push(`WHEN ${normalizedWhereSql} THEN ${Number(score || 0)}`);
-    stageClauses.push(`WHEN ${normalizedWhereSql} THEN '${stageName}'`);
-  };
+  const exactCategoryTerms = buildLocalExternalSeedExactCategoryHeadTerms({ query, categoryTerms });
+  if (exactCategoryTerms.length > 0) {
+    addStage({
+      stage: 'support_category_exact',
+      score: 56,
+      stopAfterAnyMatch: true,
+      buildWhereSql: (bind) =>
+        `${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} = ANY(${bind(exactCategoryTerms)}::text[])`,
+    });
+  }
+
+  const categoryPositiveStage = buildLocalExternalSeedCategoryPositiveStage({
+    query,
+    role,
+    preferredStep,
+    categoryTerms,
+  });
+  if (categoryPositiveStage) {
+    addStage({
+      stage: 'support_category_positive',
+      score: 54,
+      stopAfterAnyMatch: true,
+      buildWhereSql: (bind) => {
+        const categoryBind = bind(categoryPositiveStage.categoryTerms);
+        const patternBind = bind(categoryPositiveStage.positivePatterns);
+        return `(
+          ${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} = ANY(${categoryBind}::text[])
+          AND (
+            lower(coalesce(title, '')) LIKE ANY(${patternBind}::text[])
+            OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${patternBind}::text[])
+            OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY(${patternBind}::text[])
+            OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokens} LIKE ANY(${patternBind}::text[])
+            OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${patternBind}::text[])
+          )
+        )`;
+      },
+    });
+  }
 
   if (Array.isArray(patterns) && patterns.length > 0) {
-    const patternBind = bind(patterns);
     addStage({
       stage: 'support_recall_title',
       score: 48,
-      whereSql: `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${patternBind}::text[])`,
+      buildWhereSql: (bind) =>
+        `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${bind(patterns)}::text[])`,
     });
     addStage({
       stage: 'support_alias_tokens',
       score: 44,
-      whereSql: `${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY(${patternBind}::text[])`,
+      buildWhereSql: (bind) =>
+        `${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY(${bind(patterns)}::text[])`,
     });
     addStage({
       stage: 'support_recall_summary',
       score: 40,
-      whereSql: `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${patternBind}::text[])`,
+      buildWhereSql: (bind) =>
+        `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${bind(patterns)}::text[])`,
     });
     addStage({
       stage: 'support_raw_title',
       score: 36,
-      whereSql: `lower(coalesce(title, '')) LIKE ANY(${patternBind}::text[])`,
+      buildWhereSql: (bind) =>
+        `lower(coalesce(title, '')) LIKE ANY(${bind(patterns)}::text[])`,
     });
   }
 
-  if (stageWhereClauses.length === 0) {
-    return {
-      sql: '',
-      params,
-      stageOrder,
-      cap: 0,
-    };
-  }
-
-  const cap = safeLimit;
-  const limitBind = bind(cap);
-  const matchWhereSql = stageWhereClauses.join('\n          OR ');
-  return {
-    sql: `
-      SELECT
-        ${LOCAL_EXTERNAL_SEED_SELECT_FIELDS},
-        CASE
-          ${scoreClauses.join('\n          ')}
-          ELSE 0
-        END::int AS match_score,
-        CASE
-          ${stageClauses.join('\n          ')}
-          ELSE 'support_combined_match'
-        END::text AS match_stage
-      FROM external_product_seeds
-      WHERE status = 'active'
-        AND attached_product_key IS NULL
-        AND market = $1
-        AND (tool = '*' OR tool = $2)
-        AND (
-          ${matchWhereSql}
-        )
-      ORDER BY match_score DESC, updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
-      LIMIT ${limitBind}
-    `,
-    params,
-    stageOrder,
-    cap,
-  };
+  return stageDefinitions;
 }
 
 async function searchLocalExternalSeedProductsViaSupportStages({
@@ -8374,58 +8533,84 @@ async function searchLocalExternalSeedProductsViaSupportStages({
   tool,
 } = {}) {
   const categoryTerms = buildLocalExternalSeedSupportCategoryTerms({ role, preferredStep, query: q });
-  const queryPlan = buildLocalExternalSeedSupportCombinedQuery({
+  const stageDefinitions = buildLocalExternalSeedSupportStageDefinitions({
     patterns,
     categoryTerms,
     safeLimit,
-    market,
-    tool,
+    query: q,
+    role,
+    preferredStep,
   });
   const stagedRows = [];
   const seenRowKeys = new Set();
+  const seenSqlIds = new Set();
   const appendRows = (rows = []) => {
     for (const row of Array.isArray(rows) ? rows : []) {
       const rowKey = buildLocalExternalSeedStageRowKey(row);
       if (!rowKey || seenRowKeys.has(rowKey)) continue;
       seenRowKeys.add(rowKey);
+      const sqlId = String(row?.id ?? '').trim();
+      if (/^\d+$/.test(sqlId)) seenSqlIds.add(sqlId);
       stagedRows.push(row);
       if (stagedRows.length >= safeLimit) break;
     }
   };
 
-  if (!queryPlan.sql) {
+  if (stageDefinitions.length === 0) {
     return {
       rows: [],
       stageDebug: [],
       categoryTerms,
     };
   }
-  const startedAt = Date.now();
-  const res = await runQuery(queryPlan.sql, queryPlan.params);
-  const rows = Array.isArray(res?.rows) ? res.rows : [];
-  appendRows(rows);
-  const durationMs = Math.max(0, Date.now() - startedAt);
-  const countsByStage = new Map();
-  for (const row of rows) {
-    const stage = String(row?.match_stage || '').trim() || 'support_combined_match';
-    countsByStage.set(stage, (countsByStage.get(stage) || 0) + 1);
-  }
-  let cumulativeRowCount = 0;
-  const stageOrder = Array.isArray(queryPlan.stageOrder) && queryPlan.stageOrder.length
-    ? queryPlan.stageOrder
-    : [];
-  const stageDebug = stageOrder.map((stage) => {
-    const rowCount = countsByStage.get(stage) || 0;
-    cumulativeRowCount = Math.min(safeLimit, cumulativeRowCount + rowCount);
-    return {
-      stage,
-      row_count: rowCount,
-      cumulative_row_count: cumulativeRowCount,
-      duration_ms: durationMs,
-      cap: queryPlan.cap,
-      combined_query: true,
+  const stageDebug = [];
+  for (const definition of stageDefinitions) {
+    if (stagedRows.length >= safeLimit) break;
+    const params = [market, tool];
+    const bind = (value) => {
+      params.push(value);
+      return `$${params.length}`;
     };
-  });
+    const whereSql = definition.buildWhereSql(bind);
+    if (!whereSql) continue;
+    let sql = `
+      SELECT
+        ${LOCAL_EXTERNAL_SEED_SELECT_FIELDS},
+        ${Number(definition.score || 0)}::int AS match_score,
+        '${definition.stage}'::text AS match_stage
+      FROM external_product_seeds
+      WHERE status = 'active'
+        AND attached_product_key IS NULL
+        AND market = $1
+        AND (tool = '*' OR tool = $2)
+        AND (${whereSql})
+    `;
+    if (seenSqlIds.size > 0) {
+      sql += `
+        AND id <> ALL(${bind(Array.from(seenSqlIds))}::bigint[])
+      `;
+    }
+    const limitBind = bind(Math.max(1, Number(definition.cap || safeLimit) || safeLimit));
+    sql += `
+      ORDER BY match_score DESC, updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
+      LIMIT ${limitBind}
+    `;
+    const startedAt = Date.now();
+    // eslint-disable-next-line no-await-in-loop
+    const res = await runQuery(sql, params);
+    const rows = Array.isArray(res?.rows) ? res.rows : [];
+    appendRows(rows);
+    stageDebug.push({
+      stage: definition.stage,
+      row_count: rows.length,
+      cumulative_row_count: stagedRows.length,
+      duration_ms: Math.max(0, Date.now() - startedAt),
+      cap: definition.cap,
+      sequential_query: true,
+      ...(definition.stopAfterAnyMatch ? { stop_after_any_match: true } : {}),
+    });
+    if (definition.stopAfterAnyMatch && rows.length > 0) break;
+  }
 
   return {
     rows: stagedRows.slice(0, safeLimit),
@@ -21478,6 +21663,19 @@ function isConcernFrameworkStrongViableCandidate(candidate, role = null) {
     return true;
   }
   if (
+    preferredStep === 'serum' &&
+    candidateStep === preferredStep &&
+    retrievalRoleMatched &&
+    semanticFit &&
+    score >= 0.48 &&
+    (
+      String(product?.retrieval_source || '').trim().toLowerCase() === 'external_seed' ||
+      String(product?.merchant_id || product?.merchantId || '').trim().toLowerCase() === 'external_seed'
+    )
+  ) {
+    return true;
+  }
+  if (
     score >= 0.58 &&
     (
       roleSemanticFit ||
@@ -22042,13 +22240,10 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     return Boolean(roleId && roleId !== primaryRoleId);
   }).length;
   const bestAvailableRecommendation = selected[0] || null;
-  const roleCoverageSelected = selected.length > 0 && routineSupportFillCount > 0;
-  const primaryMissingButAuthoritativeSupportSelected = !primaryRoleMatched && roleCoverageSelected;
+  const primaryMissingButAuthoritativeSupportSelected = false;
   const surfacedRecommendations = primaryRoleMatched
     ? selected
-    : primaryMissingButAuthoritativeSupportSelected
-      ? selected
-      : [];
+    : [];
   const hasWeakViablePool = viable.length > 0 && !primaryRoleMatched && !primaryMissingButAuthoritativeSupportSelected;
   const rawSourceCounts = summarizeConcernFrameworkSourceCounts(deduped);
   const viableSourceCounts = summarizeConcernFrameworkSourceCounts(viable);
@@ -22059,12 +22254,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     raw_candidate_pool: deduped,
     viable_candidate_pool: viable,
     selected_recommendations: surfacedRecommendations,
-    primary_recommendation_id: pickFirstString(
-      primaryRecommendation?.product_id,
-      primaryRecommendation?.productId,
-      bestAvailableRecommendation?.product_id,
-      bestAvailableRecommendation?.productId,
-    ) || null,
+    primary_recommendation_id: pickFirstString(primaryRecommendation?.product_id, primaryRecommendation?.productId) || null,
     primary_role_id: primaryRoleId || null,
     primary_role_matched: primaryRoleMatched,
     primary_missing_authoritative_support_selected: primaryMissingButAuthoritativeSupportSelected,
@@ -52909,6 +53099,20 @@ function buildRecoAssistantReasonPoints(detail, { max = 4 } = {}) {
   );
 }
 
+function buildRecoAssistantWatchoutPoints(detail, { max = 2 } = {}) {
+  const item = isPlainObject(detail) ? detail : {};
+  return collectRecoPromptTextList(
+    Array.isArray(item.insight_watchouts)
+      ? item.insight_watchouts.map((watchout) => (
+          isPlainObject(watchout)
+            ? pickFirstTrimmed(watchout.label, watchout.body, watchout.text)
+            : pickFirstTrimmed(watchout)
+        ))
+      : [],
+    { max: Math.max(1, max), maxLen: 120 },
+  );
+}
+
 function inferRecoAssistantEvidenceDimensions(detail = {}) {
   const item = isPlainObject(detail) ? detail : {};
   const detailText = [
@@ -53000,6 +53204,8 @@ function buildRecoAssistantWritePlan({
       fit_assessment: pickFirstTrimmed(item.fit_assessment),
       price_note: buildRecoAssistantPriceNote(item, { selectedProductRoleMix }),
       reason_points: buildRecoAssistantReasonPoints(item, { max: 3 }),
+      watchout_points: buildRecoAssistantWatchoutPoints(item, { max: 1 }),
+      routine_pairing_notes: collectRecoPromptTextList(item.routine_pairing_notes, { max: 1, maxLen: 100 }),
       evidence_dimensions: inferRecoAssistantEvidenceDimensions(item),
     }));
   const sameRoleOptions = products
@@ -53009,6 +53215,7 @@ function buildRecoAssistantWritePlan({
       price_note: buildRecoAssistantPriceNote(item, { selectedProductRoleMix }),
       tradeoff_note: buildRecoAssistantTradeoffNote(item, { selectedProductRoleMix }),
       reason_points: buildRecoAssistantReasonPoints(item, { max: 2 }),
+      watchout_points: buildRecoAssistantWatchoutPoints(item, { max: 1 }),
       fit_assessment: pickFirstTrimmed(item.fit_assessment),
     }));
   return {
@@ -53024,6 +53231,8 @@ function buildRecoAssistantWritePlan({
       price_note: buildRecoAssistantPriceNote(lead, { selectedProductRoleMix }),
       evidence_dimensions: inferRecoAssistantEvidenceDimensions(lead),
       must_use_reason_points: leadReasonPoints,
+      watchout_points: buildRecoAssistantWatchoutPoints(lead, { max: 2 }),
+      routine_pairing_notes: collectRecoPromptTextList(lead?.routine_pairing_notes, { max: 2, maxLen: 100 }),
     },
     support_steps: supportSteps,
     same_role_options: sameRoleOptions,
@@ -53070,6 +53279,8 @@ function buildCompactRecoAssistantWritePlan(writePlan = null) {
           price_note: compactRecoAssistantPromptField(plan.lead_product.price_note, { maxLen: 40 }),
           evidence_dimensions: collectRecoPromptTextList(plan.lead_product.evidence_dimensions, { max: 3, maxLen: 28 }),
           must_use_reason_points: collectRecoPromptTextList(plan.lead_product.must_use_reason_points, { max: 2, maxLen: 96 }),
+          watchout_points: collectRecoPromptTextList(plan.lead_product.watchout_points, { max: 1, maxLen: 96 }),
+          routine_pairing_notes: collectRecoPromptTextList(plan.lead_product.routine_pairing_notes, { max: 1, maxLen: 96 }),
         }
       : null,
     support_steps: Array.isArray(plan.support_steps)
@@ -53081,6 +53292,8 @@ function buildCompactRecoAssistantWritePlan(writePlan = null) {
           fit_assessment: compactRecoAssistantPromptField(item?.fit_assessment, { maxLen: 24 }),
           price_note: compactRecoAssistantPromptField(item?.price_note, { maxLen: 40 }),
           reason_points: collectRecoPromptTextList(item?.reason_points, { max: 1, maxLen: 96 }),
+          watchout_points: collectRecoPromptTextList(item?.watchout_points, { max: 1, maxLen: 96 }),
+          routine_pairing_notes: collectRecoPromptTextList(item?.routine_pairing_notes, { max: 1, maxLen: 96 }),
         })).slice(0, 2)
       : [],
     same_role_options: Array.isArray(plan.same_role_options)
@@ -53089,6 +53302,7 @@ function buildCompactRecoAssistantWritePlan(writePlan = null) {
           price_note: compactRecoAssistantPromptField(item?.price_note, { maxLen: 40 }),
           tradeoff_note: compactRecoAssistantPromptField(item?.tradeoff_note, { maxLen: 96 }),
           reason_points: collectRecoPromptTextList(item?.reason_points, { max: 1, maxLen: 96 }),
+          watchout_points: collectRecoPromptTextList(item?.watchout_points, { max: 1, maxLen: 96 }),
           fit_assessment: compactRecoAssistantPromptField(item?.fit_assessment, { maxLen: 24 }),
         })).slice(0, 2)
       : [],
@@ -53123,6 +53337,8 @@ function buildCompactRecoAssistantPromptContext(context = {}) {
         price_position: pickFirstTrimmed(item?.price_position),
         tradeoff_hint: pickFirstTrimmed(item?.tradeoff_hint),
         reviewed_insight_available: item?.reviewed_insight_available === true,
+        insight_watchouts: Array.isArray(item?.insight_watchouts) ? item.insight_watchouts.slice(0, 1) : [],
+        routine_pairing_notes: collectRecoPromptTextList(item?.routine_pairing_notes, { max: 1, maxLen: 96 }),
       }))
       .slice(0, 3),
     selected_product_role_ids: asStringArray(row.selected_product_role_ids, 3),
@@ -53506,6 +53722,16 @@ function buildRecoAssistantRewritePrompt({
       evidence_points: rankedEvidencePoints,
       evidence_target_text: evidenceTargetText || null,
       reviewed_insight_available: Boolean(productIntel || pivotaInsights),
+      insight_watchouts: Array.isArray(pivotaInsights?.watchouts)
+        ? pivotaInsights.watchouts.map((watchout) => ({
+            label: pickFirstTrimmed(watchout?.label, watchout?.body, watchout?.text),
+            ...(pickFirstTrimmed(watchout?.type) ? { type: pickFirstTrimmed(watchout.type) } : {}),
+            ...(pickFirstTrimmed(watchout?.severity) ? { severity: pickFirstTrimmed(watchout.severity) } : {}),
+          })).filter((watchout) => watchout.label).slice(0, 2)
+        : [],
+      routine_pairing_notes: Array.isArray(pivotaInsights?.routine_fit?.pairing_notes)
+        ? collectRecoPromptTextList(pivotaInsights.routine_fit.pairing_notes, { max: 2, maxLen: 100 })
+        : [],
       pivota_insights: (() => {
         if (!pivotaInsights) return null;
         return {
@@ -53728,6 +53954,9 @@ function buildRecoAssistantRewritePrompt({
       'Use selected_product_details.description_snippet and selected_product_details.evidence_points as the primary concrete reason layer when available.',
       'Use selected_product_details.why_this_one, selected_product_details.best_for, and selected_product_details.key_features as supporting context when available.',
       'Use selected_product_details.compare_highlights and selected_product_details.pivota_insights when available; do not invent highlights that are absent from Context.',
+      'Use selected_product_details.insight_watchouts only as concise tradeoff/caveat evidence, not as a new reason to recommend the product.',
+      'For routine_mix answers, use routine_pairing_notes when available to explain step order or pairing instead of generic routine filler.',
+      'If a watchout says tinted, shade match, sample size, refill, active sensitivity, or layering limitation, mention it only when it materially changes the shopping choice.',
       'If a product record includes extra concern claims that are not in user_relevant_concern_families, omit those extra claims and use the target-aligned evidence_points instead.',
       'For oily-skin/oil-control asks, do not mention dullness, uneven tone, dark spots, glow, or brightening unless tone/brightening is an explicit target in Context.',
       'Do not call something the best first buy unless the same sentence or the next sentence gives a concrete reason from description_snippet, evidence_points, compare_highlights, or pivota_insights.',

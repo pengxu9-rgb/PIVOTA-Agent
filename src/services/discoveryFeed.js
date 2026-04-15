@@ -265,6 +265,14 @@ const BEAUTY_INTEREST_SKINCARE_HINT_TOKENS = new Set([
   'ceramide',
   'ceramides',
   'salicylic',
+  'glycolic',
+  'lactic',
+  'aha',
+  'bha',
+  'exfoliant',
+  'exfoliating',
+  'exfoliator',
+  'resurfacing',
   'hyaluronic',
   'hydrating',
   'hydration',
@@ -295,6 +303,14 @@ const BEAUTY_INTEREST_CATEGORY_BY_TOKEN = Object.freeze({
   barrier: ['cream', 'moisturizer', 'treatment', 'skincare'],
   repair: ['treatment', 'serum', 'skincare'],
   salicylic: ['treatment', 'serum', 'skincare'],
+  glycolic: ['exfoliant', 'treatment', 'skincare'],
+  lactic: ['exfoliant', 'treatment', 'skincare'],
+  aha: ['exfoliant', 'treatment', 'skincare'],
+  bha: ['exfoliant', 'treatment', 'skincare'],
+  exfoliant: ['exfoliant', 'treatment', 'skincare'],
+  exfoliating: ['exfoliant', 'treatment', 'skincare'],
+  exfoliator: ['exfoliant', 'treatment', 'skincare'],
+  resurfacing: ['exfoliant', 'treatment', 'skincare'],
   hyaluronic: ['serum', 'skincare'],
   vitamin: ['serum', 'treatment', 'skincare'],
   brightening: ['serum', 'treatment', 'skincare'],
@@ -307,6 +323,14 @@ const BEAUTY_INTEREST_CATEGORY_BY_TOKEN = Object.freeze({
   concealer: ['concealer', 'makeup'],
   foundation: ['foundation', 'makeup'],
   powder: ['powder', 'makeup'],
+  blush: ['blush', 'makeup'],
+  blusher: ['blush', 'makeup'],
+  bronzer: ['bronzer', 'makeup'],
+  contour: ['contour', 'bronzer', 'makeup'],
+  highlighter: ['highlighter', 'makeup'],
+  illuminator: ['highlighter', 'makeup'],
+  luminizer: ['highlighter', 'makeup'],
+  luminiser: ['highlighter', 'makeup'],
   fragrance: ['fragrance'],
   perfume: ['fragrance'],
   brow: ['makeup'],
@@ -323,6 +347,42 @@ const BEAUTY_INTEREST_CATEGORY_BY_PHRASE = Object.freeze({
   },
   essence: {
     categories: ['essence', 'water essence'],
+    verticals: ['skincare'],
+  },
+  exfoliant: {
+    categories: ['exfoliant', 'treatment'],
+    textQueryTerms: ['exfoliant', 'exfoliating', 'exfoliator', 'resurfacing', 'peel'],
+    verticals: ['skincare'],
+  },
+  exfoliator: {
+    categories: ['exfoliant', 'treatment'],
+    textQueryTerms: ['exfoliant', 'exfoliating', 'exfoliator', 'resurfacing', 'peel'],
+    verticals: ['skincare'],
+  },
+  'glycolic acid': {
+    categories: ['exfoliant'],
+    textQueryTerms: ['glycolic acid', 'glycolic', 'exfoliant', 'exfoliating', 'peel', 'peeling'],
+    textQueryFields: ['title', 'ingredient_tokens', 'alias_tokens'],
+    verticals: ['skincare'],
+  },
+  'lactic acid': {
+    categories: ['exfoliant'],
+    textQueryTerms: ['lactic acid', 'lactic', 'exfoliant', 'exfoliating', 'peel', 'peeling'],
+    textQueryFields: ['title', 'ingredient_tokens', 'alias_tokens'],
+    verticals: ['skincare'],
+  },
+  aha: {
+    categories: ['exfoliant'],
+    textQueryTerms: ['glycolic acid', 'glycolic', 'lactic acid', 'lactic', 'exfoliant', 'exfoliating', 'peel', 'peeling'],
+    textQueryFields: ['title', 'ingredient_tokens', 'alias_tokens'],
+    includeNormalizedTextQueryTerm: false,
+    verticals: ['skincare'],
+  },
+  bha: {
+    categories: ['exfoliant'],
+    textQueryTerms: ['salicylic acid', 'salicylic', 'exfoliant', 'exfoliating', 'peel', 'peeling'],
+    textQueryFields: ['title', 'ingredient_tokens', 'alias_tokens'],
+    includeNormalizedTextQueryTerm: false,
     verticals: ['skincare'],
   },
   sunscreen: {
@@ -435,6 +495,18 @@ const BEAUTY_INTEREST_CATEGORY_BY_PHRASE = Object.freeze({
     categories: ['highlighter'],
     verticals: ['makeup'],
   },
+  blush: {
+    categories: ['blush'],
+    verticals: ['makeup'],
+  },
+  bronzer: {
+    categories: ['bronzer'],
+    verticals: ['makeup'],
+  },
+  contour: {
+    categories: ['contour', 'bronzer'],
+    verticals: ['makeup'],
+  },
   'setting spray': {
     categories: ['setting spray', 'makeup setting spray', 'fixing mist', 'makeup fixing mist'],
     textQueryTerms: [
@@ -488,6 +560,12 @@ const BEAUTY_INTEREST_CATEGORY_BY_PHRASE = Object.freeze({
     categories: ['acne treatment', 'spot treatment', 'blemish treatment'],
     verticals: ['skincare'],
   },
+});
+const EXACT_ACID_TEXT_QUERY_MATCH_TERMS = Object.freeze({
+  'glycolic acid': ['glycolic acid', 'glycolic'],
+  'lactic acid': ['lactic acid', 'lactic'],
+  aha: ['aha', 'glycolic acid', 'glycolic', 'lactic acid', 'lactic'],
+  bha: ['bha', 'salicylic acid', 'salicylic'],
 });
 const EXPLICIT_BEAUTY_EXACT_PHRASE_STRUCTURED_RULES = Object.freeze({
   perfume: Object.freeze({
@@ -4773,12 +4851,13 @@ function resolveExplicitExactBeautyPhraseHint(request, recallTerms = {}) {
       8,
     ),
     textQueryTerms: uniqStrings(
-      [normalizedQuery]
+      (exactHint.includeNormalizedTextQueryTerm === false ? [] : [normalizedQuery])
         .concat(Array.isArray(exactHint.textQueryTerms) ? exactHint.textQueryTerms : [])
         .map((term) => normalizeText(term || ''))
         .filter(Boolean),
       10,
     ),
+    textQueryFields: Array.isArray(exactHint.textQueryFields) ? exactHint.textQueryFields.slice() : [],
     negativeTextTerms: uniqStrings(
       (Array.isArray(exactHint.negativeTextTerms) ? exactHint.negativeTextTerms : [])
         .map((term) => normalizeText(term || ''))
@@ -4838,6 +4917,17 @@ function resolveExactPhraseTextUnionPatterns(request, recallTerms = {}) {
   return exactPatterns.length > 0 ? exactPatterns : recallTerms.patterns || [];
 }
 
+function resolveExactPhraseTextUnionFieldLabels(request, recallTerms = {}) {
+  const exactPhraseHint = resolveExplicitExactBeautyPhraseHint(request, recallTerms);
+  const labels = Array.isArray(exactPhraseHint?.textQueryFields) ? exactPhraseHint.textQueryFields : [];
+  return uniqStrings(
+    labels
+      .map((label) => String(label || '').trim())
+      .filter((label) => ['title', 'summary', 'ingredient_tokens', 'alias_tokens'].includes(label)),
+    4,
+  );
+}
+
 function shouldUseExplicitExactIntentExternalSeedMainline(request, recallTerms = {}) {
   if (!isExplicitQueryScopedBrowseRequest(request)) return false;
   if (recallTerms?.compoundIntent) return true;
@@ -4869,6 +4959,7 @@ function buildExactPhraseTextUnionSeedStageSql({
   patterns = [],
   cap = 24,
   excludedIds = [],
+  fieldLabels = [],
 } = {}) {
   if (typeof stageBind !== 'function') return '';
   const normalizedPatterns = uniqStrings(Array.isArray(patterns) ? patterns : [], 8);
@@ -4881,12 +4972,19 @@ function buildExactPhraseTextUnionSeedStageSql({
     Array.isArray(excludedIds) && excludedIds.length > 0
       ? `AND id <> ALL(${stageBind(excludedIds)}::bigint[])`
       : '';
-  const unionParts = [
+  const allowedFieldLabels = new Set(Array.isArray(fieldLabels) ? fieldLabels : []);
+  const fieldDefinitions = [
     [48, EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle, 'title'],
     [42, EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary, 'summary'],
     [40, EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokens, 'ingredient_tokens'],
     [38, EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens, 'alias_tokens'],
-  ]
+  ];
+  const activeFieldDefinitions =
+    allowedFieldLabels.size > 0
+      ? fieldDefinitions.filter(([, , label]) => allowedFieldLabels.has(label))
+      : fieldDefinitions;
+  if (activeFieldDefinitions.length <= 0) return '';
+  const unionParts = activeFieldDefinitions
     .map(
       ([score, fieldSql, label]) => `
         SELECT * FROM (
@@ -5863,6 +5961,9 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
   const exactPhraseTextUnionPatterns = useExactPhraseTextUnionStage
     ? resolveExactPhraseTextUnionPatterns(request, recallTerms)
     : [];
+  const exactPhraseTextUnionFieldLabels = useExactPhraseTextUnionStage
+    ? resolveExactPhraseTextUnionFieldLabels(request, recallTerms)
+    : [];
   const indexedCategoryHeadTerms = resolveExplicitIndexedCategoryHeadTerms(request, recallTerms);
   if (!compoundIntent) {
     if (indexedCategoryHeadTerms.length > 0) {
@@ -5890,6 +5991,7 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
               patterns: exactPhraseTextUnionPatterns,
               cap,
               excludedIds: Array.from(seenSqlIds || []),
+              fieldLabels: exactPhraseTextUnionFieldLabels,
             }),
         });
       } else {
@@ -7306,13 +7408,19 @@ function matchesQueryTextCandidate(candidate, queryText) {
       .join(' '),
   );
   if (!candidateText) return false;
-  if (candidateText.includes(normalizedQuery)) return true;
+  const queryTokens = tokenize(normalizedQuery).filter((token) => token.length >= 2);
+  const isSingleShortTokenQuery = queryTokens.length === 1 && queryTokens[0].length <= 3;
+  if (!isSingleShortTokenQuery && candidateText.includes(normalizedQuery)) return true;
+  if (isSingleShortTokenQuery && textHasNormalizedToken(candidateText, queryTokens[0])) return true;
   if (matchesExplicitExactBeautyStructuredQueryText(candidate, normalizedQuery)) return true;
 
-  const queryTokens = tokenize(normalizedQuery).filter((token) => token.length >= 2);
   if (!queryTokens.length) return candidateText.includes(normalizedQuery);
   const candidateTokens = new Set(candidate?.tokens || tokenize(candidateText));
-  const tokenHits = queryTokens.filter((token) => candidateTokens.has(token) || candidateText.includes(token)).length;
+  const tokenHits = queryTokens.filter((token) => {
+    if (candidateTokens.has(token)) return true;
+    if (token.length <= 3) return textHasNormalizedToken(candidateText, token);
+    return candidateText.includes(token);
+  }).length;
   return tokenHits >= Math.max(1, Math.ceil(queryTokens.length * 0.6));
 }
 
@@ -7604,6 +7712,12 @@ function matchesExplicitExactPhraseStructuredCandidate(candidate, request, recal
   return hasAnyNormalizedClassToken(structuredText, exactPhraseHint.structuredQueryTerms);
 }
 
+function matchesExactAcidBeautyTextQuery(candidateText, normalizedQuery) {
+  const matchTerms = EXACT_ACID_TEXT_QUERY_MATCH_TERMS[normalizedQuery];
+  if (!Array.isArray(matchTerms)) return null;
+  return hasAnyNormalizedClassToken(candidateText, matchTerms);
+}
+
 function matchesExplicitExactPhraseTextQueryCandidate(candidate, request, recallTerms = {}) {
   const exactPhraseHint = resolveExplicitExactBeautyPhraseHint(request, recallTerms);
   if (!exactPhraseHint || !Array.isArray(exactPhraseHint.textQueryTerms)) return false;
@@ -7624,6 +7738,8 @@ function matchesExplicitExactPhraseTextQueryCandidate(candidate, request, recall
       .join(' '),
   );
   if (!candidateText) return false;
+  const exactAcidMatch = matchesExactAcidBeautyTextQuery(candidateText, normalizedQuery);
+  if (exactAcidMatch !== null) return exactAcidMatch;
   return hasAnyNormalizedClassToken(candidateText, exactPhraseHint.textQueryTerms);
 }
 
@@ -10274,6 +10390,8 @@ module.exports = {
     shouldSkipExplicitCategorySeedStage,
     shouldSkipExplicitVerticalSeedStage,
     resolveExplicitIndexedCategoryHeadTerms,
+    resolveExactPhraseTextUnionPatterns,
+    resolveExactPhraseTextUnionFieldLabels,
     resolveDiscoveryExternalSeedToolScopes,
     buildDiscoveryInterestQuery,
     buildDiscoveryRecallPlan,

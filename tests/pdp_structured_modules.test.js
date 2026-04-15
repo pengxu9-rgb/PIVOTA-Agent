@@ -232,7 +232,7 @@ describe('pdpBuilder structured PDP modules', () => {
     expect(findModule(payload, 'product_details')).toBeFalsy();
   });
 
-  test('does not render captured external seed narrative soup as generic details', () => {
+  test('keeps structured PDP sections when raw captured description is narrative soup', () => {
     const payload = buildPdpPayload({
       product: {
         product_id: 'ext_boj_text_soup',
@@ -265,6 +265,22 @@ describe('pdpBuilder structured PDP modules', () => {
     });
 
     expect(payload.product.description).toBe('');
+    expect(findModule(payload, 'supplemental_details')?.data?.sections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          heading: 'Rice-Infused Hydration',
+          content: 'This formula helps hydrate.',
+        }),
+        expect.objectContaining({
+          heading: 'Secret Sebum-Control Layer',
+          content: 'The fluid helps control sebum.',
+        }),
+        expect.objectContaining({
+          heading: 'Category',
+          content: 'Sunscreen',
+        }),
+      ]),
+    );
     expect(findModule(payload, 'product_details')).toBeFalsy();
     expect(findModule(payload, 'product_facts')?.data?.sections).toEqual([
       expect.objectContaining({
@@ -373,6 +389,37 @@ describe('pdpBuilder structured PDP modules', () => {
       expect.objectContaining({
         question: 'Can I use this every day?',
         answer: 'Yes, it is gentle enough for daily use.',
+        source: 'merchant_faq',
+        source_label: 'Official FAQ',
+      }),
+    ]);
+  });
+
+  test('allows merchant PDP FAQ sections whose source title is FAQ', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'p_reviews_faq_title',
+        merchant_id: 'external_seed',
+        title: 'Daily Tinted Fluid Sunscreen',
+        image_url: 'https://cdn.example.com/daily-tinted.jpg',
+        price: { amount: 18, currency: 'USD' },
+        pdp_faq_items: [
+          {
+            question: 'Is it suitable for daily use?',
+            answer: 'Yes. Apply it as the last step of your morning skincare routine.',
+            source_kind: 'merchant_faq',
+            source_title: 'FAQ',
+            source_url: 'https://merchant.example/products/daily-tinted-fluid-sunscreen',
+          },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    expect(findModule(payload, 'reviews_preview')?.data?.questions).toEqual([
+      expect.objectContaining({
+        question: 'Is it suitable for daily use?',
         source: 'merchant_faq',
         source_label: 'Official FAQ',
       }),

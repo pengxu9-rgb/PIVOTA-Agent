@@ -19,7 +19,7 @@ function hasSiteSupportUrl(value) {
       parsed.pathname,
     );
   } catch {
-    return /\b(?:faq|faqs|help|customer service|customer care|contact us|store locator|shipping|returns?)\b/i.test(text);
+    return /\b(?:help center|help centre|customer service|customer care|contact us|store locator|shipping(?:\s*&\s*returns)?|returns?|refunds?|exchanges?|track my order|order status)\b/i.test(text);
   }
 }
 

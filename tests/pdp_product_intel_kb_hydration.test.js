@@ -604,6 +604,94 @@ describe('pdpProductIntel KB hydration', () => {
     expect(bundle.product_intel_core.why_it_stands_out[0].body).toMatch(/uneven tone, texture, and early fine-line concerns/i);
   });
 
+  test('allows assistant-reviewed seller-grounded curated overrides for public PDP insights', async () => {
+    jest.doMock('../src/auroraBff/productIntelKbStore', () => ({
+      getProductIntelKbEntry: jest.fn(async (kbKey) => {
+        if (kbKey !== 'product:ext_assistant_reviewed_spf') return null;
+        return {
+          kb_key: kbKey,
+          source: 'pivota_product_intel_pilot_selected',
+          last_success_at: '2026-04-15T13:31:28.252Z',
+          analysis: {
+            product_intel_v1: {
+              contract_version: 'pivota.product_intel.v1',
+              display_name: 'Pivota Insights',
+              canonical_product_ref: {
+                merchant_id: 'external_seed',
+                product_id: 'ext_assistant_reviewed_spf',
+              },
+              product_intel_core: {
+                what_it_is: {
+                  headline: 'Tinted mineral sunscreen',
+                  body: 'A daily tinted mineral sunscreen centered on zinc oxide, flexible shade coverage, and a fluid skin-like finish.',
+                },
+                best_for: [{ tag: 'daily_spf', label: 'Daily mineral SPF users', confidence: 'high' }],
+                why_it_stands_out: [
+                  {
+                    headline: 'Tint plus mineral SPF',
+                    body: 'Combines zinc oxide mineral UV protection with a sheer tint.',
+                    evidence_strength: 'seller_grounded',
+                  },
+                ],
+                routine_fit: { step: 'sunscreen', am_pm: ['am'] },
+                watchouts: [],
+              },
+              quality_state: 'eligible',
+              evidence_profile: 'seller_plus_formula',
+              provenance: {
+                source: 'product_intel_pilot_compare',
+                generator: 'curated_override',
+                selection_strategy: 'curated_override',
+                review_status: 'completed',
+                review_decision: 'rewrite',
+                reviewer: 'Codex',
+                reviewer_kind: 'assistant',
+                reviewed_at: '2026-04-15T13:30:00.000Z',
+              },
+            },
+          },
+        };
+      }),
+    }));
+
+    jest.doMock('../src/auroraBff/normalize', () => ({
+      normalizeProductAnalysis: jest.fn((raw) => ({
+        payload: raw,
+      })),
+    }));
+
+    const { hydrateProductWithPublishedIntel, buildProductIntelBundle } = require('../src/pdpProductIntel');
+
+    const hydrated = await hydrateProductWithPublishedIntel({
+      product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_assistant_reviewed_spf',
+        title: 'Daily Tinted Fluid Sunscreen',
+        category: 'Skincare/Sunscreen',
+      },
+      canonicalProductRef: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_assistant_reviewed_spf',
+      },
+      requireReviewedBundle: true,
+      allowLegacyAnalysisFallback: false,
+    });
+
+    expect(hydrated.product_intel?.product_intel_core?.what_it_is?.headline).toBe(
+      'Tinted mineral sunscreen',
+    );
+    expect(
+      buildProductIntelBundle({
+        product: hydrated,
+        canonicalProductRef: {
+          merchant_id: 'external_seed',
+          product_id: 'ext_assistant_reviewed_spf',
+        },
+        requireReviewedBundle: true,
+      })?.product_intel_core?.what_it_is?.body,
+    ).toMatch(/zinc oxide/i);
+  });
+
   test('does not downgrade rejected reviewed-path KB bundles into generated legacy insights', async () => {
     jest.doMock('../src/auroraBff/productIntelKbStore', () => ({
       getProductIntelKbEntry: jest.fn(async (kbKey) => {
