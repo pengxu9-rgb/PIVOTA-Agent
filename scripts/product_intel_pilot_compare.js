@@ -2365,6 +2365,21 @@ function applyManualOverrideToSelected(caseRow, selectedResult, manualOverride) 
     ...(asString(manualOverride.external_review_batch)
       ? { external_review_batch: asString(manualOverride.external_review_batch) }
       : {}),
+    ...(asString(manualOverride.review_status)
+      ? { review_status: asString(manualOverride.review_status) }
+      : {}),
+    ...(asString(manualOverride.review_decision || manualOverride.decision)
+      ? { review_decision: asString(manualOverride.review_decision || manualOverride.decision) }
+      : {}),
+    ...(asString(manualOverride.reviewer)
+      ? { reviewer: asString(manualOverride.reviewer) }
+      : {}),
+    ...(asString(manualOverride.reviewer_kind)
+      ? { reviewer_kind: asString(manualOverride.reviewer_kind) }
+      : {}),
+    ...(asString(manualOverride.reviewed_at)
+      ? { reviewed_at: asString(manualOverride.reviewed_at) }
+      : {}),
   };
 
   selected.bundle = attachShoppingCard(caseRow, bundle);

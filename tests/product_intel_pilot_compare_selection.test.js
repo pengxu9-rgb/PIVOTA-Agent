@@ -1043,6 +1043,11 @@ describe('product_intel pilot compare selection', () => {
         },
       ],
       external_highlight_review_status: 'rewrite',
+      review_status: 'completed',
+      review_decision: 'rewrite',
+      reviewer: 'Codex',
+      reviewer_kind: 'assistant',
+      reviewed_at: '2026-04-15T14:10:00.000Z',
       product_intel_core: {
         what_it_is: {
           headline: 'Treatment serum',
@@ -1062,6 +1067,15 @@ describe('product_intel pilot compare selection', () => {
     expect(overridden.field_sources.why_it_stands_out).toBe('manual');
     expect(overridden.bundle.product_intel_core.what_it_is.body).toMatch(/multi-active treatment serum/i);
     expect(overridden.bundle.provenance.generator).toBe('curated_override');
+    expect(overridden.bundle.provenance).toEqual(
+      expect.objectContaining({
+        review_status: 'completed',
+        review_decision: 'rewrite',
+        reviewer: 'Codex',
+        reviewer_kind: 'assistant',
+        reviewed_at: '2026-04-15T14:10:00.000Z',
+      }),
+    );
     expect(overridden.bundle.shopping_card).toEqual(
       expect.objectContaining({
         contract_version: 'pivota.shopping_card.v1',

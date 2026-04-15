@@ -585,6 +585,11 @@
   },
   "live_ext_7c4b0a2885131b08d1cda84a": {
     "notes": "Curated seller-only rewrite to make the discoloration explanation more specific and treatment-led.",
+    "review_status": "completed",
+    "review_decision": "rewrite",
+    "reviewer": "Codex",
+    "reviewer_kind": "assistant",
+    "reviewed_at": "2026-04-15T14:10:00.000Z",
     "product_intel_core": {
       "what_it_is": {
         "headline": "Dark-spot serum",
@@ -15706,6 +15711,350 @@
     },
     "external_highlight_review_status": "rewrite",
     "external_review_batch": "strict_quality_audit_2026_04_11"
+  },
+  "product:ext_7c4b0a2885131b08d1cda84a": {
+    "notes": "Assistant-reviewed seller-grounded override for Aurora post-breakout mark recommendation quality.",
+    "review_status": "completed",
+    "review_decision": "rewrite",
+    "reviewer": "Codex",
+    "reviewer_kind": "assistant",
+    "reviewed_at": "2026-04-15T14:10:00.000Z",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Dark-spot serum",
+        "body": "A niacinamide-led serum for dark spots, post-acne marks, hyperpigmentation and uneven tone, positioned as a targeted treatment step rather than a general moisturizer."
+      },
+      "best_for": [
+        {
+          "tag": "post_acne_marks",
+          "label": "Post-breakout marks",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "dark_spots",
+          "label": "Dark spots and discoloration",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Niacinamide-first discoloration focus",
+          "body": "The seller record centers niacinamide for dark spots, sun spots, hyperpigmentation and post-acne marks, making the role match direct for a mark-fading routine.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Gentler treatment angle",
+          "body": "It gives the routine a discoloration treatment step without relying on a peel-like acid profile.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply before moisturizer; pair with daily sunscreen when marks or discoloration are the concern."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "sun",
+          "label": "Dark-spot routines still need consistent daytime sunscreen; serum alone is not the full discoloration plan.",
+          "severity": "medium"
+        }
+      ],
+      "quality_state": "limited",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Dark-spot serum",
+      "highlight": "Niacinamide for post-acne marks",
+      "intro": "A targeted serum for post-breakout marks and discoloration."
+    },
+    "search_card": {
+      "compact_candidate": "Dark-spot serum",
+      "highlight_candidate": "Post-acne marks + tone",
+      "intro_candidate": "A niacinamide-led serum for post-breakout marks and discoloration."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "main_reco_quality_audit_2026_04_15"
+  },
+  "product:ext_036dd48e09ee847b1230040e": {
+    "notes": "Assistant-reviewed seller-grounded override for Aurora routine moisturizer support-step quality.",
+    "review_status": "completed",
+    "review_decision": "rewrite",
+    "reviewer": "Codex",
+    "reviewer_kind": "assistant",
+    "reviewed_at": "2026-04-15T14:10:00.000Z",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Lightweight cream moisturizer",
+        "body": "A small-size creamy moisturizer that sits in the hydration step, with seller copy describing long-lasting hydration and a dewy, plump, bouncy finish."
+      },
+      "best_for": [
+        {
+          "tag": "lightweight_hydration",
+          "label": "Light hydration step",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "routine_support",
+          "label": "Support moisturizer after serum",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Hydration support step",
+          "body": "The seller record describes a cream that sinks in for long-lasting hydration, so it functions as the moisturizer support step rather than the main treatment.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Low upfront price, small size",
+          "body": "At the listed $3.75 price, it is a low-entry support item, but the 10ml size should not be framed like full-size value.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "moisturizer",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use after serum; add sunscreen as the final daytime step."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "size",
+          "label": "This is a 10ml small-size item and the listing says gift-with-purchase only, so do not treat the low price as full-size ROI.",
+          "severity": "medium"
+        }
+      ],
+      "quality_state": "limited",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Lightweight cream moisturizer",
+      "highlight": "Hydration step, 10ml size",
+      "intro": "A small-size moisturizer for the hydration support step."
+    },
+    "search_card": {
+      "compact_candidate": "Lightweight moisturizer",
+      "highlight_candidate": "Hydration support step",
+      "intro_candidate": "A small-size moisturizer for basic routine hydration."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "main_reco_quality_audit_2026_04_15"
+  },
+  "product:ext_125e6b88cd78fe243b4f19e1": {
+    "notes": "Assistant-reviewed seller-grounded override for Aurora sunscreen recommendation quality.",
+    "review_status": "completed",
+    "review_decision": "rewrite",
+    "reviewer": "Codex",
+    "reviewer_kind": "assistant",
+    "reviewed_at": "2026-04-15T14:10:00.000Z",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Tinted fluid sunscreen",
+        "body": "A tinted SPF 40 fluid sunscreen with zinc oxide, positioned as a lightweight final daytime step that adds sheer coverage and shine-control cues."
+      },
+      "best_for": [
+        {
+          "tag": "daily_sunscreen",
+          "label": "Daily UV protection",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "under_makeup",
+          "label": "No-makeup makeup or base-prep use",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "SPF plus tint in one step",
+          "body": "The seller record describes SPF 40 protection in a tinted fluid, so it fits users who want sunscreen plus sheer base coverage.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Wearability cues for oily routines",
+          "body": "The listing calls out a silky lightweight texture, hydration and shine-control benefits, which are practical signals for humid or makeup-adjacent use.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "sunscreen",
+        "am_pm": [
+          "am"
+        ],
+        "pairing_notes": [
+          "Use as the final daytime skincare step before makeup."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "shade_match",
+          "label": "Because it is tinted, shade match matters; it is not the same choice as a fully invisible untinted sunscreen.",
+          "severity": "medium"
+        }
+      ],
+      "quality_state": "limited",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Tinted SPF 40 fluid",
+      "highlight": "SPF + sheer tint",
+      "intro": "A tinted fluid sunscreen for daily UV protection and base-prep use."
+    },
+    "search_card": {
+      "compact_candidate": "Tinted SPF 40 fluid",
+      "highlight_candidate": "SPF + sheer tint",
+      "intro_candidate": "A tinted fluid sunscreen for daily daytime protection."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "main_reco_quality_audit_2026_04_15"
+  },
+  "product:ext_84af5e06ecc12b8ef3ee33fd": {
+    "notes": "Assistant-reviewed seller-grounded override for Aurora hydration-serum recommendation quality.",
+    "review_status": "completed",
+    "review_decision": "rewrite",
+    "reviewer": "Codex",
+    "reviewer_kind": "assistant",
+    "reviewed_at": "2026-04-15T14:10:00.000Z",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Hydrating calming serum",
+        "body": "A serum for hydration and barrier comfort, built around Green Tea-HA, multi-weight hyaluronic acid and panthenol, with ceramide and centella cues in the product record."
+      },
+      "best_for": [
+        {
+          "tag": "hydration",
+          "label": "Dehydrated-feeling skin",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "barrier_comfort",
+          "label": "Calming and barrier-support routines",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Hydration plus calming angle",
+          "body": "The seller record ties Green Tea-HA, multi-weight hyaluronic acid and panthenol to deep hydration, antioxidant benefits and soothing effects.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Better serum evidence than generic moisture",
+          "body": "Ceramide NP, panthenol, niacinamide, glycerin, hyaluronic acid and centella give the hydration step clearer formula support than a generic serum label.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use before moisturizer when hydration or barrier comfort is the priority."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "fit_scope",
+          "label": "This is a hydration and calming serum, not a dedicated dark-spot or acne treatment.",
+          "severity": "low"
+        }
+      ],
+      "quality_state": "limited",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Hydrating calming serum",
+      "highlight": "Green Tea-HA + panthenol",
+      "intro": "A hydrating serum for calming and barrier-comfort routines."
+    },
+    "search_card": {
+      "compact_candidate": "Hydrating calming serum",
+      "highlight_candidate": "Green Tea-HA + panthenol",
+      "intro_candidate": "A hydrating serum for calm, barrier-support routines."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "main_reco_quality_audit_2026_04_15"
+  },
+  "product:ext_a25f1715d63d5d1bbfbe1068": {
+    "notes": "Assistant-reviewed seller-grounded override for Aurora brightening-serum support-step quality.",
+    "review_status": "completed",
+    "review_decision": "rewrite",
+    "reviewer": "Codex",
+    "reviewer_kind": "assistant",
+    "reviewed_at": "2026-04-15T14:10:00.000Z",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Brightening gel serum",
+        "body": "A lightweight gel serum positioned for brighter skin and more even-looking tone, used as a tone-support treatment step."
+      },
+      "best_for": [
+        {
+          "tag": "dullness",
+          "label": "Dullness or uneven tone",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "tone_support",
+          "label": "Tone-support serum step",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Lightweight tone step",
+          "body": "The seller record describes a lightweight gel serum for brighter skin and even tone, making it a tone-support step rather than a hydration-only serum.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Higher-priced support item",
+          "body": "At the listed $45 price, it should be framed as the targeted tone-support add-on, not the budget first step.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use before moisturizer; keep sunscreen in daytime tone or brightening routines."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "price",
+          "label": "It is the higher-priced tone-support step in this set, so explain the role before using price/value language.",
+          "severity": "low"
+        }
+      ],
+      "quality_state": "limited",
+      "evidence_profile": "seller_only"
+    },
+    "shopping_card": {
+      "subtitle": "Brightening gel serum",
+      "highlight": "Targets brighter-looking tone",
+      "intro": "A lightweight gel serum for brighter-looking, more even tone."
+    },
+    "search_card": {
+      "compact_candidate": "Brightening gel serum",
+      "highlight_candidate": "Brighter-looking tone",
+      "intro_candidate": "A lightweight serum for brighter-looking, more even tone."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "main_reco_quality_audit_2026_04_15"
   },
   "product:9886499864904": {
     "notes": "Assistant-reviewed seller-grounded override for Aurora beauty mainline oily-skin recommendation quality.",
