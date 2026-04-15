@@ -307,6 +307,14 @@ const BEAUTY_INTEREST_CATEGORY_BY_TOKEN = Object.freeze({
   concealer: ['concealer', 'makeup'],
   foundation: ['foundation', 'makeup'],
   powder: ['powder', 'makeup'],
+  blush: ['blush', 'makeup'],
+  blusher: ['blush', 'makeup'],
+  bronzer: ['bronzer', 'makeup'],
+  contour: ['contour', 'bronzer', 'makeup'],
+  highlighter: ['highlighter', 'makeup'],
+  illuminator: ['highlighter', 'makeup'],
+  luminizer: ['highlighter', 'makeup'],
+  luminiser: ['highlighter', 'makeup'],
   fragrance: ['fragrance'],
   perfume: ['fragrance'],
   brow: ['makeup'],
@@ -433,6 +441,18 @@ const BEAUTY_INTEREST_CATEGORY_BY_PHRASE = Object.freeze({
   },
   highlighter: {
     categories: ['highlighter'],
+    verticals: ['makeup'],
+  },
+  blush: {
+    categories: ['blush'],
+    verticals: ['makeup'],
+  },
+  bronzer: {
+    categories: ['bronzer'],
+    verticals: ['makeup'],
+  },
+  contour: {
+    categories: ['contour', 'bronzer'],
     verticals: ['makeup'],
   },
   'setting spray': {
