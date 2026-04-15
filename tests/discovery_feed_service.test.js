@@ -5990,10 +5990,10 @@ describe('discovery feed service', () => {
     }
   });
 
-  test('exact phrase browse keeps structured perfume head candidates through final selection', async () => {
+  test('exact phrase browse keeps structured parfum head candidates through final selection', async () => {
     jest.resetModules();
     const prevDatabaseUrl = process.env.DATABASE_URL;
-    process.env.DATABASE_URL = 'postgres://discovery-perfume-final-selection-structured-test';
+    process.env.DATABASE_URL = 'postgres://discovery-parfum-final-selection-structured-test';
     const requiredColumns = [
       { table_name: 'products_cache', column_name: 'id' },
       { table_name: 'products_cache', column_name: 'merchant_id' },
@@ -6023,7 +6023,7 @@ describe('discovery feed service', () => {
     ].map((indexname) => ({ tablename: 'external_product_seeds', indexname }));
     const perfumeRows = Array.from({ length: 6 }, (_, index) =>
       makeExternalSeedRow({
-        id: `perfume_final_${index + 1}`,
+        id: `parfum_final_${index + 1}`,
         title: `Maison Eau de Parfum ${index + 1}`,
         category: 'Fragrance',
         product_type: 'Fragrance',
@@ -6032,18 +6032,18 @@ describe('discovery feed service', () => {
     );
     const noiseRows = [
       makeExternalSeedRow({
-        id: 'perfume_noise_mist',
+        id: 'parfum_noise_mist',
         title: 'Maison Fragrance Mist',
         category: 'Fragrance',
         product_type: 'Fragrance',
-        description: 'Body and hair fragrance mist.',
+        description: 'Body and hair fragrance mist with eau de parfum discovery notes.',
       }),
       makeExternalSeedRow({
-        id: 'perfume_noise_balm',
+        id: 'parfum_noise_balm',
         title: 'Maison Fragrance Layering Balm',
         category: 'Fragrance',
         product_type: 'Fragrance',
-        description: 'Layering balm for fragrance.',
+        description: 'Layering balm for fragrance and eau de parfum routines.',
       }),
     ];
     const headRows = perfumeRows.concat(noiseRows);
@@ -6065,7 +6065,7 @@ describe('discovery feed service', () => {
         limit: 12,
         debug: true,
         query: {
-          text: 'perfume',
+          text: 'eau de parfum',
         },
         context: {
           auth_state: 'anonymous',
