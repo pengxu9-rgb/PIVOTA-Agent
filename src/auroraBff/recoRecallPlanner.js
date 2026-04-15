@@ -199,14 +199,13 @@ function buildStepAwareIngredientHypotheses(targetContext = null, targetStepFami
 }
 
 function buildFrameworkSemanticContract({ targetContext } = {}) {
-  const rankedRoles = Array.isArray(targetContext?.framework_roles)
-    ? [...targetContext.framework_roles]
+  const normalizedRoles = Array.isArray(targetContext?.framework_roles)
+    ? targetContext.framework_roles
         .filter((role) => role && typeof role === 'object' && !Array.isArray(role))
-        .sort((left, right) => Number(left?.rank || 99) - Number(right?.rank || 99))
         .map((role) => normalizeFrameworkSemanticRole(role))
         .filter(Boolean)
     : [];
-  const roles = orderFrameworkRolesForPrimary(rankedRoles, targetContext);
+  const roles = orderFrameworkRolesForPrimary(normalizedRoles, targetContext);
   const primaryRole = roles[0] || null;
   if (!primaryRole) return null;
   const supportRoles = roles.slice(1, 3);

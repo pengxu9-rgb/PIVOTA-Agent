@@ -221,3 +221,52 @@ test('framework recall planner keeps barrier support queries role-specific', () 
   );
   assert.equal(barrierQueries.includes('lightweight moisturizer'), false);
 });
+
+test('framework recall planner preserves semantic support role order after primary promotion', () => {
+  const targetContext = {
+    primary_role_id: 'soothing_treatment',
+    framework_summary: {
+      concern_text: 'redness and stinging due to high sensitivity and impaired barrier',
+    },
+    framework_roles: [
+      {
+        role_id: 'soothing_treatment',
+        rank: 70,
+        preferred_step: 'treatment',
+        label: 'Soothing treatment',
+        query_terms: ['soothing serum sensitive skin', 'cica serum redness', 'panthenol treatment'],
+      },
+      {
+        role_id: 'barrier_moisturizer',
+        rank: 41,
+        preferred_step: 'moisturizer',
+        label: 'Barrier-support moisturizer',
+        query_terms: ['barrier repair moisturizer', 'ceramide cream sensitive skin', 'soothing moisturizer'],
+      },
+      {
+        role_id: 'daily_sunscreen',
+        rank: 30,
+        preferred_step: 'sunscreen',
+        label: 'Daily sunscreen',
+        query_terms: ['daily sunscreen skincare', 'broad spectrum sunscreen', 'lightweight sunscreen'],
+      },
+    ],
+  };
+
+  const plan = __internal.buildRecoRecallPlan({
+    mode: 'framework_generic',
+    targetContext,
+  });
+
+  assert.deepEqual(
+    plan.stages.map((stage) => [stage?.stage_id, stage?.source_scope, stage?.role_id]),
+    [
+      ['framework_stage_a_primary_internal', 'internal', 'soothing_treatment'],
+      ['framework_stage_b_primary_external_seed', 'external_seed', 'soothing_treatment'],
+      ['framework_stage_c_support_barrier_moisturizer', 'internal', 'barrier_moisturizer'],
+      ['framework_stage_c_support_barrier_moisturizer_external_seed', 'external_seed', 'barrier_moisturizer'],
+      ['framework_stage_c_support_daily_sunscreen', 'internal', 'daily_sunscreen'],
+      ['framework_stage_c_support_daily_sunscreen_external_seed', 'external_seed', 'daily_sunscreen'],
+    ],
+  );
+});
