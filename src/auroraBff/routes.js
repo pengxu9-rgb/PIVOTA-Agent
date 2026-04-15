@@ -20492,6 +20492,23 @@ function capBeautyPrimaryInternalLevelForRoutineSupportBudget(level) {
   };
 }
 
+function capBeautyQueryTimeoutForRoutineSupportBudget(level, { reason = '' } = {}) {
+  const levelObj = isPlainObject(level) ? level : null;
+  const queries = Array.isArray(levelObj?.queries) ? levelObj.queries : [];
+  if (!levelObj || queries.length === 0) return level;
+  const timeoutCapMs = Math.max(500, RECO_CATALOG_SUPPORT_INTERNAL_QUERY_TIMEOUT_MS);
+  return {
+    ...levelObj,
+    routine_support_budget_timeout_cap_ms: timeoutCapMs,
+    routine_support_budget_timeout_cap_reason: String(reason || 'routine_support_budget').trim() || 'routine_support_budget',
+    queries: queries.map((query) => ({
+      ...query,
+      routine_support_budget_timeout_cap_ms: timeoutCapMs,
+      routine_support_budget_timeout_cap_reason: String(reason || 'routine_support_budget').trim() || 'routine_support_budget',
+    })),
+  };
+}
+
 function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
   const levels = Array.isArray(queryLevels)
     ? queryLevels.filter((level) => level && typeof level === 'object' && !Array.isArray(level))
@@ -20507,6 +20524,10 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
   let supportExternalFairRoundCount = 0;
   let shouldCapPrimaryInternal = false;
   let primaryInternalOriginalQueryCount = 0;
+  let shouldCapRoutineExternalTimeout = false;
+  let routineSupportBudgetTimeoutCapMs = 0;
+  let primaryExternalTimeoutCapApplied = false;
+  let supportExternalTimeoutCapApplied = false;
   for (const level of levels) {
     const queries = Array.isArray(level?.queries) ? level.queries : [];
     const levelId = String(level?.ladder_level || level?.stage_id || '').trim().toLowerCase();
@@ -20535,6 +20556,7 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
     keptLevels.push(primaryInternalLevel);
     const supportGroups = [];
     const supportGroupById = new Map();
+    let primaryExternalLevel = null;
     for (const level of stagedLevels) {
       if (level === primaryInternalLevel) continue;
       const levelId = String(level?.ladder_level || level?.stage_id || '').trim().toLowerCase();
@@ -20543,7 +20565,7 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
         queries.length > 0 &&
         queries.every((query) => query && query.allow_external_seed === true);
       if (levelId === 'framework_stage_b_primary_external_seed') {
-        keptLevels.push(level);
+        primaryExternalLevel = level;
         continue;
       }
       const isSupportLevel = levelId.startsWith('framework_stage_c_support_');
@@ -20596,9 +20618,23 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
     shouldCapPrimaryInternal =
       supportGroups.length > 0 &&
       primaryInternalOriginalQueryCount > 1;
+    shouldCapRoutineExternalTimeout = supportGroups.length > 0;
+    routineSupportBudgetTimeoutCapMs = shouldCapRoutineExternalTimeout
+      ? Math.max(500, RECO_CATALOG_SUPPORT_INTERNAL_QUERY_TIMEOUT_MS)
+      : 0;
     if (shouldCapPrimaryInternal) {
       keptLevels[primaryInternalInsertIndex] =
         capBeautyPrimaryInternalLevelForRoutineSupportBudget(primaryInternalLevel);
+    }
+    if (primaryExternalLevel) {
+      keptLevels.push(
+        shouldCapRoutineExternalTimeout
+          ? capBeautyQueryTimeoutForRoutineSupportBudget(primaryExternalLevel, {
+              reason: 'primary_external_preserve_routine_support_budget',
+            })
+          : primaryExternalLevel,
+      );
+      primaryExternalTimeoutCapApplied = shouldCapRoutineExternalTimeout;
     }
     const maxSupportInternalQueryCount = supportInternalGroups.reduce((max, group) => {
       const queries = Array.isArray(group?.internalLevel?.queries) ? group.internalLevel.queries : [];
@@ -20641,10 +20677,19 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
       const externalRoundQueries = [];
       const externalSourceLevels = [];
       for (const group of supportExternalGroups) {
-        const roundLevel = cloneBeautySupportExternalRoundLevel(group.externalLevel, queryIndex, queryIndex);
+        const roundLevel = cloneBeautySupportExternalRoundLevel(
+          shouldCapRoutineExternalTimeout
+            ? capBeautyQueryTimeoutForRoutineSupportBudget(group.externalLevel, {
+                reason: 'support_external_preserve_routine_support_budget',
+              })
+            : group.externalLevel,
+          queryIndex,
+          queryIndex,
+        );
         const query = Array.isArray(roundLevel?.queries) ? roundLevel.queries[0] : null;
         if (!query) continue;
         externalRoundQueries.push(query);
+        if (shouldCapRoutineExternalTimeout) supportExternalTimeoutCapApplied = true;
         if (roundLevel?.fair_support_external_source_level) {
           externalSourceLevels.push(roundLevel.fair_support_external_source_level);
         }
@@ -20696,6 +20741,13 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
                   primary_internal_query_cap_applied: true,
                   primary_internal_original_query_count: primaryInternalOriginalQueryCount,
                   primary_internal_executed_query_count: 1,
+                }
+              : {}),
+            ...(shouldCapRoutineExternalTimeout
+              ? {
+                  routine_support_budget_timeout_cap_ms: routineSupportBudgetTimeoutCapMs,
+                  primary_external_timeout_cap_applied: primaryExternalTimeoutCapApplied,
+                  support_external_timeout_cap_applied: supportExternalTimeoutCapApplied,
                 }
               : {}),
           }
@@ -22132,6 +22184,13 @@ function resolveRecoQueryEntryTimeoutMs(queryEntry = null, effectiveTimeoutMs = 
     ? Math.max(0, Math.trunc(Number(effectiveTimeoutMs)))
     : 0;
   if (normalizedTimeoutMs <= 0) return normalizedTimeoutMs;
+  const routineSupportBudgetTimeoutCapMs = Number.isFinite(Number(queryEntry?.routine_support_budget_timeout_cap_ms))
+    ? Math.max(0, Math.trunc(Number(queryEntry.routine_support_budget_timeout_cap_ms)))
+    : 0;
+  const applyRoutineSupportBudgetCap = (value) =>
+    routineSupportBudgetTimeoutCapMs > 0
+      ? Math.min(value, routineSupportBudgetTimeoutCapMs)
+      : value;
   const sourceScope = String(queryEntry?.source_scope || queryEntry?.sourceScope || '').trim().toLowerCase();
   const stageId = String(queryEntry?.ladder_level || queryEntry?.stage_id || queryEntry?.stageId || '').trim().toLowerCase();
   const isFrameworkSupportStage =
@@ -22139,14 +22198,19 @@ function resolveRecoQueryEntryTimeoutMs(queryEntry = null, effectiveTimeoutMs = 
     Number.isFinite(Number(queryEntry?.fair_support_internal_round)) ||
     Number.isFinite(Number(queryEntry?.fair_support_external_round));
   if (sourceScope !== 'external_seed') {
-    return isFrameworkSupportStage
+    const internalTimeout = isFrameworkSupportStage
       ? Math.min(normalizedTimeoutMs, RECO_CATALOG_SUPPORT_INTERNAL_QUERY_TIMEOUT_MS)
       : normalizedTimeoutMs;
+    return applyRoutineSupportBudgetCap(internalTimeout);
   }
   if (isFrameworkSupportStage) {
-    return Math.min(normalizedTimeoutMs, RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS);
+    return applyRoutineSupportBudgetCap(
+      Math.min(normalizedTimeoutMs, RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS),
+    );
   }
-  return Math.min(normalizedTimeoutMs, RECO_CATALOG_PRIMARY_EXTERNAL_SEED_QUERY_TIMEOUT_MS);
+  return applyRoutineSupportBudgetCap(
+    Math.min(normalizedTimeoutMs, RECO_CATALOG_PRIMARY_EXTERNAL_SEED_QUERY_TIMEOUT_MS),
+  );
 }
 
 function resolveRecoWallClockTimeoutBudget(queryEntry = null, { timeoutMs = 0, deadlineMs = 0 } = {}) {

@@ -546,6 +546,9 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.primary_internal_query_cap_applied, true);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.primary_internal_original_query_count, 3);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.primary_internal_executed_query_count, 1);
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.routine_support_budget_timeout_cap_ms, 1400);
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.primary_external_timeout_cap_applied, true);
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.support_external_timeout_cap_applied, true);
     assert.equal(
       out.searchResult?.metadata?.search_stage_ledger?.primary_search?.execution_lane,
       'beauty_mainline_local_handoff',
