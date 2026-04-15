@@ -2681,6 +2681,88 @@ test('beauty mainline reco rows derive stable brand and shopper fields when sour
   }
 });
 
+test('beauty mainline reco rows do not promote standalone ingredients into why copy', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const rows = __internal.buildRecoRowsFromMainlineProducts(
+      [
+        {
+          product_id: 'fab_dark_spot_sparse',
+          merchant_id: 'merch_efbc46b4619cfbdf',
+          brand: 'First Aid Beauty',
+          display_name: 'Dark Spot Serum with Niacinamide',
+          category: 'Serum',
+          product_type: 'Serum',
+          matched_role_id: 'tone_mark_treatment',
+          matched_role_label: 'Tone and post-breakout mark treatment',
+          key_ingredients: ['Glycerin', 'Niacinamide', 'Panthenol (B5)'],
+        },
+      ],
+      {
+        targetContext: {
+          resolved_target_step: 'treatment',
+          primary_role_id: 'tone_mark_treatment',
+          framework_roles: [
+            {
+              role_id: 'tone_mark_treatment',
+              label: 'Tone and post-breakout mark treatment',
+              rank: 11,
+              preferred_step: 'treatment',
+              why_this_role: 'Target post-breakout marks, uneven tone, and dark spots.',
+            },
+          ],
+        },
+        language: 'EN',
+      },
+    );
+
+    assert.equal(rows.length, 1);
+    assert.notEqual(rows[0].why_this_one, 'Glycerin');
+    assert.doesNotMatch(String(rows[0].why_this_one || ''), /^Glycerin$/i);
+    assert.match(String(rows[0].why_this_one || ''), /post-breakout|tone|dark spot|Niacinamide/i);
+    assert.match(String(rows[0].short_description || ''), /post-breakout|tone|dark spot|Niacinamide/i);
+    assert.ok(rows[0].key_features.includes('Glycerin'));
+
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: rows,
+        roles: [
+          {
+            role_id: 'tone_mark_treatment',
+            label: 'Tone and post-breakout mark treatment',
+            preferred_step: 'treatment',
+            why_this_role: 'Target post-breakout marks, uneven tone, and dark spots.',
+          },
+        ],
+        recommendation_meta: {
+          selected_target_ids: ['tone_mark_treatment'],
+          ranked_targets: [{ target_id: 'tone_mark_treatment' }],
+          primary_target_id: 'tone_mark_treatment',
+        },
+      },
+      {
+        primary_target_id: 'tone_mark_treatment',
+        selected_target_ids: ['tone_mark_treatment'],
+        ranked_targets: [{ target_id: 'tone_mark_treatment' }],
+        resolved_target_step: 'treatment',
+      },
+    );
+    const prompt = __internal.buildRecoAssistantRewritePrompt({
+      payload,
+      language: 'EN',
+      profile: {},
+      userRequestText: 'I have post-breakout marks. What should I buy?',
+    });
+    const context = JSON.parse(prompt.match(/Context: (\{[\s\S]*\})$/)[1]);
+    const [detail] = context.selected_product_details;
+    assert.ok(detail.evidence_points.some((item) => /post-breakout|tone|dark spot|Niacinamide/i.test(item)));
+    assert.equal(detail.evidence_points.includes('Glycerin'), false);
+    assert.equal(detail.evidence_points.includes('Lightweight serum'), false);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('beauty mainline reco rows filter off-role active features for hydrating support cards', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
