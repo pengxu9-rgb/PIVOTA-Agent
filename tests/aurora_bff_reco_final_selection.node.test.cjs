@@ -196,6 +196,10 @@ test('reco assistant rewrite prompt frames multi-role selections as routine mix 
     assert.match(prompt, /Use assistant_write_plan\.lead_product\.must_use_reason_points as the preferred reason list for the lead recommendation when available\./);
     assert.match(prompt, /If assistant_write_plan\.support_steps is non-empty, justify each support step with its own reason_points instead of using a generic closing summary\./);
     assert.match(prompt, /Do not end with a generic closing sentence like "these steps support your skin" or "together they help balance the routine"\./);
+    assert.match(prompt, /The complete allowed product-name set is exactly Context\.selected_products\./);
+    assert.match(prompt, /Do not mention any brand or product name that is not listed in Context\.selected_products\./);
+    assert.match(prompt, /If user_relevant_concern_families does not include tone_brightening, do not mention glow, radiance, dark spots, uneven tone, brightening, or dullness\./);
+    assert.match(prompt, /If user_relevant_concern_families does not include aging_texture, do not mention wrinkles, fine lines, aging, anti-aging, or texture repair\./);
     assert.match(prompt, /compare price\/value or ROI in plain shopper terms using only listed prices/);
     assert.match(prompt, /do not compute per-use ROI, percentages, or size-normalized value unless Context provides size and usage data/);
   } finally {
@@ -289,6 +293,10 @@ test('reco assistant compact prompt keeps same-role comparison payloads under a 
     assert.match(prompt, /"prompt_profile":"compact_timeout_retry"/);
     assert.match(prompt, /Treat the products as same-slot comparison options, not a routine\./);
     assert.match(prompt, /Pick one best first buy, then compare the other options with one short tradeoff each\./);
+    assert.match(prompt, /The complete allowed product-name set is exactly Context\.selected_products\./);
+    assert.match(prompt, /Do not mention any brand or product name that is not listed in Context\.selected_products\./);
+    assert.match(prompt, /If user_relevant_concern_families does not include tone_brightening, do not mention glow, radiance, dark spots, uneven tone, brightening, or dullness\./);
+    assert.match(prompt, /If user_relevant_concern_families does not include aging_texture, do not mention wrinkles, fine lines, aging, anti-aging, or texture repair\./);
     assert.ok(prompt.length < 7000);
   } finally {
     delete require.cache[moduleId];
