@@ -188,7 +188,7 @@ function detectBeautyQueryBucket(queryText) {
     bucket === 'eye_makeup' ||
     bucket === 'lip_makeup'
   ) {
-    return 'general';
+    return bucket;
   }
   return null;
 }
@@ -203,6 +203,9 @@ function isBeautyBucketCompatibleForQuery(candidateBucket, queryBucket) {
   if (query === 'haircare') return bucket === 'haircare';
   if (query === 'lip_care') return bucket === 'lip_care';
   if (query === 'bodycare') return bucket === 'bodycare';
+  if (query === 'base_makeup') return bucket === 'base_makeup';
+  if (query === 'eye_makeup') return bucket === 'eye_makeup';
+  if (query === 'lip_makeup') return bucket === 'lip_makeup' || bucket === 'lip_care';
   if (query === 'general') {
     return (
       bucket === 'base_makeup' ||
@@ -227,9 +230,17 @@ function buildBeautyQueryProfile({ rawQuery, queryClass, intent } = {}) {
   const isBeautyQuery = primaryDomain === 'beauty' || bucket != null;
   const isSpecificBeautyQuery =
     isBeautyQuery &&
-    ['skincare', 'tools', 'fragrance', 'haircare', 'lip_care', 'bodycare'].includes(
-      String(bucket || ''),
-    );
+    [
+      'skincare',
+      'tools',
+      'fragrance',
+      'haircare',
+      'lip_care',
+      'bodycare',
+      'base_makeup',
+      'eye_makeup',
+      'lip_makeup',
+    ].includes(String(bucket || ''));
   const allowBroadBeautyExpansion = Boolean(isBeautyQuery && bucket === 'general');
   const allowBeautyDiversity = Boolean(
     isBeautyQuery &&
@@ -286,6 +297,15 @@ function getBeautyCacheExpansionTerms(profile) {
   }
   if (bucket === 'bodycare') {
     return ['body wash', 'body cleanser', 'shower gel', 'body lotion', 'body cream'];
+  }
+  if (bucket === 'base_makeup') {
+    return ['foundation', 'concealer', 'primer', 'powder', 'skin tint', 'bb cream', 'cc cream'];
+  }
+  if (bucket === 'eye_makeup') {
+    return ['mascara', 'eyeliner', 'eyeshadow', 'eye shadow', 'brow', 'eyebrow'];
+  }
+  if (bucket === 'lip_makeup') {
+    return ['lipstick', 'lip tint', 'lip gloss', 'lip liner', 'lip'];
   }
   if (profile?.allowBroadBeautyExpansion) {
     return [

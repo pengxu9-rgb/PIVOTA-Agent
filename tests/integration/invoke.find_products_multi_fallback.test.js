@@ -319,42 +319,41 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
     expect(resp.body.metadata?.search_trace?.expanded_query).toBe('oil control treatment');
   });
 
-  test('public search defaults external seed contract on the real invoke -> v2 upstream path', async () => {
-    let upstreamRequestBody = null;
-    let upstreamQuery = null;
-
-    const primaryScope = nock('http://pivota.test')
-      .post('/agent/v2/products/search', (body) => {
-        upstreamRequestBody = body;
-        return true;
-      })
-      .query((query) => {
-        upstreamQuery = query;
-        return (
-          String(query.search_all_merchants || '') === 'true' &&
-          String(query.query || '') === 'lip balm' &&
-          String(query.allow_external_seed || '') === 'true' &&
-          String(query.external_seed_strategy || '') === 'unified_relevance'
-        );
-      })
-      .reply(200, function replySearchV2(_, body) {
-        return {
-          status: 'success',
-          success: true,
-          products: [
-            {
-              merchant_id: 'external_seed',
-              product_id: 'ext_lip_balm_1',
-              source: 'external_seed',
-              title: 'Barrier Repair Lip Balm',
-            },
-          ],
-          total: 1,
-          metadata: {
-            query_source: 'agent_products_v2',
+  test('public search defaults beauty category queries to discovery bridge instead of v2 upstream', async () => {
+    let discoveryPayload = null;
+    const getDiscoveryFeedMock = jest.fn(async (payload) => {
+      discoveryPayload = payload;
+      return {
+        products: [
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_lip_balm_1',
+            source: 'external_seed',
+            title: 'Barrier Repair Lip Balm',
           },
-        };
-      });
+        ],
+        total: 1,
+        metadata: {
+          candidate_source: 'external_seed_compound_intent',
+          primary_path_used: 'external_seed_compound_intent',
+          route_health: {
+            primary_quality_gate_passed: true,
+          },
+        },
+      };
+    });
+    jest.doMock('../../src/services/discoveryFeed', () => {
+      const actual = jest.requireActual('../../src/services/discoveryFeed');
+      return {
+        ...actual,
+        getDiscoveryFeed: getDiscoveryFeedMock,
+      };
+    });
+
+    const v2Scope = nock('http://pivota.test')
+      .post('/agent/v2/products/search')
+      .query(true)
+      .reply(418, { error: 'should_not_call_v2' });
 
     const app = require('../../src/server');
     const resp = await request(app)
@@ -373,33 +372,104 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
         },
       });
 
+    jest.dontMock('../../src/services/discoveryFeed');
+
     expect(resp.status).toBe(200);
-    expect(primaryScope.isDone()).toBe(true);
-    expect(upstreamQuery).toEqual(
+    expect(v2Scope.isDone()).toBe(false);
+    expect(getDiscoveryFeedMock).toHaveBeenCalledTimes(1);
+    expect(discoveryPayload).toEqual(
       expect.objectContaining({
-        query: 'lip balm',
-        search_all_merchants: 'true',
-        allow_external_seed: 'true',
-        external_seed_strategy: 'unified_relevance',
+        surface: 'browse_products',
+        limit: 1,
+        query: { text: 'lip balm' },
       }),
     );
-    expect(upstreamRequestBody).toEqual(
+    expect(resp.body.products).toHaveLength(1);
+    expect(resp.body.metadata).toEqual(
       expect.objectContaining({
-        query: 'lip balm',
-        search_all_merchants: true,
-        allow_external_seed: true,
-        external_seed_strategy: 'unified_relevance',
+        query_source: 'beauty_discovery_mainline',
+        primary_lane: 'beauty_discovery_mainline',
+        public_search_discovery_bridge: true,
+        bridged_operation: 'get_discovery_feed',
       }),
     );
-    expect(resp.body.metadata?.search_request_contract).toEqual(
+  });
+
+  test.each([
+    ['foundation', 'Liquid Touch Weightless Foundation'],
+    ['mascara', 'Extreme Mascara'],
+  ])('public search defaults makeup category %s to discovery bridge instead of v2 upstream', async (query, title) => {
+    let discoveryPayload = null;
+    const getDiscoveryFeedMock = jest.fn(async (payload) => {
+      discoveryPayload = payload;
+      return {
+        products: [
+          {
+            merchant_id: 'external_seed',
+            product_id: `ext_${query.replace(/\s+/g, '_')}_1`,
+            source: 'external_seed',
+            title,
+          },
+        ],
+        total: 1,
+        metadata: {
+          candidate_source: 'external_seed_exact_intent',
+          primary_path_used: 'external_seed_exact_intent',
+          route_health: {
+            primary_quality_gate_passed: true,
+          },
+        },
+      };
+    });
+    jest.doMock('../../src/services/discoveryFeed', () => {
+      const actual = jest.requireActual('../../src/services/discoveryFeed');
+      return {
+        ...actual,
+        getDiscoveryFeed: getDiscoveryFeedMock,
+      };
+    });
+
+    const v2Scope = nock('http://pivota.test')
+      .post('/agent/v2/products/search')
+      .query(true)
+      .reply(418, { error: 'should_not_call_v2' });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query,
+            limit: 1,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'search',
+        },
+      });
+
+    jest.dontMock('../../src/services/discoveryFeed');
+
+    expect(resp.status).toBe(200);
+    expect(v2Scope.isDone()).toBe(false);
+    expect(getDiscoveryFeedMock).toHaveBeenCalledTimes(1);
+    expect(discoveryPayload).toEqual(
       expect.objectContaining({
-        policy: expect.objectContaining({
-          allow_external_seed: true,
-        }),
-        supplement_lanes: expect.arrayContaining([
-          'external_seed_supplement',
-          'coverage_supplement',
-        ]),
+        surface: 'browse_products',
+        limit: 1,
+        query: { text: query },
+      }),
+    );
+    expect(resp.body.products).toHaveLength(1);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'beauty_discovery_mainline',
+        primary_lane: 'beauty_discovery_mainline',
+        public_search_discovery_bridge: true,
+        bridged_operation: 'get_discovery_feed',
       }),
     );
   });
@@ -735,26 +805,16 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
     );
   });
 
-  test('public search category uses a single-pass upstream timeout without timeout retry', async () => {
+  test('public search category uses discovery bridge before v2 timeout rail', async () => {
     process.env.UPSTREAM_RETRY_FIND_PRODUCTS_MULTI_ON_TIMEOUT = 'true';
     process.env.FIND_PRODUCTS_MULTI_UPSTREAM_LOOKUP_TIMEOUT_MS = '3500';
     process.env.FIND_PRODUCTS_MULTI_UPSTREAM_DEFAULT_TIMEOUT_MS = '4500';
     process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS = '6500';
 
-    const primaryScope = nock('http://pivota.test')
-      .post('/agent/v2/products/search')
-      .query((query) => {
-        return (
-          String(query.search_all_merchants || '') === 'true' &&
-          String(query.query || '') === 'hair oil' &&
-          String(query.allow_external_seed || '') === 'true' &&
-          String(query.external_seed_strategy || '') === 'unified_relevance'
-        );
-      })
-      .delay(4000)
-      .reply(200, {
-        status: 'success',
-        success: true,
+    let discoveryPayload = null;
+    const getDiscoveryFeedMock = jest.fn(async (payload) => {
+      discoveryPayload = payload;
+      return {
         products: [
           {
             merchant_id: 'external_seed',
@@ -795,9 +855,27 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
         ],
         total: 6,
         metadata: {
-          query_source: 'agent_products_v2',
+          candidate_source: 'external_seed_compound_intent',
+          primary_path_used: 'external_seed_compound_intent',
+          route_health: {
+            primary_quality_gate_passed: true,
+          },
         },
-      });
+      };
+    });
+    jest.doMock('../../src/services/discoveryFeed', () => {
+      const actual = jest.requireActual('../../src/services/discoveryFeed');
+      return {
+        ...actual,
+        getDiscoveryFeed: getDiscoveryFeedMock,
+      };
+    });
+
+    const v2Scope = nock('http://pivota.test')
+      .post('/agent/v2/products/search')
+      .query(true)
+      .delay(4000)
+      .reply(418, { error: 'should_not_call_v2' });
 
     const app = require('../../src/server');
     const resp = await request(app)
@@ -816,51 +894,67 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
         },
       });
 
+    jest.dontMock('../../src/services/discoveryFeed');
+
     expect(resp.status).toBe(200);
-    expect(primaryScope.isDone()).toBe(true);
+    expect(v2Scope.isDone()).toBe(false);
+    expect(getDiscoveryFeedMock).toHaveBeenCalledTimes(1);
+    expect(discoveryPayload).toEqual(
+      expect.objectContaining({
+        surface: 'browse_products',
+        limit: 6,
+        query: { text: 'hair oil' },
+      }),
+    );
     expect(resp.body.products).toHaveLength(6);
     expect(resp.body.products[0]).toEqual(expect.objectContaining({ merchant_id: 'external_seed' }));
     expect(resp.body.metadata?.strict_empty).not.toBe(true);
     expect(resp.body.metadata?.semantic_retry_applied).not.toBe(true);
     expect(resp.body.metadata?.fallback_route).toBeFalsy();
+    expect(resp.body.metadata?.query_source).toBe('beauty_discovery_mainline');
     expect(resp.body.metadata?.route_health?.primary_quality_gate_passed).toBe(true);
-    expect(resp.body.metadata?.route_health?.primary_latency_ms).toBeGreaterThanOrEqual(4000);
-    expect(resp.body.metadata?.route_health?.primary_latency_ms).toBeLessThan(7000);
   });
 
   test('public search underfilled exact beauty intent returns partial products without fallback', async () => {
-    const primaryScope = nock('http://pivota.test')
-      .post('/agent/v2/products/search')
-      .query((query) => {
-        return (
-          String(query.search_all_merchants || '') === 'true' &&
-          String(query.query || '') === 'hair oil' &&
-          String(query.allow_external_seed || '') === 'true' &&
-          String(query.external_seed_strategy || '') === 'unified_relevance'
-        );
-      })
-      .reply(200, {
-        status: 'success',
-        success: true,
-        products: [
-          {
-            product_id: 'ext_hair_oil_1',
-            merchant_id: 'external_seed',
-            source: 'external_seed',
-            title: 'Repair Hair Oil',
-          },
-          {
-            product_id: 'ext_hair_oil_2',
-            merchant_id: 'external_seed',
-            source: 'external_seed',
-            title: 'Rosemary Hair Oil',
-          },
-        ],
-        total: 2,
-        metadata: {
-          query_source: 'agent_products_v2',
+    const getDiscoveryFeedMock = jest.fn(async () => ({
+      products: [
+        {
+          product_id: 'ext_hair_oil_1',
+          merchant_id: 'external_seed',
+          source: 'external_seed',
+          title: 'Repair Hair Oil',
         },
-      });
+        {
+          product_id: 'ext_hair_oil_2',
+          merchant_id: 'external_seed',
+          source: 'external_seed',
+          title: 'Rosemary Hair Oil',
+        },
+      ],
+      total: 2,
+      metadata: {
+        candidate_source: 'external_seed_compound_intent',
+        primary_path_used: 'external_seed_compound_intent',
+        compound_intent: 'hair_oil',
+        underfilled_reason: 'public_search_underfilled_exact_intent',
+        route_health: {
+          primary_quality_gate_passed: false,
+          underfilled_reason: 'public_search_underfilled_exact_intent',
+        },
+      },
+    }));
+    jest.doMock('../../src/services/discoveryFeed', () => {
+      const actual = jest.requireActual('../../src/services/discoveryFeed');
+      return {
+        ...actual,
+        getDiscoveryFeed: getDiscoveryFeedMock,
+      };
+    });
+
+    const v2Scope = nock('http://pivota.test')
+      .post('/agent/v2/products/search')
+      .query(true)
+      .reply(418, { error: 'should_not_call_v2' });
 
     const app = require('../../src/server');
     const resp = await request(app)
@@ -879,27 +973,28 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
         },
       });
 
-	    expect(resp.status).toBe(200);
-	    expect(primaryScope.isDone()).toBe(true);
-	    expect(resp.body.clarification).toBeFalsy();
-	    expect(resp.body.reason_codes || []).not.toContain('AMBIGUITY_CLARIFY');
-	    expect(resp.body.products).toHaveLength(2);
-	    expect(resp.body.metadata).toEqual(
-	      expect.objectContaining({
-	        query_source: 'agent_products_v2',
-	        compound_intent: 'hair_oil',
-	        underfilled_reason: 'public_search_underfilled_exact_intent',
-	        primary_underfilled_public_beauty_unified: false,
-	        primary_exact_intent_underfilled_public_beauty: true,
-	      }),
-	    );
-	    expect(resp.body.metadata?.strict_empty).not.toBe(true);
-	    expect(resp.body.metadata?.route_health?.primary_quality_gate_passed).toBe(false);
-	    expect(resp.body.metadata?.route_health?.underfilled_reason).toBe('public_search_underfilled_exact_intent');
-	    expect(resp.body.metadata?.route_health?.fallback_triggered).toBe(false);
-	    expect(resp.body.metadata?.supplement_attempted).toBe(false);
-	    expect(resp.body.metadata?.proxy_search_fallback?.applied).not.toBe(true);
-	  });
+    jest.dontMock('../../src/services/discoveryFeed');
+
+    expect(resp.status).toBe(200);
+    expect(v2Scope.isDone()).toBe(false);
+    expect(getDiscoveryFeedMock).toHaveBeenCalledTimes(1);
+    expect(resp.body.clarification).toBeFalsy();
+    expect(resp.body.reason_codes || []).not.toContain('AMBIGUITY_CLARIFY');
+    expect(resp.body.products).toHaveLength(2);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'beauty_discovery_mainline',
+        compound_intent: 'hair_oil',
+        underfilled_reason: 'public_search_underfilled_exact_intent',
+      }),
+    );
+    expect(resp.body.metadata?.strict_empty).not.toBe(true);
+    expect(resp.body.metadata?.route_health?.primary_quality_gate_passed).toBe(false);
+    expect(resp.body.metadata?.route_health?.underfilled_reason).toBe('public_search_underfilled_exact_intent');
+    expect(resp.body.metadata?.route_health?.fallback_triggered).toBe(false);
+    expect(resp.body.metadata?.supplement_attempted).not.toBe(true);
+    expect(resp.body.metadata?.proxy_search_fallback?.applied).not.toBe(true);
+  });
 
   test('shopping_agent explicit legacy_contracts is isolated as legacy_internal', async () => {
     const queryText = 'ipsa';

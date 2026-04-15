@@ -487,26 +487,26 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
       captured.map((row) => row.query),
       [
         'niacinamide serum oily skin',
+        'gel cream moisturizer',
+        'sunscreen',
         'lightweight moisturizer oily skin',
+        'spf fluid oily skin',
         'oil control sunscreen',
-        'barrier lotion oily skin',
-        'lightweight sunscreen oily skin',
-        'lightweight sunscreen',
       ],
     );
     assert.deepEqual(
       externalCaptured.map((row) => row.query),
       [
-        'oil control treatment',
-        'lightweight moisturizer oily skin',
-        'oil control sunscreen',
         'niacinamide serum oily skin',
-        'barrier lotion oily skin',
-        'lightweight sunscreen oily skin',
+        'gel cream moisturizer',
+        'sunscreen',
+        'salicylic acid serum oily skin',
+        'lightweight moisturizer oily skin',
+        'spf fluid oily skin',
       ],
     );
     assert.equal(captured.every((row) => row.callerLane === 'beauty_chat_handoff'), true);
-    assert.equal(captured.slice(0, 1).every((row) => row.timeoutMs === 10500), true);
+    assert.equal(captured.slice(0, 1).every((row) => row.timeoutMs === 16500), true);
     assert.equal(captured.slice(1).every((row) => row.timeoutMs === 1400), true);
     assert.equal(captured.every((row) => row.allowExternalSeed === false), true);
     assert.equal(
@@ -663,7 +663,7 @@ test('handoffRecoToBeautyMainlineSearch preserves horizontal comparison across i
       },
       searchLocalExternalSeedProducts: async (args) => {
         const query = String(args?.query || '').trim().toLowerCase();
-        if (query === 'oil control treatment') {
+        if (['oil control treatment', 'niacinamide serum oily skin', 'salicylic acid serum oily skin'].includes(query)) {
           return {
             ok: true,
             products: [
@@ -1035,20 +1035,20 @@ test('handoffRecoToBeautyMainlineSearch skips primary external seed when interna
       internalCaptured,
       [
         'niacinamide serum oily skin',
+        'gel cream moisturizer',
+        'sunscreen',
         'lightweight moisturizer oily skin',
+        'spf fluid oily skin',
         'oil control sunscreen',
-        'barrier lotion oily skin',
-        'lightweight sunscreen oily skin',
-        'lightweight sunscreen',
       ],
     );
     assert.deepEqual(
       externalCaptured,
       [
+        'gel cream moisturizer',
+        'sunscreen',
         'lightweight moisturizer oily skin',
-        'oil control sunscreen',
-        'barrier lotion oily skin',
-        'lightweight sunscreen oily skin',
+        'spf fluid oily skin',
       ],
     );
     const primaryExternalRows = out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
@@ -1146,10 +1146,10 @@ test('handoffRecoToBeautyMainlineSearch skips primary external supplement for ro
     assert.deepEqual(
       externalCaptured,
       [
+        'gel cream moisturizer',
+        'sunscreen',
         'lightweight moisturizer oily skin',
-        'oil control sunscreen',
-        'barrier lotion oily skin',
-        'lightweight sunscreen oily skin',
+        'spf fluid oily skin',
       ],
     );
     const primaryExternalRows = out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
@@ -1362,7 +1362,7 @@ test('handoffRecoToBeautyMainlineSearch interleaves support external queries acr
       searchLocalExternalSeedProducts: async (args) => {
         const query = String(args?.query || '').trim().toLowerCase();
         externalCaptured.push(query);
-        if (query === 'lightweight moisturizer oily skin') {
+        if (query === 'gel cream moisturizer' || query === 'lightweight moisturizer oily skin') {
           return {
             ok: true,
             products: [
@@ -1386,7 +1386,7 @@ test('handoffRecoToBeautyMainlineSearch interleaves support external queries acr
             transport_policy_mode: String(args?.transportPolicyMode || ''),
           };
         }
-        if (query === 'oil control sunscreen') {
+        if (query === 'spf fluid oily skin' || query === 'sunscreen' || query === 'oil control sunscreen') {
           return {
             ok: true,
             products: [
@@ -1437,8 +1437,8 @@ test('handoffRecoToBeautyMainlineSearch interleaves support external queries acr
     assert.deepEqual(
       externalCaptured,
       [
-        'lightweight moisturizer oily skin',
-        'oil control sunscreen',
+        'gel cream moisturizer',
+        'sunscreen',
       ],
     );
     assert.deepEqual(
@@ -1706,7 +1706,7 @@ test('handoffRecoToBeautyMainlineSearch exposes raw candidate pool sources when 
       },
       searchLocalExternalSeedProducts: async (args) => {
         const query = String(args?.query || '').trim().toLowerCase();
-        if (query === 'oil control treatment') {
+        if (['oil control treatment', 'niacinamide serum oily skin', 'salicylic acid serum oily skin'].includes(query)) {
           return {
             ok: true,
             products: [
@@ -1858,7 +1858,7 @@ test('handoffRecoToBeautyMainlineSearch preserves local empty result without pro
   }
 });
 
-test('handoffRecoToBeautyMainlineSearch keeps authoritative support roles when primary recall is missing', async () => {
+test('handoffRecoToBeautyMainlineSearch fail-closes support-only rows when primary recall is missing', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     __internal.__setRouteDependencyOverridesForTest({
@@ -1928,27 +1928,27 @@ test('handoffRecoToBeautyMainlineSearch keeps authoritative support roles when p
 
     assert.deepEqual(
       out.recommendations.map((item) => item.product_id),
-      ['support_moist_1', 'support_spf_1'],
+      [],
     );
     assert.equal(
       out.searchResult?.metadata?.candidate_pool_summary?.weak_viable_pool,
-      false,
-    );
-    assert.equal(
-      out.searchResult?.metadata?.candidate_pool_summary?.viable_pool_strength,
-      'strong',
-    );
-    assert.equal(
-      out.searchResult?.metadata?.candidate_pool_summary?.primary_missing_authoritative_support_selected,
       true,
     );
     assert.equal(
+      out.searchResult?.metadata?.candidate_pool_summary?.viable_pool_strength,
+      'weak',
+    );
+    assert.equal(
+      out.searchResult?.metadata?.candidate_pool_summary?.primary_missing_authoritative_support_selected,
+      false,
+    );
+    assert.equal(
       out.searchResult?.metadata?.search_stage_ledger?.candidate_drop_stage,
-      'none',
+      'weak_viable_pool',
     );
     assert.equal(
       out.searchResult?.metadata?.search_stage_ledger?.primary_failure_stage ?? null,
-      null,
+      'weak_viable_pool',
     );
   } finally {
     __internal.__resetRouteDependencyOverridesForTest();

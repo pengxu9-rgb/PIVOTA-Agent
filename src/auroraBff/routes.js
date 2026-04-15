@@ -1324,19 +1324,19 @@ const RECO_CATALOG_EXTERNAL_SEED_HANDOFF_TIMEOUT_MS = (() => {
   return Math.max(12000, Math.min(45000, v));
 })();
 const RECO_CATALOG_FRAMEWORK_LOCAL_HANDOFF_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_FRAMEWORK_LOCAL_HANDOFF_TIMEOUT_MS || 10500);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 10500;
-  return Math.max(2400, Math.min(13000, v));
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_FRAMEWORK_LOCAL_HANDOFF_TIMEOUT_MS || 16500);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 16500;
+  return Math.max(2400, Math.min(24000, v));
 })();
 const RECO_CATALOG_PRIMARY_EXTERNAL_SEED_QUERY_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_PRIMARY_EXTERNAL_SEED_QUERY_TIMEOUT_MS || 2600);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 2600;
-  return Math.max(800, Math.min(4800, v));
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_PRIMARY_EXTERNAL_SEED_QUERY_TIMEOUT_MS || 4200);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 4200;
+  return Math.max(800, Math.min(7000, v));
 })();
 const RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS || 4000);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 4000;
-  return Math.max(50, Math.min(6000, v));
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS || 5200);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 5200;
+  return Math.max(50, Math.min(8000, v));
 })();
 const RECO_CATALOG_SUPPORT_INTERNAL_QUERY_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SUPPORT_INTERNAL_QUERY_TIMEOUT_MS || 1400);
@@ -8186,7 +8186,7 @@ function shouldUseLeanLocalExternalSeedPatternPack({ role = null } = {}) {
 }
 
 function shouldUseLeanLocalExternalSeedSql({ role = null } = {}) {
-  return Number.isFinite(Number(role?.rank)) && Number(role.rank) > 1;
+  return Boolean(role && typeof role === 'object' && !Array.isArray(role));
 }
 
 function buildLocalExternalSeedSearchPredicate(bind, { lean = false } = {}) {
@@ -8271,96 +8271,83 @@ function buildLocalExternalSeedSupportCategoryTerms({ role = null, preferredStep
   return uniqCaseInsensitiveStrings(terms, 10);
 }
 
-function buildLocalExternalSeedSupportCombinedQuery({
+function buildLocalExternalSeedExactCategoryHeadTerms({ query = '', categoryTerms = [] } = {}) {
+  const normalizedQuery = String(query || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  if (!normalizedQuery) return [];
+  const terms = uniqCaseInsensitiveStrings(categoryTerms, 10)
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean);
+  const pickTerms = (allowed) => {
+    const allowedSet = new Set(allowed);
+    return terms.filter((term) => allowedSet.has(term));
+  };
+  if (['sunscreen', 'daily sunscreen', 'broad spectrum sunscreen', 'spf'].includes(normalizedQuery)) {
+    return pickTerms(['sunscreen', 'spf', 'sun care', 'sun protection', 'uv protection']);
+  }
+  if (['moisturizer', 'moisturiser'].includes(normalizedQuery)) {
+    return pickTerms(['moisturizer', 'moisturiser', 'cream', 'lotion', 'emulsion']);
+  }
+  return [];
+}
+
+function buildLocalExternalSeedSupportStageDefinitions({
   patterns = [],
   categoryTerms = [],
   safeLimit = 6,
-  market,
-  tool,
+  query = '',
 } = {}) {
-  const params = [market, tool];
-  const stageOrder = [];
-  const stageWhereClauses = [];
-  const scoreClauses = [];
-  const stageClauses = [];
-  const bind = (value) => {
-    params.push(value);
-    return `$${params.length}`;
+  const stageDefinitions = [];
+  const addStage = ({ stage, score, buildWhereSql, stopAfterAnyMatch = false }) => {
+    const stageName = String(stage || '').trim();
+    if (!stageName || typeof buildWhereSql !== 'function') return;
+    stageDefinitions.push({
+      stage: stageName,
+      score: Number(score || 0),
+      cap: Math.max(1, Number(safeLimit) || 1),
+      buildWhereSql,
+      stopAfterAnyMatch: stopAfterAnyMatch === true,
+    });
   };
 
-  const addStage = ({ stage, score, whereSql }) => {
-    const stageName = String(stage || '').trim();
-    const normalizedWhereSql = String(whereSql || '').trim();
-    if (!stageName || !normalizedWhereSql) return;
-    stageOrder.push(stageName);
-    stageWhereClauses.push(`(${normalizedWhereSql})`);
-    scoreClauses.push(`WHEN ${normalizedWhereSql} THEN ${Number(score || 0)}`);
-    stageClauses.push(`WHEN ${normalizedWhereSql} THEN '${stageName}'`);
-  };
+  const exactCategoryTerms = buildLocalExternalSeedExactCategoryHeadTerms({ query, categoryTerms });
+  if (exactCategoryTerms.length > 0) {
+    addStage({
+      stage: 'support_category_exact',
+      score: 56,
+      stopAfterAnyMatch: true,
+      buildWhereSql: (bind) =>
+        `${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} = ANY(${bind(exactCategoryTerms)}::text[])`,
+    });
+  }
 
   if (Array.isArray(patterns) && patterns.length > 0) {
-    const patternBind = bind(patterns);
     addStage({
       stage: 'support_recall_title',
       score: 48,
-      whereSql: `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${patternBind}::text[])`,
+      buildWhereSql: (bind) =>
+        `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${bind(patterns)}::text[])`,
     });
     addStage({
       stage: 'support_alias_tokens',
       score: 44,
-      whereSql: `${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY(${patternBind}::text[])`,
+      buildWhereSql: (bind) =>
+        `${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY(${bind(patterns)}::text[])`,
     });
     addStage({
       stage: 'support_recall_summary',
       score: 40,
-      whereSql: `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${patternBind}::text[])`,
+      buildWhereSql: (bind) =>
+        `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${bind(patterns)}::text[])`,
     });
     addStage({
       stage: 'support_raw_title',
       score: 36,
-      whereSql: `lower(coalesce(title, '')) LIKE ANY(${patternBind}::text[])`,
+      buildWhereSql: (bind) =>
+        `lower(coalesce(title, '')) LIKE ANY(${bind(patterns)}::text[])`,
     });
   }
 
-  if (stageWhereClauses.length === 0) {
-    return {
-      sql: '',
-      params,
-      stageOrder,
-      cap: 0,
-    };
-  }
-
-  const cap = safeLimit;
-  const limitBind = bind(cap);
-  const matchWhereSql = stageWhereClauses.join('\n          OR ');
-  return {
-    sql: `
-      SELECT
-        ${LOCAL_EXTERNAL_SEED_SELECT_FIELDS},
-        CASE
-          ${scoreClauses.join('\n          ')}
-          ELSE 0
-        END::int AS match_score,
-        CASE
-          ${stageClauses.join('\n          ')}
-          ELSE 'support_combined_match'
-        END::text AS match_stage
-      FROM external_product_seeds
-      WHERE status = 'active'
-        AND attached_product_key IS NULL
-        AND market = $1
-        AND (tool = '*' OR tool = $2)
-        AND (
-          ${matchWhereSql}
-        )
-      ORDER BY match_score DESC, updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
-      LIMIT ${limitBind}
-    `,
-    params,
-    stageOrder,
-    cap,
-  };
+  return stageDefinitions;
 }
 
 async function searchLocalExternalSeedProductsViaSupportStages({
@@ -8374,58 +8361,82 @@ async function searchLocalExternalSeedProductsViaSupportStages({
   tool,
 } = {}) {
   const categoryTerms = buildLocalExternalSeedSupportCategoryTerms({ role, preferredStep, query: q });
-  const queryPlan = buildLocalExternalSeedSupportCombinedQuery({
+  const stageDefinitions = buildLocalExternalSeedSupportStageDefinitions({
     patterns,
     categoryTerms,
     safeLimit,
-    market,
-    tool,
+    query: q,
   });
   const stagedRows = [];
   const seenRowKeys = new Set();
+  const seenSqlIds = new Set();
   const appendRows = (rows = []) => {
     for (const row of Array.isArray(rows) ? rows : []) {
       const rowKey = buildLocalExternalSeedStageRowKey(row);
       if (!rowKey || seenRowKeys.has(rowKey)) continue;
       seenRowKeys.add(rowKey);
+      const sqlId = String(row?.id ?? '').trim();
+      if (/^\d+$/.test(sqlId)) seenSqlIds.add(sqlId);
       stagedRows.push(row);
       if (stagedRows.length >= safeLimit) break;
     }
   };
 
-  if (!queryPlan.sql) {
+  if (stageDefinitions.length === 0) {
     return {
       rows: [],
       stageDebug: [],
       categoryTerms,
     };
   }
-  const startedAt = Date.now();
-  const res = await runQuery(queryPlan.sql, queryPlan.params);
-  const rows = Array.isArray(res?.rows) ? res.rows : [];
-  appendRows(rows);
-  const durationMs = Math.max(0, Date.now() - startedAt);
-  const countsByStage = new Map();
-  for (const row of rows) {
-    const stage = String(row?.match_stage || '').trim() || 'support_combined_match';
-    countsByStage.set(stage, (countsByStage.get(stage) || 0) + 1);
-  }
-  let cumulativeRowCount = 0;
-  const stageOrder = Array.isArray(queryPlan.stageOrder) && queryPlan.stageOrder.length
-    ? queryPlan.stageOrder
-    : [];
-  const stageDebug = stageOrder.map((stage) => {
-    const rowCount = countsByStage.get(stage) || 0;
-    cumulativeRowCount = Math.min(safeLimit, cumulativeRowCount + rowCount);
-    return {
-      stage,
-      row_count: rowCount,
-      cumulative_row_count: cumulativeRowCount,
-      duration_ms: durationMs,
-      cap: queryPlan.cap,
-      combined_query: true,
+  const stageDebug = [];
+  for (const definition of stageDefinitions) {
+    if (stagedRows.length >= safeLimit) break;
+    const params = [market, tool];
+    const bind = (value) => {
+      params.push(value);
+      return `$${params.length}`;
     };
-  });
+    const whereSql = definition.buildWhereSql(bind);
+    if (!whereSql) continue;
+    let sql = `
+      SELECT
+        ${LOCAL_EXTERNAL_SEED_SELECT_FIELDS},
+        ${Number(definition.score || 0)}::int AS match_score,
+        '${definition.stage}'::text AS match_stage
+      FROM external_product_seeds
+      WHERE status = 'active'
+        AND attached_product_key IS NULL
+        AND market = $1
+        AND (tool = '*' OR tool = $2)
+        AND (${whereSql})
+    `;
+    if (seenSqlIds.size > 0) {
+      sql += `
+        AND id <> ALL(${bind(Array.from(seenSqlIds))}::bigint[])
+      `;
+    }
+    const limitBind = bind(Math.max(1, Number(definition.cap || safeLimit) || safeLimit));
+    sql += `
+      ORDER BY match_score DESC, updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
+      LIMIT ${limitBind}
+    `;
+    const startedAt = Date.now();
+    // eslint-disable-next-line no-await-in-loop
+    const res = await runQuery(sql, params);
+    const rows = Array.isArray(res?.rows) ? res.rows : [];
+    appendRows(rows);
+    stageDebug.push({
+      stage: definition.stage,
+      row_count: rows.length,
+      cumulative_row_count: stagedRows.length,
+      duration_ms: Math.max(0, Date.now() - startedAt),
+      cap: definition.cap,
+      sequential_query: true,
+      ...(definition.stopAfterAnyMatch ? { stop_after_any_match: true } : {}),
+    });
+    if (definition.stopAfterAnyMatch && rows.length > 0) break;
+  }
 
   return {
     rows: stagedRows.slice(0, safeLimit),
@@ -22042,13 +22053,10 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     return Boolean(roleId && roleId !== primaryRoleId);
   }).length;
   const bestAvailableRecommendation = selected[0] || null;
-  const roleCoverageSelected = selected.length > 0 && routineSupportFillCount > 0;
-  const primaryMissingButAuthoritativeSupportSelected = !primaryRoleMatched && roleCoverageSelected;
+  const primaryMissingButAuthoritativeSupportSelected = false;
   const surfacedRecommendations = primaryRoleMatched
     ? selected
-    : primaryMissingButAuthoritativeSupportSelected
-      ? selected
-      : [];
+    : [];
   const hasWeakViablePool = viable.length > 0 && !primaryRoleMatched && !primaryMissingButAuthoritativeSupportSelected;
   const rawSourceCounts = summarizeConcernFrameworkSourceCounts(deduped);
   const viableSourceCounts = summarizeConcernFrameworkSourceCounts(viable);
@@ -22059,12 +22067,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     raw_candidate_pool: deduped,
     viable_candidate_pool: viable,
     selected_recommendations: surfacedRecommendations,
-    primary_recommendation_id: pickFirstString(
-      primaryRecommendation?.product_id,
-      primaryRecommendation?.productId,
-      bestAvailableRecommendation?.product_id,
-      bestAvailableRecommendation?.productId,
-    ) || null,
+    primary_recommendation_id: pickFirstString(primaryRecommendation?.product_id, primaryRecommendation?.productId) || null,
     primary_role_id: primaryRoleId || null,
     primary_role_matched: primaryRoleMatched,
     primary_missing_authoritative_support_selected: primaryMissingButAuthoritativeSupportSelected,
