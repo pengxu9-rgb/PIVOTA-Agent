@@ -9786,13 +9786,6 @@ describe('discovery feed service', () => {
     });
     const makeSeedRows = (startId, count, vertical, category) =>
       Array.from({ length: count }, (_, index) => makeSeedRow(startId + index, vertical, category));
-    const makeStageRows = (startId, count, vertical, category, stageQuota) =>
-      makeSeedRows(startId, count, vertical, category).map((row) => ({
-        ...row,
-        stage_match_axis: 'vertical',
-        stage_match_value: vertical,
-        stage_quota: stageQuota,
-      }));
 
     const dbQueryMock = jest
       .fn()
@@ -9803,14 +9796,22 @@ describe('discovery feed service', () => {
         rows: requiredIndexes,
       })
       .mockResolvedValueOnce({
-        rows: [
-          ...makeStageRows(1, 48, 'skincare', 'Skincare', 48),
-          ...makeStageRows(49, 30, 'makeup', 'Makeup', 30),
-          ...makeStageRows(79, 19, 'haircare', 'Haircare', 19),
-          ...makeStageRows(98, 12, 'fragrance', 'Fragrance', 12),
-          ...makeStageRows(110, 7, 'bodycare', 'Bodycare', 7),
-          ...makeStageRows(117, 4, 'beauty_tools', 'Beauty Tools', 4),
-        ],
+        rows: makeSeedRows(1, 48, 'skincare', 'Skincare'),
+      })
+      .mockResolvedValueOnce({
+        rows: makeSeedRows(49, 30, 'makeup', 'Makeup'),
+      })
+      .mockResolvedValueOnce({
+        rows: makeSeedRows(79, 19, 'haircare', 'Haircare'),
+      })
+      .mockResolvedValueOnce({
+        rows: makeSeedRows(98, 12, 'fragrance', 'Fragrance'),
+      })
+      .mockResolvedValueOnce({
+        rows: makeSeedRows(110, 7, 'bodycare', 'Bodycare'),
+      })
+      .mockResolvedValueOnce({
+        rows: makeSeedRows(117, 4, 'beauty_tools', 'Beauty Tools'),
       });
 
     jest.doMock('../src/db', () => ({
@@ -9846,14 +9847,15 @@ describe('discovery feed service', () => {
       });
 
       expect(result.products).toHaveLength(120);
-      expect(dbQueryMock).toHaveBeenCalledTimes(3);
+      expect(dbQueryMock).toHaveBeenCalledTimes(8);
       const curatedSql = String(dbQueryMock.mock.calls[2]?.[0] || '');
       expect(curatedSql).toContain("'generic_browse_curated_head'::text AS match_stage");
-      expect(curatedSql).toContain('UNION ALL');
-      expect(curatedSql).not.toContain('row_number() OVER');
       for (const call of dbQueryMock.mock.calls.slice(2)) {
         const sql = String(call?.[0] || '');
         expect(sql).not.toContain('LIKE ANY');
+        expect(sql).not.toContain('UNION ALL');
+        expect(sql).not.toContain('row_number() OVER');
+        expect(sql).not.toContain('tool = ANY');
         expect(sql).not.toContain("'recall_title'::text AS match_stage");
         expect(sql).not.toContain("'recall_tokens'::text AS match_stage");
       }
@@ -9861,7 +9863,7 @@ describe('discovery feed service', () => {
         expect.arrayContaining([
           expect.objectContaining({
             stage: 'generic_browse_curated_head',
-            tool_scope: 'mixed',
+            tool_scope: '*',
             match_axis: 'vertical',
             match_value: 'skincare',
             stage_quota: 48,
@@ -9871,7 +9873,7 @@ describe('discovery feed service', () => {
           }),
           expect.objectContaining({
             stage: 'generic_browse_curated_head',
-            tool_scope: 'mixed',
+            tool_scope: '*',
             match_axis: 'vertical',
             match_value: 'makeup',
             stage_quota: 30,
@@ -9881,7 +9883,7 @@ describe('discovery feed service', () => {
           }),
           expect.objectContaining({
             stage: 'generic_browse_curated_head',
-            tool_scope: 'mixed',
+            tool_scope: '*',
             match_axis: 'vertical',
             match_value: 'beauty_tools',
             stage_quota: 4,
