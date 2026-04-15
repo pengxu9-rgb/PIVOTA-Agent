@@ -358,6 +358,10 @@ const BEAUTY_INTEREST_CATEGORY_BY_PHRASE = Object.freeze({
     categories: ['body lotion'],
     verticals: ['skincare'],
   },
+  'hand cream': {
+    categories: ['hand cream', 'hand lotion'],
+    verticals: ['skincare'],
+  },
   perfume: {
     categories: ['perfume', 'eau de parfum', 'fragrance'],
     structuredQueryTerms: ['perfume', 'eau de parfum', 'fragrance'],
@@ -537,6 +541,33 @@ const EXPLICIT_BEAUTY_COMPOUND_INTENT_RULES = Object.freeze({
       'trio',
     ],
   }),
+  leave_in_conditioner: Object.freeze({
+    id: 'leave_in_conditioner',
+    label: 'leave in conditioner',
+    phrases: ['leave in conditioner', 'leave-in conditioner', 'leave in', 'leave-in', 'hair milk'],
+    primaryPositive: ['leave in conditioner', 'leave-in conditioner', 'hair milk'],
+    weakPositive: ['conditioner', 'hair treatment', 'haircare', 'hair care'],
+    verticals: ['haircare'],
+    conjunctionTokens: ['leave', 'conditioner'],
+    positiveTitleTokens: ['leave in', 'leave-in', 'hair milk', 'detangling'],
+    suppressedTokenCategories: ['leave', 'in', 'conditioner'],
+    negativeClasses: [
+      'shampoo',
+      'deep conditioner',
+      'hair oil',
+      'oil',
+      'mask',
+      'masks',
+      'brush',
+      'brushes',
+      'tool',
+      'tools',
+      'clip',
+      'clips',
+      'pin',
+      'pins',
+    ],
+  }),
   scalp_serum: Object.freeze({
     id: 'scalp_serum',
     label: 'scalp serum',
@@ -634,6 +665,40 @@ const EXPLICIT_BEAUTY_COMPOUND_INTENT_RULES = Object.freeze({
       'bag',
       'pouch',
       'keychain',
+    ],
+  }),
+  brow_gel: Object.freeze({
+    id: 'brow_gel',
+    label: 'brow gel',
+    phrases: ['brow gel', 'eyebrow gel'],
+    primaryPositive: ['brow gel', 'eyebrow gel'],
+    weakPositive: ['brow', 'eyebrow'],
+    verticals: ['makeup'],
+    conjunctionTokens: ['brow', 'gel'],
+    positiveTitleTokens: ['gel'],
+    suppressedTokenCategories: ['brow', 'gel'],
+    negativeClasses: [
+      'pencil',
+      'pomade',
+      'wax',
+      'serum',
+      'mascara',
+      'lash',
+      'lashes',
+      'false lash',
+      'false lashes',
+      'brush',
+      'brushes',
+      'tool',
+      'tools',
+      'set',
+      'sets',
+      'kit',
+      'kits',
+      'bundle',
+      'bundles',
+      'duo',
+      'trio',
     ],
   }),
 });
@@ -1509,6 +1574,9 @@ function resolveBeautyInterestPhraseHint(phrase) {
   if (tokens.has('dry') && tokens.has('shampoo')) {
     return BEAUTY_INTEREST_CATEGORY_BY_PHRASE['dry shampoo'];
   }
+  if (tokens.has('leave') && tokens.has('conditioner')) {
+    return BEAUTY_INTEREST_CATEGORY_BY_PHRASE['leave in conditioner'];
+  }
   if (tokens.has('scalp') && tokens.has('serum')) {
     return BEAUTY_INTEREST_CATEGORY_BY_PHRASE['scalp serum'];
   }
@@ -1517,6 +1585,9 @@ function resolveBeautyInterestPhraseHint(phrase) {
   }
   if (tokens.has('lip') && tokens.has('oil')) {
     return BEAUTY_INTEREST_CATEGORY_BY_PHRASE['lip oil'];
+  }
+  if ((tokens.has('brow') || tokens.has('eyebrow')) && tokens.has('gel')) {
+    return BEAUTY_INTEREST_CATEGORY_BY_PHRASE['brow gel'];
   }
   return { categories: [], verticals: [] };
 }
@@ -1529,9 +1600,18 @@ function resolveExplicitBeautyCompoundIntent(queryText) {
   if (normalized === 'hair oil' || (tokens.has('hair') && tokens.has('oil'))) return 'hair_oil';
   if (normalized === 'hair mask' || (tokens.has('hair') && tokens.has('mask'))) return 'hair_mask';
   if (normalized === 'dry shampoo' || (tokens.has('dry') && tokens.has('shampoo'))) return 'dry_shampoo';
+  if (
+    normalized === 'leave in conditioner' ||
+    normalized === 'leave-in conditioner' ||
+    (tokens.has('leave') && tokens.has('conditioner'))
+  ) {
+    return 'leave_in_conditioner';
+  }
   if (normalized === 'scalp serum' || (tokens.has('scalp') && tokens.has('serum'))) return 'scalp_serum';
   if (normalized === 'lip balm' || (tokens.has('lip') && tokens.has('balm'))) return 'lip_balm';
   if (normalized === 'lip oil' || (tokens.has('lip') && tokens.has('oil'))) return 'lip_oil';
+  if (normalized === 'brow gel' || normalized === 'eyebrow gel') return 'brow_gel';
+  if ((tokens.has('brow') || tokens.has('eyebrow')) && tokens.has('gel')) return 'brow_gel';
   return null;
 }
 
@@ -6982,6 +7062,22 @@ function matchesBeautyCompoundQueryIntent(candidate, intent) {
     return categoryLooksHair && hasAnyNormalizedClassToken(titleText, rule?.positiveTitleTokens || []);
   }
 
+  if (intent === 'leave_in_conditioner') {
+    if (hasAnyNormalizedClassToken([combinedCategoryText, titleText].join(' '), negativeClasses)) return false;
+    const titleOrSummaryHasLeaveIn =
+      titleText.includes('leave in') ||
+      titleText.includes('leave-in') ||
+      summaryText.includes('leave in') ||
+      summaryText.includes('leave-in');
+    const titleOrSummaryHasConditioner =
+      textHasNormalizedToken(titleText, 'conditioner') ||
+      textHasNormalizedToken(summaryText, 'conditioner');
+    const titleOrSummaryHasHairMilk =
+      titleText.includes('hair milk') ||
+      summaryText.includes('hair milk');
+    return Boolean(titleOrSummaryHasLeaveIn && (titleOrSummaryHasConditioner || titleOrSummaryHasHairMilk));
+  }
+
   if (intent === 'scalp_serum') {
     if (hasAnyNormalizedClassToken([combinedCategoryText, titleText].join(' '), negativeClasses)) return false;
     if (titleText.includes('scalp serum')) return true;
@@ -7012,6 +7108,36 @@ function matchesBeautyCompoundQueryIntent(candidate, intent) {
       combinedCategoryText.includes('lip care') ||
       hasAnyNormalizedClassToken(combinedCategoryText, rule?.primaryPositive || []);
     return categoryLooksLip && hasOilIntentToken(titleText);
+  }
+
+  if (intent === 'brow_gel') {
+    if (hasAnyNormalizedClassToken([combinedCategoryText, titleText].join(' '), negativeClasses)) return false;
+    if (titleText.includes('brow gel') || titleText.includes('eyebrow gel')) return true;
+    const titleOrSummaryHasBrow =
+      titleText.includes('brow') ||
+      summaryText.includes('brow') ||
+      textHasNormalizedToken(titleText, 'eyebrow') ||
+      textHasNormalizedToken(summaryText, 'eyebrow');
+    const titleHasGel =
+      textHasNormalizedToken(titleText, 'gel') ||
+      titleText.includes(' gel') ||
+      titleText.endsWith('gel');
+    return titleOrSummaryHasBrow && titleHasGel;
+  }
+
+  if (rule) {
+    if (hasAnyNormalizedClassToken([combinedCategoryText, titleText].join(' '), negativeClasses)) return false;
+    if (hasAnyNormalizedClassToken(titleText, rule.primaryPositive || [])) return true;
+    const categoryLooksRelevant =
+      hasAnyNormalizedClassToken(combinedCategoryText, rule.primaryPositive || []) ||
+      hasAnyNormalizedClassToken(combinedCategoryText, rule.weakPositive || []) ||
+      hasAnyNormalizedClassToken(verticalText, rule.verticals || []);
+    const titleLooksRelevant =
+      hasAnyNormalizedClassToken(titleText, rule.positiveTitleTokens || []) ||
+      (Array.isArray(rule.conjunctionTokens) &&
+        rule.conjunctionTokens.length > 0 &&
+        rule.conjunctionTokens.every((token) => titleText.includes(normalizeText(token))));
+    return categoryLooksRelevant && titleLooksRelevant;
   }
 
   return true;
