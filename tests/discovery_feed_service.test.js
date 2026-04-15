@@ -5998,11 +5998,47 @@ describe('discovery feed service', () => {
       }),
       0,
     );
+    const ingredientOnlyLipCream = _internals.normalizeCandidateProduct(
+      {
+        merchant_id: 'external_seed',
+        product_id: 'lip_cream_lactic_1',
+        title: 'Gloss Bomb Cream Color Drip Lip Cream',
+        category: 'Lip Cream',
+        product_type: 'Lip Cream',
+        external_seed_recall: {
+          retrieval_title: 'gloss bomb cream color drip lip cream',
+          retrieval_summary: 'comfortable color and shine for lips',
+          category: 'Lip Cream',
+          vertical: 'Makeup',
+          ingredient_tokens: 'lactic acid fragrance wax',
+        },
+      },
+      0,
+    );
+    const ingredientBackedPeel = _internals.normalizeCandidateProduct(
+      {
+        merchant_id: 'external_seed',
+        product_id: 'peel_salicylic_1',
+        title: 'Liquid Peelfoliant',
+        category: 'Exfoliant',
+        product_type: 'Peel',
+        external_seed_recall: {
+          retrieval_title: 'liquid peelfoliant',
+          retrieval_summary: 'daily exfoliating peel for smoother skin',
+          category: 'Exfoliant',
+          vertical: 'Skincare',
+          ingredient_tokens: 'salicylic acid enzymes',
+        },
+      },
+      0,
+    );
 
     expect(_internals.matchesQueryTextCandidate(ahaPeel, 'aha')).toBe(true);
     expect(_internals.matchesQueryTextCandidate(bhaExfoliant, 'bha')).toBe(true);
     expect(_internals.matchesQueryTextCandidate(mahamaneOil, 'aha')).toBe(false);
     expect(_internals.matchesQueryTextCandidate(kalahariLipOil, 'aha')).toBe(false);
+    expect(_internals.matchesQueryTextCandidate(ingredientOnlyLipCream, 'lactic acid')).toBe(false);
+    expect(_internals.matchesQueryTextCandidate(ingredientBackedPeel, 'bha')).toBe(true);
   });
 
   test('query text matcher removes broad beauty merch and tool noise unless explicitly requested', () => {

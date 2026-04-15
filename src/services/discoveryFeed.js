@@ -567,6 +567,32 @@ const EXACT_ACID_TEXT_QUERY_MATCH_TERMS = Object.freeze({
   aha: ['aha', 'glycolic acid', 'glycolic', 'lactic acid', 'lactic'],
   bha: ['bha', 'salicylic acid', 'salicylic'],
 });
+const EXACT_ACID_PRODUCT_INTENT_TERMS = Object.freeze([
+  'exfoliant',
+  'exfoliants',
+  'exfoliator',
+  'exfoliators',
+  'exfoliating',
+  'peel',
+  'peels',
+  'peeling',
+  'peelfoliant',
+  'toner',
+  'toners',
+  'tonic',
+  'tonics',
+  'resurfacing',
+  'treatment',
+  'treatments',
+  'serum',
+  'serums',
+  'cleanser',
+  'cleansers',
+  'body wash',
+  'acne',
+  'blemish',
+  'clarity',
+]);
 const EXPLICIT_BEAUTY_EXACT_PHRASE_STRUCTURED_RULES = Object.freeze({
   perfume: Object.freeze({
     positiveTitleTokens: ['perfume', 'parfum', 'eau de parfum'],
@@ -7408,6 +7434,8 @@ function matchesQueryTextCandidate(candidate, queryText) {
       .join(' '),
   );
   if (!candidateText) return false;
+  const exactAcidMatch = matchesExactAcidBeautyCandidate(candidate, normalizedQuery);
+  if (exactAcidMatch !== null) return exactAcidMatch;
   const queryTokens = tokenize(normalizedQuery).filter((token) => token.length >= 2);
   const isSingleShortTokenQuery = queryTokens.length === 1 && queryTokens[0].length <= 3;
   if (!isSingleShortTokenQuery && candidateText.includes(normalizedQuery)) return true;
@@ -7712,10 +7740,68 @@ function matchesExplicitExactPhraseStructuredCandidate(candidate, request, recal
   return hasAnyNormalizedClassToken(structuredText, exactPhraseHint.structuredQueryTerms);
 }
 
-function matchesExactAcidBeautyTextQuery(candidateText, normalizedQuery) {
+function buildDiscoveryCandidateAcidIntentText(candidate) {
+  const raw = candidate?.raw || {};
+  return normalizeText(
+    [
+      raw.title,
+      raw.name,
+      raw.category,
+      raw.product_type,
+      raw.productType,
+      raw.external_seed_recall?.retrieval_title,
+      raw.external_seed_recall?.category,
+      raw.external_seed_recall?.vertical,
+      candidate?.title,
+      candidate?.name,
+      candidate?.category,
+      candidate?.parentCategory,
+      candidate?.beautyBucket,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+}
+
+function buildDiscoveryCandidateAcidContextText(candidate) {
+  const raw = candidate?.raw || {};
+  return normalizeText(
+    [
+      raw.description,
+      raw.external_seed_recall?.retrieval_summary,
+      raw.external_seed_recall?.retrieval_body,
+      candidate?.description,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+}
+
+function buildDiscoveryCandidateAcidTokenText(candidate) {
+  const raw = candidate?.raw || {};
+  return normalizeText(
+    [
+      raw.external_seed_recall?.ingredient_tokens,
+      raw.external_seed_recall?.alias_tokens,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+}
+
+function matchesExactAcidBeautyCandidate(candidate, normalizedQuery) {
   const matchTerms = EXACT_ACID_TEXT_QUERY_MATCH_TERMS[normalizedQuery];
   if (!Array.isArray(matchTerms)) return null;
-  return hasAnyNormalizedClassToken(candidateText, matchTerms);
+  const intentText = buildDiscoveryCandidateAcidIntentText(candidate);
+  const contextText = buildDiscoveryCandidateAcidContextText(candidate);
+  const tokenText = buildDiscoveryCandidateAcidTokenText(candidate);
+  const productText = normalizeText([intentText, contextText].filter(Boolean).join(' '));
+  if (hasAnyNormalizedClassToken(intentText, matchTerms)) return true;
+  if (!hasAnyNormalizedClassToken(productText, EXACT_ACID_PRODUCT_INTENT_TERMS)) return false;
+  return (
+    hasAnyNormalizedClassToken(contextText, matchTerms) ||
+    hasAnyNormalizedClassToken(tokenText, matchTerms)
+  );
 }
 
 function matchesExplicitExactPhraseTextQueryCandidate(candidate, request, recallTerms = {}) {
@@ -7738,7 +7824,7 @@ function matchesExplicitExactPhraseTextQueryCandidate(candidate, request, recall
       .join(' '),
   );
   if (!candidateText) return false;
-  const exactAcidMatch = matchesExactAcidBeautyTextQuery(candidateText, normalizedQuery);
+  const exactAcidMatch = matchesExactAcidBeautyCandidate(candidate, normalizedQuery);
   if (exactAcidMatch !== null) return exactAcidMatch;
   return hasAnyNormalizedClassToken(candidateText, exactPhraseHint.textQueryTerms);
 }
