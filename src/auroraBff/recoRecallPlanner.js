@@ -601,8 +601,8 @@ function buildPrimaryTreatmentSemanticQueries(role) {
     /\b(dull|radiance|glow|brighten|brightening|uneven tone|tone correcting|discoloration)\b/.test(signalText);
   if (explicitMarkSignal) {
     semanticQueries.push(
-      'post acne marks serum',
       'dark spot serum',
+      'post acne marks serum',
       'tone correcting serum',
       'brightening serum',
     );
