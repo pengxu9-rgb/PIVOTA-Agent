@@ -518,6 +518,16 @@ function buildPublishedIntelKbKeys(product, canonicalProductRef = null) {
 
   push(`product:${firstNonEmptyString(canonicalProductRef?.product_id, product.product_id, product.id)}`);
   push(`product:${firstNonEmptyString(product.platform_product_id, product.platformProductId, product.shopify_id)}`);
+  const productLineOptions = Array.isArray(product.product_line_options)
+    ? product.product_line_options
+    : Array.isArray(product.productLineOptions)
+      ? product.productLineOptions
+      : [];
+  for (const option of productLineOptions) {
+    const optionProductId = firstNonEmptyString(option?.product_id, option?.productId, option?.id);
+    if (!optionProductId) continue;
+    push(`product:${optionProductId}`);
+  }
 
   const urls = [
     product.product_url,

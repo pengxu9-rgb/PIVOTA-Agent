@@ -461,4 +461,137 @@ describe('get_pdp_v2 identity graph live read', () => {
       }),
     );
   });
+
+  test('keeps identity graph live when product intel is not yet published for the selected line item', async () => {
+    const { app, db } = loadServerWithDb({
+      PDP_IDENTITY_GRAPH_BRAND_ALLOWLIST: 'Beauty of Joseon',
+    });
+
+    const dn310Listing = {
+      source_listing_ref: 'external_seed:ext_boj_dn310',
+      merchant_id: 'external_seed',
+      product_id: 'ext_boj_dn310',
+      source_kind: 'external_seed',
+      source_tier: 'brand',
+      live_read_enabled: true,
+      sellable_item_group_id: 'sig_boj_dn310',
+      product_line_id: 'pl_boj_daily_tinted_spf',
+      review_family_id: 'rf_boj_daily_tinted_spf',
+      identity_status: 'approved',
+      identity_confidence: 0.93,
+      match_basis: ['official_url:https://beautyofjoseon.com/products/daily-tinted-fluid-sunscreen-dn310'],
+      strong_identity: {},
+      soft_identity: {},
+      variant_axes: { shade: 'dn310', multi_variant: true },
+      brand_norm: 'beauty of joseon',
+      source_payload: {
+        product_id: 'ext_boj_dn310',
+        merchant_id: 'external_seed',
+        title: 'Daily Tinted Fluid Sunscreen DN310',
+        brand: 'Beauty of Joseon',
+        source_url: 'https://beautyofjoseon.com/products/daily-tinted-fluid-sunscreen-dn310',
+        images: [{ url: 'https://cdn.example.com/boj-dn310-main.jpg' }],
+      },
+    };
+    const dn350Listing = {
+      source_listing_ref: 'external_seed:ext_boj_dn350',
+      merchant_id: 'external_seed',
+      product_id: 'ext_boj_dn350',
+      source_kind: 'external_seed',
+      source_tier: 'brand',
+      live_read_enabled: true,
+      sellable_item_group_id: 'sig_boj_dn350',
+      product_line_id: 'pl_boj_daily_tinted_spf',
+      review_family_id: 'rf_boj_daily_tinted_spf',
+      identity_status: 'approved',
+      identity_confidence: 0.92,
+      match_basis: ['official_url:https://beautyofjoseon.com/products/daily-tinted-fluid-sunscreen-dn350'],
+      strong_identity: {},
+      soft_identity: {},
+      variant_axes: { shade: 'dn350', multi_variant: true },
+      brand_norm: 'beauty of joseon',
+      source_payload: {
+        product_id: 'ext_boj_dn350',
+        merchant_id: 'external_seed',
+        title: 'Daily Tinted Fluid Sunscreen DN350',
+        brand: 'Beauty of Joseon',
+        source_url: 'https://beautyofjoseon.com/products/daily-tinted-fluid-sunscreen-dn350',
+        images: [{ url: 'https://cdn.example.com/boj-dn350-main.jpg' }],
+      },
+    };
+
+    db.query.mockImplementation(async (sql) => {
+      const normalizedSql = String(sql || '').replace(/\s+/g, ' ').trim();
+      if (normalizedSql.includes('FROM pdp_identity_listing') && normalizedSql.includes('merchant_id = $1')) {
+        return { rows: [dn310Listing] };
+      }
+      if (normalizedSql.includes('FROM pdp_identity_listing') && normalizedSql.includes('sellable_item_group_id = $1')) {
+        return { rows: [dn310Listing] };
+      }
+      if (normalizedSql.includes('FROM pdp_identity_listing') && normalizedSql.includes('product_line_id = $1')) {
+        return { rows: [dn310Listing, dn350Listing] };
+      }
+      if (normalizedSql.includes('FROM aurora_product_intel_kb')) {
+        return { rows: [] };
+      }
+      return { rows: [] };
+    });
+
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/products/external_seed/ext_boj_dn310')
+      .times(3)
+      .reply(200, {
+        product: {
+          merchant_id: 'external_seed',
+          product_id: 'ext_boj_dn310',
+          source: 'external_seed',
+          title: 'Daily Tinted Fluid Sunscreen DN310',
+          brand: 'Beauty of Joseon',
+          image_url: 'https://cdn.example.com/boj-dn310-upstream.jpg',
+          platform: 'external',
+          platform_product_id: 'ext_boj_dn310',
+        },
+      });
+
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/product-groups/resolve-by-product-id')
+      .query((query) => query && query.product_id === 'ext_boj_dn310')
+      .reply(404, { error: 'PRODUCT_GROUP_NOT_FOUND' });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'get_pdp_v2',
+        payload: {
+          include: ['offers', 'variant_selector', 'product_intel'],
+          product_ref: {
+            merchant_id: 'external_seed',
+            product_id: 'ext_boj_dn310',
+          },
+        },
+      })
+      .expect(200);
+
+    const canonicalModule = res.body.modules.find((module) => module.type === 'canonical');
+    const variantSelectorModule = canonicalModule?.data?.pdp_payload?.modules?.find(
+      (module) => module.type === 'variant_selector',
+    );
+
+    expect(res.body.metadata.identity_resolution).toEqual(
+      expect.objectContaining({
+        resolution_source: 'identity_graph_live',
+      }),
+    );
+    expect(canonicalModule?.data).toEqual(
+      expect.objectContaining({
+        canonical_scope: 'synthetic',
+        product_line_id: 'pl_boj_daily_tinted_spf',
+      }),
+    );
+    expect(canonicalModule?.data?.pdp_payload?.product?.product_line_options).toEqual([
+      expect.objectContaining({ label: 'DN310', product_id: 'ext_boj_dn310', selected: true }),
+      expect.objectContaining({ label: 'DN350', product_id: 'ext_boj_dn350', selected: false }),
+    ]);
+    expect(variantSelectorModule?.data?.product_line_options).toHaveLength(2);
+  });
 });

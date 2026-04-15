@@ -20587,11 +20587,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           }).catch(() => null);
 	        markPdpV2Phase('identity_graph_product_intel_gate', identityGraphIntelGateStartedAt);
 	      }
-	      if (identityGraphLive?.synthetic_product && identityGraphPublishedIntel) {
-	        canonicalProductForPdp = identityGraphLive.synthetic_product;
-	        if (identityGraphLive.canonical_product_ref) {
-	          canonicalProductRef = {
-              ...canonicalProductRef,
+		      if (identityGraphLive?.synthetic_product) {
+		        canonicalProductForPdp = identityGraphLive.synthetic_product;
+		        if (identityGraphLive.canonical_product_ref) {
+		          canonicalProductRef = {
+	              ...canonicalProductRef,
               ...identityGraphLive.canonical_product_ref,
             };
 	        }
