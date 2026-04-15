@@ -188,7 +188,7 @@ function buildRecommendationComparisonMode({ row, defaultComparisonMode = '', pe
 
 const RECOMMENDATION_CARD_CONCERN_FAMILY_PATTERNS = Object.freeze([
   ['oil_control', /\b(oil|oily|oiliness|shine|sebum|greasy|mattif|zinc\s*pca|zinc|oil[-\s]?control)\b/i],
-  ['tone_brightening', /\b(dull(?:ness)?|uneven\s+tone|dark\s+spots?|hyperpigmentation|brighten(?:ing)?|radiance|radiant|glow(?:ing)?|improv(?:e|es|ing)\s+(?:the\s+look\s+of\s+)?skin\s+tone|even(?:s|ing)?\s+skin\s+tone)\b/i],
+  ['tone_brightening', /\b(dull(?:ness)?|uneven\s+tone|dark\s+spots?|hyperpigmentation|post[-\s]?(?:acne|breakout)\s+marks?|brighten(?:ing)?|radiance|radiant|glow(?:ing)?|improv(?:e|es|ing)\s+(?:the\s+look\s+of\s+)?skin\s+tone|even(?:s|ing)?\s+skin\s+tone)\b/i],
   ['acne_pore', /\b(acne|breakouts?|blemish(?:es)?|clog(?:ged)?|pores?)\b/i],
   ['hydration_barrier', /\b(hydrat(?:e|ing|ion)?|moistur(?:e|ize|izer|izing)?|barrier|dry(?:ness)?|dehydrat(?:ed|ion)?|ceramides?|glycerin|hyaluronic)\b/i],
   ['sunscreen_uv', /\b(spf|sunscreen|sun\s*screen|uv|sun\s+protection|white\s+cast|broad\s+spectrum)\b/i],
@@ -227,9 +227,16 @@ function scoreRecommendationCardCopyForTarget(value, { targetText = '', original
   if (!text) return Number.NEGATIVE_INFINITY;
   const targetFamilies = collectRecommendationCardConcernFamilies(targetText);
   const copyFamilies = collectRecommendationCardConcernFamilies(text);
+  const postAcneMarkToneEvidence =
+    targetFamilies.has('tone_brightening') &&
+    /\bpost[-\s]?(?:acne|breakout)\s+marks?\b/i.test(text);
   let score = 100 - (Number.isFinite(Number(originalIndex)) ? Number(originalIndex) * 0.01 : 0);
   if (!targetFamilies.size || !copyFamilies.size) return score;
   for (const family of copyFamilies) {
+    if (family === 'acne_pore' && postAcneMarkToneEvidence) {
+      score += 12;
+      continue;
+    }
     score += targetFamilies.has(family) ? 24 : -34;
   }
   if (copyFamilies.has('tone_brightening') && !targetFamilies.has('tone_brightening')) score -= 28;

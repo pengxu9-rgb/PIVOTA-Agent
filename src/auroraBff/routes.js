@@ -52542,7 +52542,7 @@ function buildRecoAssistantPromptPriceDiagnostics(items = []) {
 
 const RECO_ASSISTANT_CONCERN_FAMILY_PATTERNS = Object.freeze([
   ['oil_control', /\b(oil|oily|oiliness|shine|sebum|greasy|mattif|zinc\s*pca|zinc)\b/i],
-  ['tone_brightening', /\b(tone_mark_treatment|post[-\s]?breakout\s+marks?|dull(?:ness)?|uneven\s+tone|dark\s+spots?|hyperpigmentation|brighten(?:ing)?|radiance|radiant|glow(?:ing)?|improv(?:e|es|ing)\s+(?:the\s+look\s+of\s+)?skin\s+tone|even(?:s|ing)?\s+skin\s+tone)\b/i],
+  ['tone_brightening', /\b(tone_mark_treatment|post[-\s]?(?:acne|breakout)\s+marks?|dull(?:ness)?|uneven\s+tone|dark\s+spots?|hyperpigmentation|brighten(?:ing)?|radiance|radiant|glow(?:ing)?|improv(?:e|es|ing)\s+(?:the\s+look\s+of\s+)?skin\s+tone|even(?:s|ing)?\s+skin\s+tone)\b/i],
   ['acne_pore', /\b(acne|breakouts?|blemish(?:es)?|clog(?:ged)?|pores?)\b/i],
   ['hydration_barrier', /\b(hydrat(?:e|ing|ion)?|moistur(?:e|ize|izer|izing)?|barrier|dry(?:ness)?|dehydrat(?:ed|ion)?|ceramides?|glycerin|hyaluronic)\b/i],
   ['sunscreen_uv', /\b(spf|sunscreen|sun\s*screen|uv|sun\s+protection|white\s+cast|broad\s+spectrum)\b/i],
@@ -52586,13 +52586,16 @@ function scoreRecoAssistantEvidenceForTarget(value, {
   const targetFamilies = collectRecoAssistantConcernFamilies(targetText);
   const evidenceFamilies = collectRecoAssistantConcernFamilies(text);
   const weakReasonFragment = isRecoAssistantWeakReasonFragment(text);
+  const postAcneMarkToneEvidence =
+    targetFamilies.has('tone_brightening') &&
+    /\bpost[-\s]?(?:acne|breakout)\s+marks?\b/i.test(text);
   let score = 100 - (Number.isFinite(Number(originalIndex)) ? Number(originalIndex) * 0.01 : 0);
   if (weakReasonFragment) score -= 52;
   if (evidenceFamilies.size > 0 && targetFamilies.size > 0) {
     let aligned = 0;
     let offTarget = 0;
     for (const family of evidenceFamilies) {
-      if (targetFamilies.has(family)) aligned += 1;
+      if (targetFamilies.has(family) || (family === 'acne_pore' && postAcneMarkToneEvidence)) aligned += 1;
       else offTarget += 1;
     }
     score += aligned * 24;
