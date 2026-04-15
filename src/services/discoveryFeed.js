@@ -4554,6 +4554,13 @@ function shouldUseExactPhraseTextUnionSeedStage(request, recallTerms = {}) {
   return Boolean(resolveExplicitExactBeautyPhraseHint(request, recallTerms));
 }
 
+function shouldUseExplicitExactIntentExternalSeedMainline(request, recallTerms = {}) {
+  if (!isExplicitQueryScopedBrowseRequest(request)) return false;
+  if (recallTerms?.compoundIntent) return true;
+  if (shouldSkipBroadStructuredSeedStagesForExplicitQuery(request, recallTerms)) return true;
+  return Boolean(resolveExplicitExactBeautyPhraseHint(request, recallTerms));
+}
+
 function buildExactPhraseTextUnionSeedStageSql({
   stageBind,
   selectSql,
@@ -5846,7 +5853,9 @@ function resolvePublicBrowseUnderfilledReason(request, selectedCount = 0) {
   if (resolvedCount <= 0) return null;
   const requestedLimit = Math.max(1, Number(request?.limit || 0) || 12);
   if (resolvedCount >= requestedLimit) return null;
-  return resolveExplicitBeautyCompoundIntent(request?.query?.text)
+  return shouldUseExplicitExactIntentExternalSeedMainline(request, {
+    compoundIntent: resolveExplicitBeautyCompoundIntent(request?.query?.text),
+  })
     ? 'public_search_underfilled_exact_intent'
     : 'public_search_underfilled_unified_relevance';
 }
@@ -5934,6 +5943,14 @@ async function loadCatalogCandidates({
   const compoundIntent = explicitQueryScoped
     ? resolveExplicitBeautyCompoundIntent(request?.query?.text)
     : null;
+  const explicitNarrowQueryMainline = shouldSkipBroadStructuredSeedStagesForExplicitQuery(request, {
+    compoundIntent,
+  });
+  const explicitExactPhraseQueryMainline = Boolean(
+    resolveExplicitExactBeautyPhraseHint(request, {
+      compoundIntent,
+    }),
+  );
 
   const mergeProducts = (products = []) => {
     for (const product of Array.isArray(products) ? products : []) {
@@ -6416,14 +6433,11 @@ async function loadCatalogCandidates({
   const externalSkipReason = useBeautyInterestMainline
     ? 'beauty_interest_mainline_primary_used'
     : 'sufficient_primary_candidates';
-  const explicitNarrowQueryMainline = shouldSkipBroadStructuredSeedStagesForExplicitQuery(request, {
-    compoundIntent,
-  });
 
   if (explicitQueryScoped) {
     if (compoundIntent) {
       await fetchExternalSeedProviderResult();
-    } else if (explicitNarrowQueryMainline) {
+    } else if (explicitNarrowQueryMainline || explicitExactPhraseQueryMainline) {
       await fetchExternalSeedProviderResult();
     } else {
       await fetchExternalSeedProviderResult();
@@ -6468,6 +6482,21 @@ async function loadCatalogCandidates({
         }),
       );
       pushSkippedInternalProviderResult('explicit_narrow_external_seed_mainline');
+      return finalizeProviderResult();
+    }
+
+    if (explicitExactPhraseQueryMainline && mergedProducts.length > 0) {
+      candidateSource = 'external_seed_exact_intent';
+      primaryPathUsed = 'external_seed_exact_intent';
+      providerResults.push(
+        buildSkippedProviderResult('products_search', {
+          label: getProviderLabel('products_search'),
+          query: providerQueries.join(' | '),
+          limit: safeLimit,
+          skipReason: 'explicit_exact_intent_external_seed_mainline',
+        }),
+      );
+      pushSkippedInternalProviderResult('explicit_exact_intent_external_seed_mainline');
       return finalizeProviderResult();
     }
 
