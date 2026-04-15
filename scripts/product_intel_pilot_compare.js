@@ -363,7 +363,7 @@ function inferProductKindFromContext(context) {
   if (/\b(cleanser|cleansing|face wash|wash)\b/.test(text)) return 'cleanser';
   if (/\b(sunscreen|spf|uv)\b/.test(text)) return 'sunscreen';
   if (/\b(toner|toning water|skin prep)\b/.test(text)) return 'toner';
-  if (/\b(moisturizer|moisturising|moisturizing|cream|gel-cream|lotion)\b/.test(text)) return 'moisturizer';
+  if (/\b(moisturizer|moisturising|moisturizing|cream|gel-cream|lotion|body cream|barrier butter|body butter|butta drop)\b/.test(text)) return 'moisturizer';
   if (/\b(serum|ampoule|treatment|essence)\b/.test(text)) return 'serum';
   return 'product';
 }
@@ -1129,16 +1129,21 @@ function hasIngredientSignal(context, patterns) {
 }
 
 function buildFormulaSignals(context) {
+  const kind = inferProductKindFromContext(context);
   const signals = [];
   const add = (key, label, role) => {
     if (signals.some((item) => item.key === key)) return;
     signals.push({ key, label, role });
   };
 
-  if (hasIngredientSignal(context, [/\bzinc oxide\b/, /\btitanium dioxide\b/])) {
+  if (
+    (kind === 'sunscreen' || kind === 'tinted_sunscreen') &&
+    hasIngredientSignal(context, [/\bzinc oxide\b/, /\btitanium dioxide\b/])
+  ) {
     add('mineral_uv_filters', 'zinc oxide mineral UV filters', 'UV protection');
   }
   if (
+    (kind === 'sunscreen' || kind === 'tinted_sunscreen') &&
     hasIngredientSignal(context, [
       /\bdiethylamino hydroxybenzoyl hexyl benzoate\b/,
       /\bbis-ethylhexyloxyphenol methoxyphenyl triazine\b/,
@@ -1243,10 +1248,10 @@ function buildHumanStandardBodyFromFacts(context, kind, formulaSignals) {
     return `A daily cleanser${withFormula} for removing daily buildup while keeping the cleanse comfortable.`;
   }
   if (kind === 'complexion_makeup') {
-    return `A complexion product${withFormula} for coverage, finish control, and tone-evening wear.`;
+    return `A complexion product${withFormula} for coverage, finish control, shade matching, and tone-evening wear.`;
   }
   return formulaPhrase
-    ? `A ${asString(context.category).toLowerCase() || 'product'} built around ${formulaPhrase}.`
+    ? `A ${asString(context.category).toLowerCase() && asString(context.category).toLowerCase() !== 'external' ? asString(context.category).toLowerCase() : 'beauty product'} built around ${formulaPhrase}.`
     : 'A product-level insight grounded in the available listing facts.';
 }
 
@@ -1444,14 +1449,16 @@ function buildHumanStandardHighlights(context) {
     return highlights.slice(0, 2);
   }
   if (kind === 'complexion_makeup') {
-    return [
+    highlights.push(
       highlight(
-        text.includes('matte') ? 'Soft-matte finish' : 'Coverage and finish focus',
+        text.includes('matte') ? 'Soft-matte coverage fit' : 'Coverage and finish fit',
         text.includes('spf')
           ? 'Combines complexion coverage with SPF-positioned daytime wear for routines that need both coverage and sun-care cues.'
-          : 'Anchors the product in coverage, finish, and shade-use context for complexion makeup routines.',
+          : 'Keeps the evaluation on coverage level, finish, and shade match, which are the decision points for complexion makeup.',
       ),
-    ];
+    );
+    addReviewHighlight();
+    return highlights.slice(0, 2);
   }
   if (kind === 'moisturizer') {
     highlights.push(
@@ -1504,14 +1511,16 @@ function buildHumanStandardHighlights(context) {
     ];
   }
   if (kind === 'cleanser') {
-    return [
+    highlights.push(
       highlight(
         formulaPhrase ? 'Comfort-cleanse formula cues' : 'Daily buildup removal',
         formulaPhrase
           ? `Uses ${formulaPhrase} cues in a cleanser step, so the insight stays grounded in formula facts rather than generic gentle-cleanser copy.`
           : 'Focuses on removing daily buildup before treatment and moisturizer without overstating treatment benefits.',
       ),
-    ];
+    );
+    addReviewHighlight();
+    return highlights.slice(0, 2);
   }
   if (formulaPhrase) {
     highlights.push(

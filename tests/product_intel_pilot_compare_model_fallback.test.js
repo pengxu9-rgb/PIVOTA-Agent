@@ -485,4 +485,159 @@ describe('product_intel_pilot_compare gemini fallback', () => {
     expect(JSON.stringify(result.output.product_intel_core.why_it_stands_out)).toMatch(/4\.5★ average across 2\.1k buyer reviews/);
     expect(JSON.stringify(result.output.product_intel_core.why_it_stands_out)).not.toMatch(/Daytime UV step|Anchors the product/i);
   });
+
+  test('human-standard rewrite infers moisturizer for external-category barrier butter and keeps review signal', async () => {
+    process.env.GEMINI_API_KEY = 'fake-key';
+    const weakGeminiResponse = {
+      data: {
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  text: '{"product_intel_core":{"what_it_is":{"headline":"Product","body":"A external product."},"best_for":[{"tag":"daily","label":"Daily Use"}],"why_it_stands_out":[{"headline":"Listing-grounded use","body":"Defines the product around the title."}],"watchouts":[],"routine_fit":{"step":"moisturizer","pairing_notes":["Use daily."],"am_pm":["am","pm"]}}}',
+                },
+              ],
+            },
+          },
+        ],
+      },
+    };
+
+    jest.spyOn(axios, 'post').mockResolvedValue(weakGeminiResponse);
+
+    const result = await runGeminiDraft(
+      {
+        case_id: 'rhode-barrier-butter-human-rewrite',
+        product: {
+          title: 'barrier butter',
+          brand: 'rhode',
+          category: 'external',
+          description: 'A rich barrier-supportive moisturizer for dry-feeling skin.',
+          ingredients_inci: [
+            'Panthenol',
+            'Bisabolol',
+            'Ceramide NP',
+            'Glycerin',
+          ],
+          review_summary: {
+            rating: 4.7,
+            review_count: 1899,
+          },
+        },
+      },
+      {
+        evidence_profile: 'community_supported',
+        product_intel_core: {
+          what_it_is: {
+            headline: 'Product',
+            body: 'A external product.',
+          },
+          best_for: [{ tag: 'daily', label: 'Daily Use', confidence: 'low' }],
+          why_it_stands_out: [
+            {
+              headline: 'Listing-grounded use',
+              body: 'Defines the product around the title.',
+              evidence_strength: 'limited',
+            },
+          ],
+          routine_fit: {
+            step: 'moisturizer',
+            am_pm: ['am', 'pm'],
+            pairing_notes: ['Apply after treatment steps.'],
+          },
+          watchouts: [],
+        },
+        community_signals: {
+          status: 'available',
+          top_loves: ['4.7★ average across 1.9k buyer reviews.'],
+        },
+      },
+      'gemini-3-flash-preview',
+    );
+
+    expect(result.model_used).toBe('deterministic-human-standard-rewrite');
+    expect(result.output.product_intel_core.what_it_is.headline).toBe('Daily moisturizer');
+    expect(result.output.product_intel_core.what_it_is.body).not.toMatch(/\bA external\b/i);
+    expect(result.output.product_intel_core.why_it_stands_out.map((item) => item.headline)).toContain('Barrier-focused hydration');
+    expect(JSON.stringify(result.output.product_intel_core.why_it_stands_out)).toMatch(/4\.7★ average across 1\.9k buyer reviews/);
+  });
+
+  test('human-standard rewrite does not treat complexion titanium dioxide as SPF evidence', async () => {
+    process.env.GEMINI_API_KEY = 'fake-key';
+    const weakGeminiResponse = {
+      data: {
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  text: '{"product_intel_core":{"what_it_is":{"headline":"Complexion makeup","body":"A concealer with titanium dioxide."},"best_for":[{"tag":"daily","label":"Daily Use"}],"why_it_stands_out":[{"headline":"Formula angle","body":"Built around titanium dioxide as key formula ingredients."}],"watchouts":[],"routine_fit":{"step":"makeup","pairing_notes":["Use on skin."],"am_pm":["am"]}}}',
+                },
+              ],
+            },
+          },
+        ],
+      },
+    };
+
+    jest.spyOn(axios, 'post').mockResolvedValue(weakGeminiResponse);
+
+    const result = await runGeminiDraft(
+      {
+        case_id: 'fenty-concealer-human-rewrite',
+        product: {
+          title: "Pro Filt'r Instant Retouch Concealer — #380",
+          brand: 'fenty beauty',
+          category: 'Concealer',
+          description: 'A soft-matte concealer for coverage, finish control, and shade matching.',
+          ingredients_inci: [
+            'Titanium Dioxide',
+            'Panthenol',
+            'Glycerin',
+            'Propanediol',
+          ],
+          review_summary: {
+            rating: 4.5,
+            review_count: 1774,
+          },
+        },
+      },
+      {
+        evidence_profile: 'community_supported',
+        product_intel_core: {
+          what_it_is: {
+            headline: 'Complexion makeup',
+            body: 'A concealer with titanium dioxide.',
+          },
+          best_for: [{ tag: 'coverage', label: 'Coverage-focused makeup routines', confidence: 'moderate' }],
+          why_it_stands_out: [
+            {
+              headline: 'Formula angle',
+              body: 'Built around titanium dioxide as key formula ingredients.',
+              evidence_strength: 'limited',
+            },
+          ],
+          routine_fit: {
+            step: 'makeup',
+            am_pm: ['am'],
+            pairing_notes: ['Apply in the complexion makeup step.'],
+          },
+          watchouts: [],
+        },
+        community_signals: {
+          status: 'available',
+          top_loves: ['4.5★ average across 1.8k buyer reviews.'],
+        },
+      },
+      'gemini-3-flash-preview',
+    );
+
+    expect(result.model_used).toBe('deterministic-human-standard-rewrite');
+    const narrative = JSON.stringify(result.output.product_intel_core);
+    expect(narrative).toMatch(/coverage level, finish, and shade match/i);
+    expect(narrative).toMatch(/4\.5★ average across 1\.8k buyer reviews/);
+    expect(narrative).not.toMatch(/UV-filter|SPF|sun protection/i);
+    expect(narrative).not.toMatch(/Formula angle|Built around titanium dioxide/i);
+  });
 });
