@@ -8303,9 +8303,14 @@ function buildLocalExternalSeedSupportCombinedQuery({
       whereSql: `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${patternBind}::text[])`,
     });
     addStage({
-      stage: 'support_raw_title',
-      score: 46,
-      whereSql: `lower(coalesce(title, '')) LIKE ANY(${patternBind}::text[])`,
+      stage: 'support_alias_tokens',
+      score: 44,
+      whereSql: `${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY(${patternBind}::text[])`,
+    });
+    addStage({
+      stage: 'support_recall_summary',
+      score: 40,
+      whereSql: `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${patternBind}::text[])`,
     });
   }
 
@@ -8427,6 +8432,9 @@ function buildLocalExternalSeedSearchPatterns(query, {
 } = {}) {
   const raw = String(query || '').trim().toLowerCase().replace(/\s+/g, ' ');
   const supportLeanSearch = shouldUseLeanLocalExternalSeedPatternPack({ role, preferredStep });
+  if (supportLeanSearch) {
+    return raw.length >= 3 ? [`%${raw}%`] : [];
+  }
   const tokens = tokenizeSurfacingSearchText(query, { max: 10, dropStopwords: true }).length > 0
     ? tokenizeSurfacingSearchText(query, { max: 10, dropStopwords: true })
     : tokenizeSurfacingSearchText(query, { max: 10, dropStopwords: false });
