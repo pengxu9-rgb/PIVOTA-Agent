@@ -20509,6 +20509,24 @@ function capBeautyQueryTimeoutForRoutineSupportBudget(level, { reason = '' } = {
   };
 }
 
+function capBeautyPrimaryExternalLevelForRoutineSupportBudget(level) {
+  const levelObj = capBeautyQueryTimeoutForRoutineSupportBudget(level, {
+    reason: 'primary_external_preserve_routine_support_budget',
+  });
+  const queries = Array.isArray(levelObj?.queries) ? levelObj.queries : [];
+  if (!levelObj || queries.length <= 2) return levelObj;
+  return {
+    ...levelObj,
+    primary_external_query_cap_applied: true,
+    primary_external_original_query_count: queries.length,
+    queries: queries.slice(0, 2).map((query) => ({
+      ...query,
+      primary_external_query_cap_applied: true,
+      primary_external_original_query_count: queries.length,
+    })),
+  };
+}
+
 function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
   const levels = Array.isArray(queryLevels)
     ? queryLevels.filter((level) => level && typeof level === 'object' && !Array.isArray(level))
@@ -20527,6 +20545,9 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
   let shouldCapRoutineExternalTimeout = false;
   let routineSupportBudgetTimeoutCapMs = 0;
   let primaryExternalTimeoutCapApplied = false;
+  let primaryExternalQueryCapApplied = false;
+  let primaryExternalOriginalQueryCount = 0;
+  let primaryExternalExecutedQueryCount = 0;
   let supportExternalTimeoutCapApplied = false;
   for (const level of levels) {
     const queries = Array.isArray(level?.queries) ? level.queries : [];
@@ -20626,15 +20647,23 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
       keptLevels[primaryInternalInsertIndex] =
         capBeautyPrimaryInternalLevelForRoutineSupportBudget(primaryInternalLevel);
     }
-    if (primaryExternalLevel) {
+    const primaryExternalRoundQueries = [];
+    if (primaryExternalLevel && shouldCapRoutineExternalTimeout) {
+      const cappedPrimaryExternalLevel = capBeautyPrimaryExternalLevelForRoutineSupportBudget(primaryExternalLevel);
+      const cappedQueries = Array.isArray(cappedPrimaryExternalLevel?.queries)
+        ? cappedPrimaryExternalLevel.queries
+        : [];
+      primaryExternalRoundQueries.push(...cappedQueries);
+      primaryExternalTimeoutCapApplied = true;
+      primaryExternalOriginalQueryCount = Array.isArray(primaryExternalLevel?.queries)
+        ? primaryExternalLevel.queries.length
+        : 0;
+      primaryExternalExecutedQueryCount = cappedQueries.length;
+      primaryExternalQueryCapApplied = primaryExternalOriginalQueryCount > cappedQueries.length;
+    } else if (primaryExternalLevel) {
       keptLevels.push(
-        shouldCapRoutineExternalTimeout
-          ? capBeautyQueryTimeoutForRoutineSupportBudget(primaryExternalLevel, {
-              reason: 'primary_external_preserve_routine_support_budget',
-            })
-          : primaryExternalLevel,
+        primaryExternalLevel,
       );
-      primaryExternalTimeoutCapApplied = shouldCapRoutineExternalTimeout;
     }
     const maxSupportInternalQueryCount = supportInternalGroups.reduce((max, group) => {
       const queries = Array.isArray(group?.internalLevel?.queries) ? group.internalLevel.queries : [];
@@ -20652,30 +20681,19 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
     for (const group of supportExternalGroups) {
       executedSupportExternalSeedLevels.push(group.externalLabel);
     }
-    const maxSupportRoundCount = Math.max(maxSupportInternalQueryCount, maxSupportExternalQueryCount);
+    const maxExternalRoundCount = Math.max(maxSupportExternalQueryCount, primaryExternalRoundQueries.length);
+    const maxSupportRoundCount = Math.max(maxSupportInternalQueryCount, maxExternalRoundCount);
     for (let queryIndex = 0; queryIndex < maxSupportRoundCount; queryIndex += 1) {
-      const internalRoundQueries = [];
-      const internalSourceLevels = [];
-      for (const group of supportInternalGroups) {
-        const roundLevel = cloneBeautySupportInternalRoundLevel(group.internalLevel, queryIndex, queryIndex);
-        const query = Array.isArray(roundLevel?.queries) ? roundLevel.queries[0] : null;
-        if (!query) continue;
-        internalRoundQueries.push(query);
-        if (roundLevel?.fair_support_internal_source_level) {
-          internalSourceLevels.push(roundLevel.fair_support_internal_source_level);
-        }
-      }
-      if (internalRoundQueries.length) {
-        keptLevels.push({
-          ladder_level: `framework_stage_c_support_internal_round_${queryIndex + 1}`,
-          fair_support_internal_round: queryIndex + 1,
-          fair_support_internal_source_levels: internalSourceLevels,
-          queries: internalRoundQueries,
-        });
-      }
-
       const externalRoundQueries = [];
       const externalSourceLevels = [];
+      const primaryExternalQuery = primaryExternalRoundQueries[queryIndex] || null;
+      if (primaryExternalQuery) {
+        externalRoundQueries.push({
+          ...primaryExternalQuery,
+          fair_primary_external_round: queryIndex + 1,
+        });
+        externalSourceLevels.push('framework_stage_b_primary_external_seed');
+      }
       for (const group of supportExternalGroups) {
         const roundLevel = cloneBeautySupportExternalRoundLevel(
           shouldCapRoutineExternalTimeout
@@ -20696,10 +20714,31 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
       }
       if (externalRoundQueries.length) {
         keptLevels.push({
-          ladder_level: `framework_stage_c_support_external_seed_round_${queryIndex + 1}`,
+          ladder_level: `framework_stage_external_seed_round_${queryIndex + 1}`,
+          fair_primary_external_round: primaryExternalQuery ? queryIndex + 1 : null,
           fair_support_external_round: queryIndex + 1,
           fair_support_external_source_levels: externalSourceLevels,
           queries: externalRoundQueries,
+        });
+      }
+
+      const internalRoundQueries = [];
+      const internalSourceLevels = [];
+      for (const group of supportInternalGroups) {
+        const roundLevel = cloneBeautySupportInternalRoundLevel(group.internalLevel, queryIndex, queryIndex);
+        const query = Array.isArray(roundLevel?.queries) ? roundLevel.queries[0] : null;
+        if (!query) continue;
+        internalRoundQueries.push(query);
+        if (roundLevel?.fair_support_internal_source_level) {
+          internalSourceLevels.push(roundLevel.fair_support_internal_source_level);
+        }
+      }
+      if (internalRoundQueries.length) {
+        keptLevels.push({
+          ladder_level: `framework_stage_c_support_internal_round_${queryIndex + 1}`,
+          fair_support_internal_round: queryIndex + 1,
+          fair_support_internal_source_levels: internalSourceLevels,
+          queries: internalRoundQueries,
         });
       }
     }
@@ -20747,6 +20786,9 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
               ? {
                   routine_support_budget_timeout_cap_ms: routineSupportBudgetTimeoutCapMs,
                   primary_external_timeout_cap_applied: primaryExternalTimeoutCapApplied,
+                  primary_external_query_cap_applied: primaryExternalQueryCapApplied,
+                  primary_external_original_query_count: primaryExternalOriginalQueryCount,
+                  primary_external_executed_query_count: primaryExternalExecutedQueryCount,
                   support_external_timeout_cap_applied: supportExternalTimeoutCapApplied,
                 }
               : {}),
@@ -22114,6 +22156,26 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
 function shouldSkipFrameworkPrimaryExternalSeedLevel(level, candidateState = null, { targetContext = null } = {}) {
   const levelId = String(level?.ladder_level || level?.stage_id || '').trim().toLowerCase();
   if (levelId !== 'framework_stage_b_primary_external_seed') return false;
+  return shouldSkipFrameworkPrimaryExternalSeedQuery(
+    Array.isArray(level?.queries) ? level.queries[0] : null,
+    candidateState,
+    { targetContext, forcePrimaryStage: true },
+  );
+}
+
+function shouldSkipFrameworkPrimaryExternalSeedQuery(
+  queryEntry,
+  candidateState = null,
+  { targetContext = null, forcePrimaryStage = false } = {},
+) {
+  const levelId = String(queryEntry?.ladder_level || queryEntry?.stage_id || '').trim().toLowerCase();
+  if (!forcePrimaryStage && levelId !== 'framework_stage_b_primary_external_seed') return false;
+  const allowExternalSeed = queryEntry?.allow_external_seed === true
+    || String(queryEntry?.source_scope || '').trim().toLowerCase() === 'external_seed';
+  if (!allowExternalSeed && !forcePrimaryStage) return false;
+  const primaryRoleId = String(targetContext?.primary_role_id || '').trim().toLowerCase();
+  const queryRoleId = String(queryEntry?.role_id || '').trim().toLowerCase();
+  if (primaryRoleId && queryRoleId && queryRoleId !== primaryRoleId) return false;
   if (!isPlainObject(candidateState) || candidateState.primary_role_matched !== true) return false;
   const selectedCount = Number.isFinite(Number(candidateState?.selected_candidate_count))
     ? Math.max(0, Math.trunc(Number(candidateState.selected_candidate_count)))
@@ -22569,7 +22631,10 @@ async function collectRecoCandidatesFromQueryLevels({
     }
     const runnableQueries = [];
     for (const queryEntry of queries) {
-      if (shouldSkipFrameworkSupportRoleQuery(queryEntry, candidateState)) {
+      const queryPrimaryExternalSkip = shouldSkipFrameworkPrimaryExternalSeedQuery(queryEntry, candidateState, {
+        targetContext,
+      });
+      if (queryPrimaryExternalSkip || shouldSkipFrameworkSupportRoleQuery(queryEntry, candidateState)) {
         const queryAllowExternalSeed =
           allowExternalSeed === true
           && queryEntry?.allow_external_seed === true;
@@ -22587,7 +22652,7 @@ async function collectRecoCandidatesFromQueryLevels({
             : 'on_empty_only',
           ok: false,
           products: [],
-          reason: 'skipped_support_role_already_satisfied',
+          reason: queryPrimaryExternalSkip ? 'skipped_primary_already_satisfied' : 'skipped_support_role_already_satisfied',
           actual_http_attempt_count: 0,
           attempted_request_timeouts_ms: [],
           skipped_runtime: true,
