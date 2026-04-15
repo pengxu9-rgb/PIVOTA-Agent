@@ -6285,14 +6285,28 @@ describe('discovery feed service', () => {
       expect(_internals.shouldSkipExplicitCategorySeedStage(request, recallTerms)).toBe(true);
       expect(_internals.shouldSkipExplicitVerticalSeedStage(request, recallTerms)).toBe(true);
       expect(_internals.resolveExplicitQueryExternalSeedMainlineAcceptThreshold(request, 60)).toBe(18);
-      if (['glycolic acid', 'lactic acid', 'aha', 'bha'].includes(queryText)) {
+      if (['exfoliant', 'glycolic acid', 'lactic acid', 'aha', 'bha'].includes(queryText)) {
         const exactTextPatterns = _internals.resolveExactPhraseTextUnionPatterns(request, recallTerms);
         expect(exactTextPatterns).not.toContain('%aha%');
         expect(exactTextPatterns).not.toContain('%bha%');
-        expect(_internals.resolveExactPhraseTextUnionFieldLabels(request, recallTerms)).toEqual([
+        const fieldLabels = _internals.resolveExactPhraseTextUnionFieldLabels(request, recallTerms);
+        expect(fieldLabels).toEqual([
           'title',
           'ingredient_tokens',
           'alias_tokens',
+        ]);
+        expect(
+          _internals
+            .buildExactPhraseTextFieldStageDefinitions({
+              patterns: exactTextPatterns,
+              fieldLabels,
+              cap: 72,
+            })
+            .map((stage) => stage.stage),
+        ).toEqual([
+          'recall_exact_text_title',
+          'recall_exact_text_ingredient_tokens',
+          'recall_exact_text_alias_tokens',
         ]);
       }
     }
