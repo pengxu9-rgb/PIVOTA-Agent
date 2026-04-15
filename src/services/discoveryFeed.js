@@ -2543,6 +2543,13 @@ function isExplicitQueryScopedBrowseRequest(request) {
   );
 }
 
+function resolveDiscoveryExternalSeedToolScopes(request, defaultTool = 'creator_agents') {
+  if (isExplicitQueryScopedBrowseRequest(request)) return ['*'];
+  const normalizedTool = String(defaultTool || '').trim();
+  if (!normalizedTool || normalizedTool === '*') return ['*'];
+  return uniqStrings(['*', normalizedTool], 2);
+}
+
 function buildDiscoveryInterestQuery(request, profile) {
   if (profile?.dominantDomain === 'beauty') {
     return buildBeautyPersonalizedQueries(request, profile).primary;
@@ -3441,6 +3448,7 @@ function buildDiscoveryProviderStepSummary({
   marketSource,
   warningCodes,
   compoundIntent,
+  externalSeedToolScopes,
   externalSeedStageCounts,
   externalSeedRawCount,
   externalSeedQualifiedCount,
@@ -3468,6 +3476,9 @@ function buildDiscoveryProviderStepSummary({
       ? { warning_codes: uniqStrings(warningCodes, 12) }
       : {}),
     ...(compoundIntent ? { compound_intent: String(compoundIntent) } : {}),
+    ...(Array.isArray(externalSeedToolScopes) && externalSeedToolScopes.length > 0
+      ? { external_seed_tool_scopes: externalSeedToolScopes.map((scope) => String(scope || '').trim()).filter(Boolean) }
+      : {}),
     ...(Array.isArray(externalSeedStageCounts) && externalSeedStageCounts.length > 0
       ? { external_seed_stage_counts: externalSeedStageCounts }
       : {}),
@@ -4793,6 +4804,7 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
   const marketConfig = resolveDiscoveryExternalSeedMarketConfig();
   const market = marketConfig.market;
   const tool = 'creator_agents';
+  const toolScopes = resolveDiscoveryExternalSeedToolScopes(request, tool);
 
   if (typeof fetchFn === 'function') {
     try {
@@ -4919,7 +4931,7 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
     status = 'active'
       AND attached_product_key IS NULL
       AND market = $1
-      AND (tool = '*' OR tool = $2)
+      AND tool = $2
   `;
   const explicitQueryScopedRecall = isExplicitQueryScopedBrowseRequest(request);
   const compoundIntent = explicitQueryScopedRecall ? recallTerms.compoundIntent : null;
@@ -5067,9 +5079,10 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
       compoundExactStageSatisfiedCurrentPage ||
       explicitNarrowTitleStageSatisfied ||
       stagedRows.length >= (compoundIntent ? qualifiedTarget : summaryThreshold);
-    const appendRows = (rows = [], stage = 'unknown') => {
+    const appendRows = (rows = [], stage = 'unknown', toolScope = '*') => {
       const metrics = {
         stage,
+        tool_scope: String(toolScope || '').trim() || '*',
         raw_rows: Array.isArray(rows) ? rows.length : 0,
         compound_qualified_rows: 0,
         query_qualified_rows: 0,
@@ -5132,35 +5145,38 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
     };
     const runStage = async ({ buildWhereSql, score, stage, cap }) => {
       if (typeof buildWhereSql !== 'function' || stagedRows.length >= safeLimit || shouldStopStages()) return;
-      const stageParams = [market, tool];
-      const stageBind = (value) => {
-        stageParams.push(value);
-        return `$${stageParams.length}`;
-      };
-      const stageWhereSql = buildWhereSql(stageBind);
-      if (!stageWhereSql) return;
-      let sql = `
-        SELECT
-          ${selectSql},
-          ${Number(score || 0)}::int AS match_score,
-          '${stage}'::text AS match_stage
-        FROM external_product_seeds
-        WHERE ${baseWhereSql}
-          AND ${stageWhereSql}
-      `;
-      if (seenSqlIds.size > 0) {
-        const excludedIdsBind = stageBind(Array.from(seenSqlIds));
-        sql += `
-          AND id <> ALL(${excludedIdsBind}::bigint[])
+      for (const toolScope of toolScopes) {
+        if (stagedRows.length >= safeLimit || shouldStopStages()) break;
+        const stageParams = [market, toolScope];
+        const stageBind = (value) => {
+          stageParams.push(value);
+          return `$${stageParams.length}`;
+        };
+        const stageWhereSql = buildWhereSql(stageBind);
+        if (!stageWhereSql) return;
+        let sql = `
+          SELECT
+            ${selectSql},
+            ${Number(score || 0)}::int AS match_score,
+            '${stage}'::text AS match_stage
+          FROM external_product_seeds
+          WHERE ${baseWhereSql}
+            AND ${stageWhereSql}
         `;
+        if (seenSqlIds.size > 0) {
+          const excludedIdsBind = stageBind(Array.from(seenSqlIds));
+          sql += `
+            AND id <> ALL(${excludedIdsBind}::bigint[])
+          `;
+        }
+        const limitBind = stageBind(clampInt(cap, safeLimit, 12, Math.max(safeLimit, cap)));
+        sql += `
+          ORDER BY match_score DESC, updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
+          LIMIT ${limitBind}
+        `;
+        const res = await query(sql, stageParams);
+        appendRows(Array.isArray(res?.rows) ? res.rows : [], stage, toolScope);
       }
-      const limitBind = stageBind(clampInt(cap, safeLimit, 12, Math.max(safeLimit, cap)));
-      sql += `
-        ORDER BY match_score DESC, updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
-        LIMIT ${limitBind}
-      `;
-      const res = await query(sql, stageParams);
-      appendRows(Array.isArray(res?.rows) ? res.rows : [], stage);
     };
 
     for (const stageDefinition of stageDefinitions) {
@@ -5204,6 +5220,7 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
           market,
           marketSource: marketConfig.source,
           compoundIntent,
+          externalSeedToolScopes: toolScopes,
           externalSeedStageCounts,
           externalSeedRawCount,
           externalSeedQualifiedCount: stagedRows.length,
@@ -8893,6 +8910,7 @@ module.exports = {
     buildCompoundBeautySeedStageDefinitions,
     shouldSkipBroadStructuredSeedStagesForExplicitQuery,
     resolveExplicitIndexedCategoryHeadTerms,
+    resolveDiscoveryExternalSeedToolScopes,
     buildDiscoveryInterestQuery,
     buildDiscoveryRecallPlan,
     buildDiscoveryProviderMergeKey,

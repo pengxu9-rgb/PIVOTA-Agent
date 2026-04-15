@@ -256,6 +256,36 @@ describe('discovery feed service', () => {
 	    expect(recallTerms.verticalTerms).toEqual(expect.arrayContaining(['haircare']));
 	  });
 
+  test('public explicit browse external seed recall uses only the global seed scope', () => {
+    const explicitRequest = _internals.normalizeDiscoveryRequest({
+      surface: 'browse_products',
+      query: {
+        text: 'lip balm',
+      },
+      context: {
+        auth_state: 'anonymous',
+        recent_views: [],
+        recent_queries: [],
+        locale: 'en-US',
+      },
+    });
+    const genericRequest = _internals.normalizeDiscoveryRequest({
+      surface: 'browse_products',
+      context: {
+        auth_state: 'anonymous',
+        recent_views: [],
+        recent_queries: [],
+        locale: 'en-US',
+      },
+    });
+
+    expect(_internals.resolveDiscoveryExternalSeedToolScopes(explicitRequest, 'creator_agents')).toEqual(['*']);
+    expect(_internals.resolveDiscoveryExternalSeedToolScopes(genericRequest, 'creator_agents')).toEqual([
+      '*',
+      'creator_agents',
+    ]);
+  });
+
   test('explicit browse query uses staged external seed mainline without cold-start beauty fallback terms', async () => {
     delete process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL;
     delete process.env.PIVOTA_BACKEND_BASE_URL;
@@ -5788,11 +5818,16 @@ describe('discovery feed service', () => {
 
       expect(result.products).toHaveLength(8);
       expect(dbQueryMock).toHaveBeenCalledTimes(3);
+      expect(dbQueryMock.mock.calls[2][0]).toContain('AND tool = $2');
+      expect(dbQueryMock.mock.calls[2][0]).not.toContain("(tool = '*' OR tool = $2)");
+      expect(dbQueryMock.mock.calls[2][1][1]).toBe('*');
       expect(dbQueryMock.mock.calls[2][0]).toContain("seed_data->'derived'->'recall'->>'category'");
       expect(dbQueryMock.mock.calls[2][1].at(-1)).toBe(36);
+      expect(result.recallSummary[0].external_seed_tool_scopes).toEqual(['*']);
       expect(result.recallSummary[0].external_seed_stage_counts.map((entry) => entry.stage)).toEqual([
         'recall_indexed_category_head',
       ]);
+      expect(result.recallSummary[0].external_seed_stage_counts[0].tool_scope).toBe('*');
     } finally {
       if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
       else process.env.DATABASE_URL = prevDatabaseUrl;
