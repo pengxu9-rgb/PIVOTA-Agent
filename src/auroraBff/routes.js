@@ -53133,6 +53133,7 @@ function splitRecoAssistantRewriteAttemptTimeout(totalMs) {
 function normalizeRecoAssistantReasonFragment(value, {
   selectedNames = [],
   forbiddenNames = [],
+  forbiddenAliases = [],
   fallback = '',
 } = {}) {
   const forbiddenBrandFragments = [];
@@ -53158,7 +53159,8 @@ function normalizeRecoAssistantReasonFragment(value, {
     ...(Array.isArray(selectedNames) ? selectedNames : []),
     ...(Array.isArray(forbiddenNames) ? forbiddenNames : []),
     ...forbiddenBrandFragments,
-  ].filter(Boolean), 16);
+  ].filter(Boolean), 16)
+    .sort((left, right) => String(right || '').length - String(left || '').length);
   let text = String(value || '').trim();
   text = text
     .replace(/[“”"]/g, '')
@@ -53187,6 +53189,24 @@ function normalizeRecoAssistantReasonFragment(value, {
     .replace(/[\s,;:.\-–—]+$/, '')
     .trim();
   if (!text) return '';
+  const normalizedText = normalizeSemanticAuditText(text);
+  const aliases = uniqCaseInsensitiveStrings(
+    (Array.isArray(forbiddenAliases) ? forbiddenAliases : [])
+      .map((alias) => normalizeSemanticAuditText(alias))
+      .filter(Boolean),
+    24,
+  );
+  if (normalizedText && aliases.some((alias) => alias && normalizedText.includes(alias))) {
+    const fallbackText = String(fallback || '').trim();
+    if (fallbackText && fallbackText !== value) {
+      return normalizeRecoAssistantReasonFragment(fallbackText, {
+        selectedNames,
+        forbiddenNames,
+        forbiddenAliases,
+      });
+    }
+    return '';
+  }
   if (/^[A-Z][a-z]/.test(text) && !/^(SPF|UV|PA\b)/.test(text)) {
     text = text.charAt(0).toLowerCase() + text.slice(1);
   }
@@ -53197,11 +53217,13 @@ function buildRecoAssistantStructuredReasonFallback(detail = {}, {
   targetLabel = '',
   selectedNames = [],
   forbiddenNames = [],
+  forbiddenAliases = [],
 } = {}) {
   const points = buildRecoAssistantReasonPoints(detail, { max: 2 });
   const primary = normalizeRecoAssistantReasonFragment(points[0], {
     selectedNames,
     forbiddenNames,
+    forbiddenAliases,
   });
   if (primary) return primary;
   const target = String(targetLabel || '').trim();
@@ -53270,13 +53292,16 @@ function renderRecoAssistantStructuredReasonRewrite({
   );
   const targetPhrase = formatRecoAssistantTargetPhrase(targetLabel, language);
   const forbiddenNames = collectRecoAssistantUnselectedCandidateDisplayNames(payload, 8);
+  const forbiddenAliases = collectRecoAssistantUnselectedCandidateAliases(payload);
   const leadReason = normalizeRecoAssistantReasonFragment(structuredReason?.lead_reason, {
     selectedNames,
     forbiddenNames,
+    forbiddenAliases,
     fallback: buildRecoAssistantStructuredReasonFallback(details[0], {
       targetLabel,
       selectedNames,
       forbiddenNames,
+      forbiddenAliases,
     }),
   });
   if (!leadReason) return '';
@@ -53288,10 +53313,12 @@ function renderRecoAssistantStructuredReasonRewrite({
     {
       selectedNames,
       forbiddenNames,
+      forbiddenAliases,
       fallback: buildRecoAssistantStructuredReasonFallback(details[index + 1], {
         targetLabel,
         selectedNames,
         forbiddenNames,
+        forbiddenAliases,
       }),
     },
   ));
@@ -53313,6 +53340,7 @@ function renderRecoAssistantStructuredReasonRewrite({
         targetLabel,
         selectedNames,
         forbiddenNames,
+        forbiddenAliases,
       });
       return formatRecoAssistantStructuredSentence(`${name}负责${step}，因为${reason}`);
     });
@@ -53339,6 +53367,7 @@ function renderRecoAssistantStructuredReasonRewrite({
       targetLabel,
       selectedNames,
       forbiddenNames,
+      forbiddenAliases,
     });
     if (selectedProductRoleMix === 'same_role_comparison') {
       return formatRecoAssistantStructuredSentence(`${name} is the same-slot comparison option because ${reason}`);

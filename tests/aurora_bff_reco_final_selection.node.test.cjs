@@ -981,8 +981,9 @@ test('reco assistant rewrite rejects candidate-pool product names that are not f
       return {
         ok: true,
         json: {
-          lead_reason: 'targets post-breakout marks with niacinamide evidence from the product record',
-          support_reasons: ['offers another tone-focused serum option without treating it as the lead pick'],
+          lead_reason:
+            'targets post-breakout marks with niacinamide evidence from the product record instead of Fenty Beauty Watch Ya Tone Niacinamide Dark Spot Serum Refill',
+          support_reasons: ['offers another tone-focused serum option without treating Fenty Beauty Watch Ya Tone as the lead pick'],
         },
         parse_status: 'parsed',
         provider: 'gemini',
