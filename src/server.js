@@ -20825,13 +20825,43 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        !offerProductGroupId &&
 	        !hasExplicitProductGroup;
 	      const precheckEntryProductStartedAt = Date.now();
-	      if (shouldPrecheckMerchantScoped) {
-	        precheckedMerchantProduct = await fetchProductDetailForOffers({
-		          merchantId: requestedMerchantId,
+	      const precheckEntryProductPromise = shouldPrecheckMerchantScoped
+	        ? fetchProductDetailForOffers({
+	            merchantId: requestedMerchantId,
+	            productId,
+	            checkoutToken,
+	            bypassCache,
+	          }).catch(() => null)
+	        : Promise.resolve(null);
+
+	        const externalSeedRouteProductId = entryProductIsExternalSeed || isExternalSeedProductId(productId);
+	      const canResolveExternalSeedUnscopedWithoutPrecheck =
+	        externalSeedRouteProductId &&
+	        (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID);
+	      let resolveGroupCachedStartedAt = Date.now();
+	      let resolveGroupCachedPromise = null;
+	      const startResolveGroupCached = (attemptUnscopedExternalSeedResolve) => {
+	        resolveGroupCachedStartedAt = Date.now();
+	        return resolveProductGroupCached({
 		          productId,
-		          checkoutToken,
-		          bypassCache,
-		        });
+	          merchantId: attemptUnscopedExternalSeedResolve ? null : requestedMerchantId || null,
+	          platform,
+	          checkoutToken,
+	          bypassCache,
+	          debug: false,
+	        }).catch(() => null);
+	      };
+	      if (
+	        !canonicalProductRef &&
+	        (canResolveExternalSeedUnscopedWithoutPrecheck || !externalSeedRouteProductId)
+	      ) {
+	        resolveGroupCachedPromise = startResolveGroupCached(
+	          canResolveExternalSeedUnscopedWithoutPrecheck,
+	        );
+	      }
+
+	      if (shouldPrecheckMerchantScoped) {
+	        precheckedMerchantProduct = await precheckEntryProductPromise;
 	        precheckEntryProductMissing = !precheckedMerchantProduct;
 	        if (precheckEntryProductMissing) {
 	          logger.info(
@@ -20847,7 +20877,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      markPdpV2Phase('precheck_entry_product', precheckEntryProductStartedAt);
         entryPrecheckMissingCtx = precheckEntryProductMissing;
 
-	        const externalSeedRouteProductId = entryProductIsExternalSeed || isExternalSeedProductId(productId);
 	        const shouldAttemptUnscopedExternalSeedResolve =
 	          externalSeedRouteProductId &&
 	          (
@@ -20856,18 +20885,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID
 	          );
 
-	      const resolveGroupCachedStartedAt = Date.now();
 	      if (!canonicalProductRef) {
-	        const resolvedGroup = await resolveProductGroupCached({
-		          productId,
-	          merchantId: shouldAttemptUnscopedExternalSeedResolve ? null : requestedMerchantId || null,
-          platform,
-          checkoutToken,
-          bypassCache,
-          debug: false,
-        }).catch(() => null);
-        const pgid = resolvedGroup?.product_group_id || null;
-        productGroupId = typeof pgid === 'string' && pgid.trim() ? pgid.trim() : productGroupId;
+	        if (!resolveGroupCachedPromise) {
+	          resolveGroupCachedPromise = startResolveGroupCached(shouldAttemptUnscopedExternalSeedResolve);
+	        }
+	        const resolvedGroup = await resolveGroupCachedPromise;
+	        const pgid = resolvedGroup?.product_group_id || null;
+	        productGroupId = typeof pgid === 'string' && pgid.trim() ? pgid.trim() : productGroupId;
         groupMembers = Array.isArray(resolvedGroup?.members) ? resolvedGroup.members : groupMembers;
 	        if (resolvedGroup?.canonical_product_ref) {
 	          canonicalProductRef = resolvedGroup.canonical_product_ref;
