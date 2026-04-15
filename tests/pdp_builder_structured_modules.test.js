@@ -117,6 +117,36 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(payload.product.canonical_url).toBe('https://merchant.example/products/barrier-cream');
   });
 
+  test('repairs sunscreen actives from INCI when seed actives drift', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_boj_dn350',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Daily Tinted Fluid Sunscreen DN350 SPF 40',
+        category: 'Sunscreen',
+        description: 'A mineral tinted fluid sunscreen with SPF 40.',
+        image_url: 'https://example.com/dn350.png',
+        active_ingredients: ['Zinc PCA'],
+        ingredients_inci: {
+          raw_text:
+            'Zinc Oxide (CI 77947), Water, Butyloctyl Salicylate, 1,2-Hexanediol, Tocopherol',
+        },
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const activeIngredients = payload.modules.find((module) => module.type === 'active_ingredients');
+    const ingredientsInci = payload.modules.find((module) => module.type === 'ingredients_inci');
+
+    expect(activeIngredients?.data?.items).toEqual(['Zinc Oxide']);
+    expect(activeIngredients?.data?.items).not.toContain('Zinc PCA');
+    expect(ingredientsInci?.data?.items).toContain('1,2-Hexanediol');
+    expect(ingredientsInci?.data?.items).not.toContain('1');
+    expect(ingredientsInci?.data?.items).not.toContain('2-Hexanediol');
+  });
+
   test('emits cross-url product line options in variant selector data', () => {
     const payload = buildPdpPayload({
       product: {

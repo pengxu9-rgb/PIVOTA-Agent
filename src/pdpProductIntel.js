@@ -126,6 +126,11 @@ function isGenericSellerHighlightText(text) {
     /\bdedicated treatment step\b/,
     /\bplain barrier cream\b/,
     /\bgeneral face brightening serum\b/,
+    /\bfocused on .* within a .* routine\b/,
+    /\banchors? the product\b/,
+    /\bdaytime uv step\b/,
+    /\bdaytime skin-?care routines?\b/,
+    /\broutine context\b/,
     /\bfunctioning as\b/,
     /\bacting like\b/,
     /\brole\b/,
@@ -135,6 +140,58 @@ function isGenericSellerHighlightText(text) {
 
 function shouldSuppressSellerHighlightText(text) {
   return isLowSignalSellerHighlightText(text) || isGenericSellerHighlightText(text);
+}
+
+function hasProductSpecificIntelText(text) {
+  const normalized = stripHtml(text).toLowerCase();
+  if (!normalized) return false;
+  return [
+    /\bspf\s*\d+\b/,
+    /\bzinc oxide\b/,
+    /\btinted\b/,
+    /\bshade\b/,
+    /\bmineral\b/,
+    /\bcoverage\b/,
+    /\bfinish\b/,
+    /\balcohol denat\b/,
+    /\bbutyloctyl salicylate\b/,
+    /\b1,2-hexanediol\b/,
+    /\bclinical\b/,
+    /\bsebum\b/,
+    /\brice[-\s]?infused\b/,
+  ].some((pattern) => pattern.test(normalized));
+}
+
+function shouldRejectGenericProductIntelBundle(bundle) {
+  const source = asPlainObject(bundle);
+  const core = asPlainObject(source?.product_intel_core);
+  if (!core) return true;
+  const whyText = asArray(core.why_it_stands_out)
+    .map((item) => {
+      const row = asPlainObject(item) || {};
+      return `${row.headline || ''} ${row.body || ''}`;
+    })
+    .join(' ');
+  const bestForText = asArray(core.best_for)
+    .map((item) => {
+      const row = asPlainObject(item) || {};
+      return `${row.label || ''} ${row.tag || ''}`;
+    })
+    .join(' ');
+  const primaryText = [
+    core.what_it_is?.headline,
+    core.what_it_is?.body,
+    bestForText,
+    core.routine_fit?.step,
+    ...asArray(core.routine_fit?.pairing_notes),
+  ]
+    .map((value) => asString(value))
+    .filter(Boolean)
+    .join(' ');
+  const combined = [primaryText, whyText].filter(Boolean).join(' ');
+  if (!combined) return true;
+  if (isGenericSellerHighlightText(primaryText) && !hasProductSpecificIntelText(combined)) return true;
+  return false;
 }
 
 function joinWithCommasAnd(values) {
@@ -341,6 +398,7 @@ function normalizePublishedProductIntelBundle(bundle, {
   if (!source) return null;
   const core = asPlainObject(source.product_intel_core);
   if (!core) return null;
+  if (shouldRejectGenericProductIntelBundle(source)) return null;
 
   const recommendationIntents =
     asPlainObject(source.recommendation_intents) ||

@@ -66,6 +66,32 @@ describe('pdpIngredientAuthority', () => {
     expect(authority.active_items).toEqual(['Niacinamide']);
   });
 
+  test('repairs stale sunscreen active items from authoritative INCI', () => {
+    const authority = buildAuthoritativeIngredientView({
+      title: 'Daily Tinted Fluid Sunscreen DN350 SPF 40',
+      category: 'Sunscreen',
+      ingredient_intel: {
+        authoritative: {
+          raw_text:
+            'Zinc Oxide (CI 77947), Water, Butyloctyl Salicylate, 1,2-Hexanediol, Tocopherol',
+          items: [
+            'Zinc Oxide (CI 77947)',
+            'Water',
+            'Butyloctyl Salicylate',
+            '1,2-Hexanediol',
+            'Tocopherol',
+          ],
+          active_items: ['Zinc PCA'],
+          source_origin: 'kb_reviewed',
+          purity_status: 'authoritative',
+        },
+      },
+    });
+
+    expect(authority.active_items).toEqual(['Zinc Oxide']);
+    expect(authority.active_items).not.toContain('Zinc PCA');
+  });
+
   test('parses inline full ingredient list from generic details sections', () => {
     const authority = buildAuthoritativeIngredientView({
       pdp_details_sections: [

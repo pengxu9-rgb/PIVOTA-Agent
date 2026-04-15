@@ -227,6 +227,65 @@ function normalizeIngredientItems(values, { max = 160 } = {}) {
   return out;
 }
 
+const SUNSCREEN_ACTIVE_ITEMS = [
+  'Zinc Oxide',
+  'Titanium Dioxide',
+  'Avobenzone',
+  'Octocrylene',
+  'Octisalate',
+  'Homosalate',
+  'Octinoxate',
+  'Ensulizole',
+  'Meradimate',
+  'Oxybenzone',
+  'Tinosorb S',
+  'Tinosorb M',
+  'Uvinul A Plus',
+  'Uvinul T 150',
+  'Mexoryl SX',
+  'Mexoryl XL',
+];
+
+function ingredientKey(value) {
+  return asString(value).toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function inferSunscreenActiveItems(product, items, rawText) {
+  const haystack = [
+    product?.title,
+    product?.name,
+    product?.category,
+    product?.product_type,
+    product?.description,
+    ...(Array.isArray(product?.tags) ? product.tags : []),
+    rawText,
+    ...(Array.isArray(items) ? items : []),
+  ]
+    .map((value) => asString(value))
+    .filter(Boolean)
+    .join(' ');
+  if (!/\b(spf|sunscreen|sun screen|sunblock|sun care|uv protection|zinc oxide|titanium dioxide)\b/i.test(haystack)) {
+    return [];
+  }
+  const normalized = ingredientKey(haystack);
+  return SUNSCREEN_ACTIVE_ITEMS.filter((item) => normalized.includes(ingredientKey(item)));
+}
+
+function reconcileActiveItemsWithIngredients(product, activeItems, items, rawText) {
+  const normalizedItemsText = ingredientKey([rawText, ...(Array.isArray(items) ? items : [])].join(' '));
+  const normalizedActiveItems = normalizeIngredientItems(activeItems, { max: 32 });
+  const inferredSunscreenActives = inferSunscreenActiveItems(product, items, rawText);
+  if (!inferredSunscreenActives.length) return normalizedActiveItems;
+  const retained = normalizedActiveItems.filter((item) => {
+    const key = ingredientKey(item);
+    return !normalizedItemsText || normalizedItemsText.includes(key);
+  });
+  return uniqueStrings([
+    ...retained,
+    ...inferredSunscreenActives,
+  ]);
+}
+
 function buildAuthorityRecord({
   rawText = '',
   items = [],
@@ -396,7 +455,15 @@ function buildAuthoritativeIngredientView(product, options = {}) {
       generatedAt: existingAuthority.generated_at || generatedAt,
     });
     if (normalizedExisting.items.length || normalizedExisting.active_items.length) {
-      return normalizedExisting;
+      return {
+        ...normalizedExisting,
+        active_items: reconcileActiveItemsWithIngredients(
+          product,
+          normalizedExisting.active_items,
+          normalizedExisting.items,
+          normalizedExisting.raw_text,
+        ),
+      };
     }
   }
 
@@ -418,7 +485,12 @@ function buildAuthoritativeIngredientView(product, options = {}) {
     return buildAuthorityRecord({
       rawText: picked.raw_text,
       items: picked.items,
-      activeItems: activeItems.length ? activeItems : picked.active_items,
+      activeItems: reconcileActiveItemsWithIngredients(
+        product,
+        activeItems.length ? activeItems : picked.active_items,
+        picked.items,
+        picked.raw_text,
+      ),
       sourceOrigin: picked.source_origin,
       purityStatus: 'authoritative',
       generatedAt,

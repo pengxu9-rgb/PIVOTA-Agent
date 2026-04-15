@@ -572,6 +572,22 @@ function splitIngredientsItemsFromText(text) {
   );
 }
 
+function repairSplitIngredientTokens(items) {
+  const out = [];
+  for (let index = 0; index < (items || []).length; index += 1) {
+    const current = asNonEmptyString(items[index]);
+    if (!current) continue;
+    const next = asNonEmptyString(items[index + 1]);
+    if (/^\d+$/.test(current) && /^\d+\s*[-\w]/i.test(next)) {
+      out.push(`${current},${next.replace(/\s+/g, ' ')}`);
+      index += 1;
+      continue;
+    }
+    out.push(current);
+  }
+  return uniqueNonEmptyStrings(out);
+}
+
 function splitHowToUseStepsFromText(text) {
   const normalized = asNonEmptyString(text);
   if (!normalized) return [];
@@ -605,10 +621,10 @@ function buildIngredientsModuleData(candidates, fallbackTitle) {
     const rawText = pickStructuredText(candidate);
     const atomicItems = collectAtomicItems(candidate);
     const structuredItems = !atomicItems.length && !rawText ? normalizeStructuredItems(candidate) : [];
-    const items = uniqueNonEmptyStrings([
+    const items = repairSplitIngredientTokens(uniqueNonEmptyStrings([
       ...(atomicItems.length ? atomicItems : structuredItems),
       ...(atomicItems.length ? [] : splitIngredientsItemsFromText(rawText)),
-    ]);
+    ]));
     if (!items.length && !rawText) continue;
     return {
       title: pickStructuredTitle(candidate, fallbackTitle),
@@ -663,6 +679,8 @@ function shouldSuppressLowConfidenceActiveIngredients(product, candidate, data, 
   if (String(product?.source || '').trim().toLowerCase() !== 'external_seed') return false;
   if (detectTemplateHint(product) !== 'beauty') return false;
   if (isRegulatoryActiveIngredientSource(candidate)) return false;
+  if (String(data?.source_origin || '').trim().toLowerCase() === 'ingredients_inci') return false;
+  if (String(data?.source_quality_status || '').trim().toLowerCase() === 'derived_from_inci') return false;
   if (String(data?.source_quality_status || '').trim().toLowerCase() === 'high') return false;
   const itemCount = Array.isArray(data?.items) ? data.items.length : 0;
   const ingredientsCount = Array.isArray(ingredientsInci?.items) ? ingredientsInci.items.length : 0;
@@ -1225,6 +1243,100 @@ function buildIngredientsInci(product) {
   };
 }
 
+const SUNSCREEN_ACTIVE_INGREDIENTS = [
+  'Zinc Oxide',
+  'Titanium Dioxide',
+  'Avobenzone',
+  'Octocrylene',
+  'Octisalate',
+  'Homosalate',
+  'Octinoxate',
+  'Ensulizole',
+  'Meradimate',
+  'Oxybenzone',
+  'Tinosorb S',
+  'Tinosorb M',
+  'Uvinul A Plus',
+  'Uvinul T 150',
+  'Mexoryl SX',
+  'Mexoryl XL',
+];
+
+function normalizeIngredientMatchKey(value) {
+  return asNonEmptyString(value).toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function collectIngredientInciText(ingredientsInci) {
+  return uniqueNonEmptyStrings([
+    ...(Array.isArray(ingredientsInci?.items) ? ingredientsInci.items : []),
+    ...splitIngredientsItemsFromText(ingredientsInci?.raw_text),
+  ]).join(' ');
+}
+
+function isLikelySunscreenProduct(product, ingredientsInci) {
+  const haystack = [
+    product?.title,
+    product?.name,
+    product?.category,
+    product?.product_type,
+    product?.description,
+    ...(Array.isArray(product?.tags) ? product.tags : []),
+    collectIngredientInciText(ingredientsInci),
+  ]
+    .map((value) => asNonEmptyString(value))
+    .filter(Boolean)
+    .join(' ');
+  return /\b(spf|sunscreen|sun screen|sunblock|sun care|uv protection|zinc oxide|titanium dioxide)\b/i.test(
+    haystack,
+  );
+}
+
+function inferSunscreenActiveIngredients(product, ingredientsInci) {
+  if (!isLikelySunscreenProduct(product, ingredientsInci)) return [];
+  const inciText = collectIngredientInciText(ingredientsInci);
+  const matchText = normalizeIngredientMatchKey(inciText);
+  if (!matchText) return [];
+  return SUNSCREEN_ACTIVE_INGREDIENTS.filter((name) => matchText.includes(normalizeIngredientMatchKey(name)));
+}
+
+function ingredientAppearsInInci(item, ingredientsInci) {
+  const key = normalizeIngredientMatchKey(item);
+  if (!key) return false;
+  const inciText = normalizeIngredientMatchKey(collectIngredientInciText(ingredientsInci));
+  if (!inciText) return false;
+  return inciText.includes(key);
+}
+
+function reconcileActiveIngredientsWithInci(product, candidate, data, ingredientsInci) {
+  const inferredSunscreenActives = inferSunscreenActiveIngredients(product, ingredientsInci);
+  const itemCount = Array.isArray(data?.items) ? data.items.length : 0;
+  const ingredientsCount = Array.isArray(ingredientsInci?.items) ? ingredientsInci.items.length : 0;
+  const shouldValidateAgainstInci =
+    ingredientsCount >= 4 &&
+    !isRegulatoryActiveIngredientSource(candidate) &&
+    String(data?.source_quality_status || '').trim().toLowerCase() !== 'high';
+  const retainedItems = shouldValidateAgainstInci
+    ? (data.items || []).filter((item) => ingredientAppearsInInci(item, ingredientsInci))
+    : data.items || [];
+  const items = uniqueNonEmptyStrings([
+    ...retainedItems,
+    ...inferredSunscreenActives.filter((item) => !retainedItems.some((existing) => normalizeIngredientMatchKey(existing) === normalizeIngredientMatchKey(item))),
+  ]);
+  if (!items.length && itemCount > 0 && !inferredSunscreenActives.length) return data;
+  return {
+    ...data,
+    title: 'Active ingredients',
+    items,
+    ...(items.length !== itemCount || inferredSunscreenActives.length
+      ? {
+          source_origin: data.source_origin || 'ingredients_inci',
+          source_quality_status:
+            data.source_quality_status === 'high' ? data.source_quality_status : 'derived_from_inci',
+        }
+      : {}),
+  };
+}
+
 function buildActiveIngredients(product, ingredientsInci) {
   const candidates = [
     product.pdp_active_ingredients_raw,
@@ -1241,16 +1353,27 @@ function buildActiveIngredients(product, ingredientsInci) {
     const rawText = pickStructuredText(candidate);
     const items = uniqueNonEmptyStrings(normalizeStructuredItems(candidate));
     if (!items.length && !rawText) continue;
-    const data = {
+    const data = reconcileActiveIngredientsWithInci(product, candidate, {
       title: pickStructuredTitle(candidate, 'Active ingredients'),
       ...(rawText ? { raw_text: rawText } : {}),
       items,
       ...extractStructuredSourceMeta(candidate),
-    };
+    }, ingredientsInci);
+    if (!Array.isArray(data.items) || !data.items.length) continue;
     if (shouldSuppressLowConfidenceActiveIngredients(product, candidate, data, ingredientsInci)) {
       return null;
     }
     return data;
+  }
+
+  const inferredSunscreenActives = inferSunscreenActiveIngredients(product, ingredientsInci);
+  if (inferredSunscreenActives.length) {
+    return {
+      title: 'Active ingredients',
+      items: inferredSunscreenActives,
+      source_origin: 'ingredients_inci',
+      source_quality_status: 'derived_from_inci',
+    };
   }
 
   return null;

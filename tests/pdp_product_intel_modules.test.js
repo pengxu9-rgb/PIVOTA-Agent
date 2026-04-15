@@ -130,6 +130,55 @@ describe('pdp product intel bundle shaping', () => {
     );
   });
 
+  test('rejects generic published insights without product-specific substance', () => {
+    const generic = normalizePublishedProductIntelBundle({
+      contract_version: 'pivota.product_intel.v1',
+      evidence_profile: 'seller_plus_formula',
+      quality_state: 'eligible',
+      product_intel_core: {
+        evidence_profile: 'seller_plus_formula',
+        quality_state: 'eligible',
+        what_it_is: {
+          body: 'A daily sunscreen product focused on UV protection within a daytime skin-care routine.',
+        },
+        best_for: [{ label: 'Daily UV protection' }],
+        why_it_stands_out: [
+          {
+            headline: 'Daytime UV step',
+            body: 'Anchors the product in daily UV protection and daytime layering context.',
+          },
+        ],
+        routine_fit: { step: 'sunscreen', am_pm: ['am'] },
+      },
+    });
+
+    expect(generic).toBeNull();
+
+    const specific = normalizePublishedProductIntelBundle({
+      contract_version: 'pivota.product_intel.v1',
+      evidence_profile: 'seller_plus_formula',
+      quality_state: 'eligible',
+      product_intel_core: {
+        evidence_profile: 'seller_plus_formula',
+        quality_state: 'eligible',
+        what_it_is: {
+          body: 'A mineral SPF 40 tinted fluid sunscreen with sheer coverage and a balanced finish.',
+        },
+        best_for: [{ label: 'Mineral SPF with tint' }],
+        why_it_stands_out: [
+          {
+            headline: 'Tint and SPF in one step',
+            body: 'Combines Zinc Oxide UV protection with sheer shade coverage.',
+          },
+        ],
+        routine_fit: { step: 'sunscreen', am_pm: ['am'] },
+      },
+    });
+
+    expect(specific).toBeTruthy();
+    expect(specific.product_intel_core.what_it_is.body).toMatch(/SPF 40 tinted fluid sunscreen/i);
+  });
+
   test('draft bundles convert verified buyer review aggregates into community signals', () => {
     const bundle = buildProductIntelDraftBundle({
       product: {
