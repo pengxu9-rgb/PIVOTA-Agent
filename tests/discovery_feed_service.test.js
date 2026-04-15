@@ -6207,6 +6207,7 @@ describe('discovery feed service', () => {
       expect(result.products).toHaveLength(1);
       expect(result.products[0].title).toBe('You Mist Makeup-Extending Setting Spray');
       expect(dbQueryMock).toHaveBeenCalledTimes(4);
+      expect(dbQueryMock.mock.calls[3][0]).toContain('UNION ALL');
       expect(dbQueryMock.mock.calls[3][0]).toContain("seed_data->'derived'->'recall'->>'retrieval_title'");
       expect(dbQueryMock.mock.calls[3][0]).toContain("seed_data->'derived'->'recall'->>'retrieval_summary'");
       expect(dbQueryMock.mock.calls[3][0]).toContain("seed_data#>>'{derived,recall,ingredient_tokens}'");

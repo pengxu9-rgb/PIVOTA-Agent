@@ -4554,6 +4554,60 @@ function shouldUseExactPhraseTextUnionSeedStage(request, recallTerms = {}) {
   return Boolean(resolveExplicitExactBeautyPhraseHint(request, recallTerms));
 }
 
+function buildExactPhraseTextUnionSeedStageSql({
+  stageBind,
+  selectSql,
+  baseWhereSql,
+  stage = 'recall_exact_text_union',
+  patterns = [],
+  cap = 24,
+  excludedIds = [],
+} = {}) {
+  if (typeof stageBind !== 'function') return '';
+  const normalizedPatterns = uniqStrings(Array.isArray(patterns) ? patterns : [], 8);
+  if (normalizedPatterns.length <= 0) return '';
+
+  const patternBind = stageBind(normalizedPatterns);
+  const subqueryLimitBind = stageBind(Math.max(12, Number(cap || 0) || 12));
+  const finalLimitBind = stageBind(Math.max(12, Number(cap || 0) || 12) * 4);
+  const excludedIdsClause =
+    Array.isArray(excludedIds) && excludedIds.length > 0
+      ? `AND id <> ALL(${stageBind(excludedIds)}::bigint[])`
+      : '';
+  const unionParts = [
+    [48, EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle, 'title'],
+    [42, EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary, 'summary'],
+    [40, EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokens, 'ingredient_tokens'],
+    [38, EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens, 'alias_tokens'],
+  ]
+    .map(
+      ([score, fieldSql, label]) => `
+        SELECT * FROM (
+          SELECT
+            ${selectSql},
+            ${Number(score || 0)}::int AS match_score,
+            '${stage}'::text AS match_stage
+          FROM external_product_seeds
+          WHERE ${baseWhereSql}
+            AND ${fieldSql} LIKE ANY(${patternBind}::text[])
+            ${excludedIdsClause}
+          ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
+          LIMIT ${subqueryLimitBind}
+        ) AS ${label}_stage
+      `,
+    )
+    .join('\nUNION ALL\n');
+
+  return `
+    SELECT *
+    FROM (
+      ${unionParts}
+    ) AS exact_phrase_union_stage
+    ORDER BY match_score DESC, updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
+    LIMIT ${finalLimitBind}
+  `;
+}
+
 function buildBeautyInterestSeedSelect() {
   return `
     id,
@@ -5297,15 +5351,16 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
           score: 46,
           stage: 'recall_exact_text_union',
           cap: explicitStageQueryCap,
-          buildWhereSql: (stageBind) => {
-            const patternBind = stageBind(recallTerms.patterns);
-            return `(
-              ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${patternBind}::text[])
-              OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${patternBind}::text[])
-              OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokens} LIKE ANY(${patternBind}::text[])
-              OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY(${patternBind}::text[])
-            )`;
-          },
+          buildSql: ({ stageBind, cap, seenSqlIds }) =>
+            buildExactPhraseTextUnionSeedStageSql({
+              stageBind,
+              selectSql,
+              baseWhereSql,
+              stage: 'recall_exact_text_union',
+              patterns: recallTerms.patterns,
+              cap,
+              excludedIds: Array.from(seenSqlIds || []),
+            }),
         });
       } else {
         stageDefinitions.push({
@@ -5477,8 +5532,14 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
         explicitNarrowTitleStageSatisfied = true;
       }
     };
-    const runStage = async ({ buildWhereSql, score, stage, cap }) => {
-      if (typeof buildWhereSql !== 'function' || stagedRows.length >= safeLimit || shouldStopStages()) return;
+    const runStage = async ({ buildWhereSql, buildSql, score, stage, cap }) => {
+      if (
+        typeof buildWhereSql !== 'function' &&
+        typeof buildSql !== 'function'
+      ) {
+        return;
+      }
+      if (stagedRows.length >= safeLimit || shouldStopStages()) return;
       for (const toolScope of toolScopes) {
         if (stagedRows.length >= safeLimit || shouldStopStages()) break;
         const stageParams = [market, toolScope];
@@ -5486,28 +5547,43 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
           stageParams.push(value);
           return `$${stageParams.length}`;
         };
-        const stageWhereSql = buildWhereSql(stageBind);
-        if (!stageWhereSql) return;
-        let sql = `
-          SELECT
-            ${selectSql},
-            ${Number(score || 0)}::int AS match_score,
-            '${stage}'::text AS match_stage
-          FROM external_product_seeds
-          WHERE ${baseWhereSql}
-            AND ${stageWhereSql}
-        `;
-        if (seenSqlIds.size > 0) {
-          const excludedIdsBind = stageBind(Array.from(seenSqlIds));
+        const resolvedCap = clampInt(cap, safeLimit, 12, Math.max(safeLimit, cap));
+        let sql = '';
+        if (typeof buildSql === 'function') {
+          sql = buildSql({
+            stageBind,
+            stage,
+            score,
+            cap: resolvedCap,
+            seenSqlIds,
+            selectSql,
+            baseWhereSql,
+          });
+          if (!sql) return;
+        } else {
+          const stageWhereSql = buildWhereSql(stageBind);
+          if (!stageWhereSql) return;
+          sql = `
+            SELECT
+              ${selectSql},
+              ${Number(score || 0)}::int AS match_score,
+              '${stage}'::text AS match_stage
+            FROM external_product_seeds
+            WHERE ${baseWhereSql}
+              AND ${stageWhereSql}
+          `;
+          if (seenSqlIds.size > 0) {
+            const excludedIdsBind = stageBind(Array.from(seenSqlIds));
+            sql += `
+              AND id <> ALL(${excludedIdsBind}::bigint[])
+            `;
+          }
+          const limitBind = stageBind(resolvedCap);
           sql += `
-            AND id <> ALL(${excludedIdsBind}::bigint[])
+            ORDER BY match_score DESC, updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
+            LIMIT ${limitBind}
           `;
         }
-        const limitBind = stageBind(clampInt(cap, safeLimit, 12, Math.max(safeLimit, cap)));
-        sql += `
-          ORDER BY match_score DESC, updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
-          LIMIT ${limitBind}
-        `;
         const res = await query(sql, stageParams);
         appendRows(Array.isArray(res?.rows) ? res.rows : [], stage, toolScope);
       }
