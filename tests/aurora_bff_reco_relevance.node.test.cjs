@@ -6527,7 +6527,7 @@ test('__internal: reco assistant rewrite prompt carries reviewed insight watchou
   });
 
   assert.match(prompt, /Use selected_product_details\.insight_watchouts only as concise tradeoff\/caveat evidence/i);
-  assert.match(prompt, /Use the phrase "best first buy" at most once/i);
+  assert.match(prompt, /Use one direct-buy framing phrase only once/i);
   assert.match(prompt, /do not use "clinically proven"/i);
   const context = extractRecoRewritePromptContext(prompt);
   assert.equal(context.selected_product_details[0]?.reviewed_insight_available, true);
