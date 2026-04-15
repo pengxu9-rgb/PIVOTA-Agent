@@ -2141,7 +2141,8 @@ test('reco assistant rewrite retries gemini timeout with structured reason promp
     assert.equal(maxTokens[1], 140);
     assert.ok(timeouts[0] > 0 && timeouts[0] < 4500);
     assert.ok(timeouts[1] >= 1400);
-    assert.ok(timeouts[1] < timeouts[0]);
+    assert.ok(timeouts[1] <= 2400);
+    assert.ok(timeouts[1] >= timeouts[0]);
     assert.match(prompts[0], /"prompt_profile":"compact_timeout_retry"/);
     assert.match(prompts[1], /"prompt_profile":"strict_selected_only_retry"/);
     assert.match(prompts[1], /Do not write the final assistant message\./);
