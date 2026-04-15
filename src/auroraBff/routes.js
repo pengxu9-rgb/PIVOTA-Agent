@@ -53431,6 +53431,8 @@ function buildCompactRecoAssistantPromptLines({
     'Avoid internal phrasing like "selected products" and avoid generic filler.',
     'Price may support the recommendation, but pair it with a concrete product-fit reason from Context.',
     'Never write ungrammatical fragments like "because a serum..." or "because an SPF..."; use "because it is..." or an active verb.',
+    'Use the phrase "best first buy" at most once; never write "... is your best first buy because it is your best first buy ...".',
+    'When reviewed_insight_available is false, do not repeat clinical, dermatologist, review, community, or social-proof claims; treat the evidence as seller/product-record copy only.',
     'Compact retry mode: keep the answer tight, prioritize the selected product evidence, and skip optional background detail.',
   ];
   if (strictSelectedOnlyContext) {
@@ -53488,6 +53490,8 @@ function buildStructuredRecoAssistantReasonPromptLines({
     'support_reasons must align to the remaining selected products in order; use an empty array when there are no support products.',
     'Each reason must be a short shopper-facing fragment, not a full recommendation sentence.',
     'Do not start a reason fragment with "a" or "an" unless it remains grammatical after "because"; prefer active verbs or "it is ...".',
+    'Do not include the phrase "best first buy" inside any reason fragment.',
+    'When reviewed_insight_available is false, do not use clinical, dermatologist, review, community, or social-proof claim language.',
     'Price may be included only when Context provides price_label or price_order_summary, and it must be paired with a non-price fit reason.',
   ];
   if (requestMode === 'buy') {
@@ -53527,6 +53531,12 @@ function describeRecoAssistantRewriteFailureReason(reason) {
   }
   if (normalized === 'rewrite_ungrammatical_reason_fragment') {
     return 'Fix ungrammatical reason fragments such as "because a serum..." by writing "because it is..." or using an active verb.';
+  }
+  if (normalized === 'rewrite_duplicate_best_first_buy') {
+    return 'Use "best first buy" at most once and do not repeat it inside the reason clause.';
+  }
+  if (normalized === 'rewrite_unreviewed_proof_claim') {
+    return 'Remove clinical, dermatologist, review, community, or social-proof claim language unless reviewed insights explicitly support it.';
   }
   if (normalized === 'rewrite_stiff_selection_framing') {
     return 'Replace stiff meta phrasing like "selected products" with shopper-facing routine language.';
@@ -53923,6 +53933,7 @@ function buildRecoAssistantRewritePrompt({
       'If request_mode is "buy", start the first sentence with the lead product name rather than a generic concern summary.',
       'If request_mode is "buy", the first sentence must use direct buy/pick language, ideally: "<lead product name> is your best first buy because ...".',
       'Never write ungrammatical fragments like "because a serum..." or "because an SPF..."; use "because it is..." or an active verb.',
+      'Use the phrase "best first buy" at most once in the whole message; never write "... is your best first buy because it is your best first buy ...".',
       'If request_mode is "buy" and there is one selected product, the first sentence must directly recommend that product by name.',
       'If request_mode is "buy" and selected_product_role_mix is "same_role_comparison", the first sentence must name the best first buy and signal that the remaining picks are same-slot comparison options.',
       'If request_mode is "buy" and selected_product_role_mix is "routine_mix", the first sentence must name the best first buy and frame the remaining picks as routine add-ons from other roles; only same-role products may be same-slot alternatives.',
@@ -53942,6 +53953,7 @@ function buildRecoAssistantRewritePrompt({
       'If assistant_write_plan.support_steps is non-empty, justify each support step with its own reason_points instead of using a generic closing summary.',
       'If assistant_write_plan.same_role_options is non-empty, use their tradeoff_note or reason_points to explain how they differ from the lead pick.',
       'If selected_product_details.reviewed_insight_available is false for a product, treat why_this_one, key_features, best_for, and description_snippet as product-record evidence only; do not imply independent review, clinical, or community proof.',
+      'If every selected_product_details.reviewed_insight_available value is false, do not use "clinically proven", "clinically shown", "dermatologist recommended", review/social-proof, viral, or community-favorite language even if raw product copy contains it.',
       'Do not discuss alternatives/dupes pros and cons unless alternatives_count is greater than 0 or compare_highlights/pivota_insights provide explicit tradeoff evidence.',
       'If known_price_count is 2 or more, compare price/value or ROI in plain shopper terms using only listed prices; do not compute per-use ROI, percentages, or size-normalized value unless Context provides size and usage data.',
       'Price may support a recommendation, but price alone is not enough; pair it with at least one concrete fit, formula, texture, ingredient, or use-case reason from Context.',
@@ -54166,6 +54178,31 @@ function assistantTextUsesStiffSelectionFraming(text) {
     || /\bselected products are different steps\b/i.test(String(text || ''));
 }
 
+function assistantTextRepeatsBestFirstBuy(text) {
+  const raw = String(text || '');
+  const count = (raw.match(/\bbest first buy\b/gi) || []).length;
+  return count > 1
+    || /\bbest first buy\s+because\s+(?:it\s+is|it's|this\s+is|that\s+is)\s+(?:your\s+)?best first buy\b/i.test(raw);
+}
+
+function recoPayloadHasReviewedProductInsights(payload = null) {
+  const recommendations = Array.isArray(payload?.recommendations) ? payload.recommendations : [];
+  return recommendations.some((item) => {
+    if (!isPlainObject(item)) return false;
+    return isPlainObject(item.product_intel)
+      || isPlainObject(item.productIntel)
+      || isPlainObject(item.pivota_insights)
+      || isPlainObject(item.pivotaInsights);
+  });
+}
+
+function assistantTextUsesUnreviewedProofClaim(text, payload = null) {
+  if (recoPayloadHasReviewedProductInsights(payload)) return false;
+  return /\b(clinically\s+(?:proven|shown|tested|demonstrated)|clinical(?:ly)?\s+proof|dermatologist(?:-|\s)?(?:tested|recommended|approved)|review(?:s|ed)?\s+(?:say|show|showed|prove|proved)|community\s+(?:favorite|backed|loved|rated)|social\s+proof|viral|cult\s+favorite|star\s+rating)\b/i.test(
+    String(text || ''),
+  );
+}
+
 function assistantTextUsesSingleProductRoutineFraming(text) {
   return /\b(to build out a full routine|these different steps|different steps in a basic routine|routine add-ons|the other two picks|secondary sunscreen step|secondary supporting moisturizer step)\b/i.test(
     String(text || ''),
@@ -54350,6 +54387,8 @@ function validateRecoAssistantRewriteCandidate({
     selectedProductRoutineMix
     && assistantTextUsesTemplatedRoutineBridge(text);
   const usesStiffSelectionFraming = assistantTextUsesStiffSelectionFraming(text);
+  const repeatsBestFirstBuy = assistantTextRepeatsBestFirstBuy(text);
+  const usesUnreviewedProofClaim = assistantTextUsesUnreviewedProofClaim(text, payload);
   const usesSingleProductRoutineFraming =
     singleProductFocus
     && assistantTextUsesSingleProductRoutineFraming(text);
@@ -54377,6 +54416,8 @@ function validateRecoAssistantRewriteCandidate({
     || usesVagueBenefitLanguage
     || usesTemplatedRoutineBridge
     || usesStiffSelectionFraming
+    || repeatsBestFirstBuy
+    || usesUnreviewedProofClaim
     || usesSingleProductRoutineFraming
     || usesGenericRoutineWrapup
     || usesUngrammaticalReasonFragment
@@ -54388,6 +54429,8 @@ function validateRecoAssistantRewriteCandidate({
     if (usesVagueBenefitLanguage) return { ok: false, reason: 'rewrite_vague_benefit_language' };
     if (usesTemplatedRoutineBridge) return { ok: false, reason: 'rewrite_templated_routine_bridge' };
     if (usesStiffSelectionFraming) return { ok: false, reason: 'rewrite_stiff_selection_framing' };
+    if (repeatsBestFirstBuy) return { ok: false, reason: 'rewrite_duplicate_best_first_buy' };
+    if (usesUnreviewedProofClaim) return { ok: false, reason: 'rewrite_unreviewed_proof_claim' };
     if (usesSingleProductRoutineFraming) return { ok: false, reason: 'rewrite_single_product_routine_framing' };
     if (usesGenericRoutineWrapup) return { ok: false, reason: 'rewrite_generic_routine_wrapup' };
     if (usesUngrammaticalReasonFragment) return { ok: false, reason: 'rewrite_ungrammatical_reason_fragment' };
@@ -54406,6 +54449,8 @@ function shouldRetryRecoAssistantRewrite(reason) {
     || normalized === 'rewrite_vague_benefit_language'
     || normalized === 'rewrite_templated_routine_bridge'
     || normalized === 'rewrite_stiff_selection_framing'
+    || normalized === 'rewrite_duplicate_best_first_buy'
+    || normalized === 'rewrite_unreviewed_proof_claim'
     || normalized === 'rewrite_single_product_routine_framing'
     || normalized === 'rewrite_generic_routine_wrapup'
     || normalized === 'rewrite_ungrammatical_reason_fragment'
@@ -91382,6 +91427,7 @@ const __internal = {
   buildRouteAwareAssistantText,
   buildPayloadBoundRecoAssistantText,
   buildRecoAssistantRewritePrompt,
+  validateRecoAssistantRewriteCandidate,
   maybeRewriteRecoAssistantTextWithLlm,
   normalizeRecoAssistantReasonFragment,
   isSkincareCategory,

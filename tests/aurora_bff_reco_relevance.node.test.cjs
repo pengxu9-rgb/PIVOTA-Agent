@@ -6527,6 +6527,8 @@ test('__internal: reco assistant rewrite prompt carries reviewed insight watchou
   });
 
   assert.match(prompt, /Use selected_product_details\.insight_watchouts only as concise tradeoff\/caveat evidence/i);
+  assert.match(prompt, /Use the phrase "best first buy" at most once/i);
+  assert.match(prompt, /do not use "clinically proven"/i);
   const context = extractRecoRewritePromptContext(prompt);
   assert.equal(context.selected_product_details[0]?.reviewed_insight_available, true);
   assert.equal(context.selected_product_details[0]?.insight_watchouts?.[0]?.label, 'Because it is tinted, shade match matters.');
@@ -6536,6 +6538,45 @@ test('__internal: reco assistant rewrite prompt carries reviewed insight watchou
   assert.deepEqual(context.assistant_write_plan?.lead_product?.watchout_points, [
     'Because it is tinted, shade match matters.',
   ]);
+});
+
+test('__internal: reco assistant rewrite guard rejects duplicate buy framing and unreviewed proof claims', async () => {
+  const { __internal } = loadRoutesFresh();
+  const duplicate = __internal.validateRecoAssistantRewriteCandidate({
+    candidateText: 'Calming Barrier Serum is your best first buy because it is your best first buy for hydration.',
+    payload: {
+      recommendations: [
+        {
+          display_name: 'Calming Barrier Serum',
+          matched_role_id: 'hydrating_serum_or_essence',
+        },
+      ],
+    },
+    language: 'EN',
+    primaryTarget: { ingredient_query: 'hydrating serum', resolved_target_step: 'serum' },
+    secondaryTargets: [],
+    names: ['Calming Barrier Serum'],
+    requestMode: 'buy',
+  });
+  assert.equal(duplicate.reason, 'rewrite_duplicate_best_first_buy');
+
+  const unreviewedProof = __internal.validateRecoAssistantRewriteCandidate({
+    candidateText: 'Brightening Serum is your best first buy because it is clinically proven to promote brighter skin.',
+    payload: {
+      recommendations: [
+        {
+          display_name: 'Brightening Serum',
+          matched_role_id: 'tone_mark_treatment',
+        },
+      ],
+    },
+    language: 'EN',
+    primaryTarget: { ingredient_query: 'brighter skin serum', resolved_target_step: 'serum' },
+    secondaryTargets: [],
+    names: ['Brightening Serum'],
+    requestMode: 'buy',
+  });
+  assert.equal(unreviewedProof.reason, 'rewrite_unreviewed_proof_claim');
 });
 
 test('__internal: reco assistant rewrite prompt exposes same-role price comparison context', async () => {
