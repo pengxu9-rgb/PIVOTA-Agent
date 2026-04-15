@@ -17,6 +17,60 @@ const BEAUTY_VERTICAL_PATTERNS = Object.freeze([
   ['makeup', /\b(concealer|foundation|powder|mascara|lip|lipstick|gloss|blush|bronzer|eyeshadow|eye shadow|brow|liner|highlighter)\b/i],
   ['skincare', /\b(cleanser|serum|toner|mist|cream|moisturizer|moisturiser|mask|treatment|essence|ampoule|sunscreen|spf|lotion)\b/i],
 ]);
+const BROAD_RECALL_CATEGORY_KEYS = new Set([
+  'beauty',
+  'beauty products',
+  'cosmetics',
+  'skincare',
+  'skin care',
+  'makeup',
+  'make up',
+  'hair',
+  'haircare',
+  'hair care',
+  'body care',
+  'bath body',
+  'bath and body',
+]);
+const AMBIGUOUS_RECALL_CATEGORY_KEYS = new Set([
+  'oil',
+  'oils',
+  'balm',
+  'balms',
+  'mist',
+  'mists',
+  'spray',
+  'sprays',
+  'gel',
+  'gels',
+  'stick',
+  'sticks',
+]);
+const RECALL_LEAF_CATEGORY_PATTERNS = Object.freeze([
+  ['Hair Oil', /\bhair(?:[\s-]+[a-z0-9+-]+){0,4}[\s-]+oils?\b/i],
+  ['Lip Balm', /\blip(?:[\s-]+[a-z0-9+-]+){0,4}[\s-]+balms?\b/i],
+  ['Lip Oil', /\blip(?:[\s-]+[a-z0-9+-]+){0,3}[\s-]+oils?\b/i],
+  ['Conditioner', /\bconditioners?\b/i],
+  ['Shampoo', /\bshampoos?\b/i],
+  ['Cleanser', /\b(cleanser|cleansers|cleansing\s+(?:gel|foam|balm|oil|cream)?|face\s+wash)\b/i],
+  ['Body Wash', /\bbody\s+wash(?:es)?\b/i],
+  ['Sunscreen', /\b(sunscreen|sunscreens|spf)\b/i],
+  ['Serum', /\bserums?\b/i],
+  ['Toner', /\b(toner|toners|tonic|tonics)\b/i],
+  ['Essence', /\b(essence|essences|ampoule|ampoules)\b/i],
+  ['Moisturizer', /\b(moisturizer|moisturizers|moisturiser|moisturisers|gel[-\s]?cream|cream|creams|lotion|lotions)\b/i],
+  ['Treatment', /\b(treatment|treatments|mask|masks|peel|peels|exfoliant|exfoliants)\b/i],
+  ['Foundation', /\bfoundations?\b/i],
+  ['Concealer', /\bconcealers?\b/i],
+  ['Mascara', /\bmascaras?\b/i],
+  ['Blush', /\bblush(?:es)?\b/i],
+  ['Bronzer', /\bbronzers?\b/i],
+  ['Highlighter', /\bhighlighters?\b/i],
+  ['Eyeshadow', /\b(eyeshadow|eye\s+shadow|eyeshadows|eye\s+shadows)\b/i],
+  ['Lipstick', /\blipsticks?\b/i],
+  ['Lip Gloss', /\blip\s+gloss(?:es)?\b/i],
+  ['Fragrance', /\b(fragrance|fragrances|perfume|perfumes|parfum|parfums|cologne|colognes|eau\s+de\s+(?:parfum|toilette))\b/i],
+]);
 const EXTERNAL_SEED_SUPPRESSION_FLAG_KEYS = Object.freeze([
   'exclude_from_recall',
   'exclude_from_similar',
@@ -106,6 +160,85 @@ function normalizeKey(value) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
+}
+
+function inferRecallLeafCategoryFromText(value) {
+  const normalized = normalizeNonEmptyString(value);
+  if (!normalized) return '';
+  for (const [category, pattern] of RECALL_LEAF_CATEGORY_PATTERNS) {
+    if (pattern.test(normalized)) return category;
+  }
+  return '';
+}
+
+function normalizeRecallLeafCategory(value, { allowBroad = false } = {}) {
+  const raw = normalizeNonEmptyString(value);
+  if (!raw) return '';
+  const parts = raw
+    .split(/\s*(?:\/|>|\\|\||,|\u203a|\u00bb)\s*/g)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const candidates = parts.length > 0 ? parts.slice().reverse() : [raw];
+  candidates.push(raw);
+
+  for (const candidate of candidates) {
+    const key = normalizeKey(candidate);
+    if (!key) continue;
+    const leaf = inferRecallLeafCategoryFromText(candidate);
+    if (leaf) return leaf;
+    if (AMBIGUOUS_RECALL_CATEGORY_KEYS.has(key)) continue;
+    if (!BROAD_RECALL_CATEGORY_KEYS.has(key)) return normalizeNonEmptyString(candidate);
+  }
+
+  return allowBroad ? raw : '';
+}
+
+function resolveRecallCategory({ seedData = {}, snapshot = {}, row = {}, title = '', textCandidates = [] } = {}) {
+  const productTypeLeaf = [
+    seedData.product_type,
+    seedData?.product?.product_type,
+    snapshot.product_type,
+    row.seed_product_type,
+    row.product_type,
+  ]
+    .map((value) => normalizeRecallLeafCategory(value))
+    .find(Boolean);
+  if (productTypeLeaf) return productTypeLeaf;
+
+  const categoryLeaf = [
+    seedData.category,
+    seedData?.product?.category,
+    snapshot.category,
+    row.seed_category,
+    row.category,
+  ]
+    .map((value) => normalizeRecallLeafCategory(value))
+    .find(Boolean);
+  if (categoryLeaf) return categoryLeaf;
+
+  const inferredLeaf = inferRecallLeafCategoryFromText([title, ...textCandidates].filter(Boolean).join(' '));
+  if (inferredLeaf) return inferredLeaf;
+
+  return firstNonEmptyString(
+    seedData.category,
+    seedData.product_type,
+    seedData?.product?.category,
+    seedData?.product?.product_type,
+    snapshot.category,
+    snapshot.product_type,
+    row.seed_category,
+    row.seed_product_type,
+    row.category,
+    row.product_type,
+  );
+}
+
+function resolveStoredRecallCategory(stored = {}, fallback = {}) {
+  return (
+    normalizeRecallLeafCategory(stored.category) ||
+    normalizeNonEmptyString(fallback.category) ||
+    firstNonEmptyString(stored.category, fallback.category)
+  );
 }
 
 function firstNonEmptyString(...values) {
@@ -551,19 +684,15 @@ function collectRecallTextCandidates(seedData = {}, snapshot = {}, row = {}) {
 
 function buildExternalSeedRecallDoc({ row = {}, seedData = {}, snapshot = {} } = {}) {
   const brand = firstNonEmptyString(seedData.brand, snapshot.brand, row.seed_brand, row.brand);
-  const category = firstNonEmptyString(
-    seedData.category,
-    seedData.product_type,
-    seedData?.product?.category,
-    snapshot.category,
-    snapshot.product_type,
-    row.seed_category,
-    row.seed_product_type,
-    row.category,
-    row.product_type,
-  );
   const titleSource = getRecallSourceTitle(seedData, snapshot, row);
   const rawTextCandidates = collectRecallTextCandidates(seedData, snapshot, row);
+  const category = resolveRecallCategory({
+    seedData,
+    snapshot,
+    row,
+    title: titleSource,
+    textCandidates: rawTextCandidates,
+  });
   const summary = cleanRecallSummary(rawTextCandidates.join('\n\n'));
   const body = cleanRecallBody(rawTextCandidates);
   const retrievalTitle =
@@ -636,7 +765,7 @@ function resolveExternalSeedRecallDoc({ row = {}, seedData = {}, snapshot = {} }
   ) {
     const fallback = buildExternalSeedRecallDoc({ row, seedData, snapshot });
     const brand = firstNonEmptyString(stored.brand, fallback.brand);
-    const category = firstNonEmptyString(stored.category, fallback.category);
+    const category = resolveStoredRecallCategory(stored, fallback);
     const retrievalTitle =
       cleanRecallTitle(firstNonEmptyString(stored.retrieval_title, fallback.retrieval_title), { brand }) ||
       fallback.retrieval_title;
@@ -787,4 +916,5 @@ module.exports = {
   buildExternalSeedRecallLikePredicate,
   classifyExternalSeedRecallMatchSource,
   EXTERNAL_SEED_RECALL_SQL_FIELDS,
+  BROAD_RECALL_CATEGORY_KEYS,
 };
