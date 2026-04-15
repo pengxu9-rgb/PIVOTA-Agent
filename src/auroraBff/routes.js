@@ -149,6 +149,7 @@ const {
   buildRecoSearchSemanticContract,
 } = require('./recoRecallPlanner');
 const {
+  getRecoRecallFilledRoleIds,
   getRecoRecallSelectedCount,
   isRecoRecallFrameworkCoverageSatisfied,
   shouldRunRecoRecallStage,
@@ -1337,6 +1338,11 @@ const RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 4000;
   return Math.max(50, Math.min(6000, v));
 })();
+const RECO_CATALOG_SUPPORT_INTERNAL_QUERY_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SUPPORT_INTERNAL_QUERY_TIMEOUT_MS || 1400);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1400;
+  return Math.max(200, Math.min(3000, v));
+})();
 const {
   classifyBeautyMainlineHandoffFallback,
   buildBeautyMainlineHandoffFallbackEnvelope,
@@ -1368,7 +1374,7 @@ const {
   RECO_CATALOG_GROUNDED_ENABLED,
   RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
   AURORA_BFF_CHAT_RECO_BUDGET_MS:
-    Number(process.env.AURORA_BFF_CHAT_RECO_BUDGET_MS || 13000),
+    Number(process.env.AURORA_BFF_CHAT_RECO_BUDGET_MS || 18000),
   AURORA_RECO_ASSISTANT_REWRITE_TIMEOUT_MS,
   BEAUTY_DISCOVERY_MAINLINE_OWNER,
   resolveRecommendationTargetContext,
@@ -3918,6 +3924,67 @@ function pickRecoProductIntelBundle(row) {
   return candidates.find((item) => isPlainObject(item) && isPlainObject(item.product_intel_core)) || null;
 }
 
+function extractRecoProductIntelBundleFromKbEntry(entry) {
+  const analysis = isPlainObject(entry?.analysis) ? entry.analysis : null;
+  if (!analysis) return null;
+  return pickRecoProductIntelBundle({ analysis });
+}
+
+async function hydrateRecoCandidateProductIntelFromKb(row) {
+  const item = isPlainObject(row) ? row : null;
+  if (!item || pickRecoProductIntelBundle(item)) return item || row;
+  const productId = pickFirstTrimmed(
+    item.canonical_product_ref?.product_id,
+    item.canonical_product_ref?.productId,
+    item.product_id,
+    item.productId,
+    item.sku?.canonical_product_ref?.product_id,
+    item.sku?.canonical_product_ref?.productId,
+    item.sku?.product_id,
+    item.sku?.productId,
+  );
+  if (!productId) return item;
+  let kbEntry = null;
+  try {
+    kbEntry = await getProductIntelKbEntry(normalizeProductIntelKbKey(`product:${productId}`));
+  } catch {
+    kbEntry = null;
+  }
+  const bundle = extractRecoProductIntelBundleFromKbEntry(kbEntry);
+  if (!bundle) return item;
+  const sourceRow = {
+    ...item,
+    product_intel: bundle,
+    ...(isPlainObject(bundle.shopping_card) ? { shopping_card: bundle.shopping_card } : {}),
+    ...(isPlainObject(bundle.search_card) ? { search_card: bundle.search_card } : {}),
+  };
+  const pivotaInsights = pickRecoPivotaInsights(sourceRow);
+  const shoppingCard = pickRecoShoppingCardPayload(sourceRow);
+  const searchCard = pickRecoSearchCardPayload(sourceRow);
+  return {
+    ...sourceRow,
+    ...(pivotaInsights ? { pivota_insights: pivotaInsights } : {}),
+    ...(shoppingCard ? { shopping_card: shoppingCard } : {}),
+    ...(searchCard ? { search_card: searchCard } : {}),
+    metadata: {
+      ...(isPlainObject(item.metadata) ? item.metadata : {}),
+      product_intel_kb_used: true,
+      ...(pickFirstTrimmed(kbEntry?.source_meta?.review_tier)
+        ? { product_intel_review_tier: pickFirstTrimmed(kbEntry.source_meta.review_tier) }
+        : {}),
+    },
+  };
+}
+
+async function hydrateRecoCandidatesProductIntelFromKb(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  if (!list.length) return list;
+  const settled = await Promise.allSettled(list.map((row) => hydrateRecoCandidateProductIntelFromKb(row)));
+  return settled.map((result, index) => (
+    result.status === 'fulfilled' && isPlainObject(result.value) ? result.value : list[index]
+  ));
+}
+
 function normalizeRecoInsightHighlight(item) {
   if (!item) return null;
   if (typeof item === 'string') {
@@ -4055,9 +4122,128 @@ function buildRecoCompareHighlightsFromInsightFields({
       ...(Array.isArray(insightObj?.best_for) ? insightObj.best_for.map((item) => `Best for ${item}`) : []),
       pickFirstTrimmed(shoppingObj?.subtitle),
       pickFirstTrimmed(shoppingObj?.intro),
-    ].filter(Boolean),
+    ].filter((value) => value && !looksLikeRecoPlaceholderSeedCopy(value)),
     3,
   );
+}
+
+const RECO_PLACEHOLDER_SEED_COPY_RE = /\b(?:replace\s+with\s+your\s+own\s+description\s+if\s+needed|test\s+fixture\s+for\s+pdp|lorem\s+ipsum|placeholder\s+copy|placeholder\s+description)\b/i;
+const RECO_LOW_INFORMATION_VISIBLE_COPY_RE = /\b(?:double\s+up\s+and\s+save|save\s+with\s+this\s+jumbo|add\s+to\s+cart|shop\s+now|free\s+shipping|limited\s+time\s+offer|subscribe\s+and\s+save)\b/i;
+const RECO_SCRAPED_VISIBLE_COPY_PREFIX_RE = /^(?:details?\s*)?(?:key\s+features?|features?|benefits?)\s*[-:|]\s*/i;
+const RECO_GENERIC_VISIBLE_INGREDIENT_RE = /^(?:water|aqua|glycerin|butylene glycol|propylene glycol|caprylic(?:\/capric)?|dimethicone|silica|parfum|fragrance|phenoxyethanol|carbomer|citric acid|sodium hydroxide)$/i;
+const RECO_SHOPPER_EVIDENCE_LANGUAGE_RE = /\b(?:best for|helps?|targets?|supports?|protects?|hydrates?|soothes?|calms?|mattif(?:y|ies|ying)|controls?|reduces?|lightweight|non-comedogenic|white cast|uv protection|daily protection|oil-control|shine|sebum|redness|barrier|dark spots?|post-breakout|hyperpigmentation|tone|spf\s*\d+|pa\+|without|for)\b/i;
+const RECO_CANONICAL_BEAUTY_BRANDS = Object.freeze([
+  'The Ordinary',
+  'KraveBeauty',
+  'Haruharu Wonder',
+  'First Aid Beauty',
+  'Naturium',
+  'Fenty Skin',
+  'Good Molecules',
+  "Paula's Choice",
+  'La Roche-Posay',
+  'Round Lab',
+  'Supergoop',
+  'Skin1004',
+  'Glossier',
+]);
+
+function normalizeRecoBrandCompareToken(value) {
+  return String(value || '')
+    .replace(/[’']/g, '')
+    .replace(/[^a-z0-9]+/gi, '')
+    .trim()
+    .toLowerCase();
+}
+
+function normalizeRecoBeautyBrandLabel(value, ...contextValues) {
+  const direct = String(value || '').replace(/\s+/g, ' ').trim();
+  const directToken = normalizeRecoBrandCompareToken(direct);
+  for (const label of RECO_CANONICAL_BEAUTY_BRANDS) {
+    const labelToken = normalizeRecoBrandCompareToken(label);
+    if (directToken && directToken === labelToken) return label;
+  }
+  if (direct) return direct;
+
+  const contextText = contextValues.map((item) => String(item || '').trim()).filter(Boolean).join(' ');
+  const contextToken = normalizeRecoBrandCompareToken(contextText);
+  if (!contextToken) return '';
+  for (const label of RECO_CANONICAL_BEAUTY_BRANDS) {
+    const labelToken = normalizeRecoBrandCompareToken(label);
+    if (labelToken && contextToken.startsWith(labelToken)) return label;
+  }
+  return '';
+}
+
+function looksLikeRecoPlaceholderSeedCopy(value) {
+  const text = String(value || '').trim();
+  if (!text) return false;
+  return RECO_PLACEHOLDER_SEED_COPY_RE.test(text);
+}
+
+function cleanRecoVisibleCopy(value) {
+  let text = stripHtmlToText(value).replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  let previous = '';
+  while (text && previous !== text) {
+    previous = text;
+    text = text.replace(RECO_SCRAPED_VISIBLE_COPY_PREFIX_RE, '').trim();
+  }
+  return text;
+}
+
+function looksLikeRecoLowInformationVisibleCopy(value) {
+  const text = cleanRecoVisibleCopy(value);
+  if (!text) return false;
+  return RECO_LOW_INFORMATION_VISIBLE_COPY_RE.test(text);
+}
+
+function looksLikeRecoStandaloneEvidenceFragment(value) {
+  const text = cleanRecoVisibleCopy(value).replace(/[.!?。！？]+$/g, '').trim();
+  if (!text) return false;
+  const normalized = text.toLowerCase();
+  if (RECO_GENERIC_VISIBLE_INGREDIENT_RE.test(normalized)) return true;
+  if (/^(?:lightweight|gentle|hydrating|soothing|calming|mattifying|oil-control|barrier|daily)?\s*(?:serum|cream|gel cream|moisturizer|moisturiser|sunscreen|spf|treatment|support)$/i.test(text)) {
+    return true;
+  }
+  if (RECO_SHOPPER_EVIDENCE_LANGUAGE_RE.test(text)) return false;
+  const wordCount = normalized.split(/[^a-z0-9%+.-]+/i).filter(Boolean).length;
+  if (wordCount <= 3 && text.length <= 36) return true;
+  return false;
+}
+
+function pickFirstNonPlaceholderRecoCopy(...values) {
+  for (const value of values) {
+    const trimmed = pickFirstTrimmed(value);
+    if (!trimmed || looksLikeRecoPlaceholderSeedCopy(trimmed)) continue;
+    return trimmed;
+  }
+  return '';
+}
+
+function pickFirstVisibleRecoCopy(...values) {
+  for (const value of values) {
+    const trimmed = cleanRecoVisibleCopy(value);
+    if (!trimmed || looksLikeRecoPlaceholderSeedCopy(trimmed) || looksLikeRecoLowInformationVisibleCopy(trimmed)) continue;
+    return trimmed;
+  }
+  return '';
+}
+
+function pickFirstNarrativeRecoCopy(...values) {
+  for (const value of values) {
+    const trimmed = cleanRecoVisibleCopy(value);
+    if (
+      !trimmed ||
+      looksLikeRecoPlaceholderSeedCopy(trimmed) ||
+      looksLikeRecoLowInformationVisibleCopy(trimmed) ||
+      looksLikeRecoStandaloneEvidenceFragment(trimmed)
+    ) {
+      continue;
+    }
+    return trimmed;
+  }
+  return '';
 }
 
 function normalizeRecoCatalogProduct(raw) {
@@ -4094,14 +4280,6 @@ function normalizeRecoCatalogProduct(raw) {
       : '') ||
     '';
 
-  const brand =
-    sanitizeRecoCatalogBrand(
-      (typeof base.brand === 'string' && base.brand) ||
-      (typeof base.brand_name === 'string' && base.brand_name) ||
-      (typeof base.brandName === 'string' && base.brandName) ||
-      '',
-    );
-
   const name =
     (typeof base.name === 'string' && base.name) ||
     (typeof base.title === 'string' && base.title) ||
@@ -4112,6 +4290,17 @@ function normalizeRecoCatalogProduct(raw) {
     (typeof base.displayName === 'string' && base.displayName) ||
     name ||
     '';
+
+  const brand = normalizeRecoBeautyBrandLabel(
+    sanitizeRecoCatalogBrand(
+      (typeof base.brand === 'string' && base.brand) ||
+      (typeof base.brand_name === 'string' && base.brand_name) ||
+      (typeof base.brandName === 'string' && base.brandName) ||
+      '',
+    ),
+    displayName,
+    name,
+  );
 
   const skuId =
     (typeof base.sku_id === 'string' && base.sku_id) ||
@@ -4256,7 +4445,7 @@ function normalizeRecoCatalogProduct(raw) {
       base.seedDescription,
     ].map((item) => String(item || '').trim()).filter(Boolean).map((item) => item.slice(0, 160)),
     4,
-  );
+  ).filter((item) => !looksLikeRecoPlaceholderSeedCopy(item));
   const tagTokens = uniqCaseInsensitiveStrings(
     [
       ...(Array.isArray(base.tags) ? base.tags : []),
@@ -4268,7 +4457,7 @@ function normalizeRecoCatalogProduct(raw) {
   );
   const socialRef = extractCandidateSocialReference(base);
   const price = extractCatalogCandidatePrice(base);
-  const shortDescription = pickFirstTrimmed(
+  const shortDescription = pickFirstVisibleRecoCopy(
     base.short_description,
     base.shortDescription,
     base.subtitle,
@@ -4276,9 +4465,9 @@ function normalizeRecoCatalogProduct(raw) {
     base.seed_description,
     base.seedDescription,
   );
-  const description = pickFirstTrimmed(base.description);
-  const bestFor = pickFirstTrimmed(base.best_for, base.bestFor);
-  const whyThisOne = pickFirstTrimmed(base.why_this_one, base.whyThisOne, base.reason);
+  const description = pickFirstVisibleRecoCopy(base.description);
+  const bestFor = pickFirstVisibleRecoCopy(base.best_for, base.bestFor);
+  const whyThisOne = pickFirstNarrativeRecoCopy(base.why_this_one, base.whyThisOne, base.reason);
   const keyFeatures = asStringArray(
     [
       ...(Array.isArray(base.key_features) ? base.key_features : []),
@@ -4288,7 +4477,7 @@ function normalizeRecoCatalogProduct(raw) {
       ...(Array.isArray(base.keyIngredients) ? base.keyIngredients : []),
     ],
     8,
-  );
+  ).map(cleanRecoVisibleCopy).filter((item) => item && !looksLikeRecoPlaceholderSeedCopy(item) && !looksLikeRecoLowInformationVisibleCopy(item));
   const compareHighlights = uniqCaseInsensitiveStrings(
     [
       ...(Array.isArray(base.compare_highlights) ? base.compare_highlights : []),
@@ -4300,7 +4489,8 @@ function normalizeRecoCatalogProduct(raw) {
       .map((item) => (isPlainObject(item)
         ? pickFirstTrimmed(item.body, item.text, item.description, item.headline, item.title, item.label)
         : pickFirstTrimmed(item)))
-      .filter(Boolean),
+      .map(cleanRecoVisibleCopy)
+      .filter((item) => item && !looksLikeRecoPlaceholderSeedCopy(item) && !looksLikeRecoLowInformationVisibleCopy(item)),
     6,
   );
   const productIntel = pickRecoProductIntelBundle(base);
@@ -18458,6 +18648,131 @@ async function collectRecoCandidatesFromRecallPlan({
   const attemptedBaseUrlsByStage = {};
   const attemptedPathsByStage = {};
   let plannerEntryCursor = 0;
+  const isSameRoleComparisonContext = () => {
+    const semanticPlan = isPlainObject(targetContext?.semantic_plan) ? targetContext.semantic_plan : null;
+    const comparisonMode = String(
+      pickFirstTrimmed(
+        targetContext?.comparison_mode,
+        semanticPlan?.comparison_mode,
+        semanticPlan?.selection_constraints?.comparison_mode,
+      ) || '',
+    ).trim().toLowerCase();
+    return comparisonMode === 'same_role_comparison' || comparisonMode === 'same_role';
+  };
+  const runRecallStageEntry = async (entry) => {
+    const plannerQueryIndex = plannerEntryCursor;
+    plannerEntryCursor += 1;
+    return executeRecoRecallPlanEntryWithWallClockGuard({
+      entry,
+      logger,
+      timeoutMs,
+      deadlineMs,
+      limit,
+      usePurchasableFallback,
+      transportPolicyMode,
+      targetContext,
+      semanticContract,
+      traceId,
+      queryIndex: plannerQueryIndex,
+      queryTotal: Array.isArray(recallPlan?.entries) ? recallPlan.entries.length : null,
+      authHeaders,
+      searchFn,
+    });
+  };
+  const buildStageAggregate = () => ({
+    timeoutCount: 0,
+    transientCount: 0,
+    actualHttpAttemptCount: 0,
+    effectiveRequestTimeoutMs: 0,
+    attemptedBaseUrls: new Set(),
+    attemptedPaths: new Set(),
+  });
+  const accumulateStageRow = (stage, row, aggregate) => {
+    const queryEntry = row?.queryEntry || null;
+    const out = row?.out || null;
+    if (!queryEntry) return;
+    const actualAttemptsForRow = Number.isFinite(Number(out?.actual_http_attempt_count))
+      ? Math.max(0, Math.trunc(Number(out.actual_http_attempt_count)))
+      : 0;
+    aggregate.actualHttpAttemptCount += actualAttemptsForRow;
+    const attemptTimeouts = Array.isArray(out?.attempted_request_timeouts_ms)
+      ? out.attempted_request_timeouts_ms
+      : [];
+    for (const timeoutValue of attemptTimeouts) {
+      const normalizedTimeout = Number.isFinite(Number(timeoutValue))
+        ? Math.max(0, Math.trunc(Number(timeoutValue)))
+        : 0;
+      aggregate.effectiveRequestTimeoutMs = Math.max(aggregate.effectiveRequestTimeoutMs, normalizedTimeout);
+    }
+    for (const baseUrl of Array.isArray(out?.attempted_base_urls) ? out.attempted_base_urls : []) {
+      const normalizedBaseUrl = String(baseUrl || '').trim();
+      if (normalizedBaseUrl) aggregate.attemptedBaseUrls.add(normalizedBaseUrl);
+    }
+    for (const pathToken of Array.isArray(out?.attempted_paths) ? out.attempted_paths : []) {
+      const normalizedPath = String(pathToken || '').trim();
+      if (normalizedPath) aggregate.attemptedPaths.add(normalizedPath);
+    }
+    const reason = String(out?.reason || '').trim().toLowerCase();
+    if (reason === 'upstream_timeout') aggregate.timeoutCount += 1;
+    if (reason === 'upstream_timeout' || reason === 'upstream_error' || reason === 'rate_limited') {
+      aggregate.transientCount += 1;
+    }
+    searchResults.push({
+      stage_id: String(stage?.stage_id || '').trim() || null,
+      planner_mode: pickFirstTrimmed(recallPlan?.mode) || null,
+      query: queryEntry.query,
+      step: pickFirstTrimmed(queryEntry.preferred_step) || null,
+      slot: pickFirstTrimmed(queryEntry.slot) || inferSlotForStep(queryEntry.preferred_step) || 'other',
+      ladder_level: String(stage?.stage_id || '').trim() || null,
+      role_id: String(queryEntry.role_id || '').trim() || null,
+      role_rank: Number.isFinite(Number(queryEntry.role_rank)) ? Number(queryEntry.role_rank) : null,
+      query_index: Number.isFinite(Number(queryEntry.query_index)) ? Number(queryEntry.query_index) : 0,
+      source_scope: String(queryEntry.source_scope || 'internal').trim().toLowerCase() || 'internal',
+      ...out,
+    });
+    const products = Array.isArray(out?.products) ? out.products : [];
+    for (const product of products) {
+      const normalized = normalizeRecoCatalogProduct(product);
+      if (!isPlainObject(normalized)) continue;
+      const boundaryReject = classifyBeautyMainlineBoundaryRejectCandidate(normalized);
+      if (boundaryReject.rejected) {
+        recordBeautyMainlineBoundaryReject({
+          rejects: boundaryRejects,
+          product: normalized,
+          reason: boundaryReject.reason,
+          queryEntry,
+          stageId: String(stage?.stage_id || '').trim() || null,
+        });
+        continue;
+      }
+      rawCandidates.push({
+        ...normalized,
+        retrieval_query: queryEntry.query,
+        retrieval_step: pickFirstTrimmed(queryEntry.preferred_step) || null,
+        retrieval_slot: pickFirstTrimmed(queryEntry.slot) || inferSlotForStep(queryEntry.preferred_step) || 'other',
+        retrieval_ladder_level: String(stage?.stage_id || '').trim() || null,
+        retrieval_role_id: queryEntry.role_id || null,
+        retrieval_role_rank: Number.isFinite(Number(queryEntry.role_rank)) ? Number(queryEntry.role_rank) : null,
+      });
+    }
+  };
+  const shouldStopRecallStageOnViableMatch = (stage) => {
+    if (stage?.stop_on_viable_match !== true) return false;
+    const stageRoleId = String(stage?.role_id || '').trim().toLowerCase();
+    if (stageRoleId) {
+      const filledRoleIds = new Set(getRecoRecallFilledRoleIds(candidateState, { requireAlignedRetrieval: true }));
+      if (!filledRoleIds.has(stageRoleId)) return false;
+      const stageId = String(stage?.stage_id || '').trim().toLowerCase();
+      if (stageId === 'framework_stage_b_primary_external_seed' && isSameRoleComparisonContext()) {
+        return getRecoRecallSelectedCount(candidateState) >= 2;
+      }
+      return true;
+    }
+    if (String(recallPlan?.mode || '').trim().toLowerCase() === 'framework_generic') {
+      return isRecoRecallFrameworkCoverageSatisfied(candidateState, { targetContext });
+    }
+    return getRecoRecallSelectedCount(candidateState) > 0;
+  };
 
   for (const stage of planStages) {
     const runDecision = shouldRunRecoRecallStage(stage, { stageResults, candidateState });
@@ -18486,114 +18801,41 @@ async function collectRecoCandidatesFromRecallPlan({
     );
     plannerQueryCountByStage[String(stage?.stage_id || '').trim() || `stage_${stageResults.length + 1}`] =
       entries.length;
-    const stageRows = await mapWithConcurrency(
-      entries,
-      Math.max(1, Number(stage?.concurrency || 1)),
-      async (entry) => {
-        const plannerQueryIndex = plannerEntryCursor;
-        plannerEntryCursor += 1;
-        return executeRecoRecallPlanEntryWithWallClockGuard({
-          entry,
-          logger,
-          timeoutMs,
-          deadlineMs,
-          limit,
-          usePurchasableFallback,
-          transportPolicyMode,
+    const stageRows = [];
+    const stageAggregate = buildStageAggregate();
+    if (stage?.stop_on_viable_match === true && entries.length > 1) {
+      for (const entry of entries) {
+        // eslint-disable-next-line no-await-in-loop
+        const row = await runRecallStageEntry(entry);
+        stageRows.push(row);
+        accumulateStageRow(stage, row, stageAggregate);
+        candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
           targetContext,
-          semanticContract,
-          traceId,
-          queryIndex: plannerQueryIndex,
-          queryTotal: Array.isArray(recallPlan?.entries) ? recallPlan.entries.length : null,
-          authHeaders,
-          searchFn,
+          recommendationTaskContext,
         });
-      },
-    );
-
-    let timeoutCount = 0;
-    let transientCount = 0;
-    let stageActualHttpAttemptCount = 0;
-    let stageEffectiveRequestTimeoutMs = 0;
-    const stageAttemptedBaseUrls = new Set();
-    const stageAttemptedPaths = new Set();
-    for (const row of stageRows) {
-      const queryEntry = row?.queryEntry || null;
-      const out = row?.out || null;
-      if (!queryEntry) continue;
-      const actualAttemptsForRow = Number.isFinite(Number(out?.actual_http_attempt_count))
-        ? Math.max(0, Math.trunc(Number(out.actual_http_attempt_count)))
-        : 0;
-      stageActualHttpAttemptCount += actualAttemptsForRow;
-      const attemptTimeouts = Array.isArray(out?.attempted_request_timeouts_ms)
-        ? out.attempted_request_timeouts_ms
-        : [];
-      for (const timeoutValue of attemptTimeouts) {
-        const normalizedTimeout = Number.isFinite(Number(timeoutValue))
-          ? Math.max(0, Math.trunc(Number(timeoutValue)))
-          : 0;
-        stageEffectiveRequestTimeoutMs = Math.max(stageEffectiveRequestTimeoutMs, normalizedTimeout);
+        if (shouldStopRecallStageOnViableMatch(stage)) break;
       }
-      for (const baseUrl of Array.isArray(out?.attempted_base_urls) ? out.attempted_base_urls : []) {
-        const normalizedBaseUrl = String(baseUrl || '').trim();
-        if (normalizedBaseUrl) stageAttemptedBaseUrls.add(normalizedBaseUrl);
-      }
-      for (const pathToken of Array.isArray(out?.attempted_paths) ? out.attempted_paths : []) {
-        const normalizedPath = String(pathToken || '').trim();
-        if (normalizedPath) stageAttemptedPaths.add(normalizedPath);
-      }
-      const reason = String(out?.reason || '').trim().toLowerCase();
-      if (reason === 'upstream_timeout') timeoutCount += 1;
-      if (reason === 'upstream_timeout' || reason === 'upstream_error' || reason === 'rate_limited') transientCount += 1;
-      searchResults.push({
-        stage_id: String(stage?.stage_id || '').trim() || null,
-        planner_mode: pickFirstTrimmed(recallPlan?.mode) || null,
-        query: queryEntry.query,
-        step: pickFirstTrimmed(queryEntry.preferred_step) || null,
-        slot: pickFirstTrimmed(queryEntry.slot) || inferSlotForStep(queryEntry.preferred_step) || 'other',
-        ladder_level: String(stage?.stage_id || '').trim() || null,
-        role_id: String(queryEntry.role_id || '').trim() || null,
-        role_rank: Number.isFinite(Number(queryEntry.role_rank)) ? Number(queryEntry.role_rank) : null,
-        query_index: Number.isFinite(Number(queryEntry.query_index)) ? Number(queryEntry.query_index) : 0,
-        source_scope: String(queryEntry.source_scope || 'internal').trim().toLowerCase() || 'internal',
-        ...out,
-      });
-      const products = Array.isArray(out?.products) ? out.products : [];
-      for (const product of products) {
-        const normalized = normalizeRecoCatalogProduct(product);
-        if (!isPlainObject(normalized)) continue;
-        const boundaryReject = classifyBeautyMainlineBoundaryRejectCandidate(normalized);
-        if (boundaryReject.rejected) {
-          recordBeautyMainlineBoundaryReject({
-            rejects: boundaryRejects,
-            product: normalized,
-            reason: boundaryReject.reason,
-            queryEntry,
-            stageId: String(stage?.stage_id || '').trim() || null,
-          });
-          continue;
-        }
-        rawCandidates.push({
-          ...normalized,
-          retrieval_query: queryEntry.query,
-          retrieval_step: pickFirstTrimmed(queryEntry.preferred_step) || null,
-          retrieval_slot: pickFirstTrimmed(queryEntry.slot) || inferSlotForStep(queryEntry.preferred_step) || 'other',
-          retrieval_ladder_level: String(stage?.stage_id || '').trim() || null,
-          retrieval_role_id: queryEntry.role_id || null,
-          retrieval_role_rank: Number.isFinite(Number(queryEntry.role_rank)) ? Number(queryEntry.role_rank) : null,
-        });
+    } else {
+      const rows = await mapWithConcurrency(
+        entries,
+        Math.max(1, Number(stage?.concurrency || 1)),
+        runRecallStageEntry,
+      );
+      for (const row of rows) {
+        stageRows.push(row);
+        accumulateStageRow(stage, row, stageAggregate);
       }
     }
 
-    executedQueryCount += entries.length;
-    executedUpstreamAttemptCount += stageActualHttpAttemptCount;
-    actualHttpAttemptCount += stageActualHttpAttemptCount;
+    executedQueryCount += stageRows.length;
+    executedUpstreamAttemptCount += stageAggregate.actualHttpAttemptCount;
+    actualHttpAttemptCount += stageAggregate.actualHttpAttemptCount;
     const stageId = String(stage?.stage_id || '').trim() || `stage_${stageResults.length + 1}`;
-    stageTimeoutCounts[stageId] = timeoutCount;
-    actualHttpAttemptsByStage[stageId] = stageActualHttpAttemptCount;
-    effectiveRequestTimeoutMsByStage[stageId] = stageEffectiveRequestTimeoutMs;
-    attemptedBaseUrlsByStage[stageId] = Array.from(stageAttemptedBaseUrls);
-    attemptedPathsByStage[stageId] = Array.from(stageAttemptedPaths);
+    stageTimeoutCounts[stageId] = stageAggregate.timeoutCount;
+    actualHttpAttemptsByStage[stageId] = stageAggregate.actualHttpAttemptCount;
+    effectiveRequestTimeoutMsByStage[stageId] = stageAggregate.effectiveRequestTimeoutMs;
+    attemptedBaseUrlsByStage[stageId] = Array.from(stageAggregate.attemptedBaseUrls);
+    attemptedPathsByStage[stageId] = Array.from(stageAggregate.attemptedPaths);
     candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
       targetContext,
       recommendationTaskContext,
@@ -18607,15 +18849,15 @@ async function collectRecoCandidatesFromRecallPlan({
       source_scope: String(stage?.source_scope || 'internal').trim().toLowerCase() || 'internal',
       skipped: false,
       skip_reason: null,
-      executed_query_count: entries.length,
-      executed_upstream_attempt_count: stageActualHttpAttemptCount,
-      actual_http_attempt_count: stageActualHttpAttemptCount,
-      timeout_count: timeoutCount,
-      transient_only: entries.length > 0 && transientCount >= entries.length && Number(candidateState?.raw_candidate_count || 0) === 0,
+      executed_query_count: stageRows.length,
+      executed_upstream_attempt_count: stageAggregate.actualHttpAttemptCount,
+      actual_http_attempt_count: stageAggregate.actualHttpAttemptCount,
+      timeout_count: stageAggregate.timeoutCount,
+      transient_only: stageRows.length > 0 && stageAggregate.transientCount >= stageRows.length && Number(candidateState?.raw_candidate_count || 0) === 0,
       selected_count: stageSelectedCount,
       primary_role_matched: Boolean(candidateState?.primary_role_matched),
-      attempted_base_urls: Array.from(stageAttemptedBaseUrls),
-      attempted_paths: Array.from(stageAttemptedPaths),
+      attempted_base_urls: Array.from(stageAggregate.attemptedBaseUrls),
+      attempted_paths: Array.from(stageAggregate.attemptedPaths),
     };
     stageResults.push(stageResult);
 
@@ -19001,13 +19243,17 @@ function buildRecoDerivedFeatureTokens({
     seen.add(key);
     out.push(token);
   };
-  for (const value of asStringArray(providedFeatures, 6)) push(value);
+  for (const value of asStringArray(providedFeatures, 8)) {
+    if (!shouldProjectRecoFeatureForRole(value, { roleText, productName })) continue;
+    push(value);
+  }
   const cleanName = String(productName || '').trim();
   if (cleanName) {
     for (const rawPart of cleanName.split(/\s*\+\s*/)) {
       const part = String(rawPart || '').trim();
       if (!part) continue;
-      if (/[0-9]+(?:\.[0-9]+)?%/.test(part)) push(part);
+      const percentFeature = buildRecoPercentFeatureFromNamePart(part);
+      if (percentFeature) push(percentFeature);
     }
   }
   const roleHaystack = `${String(roleText || '')} ${cleanName}`.toLowerCase();
@@ -19016,6 +19262,125 @@ function buildRecoDerivedFeatureTokens({
     push(isCn ? '轻薄精华' : 'Lightweight serum');
   }
   return out.slice(0, 4);
+}
+
+function buildRecoPercentFeatureFromNamePart(value) {
+  const raw = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!raw) return '';
+  const percentMatch = raw.match(/\b\d+(?:\.\d+)?%/);
+  if (!percentMatch) return '';
+  const percent = percentMatch[0];
+  const before = raw
+    .slice(0, percentMatch.index)
+    .replace(/\s*[-–—]\s*(?:jumbo|value size|mini|travel size|refill|set)\b.*$/i, '')
+    .replace(/\b(?:the ordinary|naturium|kravebeauty|first aid beauty)\b/ig, ' ')
+    .replace(/[^\p{L}\p{N}\s-]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const words = before.split(/\s+/).filter(Boolean);
+  const compactPrefix = words.slice(-4).join(' ').trim();
+  return compactPrefix ? `${compactPrefix} ${percent}` : percent;
+}
+
+function shouldProjectRecoFeatureForRole(value, { roleText = '', productName = '' } = {}) {
+  const feature = String(value || '').trim().toLowerCase();
+  if (!feature) return false;
+  const role = String(roleText || '').trim().toLowerCase();
+  const name = String(productName || '').trim().toLowerCase();
+  const hydrationOrToleranceRole = /\b(?:hydrat\w*|dehydrat\w*|barrier|moist\w*|sooth\w*|calm\w*|sensitive|redness|irritat\w*)\b/.test(role);
+  const activeTreatmentRole = /\b(oil|shine|sebum|acne|blemish|clogged|pore|tone|mark|dark spot|brighten|hyperpigmentation|uneven)\b/.test(role);
+  const treatmentActive = /\b(salicylic|azelaic|retinol|retinoid|glycolic|lactic|mandelic|benzoyl|peroxide|aha|bha|pha|exfoliat|vitamin c|ascorbic|alpha arbutin|arbutin|tranexamic|kojic)\b/.test(feature);
+  if (hydrationOrToleranceRole && !activeTreatmentRole && treatmentActive) {
+    return name.includes(feature);
+  }
+  return true;
+}
+
+function pickRecoFeaturesForWhy(features = [], { roleText = '', productName = '', max = 2 } = {}) {
+  const role = String(roleText || '').trim().toLowerCase();
+  const name = String(productName || '').trim().toLowerCase();
+  const allowForRole = (feature) => {
+    const text = String(feature || '').trim();
+    const lower = text.toLowerCase();
+    if (!text) return false;
+    if (/^lightweight\s+(?:serum|cream|moisturizer|sunscreen)$/i.test(text)) return false;
+    if (/^(?:oil-control support|控油护理)$/i.test(text)) return /\b(oil|shine|sebum)\b/.test(role);
+    if (/\bspf\s*\d+|uv filters?|pa\+\+|broad[-\s]?spectrum\b/i.test(text)) return true;
+    if (/\bniacinamide|zinc|azelaic|salicylic|mandelic|glycolic|lactic|retinol|retinoid|tranexamic|arbutin|vitamin c|ascorbic|centella|tamanu|ceramide|hyaluronic|panthenol|cica|madecassoside\b/i.test(text)) return true;
+    if (RECO_GENERIC_VISIBLE_INGREDIENT_RE.test(lower)) return false;
+    if (name && lower.length >= 4 && name.includes(lower)) return true;
+    return RECO_SHOPPER_EVIDENCE_LANGUAGE_RE.test(text) && !looksLikeRecoStandaloneEvidenceFragment(text);
+  };
+  return uniqCaseInsensitiveStrings(
+    (Array.isArray(features) ? features : [])
+      .map((value) => cleanRecoVisibleCopy(value))
+      .filter((value) => value && allowForRole(value)),
+    Math.max(1, max),
+  );
+}
+
+function formatRecoFeaturePhraseForWhy(features = []) {
+  const values = (Array.isArray(features) ? features : [])
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .slice(0, 2);
+  if (values.length === 0) return '';
+  if (values.length === 1) return values[0];
+  return `${values[0]} and ${values[1]}`;
+}
+
+function buildRecoRoleGroundedWhyThisOne({
+  roleText = '',
+  productName = '',
+  productType = '',
+  keyFeatures = [],
+  language = 'EN',
+} = {}) {
+  const isCn = String(language || '').trim().toUpperCase() === 'CN';
+  const role = String(roleText || '').trim().toLowerCase();
+  const name = String(productName || '').trim();
+  const typeLabel = humanizeRecoProductType(productType || 'other', language).toLowerCase();
+  const featuresForWhy = pickRecoFeaturesForWhy(keyFeatures, { roleText, productName: name, max: 2 });
+  const featurePhrase = formatRecoFeaturePhraseForWhy(featuresForWhy);
+  const withFeature = featurePhrase ? ` with ${featurePhrase}` : '';
+  const productText = name || `This ${typeLabel}`;
+  if (isCn) {
+    if (/\b(tone|mark|dark spot|hyperpigmentation|brighten|uneven)\b/i.test(role)) {
+      return featurePhrase
+        ? `${productText} 更贴合痘印/肤色不均这一步，核心信息来自 ${featurePhrase} 和商品定位。`
+        : `${productText} 更贴合痘印/肤色不均这一步，而不是单纯控油。`;
+    }
+    if (/\b(redness|soothing|calming|sensitive|irritation)\b/i.test(role)) {
+      return featurePhrase
+        ? `${productText} 更适合先做敏感泛红的舒缓支持，重点信息来自 ${featurePhrase}。`
+        : `${productText} 更适合先做敏感泛红的舒缓支持。`;
+    }
+    if (/\b(acne|clogged|blemish|pore)\b/i.test(role)) {
+      return featurePhrase
+        ? `${productText} 更适合作为堵塞毛孔/痘痘方向的集中护理，重点信息来自 ${featurePhrase}。`
+        : `${productText} 更适合作为堵塞毛孔/痘痘方向的集中护理。`;
+    }
+    return '';
+  }
+  if (/\b(tone|mark|dark spot|hyperpigmentation|brighten|uneven)\b/i.test(role)) {
+    return `${productText} fits the post-breakout mark and tone step${withFeature}, instead of being just a generic treatment pick.`;
+  }
+  if (/\b(redness|soothing|calming|sensitive|irritation)\b/i.test(role)) {
+    return `${productText} fits the redness and sensitivity support step${withFeature}, with a more targeted soothing angle than a generic moisturizer.`;
+  }
+  if (/\b(acne|clogged|blemish|pore)\b/i.test(role)) {
+    return `${productText} fits the clogged-pore and blemish support step${withFeature}, while keeping the routine focused.`;
+  }
+  if (/\boil|shine|sebum\b/i.test(role)) {
+    return `${productText} fits the oil-control step${withFeature}, so it is a clearer first buy for mid-day shine.`;
+  }
+  if (/\bmoist|hydrat|barrier|dehydrat\b/i.test(role)) {
+    return `${productText} fits the hydration and barrier-support step${withFeature}, without turning the routine into a heavy layer.`;
+  }
+  if (/\bspf|sun|uv\b/i.test(role)) {
+    return `${productText} fits the daily sunscreen step${withFeature}, so it keeps protection practical for regular wear.`;
+  }
+  return '';
 }
 
 function buildRecoDerivedShopperCopy({
@@ -19030,33 +19395,12 @@ function buildRecoDerivedShopperCopy({
   const roleLabel = pickFirstTrimmed(roleObj?.label, rawRow?.matched_role_label, rawRow?.matchedRoleLabel);
   const roleWhy = pickFirstTrimmed(roleObj?.why_this_role);
   const roleText = `${roleLabel} ${roleWhy}`.trim().toLowerCase();
-  const existingBestFor = pickFirstTrimmed(rawRow?.best_for, rawRow?.bestFor);
-  const existingWhy = pickFirstTrimmed(rawRow?.why_this_one, rawRow?.whyThisOne, rawRow?.reason);
+  const existingBestFor = pickFirstNonPlaceholderRecoCopy(rawRow?.best_for, rawRow?.bestFor);
+  const existingWhy = pickFirstNarrativeRecoCopy(rawRow?.why_this_one, rawRow?.whyThisOne, rawRow?.reason);
   const productIntel = pickRecoProductIntelBundle(rawRow);
   const pivotaInsights = pickRecoPivotaInsights(rawRow);
   const shoppingCard = pickRecoShoppingCardPayload(rawRow);
   const searchCard = pickRecoSearchCardPayload(rawRow);
-  const evidencePoints = buildRecoProductEvidencePoints({
-    row: rawRow,
-    stableAnchorProduct,
-    productIntel,
-    pivotaInsights,
-    shoppingCard,
-    searchCard,
-    max: 4,
-  });
-  const specificNarrative = pickFirstTrimmed(
-    evidencePoints[0],
-    pickRecoSpecificNarrativeSnippet({
-      row: rawRow,
-      stableAnchorProduct,
-      productIntel,
-      pivotaInsights,
-      shoppingCard,
-      searchCard,
-      maxLen: 180,
-    }),
-  );
   const productType = pickFirstTrimmed(
     rawRow?.category,
     rawRow?.product_type,
@@ -19077,6 +19421,46 @@ function buildRecoDerivedShopperCopy({
     rawRow?.sku?.title,
     rawRow?.sku?.display_name,
   );
+  const keyFeatures = buildRecoDerivedFeatureTokens({
+    roleText,
+    productName,
+    productType,
+    providedFeatures: [
+      ...(Array.isArray(rawRow?.key_features) ? rawRow.key_features : []),
+      ...(Array.isArray(rawRow?.keyFeatures) ? rawRow.keyFeatures : []),
+      ...(Array.isArray(rawRow?.actives) ? rawRow.actives : []),
+      ...(Array.isArray(rawRow?.key_ingredients) ? rawRow.key_ingredients : []),
+      ...(Array.isArray(rawRow?.keyIngredients) ? rawRow.keyIngredients : []),
+      ...(Array.isArray(rawRow?.benefit_tags) ? rawRow.benefit_tags : []),
+      ...(Array.isArray(rawRow?.benefitTags) ? rawRow.benefitTags : []),
+      ...(Array.isArray(rawRow?.tags) ? rawRow.tags : []),
+      ...(Array.isArray(rawRow?.sku?.key_features) ? rawRow.sku.key_features : []),
+      ...(Array.isArray(rawRow?.sku?.actives) ? rawRow.sku.actives : []),
+      ...(Array.isArray(rawRow?.sku?.key_ingredients) ? rawRow.sku.key_ingredients : []),
+      ...(Array.isArray(stableAnchorProduct?.active_ingredients) ? stableAnchorProduct.active_ingredients : []),
+      ...(Array.isArray(stableAnchorProduct?.key_ingredients) ? stableAnchorProduct.key_ingredients : []),
+    ],
+    language,
+  });
+  const specificNarrative = pickRecoSpecificNarrativeSnippet({
+    row: rawRow,
+    stableAnchorProduct,
+    productIntel,
+    pivotaInsights,
+    shoppingCard,
+    searchCard,
+    maxLen: 180,
+  });
+  const roleAlignedSpecificNarrative = looksLikeRecoNarrativeOffTargetForRole(specificNarrative, roleText)
+    ? ''
+    : specificNarrative;
+  const roleGroundedWhy = buildRecoRoleGroundedWhyThisOne({
+    roleText,
+    productName,
+    productType,
+    keyFeatures,
+    language,
+  });
   const bestFor = existingBestFor || (() => {
     if (/\boil|shine|sebum\b/i.test(roleText)) {
       return isCn ? '适合出油和午后泛油光' : 'Best for excess oil and mid-day shine';
@@ -19094,7 +19478,7 @@ function buildRecoDerivedShopperCopy({
       ? `适合放进当前的${humanizeRecoProductType(productType || 'other', 'CN')}`
       : `Best as your ${humanizeRecoProductType(productType || 'other', 'EN').toLowerCase()} step`;
   })();
-  const whyThisOne = existingWhy || specificNarrative || (() => {
+  const whyThisOne = existingWhy || roleAlignedSpecificNarrative || roleGroundedWhy || (() => {
     if (/\boil|shine|sebum\b/i.test(roleText)) {
       return isCn
         ? '这是一支更轻薄的控油精华，适合把出油问题先压下来。'
@@ -19119,27 +19503,6 @@ function buildRecoDerivedShopperCopy({
       ? '这是当前主推荐方向里最直接的一支。'
       : 'It is the clearest match for the main recommendation direction.';
   })();
-  const keyFeatures = buildRecoDerivedFeatureTokens({
-    roleText,
-    productName,
-    productType,
-    providedFeatures: [
-      ...(Array.isArray(rawRow?.key_features) ? rawRow.key_features : []),
-      ...(Array.isArray(rawRow?.keyFeatures) ? rawRow.keyFeatures : []),
-      ...(Array.isArray(rawRow?.actives) ? rawRow.actives : []),
-      ...(Array.isArray(rawRow?.key_ingredients) ? rawRow.key_ingredients : []),
-      ...(Array.isArray(rawRow?.keyIngredients) ? rawRow.keyIngredients : []),
-      ...(Array.isArray(rawRow?.benefit_tags) ? rawRow.benefit_tags : []),
-      ...(Array.isArray(rawRow?.benefitTags) ? rawRow.benefitTags : []),
-      ...(Array.isArray(rawRow?.tags) ? rawRow.tags : []),
-      ...(Array.isArray(rawRow?.sku?.key_features) ? rawRow.sku.key_features : []),
-      ...(Array.isArray(rawRow?.sku?.actives) ? rawRow.sku.actives : []),
-      ...(Array.isArray(rawRow?.sku?.key_ingredients) ? rawRow.sku.key_ingredients : []),
-      ...(Array.isArray(stableAnchorProduct?.active_ingredients) ? stableAnchorProduct.active_ingredients : []),
-      ...(Array.isArray(stableAnchorProduct?.key_ingredients) ? stableAnchorProduct.key_ingredients : []),
-    ],
-    language,
-  });
   return {
     best_for: bestFor,
     why_this_one: whyThisOne,
@@ -19163,6 +19526,28 @@ function looksLikeGenericRecoDerivedNarrative(value) {
   const text = String(value || '').trim();
   if (!text) return false;
   return RECO_GENERIC_DERIVED_NARRATIVE_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function looksLikeRecoNarrativeOffTargetForRole(value, roleText = '') {
+  const text = String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const role = String(roleText || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  if (!text || !role) return false;
+  const toneClaim = /\b(dull(?:ness)?|uneven\s+tone|dark\s+spots?|hyperpigmentation|brighten(?:ing)?|radiance|radiant|glow)\b/.test(text);
+  if (
+    /\b(oil|shine|sebum|mattify|mattifying|anti-shine)\b/.test(role)
+    && toneClaim
+    && !/\b(oil|shine|sebum|mattify|mattifying|anti-shine|pore|blemish|acne)\b/.test(text)
+  ) {
+    return true;
+  }
+  if (
+    /\b(redness|soothing|calming|sensitive|barrier|irritation)\b/.test(role)
+    && /\b(oil control|oil-control|mattify|mattifying|sebum|anti-shine)\b/.test(text)
+    && !/\b(redness|sooth|soothing|calm|calming|barrier|sensitive|irritat)\b/.test(text)
+  ) {
+    return true;
+  }
+  return false;
 }
 
 function scoreRecoNarrativeSentence(sentence, hintText = '') {
@@ -19206,8 +19591,9 @@ function truncateRecoNarrativeSnippet(value, maxLen = 180) {
 }
 
 function compactRecoNarrativeSnippet(value, { maxLen = 180, hintText = '' } = {}) {
-  const raw = stripHtmlToText(value).replace(/\s+/g, ' ').trim();
+  const raw = cleanRecoVisibleCopy(value);
   if (!raw) return '';
+  if (looksLikeRecoPlaceholderSeedCopy(raw) || looksLikeRecoLowInformationVisibleCopy(raw)) return '';
   const cleaned = raw
     .replace(/\b(?:ingredients?|ingredient list|testing shows|clinical results?|how to use|directions?|warnings?|warning|caution|disclaimer|net wt|size)\b[\s\S]*$/i, '')
     .trim();
@@ -19271,7 +19657,7 @@ function pickRecoSpecificNarrativeSnippet({
   ];
   for (const candidate of candidates) {
     const snippet = compactRecoNarrativeSnippet(candidate, { maxLen, hintText });
-    if (!snippet || looksLikeGenericRecoDerivedNarrative(snippet)) continue;
+    if (!snippet || looksLikeGenericRecoDerivedNarrative(snippet) || looksLikeRecoLowInformationVisibleCopy(snippet)) continue;
     return snippet;
   }
   return '';
@@ -19296,6 +19682,7 @@ function buildRecoProductEvidencePoints({
     pickFirstTrimmed(intelCore?.what_it_is?.body, intelCore?.whatItIs?.body),
     pickFirstTrimmed(shoppingCard?.intro),
     pickFirstTrimmed(searchCard?.intro_candidate, searchCard?.introCandidate),
+    pickFirstTrimmed(base.why_this_one, base.whyThisOne, base.reason),
     pickFirstTrimmed(base.description, base.sku?.description, base.product?.description, stableAnchorProduct?.description),
     pickFirstTrimmed(base.short_description, base.shortDescription, base.summary, base.subtitle),
     pickFirstTrimmed(base.sku?.short_description, base.sku?.shortDescription, base.sku?.summary, base.sku?.subtitle),
@@ -19311,25 +19698,29 @@ function buildRecoProductEvidencePoints({
         ...(Array.isArray(base.key_ingredients) ? base.key_ingredients : []),
       ].filter(Boolean).join(' '),
     }))
-    .filter((value) => value && !looksLikeGenericRecoDerivedNarrative(value));
+    .filter((value) => value && !looksLikeGenericRecoDerivedNarrative(value) && !looksLikeRecoLowInformationVisibleCopy(value));
   const featureCandidates = collectRecoPromptTextList(
     [
-      ...(Array.isArray(base.key_features) ? base.key_features : []),
-      ...(Array.isArray(base.keyFeatures) ? base.keyFeatures : []),
       ...(Array.isArray(base.compare_highlights) ? base.compare_highlights : []),
       ...(Array.isArray(base.compareHighlights) ? base.compareHighlights : []),
+      pickFirstTrimmed(base.best_for, base.bestFor),
+      ...(Array.isArray(pivotaInsights?.best_for) ? pivotaInsights.best_for : []),
+      ...(Array.isArray(intelCore?.best_for) ? intelCore.best_for : []),
+      ...(Array.isArray(base.key_features) ? base.key_features : []),
+      ...(Array.isArray(base.keyFeatures) ? base.keyFeatures : []),
       ...(Array.isArray(base.actives) ? base.actives : []),
       ...(Array.isArray(base.key_ingredients) ? base.key_ingredients : []),
       ...(Array.isArray(base.keyIngredients) ? base.keyIngredients : []),
-      ...(Array.isArray(base.best_for) ? base.best_for : []),
-      ...(Array.isArray(base.bestFor) ? base.bestFor : []),
-      pickFirstTrimmed(base.best_for, base.bestFor),
-      pickFirstTrimmed(base.why_this_one, base.whyThisOne, base.reason),
-      ...(Array.isArray(pivotaInsights?.best_for) ? pivotaInsights.best_for : []),
-      ...(Array.isArray(intelCore?.best_for) ? intelCore.best_for : []),
     ],
     { max: Math.max(2, max), maxLen: 72 },
-  );
+  )
+    .map(cleanRecoVisibleCopy)
+    .filter((value) => (
+      value
+      && !looksLikeRecoPlaceholderSeedCopy(value)
+      && !looksLikeRecoLowInformationVisibleCopy(value)
+      && !looksLikeRecoStandaloneEvidenceFragment(value)
+    ));
   return uniqCaseInsensitiveStrings(
     [
       ...narrativeCandidates,
@@ -19342,6 +19733,11 @@ function buildRecoProductEvidencePoints({
 function buildRecoVisibleProductFields(picked, { role = null, language = 'EN' } = {}) {
   const row = isPlainObject(picked) ? picked : null;
   if (!row) return {};
+  const roleObj = isPlainObject(role) ? role : null;
+  const visibleRoleText = [
+    pickFirstTrimmed(roleObj?.label, row?.matched_role_label, row?.matchedRoleLabel),
+    pickFirstTrimmed(roleObj?.why_this_role),
+  ].join(' ').trim();
   const stableAnchorProduct = resolveRecoStableAnchorProduct(row);
   const pivotaInsights = pickRecoPivotaInsights(row);
   const shoppingCard = pickRecoShoppingCardPayload(row);
@@ -19361,7 +19757,7 @@ function buildRecoVisibleProductFields(picked, { role = null, language = 'EN' } 
     row.subject?.image_url,
     row.subject?.imageUrl,
   );
-  const shortDescription = pickFirstTrimmed(
+  const shortDescription = pickFirstVisibleRecoCopy(
     row.short_description,
     row.shortDescription,
     row.subtitle,
@@ -19377,6 +19773,9 @@ function buildRecoVisibleProductFields(picked, { role = null, language = 'EN' } 
     row.product?.short_description,
     row.product?.shortDescription,
   );
+  const roleAlignedShortDescription = looksLikeRecoNarrativeOffTargetForRole(shortDescription, visibleRoleText)
+    ? ''
+    : shortDescription;
   const specificNarrative = pickRecoSpecificNarrativeSnippet({
     row,
     stableAnchorProduct,
@@ -19400,7 +19799,7 @@ function buildRecoVisibleProductFields(picked, { role = null, language = 'EN' } 
     stableAnchorProduct,
     language,
   });
-  const description = pickFirstTrimmed(
+  const description = pickFirstVisibleRecoCopy(
     row.description,
     row.sku?.description,
     row.product?.description,
@@ -19424,8 +19823,8 @@ function buildRecoVisibleProductFields(picked, { role = null, language = 'EN' } 
     row.sku?.purchasePath,
   );
   const price = extractCatalogCandidatePrice(row);
-  return {
-    ...(pickFirstTrimmed(
+  const visibleBrand = normalizeRecoBeautyBrandLabel(
+    pickFirstTrimmed(
       row.brand,
       row.brand_name,
       row.brandName,
@@ -19436,20 +19835,16 @@ function buildRecoVisibleProductFields(picked, { role = null, language = 'EN' } 
       row.product?.brand_name,
       row.product?.brandName,
       stableAnchorProduct?.brand,
-    ) ? {
-      brand: pickFirstTrimmed(
-        row.brand,
-        row.brand_name,
-        row.brandName,
-        row.sku?.brand,
-        row.sku?.brand_name,
-        row.sku?.brandName,
-        row.product?.brand,
-        row.product?.brand_name,
-        row.product?.brandName,
-        stableAnchorProduct?.brand,
-      ),
-    } : {}),
+    ),
+    row.display_name,
+    row.displayName,
+    row.name,
+    row.title,
+    stableAnchorProduct?.display_name,
+    stableAnchorProduct?.name,
+  );
+  return {
+    ...(visibleBrand ? { brand: visibleBrand } : {}),
     ...(pickFirstTrimmed(
       row.name,
       row.title,
@@ -19518,8 +19913,8 @@ function buildRecoVisibleProductFields(picked, { role = null, language = 'EN' } 
     } : {}),
     ...(imageUrl ? { image_url: imageUrl } : {}),
     ...(price ? { price } : {}),
-    ...((shortDescription || preferredNarrative || derivedShopperCopy.why_this_one)
-      ? { short_description: shortDescription || preferredNarrative || derivedShopperCopy.why_this_one }
+    ...((roleAlignedShortDescription || preferredNarrative || derivedShopperCopy.why_this_one)
+      ? { short_description: roleAlignedShortDescription || preferredNarrative || derivedShopperCopy.why_this_one }
       : {}),
     ...(description ? { description } : {}),
     ...(derivedShopperCopy.best_for ? { best_for: derivedShopperCopy.best_for } : {}),
@@ -20046,6 +20441,41 @@ function buildBeautyMainlineLocalFailureStage(collected = null) {
   return 'no_recall_from_planned_sources';
 }
 
+function cloneBeautySupportRoundLevel(sourceLevel, queryIndex, roundIndex, { kind = 'external_seed' } = {}) {
+  const levelObj = sourceLevel && typeof sourceLevel === 'object' && !Array.isArray(sourceLevel)
+    ? sourceLevel
+    : null;
+  if (!levelObj) return null;
+  const queries = Array.isArray(levelObj?.queries) ? levelObj.queries : [];
+  const query = queries[queryIndex];
+  if (!query || typeof query !== 'object' || Array.isArray(query)) return null;
+  const normalizedKind = String(kind || '').trim().toLowerCase() === 'internal' ? 'internal' : 'external_seed';
+  const roundKey = normalizedKind === 'internal' ? 'fair_support_internal_round' : 'fair_support_external_round';
+  const sourceKey = normalizedKind === 'internal'
+    ? 'fair_support_internal_source_level'
+    : 'fair_support_external_source_level';
+  return {
+    ...levelObj,
+    ladder_level: `framework_stage_c_support_${normalizedKind}_round_${roundIndex + 1}`,
+    [roundKey]: roundIndex + 1,
+    [sourceKey]: String(levelObj?.ladder_level || levelObj?.stage_id || '').trim() || null,
+    queries: [
+      {
+        ...query,
+        [roundKey]: roundIndex + 1,
+      },
+    ],
+  };
+}
+
+function cloneBeautySupportExternalRoundLevel(externalLevel, queryIndex, roundIndex) {
+  return cloneBeautySupportRoundLevel(externalLevel, queryIndex, roundIndex, { kind: 'external_seed' });
+}
+
+function cloneBeautySupportInternalRoundLevel(internalLevel, queryIndex, roundIndex) {
+  return cloneBeautySupportRoundLevel(internalLevel, queryIndex, roundIndex, { kind: 'internal' });
+}
+
 function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
   const levels = Array.isArray(queryLevels)
     ? queryLevels.filter((level) => level && typeof level === 'object' && !Array.isArray(level))
@@ -20057,6 +20487,8 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
   const executedSupportExternalSeedLevels = [];
   const stagedLevels = [];
   const maxRoutineSupportRoles = 2;
+  let supportInternalFairRoundCount = 0;
+  let supportExternalFairRoundCount = 0;
   for (const level of levels) {
     const queries = Array.isArray(level?.queries) ? level.queries : [];
     const levelId = String(level?.ladder_level || level?.stage_id || '').trim().toLowerCase();
@@ -20137,15 +20569,65 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
         );
       }
     }
-    for (const group of supportGroups) {
-      if (!group?.externalLevel) continue;
-      keptLevels.push(group.externalLevel);
+    const supportInternalGroups = supportGroups.filter((group) => group?.internalLevel);
+    const supportExternalGroups = supportGroups.filter((group) => group?.externalLevel);
+    const maxSupportInternalQueryCount = supportInternalGroups.reduce((max, group) => {
+      const queries = Array.isArray(group?.internalLevel?.queries) ? group.internalLevel.queries : [];
+      return Math.max(max, queries.length);
+    }, 0);
+    const maxSupportExternalQueryCount = supportExternalGroups.reduce((max, group) => {
+      const queries = Array.isArray(group?.externalLevel?.queries) ? group.externalLevel.queries : [];
+      return Math.max(max, queries.length);
+    }, 0);
+    supportInternalFairRoundCount = maxSupportInternalQueryCount;
+    supportExternalFairRoundCount = maxSupportExternalQueryCount;
+    for (const group of supportInternalGroups) {
+      executedSupportInternalLevels.push(group.internalLabel);
+    }
+    for (const group of supportExternalGroups) {
       executedSupportExternalSeedLevels.push(group.externalLabel);
     }
-    for (const group of supportGroups) {
-      if (!group?.internalLevel) continue;
-      keptLevels.push(group.internalLevel);
-      executedSupportInternalLevels.push(group.internalLabel);
+    const maxSupportRoundCount = Math.max(maxSupportInternalQueryCount, maxSupportExternalQueryCount);
+    for (let queryIndex = 0; queryIndex < maxSupportRoundCount; queryIndex += 1) {
+      const internalRoundQueries = [];
+      const internalSourceLevels = [];
+      for (const group of supportInternalGroups) {
+        const roundLevel = cloneBeautySupportInternalRoundLevel(group.internalLevel, queryIndex, queryIndex);
+        const query = Array.isArray(roundLevel?.queries) ? roundLevel.queries[0] : null;
+        if (!query) continue;
+        internalRoundQueries.push(query);
+        if (roundLevel?.fair_support_internal_source_level) {
+          internalSourceLevels.push(roundLevel.fair_support_internal_source_level);
+        }
+      }
+      if (internalRoundQueries.length) {
+        keptLevels.push({
+          ladder_level: `framework_stage_c_support_internal_round_${queryIndex + 1}`,
+          fair_support_internal_round: queryIndex + 1,
+          fair_support_internal_source_levels: internalSourceLevels,
+          queries: internalRoundQueries,
+        });
+      }
+
+      const externalRoundQueries = [];
+      const externalSourceLevels = [];
+      for (const group of supportExternalGroups) {
+        const roundLevel = cloneBeautySupportExternalRoundLevel(group.externalLevel, queryIndex, queryIndex);
+        const query = Array.isArray(roundLevel?.queries) ? roundLevel.queries[0] : null;
+        if (!query) continue;
+        externalRoundQueries.push(query);
+        if (roundLevel?.fair_support_external_source_level) {
+          externalSourceLevels.push(roundLevel.fair_support_external_source_level);
+        }
+      }
+      if (externalRoundQueries.length) {
+        keptLevels.push({
+          ladder_level: `framework_stage_c_support_external_seed_round_${queryIndex + 1}`,
+          fair_support_external_round: queryIndex + 1,
+          fair_support_external_source_levels: externalSourceLevels,
+          queries: externalRoundQueries,
+        });
+      }
     }
   } else {
     keptLevels.push(...stagedLevels);
@@ -20170,15 +20652,15 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
         ? {
             routine_support_strategy:
               executedSupportInternalLevels.length && executedSupportExternalSeedLevels.length
-                ? 'primary_plus_external_then_internal_support'
+                ? 'primary_plus_internal_then_external_support'
                 : executedSupportInternalLevels.length
                   ? 'primary_plus_internal_support'
                   : 'primary_plus_external_support',
             executed_support_level_count:
               executedSupportInternalLevels.length + executedSupportExternalSeedLevels.length,
             executed_support_levels: [
-              ...executedSupportExternalSeedLevels,
               ...executedSupportInternalLevels,
+              ...executedSupportExternalSeedLevels,
             ],
           }
         : {}),
@@ -20186,12 +20668,14 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
         ? {
             executed_support_internal_level_count: executedSupportInternalLevels.length,
             executed_support_internal_levels: executedSupportInternalLevels,
+            support_internal_fair_round_count: supportInternalFairRoundCount,
           }
         : {}),
       ...(executedSupportExternalSeedLevels.length
         ? {
             executed_support_external_seed_level_count: executedSupportExternalSeedLevels.length,
             executed_support_external_seed_levels: executedSupportExternalSeedLevels,
+            support_external_fair_round_count: supportExternalFairRoundCount,
           }
         : {}),
       ...(skippedSupportLevels.length
@@ -20218,6 +20702,12 @@ function buildBeautyMainlineLocalQueryAttempts(searchResults = []) {
     source_scope: pickFirstTrimmed(row?.source_scope) || null,
     result_count: Array.isArray(row?.products) ? row.products.length : 0,
     reason: pickFirstTrimmed(row?.reason) || null,
+    ...(Number.isFinite(Number(row?.fair_support_external_round))
+      ? { fair_support_external_round: Math.max(1, Math.trunc(Number(row.fair_support_external_round))) }
+      : {}),
+    ...(Number.isFinite(Number(row?.fair_support_internal_round))
+      ? { fair_support_internal_round: Math.max(1, Math.trunc(Number(row.fair_support_internal_round))) }
+      : {}),
     ...(Array.isArray(row?.attempted_internal_paths)
       ? { attempted_internal_paths: row.attempted_internal_paths }
       : {}),
@@ -20860,17 +21350,29 @@ function isConcernFrameworkStrongViableCandidate(candidate, role = null) {
   const candidateStep = normalizeRecoTargetStep(product?.candidate_step);
   const score = Number(product?.framework_score || 0);
   const semanticFit = product?.framework_semantic_fit === true;
+  const roleSemanticFit = product?.framework_role_semantic_fit === true;
   const retrievalRoleMatched =
     String(product?.retrieval_role_id || '').trim() !== ''
     && String(product?.retrieval_role_id || '').trim() === String(product?.matched_role_id || '').trim();
   if (
+    preferredStep === 'serum' &&
+    candidateStep === preferredStep &&
+    retrievalRoleMatched &&
+    roleSemanticFit &&
+    score >= 0.52
+  ) {
+    return true;
+  }
+  if (
     score >= 0.58 &&
     (
-      semanticFit ||
+      roleSemanticFit ||
+      (semanticFit && preferredStep !== 'serum') ||
       (
         candidateStep &&
         candidateStep === preferredStep &&
         preferredStep !== 'treatment'
+        && preferredStep !== 'serum'
       )
     )
   ) {
@@ -20879,6 +21381,7 @@ function isConcernFrameworkStrongViableCandidate(candidate, role = null) {
   if (
     preferredStep &&
     preferredStep !== 'treatment' &&
+    preferredStep !== 'serum' &&
     candidateStep === preferredStep &&
     retrievalRoleMatched &&
     score >= 0.52
@@ -20972,8 +21475,74 @@ function shouldAllowConcernFrameworkComparisonFill(targetContext = null, ordered
     ) || '',
   ).trim().toLowerCase();
   if (comparisonMode === 'same_role_comparison' || comparisonMode === 'same_role') return true;
+  const routineMode = String(
+    pickFirstTrimmed(
+      targetContext?.routine_mode,
+      semanticPlan?.routine_mode,
+      semanticPlan?.selection_constraints?.routine_mode,
+    ) || '',
+  ).trim().toLowerCase();
+  const explicitSingleProduct = targetContext?.explicit_single_product_request === true
+    || /\b(single_product|one product|just one|only one|under\s*\$?\d+|below\s*\$?\d+|less than\s*\$?\d+)\b/i.test(
+      [
+        targetContext?.request_text,
+        targetContext?.focus_text,
+        semanticPlan?.primary_concern,
+        ...(Array.isArray(semanticPlan?.must_satisfy_constraints) ? semanticPlan.must_satisfy_constraints : []),
+      ].map((value) => String(value || '').trim()).filter(Boolean).join(' '),
+    );
+  if (
+    hasStrictBeautyMainlineNoRuntimeFallbackPolicy(targetContext)
+    && (
+      routineMode === 'single_product'
+      || comparisonMode === 'single_product'
+      || explicitSingleProduct
+    )
+  ) {
+    return false;
+  }
   if (!hasStrictBeautyMainlineNoRuntimeFallbackPolicy(targetContext)) return true;
   return roles.length <= 1;
+}
+
+function resolveConcernFrameworkBudgetCeiling(targetContext = null) {
+  const directBudget = isPlainObject(targetContext?.budget_ceiling) ? targetContext.budget_ceiling : null;
+  const directAmount = Number(directBudget?.amount);
+  if (Number.isFinite(directAmount) && directAmount > 0) {
+    return {
+      amount: directAmount,
+      currency: normalizeCurrencyCode(directBudget.currency, 'USD') || 'USD',
+      exclusive: directBudget.exclusive_upper_bound === true,
+    };
+  }
+  const semanticPlan = isPlainObject(targetContext?.semantic_plan) ? targetContext.semantic_plan : null;
+  const text = [
+    targetContext?.request_text,
+    targetContext?.focus_text,
+    ...(Array.isArray(semanticPlan?.must_satisfy_constraints) ? semanticPlan.must_satisfy_constraints : []),
+  ].map((value) => String(value || '').trim()).filter(Boolean).join(' ');
+  const match =
+    text.match(/\b(?:under|below|less than|max(?:imum)?|no more than)\s*(?:usd\s*)?\$?\s*([0-9]+(?:\.[0-9]{1,2})?)\b/i) ||
+    text.match(/\$\s*([0-9]+(?:\.[0-9]{1,2})?)\s*(?:or less|and under|max|maximum)?\b/i);
+  const amount = match ? Number(match[1]) : null;
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  return {
+    amount,
+    currency: 'USD',
+    exclusive: /\b(?:under|below|less than)\b/i.test(String(match[0] || '')),
+  };
+}
+
+function isConcernFrameworkCandidateOverBudget(candidate = null, targetContext = null) {
+  const budget = resolveConcernFrameworkBudgetCeiling(targetContext);
+  if (!budget) return false;
+  const price = extractCatalogCandidatePrice(candidate) || extractCatalogCandidatePrice(candidate?.sku) || null;
+  if (!price || price.unknown === true) return false;
+  const amount = Number(price.amount);
+  if (!Number.isFinite(amount) || amount <= 0) return false;
+  const currency = normalizeCurrencyCode(price.currency, 'USD') || 'USD';
+  if (currency && budget.currency && currency !== budget.currency) return false;
+  return budget.exclusive ? amount >= budget.amount : amount > budget.amount;
 }
 
 function classifyConcernFrameworkNegativeAuthority(product, role = null) {
@@ -21051,7 +21620,22 @@ function shouldUseConcernFrameworkRoleCoverageFirst(targetContext = null, ordere
       semanticPlan?.selection_constraints?.comparison_mode,
     ) || '',
   ).trim().toLowerCase();
-  return routineMode === 'routine_mix' || routineMode === 'basic_routine';
+  if (routineMode === 'routine_mix' || routineMode === 'basic_routine') return true;
+  return roles.length > 1 && !comparisonMode;
+}
+
+function orderConcernFrameworkRolesForSelection(roles = [], { primaryRoleId = '' } = {}) {
+  const roleList = Array.isArray(roles)
+    ? roles.filter((role) => isPlainObject(role) && String(role?.role_id || '').trim())
+    : [];
+  const primaryId = String(primaryRoleId || '').trim();
+  if (!primaryId || roleList.length <= 1) return roleList;
+  const primaryRole = roleList.find((role) => String(role?.role_id || '').trim() === primaryId) || null;
+  if (!primaryRole) return roleList;
+  return [
+    primaryRole,
+    ...roleList.filter((role) => String(role?.role_id || '').trim() !== primaryId),
+  ];
 }
 
 function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext } = {}) {
@@ -21061,11 +21645,18 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
   for (const raw of Array.isArray(rawCandidates) ? rawCandidates : []) {
     const row = isPlainObject(raw) ? raw : null;
     if (!row) continue;
-    const key = [
+    const productKey = [
       pickFirstTrimmed(row.product_id, row.productId, row.id),
       pickFirstTrimmed(row.merchant_id, row.merchantId),
       pickFirstTrimmed(row.display_name, row.displayName, row.name, row.title),
     ].join('::').toLowerCase();
+    const retrievalRoleKey = pickFirstTrimmed(
+      row.retrieval_role_id,
+      row.retrievalRoleId,
+      row.role_id,
+      row.roleId,
+    ) || 'no_retrieval_role';
+    const key = `${productKey}::${String(retrievalRoleKey).trim().toLowerCase()}`;
     if (!key || seen.has(key)) continue;
     seen.add(key);
     deduped.push(row);
@@ -21140,6 +21731,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
       matched_role_rank: Number.isFinite(Number(bestRole.rank)) ? Number(bestRole.rank) : null,
       framework_score: Number(bestRoleScore.score.toFixed(4)),
       framework_semantic_fit: Boolean(bestRoleScore.semantic_fit_matched),
+      framework_role_semantic_fit: Boolean(bestRoleScore.role_semantic_fit_matched),
       candidate_step: candidateStep || null,
       candidate_step_source: stepResolution?.candidate_step_source || 'none',
       candidate_step_confidence: stepResolution?.candidate_step_confidence || 'none',
@@ -21193,6 +21785,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
       framework_score: Number(bestRoleScore.score.toFixed(4)),
       framework_tiebreak_score: scoreConcernFrameworkCandidateTiebreak(row),
       framework_semantic_fit: Boolean(bestRoleScore.semantic_fit_matched),
+      framework_role_semantic_fit: Boolean(bestRoleScore.role_semantic_fit_matched),
       candidate_step: candidateStep || null,
       candidate_step_source: stepResolution?.candidate_step_source || 'none',
       candidate_step_confidence: stepResolution?.candidate_step_confidence || 'none',
@@ -21218,8 +21811,8 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     bucket.sort(compareConcernFrameworkCandidates);
   }
 
-  const orderedRoles = [...roles].sort((left, right) => Number(left?.rank || 99) - Number(right?.rank || 99));
   const primaryRoleId = String(targetContext?.primary_role_id || '').trim();
+  const orderedRoles = orderConcernFrameworkRolesForSelection(roles, { primaryRoleId });
   const primaryRole = orderedRoles.find((role) => String(role?.role_id || '').trim() === primaryRoleId) || null;
   const usedProductIds = new Set();
   const selected = [];
@@ -21227,6 +21820,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     if (selected.length >= 3) return false;
     const productId = pickFirstString(item?.product_id, item?.productId, item?.id);
     if (!productId || usedProductIds.has(productId)) return false;
+    if (isConcernFrameworkCandidateOverBudget(item, targetContext)) return false;
     usedProductIds.add(productId);
     selected.push(item);
     return true;
@@ -21407,7 +22001,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
   };
 }
 
-function shouldSkipFrameworkPrimaryExternalSeedLevel(level, candidateState = null) {
+function shouldSkipFrameworkPrimaryExternalSeedLevel(level, candidateState = null, { targetContext = null } = {}) {
   const levelId = String(level?.ladder_level || level?.stage_id || '').trim().toLowerCase();
   if (levelId !== 'framework_stage_b_primary_external_seed') return false;
   if (!isPlainObject(candidateState) || candidateState.primary_role_matched !== true) return false;
@@ -21416,7 +22010,63 @@ function shouldSkipFrameworkPrimaryExternalSeedLevel(level, candidateState = nul
     : Array.isArray(candidateState?.selected_recommendations)
       ? candidateState.selected_recommendations.length
       : 0;
+  const frameworkRoles = Array.isArray(targetContext?.framework_roles)
+    ? targetContext.framework_roles.filter((role) => isPlainObject(role) && String(role?.role_id || '').trim())
+    : [];
+  const semanticPlan = isPlainObject(targetContext?.semantic_plan) ? targetContext.semantic_plan : null;
+  const comparisonMode = String(
+    pickFirstTrimmed(
+      targetContext?.comparison_mode,
+      semanticPlan?.comparison_mode,
+      semanticPlan?.selection_constraints?.comparison_mode,
+    ) || '',
+  ).trim().toLowerCase();
+  const isSameRoleComparison = comparisonMode === 'same_role_comparison' || comparisonMode === 'same_role';
+  if (selectedCount >= 1 && frameworkRoles.length > 1 && !isSameRoleComparison) {
+    return true;
+  }
   return selectedCount >= 2;
+}
+
+function shouldSkipFrameworkSupportExternalSeedLevel(level, candidateState = null) {
+  const levelId = String(level?.ladder_level || level?.stage_id || '').trim().toLowerCase();
+  if (!levelId.startsWith('framework_stage_c_support_') || !levelId.endsWith('_external_seed')) {
+    return false;
+  }
+  if (!isPlainObject(candidateState) || candidateState.primary_role_matched !== true) return false;
+  const queries = Array.isArray(level?.queries) ? level.queries : [];
+  const stageRoleId = pickFirstTrimmed(queries[0]?.role_id) || levelId
+    .replace(/^framework_stage_c_support_/, '')
+    .replace(/_external_seed$/, '');
+  if (!stageRoleId) return false;
+  const filledRoleIds = new Set(getRecoRecallFilledRoleIds(candidateState, { requireAlignedRetrieval: true }));
+  return filledRoleIds.has(String(stageRoleId).trim().toLowerCase());
+}
+
+function shouldSkipFrameworkSupportExternalSeedQuery(queryEntry, candidateState = null) {
+  if (!isPlainObject(queryEntry) || !isPlainObject(candidateState)) return false;
+  if (candidateState.primary_role_matched !== true) return false;
+  const allowExternalSeed = queryEntry.allow_external_seed === true
+    || String(queryEntry.source_scope || '').trim().toLowerCase() === 'external_seed';
+  if (!allowExternalSeed) return false;
+  return shouldSkipFrameworkSupportRoleQuery(queryEntry, candidateState);
+}
+
+function shouldSkipFrameworkSupportRoleQuery(queryEntry, candidateState = null) {
+  if (!isPlainObject(queryEntry) || !isPlainObject(candidateState)) return false;
+  if (candidateState.primary_role_matched !== true) return false;
+  const levelId = String(queryEntry.ladder_level || queryEntry.stage_id || '').trim().toLowerCase();
+  if (!levelId.startsWith('framework_stage_c_support_')) return false;
+  const roleId = pickFirstTrimmed(queryEntry.role_id) || (
+    levelId
+      .replace(/^framework_stage_c_support_/, '')
+      .replace(/_external_seed$/, '')
+      .replace(/_internal_round_\d+$/, '')
+      .replace(/_external_seed_round_\d+$/, '')
+  );
+  if (!roleId) return false;
+  const filledRoleIds = new Set(getRecoRecallFilledRoleIds(candidateState, { requireAlignedRetrieval: true }));
+  return filledRoleIds.has(String(roleId).trim().toLowerCase());
 }
 
 function resolveRecoQueryEntryTimeoutMs(queryEntry = null, effectiveTimeoutMs = 0) {
@@ -21425,11 +22075,17 @@ function resolveRecoQueryEntryTimeoutMs(queryEntry = null, effectiveTimeoutMs = 
     : 0;
   if (normalizedTimeoutMs <= 0) return normalizedTimeoutMs;
   const sourceScope = String(queryEntry?.source_scope || queryEntry?.sourceScope || '').trim().toLowerCase();
-  if (sourceScope !== 'external_seed') return normalizedTimeoutMs;
-  const roleRank = Number.isFinite(Number(queryEntry?.role_rank || queryEntry?.roleRank))
-    ? Number(queryEntry.role_rank || queryEntry.roleRank)
-    : null;
-  if (roleRank != null && roleRank > 1) {
+  const stageId = String(queryEntry?.ladder_level || queryEntry?.stage_id || queryEntry?.stageId || '').trim().toLowerCase();
+  const isFrameworkSupportStage =
+    stageId.startsWith('framework_stage_c_support_') ||
+    Number.isFinite(Number(queryEntry?.fair_support_internal_round)) ||
+    Number.isFinite(Number(queryEntry?.fair_support_external_round));
+  if (sourceScope !== 'external_seed') {
+    return isFrameworkSupportStage
+      ? Math.min(normalizedTimeoutMs, RECO_CATALOG_SUPPORT_INTERNAL_QUERY_TIMEOUT_MS)
+      : normalizedTimeoutMs;
+  }
+  if (isFrameworkSupportStage) {
     return Math.min(normalizedTimeoutMs, RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS);
   }
   return Math.min(normalizedTimeoutMs, RECO_CATALOG_PRIMARY_EXTERNAL_SEED_QUERY_TIMEOUT_MS);
@@ -21586,12 +22242,165 @@ async function collectRecoCandidatesFromQueryLevels({
   const plannerQueryCountByStage = {};
   const attemptedBaseUrlsByStage = {};
   const attemptedPathsByStage = {};
+  const isSameRoleComparisonContext = () => {
+    const semanticPlan = isPlainObject(targetContext?.semantic_plan) ? targetContext.semantic_plan : null;
+    const comparisonMode = String(
+      pickFirstTrimmed(
+        targetContext?.comparison_mode,
+        semanticPlan?.comparison_mode,
+        semanticPlan?.selection_constraints?.comparison_mode,
+      ) || '',
+    ).trim().toLowerCase();
+    return comparisonMode === 'same_role_comparison' || comparisonMode === 'same_role';
+  };
+  const resolveQueryLevelRoleId = (level, queries = []) => {
+    const queryRoleIds = (Array.isArray(queries) ? queries : [])
+      .map((query) => String(query?.role_id || '').trim().toLowerCase())
+      .filter(Boolean);
+    const uniqueQueryRoleIds = Array.from(new Set(queryRoleIds));
+    if (uniqueQueryRoleIds.length === 1) return uniqueQueryRoleIds[0];
+    const levelId = String(level?.ladder_level || level?.stage_id || '').trim().toLowerCase();
+    if (levelId === 'framework_stage_b_primary_external_seed') {
+      return String(targetContext?.primary_role_id || '').trim().toLowerCase();
+    }
+    if (levelId.startsWith('framework_stage_c_support_') && levelId.endsWith('_external_seed')) {
+      return levelId.replace(/^framework_stage_c_support_/, '').replace(/_external_seed$/, '');
+    }
+    return '';
+  };
+  const shouldRunSequentialStopForQueryLevel = (level, runnableQueries = []) => {
+    if (!hasFrameworkTargetContext || !Array.isArray(runnableQueries) || runnableQueries.length <= 1) return false;
+    const levelId = String(level?.ladder_level || level?.stage_id || '').trim().toLowerCase();
+    if (levelId === 'framework_stage_b_primary_external_seed') return true;
+    if (Number.isFinite(Number(level?.fair_support_external_round))) return false;
+    if (levelId.startsWith('framework_stage_c_support_') && levelId.endsWith('_external_seed')) {
+      return Boolean(resolveQueryLevelRoleId(level, runnableQueries));
+    }
+    return false;
+  };
+  const shouldStopQueryLevelOnViableMatch = (level, runnableQueries = []) => {
+    const roleId = resolveQueryLevelRoleId(level, runnableQueries);
+    if (roleId) {
+      const filledRoleIds = new Set(getRecoRecallFilledRoleIds(candidateState, { requireAlignedRetrieval: true }));
+      if (!filledRoleIds.has(roleId)) return false;
+      const levelId = String(level?.ladder_level || level?.stage_id || '').trim().toLowerCase();
+      if (levelId === 'framework_stage_b_primary_external_seed' && isSameRoleComparisonContext()) {
+        return getRecoRecallSelectedCount(candidateState) >= 2;
+      }
+      return true;
+    }
+    return isRecoRecallFrameworkCoverageSatisfied(candidateState, { targetContext });
+  };
+  const buildLevelAggregate = () => ({
+    timeoutCount: 0,
+    transientCount: 0,
+    actualHttpAttemptCount: 0,
+    effectiveRequestTimeoutMs: 0,
+    attemptedBaseUrls: new Set(),
+    attemptedPaths: new Set(),
+  });
+  const runQueryLevelEntry = async (queryEntry) => {
+    const queryAllowExternalSeed =
+      allowExternalSeed === true
+      && queryEntry?.allow_external_seed === true;
+    const normalizedQueryEntry = {
+      ...queryEntry,
+      source_scope: queryAllowExternalSeed ? 'external_seed' : 'internal',
+      external_seed_strategy: queryAllowExternalSeed
+        ? String(
+            queryEntry?.external_seed_strategy
+            || externalSeedStrategy
+            || 'supplement_internal_first',
+          )
+            .trim()
+            .toLowerCase()
+        : 'on_empty_only',
+    };
+    return executeRecoRecallPlanEntryWithWallClockGuard({
+      entry: normalizedQueryEntry,
+      logger,
+      timeoutMs,
+      deadlineMs,
+      limit,
+      usePurchasableFallback,
+      transportPolicyMode,
+      targetContext,
+      queryIndex: flattenedQueryIndexes.get(queryEntry),
+      queryTotal: flattenedQueryEntries.length,
+      authHeaders,
+      searchFn,
+    });
+  };
+  const accumulateQueryLevelRow = (stageId, row, aggregate) => {
+    const queryEntry = row && row.queryEntry ? row.queryEntry : null;
+    const out = row && row.out ? row.out : null;
+    if (!queryEntry) return;
+    const actualAttemptsForRow = Number.isFinite(Number(out?.actual_http_attempt_count))
+      ? Math.max(0, Math.trunc(Number(out.actual_http_attempt_count)))
+      : 0;
+    aggregate.actualHttpAttemptCount += actualAttemptsForRow;
+    const attemptTimeouts = Array.isArray(out?.attempted_request_timeouts_ms)
+      ? out.attempted_request_timeouts_ms
+      : [];
+    for (const timeoutValue of attemptTimeouts) {
+      const normalizedTimeout = Number.isFinite(Number(timeoutValue))
+        ? Math.max(0, Math.trunc(Number(timeoutValue)))
+        : 0;
+      aggregate.effectiveRequestTimeoutMs = Math.max(aggregate.effectiveRequestTimeoutMs, normalizedTimeout);
+    }
+    for (const baseUrl of Array.isArray(out?.attempted_base_urls) ? out.attempted_base_urls : []) {
+      const normalizedBaseUrl = String(baseUrl || '').trim();
+      if (normalizedBaseUrl) aggregate.attemptedBaseUrls.add(normalizedBaseUrl);
+    }
+    for (const pathToken of Array.isArray(out?.attempted_paths) ? out.attempted_paths : []) {
+      const normalizedPath = String(pathToken || '').trim();
+      if (normalizedPath) aggregate.attemptedPaths.add(normalizedPath);
+    }
+    const reason = String(out?.reason || '').trim().toLowerCase();
+    if (reason === 'upstream_timeout') aggregate.timeoutCount += 1;
+    if (reason === 'upstream_timeout' || reason === 'upstream_error' || reason === 'rate_limited') {
+      aggregate.transientCount += 1;
+    }
+    searchResults.push({
+      ...queryEntry,
+      ...out,
+    });
+    const products = Array.isArray(out?.products) ? out.products : [];
+    for (const product of products) {
+      const normalized = normalizeRecoCatalogProduct(product);
+      if (!isPlainObject(normalized)) continue;
+      const boundaryReject = classifyBeautyMainlineBoundaryRejectCandidate(normalized);
+      if (boundaryReject.rejected) {
+        recordBeautyMainlineBoundaryReject({
+          rejects: boundaryRejects,
+          product: normalized,
+          reason: boundaryReject.reason,
+          queryEntry,
+          stageId,
+        });
+        continue;
+      }
+      rawCandidates.push({
+        ...normalized,
+        retrieval_query: queryEntry.query,
+        retrieval_step: queryEntry.step,
+        retrieval_slot: queryEntry.slot,
+        retrieval_ladder_level: queryEntry.ladder_level,
+        retrieval_role_id: queryEntry.role_id || null,
+      });
+    }
+  };
 
   for (const level of Array.isArray(queryLevels) ? queryLevels : []) {
     const queries = Array.isArray(level?.queries) ? level.queries : [];
     const stageId = String(level?.ladder_level || level?.stage_id || '').trim() || `level_${stageResults.length + 1}`;
     plannerQueryCountByStage[stageId] = queries.length;
-    if (shouldSkipFrameworkPrimaryExternalSeedLevel(level, candidateState)) {
+    const skipReason = shouldSkipFrameworkPrimaryExternalSeedLevel(level, candidateState, { targetContext })
+      ? 'skipped_primary_already_satisfied'
+      : shouldSkipFrameworkSupportExternalSeedLevel(level, candidateState)
+        ? 'skipped_support_role_already_satisfied'
+        : '';
+    if (skipReason) {
       for (const queryEntry of queries) {
         const queryAllowExternalSeed =
           allowExternalSeed === true
@@ -21610,7 +22419,7 @@ async function collectRecoCandidatesFromQueryLevels({
             : 'on_empty_only',
           ok: false,
           products: [],
-          reason: 'skipped_primary_already_satisfied',
+          reason: skipReason,
           actual_http_attempt_count: 0,
           attempted_request_timeouts_ms: [],
           skipped_runtime: true,
@@ -21625,7 +22434,7 @@ async function collectRecoCandidatesFromQueryLevels({
             ? 'external_seed'
             : 'internal',
         skipped: true,
-        skip_reason: 'primary_already_satisfied',
+        skip_reason: skipReason,
         executed_query_count: 0,
         executed_upstream_attempt_count: 0,
         actual_http_attempt_count: 0,
@@ -21636,14 +22445,13 @@ async function collectRecoCandidatesFromQueryLevels({
       });
       continue;
     }
-    const levelResults = await mapWithConcurrency(
-      queries,
-      RECO_CATALOG_SEARCH_CONCURRENCY,
-      async (queryEntry) => {
+    const runnableQueries = [];
+    for (const queryEntry of queries) {
+      if (shouldSkipFrameworkSupportRoleQuery(queryEntry, candidateState)) {
         const queryAllowExternalSeed =
           allowExternalSeed === true
           && queryEntry?.allow_external_seed === true;
-        const normalizedQueryEntry = {
+        searchResults.push({
           ...queryEntry,
           source_scope: queryAllowExternalSeed ? 'external_seed' : 'internal',
           external_seed_strategy: queryAllowExternalSeed
@@ -21655,96 +22463,71 @@ async function collectRecoCandidatesFromQueryLevels({
                 .trim()
                 .toLowerCase()
             : 'on_empty_only',
-        };
-        return executeRecoRecallPlanEntryWithWallClockGuard({
-          entry: normalizedQueryEntry,
-          logger,
-          timeoutMs,
-          deadlineMs,
-          limit,
-          usePurchasableFallback,
-          transportPolicyMode,
-          targetContext,
-          queryIndex: flattenedQueryIndexes.get(queryEntry),
-          queryTotal: flattenedQueryEntries.length,
-          authHeaders,
-          searchFn,
+          ok: false,
+          products: [],
+          reason: 'skipped_support_role_already_satisfied',
+          actual_http_attempt_count: 0,
+          attempted_request_timeouts_ms: [],
+          skipped_runtime: true,
         });
-      },
-    );
-    let levelTimeoutCount = 0;
-    let levelTransientCount = 0;
-    let levelActualHttpAttemptCount = 0;
-    let levelEffectiveRequestTimeoutMs = 0;
-    const levelAttemptedBaseUrls = new Set();
-    const levelAttemptedPaths = new Set();
-    for (const row of levelResults) {
-      const queryEntry = row && row.queryEntry ? row.queryEntry : null;
-      const out = row && row.out ? row.out : null;
-      if (!queryEntry) continue;
-      const actualAttemptsForRow = Number.isFinite(Number(out?.actual_http_attempt_count))
-        ? Math.max(0, Math.trunc(Number(out.actual_http_attempt_count)))
-        : 0;
-      levelActualHttpAttemptCount += actualAttemptsForRow;
-      const attemptTimeouts = Array.isArray(out?.attempted_request_timeouts_ms)
-        ? out.attempted_request_timeouts_ms
-        : [];
-      for (const timeoutValue of attemptTimeouts) {
-        const normalizedTimeout = Number.isFinite(Number(timeoutValue))
-          ? Math.max(0, Math.trunc(Number(timeoutValue)))
-          : 0;
-        levelEffectiveRequestTimeoutMs = Math.max(levelEffectiveRequestTimeoutMs, normalizedTimeout);
-      }
-      for (const baseUrl of Array.isArray(out?.attempted_base_urls) ? out.attempted_base_urls : []) {
-        const normalizedBaseUrl = String(baseUrl || '').trim();
-        if (normalizedBaseUrl) levelAttemptedBaseUrls.add(normalizedBaseUrl);
-      }
-      for (const pathToken of Array.isArray(out?.attempted_paths) ? out.attempted_paths : []) {
-        const normalizedPath = String(pathToken || '').trim();
-        if (normalizedPath) levelAttemptedPaths.add(normalizedPath);
-      }
-      const reason = String(out?.reason || '').trim().toLowerCase();
-      if (reason === 'upstream_timeout') levelTimeoutCount += 1;
-      if (reason === 'upstream_timeout' || reason === 'upstream_error' || reason === 'rate_limited') {
-        levelTransientCount += 1;
-      }
-      searchResults.push({
-        ...queryEntry,
-        ...out,
-      });
-      const products = Array.isArray(out?.products) ? out.products : [];
-      for (const product of products) {
-        const normalized = normalizeRecoCatalogProduct(product);
-        if (!isPlainObject(normalized)) continue;
-        const boundaryReject = classifyBeautyMainlineBoundaryRejectCandidate(normalized);
-        if (boundaryReject.rejected) {
-          recordBeautyMainlineBoundaryReject({
-            rejects: boundaryRejects,
-            product: normalized,
-            reason: boundaryReject.reason,
-            queryEntry,
-            stageId,
-          });
-          continue;
-        }
-        rawCandidates.push({
-          ...normalized,
-          retrieval_query: queryEntry.query,
-          retrieval_step: queryEntry.step,
-          retrieval_slot: queryEntry.slot,
-          retrieval_ladder_level: queryEntry.ladder_level,
-          retrieval_role_id: queryEntry.role_id || null,
-        });
+      } else {
+        runnableQueries.push(queryEntry);
       }
     }
-    executedQueryCount += queries.length;
-    executedUpstreamAttemptCount += levelActualHttpAttemptCount;
-    actualHttpAttemptCount += levelActualHttpAttemptCount;
-    stageTimeoutCounts[stageId] = levelTimeoutCount;
-    actualHttpAttemptsByStage[stageId] = levelActualHttpAttemptCount;
-    effectiveRequestTimeoutMsByStage[stageId] = levelEffectiveRequestTimeoutMs;
-    attemptedBaseUrlsByStage[stageId] = Array.from(levelAttemptedBaseUrls);
-    attemptedPathsByStage[stageId] = Array.from(levelAttemptedPaths);
+    if (runnableQueries.length === 0) {
+      stageResults.push({
+        stage_id: stageId,
+        role_id: String(queries[0]?.role_id || '').trim() || null,
+        role_rank: Number.isFinite(Number(queries[0]?.role_rank)) ? Number(queries[0].role_rank) : null,
+        source_scope:
+          queries.length > 0 && queries.every((queryEntry) => queryEntry?.allow_external_seed === true)
+            ? 'external_seed'
+            : 'internal',
+        skipped: true,
+        skip_reason: 'skipped_support_role_already_satisfied',
+        executed_query_count: 0,
+        executed_upstream_attempt_count: 0,
+        actual_http_attempt_count: 0,
+        timeout_count: 0,
+        transient_only: false,
+        selected_count: getRecoRecallSelectedCount(candidateState),
+        primary_role_matched: Boolean(candidateState?.primary_role_matched),
+      });
+      continue;
+    }
+    const levelResults = [];
+    const levelAggregate = buildLevelAggregate();
+    if (shouldRunSequentialStopForQueryLevel(level, runnableQueries)) {
+      for (const queryEntry of runnableQueries) {
+        // eslint-disable-next-line no-await-in-loop
+        const row = await runQueryLevelEntry(queryEntry);
+        levelResults.push(row);
+        accumulateQueryLevelRow(stageId, row, levelAggregate);
+        candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
+          targetContext,
+          recommendationTaskContext,
+        });
+        if (shouldStopQueryLevelOnViableMatch(level, runnableQueries)) break;
+      }
+    } else {
+      const rows = await mapWithConcurrency(
+        runnableQueries,
+        RECO_CATALOG_SEARCH_CONCURRENCY,
+        runQueryLevelEntry,
+      );
+      for (const row of rows) {
+        levelResults.push(row);
+        accumulateQueryLevelRow(stageId, row, levelAggregate);
+      }
+    }
+    executedQueryCount += levelResults.length;
+    executedUpstreamAttemptCount += levelAggregate.actualHttpAttemptCount;
+    actualHttpAttemptCount += levelAggregate.actualHttpAttemptCount;
+    stageTimeoutCounts[stageId] = levelAggregate.timeoutCount;
+    actualHttpAttemptsByStage[stageId] = levelAggregate.actualHttpAttemptCount;
+    effectiveRequestTimeoutMsByStage[stageId] = levelAggregate.effectiveRequestTimeoutMs;
+    attemptedBaseUrlsByStage[stageId] = Array.from(levelAggregate.attemptedBaseUrls);
+    attemptedPathsByStage[stageId] = Array.from(levelAggregate.attemptedPaths);
     candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
       targetContext,
       recommendationTaskContext,
@@ -21759,18 +22542,18 @@ async function collectRecoCandidatesFromQueryLevels({
           : 'internal',
       skipped: false,
       skip_reason: null,
-      executed_query_count: queries.length,
-      executed_upstream_attempt_count: levelActualHttpAttemptCount,
-      actual_http_attempt_count: levelActualHttpAttemptCount,
-      timeout_count: levelTimeoutCount,
+      executed_query_count: levelResults.length,
+      executed_upstream_attempt_count: levelAggregate.actualHttpAttemptCount,
+      actual_http_attempt_count: levelAggregate.actualHttpAttemptCount,
+      timeout_count: levelAggregate.timeoutCount,
       transient_only:
-        queries.length > 0 &&
-        levelTransientCount >= queries.length &&
+        levelResults.length > 0 &&
+        levelAggregate.transientCount >= levelResults.length &&
         Number(candidateState?.raw_candidate_count || 0) === 0,
       selected_count: getRecoRecallSelectedCount(candidateState),
       primary_role_matched: Boolean(candidateState?.primary_role_matched),
-      attempted_base_urls: Array.from(levelAttemptedBaseUrls),
-      attempted_paths: Array.from(levelAttemptedPaths),
+      attempted_base_urls: Array.from(levelAggregate.attemptedBaseUrls),
+      attempted_paths: Array.from(levelAggregate.attemptedPaths),
     });
     if (shouldStopStepAwareBroadening(candidateState, { targetContext })) {
       stopLevel = String(level?.ladder_level || '').trim() || null;
@@ -22937,10 +23720,11 @@ async function buildRecoGenerateFromCatalog({
       : frameworkMode
         ? frameworkFallbackSelectedCandidates
         : stepAwareFallbackSelectedCandidates;
+  const hydratedSurfacedCandidates = await hydrateRecoCandidatesProductIntelFromKb(surfacedCandidates);
   const frameworkSummary = frameworkMode
     ? buildConcernFrameworkSummary({
         targetContext,
-        recommendations: surfacedCandidates,
+        recommendations: hydratedSurfacedCandidates,
         language: ctx && ctx.lang ? ctx.lang : 'EN',
       })
     : null;
@@ -22953,12 +23737,12 @@ async function buildRecoGenerateFromCatalog({
     : null;
 
   const recos = frameworkMode
-    ? buildConcernRecommendationsFromSelectedCandidates(surfacedCandidates, {
+    ? buildConcernRecommendationsFromSelectedCandidates(hydratedSurfacedCandidates, {
         targetContext,
         language: ctx && ctx.lang ? ctx.lang : 'EN',
         debug,
       })
-    : surfacedCandidates.map((picked, index) => {
+    : hydratedSurfacedCandidates.map((picked, index) => {
         const stepToken = pickFirstTrimmed(
           targetContext && targetContext.resolved_target_step,
           picked.product_type,
@@ -22997,6 +23781,10 @@ async function buildRecoGenerateFromCatalog({
           ...(pickFirstString(picked.canonical_pdp_url, picked.canonicalPdpUrl) ? { canonical_pdp_url: pickFirstString(picked.canonical_pdp_url, picked.canonicalPdpUrl) } : {}),
           ...(pickFirstString(picked.purchase_path, picked.purchasePath) ? { purchase_path: pickFirstString(picked.purchase_path, picked.purchasePath) } : {}),
           ...(isPlainObject(picked.pdp_open) ? { pdp_open: picked.pdp_open } : {}),
+          ...buildRecoVisibleProductFields(picked, {
+            role: null,
+            language: ctx && ctx.lang ? ctx.lang : 'EN',
+          }),
           sku: picked,
           notes: [
             ...(debug
@@ -51822,7 +52610,7 @@ function buildRecoAssistantPromptPriceDiagnostics(items = []) {
 
 const RECO_ASSISTANT_CONCERN_FAMILY_PATTERNS = Object.freeze([
   ['oil_control', /\b(oil|oily|oiliness|shine|sebum|greasy|mattif|zinc\s*pca|zinc)\b/i],
-  ['tone_brightening', /\b(tone_mark_treatment|post[-\s]?breakout\s+marks?|dull(?:ness)?|uneven\s+tone|dark\s+spots?|hyperpigmentation|brighten(?:ing)?|radiance|radiant|glow(?:ing)?|improv(?:e|es|ing)\s+(?:the\s+look\s+of\s+)?skin\s+tone|even(?:s|ing)?\s+skin\s+tone)\b/i],
+  ['tone_brightening', /\b(tone_mark_treatment|post[-\s]?(?:acne|breakout)\s+marks?|dull(?:ness)?|uneven\s+tone|dark\s+spots?|hyperpigmentation|brighten(?:ing)?|radiance|radiant|glow(?:ing)?|improv(?:e|es|ing)\s+(?:the\s+look\s+of\s+)?skin\s+tone|even(?:s|ing)?\s+skin\s+tone)\b/i],
   ['acne_pore', /\b(acne|breakouts?|blemish(?:es)?|clog(?:ged)?|pores?)\b/i],
   ['hydration_barrier', /\b(hydrat(?:e|ing|ion)?|moistur(?:e|ize|izer|izing)?|barrier|dry(?:ness)?|dehydrat(?:ed|ion)?|ceramides?|glycerin|hyaluronic)\b/i],
   ['sunscreen_uv', /\b(spf|sunscreen|sun\s*screen|uv|sun\s+protection|white\s+cast|broad\s+spectrum)\b/i],
@@ -51865,12 +52653,17 @@ function scoreRecoAssistantEvidenceForTarget(value, {
   if (!text) return Number.NEGATIVE_INFINITY;
   const targetFamilies = collectRecoAssistantConcernFamilies(targetText);
   const evidenceFamilies = collectRecoAssistantConcernFamilies(text);
+  const weakReasonFragment = isRecoAssistantWeakReasonFragment(text);
+  const postAcneMarkToneEvidence =
+    targetFamilies.has('tone_brightening') &&
+    /\bpost[-\s]?(?:acne|breakout)\s+marks?\b/i.test(text);
   let score = 100 - (Number.isFinite(Number(originalIndex)) ? Number(originalIndex) * 0.01 : 0);
+  if (weakReasonFragment) score -= 52;
   if (evidenceFamilies.size > 0 && targetFamilies.size > 0) {
     let aligned = 0;
     let offTarget = 0;
     for (const family of evidenceFamilies) {
-      if (targetFamilies.has(family)) aligned += 1;
+      if (targetFamilies.has(family) || (family === 'acne_pore' && postAcneMarkToneEvidence)) aligned += 1;
       else offTarget += 1;
     }
     score += aligned * 24;
@@ -51885,6 +52678,28 @@ function scoreRecoAssistantEvidenceForTarget(value, {
     score -= 28;
   }
   return score;
+}
+
+function isRecoAssistantWeakReasonFragment(value) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text) return true;
+  const normalized = normalizeSemanticAuditText(text);
+  if (!normalized) return true;
+  if (/^(niacinamide|zinc|zinc pca|hyaluronic acid|ceramide|ceramides|glycerin|panthenol|vitamin c|ascorbic acid|vitamin c ascorbic acid|uv filters?)$/i.test(normalized)) {
+    return true;
+  }
+  const tokens = normalized
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+  if (/^(oil control|oil-control|hydration|hydrating|barrier|brightening|tone|sunscreen|moisture)\s+support$/i.test(normalized)) {
+    return true;
+  }
+  if (/\b(spf\s*\d{1,3}\+?|pa\+{2,4}|uv|broad spectrum|white cast|non greasy|non-greasy|matte finish|watery texture)\b/i.test(normalized)) {
+    return false;
+  }
+  if (tokens.length <= 3) return true;
+  return false;
 }
 
 function rankRecoAssistantEvidenceForTarget(values = [], {
@@ -51924,8 +52739,8 @@ function buildRecoAssistantReasonPoints(detail, { max = 4 } = {}) {
         ...(Array.isArray(item.evidence_points) ? item.evidence_points : []),
         ...(Array.isArray(item.compare_highlights) ? item.compare_highlights : []),
         ...(Array.isArray(item.key_features) ? item.key_features : []),
-        pickFirstTrimmed(item.best_for),
         pickFirstTrimmed(item.why_this_one),
+        pickFirstTrimmed(item.best_for),
         pickFirstTrimmed(item.description_snippet),
         pickFirstTrimmed(item.short_description),
       ],
@@ -52240,6 +53055,7 @@ function buildCompactRecoAssistantPromptLines({
     'If user_relevant_concern_families does not include aging_texture, do not mention wrinkles, fine lines, aging, anti-aging, or texture repair.',
     'Avoid internal phrasing like "selected products" and avoid generic filler.',
     'Price may support the recommendation, but pair it with a concrete product-fit reason from Context.',
+    'Never write ungrammatical fragments like "because a serum..." or "because an SPF..."; use "because it is..." or an active verb.',
     'Compact retry mode: keep the answer tight, prioritize the selected product evidence, and skip optional background detail.',
   ];
   if (strictSelectedOnlyContext) {
@@ -52296,6 +53112,7 @@ function buildStructuredRecoAssistantReasonPromptLines({
     'lead_reason must explain why the first selected product fits the user request using concrete product evidence.',
     'support_reasons must align to the remaining selected products in order; use an empty array when there are no support products.',
     'Each reason must be a short shopper-facing fragment, not a full recommendation sentence.',
+    'Do not start a reason fragment with "a" or "an" unless it remains grammatical after "because"; prefer active verbs or "it is ...".',
     'Price may be included only when Context provides price_label or price_order_summary, and it must be paired with a non-price fit reason.',
   ];
   if (requestMode === 'buy') {
@@ -52332,6 +53149,9 @@ function describeRecoAssistantRewriteFailureReason(reason) {
   }
   if (normalized === 'rewrite_generic_routine_wrapup') {
     return 'Do not end with a generic routine wrap-up. Use the last sentence for a concrete step reason, tradeoff, or buy-now guidance.';
+  }
+  if (normalized === 'rewrite_ungrammatical_reason_fragment') {
+    return 'Fix ungrammatical reason fragments such as "because a serum..." by writing "because it is..." or using an active verb.';
   }
   if (normalized === 'rewrite_stiff_selection_framing') {
     return 'Replace stiff meta phrasing like "selected products" with shopper-facing routine language.';
@@ -52717,6 +53537,7 @@ function buildRecoAssistantRewritePrompt({
       'If request_mode is "buy", use direct shopping advice tone.',
       'If request_mode is "buy", start the first sentence with the lead product name rather than a generic concern summary.',
       'If request_mode is "buy", the first sentence must use direct buy/pick language, ideally: "<lead product name> is your best first buy because ...".',
+      'Never write ungrammatical fragments like "because a serum..." or "because an SPF..."; use "because it is..." or an active verb.',
       'If request_mode is "buy" and there is one selected product, the first sentence must directly recommend that product by name.',
       'If request_mode is "buy" and selected_product_role_mix is "same_role_comparison", the first sentence must name the best first buy and signal that the remaining picks are same-slot comparison options.',
       'If request_mode is "buy" and selected_product_role_mix is "routine_mix", the first sentence must name the best first buy and frame the remaining picks as routine add-ons from other roles; only same-role products may be same-slot alternatives.',
@@ -52947,6 +53768,11 @@ function assistantTextUsesGenericRoutineWrapup(text) {
     && /\b(routine|skin|oily skin|hydration|uv damage|breathable)\b/i.test(lastSentence);
 }
 
+function assistantTextHasUngrammaticalReasonFragment(text) {
+  return /\bbecause\s+(?:a|an)\s+[^.!?。！？]{3,120}\b(?:that|with|for)\b/i.test(String(text || ''))
+    || /\bbecause\s+(?:is|are|was|were|has|have|had|features?|provides?|uses?|contains?|combines?|offers?|supports?|helps?|hydrates?|targets?|addresses?|reduces?|delivers?|gives?|pairs?|layers?|locks?|soothes?|boosts?|protects?|keeps?|works?|formulated|designed|made|built)\b/i.test(String(text || ''));
+}
+
 function assistantTextUsesStiffSelectionFraming(text) {
   return /\bthese selected products\b/i.test(String(text || ''))
     || /\bselected products are different steps\b/i.test(String(text || ''));
@@ -53131,6 +53957,7 @@ function validateRecoAssistantRewriteCandidate({
   const usesGenericRoutineWrapup =
     selectedProductRoutineMix
     && assistantTextUsesGenericRoutineWrapup(text);
+  const usesUngrammaticalReasonFragment = assistantTextHasUngrammaticalReasonFragment(text);
   const usesTemplatedRoutineBridge =
     selectedProductRoutineMix
     && assistantTextUsesTemplatedRoutineBridge(text);
@@ -53164,6 +53991,7 @@ function validateRecoAssistantRewriteCandidate({
     || usesStiffSelectionFraming
     || usesSingleProductRoutineFraming
     || usesGenericRoutineWrapup
+    || usesUngrammaticalReasonFragment
     || usesOffTargetConcernClaim
   ) {
     if (buyLeadNotDirect) return { ok: false, reason: 'rewrite_buy_lead_not_direct' };
@@ -53174,6 +54002,7 @@ function validateRecoAssistantRewriteCandidate({
     if (usesStiffSelectionFraming) return { ok: false, reason: 'rewrite_stiff_selection_framing' };
     if (usesSingleProductRoutineFraming) return { ok: false, reason: 'rewrite_single_product_routine_framing' };
     if (usesGenericRoutineWrapup) return { ok: false, reason: 'rewrite_generic_routine_wrapup' };
+    if (usesUngrammaticalReasonFragment) return { ok: false, reason: 'rewrite_ungrammatical_reason_fragment' };
     if (usesOffTargetConcernClaim) return { ok: false, reason: 'rewrite_off_target_concern_claim' };
     return { ok: false, reason: 'rewrite_failed_alignment_guard' };
   }
@@ -53191,6 +54020,7 @@ function shouldRetryRecoAssistantRewrite(reason) {
     || normalized === 'rewrite_stiff_selection_framing'
     || normalized === 'rewrite_single_product_routine_framing'
     || normalized === 'rewrite_generic_routine_wrapup'
+    || normalized === 'rewrite_ungrammatical_reason_fragment'
     || normalized === 'rewrite_mentions_unselected_product'
     || normalized === 'rewrite_off_target_concern_claim'
     || normalized === 'rewrite_failed_alignment_guard';
@@ -53260,6 +54090,8 @@ function normalizeRecoAssistantReasonFragment(value, {
     .replace(/\b(this|that)\s+product\b/ig, 'it')
     .replace(/\b(the|this|that)\s+(lead|selected)\s+(pick|product|option)\b/ig, 'it')
     .replace(/\b(product|option)\s+(is|as)\b/ig, 'it $2')
+    .replace(/^(?:is\s+)?(?:your\s+)?(?:best\s+first\s+buy|top\s+pick|lead\s+pick|first\s+choice|best\s+choice)(?:\s+for\s+[^,.]{1,90})?\s+because\s+/i, '')
+    .replace(/^(?:because\s+)?(?:follow|pair|complete|start)\s+(?:with\s+)?(?:it|this|the\s+product)?\s*/i, '')
     .replace(/\s+/g, ' ')
     .replace(/^[\s,;:.\-–—]+/, '')
     .replace(/[\s,;:.\-–—]+$/, '')
@@ -53293,6 +54125,17 @@ function normalizeRecoAssistantReasonFragment(value, {
     return '';
   }
   text = text.replace(/^(a|an|the)\b/i, (match) => match.toLowerCase());
+  if (isRecoAssistantWeakReasonFragment(text)) {
+    const fallbackText = String(fallback || '').trim();
+    if (fallbackText && fallbackText !== value) {
+      return normalizeRecoAssistantReasonFragment(fallbackText, {
+        selectedNames,
+        forbiddenNames,
+        forbiddenAliases,
+      });
+    }
+    return '';
+  }
   if (/^[A-Z][a-z]/.test(text) && !/^(SPF|UV|PA\b)/.test(text)) {
     text = text.charAt(0).toLowerCase() + text.slice(1);
   }
@@ -53315,6 +54158,29 @@ function buildRecoAssistantStructuredReasonFallback(detail = {}, {
   const target = String(targetLabel || '').trim();
   if (target) return `it directly fits the ${target.toLowerCase()} request`;
   return 'it is the most direct fit from the selected card evidence';
+}
+
+function normalizeRecoAssistantBecauseReasonFragment(reason) {
+  const text = String(reason || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  if (/^(?:a|an)\s+[^.!?。！？]{3,120}\b(?:that|with|for)\b/i.test(text)) {
+    return `it is ${text}`;
+  }
+  if (
+    /^(?:is|are|was|were|has|have|had|features?|provides?|uses?|contains?|combines?|offers?|supports?|helps?|hydrates?|targets?|addresses?|reduces?|delivers?|gives?|pairs?|layers?|locks?|soothes?|boosts?|protects?|keeps?|works?)\b/i.test(text)
+  ) {
+    return `it ${text}`;
+  }
+  if (/^(?:formulated|designed|made|built)\b/i.test(text)) {
+    return `it is ${text}`;
+  }
+  return text;
+}
+
+function isValidRecoAssistantStructuredReasonJson(value) {
+  return isPlainObject(value)
+    && typeof value.lead_reason === 'string'
+    && Array.isArray(value.support_reasons);
 }
 
 function pickRecoAssistantRenderDetail(row = {}) {
@@ -53390,29 +54256,32 @@ function renderRecoAssistantStructuredReasonRewrite({
       forbiddenAliases,
     }),
   });
-  if (!leadReason) return '';
+  const grammaticalLeadReason = normalizeRecoAssistantBecauseReasonFragment(leadReason);
+  if (!grammaticalLeadReason) return '';
   const supportReasonValues = Array.isArray(structuredReason?.support_reasons)
     ? structuredReason.support_reasons
     : [];
-  const supportReasons = selectedNames.slice(1).map((name, index) => normalizeRecoAssistantReasonFragment(
-    supportReasonValues[index],
-    {
-      selectedNames,
-      forbiddenNames,
-      forbiddenAliases,
-      fallback: buildRecoAssistantStructuredReasonFallback(details[index + 1], {
-        targetLabel,
+  const supportReasons = selectedNames.slice(1).map((name, index) => normalizeRecoAssistantBecauseReasonFragment(
+    normalizeRecoAssistantReasonFragment(
+      supportReasonValues[index],
+      {
         selectedNames,
         forbiddenNames,
         forbiddenAliases,
-      }),
-    },
+        fallback: buildRecoAssistantStructuredReasonFallback(details[index + 1], {
+          targetLabel,
+          selectedNames,
+          forbiddenNames,
+          forbiddenAliases,
+        }),
+      },
+    ),
   ));
   if (language === 'CN') {
     const leadSentence =
       requestMode === 'use_first'
-        ? `${selectedNames[0]}适合作为起步选择，因为${leadReason}`
-        : `${selectedNames[0]}是更适合先买的选择${targetPhrase}，因为${leadReason}`;
+        ? `${selectedNames[0]}适合作为起步选择，因为${grammaticalLeadReason}`
+        : `${selectedNames[0]}是更适合先买的选择${targetPhrase}，因为${grammaticalLeadReason}`;
     if (selectedNames.length === 1) {
       return [
         formatRecoAssistantStructuredSentence(leadSentence),
@@ -53422,12 +54291,14 @@ function renderRecoAssistantStructuredReasonRewrite({
     const supportSentences = selectedNames.slice(1).map((name, index) => {
       const detail = details[index + 1] || {};
       const step = pickFirstTrimmed(detail.preferred_step, detail.matched_role_label, 'support step');
-      const reason = supportReasons[index] || buildRecoAssistantStructuredReasonFallback(detail, {
-        targetLabel,
-        selectedNames,
-        forbiddenNames,
-        forbiddenAliases,
-      });
+      const reason = supportReasons[index] || normalizeRecoAssistantBecauseReasonFragment(
+        buildRecoAssistantStructuredReasonFallback(detail, {
+          targetLabel,
+          selectedNames,
+          forbiddenNames,
+          forbiddenAliases,
+        }),
+      );
       return formatRecoAssistantStructuredSentence(`${name}负责${step}，因为${reason}`);
     });
     return [
@@ -53437,10 +54308,10 @@ function renderRecoAssistantStructuredReasonRewrite({
   }
   const leadSentence =
     requestMode === 'use_first'
-      ? `Start with ${selectedNames[0]}${targetPhrase} because ${leadReason}`
+      ? `Start with ${selectedNames[0]}${targetPhrase} because ${grammaticalLeadReason}`
       : requestMode === 'use'
-        ? `${selectedNames[0]} is the most practical pick${targetPhrase} because ${leadReason}`
-        : `${selectedNames[0]} is your best first buy${targetPhrase} because ${leadReason}`;
+        ? `${selectedNames[0]} is the most practical pick${targetPhrase} because ${grammaticalLeadReason}`
+        : `${selectedNames[0]} is your best first buy${targetPhrase} because ${grammaticalLeadReason}`;
   if (selectedNames.length === 1) {
     return [
       formatRecoAssistantStructuredSentence(leadSentence),
@@ -53449,12 +54320,14 @@ function renderRecoAssistantStructuredReasonRewrite({
   }
   const supportSentences = selectedNames.slice(1).map((name, index) => {
     const detail = details[index + 1] || {};
-    const reason = supportReasons[index] || buildRecoAssistantStructuredReasonFallback(detail, {
-      targetLabel,
-      selectedNames,
-      forbiddenNames,
-      forbiddenAliases,
-    });
+    const reason = supportReasons[index] || normalizeRecoAssistantBecauseReasonFragment(
+      buildRecoAssistantStructuredReasonFallback(detail, {
+        targetLabel,
+        selectedNames,
+        forbiddenNames,
+        forbiddenAliases,
+      }),
+    );
     if (selectedProductRoleMix === 'same_role_comparison') {
       return formatRecoAssistantStructuredSentence(`${name} is the same-slot comparison option because ${reason}`);
     }
@@ -53627,15 +54500,18 @@ async function maybeRewriteRecoAssistantTextWithLlm({
       let parseStatus = result && result.parse_status ? String(result.parse_status).trim() : null;
       let candidateText = '';
       if (structuredReasonOnly) {
-        candidateText = renderRecoAssistantStructuredReasonRewrite({
-          structuredReason: result && result.json && typeof result.json === 'object' ? result.json : null,
-          payload,
-          language,
-          primaryTarget,
-          names,
-          requestMode,
-          selectedProductRoleMix,
-        });
+        const structuredReasonJson = result && isValidRecoAssistantStructuredReasonJson(result.json) ? result.json : null;
+        candidateText = structuredReasonJson
+          ? renderRecoAssistantStructuredReasonRewrite({
+              structuredReason: structuredReasonJson,
+              payload,
+              language,
+              primaryTarget,
+              names,
+              requestMode,
+              selectedProductRoleMix,
+            })
+          : '';
         if (
           candidateText &&
           (
@@ -53785,6 +54661,11 @@ async function maybeRewriteRecoAssistantTextWithLlm({
       firstAttemptReason === 'rewrite_mentions_unselected_product'
       || firstAttemptReason === 'rewrite_off_target_concern_claim'
       || firstAttemptReason === 'rewrite_buy_lead_not_direct'
+      || firstAttemptReason === 'rewrite_generic_routine_wrapup'
+      || firstAttemptReason === 'rewrite_ungrammatical_reason_fragment'
+      || firstAttemptReason === 'gemini_json_timeout'
+      || firstAttemptReason === 'parse_truncated_json'
+      || firstAttemptReason === 'empty_rewrite'
       || firstAttemptReason === 'rewrite_failed_alignment_guard';
     const useStrictSelectedOnlyRetry = useStructuredReasonRetry;
     const useCompactRetry =
@@ -53797,9 +54678,10 @@ async function maybeRewriteRecoAssistantTextWithLlm({
       || firstAttemptReason === 'gemini_json_timeout'
       || firstAttemptReason === 'parse_truncated_json'
       || firstAttemptReason === 'empty_rewrite';
+    const retryTimeoutLimitMs = useStructuredReasonRetry ? 2400 : 1800;
     const retryTimeoutCapMs = Number.isFinite(remainingBudgetMs)
-      ? Math.max(900, Math.min(1800, remainingBudgetMs))
-      : 1800;
+      ? Math.max(900, Math.min(retryTimeoutLimitMs, remainingBudgetMs))
+      : retryTimeoutLimitMs;
     const retryAttempt = await executeRewriteAttempt({
       retryReason: firstAttempt.reason,
       compactContext: useCompactRetry,
@@ -59959,6 +60841,69 @@ function buildAuroraProductRecommendationsQuery({ profile, requestText, lang, gl
 }
 
 const CONCERN_SELECTOR_RACE_VERSION = 'concern_selector_race_v1';
+const CONCERN_SEMANTIC_PLAN_JSON_ROUTE = 'aurora_concern_semantic_plan_json';
+const CONCERN_SEMANTIC_PLAN_JSON_SCHEMA = Object.freeze({
+  type: 'object',
+  properties: {
+    primary_concern: { type: 'string' },
+    primary_role_id: { type: 'string' },
+    support_role_ids: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+    routine_mode: {
+      type: 'string',
+      enum: ['routine_mix', 'same_role_comparison', 'single_product'],
+    },
+    query_intents: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          role_id: { type: 'string' },
+          intent: { type: 'string' },
+          query_terms: {
+            type: 'array',
+            items: { type: 'string' },
+          },
+        },
+        required: ['role_id', 'intent', 'query_terms'],
+      },
+    },
+    must_satisfy_constraints: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+    comparison_mode: {
+      type: 'string',
+      enum: ['routine_mix', 'same_role_comparison', 'single_product'],
+    },
+    evidence_needed: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+    ingredient_hypotheses: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+    product_type_hypotheses: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+  },
+  required: [
+    'primary_concern',
+    'primary_role_id',
+    'support_role_ids',
+    'routine_mode',
+    'query_intents',
+    'must_satisfy_constraints',
+    'comparison_mode',
+    'evidence_needed',
+    'ingredient_hypotheses',
+    'product_type_hypotheses',
+  ],
+});
 
 async function runConcernSemanticPlanner({
   ctx,
@@ -59994,8 +60939,8 @@ async function runConcernSemanticPlanner({
     planner_effective_provider: null,
     planner_effective_model: null,
     planner_selection_source: 'none',
-    planner_route: 'aurora_concern_semantic_plan_plain_text',
-    planner_route_group: classifyAuroraGeminiRouteGroup('aurora_concern_semantic_plan_plain_text'),
+    planner_route: CONCERN_SEMANTIC_PLAN_JSON_ROUTE,
+    planner_route_group: classifyAuroraGeminiRouteGroup(CONCERN_SEMANTIC_PLAN_JSON_ROUTE),
     planner_key_slot: null,
     planner_attempts: [],
     model_policy_trace: [],
@@ -60017,13 +60962,13 @@ async function runConcernSemanticPlanner({
       {
         provider: 'gemini',
         model: primaryModel.effective_model,
-        structured_contract: 'plain_text',
+        structured_contract: 'json_object',
         model_policy: primaryModel,
       },
       {
         provider: 'gemini',
         model: retryModel.effective_model,
-        structured_contract: 'plain_text',
+        structured_contract: 'json_object',
         model_policy: retryModel,
       },
     ];
@@ -60047,8 +60992,8 @@ async function runConcernSemanticPlanner({
           effective_provider: null,
           effective_model: null,
           selection_source: 'budget_guard',
-          route: 'aurora_concern_semantic_plan_plain_text',
-          route_group: classifyAuroraGeminiRouteGroup('aurora_concern_semantic_plan_plain_text'),
+          route: CONCERN_SEMANTIC_PLAN_JSON_ROUTE,
+          route_group: classifyAuroraGeminiRouteGroup(CONCERN_SEMANTIC_PLAN_JSON_ROUTE),
           key_slot: null,
           provider_reason: 'BUDGET_EXHAUSTED',
           provider_parse_status: null,
@@ -60068,16 +61013,17 @@ async function runConcernSemanticPlanner({
       let plannerResponse;
       try {
         plannerResponse = await withTimeout(
-          Promise.resolve().then(() => callGeminiTextResponseImpl({
+          Promise.resolve().then(() => callGeminiJsonObjectImpl({
             model: attempt.model,
             systemPrompt: promptBundle.systemPrompt,
             userPrompt: promptBundle.userPrompt,
             timeoutMs: effectiveAttemptTimeoutMs,
             temperature: 0.1,
-            maxOutputTokens: 1100,
-            route: 'aurora_concern_semantic_plan_plain_text',
+            maxOutputTokens: 700,
+            responseSchema: CONCERN_SEMANTIC_PLAN_JSON_SCHEMA,
+            route: CONCERN_SEMANTIC_PLAN_JSON_ROUTE,
             ignoreForceModel: true,
-            thinkingBudget: 384,
+            thinkingLevel: 'minimal',
           })),
           effectiveAttemptTimeoutMs,
           'GEMINI_UPSTREAM_TIMEOUT',
@@ -60097,11 +61043,11 @@ async function runConcernSemanticPlanner({
           meta: normalizeQaTimeoutMeta(
             err && err.meta && typeof err.meta === 'object' ? err.meta : {},
             {
-              route: 'aurora_concern_semantic_plan_plain_text',
+              route: CONCERN_SEMANTIC_PLAN_JSON_ROUTE,
               model: attempt.model,
               promptBytes: Buffer.byteLength(query, 'utf8'),
-              schemaBytes: 0,
-              maxOutputTokens: 1100,
+              schemaBytes: safeJsonByteLength(CONCERN_SEMANTIC_PLAN_JSON_SCHEMA),
+              maxOutputTokens: 700,
               resultReason: classified.reason,
               timeoutStage: classified.timeout_stage,
               detail: classified.detail,
@@ -60124,13 +61070,20 @@ async function runConcernSemanticPlanner({
         effectiveProvider: llmRouteMeta.effective_provider,
         effectiveModel: llmRouteMeta.effective_model,
         selectionSource: llmRouteMeta.selection_source,
-        route: 'aurora_concern_semantic_plan_plain_text',
+        route: CONCERN_SEMANTIC_PLAN_JSON_ROUTE,
       });
       trace.model_policy_trace.push({
         ...modelPolicyTrace,
         attempt_model: attempt.model,
       });
-      const answerText = pickFirstTrimmed(plannerResponse?.text, plannerResponse?.raw_text);
+      const structuredPlanText = isPlainObject(plannerResponse?.json)
+        ? JSON.stringify(plannerResponse.json)
+        : '';
+      const answerText = pickFirstTrimmed(
+        structuredPlanText,
+        plannerResponse?.text,
+        plannerResponse?.raw_text,
+      );
       const semanticPlan = modelPolicyTrace.ok
         ? normalizeConcernSemanticPlanFromText(answerText, {
             fallbackPlan,
@@ -60143,12 +61096,14 @@ async function runConcernSemanticPlanner({
             selection_owner_state: 'fallback',
           };
       const answerPreview = pickFirstTrimmed(
+        structuredPlanText,
         plannerResponse?.text,
         plannerResponse?.raw_text,
         '',
       )
         ? String(
             pickFirstTrimmed(
+              structuredPlanText,
               plannerResponse?.text,
               plannerResponse?.raw_text,
               '',
@@ -60167,12 +61122,12 @@ async function runConcernSemanticPlanner({
         effective_provider: llmRouteMeta.effective_provider,
         effective_model: llmRouteMeta.effective_model,
         selection_source: modelPolicyTrace.selection_source || llmRouteMeta.selection_source,
-        route: 'aurora_concern_semantic_plan_plain_text',
-        route_group: modelPolicyTrace.route_group || classifyAuroraGeminiRouteGroup('aurora_concern_semantic_plan_plain_text'),
+        route: CONCERN_SEMANTIC_PLAN_JSON_ROUTE,
+        route_group: modelPolicyTrace.route_group || classifyAuroraGeminiRouteGroup(CONCERN_SEMANTIC_PLAN_JSON_ROUTE),
         key_slot: pickFirstTrimmed(plannerResponse?.meta?.key_slot, plannerResponse?.meta?.keySlot) || null,
         provider_reason: providerReason,
         provider_parse_status: pickFirstTrimmed(plannerResponse?.parse_status) || null,
-        raw_top_keys: [],
+        raw_top_keys: isPlainObject(plannerResponse?.json) ? Object.keys(plannerResponse.json).slice(0, 12) : [],
         repaired_from_text: false,
         answer_preview: answerPreview,
         normalized_core_role_ids: Array.isArray(semanticPlan?.core_roles)
@@ -89970,6 +90925,7 @@ const __internal = {
   buildRecoRecallTransportPolicy,
   resolveRecoRecallTransportModeForPlannerMode,
   buildRecoCatalogQueryLevels,
+  runConcernSemanticPlanner,
   finalizeConcernFrameworkCandidatePools,
   collectRecoCandidatesFromRecallPlan,
   collectRecoCandidatesFromQueryLevels,
@@ -90030,6 +90986,8 @@ const __internal = {
   handoffRecoToBeautyMainlineSearch,
   buildRecoPayloadFromBeautyMainlineHandoff,
   buildRecoRowsFromMainlineProducts,
+  hydrateRecoCandidateProductIntelFromKb,
+  hydrateRecoCandidatesProductIntelFromKb,
   buildRecoFinalSelectionContract,
   evaluateQualityContractForEnvelope,
   applyRecoContentSpineToPayload,
@@ -90037,6 +90995,7 @@ const __internal = {
   buildPayloadBoundRecoAssistantText,
   buildRecoAssistantRewritePrompt,
   maybeRewriteRecoAssistantTextWithLlm,
+  normalizeRecoAssistantReasonFragment,
   isSkincareCategory,
   isBlacklistedCategoryOrTitle,
   isSearchLikeUrl,

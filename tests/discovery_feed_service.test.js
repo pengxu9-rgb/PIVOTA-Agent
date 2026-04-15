@@ -256,6 +256,39 @@ describe('discovery feed service', () => {
 	    expect(recallTerms.verticalTerms).toEqual(expect.arrayContaining(['haircare']));
 	  });
 
+  test('public explicit browse external seed recall includes global and creator seed scopes', () => {
+    const explicitRequest = _internals.normalizeDiscoveryRequest({
+      surface: 'browse_products',
+      query: {
+        text: 'lip balm',
+      },
+      context: {
+        auth_state: 'anonymous',
+        recent_views: [],
+        recent_queries: [],
+        locale: 'en-US',
+      },
+    });
+    const genericRequest = _internals.normalizeDiscoveryRequest({
+      surface: 'browse_products',
+      context: {
+        auth_state: 'anonymous',
+        recent_views: [],
+        recent_queries: [],
+        locale: 'en-US',
+      },
+    });
+
+    expect(_internals.resolveDiscoveryExternalSeedToolScopes(explicitRequest, 'creator_agents')).toEqual([
+      '*',
+      'creator_agents',
+    ]);
+    expect(_internals.resolveDiscoveryExternalSeedToolScopes(genericRequest, 'creator_agents')).toEqual([
+      '*',
+      'creator_agents',
+    ]);
+  });
+
   test('explicit browse query uses staged external seed mainline without cold-start beauty fallback terms', async () => {
     delete process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL;
     delete process.env.PIVOTA_BACKEND_BASE_URL;
@@ -433,7 +466,7 @@ describe('discovery feed service', () => {
     );
   });
 
-  test('explicit non-compound browse uses sufficient external seed mainline without products_search', async () => {
+  test('explicit exact phrase browse uses external seed exact-intent mainline without products_search', async () => {
     process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
     process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY = 'bridge-key';
     delete process.env.PIVOTA_BACKEND_BASE_URL;
@@ -491,25 +524,104 @@ describe('discovery feed service', () => {
     expect(externalSpy).toHaveBeenCalledTimes(1);
     expect(internalSpy).not.toHaveBeenCalled();
     expect(response.products).toHaveLength(10);
-    expect(response.metadata.candidate_source).toBe('external_seed_query_mainline');
+    expect(response.metadata.candidate_source).toBe('external_seed_exact_intent');
+    expect(response.metadata.underfilled_reason).toBe('public_search_underfilled_exact_intent');
+    expect(response.metadata.route_health.primary_quality_gate_passed).toBe(false);
     expect(response.metadata.provider_breakdown).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ provider: 'external_seeds', successful: true, returned: 10 }),
         expect.objectContaining({
           provider: 'products_search',
           skipped: true,
-          skip_reason: 'sufficient_explicit_query_external_seed_mainline',
+          skip_reason: 'explicit_exact_intent_external_seed_mainline',
         }),
         expect.objectContaining({
           provider: 'internal_catalog',
           skipped: true,
-          skip_reason: 'sufficient_explicit_query_external_seed_mainline',
+          skip_reason: 'explicit_exact_intent_external_seed_mainline',
         }),
       ]),
     );
   });
 
-  test('explicit non-compound browse still uses products_search when external seed mainline underfills', async () => {
+  test('explicit non-compound browse still uses products_search when external seed mainline underfills for non exact-intent query', async () => {
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
+    process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY = 'bridge-key';
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+    delete process.env.PIVOTA_API_BASE;
+    delete process.env.PIVOTA_BACKEND_AGENT_API_KEY;
+    delete process.env.PIVOTA_API_KEY;
+    delete process.env.DATABASE_URL;
+
+    const externalSpy = jest.fn(async () =>
+      Array.from({ length: 4 }, (_, idx) =>
+        makeProduct({
+          merchant_id: 'external_seed',
+          product_id: `seed_vitamin_c_underfill_${idx + 1}`,
+          title: `Vitamin C Glow Serum ${idx + 1}`,
+          brand: `Seed Beauty ${idx + 1}`,
+          category: 'Skincare',
+          product_type: 'Serum',
+        }),
+      ),
+    );
+    const internalSpy = jest.fn(async () => []);
+    const productsSearchProducts = Array.from({ length: 8 }, (_, idx) =>
+      makeProduct({
+        merchant_id: 'products_search',
+        product_id: `products_vitamin_c_${idx + 1}`,
+        title: `Products Vitamin C Serum ${idx + 1}`,
+        brand: `Catalog Beauty ${idx + 1}`,
+        category: 'Skincare',
+        product_type: 'Serum',
+      }),
+    );
+
+    const productsSearchScope = nock('http://discovery-catalog.test')
+      .matchHeader('x-agent-api-key', 'bridge-key')
+      .matchHeader('x-api-key', 'bridge-key')
+      .get('/agent/v1/products/search')
+      .query((query) => String(query.query || '') === 'vitamin c')
+      .reply(200, { products: productsSearchProducts });
+
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        debug: true,
+        query: {
+          text: 'vitamin c',
+        },
+        context: {
+          auth_state: 'anonymous',
+          recent_views: [],
+          recent_queries: [],
+          locale: 'en-US',
+        },
+      },
+      {
+        providerOverrides: {
+          internal_catalog: internalSpy,
+          external_seeds: externalSpy,
+        },
+      },
+    );
+
+    expect(productsSearchScope.isDone()).toBe(true);
+    expect(externalSpy).toHaveBeenCalledTimes(1);
+    expect(response.products).toHaveLength(12);
+    expect(response.metadata.provider_breakdown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ provider: 'external_seeds', successful: true, returned: 4 }),
+        expect.objectContaining({ provider: 'products_search', successful: true, returned: 8 }),
+      ]),
+    );
+    expect(response.metadata.route_health.primary_quality_gate_passed).toBe(true);
+    expect(response.metadata.underfilled_reason).toBeUndefined();
+  });
+
+  test('explicit exact phrase browse keeps exact-intent mainline even when external seed underfills', async () => {
     process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
     process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY = 'bridge-key';
     delete process.env.PIVOTA_BACKEND_BASE_URL;
@@ -530,24 +642,32 @@ describe('discovery feed service', () => {
         }),
       ),
     );
-    const internalSpy = jest.fn(async () => []);
-    const productsSearchProducts = Array.from({ length: 8 }, (_, idx) =>
+    const internalSpy = jest.fn(async () => [
       makeProduct({
-        merchant_id: 'products_search',
-        product_id: `products_conditioner_${idx + 1}`,
-        title: `Products Conditioner ${idx + 1}`,
-        brand: `Catalog Beauty ${idx + 1}`,
-        category: 'Hair Care',
-        product_type: 'Conditioner',
+        merchant_id: 'internal_catalog',
+        product_id: 'internal_noise_brush',
+        title: 'Large Powder Brush',
+        category: 'Makeup Brush',
+        product_type: 'Makeup Brush',
       }),
-    );
+    ]);
 
     const productsSearchScope = nock('http://discovery-catalog.test')
       .matchHeader('x-agent-api-key', 'bridge-key')
       .matchHeader('x-api-key', 'bridge-key')
       .get('/agent/v1/products/search')
       .query((query) => String(query.query || '') === 'conditioner')
-      .reply(200, { products: productsSearchProducts });
+      .reply(200, {
+        products: [
+          makeProduct({
+            merchant_id: 'products_search',
+            product_id: 'products_conditioner_noise',
+            title: 'Products Conditioner Noise',
+            category: 'Hair Care',
+            product_type: 'Conditioner',
+          }),
+        ],
+      });
 
     const response = await getDiscoveryFeed(
       {
@@ -573,13 +693,163 @@ describe('discovery feed service', () => {
       },
     );
 
-    expect(productsSearchScope.isDone()).toBe(true);
+    expect(productsSearchScope.isDone()).toBe(false);
     expect(externalSpy).toHaveBeenCalledTimes(1);
-    expect(response.products).toHaveLength(12);
+    expect(internalSpy).not.toHaveBeenCalled();
+    expect(response.products).toHaveLength(4);
+    expect(response.metadata.candidate_source).toBe('external_seed_exact_intent');
+    expect(response.metadata.underfilled_reason).toBe('public_search_underfilled_exact_intent');
+    expect(response.metadata.route_health.primary_quality_gate_passed).toBe(false);
     expect(response.metadata.provider_breakdown).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ provider: 'external_seeds', successful: true, returned: 4 }),
-        expect.objectContaining({ provider: 'products_search', successful: true, returned: 8 }),
+        expect.objectContaining({
+          provider: 'products_search',
+          skipped: true,
+          skip_reason: 'explicit_exact_intent_external_seed_mainline',
+        }),
+        expect.objectContaining({
+          provider: 'internal_catalog',
+          skipped: true,
+          skip_reason: 'explicit_exact_intent_external_seed_mainline',
+        }),
+      ]),
+    );
+  });
+
+  test('explicit compound browse marks partial page as exact-intent underfilled', async () => {
+    delete process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL;
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+    delete process.env.PIVOTA_API_BASE;
+    delete process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY;
+    delete process.env.PIVOTA_BACKEND_AGENT_API_KEY;
+    delete process.env.PIVOTA_API_KEY;
+    delete process.env.DATABASE_URL;
+
+    const externalSpy = jest.fn(async () => [
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'hair_mask_1',
+        title: 'Intensive Repair Hair Mask',
+        brand: 'Seed Beauty',
+        category: 'Hair Mask',
+        product_type: 'Hair Mask',
+      }),
+    ]);
+
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        debug: true,
+        query: {
+          text: 'hair mask',
+        },
+        context: {
+          auth_state: 'anonymous',
+          recent_views: [],
+          recent_queries: [],
+          locale: 'en-US',
+        },
+      },
+      {
+        providerOverrides: {
+          internal_catalog: jest.fn(async () => []),
+          external_seeds: externalSpy,
+        },
+      },
+    );
+
+    expect(externalSpy).toHaveBeenCalledTimes(1);
+    expect(response.products).toHaveLength(1);
+    expect(response.metadata.compound_intent).toBe('hair_mask');
+    expect(response.metadata.underfilled_reason).toBe('public_search_underfilled_exact_intent');
+    expect(response.metadata.route_health.primary_quality_gate_passed).toBe(false);
+  });
+
+  test('explicit compound browse reports strict empty instead of falling through to broad providers', async () => {
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
+    process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY = 'bridge-key';
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+    delete process.env.PIVOTA_API_BASE;
+    delete process.env.PIVOTA_BACKEND_AGENT_API_KEY;
+    delete process.env.PIVOTA_API_KEY;
+    delete process.env.DATABASE_URL;
+
+    const productsSearchScope = nock('http://discovery-catalog.test')
+      .matchHeader('x-agent-api-key', 'bridge-key')
+      .matchHeader('x-api-key', 'bridge-key')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        products: [
+          makeProduct({
+            product_id: 'broad_serum_noise',
+            title: 'Generic Face Serum',
+            brand: 'Noise Beauty',
+            category: 'Serum',
+            product_type: 'Serum',
+          }),
+        ],
+      });
+    const internalSpy = jest.fn(async () => [
+      makeProduct({
+        merchant_id: 'internal',
+        product_id: 'internal_serum_noise',
+        title: 'Internal Hair Growth Serum',
+        brand: 'Internal Beauty',
+        category: 'Serum',
+        product_type: 'Serum',
+      }),
+    ]);
+    const externalSpy = jest.fn(async () => []);
+
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        debug: true,
+        query: {
+          text: 'scalp serum',
+        },
+        context: {
+          auth_state: 'anonymous',
+          recent_views: [],
+          recent_queries: [],
+          locale: 'en-US',
+        },
+      },
+      {
+        providerOverrides: {
+          internal_catalog: internalSpy,
+          external_seeds: externalSpy,
+        },
+      },
+    );
+
+    expect(productsSearchScope.isDone()).toBe(false);
+    expect(externalSpy).toHaveBeenCalledTimes(1);
+    expect(internalSpy).not.toHaveBeenCalled();
+    expect(response.products).toHaveLength(0);
+    expect(response.metadata.candidate_source).toBe('external_seed_compound_intent');
+    expect(response.metadata.strict_empty_reason).toBe('public_search_empty_exact_intent');
+    expect(response.metadata.route_health.primary_quality_gate_passed).toBe(false);
+    expect(response.metadata.route_health.strict_empty_reason).toBe('public_search_empty_exact_intent');
+    expect(response.metadata.search_decision.final_decision).toBe('strict_empty');
+    expect(response.metadata.provider_breakdown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          provider: 'products_search',
+          skipped: true,
+          skip_reason: 'explicit_compound_external_seed_mainline',
+        }),
+        expect.objectContaining({
+          provider: 'internal_catalog',
+          skipped: true,
+          skip_reason: 'explicit_compound_external_seed_mainline',
+        }),
       ]),
     );
   });
@@ -1645,6 +1915,73 @@ describe('discovery feed service', () => {
         expect.objectContaining({
           provider: 'products_search',
           label: 'brand_pool',
+          skipped: true,
+          skip_reason: 'brand_direct_pool_primary_used',
+        }),
+      ]),
+    );
+  });
+
+  test('brand-scoped browse with a brand-only query uses direct brand pool as the primary path', async () => {
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+    delete process.env.PIVOTA_API_BASE;
+    delete process.env.PIVOTA_API_KEY;
+
+    const axiosGetSpy = jest.spyOn(axios, 'get').mockImplementation(async () => {
+      throw new Error('products_search should not be called for brand-only direct primary');
+    });
+
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        sort: 'popular',
+        debug: true,
+        scope: {
+          brand_names: ['Tom Ford'],
+        },
+        query: {
+          text: 'tom ford',
+        },
+        context: {
+          locale: 'en-US',
+        },
+      },
+      {
+        brandFallbackFetchInternalCandidatesFn: async () => [],
+        brandFallbackFetchExternalCandidatesFn: async () => [
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'tom_ford_lost_cherry',
+            title: 'Lost Cherry Eau de Parfum',
+            brand: 'Tom Ford Beauty',
+            category: 'Fragrance',
+            product_type: 'Perfume',
+          }),
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'tom_ford_brow_pencil',
+            title: 'Architecture Brow Pencil',
+            brand: 'Tom Ford Beauty',
+            category: 'Brow',
+            product_type: 'Brow Pencil',
+          }),
+        ],
+      },
+    );
+
+    expect(axiosGetSpy).not.toHaveBeenCalled();
+    expect(response.products.map((product) => product.product_id)).toEqual(
+      expect.arrayContaining(['tom_ford_lost_cherry', 'tom_ford_brow_pencil']),
+    );
+    expect(response.metadata.candidate_source).toBe('brand_direct_primary');
+    expect(response.metadata.primary_path_used).toBe('brand_direct_pool');
+    expect(response.metadata.provider_breakdown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          provider: 'products_search',
           skipped: true,
           skip_reason: 'brand_direct_pool_primary_used',
         }),
@@ -5546,6 +5883,719 @@ describe('discovery feed service', () => {
     expect(_internals.matchesQueryTextCandidate(candidate, 'vitamin c')).toBe(true);
   });
 
+  test('query text matcher removes broad beauty merch and tool noise unless explicitly requested', () => {
+    const makeupBag = _internals.normalizeCandidateProduct(
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'makeup_bag_1',
+        title: 'Puffy Makeup Bag - Mauve',
+        category: 'Makeup',
+        product_type: 'Bag',
+      }),
+      0,
+    );
+    const foundationBrush = _internals.normalizeCandidateProduct(
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'foundation_brush_1',
+        title: 'Liquid Touch Foundation Brush',
+        category: 'Makeup Tools',
+        product_type: 'Brush',
+      }),
+      0,
+    );
+    const giftCard = _internals.normalizeCandidateProduct(
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'beauty_gift_card_1',
+        title: 'Rare Beauty E-Gift Card',
+        category: 'Makeup',
+        product_type: 'Gift Card',
+      }),
+      0,
+    );
+    const beautyMirror = _internals.normalizeCandidateProduct(
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'beauty_mirror_1',
+        title: "Smurfette n' Reflect Handheld Beauty Mirror",
+        category: 'Beauty Accessories',
+        product_type: 'Mirror',
+      }),
+      0,
+    );
+    const sweatpants = _internals.normalizeCandidateProduct(
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'beauty_sweatpants_1',
+        title: 'Comfy Sweatpants',
+        category: 'Beauty',
+        product_type: 'Apparel',
+      }),
+      0,
+    );
+    const sunscreenBundle = _internals.normalizeCandidateProduct(
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'sunscreen_bundle_1',
+        title: 'Build Your Own SPF Moisturizer + Foundation Bundle',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+      }),
+      0,
+    );
+
+    expect(_internals.matchesQueryTextCandidate(makeupBag, 'makeup')).toBe(false);
+    expect(_internals.matchesQueryTextCandidate(makeupBag, 'makeup bag')).toBe(true);
+    expect(_internals.matchesQueryTextCandidate(foundationBrush, 'foundation')).toBe(false);
+    expect(_internals.matchesQueryTextCandidate(foundationBrush, 'foundation brush')).toBe(true);
+    expect(_internals.matchesQueryTextCandidate(giftCard, 'beauty')).toBe(false);
+    expect(_internals.matchesQueryTextCandidate(beautyMirror, 'beauty')).toBe(false);
+    expect(_internals.matchesQueryTextCandidate(sweatpants, 'beauty')).toBe(false);
+    expect(_internals.matchesQueryTextCandidate(sunscreenBundle, 'sunscreen')).toBe(true);
+  });
+
+  test('exact hair gel text filtering rejects adjacent shower gel noise', () => {
+    const hairGel = _internals.normalizeCandidateProduct(
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'hair_gel_1',
+        title: 'The Controlling Type Hair-Thickening Edge Control Gel',
+        category: 'Hair Gel',
+        product_type: 'Hair Gel',
+      }),
+      0,
+    );
+    const showerGel = _internals.normalizeCandidateProduct(
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'shower_gel_1',
+        title: 'Multi-Use Shower Gel Face, Beard, Body, Hair',
+        category: 'Shower Gel',
+        product_type: 'Shower Gel',
+      }),
+      0,
+    );
+
+    expect(_internals.matchesQueryTextCandidate(hairGel, 'hair gel')).toBe(true);
+    expect(_internals.matchesQueryTextCandidate(showerGel, 'hair gel')).toBe(false);
+  });
+
+  test('exact product-type text filtering rejects adjacent tool and treatment noise', () => {
+    const makeupSponge = _internals.normalizeCandidateProduct(
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'makeup_sponge_1',
+        title: 'Mushroom Sponge 2-Piece Makeup Blending Sponge',
+        category: 'Makeup Sponge',
+        product_type: 'Makeup Sponge',
+      }),
+      0,
+    );
+    const powderBrush = _internals.normalizeCandidateProduct(
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'powder_brush_1',
+        title: 'Powder Puff Setting Brush 170',
+        category: 'Brush',
+        product_type: 'Brush',
+      }),
+      0,
+    );
+    const hydratingMask = _internals.normalizeCandidateProduct(
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'hydrating_mask_1',
+        title: 'Dew N Plump Hydrating Face Mask',
+        category: 'Face Mask',
+        product_type: 'Face Mask',
+      }),
+      0,
+    );
+    const hydratingPad = _internals.normalizeCandidateProduct(
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'hydrating_pad_1',
+        title: 'Hyalu-Cica Jelly-Fit Ampoule Pad',
+        category: 'Treatment Pad',
+        product_type: 'Treatment Pad',
+      }),
+      0,
+    );
+
+    expect(_internals.matchesQueryTextCandidate(makeupSponge, 'makeup sponge')).toBe(true);
+    expect(_internals.matchesQueryTextCandidate(powderBrush, 'makeup sponge')).toBe(false);
+    expect(_internals.matchesQueryTextCandidate(hydratingMask, 'hydrating mask')).toBe(true);
+    expect(_internals.matchesQueryTextCandidate(hydratingPad, 'hydrating mask')).toBe(false);
+  });
+
+  test('exact beauty phrase hints skip broad category and vertical stages for narrow explicit queries', () => {
+    const request = _internals.normalizeDiscoveryRequest({
+      surface: 'browse_products',
+      query: {
+        text: 'setting spray',
+      },
+      context: {
+        auth_state: 'anonymous',
+        locale: 'en-US',
+        recent_views: [],
+        recent_queries: [],
+      },
+    });
+    const profile = buildDiscoveryProfile(request.context);
+    const recallTerms = _internals.buildBeautyInterestRecallTerms(request, profile, ['setting spray']);
+
+    expect(recallTerms.categoryTerms).toEqual(
+      expect.arrayContaining(['setting spray', 'fixing mist', 'makeup fixing mist']),
+    );
+    expect(recallTerms.verticalTerms).toEqual(expect.arrayContaining(['makeup']));
+    expect(_internals.resolveExplicitIndexedCategoryHeadTerms(request, recallTerms)).toEqual(
+      expect.arrayContaining(['setting spray', 'makeup setting spray', 'fixing mist', 'makeup fixing mist']),
+    );
+    expect(_internals.shouldSkipExplicitCategorySeedStage(request, recallTerms)).toBe(true);
+    expect(_internals.shouldSkipExplicitVerticalSeedStage(request, recallTerms)).toBe(true);
+
+    const broadRequest = _internals.normalizeDiscoveryRequest({
+      surface: 'browse_products',
+      query: {
+        text: 'hair care',
+      },
+      context: {
+        auth_state: 'anonymous',
+        locale: 'en-US',
+        recent_views: [],
+        recent_queries: [],
+      },
+    });
+    const broadRecallTerms = _internals.buildBeautyInterestRecallTerms(
+      broadRequest,
+      profile,
+      ['hair care'],
+    );
+
+    expect(_internals.shouldSkipExplicitCategorySeedStage(broadRequest, broadRecallTerms)).toBe(false);
+    expect(_internals.shouldSkipExplicitVerticalSeedStage(broadRequest, broadRecallTerms)).toBe(false);
+  });
+
+  test('slow public beauty product-type queries use exact-intent external seed mainline', () => {
+    const profile = buildDiscoveryProfile({
+      auth_state: 'anonymous',
+      locale: 'en-US',
+      recent_views: [],
+      recent_queries: [],
+    });
+    const exactQueries = [
+      ['makeup remover', ['makeup remover', 'make-up remover']],
+      ['makeup sponge', ['makeup sponge', 'blending sponge']],
+      ['scalp treatment', ['scalp treatment', 'scalp tonic']],
+      ['heat protectant', ['heat protectant', 'hair styling']],
+      ['curl cream', ['curl cream', 'curl-defining cream']],
+      ['hair spray', ['hair spray', 'hairspray']],
+      ['hair gel', ['hair gel', 'edge control gel']],
+      ['deodorant', ['deodorant', 'body deodorant']],
+      ['hydrating mask', ['hydrating mask', 'hydration mask']],
+      ['clay mask', ['clay mask', 'clay stick mask']],
+    ];
+
+    for (const [queryText, expectedHeadTerms] of exactQueries) {
+      const request = _internals.normalizeDiscoveryRequest({
+        surface: 'browse_products',
+        limit: 12,
+        query: {
+          text: queryText,
+        },
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      });
+      const recallTerms = _internals.buildBeautyInterestRecallTerms(request, profile, [queryText]);
+
+      const indexedHeadTerms = _internals.resolveExplicitIndexedCategoryHeadTerms(request, recallTerms);
+      if (expectedHeadTerms.length > 0) {
+        expect(indexedHeadTerms).toEqual(expect.arrayContaining(expectedHeadTerms));
+      } else {
+        expect(indexedHeadTerms).toEqual([]);
+      }
+      expect(_internals.shouldSkipExplicitCategorySeedStage(request, recallTerms)).toBe(true);
+      expect(_internals.shouldSkipExplicitVerticalSeedStage(request, recallTerms)).toBe(true);
+      expect(_internals.resolveExplicitQueryExternalSeedMainlineAcceptThreshold(request, 60)).toBe(18);
+    }
+  });
+
+  test('exact beauty phrase hints cover fragrance and compound conditioner variants', () => {
+    const profile = buildDiscoveryProfile({
+      auth_state: 'anonymous',
+      locale: 'en-US',
+      recent_views: [],
+      recent_queries: [],
+    });
+
+    const perfumeRequest = _internals.normalizeDiscoveryRequest({
+      surface: 'browse_products',
+      query: {
+        text: 'perfume',
+      },
+      context: {
+        auth_state: 'anonymous',
+        locale: 'en-US',
+        recent_views: [],
+        recent_queries: [],
+      },
+    });
+    const perfumeRecallTerms = _internals.buildBeautyInterestRecallTerms(
+      perfumeRequest,
+      profile,
+      ['perfume'],
+    );
+    expect(_internals.resolveExplicitIndexedCategoryHeadTerms(perfumeRequest, perfumeRecallTerms)).toEqual(
+      expect.arrayContaining(['perfume', 'eau de parfum', 'fragrance']),
+    );
+
+    const leaveInRequest = _internals.normalizeDiscoveryRequest({
+      surface: 'browse_products',
+      query: {
+        text: 'leave in conditioner',
+      },
+      context: {
+        auth_state: 'anonymous',
+        locale: 'en-US',
+        recent_views: [],
+        recent_queries: [],
+      },
+    });
+    const leaveInRecallTerms = _internals.buildBeautyInterestRecallTerms(
+      leaveInRequest,
+      profile,
+      ['leave in conditioner'],
+    );
+    expect(leaveInRecallTerms.compoundIntent).toBe('leave_in_conditioner');
+    expect(leaveInRecallTerms.primaryCategoryTerms).toEqual(
+      expect.arrayContaining(['leave in conditioner', 'hair milk']),
+    );
+    expect(leaveInRecallTerms.weakCategoryTerms).toEqual(expect.arrayContaining(['conditioner']));
+    expect(_internals.resolveExplicitIndexedCategoryHeadTerms(leaveInRequest, leaveInRecallTerms)).toEqual([]);
+
+    const handCreamRequest = _internals.normalizeDiscoveryRequest({
+      surface: 'browse_products',
+      limit: 12,
+      query: {
+        text: 'hand cream',
+      },
+      context: {
+        auth_state: 'anonymous',
+        locale: 'en-US',
+        recent_views: [],
+        recent_queries: [],
+      },
+    });
+    const handCreamRecallTerms = _internals.buildBeautyInterestRecallTerms(
+      handCreamRequest,
+      profile,
+      ['hand cream'],
+    );
+    expect(_internals.resolveExplicitIndexedCategoryHeadTerms(handCreamRequest, handCreamRecallTerms)).toEqual(
+      expect.arrayContaining(['hand cream', 'hand lotion']),
+    );
+    expect(_internals.resolveExplicitQueryExternalSeedMainlineAcceptThreshold(handCreamRequest, 24)).toBe(18);
+  });
+
+  test('exact phrase indexed head treats fragrance as a safe structured synonym for perfume', async () => {
+    jest.resetModules();
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = 'postgres://discovery-perfume-indexed-head-structured-test';
+    const requiredColumns = [
+      { table_name: 'products_cache', column_name: 'id' },
+      { table_name: 'products_cache', column_name: 'merchant_id' },
+      { table_name: 'products_cache', column_name: 'product_data' },
+      { table_name: 'products_cache', column_name: 'expires_at' },
+      { table_name: 'products_cache', column_name: 'cached_at' },
+      { table_name: 'external_product_seeds', column_name: 'id' },
+      { table_name: 'external_product_seeds', column_name: 'external_product_id' },
+      { table_name: 'external_product_seeds', column_name: 'destination_url' },
+      { table_name: 'external_product_seeds', column_name: 'canonical_url' },
+      { table_name: 'external_product_seeds', column_name: 'title' },
+      { table_name: 'external_product_seeds', column_name: 'seed_data' },
+      { table_name: 'external_product_seeds', column_name: 'market' },
+      { table_name: 'external_product_seeds', column_name: 'tool' },
+      { table_name: 'external_product_seeds', column_name: 'status' },
+      { table_name: 'external_product_seeds', column_name: 'attached_product_key' },
+      { table_name: 'external_product_seeds', column_name: 'updated_at' },
+      { table_name: 'external_product_seeds', column_name: 'created_at' },
+    ];
+    const requiredIndexes = [
+      'idx_external_product_seeds_recall_title_trgm',
+      'idx_external_product_seeds_recall_summary_trgm',
+      'idx_external_product_seeds_recall_category_vertical_recency',
+      'idx_external_product_seeds_recall_vertical_recency',
+      'idx_external_product_seeds_recall_ingredient_tokens_trgm',
+      'idx_external_product_seeds_recall_alias_tokens_trgm',
+    ].map((indexname) => ({ tablename: 'external_product_seeds', indexname }));
+    const headRows = Array.from({ length: 6 }, (_, index) =>
+      makeExternalSeedRow({
+        id: `perfume_head_${index + 1}`,
+        title: `Maison Eau de Parfum ${index + 1}`,
+        category: 'Fragrance',
+        product_type: 'Fragrance',
+        description: 'Fine fragrance composition.',
+      }),
+    );
+	    const dbQueryMock = jest
+	      .fn()
+	      .mockResolvedValueOnce({ rows: requiredColumns })
+	      .mockResolvedValueOnce({ rows: requiredIndexes })
+	      .mockResolvedValueOnce({ rows: headRows })
+	      .mockResolvedValue({ rows: [] });
+    jest.doMock('../src/db', () => ({
+      query: dbQueryMock,
+    }));
+
+    try {
+      const {
+        buildDiscoveryProfile: freshBuildDiscoveryProfile,
+        _internals: freshInternals,
+      } = require('../src/services/discoveryFeed');
+      freshInternals.resetDiscoveryDependencyProbeCache();
+      const request = freshInternals.normalizeDiscoveryRequest({
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        query: {
+          text: 'perfume',
+        },
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      });
+
+      const result = await freshInternals.fetchBeautyInterestExternalSeedFastpathCandidates({
+        request,
+        profile: freshBuildDiscoveryProfile(request.context),
+        queries: ['perfume'],
+        limit: freshInternals.resolveExternalSeedProviderLimit(request, 60),
+        providerName: 'external_seeds',
+        productProvider: 'external_seeds',
+        stepName: 'external_seed_pool',
+        label: 'external_seed_pool',
+      });
+
+	      expect(result.products).toHaveLength(6);
+	      expect(dbQueryMock).toHaveBeenCalledTimes(6);
+	      expect(result.recallSummary[0].external_seed_stage_counts).toEqual([
+	        expect.objectContaining({
+	          stage: 'recall_indexed_category_head',
+	          raw_rows: 6,
+	          query_qualified_rows: 6,
+	          final_eligible_rows: 6,
+	        }),
+	        expect.objectContaining({
+	          stage: 'recall_indexed_category_head',
+	          tool_scope: 'creator_agents',
+	          raw_rows: 0,
+	          final_eligible_rows: 6,
+	        }),
+	        expect.objectContaining({
+	          stage: 'recall_exact_text_union',
+	          tool_scope: '*',
+	          raw_rows: 0,
+	          final_eligible_rows: 6,
+	        }),
+	        expect.objectContaining({
+	          stage: 'recall_exact_text_union',
+	          tool_scope: 'creator_agents',
+	          raw_rows: 0,
+	          final_eligible_rows: 6,
+	        }),
+	      ]);
+    } finally {
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+      jest.dontMock('../src/db');
+      jest.resetModules();
+    }
+  });
+
+  test('exact phrase browse keeps structured parfum head candidates through final selection', async () => {
+    jest.resetModules();
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = 'postgres://discovery-parfum-final-selection-structured-test';
+    const requiredColumns = [
+      { table_name: 'products_cache', column_name: 'id' },
+      { table_name: 'products_cache', column_name: 'merchant_id' },
+      { table_name: 'products_cache', column_name: 'product_data' },
+      { table_name: 'products_cache', column_name: 'expires_at' },
+      { table_name: 'products_cache', column_name: 'cached_at' },
+      { table_name: 'external_product_seeds', column_name: 'id' },
+      { table_name: 'external_product_seeds', column_name: 'external_product_id' },
+      { table_name: 'external_product_seeds', column_name: 'destination_url' },
+      { table_name: 'external_product_seeds', column_name: 'canonical_url' },
+      { table_name: 'external_product_seeds', column_name: 'title' },
+      { table_name: 'external_product_seeds', column_name: 'seed_data' },
+      { table_name: 'external_product_seeds', column_name: 'market' },
+      { table_name: 'external_product_seeds', column_name: 'tool' },
+      { table_name: 'external_product_seeds', column_name: 'status' },
+      { table_name: 'external_product_seeds', column_name: 'attached_product_key' },
+      { table_name: 'external_product_seeds', column_name: 'updated_at' },
+      { table_name: 'external_product_seeds', column_name: 'created_at' },
+    ];
+    const requiredIndexes = [
+      'idx_external_product_seeds_recall_title_trgm',
+      'idx_external_product_seeds_recall_summary_trgm',
+      'idx_external_product_seeds_recall_category_vertical_recency',
+      'idx_external_product_seeds_recall_vertical_recency',
+      'idx_external_product_seeds_recall_ingredient_tokens_trgm',
+      'idx_external_product_seeds_recall_alias_tokens_trgm',
+    ].map((indexname) => ({ tablename: 'external_product_seeds', indexname }));
+    const perfumeRows = Array.from({ length: 6 }, (_, index) =>
+      makeExternalSeedRow({
+        id: `parfum_final_${index + 1}`,
+        title: `Maison Eau de Parfum ${index + 1}`,
+        category: 'Fragrance',
+        product_type: 'Fragrance',
+        description: 'Fine fragrance composition.',
+      }),
+    );
+    const noiseRows = [
+      makeExternalSeedRow({
+        id: 'parfum_noise_mist',
+        title: 'Maison Fragrance Mist',
+        category: 'Fragrance',
+        product_type: 'Fragrance',
+        description: 'Body and hair fragrance mist with eau de parfum discovery notes.',
+      }),
+      makeExternalSeedRow({
+        id: 'parfum_noise_balm',
+        title: 'Maison Fragrance Layering Balm',
+        category: 'Fragrance',
+        product_type: 'Fragrance',
+        description: 'Layering balm for fragrance and eau de parfum routines.',
+      }),
+    ];
+    const headRows = perfumeRows.concat(noiseRows);
+	    const dbQueryMock = jest
+	      .fn()
+	      .mockResolvedValueOnce({ rows: requiredColumns })
+	      .mockResolvedValueOnce({ rows: requiredIndexes })
+	      .mockResolvedValueOnce({ rows: headRows })
+	      .mockResolvedValue({ rows: [] });
+    jest.doMock('../src/db', () => ({
+      query: dbQueryMock,
+    }));
+
+    try {
+      const fresh = require('../src/services/discoveryFeed');
+      fresh._internals.resetDiscoveryDependencyProbeCache();
+      const response = await fresh.getDiscoveryFeed({
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        debug: true,
+        query: {
+          text: 'eau de parfum',
+        },
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      });
+
+      expect(response.products).toHaveLength(6);
+      expect(response.products.every((product) => /Parfum/i.test(product.title))).toBe(true);
+      expect(response.metadata.candidate_source).toBe('external_seed_exact_intent');
+      expect(response.metadata.candidate_counts).toEqual(
+        expect.objectContaining({
+          raw: 8,
+          eligible_pool: 6,
+          returned: 6,
+        }),
+      );
+	      expect(response.metadata.external_seed_stage_counts).toEqual([
+	        expect.objectContaining({
+	          stage: 'recall_indexed_category_head',
+	          raw_rows: 8,
+	          query_qualified_rows: 8,
+	          final_eligible_rows: 8,
+	        }),
+	        expect.objectContaining({
+	          stage: 'recall_indexed_category_head',
+	          tool_scope: 'creator_agents',
+	          raw_rows: 0,
+	          final_eligible_rows: 8,
+	        }),
+	        expect.objectContaining({
+	          stage: 'recall_exact_text_union',
+	          tool_scope: '*',
+	          raw_rows: 0,
+	          final_eligible_rows: 8,
+	        }),
+	        expect.objectContaining({
+	          stage: 'recall_exact_text_union',
+	          tool_scope: 'creator_agents',
+	          raw_rows: 0,
+	          final_eligible_rows: 8,
+	        }),
+	      ]);
+    } finally {
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+      jest.dontMock('../src/db');
+      jest.resetModules();
+    }
+  });
+
+  test('compound leave in conditioner recall does not broaden to generic conditioner rows', async () => {
+    jest.resetModules();
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = 'postgres://discovery-leave-in-structured-head-guard-test';
+    const requiredColumns = [
+      { table_name: 'products_cache', column_name: 'id' },
+      { table_name: 'products_cache', column_name: 'merchant_id' },
+      { table_name: 'products_cache', column_name: 'product_data' },
+      { table_name: 'products_cache', column_name: 'expires_at' },
+      { table_name: 'products_cache', column_name: 'cached_at' },
+      { table_name: 'external_product_seeds', column_name: 'id' },
+      { table_name: 'external_product_seeds', column_name: 'external_product_id' },
+      { table_name: 'external_product_seeds', column_name: 'destination_url' },
+      { table_name: 'external_product_seeds', column_name: 'canonical_url' },
+      { table_name: 'external_product_seeds', column_name: 'title' },
+      { table_name: 'external_product_seeds', column_name: 'seed_data' },
+      { table_name: 'external_product_seeds', column_name: 'market' },
+      { table_name: 'external_product_seeds', column_name: 'tool' },
+      { table_name: 'external_product_seeds', column_name: 'status' },
+      { table_name: 'external_product_seeds', column_name: 'attached_product_key' },
+      { table_name: 'external_product_seeds', column_name: 'updated_at' },
+      { table_name: 'external_product_seeds', column_name: 'created_at' },
+    ];
+    const requiredIndexes = [
+      'idx_external_product_seeds_recall_title_trgm',
+      'idx_external_product_seeds_recall_summary_trgm',
+      'idx_external_product_seeds_recall_category_vertical_recency',
+      'idx_external_product_seeds_recall_vertical_recency',
+      'idx_external_product_seeds_recall_ingredient_tokens_trgm',
+      'idx_external_product_seeds_recall_alias_tokens_trgm',
+    ].map((indexname) => ({ tablename: 'external_product_seeds', indexname }));
+    const headRows = Array.from({ length: 6 }, (_, index) =>
+      makeExternalSeedRow({
+        id: `generic_conditioner_head_${index + 1}`,
+        title: `Smooth Conditioner ${index + 1}`,
+        category: 'Conditioner',
+        product_type: 'Conditioner',
+        description: 'Hydrating conditioner for hair.',
+      }),
+    );
+	    const dbQueryMock = jest
+	      .fn()
+	      .mockResolvedValueOnce({ rows: requiredColumns })
+	      .mockResolvedValueOnce({ rows: requiredIndexes })
+	      .mockResolvedValueOnce({ rows: headRows })
+	      .mockResolvedValue({ rows: [] });
+    jest.doMock('../src/db', () => ({
+      query: dbQueryMock,
+    }));
+
+    try {
+      const {
+        buildDiscoveryProfile: freshBuildDiscoveryProfile,
+        _internals: freshInternals,
+      } = require('../src/services/discoveryFeed');
+      freshInternals.resetDiscoveryDependencyProbeCache();
+      const request = freshInternals.normalizeDiscoveryRequest({
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        query: {
+          text: 'leave in conditioner',
+        },
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      });
+
+      const result = await freshInternals.fetchBeautyInterestExternalSeedFastpathCandidates({
+        request,
+        profile: freshBuildDiscoveryProfile(request.context),
+        queries: ['leave in conditioner'],
+        limit: freshInternals.resolveExternalSeedProviderLimit(request, 60),
+        providerName: 'external_seeds',
+        productProvider: 'external_seeds',
+        stepName: 'external_seed_pool',
+        label: 'external_seed_pool',
+      });
+
+	      expect(result.products).toHaveLength(0);
+	      expect(dbQueryMock).toHaveBeenCalledTimes(12);
+	      expect(result.recallSummary[0].compound_intent).toBe('leave_in_conditioner');
+	      expect(result.recallSummary[0].external_seed_stage_counts).toEqual([
+	        expect.objectContaining({
+	          stage: 'recall_compound_primary_category',
+	          raw_rows: 6,
+	          query_qualified_rows: 0,
+	          final_eligible_rows: 0,
+	        }),
+	        expect.objectContaining({
+	          stage: 'recall_compound_primary_category',
+	          tool_scope: 'creator_agents',
+	          final_eligible_rows: 0,
+	        }),
+	        expect.objectContaining({
+	          stage: 'recall_compound_exact_title',
+	          tool_scope: '*',
+	          final_eligible_rows: 0,
+	        }),
+	        expect.objectContaining({
+	          stage: 'recall_compound_exact_title',
+	          tool_scope: 'creator_agents',
+	          final_eligible_rows: 0,
+	        }),
+	        expect.objectContaining({
+	          stage: 'recall_compound_weak_category',
+	          tool_scope: '*',
+	          final_eligible_rows: 0,
+	        }),
+	        expect.objectContaining({
+	          stage: 'recall_compound_weak_category',
+	          tool_scope: 'creator_agents',
+	          final_eligible_rows: 0,
+	        }),
+	        expect.objectContaining({
+	          stage: 'recall_compound_weak_vertical',
+	          tool_scope: '*',
+	          final_eligible_rows: 0,
+	        }),
+	        expect.objectContaining({
+	          stage: 'recall_compound_weak_vertical',
+	          tool_scope: 'creator_agents',
+	          final_eligible_rows: 0,
+	        }),
+	        expect.objectContaining({
+	          stage: 'recall_compound_title_conjunction',
+	          tool_scope: '*',
+	          final_eligible_rows: 0,
+	        }),
+	        expect.objectContaining({
+	          stage: 'recall_compound_title_conjunction',
+	          tool_scope: 'creator_agents',
+	          final_eligible_rows: 0,
+	        }),
+	      ]);
+    } finally {
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+      jest.dontMock('../src/db');
+      jest.resetModules();
+    }
+  });
+
   test('explicit non-compound browse keeps running seed stages until query-qualified rows fill target', async () => {
     jest.resetModules();
     const prevDatabaseUrl = process.env.DATABASE_URL;
@@ -5604,14 +6654,17 @@ describe('discovery feed service', () => {
         description: 'Vitamin C antioxidant treatment.',
       }),
     );
-    const dbQueryMock = jest
-      .fn()
-      .mockResolvedValueOnce({ rows: requiredColumns })
-      .mockResolvedValueOnce({ rows: requiredIndexes })
-      .mockResolvedValueOnce({ rows: titleRows })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: broadTokenRows })
-      .mockResolvedValueOnce({ rows: categoryRows });
+	    const dbQueryMock = jest
+	      .fn()
+	      .mockResolvedValueOnce({ rows: requiredColumns })
+	      .mockResolvedValueOnce({ rows: requiredIndexes })
+	      .mockResolvedValueOnce({ rows: titleRows })
+	      .mockResolvedValueOnce({ rows: [] })
+	      .mockResolvedValueOnce({ rows: [] })
+	      .mockResolvedValueOnce({ rows: [] })
+	      .mockResolvedValueOnce({ rows: broadTokenRows })
+	      .mockResolvedValueOnce({ rows: [] })
+	      .mockResolvedValueOnce({ rows: categoryRows });
     jest.doMock('../src/db', () => ({
       query: dbQueryMock,
     }));
@@ -5658,9 +6711,9 @@ describe('discovery feed service', () => {
         label: 'external_seed_pool',
       });
 
-      expect(result.products).toHaveLength(18);
-      expect(result.products.every((product) => /Vitamin C/.test(product.title))).toBe(true);
-      expect(dbQueryMock).toHaveBeenCalledTimes(6);
+	      expect(result.products).toHaveLength(18);
+	      expect(result.products.every((product) => /Vitamin C/.test(product.title))).toBe(true);
+	      expect(dbQueryMock).toHaveBeenCalledTimes(9);
       expect(result.recallSummary[0]).toEqual(
         expect.objectContaining({
           external_seed_qualified_count: 18,
@@ -5720,20 +6773,30 @@ describe('discovery feed service', () => {
       'idx_external_product_seeds_recall_ingredient_tokens_trgm',
       'idx_external_product_seeds_recall_alias_tokens_trgm',
     ].map((indexname) => ({ tablename: 'external_product_seeds', indexname }));
-    const titleRows = Array.from({ length: 8 }, (_, index) =>
-      makeExternalSeedRow({
-        id: `conditioner_title_${index + 1}`,
-        title: `Seed Conditioner ${index + 1}`,
-        category: 'Conditioner',
-        product_type: 'Conditioner',
-        description: 'Smoothing conditioner for hair.',
-      }),
-    );
-    const dbQueryMock = jest
-      .fn()
-      .mockResolvedValueOnce({ rows: requiredColumns })
-      .mockResolvedValueOnce({ rows: requiredIndexes })
-      .mockResolvedValueOnce({ rows: titleRows });
+	    const titleRows = Array.from({ length: 8 }, (_, index) =>
+	      makeExternalSeedRow({
+	        id: `conditioner_title_${index + 1}`,
+	        title: `Seed Conditioner ${index + 1}`,
+	        category: 'Conditioner',
+	        product_type: 'Conditioner',
+	        description: 'Smoothing conditioner for hair.',
+	      }),
+	    );
+	    const creatorRows = Array.from({ length: 4 }, (_, index) =>
+	      makeExternalSeedRow({
+	        id: `conditioner_creator_${index + 1}`,
+	        title: `Creator Conditioner ${index + 1}`,
+	        category: 'Conditioner',
+	        product_type: 'Conditioner',
+	        description: 'Smoothing conditioner for hair.',
+	      }),
+	    );
+	    const dbQueryMock = jest
+	      .fn()
+	      .mockResolvedValueOnce({ rows: requiredColumns })
+	      .mockResolvedValueOnce({ rows: requiredIndexes })
+	      .mockResolvedValueOnce({ rows: titleRows })
+	      .mockResolvedValueOnce({ rows: creatorRows });
     jest.doMock('../src/db', () => ({
       query: dbQueryMock,
     }));
@@ -5759,9 +6822,9 @@ describe('discovery feed service', () => {
         },
       });
 
-      expect(
-        freshInternals.resolveExplicitQueryExternalSeedMainlineAcceptThreshold(request, 60),
-      ).toBe(8);
+	      expect(
+	        freshInternals.resolveExplicitQueryExternalSeedMainlineAcceptThreshold(request, 60),
+	      ).toBe(18);
       expect(
         freshInternals.resolveExplicitIndexedCategoryHeadTerms(
           request,
@@ -5771,7 +6834,7 @@ describe('discovery feed service', () => {
             ['conditioner'],
           ),
         ),
-      ).toEqual(['conditioner']);
+      ).toEqual(expect.arrayContaining(['conditioner', 'leave in conditioner', 'deep conditioner']));
 
       const result = await freshInternals.fetchBeautyInterestExternalSeedFastpathCandidates({
         request,
@@ -5784,13 +6847,244 @@ describe('discovery feed service', () => {
         label: 'external_seed_pool',
       });
 
-      expect(result.products).toHaveLength(8);
-      expect(dbQueryMock).toHaveBeenCalledTimes(3);
-      expect(dbQueryMock.mock.calls[2][0]).toContain("seed_data->'derived'->'recall'->>'category'");
-      expect(dbQueryMock.mock.calls[2][1].at(-1)).toBe(36);
-      expect(result.recallSummary[0].external_seed_stage_counts.map((entry) => entry.stage)).toEqual([
-        'recall_indexed_category_head',
-      ]);
+	      expect(result.products).toHaveLength(12);
+	      expect(dbQueryMock).toHaveBeenCalledTimes(6);
+	      expect(dbQueryMock.mock.calls[2][0]).toContain('AND tool = $2');
+	      expect(dbQueryMock.mock.calls[2][0]).not.toContain("(tool = '*' OR tool = $2)");
+	      expect(dbQueryMock.mock.calls[2][1][1]).toBe('*');
+	      expect(dbQueryMock.mock.calls[3][1][1]).toBe('creator_agents');
+	      expect(dbQueryMock.mock.calls[2][0]).toContain("seed_data->'derived'->'recall'->>'category'");
+	      expect(dbQueryMock.mock.calls[2][1].at(-1)).toBe(36);
+	      expect(result.recallSummary[0].external_seed_tool_scopes).toEqual(['*', 'creator_agents']);
+	      expect(result.recallSummary[0].external_seed_stage_counts.map((entry) => entry.stage)).toEqual([
+	        'recall_indexed_category_head',
+	        'recall_indexed_category_head',
+	        'recall_exact_text_union',
+	        'recall_exact_text_union',
+	      ]);
+	      expect(result.recallSummary[0].external_seed_stage_counts[0].tool_scope).toBe('*');
+	      expect(result.recallSummary[0].external_seed_stage_counts[1].tool_scope).toBe('creator_agents');
+	      expect(result.recallSummary[0].external_seed_stage_counts[2].tool_scope).toBe('*');
+	      expect(result.recallSummary[0].external_seed_stage_counts[3].tool_scope).toBe('creator_agents');
+    } finally {
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+      jest.dontMock('../src/db');
+      jest.resetModules();
+    }
+  });
+
+  test('exact phrase browse page 1 continues past indexed head partial exact-intent pool', async () => {
+    jest.resetModules();
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = 'postgres://discovery-exact-head-stop-test';
+    const requiredColumns = [
+      { table_name: 'products_cache', column_name: 'id' },
+      { table_name: 'products_cache', column_name: 'merchant_id' },
+      { table_name: 'products_cache', column_name: 'product_data' },
+      { table_name: 'products_cache', column_name: 'expires_at' },
+      { table_name: 'products_cache', column_name: 'cached_at' },
+      { table_name: 'external_product_seeds', column_name: 'id' },
+      { table_name: 'external_product_seeds', column_name: 'external_product_id' },
+      { table_name: 'external_product_seeds', column_name: 'destination_url' },
+      { table_name: 'external_product_seeds', column_name: 'canonical_url' },
+      { table_name: 'external_product_seeds', column_name: 'title' },
+      { table_name: 'external_product_seeds', column_name: 'seed_data' },
+      { table_name: 'external_product_seeds', column_name: 'market' },
+      { table_name: 'external_product_seeds', column_name: 'tool' },
+      { table_name: 'external_product_seeds', column_name: 'status' },
+      { table_name: 'external_product_seeds', column_name: 'attached_product_key' },
+      { table_name: 'external_product_seeds', column_name: 'updated_at' },
+      { table_name: 'external_product_seeds', column_name: 'created_at' },
+    ];
+    const requiredIndexes = [
+      'idx_external_product_seeds_recall_title_trgm',
+      'idx_external_product_seeds_recall_summary_trgm',
+      'idx_external_product_seeds_recall_category_vertical_recency',
+      'idx_external_product_seeds_recall_vertical_recency',
+      'idx_external_product_seeds_recall_ingredient_tokens_trgm',
+      'idx_external_product_seeds_recall_alias_tokens_trgm',
+    ].map((indexname) => ({ tablename: 'external_product_seeds', indexname }));
+    const headRows = Array.from({ length: 5 }, (_, index) =>
+      makeExternalSeedRow({
+        id: `essence_head_${index + 1}`,
+        title: `Water Essence ${index + 1}`,
+        category: 'Essence',
+        product_type: 'Essence',
+        description: 'Hydrating water essence for daily use.',
+      }),
+    );
+	    const dbQueryMock = jest
+	      .fn()
+	      .mockResolvedValueOnce({ rows: requiredColumns })
+	      .mockResolvedValueOnce({ rows: requiredIndexes })
+	      .mockResolvedValueOnce({ rows: headRows })
+	      .mockResolvedValue({ rows: [] });
+    jest.doMock('../src/db', () => ({
+      query: dbQueryMock,
+    }));
+
+    try {
+      const {
+        buildDiscoveryProfile: freshBuildDiscoveryProfile,
+        _internals: freshInternals,
+      } = require('../src/services/discoveryFeed');
+      freshInternals.resetDiscoveryDependencyProbeCache();
+      const request = freshInternals.normalizeDiscoveryRequest({
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        query: {
+          text: 'essence',
+        },
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      });
+
+      const result = await freshInternals.fetchBeautyInterestExternalSeedFastpathCandidates({
+        request,
+        profile: freshBuildDiscoveryProfile(request.context),
+        queries: ['essence'],
+        limit: freshInternals.resolveExternalSeedProviderLimit(request, 60),
+        providerName: 'external_seeds',
+        productProvider: 'external_seeds',
+        stepName: 'external_seed_pool',
+        label: 'external_seed_pool',
+      });
+
+	      expect(result.products).toHaveLength(5);
+	      expect(dbQueryMock).toHaveBeenCalledTimes(6);
+	      expect(result.recallSummary[0].external_seed_stage_counts.map((entry) => entry.stage)).toEqual([
+	        'recall_indexed_category_head',
+	        'recall_indexed_category_head',
+	        'recall_exact_text_union',
+	        'recall_exact_text_union',
+	      ]);
+	      expect(result.recallSummary[0].external_seed_stage_counts.map((entry) => entry.tool_scope)).toEqual([
+	        '*',
+	        'creator_agents',
+	        '*',
+	        'creator_agents',
+	      ]);
+    } finally {
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+      jest.dontMock('../src/db');
+      jest.resetModules();
+    }
+  });
+
+  test('exact phrase browse later pages still continue past indexed head partials', async () => {
+    jest.resetModules();
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = 'postgres://discovery-exact-head-no-stop-page-2-test';
+    const requiredColumns = [
+      { table_name: 'products_cache', column_name: 'id' },
+      { table_name: 'products_cache', column_name: 'merchant_id' },
+      { table_name: 'products_cache', column_name: 'product_data' },
+      { table_name: 'products_cache', column_name: 'expires_at' },
+      { table_name: 'products_cache', column_name: 'cached_at' },
+      { table_name: 'external_product_seeds', column_name: 'id' },
+      { table_name: 'external_product_seeds', column_name: 'external_product_id' },
+      { table_name: 'external_product_seeds', column_name: 'destination_url' },
+      { table_name: 'external_product_seeds', column_name: 'canonical_url' },
+      { table_name: 'external_product_seeds', column_name: 'title' },
+      { table_name: 'external_product_seeds', column_name: 'seed_data' },
+      { table_name: 'external_product_seeds', column_name: 'market' },
+      { table_name: 'external_product_seeds', column_name: 'tool' },
+      { table_name: 'external_product_seeds', column_name: 'status' },
+      { table_name: 'external_product_seeds', column_name: 'attached_product_key' },
+      { table_name: 'external_product_seeds', column_name: 'updated_at' },
+      { table_name: 'external_product_seeds', column_name: 'created_at' },
+    ];
+    const requiredIndexes = [
+      'idx_external_product_seeds_recall_title_trgm',
+      'idx_external_product_seeds_recall_summary_trgm',
+      'idx_external_product_seeds_recall_category_vertical_recency',
+      'idx_external_product_seeds_recall_vertical_recency',
+      'idx_external_product_seeds_recall_ingredient_tokens_trgm',
+      'idx_external_product_seeds_recall_alias_tokens_trgm',
+    ].map((indexname) => ({ tablename: 'external_product_seeds', indexname }));
+    const headRows = Array.from({ length: 5 }, (_, index) =>
+      makeExternalSeedRow({
+        id: `essence_page2_head_${index + 1}`,
+        title: `Water Essence ${index + 1}`,
+        category: 'Essence',
+        product_type: 'Essence',
+        description: 'Hydrating water essence for daily use.',
+      }),
+    );
+    const unionRows = [
+      makeExternalSeedRow({
+        id: 'essence_page2_union_1',
+        title: 'Activating Essence Lotion',
+        category: 'Essence',
+        product_type: 'Essence',
+        description: 'Hydrating essence lotion.',
+      }),
+    ];
+	    const dbQueryMock = jest
+	      .fn()
+	      .mockResolvedValueOnce({ rows: requiredColumns })
+	      .mockResolvedValueOnce({ rows: requiredIndexes })
+	      .mockResolvedValueOnce({ rows: headRows })
+	      .mockResolvedValueOnce({ rows: [] })
+	      .mockResolvedValueOnce({ rows: unionRows })
+	      .mockResolvedValue({ rows: [] });
+    jest.doMock('../src/db', () => ({
+      query: dbQueryMock,
+    }));
+
+    try {
+      const {
+        buildDiscoveryProfile: freshBuildDiscoveryProfile,
+        _internals: freshInternals,
+      } = require('../src/services/discoveryFeed');
+      freshInternals.resetDiscoveryDependencyProbeCache();
+      const request = freshInternals.normalizeDiscoveryRequest({
+        surface: 'browse_products',
+        page: 2,
+        limit: 12,
+        query: {
+          text: 'essence',
+        },
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      });
+
+      const result = await freshInternals.fetchBeautyInterestExternalSeedFastpathCandidates({
+        request,
+        profile: freshBuildDiscoveryProfile(request.context),
+        queries: ['essence'],
+        limit: freshInternals.resolveExternalSeedProviderLimit(request, 60),
+        providerName: 'external_seeds',
+        productProvider: 'external_seeds',
+        stepName: 'external_seed_pool',
+        label: 'external_seed_pool',
+      });
+
+	      expect(result.products).toHaveLength(6);
+	      expect(dbQueryMock).toHaveBeenCalledTimes(6);
+	      expect(result.recallSummary[0].external_seed_stage_counts.map((entry) => entry.stage)).toEqual([
+	        'recall_indexed_category_head',
+	        'recall_indexed_category_head',
+	        'recall_exact_text_union',
+	        'recall_exact_text_union',
+	      ]);
+	      expect(result.recallSummary[0].external_seed_stage_counts.map((entry) => entry.tool_scope)).toEqual([
+	        '*',
+	        'creator_agents',
+	        '*',
+	        'creator_agents',
+	      ]);
     } finally {
       if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
       else process.env.DATABASE_URL = prevDatabaseUrl;
@@ -5904,6 +7198,140 @@ describe('discovery feed service', () => {
       expect(result.recallSummary[0].external_seed_stage_counts.map((entry) => entry.stage)).toEqual([
         'recall_title',
       ]);
+    } finally {
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+      jest.dontMock('../src/db');
+      jest.resetModules();
+    }
+  });
+
+  test('exact phrase browse query uses indexed head synonyms and merged text union stage', async () => {
+    jest.resetModules();
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = 'postgres://discovery-exact-phrase-union-stage-test';
+    const requiredColumns = [
+      { table_name: 'products_cache', column_name: 'id' },
+      { table_name: 'products_cache', column_name: 'merchant_id' },
+      { table_name: 'products_cache', column_name: 'product_data' },
+      { table_name: 'products_cache', column_name: 'expires_at' },
+      { table_name: 'products_cache', column_name: 'cached_at' },
+      { table_name: 'external_product_seeds', column_name: 'id' },
+      { table_name: 'external_product_seeds', column_name: 'external_product_id' },
+      { table_name: 'external_product_seeds', column_name: 'destination_url' },
+      { table_name: 'external_product_seeds', column_name: 'canonical_url' },
+      { table_name: 'external_product_seeds', column_name: 'title' },
+      { table_name: 'external_product_seeds', column_name: 'seed_data' },
+      { table_name: 'external_product_seeds', column_name: 'market' },
+      { table_name: 'external_product_seeds', column_name: 'tool' },
+      { table_name: 'external_product_seeds', column_name: 'status' },
+      { table_name: 'external_product_seeds', column_name: 'attached_product_key' },
+      { table_name: 'external_product_seeds', column_name: 'updated_at' },
+      { table_name: 'external_product_seeds', column_name: 'created_at' },
+    ];
+    const requiredIndexes = [
+      'idx_external_product_seeds_recall_title_trgm',
+      'idx_external_product_seeds_recall_summary_trgm',
+      'idx_external_product_seeds_recall_category_vertical_recency',
+      'idx_external_product_seeds_recall_vertical_recency',
+      'idx_external_product_seeds_recall_ingredient_tokens_trgm',
+      'idx_external_product_seeds_recall_alias_tokens_trgm',
+    ].map((indexname) => ({ tablename: 'external_product_seeds', indexname }));
+    const unionRows = [
+      makeExternalSeedRow({
+        id: 'setting_spray_1',
+        title: 'You Mist Makeup-Extending Setting Spray',
+        category: 'Makeup Setting Spray',
+        product_type: 'Setting Spray',
+        description: 'Makeup fixing mist for long wear.',
+      }),
+      makeExternalSeedRow({
+        id: 'fixing_mist_1',
+        title: 'Makeup Fixing Mist',
+        category: null,
+        product_type: null,
+        description: 'Set your makeup and make your look last longer with rose water and green tea.',
+      }),
+      makeExternalSeedRow({
+        id: 'fixing_mist_bundle_noise',
+        title: "Glow N' Blur Bundle",
+        category: 'Moisturizer',
+        product_type: 'Moisturizer',
+        description: 'Fan-favorite set includes a free Mini Makeup Fixing Mist.',
+      }),
+    ];
+	    const dbQueryMock = jest
+	      .fn()
+	      .mockResolvedValueOnce({ rows: requiredColumns })
+	      .mockResolvedValueOnce({ rows: requiredIndexes })
+	      .mockResolvedValueOnce({ rows: [] })
+	      .mockResolvedValueOnce({ rows: [] })
+	      .mockResolvedValueOnce({ rows: unionRows })
+	      .mockResolvedValue({ rows: [] });
+    jest.doMock('../src/db', () => ({
+      query: dbQueryMock,
+    }));
+
+    try {
+      const {
+        buildDiscoveryProfile: freshBuildDiscoveryProfile,
+        _internals: freshInternals,
+      } = require('../src/services/discoveryFeed');
+      freshInternals.resetDiscoveryDependencyProbeCache();
+      const request = freshInternals.normalizeDiscoveryRequest({
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        query: {
+          text: 'setting spray',
+        },
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      });
+      const recallTerms = freshInternals.buildBeautyInterestRecallTerms(
+        request,
+        freshBuildDiscoveryProfile(request.context),
+        ['setting spray'],
+      );
+
+      expect(freshInternals.resolveExplicitIndexedCategoryHeadTerms(request, recallTerms)).toEqual(
+        expect.arrayContaining(['setting spray', 'makeup setting spray', 'fixing mist', 'makeup fixing mist']),
+      );
+
+      const result = await freshInternals.fetchBeautyInterestExternalSeedFastpathCandidates({
+        request,
+        profile: freshBuildDiscoveryProfile(request.context),
+        queries: ['setting spray'],
+        limit: freshInternals.resolveExternalSeedProviderLimit(request, 60),
+        providerName: 'external_seeds',
+        productProvider: 'external_seeds',
+        stepName: 'external_seed_pool',
+        label: 'external_seed_pool',
+      });
+
+	      expect(result.products.map((product) => product.title)).toEqual([
+	        'You Mist Makeup-Extending Setting Spray',
+	        'Makeup Fixing Mist',
+	      ]);
+	      expect(dbQueryMock).toHaveBeenCalledTimes(6);
+	      expect(dbQueryMock.mock.calls[4][0]).toContain('UNION ALL');
+	      expect(dbQueryMock.mock.calls[4][1].flat()).toEqual(
+	        expect.arrayContaining(['%fixing mist%', '%makeup fixing mist%']),
+	      );
+	      expect(dbQueryMock.mock.calls[4][0]).toContain("seed_data->'derived'->'recall'->>'retrieval_title'");
+	      expect(dbQueryMock.mock.calls[4][0]).toContain("seed_data->'derived'->'recall'->>'retrieval_summary'");
+	      expect(dbQueryMock.mock.calls[4][0]).toContain("seed_data#>>'{derived,recall,ingredient_tokens}'");
+	      expect(dbQueryMock.mock.calls[4][0]).toContain("seed_data#>>'{derived,recall,alias_tokens}'");
+	      expect(result.recallSummary[0].external_seed_stage_counts.map((entry) => entry.stage)).toEqual([
+	        'recall_indexed_category_head',
+	        'recall_indexed_category_head',
+	        'recall_exact_text_union',
+	        'recall_exact_text_union',
+	      ]);
     } finally {
       if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
       else process.env.DATABASE_URL = prevDatabaseUrl;
@@ -7452,7 +8880,7 @@ describe('discovery feed service', () => {
 		    }
 		  });
 
-  test('explicit compound browse stops after exact intent stage covers first page', async () => {
+  test('explicit compound browse continues past first-page coverage until qualified target', async () => {
     jest.resetModules();
     const prevDatabaseUrl = process.env.DATABASE_URL;
     process.env.DATABASE_URL = 'postgres://discovery-compound-exact-stop-test';
@@ -7483,20 +8911,31 @@ describe('discovery feed service', () => {
       'idx_external_product_seeds_recall_ingredient_tokens_trgm',
       'idx_external_product_seeds_recall_alias_tokens_trgm',
     ].map((indexname) => ({ tablename: 'external_product_seeds', indexname }));
-    const exactRows = Array.from({ length: 12 }, (_, index) =>
+    const primaryRows = Array.from({ length: 12 }, (_, index) =>
       makeExternalSeedRow({
-        id: `lip_oil_${index + 1}`,
-        title: `Glow Lip Oil ${index + 1}`,
+        id: `lip_oil_primary_${index + 1}`,
+        title: `Glow Lip Oil Primary ${index + 1}`,
         category: 'Lip Oil',
         product_type: 'Lip Oil',
         description: 'A glossy lip oil.',
       }),
     );
-    const dbQueryMock = jest
-      .fn()
-      .mockResolvedValueOnce({ rows: requiredColumns })
-      .mockResolvedValueOnce({ rows: requiredIndexes })
-      .mockResolvedValueOnce({ rows: exactRows });
+    const exactRows = Array.from({ length: 12 }, (_, index) =>
+      makeExternalSeedRow({
+        id: `lip_oil_exact_${index + 1}`,
+        title: `Glow Lip Oil Exact ${index + 1}`,
+        category: 'Lip Oil',
+        product_type: 'Lip Oil',
+        description: 'A glossy lip oil.',
+      }),
+    );
+	    const dbQueryMock = jest
+	      .fn()
+	      .mockResolvedValueOnce({ rows: requiredColumns })
+	      .mockResolvedValueOnce({ rows: requiredIndexes })
+	      .mockResolvedValueOnce({ rows: primaryRows })
+	      .mockResolvedValueOnce({ rows: [] })
+	      .mockResolvedValueOnce({ rows: exactRows });
     jest.doMock('../src/db', () => ({
       query: dbQueryMock,
     }));
@@ -7530,22 +8969,288 @@ describe('discovery feed service', () => {
         label: 'external_seed_pool',
       });
 
-      expect(result.products).toHaveLength(12);
-      expect(dbQueryMock).toHaveBeenCalledTimes(3);
-      expect(dbQueryMock.mock.calls[2][1].at(-1)).toBe(36);
-      expect(result.recallSummary[0].external_seed_stage_counts).toEqual([
-        expect.objectContaining({
-          stage: 'recall_compound_primary_category',
-          raw_rows: 12,
-          compound_qualified_rows: 12,
-        }),
-      ]);
+	      expect(result.products).toHaveLength(24);
+	      expect(dbQueryMock).toHaveBeenCalledTimes(5);
+	      expect(dbQueryMock.mock.calls[2][1].at(-1)).toBe(36);
+	      expect(result.recallSummary[0].external_seed_stage_counts).toEqual(
+	        expect.arrayContaining([
+	          expect.objectContaining({
+	            stage: 'recall_compound_primary_category',
+	            raw_rows: 12,
+	            compound_qualified_rows: 12,
+	          }),
+	          expect.objectContaining({
+	            stage: 'recall_compound_primary_category',
+	            tool_scope: 'creator_agents',
+	            raw_rows: 0,
+	            final_eligible_rows: 12,
+	          }),
+	          expect.objectContaining({
+	            stage: 'recall_compound_exact_title',
+	            raw_rows: 12,
+            compound_qualified_rows: 12,
+            final_eligible_rows: 24,
+          }),
+        ]),
+      );
     } finally {
       if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
       else process.env.DATABASE_URL = prevDatabaseUrl;
       jest.dontMock('../src/db');
       jest.resetModules();
     }
+  });
+
+  test('explicit beauty compound intent recognizes face wash, hair mask, dry shampoo, and scalp serum', () => {
+    expect(_internals.resolveExplicitBeautyCompoundIntent('face wash')).toBe('face_wash');
+    expect(_internals.resolveExplicitBeautyCompoundIntent('hair mask')).toBe('hair_mask');
+    expect(_internals.resolveExplicitBeautyCompoundIntent('dry shampoo')).toBe('dry_shampoo');
+    expect(_internals.resolveExplicitBeautyCompoundIntent('scalp serum')).toBe('scalp_serum');
+
+    const request = _internals.normalizeDiscoveryRequest({
+      surface: 'browse_products',
+      query: {
+        text: 'face wash',
+      },
+      context: {
+        auth_state: 'anonymous',
+        recent_views: [],
+        recent_queries: [],
+        locale: 'en-US',
+      },
+    });
+    const profile = buildDiscoveryProfile(request.context);
+    const recallTerms = _internals.buildBeautyInterestRecallTerms(request, profile, ['face wash']);
+
+    expect(recallTerms.compoundIntent).toBe('face_wash');
+    expect(recallTerms.primaryCategoryTerms).toEqual(expect.arrayContaining(['face wash']));
+    expect(recallTerms.weakCategoryTerms).toEqual(expect.arrayContaining(['cleanser']));
+    expect(recallTerms.verticalTerms).toEqual(expect.arrayContaining(['skincare']));
+  });
+
+  test('new compound beauty matchers keep exact intent and reject broad noise', () => {
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
+            title: 'Foaming Face Wash',
+            external_seed_recall: {
+              retrieval_title: 'foaming face wash',
+              category: 'Face Wash',
+              vertical: 'Skincare',
+            },
+          },
+          category: 'face wash',
+          parentCategory: 'skincare',
+        },
+        'face_wash',
+      ),
+    ).toBe(true);
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
+            title: 'Oud Wood Hand and Body Wash',
+            external_seed_recall: {
+              retrieval_title: 'oud wood hand and body wash',
+              category: 'Body Wash',
+              vertical: 'Skincare',
+            },
+          },
+          category: 'body wash',
+          parentCategory: 'skincare',
+        },
+        'face_wash',
+      ),
+    ).toBe(false);
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
+            title: 'Round Foundation Brush',
+            external_seed_recall: {
+              retrieval_title: 'round foundation brush',
+              category: 'Tool',
+              vertical: 'Makeup',
+            },
+          },
+          category: 'tool',
+          parentCategory: 'makeup',
+        },
+        'face_wash',
+      ),
+    ).toBe(false);
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
+            title: 'Intensive Repair Hair Mask',
+            external_seed_recall: {
+              retrieval_title: 'intensive repair hair mask',
+              category: 'Hair Mask',
+              vertical: 'Haircare',
+            },
+          },
+          category: 'hair mask',
+          parentCategory: 'haircare',
+        },
+        'hair_mask',
+      ),
+    ).toBe(true);
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
+            title: 'The Imposter Invisi-Boost Volumizing Dry Shampoo Powder',
+            external_seed_recall: {
+              retrieval_title: 'the imposter invisi-boost volumizing dry shampoo powder',
+              category: 'Dry Shampoo',
+              vertical: 'Haircare',
+            },
+          },
+          category: 'dry shampoo',
+          parentCategory: 'haircare',
+        },
+        'dry_shampoo',
+      ),
+    ).toBe(true);
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
+            title: 'Oil Control Duo: Dry Shampoo',
+            external_seed_recall: {
+              retrieval_title: 'oil control duo dry shampoo',
+              category: 'Dry Shampoo',
+              vertical: 'Haircare',
+            },
+          },
+          category: 'dry shampoo',
+          parentCategory: 'haircare',
+        },
+        'dry_shampoo',
+      ),
+    ).toBe(false);
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
+            title: 'Rosemary Scalp Serum',
+            external_seed_recall: {
+              retrieval_title: 'rosemary scalp serum',
+              category: 'Scalp Treatment',
+              vertical: 'Haircare',
+            },
+          },
+          category: 'scalp treatment',
+          parentCategory: 'haircare',
+        },
+        'scalp_serum',
+      ),
+    ).toBe(true);
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
+            title: 'Natural Moisturizing Factors + HA For Scalp',
+            external_seed_recall: {
+              retrieval_title: 'natural moisturizing factors + ha for scalp',
+              category: 'Serum',
+              vertical: 'Haircare',
+              retrieval_summary: 'A lightweight hydrating serum for the scalp.',
+            },
+          },
+          category: 'serum',
+          parentCategory: 'haircare',
+        },
+        'scalp_serum',
+      ),
+    ).toBe(true);
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
+            title: 'Complete Pre-Wash Scalp Oil',
+            external_seed_recall: {
+              retrieval_title: 'complete pre-wash scalp oil',
+              category: 'Hair Oil',
+              vertical: 'Haircare',
+            },
+          },
+          category: 'hair oil',
+          parentCategory: 'haircare',
+        },
+        'scalp_serum',
+      ),
+    ).toBe(false);
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
+            title: 'Brow Harmony Flexible Lifting Gel',
+            external_seed_recall: {
+              retrieval_title: 'brow harmony flexible lifting gel',
+              category: null,
+              vertical: 'Makeup',
+            },
+          },
+          category: null,
+          parentCategory: 'makeup',
+        },
+        'brow_gel',
+      ),
+    ).toBe(true);
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
+            title: 'Brow MVP Ultra Fine Brow Pencil & Styler',
+            external_seed_recall: {
+              retrieval_title: 'brow mvp ultra fine brow pencil and styler',
+              category: null,
+              vertical: 'Makeup',
+            },
+          },
+          category: null,
+          parentCategory: 'makeup',
+        },
+        'brow_gel',
+      ),
+    ).toBe(false);
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
+            title: 'Detangling Leave-in Hair Milk',
+            external_seed_recall: {
+              retrieval_title: 'detangling leave-in hair milk',
+              category: 'Hair Milk',
+              vertical: 'Haircare',
+            },
+          },
+          category: 'hair milk',
+          parentCategory: 'haircare',
+        },
+        'leave_in_conditioner',
+      ),
+    ).toBe(true);
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
+            title: 'The Rich One Moisture Repair Conditioner',
+            external_seed_recall: {
+              retrieval_title: 'the rich one moisture repair conditioner',
+              category: 'Conditioner',
+              vertical: 'Haircare',
+            },
+          },
+          category: 'conditioner',
+          parentCategory: 'haircare',
+        },
+        'leave_in_conditioner',
+      ),
+    ).toBe(false);
   });
 
   test('hair oil compound matcher rejects exact-phrase shampoo fragrance and accessory noise', () => {

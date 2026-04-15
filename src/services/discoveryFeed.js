@@ -30,6 +30,7 @@ const { classifyBeautyBucketFromText } = require('../findProductsMulti/beautyQue
 const {
   buildBrandQueryVariants,
   detectBrandEntities,
+  hasExplicitCategoryHint,
   normalizeBrandText,
 } = require('../findProductsMulti/brandLexicon');
 const {
@@ -257,13 +258,48 @@ const BEAUTY_INTEREST_CATEGORY_BY_TOKEN = Object.freeze({
   powder: ['powder', 'makeup'],
   fragrance: ['fragrance'],
   perfume: ['fragrance'],
+  brow: ['makeup'],
+  brows: ['makeup'],
   shampoo: ['shampoo', 'hair care'],
   conditioner: ['conditioner', 'hair care'],
+  scalp: ['hair care'],
   hair: ['hair care'],
 });
 const BEAUTY_INTEREST_CATEGORY_BY_PHRASE = Object.freeze({
+  'face wash': {
+    categories: ['face wash', 'cleanser'],
+    verticals: ['skincare'],
+  },
+  essence: {
+    categories: ['essence', 'water essence'],
+    verticals: ['skincare'],
+  },
+  sunscreen: {
+    categories: ['sunscreen'],
+    verticals: ['skincare'],
+  },
+  shampoo: {
+    categories: ['shampoo'],
+    verticals: ['haircare'],
+  },
+  conditioner: {
+    categories: ['conditioner', 'leave in conditioner', 'deep conditioner'],
+    verticals: ['haircare'],
+  },
+  'leave in conditioner': {
+    categories: ['leave in conditioner', 'conditioner', 'deep conditioner'],
+    verticals: ['haircare'],
+  },
+  'deep conditioner': {
+    categories: ['deep conditioner', 'conditioner', 'leave in conditioner'],
+    verticals: ['haircare'],
+  },
   'hair oil': {
     categories: ['hair oil', 'hair treatment', 'hair care', 'haircare'],
+    verticals: ['haircare'],
+  },
+  'hair mask': {
+    categories: ['hair mask', 'hair treatment', 'hair care', 'haircare'],
     verticals: ['haircare'],
   },
   'haircare': {
@@ -274,16 +310,184 @@ const BEAUTY_INTEREST_CATEGORY_BY_PHRASE = Object.freeze({
     categories: ['hair care', 'haircare'],
     verticals: ['haircare'],
   },
+  'scalp treatment': {
+    categories: ['scalp treatment', 'scalp care', 'scalp tonic'],
+    textQueryTerms: ['scalp treatment', 'scalp tonic', 'scalp oil', 'for scalp'],
+    verticals: ['haircare'],
+  },
+  'heat protectant': {
+    categories: ['heat protectant', 'hair styling', 'hair treatment'],
+    textQueryTerms: ['heat protectant', 'heat protection', 'heat-protectant'],
+    verticals: ['haircare'],
+  },
+  'curl cream': {
+    categories: ['curl cream', 'curl-defining cream', 'hair styling'],
+    textQueryTerms: ['curl cream', 'curl-defining cream', 'curl defining cream'],
+    verticals: ['haircare'],
+  },
+  'hair spray': {
+    categories: ['hair spray', 'hairspray', 'hair styling'],
+    textQueryTerms: ['hair spray', 'hairspray'],
+    verticals: ['haircare'],
+  },
+  'hair gel': {
+    categories: ['hair gel', 'edge control gel', 'styling gel'],
+    textQueryTerms: ['hair gel', 'edge control gel', 'hair-thickening edge control gel', 'styling gel'],
+    negativeTextTerms: ['shower gel', 'body gel', 'beard'],
+    verticals: ['haircare'],
+  },
+  'dry shampoo': {
+    categories: ['dry shampoo', 'shampoo', 'hair care', 'haircare'],
+    verticals: ['haircare'],
+  },
+  'scalp serum': {
+    categories: ['scalp serum', 'scalp treatment', 'hair care', 'haircare'],
+    verticals: ['haircare'],
+  },
   'lip balm': {
-    categories: ['lip balm', 'lip treatment', 'lip care', 'lip oil', 'makeup'],
+    categories: ['lip balm', 'lip treatment', 'lip care', 'lip oil'],
     verticals: ['makeup'],
   },
   'lip oil': {
-    categories: ['lip oil', 'lip balm', 'lip treatment', 'makeup'],
+    categories: ['lip oil', 'lip balm', 'lip treatment'],
     verticals: ['makeup'],
   },
+  'body wash': {
+    categories: ['body wash', 'body cleanser'],
+    verticals: ['skincare'],
+  },
+  'body oil': {
+    categories: ['body oil'],
+    verticals: ['skincare'],
+  },
+  deodorant: {
+    categories: ['deodorant', 'body deodorant'],
+    textQueryTerms: ['deodorant', 'body deodorant', 'deodorant cream', 'deodorant stick', 'fresh-feel deodorant'],
+    verticals: ['skincare', 'fragrance'],
+  },
+  'hydrating mask': {
+    categories: ['hydrating mask', 'hydration mask', 'face mask'],
+    textQueryTerms: ['hydrating mask', 'hydration mask', 'hydrating face mask', 'hydration face mask'],
+    negativeTextTerms: ['pad', 'pads', 'ampoule', 'serum'],
+    verticals: ['skincare'],
+  },
+  'clay mask': {
+    categories: ['clay mask', 'clay stick mask', 'face mask'],
+    textQueryTerms: ['clay mask', 'clay stick mask'],
+    verticals: ['skincare'],
+  },
+  'brow gel': {
+    categories: ['brow gel'],
+    verticals: ['makeup'],
+  },
+  highlighter: {
+    categories: ['highlighter'],
+    verticals: ['makeup'],
+  },
+  'setting spray': {
+    categories: ['setting spray', 'makeup setting spray', 'fixing mist', 'makeup fixing mist'],
+    textQueryTerms: [
+      'setting spray',
+      'makeup setting spray',
+      'fixing mist',
+      'makeup fixing mist',
+      'makeup-extending setting spray',
+    ],
+    verticals: ['makeup'],
+  },
+  'makeup bag': {
+    categories: ['makeup bag', 'cosmetic bag'],
+    verticals: ['makeup'],
+  },
+  'makeup remover': {
+    categories: ['makeup remover', 'make-up remover', 'micellar water'],
+    textQueryTerms: ['makeup remover', 'make-up remover', 'makeup removing', 'makeup-melting', 'makeup melting', 'micellar'],
+    verticals: ['skincare', 'makeup'],
+  },
+  'makeup sponge': {
+    categories: ['makeup sponge', 'blending sponge', 'beauty sponge', 'powder puff'],
+    textQueryTerms: ['makeup sponge', 'blending sponge', 'beauty sponge', 'powder puff'],
+    negativeTextTerms: ['brush', 'brushes'],
+    verticals: ['makeup'],
+  },
+  'face oil': {
+    categories: ['face oil', 'facial oil'],
+    verticals: ['skincare'],
+  },
+  'body lotion': {
+    categories: ['body lotion'],
+    verticals: ['skincare'],
+  },
+  'hand cream': {
+    categories: ['hand cream', 'hand lotion'],
+    textQueryTerms: ['hand cream', 'hand lotion'],
+    verticals: ['skincare'],
+  },
+  perfume: {
+    categories: ['perfume', 'eau de parfum', 'fragrance'],
+    structuredQueryTerms: ['perfume', 'eau de parfum', 'fragrance'],
+    verticals: ['fragrance'],
+  },
+  'eau de parfum': {
+    categories: ['eau de parfum', 'perfume', 'fragrance'],
+    structuredQueryTerms: ['eau de parfum', 'perfume', 'fragrance'],
+    verticals: ['fragrance'],
+  },
+  'acne treatment': {
+    categories: ['acne treatment', 'spot treatment', 'blemish treatment'],
+    verticals: ['skincare'],
+  },
+});
+const EXPLICIT_BEAUTY_EXACT_PHRASE_STRUCTURED_RULES = Object.freeze({
+  perfume: Object.freeze({
+    positiveTitleTokens: ['perfume', 'parfum', 'eau de parfum'],
+    negativeTitleTokens: ['mist', 'balm'],
+  }),
+  'eau de parfum': Object.freeze({
+    positiveTitleTokens: ['eau de parfum', 'perfume', 'parfum'],
+    negativeTitleTokens: ['mist', 'balm'],
+  }),
 });
 const EXPLICIT_BEAUTY_COMPOUND_INTENT_RULES = Object.freeze({
+  face_wash: Object.freeze({
+    id: 'face_wash',
+    label: 'face wash',
+    phrases: ['face wash'],
+    primaryPositive: ['face wash'],
+    weakPositive: ['cleanser', 'gel cleanser', 'foaming cleanser', 'cream cleanser', 'cleansing gel', 'cleansing foam'],
+    verticals: ['skincare'],
+    conjunctionTokens: ['face', 'wash'],
+    positiveTitleTokens: ['wash', 'cleanser'],
+    suppressedTokenCategories: ['face', 'wash'],
+    negativeClasses: [
+      'body wash',
+      'hand wash',
+      'brush',
+      'brushes',
+      'tool',
+      'tools',
+      'sponge',
+      'sponges',
+      'applicator',
+      'applicators',
+      'cloth',
+      'cloths',
+      'wipe',
+      'wipes',
+      'set',
+      'sets',
+      'kit',
+      'kits',
+      'bundle',
+      'bundles',
+      'duo',
+      'trio',
+      'bag',
+      'pouch',
+      'shampoo',
+      'conditioner',
+    ],
+  }),
   hair_oil: Object.freeze({
     id: 'hair_oil',
     label: 'hair oil',
@@ -331,6 +535,129 @@ const EXPLICIT_BEAUTY_COMPOUND_INTENT_RULES = Object.freeze({
       'comb',
       'accessory',
       'accessories',
+    ],
+  }),
+  hair_mask: Object.freeze({
+    id: 'hair_mask',
+    label: 'hair mask',
+    phrases: ['hair mask'],
+    primaryPositive: ['hair mask'],
+    weakPositive: ['hair treatment', 'hair care', 'haircare'],
+    verticals: ['haircare'],
+    conjunctionTokens: ['hair', 'mask'],
+    positiveTitleTokens: ['mask', 'masque'],
+    suppressedTokenCategories: ['hair', 'mask'],
+    negativeClasses: [
+      'shampoo',
+      'conditioner',
+      'brush',
+      'brushes',
+      'tool',
+      'tools',
+      'clip',
+      'clips',
+      'pin',
+      'pins',
+      'set',
+      'sets',
+      'kit',
+      'kits',
+      'bundle',
+      'bundles',
+      'duo',
+      'trio',
+      'leave in',
+      'leave-in',
+      'milk',
+      'hair milk',
+    ],
+  }),
+  dry_shampoo: Object.freeze({
+    id: 'dry_shampoo',
+    label: 'dry shampoo',
+    phrases: ['dry shampoo'],
+    primaryPositive: ['dry shampoo'],
+    weakPositive: ['shampoo', 'hair care', 'haircare'],
+    verticals: ['haircare'],
+    conjunctionTokens: ['dry', 'shampoo'],
+    positiveTitleTokens: ['dry shampoo'],
+    suppressedTokenCategories: ['dry', 'shampoo'],
+    negativeClasses: [
+      'conditioner',
+      'mask',
+      'masks',
+      'pre shampoo',
+      'pre-shampoo',
+      'brush',
+      'brushes',
+      'tool',
+      'tools',
+      'set',
+      'sets',
+      'kit',
+      'kits',
+      'bundle',
+      'bundles',
+      'duo',
+      'trio',
+    ],
+  }),
+  leave_in_conditioner: Object.freeze({
+    id: 'leave_in_conditioner',
+    label: 'leave in conditioner',
+    phrases: ['leave in conditioner', 'leave-in conditioner', 'leave in', 'leave-in', 'hair milk'],
+    primaryPositive: ['leave in conditioner', 'leave-in conditioner', 'hair milk'],
+    weakPositive: ['conditioner', 'hair treatment', 'haircare', 'hair care'],
+    verticals: ['haircare'],
+    conjunctionTokens: ['leave', 'conditioner'],
+    positiveTitleTokens: ['leave in', 'leave-in', 'hair milk', 'detangling'],
+    suppressedTokenCategories: ['leave', 'in', 'conditioner'],
+    negativeClasses: [
+      'shampoo',
+      'deep conditioner',
+      'hair oil',
+      'oil',
+      'mask',
+      'masks',
+      'brush',
+      'brushes',
+      'tool',
+      'tools',
+      'clip',
+      'clips',
+      'pin',
+      'pins',
+    ],
+  }),
+  scalp_serum: Object.freeze({
+    id: 'scalp_serum',
+    label: 'scalp serum',
+    phrases: ['scalp serum'],
+    primaryPositive: ['scalp serum'],
+    weakPositive: ['scalp treatment', 'scalp care', 'hair care', 'haircare'],
+    verticals: ['haircare'],
+    conjunctionTokens: ['scalp', 'serum'],
+    positiveTitleTokens: ['serum'],
+    suppressedTokenCategories: ['scalp', 'serum'],
+    negativeClasses: [
+      'shampoo',
+      'conditioner',
+      'mask',
+      'masks',
+      'oil',
+      'oils',
+      'brush',
+      'brushes',
+      'tool',
+      'tools',
+      'set',
+      'sets',
+      'kit',
+      'kits',
+      'bundle',
+      'bundles',
+      'duo',
+      'trio',
     ],
   }),
   lip_balm: Object.freeze({
@@ -401,7 +728,129 @@ const EXPLICIT_BEAUTY_COMPOUND_INTENT_RULES = Object.freeze({
       'keychain',
     ],
   }),
+  brow_gel: Object.freeze({
+    id: 'brow_gel',
+    label: 'brow gel',
+    phrases: ['brow gel', 'eyebrow gel'],
+    primaryPositive: ['brow gel', 'eyebrow gel'],
+    weakPositive: ['brow', 'eyebrow'],
+    verticals: ['makeup'],
+    conjunctionTokens: ['brow', 'gel'],
+    positiveTitleTokens: ['gel'],
+    suppressedTokenCategories: ['brow', 'gel'],
+    negativeClasses: [
+      'pencil',
+      'pomade',
+      'wax',
+      'serum',
+      'mascara',
+      'lash',
+      'lashes',
+      'false lash',
+      'false lashes',
+      'brush',
+      'brushes',
+      'tool',
+      'tools',
+      'set',
+      'sets',
+      'kit',
+      'kits',
+      'bundle',
+      'bundles',
+      'duo',
+      'trio',
+    ],
+  }),
 });
+const EXPLICIT_BEAUTY_BROWSE_GENERIC_NOISE_CLASSES = Object.freeze([
+  'gift card',
+  'gift cards',
+  'e gift card',
+  'e gift cards',
+  'egift card',
+  'egift cards',
+  'giftset',
+  'gift set',
+  'sample card',
+  'sample cards',
+  'sample',
+  'samples',
+  'sampler',
+  'starter set',
+  'set',
+  'sets',
+  'kit',
+  'kits',
+  'bundle',
+  'bundles',
+  'duo',
+  'duos',
+  'trio',
+  'trios',
+  'routine',
+  'essentials',
+  'bag',
+  'bags',
+  'pouch',
+  'pouches',
+  'tote',
+  'totes',
+  'sticker',
+  'stickers',
+  'keychain',
+  'merch',
+  'merchandise',
+  'mirror',
+  'mirrors',
+  'tray',
+  'trays',
+  'apparel',
+  'clothing',
+  'sweatpant',
+  'sweatpants',
+  'hoodie',
+  'hoodies',
+  'shirt',
+  'shirts',
+]);
+const EXPLICIT_BEAUTY_BROWSE_FORMAT_NOISE_CLASSES = Object.freeze([
+  'starter set',
+  'set',
+  'sets',
+  'kit',
+  'kits',
+  'bundle',
+  'bundles',
+  'duo',
+  'duos',
+  'trio',
+  'trios',
+  'routine',
+  'essentials',
+]);
+const EXPLICIT_BEAUTY_BROWSE_TOOL_CLASSES = Object.freeze([
+  'tool',
+  'tools',
+  'brush',
+  'brushes',
+  'sponge',
+  'sponges',
+  'applicator',
+  'applicators',
+  'comb',
+  'combs',
+  'puff',
+  'puffs',
+]);
+const EXPLICIT_BEAUTY_VERTICAL_STAGE_BROAD_QUERY_ALLOWLIST = new Set([
+  'beauty',
+  'skincare',
+  'makeup',
+  'hair care',
+  'haircare',
+  'fragrance',
+]);
 const GENERIC_DISCOVERY_QUERY_TOKENS = new Set([
   'beauty',
   'skincare',
@@ -1177,11 +1626,29 @@ function resolveBeautyInterestPhraseHint(phrase) {
   if (tokens.has('hair') && tokens.has('oil')) {
     return BEAUTY_INTEREST_CATEGORY_BY_PHRASE['hair oil'];
   }
+  if (tokens.has('face') && tokens.has('wash')) {
+    return BEAUTY_INTEREST_CATEGORY_BY_PHRASE['face wash'];
+  }
+  if (tokens.has('hair') && tokens.has('mask')) {
+    return BEAUTY_INTEREST_CATEGORY_BY_PHRASE['hair mask'];
+  }
+  if (tokens.has('dry') && tokens.has('shampoo')) {
+    return BEAUTY_INTEREST_CATEGORY_BY_PHRASE['dry shampoo'];
+  }
+  if (tokens.has('leave') && tokens.has('conditioner')) {
+    return BEAUTY_INTEREST_CATEGORY_BY_PHRASE['leave in conditioner'];
+  }
+  if (tokens.has('scalp') && tokens.has('serum')) {
+    return BEAUTY_INTEREST_CATEGORY_BY_PHRASE['scalp serum'];
+  }
   if (tokens.has('lip') && tokens.has('balm')) {
     return BEAUTY_INTEREST_CATEGORY_BY_PHRASE['lip balm'];
   }
   if (tokens.has('lip') && tokens.has('oil')) {
     return BEAUTY_INTEREST_CATEGORY_BY_PHRASE['lip oil'];
+  }
+  if ((tokens.has('brow') || tokens.has('eyebrow')) && tokens.has('gel')) {
+    return BEAUTY_INTEREST_CATEGORY_BY_PHRASE['brow gel'];
   }
   return { categories: [], verticals: [] };
 }
@@ -1190,9 +1657,22 @@ function resolveExplicitBeautyCompoundIntent(queryText) {
   const normalized = normalizeText(queryText || '');
   if (!normalized) return null;
   const tokens = new Set(tokenizeDiscoverySearchText(normalized));
+  if (normalized === 'face wash' || (tokens.has('face') && tokens.has('wash'))) return 'face_wash';
   if (normalized === 'hair oil' || (tokens.has('hair') && tokens.has('oil'))) return 'hair_oil';
+  if (normalized === 'hair mask' || (tokens.has('hair') && tokens.has('mask'))) return 'hair_mask';
+  if (normalized === 'dry shampoo' || (tokens.has('dry') && tokens.has('shampoo'))) return 'dry_shampoo';
+  if (
+    normalized === 'leave in conditioner' ||
+    normalized === 'leave-in conditioner' ||
+    (tokens.has('leave') && tokens.has('conditioner'))
+  ) {
+    return 'leave_in_conditioner';
+  }
+  if (normalized === 'scalp serum' || (tokens.has('scalp') && tokens.has('serum'))) return 'scalp_serum';
   if (normalized === 'lip balm' || (tokens.has('lip') && tokens.has('balm'))) return 'lip_balm';
   if (normalized === 'lip oil' || (tokens.has('lip') && tokens.has('oil'))) return 'lip_oil';
+  if (normalized === 'brow gel' || normalized === 'eyebrow gel') return 'brow_gel';
+  if ((tokens.has('brow') || tokens.has('eyebrow')) && tokens.has('gel')) return 'brow_gel';
   return null;
 }
 
@@ -1531,6 +2011,7 @@ function shouldUseStableBrowseCatalogTotal(request) {
   // Public /products?q= already has a bounded recall pool and cursor. The
   // stable total query scans broad JSON text and can dominate live latency.
   if (isExplicitQueryScopedBrowseRequest(request)) return false;
+  if (hasBrandScope(request)) return false;
   return true;
 }
 
@@ -1541,6 +2022,16 @@ function resolveBrandDirectCandidateLimit(request, limit) {
     24,
     getDiscoveryCandidateFetchCap(request),
   );
+  if (isBrandScopeOnlyQuery(request)) {
+    const requestedPage = clampInt(request?.page, 1, 1, 1000);
+    const requestedLimit = clampInt(request?.limit, safeLimit, 1, 120);
+    const pageNeed =
+      requestedPage <= 1
+        ? requestedLimit * 3
+        : (requestedPage * requestedLimit + requestedLimit) * 2;
+    const brandOnlyFloor = Math.max(72, requestedLimit * 3);
+    return clampInt(Math.max(pageNeed, safeLimit, brandOnlyFloor), brandOnlyFloor, 48, 360);
+  }
   const pageNeed = Math.max(
     request?.page * request?.limit + request?.limit * 3,
     safeLimit * 3,
@@ -2542,6 +3033,12 @@ function isExplicitQueryScopedBrowseRequest(request) {
   );
 }
 
+function resolveDiscoveryExternalSeedToolScopes(request, defaultTool = 'creator_agents') {
+  const normalizedTool = String(defaultTool || '').trim();
+  if (!normalizedTool || normalizedTool === '*') return ['*'];
+  return uniqStrings(['*', normalizedTool], 2);
+}
+
 function buildDiscoveryInterestQuery(request, profile) {
   if (profile?.dominantDomain === 'beauty') {
     return buildBeautyPersonalizedQueries(request, profile).primary;
@@ -2974,6 +3471,17 @@ function hasBrandScope(request) {
   return Array.isArray(request?.scope?.brand_names) && request.scope.brand_names.length > 0;
 }
 
+function isBrandScopeOnlyQuery(request) {
+  if (request?.surface !== 'browse_products' || !hasBrandScope(request)) return false;
+  const queryText = String(request?.query?.text || '').trim();
+  if (!queryText || hasDiscoveryCategoryScope(request)) return false;
+  if (hasExplicitCategoryHint(queryText, null)) return false;
+  const normalizedQuery = normalizeBrandText(queryText);
+  if (!normalizedQuery) return false;
+  const brandAliases = buildBrandScopeAliases(request?.scope?.brand_names || []);
+  return brandAliases.some((alias) => matchesNormalizedBrandAlias(alias, normalizedQuery));
+}
+
 function shouldSkipBrandScopedProviderExpansion(products = [], { request, profile, enoughThreshold, qualityThreshold } = {}) {
   if (request?.surface !== 'browse_products' || !hasBrandScope(request)) return false;
   return hasSufficientProviderCandidates(products, { request, profile, enoughThreshold, qualityThreshold });
@@ -2987,9 +3495,9 @@ function shouldUseBrandDirectPoolAsPrimary(request) {
   return (
     request?.surface === 'browse_products' &&
     hasBrandScope(request) &&
-    !hasDiscoveryQueryText(request) &&
+    (!hasDiscoveryQueryText(request) || isBrandScopeOnlyQuery(request)) &&
     !hasDiscoveryCategoryScope(request) &&
-    Boolean(String(request?.source_product_ref?.product_id || '').trim())
+    (isBrandScopeOnlyQuery(request) || Boolean(String(request?.source_product_ref?.product_id || '').trim()))
   );
 }
 
@@ -3440,6 +3948,7 @@ function buildDiscoveryProviderStepSummary({
   marketSource,
   warningCodes,
   compoundIntent,
+  externalSeedToolScopes,
   externalSeedStageCounts,
   externalSeedRawCount,
   externalSeedQualifiedCount,
@@ -3467,6 +3976,9 @@ function buildDiscoveryProviderStepSummary({
       ? { warning_codes: uniqStrings(warningCodes, 12) }
       : {}),
     ...(compoundIntent ? { compound_intent: String(compoundIntent) } : {}),
+    ...(Array.isArray(externalSeedToolScopes) && externalSeedToolScopes.length > 0
+      ? { external_seed_tool_scopes: externalSeedToolScopes.map((scope) => String(scope || '').trim()).filter(Boolean) }
+      : {}),
     ...(Array.isArray(externalSeedStageCounts) && externalSeedStageCounts.length > 0
       ? { external_seed_stage_counts: externalSeedStageCounts }
       : {}),
@@ -4189,10 +4701,58 @@ function shouldSkipBroadStructuredSeedStagesForExplicitQuery(request, recallTerm
   return queryTokens.length >= 3;
 }
 
+function resolveExplicitExactBeautyPhraseHint(request, recallTerms = {}) {
+  if (!isExplicitQueryScopedBrowseRequest(request)) return null;
+  if (recallTerms?.compoundIntent) return null;
+  const normalizedQuery = normalizeText(request?.query?.text || '');
+  if (!normalizedQuery) return null;
+  if (EXPLICIT_BEAUTY_VERTICAL_STAGE_BROAD_QUERY_ALLOWLIST.has(normalizedQuery)) return null;
+  const exactHint = BEAUTY_INTEREST_CATEGORY_BY_PHRASE[normalizedQuery];
+  if (!exactHint || !Array.isArray(exactHint.categories) || exactHint.categories.length <= 0) return null;
+  return {
+    normalizedQuery,
+    categories: uniqStrings(
+      [normalizedQuery].concat(exactHint.categories).map((term) => normalizeText(term || '')).filter(Boolean),
+      8,
+    ),
+    structuredQueryTerms: uniqStrings(
+      [normalizedQuery]
+        .concat(Array.isArray(exactHint.structuredQueryTerms) ? exactHint.structuredQueryTerms : [])
+        .map((term) => normalizeText(term || ''))
+        .filter(Boolean),
+      8,
+    ),
+    textQueryTerms: uniqStrings(
+      [normalizedQuery]
+        .concat(Array.isArray(exactHint.textQueryTerms) ? exactHint.textQueryTerms : [])
+        .map((term) => normalizeText(term || ''))
+        .filter(Boolean),
+      10,
+    ),
+    negativeTextTerms: uniqStrings(
+      (Array.isArray(exactHint.negativeTextTerms) ? exactHint.negativeTextTerms : [])
+        .map((term) => normalizeText(term || ''))
+        .filter(Boolean),
+      10,
+    ),
+  };
+}
+
+function shouldSkipExplicitVerticalSeedStage(request, recallTerms = {}) {
+  return Boolean(resolveExplicitExactBeautyPhraseHint(request, recallTerms));
+}
+
+function shouldSkipExplicitCategorySeedStage(request, recallTerms = {}) {
+  return Boolean(resolveExplicitExactBeautyPhraseHint(request, recallTerms));
+}
+
 function resolveExplicitIndexedCategoryHeadTerms(request, recallTerms = {}) {
   if (!isExplicitQueryScopedBrowseRequest(request)) return [];
   if (recallTerms?.compoundIntent) return [];
   if (shouldSkipBroadStructuredSeedStagesForExplicitQuery(request, recallTerms)) return [];
+
+  const exactPhraseHint = resolveExplicitExactBeautyPhraseHint(request, recallTerms);
+  if (exactPhraseHint) return exactPhraseHint.categories;
 
   const normalizedQuery = normalizeText(request?.query?.text || '');
   if (!normalizedQuery) return [];
@@ -4209,6 +4769,100 @@ function resolveExplicitIndexedCategoryHeadTerms(request, recallTerms = {}) {
   // Keep this stage exact-only. Broad expansions like "skincare" and "hair care"
   // are useful later, but they should not preempt the title/summary mainline.
   return exactTerms.has(normalizedQuery) ? [normalizedQuery] : [];
+}
+
+function shouldUseExactPhraseTextUnionSeedStage(request, recallTerms = {}) {
+  return Boolean(resolveExplicitExactBeautyPhraseHint(request, recallTerms));
+}
+
+function resolveExactPhraseTextUnionPatterns(request, recallTerms = {}) {
+  const exactPhraseHint = resolveExplicitExactBeautyPhraseHint(request, recallTerms);
+  if (!exactPhraseHint || !Array.isArray(exactPhraseHint.textQueryTerms)) {
+    return recallTerms.patterns || [];
+  }
+  const exactPatterns = buildDiscoveryLikePatternsFromTerms(
+    exactPhraseHint.textQueryTerms,
+    [],
+    { phraseOnlyForMultiword: true },
+  );
+  return exactPatterns.length > 0 ? exactPatterns : recallTerms.patterns || [];
+}
+
+function shouldUseExplicitExactIntentExternalSeedMainline(request, recallTerms = {}) {
+  if (!isExplicitQueryScopedBrowseRequest(request)) return false;
+  if (recallTerms?.compoundIntent) return true;
+  if (shouldSkipBroadStructuredSeedStagesForExplicitQuery(request, recallTerms)) return true;
+  return Boolean(resolveExplicitExactBeautyPhraseHint(request, recallTerms));
+}
+
+function resolveExplicitExactIntentBufferedTarget(request) {
+  const requestedLimit = clampInt(request?.limit, 12, 1, 120);
+  return requestedLimit + Math.ceil(requestedLimit * 0.5);
+}
+
+function resolveExplicitExactIntentHeadStopThreshold(request, recallTerms = {}) {
+  if (!shouldUseExplicitExactIntentExternalSeedMainline(request, recallTerms)) {
+    return Number.POSITIVE_INFINITY;
+  }
+  if (recallTerms?.compoundIntent) return Number.POSITIVE_INFINITY;
+  if (request?.cursor) return Number.POSITIVE_INFINITY;
+  const page = Math.max(1, Number(request?.page || 0) || 1);
+  if (page !== 1) return Number.POSITIVE_INFINITY;
+  return resolveExplicitExactIntentBufferedTarget(request);
+}
+
+function buildExactPhraseTextUnionSeedStageSql({
+  stageBind,
+  selectSql,
+  baseWhereSql,
+  stage = 'recall_exact_text_union',
+  patterns = [],
+  cap = 24,
+  excludedIds = [],
+} = {}) {
+  if (typeof stageBind !== 'function') return '';
+  const normalizedPatterns = uniqStrings(Array.isArray(patterns) ? patterns : [], 8);
+  if (normalizedPatterns.length <= 0) return '';
+
+  const patternBind = stageBind(normalizedPatterns);
+  const subqueryLimitBind = stageBind(Math.max(12, Number(cap || 0) || 12));
+  const finalLimitBind = stageBind(Math.max(12, Number(cap || 0) || 12) * 4);
+  const excludedIdsClause =
+    Array.isArray(excludedIds) && excludedIds.length > 0
+      ? `AND id <> ALL(${stageBind(excludedIds)}::bigint[])`
+      : '';
+  const unionParts = [
+    [48, EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle, 'title'],
+    [42, EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary, 'summary'],
+    [40, EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokens, 'ingredient_tokens'],
+    [38, EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens, 'alias_tokens'],
+  ]
+    .map(
+      ([score, fieldSql, label]) => `
+        SELECT * FROM (
+          SELECT
+            ${selectSql},
+            ${Number(score || 0)}::int AS match_score,
+            '${stage}'::text AS match_stage
+          FROM external_product_seeds
+          WHERE ${baseWhereSql}
+            AND ${fieldSql} LIKE ANY(${patternBind}::text[])
+            ${excludedIdsClause}
+          ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
+          LIMIT ${subqueryLimitBind}
+        ) AS ${label}_stage
+      `,
+    )
+    .join('\nUNION ALL\n');
+
+  return `
+    SELECT *
+    FROM (
+      ${unionParts}
+    ) AS exact_phrase_union_stage
+    ORDER BY match_score DESC, updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
+    LIMIT ${finalLimitBind}
+  `;
 }
 
 function buildBeautyInterestSeedSelect() {
@@ -4792,6 +5446,7 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
   const marketConfig = resolveDiscoveryExternalSeedMarketConfig();
   const market = marketConfig.market;
   const tool = 'creator_agents';
+  const toolScopes = resolveDiscoveryExternalSeedToolScopes(request, tool);
 
   if (typeof fetchFn === 'function') {
     try {
@@ -4918,7 +5573,7 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
     status = 'active'
       AND attached_product_key IS NULL
       AND market = $1
-      AND (tool = '*' OR tool = $2)
+      AND tool = $2
   `;
   const explicitQueryScopedRecall = isExplicitQueryScopedBrowseRequest(request);
   const compoundIntent = explicitQueryScopedRecall ? recallTerms.compoundIntent : null;
@@ -4932,6 +5587,12 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
     request,
     recallTerms,
   );
+  const skipExplicitCategoryStage = shouldSkipExplicitCategorySeedStage(request, recallTerms);
+  const skipExplicitVerticalStage = shouldSkipExplicitVerticalSeedStage(request, recallTerms);
+  const useExactPhraseTextUnionStage = shouldUseExactPhraseTextUnionSeedStage(request, recallTerms);
+  const exactPhraseTextUnionPatterns = useExactPhraseTextUnionStage
+    ? resolveExactPhraseTextUnionPatterns(request, recallTerms)
+    : [];
   const indexedCategoryHeadTerms = resolveExplicitIndexedCategoryHeadTerms(request, recallTerms);
   if (!compoundIntent) {
     if (indexedCategoryHeadTerms.length > 0) {
@@ -4945,37 +5606,55 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
     }
 
     if (recallTerms.patterns.length > 0) {
-      stageDefinitions.push({
-        score: 48,
-        stage: 'recall_title',
-        cap: explicitStageQueryCap,
-        buildWhereSql: (stageBind) =>
-          `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${stageBind(recallTerms.patterns)}::text[])`,
-      });
-      if (explicitQueryScopedRecall) {
+      if (useExactPhraseTextUnionStage) {
         stageDefinitions.push({
-          score: 42,
-          stage: 'recall_summary',
+          score: 46,
+          stage: 'recall_exact_text_union',
+          cap: explicitStageQueryCap,
+          buildSql: ({ stageBind, cap, seenSqlIds }) =>
+            buildExactPhraseTextUnionSeedStageSql({
+              stageBind,
+              selectSql,
+              baseWhereSql,
+              stage: 'recall_exact_text_union',
+              patterns: exactPhraseTextUnionPatterns,
+              cap,
+              excludedIds: Array.from(seenSqlIds || []),
+            }),
+        });
+      } else {
+        stageDefinitions.push({
+          score: 48,
+          stage: 'recall_title',
           cap: explicitStageQueryCap,
           buildWhereSql: (stageBind) =>
-            `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${stageBind(recallTerms.patterns)}::text[])`,
+            `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${stageBind(recallTerms.patterns)}::text[])`,
+        });
+        if (explicitQueryScopedRecall) {
+          stageDefinitions.push({
+            score: 42,
+            stage: 'recall_summary',
+            cap: explicitStageQueryCap,
+            buildWhereSql: (stageBind) =>
+              `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${stageBind(recallTerms.patterns)}::text[])`,
+          });
+        }
+        stageDefinitions.push({
+          score: 40,
+          stage: 'recall_tokens',
+          cap: explicitStageQueryCap,
+          buildWhereSql: (stageBind) => {
+            const patternBind = stageBind(recallTerms.patterns);
+            return `(
+              ${EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokens} LIKE ANY(${patternBind}::text[])
+              OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY(${patternBind}::text[])
+            )`;
+          },
         });
       }
-      stageDefinitions.push({
-        score: 40,
-        stage: 'recall_tokens',
-        cap: explicitStageQueryCap,
-        buildWhereSql: (stageBind) => {
-          const patternBind = stageBind(recallTerms.patterns);
-          return `(
-            ${EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokens} LIKE ANY(${patternBind}::text[])
-            OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY(${patternBind}::text[])
-          )`;
-        },
-      });
     }
 
-    if (recallTerms.categoryTerms.length > 0 && !skipBroadStructuredStages) {
+    if (recallTerms.categoryTerms.length > 0 && !skipBroadStructuredStages && !skipExplicitCategoryStage) {
       stageDefinitions.push({
         score: 36,
         stage: 'recall_category',
@@ -4985,7 +5664,7 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
       });
     }
 
-    if (recallTerms.verticalTerms.length > 0 && !skipBroadStructuredStages) {
+    if (recallTerms.verticalTerms.length > 0 && !skipBroadStructuredStages && !skipExplicitVerticalStage) {
       stageDefinitions.push({
         score: 18,
         stage: 'recall_vertical',
@@ -5040,14 +5719,6 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
         ? safeLimit
         : Math.min(safeLimit, Math.max(4, getPrimaryPathEnoughThreshold(request)));
     const requestedLimit = Math.max(1, Number(request?.limit || 0) || 12);
-    const requestedPage = Math.max(1, Number(request?.page || 0) || 1);
-    const currentPageAbsoluteOffset = request?.cursor
-      ? getDiscoveryCursorAbsoluteOffset(request.cursor, requestedLimit)
-      : (requestedPage - 1) * requestedLimit;
-    const currentPageCoverageTarget = Math.min(
-      safeLimit,
-      Math.max(requestedLimit, currentPageAbsoluteOffset + requestedLimit),
-    );
     const cursorQualifiedTarget = resolveExplicitBrowseCursorQualifiedTarget(request, safeLimit);
     const explicitQueryMainlineThreshold =
       explicitQueryScopedRecall && !compoundIntent
@@ -5060,15 +5731,20 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
     const qualifiedTarget = compoundIntent
       ? Math.min(safeLimit, Math.max(requestedLimit * 2, 24, cursorQualifiedTarget))
       : summaryThreshold;
-    let compoundExactStageSatisfiedCurrentPage = false;
     let explicitNarrowTitleStageSatisfied = false;
+    let explicitExactIntentHeadStageSatisfied = false;
+    const explicitExactIntentHeadStopThreshold = resolveExplicitExactIntentHeadStopThreshold(
+      request,
+      recallTerms,
+    );
     const shouldStopStages = () =>
-      compoundExactStageSatisfiedCurrentPage ||
       explicitNarrowTitleStageSatisfied ||
+      explicitExactIntentHeadStageSatisfied ||
       stagedRows.length >= (compoundIntent ? qualifiedTarget : summaryThreshold);
-    const appendRows = (rows = [], stage = 'unknown') => {
+    const appendRows = (rows = [], stage = 'unknown', toolScope = '*') => {
       const metrics = {
         stage,
+        tool_scope: String(toolScope || '').trim() || '*',
         raw_rows: Array.isArray(rows) ? rows.length : 0,
         compound_qualified_rows: 0,
         query_qualified_rows: 0,
@@ -5097,7 +5773,19 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
             externalSeedFilteredQueryTextCount += 1;
             continue;
           }
-          if (!compoundIntent && !matchesQueryTextCandidate(normalized, request?.query?.text)) {
+          const exactPhraseStructuredMatch =
+            !compoundIntent &&
+            stage === 'recall_indexed_category_head' &&
+            matchesExplicitExactPhraseStructuredCandidate(normalized, request, recallTerms);
+          const exactPhraseTextQueryMatch =
+            !compoundIntent &&
+            matchesExplicitExactPhraseTextQueryCandidate(normalized, request, recallTerms);
+          if (
+            !compoundIntent &&
+            !exactPhraseStructuredMatch &&
+            !exactPhraseTextQueryMatch &&
+            !matchesQueryTextCandidate(normalized, request?.query?.text)
+          ) {
             externalSeedFilteredQueryTextCount += 1;
             continue;
           }
@@ -5118,48 +5806,73 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
       }
       metrics.final_eligible_rows = stagedRows.length;
       externalSeedStageCounts.push(metrics);
-      if (
-        compoundIntent &&
-        (stage === 'recall_compound_exact_title' || stage === 'recall_compound_primary_category') &&
-        stagedRows.length >= currentPageCoverageTarget
-      ) {
-        compoundExactStageSatisfiedCurrentPage = true;
-      }
       if (!compoundIntent && skipBroadStructuredStages && stage === 'recall_title' && stagedRows.length > 0) {
         explicitNarrowTitleStageSatisfied = true;
       }
-    };
-    const runStage = async ({ buildWhereSql, score, stage, cap }) => {
-      if (typeof buildWhereSql !== 'function' || stagedRows.length >= safeLimit || shouldStopStages()) return;
-      const stageParams = [market, tool];
-      const stageBind = (value) => {
-        stageParams.push(value);
-        return `$${stageParams.length}`;
-      };
-      const stageWhereSql = buildWhereSql(stageBind);
-      if (!stageWhereSql) return;
-      let sql = `
-        SELECT
-          ${selectSql},
-          ${Number(score || 0)}::int AS match_score,
-          '${stage}'::text AS match_stage
-        FROM external_product_seeds
-        WHERE ${baseWhereSql}
-          AND ${stageWhereSql}
-      `;
-      if (seenSqlIds.size > 0) {
-        const excludedIdsBind = stageBind(Array.from(seenSqlIds));
-        sql += `
-          AND id <> ALL(${excludedIdsBind}::bigint[])
-        `;
+      if (
+        !compoundIntent &&
+        stage === 'recall_indexed_category_head' &&
+        Number.isFinite(explicitExactIntentHeadStopThreshold) &&
+        stagedRows.length >= explicitExactIntentHeadStopThreshold
+      ) {
+        explicitExactIntentHeadStageSatisfied = true;
       }
-      const limitBind = stageBind(clampInt(cap, safeLimit, 12, Math.max(safeLimit, cap)));
-      sql += `
-        ORDER BY match_score DESC, updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
-        LIMIT ${limitBind}
-      `;
-      const res = await query(sql, stageParams);
-      appendRows(Array.isArray(res?.rows) ? res.rows : [], stage);
+    };
+    const runStage = async ({ buildWhereSql, buildSql, score, stage, cap }) => {
+      if (
+        typeof buildWhereSql !== 'function' &&
+        typeof buildSql !== 'function'
+      ) {
+        return;
+      }
+      if (stagedRows.length >= safeLimit || shouldStopStages()) return;
+      for (const toolScope of toolScopes) {
+        if (stagedRows.length >= safeLimit || shouldStopStages()) break;
+        const stageParams = [market, toolScope];
+        const stageBind = (value) => {
+          stageParams.push(value);
+          return `$${stageParams.length}`;
+        };
+        const resolvedCap = clampInt(cap, safeLimit, 12, Math.max(safeLimit, cap));
+        let sql = '';
+        if (typeof buildSql === 'function') {
+          sql = buildSql({
+            stageBind,
+            stage,
+            score,
+            cap: resolvedCap,
+            seenSqlIds,
+            selectSql,
+            baseWhereSql,
+          });
+          if (!sql) return;
+        } else {
+          const stageWhereSql = buildWhereSql(stageBind);
+          if (!stageWhereSql) return;
+          sql = `
+            SELECT
+              ${selectSql},
+              ${Number(score || 0)}::int AS match_score,
+              '${stage}'::text AS match_stage
+            FROM external_product_seeds
+            WHERE ${baseWhereSql}
+              AND ${stageWhereSql}
+          `;
+          if (seenSqlIds.size > 0) {
+            const excludedIdsBind = stageBind(Array.from(seenSqlIds));
+            sql += `
+              AND id <> ALL(${excludedIdsBind}::bigint[])
+            `;
+          }
+          const limitBind = stageBind(resolvedCap);
+          sql += `
+            ORDER BY match_score DESC, updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
+            LIMIT ${limitBind}
+          `;
+        }
+        const res = await query(sql, stageParams);
+        appendRows(Array.isArray(res?.rows) ? res.rows : [], stage, toolScope);
+      }
     };
 
     for (const stageDefinition of stageDefinitions) {
@@ -5203,6 +5916,7 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
           market,
           marketSource: marketConfig.source,
           compoundIntent,
+          externalSeedToolScopes: toolScopes,
           externalSeedStageCounts,
           externalSeedRawCount,
           externalSeedQualifiedCount: stagedRows.length,
@@ -5393,7 +6107,14 @@ function resolveExplicitQueryExternalSeedMainlineAcceptThreshold(request, safeLi
   if (!isExplicitQueryScopedBrowseRequest(request)) return Number.POSITIVE_INFINITY;
   const fetchCap = Math.max(1, Number(safeLimit || 0) || getDiscoveryCandidateFetchCap(request));
   const requestedLimit = clampInt(request?.limit, 12, 1, 48);
-  const minAcceptCount = requestedLimit >= 8 ? 8 : requestedLimit;
+  const exactIntentMainline = shouldUseExplicitExactIntentExternalSeedMainline(request, {
+    compoundIntent: resolveExplicitBeautyCompoundIntent(request?.query?.text),
+  });
+  const minAcceptCount = exactIntentMainline
+    ? resolveExplicitExactIntentBufferedTarget(request)
+    : requestedLimit >= 8
+      ? 8
+      : requestedLimit;
   const cursorOffset = request?.cursor
     ? getDiscoveryCursorAbsoluteOffset(request.cursor, requestedLimit)
     : null;
@@ -5409,6 +6130,32 @@ function hasSufficientExplicitQueryExternalSeedMainline(products = [], { request
   if (!isExplicitQueryScopedBrowseRequest(request)) return false;
   const threshold = resolveExplicitQueryExternalSeedMainlineAcceptThreshold(request, safeLimit);
   return Array.isArray(products) && products.length >= threshold;
+}
+
+function resolvePublicBrowseUnderfilledReason(request, selectedCount = 0) {
+  if (request?.surface !== 'browse_products') return null;
+  if (!isExplicitQueryScopedBrowseRequest(request)) return null;
+  const resolvedCount = Math.max(0, Number(selectedCount || 0) || 0);
+  if (resolvedCount <= 0) return null;
+  const requestedLimit = Math.max(1, Number(request?.limit || 0) || 12);
+  if (resolvedCount >= requestedLimit) return null;
+  return shouldUseExplicitExactIntentExternalSeedMainline(request, {
+    compoundIntent: resolveExplicitBeautyCompoundIntent(request?.query?.text),
+  })
+    ? 'public_search_underfilled_exact_intent'
+    : 'public_search_underfilled_unified_relevance';
+}
+
+function resolvePublicBrowseStrictEmptyReason(request, selectedCount = 0) {
+  if (request?.surface !== 'browse_products') return null;
+  if (!isExplicitQueryScopedBrowseRequest(request)) return null;
+  const resolvedCount = Math.max(0, Number(selectedCount || 0) || 0);
+  if (resolvedCount > 0) return null;
+  return shouldUseExplicitExactIntentExternalSeedMainline(request, {
+    compoundIntent: resolveExplicitBeautyCompoundIntent(request?.query?.text),
+  })
+    ? 'public_search_empty_exact_intent'
+    : 'public_search_empty_unified_relevance';
 }
 
 function resolveExternalSeedProviderLimit(request, safeLimit) {
@@ -5494,6 +6241,14 @@ async function loadCatalogCandidates({
   const compoundIntent = explicitQueryScoped
     ? resolveExplicitBeautyCompoundIntent(request?.query?.text)
     : null;
+  const explicitNarrowQueryMainline = shouldSkipBroadStructuredSeedStagesForExplicitQuery(request, {
+    compoundIntent,
+  });
+  const explicitExactPhraseQueryMainline = Boolean(
+    resolveExplicitExactBeautyPhraseHint(request, {
+      compoundIntent,
+    }),
+  );
 
   const mergeProducts = (products = []) => {
     for (const product of Array.isArray(products) ? products : []) {
@@ -5976,14 +6731,11 @@ async function loadCatalogCandidates({
   const externalSkipReason = useBeautyInterestMainline
     ? 'beauty_interest_mainline_primary_used'
     : 'sufficient_primary_candidates';
-  const explicitNarrowQueryMainline = shouldSkipBroadStructuredSeedStagesForExplicitQuery(request, {
-    compoundIntent,
-  });
 
   if (explicitQueryScoped) {
     if (compoundIntent) {
       await fetchExternalSeedProviderResult();
-    } else if (explicitNarrowQueryMainline) {
+    } else if (explicitNarrowQueryMainline || explicitExactPhraseQueryMainline) {
       await fetchExternalSeedProviderResult();
     } else {
       await fetchExternalSeedProviderResult();
@@ -6009,14 +6761,14 @@ async function loadCatalogCandidates({
       appendProviderResult(await fetchProductsSearchProviderResult());
     }
 
-    if (compoundIntent && mergedProducts.length > 0) {
+    if (compoundIntent) {
       candidateSource = 'external_seed_compound_intent';
       primaryPathUsed = 'external_seed_compound_intent';
       pushSkippedInternalProviderResult('explicit_compound_external_seed_mainline');
       return finalizeProviderResult();
     }
 
-    if (explicitNarrowQueryMainline && mergedProducts.length > 0) {
+    if (explicitNarrowQueryMainline) {
       candidateSource = 'external_seed_narrow_query';
       primaryPathUsed = 'external_seed_narrow_query';
       providerResults.push(
@@ -6028,6 +6780,21 @@ async function loadCatalogCandidates({
         }),
       );
       pushSkippedInternalProviderResult('explicit_narrow_external_seed_mainline');
+      return finalizeProviderResult();
+    }
+
+    if (explicitExactPhraseQueryMainline) {
+      candidateSource = 'external_seed_exact_intent';
+      primaryPathUsed = 'external_seed_exact_intent';
+      providerResults.push(
+        buildSkippedProviderResult('products_search', {
+          label: getProviderLabel('products_search'),
+          query: providerQueries.join(' | '),
+          limit: safeLimit,
+          skipReason: 'explicit_exact_intent_external_seed_mainline',
+        }),
+      );
+      pushSkippedInternalProviderResult('explicit_exact_intent_external_seed_mainline');
       return finalizeProviderResult();
     }
 
@@ -6153,31 +6920,124 @@ function scoreRecentQueryOverlap(candidate, queryTokens) {
   return overlap / queryTokens.size;
 }
 
+function resolveExplicitExactBeautyStructuredQueryTerms(queryText) {
+  const normalizedQuery = normalizeText(queryText || '');
+  if (!normalizedQuery) return [];
+  const exactHint = BEAUTY_INTEREST_CATEGORY_BY_PHRASE[normalizedQuery];
+  if (!exactHint) return [];
+  return uniqStrings(
+    [normalizedQuery]
+      .concat(Array.isArray(exactHint.structuredQueryTerms) ? exactHint.structuredQueryTerms : [])
+      .map((term) => normalizeText(term || ''))
+      .filter(Boolean),
+    8,
+  );
+}
+
+function buildDiscoveryCandidateStructuredFilterText(candidate) {
+  const raw = candidate?.raw || {};
+  return normalizeText(
+    [
+      candidate?.category,
+      candidate?.parentCategory,
+      raw.category,
+      raw.product_type,
+      raw.productType,
+      raw.external_seed_recall?.category,
+      raw.external_seed_recall?.vertical,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+}
+
+function matchesExplicitExactBeautyStructuredQueryText(candidate, queryText) {
+  const normalizedQuery = normalizeText(queryText || '');
+  const structuredTerms = resolveExplicitExactBeautyStructuredQueryTerms(queryText);
+  if (structuredTerms.length <= 0) return false;
+  const structuredText = buildDiscoveryCandidateStructuredFilterText(candidate);
+  if (!structuredText) return false;
+  if (!hasAnyNormalizedClassToken(structuredText, structuredTerms)) return false;
+
+  const exactRule = EXPLICIT_BEAUTY_EXACT_PHRASE_STRUCTURED_RULES[normalizedQuery] || null;
+  if (!exactRule) return true;
+
+  const raw = candidate?.raw || {};
+  const titleText = normalizeText(
+    [raw.title, raw.name, raw.external_seed_recall?.retrieval_title].filter(Boolean).join(' '),
+  );
+  if (!titleText) return false;
+  if (hasAnyNormalizedClassToken(titleText, exactRule.negativeTitleTokens || [])) return false;
+  return hasAnyNormalizedClassToken(titleText, exactRule.positiveTitleTokens || []);
+}
+
+function shouldRejectExplicitExactBeautyStructuredQueryText(candidate, queryText) {
+  const normalizedQuery = normalizeText(queryText || '');
+  const exactRule = EXPLICIT_BEAUTY_EXACT_PHRASE_STRUCTURED_RULES[normalizedQuery] || null;
+  if (!exactRule) return false;
+
+  const structuredTerms = resolveExplicitExactBeautyStructuredQueryTerms(normalizedQuery);
+  if (structuredTerms.length <= 0) return false;
+  const structuredText = buildDiscoveryCandidateStructuredFilterText(candidate);
+  if (!structuredText || !hasAnyNormalizedClassToken(structuredText, structuredTerms)) return false;
+
+  const raw = candidate?.raw || {};
+  const titleText = normalizeText(
+    [raw.title, raw.name, raw.external_seed_recall?.retrieval_title].filter(Boolean).join(' '),
+  );
+  if (!titleText) return false;
+  return hasAnyNormalizedClassToken(titleText, exactRule.negativeTitleTokens || []);
+}
+
+function shouldRejectExplicitExactBeautyTextQueryCandidate(candidate, request, recallTerms = {}) {
+  const exactPhraseHint = resolveExplicitExactBeautyPhraseHint(request, recallTerms);
+  if (!exactPhraseHint || !Array.isArray(exactPhraseHint.negativeTextTerms)) return false;
+  if (exactPhraseHint.negativeTextTerms.length <= 0) return false;
+  const candidateText = buildDiscoveryCandidateQueryFilterText(candidate);
+  if (!candidateText) return false;
+  return hasAnyNormalizedClassToken(candidateText, exactPhraseHint.negativeTextTerms);
+}
+
+function matchesExplicitBeautyStructuredCategoryCandidate(candidate, queryText) {
+  const normalizedQuery = normalizeText(queryText || '');
+  if (!normalizedQuery) return false;
+  const structuredTerms = resolveExplicitExactBeautyStructuredQueryTerms(normalizedQuery);
+  if (structuredTerms.length <= 0) return false;
+  const structuredText = buildDiscoveryCandidateStructuredFilterText(candidate);
+  return Boolean(
+    structuredText &&
+      hasAnyNormalizedClassToken(structuredText, structuredTerms),
+  );
+}
+
 function matchesQueryTextCandidate(candidate, queryText) {
   const normalizedQuery = normalizeText(queryText || '');
   if (!normalizedQuery) return true;
 
+  if (shouldFilterExplicitBeautyBrowseNoiseCandidate(candidate, normalizedQuery)) return false;
+  if (
+    shouldRejectExplicitExactBeautyTextQueryCandidate(
+      candidate,
+      { surface: 'browse_products', query: { text: normalizedQuery } },
+      {},
+    )
+  ) {
+    return false;
+  }
+  if (shouldRejectExplicitExactBeautyStructuredQueryText(candidate, normalizedQuery)) return false;
+
   const candidateText = normalizeText(
     [
-      candidate?.raw?.title,
-      candidate?.raw?.name,
-      candidate?.raw?.description,
-      candidate?.raw?.brand,
-      candidate?.raw?.external_seed_recall?.retrieval_title,
-      candidate?.raw?.external_seed_recall?.retrieval_summary,
-      candidate?.raw?.external_seed_recall?.category,
-      candidate?.raw?.external_seed_recall?.vertical,
+      buildDiscoveryCandidateQueryFilterText(candidate),
       candidate?.raw?.external_seed_recall?.ingredient_tokens,
       candidate?.raw?.external_seed_recall?.alias_tokens,
-      candidate?.brand,
-      candidate?.category,
-      candidate?.parentCategory,
     ]
       .filter(Boolean)
       .join(' '),
   );
   if (!candidateText) return false;
   if (candidateText.includes(normalizedQuery)) return true;
+  if (matchesExplicitExactBeautyStructuredQueryText(candidate, normalizedQuery)) return true;
 
   const queryTokens = tokenize(normalizedQuery).filter((token) => token.length >= 2);
   if (!queryTokens.length) return candidateText.includes(normalizedQuery);
@@ -6212,6 +7072,83 @@ function hasOilIntentToken(text) {
   );
 }
 
+function buildDiscoveryCandidateQueryFilterText(candidate) {
+  return normalizeText(
+    [
+      candidate?.raw?.title,
+      candidate?.raw?.name,
+      candidate?.raw?.description,
+      candidate?.raw?.brand,
+      candidate?.raw?.category,
+      candidate?.raw?.product_type,
+      candidate?.raw?.productType,
+      candidate?.raw?.external_seed_recall?.retrieval_title,
+      candidate?.raw?.external_seed_recall?.retrieval_summary,
+      candidate?.raw?.external_seed_recall?.retrieval_body,
+      candidate?.raw?.external_seed_recall?.category,
+      candidate?.raw?.external_seed_recall?.vertical,
+      candidate?.brand,
+      candidate?.category,
+      candidate?.parentCategory,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+}
+
+function shouldFilterExplicitBeautyBrowseNoiseCandidate(candidate, queryText) {
+  const normalizedQuery = normalizeText(queryText || '');
+  if (!normalizedQuery) return false;
+  if (candidate?.domain !== 'beauty' && !candidate?.beautyBucket) return false;
+
+  const candidateText = buildDiscoveryCandidateQueryFilterText(candidate);
+  if (!candidateText) return false;
+  const raw = candidate?.raw || {};
+  const candidateFormatNoiseText = normalizeText(
+    [
+      raw.title,
+      raw.name,
+      raw.category,
+      raw.product_type,
+      raw.productType,
+      raw.external_seed_recall?.retrieval_title,
+      raw.external_seed_recall?.category,
+      candidate?.brand,
+      candidate?.category,
+      candidate?.parentCategory,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+
+  const queryAllowsTools = hasAnyNormalizedClassToken(normalizedQuery, EXPLICIT_BEAUTY_BROWSE_TOOL_CLASSES);
+  if (
+    !queryAllowsTools &&
+    (candidate?.beautyBucket === 'tools' ||
+      hasAnyNormalizedClassToken(candidateText, EXPLICIT_BEAUTY_BROWSE_TOOL_CLASSES))
+  ) {
+    return true;
+  }
+
+  const structuredCategoryMatch = matchesExplicitBeautyStructuredCategoryCandidate(
+    candidate,
+    normalizedQuery,
+  );
+
+  return EXPLICIT_BEAUTY_BROWSE_GENERIC_NOISE_CLASSES.some((noiseClass) => {
+    const isFormatNoise = hasAnyNormalizedClassToken(noiseClass, EXPLICIT_BEAUTY_BROWSE_FORMAT_NOISE_CLASSES);
+    const noiseScanText = isFormatNoise ? candidateFormatNoiseText : candidateText;
+    if (!hasAnyNormalizedClassToken(noiseScanText, [noiseClass])) return false;
+    if (
+      structuredCategoryMatch &&
+      isFormatNoise
+    ) {
+      return false;
+    }
+    return !hasAnyNormalizedClassToken(normalizedQuery, [noiseClass]);
+  });
+}
+
 function matchesBeautyCompoundQueryIntent(candidate, intent) {
   if (!intent) return true;
   const rule = EXPLICIT_BEAUTY_COMPOUND_INTENT_RULES[intent] || null;
@@ -6242,6 +7179,16 @@ function matchesBeautyCompoundQueryIntent(candidate, intent) {
   const combinedCategoryText = normalizeText([categoryText, verticalText].filter(Boolean).join(' '));
   const negativeClasses = rule?.negativeClasses || [];
 
+  if (intent === 'face_wash') {
+    if (hasAnyNormalizedClassToken([combinedCategoryText, titleText].join(' '), negativeClasses)) return false;
+    if (titleText.includes('face wash')) return true;
+    const categoryLooksCleanser =
+      hasAnyNormalizedClassToken(combinedCategoryText, rule?.primaryPositive || []) ||
+      hasAnyNormalizedClassToken(combinedCategoryText, rule?.weakPositive || []) ||
+      textHasNormalizedToken(combinedCategoryText, 'cleanser');
+    return categoryLooksCleanser && hasAnyNormalizedClassToken(titleText, rule?.positiveTitleTokens || []);
+  }
+
   if (intent === 'hair_oil') {
     if (hasAnyNormalizedClassToken([combinedCategoryText, titleText].join(' '), negativeClasses)) return false;
     if (titleText.includes('hair oil')) return true;
@@ -6261,6 +7208,61 @@ function matchesBeautyCompoundQueryIntent(candidate, intent) {
     return Boolean(
       titleHasOilSignal &&
         (structuredCategoryLooksHair || (verticalLooksHair && titleOrSummaryMentionsHair)),
+    );
+  }
+
+  if (intent === 'hair_mask') {
+    if (hasAnyNormalizedClassToken([combinedCategoryText, titleText].join(' '), negativeClasses)) return false;
+    if (titleText.includes('hair mask')) return true;
+    const categoryLooksHair =
+      hasAnyNormalizedClassToken(combinedCategoryText, rule?.primaryPositive || []) ||
+      hasAnyNormalizedClassToken(combinedCategoryText, rule?.weakPositive || []) ||
+      textHasNormalizedToken(combinedCategoryText, 'hair');
+    return categoryLooksHair && hasAnyNormalizedClassToken(titleText, rule?.positiveTitleTokens || []);
+  }
+
+  if (intent === 'dry_shampoo') {
+    if (hasAnyNormalizedClassToken([combinedCategoryText, titleText].join(' '), negativeClasses)) return false;
+    if (titleText.includes('dry shampoo')) return true;
+    const categoryLooksHair =
+      hasAnyNormalizedClassToken(combinedCategoryText, rule?.primaryPositive || []) ||
+      hasAnyNormalizedClassToken(combinedCategoryText, rule?.weakPositive || []) ||
+      textHasNormalizedToken(combinedCategoryText, 'shampoo');
+    return categoryLooksHair && hasAnyNormalizedClassToken(titleText, rule?.positiveTitleTokens || []);
+  }
+
+  if (intent === 'leave_in_conditioner') {
+    if (hasAnyNormalizedClassToken([combinedCategoryText, titleText].join(' '), negativeClasses)) return false;
+    const titleOrSummaryHasLeaveIn =
+      titleText.includes('leave in') ||
+      titleText.includes('leave-in') ||
+      summaryText.includes('leave in') ||
+      summaryText.includes('leave-in');
+    const titleOrSummaryHasConditioner =
+      textHasNormalizedToken(titleText, 'conditioner') ||
+      textHasNormalizedToken(summaryText, 'conditioner');
+    const titleOrSummaryHasHairMilk =
+      titleText.includes('hair milk') ||
+      summaryText.includes('hair milk');
+    return Boolean(titleOrSummaryHasLeaveIn && (titleOrSummaryHasConditioner || titleOrSummaryHasHairMilk));
+  }
+
+  if (intent === 'scalp_serum') {
+    if (hasAnyNormalizedClassToken([combinedCategoryText, titleText].join(' '), negativeClasses)) return false;
+    if (titleText.includes('scalp serum')) return true;
+    const categoryLooksScalp =
+      hasAnyNormalizedClassToken(combinedCategoryText, rule?.primaryPositive || []) ||
+      hasAnyNormalizedClassToken(combinedCategoryText, rule?.weakPositive || []) ||
+      textHasNormalizedToken(combinedCategoryText, 'scalp');
+    const categoryLooksSerum = textHasNormalizedToken(combinedCategoryText, 'serum');
+    const titleOrSummaryHasScalp =
+      textHasNormalizedToken(titleText, 'scalp') || textHasNormalizedToken(summaryText, 'scalp');
+    const titleOrSummaryHasSerum =
+      textHasNormalizedToken(titleText, 'serum') || textHasNormalizedToken(summaryText, 'serum');
+    return (
+      titleOrSummaryHasScalp &&
+      titleOrSummaryHasSerum &&
+      (categoryLooksScalp || categoryLooksSerum)
     );
   }
 
@@ -6284,6 +7286,36 @@ function matchesBeautyCompoundQueryIntent(candidate, intent) {
     return categoryLooksLip && hasOilIntentToken(titleText);
   }
 
+  if (intent === 'brow_gel') {
+    if (hasAnyNormalizedClassToken([combinedCategoryText, titleText].join(' '), negativeClasses)) return false;
+    if (titleText.includes('brow gel') || titleText.includes('eyebrow gel')) return true;
+    const titleOrSummaryHasBrow =
+      titleText.includes('brow') ||
+      summaryText.includes('brow') ||
+      textHasNormalizedToken(titleText, 'eyebrow') ||
+      textHasNormalizedToken(summaryText, 'eyebrow');
+    const titleHasGel =
+      textHasNormalizedToken(titleText, 'gel') ||
+      titleText.includes(' gel') ||
+      titleText.endsWith('gel');
+    return titleOrSummaryHasBrow && titleHasGel;
+  }
+
+  if (rule) {
+    if (hasAnyNormalizedClassToken([combinedCategoryText, titleText].join(' '), negativeClasses)) return false;
+    if (hasAnyNormalizedClassToken(titleText, rule.primaryPositive || [])) return true;
+    const categoryLooksRelevant =
+      hasAnyNormalizedClassToken(combinedCategoryText, rule.primaryPositive || []) ||
+      hasAnyNormalizedClassToken(combinedCategoryText, rule.weakPositive || []) ||
+      hasAnyNormalizedClassToken(verticalText, rule.verticals || []);
+    const titleLooksRelevant =
+      hasAnyNormalizedClassToken(titleText, rule.positiveTitleTokens || []) ||
+      (Array.isArray(rule.conjunctionTokens) &&
+        rule.conjunctionTokens.length > 0 &&
+        rule.conjunctionTokens.every((token) => titleText.includes(normalizeText(token))));
+    return categoryLooksRelevant && titleLooksRelevant;
+  }
+
   return true;
 }
 
@@ -6291,18 +7323,57 @@ function matchesExternalSeedCompoundQueryIntent(candidate, intent) {
   return matchesBeautyCompoundQueryIntent(candidate, intent);
 }
 
+function matchesExplicitExactPhraseStructuredCandidate(candidate, request, recallTerms = {}) {
+  const exactPhraseHint = resolveExplicitExactBeautyPhraseHint(request, recallTerms);
+  if (!exactPhraseHint || !Array.isArray(exactPhraseHint.structuredQueryTerms)) return false;
+  if (exactPhraseHint.structuredQueryTerms.length <= 0) return false;
+
+  const structuredText = buildDiscoveryCandidateStructuredFilterText(candidate);
+  if (!structuredText) return false;
+
+  return hasAnyNormalizedClassToken(structuredText, exactPhraseHint.structuredQueryTerms);
+}
+
+function matchesExplicitExactPhraseTextQueryCandidate(candidate, request, recallTerms = {}) {
+  const exactPhraseHint = resolveExplicitExactBeautyPhraseHint(request, recallTerms);
+  if (!exactPhraseHint || !Array.isArray(exactPhraseHint.textQueryTerms)) return false;
+  if (exactPhraseHint.textQueryTerms.length <= 0) return false;
+
+  const normalizedQuery = normalizeText(request?.query?.text || exactPhraseHint.normalizedQuery || '');
+  if (shouldFilterExplicitBeautyBrowseNoiseCandidate(candidate, normalizedQuery)) return false;
+  if (shouldRejectExplicitExactBeautyTextQueryCandidate(candidate, request, recallTerms)) return false;
+  if (shouldRejectExplicitExactBeautyStructuredQueryText(candidate, normalizedQuery)) return false;
+
+  const candidateText = normalizeText(
+    [
+      buildDiscoveryCandidateQueryFilterText(candidate),
+      candidate?.raw?.external_seed_recall?.ingredient_tokens,
+      candidate?.raw?.external_seed_recall?.alias_tokens,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+  if (!candidateText) return false;
+  return hasAnyNormalizedClassToken(candidateText, exactPhraseHint.textQueryTerms);
+}
+
 function shouldFilterBrowseCandidateByQueryText(candidate, queryText, options = {}) {
   if (!String(queryText || '').trim()) return false;
+  const exactPhraseTextQueryMatch = matchesExplicitExactPhraseTextQueryCandidate(
+    candidate,
+    { surface: 'browse_products', query: { text: queryText } },
+    {},
+  );
   if (options?.explicitQueryScoped === true) {
     const domain = String(candidate?.domain || 'unknown').trim();
     if (!COLD_START_DEFERRED_DOMAINS.has(domain) && candidate?.beautyBucket !== 'tools') {
       const compoundIntent = resolveExplicitBeautyCompoundIntent(queryText);
       return compoundIntent
         ? !matchesBeautyCompoundQueryIntent(candidate, compoundIntent)
-        : !matchesQueryTextCandidate(candidate, queryText);
+        : !(exactPhraseTextQueryMatch || matchesQueryTextCandidate(candidate, queryText));
     }
   }
-  return !matchesQueryTextCandidate(candidate, queryText);
+  return !(exactPhraseTextQueryMatch || matchesQueryTextCandidate(candidate, queryText));
 }
 
 function getDiscoveryCategoryFacetKey(candidate) {
@@ -6346,61 +7417,97 @@ function buildDiscoveryCategoryFacets(entries = []) {
     }));
 }
 
-async function fetchBrandScopedExternalSeedCandidates({ brandAliases = [], limit = 120 } = {}) {
+async function fetchBrandScopedExternalSeedCandidates({
+  brandAliases = [],
+  limit = 120,
+  orderByRecency = true,
+} = {}) {
   if (!process.env.DATABASE_URL) return [];
   const normalizedAliases = uniqStrings(
     brandAliases.map((alias) => normalizeBrandText(alias)).filter(Boolean),
     16,
   );
   if (!normalizedAliases.length) return [];
+  const brandPrefixAliases = uniqStrings(
+    normalizedAliases.filter((alias) => alias.length >= 4),
+    16,
+  );
+  const brandPrefixPatterns = uniqStrings(
+    brandPrefixAliases.map((alias) => `${alias}%`),
+    16,
+  );
 
   const safeLimit = clampInt(limit, Math.max(limit, 120), 24, 500);
   const market = String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
   const tool = 'creator_agents';
 
   try {
-    const res = await query(
+    const selectColumns = `
+      id,
+      external_product_id,
+      destination_url,
+      canonical_url,
+      domain,
+      title,
+      image_url,
+      price_amount,
+      price_currency,
+      availability,
+      updated_at,
+      created_at,
+      coalesce(seed_data->'derived'->'recall', '{}'::jsonb) AS seed_recall,
+      ${EXTERNAL_SEED_RECALL_SQL_FIELDS.brand} AS seed_brand,
+      ${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} AS seed_category
+    `;
+    const orderClause = orderByRecency
+      ? 'ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST'
+      : '';
+    const brandRes = await query(
       `
-        SELECT
-          id,
-          external_product_id,
-          destination_url,
-          canonical_url,
-          domain,
-          title,
-          image_url,
-          price_amount,
-          price_currency,
-          availability,
-          seed_data,
-          updated_at,
-          created_at
+        SELECT ${selectColumns}
         FROM external_product_seeds
         WHERE status = 'active'
           AND market = $1
           AND (tool = '*' OR tool = $2)
           AND (
-            lower(coalesce(seed_data->>'brand', '')) = ANY($3::text[])
-            OR lower(coalesce(seed_data->>'brand_name', '')) = ANY($3::text[])
-            OR lower(coalesce(seed_data->>'vendor', '')) = ANY($3::text[])
-            OR lower(coalesce(seed_data->>'vendor_name', '')) = ANY($3::text[])
-            OR lower(coalesce(seed_data->'snapshot'->>'brand', '')) = ANY($3::text[])
-            OR lower(coalesce(seed_data->'snapshot'->>'brand_name', '')) = ANY($3::text[])
-            OR lower(coalesce(seed_data->'snapshot'->>'vendor', '')) = ANY($3::text[])
-            OR lower(coalesce(seed_data->'snapshot'->>'vendor_name', '')) = ANY($3::text[])
-            OR EXISTS (
+            ${EXTERNAL_SEED_RECALL_SQL_FIELDS.brand} = ANY($3::text[])
+            OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.brand} LIKE ANY($4::text[])
+          )
+        ${orderClause}
+        LIMIT $5
+      `,
+      [market, tool, normalizedAliases, brandPrefixPatterns, safeLimit],
+    );
+    const rows = Array.isArray(brandRes?.rows) ? [...brandRes.rows] : [];
+    if (rows.length < safeLimit) {
+      const titleRes = await query(
+        `
+          SELECT ${selectColumns}
+          FROM external_product_seeds
+          WHERE status = 'active'
+            AND market = $1
+            AND (tool = '*' OR tool = $2)
+            AND EXISTS (
               SELECT 1
               FROM unnest($3::text[]) AS alias
               WHERE lower(coalesce(seed_data->'snapshot'->>'title', seed_data->>'title', title, '')) LIKE alias || ' %'
             )
-          )
-        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
-        LIMIT $4
-      `,
-      [market, tool, normalizedAliases, safeLimit],
-    );
-    return (res.rows || [])
-      .map((row) => buildExternalSeedProduct(row))
+          ${orderClause}
+          LIMIT $4
+        `,
+        [market, tool, normalizedAliases, Math.max(0, safeLimit - rows.length)],
+      );
+      const seenIds = new Set(rows.map((row) => String(row?.id || '').trim()).filter(Boolean));
+      for (const row of Array.isArray(titleRes?.rows) ? titleRes.rows : []) {
+        const id = String(row?.id || '').trim();
+        if (id && seenIds.has(id)) continue;
+        if (id) seenIds.add(id);
+        rows.push(row);
+        if (rows.length >= safeLimit) break;
+      }
+    }
+    return rows
+      .map((row) => buildExternalSeedBrandSearchProduct(row))
       .filter(Boolean);
   } catch (err) {
     logger.warn(
@@ -6512,6 +7619,7 @@ async function loadBrandScopedDirectCandidates({
         : fetchBrandScopedExternalSeedCandidates({
             brandAliases: normalizedAliases,
             limit: safeLimit,
+            orderByRecency: !isBrandScopeOnlyQuery(request),
           }),
     ]);
 
@@ -8179,6 +9287,9 @@ function buildRankDebug({
         ? { warning_codes: uniqStrings(step.warning_codes, 12) }
         : {}),
       ...(step?.compound_intent ? { compound_intent: String(step.compound_intent) } : {}),
+      ...(Array.isArray(step?.external_seed_tool_scopes) && step.external_seed_tool_scopes.length > 0
+        ? { external_seed_tool_scopes: uniqStrings(step.external_seed_tool_scopes, 6) }
+        : {}),
       ...(Array.isArray(step?.external_seed_stage_counts) && step.external_seed_stage_counts.length > 0
         ? { external_seed_stage_counts: step.external_seed_stage_counts }
         : {}),
@@ -8204,6 +9315,7 @@ function buildRankDebug({
 function summarizeExternalSeedRecallTelemetry(recallSummary = []) {
   const summary = {
     compound_intent: null,
+    external_seed_tool_scopes: [],
     external_seed_stage_counts: [],
     external_seed_raw_count: 0,
     external_seed_qualified_count: 0,
@@ -8214,6 +9326,12 @@ function summarizeExternalSeedRecallTelemetry(recallSummary = []) {
     if (!step || typeof step !== 'object') continue;
     if (!summary.compound_intent && step.compound_intent) {
       summary.compound_intent = String(step.compound_intent);
+    }
+    if (Array.isArray(step.external_seed_tool_scopes)) {
+      summary.external_seed_tool_scopes = uniqStrings(
+        summary.external_seed_tool_scopes.concat(step.external_seed_tool_scopes),
+        6,
+      );
     }
     if (Array.isArray(step.external_seed_stage_counts)) {
       summary.external_seed_stage_counts.push(...step.external_seed_stage_counts);
@@ -8611,14 +9729,8 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
 	    const compoundIntent = isExplicitQueryScopedBrowseRequest(request)
 	      ? resolveExplicitBeautyCompoundIntent(request?.query?.text)
 	      : null;
-	    const exactIntentUnderfilled =
-	      Boolean(compoundIntent) &&
-	      request.surface === 'browse_products' &&
-	      selectedEntries.length > 0 &&
-	      selectedEntries.length < request.limit;
-	    const underfilledReason = exactIntentUnderfilled
-	      ? 'public_search_underfilled_exact_intent'
-	      : null;
+	    const underfilledReason = resolvePublicBrowseUnderfilledReason(request, selectedEntries.length);
+	    const strictEmptyReason = resolvePublicBrowseStrictEmptyReason(request, selectedEntries.length);
 	    const metadata = {
 	      discovery_strategy: strategy,
       personalization_source: personalizationSource,
@@ -8663,6 +9775,9 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       ...(compoundIntent || externalSeedRecallTelemetry.compound_intent
         ? { compound_intent: compoundIntent || externalSeedRecallTelemetry.compound_intent }
         : {}),
+      ...(externalSeedRecallTelemetry.external_seed_tool_scopes.length > 0
+        ? { external_seed_tool_scopes: externalSeedRecallTelemetry.external_seed_tool_scopes }
+        : {}),
       ...(externalSeedRecallTelemetry.external_seed_stage_counts.length > 0
         ? { external_seed_stage_counts: externalSeedRecallTelemetry.external_seed_stage_counts }
         : {}),
@@ -8685,20 +9800,27 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
           }
         : {}),
       ...(underfilledReason ? { underfilled_reason: underfilledReason } : {}),
+      ...(strictEmptyReason ? { strict_empty_reason: strictEmptyReason } : {}),
       route_health: {
         primary_path_used: primaryPathUsed,
         fallback_triggered: fallbackTriggered,
         fallback_reason: fallbackReason,
         primary_quality_gate_passed:
-          selectedEntries.length > 0 && !exactIntentUnderfilled,
+          selectedEntries.length > 0 && !underfilledReason && !strictEmptyReason,
         ...(compoundIntent ? { compound_intent: compoundIntent } : {}),
         ...(underfilledReason ? { underfilled_reason: underfilledReason } : {}),
+        ...(strictEmptyReason ? { strict_empty_reason: strictEmptyReason } : {}),
         ...(brandEmptyReason ? { brand_empty_reason: brandEmptyReason } : {}),
       },
       search_decision: {
         primary_path_used: primaryPathUsed,
         fallback_triggered: fallbackTriggered,
-        final_decision: selectedEntries.length > 0 ? 'products_returned' : 'empty',
+        final_decision: strictEmptyReason
+          ? 'strict_empty'
+          : selectedEntries.length > 0
+            ? 'products_returned'
+            : 'empty',
+        ...(strictEmptyReason ? { strict_empty_reason: strictEmptyReason } : {}),
       },
       selection_latency_ms: selectionLatencyMs,
       ...(profile.dominantDomain ? { dominant_domain: profile.dominantDomain } : {}),
@@ -8851,7 +9973,10 @@ module.exports = {
     buildBeautyInterestRecallTerms,
     buildCompoundBeautySeedStageDefinitions,
     shouldSkipBroadStructuredSeedStagesForExplicitQuery,
+    shouldSkipExplicitCategorySeedStage,
+    shouldSkipExplicitVerticalSeedStage,
     resolveExplicitIndexedCategoryHeadTerms,
+    resolveDiscoveryExternalSeedToolScopes,
     buildDiscoveryInterestQuery,
     buildDiscoveryRecallPlan,
     buildDiscoveryProviderMergeKey,
@@ -8872,6 +9997,7 @@ module.exports = {
     resolveExplicitBeautyCompoundIntent,
     resolveExplicitBrowseStageQueryCap,
     resolveExplicitQueryExternalSeedMainlineAcceptThreshold,
+    resolvePublicBrowseUnderfilledReason,
     resolveExternalSeedProviderLimit,
     shouldFilterBrowseCandidateByQueryText,
     matchesBrandScopeCandidate,

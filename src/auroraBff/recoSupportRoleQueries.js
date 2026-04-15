@@ -23,6 +23,7 @@ function normalizeSupportRoleStep(value = '') {
   const normalized = normalizeSupportRoleQueryToken(value).toLowerCase();
   if (!normalized) return '';
   if (normalized.includes('sunscreen') || normalized.includes('spf') || normalized.includes('uv')) return 'sunscreen';
+  if (normalized.includes('serum') || normalized.includes('essence') || normalized.includes('ampoule')) return 'serum';
   if (
     normalized.includes('moisturizer') ||
     normalized.includes('moisturiser') ||
@@ -32,20 +33,39 @@ function normalizeSupportRoleStep(value = '') {
   ) {
     return 'moisturizer';
   }
+  if (
+    normalized.includes('treatment') ||
+    normalized.includes('tone') ||
+    normalized.includes('mark') ||
+    normalized.includes('brighten') ||
+    normalized.includes('spot') ||
+    normalized.includes('acne') ||
+    normalized.includes('blemish') ||
+    normalized.includes('pore') ||
+    normalized.includes('soothing') ||
+    normalized.includes('cica') ||
+    normalized.includes('panthenol')
+  ) {
+    return 'treatment';
+  }
   return '';
 }
 
-function buildSupportRoleQueryScore(query = '', { step = '', oilySignal = false } = {}) {
+function buildSupportRoleQueryScore(query = '', { step = '', oilySignal = false, barrierSignal = false } = {}) {
   const normalized = normalizeSupportRoleQueryToken(query).toLowerCase();
   if (!normalized) return 0;
   let score = 0;
   if (step === 'moisturizer') {
     if (/\b(moisturi[sz]er|cream|gel cream|lotion|emulsion|water cream|water gel)\b/.test(normalized)) score += 3;
     if (/\b(lightweight|oil free|oil-free|gel cream|water cream|water gel|breathable|non-greasy|non greasy)\b/.test(normalized)) score += 2;
+    if (barrierSignal && /\b(barrier|repair|ceramide|ceramides|sensitive|soothing|fragrance free)\b/.test(normalized)) score += 3;
     if (/\boily skin\b/.test(normalized)) score += 2;
     if (/^lightweight moisturizer oily skin$/.test(normalized)) score += 3;
     if (/^oil free moisturizer$/.test(normalized)) score += 2.4;
     if (/^gel cream moisturizer$/.test(normalized)) score += 1.5;
+    if (/^barrier repair moisturizer$/.test(normalized)) score += 4;
+    if (/^ceramide cream sensitive skin$/.test(normalized)) score += 3.5;
+    if (/^soothing moisturizer$/.test(normalized)) score += 2.6;
     if (/^barrier lotion(?: oily skin)?$/.test(normalized)) score += 1.2;
   } else if (step === 'sunscreen') {
     if (/\b(sunscreen|spf|broad spectrum|sun fluid|sun cream|sun lotion|uv)\b/.test(normalized)) score += 3;
@@ -55,6 +75,20 @@ function buildSupportRoleQueryScore(query = '', { step = '', oilySignal = false 
     if (/^spf fluid oily skin$/.test(normalized)) score += 1.8;
     if (/^daily sunscreen$/.test(normalized)) score += 0.8;
     if (/^broad spectrum sunscreen$/.test(normalized)) score += 0.6;
+  } else if (step === 'serum') {
+    if (/\b(serum|essence|ampoule)\b/.test(normalized)) score += 3;
+    if (/\b(hyaluronic|hydrating|hydrate|dehydrated|plumping|water[- ]?fit|dull skin|glycerin|panthenol)\b/.test(normalized)) score += 2;
+    if (/^hyaluronic acid serum$/.test(normalized)) score += 4;
+    if (/^hydrating serum(?: dehydrated skin)?$/.test(normalized)) score += 3;
+    if (/^hydrating essence(?: dull skin)?$/.test(normalized)) score += 2.4;
+    if (/^plumping hydrating serum$/.test(normalized)) score += 1.8;
+  } else if (step === 'treatment') {
+    if (/\b(treatment|serum|essence|ampoule)\b/.test(normalized)) score += 3;
+    if (/\b(azelaic|niacinamide|salicylic|bha|vitamin c|tranexamic|cica|panthenol|madecassoside|soothing|redness|brightening|dark spot|post acne|mark|blemish|pore|tone correcting)\b/.test(normalized)) score += 2;
+    if (/^soothing serum sensitive skin$/.test(normalized)) score += 3;
+    if (/^post acne marks serum$/.test(normalized)) score += 3;
+    if (/^dark spot serum$/.test(normalized)) score += 2.4;
+    if (/^cica serum redness$/.test(normalized)) score += 2.4;
   }
   if (oilySignal && /\b(oily skin|oil control|oil free|lightweight|matte|non-greasy|non greasy)\b/.test(normalized)) {
     score += 1;
@@ -93,6 +127,10 @@ function buildSupportRoleQueryVariants({
   const oilFreeSignal = /\b(oil free|oil-free)\b/.test(signalText);
   const barrierSignal = /\b(barrier|ceramide|ceramides|lotion)\b/.test(signalText);
   const fluidSignal = /\b(fluid|invisible|water[- ]?fit|serum sunscreen|spf fluid)\b/.test(signalText);
+  const hydrationSerumSignal = /\b(hydrat|dehydrat|hyaluronic|essence|plumping|water[- ]?fit|dull skin)\b/.test(signalText);
+  const soothingTreatmentSignal = /\b(soothing|redness|calming|irritation|cica|panthenol|madecassoside)\b/.test(signalText);
+  const toneTreatmentSignal = /\b(post[- ]?acne|marks?|dark spot|tone|brighten|hyperpigmentation|uneven)\b/.test(signalText);
+  const acneTreatmentSignal = /\b(acne|blemish|clogged pore|congestion|salicylic|bha|clarifying)\b/.test(signalText);
 
   const candidates = [
     ...(Array.isArray(queryTerms) ? queryTerms : []),
@@ -109,11 +147,37 @@ function buildSupportRoleQueryVariants({
     if (fluidSignal) candidates.push(oilySignal ? 'spf fluid oily skin' : 'spf fluid');
     candidates.push('daily sunscreen');
     candidates.push('broad spectrum sunscreen');
+  } else if (step === 'serum') {
+    if (hydrationSerumSignal) {
+      candidates.push('hyaluronic acid serum');
+      candidates.push('hydrating serum dehydrated skin');
+      candidates.push('hydrating serum');
+      candidates.push('hydrating essence');
+    }
+    candidates.push('serum skincare');
+  } else if (step === 'treatment') {
+    if (soothingTreatmentSignal) {
+      candidates.push('soothing serum sensitive skin');
+      candidates.push('cica serum redness');
+      candidates.push('panthenol treatment');
+    }
+    if (toneTreatmentSignal) {
+      candidates.push('post acne marks serum');
+      candidates.push('dark spot serum');
+      candidates.push('tone correcting serum');
+      candidates.push('brightening serum');
+    }
+    if (acneTreatmentSignal) {
+      candidates.push('salicylic acid serum clogged pores');
+      candidates.push('acne treatment serum');
+      candidates.push('blemish treatment');
+    }
+    candidates.push('treatment serum');
   }
   return uniqueCaseInsensitiveStrings(candidates, 16)
     .map((query, index) => ({
       query,
-      score: buildSupportRoleQueryScore(query, { step, oilySignal }),
+      score: buildSupportRoleQueryScore(query, { step, oilySignal, barrierSignal }),
       index,
     }))
     .sort((left, right) => {

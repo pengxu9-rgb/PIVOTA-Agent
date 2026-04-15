@@ -5147,7 +5147,63 @@ function shouldBridgePublicBeautySearchToDiscovery({
   return true;
 }
 
-function buildDiscoveryPayloadFromPublicBeautySearch(search = {}, metadata = {}, queryText = '') {
+function resolvePublicBrandScopeForDiscovery({
+  operation = '',
+  metadata = null,
+  search = null,
+  queryText = '',
+  invokeSearchRail = null,
+} = {}) {
+  if (String(operation || '').trim().toLowerCase() !== 'find_products_multi') return [];
+  const normalizedMetadata =
+    metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {};
+  const normalizedSearch =
+    search && typeof search === 'object' && !Array.isArray(search) ? search : {};
+  const rail = String(
+    invokeSearchRail ||
+      normalizedMetadata.invoke_search_rail ||
+      resolveInvokeSearchRailFromMetadata(normalizedMetadata) ||
+      '',
+  )
+    .trim()
+    .toLowerCase();
+  if (
+    rail !== 'public_observability' &&
+    !isPublicSearchSource(normalizedMetadata?.source) &&
+    !isPublicSearchRouteMetadata(normalizedMetadata) &&
+    !isPublicBeautyMainlineSearchRoute(normalizedMetadata)
+  ) {
+    return [];
+  }
+  if (parseQueryBoolean(normalizedSearch.product_only ?? normalizedSearch.productOnly) === true) {
+    return [];
+  }
+  if (
+    parseQueryBoolean(
+      normalizedSearch.local_mainline_child ?? normalizedSearch.localMainlineChild,
+    ) === true
+  ) {
+    return [];
+  }
+  if (hasStrictInvokeCatalogSurface(normalizedSearch, normalizedMetadata)) return [];
+  const rawQuery = String(queryText || normalizedSearch?.query || normalizedSearch?.q || '').trim();
+  if (!rawQuery) return [];
+  const brandDetection = detectBrandEntities(rawQuery, { candidateProducts: [] });
+  if (!brandDetection?.brand_like) return [];
+  const brands = uniqueStrings(Array.isArray(brandDetection.brands) ? brandDetection.brands : []).slice(
+    0,
+    4,
+  );
+  if (brands.length === 0) return [];
+  return brands;
+}
+
+function buildDiscoveryPayloadFromPublicBeautySearch(
+  search = {},
+  metadata = {},
+  queryText = '',
+  options = {},
+) {
   const limit = Math.min(
     Math.max(1, Number(search?.limit || search?.page_size || search?.pageSize || 24) || 24),
     SEARCH_LIMIT_MAX,
@@ -5168,6 +5224,7 @@ function buildDiscoveryPayloadFromPublicBeautySearch(search = {}, metadata = {},
     search?.debug === true ||
     metadata?.debug === true ||
     String(search?.debug || metadata?.debug || '').trim().toLowerCase() === 'true';
+  const brandNames = uniqueStrings(options?.brandNames || []);
   return {
     discoveryPayload: {
       surface: 'browse_products',
@@ -5175,6 +5232,7 @@ function buildDiscoveryPayloadFromPublicBeautySearch(search = {}, metadata = {},
       limit,
       debug,
       query: { text: String(queryText || search?.query || search?.q || '').trim() },
+      ...(brandNames.length > 0 ? { scope: { brand_names: brandNames } } : {}),
       context: {
         auth_state: 'anonymous',
         locale,
@@ -18869,18 +18927,26 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       search: publicBeautySearch,
       metadata,
     });
+    const publicBrandScopeNames = resolvePublicBrandScopeForDiscovery({
+      operation,
+      metadata,
+      search: publicBeautySearch,
+      queryText: publicBeautyQueryText,
+      invokeSearchRail,
+    });
     if (
-      hasExplicitBeautyCatalogSurface(originalPublicBeautySearch, metadata) &&
-      shouldBridgePublicBeautySearchToDiscovery({
-        operation,
-        metadata,
-        search: publicBeautySearch,
-        queryText: publicBeautyQueryText,
-        queryClass: traceQueryClass,
-        intent: effectiveIntent,
-        invokeSearchRail,
-        strictDecision: publicBeautyStrictDecision,
-      })
+      publicBrandScopeNames.length > 0 ||
+      (hasExplicitBeautyCatalogSurface(originalPublicBeautySearch, metadata) &&
+        shouldBridgePublicBeautySearchToDiscovery({
+          operation,
+          metadata,
+          search: publicBeautySearch,
+          queryText: publicBeautyQueryText,
+          queryClass: traceQueryClass,
+          intent: effectiveIntent,
+          invokeSearchRail,
+          strictDecision: publicBeautyStrictDecision,
+        }))
     ) {
       const bridgeStartedAtMs = Date.now();
       const { discoveryPayload, page, limit, offset } =
@@ -18888,6 +18954,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           publicBeautySearch,
           metadata,
           publicBeautyQueryText,
+          { brandNames: publicBrandScopeNames },
         );
       try {
         const discoveryResponse = await getDiscoveryFeed(discoveryPayload);
@@ -18902,6 +18969,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         });
         bridgeResponse.metadata = {
           ...(bridgeResponse.metadata || {}),
+          ...(publicBrandScopeNames.length > 0
+            ? {
+                public_search_brand_scope_applied: publicBrandScopeNames,
+                public_search_brand_mainline: true,
+              }
+            : {}),
           route_health: {
             ...((bridgeResponse.metadata && bridgeResponse.metadata.route_health) || {}),
             primary_latency_ms: Math.max(0, Date.now() - bridgeStartedAtMs),
@@ -20656,12 +20729,32 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            const moduleStartedAt = Date.now();
 	            try {
 	            const limit = payload?.similar?.limit || payload?.recommendations?.limit || 6;
+              const canonicalRefMerchantId = String(canonicalProductRef?.merchant_id || '').trim();
+              const canonicalRefProductId = String(canonicalProductRef?.product_id || '').trim();
+              const similarBaseProduct = {
+                ...canonicalProductForPdp,
+                merchant_id:
+                  canonicalProductForPdp.merchant_id ||
+                  canonicalProductForPdp.merchantId ||
+                  canonicalRefMerchantId,
+                product_id:
+                  (canonicalRefMerchantId === EXTERNAL_SEED_MERCHANT_ID ? canonicalRefProductId : '') ||
+                  canonicalProductForPdp.product_id ||
+                  canonicalProductForPdp.productId ||
+                  canonicalProductForPdp.id,
+                ...(canonicalRefMerchantId === EXTERNAL_SEED_MERCHANT_ID && canonicalRefProductId
+                  ? {
+                      source: canonicalProductForPdp.source || 'external_seed',
+                      external_product_id: canonicalRefProductId,
+                    }
+                  : {}),
+              };
 	            return await fetchSimilarProductsDeduped({
-              pdp_product: canonicalProductForPdp,
+              pdp_product: similarBaseProduct,
               k: limit,
               locale:
                 payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
-              currency: canonicalProductForPdp.currency || canonicalProduct.currency || 'USD',
+              currency: similarBaseProduct.currency || canonicalProductForPdp.currency || canonicalProduct.currency || 'USD',
 	              options: {
 	                debug,
 	                // Respect caller cache controls (same semantics as resolve op).

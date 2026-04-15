@@ -55,9 +55,13 @@ function isConcernExternalSeedCandidate(row) {
 
 function buildConcernCandidateAnchorText(row) {
   const candidate = isPlainObject(row) ? row : {};
+  const sku = isPlainObject(candidate.sku) ? candidate.sku : {};
   return [
     pickFirstTrimmed(candidate.brand),
     pickFirstTrimmed(candidate.display_name, candidate.displayName, candidate.name, candidate.title),
+    pickFirstTrimmed(sku.brand),
+    pickFirstTrimmed(sku.display_name, sku.displayName, sku.name, sku.title),
+    pickFirstTrimmed(sku.product_type, sku.productType, sku.category, sku.category_name, sku.categoryName, sku.type),
     pickFirstTrimmed(candidate.category, candidate.category_name, candidate.categoryName, candidate.product_type, candidate.productType),
     ...(Array.isArray(candidate.search_aliases) ? candidate.search_aliases : []),
     ...(Array.isArray(candidate.category_path) ? candidate.category_path : []),
@@ -81,10 +85,36 @@ function normalizeRecoTargetStep(value) {
 
 function buildConcernCandidateText(row) {
   const candidate = isPlainObject(row) ? row : {};
+  if (isConcernExternalSeedCandidate(candidate)) {
+    const sku = isPlainObject(candidate.sku) ? candidate.sku : {};
+    return [
+      buildExternalSeedSurfacingText(candidate, { anchorOnly: true }),
+      pickFirstTrimmed(
+        sku.product_type,
+        sku.productType,
+        sku.category,
+        sku.category_name,
+        sku.categoryName,
+        candidate.product_type,
+        candidate.productType,
+        candidate.category,
+        candidate.category_name,
+        candidate.categoryName,
+      ),
+      pickFirstTrimmed(candidate.retrieval_step, candidate.retrievalStep),
+    ]
+      .map((item) => normalizeConcernQueryToken(item).toLowerCase())
+      .filter(Boolean)
+      .join(' ');
+  }
+  const sku = isPlainObject(candidate.sku) ? candidate.sku : {};
   const textParts = [
     buildConcernCandidateAnchorText(candidate),
+    ...(Array.isArray(sku.ingredient_tokens) ? sku.ingredient_tokens : []),
     ...(Array.isArray(candidate.ingredient_tokens) ? candidate.ingredient_tokens : []),
+    ...(Array.isArray(sku.skin_type_tags) ? sku.skin_type_tags : []),
     ...(Array.isArray(candidate.skin_type_tags) ? candidate.skin_type_tags : []),
+    pickFirstTrimmed(sku.short_description, sku.shortDescription, sku.description),
     pickFirstTrimmed(candidate.short_description, candidate.shortDescription, candidate.description),
     ...(Array.isArray(candidate.benefit_tags) ? candidate.benefit_tags : []),
     ...(Array.isArray(candidate.benefit_tokens) ? candidate.benefit_tokens : []),
@@ -123,6 +153,7 @@ function classifyConcernScopeCandidate(row) {
 }
 
 function hasConcernSunscreenSignal(row, candidateText = '') {
+  const sku = isPlainObject(row?.sku) ? row.sku : {};
   const text = uniqCaseInsensitiveStrings([
     String(candidateText || '').trim(),
     buildConcernFrameworkCandidateText(row),
@@ -134,9 +165,14 @@ function hasConcernSunscreenSignal(row, candidateText = '') {
       row?.title,
       row?.category,
       row?.product_type,
+      sku?.category,
+      sku?.product_type,
       row?.short_description,
       row?.shortDescription,
       row?.description,
+      sku?.short_description,
+      sku?.shortDescription,
+      sku?.description,
     ),
   ], 4).join(' ');
   return CONCERN_SUNSCREEN_SIGNAL_RE.test(String(text || '').trim().toLowerCase());
@@ -148,6 +184,11 @@ function isConcernFrameworkOutOfScopeArea(row, candidateText) {
   if (FACIAL_FRAMEWORK_SCOPE_ALLOW_RE.test(text)) return false;
   const explicitStep = normalizeRecoTargetStep(
     pickFirstTrimmed(
+      row?.sku?.product_type,
+      row?.sku?.productType,
+      row?.sku?.category,
+      row?.sku?.category_name,
+      row?.sku?.categoryName,
       row?.product_type,
       row?.productType,
       row?.category,

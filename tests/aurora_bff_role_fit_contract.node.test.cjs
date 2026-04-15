@@ -28,6 +28,18 @@ function buildDailySunscreenRole() {
   };
 }
 
+function buildHydratingSerumRole() {
+  return {
+    role_id: 'hydrating_serum_or_essence',
+    rank: 2,
+    preferred_step: 'serum',
+    fit_keywords: ['hydrating', 'dehydrated', 'hyaluronic acid', 'essence', 'plumping'],
+    query_terms: ['hydrating serum dehydrated skin', 'hyaluronic acid serum'],
+    ingredient_hypotheses: ['Hyaluronic acid', 'Glycerin', 'Panthenol'],
+    product_type_hypotheses: ['serum', 'essence'],
+  };
+}
+
 test('treatment role rescues serum candidate with paired oil-control actives', () => {
   const score = scoreConcernRoleCandidate(
     {
@@ -125,4 +137,44 @@ test('support sunscreen role rescues exact-step role-matched candidate with weak
   assert.equal(score?.ingredient_matches, 0);
   assert.equal(score?.product_type_matches, 1);
   assert.ok(Number(score?.score || 0) >= 0.58);
+});
+
+test('hydrating serum role does not treat generic serum shape as role evidence', () => {
+  const score = scoreConcernRoleCandidate(
+    {
+      title: 'The Ordinary Niacinamide 10% + Zinc 1%',
+      retrieval_role_id: 'hydrating_serum_or_essence',
+    },
+    buildHydratingSerumRole(),
+    {
+      candidateStep: 'serum',
+      candidateText: 'The Ordinary Niacinamide 10% + Zinc 1% serum for oil balance',
+    },
+  );
+
+  assert.ok(score);
+  assert.equal(score?.support_step_rescue_applied, false);
+  assert.equal(score?.role_semantic_fit_matched, false);
+  assert.equal(score?.semantic_fit_matched, true);
+  assert.equal(score?.product_type_matches, 1);
+  assert.ok(Number(score?.score || 0) < 0.52);
+});
+
+test('hydrating serum role remains viable when true hydration evidence is present', () => {
+  const score = scoreConcernRoleCandidate(
+    {
+      title: 'Hydra B5 Hyaluronic Acid Serum',
+      retrieval_role_id: 'hydrating_serum_or_essence',
+    },
+    buildHydratingSerumRole(),
+    {
+      candidateStep: 'serum',
+      candidateText: 'Hydra B5 Hyaluronic Acid Serum hydrating plumping serum with glycerin',
+    },
+  );
+
+  assert.ok(score);
+  assert.equal(score?.role_semantic_fit_matched, true);
+  assert.equal(score?.fit_keyword_matches > 0 || score?.ingredient_matches > 0, true);
+  assert.ok(Number(score?.score || 0) >= 0.52);
 });

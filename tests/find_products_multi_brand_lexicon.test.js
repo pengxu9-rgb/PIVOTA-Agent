@@ -47,6 +47,45 @@ describe('findProductsMulti brand lexicon', () => {
     );
   });
 
+  test('detects common beauty and luxury brands used by public search', () => {
+    expect(detectBrandEntities('the ordinary', { candidateProducts: [] })).toEqual(
+      expect.objectContaining({
+        brand_like: true,
+        brands: expect.arrayContaining(['the ordinary']),
+      }),
+    );
+    expect(detectBrandEntities('charlotte tilbury', { candidateProducts: [] })).toEqual(
+      expect.objectContaining({
+        brand_like: true,
+        brands: expect.arrayContaining(['charlotte tilbury']),
+      }),
+    );
+    expect(detectBrandEntities('nars', { candidateProducts: [] })).toEqual(
+      expect.objectContaining({
+        brand_like: true,
+        brands: expect.arrayContaining(['nars']),
+      }),
+    );
+    expect(detectBrandEntities('la mer', { candidateProducts: [] })).toEqual(
+      expect.objectContaining({
+        brand_like: true,
+        brands: expect.arrayContaining(['la mer']),
+      }),
+    );
+    expect(detectBrandEntities('la roche-posay', { candidateProducts: [] })).toEqual(
+      expect.objectContaining({
+        brand_like: true,
+        brands: expect.arrayContaining(['la roche posay']),
+      }),
+    );
+    expect(detectBrandEntities("kiehl's", { candidateProducts: [] })).toEqual(
+      expect.objectContaining({
+        brand_like: true,
+        brands: expect.arrayContaining(["kiehl s"]),
+      }),
+    );
+  });
+
   test('treats fashion category terms as explicit category hints', () => {
     expect(hasExplicitCategoryHint('zara blazer')).toBe(true);
     expect(hasExplicitCategoryHint('uniqlo cardigan')).toBe(true);

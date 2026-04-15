@@ -86,6 +86,7 @@ test('reco assistant rewrite prompt omits deterministic base text and carries re
     assert.match(prompt, /Use selected_product_details\.compare_highlights and selected_product_details\.pivota_insights when available; do not invent highlights that are absent from Context\./);
     assert.match(prompt, /Use selected_product_details\.description_snippet and selected_product_details\.evidence_points as the primary concrete reason layer when available\./);
     assert.match(prompt, /Do not call something the best first buy unless the same sentence or the next sentence gives a concrete reason/);
+    assert.match(prompt, /Never write ungrammatical fragments like "because a serum\.\.\."/);
     assert.match(prompt, /If selected_product_details\.fit_assessment is "soft_match" or comparison_fill_reason is present, frame that product as a softer or broader alternative instead of an equally direct match\./);
     assert.match(prompt, /Prefer product-specific evidence over generic role language when both are available\./);
     assert.match(prompt, /If request_mode is "buy" and there is one selected product with no secondary targets, use exactly 2 sentences\./);
@@ -915,12 +916,14 @@ test('reco assistant rewrite rejects candidate-pool product names that are not f
             display_name: 'First Aid Beauty Dark Spot Serum with Niacinamide',
             brand: 'First Aid Beauty',
             category: 'Serum',
+            short_description: 'A niacinamide serum for post-breakout dark spots and uneven tone.',
           },
           {
             product_id: 'dark_spot_2',
             display_name: 'Jurlique Brightening Serum',
             brand: 'Jurlique',
             category: 'Serum',
+            short_description: 'A brightening serum for uneven tone support.',
           },
         ],
         recommendation_meta: {
@@ -981,9 +984,8 @@ test('reco assistant rewrite rejects candidate-pool product names that are not f
       return {
         ok: true,
         json: {
-          lead_reason:
-            'A niacinamide treatment for post-breakout marks from the product record instead of Fenty Beauty Watch Ya Tone Niacinamide Dark Spot Serum Refill',
-          support_reasons: ['An alternate tone-focused serum option without treating Fenty Beauty Watch Ya Tone as the lead pick'],
+          lead_reason: 'Vitamin C (Ascorbic acid)',
+          support_reasons: ['Oil-control support'],
         },
         parse_status: 'parsed',
         provider: 'gemini',
@@ -1003,8 +1005,9 @@ test('reco assistant rewrite rejects candidate-pool product names that are not f
     assert.equal(rewrite.llm_used, true);
     assert.equal(rewrite.reason, null);
     assert.match(rewrite.text, /First Aid Beauty Dark Spot Serum with Niacinamide is your best first buy/);
-    assert.match(rewrite.text, /because a niacinamide treatment/);
+    assert.match(rewrite.text, /because it is a niacinamide serum/);
     assert.doesNotMatch(rewrite.text, /because (A|An|The)\b/);
+    assert.doesNotMatch(rewrite.text, /because (niacinamide|brightening|vitamin c|oil-control support|oil control support)\b/i);
     assert.match(rewrite.text, /Jurlique Brightening Serum/);
     assert.doesNotMatch(rewrite.text, /Fenty Beauty|Watch Ya Tone/);
     assert.match(prompts[1], /Do not write the final assistant message\./);
@@ -1012,6 +1015,272 @@ test('reco assistant rewrite rejects candidate-pool product names that are not f
     assert.match(prompts[1], /Schema: \{ "lead_reason": string, "support_reasons": string\[\] \}/);
     assert.equal(schemas[1]?.required?.includes('lead_reason'), true);
     assert.equal(schemas[1]?.required?.includes('support_reasons'), true);
+  } finally {
+    __internal.__resetCallGeminiJsonObjectForTest();
+    if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
+    else process.env.AURORA_BFF_USE_MOCK = prevMock;
+    if (prevProvider === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = prevProvider;
+    if (prevModel === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = prevModel;
+    delete require.cache[moduleId];
+  }
+});
+
+test('reco assistant reason fragment strips duplicated renderer scaffolding', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const leadReason = __internal.normalizeRecoAssistantReasonFragment(
+      'is your best first buy because it provides essential daily UV protection in a lightweight serum formula',
+      { selectedNames: ['The Ordinary UV Filters SPF 45 Serum'] },
+    );
+    const supportReason = __internal.normalizeRecoAssistantReasonFragment(
+      'follow with this multi-benefit serum designed to soothe, hydrate, and renew your skin barrier',
+      { selectedNames: ['Haruharu Wonder Soothing Serum'] },
+    );
+
+    assert.equal(leadReason, 'it provides essential daily UV protection in a lightweight serum formula');
+    assert.equal(supportReason, 'multi-benefit serum designed to soothe, hydrate, and renew your skin barrier');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('reco assistant rewrite uses structured retry for generic routine wrap-up', async () => {
+  const prevMock = process.env.AURORA_BFF_USE_MOCK;
+  const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+  const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+  process.env.AURORA_BFF_USE_MOCK = 'false';
+  process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = 'gemini';
+  process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = 'gemini-3-flash-preview';
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'fab_gel_cream',
+            display_name: 'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+            brand: 'First Aid Beauty',
+            category: 'Moisturizer',
+            matched_role_id: 'layering_compatible_moisturizer_or_spf',
+            matched_role_label: 'Layering-compatible moisturizer or SPF',
+            short_description: 'An ultra-sheer, non-comedogenic gel cream that layers cleanly under makeup.',
+          },
+          {
+            product_id: 'naturium_ha',
+            display_name: 'Quadruple Hyaluronic Acid Serum 5% - Jumbo',
+            brand: 'Naturium',
+            category: 'Serum',
+            matched_role_id: 'hydrating_serum_or_essence',
+            matched_role_label: 'Hydrating serum or essence',
+            short_description: 'A lightweight hyaluronic acid serum for dehydration support.',
+          },
+          {
+            product_id: 'skintific_spf',
+            display_name: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+            brand: 'SKINTIFIC',
+            category: 'Sunscreen',
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            short_description: 'A matte SPF 50+ serum sunscreen for under-makeup daytime wear.',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'moisturizer',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Layering-compatible moisturizer or SPF',
+        resolved_target_step: 'moisturizer',
+        primary_target_id: 'layering_compatible_moisturizer_or_spf',
+        ranked_targets: [
+          {
+            target_id: 'layering_compatible_moisturizer_or_spf',
+            ingredient_query: 'Layering-compatible moisturizer or SPF',
+            resolved_target_step: 'moisturizer',
+          },
+          {
+            target_id: 'hydrating_serum_or_essence',
+            ingredient_query: 'Hydrating serum or essence',
+            resolved_target_step: 'serum',
+          },
+          {
+            target_id: 'daily_sunscreen_finish_fit',
+            ingredient_query: 'Daily sunscreen with finish fit',
+            resolved_target_step: 'sunscreen',
+          },
+        ],
+        selected_target_ids: [
+          'layering_compatible_moisturizer_or_spf',
+          'hydrating_serum_or_essence',
+          'daily_sunscreen_finish_fit',
+        ],
+      },
+    );
+    const schemas = [];
+    let callCount = 0;
+    __internal.__setCallGeminiJsonObjectForTest(async (args = {}) => {
+      callCount += 1;
+      schemas.push(args.responseSchema || null);
+      if (callCount === 1) {
+        return {
+          ok: true,
+          json: {
+            assistant_text: [
+              'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides is the most practical pick for layering compatibility because it has an ultra-sheer, non-comedogenic gel-cream texture.',
+              'Quadruple Hyaluronic Acid Serum 5% - Jumbo covers the hydrating serum step because it adds lightweight hydration.',
+              'Matte Fit Serum Sunscreen SPF 50+ PA++++ covers daytime sunscreen because it protects with SPF 50.',
+              'Together, these products support the routine and keep skin breathable.',
+            ].join(' '),
+          },
+          parse_status: 'parsed',
+          provider: 'gemini',
+          effective_model: 'gemini-3-flash-preview',
+        };
+      }
+      return {
+        ok: true,
+        json: {
+          lead_reason: 'features an ultra-sheer, non-comedogenic gel-cream texture for smoother layering',
+          support_reasons: [
+            'provides lightweight hyaluronic-acid hydration without changing the routine into a heavy layer',
+            'gives matte SPF 50+ daytime protection for under-makeup wear',
+          ],
+        },
+        parse_status: 'parsed',
+        provider: 'gemini',
+        effective_model: 'gemini-3-flash-preview',
+      };
+    });
+
+    const rewrite = await __internal.maybeRewriteRecoAssistantTextWithLlm({
+      payload,
+      language: 'EN',
+      profile: { goals: ['smooth layering'] },
+      userRequestText: 'My makeup pills. What should I use?',
+      allowLockedSelectionRewrite: true,
+    });
+
+    assert.equal(callCount, 2);
+    assert.equal(rewrite.llm_used, true);
+    assert.equal(rewrite.reason, null);
+    assert.equal(schemas[1]?.required?.includes('lead_reason'), true);
+    assert.match(rewrite.text, /Hydrating Dewy Gel Cream Moisturizer/);
+    assert.match(rewrite.text, /because it (?:features|is) an ultra-sheer/);
+    assert.match(rewrite.text, /because it (?:provides|is a) lightweight/);
+    assert.match(rewrite.text, /because it (?:gives|is a) matte SPF 50\+/);
+    assert.match(rewrite.text, /Matte Fit Serum Sunscreen SPF 50\+ PA\+\+\+\+/);
+    assert.doesNotMatch(rewrite.text, /because (features|provides|gives)\b/i);
+    assert.doesNotMatch(rewrite.text, /Together, these products support/);
+  } finally {
+    __internal.__resetCallGeminiJsonObjectForTest();
+    if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
+    else process.env.AURORA_BFF_USE_MOCK = prevMock;
+    if (prevProvider === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = prevProvider;
+    if (prevModel === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = prevModel;
+    delete require.cache[moduleId];
+  }
+});
+
+test('reco assistant structured retry does not render without valid JSON', async () => {
+  const prevMock = process.env.AURORA_BFF_USE_MOCK;
+  const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+  const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+  process.env.AURORA_BFF_USE_MOCK = 'false';
+  process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = 'gemini';
+  process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = 'gemini-3-flash-preview';
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'fab_gel_cream',
+            display_name: 'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+            brand: 'First Aid Beauty',
+            category: 'Moisturizer',
+            matched_role_id: 'layering_compatible_moisturizer_or_spf',
+            matched_role_label: 'Layering-compatible moisturizer or SPF',
+            short_description: 'An ultra-sheer, non-comedogenic gel cream that layers cleanly under makeup.',
+          },
+          {
+            product_id: 'skintific_spf',
+            display_name: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+            brand: 'SKINTIFIC',
+            category: 'Sunscreen',
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            short_description: 'A matte SPF 50+ serum sunscreen for under-makeup daytime wear.',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'moisturizer',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Layering-compatible moisturizer or SPF',
+        resolved_target_step: 'moisturizer',
+        primary_target_id: 'layering_compatible_moisturizer_or_spf',
+        ranked_targets: [
+          {
+            target_id: 'layering_compatible_moisturizer_or_spf',
+            ingredient_query: 'Layering-compatible moisturizer or SPF',
+            resolved_target_step: 'moisturizer',
+          },
+          {
+            target_id: 'daily_sunscreen_finish_fit',
+            ingredient_query: 'Daily sunscreen with finish fit',
+            resolved_target_step: 'sunscreen',
+          },
+        ],
+        selected_target_ids: ['layering_compatible_moisturizer_or_spf', 'daily_sunscreen_finish_fit'],
+      },
+    );
+    let callCount = 0;
+    __internal.__setCallGeminiJsonObjectForTest(async () => {
+      callCount += 1;
+      if (callCount === 1) {
+        return {
+          ok: true,
+          json: {
+            assistant_text: [
+              'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides is the most practical pick for layering compatibility because it has an ultra-sheer gel-cream texture.',
+              'Together, these products support the routine and keep skin breathable.',
+            ].join(' '),
+          },
+          parse_status: 'parsed',
+          provider: 'gemini',
+          effective_model: 'gemini-3-flash-preview',
+        };
+      }
+      return {
+        ok: false,
+        reason: 'GEMINI_JSON_TIMEOUT',
+        json: null,
+        parse_status: null,
+        timeout_stage: 'upstream',
+        provider: 'gemini',
+        effective_model: 'gemini-3-flash-preview',
+      };
+    });
+
+    const rewrite = await __internal.maybeRewriteRecoAssistantTextWithLlm({
+      payload,
+      language: 'EN',
+      profile: { goals: ['smooth layering'] },
+      userRequestText: 'My makeup pills. What should I use?',
+      allowLockedSelectionRewrite: true,
+    });
+
+    assert.equal(callCount, 2);
+    assert.equal(rewrite.llm_used, false);
+    assert.equal(rewrite.reason, 'GEMINI_JSON_TIMEOUT');
+    assert.equal(rewrite.text, '');
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
     if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
@@ -1783,7 +2052,7 @@ test('reco assistant rewrite retries routine drafts that use stiff selected-prod
   }
 });
 
-test('reco assistant rewrite retries gemini timeout with compact prompt context', async () => {
+test('reco assistant rewrite retries gemini timeout with structured reason prompt context', async () => {
   const prevMock = process.env.AURORA_BFF_USE_MOCK;
   const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
   const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
@@ -1845,8 +2114,9 @@ test('reco assistant rewrite retries gemini timeout with compact prompt context'
       return {
         ok: true,
         json: {
-          assistant_text:
-            'KraveBeauty Great Barrier Relief is the product to buy first for barrier support. Its tamanu oil, niacinamide, and ceramides directly target a stripped, irritated barrier without adding extra routine filler.',
+          lead_reason:
+            'it uses tamanu oil, niacinamide, and ceramides for barrier support without adding extra routine filler',
+          support_reasons: [],
         },
         parse_status: 'parsed',
         meta: { gate_wait_ms: 5, upstream_ms: 640, total_ms: 645 },
@@ -1868,13 +2138,14 @@ test('reco assistant rewrite retries gemini timeout with compact prompt context'
     assert.equal(rewrite.llm_used, true);
     assert.equal(rewrite.reason, null);
     assert.ok(maxTokens[0] > 0);
-    assert.equal(maxTokens[0], maxTokens[1]);
+    assert.equal(maxTokens[1], 140);
     assert.ok(timeouts[0] > 0 && timeouts[0] < 4500);
     assert.ok(timeouts[1] >= 1400);
-    assert.ok(timeouts[1] < timeouts[0]);
+    assert.ok(timeouts[1] <= 2400);
+    assert.ok(timeouts[1] >= timeouts[0]);
     assert.match(prompts[0], /"prompt_profile":"compact_timeout_retry"/);
-    assert.match(prompts[1], /"prompt_profile":"compact_timeout_retry"/);
-    assert.match(prompts[1], /Compact retry mode: keep the answer tight/);
+    assert.match(prompts[1], /"prompt_profile":"strict_selected_only_retry"/);
+    assert.match(prompts[1], /Do not write the final assistant message\./);
     assert.equal(rewrite.attempt_count, 2);
     assert.equal(rewrite.attempts?.length, 2);
     assert.equal(rewrite.attempts?.[0]?.ok, false);
@@ -2124,8 +2395,12 @@ test('reco assistant rewrite retries routine-mix drafts that end in a generic cl
       return {
         ok: true,
         json: {
-          assistant_text:
-            'Buy The Ordinary Niacinamide 10% + Zinc 1% first for oily skin because it is the direct oil-control step, pairs niacinamide with zinc, and costs $12. The other two picks are different routine steps, not substitutes: LightLab Oil-Free Gel Cream is your lightweight moisturizer step for breathable hydration, and SunLab Daily SPF 50 Fluid is your sunscreen step for daily UV protection without a heavy finish.',
+          lead_reason:
+            'it is the direct oil-control step, pairs niacinamide with zinc, and costs $12',
+          support_reasons: [
+            'it is a breathable gel moisturizer for oily skin',
+            'it is a lightweight daily sunscreen fluid with no white cast',
+          ],
         },
         parse_status: 'parsed',
         provider: 'gemini',
@@ -2146,7 +2421,8 @@ test('reco assistant rewrite retries routine-mix drafts that end in a generic cl
     assert.equal(rewrite.reason, null);
     assert.match(prompts[1], /Previous draft failed the quality gate\./);
     assert.match(prompts[1], /Fix required: Do not end with a generic routine wrap-up\./);
-    assert.match(String(rewrite.text || ''), /Buy The Ordinary Niacinamide 10% \+ Zinc 1% first/);
+    assert.match(String(rewrite.text || ''), /The Ordinary Niacinamide 10% \+ Zinc 1% is your best first buy/);
+    assert.match(prompts[1], /Do not write the final assistant message\./);
     assert.doesNotMatch(String(rewrite.text || ''), /These secondary steps support your oily skin/i);
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
@@ -2231,8 +2507,9 @@ test('reco assistant rewrite retries oily buy drafts that use off-target tone cl
       return {
         ok: true,
         json: {
-          assistant_text:
-            'GoalSkin Oil Control Serum is your best first buy because it is the direct oil-control step for visible shine and costs $12.',
+          lead_reason:
+            'it is the direct oil-control step for visible shine and costs $12',
+          support_reasons: [],
         },
         parse_status: 'parsed',
         provider: 'gemini',
@@ -2456,6 +2733,17 @@ test('beauty mainline routine selection covers support roles before same-role re
 test('beauty mainline reco rows promote visible nested product fields to top level', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
+    const normalized = __internal.normalizeRecoCatalogProduct({
+      product_id: 'fab_dark_spot_raw',
+      merchant_id: 'merch_efbc46b4619cfbdf',
+      brand: 'First Aid Beauty',
+      display_name: 'Dark Spot Serum with Niacinamide',
+      why_this_one: 'Glycerin',
+      key_ingredients: ['Glycerin', 'Niacinamide'],
+    });
+    assert.equal(normalized?.why_this_one, undefined);
+    assert.ok(normalized?.key_features.includes('Glycerin'));
+
     const rows = __internal.buildRecoRowsFromMainlineProducts(
       [
         {
@@ -2541,6 +2829,83 @@ test('beauty mainline reco rows promote visible nested product fields to top lev
   }
 });
 
+test('beauty mainline reco hydrates selected card evidence from product intel KB', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  const productIntelKbStore = require('../src/auroraBff/productIntelKbStore');
+  try {
+    productIntelKbStore.__internal.clearMemoryCacheForTest();
+    await productIntelKbStore.upsertProductIntelKbEntry({
+      kb_key: 'product:hydrated_reco_pick',
+      analysis: {
+        product_intel_v1: {
+          contract_version: 'pivota.product_intel.v1',
+          product_intel_core: {
+            what_it_is: {
+              body: 'A seller-grounded serum for visible shine and excess oil.',
+            },
+            why_it_stands_out: [
+              {
+                headline: 'Niacinamide + zinc pairing',
+                body: 'Pairs niacinamide with zinc PCA for oily-skin shine and visible pore concerns.',
+              },
+            ],
+            best_for: [
+              {
+                label: 'Excess oil or midday shine',
+              },
+            ],
+          },
+          shopping_card: {
+            title: 'Hydrated Reco Pick',
+            subtitle: 'Oil-control serum',
+            intro: 'A focused serum for excess oil and visible pores.',
+          },
+        },
+      },
+      source_meta: {
+        review_tier: 'assistant_reviewed',
+      },
+      last_success_at: new Date().toISOString(),
+    });
+
+    const hydrated = await __internal.hydrateRecoCandidatesProductIntelFromKb([
+      {
+        product_id: 'hydrated_reco_pick',
+        merchant_id: 'merchant_demo',
+        display_name: 'Hydrated Reco Pick',
+        category: 'Serum',
+      },
+    ]);
+    const rows = __internal.buildRecoRowsFromMainlineProducts(hydrated, {
+      targetContext: {
+        resolved_target_step: 'treatment',
+        primary_role_id: 'oil_control_treatment',
+        framework_roles: [
+          {
+            role_id: 'oil_control_treatment',
+            label: 'Oil-control treatment',
+            rank: 1,
+            preferred_step: 'treatment',
+          },
+        ],
+      },
+      language: 'EN',
+    });
+
+    assert.equal(hydrated[0].metadata.product_intel_kb_used, true);
+    assert.equal(rows[0].pivota_insights.what_it_is, 'A seller-grounded serum for visible shine and excess oil.');
+    assert.deepEqual(rows[0].compare_highlights, [
+      'Pairs niacinamide with zinc PCA for oily-skin shine and visible pore concerns.',
+      'Best for Excess oil or midday shine',
+      'Oil-control serum',
+    ]);
+    assert.equal(rows[0].why_this_one, 'Pairs niacinamide with zinc PCA for oily-skin shine and visible pore concerns.');
+  } finally {
+    productIntelKbStore.__internal.clearMemoryCacheForTest();
+    delete require.cache[moduleId];
+  }
+});
+
 test('beauty mainline reco rows derive stable brand and shopper fields when source row is sparse', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
@@ -2578,6 +2943,145 @@ test('beauty mainline reco rows derive stable brand and shopper fields when sour
     assert.match(String(rows[0].why_this_one || ''), /lightweight|shine/i);
     assert.deepEqual(rows[0].key_features, ['Niacinamide 10%', 'Zinc 1%', 'Oil-control support', 'Lightweight serum']);
     assert.equal(rows[0].short_description, rows[0].why_this_one);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('beauty mainline reco rows do not promote standalone ingredients into why copy', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const rows = __internal.buildRecoRowsFromMainlineProducts(
+      [
+        {
+          product_id: 'fab_dark_spot_sparse',
+          merchant_id: 'merch_efbc46b4619cfbdf',
+          brand: 'First Aid Beauty',
+          display_name: 'Dark Spot Serum with Niacinamide',
+          category: 'Serum',
+          product_type: 'Serum',
+          matched_role_id: 'tone_mark_treatment',
+          matched_role_label: 'Tone and post-breakout mark treatment',
+          key_ingredients: ['Glycerin', 'Niacinamide', 'Panthenol (B5)'],
+        },
+      ],
+      {
+        targetContext: {
+          resolved_target_step: 'treatment',
+          primary_role_id: 'tone_mark_treatment',
+          framework_roles: [
+            {
+              role_id: 'tone_mark_treatment',
+              label: 'Tone and post-breakout mark treatment',
+              rank: 11,
+              preferred_step: 'treatment',
+              why_this_role: 'Target post-breakout marks, uneven tone, and dark spots.',
+            },
+          ],
+        },
+        language: 'EN',
+      },
+    );
+
+    assert.equal(rows.length, 1);
+    assert.notEqual(rows[0].why_this_one, 'Glycerin');
+    assert.doesNotMatch(String(rows[0].why_this_one || ''), /^Glycerin$/i);
+    assert.match(String(rows[0].why_this_one || ''), /post-breakout|tone|dark spot|Niacinamide/i);
+    assert.match(String(rows[0].short_description || ''), /post-breakout|tone|dark spot|Niacinamide/i);
+    assert.ok(rows[0].key_features.includes('Glycerin'));
+
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: rows,
+        roles: [
+          {
+            role_id: 'tone_mark_treatment',
+            label: 'Tone and post-breakout mark treatment',
+            preferred_step: 'treatment',
+            why_this_role: 'Target post-breakout marks, uneven tone, and dark spots.',
+          },
+        ],
+        recommendation_meta: {
+          selected_target_ids: ['tone_mark_treatment'],
+          ranked_targets: [{ target_id: 'tone_mark_treatment' }],
+          primary_target_id: 'tone_mark_treatment',
+        },
+      },
+      {
+        primary_target_id: 'tone_mark_treatment',
+        selected_target_ids: ['tone_mark_treatment'],
+        ranked_targets: [{ target_id: 'tone_mark_treatment' }],
+        resolved_target_step: 'treatment',
+      },
+    );
+    const prompt = __internal.buildRecoAssistantRewritePrompt({
+      payload,
+      language: 'EN',
+      profile: {},
+      userRequestText: 'I have post-breakout marks. What should I buy?',
+    });
+    const context = JSON.parse(prompt.match(/Context: (\{[\s\S]*\})$/)[1]);
+    const [detail] = context.selected_product_details;
+    assert.ok(detail.evidence_points.some((item) => /post-breakout|tone|dark spot|Niacinamide/i.test(item)));
+    assert.equal(detail.evidence_points.includes('Glycerin'), false);
+    assert.equal(detail.evidence_points.includes('Lightweight serum'), false);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('beauty mainline reco rows filter off-role active features for hydrating support cards', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const rows = __internal.buildRecoRowsFromMainlineProducts(
+      [
+        {
+          product_id: 'naturium_hydra_ha_1',
+          merchant_id: 'external_seed',
+          brand: 'Naturium',
+          display_name: 'Quadruple Hyaluronic Acid Serum 5% - Jumbo',
+          category: 'Serum',
+          product_type: 'Serum',
+          matched_role_id: 'hydrating_serum_or_essence',
+          matched_role_label: 'Hydrating serum or essence',
+          matched_role_rank: 42,
+          retrieval_source: 'external_seed',
+          key_ingredients: ['Hyaluronic acid', 'Niacinamide', 'Salicylic acid', 'Azelaic acid', 'Alpha Arbutin'],
+          short_description: 'A hydrating serum with hyaluronic acid and glycerin for dehydrated skin.',
+        },
+      ],
+      {
+        targetContext: {
+          resolved_target_step: 'serum',
+          primary_role_id: 'hydrating_barrier_moisturizer',
+          framework_roles: [
+            {
+              role_id: 'hydrating_barrier_moisturizer',
+              label: 'Hydrating barrier moisturizer',
+              rank: 40,
+              preferred_step: 'moisturizer',
+            },
+            {
+              role_id: 'hydrating_serum_or_essence',
+              label: 'Hydrating serum or essence',
+              rank: 42,
+              preferred_step: 'serum',
+              why_this_role: 'Use a hydration layer when skin feels dehydrated, dull, tight, or water-deficient.',
+            },
+          ],
+        },
+        language: 'EN',
+      },
+    );
+
+    assert.equal(rows.length, 1);
+    assert.ok(rows[0].key_features.includes('Hyaluronic acid'));
+    assert.ok(rows[0].key_features.includes('Niacinamide'));
+    assert.ok(rows[0].key_features.includes('Quadruple Hyaluronic Acid Serum 5%'));
+    assert.equal(rows[0].key_features.includes('Salicylic acid'), false);
+    assert.equal(rows[0].key_features.includes('Azelaic acid'), false);
+    assert.equal(rows[0].key_features.includes('Alpha Arbutin'), false);
+    assert.equal(rows[0].key_features.includes('Quadruple Hyaluronic Acid Serum 5% - Jumbo'), false);
   } finally {
     delete require.cache[moduleId];
   }

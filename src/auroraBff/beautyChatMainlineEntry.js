@@ -113,14 +113,14 @@ function resolveBeautyChatPlannerDeadlineAtMs({
     ? Math.trunc(Number(handoffDeadlineAtMs))
     : normalizedNowMs;
   const normalizedRetrievalReserveMs = clampBeautyMainlineStageBudgetMs(retrievalReserveMs, {
-    minMs: 1200,
-    maxMs: 8000,
-    fallbackMs: 5000,
+    minMs: 2500,
+    maxMs: 3500,
+    fallbackMs: 3000,
   });
-  const budgetCapMs = clampBeautyMainlineStageBudgetMs(Math.trunc(Number(budgetMs || 0) * 0.35), {
-    minMs: 1800,
-    maxMs: 4600,
-    fallbackMs: 3600,
+  const budgetCapMs = clampBeautyMainlineStageBudgetMs(Math.trunc(Number(budgetMs || 0) * 0.4), {
+    minMs: 3500,
+    maxMs: 6500,
+    fallbackMs: 5000,
   });
   const latestDeadlineBeforeRetrieval = normalizedHandoffDeadlineAtMs - normalizedRetrievalReserveMs;
   return Math.min(
@@ -298,7 +298,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
   const {
     RECO_CATALOG_GROUNDED_ENABLED = false,
     RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS = 0,
-    AURORA_BFF_CHAT_RECO_BUDGET_MS = 13000,
+    AURORA_BFF_CHAT_RECO_BUDGET_MS = 18000,
     AURORA_RECO_ASSISTANT_REWRITE_TIMEOUT_MS = 4500,
     BEAUTY_DISCOVERY_MAINLINE_OWNER = 'shopping_agent_beauty_mainline',
     resolveRecommendationTargetContext,

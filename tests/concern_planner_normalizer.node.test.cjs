@@ -82,6 +82,97 @@ test('concern planner normalizer trusts JSON output selecting ontology roles out
   assert.deepEqual(normalized.evidence_needed, ['finish', 'layering compatibility', 'price']);
 });
 
+test('concern planner normalizer repairs routine_mix sensitivity plans that omit barrier support', () => {
+  const fallbackPlan = buildConcernSemanticPlanFallback({
+    text: 'My skin is sensitive and red. What product should I buy?',
+    profileSummary: { skinType: 'sensitive', goals: ['redness'], barrierStatus: 'reactive' },
+  });
+  const normalized = normalizeConcernSemanticPlanFromText(
+    JSON.stringify({
+      primary_concern: 'sensitive redness support',
+      primary_role_id: 'soothing_treatment',
+      support_role_ids: ['daily_sunscreen'],
+      routine_mode: 'routine_mix',
+      query_intents: [
+        {
+          role_id: 'soothing_treatment',
+          intent: 'soothing serum sensitive skin',
+          query_terms: ['soothing serum sensitive skin'],
+        },
+        {
+          role_id: 'daily_sunscreen',
+          intent: 'daily sunscreen sensitive skin',
+          query_terms: ['daily sunscreen sensitive skin'],
+        },
+      ],
+      comparison_mode: 'routine_mix',
+      evidence_needed: ['redness calming', 'barrier comfort', 'daily protection'],
+    }),
+    {
+      fallbackPlan,
+      requestText: 'My skin is sensitive and red. What product should I buy?',
+    },
+  );
+
+  assert.equal(normalized.selection_owner_source, 'llm_concern_planner');
+  assert.equal(normalized.selection_owner_state, 'trusted');
+  assert.deepEqual(
+    normalized.core_roles.map((role) => role.role_id),
+    ['barrier_moisturizer', 'soothing_treatment', 'daily_sunscreen'],
+  );
+  assert.ok(
+    normalized.selection_constraints.plan_invariants_applied.includes('routine_mix_added_barrier_moisturizer'),
+  );
+});
+
+test('concern planner normalizer replaces redundant acne/oil treatment support with sunscreen coverage', () => {
+  const fallbackPlan = buildConcernSemanticPlanFallback({
+    text: 'I need a budget product for acne and clogged pores. What should I buy?',
+    profileSummary: { skinType: 'oily', goals: ['acne-control'] },
+  });
+  const normalized = normalizeConcernSemanticPlanFromText(
+    JSON.stringify({
+      primary_concern: 'acne and clogged pore support',
+      primary_role_id: 'acne_clogged_pore_treatment',
+      support_role_ids: ['oil_control_treatment', 'lightweight_moisturizer'],
+      routine_mode: 'routine_mix',
+      query_intents: [
+        {
+          role_id: 'acne_clogged_pore_treatment',
+          intent: 'salicylic acid serum clogged pores',
+          query_terms: ['salicylic acid serum clogged pores'],
+        },
+        {
+          role_id: 'oil_control_treatment',
+          intent: 'niacinamide serum oily skin',
+          query_terms: ['niacinamide serum oily skin'],
+        },
+        {
+          role_id: 'lightweight_moisturizer',
+          intent: 'lightweight moisturizer oily skin',
+          query_terms: ['lightweight moisturizer oily skin'],
+        },
+      ],
+      comparison_mode: 'routine_mix',
+      evidence_needed: ['blemish support', 'oil control', 'light hydration'],
+    }),
+    {
+      fallbackPlan,
+      requestText: 'I need a budget product for acne and clogged pores. What should I buy?',
+    },
+  );
+
+  assert.equal(normalized.selection_owner_source, 'llm_concern_planner');
+  assert.equal(normalized.selection_owner_state, 'trusted');
+  assert.deepEqual(
+    normalized.core_roles.map((role) => role.role_id),
+    ['acne_clogged_pore_treatment', 'lightweight_moisturizer', 'daily_sunscreen'],
+  );
+  assert.ok(
+    normalized.selection_constraints.plan_invariants_applied.includes('routine_mix_removed_redundant_treatment_for_sunscreen_coverage'),
+  );
+});
+
 test('concern planner normalizer trusts keyed plain-text output and produces a semantic plan', () => {
   const fallbackPlan = buildConcernSemanticPlanFallback({
     text: 'my oily skin also feels dehydrated, what product should i use?',

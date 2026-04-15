@@ -3749,6 +3749,54 @@ test('__internal: framework recall planner prefers oil-control ingredient-led se
   ]);
 });
 
+test('__internal: framework recall planner emits hydrating serum support queries instead of falling back to primary contract queries', () => {
+  const { __internal } = loadRoutesFresh();
+  const plan = __internal.buildRecoRecallPlan({
+    mode: 'framework_generic',
+    targetContext: {
+      primary_role_id: 'hydrating_barrier_moisturizer',
+      framework_summary: {
+        concern_text: 'my skin feels dry and tight after washing, what should i use first?',
+      },
+      semantic_plan: { routine_mode: 'routine_mix', comparison_mode: 'routine_mix' },
+      framework_roles: [
+        {
+          role_id: 'hydrating_barrier_moisturizer',
+          rank: 1,
+          preferred_step: 'moisturizer',
+          query_terms: ['hydrating moisturizer dry skin', 'barrier repair moisturizer', 'ceramide cream sensitive skin'],
+          fit_keywords: ['hydrating', 'barrier repair', 'ceramide', 'dry skin'],
+        },
+        {
+          role_id: 'hydrating_serum_or_essence',
+          rank: 2,
+          preferred_step: 'serum',
+          query_terms: ['hydrating serum dehydrated skin', 'hyaluronic acid serum', 'hydrating essence dull skin'],
+          fit_keywords: ['hydrating', 'dehydrated', 'hyaluronic acid', 'essence', 'plumping'],
+        },
+        {
+          role_id: 'daily_sunscreen',
+          rank: 3,
+          preferred_step: 'sunscreen',
+          query_terms: ['daily sunscreen skincare', 'broad spectrum sunscreen'],
+          fit_keywords: ['spf', 'uv filters', 'broad spectrum', 'lightweight'],
+        },
+      ],
+    },
+  });
+
+  const hydratingSerumStages = plan.stages.filter((stage) => stage?.role_id === 'hydrating_serum_or_essence');
+  assert.equal(hydratingSerumStages.length, 2);
+  assert.deepEqual(hydratingSerumStages.map((stage) => stage.source_scope), ['internal', 'external_seed']);
+  const hydratingSerumQueries = hydratingSerumStages.flatMap((stage) => stage.entries.map((entry) => entry.query));
+  assert.ok(hydratingSerumQueries.includes('hyaluronic acid serum'));
+  assert.ok(hydratingSerumQueries.includes('hydrating serum dehydrated skin'));
+  assert.ok(
+    hydratingSerumQueries.every((query) => /serum|essence|hyaluronic|hydrat/i.test(query)),
+    `unexpected hydrating serum support query set: ${hydratingSerumQueries.join(', ')}`,
+  );
+});
+
 test('__internal: beauty chat handoff uses effective framework target context for broad concern payload metadata', async () => {
   const observed = {
     payloadTargetContext: null,
@@ -5478,8 +5526,8 @@ test('__internal: framework pool prioritizes routine support before same-role so
   );
   assert.equal(state.routine_support_fill_applied, true);
   assert.equal(state.routine_support_fill_count, 1);
-  assert.equal(state.comparison_fill_applied, true);
-  assert.equal(state.comparison_fill_count, 1);
+  assert.equal(state.comparison_fill_applied, false);
+  assert.equal(state.comparison_fill_count, 0);
 });
 
 test('__internal: framework pool prioritizes a complete core routine over same-role soft comparison when both support roles fit the card budget', async () => {
@@ -5603,7 +5651,7 @@ test('__internal: framework pool prioritizes a complete core routine over same-r
   assert.equal(state.comparison_fill_count, 0);
 });
 
-test('__internal: framework pool backfills same-role soft matches for comparison once a strong primary winner exists', async () => {
+test('__internal: framework pool surfaces same-role comparison rows without fallback-fill labeling when explicitly requested', async () => {
   const { __internal } = loadRoutesFresh();
   const state = __internal.finalizeConcernFrameworkCandidatePools(
     [
@@ -5657,6 +5705,11 @@ test('__internal: framework pool backfills same-role soft matches for comparison
       targetContext: {
         framework_id: 'recofw_test_oily_soft_compare_fill',
         primary_role_id: 'oil_control_treatment',
+        comparison_mode: 'same_role_comparison',
+        semantic_plan: {
+          routine_mode: 'same_role_comparison',
+          comparison_mode: 'same_role_comparison',
+        },
         framework_roles: [
           {
             role_id: 'oil_control_treatment',
@@ -5686,14 +5739,122 @@ test('__internal: framework pool backfills same-role soft matches for comparison
     state.selected_recommendations.map((item) => item?.product_id),
     ['strong_anchor', 'soft_compare_external_2', 'soft_compare_external_1'],
   );
-  assert.equal(state.comparison_fill_applied, true);
-  assert.equal(state.comparison_fill_count, 2);
+  assert.equal(state.comparison_fill_applied, false);
+  assert.equal(state.comparison_fill_count, 0);
   assert.equal(state.selected_source_counts?.catalog, 1);
   assert.equal(state.selected_source_counts?.external_seed, 2);
   assert.equal(
     state.selected_recommendations.filter((item) => item?.comparison_fill === true).length,
-    2,
+    0,
   );
+});
+
+test('__internal: strict single-product budget plans do not backfill same-role soft comparison rows', async () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'budget_primary_under_20',
+        merchant_id: 'merchant_budget_primary_under_20',
+        brand: 'Budget',
+        name: 'Niacinamide Serum',
+        display_name: 'Budget Niacinamide Serum',
+        category: 'serum',
+        product_type: 'serum',
+        retrieval_source: 'catalog',
+        retrieval_query: 'salicylic acid serum clogged pores',
+        retrieval_step: 'treatment',
+        retrieval_role_id: 'acne_clogged_pore_treatment',
+        benefit_tags: ['niacinamide', 'oil control', 'pores'],
+        short_description: 'A budget niacinamide serum for visible oil and pore support.',
+        price: { amount: 12, currency: 'USD', unknown: false },
+      },
+      {
+        product_id: 'primary_exact_20_should_drop',
+        merchant_id: 'merchant_primary_exact_20_should_drop',
+        brand: 'Exact',
+        name: 'Salicylic Acid Serum 2%',
+        display_name: 'Exact Salicylic Acid Serum 2%',
+        category: 'serum',
+        product_type: 'serum',
+        retrieval_source: 'external_seed',
+        retrieval_query: 'salicylic acid serum clogged pores',
+        retrieval_step: 'treatment',
+        retrieval_role_id: 'acne_clogged_pore_treatment',
+        benefit_tags: ['salicylic acid', 'acne'],
+        short_description: 'A clarifying acne serum priced at the ceiling.',
+        price: { amount: 20, currency: 'USD', unknown: false },
+      },
+      {
+        product_id: 'primary_over_budget_should_drop',
+        merchant_id: 'merchant_primary_over_budget_should_drop',
+        brand: 'Premium',
+        name: 'Acne Treatment Serum',
+        display_name: 'Premium Acne Treatment Serum',
+        category: 'serum',
+        product_type: 'serum',
+        retrieval_source: 'external_seed',
+        retrieval_query: 'salicylic acid serum clogged pores',
+        retrieval_step: 'treatment',
+        retrieval_role_id: 'acne_clogged_pore_treatment',
+        benefit_tags: ['salicylic acid', 'acne'],
+        short_description: 'A higher-priced acne serum.',
+        price: { amount: 45, currency: 'USD', unknown: false },
+      },
+      {
+        product_id: 'soft_compare_over_budget',
+        merchant_id: 'merchant_soft_compare_over_budget',
+        brand: 'Mid',
+        name: 'Barrier Treatment',
+        display_name: 'Mid Barrier Treatment',
+        category: 'treatment',
+        product_type: 'treatment',
+        retrieval_source: 'catalog',
+        retrieval_query: 'salicylic acid serum clogged pores',
+        retrieval_step: 'treatment',
+        retrieval_role_id: 'acne_clogged_pore_treatment',
+        short_description: 'A broader barrier serum that is not the requested budget first buy.',
+        price: { amount: 28, currency: 'USD', unknown: false },
+      },
+    ],
+    {
+      targetContext: {
+        framework_id: 'recofw_test_budget_single_product_no_soft_fill',
+        primary_role_id: 'acne_clogged_pore_treatment',
+        mainline_fallback_policy: 'strict_no_runtime_fallback',
+        semantic_planner_required: true,
+        request_text: 'I have acne-prone oily skin and want one product under $20 to buy first. What should I get?',
+        explicit_single_product_request: true,
+        budget_ceiling: { amount: 20, currency: 'USD', source: 'request_text', exclusive_upper_bound: true },
+        semantic_plan: {
+          routine_mode: 'single_product',
+          comparison_mode: 'single_product',
+          must_satisfy_constraints: ['one product under $20'],
+        },
+        framework_roles: [
+          {
+            role_id: 'acne_clogged_pore_treatment',
+            rank: 1,
+            preferred_step: 'treatment',
+            alternate_steps: ['serum'],
+            label: 'Acne and clogged-pore treatment',
+            query_terms: ['salicylic acid serum clogged pores', 'niacinamide serum acne prone oily skin'],
+            fit_keywords: ['acne', 'clogged', 'pores', 'niacinamide', 'oil control', 'blemish'],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.equal(state.selected_candidate_count, 1);
+  assert.deepEqual(
+    state.selected_recommendations.map((item) => item?.product_id),
+    ['budget_primary_under_20'],
+  );
+  assert.equal(state.comparison_fill_allowed, false);
+  assert.equal(state.comparison_fill_applied, false);
+  assert.equal(state.comparison_fill_count, 0);
 });
 
 test('__internal: beauty mainline handoff payload preserves viable support role candidates in ranked targets even when they are not selected', async () => {
@@ -6417,6 +6578,34 @@ test('__internal: step-aware reco does not let retrieval trace turn a serum into
   assert.equal(out.candidate_step_source, 'structured_category');
 });
 
+test('__internal: framework step inference trusts nested authority product type over role-shaped top-level labels', () => {
+  const recoShared = require('../src/auroraBff/recommendationSharedStack');
+  const out = recoShared.normalizeCandidateStep(
+    {
+      product_id: 'ext_soothing_serum_1',
+      name: 'Soothing Serum',
+      category: 'moisturizer',
+      product_type: 'moisturizer',
+      retrieval_role_id: 'soothing_treatment',
+      retrieval_query: 'soothing treatment',
+      sku: {
+        category: 'Serum',
+        product_type: 'Serum',
+        name: 'Soothing Serum',
+      },
+      short_description: 'A gentle serum to soothe redness and support a reactive barrier. Pro tip: follow with a moisturizing cream.',
+    },
+    {
+      targetContext: {
+        mainline_mode: 'framework',
+      },
+    },
+  );
+
+  assert.equal(out.candidate_step, 'serum');
+  assert.equal(out.candidate_step_source, 'structured_category');
+});
+
 test('__internal: step-aware broadening stops once any viable pool exists instead of waiting for late quality flags', () => {
   const recoShared = require('../src/auroraBff/recommendationSharedStack');
   const out = recoShared.shouldStopStepAwareBroadening(
@@ -6554,6 +6743,419 @@ test('__internal: framework pool infers step from external seed alias and descri
   assert.equal(state.external_seed_used_count, 1);
 });
 
+test('__internal: framework pool keeps soothing serum as treatment role instead of collapsing it into moisturizer support', () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'ext_soothing_serum_1',
+        merchant_id: 'external_seed',
+        brand: 'Haruharu Wonder',
+        name: 'Soothing Serum',
+        display_name: 'Soothing Serum',
+        category: 'moisturizer',
+        product_type: 'moisturizer',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'soothing_treatment',
+        retrieval_query: 'soothing treatment',
+        sku: {
+          category: 'Serum',
+          product_type: 'Serum',
+          name: 'Soothing Serum',
+          ingredient_tokens: ['panthenol', 'azelaic acid', 'squalane'],
+        },
+        search_aliases: ['Soothing Serum'],
+        short_description: 'A gentle serum to soothe redness, calm irritation, hydrate, and renew the skin barrier.',
+        description: 'A sensitive-skin friendly serum with Panthenol and Azelaic Acid for redness and calming support.',
+      },
+      {
+        product_id: 'barrier_moisturizer_1',
+        merchant_id: 'merchant_internal',
+        brand: 'KraveBeauty',
+        name: 'Great Barrier Relief',
+        display_name: 'KraveBeauty Great Barrier Relief',
+        category: 'Moisturizer',
+        product_type: 'Moisturizer',
+        retrieval_source: 'internal',
+        retrieval_role_id: 'barrier_moisturizer',
+        retrieval_query: 'barrier repair moisturizer',
+        short_description: 'A barrier repair moisturizer with ceramides, tamanu oil, and niacinamide for sensitized skin.',
+      },
+      {
+        product_id: 'daily_sunscreen_1',
+        merchant_id: 'external_seed',
+        brand: 'The Ordinary',
+        name: 'UV Filters SPF 45 Serum',
+        display_name: 'UV Filters SPF 45 Serum',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen',
+        retrieval_query: 'daily sunscreen',
+        short_description: 'A lightweight SPF 45 sunscreen serum for daily UV protection.',
+      },
+    ],
+    {
+      targetContext: {
+        framework_id: 'recofw_test_soothing_primary',
+        primary_role_id: 'soothing_treatment',
+        routine_mode: 'routine_mix',
+        semantic_plan: { routine_mode: 'routine_mix', comparison_mode: 'routine_mix' },
+        framework_roles: [
+          {
+            role_id: 'soothing_treatment',
+            rank: 1,
+            preferred_step: 'treatment',
+            alternate_steps: ['serum'],
+            label: 'Soothing treatment',
+            query_terms: ['soothing serum sensitive skin', 'cica serum redness', 'panthenol treatment'],
+            fit_keywords: ['soothing', 'redness', 'calming', 'irritation'],
+            ingredient_hypotheses: ['Panthenol', 'Madecassoside'],
+          },
+          {
+            role_id: 'barrier_moisturizer',
+            rank: 2,
+            preferred_step: 'moisturizer',
+            label: 'Barrier-support moisturizer',
+            query_terms: ['barrier repair moisturizer', 'ceramide cream sensitive skin', 'soothing moisturizer'],
+            fit_keywords: ['barrier repair', 'ceramide', 'soothing', 'sensitive skin'],
+            ingredient_hypotheses: ['Ceramide NP', 'Panthenol', 'Glycerin'],
+          },
+          {
+            role_id: 'daily_sunscreen',
+            rank: 3,
+            preferred_step: 'sunscreen',
+            label: 'Daily sunscreen',
+            query_terms: ['daily sunscreen skincare', 'broad spectrum sunscreen'],
+            fit_keywords: ['spf', 'uv filters', 'broad spectrum', 'lightweight'],
+            ingredient_hypotheses: ['UV filters'],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.equal(state.selected_candidate_count, 3);
+  assert.deepEqual(
+    state.selected_recommendations.map((row) => row.matched_role_id),
+    ['soothing_treatment', 'barrier_moisturizer', 'daily_sunscreen'],
+  );
+  assert.equal(state.selected_recommendations[0]?.candidate_step, 'serum');
+});
+
+test('__internal: framework pool preserves same product across planned retrieval roles before role-fit', () => {
+  const { __internal } = loadRoutesFresh();
+  const targetContext = {
+    framework_id: 'recofw_test_sensitive_barrier_duplicate_context',
+    primary_role_id: 'soothing_treatment',
+    routine_mode: 'routine_mix',
+    semantic_plan: { routine_mode: 'routine_mix', comparison_mode: 'routine_mix' },
+    mainline_fallback_policy: 'strict_no_runtime_fallback',
+    semantic_planner_required: true,
+    framework_roles: [
+      {
+        role_id: 'soothing_treatment',
+        rank: 70,
+        preferred_step: 'treatment',
+        alternate_steps: ['serum'],
+        label: 'Soothing treatment',
+        query_terms: ['soothing serum sensitive skin', 'cica serum redness', 'panthenol treatment'],
+        fit_keywords: ['soothing', 'cica', 'panthenol', 'redness', 'calming'],
+        ingredient_hypotheses: ['Panthenol', 'Madecassoside'],
+      },
+      {
+        role_id: 'barrier_moisturizer',
+        rank: 41,
+        preferred_step: 'moisturizer',
+        label: 'Barrier-support moisturizer',
+        query_terms: ['barrier repair moisturizer', 'ceramide cream sensitive skin', 'soothing moisturizer'],
+        fit_keywords: ['barrier repair', 'ceramide', 'soothing', 'sensitive skin', 'fragrance free'],
+        ingredient_hypotheses: ['Ceramide NP', 'Panthenol', 'Glycerin'],
+      },
+      {
+        role_id: 'daily_sunscreen',
+        rank: 30,
+        preferred_step: 'sunscreen',
+        label: 'Daily sunscreen',
+        query_terms: ['daily sunscreen skincare', 'broad spectrum sunscreen'],
+        fit_keywords: ['spf', 'uv filters', 'broad spectrum', 'lightweight'],
+        ingredient_hypotheses: ['UV filters'],
+      },
+    ],
+  };
+  const kraveBase = {
+    product_id: '10008793153864',
+    merchant_id: 'merch_efbc46b4619cfbdf',
+    brand: 'KraveBeauty',
+    name: 'KraveBeauty Great Barrier Relief',
+    display_name: 'KraveBeauty Great Barrier Relief',
+    description: 'A barrier-repair serum for over-sensitized or irritated skin, built around tamanu oil, niacinamide, and ceramides to calm the look of redness.',
+    retrieval_source: 'catalog',
+  };
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'ext_soothing_serum_1',
+        merchant_id: 'external_seed',
+        brand: 'Haruharu Wonder',
+        name: 'Soothing Serum',
+        display_name: 'Soothing Serum',
+        category: 'Serum',
+        product_type: 'Serum',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'soothing_treatment',
+        retrieval_step: 'treatment',
+        retrieval_query: 'soothing treatment',
+        short_description: 'A gentle serum to soothe redness with panthenol and cica.',
+      },
+      {
+        ...kraveBase,
+        retrieval_role_id: 'soothing_treatment',
+        retrieval_step: 'treatment',
+        retrieval_query: 'soothing serum sensitive skin',
+      },
+      {
+        ...kraveBase,
+        retrieval_role_id: 'barrier_moisturizer',
+        retrieval_step: 'moisturizer',
+        retrieval_query: 'barrier repair moisturizer',
+      },
+      {
+        product_id: 'daily_sunscreen_1',
+        merchant_id: 'external_seed',
+        brand: 'The Ordinary',
+        name: 'UV Filters SPF 45 Serum',
+        display_name: 'UV Filters SPF 45 Serum',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen',
+        retrieval_step: 'sunscreen',
+        retrieval_query: 'daily sunscreen',
+        short_description: 'A lightweight SPF 45 sunscreen serum for daily UV protection.',
+      },
+    ],
+    { targetContext },
+  );
+
+  assert.equal(state.selected_candidate_count, 3);
+  assert.deepEqual(
+    state.selected_recommendations.map((row) => row.matched_role_id),
+    ['soothing_treatment', 'barrier_moisturizer', 'daily_sunscreen'],
+  );
+  assert.equal(
+    state.selected_recommendations.find((row) => row.product_id === '10008793153864')?.candidate_step,
+    'moisturizer',
+  );
+  assert.equal(state.role_pool_stats.barrier_moisturizer.viable_count, 1);
+});
+
+test('__internal: framework pool preserves planner support-role order instead of canonical rank order', () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'barrier_moisturizer_order_1',
+        merchant_id: 'merchant_internal',
+        brand: 'KraveBeauty',
+        name: 'Great Barrier Relief',
+        display_name: 'KraveBeauty Great Barrier Relief',
+        category: 'Moisturizer',
+        product_type: 'Moisturizer',
+        retrieval_source: 'catalog',
+        retrieval_role_id: 'hydrating_barrier_moisturizer',
+        retrieval_query: 'barrier repair moisturizer',
+        short_description: 'A barrier repair moisturizer with ceramides for dry, tight skin.',
+      },
+      {
+        product_id: 'hydrating_serum_order_1',
+        merchant_id: 'external_seed',
+        brand: 'Naturium',
+        name: 'Quadruple Hyaluronic Acid Serum 5%',
+        display_name: 'Naturium Quadruple Hyaluronic Acid Serum 5%',
+        category: 'Serum',
+        product_type: 'Serum',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'hydrating_serum_or_essence',
+        retrieval_query: 'hyaluronic acid serum',
+        search_aliases: ['hyaluronic acid serum'],
+        short_description: 'A hydrating serum with hyaluronic acid for dehydrated skin.',
+      },
+      {
+        product_id: 'daily_sunscreen_order_1',
+        merchant_id: 'external_seed',
+        brand: 'The Ordinary',
+        name: 'UV Filters SPF 45 Serum',
+        display_name: 'UV Filters SPF 45 Serum',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen',
+        retrieval_query: 'daily sunscreen',
+        short_description: 'A lightweight SPF 45 sunscreen serum for daily UV protection.',
+      },
+    ],
+    {
+      targetContext: {
+        framework_id: 'recofw_test_planner_support_order',
+        primary_role_id: 'hydrating_barrier_moisturizer',
+        routine_mode: 'routine_mix',
+        semantic_plan: { routine_mode: 'routine_mix', comparison_mode: 'routine_mix' },
+        framework_roles: [
+          {
+            role_id: 'hydrating_barrier_moisturizer',
+            rank: 40,
+            preferred_step: 'moisturizer',
+            label: 'Hydrating barrier moisturizer',
+            query_terms: ['barrier repair moisturizer'],
+            fit_keywords: ['hydrating', 'barrier repair', 'ceramide', 'dry skin'],
+            product_type_hypotheses: ['moisturizer'],
+          },
+          {
+            role_id: 'hydrating_serum_or_essence',
+            rank: 42,
+            preferred_step: 'serum',
+            label: 'Hydrating serum or essence',
+            query_terms: ['hyaluronic acid serum', 'hydrating serum dehydrated skin'],
+            fit_keywords: ['hydrating', 'dehydrated', 'hyaluronic acid'],
+            product_type_hypotheses: ['serum', 'treatment'],
+          },
+          {
+            role_id: 'daily_sunscreen',
+            rank: 30,
+            preferred_step: 'sunscreen',
+            label: 'Daily sunscreen',
+            query_terms: ['daily sunscreen skincare', 'broad spectrum sunscreen'],
+            fit_keywords: ['spf', 'uv filters', 'broad spectrum', 'lightweight'],
+            product_type_hypotheses: ['sunscreen'],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.deepEqual(
+    state.selected_recommendations.map((row) => row.matched_role_id),
+    ['hydrating_barrier_moisturizer', 'hydrating_serum_or_essence', 'daily_sunscreen'],
+  );
+});
+
+test('__internal: framework pool rejects generic niacinamide serum as hydrating-serum support', () => {
+  const { __internal } = loadRoutesFresh();
+  const targetContext = {
+    framework_id: 'recofw_test_hydrating_serum_role_fit',
+    primary_role_id: 'hydrating_barrier_moisturizer',
+    routine_mode: 'routine_mix',
+    semantic_plan: { routine_mode: 'routine_mix', comparison_mode: 'routine_mix' },
+    framework_roles: [
+      {
+        role_id: 'hydrating_barrier_moisturizer',
+        rank: 40,
+        preferred_step: 'moisturizer',
+        label: 'Hydrating barrier moisturizer',
+        query_terms: ['barrier repair moisturizer'],
+        fit_keywords: ['hydrating', 'barrier repair', 'ceramide', 'dry skin'],
+        ingredient_hypotheses: ['Ceramide NP', 'Panthenol', 'Glycerin'],
+        product_type_hypotheses: ['moisturizer'],
+      },
+      {
+        role_id: 'hydrating_serum_or_essence',
+        rank: 42,
+        preferred_step: 'serum',
+        label: 'Hydrating serum or essence',
+        query_terms: ['hyaluronic acid serum', 'hydrating serum dehydrated skin'],
+        fit_keywords: ['hydrating', 'dehydrated', 'hyaluronic acid'],
+        ingredient_hypotheses: ['Hyaluronic acid', 'Glycerin', 'Panthenol'],
+        product_type_hypotheses: ['serum', 'essence'],
+      },
+      {
+        role_id: 'daily_sunscreen',
+        rank: 30,
+        preferred_step: 'sunscreen',
+        label: 'Daily sunscreen',
+        query_terms: ['daily sunscreen skincare', 'broad spectrum sunscreen'],
+        fit_keywords: ['spf', 'uv filters', 'broad spectrum', 'lightweight'],
+        ingredient_hypotheses: ['UV filters'],
+        product_type_hypotheses: ['sunscreen'],
+      },
+    ],
+  };
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'barrier_moisturizer_fit_1',
+        merchant_id: 'merchant_internal',
+        brand: 'KraveBeauty',
+        name: 'Great Barrier Relief',
+        display_name: 'KraveBeauty Great Barrier Relief',
+        category: 'Moisturizer',
+        product_type: 'Moisturizer',
+        retrieval_source: 'catalog',
+        retrieval_role_id: 'hydrating_barrier_moisturizer',
+        retrieval_query: 'barrier repair moisturizer',
+        short_description: 'A hydrating barrier repair moisturizer with ceramides for dry, tight skin.',
+      },
+      {
+        product_id: 'generic_niacinamide_serum_fit_1',
+        merchant_id: 'merchant_internal',
+        brand: 'The Ordinary',
+        name: 'Niacinamide 10% + Zinc 1%',
+        display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+        category: 'Serum',
+        product_type: 'Serum',
+        retrieval_source: 'catalog',
+        retrieval_role_id: 'hydrating_serum_or_essence',
+        retrieval_query: 'hydrating serum dehydrated skin',
+        short_description: 'A niacinamide and zinc serum for oil balance and shine control.',
+      },
+      {
+        product_id: 'true_hydrating_serum_fit_1',
+        merchant_id: 'external_seed',
+        brand: 'Naturium',
+        name: 'Quadruple Hyaluronic Acid Serum 5%',
+        display_name: 'Naturium Quadruple Hyaluronic Acid Serum 5%',
+        category: 'Serum',
+        product_type: 'Serum',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'hydrating_serum_or_essence',
+        retrieval_query: 'hyaluronic acid serum',
+        search_aliases: ['hyaluronic acid serum'],
+        short_description: 'A hydrating serum with hyaluronic acid and glycerin for dehydrated skin.',
+      },
+      {
+        product_id: 'daily_sunscreen_fit_1',
+        merchant_id: 'external_seed',
+        brand: 'The Ordinary',
+        name: 'UV Filters SPF 45 Serum',
+        display_name: 'UV Filters SPF 45 Serum',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen',
+        retrieval_query: 'daily sunscreen',
+        short_description: 'A lightweight SPF 45 sunscreen serum for daily UV protection.',
+      },
+    ],
+    { targetContext },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.deepEqual(
+    state.selected_recommendations.map((row) => row.product_id),
+    ['barrier_moisturizer_fit_1', 'true_hydrating_serum_fit_1', 'daily_sunscreen_fit_1'],
+  );
+  assert.equal(
+    state.selected_recommendations.some((row) => row.product_id === 'generic_niacinamide_serum_fit_1'),
+    false,
+  );
+  assert.equal(
+    state.soft_mismatch.some((entry) => entry?.product?.product_id === 'generic_niacinamide_serum_fit_1'),
+    true,
+  );
+});
+
 test('__internal: framework pool keeps external seed skincare candidates when skincare evidence lives only in alias and description', async () => {
   const { __internal } = loadRoutesFresh();
   const normalized = __internal.normalizeRecoCatalogProduct({
@@ -6594,6 +7196,95 @@ test('__internal: framework pool keeps external seed skincare candidates when sk
   assert.equal(state.selected_recommendations[0]?.candidate_step, 'serum');
   assert.equal(state.selected_source_counts?.external_seed, 1);
   assert.equal(state.external_seed_used_count, 1);
+});
+
+test('__internal: reco catalog normalization removes placeholder seed copy from user-visible evidence fields', async () => {
+  const { __internal } = loadRoutesFresh();
+  const normalized = __internal.normalizeRecoCatalogProduct({
+    product_id: 'ext_placeholder_copy_1',
+    merchant_id: 'external_seed',
+    brand: 'Winona',
+    display_name: 'Winona Soothing Repair Serum',
+    category: 'Serum',
+    product_type: 'Serum',
+    source: 'external_seed',
+    retrieval_source: 'external_seed',
+    retrieval_role_id: 'soothing_treatment',
+    short_description: 'Replace with your own description if needed.',
+    description: 'Test fixture for PDP. Replace with your own description if needed.',
+    why_this_one: 'Replace with your own description if needed.',
+    key_features: ['Replace with your own description if needed.', 'Soothing serum'],
+    compare_highlights: ['Replace with your own description if needed.'],
+    benefit_tags: ['soothing', 'redness'],
+    search_aliases: ['soothing serum sensitive skin'],
+  });
+
+  assert.equal(normalized?.short_description, undefined);
+  assert.equal(normalized?.description, undefined);
+  assert.equal(normalized?.why_this_one, undefined);
+  assert.deepEqual(normalized?.key_features, ['Soothing serum']);
+  assert.equal(Array.isArray(normalized?.compare_highlights), false);
+  assert.ok(
+    !(Array.isArray(normalized?.description_tokens) ? normalized.description_tokens : [])
+      .some((item) => /replace with your own description/i.test(String(item || ''))),
+  );
+});
+
+test('__internal: reco catalog normalization removes low-information seed copy from visible fields', async () => {
+  const { __internal } = loadRoutesFresh();
+  const naturium = __internal.normalizeRecoCatalogProduct({
+    product_id: 'ext_low_info_copy_1',
+    merchant_id: 'external_seed',
+    brand: 'Naturium',
+    display_name: 'Naturium Quadruple Hyaluronic Acid Serum 5%',
+    category: 'Serum',
+    product_type: 'Serum',
+    source: 'external_seed',
+    retrieval_source: 'external_seed',
+    retrieval_role_id: 'hydrating_serum_or_essence',
+    short_description: 'Double up and save with this jumbo',
+    description: 'Double up and save with this jumbo',
+    why_this_one: 'Double up and save with this jumbo',
+    search_aliases: ['hyaluronic acid serum'],
+  });
+  assert.equal(naturium?.short_description, undefined);
+  assert.equal(naturium?.description, undefined);
+  assert.equal(naturium?.why_this_one, undefined);
+
+  const haruharu = __internal.normalizeRecoCatalogProduct({
+    product_id: 'ext_scraped_header_copy_1',
+    merchant_id: 'external_seed',
+    brand: 'Haruharu Wonder',
+    display_name: 'Haruharu Wonder Soothing Serum',
+    category: 'Serum',
+    product_type: 'Serum',
+    source: 'external_seed',
+    short_description: 'Details Key Features - Multi-benefit formula: a gentle serum to soothe and hydrate sensitive skin.',
+  });
+  assert.equal(
+    haruharu?.short_description,
+    'Multi-benefit formula: a gentle serum to soothe and hydrate sensitive skin.',
+  );
+});
+
+test('__internal: reco catalog normalization canonicalizes visible beauty brand labels', async () => {
+  const { __internal } = loadRoutesFresh();
+  const ordinary = __internal.normalizeRecoCatalogProduct({
+    product_id: 'ext_brand_label_1',
+    merchant_id: 'external_seed',
+    brand: 'the ordinary',
+    display_name: 'UV Filters SPF 45 Serum',
+    category: 'Sunscreen',
+  });
+  assert.equal(ordinary?.brand, 'The Ordinary');
+
+  const krave = __internal.normalizeRecoCatalogProduct({
+    product_id: 'catalog_brand_label_2',
+    merchant_id: 'merchant_internal',
+    display_name: 'KraveBeauty Great Barrier Relief',
+    category: 'Moisturizer',
+  });
+  assert.equal(krave?.brand, 'KraveBeauty');
 });
 
 test('__internal: framework pool promotes strong semantic serum evidence into the treatment primary slot', async () => {

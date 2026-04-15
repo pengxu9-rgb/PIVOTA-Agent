@@ -70,6 +70,8 @@ function buildConcernRoleProductTypeHypotheses(role = null, preferredStep = '') 
     aliases.push('moisturizer', 'lotion', 'cream', 'gel cream', 'water gel', 'water cream', 'emulsion');
   } else if (preferredStep === 'sunscreen') {
     aliases.push('sunscreen', 'spf', 'sun fluid', 'sun cream', 'sun lotion', 'uv');
+  } else if (preferredStep === 'serum') {
+    aliases.push('serum', 'essence', 'ampoule');
   } else if (preferredStep === 'treatment') {
     aliases.push('treatment', 'serum', 'ampoule', 'essence');
   }
@@ -108,10 +110,12 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
   const strongSemanticFitMatched = fitKeywordMatches > 0 || queryTermMatches > 0;
   const exactStep = Boolean(candidateStep && preferredStep && candidateStep === preferredStep);
   const alternateStep = Boolean(candidateStep && alternateSteps.includes(candidateStep));
-  const semanticFitMatched = fitKeywordMatches > 0 || queryTermMatches > 0 || ingredientMatches > 0 || productTypeMatches > 0;
+  const roleSemanticFitMatched = fitKeywordMatches > 0 || queryTermMatches > 0 || ingredientMatches > 0;
+  const semanticFitMatched = roleSemanticFitMatched || productTypeMatches > 0;
   const supportStepRescueApplied =
     Number(role?.rank || 99) > 1
     && preferredStep !== 'treatment'
+    && preferredStep !== 'serum'
     && exactStep
     && retrievalRoleMatched
     && productTypeMatches > 0
@@ -140,7 +144,7 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
     // Promote only when the candidate text carries role-level semantics,
     // not when it matches by ingredient tokens alone.
     score += preferredStep === 'treatment'
-      ? (strongSemanticFitMatched ? 0.22 : 0.08)
+      ? (strongSemanticFitMatched ? 0.3 : 0.08)
       : 0.18;
   }
   score += Math.min(0.27, fitKeywordMatches * 0.12);
@@ -148,6 +152,14 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
   score += Math.min(0.16, ingredientMatches * 0.08);
   score += Math.min(0.12, productTypeMatches * 0.06);
   if (retrievalRoleMatched) score += semanticFitMatched ? 0.08 : 0.02;
+  if (
+    retrievalRoleMatched
+    && preferredStep === 'treatment'
+    && alternateStep
+    && strongSemanticFitMatched
+  ) {
+    score += 0.14;
+  }
   if (treatmentSerumIngredientRescueApplied) score += 0.32;
   if (treatmentSerumActiveSemanticRescueApplied && !treatmentSerumIngredientRescueApplied) score += 0.08;
   // For routine-ready support slots, keep exact-step moisturizer/sunscreen matches viable
@@ -164,6 +176,7 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
     role,
     score: Number(score.toFixed(4)),
     semantic_fit_matched: semanticFitMatched,
+    role_semantic_fit_matched: roleSemanticFitMatched,
     strong_semantic_fit_matched: strongSemanticFitMatched,
     retrieval_role_matched: retrievalRoleMatched,
     support_step_rescue_applied: supportStepRescueApplied,

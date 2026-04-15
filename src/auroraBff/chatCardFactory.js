@@ -188,13 +188,29 @@ function buildRecommendationComparisonMode({ row, defaultComparisonMode = '', pe
 
 const RECOMMENDATION_CARD_CONCERN_FAMILY_PATTERNS = Object.freeze([
   ['oil_control', /\b(oil|oily|oiliness|shine|sebum|greasy|mattif|zinc\s*pca|zinc|oil[-\s]?control)\b/i],
-  ['tone_brightening', /\b(dull(?:ness)?|uneven\s+tone|dark\s+spots?|hyperpigmentation|brighten(?:ing)?|radiance|radiant|glow(?:ing)?|improv(?:e|es|ing)\s+(?:the\s+look\s+of\s+)?skin\s+tone|even(?:s|ing)?\s+skin\s+tone)\b/i],
+  ['tone_brightening', /\b(dull(?:ness)?|uneven\s+tone|dark\s+spots?|hyperpigmentation|post[-\s]?(?:acne|breakout)\s+marks?|brighten(?:ing)?|radiance|radiant|glow(?:ing)?|improv(?:e|es|ing)\s+(?:the\s+look\s+of\s+)?skin\s+tone|even(?:s|ing)?\s+skin\s+tone)\b/i],
   ['acne_pore', /\b(acne|breakouts?|blemish(?:es)?|clog(?:ged)?|pores?)\b/i],
   ['hydration_barrier', /\b(hydrat(?:e|ing|ion)?|moistur(?:e|ize|izer|izing)?|barrier|dry(?:ness)?|dehydrat(?:ed|ion)?|ceramides?|glycerin|hyaluronic)\b/i],
   ['sunscreen_uv', /\b(spf|sunscreen|sun\s*screen|uv|sun\s+protection|white\s+cast|broad\s+spectrum)\b/i],
   ['sensitivity_redness', /\b(redness|sensitive|sensitized|sooth(?:e|ing)?|calm(?:ing)?|irritat(?:e|ion)|stinging?)\b/i],
   ['aging_texture', /\b(wrinkles?|fine[-\s]?lines?|aging|anti[-\s]?aging|texture|roughness|retinol|retinoid)\b/i],
 ]);
+const RECOMMENDATION_CARD_GENERIC_VISIBLE_INGREDIENT_RE =
+  /^(?:water|aqua|glycerin|butylene glycol|propylene glycol|caprylic(?:\/capric)?|dimethicone|silica|parfum|fragrance|phenoxyethanol|carbomer|citric acid|sodium hydroxide)$/i;
+const RECOMMENDATION_CARD_SHOPPER_EVIDENCE_LANGUAGE_RE =
+  /\b(?:best for|helps?|targets?|supports?|protects?|hydrates?|soothes?|calms?|mattif(?:y|ies|ying)|controls?|reduces?|lightweight|non-comedogenic|white cast|uv protection|daily protection|oil-control|shine|sebum|redness|barrier|dark spots?|post-breakout|hyperpigmentation|tone|spf\s*\d+|pa\+|without|for)\b/i;
+
+function looksLikeStandaloneRecommendationCardEvidenceFragment(value) {
+  const text = asString(value).replace(/[.!?。！？]+$/g, '').trim();
+  if (!text) return false;
+  if (RECOMMENDATION_CARD_GENERIC_VISIBLE_INGREDIENT_RE.test(text)) return true;
+  if (/^(?:lightweight|gentle|hydrating|soothing|calming|mattifying|oil-control|barrier|daily)?\s*(?:serum|cream|gel cream|moisturizer|moisturiser|sunscreen|spf|treatment|support)$/i.test(text)) {
+    return true;
+  }
+  if (RECOMMENDATION_CARD_SHOPPER_EVIDENCE_LANGUAGE_RE.test(text)) return false;
+  const wordCount = text.toLowerCase().split(/[^a-z0-9%+.-]+/i).filter(Boolean).length;
+  return wordCount <= 3 && text.length <= 36;
+}
 
 function collectRecommendationCardConcernFamilies(value) {
   const text = String(value || '').trim();
@@ -211,9 +227,16 @@ function scoreRecommendationCardCopyForTarget(value, { targetText = '', original
   if (!text) return Number.NEGATIVE_INFINITY;
   const targetFamilies = collectRecommendationCardConcernFamilies(targetText);
   const copyFamilies = collectRecommendationCardConcernFamilies(text);
+  const postAcneMarkToneEvidence =
+    targetFamilies.has('tone_brightening') &&
+    /\bpost[-\s]?(?:acne|breakout)\s+marks?\b/i.test(text);
   let score = 100 - (Number.isFinite(Number(originalIndex)) ? Number(originalIndex) * 0.01 : 0);
   if (!targetFamilies.size || !copyFamilies.size) return score;
   for (const family of copyFamilies) {
+    if (family === 'acne_pore' && postAcneMarkToneEvidence) {
+      score += 12;
+      continue;
+    }
     score += targetFamilies.has(family) ? 24 : -34;
   }
   if (copyFamilies.has('tone_brightening') && !targetFamilies.has('tone_brightening')) score -= 28;
@@ -221,7 +244,8 @@ function scoreRecommendationCardCopyForTarget(value, { targetText = '', original
 }
 
 function pickTargetAlignedRecommendationCardCopy(values = [], { targetText = '' } = {}) {
-  const candidates = normalizeStringList(values, 10);
+  const candidates = normalizeStringList(values, 10)
+    .filter((value) => !looksLikeStandaloneRecommendationCardEvidenceFragment(value));
   if (!candidates.length) return '';
   return candidates
     .map((value, index) => ({

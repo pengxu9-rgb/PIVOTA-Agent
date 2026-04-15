@@ -122,14 +122,19 @@ function isGenericSellerHighlightText(text) {
     /\bvisible-[a-z-]+\s+story\b/,
     /\bpositioning\b/,
     /\bframes? itself as\b/,
+    /\blisting[-\s]?grounded\b/,
+    /\bdefines? the product around the title\b/,
+    /\btitle[-\s]?driven\b/,
     /\bleans toward\b/,
     /\bdedicated treatment step\b/,
     /\bplain barrier cream\b/,
     /\bgeneral face brightening serum\b/,
+    /\bpresented through merchant product data\b/,
     /\bfocused on .* within a .* routine\b/,
     /\banchors? the product\b/,
     /\bdaytime uv step\b/,
     /\bdaytime skin-?care routines?\b/,
+    /\bproduct data\b.*\broutine\b/,
     /\broutine context\b/,
     /\bfunctioning as\b/,
     /\bacting like\b/,
@@ -140,6 +145,37 @@ function isGenericSellerHighlightText(text) {
 
 function shouldSuppressSellerHighlightText(text) {
   return isLowSignalSellerHighlightText(text) || isGenericSellerHighlightText(text);
+}
+
+function readBestForLabel(item) {
+  if (typeof item === 'string') return asString(item);
+  const row = asPlainObject(item) || {};
+  return firstNonEmptyString(row.label, row.tag);
+}
+
+function isGenericBestForItem(item) {
+  const row = asPlainObject(item) || {};
+  const label = readBestForLabel(item);
+  const tag = asString(row.tag).toLowerCase();
+  const confidence = asString(row.confidence).toLowerCase();
+  const normalizedLabel = label.toLowerCase();
+  const combined = `${normalizedLabel} ${tag}`.trim();
+  if (!combined) return true;
+  if (/\bshoppers?\b/.test(combined)) return true;
+  if (/^(daily use|everyday use|daytime wear|daily uv protection|general use|all skin types?)$/.test(normalizedLabel)) {
+    return true;
+  }
+  if (
+    ['daily', 'daytime_use', 'general_use', 'category', 'product'].includes(tag) &&
+    (!label || confidence === 'low')
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function sanitizeBestForItems(items) {
+  return asArray(items).filter((item) => !isGenericBestForItem(item));
 }
 
 function hasProductSpecificIntelText(text) {
@@ -213,10 +249,10 @@ function shouldRejectGenericProductIntelBundle(bundle) {
       return `${row.headline || ''} ${row.body || ''}`;
     })
     .join(' ');
-  const bestForText = asArray(core.best_for)
+  const bestForText = sanitizeBestForItems(core.best_for)
     .map((item) => {
       const row = asPlainObject(item) || {};
-      return `${row.label || ''} ${row.tag || ''}`;
+      return `${readBestForLabel(item) || ''} ${row.tag || ''}`;
     })
     .join(' ');
   const primaryText = [
@@ -463,6 +499,7 @@ function normalizePublishedProductIntelBundle(bundle, {
         fallback: core.what_it_is?.body || '',
       }),
     },
+    best_for: sanitizeBestForItems(core.best_for),
     why_it_stands_out: asArray(core.why_it_stands_out)
       .filter((item) => {
         const row = asPlainObject(item) || {};

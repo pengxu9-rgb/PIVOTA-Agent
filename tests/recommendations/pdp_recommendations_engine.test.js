@@ -154,6 +154,157 @@ describe('RecommendationEngine (PDP)', () => {
     expect(result.items.map((item) => item.product_id)).toEqual(['ext_green_machine']);
   });
 
+  test('excludes shade siblings by normalized title and blocks accessory-like category pollution', async () => {
+    const previousDatabaseUrl = process.env.DATABASE_URL;
+    delete process.env.DATABASE_URL;
+
+    try {
+      const result = await recommend({
+        pdp_product: {
+          merchant_id: 'external_seed',
+          product_id: 'ext_boj_dn350',
+          title: 'Beauty of Joseon Daily Tinted Fluid Sunscreen DN350',
+          brand: 'Beauty of Joseon',
+          category: 'Sunscreen',
+          price: 18,
+          source: 'external_seed',
+          inventory_quantity: 10,
+          status: 'active',
+        },
+        k: 4,
+        options: {
+          debug: true,
+          no_cache: true,
+          external_candidates: [
+            makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'ext_boj_dy330',
+              title: 'Daily Tinted Fluid Sunscreen DY330',
+              brand: 'Beauty of Joseon',
+              category: 'Sunscreen',
+              price: 18,
+              source: 'external_seed',
+            }),
+            makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'ext_skin1004_spf',
+              title: 'Poremizing Velvet Finish Sunscreen',
+              brand: 'Skin1004',
+              category: 'Sunscreen',
+              price: 20,
+              source: 'external_seed',
+            }),
+            makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'ext_supergoop_pouch',
+              title: 'Supergoop Mesh Zip Pouch Bag',
+              brand: 'Supergoop!',
+              category: 'Sunscreen',
+              price: 18,
+              source: 'external_seed',
+            }),
+            makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'ext_supergoop_play',
+              title: 'PLAY Everyday Lotion SPF 30',
+              brand: 'Supergoop!',
+              category: 'Sunscreen',
+              price: 22,
+              source: 'external_seed',
+            }),
+          ],
+        },
+      });
+
+      expect(result.items.map((item) => item.product_id)).toEqual([
+        'ext_skin1004_spf',
+        'ext_supergoop_play',
+      ]);
+      expect(result.items.map((item) => item.product_id)).not.toContain('ext_boj_dy330');
+      expect(result.items.map((item) => item.product_id)).not.toContain('ext_supergoop_pouch');
+    } finally {
+      if (previousDatabaseUrl == null) {
+        delete process.env.DATABASE_URL;
+      } else {
+        process.env.DATABASE_URL = previousDatabaseUrl;
+      }
+    }
+  });
+
+  test('does not use same-brand external fallback for unrelated PDP synthetic products', async () => {
+    const previousDatabaseUrl = process.env.DATABASE_URL;
+    delete process.env.DATABASE_URL;
+
+    try {
+      const result = await recommend({
+        pdp_product: {
+          merchant_id: 'external_seed',
+          product_id: 'ext_boj_dn350',
+          title: 'Daily Tinted Fluid Sunscreen DN350',
+          brand: 'Beauty of Joseon',
+          price: 2,
+          source: 'external_seed',
+          inventory_quantity: 10,
+          status: 'active',
+        },
+        k: 6,
+        options: {
+          debug: true,
+          no_cache: true,
+          external_candidates: [
+            makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'ext_day_dew',
+              title: 'Day Dew Sunscreen',
+              brand: 'Beauty of Joseon',
+              category: '',
+              price: 18,
+              source: 'external_seed',
+            }),
+            makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'ext_hanbok_scrunchie',
+              title: 'Hanbok Scrunchie',
+              brand: 'Beauty of Joseon',
+              category: '',
+              price: 8,
+              source: 'external_seed',
+            }),
+            makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'ext_dynasty_cream',
+              title: 'Dynasty Cream',
+              brand: 'Beauty of Joseon',
+              category: '',
+              price: 24,
+              source: 'external_seed',
+            }),
+            makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'ext_calming_serum',
+              title: 'Calming Barrier Serum',
+              brand: 'Beauty of Joseon',
+              category: '',
+              price: 18,
+              source: 'external_seed',
+            }),
+          ],
+        },
+      });
+
+      expect(result.items.map((item) => item.product_id)).toEqual(['ext_day_dew']);
+      expect(result.items.map((item) => item.product_id)).not.toEqual(
+        expect.arrayContaining(['ext_hanbok_scrunchie', 'ext_dynasty_cream', 'ext_calming_serum']),
+      );
+    } finally {
+      if (previousDatabaseUrl == null) {
+        delete process.env.DATABASE_URL;
+      } else {
+        process.env.DATABASE_URL = previousDatabaseUrl;
+      }
+    }
+  });
+
   test('excludes prior similar-page titles when exclude_items includes titles', async () => {
     const result = await recommend({
       pdp_product: {
@@ -850,7 +1001,7 @@ describe('RecommendationEngine (PDP)', () => {
     expect(result?.debug?.fetch_strategy?.external_skipped).toBe(false);
   });
 
-  test('n) external synthetic PDP keeps same-brand external seeds even when category and title overlap are sparse', () => {
+  test('n) external synthetic PDP rejects same-brand seeds when category and title intent are sparse', () => {
     const base = makeProduct({
       merchant_id: 'external_seed',
       product_id: 'ext_krave_gbr_45',
@@ -886,11 +1037,10 @@ describe('RecommendationEngine (PDP)', () => {
       k: 4,
     });
 
-    expect(out.items.map((item) => item.product_id)).toEqual(
-      expect.arrayContaining(['ext_krave_matcha', 'ext_krave_oat']),
+    expect(out.items.map((item) => item.product_id)).toEqual([]);
+    expect(out.metadata?.low_confidence_reason_codes).toEqual(
+      expect.arrayContaining(['UNDERFILL_FOR_QUALITY']),
     );
-    expect(out.items.every((item) => item.reason === 'L2E:external:same_brand_external_synthetic')).toBe(true);
-    expect(out.metadata?.retrieval_mix).toEqual({ internal: 0, external: 2 });
   });
 
   test('o) external synthetic PDP rejects other-brand internal category fills', () => {

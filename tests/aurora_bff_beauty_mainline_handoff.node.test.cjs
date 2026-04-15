@@ -490,8 +490,8 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
         'oil control serum',
         'shine control serum',
         'lightweight moisturizer oily skin',
-        'oil free moisturizer',
         'oil control sunscreen',
+        'barrier lotion oily skin',
         'lightweight sunscreen oily skin',
         'lightweight sunscreen',
       ],
@@ -505,10 +505,13 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
         'oil control serum',
         'lightweight moisturizer oily skin',
         'oil control sunscreen',
+        'barrier lotion oily skin',
+        'lightweight sunscreen oily skin',
       ],
     );
     assert.equal(captured.every((row) => row.callerLane === 'beauty_chat_handoff'), true);
-    assert.equal(captured.every((row) => row.timeoutMs === 10500), true);
+    assert.equal(captured.slice(0, 3).every((row) => row.timeoutMs === 10500), true);
+    assert.equal(captured.slice(3).every((row) => row.timeoutMs === 1400), true);
     assert.equal(captured.every((row) => row.allowExternalSeed === false), true);
     assert.equal(
       captured.slice(0, 3).every((row) =>
@@ -526,29 +529,29 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
       true,
     );
     assert.equal(
-      externalCaptured.slice(4, 5).every((row) =>
-        row.roleId === 'lightweight_moisturizer'
-        && row.preferredStep === 'moisturizer'
-        && row.transportPolicyMode === 'framework_first_turn'),
-      true,
+      externalCaptured.slice(4).map((row) => row.roleId).join(','),
+      'lightweight_moisturizer,daily_sunscreen,lightweight_moisturizer,daily_sunscreen',
     );
     assert.equal(
-      externalCaptured.slice(5).every((row) =>
-        row.roleId === 'daily_sunscreen'
-        && row.preferredStep === 'sunscreen'
+      externalCaptured.slice(4).every((row) =>
+        (
+          (row.roleId === 'lightweight_moisturizer' && row.preferredStep === 'moisturizer')
+          || (row.roleId === 'daily_sunscreen' && row.preferredStep === 'sunscreen')
+        )
         && row.transportPolicyMode === 'framework_first_turn'),
       true,
     );
     assert.equal(out.searchResult?.query_source, 'beauty_mainline_local_handoff');
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.planned_level_count, 6);
-    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_level_count, 6);
-    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_query_count, 14);
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_level_count, 7);
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_query_count, 16);
     assert.equal(
       out.searchResult?.metadata?.search_stage_ledger?.primary_search?.execution_lane,
       'beauty_mainline_local_handoff',
     );
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.skipped_external_seed_level_count, 0);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_support_internal_level_count, 2);
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.support_internal_fair_round_count, 3);
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_support_internal_levels,
       [
@@ -566,16 +569,16 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
     );
     assert.equal(
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.routine_support_strategy,
-      'primary_plus_external_then_internal_support',
+      'primary_plus_internal_then_external_support',
     );
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_support_level_count, 4);
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_support_levels,
       [
-        'framework_stage_c_support_lightweight_moisturizer_external_seed',
-        'framework_stage_c_support_daily_sunscreen_external_seed',
         'framework_stage_c_support_lightweight_moisturizer',
         'framework_stage_c_support_daily_sunscreen',
+        'framework_stage_c_support_lightweight_moisturizer_external_seed',
+        'framework_stage_c_support_daily_sunscreen_external_seed',
       ],
     );
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.skipped_support_level_count, undefined);
@@ -585,11 +588,11 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
     );
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts?.map((row) => row?.source_scope),
-      ['internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'internal', 'internal', 'internal'],
+      ['internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal'],
     );
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts?.map((row) => row?.source_scope),
-      ['internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'internal', 'internal', 'internal'],
+      ['internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal'],
     );
     const firstSupportExternalAttempt =
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
@@ -617,7 +620,7 @@ test('handoffRecoToBeautyMainlineSearch preserves horizontal comparison across i
     __internal.__setRouteDependencyOverridesForTest({
       searchInternalProductsPrimitive: async (args) => {
         const query = String(args?.query || '').trim().toLowerCase();
-        if (query === 'niacinamide serum oily skin') {
+        if (query === 'oil control serum') {
           return {
             ok: true,
             products: [
@@ -688,15 +691,38 @@ test('handoffRecoToBeautyMainlineSearch preserves horizontal comparison across i
       },
     });
 
+    const targetContext = resolveRecommendationTargetContext({
+      text: 'what products should i use for oily skin?',
+      focus: '',
+      entryType: 'chat',
+    });
+    targetContext.comparison_mode = 'same_role_comparison';
+    targetContext.semantic_plan = {
+      ...(targetContext.semantic_plan || {}),
+      comparison_mode: 'same_role_comparison',
+      selection_constraints: {
+        ...(targetContext.semantic_plan?.selection_constraints || {}),
+        comparison_mode: 'same_role_comparison',
+      },
+    };
+    targetContext.primary_role_id = 'oil_control_treatment';
+    targetContext.framework_roles = [
+      {
+        role_id: 'oil_control_treatment',
+        rank: 10,
+        preferred_step: 'treatment',
+        label: 'Oil-control treatment',
+        query_terms: ['oil control serum', 'shine control serum', 'mattifying serum'],
+        fit_keywords: ['oil control', 'shine control', 'mattifying'],
+      },
+    ];
+    targetContext.support_roles = [];
+
     const out = await __internal.handoffRecoToBeautyMainlineSearch({
       ctx: { lang: 'EN', request_id: 'req_multi_source_primary_role_compare' },
       primaryQuery: 'what products should i use for oily skin?',
       fallbackMessage: 'what products should i use for oily skin?',
-      targetContext: resolveRecommendationTargetContext({
-        text: 'what products should i use for oily skin?',
-        focus: '',
-        entryType: 'chat',
-      }),
+      targetContext,
       timeoutMs: 5000,
       minTimeoutMs: 5000,
     });
@@ -719,6 +745,182 @@ test('handoffRecoToBeautyMainlineSearch preserves horizontal comparison across i
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts?.some((row) =>
         row?.source_scope === 'external_seed' && row?.result_count === 1),
       true,
+    );
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+    delete require.cache[moduleId];
+  }
+});
+
+test('handoffRecoToBeautyMainlineSearch stops primary external alternates after a viable primary and preserves support role budget', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const externalCaptured = [];
+    __internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async () => ({
+        ok: true,
+        products: [],
+        attempted_internal_paths: ['/agent/internal/products/search'],
+        transport_hops: [],
+        transport_hop_count: 0,
+        nested_orchestrator_hops: 0,
+        primary_transport_owner: 'internal_products_search_primitive',
+        primary_endpoint_kind: 'internal_primitive',
+      }),
+      searchLocalExternalSeedProducts: async (args) => {
+        const roleId = String(args?.role?.role_id || '').trim();
+        const query = String(args?.query || '').trim().toLowerCase();
+        externalCaptured.push({ query, roleId });
+        const base = {
+          reason: null,
+          actual_http_attempt_count: 0,
+          attempted_base_urls: [],
+          attempted_paths: [],
+          transport_policy_mode: String(args?.transportPolicyMode || ''),
+        };
+        if (roleId === 'tone_mark_treatment') {
+          return {
+            ...base,
+            ok: true,
+            products: [
+              {
+                product_id: 'tone_primary_external',
+                merchant_id: 'merchant_ext_tone',
+                title: 'Post-Breakout Mark Serum',
+                display_name: 'Post-Breakout Mark Serum',
+                brand: 'TestSkin',
+                category: 'serum',
+                product_type: 'serum',
+                candidate_step: 'treatment',
+                benefit_tags: ['post-breakout marks', 'uneven tone', 'brightening'],
+                short_description: 'A targeted serum for post-breakout marks, uneven tone, and lingering dark spots.',
+                retrieval_source: 'external_seed',
+              },
+            ],
+          };
+        }
+        if (roleId === 'lightweight_moisturizer') {
+          return {
+            ...base,
+            ok: true,
+            products: [
+              {
+                product_id: 'support_moisturizer_external',
+                merchant_id: 'merchant_ext_moist',
+                title: 'Lightweight Barrier Gel Cream',
+                display_name: 'Lightweight Barrier Gel Cream',
+                brand: 'TestSkin',
+                category: 'moisturizer',
+                product_type: 'moisturizer',
+                candidate_step: 'moisturizer',
+                benefit_tags: ['lightweight hydration', 'barrier support', 'non-greasy'],
+                short_description: 'A lightweight gel moisturizer that supports the barrier without a heavy finish.',
+                retrieval_source: 'external_seed',
+              },
+            ],
+          };
+        }
+        if (roleId === 'daily_sunscreen') {
+          return {
+            ...base,
+            ok: true,
+            products: [
+              {
+                product_id: 'support_sunscreen_external',
+                merchant_id: 'merchant_ext_spf',
+                title: 'Clear Daily Sunscreen SPF 50',
+                display_name: 'Clear Daily Sunscreen SPF 50',
+                brand: 'TestSkin',
+                category: 'sunscreen',
+                product_type: 'sunscreen',
+                candidate_step: 'sunscreen',
+                benefit_tags: ['spf 50', 'daily sunscreen', 'lightweight'],
+                short_description: 'A lightweight daily sunscreen to protect post-breakout marks from darkening.',
+                retrieval_source: 'external_seed',
+              },
+            ],
+          };
+        }
+        return {
+          ...base,
+          ok: true,
+          products: [],
+          reason: 'empty',
+        };
+      },
+    });
+
+    const targetContext = {
+      primary_role_id: 'tone_mark_treatment',
+      comparison_mode: 'routine_mix',
+      semantic_plan: {
+        routine_mode: 'routine_mix',
+        comparison_mode: 'routine_mix',
+        selection_constraints: { comparison_mode: 'routine_mix' },
+      },
+      framework_summary: {
+        concern_text: 'post-breakout marks, what should i buy?',
+      },
+      framework_roles: [
+        {
+          role_id: 'tone_mark_treatment',
+          rank: 10,
+          preferred_step: 'treatment',
+          label: 'Tone and post-breakout mark treatment',
+          query_terms: ['tone and post breakout mark treatment', 'post breakout dark spot serum', 'dark spot serum'],
+          fit_keywords: ['post-breakout', 'marks', 'dark spots', 'uneven tone', 'brightening'],
+        },
+        {
+          role_id: 'lightweight_moisturizer',
+          rank: 20,
+          preferred_step: 'moisturizer',
+          label: 'Lightweight moisturizer',
+          query_terms: ['lightweight moisturizer post breakout skin', 'barrier gel cream'],
+          fit_keywords: ['lightweight', 'barrier', 'non-greasy', 'hydration'],
+        },
+        {
+          role_id: 'daily_sunscreen',
+          rank: 30,
+          preferred_step: 'sunscreen',
+          label: 'Daily sunscreen',
+          query_terms: ['daily sunscreen post acne marks', 'lightweight sunscreen'],
+          fit_keywords: ['spf', 'daily sunscreen', 'uv protection', 'lightweight'],
+        },
+      ],
+      support_roles: [],
+    };
+
+    const out = await __internal.handoffRecoToBeautyMainlineSearch({
+      ctx: { lang: 'EN', request_id: 'req_primary_external_stop_preserve_support' },
+      primaryQuery: 'post-breakout marks, what should i buy?',
+      fallbackMessage: 'post-breakout marks, what should i buy?',
+      targetContext,
+      timeoutMs: 5000,
+      minTimeoutMs: 5000,
+    });
+
+    assert.equal(
+      externalCaptured.filter((row) => row.roleId === 'tone_mark_treatment').length,
+      1,
+    );
+    assert.equal(
+      externalCaptured.some((row) => row.roleId === 'lightweight_moisturizer'),
+      true,
+    );
+    assert.equal(
+      externalCaptured.some((row) => row.roleId === 'daily_sunscreen'),
+      true,
+    );
+    assert.deepEqual(
+      out.recommendations.map((item) => item?.matched_role_id).sort(),
+      ['daily_sunscreen', 'lightweight_moisturizer', 'tone_mark_treatment'],
+    );
+    const primaryExternalRows = out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
+      ?.filter((row) => row?.ladder_level === 'framework_stage_b_primary_external_seed') || [];
+    assert.equal(primaryExternalRows.length, 1);
+    assert.equal(primaryExternalRows[0]?.result_count, 1);
+    assert.ok(
+      Number(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_query_count || 0) < 16,
     );
   } finally {
     __internal.__resetRouteDependencyOverridesForTest();
@@ -830,8 +1032,8 @@ test('handoffRecoToBeautyMainlineSearch skips primary external seed when interna
         'oil control serum',
         'shine control serum',
         'lightweight moisturizer oily skin',
-        'oil free moisturizer',
         'oil control sunscreen',
+        'barrier lotion oily skin',
         'lightweight sunscreen oily skin',
         'lightweight sunscreen',
       ],
@@ -841,6 +1043,8 @@ test('handoffRecoToBeautyMainlineSearch skips primary external seed when interna
       [
         'lightweight moisturizer oily skin',
         'oil control sunscreen',
+        'barrier lotion oily skin',
+        'lightweight sunscreen oily skin',
       ],
     );
     const primaryExternalRows = out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
@@ -860,13 +1064,603 @@ test('handoffRecoToBeautyMainlineSearch skips primary external seed when interna
   }
 });
 
+test('handoffRecoToBeautyMainlineSearch skips primary external supplement for routine coverage once primary is matched', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const externalCaptured = [];
+    __internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async (args) => {
+        const query = String(args?.query || '').trim().toLowerCase();
+        if (query === 'oil control serum') {
+          return {
+            ok: true,
+            products: [
+              {
+                product_id: 'primary_oil_control',
+                merchant_id: 'merchant_internal_primary',
+                title: 'Clarity Lab Oil Balance Serum',
+                display_name: 'Clarity Lab Oil Balance Serum',
+                category: 'serum',
+                product_type: 'serum',
+                candidate_step: 'treatment',
+                benefit_tags: ['oil control', 'shine control'],
+                short_description: 'A mattifying oil-control serum for oily skin.',
+                retrieval_source: 'catalog',
+              },
+            ],
+            attempted_internal_paths: ['/agent/internal/products/search'],
+            transport_hops: [],
+            transport_hop_count: 0,
+            nested_orchestrator_hops: 0,
+            primary_transport_owner: 'internal_products_search_primitive',
+            primary_endpoint_kind: 'internal_primitive',
+          };
+        }
+        return {
+          ok: true,
+          products: [],
+          attempted_internal_paths: ['/agent/internal/products/search'],
+          transport_hops: [],
+          transport_hop_count: 0,
+          nested_orchestrator_hops: 0,
+          primary_transport_owner: 'internal_products_search_primitive',
+          primary_endpoint_kind: 'internal_primitive',
+        };
+      },
+      searchLocalExternalSeedProducts: async (args) => {
+        externalCaptured.push(String(args?.query || '').trim().toLowerCase());
+        return {
+          ok: false,
+          products: [],
+          reason: 'empty',
+          actual_http_attempt_count: 0,
+          attempted_base_urls: [],
+          attempted_paths: [],
+          transport_policy_mode: String(args?.transportPolicyMode || ''),
+        };
+      },
+    });
+
+    const out = await __internal.handoffRecoToBeautyMainlineSearch({
+      ctx: { lang: 'EN', request_id: 'req_skip_primary_external_for_routine_support' },
+      primaryQuery: 'what products should i use for oily skin?',
+      fallbackMessage: 'what products should i use for oily skin?',
+      targetContext: resolveRecommendationTargetContext({
+        text: 'what products should i use for oily skin?',
+        focus: '',
+        entryType: 'chat',
+      }),
+      timeoutMs: 5000,
+      minTimeoutMs: 5000,
+    });
+
+    assert.equal(
+      externalCaptured.some((query) =>
+        ['oil control treatment', 'niacinamide serum oily skin', 'salicylic acid serum oily skin', 'oil control serum'].includes(query)),
+      false,
+    );
+    assert.deepEqual(
+      externalCaptured,
+      [
+        'lightweight moisturizer oily skin',
+        'oil control sunscreen',
+        'barrier lotion oily skin',
+        'lightweight sunscreen oily skin',
+      ],
+    );
+    const primaryExternalRows = out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
+      ?.filter((row) => row?.ladder_level === 'framework_stage_b_primary_external_seed') || [];
+    assert.equal(primaryExternalRows.length, 4);
+    assert.equal(
+      primaryExternalRows.every((row) => row?.reason === 'skipped_primary_already_satisfied'),
+      true,
+    );
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+    delete require.cache[moduleId];
+  }
+});
+
+test('handoffRecoToBeautyMainlineSearch skips support external supplement once that support role is filled', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const externalCaptured = [];
+    __internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async (args) => {
+        const query = String(args?.query || '').trim().toLowerCase();
+        if (query === 'barrier repair moisturizer') {
+          return {
+            ok: true,
+            products: [
+              {
+                product_id: 'barrier_primary',
+                merchant_id: 'merchant_barrier',
+                title: 'Barrier Repair Moisturizer',
+                display_name: 'Barrier Repair Moisturizer',
+                category: 'moisturizer',
+                product_type: 'moisturizer',
+                candidate_step: 'moisturizer',
+                benefit_tags: ['barrier repair', 'ceramide'],
+                short_description: 'A barrier repair moisturizer for dry sensitive skin.',
+                retrieval_source: 'catalog',
+              },
+            ],
+            attempted_internal_paths: ['/agent/internal/products/search'],
+            transport_hops: [],
+            transport_hop_count: 0,
+            nested_orchestrator_hops: 0,
+            primary_transport_owner: 'internal_products_search_primitive',
+            primary_endpoint_kind: 'internal_primitive',
+          };
+        }
+        if (query === 'hyaluronic acid serum') {
+          return {
+            ok: true,
+            products: [
+              {
+                product_id: 'hydrating_support',
+                merchant_id: 'merchant_hydrating',
+                title: 'Hyaluronic Acid Serum',
+                display_name: 'Hyaluronic Acid Serum',
+                category: 'serum',
+                product_type: 'serum',
+                candidate_step: 'serum',
+                benefit_tags: ['hydrating', 'hyaluronic acid'],
+                short_description: 'A lightweight hydrating serum for dehydrated skin.',
+                retrieval_source: 'catalog',
+              },
+            ],
+            attempted_internal_paths: ['/agent/internal/products/search'],
+            transport_hops: [],
+            transport_hop_count: 0,
+            nested_orchestrator_hops: 0,
+            primary_transport_owner: 'internal_products_search_primitive',
+            primary_endpoint_kind: 'internal_primitive',
+          };
+        }
+        return {
+          ok: true,
+          products: [],
+          attempted_internal_paths: ['/agent/internal/products/search'],
+          transport_hops: [],
+          transport_hop_count: 0,
+          nested_orchestrator_hops: 0,
+          primary_transport_owner: 'internal_products_search_primitive',
+          primary_endpoint_kind: 'internal_primitive',
+        };
+      },
+      searchLocalExternalSeedProducts: async (args) => {
+        externalCaptured.push(String(args?.query || '').trim().toLowerCase());
+        return {
+          ok: false,
+          products: [],
+          reason: 'empty',
+          actual_http_attempt_count: 0,
+          attempted_base_urls: [],
+          attempted_paths: [],
+          transport_policy_mode: String(args?.transportPolicyMode || ''),
+        };
+      },
+    });
+
+    const targetContext = {
+      primary_role_id: 'hydrating_barrier_moisturizer',
+      comparison_mode: 'routine_mix',
+      semantic_plan: {
+        routine_mode: 'routine_mix',
+        comparison_mode: 'routine_mix',
+        selection_constraints: { comparison_mode: 'routine_mix' },
+      },
+      framework_summary: {
+        concern_text: 'dry tight skin after washing',
+      },
+      framework_roles: [
+        {
+          role_id: 'hydrating_barrier_moisturizer',
+          rank: 40,
+          preferred_step: 'moisturizer',
+          label: 'Hydrating barrier moisturizer',
+          query_terms: ['barrier repair moisturizer', 'ceramide cream sensitive skin'],
+          fit_keywords: ['barrier repair', 'ceramide', 'dry skin'],
+        },
+        {
+          role_id: 'hydrating_serum_or_essence',
+          rank: 42,
+          preferred_step: 'serum',
+          label: 'Hydrating serum or essence',
+          query_terms: ['hyaluronic acid serum', 'hydrating serum dehydrated skin'],
+          fit_keywords: ['hydrating', 'hyaluronic acid', 'dehydrated'],
+        },
+        {
+          role_id: 'daily_sunscreen',
+          rank: 30,
+          preferred_step: 'sunscreen',
+          label: 'Daily sunscreen',
+          query_terms: ['daily sunscreen skincare', 'lightweight sunscreen'],
+          fit_keywords: ['spf', 'uv filters', 'lightweight'],
+        },
+      ],
+      support_roles: [],
+    };
+
+    const out = await __internal.handoffRecoToBeautyMainlineSearch({
+      ctx: { lang: 'EN', request_id: 'req_skip_filled_support_external' },
+      primaryQuery: 'my skin feels dry and tight after washing, what should i use first?',
+      fallbackMessage: 'my skin feels dry and tight after washing, what should i use first?',
+      targetContext,
+      timeoutMs: 5000,
+      minTimeoutMs: 5000,
+    });
+
+    assert.equal(externalCaptured.includes('hyaluronic acid serum'), false);
+    assert.equal(externalCaptured.includes('hydrating serum dehydrated skin'), false);
+    assert.deepEqual(
+      externalCaptured,
+      ['lightweight sunscreen', 'daily sunscreen'],
+    );
+    const hydratingExternalRows = out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
+      ?.filter((row) => row?.ladder_level === 'framework_stage_c_support_hydrating_serum_or_essence_external_seed') || [];
+    assert.equal(hydratingExternalRows.length, 2);
+    assert.equal(
+      hydratingExternalRows.every((row) => row?.reason === 'skipped_support_role_already_satisfied'),
+      true,
+    );
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+    delete require.cache[moduleId];
+  }
+});
+
+test('handoffRecoToBeautyMainlineSearch interleaves support external queries across unfilled roles', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const externalCaptured = [];
+    __internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async (args) => {
+        const query = String(args?.query || '').trim().toLowerCase();
+        if (
+          query === 'niacinamide serum oily skin'
+          || query === 'oil control serum'
+          || query === 'shine control serum'
+        ) {
+          return {
+            ok: true,
+            products: [
+              {
+                product_id: 'primary_oil_control',
+                merchant_id: 'merchant_internal_primary',
+                title: 'Clarity Lab Oil Balance Serum',
+                display_name: 'Clarity Lab Oil Balance Serum',
+                category: 'serum',
+                product_type: 'serum',
+                candidate_step: 'treatment',
+                benefit_tags: ['oil control', 'shine control'],
+                short_description: 'A mattifying oil-control serum for oily skin.',
+                retrieval_source: 'catalog',
+              },
+            ],
+            attempted_internal_paths: ['/agent/internal/products/search'],
+            transport_hops: [],
+            transport_hop_count: 0,
+            nested_orchestrator_hops: 0,
+            primary_transport_owner: 'internal_products_search_primitive',
+            primary_endpoint_kind: 'internal_primitive',
+          };
+        }
+        return {
+          ok: true,
+          products: [],
+          attempted_internal_paths: ['/agent/internal/products/search'],
+          transport_hops: [],
+          transport_hop_count: 0,
+          nested_orchestrator_hops: 0,
+          primary_transport_owner: 'internal_products_search_primitive',
+          primary_endpoint_kind: 'internal_primitive',
+        };
+      },
+      searchLocalExternalSeedProducts: async (args) => {
+        const query = String(args?.query || '').trim().toLowerCase();
+        externalCaptured.push(query);
+        if (query === 'lightweight moisturizer oily skin') {
+          return {
+            ok: true,
+            products: [
+              {
+                product_id: 'support_moisturizer',
+                merchant_id: 'merchant_ext_moisturizer',
+                title: 'Oil-Free Gel Moisturizer',
+                display_name: 'Oil-Free Gel Moisturizer',
+                brand: 'TestSkin',
+                category: 'moisturizer',
+                product_type: 'moisturizer',
+                candidate_step: 'moisturizer',
+                benefit_tags: ['lightweight', 'oil-free', 'gel cream'],
+                short_description: 'A lightweight gel moisturizer for oily skin.',
+                retrieval_source: 'external_seed',
+              },
+            ],
+            actual_http_attempt_count: 0,
+            attempted_base_urls: [],
+            attempted_paths: [],
+            transport_policy_mode: String(args?.transportPolicyMode || ''),
+          };
+        }
+        if (query === 'oil control sunscreen') {
+          return {
+            ok: true,
+            products: [
+              {
+                product_id: 'support_sunscreen',
+                merchant_id: 'merchant_ext_sunscreen',
+                title: 'Oil Control Sunscreen SPF 50',
+                display_name: 'Oil Control Sunscreen SPF 50',
+                brand: 'TestSkin',
+                category: 'sunscreen',
+                product_type: 'sunscreen',
+                candidate_step: 'sunscreen',
+                benefit_tags: ['spf', 'oil control', 'lightweight'],
+                short_description: 'A lightweight SPF 50 sunscreen for oily skin.',
+                retrieval_source: 'external_seed',
+              },
+            ],
+            actual_http_attempt_count: 0,
+            attempted_base_urls: [],
+            attempted_paths: [],
+            transport_policy_mode: String(args?.transportPolicyMode || ''),
+          };
+        }
+        return {
+          ok: true,
+          products: [],
+          actual_http_attempt_count: 0,
+          attempted_base_urls: [],
+          attempted_paths: [],
+          transport_policy_mode: String(args?.transportPolicyMode || ''),
+        };
+      },
+    });
+
+    const out = await __internal.handoffRecoToBeautyMainlineSearch({
+      ctx: { lang: 'EN', request_id: 'req_fair_support_external_rounds' },
+      primaryQuery: 'what products should i use for oily skin?',
+      fallbackMessage: 'what products should i use for oily skin?',
+      targetContext: resolveRecommendationTargetContext({
+        text: 'what products should i use for oily skin?',
+        focus: '',
+        entryType: 'chat',
+      }),
+      timeoutMs: 5000,
+      minTimeoutMs: 5000,
+    });
+
+    assert.deepEqual(
+      externalCaptured,
+      [
+        'lightweight moisturizer oily skin',
+        'oil control sunscreen',
+      ],
+    );
+    assert.deepEqual(
+      out.recommendations.map((item) => item?.matched_role_id).sort(),
+      ['daily_sunscreen', 'lightweight_moisturizer', 'oil_control_treatment'],
+    );
+    const skippedSecondRoundRows = out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
+      ?.filter((row) => row?.fair_support_external_round === 2) || [];
+    assert.equal(skippedSecondRoundRows.length, 2);
+    assert.equal(
+      skippedSecondRoundRows.every((row) => row?.reason === 'skipped_support_role_already_satisfied'),
+      true,
+    );
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+    delete require.cache[moduleId];
+  }
+});
+
+test('handoffRecoToBeautyMainlineSearch releases support budget to external authority when support internal hangs', async () => {
+  const originalSupportInternalTimeout = process.env.AURORA_BFF_RECO_CATALOG_SUPPORT_INTERNAL_QUERY_TIMEOUT_MS;
+  process.env.AURORA_BFF_RECO_CATALOG_SUPPORT_INTERNAL_QUERY_TIMEOUT_MS = '200';
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const externalCaptured = [];
+    __internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async (args) => {
+        const query = String(args?.query || '').trim().toLowerCase();
+        if (
+          query === 'niacinamide serum oily skin'
+          || query === 'oil control serum'
+          || query === 'shine control serum'
+        ) {
+          return {
+            ok: true,
+            products: [
+              {
+                product_id: 'primary_oil_control_budget',
+                merchant_id: 'merchant_internal_primary_budget',
+                title: 'Clarity Lab Oil Balance Serum',
+                display_name: 'Clarity Lab Oil Balance Serum',
+                category: 'serum',
+                product_type: 'serum',
+                candidate_step: 'treatment',
+                benefit_tags: ['oil control', 'shine control'],
+                short_description: 'A mattifying oil-control serum for oily skin.',
+                retrieval_source: 'catalog',
+              },
+            ],
+            attempted_internal_paths: ['/agent/internal/products/search'],
+            transport_hops: [],
+            transport_hop_count: 0,
+            nested_orchestrator_hops: 0,
+            primary_transport_owner: 'internal_products_search_primitive',
+            primary_endpoint_kind: 'internal_primitive',
+          };
+        }
+        return new Promise(() => {});
+      },
+      searchLocalExternalSeedProducts: async (args) => {
+        const roleId = String(args?.role?.role_id || '').trim();
+        externalCaptured.push(roleId);
+        const base = {
+          ok: true,
+          actual_http_attempt_count: 0,
+          attempted_base_urls: [],
+          attempted_paths: [],
+          transport_policy_mode: String(args?.transportPolicyMode || ''),
+        };
+        if (roleId === 'lightweight_moisturizer') {
+          return {
+            ...base,
+            products: [
+              {
+                product_id: 'support_moisturizer_budget',
+                merchant_id: 'merchant_ext_moisturizer_budget',
+                title: 'Oil-Free Gel Moisturizer',
+                display_name: 'Oil-Free Gel Moisturizer',
+                brand: 'TestSkin',
+                category: 'moisturizer',
+                product_type: 'moisturizer',
+                candidate_step: 'moisturizer',
+                benefit_tags: ['lightweight', 'oil-free', 'gel cream'],
+                short_description: 'A lightweight gel moisturizer for oily skin.',
+                retrieval_source: 'external_seed',
+              },
+            ],
+          };
+        }
+        if (roleId === 'daily_sunscreen') {
+          return {
+            ...base,
+            products: [
+              {
+                product_id: 'support_sunscreen_budget',
+                merchant_id: 'merchant_ext_sunscreen_budget',
+                title: 'Oil Control Sunscreen SPF 50',
+                display_name: 'Oil Control Sunscreen SPF 50',
+                brand: 'TestSkin',
+                category: 'sunscreen',
+                product_type: 'sunscreen',
+                candidate_step: 'sunscreen',
+                benefit_tags: ['spf', 'oil control', 'lightweight'],
+                short_description: 'A lightweight SPF 50 sunscreen for oily skin.',
+                retrieval_source: 'external_seed',
+              },
+            ],
+          };
+        }
+        return { ...base, products: [], reason: 'empty' };
+      },
+    });
+
+    const out = await __internal.handoffRecoToBeautyMainlineSearch({
+      ctx: { lang: 'EN', request_id: 'req_support_internal_hang_external_budget' },
+      primaryQuery: 'what products should i use for oily skin?',
+      fallbackMessage: 'what products should i use for oily skin?',
+      targetContext: resolveRecommendationTargetContext({
+        text: 'what products should i use for oily skin?',
+        focus: '',
+        entryType: 'chat',
+      }),
+      timeoutMs: 5000,
+      minTimeoutMs: 5000,
+    });
+
+    assert.deepEqual(
+      out.recommendations.map((item) => item?.matched_role_id).sort(),
+      ['daily_sunscreen', 'lightweight_moisturizer', 'oil_control_treatment'],
+    );
+    assert.deepEqual(
+      externalCaptured.slice(0, 2),
+      ['lightweight_moisturizer', 'daily_sunscreen'],
+    );
+    const supportInternalTimeouts =
+      out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
+        ?.filter((row) => row?.fair_support_internal_round === 1)
+        ?.flatMap((row) => row?.attempted_request_timeouts_ms || []) || [];
+    assert.ok(supportInternalTimeouts.length >= 2);
+    assert.equal(supportInternalTimeouts.every((timeoutMs) => Number(timeoutMs) <= 200), true);
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+    if (originalSupportInternalTimeout == null) delete process.env.AURORA_BFF_RECO_CATALOG_SUPPORT_INTERNAL_QUERY_TIMEOUT_MS;
+    else process.env.AURORA_BFF_RECO_CATALOG_SUPPORT_INTERNAL_QUERY_TIMEOUT_MS = originalSupportInternalTimeout;
+    delete require.cache[moduleId];
+  }
+});
+
+test('runConcernSemanticPlanner uses structured Gemini JSON with minimal thinking', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    let capturedArgs = null;
+    __internal.__setCallGeminiJsonObjectForTest(async (args = {}) => {
+      capturedArgs = args;
+      return {
+        ok: true,
+        json: {
+          primary_concern: 'dry tight skin after washing',
+          primary_role_id: 'hydrating_barrier_moisturizer',
+          support_role_ids: ['hydrating_serum_or_essence', 'daily_sunscreen'],
+          routine_mode: 'routine_mix',
+          query_intents: [
+            {
+              role_id: 'hydrating_barrier_moisturizer',
+              intent: 'barrier repair moisturizer',
+              query_terms: ['barrier repair moisturizer'],
+            },
+            {
+              role_id: 'hydrating_serum_or_essence',
+              intent: 'hydrating serum',
+              query_terms: ['hyaluronic acid serum'],
+            },
+            {
+              role_id: 'daily_sunscreen',
+              intent: 'daily sunscreen',
+              query_terms: ['daily sunscreen'],
+            },
+          ],
+          must_satisfy_constraints: ['start with barrier support', 'avoid over-stripping'],
+          comparison_mode: 'routine_mix',
+          evidence_needed: ['barrier support', 'hydration', 'daily UV protection'],
+          ingredient_hypotheses: ['ceramides', 'hyaluronic acid'],
+          product_type_hypotheses: ['moisturizer', 'serum', 'sunscreen'],
+        },
+        parse_status: 'parsed',
+        provider: 'gemini',
+        requested_model: args.model,
+        effective_model: args.model,
+        selection_source: 'local_gemini_rest_direct',
+      };
+    });
+
+    const out = await __internal.runConcernSemanticPlanner({
+      ctx: { lang: 'EN', request_id: 'req_structured_planner_test' },
+      requestText: 'my skin feels dry and tight after washing, what should i use first?',
+      focus: '',
+      deadlineAtMs: Date.now() + 5000,
+    });
+
+    assert.equal(capturedArgs?.route, 'aurora_concern_semantic_plan_json');
+    assert.equal(capturedArgs?.thinkingLevel, 'minimal');
+    assert.equal(capturedArgs?.maxOutputTokens, 700);
+    assert.equal(capturedArgs?.responseSchema?.type, 'object');
+    assert.equal(out.trace?.planner_failure_class, null);
+    assert.equal(out.trace?.planner_attempts?.[0]?.structured_contract, 'json_object');
+    assert.equal(out.semanticPlan?.selection_owner_state, 'trusted');
+    assert.deepEqual(
+      out.semanticPlan?.core_roles?.map((role) => role?.role_id).slice(0, 3),
+      ['hydrating_barrier_moisturizer', 'hydrating_serum_or_essence', 'daily_sunscreen'],
+    );
+  } finally {
+    __internal.__resetCallGeminiJsonObjectForTest();
+    delete require.cache[moduleId];
+  }
+});
+
 test('handoffRecoToBeautyMainlineSearch exposes raw candidate pool sources when only the strong internal winner is selected', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     __internal.__setRouteDependencyOverridesForTest({
       searchInternalProductsPrimitive: async (args) => {
         const query = String(args?.query || '').trim().toLowerCase();
-        if (query === 'niacinamide serum oily skin') {
+        if (query === 'oil control serum') {
           return {
             ok: true,
             products: [
@@ -877,6 +1671,7 @@ test('handoffRecoToBeautyMainlineSearch exposes raw candidate pool sources when 
                 display_name: 'Strong Oil Control Serum',
                 category: 'serum',
                 product_type: 'serum',
+                candidate_step: 'treatment',
                 benefit_tags: ['oil control', 'shine control', 'mattifying'],
                 search_aliases: ['shine control serum'],
                 short_description: 'A mattifying oil-control serum for oily skin.',
@@ -936,15 +1731,38 @@ test('handoffRecoToBeautyMainlineSearch exposes raw candidate pool sources when 
       },
     });
 
+    const targetContext = resolveRecommendationTargetContext({
+      text: 'what products should i use for oily skin?',
+      focus: '',
+      entryType: 'chat',
+    });
+    targetContext.comparison_mode = 'same_role_comparison';
+    targetContext.semantic_plan = {
+      ...(targetContext.semantic_plan || {}),
+      comparison_mode: 'same_role_comparison',
+      selection_constraints: {
+        ...(targetContext.semantic_plan?.selection_constraints || {}),
+        comparison_mode: 'same_role_comparison',
+      },
+    };
+    targetContext.primary_role_id = 'oil_control_treatment';
+    targetContext.framework_roles = [
+      {
+        role_id: 'oil_control_treatment',
+        rank: 10,
+        preferred_step: 'treatment',
+        label: 'Oil-control treatment',
+        query_terms: ['oil control serum', 'shine control serum', 'mattifying serum'],
+        fit_keywords: ['oil control', 'shine control', 'mattifying'],
+      },
+    ];
+    targetContext.support_roles = [];
+
     const out = await __internal.handoffRecoToBeautyMainlineSearch({
       ctx: { lang: 'EN', request_id: 'req_candidate_pool_visibility' },
       primaryQuery: 'what products should i use for oily skin?',
       fallbackMessage: 'what products should i use for oily skin?',
-      targetContext: resolveRecommendationTargetContext({
-        text: 'what products should i use for oily skin?',
-        focus: '',
-        entryType: 'chat',
-      }),
+      targetContext,
       timeoutMs: 5000,
       minTimeoutMs: 5000,
     });
