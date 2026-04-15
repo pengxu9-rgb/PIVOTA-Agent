@@ -768,6 +768,92 @@ describe('discovery feed service', () => {
     expect(response.metadata.route_health.primary_quality_gate_passed).toBe(false);
   });
 
+  test('explicit compound browse reports strict empty instead of falling through to broad providers', async () => {
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
+    process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY = 'bridge-key';
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+    delete process.env.PIVOTA_API_BASE;
+    delete process.env.PIVOTA_BACKEND_AGENT_API_KEY;
+    delete process.env.PIVOTA_API_KEY;
+    delete process.env.DATABASE_URL;
+
+    const productsSearchScope = nock('http://discovery-catalog.test')
+      .matchHeader('x-agent-api-key', 'bridge-key')
+      .matchHeader('x-api-key', 'bridge-key')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        products: [
+          makeProduct({
+            product_id: 'broad_serum_noise',
+            title: 'Generic Face Serum',
+            brand: 'Noise Beauty',
+            category: 'Serum',
+            product_type: 'Serum',
+          }),
+        ],
+      });
+    const internalSpy = jest.fn(async () => [
+      makeProduct({
+        merchant_id: 'internal',
+        product_id: 'internal_serum_noise',
+        title: 'Internal Hair Growth Serum',
+        brand: 'Internal Beauty',
+        category: 'Serum',
+        product_type: 'Serum',
+      }),
+    ]);
+    const externalSpy = jest.fn(async () => []);
+
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        debug: true,
+        query: {
+          text: 'scalp serum',
+        },
+        context: {
+          auth_state: 'anonymous',
+          recent_views: [],
+          recent_queries: [],
+          locale: 'en-US',
+        },
+      },
+      {
+        providerOverrides: {
+          internal_catalog: internalSpy,
+          external_seeds: externalSpy,
+        },
+      },
+    );
+
+    expect(productsSearchScope.isDone()).toBe(false);
+    expect(externalSpy).toHaveBeenCalledTimes(1);
+    expect(internalSpy).not.toHaveBeenCalled();
+    expect(response.products).toHaveLength(0);
+    expect(response.metadata.candidate_source).toBe('external_seed_compound_intent');
+    expect(response.metadata.strict_empty_reason).toBe('public_search_empty_exact_intent');
+    expect(response.metadata.route_health.primary_quality_gate_passed).toBe(false);
+    expect(response.metadata.route_health.strict_empty_reason).toBe('public_search_empty_exact_intent');
+    expect(response.metadata.search_decision.final_decision).toBe('strict_empty');
+    expect(response.metadata.provider_breakdown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          provider: 'products_search',
+          skipped: true,
+          skip_reason: 'explicit_compound_external_seed_mainline',
+        }),
+        expect.objectContaining({
+          provider: 'internal_catalog',
+          skipped: true,
+          skip_reason: 'explicit_compound_external_seed_mainline',
+        }),
+      ]),
+    );
+  });
+
   test('explicit narrow browse query uses external seed mainline without products_search or internal broad pool', async () => {
     process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
     process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY = 'bridge-key';
