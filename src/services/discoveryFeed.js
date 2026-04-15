@@ -4509,6 +4509,15 @@ function shouldSkipExplicitVerticalSeedStage(request, recallTerms = {}) {
   return Boolean(BEAUTY_INTEREST_CATEGORY_BY_PHRASE[normalizedQuery]);
 }
 
+function shouldSkipExplicitCategorySeedStage(request, recallTerms = {}) {
+  if (!isExplicitQueryScopedBrowseRequest(request)) return false;
+  if (recallTerms?.compoundIntent) return false;
+  const normalizedQuery = normalizeText(request?.query?.text || '');
+  if (!normalizedQuery) return false;
+  if (EXPLICIT_BEAUTY_VERTICAL_STAGE_BROAD_QUERY_ALLOWLIST.has(normalizedQuery)) return false;
+  return Boolean(BEAUTY_INTEREST_CATEGORY_BY_PHRASE[normalizedQuery]);
+}
+
 function resolveExplicitIndexedCategoryHeadTerms(request, recallTerms = {}) {
   if (!isExplicitQueryScopedBrowseRequest(request)) return [];
   if (recallTerms?.compoundIntent) return [];
@@ -5253,6 +5262,7 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
     request,
     recallTerms,
   );
+  const skipExplicitCategoryStage = shouldSkipExplicitCategorySeedStage(request, recallTerms);
   const skipExplicitVerticalStage = shouldSkipExplicitVerticalSeedStage(request, recallTerms);
   const indexedCategoryHeadTerms = resolveExplicitIndexedCategoryHeadTerms(request, recallTerms);
   if (!compoundIntent) {
@@ -5297,7 +5307,7 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
       });
     }
 
-    if (recallTerms.categoryTerms.length > 0 && !skipBroadStructuredStages) {
+    if (recallTerms.categoryTerms.length > 0 && !skipBroadStructuredStages && !skipExplicitCategoryStage) {
       stageDefinitions.push({
         score: 36,
         stage: 'recall_category',
@@ -9300,6 +9310,7 @@ module.exports = {
     buildBeautyInterestRecallTerms,
     buildCompoundBeautySeedStageDefinitions,
     shouldSkipBroadStructuredSeedStagesForExplicitQuery,
+    shouldSkipExplicitCategorySeedStage,
     shouldSkipExplicitVerticalSeedStage,
     resolveExplicitIndexedCategoryHeadTerms,
     resolveDiscoveryExternalSeedToolScopes,
