@@ -6896,6 +6896,63 @@ test('__internal: reco catalog normalization removes placeholder seed copy from 
   );
 });
 
+test('__internal: reco catalog normalization removes low-information seed copy from visible fields', async () => {
+  const { __internal } = loadRoutesFresh();
+  const naturium = __internal.normalizeRecoCatalogProduct({
+    product_id: 'ext_low_info_copy_1',
+    merchant_id: 'external_seed',
+    brand: 'Naturium',
+    display_name: 'Naturium Quadruple Hyaluronic Acid Serum 5%',
+    category: 'Serum',
+    product_type: 'Serum',
+    source: 'external_seed',
+    retrieval_source: 'external_seed',
+    retrieval_role_id: 'hydrating_serum_or_essence',
+    short_description: 'Double up and save with this jumbo',
+    description: 'Double up and save with this jumbo',
+    why_this_one: 'Double up and save with this jumbo',
+    search_aliases: ['hyaluronic acid serum'],
+  });
+  assert.equal(naturium?.short_description, undefined);
+  assert.equal(naturium?.description, undefined);
+  assert.equal(naturium?.why_this_one, undefined);
+
+  const haruharu = __internal.normalizeRecoCatalogProduct({
+    product_id: 'ext_scraped_header_copy_1',
+    merchant_id: 'external_seed',
+    brand: 'Haruharu Wonder',
+    display_name: 'Haruharu Wonder Soothing Serum',
+    category: 'Serum',
+    product_type: 'Serum',
+    source: 'external_seed',
+    short_description: 'Details Key Features - Multi-benefit formula: a gentle serum to soothe and hydrate sensitive skin.',
+  });
+  assert.equal(
+    haruharu?.short_description,
+    'Multi-benefit formula: a gentle serum to soothe and hydrate sensitive skin.',
+  );
+});
+
+test('__internal: reco catalog normalization canonicalizes visible beauty brand labels', async () => {
+  const { __internal } = loadRoutesFresh();
+  const ordinary = __internal.normalizeRecoCatalogProduct({
+    product_id: 'ext_brand_label_1',
+    merchant_id: 'external_seed',
+    brand: 'the ordinary',
+    display_name: 'UV Filters SPF 45 Serum',
+    category: 'Sunscreen',
+  });
+  assert.equal(ordinary?.brand, 'The Ordinary');
+
+  const krave = __internal.normalizeRecoCatalogProduct({
+    product_id: 'catalog_brand_label_2',
+    merchant_id: 'merchant_internal',
+    display_name: 'KraveBeauty Great Barrier Relief',
+    category: 'Moisturizer',
+  });
+  assert.equal(krave?.brand, 'KraveBeauty');
+});
+
 test('__internal: framework pool promotes strong semantic serum evidence into the treatment primary slot', async () => {
   const { __internal } = loadRoutesFresh();
   const state = __internal.finalizeConcernFrameworkCandidatePools(
