@@ -5255,62 +5255,33 @@ async function fetchGenericBrowseExternalSeedServingCandidates({
     if (mixRows.length <= 0) return;
 
     const scopedTools = toolScopeValues.length > 0 ? toolScopeValues : ['*', 'creator_agents'];
-    const stageParams = [market, scopedTools];
-    const unionParts = mixRows
-      .map((rail) => {
-        stageParams.push(rail.value);
-        const valueParam = `$${stageParams.length}`;
-        stageParams.push(rail.quota);
-        const quotaParam = `$${stageParams.length}`;
-        stageParams.push(rail.score);
-        const scoreParam = `$${stageParams.length}`;
-        stageParams.push(rail.rank);
-        const rankParam = `$${stageParams.length}`;
-        return `
-          SELECT *
-          FROM (
-            SELECT
-              ${selectSql},
-              ${scoreParam}::int AS match_score,
-              '${stage}'::text AS match_stage,
-              'vertical'::text AS stage_match_axis,
-              ${valueParam}::text AS stage_match_value,
-              ${quotaParam}::int AS stage_quota,
-              ${rankParam}::int AS rail_rank
-            FROM external_product_seeds
-            WHERE status = 'active'
-              AND attached_product_key IS NULL
-              AND market = $1
-              AND tool = ANY($2::text[])
-              AND coalesce(lower(seed_data#>>'{suppression_flags,exclude_from_recall}'), 'false') <> 'true'
-              AND coalesce(lower(seed_data#>>'{derived,recall,suppression_flags,exclude_from_recall}'), 'false') <> 'true'
-              AND ${EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical} = ${valueParam}
-            ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
-            LIMIT ${quotaParam}
-          ) AS vertical_mix_${rail.rank}
+    const primaryToolScope = scopedTools[0] || '*';
+    const stageResults = await Promise.all(
+      mixRows.map(async (rail) => {
+        const stageParams = [market, primaryToolScope, rail.value, rail.quota];
+        const sql = `
+          SELECT
+            ${selectSql},
+            ${Number(rail.score || 0)}::int AS match_score,
+            '${stage}'::text AS match_stage
+          FROM external_product_seeds
+          WHERE status = 'active'
+            AND attached_product_key IS NULL
+            AND market = $1
+            AND tool = $2
+            AND coalesce(lower(seed_data#>>'{suppression_flags,exclude_from_recall}'), 'false') <> 'true'
+            AND coalesce(lower(seed_data#>>'{derived,recall,suppression_flags,exclude_from_recall}'), 'false') <> 'true'
+            AND ${EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical} = $3
+          ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
+          LIMIT $4
         `;
-      })
-      .join('\nUNION ALL\n');
-    stageParams.push(safeLimit);
-    const limitParam = `$${stageParams.length}`;
-    const sql = `
-      SELECT *
-      FROM (
-        ${unionParts}
-      ) AS vertical_mix_union
-      ORDER BY rail_rank ASC, updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
-      LIMIT ${limitParam}
-    `;
-    const res = await query(sql, stageParams);
-    const rawRows = Array.isArray(res?.rows) ? res.rows : [];
-    for (const rail of mixRows) {
-      appendRows(
-        rawRows.filter((row) => String(row?.stage_match_value || '').trim().toLowerCase() === rail.value),
-        'vertical',
-        rail.value,
-        'mixed',
-        rail.quota,
-      );
+        const res = await query(sql, stageParams);
+        return { rail, rawRows: Array.isArray(res?.rows) ? res.rows : [] };
+      }),
+    );
+
+    for (const { rail, rawRows } of stageResults) {
+      appendRows(rawRows, 'vertical', rail.value, primaryToolScope, rail.quota);
       if (rows.length >= safeLimit) break;
     }
   };
