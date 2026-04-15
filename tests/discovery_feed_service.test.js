@@ -5455,6 +5455,78 @@ describe('discovery feed service', () => {
     expect(_internals.resolveExternalSeedProviderLimit(request, 240)).toBe(240);
   });
 
+  test('explicit browse seed stage caps are page buffered instead of provider-limit sized', () => {
+    const serumPageOne = _internals.normalizeDiscoveryRequest({
+      surface: 'browse_products',
+      page: 1,
+      limit: 12,
+      query: {
+        text: 'serum',
+      },
+      context: {
+        auth_state: 'anonymous',
+        locale: 'en-US',
+        recent_views: [],
+        recent_queries: [],
+      },
+    });
+    const serumPageTwo = _internals.normalizeDiscoveryRequest({
+      surface: 'browse_products',
+      page: 2,
+      limit: 12,
+      query: {
+        text: 'serum',
+      },
+      context: {
+        auth_state: 'anonymous',
+        locale: 'en-US',
+        recent_views: [],
+        recent_queries: [],
+      },
+    });
+    const lipBalmPageOne = _internals.normalizeDiscoveryRequest({
+      surface: 'browse_products',
+      page: 1,
+      limit: 12,
+      query: {
+        text: 'lip balm',
+      },
+      context: {
+        auth_state: 'anonymous',
+        locale: 'en-US',
+        recent_views: [],
+        recent_queries: [],
+      },
+    });
+    const hairOilPageOne = _internals.normalizeDiscoveryRequest({
+      surface: 'browse_products',
+      page: 1,
+      limit: 12,
+      query: {
+        text: 'hair oil',
+      },
+      context: {
+        auth_state: 'anonymous',
+        locale: 'en-US',
+        recent_views: [],
+        recent_queries: [],
+      },
+    });
+
+    expect(_internals.resolveExplicitBrowseStageQueryCap(serumPageOne, 24)).toBe(36);
+    expect(_internals.resolveExplicitBrowseStageQueryCap(serumPageTwo, 36)).toBe(48);
+    expect(
+      _internals.resolveExplicitBrowseStageQueryCap(lipBalmPageOne, 120, {
+        compoundIntent: 'lip_balm',
+      }),
+    ).toBe(36);
+    expect(
+      _internals.resolveExplicitBrowseStageQueryCap(hairOilPageOne, 120, {
+        compoundIntent: 'hair_oil',
+      }),
+    ).toBe(120);
+  });
+
   test('query text matcher honors external seed recall text for vitamin c candidates', () => {
     const candidate = _internals.normalizeCandidateProduct(
       {
@@ -5696,6 +5768,7 @@ describe('discovery feed service', () => {
 
       expect(result.products).toHaveLength(8);
       expect(dbQueryMock).toHaveBeenCalledTimes(3);
+      expect(dbQueryMock.mock.calls[2][1].at(-1)).toBe(36);
       expect(result.recallSummary[0].external_seed_stage_counts.map((entry) => entry.stage)).toEqual([
         'recall_title',
       ]);
@@ -7440,6 +7513,7 @@ describe('discovery feed service', () => {
 
       expect(result.products).toHaveLength(12);
       expect(dbQueryMock).toHaveBeenCalledTimes(3);
+      expect(dbQueryMock.mock.calls[2][1].at(-1)).toBe(36);
       expect(result.recallSummary[0].external_seed_stage_counts).toEqual([
         expect.objectContaining({
           stage: 'recall_compound_exact_title',
