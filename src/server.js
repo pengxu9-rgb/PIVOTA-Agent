@@ -2995,8 +2995,7 @@ async function fetchProductDetailForOffers(args) {
   const bypassCache = args?.bypassCache === true;
   const skipUpstreamFallback = args?.skipUpstreamFallback === true;
   if (!merchantId || !productId) return null;
-  const isExternalSeedDetailRead = merchantId === EXTERNAL_SEED_MERCHANT_ID;
-  const useMemoryCache = PRODUCT_DETAIL_CACHE_ENABLED && !bypassCache && !isExternalSeedDetailRead;
+  const useMemoryCache = PRODUCT_DETAIL_CACHE_ENABLED && !bypassCache;
 
   const cacheKey = JSON.stringify({
     merchantId,
