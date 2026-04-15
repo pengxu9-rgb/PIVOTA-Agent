@@ -1339,8 +1339,8 @@ const RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS = (() => {
   return Math.max(50, Math.min(6000, v));
 })();
 const RECO_CATALOG_SUPPORT_INTERNAL_QUERY_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SUPPORT_INTERNAL_QUERY_TIMEOUT_MS || 950);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 950;
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SUPPORT_INTERNAL_QUERY_TIMEOUT_MS || 1400);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1400;
   return Math.max(200, Math.min(3000, v));
 })();
 const {
@@ -21554,7 +21554,8 @@ function shouldUseConcernFrameworkRoleCoverageFirst(targetContext = null, ordere
       semanticPlan?.selection_constraints?.comparison_mode,
     ) || '',
   ).trim().toLowerCase();
-  return routineMode === 'routine_mix' || routineMode === 'basic_routine';
+  if (routineMode === 'routine_mix' || routineMode === 'basic_routine') return true;
+  return roles.length > 1 && !comparisonMode;
 }
 
 function orderConcernFrameworkRolesForSelection(roles = [], { primaryRoleId = '' } = {}) {
@@ -52987,6 +52988,7 @@ function buildCompactRecoAssistantPromptLines({
     'If user_relevant_concern_families does not include aging_texture, do not mention wrinkles, fine lines, aging, anti-aging, or texture repair.',
     'Avoid internal phrasing like "selected products" and avoid generic filler.',
     'Price may support the recommendation, but pair it with a concrete product-fit reason from Context.',
+    'Never write ungrammatical fragments like "because a serum..." or "because an SPF..."; use "because it is..." or an active verb.',
     'Compact retry mode: keep the answer tight, prioritize the selected product evidence, and skip optional background detail.',
   ];
   if (strictSelectedOnlyContext) {
@@ -53043,6 +53045,7 @@ function buildStructuredRecoAssistantReasonPromptLines({
     'lead_reason must explain why the first selected product fits the user request using concrete product evidence.',
     'support_reasons must align to the remaining selected products in order; use an empty array when there are no support products.',
     'Each reason must be a short shopper-facing fragment, not a full recommendation sentence.',
+    'Do not start a reason fragment with "a" or "an" unless it remains grammatical after "because"; prefer active verbs or "it is ...".',
     'Price may be included only when Context provides price_label or price_order_summary, and it must be paired with a non-price fit reason.',
   ];
   if (requestMode === 'buy') {
@@ -53079,6 +53082,9 @@ function describeRecoAssistantRewriteFailureReason(reason) {
   }
   if (normalized === 'rewrite_generic_routine_wrapup') {
     return 'Do not end with a generic routine wrap-up. Use the last sentence for a concrete step reason, tradeoff, or buy-now guidance.';
+  }
+  if (normalized === 'rewrite_ungrammatical_reason_fragment') {
+    return 'Fix ungrammatical reason fragments such as "because a serum..." by writing "because it is..." or using an active verb.';
   }
   if (normalized === 'rewrite_stiff_selection_framing') {
     return 'Replace stiff meta phrasing like "selected products" with shopper-facing routine language.';
@@ -53464,6 +53470,7 @@ function buildRecoAssistantRewritePrompt({
       'If request_mode is "buy", use direct shopping advice tone.',
       'If request_mode is "buy", start the first sentence with the lead product name rather than a generic concern summary.',
       'If request_mode is "buy", the first sentence must use direct buy/pick language, ideally: "<lead product name> is your best first buy because ...".',
+      'Never write ungrammatical fragments like "because a serum..." or "because an SPF..."; use "because it is..." or an active verb.',
       'If request_mode is "buy" and there is one selected product, the first sentence must directly recommend that product by name.',
       'If request_mode is "buy" and selected_product_role_mix is "same_role_comparison", the first sentence must name the best first buy and signal that the remaining picks are same-slot comparison options.',
       'If request_mode is "buy" and selected_product_role_mix is "routine_mix", the first sentence must name the best first buy and frame the remaining picks as routine add-ons from other roles; only same-role products may be same-slot alternatives.',
@@ -53694,6 +53701,10 @@ function assistantTextUsesGenericRoutineWrapup(text) {
     && /\b(routine|skin|oily skin|hydration|uv damage|breathable)\b/i.test(lastSentence);
 }
 
+function assistantTextHasUngrammaticalReasonFragment(text) {
+  return /\bbecause\s+(?:a|an)\s+[^.!?。！？]{3,120}\b(?:that|with|for)\b/i.test(String(text || ''));
+}
+
 function assistantTextUsesStiffSelectionFraming(text) {
   return /\bthese selected products\b/i.test(String(text || ''))
     || /\bselected products are different steps\b/i.test(String(text || ''));
@@ -53878,6 +53889,7 @@ function validateRecoAssistantRewriteCandidate({
   const usesGenericRoutineWrapup =
     selectedProductRoutineMix
     && assistantTextUsesGenericRoutineWrapup(text);
+  const usesUngrammaticalReasonFragment = assistantTextHasUngrammaticalReasonFragment(text);
   const usesTemplatedRoutineBridge =
     selectedProductRoutineMix
     && assistantTextUsesTemplatedRoutineBridge(text);
@@ -53911,6 +53923,7 @@ function validateRecoAssistantRewriteCandidate({
     || usesStiffSelectionFraming
     || usesSingleProductRoutineFraming
     || usesGenericRoutineWrapup
+    || usesUngrammaticalReasonFragment
     || usesOffTargetConcernClaim
   ) {
     if (buyLeadNotDirect) return { ok: false, reason: 'rewrite_buy_lead_not_direct' };
@@ -53921,6 +53934,7 @@ function validateRecoAssistantRewriteCandidate({
     if (usesStiffSelectionFraming) return { ok: false, reason: 'rewrite_stiff_selection_framing' };
     if (usesSingleProductRoutineFraming) return { ok: false, reason: 'rewrite_single_product_routine_framing' };
     if (usesGenericRoutineWrapup) return { ok: false, reason: 'rewrite_generic_routine_wrapup' };
+    if (usesUngrammaticalReasonFragment) return { ok: false, reason: 'rewrite_ungrammatical_reason_fragment' };
     if (usesOffTargetConcernClaim) return { ok: false, reason: 'rewrite_off_target_concern_claim' };
     return { ok: false, reason: 'rewrite_failed_alignment_guard' };
   }
@@ -53938,6 +53952,7 @@ function shouldRetryRecoAssistantRewrite(reason) {
     || normalized === 'rewrite_stiff_selection_framing'
     || normalized === 'rewrite_single_product_routine_framing'
     || normalized === 'rewrite_generic_routine_wrapup'
+    || normalized === 'rewrite_ungrammatical_reason_fragment'
     || normalized === 'rewrite_mentions_unselected_product'
     || normalized === 'rewrite_off_target_concern_claim'
     || normalized === 'rewrite_failed_alignment_guard';
@@ -54077,6 +54092,21 @@ function buildRecoAssistantStructuredReasonFallback(detail = {}, {
   return 'it is the most direct fit from the selected card evidence';
 }
 
+function normalizeRecoAssistantBecauseReasonFragment(reason) {
+  const text = String(reason || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  if (/^(?:a|an)\s+[^.!?。！？]{3,120}\b(?:that|with|for)\b/i.test(text)) {
+    return `it is ${text}`;
+  }
+  return text;
+}
+
+function isValidRecoAssistantStructuredReasonJson(value) {
+  return isPlainObject(value)
+    && typeof value.lead_reason === 'string'
+    && Array.isArray(value.support_reasons);
+}
+
 function pickRecoAssistantRenderDetail(row = {}) {
   const item = isPlainObject(row) ? row : {};
   return {
@@ -54150,29 +54180,32 @@ function renderRecoAssistantStructuredReasonRewrite({
       forbiddenAliases,
     }),
   });
-  if (!leadReason) return '';
+  const grammaticalLeadReason = normalizeRecoAssistantBecauseReasonFragment(leadReason);
+  if (!grammaticalLeadReason) return '';
   const supportReasonValues = Array.isArray(structuredReason?.support_reasons)
     ? structuredReason.support_reasons
     : [];
-  const supportReasons = selectedNames.slice(1).map((name, index) => normalizeRecoAssistantReasonFragment(
-    supportReasonValues[index],
-    {
-      selectedNames,
-      forbiddenNames,
-      forbiddenAliases,
-      fallback: buildRecoAssistantStructuredReasonFallback(details[index + 1], {
-        targetLabel,
+  const supportReasons = selectedNames.slice(1).map((name, index) => normalizeRecoAssistantBecauseReasonFragment(
+    normalizeRecoAssistantReasonFragment(
+      supportReasonValues[index],
+      {
         selectedNames,
         forbiddenNames,
         forbiddenAliases,
-      }),
-    },
+        fallback: buildRecoAssistantStructuredReasonFallback(details[index + 1], {
+          targetLabel,
+          selectedNames,
+          forbiddenNames,
+          forbiddenAliases,
+        }),
+      },
+    ),
   ));
   if (language === 'CN') {
     const leadSentence =
       requestMode === 'use_first'
-        ? `${selectedNames[0]}适合作为起步选择，因为${leadReason}`
-        : `${selectedNames[0]}是更适合先买的选择${targetPhrase}，因为${leadReason}`;
+        ? `${selectedNames[0]}适合作为起步选择，因为${grammaticalLeadReason}`
+        : `${selectedNames[0]}是更适合先买的选择${targetPhrase}，因为${grammaticalLeadReason}`;
     if (selectedNames.length === 1) {
       return [
         formatRecoAssistantStructuredSentence(leadSentence),
@@ -54182,12 +54215,14 @@ function renderRecoAssistantStructuredReasonRewrite({
     const supportSentences = selectedNames.slice(1).map((name, index) => {
       const detail = details[index + 1] || {};
       const step = pickFirstTrimmed(detail.preferred_step, detail.matched_role_label, 'support step');
-      const reason = supportReasons[index] || buildRecoAssistantStructuredReasonFallback(detail, {
-        targetLabel,
-        selectedNames,
-        forbiddenNames,
-        forbiddenAliases,
-      });
+      const reason = supportReasons[index] || normalizeRecoAssistantBecauseReasonFragment(
+        buildRecoAssistantStructuredReasonFallback(detail, {
+          targetLabel,
+          selectedNames,
+          forbiddenNames,
+          forbiddenAliases,
+        }),
+      );
       return formatRecoAssistantStructuredSentence(`${name}负责${step}，因为${reason}`);
     });
     return [
@@ -54197,10 +54232,10 @@ function renderRecoAssistantStructuredReasonRewrite({
   }
   const leadSentence =
     requestMode === 'use_first'
-      ? `Start with ${selectedNames[0]}${targetPhrase} because ${leadReason}`
+      ? `Start with ${selectedNames[0]}${targetPhrase} because ${grammaticalLeadReason}`
       : requestMode === 'use'
-        ? `${selectedNames[0]} is the most practical pick${targetPhrase} because ${leadReason}`
-        : `${selectedNames[0]} is your best first buy${targetPhrase} because ${leadReason}`;
+        ? `${selectedNames[0]} is the most practical pick${targetPhrase} because ${grammaticalLeadReason}`
+        : `${selectedNames[0]} is your best first buy${targetPhrase} because ${grammaticalLeadReason}`;
   if (selectedNames.length === 1) {
     return [
       formatRecoAssistantStructuredSentence(leadSentence),
@@ -54209,12 +54244,14 @@ function renderRecoAssistantStructuredReasonRewrite({
   }
   const supportSentences = selectedNames.slice(1).map((name, index) => {
     const detail = details[index + 1] || {};
-    const reason = supportReasons[index] || buildRecoAssistantStructuredReasonFallback(detail, {
-      targetLabel,
-      selectedNames,
-      forbiddenNames,
-      forbiddenAliases,
-    });
+    const reason = supportReasons[index] || normalizeRecoAssistantBecauseReasonFragment(
+      buildRecoAssistantStructuredReasonFallback(detail, {
+        targetLabel,
+        selectedNames,
+        forbiddenNames,
+        forbiddenAliases,
+      }),
+    );
     if (selectedProductRoleMix === 'same_role_comparison') {
       return formatRecoAssistantStructuredSentence(`${name} is the same-slot comparison option because ${reason}`);
     }
@@ -54387,15 +54424,18 @@ async function maybeRewriteRecoAssistantTextWithLlm({
       let parseStatus = result && result.parse_status ? String(result.parse_status).trim() : null;
       let candidateText = '';
       if (structuredReasonOnly) {
-        candidateText = renderRecoAssistantStructuredReasonRewrite({
-          structuredReason: result && result.json && typeof result.json === 'object' ? result.json : null,
-          payload,
-          language,
-          primaryTarget,
-          names,
-          requestMode,
-          selectedProductRoleMix,
-        });
+        const structuredReasonJson = result && isValidRecoAssistantStructuredReasonJson(result.json) ? result.json : null;
+        candidateText = structuredReasonJson
+          ? renderRecoAssistantStructuredReasonRewrite({
+              structuredReason: structuredReasonJson,
+              payload,
+              language,
+              primaryTarget,
+              names,
+              requestMode,
+              selectedProductRoleMix,
+            })
+          : '';
         if (
           candidateText &&
           (
@@ -54545,6 +54585,11 @@ async function maybeRewriteRecoAssistantTextWithLlm({
       firstAttemptReason === 'rewrite_mentions_unselected_product'
       || firstAttemptReason === 'rewrite_off_target_concern_claim'
       || firstAttemptReason === 'rewrite_buy_lead_not_direct'
+      || firstAttemptReason === 'rewrite_generic_routine_wrapup'
+      || firstAttemptReason === 'rewrite_ungrammatical_reason_fragment'
+      || firstAttemptReason === 'gemini_json_timeout'
+      || firstAttemptReason === 'parse_truncated_json'
+      || firstAttemptReason === 'empty_rewrite'
       || firstAttemptReason === 'rewrite_failed_alignment_guard';
     const useStrictSelectedOnlyRetry = useStructuredReasonRetry;
     const useCompactRetry =

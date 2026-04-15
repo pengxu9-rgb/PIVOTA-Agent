@@ -157,6 +157,7 @@ function buildConcernSemanticPlanTextPromptBundle({
         '- 如果用户问痘印、色沉、肤色不均，不要把它简化成 acne/oil-control，除非用户真的在问长痘或堵塞。',
         '- routine_mix 时 support_role_ids 是需要被检索和展示的 routine support role，不是可忽略注释。',
         '- routine_mix 时保持角色覆盖完整：功效 + 保湿/屏障支持 + 日常防晒，除非用户明确只要单品或同角色横向比较。',
+        '- routine_mix 时不要同时选择两个会召回同类精华的重复功效角色；痘痘/堵塞和控油高度重叠时，保留更贴合主诉的一个，再补保湿和日间防晒。',
         '- 敏感、泛红、刺激或屏障不稳的 routine_mix，任何舒缓功效角色都需要配套屏障保湿角色。',
         '- 不要返回品牌、SKU、价格、链接。',
       ]
@@ -173,6 +174,7 @@ function buildConcernSemanticPlanTextPromptBundle({
         '- If the user asks about post-breakout marks, dark spots, or uneven tone, do not collapse it into acne/oil-control unless active breakouts or clogged pores are actually requested.',
         '- In routine_mix, support_role_ids are routine support roles that should be retrieved and shown, not optional commentary.',
         '- In routine_mix, keep role coverage complete: treatment + moisturizer/barrier support + daily sunscreen unless the user explicitly asks for a single product or same-role comparison.',
+        '- In routine_mix, do not choose two overlapping treatment roles that will retrieve the same kind of serum; when acne/clogged-pore and oil-control overlap, keep the role that best matches the complaint, then cover moisturizer and daytime sunscreen.',
         '- For sensitive, redness, irritation, or barrier-stress asks, include a barrier moisturizer role with any soothing treatment role.',
         '- Do not return brands, SKUs, prices, or links.',
       ];
@@ -234,6 +236,42 @@ function roleListHasId(roles = [], roleId = '') {
   return (Array.isArray(roles) ? roles : []).some((role) => String(role?.role_id || '').trim() === id);
 }
 
+function isRoutineCoverageTreatmentRole(role = null) {
+  const step = normalizeRecoTargetStep(role?.preferred_step);
+  return step === 'treatment' || step === 'serum';
+}
+
+function normalizeRoutineCoverageRoleFamily(role = null) {
+  const roleId = String(role?.role_id || '').trim();
+  if (!roleId) return '';
+  if (roleId === 'acne_clogged_pore_treatment' || roleId === 'oil_control_treatment') {
+    return 'blemish_oil_treatment';
+  }
+  return roleId;
+}
+
+function orderRoutineCoverageRolesAfterRepair(roles = []) {
+  const rows = (Array.isArray(roles) ? roles : []).filter((role) => isPlainObject(role));
+  if (rows.length <= 2) return rows;
+  const primaryRole = rows[0] || null;
+  if (normalizeRoutineCoverageRoleFamily(primaryRole) !== 'blemish_oil_treatment') return rows;
+  const stepWeight = (role) => {
+    const step = normalizeRecoTargetStep(role?.preferred_step);
+    if (step === 'moisturizer') return 1;
+    if (step === 'sunscreen') return 2;
+    if (step === 'treatment' || step === 'serum') return 3;
+    return 4;
+  };
+  return [
+    primaryRole,
+    ...rows.slice(1).sort((left, right) => {
+      const diff = stepWeight(left) - stepWeight(right);
+      if (diff !== 0) return diff;
+      return Number(left?.rank || 0) - Number(right?.rank || 0);
+    }),
+  ];
+}
+
 function pickOntologyRoleById(ontologyRoles = [], roleId = '') {
   const id = String(roleId || '').trim();
   if (!id) return null;
@@ -272,6 +310,21 @@ function repairRoutineMixRoleCoverage({
   const repairCodes = [];
   const roleIds = () => new Set(repaired.map((role) => String(role?.role_id || '').trim()).filter(Boolean));
   const hasRole = (roleId) => roleIds().has(String(roleId || '').trim());
+  const makeRoomForDailySunscreen = () => {
+    if (repaired.length < 3) return false;
+    const primaryRole = repaired[0] || null;
+    const primaryFamily = normalizeRoutineCoverageRoleFamily(primaryRole);
+    if (!primaryFamily || !isRoutineCoverageTreatmentRole(primaryRole)) return false;
+    const removableIndex = repaired.findIndex((role, index) => (
+      index > 0
+      && isRoutineCoverageTreatmentRole(role)
+      && normalizeRoutineCoverageRoleFamily(role) === primaryFamily
+    ));
+    if (removableIndex < 0) return false;
+    repaired.splice(removableIndex, 1);
+    repairCodes.push('routine_mix_removed_redundant_treatment_for_sunscreen_coverage');
+    return true;
+  };
   const insertRole = (roleId, { beforeRoleId = '', afterIndex = null, code = '' } = {}) => {
     if (hasRole(roleId)) return false;
     const role = cloneSemanticPlannerRole(pickOntologyRoleById(ontologyRoles, roleId));
@@ -325,11 +378,19 @@ function repairRoutineMixRoleCoverage({
       repairCodes.push('routine_mix_restored_treatment_moisturizer_sunscreen_coverage');
     }
   }
-  if ((hasTreatment || roleListHasStep(repaired, 'moisturizer')) && !hasSunscreen && !/\b(night|pm|evening|retinol|exfoliat)\b/.test(contextText)) {
-    insertRole('daily_sunscreen', { code: 'routine_mix_added_daily_sunscreen' });
+  if (
+    (hasTreatment || roleListHasStep(repaired, 'moisturizer'))
+    && !hasSunscreen
+    && !roleListHasStep(repaired, 'sunscreen')
+    && !/\b(night|pm|evening|retinol|exfoliat)\b/.test(contextText)
+  ) {
+    if (repaired.length >= 3) makeRoomForDailySunscreen();
+    if (repaired.length < 3) {
+      insertRole('daily_sunscreen', { code: 'routine_mix_added_daily_sunscreen' });
+    }
   }
 
-  const finalCoreRoles = repaired.slice(0, 3);
+  const finalCoreRoles = orderRoutineCoverageRolesAfterRepair(repaired).slice(0, 3);
   const finalCoreIds = new Set(finalCoreRoles.map((role) => String(role?.role_id || '').trim()).filter(Boolean));
   const finalSupportRoles = (Array.isArray(supportRoles) ? supportRoles : [])
     .filter((role) => role && !finalCoreIds.has(String(role?.role_id || '').trim()))

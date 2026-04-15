@@ -5526,8 +5526,8 @@ test('__internal: framework pool prioritizes routine support before same-role so
   );
   assert.equal(state.routine_support_fill_applied, true);
   assert.equal(state.routine_support_fill_count, 1);
-  assert.equal(state.comparison_fill_applied, true);
-  assert.equal(state.comparison_fill_count, 1);
+  assert.equal(state.comparison_fill_applied, false);
+  assert.equal(state.comparison_fill_count, 0);
 });
 
 test('__internal: framework pool prioritizes a complete core routine over same-role soft comparison when both support roles fit the card budget', async () => {

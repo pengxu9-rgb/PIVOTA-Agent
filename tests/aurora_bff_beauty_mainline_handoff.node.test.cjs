@@ -511,7 +511,7 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
     );
     assert.equal(captured.every((row) => row.callerLane === 'beauty_chat_handoff'), true);
     assert.equal(captured.slice(0, 3).every((row) => row.timeoutMs === 10500), true);
-    assert.equal(captured.slice(3).every((row) => row.timeoutMs === 950), true);
+    assert.equal(captured.slice(3).every((row) => row.timeoutMs === 1400), true);
     assert.equal(captured.every((row) => row.allowExternalSeed === false), true);
     assert.equal(
       captured.slice(0, 3).every((row) =>
