@@ -5135,6 +5135,9 @@ function shouldBridgePublicBeautySearchToDiscovery({
   if (strictDecision?.enabled === true) return false;
   const rawQuery = String(queryText || searchObj.query || searchObj.q || '').trim();
   if (!rawQuery) return false;
+  if (!hasExplicitBeautyCatalogSurface(searchObj, metadataObj)) {
+    return false;
+  }
   if (
     !isPublicBeautyUnifiedMainlineSearch({
       operation,
