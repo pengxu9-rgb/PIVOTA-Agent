@@ -3,6 +3,12 @@ const {
   buildAuthoritativePayload,
   unwrapLivePdpPayload,
 } = require('../../scripts/audit-external-product-pdp-quality');
+const {
+  buildIdentityGate,
+  buildProductIntelGate,
+  buildLivePdpGate,
+  buildExternalSeedQualityResult,
+} = require('../../src/services/externalSeedPdpQuality');
 
 describe('audit-external-product-pdp-quality helpers', () => {
   test('defaults to the public PDP gateway instead of production backend env', () => {
@@ -76,5 +82,81 @@ describe('audit-external-product-pdp-quality helpers', () => {
         },
       },
     });
+  });
+
+  test('fails drift gates for canonical-only PDPs with soup details and stripped Tom Ford gallery URLs', () => {
+    const livePayload = {
+      product: {
+        product_id: 'ext_e157ac1f095ba75edcff2a50',
+        merchant_id: 'external_seed',
+        description:
+          'Details Full coverage concealer. Benefits 24H wear. Coverage Medium to full. Finish Natural matte. Ingredients Water, Dimethicone.',
+      },
+      modules: [
+        {
+          type: 'media_gallery',
+          data: {
+            items: [
+              {
+                type: 'image',
+                url: 'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T92601_2000x2000_3.jpg',
+              },
+            ],
+          },
+        },
+        {
+          type: 'product_details',
+          data: {
+            sections: [
+              {
+                heading: 'Description',
+                content:
+                  'Details Full coverage concealer. Benefits 24H wear. Coverage Medium to full. Finish Natural matte. Ingredients Water, Dimethicone.',
+              },
+            ],
+          },
+        },
+      ],
+    };
+    const liveResponse = {
+      status: 'success',
+      modules: [{ type: 'canonical', data: { pdp_payload: livePayload } }],
+    };
+    const livePdpGate = buildLivePdpGate({
+      livePayload,
+      liveResponse,
+      imageHealth: {
+        scanned_count: 1,
+        broken_count: 1,
+        broken_urls: [{ url: livePayload.modules[0].data.items[0].url, status: 404 }],
+      },
+    });
+    const identityGate = buildIdentityGate({ livePayload, liveResponse });
+    const productIntelGate = buildProductIntelGate({ livePayload, liveResponse });
+    const result = buildExternalSeedQualityResult({
+      seedId: 'seed_tom_ford',
+      externalProductId: 'ext_e157ac1f095ba75edcff2a50',
+      market: 'US',
+      domain: 'www.tomfordbeauty.com',
+      canonicalUrl: 'https://www.tomfordbeauty.com/products/shade-and-illuminate-concealer',
+      identityGate,
+      productIntelGate,
+      livePdpGate,
+    });
+
+    expect(result.failure_reasons).toEqual(
+      expect.arrayContaining([
+        'missing_pdp_identity',
+        'missing_product_intel',
+        'product_details_section_soup',
+        'legacy_overview_render_risk',
+        'image_url_identity_stripped',
+        'broken_gallery_image',
+      ]),
+    );
+    expect(result.root_cause_classification).toEqual(
+      expect.arrayContaining(['identity_graph_gap', 'product_intel_gap', 'image_asset_issue', 'pdp_shaping_issue']),
+    );
+    expect(result.live_pdp_gate.live_modules).toEqual(expect.arrayContaining(['canonical', 'media_gallery', 'product_details']));
   });
 });

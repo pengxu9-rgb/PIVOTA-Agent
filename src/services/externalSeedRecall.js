@@ -144,6 +144,26 @@ function dedupeStrings(items, maxItems = 64) {
   return out;
 }
 
+function normalizeFaqItems(value, maxItems = 24) {
+  const items = Array.isArray(value) ? value : [];
+  const out = [];
+  const seen = new Set();
+  for (const item of items) {
+    const question = normalizeNonEmptyString(item?.question)
+      .replace(/^(?:q(?:uestion)?\s*[:/-]\s*)/i, '')
+      .trim();
+    const answer = normalizeNonEmptyString(item?.answer)
+      .replace(/^(?:a(?:nswer)?\s*[:/-]\s*)/i, '')
+      .trim();
+    const key = `${normalizeKey(question)}::${normalizeKey(answer)}`;
+    if (!question || !answer || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ question, answer });
+    if (out.length >= maxItems) break;
+  }
+  return out;
+}
+
 function looksLikeRecallNoise(value) {
   const normalized = normalizeNonEmptyString(value);
   if (!normalized) return false;
@@ -230,7 +250,7 @@ function cleanRecallSummary(value, { maxSentences = 2, maxChars = 320 } = {}) {
   return summary;
 }
 
-function cleanRecallBody(values, { maxChars = 1800 } = {}) {
+function cleanRecallBody(values, { maxChars = 3000 } = {}) {
   const blocks = cleanRecallBlocks(
     (Array.isArray(values) ? values : [values])
       .map((value) => stripRecallNarrativeNoise(value))
@@ -504,8 +524,18 @@ function collectRecallTextCandidates(seedData = {}, snapshot = {}, row = {}) {
   const detailBodies = []
     .concat(Array.isArray(seedData.pdp_details_sections) ? seedData.pdp_details_sections : [])
     .concat(Array.isArray(snapshot.pdp_details_sections) ? snapshot.pdp_details_sections : [])
-    .map((section) => normalizeNonEmptyString(section?.body || section?.content || section?.text))
+    .map((section) => {
+      const heading = normalizeNonEmptyString(section?.heading || section?.title || section?.name);
+      const body = normalizeNonEmptyString(section?.body || section?.content || section?.text);
+      if (!body) return '';
+      return heading ? `${heading}: ${body}` : body;
+    })
     .filter(Boolean);
+  const faqBlocks = normalizeFaqItems(
+    Array.isArray(seedData.pdp_faq_items) && seedData.pdp_faq_items.length > 0
+      ? seedData.pdp_faq_items
+      : snapshot.pdp_faq_items,
+  ).flatMap((item) => [`${item.question} ${item.answer}`, item.answer]);
 
   return dedupeStrings([
     seedData.pdp_description_raw,
@@ -514,6 +544,7 @@ function collectRecallTextCandidates(seedData = {}, snapshot = {}, row = {}) {
     snapshot.description,
     row.description,
     row.seed_description,
+    ...faqBlocks,
     ...detailBodies,
   ]);
 }

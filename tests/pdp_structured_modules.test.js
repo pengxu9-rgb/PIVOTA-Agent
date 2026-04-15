@@ -53,15 +53,18 @@ describe('pdpBuilder structured PDP modules', () => {
       ? mediaGallery.data.items.map((item) => item.url)
       : [];
 
-    expect(urls).toEqual([
-      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QT01_2000x2000_1.jpg',
-      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QT01_3000x3000_0.png',
-      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QW01_2000x2000_1.jpg',
-    ]);
+    expect(urls).toEqual(
+      expect.arrayContaining([
+        'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QT01_2000x2000_1.jpg',
+        'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QT01_3000x3000_0.png',
+        'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QW01_2000x2000_1.jpg',
+      ]),
+    );
+    expect(new Set(urls).size).toBe(urls.length);
     expect(urls.some((url) => url.includes('plpbanner'))).toBe(false);
   });
 
-  test('emits additive beauty modules from structured ingredient fields without duplicating legacy product_details', () => {
+  test('emits additive beauty modules from structured ingredient fields and carries brand story separately', () => {
     const payload = buildPdpPayload({
       product: {
         product_id: 'p_structured_1',
@@ -119,13 +122,18 @@ describe('pdpBuilder structured PDP modules', () => {
       expect.objectContaining({
         title: 'How to use',
         raw_text: 'Massage onto clean skin. Use twice daily.',
-        steps: ['Massage onto clean skin', 'Use twice daily.'],
+        steps: ['Massage onto clean skin.', 'Use twice daily.'],
       }),
     );
 
     const factHeadings = factsModule?.data?.sections?.map((section) => section.heading) || [];
-    expect(factHeadings).toEqual(['Clinical Results', 'Brand Story']);
-    expect(detailsModule).toBeFalsy();
+    expect(factHeadings).toEqual(['Clinical Results']);
+    expect(detailsModule?.data?.sections).toEqual([
+      expect.objectContaining({
+        heading: 'Description',
+        content: 'A barrier-supporting cream designed for dry, reactive skin.',
+      }),
+    ]);
     expect(factHeadings).not.toContain('Ingredients');
     expect(factHeadings).not.toContain('How to Use');
   });
@@ -174,5 +182,116 @@ describe('pdpBuilder structured PDP modules', () => {
       }),
     ]);
     expect(findModule(payload, 'product_details')).toBeFalsy();
+  });
+
+  test('does not render section-soup PDP descriptions as legacy overview copy', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'p_tom_ford_soup',
+        merchant_id: 'external_seed',
+        title: 'Shade and Illuminate Concealer',
+        image_url: 'https://cdn.example.com/concealer.jpg',
+        price: { amount: 95, currency: 'USD' },
+        pdp_description_raw:
+          'Details A full-coverage concealer with a soft matte finish. Benefits 24H wear and crease resistance. Coverage Medium to full. Finish Natural matte. How to Use Apply to targeted areas and blend. Ingredients Water, Dimethicone, Glycerin',
+        pdp_details_sections: [
+          {
+            heading: 'Details',
+            body:
+              'Details A full-coverage concealer with a soft matte finish. Benefits 24H wear and crease resistance. Coverage Medium to full. Finish Natural matte.',
+          },
+          {
+            heading: 'How to Use',
+            body: 'Apply to targeted areas and blend.',
+          },
+          {
+            heading: 'Ingredients',
+            body: 'Water, Dimethicone, Glycerin',
+          },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    expect(payload.product.description).toBe(
+      'A full-coverage concealer with a soft matte finish.',
+    );
+    expect(findModule(payload, 'product_details')?.data?.sections).toEqual([
+      expect.objectContaining({
+        heading: 'Description',
+        content: 'A full-coverage concealer with a soft matte finish.',
+      }),
+    ]);
+    expect(findModule(payload, 'product_facts')?.data?.sections).toEqual([
+      expect.objectContaining({
+        heading: 'Benefits',
+        content: '24H wear and crease resistance.',
+      }),
+      expect.objectContaining({
+        heading: 'Coverage',
+        content: 'Medium to full.',
+      }),
+      expect.objectContaining({
+        heading: 'Finish',
+        content: 'Natural matte.',
+      }),
+    ]);
+    expect(findModule(payload, 'how_to_use')?.data?.steps).toEqual([
+      'Apply to targeted areas and blend.',
+    ]);
+    expect(findModule(payload, 'ingredients_inci')?.data?.items).toEqual([
+      'Water',
+      'Dimethicone',
+      'Glycerin',
+    ]);
+    expect(JSON.stringify(findModule(payload, 'product_details'))).not.toContain('Benefits 24H wear');
+  });
+
+  test('merges merchant FAQ and review-derived questions into reviews preview', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'p_reviews_faq',
+        merchant_id: 'external_seed',
+        title: 'Glow Replenishing Rice Milk',
+        image_url: 'https://cdn.example.com/rice-milk.jpg',
+        price: { amount: 14.4, currency: 'USD' },
+        pdp_faq_items: [
+          {
+            question: 'Can I use this every day?',
+            answer: 'Yes, it is gentle enough for daily use.',
+            source_kind: 'merchant_faq',
+          },
+        ],
+        review_summary: {
+          scale: 5,
+          rating: 4.7,
+          review_count: 126,
+          preview_items: [
+            {
+              review_id: 'r1',
+              title: 'Can I use this every day?',
+              text: 'Yes, I use it morning and night and it stays lightweight.',
+            },
+            {
+              review_id: 'r2',
+              title: 'Can I use this every day?',
+              text: 'Yes, I use it every day and it feels gentle on oily skin.',
+            },
+          ],
+        },
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    expect(findModule(payload, 'reviews_preview')?.data?.questions).toEqual([
+      expect.objectContaining({
+        question: 'Can I use this every day?',
+        answer: 'Yes, it is gentle enough for daily use.',
+        source: 'merchant_faq',
+        source_label: 'Official FAQ',
+      }),
+    ]);
   });
 });

@@ -1,3 +1,5 @@
+const nock = require('nock');
+
 const {
   pickSeedTargetUrl,
   buildExtractRequestBody,
@@ -8,9 +10,14 @@ const {
   normalizeComparableUrlKey,
   normalizeTargetUrlForMarket,
   recoverTargetUrlFromDiagnostics,
+  validateNextRowImageHealth,
 } = require('../../scripts/backfill-external-product-seeds-catalog');
 
 describe('backfill-external-product-seeds-catalog', () => {
+  afterEach(() => {
+    nock.cleanAll();
+  });
+
   test('prefers canonical URL when building extract target', () => {
     const row = {
       canonical_url: 'https://example.com/p/canonical-product',
@@ -350,6 +357,13 @@ describe('backfill-external-product-seeds-catalog', () => {
             ingredients_raw: 'Titanium Dioxide 3.4%, Zinc Oxide 14.37%',
             active_ingredients_raw: 'Titanium Dioxide, Zinc Oxide',
             how_to_use_raw: 'Apply before sun exposure.',
+            faq_items: [
+              {
+                question: 'Can I wear this every day?',
+                answer: 'Yes, apply before sun exposure as part of your daytime routine.',
+                source_kind: 'merchant_faq',
+              },
+            ],
             field_capture_status: {
               description_raw: 'present',
               details_sections: 'present',
@@ -370,12 +384,34 @@ describe('backfill-external-product-seeds-catalog', () => {
     expect(payload.nextRow.seed_data.pdp_ingredients_raw).toBe('Titanium Dioxide 3.4%, Zinc Oxide 14.37%');
     expect(payload.nextRow.seed_data.pdp_active_ingredients_raw).toBe('Titanium Dioxide, Zinc Oxide');
     expect(payload.nextRow.seed_data.pdp_how_to_use_raw).toBe('Apply before sun exposure.');
+    expect(payload.nextRow.seed_data.pdp_faq_items).toEqual([
+      {
+        question: 'Can I wear this every day?',
+        answer: 'Yes, apply before sun exposure as part of your daytime routine.',
+        source_kind: 'merchant_faq',
+      },
+    ]);
     expect(payload.nextRow.seed_data.seed_description_origin).toBe('pdp_product_description');
+    expect(payload.nextRow.seed_data.pdp_field_capture_status).toEqual({
+      description_raw: 'present',
+      details_sections: 'present',
+      ingredients_raw: 'present',
+      active_ingredients_raw: 'present',
+      how_to_use_raw: 'present',
+      faq_items: 'present',
+    });
     expect(payload.nextRow.seed_data.snapshot.pdp_details_sections).toEqual([
       {
         heading: 'Ingredients',
         body: 'Titanium Dioxide 3.4%, Zinc Oxide 14.37%',
         source_kind: 'accordion_ingredients',
+      },
+    ]);
+    expect(payload.nextRow.seed_data.snapshot.pdp_faq_items).toEqual([
+      {
+        question: 'Can I wear this every day?',
+        answer: 'Yes, apply before sun exposure as part of your daytime routine.',
+        source_kind: 'merchant_faq',
       },
     ]);
   });
@@ -550,10 +586,10 @@ describe('backfill-external-product-seeds-catalog', () => {
     );
 
     expect(payload.nextRow.image_url).toBe(
-      'https://cdn.shopify.com/s/files/1/2139/2967/files/Duo_Mousse_Nettoyante_Detox_-_Packshot.jpg',
+      'https://cdn.shopify.com/s/files/1/2139/2967/files/Duo_Mousse_Nettoyante_Detox_-_Packshot.jpg?v=1750422282',
     );
     expect(payload.nextRow.seed_data.image_urls).toContain(
-      'https://cdn.shopify.com/s/files/1/2139/2967/files/Mousse_Nettoyante_Detox_-_Texture.jpg',
+      'https://cdn.shopify.com/s/files/1/2139/2967/files/Mousse_Nettoyante_Detox_-_Texture.jpg?v=1763980849',
     );
     expect(payload.nextRow.seed_data.snapshot.diagnostics).toEqual(
       expect.objectContaining({
@@ -760,16 +796,52 @@ describe('backfill-external-product-seeds-catalog', () => {
     );
 
     expect(payload.nextRow.image_url).toBe(
-      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T93Y01_2000x2000_0.png',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T93Y01_2000x2000_0.png?v=1774596807',
     );
     expect(payload.nextRow.seed_data.image_urls).toEqual([
-      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T93Y01_2000x2000_0.png',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T93Y01_2000x2000_0.png?v=1774596807',
     ]);
     expect(payload.nextRow.seed_data.snapshot.image_urls).toEqual([
-      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T93Y01_2000x2000_0.png',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T93Y01_2000x2000_0.png?v=1774596807',
     ]);
     expect(payload.nextRow.seed_data.active_ingredients).toBeUndefined();
     expect(payload.nextRow.seed_data.snapshot.active_ingredients).toBeUndefined();
+  });
+
+  test('validates seed images before write and filters broken gallery URLs', async () => {
+    nock('https://cdn.example.com')
+      .head('/good.jpg')
+      .reply(200, '', { 'Content-Type': 'image/jpeg' })
+      .head('/broken.jpg')
+      .reply(404, 'not found', { 'Content-Type': 'text/html' });
+
+    const result = await validateNextRowImageHealth({
+      image_url: 'https://cdn.example.com/good.jpg',
+      seed_data: {
+        image_url: 'https://cdn.example.com/good.jpg',
+        image_urls: [
+          'https://cdn.example.com/good.jpg',
+          'https://cdn.example.com/broken.jpg',
+        ],
+        snapshot: {
+          image_urls: [
+            'https://cdn.example.com/good.jpg',
+            'https://cdn.example.com/broken.jpg',
+          ],
+        },
+      },
+    });
+
+    expect(result.validation).toEqual(
+      expect.objectContaining({
+        status: 'filtered_broken_images',
+        valid_count: 1,
+        broken_count: 1,
+      }),
+    );
+    expect(result.nextRow.image_url).toBe('https://cdn.example.com/good.jpg');
+    expect(result.nextRow.seed_data.image_urls).toEqual(['https://cdn.example.com/good.jpg']);
+    expect(result.nextRow.seed_data.snapshot.image_urls).toEqual(['https://cdn.example.com/good.jpg']);
   });
 
   test('writes a cleaned derived recall document during catalog backfill', () => {

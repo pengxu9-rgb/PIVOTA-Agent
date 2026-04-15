@@ -328,6 +328,32 @@ function firstNonEmptyString(...values) {
   return '';
 }
 
+function normalizeFaqItems(value, maxItems = 24) {
+  const items = Array.isArray(value) ? value : [];
+  const out = [];
+  const seen = new Set();
+  for (const item of items) {
+    const question = firstNonEmptyString(item?.question).replace(/^(?:q(?:uestion)?\s*[:/-]\s*)/i, '').trim();
+    const answer = firstNonEmptyString(item?.answer).replace(/^(?:a(?:nswer)?\s*[:/-]\s*)/i, '').trim();
+    const sourceKind = firstNonEmptyString(item?.source_kind, item?.sourceKind) || 'merchant_faq';
+    const sourceUrl = normalizeHttpUrl(item?.source_url || item?.sourceUrl);
+    const sourceTitle = firstNonEmptyString(item?.source_title, item?.sourceTitle);
+    if (!question || !answer) continue;
+    const key = `${question.toLowerCase()}|${answer.toLowerCase()}|${sourceKind.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      question,
+      answer,
+      source_kind: sourceKind,
+      ...(sourceUrl ? { source_url: sourceUrl } : {}),
+      ...(sourceTitle ? { source_title: sourceTitle } : {}),
+    });
+    if (out.length >= Math.max(1, Number(maxItems) || 24)) break;
+  }
+  return out;
+}
+
 function normalizeStringList(value, maxItems = 64) {
   const out = [];
   const seen = new Set();
@@ -1193,6 +1219,11 @@ function buildExternalSeedProduct(row, options = {}) {
     seedData.pdp_how_to_use_raw,
     snapshot.pdp_how_to_use_raw,
   );
+  const pdpFaqItems = normalizeFaqItems(
+    Array.isArray(seedData.pdp_faq_items) && seedData.pdp_faq_items.length > 0
+      ? seedData.pdp_faq_items
+      : snapshot.pdp_faq_items,
+  );
   const rawIngredientTextClean = firstNonEmptyString(
     ingredientIntel.raw_ingredient_text_clean,
     snapshotIngredientIntel.raw_ingredient_text_clean,
@@ -1492,6 +1523,7 @@ function buildExternalSeedProduct(row, options = {}) {
     ...(pdpIngredientsRaw ? { pdp_ingredients_raw: pdpIngredientsRaw } : {}),
     ...(pdpActiveIngredientsRaw ? { pdp_active_ingredients_raw: pdpActiveIngredientsRaw } : {}),
     ...(pdpHowToUseRaw ? { pdp_how_to_use_raw: pdpHowToUseRaw } : {}),
+    ...(pdpFaqItems.length ? { pdp_faq_items: pdpFaqItems } : {}),
     ...(seedDescriptionOrigin ? { seed_description_origin: seedDescriptionOrigin } : {}),
     ...(sourcePageType ? { source_page_type: sourcePageType } : {}),
     ...(contentQuality ? { content_quality: contentQuality } : {}),

@@ -1,4 +1,4 @@
-const { normalizePdpImageUrl, normalizePdpImageUrls } = require('./utils/pdpImageUrls');
+const { buildPdpImageDedupeKey, normalizePdpImageUrl, normalizePdpImageUrls } = require('./utils/pdpImageUrls');
 
 const BEAUTY_KEYWORDS = [
   'beauty',
@@ -585,9 +585,12 @@ function buildHowToUseModuleData(candidates, fallbackTitle) {
   for (const candidate of candidates) {
     if (!candidate) continue;
     const rawText = pickStructuredText(candidate);
+    const structuredSteps = normalizeStructuredItems(candidate, { mode: 'steps' }).flatMap((item) =>
+      splitHowToUseStepsFromText(item),
+    );
     const steps = uniqueNonEmptyStrings([
-      ...normalizeStructuredItems(candidate, { mode: 'steps' }).flatMap((item) => splitHowToUseStepsFromText(item)),
-      ...splitHowToUseStepsFromText(rawText),
+      ...structuredSteps,
+      ...(structuredSteps.length > 1 ? [] : splitHowToUseStepsFromText(rawText)),
     ]);
     if (!steps.length && !rawText) continue;
     return {
@@ -792,8 +795,29 @@ function buildVariants(product) {
   });
 }
 
+function isDecorativePdpMediaUrl(url) {
+  const normalized = String(url || '').trim().toLowerCase();
+  if (!normalized) return false;
+  if (/\.(?:svg)(?:$|\?)/i.test(normalized)) return true;
+  return ['menu', 'icon', 'logo', 'plpbanner', 'banner', 'navigation', 'cart'].some((token) =>
+    normalized.includes(token),
+  );
+}
+
 function buildMediaItems(product, variants) {
   const items = [];
+  const seen = new Set();
+  const pushItem = (item) => {
+    const url = normalizePdpImageUrl(item?.url);
+    if (!url || isDecorativePdpMediaUrl(url)) return;
+    const key = buildPdpImageDedupeKey(url) || url;
+    if (seen.has(key)) return;
+    seen.add(key);
+    items.push({
+      ...item,
+      url,
+    });
+  };
   const media = Array.isArray(product.media) ? product.media : [];
   const images = Array.isArray(product.images)
     ? product.images
@@ -804,7 +828,7 @@ function buildMediaItems(product, variants) {
   media.forEach((m) => {
     const url = normalizePdpImageUrl(m.url || m.image_url || m.src);
     if (!url) return;
-    items.push({
+    pushItem({
       type: m.type || m.media_type || 'image',
       url,
       thumbnail_url: m.thumbnail_url || m.thumbnail,
@@ -820,7 +844,7 @@ function buildMediaItems(product, variants) {
   images.forEach((img) => {
     const url = normalizePdpImageUrl(typeof img === 'string' ? img : img.url || img.image_url);
     if (!url) return;
-    items.push({
+    pushItem({
       type: 'image',
       url,
       alt_text: typeof img === 'object' ? img.alt_text : product.title,
@@ -845,8 +869,8 @@ function buildMediaItems(product, variants) {
       const url = normalizePdpImageUrl(
         typeof variantImage === 'string' ? variantImage : variantImage?.url || variantImage?.src || variantImage?.image_url,
       );
-      if (!url || items.some((item) => item.url === url)) return;
-      items.push({
+      if (!url) return;
+      pushItem({
         type: 'image',
         url,
         alt_text: product.title,
@@ -854,8 +878,8 @@ function buildMediaItems(product, variants) {
     });
 
     const variantImageUrl = normalizePdpImageUrl(v.image_url);
-    if (variantImageUrl && !items.some((i) => i.url === variantImageUrl)) {
-      items.push({
+    if (variantImageUrl) {
+      pushItem({
         type: 'image',
         url: variantImageUrl,
         alt_text: product.title,
@@ -865,7 +889,7 @@ function buildMediaItems(product, variants) {
 
   const fallbackProductImage = normalizePdpImageUrl(product.image_url);
   if (!items.length && fallbackProductImage) {
-    items.push({
+    pushItem({
       type: 'image',
       url: fallbackProductImage,
       alt_text: product.title,
@@ -875,15 +899,195 @@ function buildMediaItems(product, variants) {
   return items;
 }
 
-function buildDetailSections(product) {
-  const sections = [];
-  const descriptionText =
+const STRUCTURED_DETAIL_SECTION_RE =
+  /^(ingredients|active ingredients?|how to use|how to apply|directions?|warnings?|warning|caution|faq|frequently asked questions?|q\s*&\s*a|questions?)$/i;
+const OVERVIEW_DETAIL_SECTION_RE = /^(overview|product details|details|about|description)$/i;
+const BRAND_STORY_SECTION_RE = /(?:brand story|our story|about the brand)/i;
+const FACT_DETAIL_SECTION_RE =
+  /^(benefits?|clinical results?|results?|proven results?|key ingredients?|why it works|texture|finish|coverage|free of|set includes|best for|formulation|what else you should know|good to know)$/i;
+const SECTION_SOUP_LABEL_RE =
+  /\b(description|details?|overview|benefits?|clinical results?|results?|proven results?|key ingredients?|why it works|texture|finish|coverage|free of|set includes|best for|formulation|what else you should know|good to know|ingredients?|active ingredients?|how to use|how to apply|directions?|faq|frequently asked questions?|q\s*&\s*a|questions?)\b\s*:?\s*/gi;
+
+function normalizeDetailSectionHeading(value) {
+  const heading = asNonEmptyString(value);
+  if (!heading) return '';
+  if (/^(?:product details?|details?|about(?: the product)?|description)$/i.test(heading)) return 'Details';
+  if (/^(?:benefits?|why it works|what it does|why we love it)$/i.test(heading)) return 'Benefits';
+  if (/^(?:key ingredients?|highlight(?:ed)? ingredients?|ingredients story)$/i.test(heading)) {
+    return 'Key Ingredients';
+  }
+  if (/^(?:clinical(?: results?| claims?)?|results?|proven results?)$/i.test(heading)) {
+    return 'Clinical Results';
+  }
+  if (/^coverage$/i.test(heading)) return 'Coverage';
+  if (/^finish$/i.test(heading)) return 'Finish';
+  if (/^texture$/i.test(heading)) return 'Texture';
+  if (/^free of$/i.test(heading)) return 'Free Of';
+  if (/^set includes$/i.test(heading)) return 'Set Includes';
+  if (/^(?:how to use|how to apply|directions?|usage)$/i.test(heading)) return 'How to Use';
+  if (/^(?:ingredients?|ingredients and safety|ingredient list|full ingredients?|full ingredient list|inci)$/i.test(heading)) {
+    return 'Ingredients';
+  }
+  if (/^(?:faq|frequently asked questions?|q(?:uestions)?\s*&\s*a|questions?)$/i.test(heading)) {
+    return 'FAQ';
+  }
+  return heading;
+}
+
+function extractSectionSoupSegments(value) {
+  const text = asNonEmptyString(value);
+  if (!text) return [];
+  const matches = [];
+  SECTION_SOUP_LABEL_RE.lastIndex = 0;
+  let match = SECTION_SOUP_LABEL_RE.exec(text);
+  while (match) {
+    const rawLabel = String(match[1] || '');
+    const previousChar = match.index > 0 ? text[match.index - 1] : '';
+    if (previousChar === '-') {
+      match = SECTION_SOUP_LABEL_RE.exec(text);
+      continue;
+    }
+    if (/^(coverage|finish|texture)$/i.test(rawLabel) && rawLabel[0] !== rawLabel[0].toUpperCase()) {
+      match = SECTION_SOUP_LABEL_RE.exec(text);
+      continue;
+    }
+    matches.push({
+      heading: normalizeDetailSectionHeading(rawLabel),
+      index: match.index,
+      contentStart: SECTION_SOUP_LABEL_RE.lastIndex,
+    });
+    match = SECTION_SOUP_LABEL_RE.exec(text);
+  }
+  if (matches.length < 2) return [];
+
+  return matches
+    .map((entry, index) => {
+      const next = matches[index + 1];
+      const content = cleanStructuredToken(text.slice(entry.contentStart, next ? next.index : undefined));
+      return {
+        heading: entry.heading,
+        content,
+      };
+    })
+    .filter((entry) => entry.heading && entry.content);
+}
+
+function looksLikeSectionSoupText(value) {
+  const text = asNonEmptyString(value);
+  if (!text) return false;
+  const segments = extractSectionSoupSegments(text);
+  if (segments.length >= 2) return true;
+  return (
+    text.length > 500 &&
+    /\b(benefits?|how to use|ingredients?|clinical results?|coverage|finish)\b/i.test(text) &&
+    /\b(description|details?|overview)\b/i.test(text)
+  );
+}
+
+function cleanOverviewDescriptionText(value) {
+  const text = asNonEmptyString(value);
+  if (!text) return '';
+  const segments = extractSectionSoupSegments(text);
+  if (!segments.length) return text;
+  const preferred =
+    segments.find((section) => OVERVIEW_DETAIL_SECTION_RE.test(section.heading)) ||
+    segments.find((section) => !STRUCTURED_DETAIL_SECTION_RE.test(section.heading) && !FACT_DETAIL_SECTION_RE.test(section.heading));
+  return preferred?.content || '';
+}
+
+function extractFactSectionsFromSection(section) {
+  if (!section?.content) return [];
+  const segments = extractSectionSoupSegments(section.content);
+  if (!segments.length) return [];
+  return segments
+    .filter((entry) => FACT_DETAIL_SECTION_RE.test(entry.heading) && !BRAND_STORY_SECTION_RE.test(entry.heading))
+    .map((entry) => ({
+      heading: entry.heading,
+      content_type: 'text',
+      content: entry.content,
+      collapsed_by_default: section.collapsed_by_default ?? true,
+    }));
+}
+
+function findDetailSectionContent(detailSections, pattern) {
+  return detailSections.find((section) => pattern.test(section.heading))?.content || '';
+}
+
+function collectStructuredDetailSections(product) {
+  const rawSections = Array.isArray(product.pdp_details_sections)
+    ? product.pdp_details_sections
+    : Array.isArray(product.details_sections)
+      ? product.details_sections
+      : Array.isArray(product.detail_sections)
+        ? product.detail_sections
+        : Array.isArray(product.details)
+          ? product.details
+          : [];
+  const out = [];
+  const seen = new Set();
+  for (const section of rawSections) {
+    const heading = normalizeDetailSectionHeading(section?.heading || section?.title || section?.name);
+    const content = stripHtml(
+      section?.content ||
+        section?.value ||
+        section?.text ||
+        section?.body ||
+        section?.description ||
+        '',
+    );
+    if (!heading || !content) continue;
+    const key = `${heading.toLowerCase()}::${content.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      heading,
+      content_type: 'text',
+      content,
+      collapsed_by_default: section?.collapsed_by_default ?? true,
+    });
+  }
+  return out;
+}
+
+function resolveProductDescriptionText(product, detailSections = collectStructuredDetailSections(product)) {
+  const explicitPdpDescription = asNonEmptyString(product.pdp_description_raw);
+  if (explicitPdpDescription && !looksLikeSectionSoupText(explicitPdpDescription)) {
+    return explicitPdpDescription;
+  }
+
+  const overviewSection =
+    detailSections.find((section) => OVERVIEW_DETAIL_SECTION_RE.test(section.heading)) ||
+    detailSections.find(
+      (section) =>
+        !STRUCTURED_DETAIL_SECTION_RE.test(section.heading) &&
+        !FACT_DETAIL_SECTION_RE.test(section.heading) &&
+        !BRAND_STORY_SECTION_RE.test(section.heading),
+    );
+  const cleanedOverview = cleanOverviewDescriptionText(overviewSection?.content || '');
+  if (cleanedOverview) return cleanedOverview;
+  const cleanedPdpDescription = cleanOverviewDescriptionText(explicitPdpDescription);
+  if (cleanedPdpDescription) return cleanedPdpDescription;
+
+  const structuredDescription =
     typeof product.description === 'string'
       ? product.description
       : product.description && typeof product.description === 'object'
         ? product.description.text || product.description.raw_text || ''
         : '';
-  const desc = stripHtml(descriptionText || '');
+  const normalizedDescription = stripHtml(structuredDescription || '');
+  if (normalizedDescription) return normalizedDescription;
+  return '';
+}
+
+function resolveBrandStoryText(product, detailSections = collectStructuredDetailSections(product)) {
+  const explicit = asNonEmptyString(product.brand_story || product.brandStory);
+  if (explicit) return explicit;
+  return detailSections.find((section) => BRAND_STORY_SECTION_RE.test(section.heading))?.content || '';
+}
+
+function buildDetailSections(product, detailSections = collectStructuredDetailSections(product)) {
+  const sections = [];
+  const desc = resolveProductDescriptionText(product, detailSections);
   if (desc) {
     sections.push({
       heading: 'Description',
@@ -892,6 +1096,24 @@ function buildDetailSections(product) {
       collapsed_by_default: false,
     });
   }
+
+  detailSections
+    .filter((section) => {
+      if (STRUCTURED_DETAIL_SECTION_RE.test(section.heading)) return false;
+      if (FACT_DETAIL_SECTION_RE.test(section.heading)) return false;
+      if (BRAND_STORY_SECTION_RE.test(section.heading)) return false;
+      if (OVERVIEW_DETAIL_SECTION_RE.test(section.heading)) return false;
+      if (desc && section.content === desc) return false;
+      return true;
+    })
+    .forEach((section) => {
+      sections.push({
+        heading: section.heading,
+        content_type: 'text',
+        content: section.content,
+        collapsed_by_default: section.collapsed_by_default,
+      });
+    });
 
   if (product.category || product.product_type) {
     sections.push({
@@ -905,38 +1127,54 @@ function buildDetailSections(product) {
   return sections;
 }
 
-function buildProductFactsSections(product) {
-  const rawSections = Array.isArray(product.details_sections)
-    ? product.details_sections
-    : Array.isArray(product.detail_sections)
-      ? product.detail_sections
-      : Array.isArray(product.details)
-        ? product.details
-        : [];
+function buildProductFactsSections(product, detailSections = collectStructuredDetailSections(product)) {
+  const sections = detailSections
+    .filter((section) => FACT_DETAIL_SECTION_RE.test(section.heading) && !BRAND_STORY_SECTION_RE.test(section.heading))
+    .map((section) => ({
+      heading: section.heading,
+      content_type: 'text',
+      content: section.content,
+      collapsed_by_default: section.collapsed_by_default ?? true,
+    }));
 
-  return rawSections
-    .map((section) => {
-      const heading = section?.heading || section?.title || section?.name;
-      const content =
-        section?.content ||
-        section?.value ||
-        section?.text ||
-        section?.body ||
-        section?.description;
-      if (!heading || !content) return null;
-      return {
-        heading: String(heading),
-        content_type: 'text',
-        content: stripHtml(String(content)),
-        collapsed_by_default: section?.collapsed_by_default ?? true,
-      };
-    })
-    .filter(Boolean);
+  detailSections
+    .filter((section) => OVERVIEW_DETAIL_SECTION_RE.test(section.heading))
+    .flatMap((section) => extractFactSectionsFromSection(section))
+    .forEach((section) => sections.push(section));
+
+  const seen = new Set();
+  return sections.filter((section) => {
+    const key = `${section.heading.toLowerCase()}::${section.content.toLowerCase()}`;
+    if (!section.content || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function buildIngredientsInci(product) {
-  return buildIngredientsModuleData(
+  const detailSections = collectStructuredDetailSections(product);
+  const detailSectionIngredients = findDetailSectionContent(
+    detailSections,
+    /^(ingredients|full ingredients|ingredient list|inci)$/i,
+  );
+  const rawText = asNonEmptyString(product.raw_ingredient_text_clean);
+  const rawIngredientCandidate = rawText
+    ? {
+        title: 'Ingredients',
+        raw_text: rawText,
+        items: uniqueNonEmptyStrings([
+          ...(Array.isArray(product.inci_list) ? product.inci_list : []),
+          ...splitIngredientsItemsFromText(rawText),
+        ]),
+        source_origin: 'retail_pdp',
+        source_quality_status: 'captured',
+      }
+    : null;
+  const structured = buildIngredientsModuleData(
     [
+      product.pdp_ingredients_raw,
+      rawIngredientCandidate,
+      detailSectionIngredients,
       product.ingredients_inci,
       product.ingredientsInci,
       product.inci_ingredients,
@@ -945,10 +1183,25 @@ function buildIngredientsInci(product) {
     ],
     'Ingredients',
   );
+  if (structured) return structured;
+
+  const items = uniqueNonEmptyStrings([
+    ...(Array.isArray(product.inci_list) ? product.inci_list : []),
+    ...splitIngredientsItemsFromText(rawText),
+  ]);
+  if (!rawText && !items.length) return null;
+  return {
+    title: 'Ingredients',
+    ...(rawText ? { raw_text: rawText } : {}),
+    items,
+    source_origin: 'retail_pdp',
+    source_quality_status: 'captured',
+  };
 }
 
 function buildActiveIngredients(product, ingredientsInci) {
   const candidates = [
+    product.pdp_active_ingredients_raw,
     product.active_ingredients,
     product.activeIngredients,
     product.key_ingredients,
@@ -978,8 +1231,14 @@ function buildActiveIngredients(product, ingredientsInci) {
 }
 
 function buildHowToUse(product) {
+  const detailSections = collectStructuredDetailSections(product);
+  const detailSectionHowToUse =
+    detailSections.find((section) => /^(how to use|how to apply|directions?|usage)$/i.test(section.heading))
+      ?.content || '';
   return buildHowToUseModuleData(
     [
+      product.pdp_how_to_use_raw,
+      detailSectionHowToUse,
       product.how_to_use,
       product.howToUse,
       product.directions,
@@ -990,14 +1249,192 @@ function buildHowToUse(product) {
   );
 }
 
+function normalizeQuestionKey(value) {
+  return asNonEmptyString(value)
+    .toLowerCase()
+    .replace(/^(?:q(?:uestion)?\s*[:/-]\s*)/i, '')
+    .replace(/[?？]+$/, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function normalizeQuestionText(value) {
+  return asNonEmptyString(value)
+    .replace(/^(?:q(?:uestion)?\s*[:/-]\s*)/i, '')
+    .trim();
+}
+
+function normalizeAnswerText(value) {
+  return asNonEmptyString(value)
+    .replace(/^(?:a(?:nswer)?\s*[:/-]\s*)/i, '')
+    .trim();
+}
+
+function normalizeFaqItemsForQuestions(product) {
+  const rawItems = Array.isArray(product.pdp_faq_items)
+    ? product.pdp_faq_items
+    : Array.isArray(product.faq_items)
+      ? product.faq_items
+      : Array.isArray(product.seed_data?.pdp_faq_items)
+        ? product.seed_data.pdp_faq_items
+        : Array.isArray(product.seed_data?.snapshot?.pdp_faq_items)
+          ? product.seed_data.snapshot.pdp_faq_items
+          : [];
+  const out = [];
+  const seen = new Set();
+  for (const item of rawItems) {
+    const question = normalizeQuestionText(item?.question);
+    const answer = normalizeAnswerText(item?.answer);
+    const key = normalizeQuestionKey(question);
+    if (!question || !answer || !key || seen.has(`${key}::${answer.toLowerCase()}`)) continue;
+    seen.add(`${key}::${answer.toLowerCase()}`);
+    out.push({
+      question,
+      answer,
+      source: 'merchant_faq',
+      source_label: 'Official FAQ',
+    });
+  }
+  return out;
+}
+
+function normalizeReviewSummaryQuestions(items) {
+  const out = [];
+  const seen = new Set();
+  for (const item of Array.isArray(items) ? items : []) {
+    const question = normalizeQuestionText(item?.question || item?.title);
+    const answer = normalizeAnswerText(item?.answer);
+    const replies = item?.replies ?? item?.reply_count;
+    const key = normalizeQuestionKey(question);
+    if (!question || !key || seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      question,
+      ...(answer ? { answer } : {}),
+      ...(replies != null ? { replies: Number(replies) || 0 } : {}),
+      source: asNonEmptyString(item?.source) || 'review_derived',
+      source_label: asNonEmptyString(item?.source_label || item?.sourceLabel) || 'From reviews',
+      ...(item?.support_count != null ? { support_count: Number(item.support_count) || 0 } : {}),
+    });
+  }
+  return out;
+}
+
+function extractReviewQuestionCandidate(item) {
+  const reviewId = String(item?.review_id || item?.id || '').trim();
+  const explicitQuestion = normalizeQuestionText(item?.question || item?.prompt);
+  const explicitAnswer = normalizeAnswerText(item?.answer);
+  if (explicitQuestion && explicitAnswer) {
+    return {
+      question: explicitQuestion,
+      answer: explicitAnswer,
+      review_id: reviewId,
+    };
+  }
+
+  const title = normalizeQuestionText(item?.title);
+  const text = normalizeAnswerText(item?.text_snippet || item?.text || item?.body);
+  let question = '';
+  let answer = '';
+
+  if (/[?？]$/.test(title)) {
+    question = title;
+    answer = text;
+  } else {
+    const match = text.match(/^(.{8,160}?\?)\s+([\s\S]{16,})$/);
+    if (match) {
+      question = normalizeQuestionText(match[1]);
+      answer = normalizeAnswerText(match[2]);
+    }
+  }
+
+  if (!question || !answer) return null;
+  return {
+    question,
+    answer,
+    review_id: reviewId,
+  };
+}
+
+function deriveReviewQuestionsFromPreviewItems(items) {
+  const grouped = new Map();
+  for (const item of Array.isArray(items) ? items : []) {
+    const extracted = extractReviewQuestionCandidate(item);
+    if (!extracted) continue;
+    const key = normalizeQuestionKey(extracted.question);
+    if (!key) continue;
+    const existing = grouped.get(key) || {
+      question: extracted.question,
+      answers: new Map(),
+      review_ids: new Set(),
+    };
+    existing.question = existing.question || extracted.question;
+    existing.review_ids.add(extracted.review_id || key);
+    const answerKey = extracted.answer.toLowerCase();
+    const answerEntry = existing.answers.get(answerKey) || { answer: extracted.answer, count: 0 };
+    answerEntry.count += 1;
+    existing.answers.set(answerKey, answerEntry);
+    grouped.set(key, existing);
+  }
+
+  const out = [];
+  for (const entry of grouped.values()) {
+    const supportCount = entry.review_ids.size;
+    if (supportCount < 2) continue;
+    const answer = Array.from(entry.answers.values()).sort((a, b) => b.count - a.count || b.answer.length - a.answer.length)[0];
+    if (!answer?.answer) continue;
+    out.push({
+      question: entry.question,
+      answer: answer.answer,
+      source: 'review_derived',
+      source_label: 'From reviews',
+      support_count: supportCount,
+    });
+  }
+  return out;
+}
+
+function mergeQuestionItems(groups) {
+  const merged = new Map();
+  for (const group of groups) {
+    for (const item of Array.isArray(group) ? group : []) {
+      const question = normalizeQuestionText(item?.question);
+      const key = normalizeQuestionKey(question);
+      if (!question || !key) continue;
+      const existing = merged.get(key);
+      if (!existing) {
+        merged.set(key, {
+          question,
+          ...(item?.answer ? { answer: item.answer } : {}),
+          ...(item?.replies != null ? { replies: item.replies } : {}),
+          ...(item?.source ? { source: item.source } : {}),
+          ...(item?.source_label ? { source_label: item.source_label } : {}),
+          ...(item?.support_count != null ? { support_count: item.support_count } : {}),
+        });
+        continue;
+      }
+
+      if (!existing.answer && item?.answer) existing.answer = item.answer;
+      if (existing.replies == null && item?.replies != null) existing.replies = item.replies;
+      if ((!existing.source || existing.source === 'community') && item?.source) existing.source = item.source;
+      if (!existing.source_label && item?.source_label) existing.source_label = item.source_label;
+      if ((existing.support_count || 0) < (item?.support_count || 0)) {
+        existing.support_count = item.support_count;
+      }
+    }
+  }
+  return Array.from(merged.values());
+}
+
 function buildReviewsPreview(product, options = {}) {
+  const merchantFaqQuestions = normalizeFaqItemsForQuestions(product);
   const summary =
     product.review_summary ||
     product.reviews_summary ||
     product.reviews?.summary ||
     null;
 
-  if (!summary && !options.includeEmpty) {
+  if (!summary && !options.includeEmpty && merchantFaqQuestions.length === 0) {
     return null;
   }
 
@@ -1009,6 +1446,9 @@ function buildReviewsPreview(product, options = {}) {
     : Array.isArray(summary?.snippets)
       ? summary.snippets
       : [];
+  const explicitQuestions = normalizeReviewSummaryQuestions(summary?.questions);
+  const derivedQuestions = deriveReviewQuestionsFromPreviewItems(previewItems);
+  const questions = mergeQuestionItems([merchantFaqQuestions, explicitQuestions, derivedQuestions]);
   const summaryBrandCard =
     summary?.brand_card && typeof summary.brand_card === 'object' ? summary.brand_card : null;
   const brandCardName =
@@ -1226,6 +1666,7 @@ function buildReviewsPreview(product, options = {}) {
         ? Number(summary.product_line_review_count)
         : undefined,
     scope_label: summary?.scope_label ? String(summary.scope_label) : undefined,
+    ...(questions.length ? { questions } : {}),
     ...(brandCardName
       ? {
           brand_card: {
@@ -1337,6 +1778,9 @@ function buildPdpPayload(args) {
   const currency = product.currency || 'USD';
   const variants = buildVariants(product);
   const defaultVariant = variants[0];
+  const detailSections = collectStructuredDetailSections(product);
+  const descriptionText = resolveProductDescriptionText(product, detailSections);
+  const brandStoryText = resolveBrandStoryText(product, detailSections);
   const mediaItems = buildMediaItems(product, variants);
   const previewItems = Array.isArray(product.line_preview_images)
     ? product.line_preview_images
@@ -1363,8 +1807,8 @@ function buildPdpPayload(args) {
         })
         .filter(Boolean)
     : [];
-  const details = buildDetailSections(product);
-  const productFacts = buildProductFactsSections(product);
+  const details = buildDetailSections(product, detailSections);
+  const productFacts = buildProductFactsSections(product, detailSections);
   const ingredientsInci = buildIngredientsInci(product);
   const activeIngredients = buildActiveIngredients(product, ingredientsInci);
   const howToUse = buildHowToUse(product);
@@ -1520,7 +1964,8 @@ function buildPdpPayload(args) {
       availability: productAvailability,
       shipping: product.shipping || undefined,
       returns: product.returns || undefined,
-      description: product.description || '',
+      description: descriptionText || '',
+      ...(brandStoryText ? { brand_story: brandStoryText } : {}),
       ...(product.size_guide || product.sizeGuide
         ? { size_guide: product.size_guide || product.sizeGuide }
         : {}),

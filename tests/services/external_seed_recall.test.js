@@ -39,6 +39,42 @@ describe('externalSeedRecall', () => {
     expect(doc.vertical).toBe('skincare');
   });
 
+  test('includes structured PDP headings and FAQ before recall truncation', () => {
+    const doc = buildExternalSeedRecallDoc({
+      row: {
+        id: 'eps_boj_rice_milk',
+        title: 'Glow Replenishing Rice Milk',
+        canonical_url: 'https://beautyofjoseon.com/products/glow-replenishing-rice-milk',
+      },
+      seedData: {
+        brand: 'Beauty of Joseon',
+        pdp_description_raw:
+          "A hydrating, balancing toner with an innovative dual-layer formula that helps intensely moisturize while balancing sebum for skin that's glowy, not greasy.",
+        pdp_faq_items: [
+          {
+            question: 'The layers in my toner are separated. Is this normal?',
+            answer: 'Yes. The dual layers are designed to be shaken together before use.',
+          },
+        ],
+        pdp_details_sections: [
+          {
+            heading: 'Rice-Infused Hydration',
+            body: 'Rice extract and rice amino acids support long-lasting hydration and a dewy finish.',
+          },
+          {
+            heading: 'Clinical Results',
+            body: 'Clinically proven to be non-irritating in a 24-hour patch test.',
+          },
+        ],
+      },
+      snapshot: {},
+    });
+
+    expect(doc.retrieval_body).toMatch(/The layers in my toner are separated/);
+    expect(doc.retrieval_body).toMatch(/Rice-Infused Hydration: Rice extract/);
+    expect(doc.retrieval_body).toMatch(/Clinical Results: Clinically proven/);
+  });
+
   test('marks gift cards and donation bundles as exclusion rows', () => {
     const doc = buildExternalSeedRecallDoc({
       row: {
