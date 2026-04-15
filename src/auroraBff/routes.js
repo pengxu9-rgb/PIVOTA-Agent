@@ -4004,6 +4004,24 @@ function normalizeRecoInsightHighlight(item) {
   };
 }
 
+function normalizeRecoInsightWatchout(item) {
+  if (!item) return null;
+  if (typeof item === 'string') {
+    const label = pickFirstTrimmed(item);
+    return label ? { label } : null;
+  }
+  if (!isPlainObject(item)) return null;
+  const label = pickFirstTrimmed(item.label, item.body, item.text, item.description, item.issue, item.title);
+  if (!label) return null;
+  return {
+    label,
+    ...(pickFirstTrimmed(item.type, item.category) ? { type: pickFirstTrimmed(item.type, item.category) } : {}),
+    ...(pickFirstTrimmed(item.severity, item.risk_level, item.riskLevel)
+      ? { severity: pickFirstTrimmed(item.severity, item.risk_level, item.riskLevel) }
+      : {}),
+  };
+}
+
 function normalizeRecoPivotaInsights(raw, productIntel = null) {
   const explicit = isPlainObject(raw) ? raw : null;
   const intel = productIntel && isPlainObject(productIntel) ? productIntel : null;
@@ -4044,11 +4062,61 @@ function normalizeRecoPivotaInsights(raw, productIntel = null) {
       .filter(Boolean),
     4,
   );
-  if (!whatItIs && whyItStandsOut.length === 0 && bestFor.length === 0) return null;
+  const watchoutsRaw = Array.isArray(explicit?.watchouts)
+    ? explicit.watchouts
+    : Array.isArray(explicit?.watchOuts)
+      ? explicit.watchOuts
+      : Array.isArray(core?.watchouts)
+        ? core.watchouts
+        : Array.isArray(core?.watchOuts)
+          ? core.watchOuts
+          : [];
+  const watchouts = watchoutsRaw
+    .map(normalizeRecoInsightWatchout)
+    .filter(Boolean)
+    .slice(0, 3);
+  const routineFitRaw =
+    isPlainObject(explicit?.routine_fit) ? explicit.routine_fit
+      : isPlainObject(explicit?.routineFit) ? explicit.routineFit
+        : isPlainObject(core?.routine_fit) ? core.routine_fit
+          : isPlainObject(core?.routineFit) ? core.routineFit
+            : null;
+  let routineFit = routineFitRaw
+    ? {
+        ...(pickFirstTrimmed(routineFitRaw.step) ? { step: pickFirstTrimmed(routineFitRaw.step) } : {}),
+        ...(Array.isArray(routineFitRaw.pairing_notes) || Array.isArray(routineFitRaw.pairingNotes)
+          ? {
+              pairing_notes: uniqCaseInsensitiveStrings(
+                [
+                  ...(Array.isArray(routineFitRaw.pairing_notes) ? routineFitRaw.pairing_notes : []),
+                  ...(Array.isArray(routineFitRaw.pairingNotes) ? routineFitRaw.pairingNotes : []),
+                ].map((item) => pickFirstTrimmed(item)).filter(Boolean),
+                3,
+              ),
+            }
+          : {}),
+      }
+    : null;
+  if (
+    routineFit &&
+    !routineFit.step &&
+    (!Array.isArray(routineFit.pairing_notes) || routineFit.pairing_notes.length === 0)
+  ) {
+    routineFit = null;
+  }
+  if (
+    !whatItIs &&
+    whyItStandsOut.length === 0 &&
+    bestFor.length === 0 &&
+    watchouts.length === 0 &&
+    !routineFit
+  ) return null;
   return {
     ...(whatItIs ? { what_it_is: whatItIs } : {}),
     ...(whyItStandsOut.length ? { why_it_stands_out: whyItStandsOut } : {}),
     ...(bestFor.length ? { best_for: bestFor } : {}),
+    ...(watchouts.length ? { watchouts } : {}),
+    ...(routineFit ? { routine_fit: routineFit } : {}),
   };
 }
 
@@ -53031,6 +53099,20 @@ function buildRecoAssistantReasonPoints(detail, { max = 4 } = {}) {
   );
 }
 
+function buildRecoAssistantWatchoutPoints(detail, { max = 2 } = {}) {
+  const item = isPlainObject(detail) ? detail : {};
+  return collectRecoPromptTextList(
+    Array.isArray(item.insight_watchouts)
+      ? item.insight_watchouts.map((watchout) => (
+          isPlainObject(watchout)
+            ? pickFirstTrimmed(watchout.label, watchout.body, watchout.text)
+            : pickFirstTrimmed(watchout)
+        ))
+      : [],
+    { max: Math.max(1, max), maxLen: 120 },
+  );
+}
+
 function inferRecoAssistantEvidenceDimensions(detail = {}) {
   const item = isPlainObject(detail) ? detail : {};
   const detailText = [
@@ -53122,6 +53204,8 @@ function buildRecoAssistantWritePlan({
       fit_assessment: pickFirstTrimmed(item.fit_assessment),
       price_note: buildRecoAssistantPriceNote(item, { selectedProductRoleMix }),
       reason_points: buildRecoAssistantReasonPoints(item, { max: 3 }),
+      watchout_points: buildRecoAssistantWatchoutPoints(item, { max: 1 }),
+      routine_pairing_notes: collectRecoPromptTextList(item.routine_pairing_notes, { max: 1, maxLen: 100 }),
       evidence_dimensions: inferRecoAssistantEvidenceDimensions(item),
     }));
   const sameRoleOptions = products
@@ -53131,6 +53215,7 @@ function buildRecoAssistantWritePlan({
       price_note: buildRecoAssistantPriceNote(item, { selectedProductRoleMix }),
       tradeoff_note: buildRecoAssistantTradeoffNote(item, { selectedProductRoleMix }),
       reason_points: buildRecoAssistantReasonPoints(item, { max: 2 }),
+      watchout_points: buildRecoAssistantWatchoutPoints(item, { max: 1 }),
       fit_assessment: pickFirstTrimmed(item.fit_assessment),
     }));
   return {
@@ -53146,6 +53231,8 @@ function buildRecoAssistantWritePlan({
       price_note: buildRecoAssistantPriceNote(lead, { selectedProductRoleMix }),
       evidence_dimensions: inferRecoAssistantEvidenceDimensions(lead),
       must_use_reason_points: leadReasonPoints,
+      watchout_points: buildRecoAssistantWatchoutPoints(lead, { max: 2 }),
+      routine_pairing_notes: collectRecoPromptTextList(lead?.routine_pairing_notes, { max: 2, maxLen: 100 }),
     },
     support_steps: supportSteps,
     same_role_options: sameRoleOptions,
@@ -53192,6 +53279,8 @@ function buildCompactRecoAssistantWritePlan(writePlan = null) {
           price_note: compactRecoAssistantPromptField(plan.lead_product.price_note, { maxLen: 40 }),
           evidence_dimensions: collectRecoPromptTextList(plan.lead_product.evidence_dimensions, { max: 3, maxLen: 28 }),
           must_use_reason_points: collectRecoPromptTextList(plan.lead_product.must_use_reason_points, { max: 2, maxLen: 96 }),
+          watchout_points: collectRecoPromptTextList(plan.lead_product.watchout_points, { max: 1, maxLen: 96 }),
+          routine_pairing_notes: collectRecoPromptTextList(plan.lead_product.routine_pairing_notes, { max: 1, maxLen: 96 }),
         }
       : null,
     support_steps: Array.isArray(plan.support_steps)
@@ -53203,6 +53292,8 @@ function buildCompactRecoAssistantWritePlan(writePlan = null) {
           fit_assessment: compactRecoAssistantPromptField(item?.fit_assessment, { maxLen: 24 }),
           price_note: compactRecoAssistantPromptField(item?.price_note, { maxLen: 40 }),
           reason_points: collectRecoPromptTextList(item?.reason_points, { max: 1, maxLen: 96 }),
+          watchout_points: collectRecoPromptTextList(item?.watchout_points, { max: 1, maxLen: 96 }),
+          routine_pairing_notes: collectRecoPromptTextList(item?.routine_pairing_notes, { max: 1, maxLen: 96 }),
         })).slice(0, 2)
       : [],
     same_role_options: Array.isArray(plan.same_role_options)
@@ -53211,6 +53302,7 @@ function buildCompactRecoAssistantWritePlan(writePlan = null) {
           price_note: compactRecoAssistantPromptField(item?.price_note, { maxLen: 40 }),
           tradeoff_note: compactRecoAssistantPromptField(item?.tradeoff_note, { maxLen: 96 }),
           reason_points: collectRecoPromptTextList(item?.reason_points, { max: 1, maxLen: 96 }),
+          watchout_points: collectRecoPromptTextList(item?.watchout_points, { max: 1, maxLen: 96 }),
           fit_assessment: compactRecoAssistantPromptField(item?.fit_assessment, { maxLen: 24 }),
         })).slice(0, 2)
       : [],
@@ -53245,6 +53337,8 @@ function buildCompactRecoAssistantPromptContext(context = {}) {
         price_position: pickFirstTrimmed(item?.price_position),
         tradeoff_hint: pickFirstTrimmed(item?.tradeoff_hint),
         reviewed_insight_available: item?.reviewed_insight_available === true,
+        insight_watchouts: Array.isArray(item?.insight_watchouts) ? item.insight_watchouts.slice(0, 1) : [],
+        routine_pairing_notes: collectRecoPromptTextList(item?.routine_pairing_notes, { max: 1, maxLen: 96 }),
       }))
       .slice(0, 3),
     selected_product_role_ids: asStringArray(row.selected_product_role_ids, 3),
@@ -53628,6 +53722,16 @@ function buildRecoAssistantRewritePrompt({
       evidence_points: rankedEvidencePoints,
       evidence_target_text: evidenceTargetText || null,
       reviewed_insight_available: Boolean(productIntel || pivotaInsights),
+      insight_watchouts: Array.isArray(pivotaInsights?.watchouts)
+        ? pivotaInsights.watchouts.map((watchout) => ({
+            label: pickFirstTrimmed(watchout?.label, watchout?.body, watchout?.text),
+            ...(pickFirstTrimmed(watchout?.type) ? { type: pickFirstTrimmed(watchout.type) } : {}),
+            ...(pickFirstTrimmed(watchout?.severity) ? { severity: pickFirstTrimmed(watchout.severity) } : {}),
+          })).filter((watchout) => watchout.label).slice(0, 2)
+        : [],
+      routine_pairing_notes: Array.isArray(pivotaInsights?.routine_fit?.pairing_notes)
+        ? collectRecoPromptTextList(pivotaInsights.routine_fit.pairing_notes, { max: 2, maxLen: 100 })
+        : [],
       pivota_insights: (() => {
         if (!pivotaInsights) return null;
         return {
@@ -53850,6 +53954,9 @@ function buildRecoAssistantRewritePrompt({
       'Use selected_product_details.description_snippet and selected_product_details.evidence_points as the primary concrete reason layer when available.',
       'Use selected_product_details.why_this_one, selected_product_details.best_for, and selected_product_details.key_features as supporting context when available.',
       'Use selected_product_details.compare_highlights and selected_product_details.pivota_insights when available; do not invent highlights that are absent from Context.',
+      'Use selected_product_details.insight_watchouts only as concise tradeoff/caveat evidence, not as a new reason to recommend the product.',
+      'For routine_mix answers, use routine_pairing_notes when available to explain step order or pairing instead of generic routine filler.',
+      'If a watchout says tinted, shade match, sample size, refill, active sensitivity, or layering limitation, mention it only when it materially changes the shopping choice.',
       'If a product record includes extra concern claims that are not in user_relevant_concern_families, omit those extra claims and use the target-aligned evidence_points instead.',
       'For oily-skin/oil-control asks, do not mention dullness, uneven tone, dark spots, glow, or brightening unless tone/brightening is an explicit target in Context.',
       'Do not call something the best first buy unless the same sentence or the next sentence gives a concrete reason from description_snippet, evidence_points, compare_highlights, or pivota_insights.',

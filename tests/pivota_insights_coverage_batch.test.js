@@ -167,6 +167,56 @@ describe('pivota_insights_coverage_batch', () => {
     });
   });
 
+  test('builds a completed review packet when selected bundle carries reviewed override metadata', () => {
+    const packet = buildReviewPacket({
+      rows: [
+        {
+          case_id: 'reviewed_override_case',
+          selected: {
+            selected_mode: 'manual_override',
+            field_sources: {
+              what_it_is: 'manual',
+            },
+            bundle: {
+              canonical_product_ref: {
+                merchant_id: 'external_seed',
+                product_id: 'ext_reviewed',
+              },
+              evidence_profile: 'seller_only',
+              quality_state: 'limited',
+              provenance: {
+                review_status: 'completed',
+                review_decision: 'rewrite',
+                reviewer: 'Codex',
+                reviewer_kind: 'assistant',
+                reviewed_at: '2026-04-15T14:10:00.000Z',
+                external_highlight_review_status: 'rewrite',
+              },
+              product_intel_core: {
+                what_it_is: {
+                  body: 'A reviewed seller-grounded product-intel bundle.',
+                },
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    expect(packet.meta.report_cases).toBe(1);
+    expect(packet.meta.pending).toBe(0);
+    expect(packet.rows[0]).toMatchObject({
+      case_id: 'reviewed_override_case',
+      review_status: 'completed',
+      review_decision: 'rewrite',
+      decision: 'rewrite',
+      reviewer: 'Codex',
+      reviewer_kind: 'assistant',
+      reviewed_at: '2026-04-15T14:10:00.000Z',
+      rejection_reason: '',
+    });
+  });
+
   test('rejects strict-review baseline_only rows', () => {
     const packet = buildReviewPacket({
       rows: [

@@ -6461,6 +6461,83 @@ test('__internal: reco assistant rewrite prompt prioritizes target-aligned evide
   assert.doesNotMatch(String(context.assistant_write_plan?.lead_product?.must_use_reason_points?.[0] || ''), /dullness|uneven tone/i);
 });
 
+test('__internal: reco assistant rewrite prompt carries reviewed insight watchouts and pairing notes', async () => {
+  const { __internal } = loadRoutesFresh();
+  const prompt = __internal.buildRecoAssistantRewritePrompt({
+    language: 'EN',
+    userRequestText: 'I need sunscreen under makeup in humid weather. What should I buy?',
+    profile: { skinType: 'oily', goals: ['daily sunscreen'] },
+    payload: {
+      roles: [
+        {
+          role_id: 'daily_sunscreen_finish_fit',
+          label: 'Daily sunscreen finish fit',
+          why_this_role: 'Find a sunscreen that sits well under makeup without feeling heavy.',
+          preferred_step: 'sunscreen',
+          rank: 1,
+          slot: 'am',
+        },
+      ],
+      recommendation_meta: {
+        primary_target_id: 'daily_sunscreen_finish_fit',
+        selected_target_ids: ['daily_sunscreen_finish_fit'],
+        ranked_targets: [
+          {
+            target_id: 'daily_sunscreen_finish_fit',
+            ingredient_query: 'Daily sunscreen finish fit',
+            resolved_target_step: 'sunscreen',
+          },
+        ],
+      },
+      recommendations: [
+        {
+          display_name: 'Daily Tinted Fluid Sunscreen DY300',
+          brand: 'Beauty of Joseon',
+          category: 'Sunscreen',
+          matched_role_id: 'daily_sunscreen_finish_fit',
+          matched_role_label: 'Daily sunscreen finish fit',
+          price: { amount: 10, currency: 'USD' },
+          product_intel: {
+            product_intel_core: {
+              what_it_is: {
+                body: 'A tinted SPF 40 fluid sunscreen with zinc oxide and shine-control cues.',
+              },
+              why_it_stands_out: [
+                {
+                  headline: 'SPF plus tint',
+                  body: 'The seller record describes SPF 40 protection in a tinted fluid that works as the final daytime step.',
+                },
+              ],
+              routine_fit: {
+                step: 'sunscreen',
+                pairing_notes: ['Use as the final daytime skincare step before makeup.'],
+              },
+              watchouts: [
+                {
+                  type: 'shade_match',
+                  label: 'Because it is tinted, shade match matters.',
+                  severity: 'medium',
+                },
+              ],
+            },
+          },
+        },
+      ],
+    },
+  });
+
+  assert.match(prompt, /Use selected_product_details\.insight_watchouts only as concise tradeoff\/caveat evidence/i);
+  const context = extractRecoRewritePromptContext(prompt);
+  assert.equal(context.selected_product_details[0]?.reviewed_insight_available, true);
+  assert.equal(context.selected_product_details[0]?.insight_watchouts?.[0]?.label, 'Because it is tinted, shade match matters.');
+  assert.deepEqual(context.selected_product_details[0]?.routine_pairing_notes, [
+    'Use as the final daytime skincare step before makeup.',
+  ]);
+  assert.deepEqual(context.assistant_write_plan?.lead_product?.watchout_points, [
+    'Because it is tinted, shade match matters.',
+  ]);
+});
+
 test('__internal: reco assistant rewrite prompt exposes same-role price comparison context', async () => {
   const { __internal } = loadRoutesFresh();
   const prompt = __internal.buildRecoAssistantRewritePrompt({
