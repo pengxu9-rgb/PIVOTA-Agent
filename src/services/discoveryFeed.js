@@ -5053,14 +5053,6 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
         ? safeLimit
         : Math.min(safeLimit, Math.max(4, getPrimaryPathEnoughThreshold(request)));
     const requestedLimit = Math.max(1, Number(request?.limit || 0) || 12);
-    const requestedPage = Math.max(1, Number(request?.page || 0) || 1);
-    const currentPageAbsoluteOffset = request?.cursor
-      ? getDiscoveryCursorAbsoluteOffset(request.cursor, requestedLimit)
-      : (requestedPage - 1) * requestedLimit;
-    const currentPageCoverageTarget = Math.min(
-      safeLimit,
-      Math.max(requestedLimit, currentPageAbsoluteOffset + requestedLimit),
-    );
     const cursorQualifiedTarget = resolveExplicitBrowseCursorQualifiedTarget(request, safeLimit);
     const explicitQueryMainlineThreshold =
       explicitQueryScopedRecall && !compoundIntent
@@ -5073,10 +5065,8 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
     const qualifiedTarget = compoundIntent
       ? Math.min(safeLimit, Math.max(requestedLimit * 2, 24, cursorQualifiedTarget))
       : summaryThreshold;
-    let compoundExactStageSatisfiedCurrentPage = false;
     let explicitNarrowTitleStageSatisfied = false;
     const shouldStopStages = () =>
-      compoundExactStageSatisfiedCurrentPage ||
       explicitNarrowTitleStageSatisfied ||
       stagedRows.length >= (compoundIntent ? qualifiedTarget : summaryThreshold);
     const appendRows = (rows = [], stage = 'unknown', toolScope = '*') => {
@@ -5132,13 +5122,6 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
       }
       metrics.final_eligible_rows = stagedRows.length;
       externalSeedStageCounts.push(metrics);
-      if (
-        compoundIntent &&
-        (stage === 'recall_compound_exact_title' || stage === 'recall_compound_primary_category') &&
-        stagedRows.length >= currentPageCoverageTarget
-      ) {
-        compoundExactStageSatisfiedCurrentPage = true;
-      }
       if (!compoundIntent && skipBroadStructuredStages && stage === 'recall_title' && stagedRows.length > 0) {
         explicitNarrowTitleStageSatisfied = true;
       }

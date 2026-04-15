@@ -7489,7 +7489,7 @@ describe('discovery feed service', () => {
 		    }
 		  });
 
-  test('explicit compound browse stops after exact intent stage covers first page', async () => {
+  test('explicit compound browse continues past first-page coverage until qualified target', async () => {
     jest.resetModules();
     const prevDatabaseUrl = process.env.DATABASE_URL;
     process.env.DATABASE_URL = 'postgres://discovery-compound-exact-stop-test';
@@ -7520,10 +7520,19 @@ describe('discovery feed service', () => {
       'idx_external_product_seeds_recall_ingredient_tokens_trgm',
       'idx_external_product_seeds_recall_alias_tokens_trgm',
     ].map((indexname) => ({ tablename: 'external_product_seeds', indexname }));
+    const primaryRows = Array.from({ length: 12 }, (_, index) =>
+      makeExternalSeedRow({
+        id: `lip_oil_primary_${index + 1}`,
+        title: `Glow Lip Oil Primary ${index + 1}`,
+        category: 'Lip Oil',
+        product_type: 'Lip Oil',
+        description: 'A glossy lip oil.',
+      }),
+    );
     const exactRows = Array.from({ length: 12 }, (_, index) =>
       makeExternalSeedRow({
-        id: `lip_oil_${index + 1}`,
-        title: `Glow Lip Oil ${index + 1}`,
+        id: `lip_oil_exact_${index + 1}`,
+        title: `Glow Lip Oil Exact ${index + 1}`,
         category: 'Lip Oil',
         product_type: 'Lip Oil',
         description: 'A glossy lip oil.',
@@ -7533,6 +7542,7 @@ describe('discovery feed service', () => {
       .fn()
       .mockResolvedValueOnce({ rows: requiredColumns })
       .mockResolvedValueOnce({ rows: requiredIndexes })
+      .mockResolvedValueOnce({ rows: primaryRows })
       .mockResolvedValueOnce({ rows: exactRows });
     jest.doMock('../src/db', () => ({
       query: dbQueryMock,
@@ -7567,16 +7577,24 @@ describe('discovery feed service', () => {
         label: 'external_seed_pool',
       });
 
-      expect(result.products).toHaveLength(12);
-      expect(dbQueryMock).toHaveBeenCalledTimes(3);
+      expect(result.products).toHaveLength(24);
+      expect(dbQueryMock).toHaveBeenCalledTimes(4);
       expect(dbQueryMock.mock.calls[2][1].at(-1)).toBe(36);
-      expect(result.recallSummary[0].external_seed_stage_counts).toEqual([
-        expect.objectContaining({
-          stage: 'recall_compound_primary_category',
-          raw_rows: 12,
-          compound_qualified_rows: 12,
-        }),
-      ]);
+      expect(result.recallSummary[0].external_seed_stage_counts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            stage: 'recall_compound_primary_category',
+            raw_rows: 12,
+            compound_qualified_rows: 12,
+          }),
+          expect.objectContaining({
+            stage: 'recall_compound_exact_title',
+            raw_rows: 12,
+            compound_qualified_rows: 12,
+            final_eligible_rows: 24,
+          }),
+        ]),
+      );
     } finally {
       if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
       else process.env.DATABASE_URL = prevDatabaseUrl;
