@@ -11212,6 +11212,113 @@ async function fetchSimilarProductsDeduped(args = {}) {
   return task;
 }
 
+function readSimilarCardText(...values) {
+  for (const value of values) {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    if (text) return text;
+  }
+  return '';
+}
+
+function hasSimilarCardPresentation(product = {}) {
+  return Boolean(
+    readSimilarCardText(
+      product.card_highlight,
+      product.cardHighlight,
+      product.shopping_card?.highlight,
+      product.shoppingCard?.highlight,
+      product.search_card?.highlight_candidate,
+      product.searchCard?.highlight_candidate,
+      product.searchCard?.highlightCandidate,
+      product.description,
+      product.category,
+      product.product_type,
+      product.productType,
+    ),
+  );
+}
+
+function mergeSimilarCardEnrichment(candidate = {}, detail = {}) {
+  const next = { ...candidate };
+  const copyIfMissing = (targetKey, ...values) => {
+    if (next[targetKey] != null && String(next[targetKey]).trim()) return;
+    const value = values.find((item) => item != null && String(item).trim());
+    if (value != null) next[targetKey] = value;
+  };
+  copyIfMissing('title', detail.title, detail.name);
+  copyIfMissing('description', detail.description);
+  copyIfMissing('category', detail.category);
+  copyIfMissing('product_type', detail.product_type, detail.productType);
+  copyIfMissing('card_title', detail.card_title, detail.cardTitle);
+  copyIfMissing('card_subtitle', detail.card_subtitle, detail.cardSubtitle);
+  copyIfMissing('card_highlight', detail.card_highlight, detail.cardHighlight);
+  copyIfMissing('card_badge', detail.card_badge, detail.cardBadge);
+  copyIfMissing(
+    'image_url',
+    detail.image_url,
+    detail.image,
+    Array.isArray(detail.images) ? detail.images[0] : null,
+    Array.isArray(detail.image_urls) ? detail.image_urls[0] : null,
+  );
+  if (!next.price && detail.price) next.price = detail.price;
+  if (!next.currency && detail.currency) next.currency = detail.currency;
+  if (!next.shopping_card && detail.shopping_card && typeof detail.shopping_card === 'object') {
+    next.shopping_card = detail.shopping_card;
+  }
+  if (!next.search_card && detail.search_card && typeof detail.search_card === 'object') {
+    next.search_card = detail.search_card;
+  }
+  if (!Array.isArray(next.external_highlight_signals) && Array.isArray(detail.external_highlight_signals)) {
+    next.external_highlight_signals = detail.external_highlight_signals;
+  }
+  next.card_highlight_status = hasSimilarCardPresentation(next) ? 'ready' : 'highlight_missing';
+  return next;
+}
+
+async function enrichSimilarProductsForPdpCards({
+  items = [],
+  checkoutToken = null,
+  bypassCache = false,
+  maxItems = 6,
+} = {}) {
+  const list = Array.isArray(items) ? items : [];
+  const head = list.slice(0, Math.max(0, Number(maxItems) || 0));
+  const tail = list.slice(head.length);
+  const enriched = await Promise.all(
+    head.map(async (item) => {
+      if (!item || typeof item !== 'object') return item;
+      if (hasSimilarCardPresentation(item)) {
+        return {
+          ...item,
+          card_highlight_status: item.card_highlight_status || 'ready',
+        };
+      }
+      const merchantId = String(item.merchant_id || item.merchant?.id || item.merchant_uuid || '').trim();
+      const productId = String(item.product_id || item.productId || item.id || '').trim();
+      if (!merchantId || !productId) {
+        return {
+          ...item,
+          card_highlight_status: 'highlight_missing',
+        };
+      }
+      const detail = await fetchProductDetailForOffers({
+        merchantId,
+        productId,
+        checkoutToken,
+        bypassCache,
+      }).catch(() => null);
+      if (!detail || typeof detail !== 'object') {
+        return {
+          ...item,
+          card_highlight_status: 'highlight_missing',
+        };
+      }
+      return mergeSimilarCardEnrichment(item, detail);
+    }),
+  );
+  return [...enriched, ...tail];
+}
+
 function extractUpstreamErrorCode(err) {
   const data = err && err.response ? err.response.data : null;
 
@@ -20823,7 +20930,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            metadata: { similar_status: 'empty' },
 	          };
 	        }
-	      } else if (wantsSimilar) {
+      } else if (wantsSimilar) {
 	        logger.warn(
 	          {
 	            err:
@@ -20834,6 +20941,34 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          'PDP recommendations failed; returning without similar module',
 	        );
 	      }
+
+      if (wantsSimilar && relatedProducts.length > 0) {
+        const similarCardEnrichmentStartedAt = Date.now();
+        const similarLimit = payload?.similar?.limit || payload?.recommendations?.limit || 6;
+        relatedProducts = await enrichSimilarProductsForPdpCards({
+          items: relatedProducts,
+          checkoutToken,
+          bypassCache,
+          maxItems: similarLimit,
+        });
+        if (relatedProductsEnvelope && typeof relatedProductsEnvelope === 'object') {
+          const missingHighlightCount = relatedProducts.filter(
+            (item) => String(item?.card_highlight_status || '').trim() === 'highlight_missing',
+          ).length;
+          relatedProductsEnvelope = {
+            ...relatedProductsEnvelope,
+            items: relatedProducts,
+            metadata: {
+              ...(relatedProductsEnvelope.metadata && typeof relatedProductsEnvelope.metadata === 'object'
+                ? relatedProductsEnvelope.metadata
+                : {}),
+              card_enrichment_status: missingHighlightCount > 0 ? 'partial' : 'ready',
+              card_highlight_missing_count: missingHighlightCount,
+            },
+          };
+        }
+        markPdpV2Module('similar_card_enrichment', similarCardEnrichmentStartedAt);
+      }
 
       const pdpPayload = buildPdpPayload({
         product: canonicalProductForPdp,
@@ -24319,7 +24454,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               },
             });
 
-            const products = Array.isArray(rec?.items) ? rec.items : [];
+            const rawProducts = Array.isArray(rec?.items) ? rec.items : [];
+            const products = await enrichSimilarProductsForPdpCards({
+              items: rawProducts,
+              checkoutToken,
+              bypassCache,
+              maxItems: limit,
+            });
 
             // Keep response structure stable for existing clients.
             const baseResponse = {

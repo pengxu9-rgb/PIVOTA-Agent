@@ -1,4 +1,5 @@
 const { ensureJsonObject, normalizeNonEmptyString } = require('./externalSeedRecall');
+const { isDisplayablePdpFaqItem } = require('./pdpFaqQuality');
 
 const POLLUTED_FACTS_RE =
   /\b(contact us|customer service|privacy policy|terms(?: and conditions)?|shipping policy|return policy|about us|blog|blogs|impact|foundation transparency|transparency|give 20%|donation|donate|store locator|support|OFFICIAL|SOCIAL HIGHLIGHTS|THE UNDERCOVER|STRAIGHT UP|THE LOWDOWN|fill weight|avoid contact with eyes|keep out of reach|customerservice@)\b/i;
@@ -68,12 +69,90 @@ function collectModules(...payloads) {
   return payloads.flatMap((payload) => (Array.isArray(payload?.modules) ? payload.modules : []));
 }
 
+function findModuleData(type, ...payloads) {
+  const module = collectModules(...payloads).find((item) => item?.type === type);
+  if (module && Object.prototype.hasOwnProperty.call(module, 'data')) return module.data;
+  return null;
+}
+
 function collectLiveModuleList(livePayload = {}, liveResponse = {}) {
   return Array.from(
     new Set(
       collectModules(liveResponse, livePayload)
         .map((module) => normalizeNonEmptyString(module?.type))
         .filter(Boolean),
+    ),
+  );
+}
+
+function collectSeedDetailsSections(seedData = {}) {
+  const snapshot = ensureJsonObject(seedData?.snapshot);
+  const rawSections = Array.isArray(seedData?.pdp_details_sections)
+    ? seedData.pdp_details_sections
+    : Array.isArray(snapshot?.pdp_details_sections)
+      ? snapshot.pdp_details_sections
+      : [];
+  return rawSections.filter(Boolean);
+}
+
+function collectSeedFaqItems(seedData = {}) {
+  const snapshot = ensureJsonObject(seedData?.snapshot);
+  const rawItems = Array.isArray(seedData?.pdp_faq_items)
+    ? seedData.pdp_faq_items
+    : Array.isArray(snapshot?.pdp_faq_items)
+      ? snapshot.pdp_faq_items
+      : [];
+  return rawItems.filter((item) => isDisplayablePdpFaqItem(item));
+}
+
+function collectLiveQuestions(livePayload = {}, liveResponse = {}) {
+  const reviewsData =
+    findModuleData('reviews_preview', liveResponse, livePayload) ||
+    ensureJsonObject(liveResponse?.reviews_preview || livePayload?.reviews_preview);
+  return Array.isArray(reviewsData?.questions) ? reviewsData.questions : [];
+}
+
+function collectLiveActiveIngredients(livePayload = {}, liveResponse = {}) {
+  const data =
+    findModuleData('active_ingredients', liveResponse, livePayload) ||
+    ensureJsonObject(liveResponse?.active_ingredients || livePayload?.active_ingredients);
+  return Array.isArray(data?.items) ? data.items : [];
+}
+
+function seedExpectsActiveIngredients(seedData = {}) {
+  const snapshot = ensureJsonObject(seedData?.snapshot);
+  const rawActive = normalizeNonEmptyString(
+    seedData?.pdp_active_ingredients_raw ||
+      snapshot?.pdp_active_ingredients_raw ||
+      seedData?.active_ingredients ||
+      snapshot?.active_ingredients,
+  );
+  if (rawActive) return true;
+  const ingredients = normalizeNonEmptyString(
+    seedData?.pdp_ingredients_raw ||
+      snapshot?.pdp_ingredients_raw ||
+      seedData?.raw_ingredient_text_clean ||
+      snapshot?.raw_ingredient_text_clean,
+  );
+  return /\b(?:zinc oxide|titanium dioxide|avobenzone|octocrylene|octisalate|homosalate|octinoxate)\b/i.test(
+    ingredients,
+  );
+}
+
+function hasDisplayableSimilarCardData(product = {}) {
+  return Boolean(
+    normalizeNonEmptyString(
+      product.card_highlight ||
+        product.cardHighlight ||
+        product.shopping_card?.highlight ||
+        product.shoppingCard?.highlight ||
+        product.search_card?.highlight_candidate ||
+        product.searchCard?.highlight_candidate ||
+        product.searchCard?.highlightCandidate ||
+        product.description ||
+        product.category ||
+        product.product_type ||
+        product.productType,
     ),
   );
 }
@@ -182,13 +261,27 @@ function buildIdentityGate({ livePayload = {}, liveResponse = {} } = {}) {
 
 function buildProductIntelGate({ livePayload = {}, liveResponse = {} } = {}) {
   const modules = collectModules(liveResponse, livePayload);
-  const hasProductIntelModule = modules.some((module) => module?.type === 'product_intel');
+  const productIntelModule = modules.find((module) => module?.type === 'product_intel') || null;
   const topLevelIntel = ensureJsonObject(liveResponse?.product_intel || livePayload?.product_intel);
-  const hasTopLevelIntel = Object.keys(topLevelIntel).length > 0;
-  const failureReasons = hasProductIntelModule || hasTopLevelIntel ? [] : ['missing_product_intel'];
+  const moduleData = ensureJsonObject(productIntelModule?.data);
+  const metadata = ensureJsonObject(liveResponse?.metadata || livePayload?.metadata);
+  const productIntelStatus = normalizeNonEmptyString(
+    metadata.product_intel_status || productIntelModule?.status || productIntelModule?.reason,
+  ).toLowerCase();
+  const hasProductIntelData =
+    Object.keys(moduleData).length > 0 ||
+    Object.keys(topLevelIntel).length > 0;
+  const blocked =
+    !hasProductIntelData ||
+    productIntelStatus === 'missing_blocked' ||
+    productIntelStatus === 'queued' ||
+    productIntelStatus === 'generating' ||
+    normalizeNonEmptyString(productIntelModule?.reason).toLowerCase() === 'missing_blocked';
+  const failureReasons = blocked ? ['product_intel_module_empty_or_blocked'] : [];
   return {
     status: failureReasons.length ? 'failed' : 'passed',
-    has_product_intel: failureReasons.length === 0,
+    has_product_intel: hasProductIntelData,
+    product_intel_status: productIntelStatus || null,
     failure_reasons: failureReasons,
   };
 }
@@ -256,6 +349,7 @@ function buildLivePdpGate({
   extractorProduct = {},
   livePayload = {},
   liveResponse = {},
+  seedData = {},
   expectedPrice = null,
   imageHealth = null,
 } = {}) {
@@ -270,6 +364,10 @@ function buildLivePdpGate({
   const liveModuleList = collectLiveModuleList(livePayload, liveResponse);
   const galleryImages = collectLiveGalleryImages(livePayload);
   const strippedImageUrls = galleryImages.filter((url) => isImageUrlIdentityStripped(url));
+  const seedDetailSections = collectSeedDetailsSections(seedData);
+  const seedFaqItems = collectSeedFaqItems(seedData);
+  const liveQuestions = collectLiveQuestions(livePayload, liveResponse);
+  const liveActiveItems = collectLiveActiveIngredients(livePayload, liveResponse);
   const extractorHasDescription = Boolean(
     normalizeNonEmptyString(extractorProduct?.description_raw || extractorProduct?.description),
   );
@@ -313,6 +411,21 @@ function buildLivePdpGate({
   if (soupSections.length || looksLikeSectionSoupText(descriptionText)) {
     failureReasons.push('product_details_section_soup');
   }
+  const compressedStructuredDetails =
+    seedDetailSections.length >= 3 &&
+    detailSections.length <= 2 &&
+    detailSections.every((section) =>
+      /^(description|category)$/i.test(normalizeNonEmptyString(section?.heading)),
+    );
+  if (compressedStructuredDetails) {
+    failureReasons.push('structured_sections_compressed_to_description_category');
+  }
+  if (seedFaqItems.length > 0 && liveQuestions.length === 0) {
+    failureReasons.push('merchant_faq_dropped');
+  }
+  if (seedExpectsActiveIngredients(seedData) && liveActiveItems.length === 0) {
+    failureReasons.push('active_ingredients_expected_but_hidden');
+  }
   if (
     soupSections.length ||
     (!liveModuleList.includes('product_intel') &&
@@ -338,6 +451,16 @@ function buildLivePdpGate({
       section_count: detailSections.length,
       section_soup_count: soupSections.length,
       has_product_facts: factsText.length > 0,
+      seed_section_count: seedDetailSections.length,
+      compressed_structured_sections: compressedStructuredDetails,
+    },
+    questions_status: {
+      seed_faq_count: seedFaqItems.length,
+      live_question_count: liveQuestions.length,
+    },
+    active_ingredients_status: {
+      expected: seedExpectsActiveIngredients(seedData),
+      live_item_count: liveActiveItems.length,
     },
     image_health: imageHealth || {
       scanned_count: 0,
@@ -351,8 +474,16 @@ function buildLivePdpGate({
   };
 }
 
-function buildSimilarGate({ similarResponse = {}, exclusionFlags = {} } = {}) {
-  const products = Array.isArray(similarResponse?.products) ? similarResponse.products : [];
+function buildSimilarGate({ similarResponse = {}, livePayload = {}, liveResponse = {}, exclusionFlags = {} } = {}) {
+  const similarModuleData =
+    findModuleData('similar', liveResponse, livePayload) ||
+    findModuleData('recommendations', liveResponse, livePayload) ||
+    ensureJsonObject(similarResponse?.similar || liveResponse?.similar || livePayload?.recommendations);
+  const products = Array.isArray(similarModuleData?.items)
+    ? similarModuleData.items
+    : Array.isArray(similarResponse?.products)
+      ? similarResponse.products
+      : [];
   const exempt =
     Boolean(exclusionFlags?.gift_card) ||
     Boolean(exclusionFlags?.donation_bundle) ||
@@ -371,9 +502,16 @@ function buildSimilarGate({ similarResponse = {}, exclusionFlags = {} } = {}) {
   if (!exempt && products.length < 4) {
     failureReasons.push('similar_underfill');
   }
+  const missingHighlight = products
+    .slice(0, Math.min(products.length, 4))
+    .filter((item) => !hasDisplayableSimilarCardData(item));
+  if (!exempt && products.length > 0 && missingHighlight.length > 0) {
+    failureReasons.push('similar_card_missing_highlight');
+  }
   return {
     status: failureReasons.length ? 'failed' : exempt ? 'exempt' : 'passed',
     similar_count: products.length,
+    card_highlight_missing_count: missingHighlight.length,
     exempt,
     failure_reasons: failureReasons,
   };
@@ -411,17 +549,26 @@ function buildExternalSeedQualityResult({
   if (
     failureReasons.includes('product_details_section_soup') ||
     failureReasons.includes('legacy_overview_render_risk') ||
-    failureReasons.includes('duplicated_description_facts')
+    failureReasons.includes('duplicated_description_facts') ||
+    failureReasons.includes('structured_sections_compressed_to_description_category') ||
+    failureReasons.includes('merchant_faq_dropped') ||
+    failureReasons.includes('active_ingredients_expected_but_hidden')
   ) {
     rootCauseClassification.push('pdp_shaping_issue');
   }
   if (failureReasons.includes('missing_pdp_identity')) {
     rootCauseClassification.push('identity_graph_gap');
   }
-  if (failureReasons.includes('missing_product_intel')) {
+  if (
+    failureReasons.includes('missing_product_intel') ||
+    failureReasons.includes('product_intel_module_empty_or_blocked')
+  ) {
     rootCauseClassification.push('product_intel_gap');
   }
-  if (failureReasons.includes('similar_underfill')) {
+  if (
+    failureReasons.includes('similar_underfill') ||
+    failureReasons.includes('similar_card_missing_highlight')
+  ) {
     rootCauseClassification.push('similar_issue');
   }
   return {

@@ -62,10 +62,7 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
         ingredients_inci: {
           items: ['Water', 'Glycerin', 'Ceramide NP'],
         },
-        how_to_use: {
-          title: 'How to use',
-          steps: ['Apply after cleansing.', 'Use SPF in the morning.'],
-        },
+        pdp_how_to_use_raw: 'Apply after cleansing. Use SPF in the morning.',
       },
       relatedProducts: [],
       entryPoint: 'agent',
@@ -141,10 +138,72 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     const ingredientsInci = payload.modules.find((module) => module.type === 'ingredients_inci');
 
     expect(activeIngredients?.data?.items).toEqual(['Zinc Oxide']);
+    expect(activeIngredients?.data?.source_quality_status).toBe('regulatory_active');
     expect(activeIngredients?.data?.items).not.toContain('Zinc PCA');
     expect(ingredientsInci?.data?.items).toContain('1,2-Hexanediol');
     expect(ingredientsInci?.data?.items).not.toContain('1');
     expect(ingredientsInci?.data?.items).not.toContain('2-Hexanediol');
+  });
+
+  test('preserves enriched similar card presentation fields in recommendations', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_anchor',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Anchor Product',
+        image_url: 'https://example.com/anchor.png',
+        price: { amount: 18, currency: 'USD' },
+      },
+      relatedProducts: [
+        {
+          product_id: 'ext_related',
+          merchant_id: 'external_seed',
+          title: 'Related Product',
+          description: 'A lightweight toner that supports visible hydration.',
+          category: 'Toner',
+          card_highlight: 'Supports visible hydration',
+          shopping_card: { highlight: 'Supports visible hydration' },
+          search_card: { highlight_candidate: 'Supports visible hydration' },
+          image_url: 'https://example.com/related.png',
+          price: { amount: 16, currency: 'USD' },
+        },
+      ],
+      entryPoint: 'agent',
+    });
+
+    const recommendations = payload.modules.find((module) => module.type === 'recommendations');
+    expect(recommendations?.data?.items?.[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'ext_related',
+        category: 'Toner',
+        description: 'A lightweight toner that supports visible hydration.',
+        card_highlight: 'Supports visible hydration',
+        shopping_card: { highlight: 'Supports visible hydration' },
+        search_card: { highlight_candidate: 'Supports visible hydration' },
+      }),
+    );
+  });
+
+  test('does not let legacy generic how-to fields surface for external seeds', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_legacy_how_to',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Legacy How-To Product',
+        image_url: 'https://example.com/legacy-how-to.png',
+        price: { amount: 18, currency: 'USD' },
+        how_to_use: {
+          title: 'How to use',
+          steps: ['Legacy fallback step that should stay hidden.'],
+        },
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    expect(payload.modules.find((module) => module.type === 'how_to_use')).toBeFalsy();
   });
 
   test('emits cross-url product line options in variant selector data', () => {

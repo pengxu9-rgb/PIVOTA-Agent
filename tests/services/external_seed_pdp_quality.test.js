@@ -1,6 +1,7 @@
 const {
   buildSeedGate,
   buildExtractorGate,
+  buildProductIntelGate,
   buildLivePdpGate,
   buildSimilarGate,
   buildExternalSeedQualityResult,
@@ -132,6 +133,70 @@ describe('externalSeedPdpQuality', () => {
 
     expect(similarGate.status).toBe('exempt');
     expect(similarGate.failure_reasons).toEqual([]);
+  });
+
+  test('fails product intel gate when the module is present but blocked or empty', () => {
+    const gate = buildProductIntelGate({
+      liveResponse: {
+        modules: [{ type: 'product_intel', data: null, reason: 'missing_blocked' }],
+        metadata: { product_intel_status: 'missing_blocked' },
+      },
+    });
+
+    expect(gate.status).toBe('failed');
+    expect(gate.failure_reasons).toEqual(['product_intel_module_empty_or_blocked']);
+  });
+
+  test('flags structured sections, merchant FAQ, active ingredients, and thin similar card drift', () => {
+    const livePdpGate = buildLivePdpGate({
+      seedData: {
+        pdp_details_sections: [
+          { heading: 'Rice-Infused Hydration', content: 'Hydrates skin.' },
+          { heading: 'Secret Sebum-Control Layer', content: 'Controls visible oil.' },
+          { heading: 'How to Use', content: 'Apply daily.' },
+        ],
+        pdp_faq_items: [
+          {
+            question: 'Can I use it every day?',
+            answer: 'Yes, it is designed for daily use.',
+          },
+        ],
+        pdp_active_ingredients_raw: 'Zinc Oxide',
+      },
+      livePayload: {
+        modules: [
+          {
+            type: 'product_details',
+            data: {
+              sections: [
+                { heading: 'Description', content: 'A short sunscreen overview.' },
+                { heading: 'Category', content: 'Sunscreen' },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const similarGate = buildSimilarGate({
+      similarResponse: {
+        products: [
+          { product_id: 'ext_1', merchant_id: 'external_seed', title: 'Thin card' },
+          { product_id: 'ext_2', merchant_id: 'external_seed', title: 'Thin card 2' },
+          { product_id: 'ext_3', merchant_id: 'external_seed', title: 'Thin card 3' },
+          { product_id: 'ext_4', merchant_id: 'external_seed', title: 'Thin card 4' },
+        ],
+      },
+      exclusionFlags: { gift_card: false, donation_bundle: false, non_merchandise: false },
+    });
+
+    expect(livePdpGate.failure_reasons).toEqual(
+      expect.arrayContaining([
+        'structured_sections_compressed_to_description_category',
+        'merchant_faq_dropped',
+        'active_ingredients_expected_but_hidden',
+      ]),
+    );
+    expect(similarGate.failure_reasons).toEqual(['similar_card_missing_highlight']);
   });
 
   test('reports probe failures instead of misclassifying them as product-quality regressions', () => {
