@@ -59,11 +59,52 @@ const PDP_IDENTITY_COVERAGE_DEFAULT_BEAUTY_VERTICALS = Object.freeze([
   'makeup',
   'skincare',
 ]);
+const PDP_IDENTITY_GRAPH_LIVE_CACHE_TTL_MS = Math.max(
+  0,
+  Math.min(10 * 60 * 1000, Number(process.env.PDP_IDENTITY_GRAPH_LIVE_CACHE_TTL_MS || 90 * 1000) || 0),
+);
+const liveSyntheticPdpCache = new Map();
 
 function asString(value) {
   if (typeof value === 'string') return value.trim();
   if (value == null) return '';
   return String(value).trim();
+}
+
+function cloneJsonSafe(value) {
+  if (value == null) return value;
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return value;
+  }
+}
+
+function buildLiveSyntheticPdpCacheKey({ merchantId, productId } = {}) {
+  const merchant = asString(merchantId);
+  const product = asString(productId);
+  if (!merchant || !product || PDP_IDENTITY_GRAPH_LIVE_CACHE_TTL_MS <= 0) return '';
+  return `${merchant}::${product}`;
+}
+
+function readLiveSyntheticPdpCache(cacheKey) {
+  if (!cacheKey) return undefined;
+  const cached = liveSyntheticPdpCache.get(cacheKey);
+  if (!cached) return undefined;
+  if (Date.now() - cached.cachedAt > PDP_IDENTITY_GRAPH_LIVE_CACHE_TTL_MS) {
+    liveSyntheticPdpCache.delete(cacheKey);
+    return undefined;
+  }
+  return cloneJsonSafe(cached.value);
+}
+
+function writeLiveSyntheticPdpCache(cacheKey, value) {
+  if (!cacheKey) return value;
+  liveSyntheticPdpCache.set(cacheKey, {
+    cachedAt: Date.now(),
+    value: cloneJsonSafe(value),
+  });
+  return value;
 }
 
 function asPlainObject(value) {
@@ -1607,6 +1648,10 @@ async function maybeBuildLiveSyntheticPdp({
     return null;
   }
 
+  const cacheKey = queryFn === query ? buildLiveSyntheticPdpCacheKey({ merchantId, productId }) : '';
+  const cached = readLiveSyntheticPdpCache(cacheKey);
+  if (cached !== undefined) return cached;
+
   try {
     const sourceRowRes = await queryFn(
       `
@@ -1621,8 +1666,8 @@ async function maybeBuildLiveSyntheticPdp({
       [merchantId, productId],
     );
     const sourceRow = parseIdentityRow(sourceRowRes?.rows?.[0]);
-    if (!sourceRow) return null;
-    if (!isBrandAllowedForLive(canonicalProduct, sourceRow)) return null;
+    if (!sourceRow) return writeLiveSyntheticPdpCache(cacheKey, null);
+    if (!isBrandAllowedForLive(canonicalProduct, sourceRow)) return writeLiveSyntheticPdpCache(cacheKey, null);
 
     const exactRowsRes = await queryFn(
       `
@@ -1662,8 +1707,8 @@ async function maybeBuildLiveSyntheticPdp({
       lineListings,
       fallbackProduct: canonicalProduct,
     });
-    if (!composed?.product) return null;
-    return {
+    if (!composed?.product) return writeLiveSyntheticPdpCache(cacheKey, null);
+    return writeLiveSyntheticPdpCache(cacheKey, {
       synthetic_product: composed.product,
       canonical_product_ref: composed.canonical_product_ref,
       sellable_item_group_id: asString(sourceRow.sellable_item_group_id) || null,
@@ -1680,7 +1725,7 @@ async function maybeBuildLiveSyntheticPdp({
           asString(item.product_id) === asString(composed.canonical_product_ref?.product_id),
       })),
       line_members: lineListings.map((item) => buildGroupMember(item)),
-    };
+    });
   } catch (err) {
     if (looksLikeRelationMissing(err)) return null;
     logger.warn(

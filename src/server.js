@@ -20655,18 +20655,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      // We keep this as a soft precheck: do not fail the whole PDP when upstream jitters.
 	      let precheckedMerchantProduct = null;
 	      let precheckEntryProductMissing = false;
-	        const externalSeedRouteProductId = isExternalSeedProductId(productId);
-	        const isDirectExternalSeedRoute =
-	          externalSeedRouteProductId &&
-	          !offerProductGroupId &&
-	          !hasExplicitProductGroup &&
-	          (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID);
 	      const shouldPrecheckMerchantScoped =
 	        Boolean(requestedMerchantId) &&
 	        Boolean(productId) &&
 	        !offerProductGroupId &&
-	        !hasExplicitProductGroup &&
-	        !isDirectExternalSeedRoute;
+	        !hasExplicitProductGroup;
 	      const precheckEntryProductStartedAt = Date.now();
 	      if (shouldPrecheckMerchantScoped) {
 	        precheckedMerchantProduct = await fetchProductDetailForOffers({
@@ -20690,6 +20683,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      markPdpV2Phase('precheck_entry_product', precheckEntryProductStartedAt);
         entryPrecheckMissingCtx = precheckEntryProductMissing;
 
+	        const externalSeedRouteProductId = isExternalSeedProductId(productId);
 	        const shouldAttemptUnscopedExternalSeedResolve =
 	          externalSeedRouteProductId &&
 	          (
@@ -20762,18 +20756,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
 	      // Fetch canonical detail (cached via products_cache + memory cache).
 	      const fetchCanonicalProductStartedAt = Date.now();
-	      const shouldPrefetchExternalSeedIdentity =
-	        isDirectExternalSeedRoute &&
-	        Boolean(canonicalProductRef?.merchant_id) &&
-	        Boolean(canonicalProductRef?.product_id);
-	      const identityGraphPrefetchStartedAt = shouldPrefetchExternalSeedIdentity ? Date.now() : 0;
-	      const identityGraphPrefetchPromise = shouldPrefetchExternalSeedIdentity
-	        ? maybeBuildLiveSyntheticPdp({
-	            merchantId: requestedMerchantId || canonicalProductRef?.merchant_id,
-	            productId: entryProductId || productId || canonicalProductRef?.product_id,
-	            canonicalProduct: null,
-	          }).catch(() => null)
-	        : null;
 	      let canonicalProduct =
 	        precheckedMerchantProduct &&
 	        canonicalProductRef.merchant_id === requestedMerchantId &&
@@ -20818,14 +20800,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      let canonicalProductForPdp = canonicalProduct;
 	      let identityGraphLive = null;
 	      let identityGraphPublishedIntel = null;
-	      const identityGraphLiveStartedAt = identityGraphPrefetchStartedAt || Date.now();
-	      identityGraphLive = identityGraphPrefetchPromise
-	        ? await identityGraphPrefetchPromise
-	        : await maybeBuildLiveSyntheticPdp({
-	            merchantId: requestedMerchantId || canonicalProductRef?.merchant_id,
-	            productId: entryProductId || productId || canonicalProductRef?.product_id,
-	            canonicalProduct,
-	          }).catch(() => null);
+	      const identityGraphLiveStartedAt = Date.now();
+	      identityGraphLive = await maybeBuildLiveSyntheticPdp({
+          merchantId: requestedMerchantId || canonicalProductRef?.merchant_id,
+          productId: entryProductId || productId || canonicalProductRef?.product_id,
+          canonicalProduct,
+        }).catch(() => null);
 	      markPdpV2Phase('identity_graph_live', identityGraphLiveStartedAt);
 	      if (identityGraphLive?.synthetic_product && wantsProductIntel) {
 	        const identityGraphIntelGateStartedAt = Date.now();
