@@ -727,29 +727,45 @@ async function hydrateProductWithPublishedIntel({
   const embeddedBundle = readPublishedProductIntelBundle(sourceProduct, { canonicalProductRef });
 
   let getProductIntelKbEntry = null;
+  let getProductIntelKbEntries = null;
   let normalizeProductAnalysis = null;
   try {
-    ({ getProductIntelKbEntry } = require('./auroraBff/productIntelKbStore'));
+    ({ getProductIntelKbEntry, getProductIntelKbEntries } = require('./auroraBff/productIntelKbStore'));
     ({ normalizeProductAnalysis } = require('./auroraBff/normalize'));
   } catch {
     return sourceProduct;
   }
 
-  if (typeof getProductIntelKbEntry !== 'function' || typeof normalizeProductAnalysis !== 'function') {
+  if (
+    typeof getProductIntelKbEntry !== 'function' ||
+    typeof normalizeProductAnalysis !== 'function'
+  ) {
     return sourceProduct;
   }
 
   const kbKeys = buildPublishedIntelKbKeys(sourceProduct, canonicalProductRef, {
     alternateCanonicalProductRefs,
   });
+  let kbEntryMap = null;
+  if (typeof getProductIntelKbEntries === 'function' && kbKeys.length > 1) {
+    try {
+      kbEntryMap = await getProductIntelKbEntries(kbKeys);
+    } catch {
+      kbEntryMap = null;
+    }
+  }
   let firstUnavailableProduct = null;
   for (const kbKey of kbKeys) {
     let kbEntry = null;
-    try {
-      // eslint-disable-next-line no-await-in-loop
-      kbEntry = await getProductIntelKbEntry(kbKey);
-    } catch {
-      kbEntry = null;
+    if (kbEntryMap && typeof kbEntryMap.get === 'function') {
+      kbEntry = kbEntryMap.get(kbKey) || null;
+    } else {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        kbEntry = await getProductIntelKbEntry(kbKey);
+      } catch {
+        kbEntry = null;
+      }
     }
     const kbAnalysis = asPlainObject(kbEntry?.analysis);
     if (!kbAnalysis) continue;
