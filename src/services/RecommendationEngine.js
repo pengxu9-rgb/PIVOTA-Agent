@@ -1137,6 +1137,20 @@ function titleIntentMatches(baseFeatures, candidateFeatures) {
   return jaccard(tokenize(baseTitle), tokenize(candidateTitle)) >= 0.18;
 }
 
+function isWeakExternalSeedCategory(value) {
+  const normalized = normalizeText(value);
+  return (
+    !normalized ||
+    normalized === 'product' ||
+    normalized === 'products' ||
+    normalized === 'beauty' ||
+    normalized === 'skincare' ||
+    normalized === 'skin care' ||
+    normalized === 'makeup' ||
+    normalized === 'cosmetics'
+  );
+}
+
 function countExternalSkipEligibleInternalCandidates(baseProduct, internalCandidates) {
   const base = buildBaseFeatures(baseProduct);
   if (!Array.isArray(internalCandidates) || !internalCandidates.length) return 0;
@@ -2032,12 +2046,14 @@ async function enrichExternalBaseProduct(baseProduct) {
       seedData?.productType ||
       snapshot?.category ||
       snapshot?.product_type ||
-      snapshot?.productType ||
-      '',
+    snapshot?.productType ||
+    '',
   ).trim();
-  if (!getLeafCategory(enriched) && seedCategory) {
+  if (seedCategory && isWeakExternalSeedCategory(getLeafCategory(enriched))) {
     if (!String(enriched.category || '').trim()) enriched.category = seedCategory;
     if (!String(enriched.product_type || '').trim()) enriched.product_type = seedCategory;
+    if (isWeakExternalSeedCategory(enriched.category)) enriched.category = seedCategory;
+    if (isWeakExternalSeedCategory(enriched.product_type)) enriched.product_type = seedCategory;
     rescueFields.push('category');
   }
 

@@ -189,6 +189,48 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(out.semantic?.rescue_fields).toEqual(expect.arrayContaining(['brand', 'category', 'description']));
   });
 
+  test('enrichExternalBaseProduct upgrades weak synthetic categories from external seed recall category', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryMock = jest.fn(async () => ({
+      rows: [
+        {
+          id: 'eps_dn350',
+          external_product_id: 'ext_dn350',
+          title: 'Daily Tinted Fluid Sunscreen DN350',
+          seed_data: {
+            brand: 'Beauty of Joseon',
+            category: 'Sunscreen',
+            product_type: 'Sunscreen',
+          },
+        },
+      ],
+    }));
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const out = await _internals.enrichExternalBaseProduct({
+      merchant_id: 'external_seed',
+      product_id: 'ext_dn350',
+      external_product_id: 'ext_dn350',
+      title: 'Daily Tinted Fluid Sunscreen DN350',
+      brand: 'Beauty of Joseon',
+      category: 'Skincare',
+      product_type: 'Products',
+      source: 'external_seed',
+    });
+
+    expect(out.product).toEqual(
+      expect.objectContaining({
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+      }),
+    );
+    expect(out.semantic?.rescue_fields).toEqual(expect.arrayContaining(['category']));
+  });
+
   test('includes attached same-brand seeds through broad brand fallback matching', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 
