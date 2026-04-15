@@ -53292,6 +53292,7 @@ function normalizeRecoAssistantReasonFragment(value, {
     }
     return '';
   }
+  text = text.replace(/^(a|an|the)\b/i, (match) => match.toLowerCase());
   if (/^[A-Z][a-z]/.test(text) && !/^(SPF|UV|PA\b)/.test(text)) {
     text = text.charAt(0).toLowerCase() + text.slice(1);
   }
