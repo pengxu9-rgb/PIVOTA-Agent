@@ -1075,6 +1075,7 @@ function buildBaseFeatures(baseProduct) {
   const priceAmount = getPriceAmount(baseProduct);
   const verticalSignal = inferVerticalFromProduct(baseProduct);
   const tokens = tokenize([baseProduct.title, baseProduct.name, brand, leafCategory, parentCategory].filter(Boolean).join(' '));
+  const normalizedTitle = normalizeText(baseProduct.title || baseProduct.name);
   return {
     productId: getProductId(baseProduct),
     merchantId: getMerchantId(baseProduct),
@@ -1084,6 +1085,7 @@ function buildBaseFeatures(baseProduct) {
     priceAmount,
     currency: normalizeCurrency(baseProduct, 'USD'),
     tokens,
+    normalizedTitle,
     isExternal: isExternalProduct(baseProduct),
     vertical: verticalSignal.vertical || UNKNOWN_VERTICAL,
     verticalInferred: Boolean(verticalSignal.inferred),
@@ -1124,6 +1126,15 @@ function titleSupportsLeafCategory(features) {
     return /\b(sunscreen|spf|sun\s*(?:milk|cream|lotion|fluid|stick|serum|gel|screen)?|uv)\b/i.test(title);
   }
   return true;
+}
+
+function titleIntentMatches(baseFeatures, candidateFeatures) {
+  const baseTitle = String(baseFeatures?.normalizedTitle || '').trim();
+  const candidateTitle = String(candidateFeatures?.normalizedTitle || '').trim();
+  if (!baseTitle || !candidateTitle) return false;
+  const sunscreenTitleRe = /\b(sunscreen|spf|sun\s*(?:milk|cream|lotion|fluid|stick|serum|gel|screen)?|uv)\b/i;
+  if (sunscreenTitleRe.test(baseTitle)) return sunscreenTitleRe.test(candidateTitle);
+  return jaccard(tokenize(baseTitle), tokenize(candidateTitle)) >= 0.18;
 }
 
 function countExternalSkipEligibleInternalCandidates(baseProduct, internalCandidates) {
@@ -1281,13 +1292,9 @@ function pickLayeredRecommendations({
         baseFeatures.isExternal &&
         c.brandMatch &&
         (
-          features.isExternal ||
           c.leafMatch ||
           c.parentMatch ||
-          c.tokenOverlap >= 0.05 ||
-          baseFeatures.vertical === UNKNOWN_VERTICAL ||
-          features.vertical === UNKNOWN_VERTICAL ||
-          baseFeatures.vertical === features.vertical
+          titleIntentMatches(baseFeatures, features)
         ),
     },
     {
@@ -1375,6 +1382,17 @@ function pickLayeredRecommendations({
         !scoreDetail.brandMatch &&
         scoreDetail.leafMatch &&
         !titleSupportsLeafCategory(features)
+      ) {
+        filteredByConfidence += 1;
+        return null;
+      }
+      if (
+        base.isExternal &&
+        base.vertical === 'skincare' &&
+        scoreDetail.brandMatch &&
+        !scoreDetail.leafMatch &&
+        !scoreDetail.parentMatch &&
+        !titleIntentMatches(base, features)
       ) {
         filteredByConfidence += 1;
         return null;
