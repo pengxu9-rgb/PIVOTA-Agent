@@ -21005,6 +21005,55 @@ function isConcernFrameworkNegativeAuthority(coarse = null) {
   return targetRelevanceClass === 'adjacent_noise' && noiseReason === 'bundle';
 }
 
+function isConcernFrameworkRefillOnlyCandidate(row = null) {
+  const item = isPlainObject(row) ? row : {};
+  const text = [
+    item.display_name,
+    item.displayName,
+    item.name,
+    item.title,
+    item.category,
+    item.product_type,
+    item.productType,
+    item.sku?.display_name,
+    item.sku?.displayName,
+    item.sku?.name,
+    item.sku?.title,
+    item.sku?.category,
+    item.sku?.product_type,
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+  if (!text) return false;
+  return /\b(?:refill(?:\s+(?:pouch|pack|pod|cartridge|bottle))?|(?:pouch|pack|pod|cartridge|bottle)\s+refill|replacement\s+(?:pouch|pack|pod|cartridge|bottle))\b/i.test(text);
+}
+
+function shouldUseConcernFrameworkRoleCoverageFirst(targetContext = null, orderedRoles = []) {
+  const roles = Array.isArray(orderedRoles)
+    ? orderedRoles.filter((role) => String(role?.role_id || '').trim())
+    : [];
+  if (roles.length <= 1) return false;
+  const semanticPlan = isPlainObject(targetContext?.semantic_plan) ? targetContext.semantic_plan : null;
+  const comparisonMode = String(
+    pickFirstTrimmed(
+      targetContext?.comparison_mode,
+      semanticPlan?.comparison_mode,
+      semanticPlan?.selection_constraints?.comparison_mode,
+    ) || '',
+  ).trim().toLowerCase();
+  if (comparisonMode === 'same_role_comparison' || comparisonMode === 'same_role') return false;
+  const routineMode = String(
+    pickFirstTrimmed(
+      targetContext?.routine_mode,
+      semanticPlan?.routine_mode,
+      semanticPlan?.selection_constraints?.routine_mode,
+      semanticPlan?.selection_constraints?.comparison_mode,
+    ) || '',
+  ).trim().toLowerCase();
+  return routineMode === 'routine_mix' || routineMode === 'basic_routine';
+}
+
 function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext } = {}) {
   const roles = Array.isArray(targetContext?.framework_roles) ? targetContext.framework_roles : [];
   const deduped = [];
@@ -21098,6 +21147,13 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
       coarse_target_relevance_class: String(coarseAuthority?.target_relevance_class || '').trim() || null,
       coarse_noise_reason: String(coarseAuthority?.noise_reason || '').trim() || null,
     };
+    if (isConcernFrameworkRefillOnlyCandidate(row)) {
+      hardReject.push({
+        product: annotatedBase,
+        reason: 'framework_refill_only_variant',
+      });
+      continue;
+    }
     if (isConcernFrameworkNegativeAuthority(coarseAuthority)) {
       const coarseNoiseReason = String(coarseAuthority?.noise_reason || '').trim().toLowerCase();
       hardReject.push({
@@ -21209,9 +21265,11 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
   };
 
   const primaryBucket = primaryRoleId ? (roleBuckets.get(primaryRoleId) || []) : [];
+  const roleCoverageFirst = shouldUseConcernFrameworkRoleCoverageFirst(targetContext, orderedRoles);
+  const primaryPreSupportLimit = roleCoverageFirst ? 1 : 3;
   for (const item of primaryBucket) {
     addSelectedCandidate(item);
-    if (selected.length >= 3) break;
+    if (selected.length >= primaryPreSupportLimit) break;
   }
   const strictPrimarySelectedCount = selected.length;
   const comparisonFillAllowed = shouldAllowConcernFrameworkComparisonFill(targetContext, orderedRoles);
@@ -21230,11 +21288,18 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     && comparisonFillCandidates.length > 0
     && remainingSupportRoleOptions < remainingCardBudgetAfterPrimary;
   if (strictPrimarySelectedCount > 0 && strictPrimarySelectedCount < 3 && selected.length < 3) {
-    addRoutineSupportCandidates(reserveComparisonSlot ? 1 : Number.POSITIVE_INFINITY);
+    addRoutineSupportCandidates(roleCoverageFirst ? Number.POSITIVE_INFINITY : reserveComparisonSlot ? 1 : Number.POSITIVE_INFINITY);
   }
   for (const item of comparisonFillCandidates) {
     addSelectedCandidate(item);
     if (selected.length >= 3) break;
+  }
+
+  if (roleCoverageFirst && selected.length < 3) {
+    for (const item of primaryBucket) {
+      addSelectedCandidate(item);
+      if (selected.length >= 3) break;
+    }
   }
 
   if (selected.length < 3) addRoutineSupportCandidates();

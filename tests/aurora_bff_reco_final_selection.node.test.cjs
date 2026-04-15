@@ -2342,6 +2342,115 @@ test('beauty mainline routine support fill keeps one card per support role', () 
   }
 });
 
+test('beauty mainline routine selection covers support roles before same-role refill variants', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const targetContext = {
+      primary_role_id: 'tone_mark_treatment',
+      semantic_plan: {
+        routine_mode: 'routine_mix',
+        comparison_mode: 'routine_mix',
+        selection_constraints: {
+          comparison_mode: 'routine_mix',
+        },
+      },
+      framework_roles: [
+        {
+          role_id: 'tone_mark_treatment',
+          label: 'Tone and post-breakout mark treatment',
+          preferred_step: 'treatment',
+          rank: 50,
+          query_terms: ['post acne marks serum', 'dark spot serum', 'brightening serum'],
+          fit_keywords: ['post acne marks', 'dark spots', 'brightening', 'uneven tone'],
+        },
+        {
+          role_id: 'lightweight_moisturizer',
+          label: 'Lightweight moisturizer',
+          preferred_step: 'moisturizer',
+          rank: 20,
+          query_terms: ['lightweight moisturizer oily skin', 'gel cream oily skin'],
+          fit_keywords: ['lightweight', 'gel cream', 'non-greasy'],
+        },
+        {
+          role_id: 'daily_sunscreen',
+          label: 'Daily sunscreen',
+          preferred_step: 'sunscreen',
+          rank: 30,
+          query_terms: ['daily sunscreen skincare', 'broad spectrum sunscreen'],
+          fit_keywords: ['spf', 'uv filters', 'broad spectrum'],
+        },
+      ],
+    };
+    const out = __internal.finalizeConcernFrameworkCandidatePools(
+      [
+        {
+          product_id: 'fab_dark_spot',
+          merchant_id: 'external_seed',
+          display_name: 'Dark Spot Serum with Niacinamide',
+          brand: 'First Aid Beauty',
+          category: 'Serum',
+          product_type: 'Serum',
+          description: 'A dark spot serum for post acne marks and uneven tone with niacinamide.',
+          retrieval_source: 'external_seed',
+        },
+        {
+          product_id: 'fenty_refill',
+          merchant_id: 'external_seed',
+          display_name: 'Watch Ya Tone Niacinamide Dark Spot Serum Refill',
+          brand: 'Fenty Beauty',
+          category: 'Serum',
+          product_type: 'Serum',
+          description: 'Refill format for a niacinamide dark spot serum.',
+          retrieval_source: 'external_seed',
+        },
+        {
+          product_id: 'jurlique_brightening',
+          merchant_id: 'external_seed',
+          display_name: 'Brightening Serum',
+          brand: 'Jurlique',
+          category: 'Serum',
+          product_type: 'Serum',
+          description: 'A brightening serum for uneven tone and post breakout marks.',
+          retrieval_source: 'external_seed',
+        },
+        {
+          product_id: 'fab_gel_cream',
+          merchant_id: 'external_seed',
+          display_name: 'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+          brand: 'First Aid Beauty',
+          category: 'Moisturizer',
+          product_type: 'Moisturizer',
+          description: 'A lightweight gel cream moisturizer with a non-greasy feel.',
+          retrieval_source: 'external_seed',
+        },
+        {
+          product_id: 'ordinary_spf',
+          merchant_id: 'external_seed',
+          display_name: 'UV Filters SPF 45 Serum',
+          brand: 'The Ordinary',
+          category: 'Sunscreen',
+          product_type: 'Sunscreen',
+          description: 'A daily sunscreen with SPF and UV filters for daytime protection.',
+          retrieval_source: 'external_seed',
+        },
+      ],
+      { targetContext },
+    );
+
+    assert.equal(out.selected_recommendations[0]?.matched_role_id, 'tone_mark_treatment');
+    assert.equal(out.selected_recommendations.some((row) => row.product_id === 'fenty_refill'), false);
+    assert.deepEqual(
+      out.selected_recommendations.map((row) => row.matched_role_id),
+      ['tone_mark_treatment', 'lightweight_moisturizer', 'daily_sunscreen'],
+    );
+    assert.equal(out.hard_reject.some((entry) => entry.reason === 'framework_refill_only_variant'), true);
+    assert.equal(out.routine_support_fill_count, 2);
+    assert.equal(out.comparison_fill_applied, false);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('beauty mainline reco rows promote visible nested product fields to top level', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
