@@ -9849,8 +9849,8 @@ describe('discovery feed service', () => {
       expect(dbQueryMock).toHaveBeenCalledTimes(3);
       const curatedSql = String(dbQueryMock.mock.calls[2]?.[0] || '');
       expect(curatedSql).toContain("'generic_browse_curated_head'::text AS match_stage");
-      expect(curatedSql).toContain('WITH requested_mix');
-      expect(curatedSql).toContain('row_number() OVER');
+      expect(curatedSql).toContain('UNION ALL');
+      expect(curatedSql).not.toContain('row_number() OVER');
       for (const call of dbQueryMock.mock.calls.slice(2)) {
         const sql = String(call?.[0] || '');
         expect(sql).not.toContain('LIKE ANY');
