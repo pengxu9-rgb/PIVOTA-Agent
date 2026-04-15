@@ -490,8 +490,8 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
         'oil control serum',
         'shine control serum',
         'lightweight moisturizer oily skin',
-        'barrier lotion oily skin',
         'oil control sunscreen',
+        'barrier lotion oily skin',
         'lightweight sunscreen oily skin',
         'lightweight sunscreen',
       ],
@@ -510,7 +510,8 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
       ],
     );
     assert.equal(captured.every((row) => row.callerLane === 'beauty_chat_handoff'), true);
-    assert.equal(captured.every((row) => row.timeoutMs === 10500), true);
+    assert.equal(captured.slice(0, 3).every((row) => row.timeoutMs === 10500), true);
+    assert.equal(captured.slice(3).every((row) => row.timeoutMs === 950), true);
     assert.equal(captured.every((row) => row.allowExternalSeed === false), true);
     assert.equal(
       captured.slice(0, 3).every((row) =>
@@ -542,7 +543,7 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
     );
     assert.equal(out.searchResult?.query_source, 'beauty_mainline_local_handoff');
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.planned_level_count, 6);
-    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_level_count, 6);
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_level_count, 7);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_query_count, 16);
     assert.equal(
       out.searchResult?.metadata?.search_stage_ledger?.primary_search?.execution_lane,
@@ -550,6 +551,7 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
     );
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.skipped_external_seed_level_count, 0);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_support_internal_level_count, 2);
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.support_internal_fair_round_count, 3);
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_support_internal_levels,
       [
@@ -586,11 +588,11 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
     );
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts?.map((row) => row?.source_scope),
-      ['internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed'],
+      ['internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal'],
     );
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts?.map((row) => row?.source_scope),
-      ['internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed'],
+      ['internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal'],
     );
     const firstSupportExternalAttempt =
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
@@ -1030,8 +1032,8 @@ test('handoffRecoToBeautyMainlineSearch skips primary external seed when interna
         'oil control serum',
         'shine control serum',
         'lightweight moisturizer oily skin',
-        'barrier lotion oily skin',
         'oil control sunscreen',
+        'barrier lotion oily skin',
         'lightweight sunscreen oily skin',
         'lightweight sunscreen',
       ],
@@ -1451,6 +1453,135 @@ test('handoffRecoToBeautyMainlineSearch interleaves support external queries acr
     );
   } finally {
     __internal.__resetRouteDependencyOverridesForTest();
+    delete require.cache[moduleId];
+  }
+});
+
+test('handoffRecoToBeautyMainlineSearch releases support budget to external authority when support internal hangs', async () => {
+  const originalSupportInternalTimeout = process.env.AURORA_BFF_RECO_CATALOG_SUPPORT_INTERNAL_QUERY_TIMEOUT_MS;
+  process.env.AURORA_BFF_RECO_CATALOG_SUPPORT_INTERNAL_QUERY_TIMEOUT_MS = '200';
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const externalCaptured = [];
+    __internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async (args) => {
+        const query = String(args?.query || '').trim().toLowerCase();
+        if (
+          query === 'niacinamide serum oily skin'
+          || query === 'oil control serum'
+          || query === 'shine control serum'
+        ) {
+          return {
+            ok: true,
+            products: [
+              {
+                product_id: 'primary_oil_control_budget',
+                merchant_id: 'merchant_internal_primary_budget',
+                title: 'Clarity Lab Oil Balance Serum',
+                display_name: 'Clarity Lab Oil Balance Serum',
+                category: 'serum',
+                product_type: 'serum',
+                candidate_step: 'treatment',
+                benefit_tags: ['oil control', 'shine control'],
+                short_description: 'A mattifying oil-control serum for oily skin.',
+                retrieval_source: 'catalog',
+              },
+            ],
+            attempted_internal_paths: ['/agent/internal/products/search'],
+            transport_hops: [],
+            transport_hop_count: 0,
+            nested_orchestrator_hops: 0,
+            primary_transport_owner: 'internal_products_search_primitive',
+            primary_endpoint_kind: 'internal_primitive',
+          };
+        }
+        return new Promise(() => {});
+      },
+      searchLocalExternalSeedProducts: async (args) => {
+        const roleId = String(args?.role?.role_id || '').trim();
+        externalCaptured.push(roleId);
+        const base = {
+          ok: true,
+          actual_http_attempt_count: 0,
+          attempted_base_urls: [],
+          attempted_paths: [],
+          transport_policy_mode: String(args?.transportPolicyMode || ''),
+        };
+        if (roleId === 'lightweight_moisturizer') {
+          return {
+            ...base,
+            products: [
+              {
+                product_id: 'support_moisturizer_budget',
+                merchant_id: 'merchant_ext_moisturizer_budget',
+                title: 'Oil-Free Gel Moisturizer',
+                display_name: 'Oil-Free Gel Moisturizer',
+                brand: 'TestSkin',
+                category: 'moisturizer',
+                product_type: 'moisturizer',
+                candidate_step: 'moisturizer',
+                benefit_tags: ['lightweight', 'oil-free', 'gel cream'],
+                short_description: 'A lightweight gel moisturizer for oily skin.',
+                retrieval_source: 'external_seed',
+              },
+            ],
+          };
+        }
+        if (roleId === 'daily_sunscreen') {
+          return {
+            ...base,
+            products: [
+              {
+                product_id: 'support_sunscreen_budget',
+                merchant_id: 'merchant_ext_sunscreen_budget',
+                title: 'Oil Control Sunscreen SPF 50',
+                display_name: 'Oil Control Sunscreen SPF 50',
+                brand: 'TestSkin',
+                category: 'sunscreen',
+                product_type: 'sunscreen',
+                candidate_step: 'sunscreen',
+                benefit_tags: ['spf', 'oil control', 'lightweight'],
+                short_description: 'A lightweight SPF 50 sunscreen for oily skin.',
+                retrieval_source: 'external_seed',
+              },
+            ],
+          };
+        }
+        return { ...base, products: [], reason: 'empty' };
+      },
+    });
+
+    const out = await __internal.handoffRecoToBeautyMainlineSearch({
+      ctx: { lang: 'EN', request_id: 'req_support_internal_hang_external_budget' },
+      primaryQuery: 'what products should i use for oily skin?',
+      fallbackMessage: 'what products should i use for oily skin?',
+      targetContext: resolveRecommendationTargetContext({
+        text: 'what products should i use for oily skin?',
+        focus: '',
+        entryType: 'chat',
+      }),
+      timeoutMs: 5000,
+      minTimeoutMs: 5000,
+    });
+
+    assert.deepEqual(
+      out.recommendations.map((item) => item?.matched_role_id).sort(),
+      ['daily_sunscreen', 'lightweight_moisturizer', 'oil_control_treatment'],
+    );
+    assert.deepEqual(
+      externalCaptured.slice(0, 2),
+      ['lightweight_moisturizer', 'daily_sunscreen'],
+    );
+    const supportInternalTimeouts =
+      out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
+        ?.filter((row) => row?.fair_support_internal_round === 1)
+        ?.flatMap((row) => row?.attempted_request_timeouts_ms || []) || [];
+    assert.ok(supportInternalTimeouts.length >= 2);
+    assert.equal(supportInternalTimeouts.every((timeoutMs) => Number(timeoutMs) <= 200), true);
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+    if (originalSupportInternalTimeout == null) delete process.env.AURORA_BFF_RECO_CATALOG_SUPPORT_INTERNAL_QUERY_TIMEOUT_MS;
+    else process.env.AURORA_BFF_RECO_CATALOG_SUPPORT_INTERNAL_QUERY_TIMEOUT_MS = originalSupportInternalTimeout;
     delete require.cache[moduleId];
   }
 });
