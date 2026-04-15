@@ -4337,7 +4337,7 @@ test('__internal: local external seed support-role patterns avoid bare fit keywo
   assert.equal(patterns.includes('%oil free moisturizer%'), true);
 });
 
-test('__internal: local external seed support-role search uses lean title authority recall before broad text recall', async () => {
+test('__internal: local external seed support-role search uses precise category-positive recall before broad text recall', async () => {
   const { __internal } = loadRoutesFresh();
   const observedQueries = [];
   const makeRow = (id, title, price) => ({
@@ -4351,8 +4351,8 @@ test('__internal: local external seed support-role search uses lean title author
     price_amount: price,
     price_currency: 'USD',
     availability: 'in_stock',
-    match_stage: 'support_recall_title',
-    match_score: 48,
+    match_stage: 'support_category_positive',
+    match_score: 54,
     seed_data: {
       derived: {
         recall: {
@@ -4401,18 +4401,96 @@ test('__internal: local external seed support-role search uses lean title author
   assert.equal(out.ok, true);
   assert.equal(out.local_external_seed_search_mode, 'staged_support_fastpath');
   assert.equal(observedQueries.length, 1);
-  assert.match(observedQueries[0].sql, /support_recall_title/);
+  assert.match(observedQueries[0].sql, /support_category_positive/);
+  assert.match(observedQueries[0].sql, /category/);
+  assert.match(observedQueries[0].sql, /retrieval_title/i);
+  assert.match(observedQueries[0].sql, /alias_tokens/i);
+  assert.match(observedQueries[0].sql, /ingredient_tokens/i);
   assert.doesNotMatch(observedQueries[0].sql, /seed_data::text/i);
-  assert.doesNotMatch(observedQueries[0].sql, /retrieval_summary/i);
-  assert.doesNotMatch(observedQueries[0].sql, /alias_tokens/i);
-  assert.doesNotMatch(observedQueries[0].sql, /ingredient_tokens/i);
-  assert.deepEqual(observedQueries[0].params[2].slice(0, 1), [
-    '%lightweight moisturizer oily skin%',
+  assert.deepEqual(observedQueries[0].params[2], [
+    'moisturizer',
+    'moisturiser',
+    'cream',
+    'gel cream',
+    'gel-cream',
+    'lotion',
+    'emulsion',
   ]);
-  assert.equal(out.local_external_seed_stage_debug[0]?.stage, 'support_recall_title');
+  assert.ok(observedQueries[0].params[3].includes('%gel cream%'));
+  assert.ok(observedQueries[0].params[3].includes('%oil-free%'));
+  assert.equal(out.local_external_seed_stage_debug[0]?.stage, 'support_category_positive');
+  assert.equal(out.local_external_seed_stage_debug[0]?.stop_after_any_match, true);
   assert.equal(out.products.length, 2);
-  assert.equal(out.products[0].retrieval_match_stage, 'support_recall_title');
-  assert.match(out.products[0].retrieval_reason, /support_recall_title/);
+  assert.equal(out.products[0].retrieval_match_stage, 'support_category_positive');
+  assert.match(out.products[0].retrieval_reason, /support_category_positive/);
+});
+
+test('__internal: local external seed primary hydration-serum search uses category-positive recall before title scan', async () => {
+  const { __internal } = loadRoutesFresh();
+  const observedQueries = [];
+  const out = await __internal.searchLocalExternalSeedProducts({
+    query: 'hyaluronic acid serum',
+    limit: 2,
+    role: {
+      role_id: 'hydrating_serum_or_essence',
+      rank: 1,
+      preferred_step: 'serum',
+      query_terms: ['hyaluronic acid serum', 'hydrating serum'],
+      fit_keywords: ['hyaluronic acid', 'hydrating', 'plumping'],
+      product_type_hypotheses: ['serum', 'essence'],
+    },
+    preferredStep: 'serum',
+    queryFn: async (sql, params) => {
+      observedQueries.push({ sql: String(sql || ''), params });
+      return {
+        rows: [
+          {
+            id: '301',
+            external_product_id: 'ext_hydrating_serum_301',
+            destination_url: 'https://example.com/products/ha-serum',
+            canonical_url: 'https://example.com/products/ha-serum',
+            domain: 'example.com',
+            title: 'Hyaluronic Acid Hydrating Serum',
+            image_url: 'https://example.com/products/ha-serum.jpg',
+            price_amount: 16,
+            price_currency: 'USD',
+            availability: 'in_stock',
+            match_stage: 'support_category_positive',
+            match_score: 54,
+            seed_data: {
+              derived: {
+                recall: {
+                  retrieval_title: 'Hyaluronic Acid Hydrating Serum',
+                  retrieval_summary: 'A hydrating serum with sodium hyaluronate.',
+                  ingredient_tokens: ['hyaluronic acid', 'sodium hyaluronate'],
+                  category: 'serum',
+                  vertical: 'skincare',
+                },
+              },
+              snapshot: {
+                title: 'Hyaluronic Acid Hydrating Serum',
+                description: 'Hydrating serum for dehydrated skin.',
+                category: 'Serum',
+              },
+            },
+            updated_at: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+          },
+        ],
+      };
+    },
+  });
+
+  assert.equal(out.ok, true);
+  assert.equal(observedQueries.length, 1);
+  assert.match(observedQueries[0].sql, /support_category_positive/);
+  assert.doesNotMatch(observedQueries[0].sql, /seed_data::text/i);
+  assert.deepEqual(observedQueries[0].params[2], ['serum', 'treatment', 'ampoule', 'essence']);
+  assert.ok(observedQueries[0].params[3].includes('%hyaluronic acid%'));
+  assert.ok(observedQueries[0].params[3].includes('%sodium hyaluronate%'));
+  assert.equal(out.local_external_seed_stage_debug[0]?.stage, 'support_category_positive');
+  assert.equal(out.local_external_seed_stage_debug[0]?.stop_after_any_match, true);
+  assert.equal(out.products[0].retrieval_match_stage, 'support_category_positive');
 });
 
 test('__internal: local external seed support-role search uses exact category head for broad sunscreen recall', async () => {
@@ -4732,6 +4810,23 @@ test('__internal: tri-state skincare classifier only hard rejects explicit non-s
   );
   assert.equal(
     recoShared.classifySkincareCandidateDomain({
+      name: 'Daily Tinted Fluid Sunscreen LP110',
+      category: 'makeup',
+      product_type: 'sunscreen',
+      short_description: 'A daily tinted fluid sunscreen designed to sit well under makeup.',
+    }),
+    'explicit_face_skincare',
+  );
+  assert.equal(
+    recoShared.classifySkincareCandidateDomain({
+      name: 'SPF foundation',
+      category: 'makeup',
+      product_type: 'foundation',
+    }),
+    'explicit_non_skincare',
+  );
+  assert.equal(
+    recoShared.classifySkincareCandidateDomain({
       name: 'Warm Fall/Winter Padded Winter Vest for Dogs & Cats',
       category: 'moisturizer',
     }),
@@ -4753,6 +4848,50 @@ test('__internal: tri-state skincare classifier only hard rejects explicit non-s
     }),
     true,
   );
+});
+
+test('__internal: framework pool keeps tinted sunscreen authoritative instead of boundary-rejecting makeup-adjacent copy', () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'tinted_sunscreen_lp110',
+        merchant_id: 'external_seed',
+        brand: 'Example SPF',
+        display_name: 'Daily Tinted Fluid Sunscreen LP110',
+        category: 'makeup',
+        product_type: 'sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_query: 'sunscreen',
+        retrieval_step: 'sunscreen',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        benefit_tags: ['broad spectrum', 'spf 50', 'lightweight'],
+        short_description: 'A daily tinted fluid sunscreen designed to sit well under makeup.',
+      },
+    ],
+    {
+      targetContext: {
+        framework_id: 'recofw_test_tinted_sunscreen_boundary',
+        primary_role_id: 'daily_sunscreen_finish_fit',
+        framework_roles: [
+          {
+            role_id: 'daily_sunscreen_finish_fit',
+            rank: 1,
+            preferred_step: 'sunscreen',
+            label: 'Daily sunscreen finish fit',
+            query_terms: ['sunscreen', 'spf fluid'],
+            fit_keywords: ['sunscreen', 'spf', 'broad spectrum', 'lightweight'],
+            product_type_hypotheses: ['sunscreen'],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(state.raw_candidate_count, 1);
+  assert.equal(state.hard_reject_count, 0);
+  assert.equal(state.selected_recommendations[0]?.product_id, 'tinted_sunscreen_lp110');
+  assert.equal(state.selected_recommendations[0]?.matched_role_id, 'daily_sunscreen_finish_fit');
 });
 
 test('__internal: framework pool rejects generic ingredient serum as an oil-control top pick without semantic role evidence', async () => {

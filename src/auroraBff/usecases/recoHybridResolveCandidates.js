@@ -25,6 +25,8 @@ const STEP_ALIASES = Object.freeze({
 
 const SKINCARE_ALLOW_RE = /\b(cleanser|face wash|cleansing|toner|mist|essence|serum|ampoule|booster|moistur|cream|lotion|gel cream|gel-cream|sunscreen|sun screen|spf|sunblock|treatment|retinol|retinoid|acid|aha|bha|mask|sheet mask|sleeping mask|overnight mask|clay mask|mud mask|face oil|facial oil|barrier|repair|hydrating|hydration|soothing|calming|blemish|acne|niacinamide|azelaic|ceramide|peptide|vitamin c|skincare|skin care|facial|face|洁面|洗面奶|化妆水|爽肤水|精华|精华水|面霜|乳液|保湿|防晒|面膜|修护|屏障|舒缓|祛痘|烟酰胺|壬二酸|神经酰胺|胜肽|维c|护肤|护肤品|护肤油)\b/i;
 const SKINCARE_BLOCK_RE = /\b(brush|applicator|blender|tool|makeup|eyeshadow|blush|lipstick|foundation|concealer|palette|mascara|brow|nail|perfume|supplement|vitamin gummies|fragrance|brush set|lingerie|underwear|bra|panties|bodysuit|overall|overalls|onesie|dress|jacket|coat|hoodie|sweater|sweatshirt|shirt|tee|vest|apparel|clothing|pet|dog|dogs|cat|cats|puppy|kitten|harness|leash|collar|toy|toys|doll|plush|costume|化妆刷|彩妆|眼影|粉底|口红|睫毛膏|眉笔|指甲|香水|营养补剂|配件|内衣|文胸|胸罩|下着|ランジェリー|宠物|寵物|狗|猫|犬|项圈|項圈|牵引|牽引|玩具|娃娃)\b/i;
+const STRONG_SUNSCREEN_ALLOW_RE = /\b(sunscreen|sun screen|sunblock|sun fluid|sun cream|sun lotion|broad spectrum|uv filters?|防晒|防曬)\b/i;
+const SUNSCREEN_STRICT_BLOCK_RE = /\b(brush|applicator|blender|tool|eyeshadow|blush brush|foundation brush|concealer brush|palette|mascara|brow|nail|perfume|supplement|vitamin gummies|fragrance|brush set|lingerie|underwear|bra|panties|bodysuit|overall|overalls|onesie|dress|jacket|coat|hoodie|sweater|sweatshirt|shirt|tee|vest|apparel|clothing|pet|dog|dogs|cat|cats|puppy|kitten|harness|leash|collar|toy|toys|doll|plush|costume|化妆刷|彩妆刷|刷具|粉扑|睫毛夹|眼影|口红|睫毛膏|眉笔|指甲|香水|营养补剂|配件|内衣|文胸|胸罩|下着|ランジェリー|宠物|寵物|狗|猫|犬|项圈|項圈|牵引|牽引|玩具|娃娃)\b/i;
 const NON_FACE_SUPPORT_RE = /\b(hand|body|foot|feet|hair|scalp|nail|cuticle|lip\b|lips\b|deodorant|shampoo|conditioner|hand cream|body lotion|body cream|body wash|hand wash|护手|身体|足部|头皮|头发|洗发|护发|润唇)\b/i;
 
 function isPlainObject(value) {
@@ -572,7 +574,10 @@ function classifySkincareCandidate(product) {
       reason: 'empty_candidate_text',
     };
   }
-  if (SKINCARE_BLOCK_RE.test(joined)) {
+  const strongSunscreenProduct =
+    STRONG_SUNSCREEN_ALLOW_RE.test(joined)
+    && !SUNSCREEN_STRICT_BLOCK_RE.test(joined);
+  if (SKINCARE_BLOCK_RE.test(joined) && !strongSunscreenProduct) {
     return {
       classification: 'explicit_non_skincare',
       hard_reject: true,
