@@ -318,6 +318,24 @@ describe('externalSeedRecall', () => {
     expect(doc.category).toBe('Serum');
   });
 
+  test('prefers title product class over body texture words when inferring category', () => {
+    const doc = buildExternalSeedRecallDoc({
+      row: {
+        id: 'eps_foundation_serum_texture',
+        title: 'Liquid Touch Weightless Foundation',
+      },
+      seedData: {
+        brand: 'Rare Beauty',
+        category: 'Makeup',
+        description: 'A serum-like foundation with breathable coverage and a natural finish.',
+      },
+      snapshot: {},
+    });
+
+    expect(doc.category).toBe('Foundation');
+    expect(doc.vertical).toBe('makeup');
+  });
+
   test('builds recall-first SQL with raw seed fallback only at the end', () => {
     const predicate = buildExternalSeedRecallLikePredicate('$3', { includeLegacyFallback: true });
     expect(predicate).toMatch(/retrieval_title/);

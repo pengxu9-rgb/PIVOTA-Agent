@@ -216,7 +216,10 @@ function resolveRecallCategory({ seedData = {}, snapshot = {}, row = {}, title =
     .find(Boolean);
   if (categoryLeaf) return categoryLeaf;
 
-  const inferredLeaf = inferRecallLeafCategoryFromText([title, ...textCandidates].filter(Boolean).join(' '));
+  const titleLeaf = inferRecallLeafCategoryFromText(title);
+  if (titleLeaf) return titleLeaf;
+
+  const inferredLeaf = inferRecallLeafCategoryFromText((Array.isArray(textCandidates) ? textCandidates : []).join(' '));
   if (inferredLeaf) return inferredLeaf;
 
   return firstNonEmptyString(
