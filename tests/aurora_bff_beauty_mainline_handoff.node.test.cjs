@@ -984,6 +984,156 @@ test('handoffRecoToBeautyMainlineSearch skips primary external supplement for ro
   }
 });
 
+test('handoffRecoToBeautyMainlineSearch skips support external supplement once that support role is filled', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const externalCaptured = [];
+    __internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async (args) => {
+        const query = String(args?.query || '').trim().toLowerCase();
+        if (query === 'barrier repair moisturizer') {
+          return {
+            ok: true,
+            products: [
+              {
+                product_id: 'barrier_primary',
+                merchant_id: 'merchant_barrier',
+                title: 'Barrier Repair Moisturizer',
+                display_name: 'Barrier Repair Moisturizer',
+                category: 'moisturizer',
+                product_type: 'moisturizer',
+                candidate_step: 'moisturizer',
+                benefit_tags: ['barrier repair', 'ceramide'],
+                short_description: 'A barrier repair moisturizer for dry sensitive skin.',
+                retrieval_source: 'catalog',
+              },
+            ],
+            attempted_internal_paths: ['/agent/internal/products/search'],
+            transport_hops: [],
+            transport_hop_count: 0,
+            nested_orchestrator_hops: 0,
+            primary_transport_owner: 'internal_products_search_primitive',
+            primary_endpoint_kind: 'internal_primitive',
+          };
+        }
+        if (query === 'hyaluronic acid serum') {
+          return {
+            ok: true,
+            products: [
+              {
+                product_id: 'hydrating_support',
+                merchant_id: 'merchant_hydrating',
+                title: 'Hyaluronic Acid Serum',
+                display_name: 'Hyaluronic Acid Serum',
+                category: 'serum',
+                product_type: 'serum',
+                candidate_step: 'serum',
+                benefit_tags: ['hydrating', 'hyaluronic acid'],
+                short_description: 'A lightweight hydrating serum for dehydrated skin.',
+                retrieval_source: 'catalog',
+              },
+            ],
+            attempted_internal_paths: ['/agent/internal/products/search'],
+            transport_hops: [],
+            transport_hop_count: 0,
+            nested_orchestrator_hops: 0,
+            primary_transport_owner: 'internal_products_search_primitive',
+            primary_endpoint_kind: 'internal_primitive',
+          };
+        }
+        return {
+          ok: true,
+          products: [],
+          attempted_internal_paths: ['/agent/internal/products/search'],
+          transport_hops: [],
+          transport_hop_count: 0,
+          nested_orchestrator_hops: 0,
+          primary_transport_owner: 'internal_products_search_primitive',
+          primary_endpoint_kind: 'internal_primitive',
+        };
+      },
+      searchLocalExternalSeedProducts: async (args) => {
+        externalCaptured.push(String(args?.query || '').trim().toLowerCase());
+        return {
+          ok: false,
+          products: [],
+          reason: 'empty',
+          actual_http_attempt_count: 0,
+          attempted_base_urls: [],
+          attempted_paths: [],
+          transport_policy_mode: String(args?.transportPolicyMode || ''),
+        };
+      },
+    });
+
+    const targetContext = {
+      primary_role_id: 'hydrating_barrier_moisturizer',
+      comparison_mode: 'routine_mix',
+      semantic_plan: {
+        routine_mode: 'routine_mix',
+        comparison_mode: 'routine_mix',
+        selection_constraints: { comparison_mode: 'routine_mix' },
+      },
+      framework_summary: {
+        concern_text: 'dry tight skin after washing',
+      },
+      framework_roles: [
+        {
+          role_id: 'hydrating_barrier_moisturizer',
+          rank: 40,
+          preferred_step: 'moisturizer',
+          label: 'Hydrating barrier moisturizer',
+          query_terms: ['barrier repair moisturizer', 'ceramide cream sensitive skin'],
+          fit_keywords: ['barrier repair', 'ceramide', 'dry skin'],
+        },
+        {
+          role_id: 'hydrating_serum_or_essence',
+          rank: 42,
+          preferred_step: 'serum',
+          label: 'Hydrating serum or essence',
+          query_terms: ['hyaluronic acid serum', 'hydrating serum dehydrated skin'],
+          fit_keywords: ['hydrating', 'hyaluronic acid', 'dehydrated'],
+        },
+        {
+          role_id: 'daily_sunscreen',
+          rank: 30,
+          preferred_step: 'sunscreen',
+          label: 'Daily sunscreen',
+          query_terms: ['daily sunscreen skincare', 'lightweight sunscreen'],
+          fit_keywords: ['spf', 'uv filters', 'lightweight'],
+        },
+      ],
+      support_roles: [],
+    };
+
+    const out = await __internal.handoffRecoToBeautyMainlineSearch({
+      ctx: { lang: 'EN', request_id: 'req_skip_filled_support_external' },
+      primaryQuery: 'my skin feels dry and tight after washing, what should i use first?',
+      fallbackMessage: 'my skin feels dry and tight after washing, what should i use first?',
+      targetContext,
+      timeoutMs: 5000,
+      minTimeoutMs: 5000,
+    });
+
+    assert.equal(externalCaptured.includes('hyaluronic acid serum'), false);
+    assert.equal(externalCaptured.includes('hydrating serum dehydrated skin'), false);
+    assert.deepEqual(
+      externalCaptured,
+      ['lightweight sunscreen', 'daily sunscreen'],
+    );
+    const hydratingExternalRows = out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
+      ?.filter((row) => row?.ladder_level === 'framework_stage_c_support_hydrating_serum_or_essence_external_seed') || [];
+    assert.equal(hydratingExternalRows.length, 2);
+    assert.equal(
+      hydratingExternalRows.every((row) => row?.reason === 'skipped_support_role_already_satisfied'),
+      true,
+    );
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+    delete require.cache[moduleId];
+  }
+});
+
 test('handoffRecoToBeautyMainlineSearch exposes raw candidate pool sources when only the strong internal winner is selected', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {

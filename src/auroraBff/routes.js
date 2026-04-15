@@ -149,6 +149,7 @@ const {
   buildRecoSearchSemanticContract,
 } = require('./recoRecallPlanner');
 const {
+  getRecoRecallFilledRoleIds,
   getRecoRecallSelectedCount,
   isRecoRecallFrameworkCoverageSatisfied,
   shouldRunRecoRecallStage,
@@ -21576,6 +21577,21 @@ function shouldSkipFrameworkPrimaryExternalSeedLevel(level, candidateState = nul
   return selectedCount >= 2;
 }
 
+function shouldSkipFrameworkSupportExternalSeedLevel(level, candidateState = null) {
+  const levelId = String(level?.ladder_level || level?.stage_id || '').trim().toLowerCase();
+  if (!levelId.startsWith('framework_stage_c_support_') || !levelId.endsWith('_external_seed')) {
+    return false;
+  }
+  if (!isPlainObject(candidateState) || candidateState.primary_role_matched !== true) return false;
+  const queries = Array.isArray(level?.queries) ? level.queries : [];
+  const stageRoleId = pickFirstTrimmed(queries[0]?.role_id) || levelId
+    .replace(/^framework_stage_c_support_/, '')
+    .replace(/_external_seed$/, '');
+  if (!stageRoleId) return false;
+  const filledRoleIds = new Set(getRecoRecallFilledRoleIds(candidateState, { requireAlignedRetrieval: true }));
+  return filledRoleIds.has(String(stageRoleId).trim().toLowerCase());
+}
+
 function resolveRecoQueryEntryTimeoutMs(queryEntry = null, effectiveTimeoutMs = 0) {
   const normalizedTimeoutMs = Number.isFinite(Number(effectiveTimeoutMs))
     ? Math.max(0, Math.trunc(Number(effectiveTimeoutMs)))
@@ -21748,7 +21764,12 @@ async function collectRecoCandidatesFromQueryLevels({
     const queries = Array.isArray(level?.queries) ? level.queries : [];
     const stageId = String(level?.ladder_level || level?.stage_id || '').trim() || `level_${stageResults.length + 1}`;
     plannerQueryCountByStage[stageId] = queries.length;
-    if (shouldSkipFrameworkPrimaryExternalSeedLevel(level, candidateState, { targetContext })) {
+    const skipReason = shouldSkipFrameworkPrimaryExternalSeedLevel(level, candidateState, { targetContext })
+      ? 'skipped_primary_already_satisfied'
+      : shouldSkipFrameworkSupportExternalSeedLevel(level, candidateState)
+        ? 'skipped_support_role_already_satisfied'
+        : '';
+    if (skipReason) {
       for (const queryEntry of queries) {
         const queryAllowExternalSeed =
           allowExternalSeed === true
@@ -21767,7 +21788,7 @@ async function collectRecoCandidatesFromQueryLevels({
             : 'on_empty_only',
           ok: false,
           products: [],
-          reason: 'skipped_primary_already_satisfied',
+          reason: skipReason,
           actual_http_attempt_count: 0,
           attempted_request_timeouts_ms: [],
           skipped_runtime: true,
@@ -21782,7 +21803,7 @@ async function collectRecoCandidatesFromQueryLevels({
             ? 'external_seed'
             : 'internal',
         skipped: true,
-        skip_reason: 'primary_already_satisfied',
+        skip_reason: skipReason,
         executed_query_count: 0,
         executed_upstream_attempt_count: 0,
         actual_http_attempt_count: 0,
