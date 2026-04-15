@@ -982,8 +982,8 @@ test('reco assistant rewrite rejects candidate-pool product names that are not f
         ok: true,
         json: {
           lead_reason:
-            'targets post-breakout marks with niacinamide evidence from the product record instead of Fenty Beauty Watch Ya Tone Niacinamide Dark Spot Serum Refill',
-          support_reasons: ['offers another tone-focused serum option without treating Fenty Beauty Watch Ya Tone as the lead pick'],
+            'A niacinamide treatment for post-breakout marks from the product record instead of Fenty Beauty Watch Ya Tone Niacinamide Dark Spot Serum Refill',
+          support_reasons: ['An alternate tone-focused serum option without treating Fenty Beauty Watch Ya Tone as the lead pick'],
         },
         parse_status: 'parsed',
         provider: 'gemini',
@@ -1003,6 +1003,8 @@ test('reco assistant rewrite rejects candidate-pool product names that are not f
     assert.equal(rewrite.llm_used, true);
     assert.equal(rewrite.reason, null);
     assert.match(rewrite.text, /First Aid Beauty Dark Spot Serum with Niacinamide is your best first buy/);
+    assert.match(rewrite.text, /because a niacinamide treatment/);
+    assert.doesNotMatch(rewrite.text, /because (A|An|The)\b/);
     assert.match(rewrite.text, /Jurlique Brightening Serum/);
     assert.doesNotMatch(rewrite.text, /Fenty Beauty|Watch Ya Tone/);
     assert.match(prompts[1], /Do not write the final assistant message\./);
