@@ -6929,6 +6929,120 @@ test('__internal: framework pool preserves planner support-role order instead of
   );
 });
 
+test('__internal: framework pool rejects generic niacinamide serum as hydrating-serum support', () => {
+  const { __internal } = loadRoutesFresh();
+  const targetContext = {
+    framework_id: 'recofw_test_hydrating_serum_role_fit',
+    primary_role_id: 'hydrating_barrier_moisturizer',
+    routine_mode: 'routine_mix',
+    semantic_plan: { routine_mode: 'routine_mix', comparison_mode: 'routine_mix' },
+    framework_roles: [
+      {
+        role_id: 'hydrating_barrier_moisturizer',
+        rank: 40,
+        preferred_step: 'moisturizer',
+        label: 'Hydrating barrier moisturizer',
+        query_terms: ['barrier repair moisturizer'],
+        fit_keywords: ['hydrating', 'barrier repair', 'ceramide', 'dry skin'],
+        ingredient_hypotheses: ['Ceramide NP', 'Panthenol', 'Glycerin'],
+        product_type_hypotheses: ['moisturizer'],
+      },
+      {
+        role_id: 'hydrating_serum_or_essence',
+        rank: 42,
+        preferred_step: 'serum',
+        label: 'Hydrating serum or essence',
+        query_terms: ['hyaluronic acid serum', 'hydrating serum dehydrated skin'],
+        fit_keywords: ['hydrating', 'dehydrated', 'hyaluronic acid'],
+        ingredient_hypotheses: ['Hyaluronic acid', 'Glycerin', 'Panthenol'],
+        product_type_hypotheses: ['serum', 'essence'],
+      },
+      {
+        role_id: 'daily_sunscreen',
+        rank: 30,
+        preferred_step: 'sunscreen',
+        label: 'Daily sunscreen',
+        query_terms: ['daily sunscreen skincare', 'broad spectrum sunscreen'],
+        fit_keywords: ['spf', 'uv filters', 'broad spectrum', 'lightweight'],
+        ingredient_hypotheses: ['UV filters'],
+        product_type_hypotheses: ['sunscreen'],
+      },
+    ],
+  };
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'barrier_moisturizer_fit_1',
+        merchant_id: 'merchant_internal',
+        brand: 'KraveBeauty',
+        name: 'Great Barrier Relief',
+        display_name: 'KraveBeauty Great Barrier Relief',
+        category: 'Moisturizer',
+        product_type: 'Moisturizer',
+        retrieval_source: 'catalog',
+        retrieval_role_id: 'hydrating_barrier_moisturizer',
+        retrieval_query: 'barrier repair moisturizer',
+        short_description: 'A hydrating barrier repair moisturizer with ceramides for dry, tight skin.',
+      },
+      {
+        product_id: 'generic_niacinamide_serum_fit_1',
+        merchant_id: 'merchant_internal',
+        brand: 'The Ordinary',
+        name: 'Niacinamide 10% + Zinc 1%',
+        display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+        category: 'Serum',
+        product_type: 'Serum',
+        retrieval_source: 'catalog',
+        retrieval_role_id: 'hydrating_serum_or_essence',
+        retrieval_query: 'hydrating serum dehydrated skin',
+        short_description: 'A niacinamide and zinc serum for oil balance and shine control.',
+      },
+      {
+        product_id: 'true_hydrating_serum_fit_1',
+        merchant_id: 'external_seed',
+        brand: 'Naturium',
+        name: 'Quadruple Hyaluronic Acid Serum 5%',
+        display_name: 'Naturium Quadruple Hyaluronic Acid Serum 5%',
+        category: 'Serum',
+        product_type: 'Serum',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'hydrating_serum_or_essence',
+        retrieval_query: 'hyaluronic acid serum',
+        search_aliases: ['hyaluronic acid serum'],
+        short_description: 'A hydrating serum with hyaluronic acid and glycerin for dehydrated skin.',
+      },
+      {
+        product_id: 'daily_sunscreen_fit_1',
+        merchant_id: 'external_seed',
+        brand: 'The Ordinary',
+        name: 'UV Filters SPF 45 Serum',
+        display_name: 'UV Filters SPF 45 Serum',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen',
+        retrieval_query: 'daily sunscreen',
+        short_description: 'A lightweight SPF 45 sunscreen serum for daily UV protection.',
+      },
+    ],
+    { targetContext },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.deepEqual(
+    state.selected_recommendations.map((row) => row.product_id),
+    ['barrier_moisturizer_fit_1', 'true_hydrating_serum_fit_1', 'daily_sunscreen_fit_1'],
+  );
+  assert.equal(
+    state.selected_recommendations.some((row) => row.product_id === 'generic_niacinamide_serum_fit_1'),
+    false,
+  );
+  assert.equal(
+    state.soft_mismatch.some((entry) => entry?.product?.product_id === 'generic_niacinamide_serum_fit_1'),
+    true,
+  );
+});
+
 test('__internal: framework pool keeps external seed skincare candidates when skincare evidence lives only in alias and description', async () => {
   const { __internal } = loadRoutesFresh();
   const normalized = __internal.normalizeRecoCatalogProduct({

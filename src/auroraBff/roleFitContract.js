@@ -110,10 +110,12 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
   const strongSemanticFitMatched = fitKeywordMatches > 0 || queryTermMatches > 0;
   const exactStep = Boolean(candidateStep && preferredStep && candidateStep === preferredStep);
   const alternateStep = Boolean(candidateStep && alternateSteps.includes(candidateStep));
-  const semanticFitMatched = fitKeywordMatches > 0 || queryTermMatches > 0 || ingredientMatches > 0 || productTypeMatches > 0;
+  const roleSemanticFitMatched = fitKeywordMatches > 0 || queryTermMatches > 0 || ingredientMatches > 0;
+  const semanticFitMatched = roleSemanticFitMatched || productTypeMatches > 0;
   const supportStepRescueApplied =
     Number(role?.rank || 99) > 1
     && preferredStep !== 'treatment'
+    && preferredStep !== 'serum'
     && exactStep
     && retrievalRoleMatched
     && productTypeMatches > 0
@@ -174,6 +176,7 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
     role,
     score: Number(score.toFixed(4)),
     semantic_fit_matched: semanticFitMatched,
+    role_semantic_fit_matched: roleSemanticFitMatched,
     strong_semantic_fit_matched: strongSemanticFitMatched,
     retrieval_role_matched: retrievalRoleMatched,
     support_step_rescue_applied: supportStepRescueApplied,

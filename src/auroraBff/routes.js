@@ -21033,17 +21033,29 @@ function isConcernFrameworkStrongViableCandidate(candidate, role = null) {
   const candidateStep = normalizeRecoTargetStep(product?.candidate_step);
   const score = Number(product?.framework_score || 0);
   const semanticFit = product?.framework_semantic_fit === true;
+  const roleSemanticFit = product?.framework_role_semantic_fit === true;
   const retrievalRoleMatched =
     String(product?.retrieval_role_id || '').trim() !== ''
     && String(product?.retrieval_role_id || '').trim() === String(product?.matched_role_id || '').trim();
   if (
+    preferredStep === 'serum' &&
+    candidateStep === preferredStep &&
+    retrievalRoleMatched &&
+    roleSemanticFit &&
+    score >= 0.52
+  ) {
+    return true;
+  }
+  if (
     score >= 0.58 &&
     (
-      semanticFit ||
+      roleSemanticFit ||
+      (semanticFit && preferredStep !== 'serum') ||
       (
         candidateStep &&
         candidateStep === preferredStep &&
         preferredStep !== 'treatment'
+        && preferredStep !== 'serum'
       )
     )
   ) {
@@ -21052,6 +21064,7 @@ function isConcernFrameworkStrongViableCandidate(candidate, role = null) {
   if (
     preferredStep &&
     preferredStep !== 'treatment' &&
+    preferredStep !== 'serum' &&
     candidateStep === preferredStep &&
     retrievalRoleMatched &&
     score >= 0.52
@@ -21334,6 +21347,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
       matched_role_rank: Number.isFinite(Number(bestRole.rank)) ? Number(bestRole.rank) : null,
       framework_score: Number(bestRoleScore.score.toFixed(4)),
       framework_semantic_fit: Boolean(bestRoleScore.semantic_fit_matched),
+      framework_role_semantic_fit: Boolean(bestRoleScore.role_semantic_fit_matched),
       candidate_step: candidateStep || null,
       candidate_step_source: stepResolution?.candidate_step_source || 'none',
       candidate_step_confidence: stepResolution?.candidate_step_confidence || 'none',
@@ -21387,6 +21401,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
       framework_score: Number(bestRoleScore.score.toFixed(4)),
       framework_tiebreak_score: scoreConcernFrameworkCandidateTiebreak(row),
       framework_semantic_fit: Boolean(bestRoleScore.semantic_fit_matched),
+      framework_role_semantic_fit: Boolean(bestRoleScore.role_semantic_fit_matched),
       candidate_step: candidateStep || null,
       candidate_step_source: stepResolution?.candidate_step_source || 'none',
       candidate_step_confidence: stepResolution?.candidate_step_confidence || 'none',
