@@ -5891,6 +5891,209 @@ describe('discovery feed service', () => {
     expect(_internals.shouldSkipExplicitVerticalSeedStage(leaveInRequest, leaveInRecallTerms)).toBe(true);
   });
 
+  test('exact phrase indexed head treats fragrance as a safe structured synonym for perfume', async () => {
+    jest.resetModules();
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = 'postgres://discovery-perfume-indexed-head-structured-test';
+    const requiredColumns = [
+      { table_name: 'products_cache', column_name: 'id' },
+      { table_name: 'products_cache', column_name: 'merchant_id' },
+      { table_name: 'products_cache', column_name: 'product_data' },
+      { table_name: 'products_cache', column_name: 'expires_at' },
+      { table_name: 'products_cache', column_name: 'cached_at' },
+      { table_name: 'external_product_seeds', column_name: 'id' },
+      { table_name: 'external_product_seeds', column_name: 'external_product_id' },
+      { table_name: 'external_product_seeds', column_name: 'destination_url' },
+      { table_name: 'external_product_seeds', column_name: 'canonical_url' },
+      { table_name: 'external_product_seeds', column_name: 'title' },
+      { table_name: 'external_product_seeds', column_name: 'seed_data' },
+      { table_name: 'external_product_seeds', column_name: 'market' },
+      { table_name: 'external_product_seeds', column_name: 'tool' },
+      { table_name: 'external_product_seeds', column_name: 'status' },
+      { table_name: 'external_product_seeds', column_name: 'attached_product_key' },
+      { table_name: 'external_product_seeds', column_name: 'updated_at' },
+      { table_name: 'external_product_seeds', column_name: 'created_at' },
+    ];
+    const requiredIndexes = [
+      'idx_external_product_seeds_recall_title_trgm',
+      'idx_external_product_seeds_recall_summary_trgm',
+      'idx_external_product_seeds_recall_category_vertical_recency',
+      'idx_external_product_seeds_recall_vertical_recency',
+      'idx_external_product_seeds_recall_ingredient_tokens_trgm',
+      'idx_external_product_seeds_recall_alias_tokens_trgm',
+    ].map((indexname) => ({ tablename: 'external_product_seeds', indexname }));
+    const headRows = Array.from({ length: 6 }, (_, index) =>
+      makeExternalSeedRow({
+        id: `perfume_head_${index + 1}`,
+        title: `Maison Fragrance ${index + 1}`,
+        category: 'Fragrance',
+        product_type: 'Fragrance',
+        description: 'Fine fragrance composition.',
+      }),
+    );
+    const dbQueryMock = jest
+      .fn()
+      .mockResolvedValueOnce({ rows: requiredColumns })
+      .mockResolvedValueOnce({ rows: requiredIndexes })
+      .mockResolvedValueOnce({ rows: headRows });
+    jest.doMock('../src/db', () => ({
+      query: dbQueryMock,
+    }));
+
+    try {
+      const {
+        buildDiscoveryProfile: freshBuildDiscoveryProfile,
+        _internals: freshInternals,
+      } = require('../src/services/discoveryFeed');
+      freshInternals.resetDiscoveryDependencyProbeCache();
+      const request = freshInternals.normalizeDiscoveryRequest({
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        query: {
+          text: 'perfume',
+        },
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      });
+
+      const result = await freshInternals.fetchBeautyInterestExternalSeedFastpathCandidates({
+        request,
+        profile: freshBuildDiscoveryProfile(request.context),
+        queries: ['perfume'],
+        limit: freshInternals.resolveExternalSeedProviderLimit(request, 60),
+        providerName: 'external_seeds',
+        productProvider: 'external_seeds',
+        stepName: 'external_seed_pool',
+        label: 'external_seed_pool',
+      });
+
+      expect(result.products).toHaveLength(6);
+      expect(dbQueryMock).toHaveBeenCalledTimes(3);
+      expect(result.recallSummary[0].external_seed_stage_counts).toEqual([
+        expect.objectContaining({
+          stage: 'recall_indexed_category_head',
+          raw_rows: 6,
+          query_qualified_rows: 6,
+          final_eligible_rows: 6,
+        }),
+      ]);
+    } finally {
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+      jest.dontMock('../src/db');
+      jest.resetModules();
+    }
+  });
+
+  test('exact phrase structured head does not broaden leave in conditioner to generic conditioner rows', async () => {
+    jest.resetModules();
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = 'postgres://discovery-leave-in-structured-head-guard-test';
+    const requiredColumns = [
+      { table_name: 'products_cache', column_name: 'id' },
+      { table_name: 'products_cache', column_name: 'merchant_id' },
+      { table_name: 'products_cache', column_name: 'product_data' },
+      { table_name: 'products_cache', column_name: 'expires_at' },
+      { table_name: 'products_cache', column_name: 'cached_at' },
+      { table_name: 'external_product_seeds', column_name: 'id' },
+      { table_name: 'external_product_seeds', column_name: 'external_product_id' },
+      { table_name: 'external_product_seeds', column_name: 'destination_url' },
+      { table_name: 'external_product_seeds', column_name: 'canonical_url' },
+      { table_name: 'external_product_seeds', column_name: 'title' },
+      { table_name: 'external_product_seeds', column_name: 'seed_data' },
+      { table_name: 'external_product_seeds', column_name: 'market' },
+      { table_name: 'external_product_seeds', column_name: 'tool' },
+      { table_name: 'external_product_seeds', column_name: 'status' },
+      { table_name: 'external_product_seeds', column_name: 'attached_product_key' },
+      { table_name: 'external_product_seeds', column_name: 'updated_at' },
+      { table_name: 'external_product_seeds', column_name: 'created_at' },
+    ];
+    const requiredIndexes = [
+      'idx_external_product_seeds_recall_title_trgm',
+      'idx_external_product_seeds_recall_summary_trgm',
+      'idx_external_product_seeds_recall_category_vertical_recency',
+      'idx_external_product_seeds_recall_vertical_recency',
+      'idx_external_product_seeds_recall_ingredient_tokens_trgm',
+      'idx_external_product_seeds_recall_alias_tokens_trgm',
+    ].map((indexname) => ({ tablename: 'external_product_seeds', indexname }));
+    const headRows = Array.from({ length: 6 }, (_, index) =>
+      makeExternalSeedRow({
+        id: `generic_conditioner_head_${index + 1}`,
+        title: `Smooth Conditioner ${index + 1}`,
+        category: 'Conditioner',
+        product_type: 'Conditioner',
+        description: 'Hydrating conditioner for hair.',
+      }),
+    );
+    const dbQueryMock = jest
+      .fn()
+      .mockResolvedValueOnce({ rows: requiredColumns })
+      .mockResolvedValueOnce({ rows: requiredIndexes })
+      .mockResolvedValueOnce({ rows: headRows })
+      .mockResolvedValueOnce({ rows: [] });
+    jest.doMock('../src/db', () => ({
+      query: dbQueryMock,
+    }));
+
+    try {
+      const {
+        buildDiscoveryProfile: freshBuildDiscoveryProfile,
+        _internals: freshInternals,
+      } = require('../src/services/discoveryFeed');
+      freshInternals.resetDiscoveryDependencyProbeCache();
+      const request = freshInternals.normalizeDiscoveryRequest({
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        query: {
+          text: 'leave in conditioner',
+        },
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      });
+
+      const result = await freshInternals.fetchBeautyInterestExternalSeedFastpathCandidates({
+        request,
+        profile: freshBuildDiscoveryProfile(request.context),
+        queries: ['leave in conditioner'],
+        limit: freshInternals.resolveExternalSeedProviderLimit(request, 60),
+        providerName: 'external_seeds',
+        productProvider: 'external_seeds',
+        stepName: 'external_seed_pool',
+        label: 'external_seed_pool',
+      });
+
+      expect(result.products).toHaveLength(0);
+      expect(dbQueryMock).toHaveBeenCalledTimes(4);
+      expect(result.recallSummary[0].external_seed_stage_counts).toEqual([
+        expect.objectContaining({
+          stage: 'recall_indexed_category_head',
+          raw_rows: 6,
+          query_qualified_rows: 0,
+          final_eligible_rows: 0,
+        }),
+        expect.objectContaining({
+          stage: 'recall_exact_text_union',
+          final_eligible_rows: 0,
+        }),
+      ]);
+    } finally {
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+      jest.dontMock('../src/db');
+      jest.resetModules();
+    }
+  });
+
   test('explicit non-compound browse keeps running seed stages until query-qualified rows fill target', async () => {
     jest.resetModules();
     const prevDatabaseUrl = process.env.DATABASE_URL;

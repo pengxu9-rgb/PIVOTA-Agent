@@ -360,10 +360,12 @@ const BEAUTY_INTEREST_CATEGORY_BY_PHRASE = Object.freeze({
   },
   perfume: {
     categories: ['perfume', 'eau de parfum', 'fragrance'],
+    structuredQueryTerms: ['perfume', 'eau de parfum', 'fragrance'],
     verticals: ['fragrance'],
   },
   'eau de parfum': {
     categories: ['eau de parfum', 'perfume', 'fragrance'],
+    structuredQueryTerms: ['eau de parfum', 'perfume', 'fragrance'],
     verticals: ['fragrance'],
   },
   'acne treatment': {
@@ -4526,6 +4528,13 @@ function resolveExplicitExactBeautyPhraseHint(request, recallTerms = {}) {
       [normalizedQuery].concat(exactHint.categories).map((term) => normalizeText(term || '')).filter(Boolean),
       8,
     ),
+    structuredQueryTerms: uniqStrings(
+      [normalizedQuery]
+        .concat(Array.isArray(exactHint.structuredQueryTerms) ? exactHint.structuredQueryTerms : [])
+        .map((term) => normalizeText(term || ''))
+        .filter(Boolean),
+      8,
+    ),
   };
 }
 
@@ -5544,7 +5553,15 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
             externalSeedFilteredQueryTextCount += 1;
             continue;
           }
-          if (!compoundIntent && !matchesQueryTextCandidate(normalized, request?.query?.text)) {
+          const exactPhraseStructuredMatch =
+            !compoundIntent &&
+            stage === 'recall_indexed_category_head' &&
+            matchesExplicitExactPhraseStructuredCandidate(normalized, request, recallTerms);
+          if (
+            !compoundIntent &&
+            !exactPhraseStructuredMatch &&
+            !matchesQueryTextCandidate(normalized, request?.query?.text)
+          ) {
             externalSeedFilteredQueryTextCount += 1;
             continue;
           }
@@ -6877,6 +6894,30 @@ function matchesBeautyCompoundQueryIntent(candidate, intent) {
 
 function matchesExternalSeedCompoundQueryIntent(candidate, intent) {
   return matchesBeautyCompoundQueryIntent(candidate, intent);
+}
+
+function matchesExplicitExactPhraseStructuredCandidate(candidate, request, recallTerms = {}) {
+  const exactPhraseHint = resolveExplicitExactBeautyPhraseHint(request, recallTerms);
+  if (!exactPhraseHint || !Array.isArray(exactPhraseHint.structuredQueryTerms)) return false;
+  if (exactPhraseHint.structuredQueryTerms.length <= 0) return false;
+
+  const raw = candidate?.raw || {};
+  const structuredText = normalizeText(
+    [
+      candidate?.category,
+      candidate?.parentCategory,
+      raw.category,
+      raw.product_type,
+      raw.productType,
+      raw.external_seed_recall?.category,
+      raw.external_seed_recall?.vertical,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+  if (!structuredText) return false;
+
+  return hasAnyNormalizedClassToken(structuredText, exactPhraseHint.structuredQueryTerms);
 }
 
 function shouldFilterBrowseCandidateByQueryText(candidate, queryText, options = {}) {
