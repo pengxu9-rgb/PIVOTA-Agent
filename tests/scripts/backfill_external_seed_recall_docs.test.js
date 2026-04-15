@@ -56,6 +56,7 @@ describe('backfill-external-seed-recall-docs', () => {
     expect(sql).toContain("seed_data#>>'{derived,recall,category}'");
     expect(sql).toContain("seed_data->>'product_type'");
     expect(sql).toContain("seed_data->'snapshot'->>'product_type'");
+    expect(sql).toContain("coalesce(title, seed_data->>'title', seed_data->'snapshot'->>'title'");
     expect(sql).not.toContain("seed_data#>>'{derived,recall,retrieval_title}'");
     expect(sql).not.toContain("seed_data#>>'{derived,recall,retrieval_summary}'");
     expect(sql).not.toContain("seed_data#>>'{derived,recall,retrieval_body}'");
