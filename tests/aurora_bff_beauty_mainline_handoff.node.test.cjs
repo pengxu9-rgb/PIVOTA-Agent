@@ -619,7 +619,7 @@ test('handoffRecoToBeautyMainlineSearch preserves horizontal comparison across i
     __internal.__setRouteDependencyOverridesForTest({
       searchInternalProductsPrimitive: async (args) => {
         const query = String(args?.query || '').trim().toLowerCase();
-        if (query === 'niacinamide serum oily skin') {
+        if (query === 'oil control serum') {
           return {
             ok: true,
             products: [
@@ -690,15 +690,38 @@ test('handoffRecoToBeautyMainlineSearch preserves horizontal comparison across i
       },
     });
 
+    const targetContext = resolveRecommendationTargetContext({
+      text: 'what products should i use for oily skin?',
+      focus: '',
+      entryType: 'chat',
+    });
+    targetContext.comparison_mode = 'same_role_comparison';
+    targetContext.semantic_plan = {
+      ...(targetContext.semantic_plan || {}),
+      comparison_mode: 'same_role_comparison',
+      selection_constraints: {
+        ...(targetContext.semantic_plan?.selection_constraints || {}),
+        comparison_mode: 'same_role_comparison',
+      },
+    };
+    targetContext.primary_role_id = 'oil_control_treatment';
+    targetContext.framework_roles = [
+      {
+        role_id: 'oil_control_treatment',
+        rank: 10,
+        preferred_step: 'treatment',
+        label: 'Oil-control treatment',
+        query_terms: ['oil control serum', 'shine control serum', 'mattifying serum'],
+        fit_keywords: ['oil control', 'shine control', 'mattifying'],
+      },
+    ];
+    targetContext.support_roles = [];
+
     const out = await __internal.handoffRecoToBeautyMainlineSearch({
       ctx: { lang: 'EN', request_id: 'req_multi_source_primary_role_compare' },
       primaryQuery: 'what products should i use for oily skin?',
       fallbackMessage: 'what products should i use for oily skin?',
-      targetContext: resolveRecommendationTargetContext({
-        text: 'what products should i use for oily skin?',
-        focus: '',
-        entryType: 'chat',
-      }),
+      targetContext,
       timeoutMs: 5000,
       minTimeoutMs: 5000,
     });
@@ -864,13 +887,110 @@ test('handoffRecoToBeautyMainlineSearch skips primary external seed when interna
   }
 });
 
+test('handoffRecoToBeautyMainlineSearch skips primary external supplement for routine coverage once primary is matched', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const externalCaptured = [];
+    __internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async (args) => {
+        const query = String(args?.query || '').trim().toLowerCase();
+        if (query === 'oil control serum') {
+          return {
+            ok: true,
+            products: [
+              {
+                product_id: 'primary_oil_control',
+                merchant_id: 'merchant_internal_primary',
+                title: 'Clarity Lab Oil Balance Serum',
+                display_name: 'Clarity Lab Oil Balance Serum',
+                category: 'serum',
+                product_type: 'serum',
+                candidate_step: 'treatment',
+                benefit_tags: ['oil control', 'shine control'],
+                short_description: 'A mattifying oil-control serum for oily skin.',
+                retrieval_source: 'catalog',
+              },
+            ],
+            attempted_internal_paths: ['/agent/internal/products/search'],
+            transport_hops: [],
+            transport_hop_count: 0,
+            nested_orchestrator_hops: 0,
+            primary_transport_owner: 'internal_products_search_primitive',
+            primary_endpoint_kind: 'internal_primitive',
+          };
+        }
+        return {
+          ok: true,
+          products: [],
+          attempted_internal_paths: ['/agent/internal/products/search'],
+          transport_hops: [],
+          transport_hop_count: 0,
+          nested_orchestrator_hops: 0,
+          primary_transport_owner: 'internal_products_search_primitive',
+          primary_endpoint_kind: 'internal_primitive',
+        };
+      },
+      searchLocalExternalSeedProducts: async (args) => {
+        externalCaptured.push(String(args?.query || '').trim().toLowerCase());
+        return {
+          ok: false,
+          products: [],
+          reason: 'empty',
+          actual_http_attempt_count: 0,
+          attempted_base_urls: [],
+          attempted_paths: [],
+          transport_policy_mode: String(args?.transportPolicyMode || ''),
+        };
+      },
+    });
+
+    const out = await __internal.handoffRecoToBeautyMainlineSearch({
+      ctx: { lang: 'EN', request_id: 'req_skip_primary_external_for_routine_support' },
+      primaryQuery: 'what products should i use for oily skin?',
+      fallbackMessage: 'what products should i use for oily skin?',
+      targetContext: resolveRecommendationTargetContext({
+        text: 'what products should i use for oily skin?',
+        focus: '',
+        entryType: 'chat',
+      }),
+      timeoutMs: 5000,
+      minTimeoutMs: 5000,
+    });
+
+    assert.equal(
+      externalCaptured.some((query) =>
+        ['oil control treatment', 'niacinamide serum oily skin', 'salicylic acid serum oily skin', 'oil control serum'].includes(query)),
+      false,
+    );
+    assert.deepEqual(
+      externalCaptured,
+      [
+        'lightweight moisturizer oily skin',
+        'barrier lotion oily skin',
+        'oil control sunscreen',
+        'lightweight sunscreen oily skin',
+      ],
+    );
+    const primaryExternalRows = out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
+      ?.filter((row) => row?.ladder_level === 'framework_stage_b_primary_external_seed') || [];
+    assert.equal(primaryExternalRows.length, 4);
+    assert.equal(
+      primaryExternalRows.every((row) => row?.reason === 'skipped_primary_already_satisfied'),
+      true,
+    );
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+    delete require.cache[moduleId];
+  }
+});
+
 test('handoffRecoToBeautyMainlineSearch exposes raw candidate pool sources when only the strong internal winner is selected', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     __internal.__setRouteDependencyOverridesForTest({
       searchInternalProductsPrimitive: async (args) => {
         const query = String(args?.query || '').trim().toLowerCase();
-        if (query === 'niacinamide serum oily skin') {
+        if (query === 'oil control serum') {
           return {
             ok: true,
             products: [
@@ -881,6 +1001,7 @@ test('handoffRecoToBeautyMainlineSearch exposes raw candidate pool sources when 
                 display_name: 'Strong Oil Control Serum',
                 category: 'serum',
                 product_type: 'serum',
+                candidate_step: 'treatment',
                 benefit_tags: ['oil control', 'shine control', 'mattifying'],
                 search_aliases: ['shine control serum'],
                 short_description: 'A mattifying oil-control serum for oily skin.',
@@ -940,15 +1061,38 @@ test('handoffRecoToBeautyMainlineSearch exposes raw candidate pool sources when 
       },
     });
 
+    const targetContext = resolveRecommendationTargetContext({
+      text: 'what products should i use for oily skin?',
+      focus: '',
+      entryType: 'chat',
+    });
+    targetContext.comparison_mode = 'same_role_comparison';
+    targetContext.semantic_plan = {
+      ...(targetContext.semantic_plan || {}),
+      comparison_mode: 'same_role_comparison',
+      selection_constraints: {
+        ...(targetContext.semantic_plan?.selection_constraints || {}),
+        comparison_mode: 'same_role_comparison',
+      },
+    };
+    targetContext.primary_role_id = 'oil_control_treatment';
+    targetContext.framework_roles = [
+      {
+        role_id: 'oil_control_treatment',
+        rank: 10,
+        preferred_step: 'treatment',
+        label: 'Oil-control treatment',
+        query_terms: ['oil control serum', 'shine control serum', 'mattifying serum'],
+        fit_keywords: ['oil control', 'shine control', 'mattifying'],
+      },
+    ];
+    targetContext.support_roles = [];
+
     const out = await __internal.handoffRecoToBeautyMainlineSearch({
       ctx: { lang: 'EN', request_id: 'req_candidate_pool_visibility' },
       primaryQuery: 'what products should i use for oily skin?',
       fallbackMessage: 'what products should i use for oily skin?',
-      targetContext: resolveRecommendationTargetContext({
-        text: 'what products should i use for oily skin?',
-        focus: '',
-        entryType: 'chat',
-      }),
+      targetContext,
       timeoutMs: 5000,
       minTimeoutMs: 5000,
     });

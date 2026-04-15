@@ -21549,7 +21549,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
   };
 }
 
-function shouldSkipFrameworkPrimaryExternalSeedLevel(level, candidateState = null) {
+function shouldSkipFrameworkPrimaryExternalSeedLevel(level, candidateState = null, { targetContext = null } = {}) {
   const levelId = String(level?.ladder_level || level?.stage_id || '').trim().toLowerCase();
   if (levelId !== 'framework_stage_b_primary_external_seed') return false;
   if (!isPlainObject(candidateState) || candidateState.primary_role_matched !== true) return false;
@@ -21558,6 +21558,21 @@ function shouldSkipFrameworkPrimaryExternalSeedLevel(level, candidateState = nul
     : Array.isArray(candidateState?.selected_recommendations)
       ? candidateState.selected_recommendations.length
       : 0;
+  const frameworkRoles = Array.isArray(targetContext?.framework_roles)
+    ? targetContext.framework_roles.filter((role) => isPlainObject(role) && String(role?.role_id || '').trim())
+    : [];
+  const semanticPlan = isPlainObject(targetContext?.semantic_plan) ? targetContext.semantic_plan : null;
+  const comparisonMode = String(
+    pickFirstTrimmed(
+      targetContext?.comparison_mode,
+      semanticPlan?.comparison_mode,
+      semanticPlan?.selection_constraints?.comparison_mode,
+    ) || '',
+  ).trim().toLowerCase();
+  const isSameRoleComparison = comparisonMode === 'same_role_comparison' || comparisonMode === 'same_role';
+  if (selectedCount >= 1 && frameworkRoles.length > 1 && !isSameRoleComparison) {
+    return true;
+  }
   return selectedCount >= 2;
 }
 
@@ -21733,7 +21748,7 @@ async function collectRecoCandidatesFromQueryLevels({
     const queries = Array.isArray(level?.queries) ? level.queries : [];
     const stageId = String(level?.ladder_level || level?.stage_id || '').trim() || `level_${stageResults.length + 1}`;
     plannerQueryCountByStage[stageId] = queries.length;
-    if (shouldSkipFrameworkPrimaryExternalSeedLevel(level, candidateState)) {
+    if (shouldSkipFrameworkPrimaryExternalSeedLevel(level, candidateState, { targetContext })) {
       for (const queryEntry of queries) {
         const queryAllowExternalSeed =
           allowExternalSeed === true
