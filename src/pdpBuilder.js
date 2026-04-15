@@ -1786,12 +1786,53 @@ function buildRecommendations(items, currencyFallback) {
   };
 }
 
+function normalizeProductLineOptions(product) {
+  const rawOptions = Array.isArray(product.product_line_options)
+    ? product.product_line_options
+    : Array.isArray(product.productLineOptions)
+      ? product.productLineOptions
+      : [];
+  const seen = new Set();
+  const options = [];
+  for (const item of rawOptions) {
+    if (!item || typeof item !== 'object') continue;
+    const label = stripHtml(item.label || item.name || item.value);
+    const value = stripHtml(item.value || label);
+    const productId = stripHtml(item.product_id || item.productId);
+    if (!label || !productId) continue;
+    const merchantId = stripHtml(item.merchant_id || item.merchantId);
+    const axis = stripHtml(item.axis || item.option_axis || item.optionAxis).toLowerCase();
+    const key = `${axis || 'option'}:${value.toLowerCase()}:${productId}:${merchantId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    options.push({
+      option_id: stripHtml(item.option_id || item.id) || `${productId}:${value}`,
+      label,
+      value,
+      option_name: stripHtml(item.option_name || item.optionName || product.product_line_option_name) || undefined,
+      axis: axis || undefined,
+      merchant_id: merchantId || undefined,
+      product_id: productId,
+      title: stripHtml(item.title) || undefined,
+      image_url: normalizePdpImageUrl(item.image_url || item.image || item.thumbnail_url) || undefined,
+      selected: item.selected === true,
+    });
+  }
+  return options;
+}
+
 function buildPdpPayload(args) {
   const product = args.product || {};
   const brandLabel = resolveProductBrandLabel(product);
   const currency = product.currency || 'USD';
   const variants = buildVariants(product);
   const defaultVariant = variants[0];
+  const productLineOptions = normalizeProductLineOptions(product);
+  const productLineOptionName =
+    stripHtml(product.product_line_option_name || product.productLineOptionName) ||
+    productLineOptions.find((item) => item.selected)?.option_name ||
+    productLineOptions[0]?.option_name ||
+    undefined;
   const detailSections = collectStructuredDetailSections(product);
   const descriptionText = resolveProductDescriptionText(product, detailSections);
   const brandStoryText = resolveBrandStoryText(product, detailSections);
@@ -1859,12 +1900,18 @@ function buildPdpPayload(args) {
       },
     });
   }
-  if (variants.length > 1) {
+  if (variants.length > 1 || productLineOptions.length > 1) {
     modules.push({
       module_id: 'm_variant',
       type: 'variant_selector',
       priority: 95,
-      data: { selected_variant_id: defaultVariant.variant_id },
+      data: {
+        selected_variant_id: defaultVariant.variant_id,
+        ...(productLineOptions.length > 1 ? { product_line_options: productLineOptions } : {}),
+        ...(productLineOptions.length > 1 && productLineOptionName
+          ? { product_line_option_name: productLineOptionName }
+          : {}),
+      },
     });
   }
   modules.push({
@@ -1981,6 +2028,10 @@ function buildPdpPayload(args) {
       source_url: sourceUrl || undefined,
       default_variant_id: defaultVariant.variant_id,
       variants,
+      ...(productLineOptions.length > 1 ? { product_line_options: productLineOptions } : {}),
+      ...(productLineOptions.length > 1 && productLineOptionName
+        ? { product_line_option_name: productLineOptionName }
+        : {}),
       price: defaultVariant.price,
       availability: productAvailability,
       shipping: product.shipping || undefined,

@@ -1052,6 +1052,111 @@ function buildImageEntriesForListing(listing, kind = 'exact_item') {
   });
 }
 
+const PRODUCT_LINE_OPTION_AXIS_KEYS = Object.freeze(['shade', 'color', 'size', 'volume', 'pack']);
+const PRODUCT_LINE_OPTION_AXIS_LABELS = Object.freeze({
+  shade: 'Shade',
+  color: 'Color',
+  size: 'Size',
+  volume: 'Size',
+  pack: 'Pack',
+});
+
+function readListingVariantAxes(listing) {
+  const direct = asPlainObject(listing?.variant_axes) || {};
+  if (PRODUCT_LINE_OPTION_AXIS_KEYS.some((key) => normalizeAxisValue(direct[key]))) {
+    return direct;
+  }
+  const payload = asPlainObject(listing?.source_payload) || {};
+  return extractVariantAxes(payload);
+}
+
+function resolveProductLineOptionAxis(listings) {
+  const valuesByAxis = new Map(PRODUCT_LINE_OPTION_AXIS_KEYS.map((key) => [key, new Set()]));
+  for (const listing of Array.isArray(listings) ? listings : []) {
+    const axes = readListingVariantAxes(listing);
+    for (const key of PRODUCT_LINE_OPTION_AXIS_KEYS) {
+      const value = normalizeAxisValue(axes?.[key]);
+      if (value) valuesByAxis.get(key)?.add(value);
+    }
+  }
+  for (const key of PRODUCT_LINE_OPTION_AXIS_KEYS) {
+    if ((valuesByAxis.get(key)?.size || 0) > 1) return key;
+  }
+  return '';
+}
+
+function formatProductLineOptionLabel(value, axis = '') {
+  const normalized = normalizeAxisValue(value);
+  if (!normalized) return '';
+  if (['shade', 'color'].includes(axis)) {
+    const compactCode = normalizeShadeCodeToken(normalized);
+    if (compactCode) return compactCode.toUpperCase();
+  }
+  return normalized
+    .split(/\s+/g)
+    .map((part) =>
+      /[a-z]/i.test(part)
+        ? part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
+        : part,
+    )
+    .join(' ');
+}
+
+function isSameListingIdentity(left, right) {
+  const leftSig = asString(left?.sellable_item_group_id);
+  const rightSig = asString(right?.sellable_item_group_id);
+  if (leftSig && rightSig && leftSig === rightSig) return true;
+  const leftMerchant = asString(left?.merchant_id);
+  const rightMerchant = asString(right?.merchant_id);
+  const leftProduct = asString(left?.product_id);
+  const rightProduct = asString(right?.product_id);
+  return Boolean(leftProduct && rightProduct && leftProduct === rightProduct && leftMerchant === rightMerchant);
+}
+
+function buildProductLineOptions({ lineListings, baseListing } = {}) {
+  const sortedLine = sortListingsForAuthority(lineListings);
+  if (sortedLine.length < 2) return [];
+  const axis = resolveProductLineOptionAxis(sortedLine);
+  if (!axis) return [];
+  const optionName = PRODUCT_LINE_OPTION_AXIS_LABELS[axis] || 'Option';
+  const byValue = new Map();
+
+  for (const listing of sortedLine) {
+    const axes = readListingVariantAxes(listing);
+    const value = normalizeAxisValue(axes?.[axis]);
+    if (!value) continue;
+    const merchantId = asString(listing?.merchant_id);
+    const productId = asString(listing?.product_id);
+    if (!productId) continue;
+    const payload = asPlainObject(listing?.source_payload) || {};
+    const firstImage = buildImageEntriesForListing(listing, 'product_line_option')[0];
+    const selected = isSameListingIdentity(listing, baseListing);
+    const option = {
+      option_id: asString(listing?.source_listing_ref) || buildSourceListingRef({ merchantId, productId }),
+      option_name: optionName,
+      axis,
+      value,
+      label: formatProductLineOptionLabel(value, axis),
+      merchant_id: merchantId || undefined,
+      product_id: productId,
+      title: firstNonEmptyString(payload.title, payload.name, listing?.title) || undefined,
+      image_url: firstImage?.url,
+      selected,
+    };
+    const existing = byValue.get(value);
+    if (!existing || selected) {
+      byValue.set(value, option);
+    }
+  }
+
+  return Array.from(byValue.values()).sort((a, b) =>
+    String(a.label || a.value).localeCompare(String(b.label || b.value), undefined, {
+      numeric: true,
+      sensitivity: 'base',
+    }),
+  );
+}
+
 function scoreListingCompleteness(listing) {
   const payload = asPlainObject(listing?.source_payload) || {};
   let score = listing?.source_tier === 'brand' ? 8 : 4;
@@ -1295,6 +1400,11 @@ function composeSyntheticCanonicalProduct({
   const previewImages = [];
   const exactSeen = new Set();
   const previewSeen = new Set();
+  const productLineOptions = buildProductLineOptions({ lineListings: sortedLine, baseListing });
+  const productLineOptionName = firstNonEmptyString(
+    productLineOptions.find((item) => item?.selected)?.option_name,
+    productLineOptions[0]?.option_name,
+  );
   for (const listing of sortedExact) {
     for (const item of buildImageEntriesForListing(listing, 'exact_item')) {
       const key = buildPdpImageDedupeKey(item.url) || item.url;
@@ -1331,6 +1441,12 @@ function composeSyntheticCanonicalProduct({
     ...(exactImages[0] ? { image_url: exactImages[0].url } : {}),
     ...(exactImages.length ? { images: exactImages, image_urls: exactImages } : {}),
     ...(previewImages.length ? { line_preview_images: previewImages } : {}),
+    ...(productLineOptions.length > 1
+      ? {
+          product_line_options: productLineOptions,
+          product_line_option_name: productLineOptionName || 'Option',
+        }
+      : {}),
     ...(scopedReviewSummary ? { review_summary: scopedReviewSummary } : {}),
     gallery_scope: 'exact_item',
     preview_scope: 'product_line',

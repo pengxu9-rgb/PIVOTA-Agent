@@ -142,7 +142,10 @@ describe('pdpIdentityGraph', () => {
   });
 
   test('buildIdentityListingFromProduct groups multi-page shade siblings into one product line', () => {
-    const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
+    const {
+      buildIdentityListingFromProduct,
+      composeSyntheticCanonicalProduct,
+    } = require('../../src/services/pdpIdentityGraph');
 
     const buildTintedSunscreen = (shadeCode, variantId) =>
       buildIdentityListingFromProduct({
@@ -191,6 +194,27 @@ describe('pdpIdentityGraph', () => {
       value: 'dn350',
       title_core_norm: 'daily tinted fluid sunscreen',
     });
+
+    const composed = composeSyntheticCanonicalProduct({
+      requestedListing: dn350,
+      exactListings: [dn350],
+      lineListings: [dn350, dn310],
+    });
+    expect(composed.product.product_line_option_name).toBe('Shade');
+    expect(composed.product.product_line_options).toEqual([
+      expect.objectContaining({
+        axis: 'shade',
+        label: 'DN310',
+        product_id: 'ext_boj_dn310',
+        selected: false,
+      }),
+      expect.objectContaining({
+        axis: 'shade',
+        label: 'DN350',
+        product_id: 'ext_boj_dn350',
+        selected: true,
+      }),
+    ]);
   });
 
   test('buildIdentityListingFromProduct does not strip formula-like alphanumeric titles without shade context', () => {
@@ -366,6 +390,7 @@ describe('pdpIdentityGraph', () => {
       product_line_id: 'pl_krave_gbr',
       review_family_id: 'rf_krave_gbr',
       identity_confidence: 0.93,
+      variant_axes: { size: '45ml' },
       source_payload: {
         title: 'Great Barrier Relief',
         brand: 'KraveBeauty',
@@ -386,6 +411,7 @@ describe('pdpIdentityGraph', () => {
       product_line_id: 'pl_krave_gbr',
       review_family_id: 'rf_krave_gbr',
       identity_confidence: 0.91,
+      variant_axes: { size: '100ml' },
       source_payload: {
         title: 'Great Barrier Relief Jumbo',
         brand: 'KraveBeauty',
@@ -417,6 +443,21 @@ describe('pdpIdentityGraph', () => {
       expect.objectContaining({
         url: 'https://cdn.example.com/gbr-100-main.jpg',
         source_scope: 'product_line_preview',
+      }),
+    ]);
+    expect(composed.product.product_line_option_name).toBe('Size');
+    expect(composed.product.product_line_options).toEqual([
+      expect.objectContaining({
+        axis: 'size',
+        label: '45ml',
+        product_id: 'ext_krave_gbr_45',
+        selected: true,
+      }),
+      expect.objectContaining({
+        axis: 'size',
+        label: '100ml',
+        product_id: 'ext_krave_gbr_100',
+        selected: false,
       }),
     ]);
     expect(composed.product.review_summary).toEqual(

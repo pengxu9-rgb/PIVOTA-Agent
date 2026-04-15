@@ -117,6 +117,62 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(payload.product.canonical_url).toBe('https://merchant.example/products/barrier-cream');
   });
 
+  test('emits cross-url product line options in variant selector data', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_boj_dn350',
+        merchant_id: 'external_seed',
+        title: 'Daily Tinted Fluid Sunscreen DN350',
+        brand: 'Beauty of Joseon',
+        description: 'Tinted daily sunscreen.',
+        image_url: 'https://example.com/dn350.png',
+        product_line_option_name: 'Shade',
+        product_line_options: [
+          {
+            option_id: 'external_seed:ext_boj_dn310',
+            option_name: 'Shade',
+            axis: 'shade',
+            value: 'dn310',
+            label: 'DN310',
+            product_id: 'ext_boj_dn310',
+            merchant_id: 'external_seed',
+            selected: false,
+          },
+          {
+            option_id: 'external_seed:ext_boj_dn350',
+            option_name: 'Shade',
+            axis: 'shade',
+            value: 'dn350',
+            label: 'DN350',
+            product_id: 'ext_boj_dn350',
+            merchant_id: 'external_seed',
+            selected: true,
+          },
+        ],
+        variants: [
+          {
+            id: '52402575475060',
+            title: 'Default Title',
+            price: { amount: 18, currency: 'USD' },
+          },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const variantSelector = payload.modules.find((module) => module.type === 'variant_selector');
+    expect(variantSelector).toBeTruthy();
+    expect(variantSelector.data.product_line_option_name).toBe('Shade');
+    expect(variantSelector.data.product_line_options).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: 'DN310', product_id: 'ext_boj_dn310', selected: false }),
+        expect.objectContaining({ label: 'DN350', product_id: 'ext_boj_dn350', selected: true }),
+      ]),
+    );
+    expect(payload.product.product_line_options).toEqual(variantSelector.data.product_line_options);
+  });
+
   test('preserves structured ingredient items without re-splitting numeric INCI commas', () => {
     const payload = buildPdpPayload({
       product: {
