@@ -6065,6 +6065,18 @@ function resolvePublicBrowseUnderfilledReason(request, selectedCount = 0) {
     : 'public_search_underfilled_unified_relevance';
 }
 
+function resolvePublicBrowseStrictEmptyReason(request, selectedCount = 0) {
+  if (request?.surface !== 'browse_products') return null;
+  if (!isExplicitQueryScopedBrowseRequest(request)) return null;
+  const resolvedCount = Math.max(0, Number(selectedCount || 0) || 0);
+  if (resolvedCount > 0) return null;
+  return shouldUseExplicitExactIntentExternalSeedMainline(request, {
+    compoundIntent: resolveExplicitBeautyCompoundIntent(request?.query?.text),
+  })
+    ? 'public_search_empty_exact_intent'
+    : 'public_search_empty_unified_relevance';
+}
+
 function resolveExternalSeedProviderLimit(request, safeLimit) {
   const fetchCap = getDiscoveryCandidateFetchCap(request);
   const cappedSafeLimit = clampInt(safeLimit, fetchCap, 12, fetchCap);
@@ -6668,14 +6680,14 @@ async function loadCatalogCandidates({
       appendProviderResult(await fetchProductsSearchProviderResult());
     }
 
-    if (compoundIntent && mergedProducts.length > 0) {
+    if (compoundIntent) {
       candidateSource = 'external_seed_compound_intent';
       primaryPathUsed = 'external_seed_compound_intent';
       pushSkippedInternalProviderResult('explicit_compound_external_seed_mainline');
       return finalizeProviderResult();
     }
 
-    if (explicitNarrowQueryMainline && mergedProducts.length > 0) {
+    if (explicitNarrowQueryMainline) {
       candidateSource = 'external_seed_narrow_query';
       primaryPathUsed = 'external_seed_narrow_query';
       providerResults.push(
@@ -6690,7 +6702,7 @@ async function loadCatalogCandidates({
       return finalizeProviderResult();
     }
 
-    if (explicitExactPhraseQueryMainline && mergedProducts.length > 0) {
+    if (explicitExactPhraseQueryMainline) {
       candidateSource = 'external_seed_exact_intent';
       primaryPathUsed = 'external_seed_exact_intent';
       providerResults.push(
@@ -9616,6 +9628,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
 	      ? resolveExplicitBeautyCompoundIntent(request?.query?.text)
 	      : null;
 	    const underfilledReason = resolvePublicBrowseUnderfilledReason(request, selectedEntries.length);
+	    const strictEmptyReason = resolvePublicBrowseStrictEmptyReason(request, selectedEntries.length);
 	    const metadata = {
 	      discovery_strategy: strategy,
       personalization_source: personalizationSource,
@@ -9684,19 +9697,26 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
           }
         : {}),
       ...(underfilledReason ? { underfilled_reason: underfilledReason } : {}),
+      ...(strictEmptyReason ? { strict_empty_reason: strictEmptyReason } : {}),
 	      route_health: {
 	        primary_path_used: primaryPathUsed,
 	        fallback_triggered: fallbackTriggered,
 	        fallback_reason: fallbackReason,
 	        primary_quality_gate_passed:
-	          selectedEntries.length > 0 && !underfilledReason,
+	          selectedEntries.length > 0 && !underfilledReason && !strictEmptyReason,
 	        ...(compoundIntent ? { compound_intent: compoundIntent } : {}),
 	        ...(underfilledReason ? { underfilled_reason: underfilledReason } : {}),
+	        ...(strictEmptyReason ? { strict_empty_reason: strictEmptyReason } : {}),
 	      },
       search_decision: {
         primary_path_used: primaryPathUsed,
         fallback_triggered: fallbackTriggered,
-        final_decision: selectedEntries.length > 0 ? 'products_returned' : 'empty',
+        final_decision: strictEmptyReason
+          ? 'strict_empty'
+          : selectedEntries.length > 0
+            ? 'products_returned'
+            : 'empty',
+        ...(strictEmptyReason ? { strict_empty_reason: strictEmptyReason } : {}),
       },
       selection_latency_ms: selectionLatencyMs,
       ...(profile.dominantDomain ? { dominant_domain: profile.dominantDomain } : {}),
