@@ -52771,6 +52771,16 @@ function collectRecoAssistantUnselectedCandidateAliases(payload = null) {
       .map((value) => String(value || '').trim().toLowerCase())
       .filter(Boolean),
   );
+  const overlapsSelectedAlias = (alias) => {
+    const normalizedAlias = String(alias || '').trim().toLowerCase();
+    if (!normalizedAlias) return false;
+    if (selectedAliases.has(normalizedAlias)) return true;
+    for (const selectedAlias of selectedAliases) {
+      if (!selectedAlias) continue;
+      if (selectedAlias.includes(normalizedAlias) || normalizedAlias.includes(selectedAlias)) return true;
+    }
+    return false;
+  };
   const rankedTargets = Array.isArray(basePayload?.recommendation_meta?.ranked_targets)
     ? basePayload.recommendation_meta.ranked_targets.filter((target) => isPlainObject(target))
     : [];
@@ -52784,7 +52794,7 @@ function collectRecoAssistantUnselectedCandidateAliases(payload = null) {
       if (productId && selectedProductIds.has(String(productId).trim().toLowerCase())) continue;
       for (const alias of collectRecoAssistantProductMentionAliases(candidate)) {
         const normalizedAlias = String(alias || '').trim().toLowerCase();
-        if (!normalizedAlias || selectedAliases.has(normalizedAlias)) continue;
+        if (!normalizedAlias || overlapsSelectedAlias(normalizedAlias)) continue;
         aliases.push(alias);
       }
     }
@@ -52809,6 +52819,16 @@ function collectRecoAssistantUnselectedCandidateDisplayNames(payload = null, max
       .map((value) => String(value || '').trim().toLowerCase())
       .filter(Boolean),
   );
+  const overlapsSelectedAlias = (alias) => {
+    const normalizedAlias = String(alias || '').trim().toLowerCase();
+    if (!normalizedAlias) return false;
+    if (selectedAliases.has(normalizedAlias)) return true;
+    for (const selectedAlias of selectedAliases) {
+      if (!selectedAlias) continue;
+      if (selectedAlias.includes(normalizedAlias) || normalizedAlias.includes(selectedAlias)) return true;
+    }
+    return false;
+  };
   const rankedTargets = Array.isArray(basePayload?.recommendation_meta?.ranked_targets)
     ? basePayload.recommendation_meta.ranked_targets.filter((target) => isPlainObject(target))
     : [];
@@ -52825,7 +52845,7 @@ function collectRecoAssistantUnselectedCandidateDisplayNames(payload = null, max
       const displayName = pickFirstTrimmed([brand, name].filter(Boolean).join(' '), name);
       if (!displayName) continue;
       const normalizedName = normalizeSemanticAuditText(displayName);
-      if (normalizedName && selectedAliases.has(normalizedName)) continue;
+      if (normalizedName && overlapsSelectedAlias(normalizedName)) continue;
       names.push(displayName);
     }
   }
