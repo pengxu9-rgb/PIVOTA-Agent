@@ -688,6 +688,21 @@ const EXPLICIT_BEAUTY_BROWSE_GENERIC_NOISE_CLASSES = Object.freeze([
   'shirt',
   'shirts',
 ]);
+const EXPLICIT_BEAUTY_BROWSE_FORMAT_NOISE_CLASSES = Object.freeze([
+  'starter set',
+  'set',
+  'sets',
+  'kit',
+  'kits',
+  'bundle',
+  'bundles',
+  'duo',
+  'duos',
+  'trio',
+  'trios',
+  'routine',
+  'essentials',
+]);
 const EXPLICIT_BEAUTY_BROWSE_TOOL_CLASSES = Object.freeze([
   'tool',
   'tools',
@@ -2867,7 +2882,6 @@ function isExplicitQueryScopedBrowseRequest(request) {
 }
 
 function resolveDiscoveryExternalSeedToolScopes(request, defaultTool = 'creator_agents') {
-  if (isExplicitQueryScopedBrowseRequest(request)) return ['*'];
   const normalizedTool = String(defaultTool || '').trim();
   if (!normalizedTool || normalizedTool === '*') return ['*'];
   return uniqStrings(['*', normalizedTool], 2);
@@ -4601,7 +4615,7 @@ function resolveExplicitExactIntentHeadStopThreshold(request, recallTerms = {}) 
   const page = Math.max(1, Number(request?.page || 0) || 1);
   if (page !== 1) return Number.POSITIVE_INFINITY;
   const requestedLimit = clampInt(request?.limit, 12, 1, 120);
-  return Math.min(requestedLimit, Math.max(5, Math.floor(requestedLimit * 0.4)));
+  return requestedLimit;
 }
 
 function buildExactPhraseTextUnionSeedStageSql({
@@ -5893,7 +5907,14 @@ function resolveExplicitQueryExternalSeedMainlineAcceptThreshold(request, safeLi
   if (!isExplicitQueryScopedBrowseRequest(request)) return Number.POSITIVE_INFINITY;
   const fetchCap = Math.max(1, Number(safeLimit || 0) || getDiscoveryCandidateFetchCap(request));
   const requestedLimit = clampInt(request?.limit, 12, 1, 48);
-  const minAcceptCount = requestedLimit >= 8 ? 8 : requestedLimit;
+  const exactIntentMainline = shouldUseExplicitExactIntentExternalSeedMainline(request, {
+    compoundIntent: resolveExplicitBeautyCompoundIntent(request?.query?.text),
+  });
+  const minAcceptCount = exactIntentMainline
+    ? requestedLimit
+    : requestedLimit >= 8
+      ? 8
+      : requestedLimit;
   const cursorOffset = request?.cursor
     ? getDiscoveryCursorAbsoluteOffset(request.cursor, requestedLimit)
     : null;
@@ -6756,6 +6777,18 @@ function shouldRejectExplicitExactBeautyStructuredQueryText(candidate, queryText
   return hasAnyNormalizedClassToken(titleText, exactRule.negativeTitleTokens || []);
 }
 
+function matchesExplicitBeautyStructuredCategoryCandidate(candidate, queryText) {
+  const normalizedQuery = normalizeText(queryText || '');
+  if (!normalizedQuery) return false;
+  const structuredTerms = resolveExplicitExactBeautyStructuredQueryTerms(normalizedQuery);
+  if (structuredTerms.length <= 0) return false;
+  const structuredText = buildDiscoveryCandidateStructuredFilterText(candidate);
+  return Boolean(
+    structuredText &&
+      hasAnyNormalizedClassToken(structuredText, structuredTerms),
+  );
+}
+
 function matchesQueryTextCandidate(candidate, queryText) {
   const normalizedQuery = normalizeText(queryText || '');
   if (!normalizedQuery) return true;
@@ -6850,8 +6883,19 @@ function shouldFilterExplicitBeautyBrowseNoiseCandidate(candidate, queryText) {
     return true;
   }
 
+  const structuredCategoryMatch = matchesExplicitBeautyStructuredCategoryCandidate(
+    candidate,
+    normalizedQuery,
+  );
+
   return EXPLICIT_BEAUTY_BROWSE_GENERIC_NOISE_CLASSES.some((noiseClass) => {
     if (!hasAnyNormalizedClassToken(candidateText, [noiseClass])) return false;
+    if (
+      structuredCategoryMatch &&
+      hasAnyNormalizedClassToken(noiseClass, EXPLICIT_BEAUTY_BROWSE_FORMAT_NOISE_CLASSES)
+    ) {
+      return false;
+    }
     return !hasAnyNormalizedClassToken(normalizedQuery, [noiseClass]);
   });
 }
