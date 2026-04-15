@@ -303,6 +303,93 @@ test('reco assistant compact prompt keeps same-role comparison payloads under a 
   }
 });
 
+test('reco assistant strict selected-only retry prompt drops expanded framework context', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'dry_pick_1',
+            display_name: 'KraveBeauty Great Barrier Relief',
+            brand: 'KraveBeauty',
+            category: 'Moisturizer',
+            short_description: 'Barrier-support moisturizer with tamanu oil, ceramides, and niacinamide.',
+            price: { amount: 28, currency: 'USD', unknown: false },
+            matched_role_id: 'hydrating_barrier_moisturizer',
+            matched_role_label: 'Hydrating barrier moisturizer',
+          },
+          {
+            product_id: 'dry_pick_2',
+            display_name: 'UV Filters SPF 45 Serum',
+            brand: 'The Ordinary',
+            category: 'Sunscreen',
+            short_description: 'Lightweight SPF 45 serum for daily UV protection.',
+            price: { amount: 19, currency: 'USD', unknown: false },
+            matched_role_id: 'daily_sunscreen',
+            matched_role_label: 'Daily sunscreen',
+          },
+        ],
+        roles: [
+          {
+            role_id: 'hydrating_barrier_moisturizer',
+            label: 'Hydrating barrier moisturizer',
+            preferred_step: 'moisturizer',
+            why_this_role: 'Repair a dry-feeling barrier.',
+          },
+          {
+            role_id: 'daily_sunscreen',
+            label: 'Daily sunscreen',
+            preferred_step: 'sunscreen',
+            why_this_role: 'Protect the barrier during the day.',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'moisturizer',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Hydrating barrier moisturizer',
+        resolved_target_step: 'moisturizer',
+        primary_target_id: 'hydrating_barrier_moisturizer',
+        ranked_targets: [
+          {
+            target_id: 'hydrating_barrier_moisturizer',
+            ingredient_query: 'Hydrating barrier moisturizer',
+            resolved_target_step: 'moisturizer',
+            product_candidates: [
+              { product_id: 'dry_pick_1', name: 'KraveBeauty Great Barrier Relief' },
+              { product_id: 'blocked_pick', brand: 'Kylie Cosmetics', name: 'Hyaluronic Acid Serum' },
+            ],
+          },
+        ],
+        selected_target_ids: ['hydrating_barrier_moisturizer', 'daily_sunscreen'],
+      },
+    );
+    const prompt = __internal.buildRecoAssistantRewritePrompt({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'dry', goals: ['barrier support'] },
+      userRequestText: 'My face feels dry and tight in winter. What should I buy?',
+      retryReason: 'rewrite_mentions_unselected_product',
+      compactContext: true,
+      strictSelectedOnlyContext: true,
+    });
+
+    assert.match(prompt, /"prompt_profile":"strict_selected_only_retry"/);
+    assert.match(prompt, /Strict selected-only retry: Context\.selected_products is the only allowed product-name list\./);
+    assert.match(prompt, /Use no outside brand or product memory; every named product must be copied exactly from Context\.selected_products\./);
+    assert.match(prompt, /"selected_products":\["KraveBeauty Great Barrier Relief","The Ordinary UV Filters SPF 45 Serum"\]/);
+    assert.doesNotMatch(prompt, /framework_roles/);
+    assert.doesNotMatch(prompt, /ranked_target_ids/);
+    assert.doesNotMatch(prompt, /Kylie Cosmetics|Hyaluronic Acid Serum/);
+    assert.ok(prompt.length < 5200);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('reco assistant rewrite helper no longer requires base text before availability checks', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {

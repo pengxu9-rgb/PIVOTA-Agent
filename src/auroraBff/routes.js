@@ -52080,10 +52080,65 @@ function buildCompactRecoAssistantPromptContext(context = {}) {
   };
 }
 
+function buildStrictSelectedOnlyRecoAssistantPromptContext(context = {}) {
+  const row = isPlainObject(context) ? context : {};
+  const selectedProducts = asStringArray(row.selected_products, 3);
+  const compactWritePlan = buildCompactRecoAssistantWritePlan(row.assistant_write_plan);
+  const strictWritePlan = isPlainObject(compactWritePlan)
+    ? {
+        ...compactWritePlan,
+        lead_product: isPlainObject(compactWritePlan.lead_product)
+          ? {
+              ...compactWritePlan.lead_product,
+              name: selectedProducts[0] || compactWritePlan.lead_product.name || null,
+            }
+          : compactWritePlan.lead_product,
+        support_steps: Array.isArray(compactWritePlan.support_steps)
+          ? compactWritePlan.support_steps.map((item, index) => ({
+              ...item,
+              name: selectedProducts[index + 1] || item?.name || null,
+            }))
+          : [],
+        same_role_options: Array.isArray(compactWritePlan.same_role_options)
+          ? compactWritePlan.same_role_options.map((item, index) => ({
+              ...item,
+              name: selectedProducts[index + 1] || item?.name || null,
+            }))
+          : [],
+      }
+    : null;
+  return {
+    language: pickFirstTrimmed(row.language),
+    prompt_profile: 'strict_selected_only_retry',
+    user_request: pickFirstTrimmed(row.user_request),
+    request_mode: pickFirstTrimmed(row.request_mode),
+    user_relevant_concern_families: asStringArray(row.user_relevant_concern_families, 6),
+    target_label: compactRecoAssistantPromptField(row.target_label, { maxLen: 60 }),
+    selected_products: selectedProducts,
+    selected_product_role_mix: pickFirstTrimmed(row.selected_product_role_mix, 'single_product'),
+    selected_target_ids: asStringArray(row.selected_target_ids, 4),
+    selected_product_details: (Array.isArray(row.selected_product_details) ? row.selected_product_details : [])
+      .map((item, index) => ({
+        name: selectedProducts[index] || pickFirstTrimmed(item?.name),
+        matched_role_label: compactRecoAssistantPromptField(item?.matched_role_label, { maxLen: 48 }),
+        matched_role_id: compactRecoAssistantPromptField(item?.matched_role_id, { maxLen: 48 }),
+        preferred_step: compactRecoAssistantPromptField(item?.preferred_step, { maxLen: 24 }),
+        role_scope: compactRecoAssistantPromptField(item?.role_scope, { maxLen: 24 }),
+        fit_assessment: compactRecoAssistantPromptField(item?.fit_assessment, { maxLen: 24 }),
+        price_label: compactRecoAssistantPromptField(item?.price_label, { maxLen: 40 }),
+        price_position: compactRecoAssistantPromptField(item?.price_position, { maxLen: 24 }),
+        reason_points: buildRecoAssistantReasonPoints(item, { max: 2 }),
+      }))
+      .slice(0, 3),
+    assistant_write_plan: strictWritePlan,
+  };
+}
+
 function buildCompactRecoAssistantPromptLines({
   requestMode = 'generic',
   selectedProductRoleMix = 'single_product',
   retryInstruction = null,
+  strictSelectedOnlyContext = false,
 } = {}) {
   const lines = [
     'Return strict JSON only.',
@@ -52098,6 +52153,11 @@ function buildCompactRecoAssistantPromptLines({
     'Price may support the recommendation, but pair it with a concrete product-fit reason from Context.',
     'Compact retry mode: keep the answer tight, prioritize the selected product evidence, and skip optional background detail.',
   ];
+  if (strictSelectedOnlyContext) {
+    lines.push('Strict selected-only retry: Context.selected_products is the only allowed product-name list.');
+    lines.push('Use no outside brand or product memory; every named product must be copied exactly from Context.selected_products.');
+    lines.push('If a detail is not present in Context.selected_product_details or assistant_write_plan, omit it.');
+  }
   if (requestMode === 'buy') {
     lines.push('Use direct shopping advice tone.');
     lines.push('Start the first sentence with the lead product name.');
@@ -52173,6 +52233,7 @@ function buildRecoAssistantRewritePrompt({
   userRequestText,
   retryReason = null,
   compactContext = false,
+  strictSelectedOnlyContext = false,
 } = {}) {
   const lang = language === 'CN' ? 'CN' : 'EN';
   const names = pickRecoNames(payload, 3);
@@ -52493,13 +52554,18 @@ function buildRecoAssistantRewritePrompt({
       : [],
     assistant_write_plan: assistantWritePlan,
   };
-  const context = compactContext ? buildCompactRecoAssistantPromptContext(fullContext) : fullContext;
+  const context = strictSelectedOnlyContext
+    ? buildStrictSelectedOnlyRecoAssistantPromptContext(fullContext)
+    : compactContext
+      ? buildCompactRecoAssistantPromptContext(fullContext)
+      : fullContext;
   const retryInstruction = describeRecoAssistantRewriteFailureReason(retryReason);
   const lines = compactContext
     ? buildCompactRecoAssistantPromptLines({
       requestMode,
       selectedProductRoleMix,
       retryInstruction,
+      strictSelectedOnlyContext,
     })
     : [
       'Return strict JSON only.',
@@ -52998,6 +53064,7 @@ async function maybeRewriteRecoAssistantTextWithLlm({
       retryReason = null,
       timeoutCapMs = null,
       compactContext = false,
+      strictSelectedOnlyContext = false,
       maxOutputTokensOverride = null,
     } = {}) => {
       const remainingBudgetMs = getRemainingBudgetMs();
@@ -53010,6 +53077,7 @@ async function maybeRewriteRecoAssistantTextWithLlm({
           remaining_budget_ms: Math.max(0, Math.trunc(remainingBudgetMs)),
           retry_reason: pickFirstTrimmed(retryReason) || null,
           compact_context: compactContext === true,
+          strict_selected_only_context: strictSelectedOnlyContext === true,
         });
         return { ok: false, reason: 'rewrite_budget_exhausted' };
       }
@@ -53038,11 +53106,13 @@ async function maybeRewriteRecoAssistantTextWithLlm({
         userRequestText,
         retryReason,
         compactContext,
+        strictSelectedOnlyContext,
       });
       const attemptTrace = {
         attempt_index: attemptIndex,
         retry_reason: pickFirstTrimmed(retryReason) || null,
         compact_context: compactContext === true,
+        strict_selected_only_context: strictSelectedOnlyContext === true,
         timeout_cap_ms: Number.isFinite(Number(timeoutCapMs)) && Number(timeoutCapMs) > 0
           ? Math.trunc(Number(timeoutCapMs))
           : null,
@@ -53216,8 +53286,12 @@ async function maybeRewriteRecoAssistantTextWithLlm({
       return finishRewrite({ text: fallbackText, llm_used: false, reason: firstAttempt.reason });
     }
     const firstAttemptReason = String(firstAttempt.reason || '').trim().toLowerCase();
+    const useStrictSelectedOnlyRetry =
+      firstAttemptReason === 'rewrite_mentions_unselected_product'
+      || firstAttemptReason === 'rewrite_off_target_concern_claim';
     const useCompactRetry =
       preferCompactPrimaryAttempt
+      || useStrictSelectedOnlyRetry
       || firstAttemptReason === 'rewrite_buy_lead_not_direct'
       || firstAttemptReason === 'rewrite_templated_routine_bridge'
       || firstAttemptReason === 'rewrite_stiff_selection_framing'
@@ -53231,9 +53305,13 @@ async function maybeRewriteRecoAssistantTextWithLlm({
     const retryAttempt = await executeRewriteAttempt({
       retryReason: firstAttempt.reason,
       compactContext: useCompactRetry,
+      strictSelectedOnlyContext: useStrictSelectedOnlyRetry,
       timeoutCapMs: retryTimeoutCapMs,
       maxOutputTokensOverride: useCompactRetry
-        ? Math.min(compactOutputTokenCap, AURORA_RECO_ASSISTANT_REWRITE_MAX_OUTPUT_TOKENS)
+        ? Math.min(
+          useStrictSelectedOnlyRetry ? 180 : compactOutputTokenCap,
+          AURORA_RECO_ASSISTANT_REWRITE_MAX_OUTPUT_TOKENS,
+        )
         : null,
     });
     if (retryAttempt.ok) {
