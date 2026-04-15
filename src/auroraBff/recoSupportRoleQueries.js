@@ -51,17 +51,21 @@ function normalizeSupportRoleStep(value = '') {
   return '';
 }
 
-function buildSupportRoleQueryScore(query = '', { step = '', oilySignal = false } = {}) {
+function buildSupportRoleQueryScore(query = '', { step = '', oilySignal = false, barrierSignal = false } = {}) {
   const normalized = normalizeSupportRoleQueryToken(query).toLowerCase();
   if (!normalized) return 0;
   let score = 0;
   if (step === 'moisturizer') {
     if (/\b(moisturi[sz]er|cream|gel cream|lotion|emulsion|water cream|water gel)\b/.test(normalized)) score += 3;
     if (/\b(lightweight|oil free|oil-free|gel cream|water cream|water gel|breathable|non-greasy|non greasy)\b/.test(normalized)) score += 2;
+    if (barrierSignal && /\b(barrier|repair|ceramide|ceramides|sensitive|soothing|fragrance free)\b/.test(normalized)) score += 3;
     if (/\boily skin\b/.test(normalized)) score += 2;
     if (/^lightweight moisturizer oily skin$/.test(normalized)) score += 3;
     if (/^oil free moisturizer$/.test(normalized)) score += 2.4;
     if (/^gel cream moisturizer$/.test(normalized)) score += 1.5;
+    if (/^barrier repair moisturizer$/.test(normalized)) score += 4;
+    if (/^ceramide cream sensitive skin$/.test(normalized)) score += 3.5;
+    if (/^soothing moisturizer$/.test(normalized)) score += 2.6;
     if (/^barrier lotion(?: oily skin)?$/.test(normalized)) score += 1.2;
   } else if (step === 'sunscreen') {
     if (/\b(sunscreen|spf|broad spectrum|sun fluid|sun cream|sun lotion|uv)\b/.test(normalized)) score += 3;
@@ -173,7 +177,7 @@ function buildSupportRoleQueryVariants({
   return uniqueCaseInsensitiveStrings(candidates, 16)
     .map((query, index) => ({
       query,
-      score: buildSupportRoleQueryScore(query, { step, oilySignal }),
+      score: buildSupportRoleQueryScore(query, { step, oilySignal, barrierSignal }),
       index,
     }))
     .sort((left, right) => {
