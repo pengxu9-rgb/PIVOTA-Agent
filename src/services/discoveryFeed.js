@@ -360,6 +360,11 @@ const BEAUTY_INTEREST_CATEGORY_BY_PHRASE = Object.freeze({
     categories: ['body oil'],
     verticals: ['skincare'],
   },
+  deodorant: {
+    categories: ['deodorant', 'body deodorant'],
+    textQueryTerms: ['deodorant', 'body deodorant', 'deodorant cream', 'deodorant stick', 'fresh-feel deodorant'],
+    verticals: ['skincare', 'fragrance'],
+  },
   'hydrating mask': {
     categories: ['hydrating mask', 'hydration mask', 'face mask'],
     textQueryTerms: ['hydrating mask', 'hydration mask', 'hydrating face mask', 'hydration face mask'],
