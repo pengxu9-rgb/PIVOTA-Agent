@@ -83,6 +83,18 @@ function normalizePdpHttpUrl(value) {
   return str;
 }
 
+function normalizeHexColor(value) {
+  const text = stripHtml(value).replace(/^#/, '').trim();
+  if (/^[0-9a-f]{3}$/i.test(text)) {
+    return `#${text
+      .split('')
+      .map((part) => `${part}${part}`)
+      .join('')}`.toLowerCase();
+  }
+  if (/^[0-9a-f]{6}$/i.test(text)) return `#${text}`.toLowerCase();
+  return '';
+}
+
 function isExternalSeedLikeProduct(product) {
   if (!product || typeof product !== 'object') return false;
   const merchantId = stripHtml(product.merchant_id || product.merchantId || product.merchant?.id)
@@ -1802,6 +1814,27 @@ function normalizeProductLineOptions(product) {
     if (!label || !productId) continue;
     const merchantId = stripHtml(item.merchant_id || item.merchantId);
     const axis = stripHtml(item.axis || item.option_axis || item.optionAxis).toLowerCase();
+    const swatchImageUrl =
+      normalizePdpImageUrl(
+        item.swatch_image_url ||
+          item.swatchImageUrl ||
+          item.label_image_url ||
+          item.labelImageUrl ||
+          item.swatch?.image_url ||
+          item.swatch?.imageUrl ||
+          item.swatch?.url,
+      ) || undefined;
+    const swatchColor =
+      normalizeHexColor(
+        item.swatch_color ||
+          item.swatchColor ||
+          item.color_hex ||
+          item.colorHex ||
+          item.shade_hex ||
+          item.shadeHex ||
+          item.hex ||
+          item.swatch?.hex,
+      ) || undefined;
     const key = `${axis || 'option'}:${value.toLowerCase()}:${productId}:${merchantId}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -1815,6 +1848,8 @@ function normalizeProductLineOptions(product) {
       product_id: productId,
       title: stripHtml(item.title) || undefined,
       image_url: normalizePdpImageUrl(item.image_url || item.image || item.thumbnail_url) || undefined,
+      ...(swatchImageUrl ? { swatch_image_url: swatchImageUrl, label_image_url: swatchImageUrl } : {}),
+      ...(swatchColor ? { swatch_color: swatchColor, color_hex: swatchColor, swatch: { hex: swatchColor } } : {}),
       selected: item.selected === true,
     });
   }

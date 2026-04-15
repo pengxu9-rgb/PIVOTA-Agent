@@ -136,6 +136,7 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
             label: 'DN310',
             product_id: 'ext_boj_dn310',
             merchant_id: 'external_seed',
+            swatch_color: '#d9c4ad',
             selected: false,
           },
           {
@@ -146,6 +147,7 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
             label: 'DN350',
             product_id: 'ext_boj_dn350',
             merchant_id: 'external_seed',
+            swatch_image_url: 'https://example.com/dn350-swatch.png',
             selected: true,
           },
         ],
@@ -168,6 +170,20 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
       expect.arrayContaining([
         expect.objectContaining({ label: 'DN310', product_id: 'ext_boj_dn310', selected: false }),
         expect.objectContaining({ label: 'DN350', product_id: 'ext_boj_dn350', selected: true }),
+      ]),
+    );
+    expect(variantSelector.data.product_line_options).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: 'DN310',
+          swatch_color: '#d9c4ad',
+          swatch: { hex: '#d9c4ad' },
+        }),
+        expect.objectContaining({
+          label: 'DN350',
+          swatch_image_url: 'https://example.com/dn350-swatch.png',
+          label_image_url: 'https://example.com/dn350-swatch.png',
+        }),
       ]),
     );
     expect(payload.product.product_line_options).toEqual(variantSelector.data.product_line_options);

@@ -206,12 +206,14 @@ describe('pdpIdentityGraph', () => {
         axis: 'shade',
         label: 'DN310',
         product_id: 'ext_boj_dn310',
+        swatch_color: expect.stringMatching(/^#[0-9a-f]{6}$/),
         selected: false,
       }),
       expect.objectContaining({
         axis: 'shade',
         label: 'DN350',
         product_id: 'ext_boj_dn350',
+        swatch_color: expect.stringMatching(/^#[0-9a-f]{6}$/),
         selected: true,
       }),
     ]);
@@ -299,8 +301,16 @@ describe('pdpIdentityGraph', () => {
 
     expect(result?.canonical_scope).toBe('synthetic');
     expect(result?.synthetic_product.product_line_options).toEqual([
-      expect.objectContaining({ label: 'DN310', selected: true }),
-      expect.objectContaining({ label: 'DN350', selected: false }),
+      expect.objectContaining({
+        label: 'DN310',
+        swatch_color: expect.stringMatching(/^#[0-9a-f]{6}$/),
+        selected: true,
+      }),
+      expect.objectContaining({
+        label: 'DN350',
+        swatch_color: expect.stringMatching(/^#[0-9a-f]{6}$/),
+        selected: false,
+      }),
     ]);
   });
 

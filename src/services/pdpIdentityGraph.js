@@ -83,6 +83,54 @@ function firstNonEmptyString(...values) {
   return '';
 }
 
+function normalizeHexColor(value) {
+  const text = asString(value).replace(/^#/, '').trim();
+  if (/^[0-9a-f]{3}$/i.test(text)) {
+    return `#${text
+      .split('')
+      .map((part) => `${part}${part}`)
+      .join('')}`.toLowerCase();
+  }
+  if (/^[0-9a-f]{6}$/i.test(text)) return `#${text}`.toLowerCase();
+  return '';
+}
+
+function clampColorChannel(value) {
+  return Math.max(0, Math.min(255, Math.round(Number(value) || 0)));
+}
+
+function rgbToHex([r, g, b]) {
+  return `#${[r, g, b].map((value) => clampColorChannel(value).toString(16).padStart(2, '0')).join('')}`;
+}
+
+function inferShadeCodeSwatchHex(value) {
+  const code = normalizeShadeCodeToken(value).toUpperCase();
+  const match = /^([LMD])([NPY]?)(\d{2,3})$/.exec(code);
+  if (!match) return '';
+  const depth = match[1];
+  const undertone = match[2] || 'N';
+  const shadeNumber = Number(match[3]);
+  const baseByDepth = {
+    L: [226, 207, 185],
+    M: [195, 155, 122],
+    D: [142, 100, 76],
+  };
+  const referenceByDepth = { L: 110, M: 220, D: 330 };
+  const base = baseByDepth[depth] || baseByDepth.M;
+  const depthShift = Math.max(-0.8, Math.min(0.8, (shadeNumber - referenceByDepth[depth]) / 100));
+  const undertoneShift = {
+    N: [0, 0, 0],
+    P: [8, -2, 4],
+    Y: [10, 5, -10],
+  }[undertone] || [0, 0, 0];
+  const shadeShift = depthShift * -18;
+  return rgbToHex([
+    base[0] + shadeShift + undertoneShift[0],
+    base[1] + shadeShift + undertoneShift[1],
+    base[2] + shadeShift + undertoneShift[2],
+  ]);
+}
+
 function uniqueStrings(values, limit = 100) {
   const seen = new Set();
   const out = [];
@@ -1052,6 +1100,61 @@ function buildImageEntriesForListing(listing, kind = 'exact_item') {
   });
 }
 
+function readSwatchImageUrlFromObject(value) {
+  const obj = asPlainObject(value) || {};
+  return normalizePdpImageUrl(
+    firstNonEmptyString(
+      obj.swatch_image_url,
+      obj.swatchImageUrl,
+      obj.label_image_url,
+      obj.labelImageUrl,
+      obj.swatch?.image_url,
+      obj.swatch?.imageUrl,
+      obj.swatch?.url,
+    ),
+  );
+}
+
+function readSwatchHexFromObject(value) {
+  const obj = asPlainObject(value) || {};
+  return normalizeHexColor(
+    firstNonEmptyString(
+      obj.swatch_color,
+      obj.swatchColor,
+      obj.color_hex,
+      obj.colorHex,
+      obj.shade_hex,
+      obj.shadeHex,
+      obj.hex,
+      obj.swatch?.hex,
+      obj.beauty_meta?.shade_hex,
+      obj.beautyMeta?.shadeHex,
+    ),
+  );
+}
+
+function readListingSwatchData(listing, axis = '', value = '') {
+  const payload = asPlainObject(listing?.source_payload) || {};
+  const variantCandidates = asArray(payload.variants);
+  let swatchImageUrl = readSwatchImageUrlFromObject(payload);
+  let swatchColor = readSwatchHexFromObject(payload);
+
+  for (const variant of variantCandidates) {
+    if (!swatchImageUrl) swatchImageUrl = readSwatchImageUrlFromObject(variant);
+    if (!swatchColor) swatchColor = readSwatchHexFromObject(variant);
+    if (swatchImageUrl && swatchColor) break;
+  }
+
+  if (!swatchColor && ['shade', 'color'].includes(axis)) {
+    swatchColor = inferShadeCodeSwatchHex(value);
+  }
+
+  return {
+    swatchImageUrl,
+    swatchColor,
+  };
+}
+
 const PRODUCT_LINE_OPTION_AXIS_KEYS = Object.freeze(['shade', 'color', 'size', 'volume', 'pack']);
 const PRODUCT_LINE_OPTION_AXIS_LABELS = Object.freeze({
   shade: 'Shade',
@@ -1130,6 +1233,7 @@ function buildProductLineOptions({ lineListings, baseListing } = {}) {
     if (!productId) continue;
     const payload = asPlainObject(listing?.source_payload) || {};
     const firstImage = buildImageEntriesForListing(listing, 'product_line_option')[0];
+    const { swatchImageUrl, swatchColor } = readListingSwatchData(listing, axis, value);
     const selected = isSameListingIdentity(listing, baseListing);
     const option = {
       option_id: asString(listing?.source_listing_ref) || buildSourceListingRef({ merchantId, productId }),
@@ -1141,6 +1245,8 @@ function buildProductLineOptions({ lineListings, baseListing } = {}) {
       product_id: productId,
       title: firstNonEmptyString(payload.title, payload.name, listing?.title) || undefined,
       image_url: firstImage?.url,
+      ...(swatchImageUrl ? { swatch_image_url: swatchImageUrl, label_image_url: swatchImageUrl } : {}),
+      ...(swatchColor ? { swatch_color: swatchColor, color_hex: swatchColor, swatch: { hex: swatchColor } } : {}),
       selected,
     };
     const existing = byValue.get(value);
