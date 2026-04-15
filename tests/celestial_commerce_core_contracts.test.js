@@ -223,6 +223,24 @@ describe('Celestial commerce core source contracts', () => {
     );
   });
 
+  test('PDP similar card filter removes category-only highlight fallbacks', () => {
+    const app = require('../src/server');
+    const { filterSimilarProductsWithCardHighlights } = app._debug;
+
+    const out = filterSimilarProductsWithCardHighlights([
+      { product_id: 'ext_category_only', title: 'Category only', category: 'Toner' },
+      { product_id: 'ext_missing', title: 'Missing highlight', card_highlight_status: 'highlight_missing' },
+      {
+        product_id: 'ext_ready',
+        title: 'Ready card',
+        category: 'Toner',
+        description: 'A softening toner with rice extract and barrier support.',
+      },
+    ]);
+
+    expect(out.map((item) => item.product_id)).toEqual(['ext_ready']);
+  });
+
   test('shopping agent loop-break builds a scenario-aware retry query from short user selection', () => {
     const app = require('../src/server');
     const { uiChatBuildLoopBreakRetryArgs } = app._debug;

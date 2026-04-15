@@ -11279,6 +11279,14 @@ function mergeSimilarCardEnrichment(candidate = {}, detail = {}) {
   return next;
 }
 
+function filterSimilarProductsWithCardHighlights(items = []) {
+  return (Array.isArray(items) ? items : []).filter((item) => {
+    if (!item || typeof item !== 'object') return false;
+    if (String(item.card_highlight_status || '').trim() === 'highlight_missing') return false;
+    return hasSimilarCardPresentation(item);
+  });
+}
+
 async function enrichSimilarProductsForPdpCards({
   items = [],
   checkoutToken = null,
@@ -20948,16 +20956,24 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       if (wantsSimilar && relatedProducts.length > 0) {
         const similarCardEnrichmentStartedAt = Date.now();
         const similarLimit = payload?.similar?.limit || payload?.recommendations?.limit || 6;
-        relatedProducts = await enrichSimilarProductsForPdpCards({
+        const enrichedRelatedProducts = await enrichSimilarProductsForPdpCards({
           items: relatedProducts,
           checkoutToken,
           bypassCache,
           maxItems: similarLimit,
         });
+        const missingHighlightCount = enrichedRelatedProducts.filter(
+          (item) => String(item?.card_highlight_status || '').trim() === 'highlight_missing',
+        ).length;
+        const displayableRelatedProducts = filterSimilarProductsWithCardHighlights(
+          enrichedRelatedProducts,
+        ).slice(0, similarLimit);
+        const filteredHighlightMissingCount = Math.max(
+          0,
+          enrichedRelatedProducts.length - displayableRelatedProducts.length,
+        );
+        relatedProducts = displayableRelatedProducts;
         if (relatedProductsEnvelope && typeof relatedProductsEnvelope === 'object') {
-          const missingHighlightCount = relatedProducts.filter(
-            (item) => String(item?.card_highlight_status || '').trim() === 'highlight_missing',
-          ).length;
           relatedProductsEnvelope = {
             ...relatedProductsEnvelope,
             items: relatedProducts,
@@ -20965,8 +20981,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               ...(relatedProductsEnvelope.metadata && typeof relatedProductsEnvelope.metadata === 'object'
                 ? relatedProductsEnvelope.metadata
                 : {}),
-              card_enrichment_status: missingHighlightCount > 0 ? 'partial' : 'ready',
+              card_enrichment_status:
+                relatedProducts.length > 0 && filteredHighlightMissingCount <= 0 ? 'ready' : 'partial',
               card_highlight_missing_count: missingHighlightCount,
+              card_highlight_filtered_count: filteredHighlightMissingCount,
             },
           };
         }
@@ -24458,12 +24476,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             });
 
             const rawProducts = Array.isArray(rec?.items) ? rec.items : [];
-            const products = await enrichSimilarProductsForPdpCards({
+            const enrichedProducts = await enrichSimilarProductsForPdpCards({
               items: rawProducts,
               checkoutToken,
               bypassCache,
               maxItems: limit,
             });
+            const products = filterSimilarProductsWithCardHighlights(enrichedProducts).slice(0, limit);
 
             // Keep response structure stable for existing clients.
             const baseResponse = {
@@ -24473,6 +24492,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               metadata: {
                 route: 'find_similar_products_mainline_wrapper',
                 ...(rec?.metadata && typeof rec.metadata === 'object' ? rec.metadata : {}),
+                card_enrichment_status:
+                  products.length > 0 && products.length === enrichedProducts.length ? 'ready' : 'partial',
+                card_highlight_filtered_count: Math.max(0, enrichedProducts.length - products.length),
               },
               total: products.length,
               page: 1,
@@ -27827,6 +27849,7 @@ module.exports._debug = {
   mergePublicBeautyUnifiedSearchProducts,
   resolvePublicBeautyCompoundIntent,
   shouldBridgePublicBeautySearchToDiscovery,
+  filterSimilarProductsWithCardHighlights,
   buildFindProductsMultiDiscoveryBridgeResponse,
   fetchProductDetailForOffers,
   fetchExternalSeedProductDetailFromDb,
