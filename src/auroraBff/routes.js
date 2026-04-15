@@ -53431,7 +53431,7 @@ function buildCompactRecoAssistantPromptLines({
     'Avoid internal phrasing like "selected products" and avoid generic filler.',
     'Price may support the recommendation, but pair it with a concrete product-fit reason from Context.',
     'Never write ungrammatical fragments like "because a serum..." or "because an SPF..."; use "because it is..." or an active verb.',
-    'Use the phrase "best first buy" at most once; never write "... is your best first buy because it is your best first buy ...".',
+    'Use one direct-buy framing phrase only once, in the first sentence; never repeat buy/pick framing inside the reason clause or final wrap-up.',
     'When reviewed_insight_available is false, do not repeat clinical, dermatologist, review, community, or social-proof claims; treat the evidence as seller/product-record copy only.',
     'Compact retry mode: keep the answer tight, prioritize the selected product evidence, and skip optional background detail.',
   ];
@@ -53444,7 +53444,7 @@ function buildCompactRecoAssistantPromptLines({
   if (requestMode === 'buy') {
     lines.push('Use direct shopping advice tone.');
     lines.push('Start the first sentence with the lead product name.');
-    lines.push('The first sentence must use direct buy/pick language, for example: "<lead product name> is the strongest pick because ...".');
+    lines.push('The first sentence must use direct buy/pick language, for example: "<lead product name> is the most direct fit because ...".');
   } else if (requestMode === 'use_first') {
     lines.push('Use starting-point advice tone.');
     lines.push('Start with the lead product name and explain why it is the first step.');
@@ -53455,7 +53455,7 @@ function buildCompactRecoAssistantPromptLines({
     lines.push('Stay on one product only. Use exactly 2 sentences.');
   } else if (selectedProductRoleMix === 'same_role_comparison') {
     lines.push('Treat the products as same-slot comparison options, not a routine.');
-    lines.push('Pick one lead pick, then compare the other options with one short tradeoff each.');
+    lines.push('Pick one lead product, then compare the other options with one short tradeoff each.');
     lines.push('Use at most 3 sentences.');
   } else {
     lines.push('Treat the products as different routine steps, not interchangeable substitutes.');
@@ -53490,7 +53490,7 @@ function buildStructuredRecoAssistantReasonPromptLines({
     'support_reasons must align to the remaining selected products in order; use an empty array when there are no support products.',
     'Each reason must be a short shopper-facing fragment, not a full recommendation sentence.',
     'Do not start a reason fragment with "a" or "an" unless it remains grammatical after "because"; prefer active verbs or "it is ...".',
-    'Do not include the phrase "best first buy" inside any reason fragment.',
+    'Do not include direct buy/pick framing inside any reason fragment.',
     'When reviewed_insight_available is false, do not use clinical, dermatologist, review, community, or social-proof claim language.',
     'Price may be included only when Context provides price_label or price_order_summary, and it must be paired with a non-price fit reason.',
   ];
@@ -53518,7 +53518,7 @@ function describeRecoAssistantRewriteFailureReason(reason) {
   const normalized = String(reason || '').trim().toLowerCase();
   if (!normalized) return null;
   if (normalized === 'rewrite_buy_lead_not_direct') {
-    return 'Open with the exact lead product name and a direct buy line, for example "<lead product name> is the strongest pick because ...".';
+    return 'Open with the exact lead product name and a direct buy line, for example "<lead product name> is the most direct fit because ...".';
   }
   if (normalized === 'rewrite_buy_addon_filler') {
     return 'Do not pad the answer with future routine-building filler.';
@@ -53533,7 +53533,7 @@ function describeRecoAssistantRewriteFailureReason(reason) {
     return 'Fix ungrammatical reason fragments such as "because a serum..." by writing "because it is..." or using an active verb.';
   }
   if (normalized === 'rewrite_duplicate_best_first_buy') {
-    return 'Use "best first buy" at most once and do not repeat it inside the reason clause.';
+    return 'Use one direct-buy framing phrase only once, in the first sentence, and do not repeat buy/pick framing inside the reason clause or final wrap-up.';
   }
   if (normalized === 'rewrite_unreviewed_proof_claim') {
     return 'Remove clinical, dermatologist, review, community, or social-proof claim language unless reviewed insights explicitly support it.';
@@ -53931,12 +53931,12 @@ function buildRecoAssistantRewritePrompt({
       'Address the user_request directly and respond to the user\'s real complaint first.',
       'If request_mode is "buy", use direct shopping advice tone.',
       'If request_mode is "buy", start the first sentence with the lead product name rather than a generic concern summary.',
-      'If request_mode is "buy", the first sentence must use direct buy/pick language, for example: "<lead product name> is the strongest pick because ...".',
+      'If request_mode is "buy", the first sentence must use direct buy/pick language, for example: "<lead product name> is the most direct fit because ...".',
       'Never write ungrammatical fragments like "because a serum..." or "because an SPF..."; use "because it is..." or an active verb.',
-      'Use the phrase "best first buy" at most once in the whole message; never write "... is your best first buy because it is your best first buy ...".',
+      'Use one direct-buy framing phrase only once, in the first sentence; never repeat buy/pick framing inside the reason clause or final wrap-up.',
       'If request_mode is "buy" and there is one selected product, the first sentence must directly recommend that product by name.',
-      'If request_mode is "buy" and selected_product_role_mix is "same_role_comparison", the first sentence must name the lead pick and signal that the remaining picks are same-slot comparison options.',
-      'If request_mode is "buy" and selected_product_role_mix is "routine_mix", the first sentence must name the lead pick and frame the remaining picks as routine add-ons from other roles; only same-role products may be same-slot alternatives.',
+      'If request_mode is "buy" and selected_product_role_mix is "same_role_comparison", the first sentence must name the lead product and signal that the remaining picks are same-slot comparison options.',
+      'If request_mode is "buy" and selected_product_role_mix is "routine_mix", the first sentence must name the lead product and frame the remaining picks as routine add-ons from other roles; only same-role products may be same-slot alternatives.',
       'If selected_product_role_mix is "single_product", stay on one clear recommendation and do not frame the answer as a routine or a comparison set.',
       'If selected_product_role_mix is "single_product", sentence 2 must explain why that one product matches the concern using concrete evidence from Context.',
       'If selected_product_role_mix is "routine_mix", make it clear these are different routine steps, not interchangeable substitutes, and do not use the phrase "selected products".',
@@ -53946,7 +53946,7 @@ function buildRecoAssistantRewritePrompt({
       'If selected_product_role_mix is "same_role_comparison", compare lower-priced versus higher-priced options only inside the same role when price_order_summary supports it.',
       'If selected_product_role_mix is "routine_mix", present a basic routine by role or step, and do not imply products from different roles are interchangeable.',
       'If selected_product_role_mix is "routine_mix", use selected_product_details.role_scope, matched_role_label, and preferred_step to label what each product is doing in the routine.',
-      'For multiple selected products, choose one lead pick when the context supports it, then use compare_highlights or pivota_insights to explain tradeoffs.',
+      'For multiple selected products, choose one lead product when the context supports it, then use compare_highlights or pivota_insights to explain tradeoffs.',
       'For routine_mix buy answers, explain the lead product with at least two available dimensions from Context: role match, formula/ingredient/texture evidence, and price/value.',
       'Use assistant_write_plan.lead_product.must_use_reason_points as the preferred reason list for the lead recommendation when available.',
       'If assistant_write_plan.lead_product.price_note exists, pair it with at least one non-price reason from assistant_write_plan.lead_product.must_use_reason_points.',
@@ -53971,7 +53971,7 @@ function buildRecoAssistantRewritePrompt({
       'If a watchout says tinted, shade match, sample size, refill, active sensitivity, or layering limitation, mention it only when it materially changes the shopping choice.',
       'If a product record includes extra concern claims that are not in user_relevant_concern_families, omit those extra claims and use the target-aligned evidence_points instead.',
       'For oily-skin/oil-control asks, do not mention dullness, uneven tone, dark spots, glow, or brightening unless tone/brightening is an explicit target in Context.',
-      'Do not call something the best first buy unless the same sentence or the next sentence gives a concrete reason from description_snippet, evidence_points, compare_highlights, or pivota_insights.',
+      'Do not call a product, routine, or bundle the top buy unless the same sentence or the next sentence gives a concrete reason from description_snippet, evidence_points, compare_highlights, or pivota_insights.',
       'If selected_product_details.fit_assessment is "soft_match" or comparison_fill_reason is present, frame that product as a softer or broader alternative instead of an equally direct match.',
       'If selected_product_details.tradeoff_hint exists, honor it.',
       'Prefer product-specific evidence over generic role language when both are available.',
@@ -54180,9 +54180,12 @@ function assistantTextUsesStiffSelectionFraming(text) {
 
 function assistantTextRepeatsBestFirstBuy(text) {
   const raw = String(text || '');
-  const count = (raw.match(/\bbest first buy\b/gi) || []).length;
-  return count > 1
-    || /\bbest first buy\s+because\s+(?:it\s+is|it's|this\s+is|that\s+is)\s+(?:your\s+)?best first buy\b/i.test(raw);
+  const directBuyFramingCount = (
+    raw.match(/\b(?:best first buy|strongest pick|top pick|lead pick|strongest choice|strongest option|top choice|top option|most direct fit)\b/gi) || []
+  ).length;
+  return directBuyFramingCount > 1
+    || /\b(?:best first buy|strongest pick|top pick|lead pick|strongest choice|strongest option|top choice|top option|most direct fit)\s+because\s+(?:it\s+is|it's|this\s+is|that\s+is)\s+(?:your\s+)?(?:best first buy|strongest pick|top pick|lead pick|strongest choice|strongest option|top choice|top option|most direct fit)\b/i.test(raw)
+    || /\b(?:routine|two-step routine|routine combination|bundle|combination)\s+is\s+(?:your\s+)?(?:best first buy|strongest pick|top pick|lead pick|strongest choice|strongest option|top choice|top option)\b/i.test(raw);
 }
 
 function recoPayloadHasReviewedProductInsights(payload = null) {
