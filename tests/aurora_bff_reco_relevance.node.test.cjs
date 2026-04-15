@@ -6731,6 +6731,97 @@ test('__internal: framework pool keeps soothing serum as treatment role instead 
   assert.equal(state.selected_recommendations[0]?.candidate_step, 'serum');
 });
 
+test('__internal: framework pool preserves planner support-role order instead of canonical rank order', () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'barrier_moisturizer_order_1',
+        merchant_id: 'merchant_internal',
+        brand: 'KraveBeauty',
+        name: 'Great Barrier Relief',
+        display_name: 'KraveBeauty Great Barrier Relief',
+        category: 'Moisturizer',
+        product_type: 'Moisturizer',
+        retrieval_source: 'catalog',
+        retrieval_role_id: 'hydrating_barrier_moisturizer',
+        retrieval_query: 'barrier repair moisturizer',
+        short_description: 'A barrier repair moisturizer with ceramides for dry, tight skin.',
+      },
+      {
+        product_id: 'hydrating_serum_order_1',
+        merchant_id: 'external_seed',
+        brand: 'Naturium',
+        name: 'Quadruple Hyaluronic Acid Serum 5%',
+        display_name: 'Naturium Quadruple Hyaluronic Acid Serum 5%',
+        category: 'Serum',
+        product_type: 'Serum',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'hydrating_serum_or_essence',
+        retrieval_query: 'hyaluronic acid serum',
+        search_aliases: ['hyaluronic acid serum'],
+        short_description: 'A hydrating serum with hyaluronic acid for dehydrated skin.',
+      },
+      {
+        product_id: 'daily_sunscreen_order_1',
+        merchant_id: 'external_seed',
+        brand: 'The Ordinary',
+        name: 'UV Filters SPF 45 Serum',
+        display_name: 'UV Filters SPF 45 Serum',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen',
+        retrieval_query: 'daily sunscreen',
+        short_description: 'A lightweight SPF 45 sunscreen serum for daily UV protection.',
+      },
+    ],
+    {
+      targetContext: {
+        framework_id: 'recofw_test_planner_support_order',
+        primary_role_id: 'hydrating_barrier_moisturizer',
+        routine_mode: 'routine_mix',
+        semantic_plan: { routine_mode: 'routine_mix', comparison_mode: 'routine_mix' },
+        framework_roles: [
+          {
+            role_id: 'hydrating_barrier_moisturizer',
+            rank: 40,
+            preferred_step: 'moisturizer',
+            label: 'Hydrating barrier moisturizer',
+            query_terms: ['barrier repair moisturizer'],
+            fit_keywords: ['hydrating', 'barrier repair', 'ceramide', 'dry skin'],
+            product_type_hypotheses: ['moisturizer'],
+          },
+          {
+            role_id: 'hydrating_serum_or_essence',
+            rank: 42,
+            preferred_step: 'serum',
+            label: 'Hydrating serum or essence',
+            query_terms: ['hyaluronic acid serum', 'hydrating serum dehydrated skin'],
+            fit_keywords: ['hydrating', 'dehydrated', 'hyaluronic acid'],
+            product_type_hypotheses: ['serum', 'treatment'],
+          },
+          {
+            role_id: 'daily_sunscreen',
+            rank: 30,
+            preferred_step: 'sunscreen',
+            label: 'Daily sunscreen',
+            query_terms: ['daily sunscreen skincare', 'broad spectrum sunscreen'],
+            fit_keywords: ['spf', 'uv filters', 'broad spectrum', 'lightweight'],
+            product_type_hypotheses: ['sunscreen'],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.deepEqual(
+    state.selected_recommendations.map((row) => row.matched_role_id),
+    ['hydrating_barrier_moisturizer', 'hydrating_serum_or_essence', 'daily_sunscreen'],
+  );
+});
+
 test('__internal: framework pool keeps external seed skincare candidates when skincare evidence lives only in alias and description', async () => {
   const { __internal } = loadRoutesFresh();
   const normalized = __internal.normalizeRecoCatalogProduct({
