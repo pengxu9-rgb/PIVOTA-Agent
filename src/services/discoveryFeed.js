@@ -373,6 +373,16 @@ const BEAUTY_INTEREST_CATEGORY_BY_PHRASE = Object.freeze({
     verticals: ['skincare'],
   },
 });
+const EXPLICIT_BEAUTY_EXACT_PHRASE_STRUCTURED_RULES = Object.freeze({
+  perfume: Object.freeze({
+    positiveTitleTokens: ['perfume', 'parfum', 'eau de parfum'],
+    negativeTitleTokens: ['mist', 'balm'],
+  }),
+  'eau de parfum': Object.freeze({
+    positiveTitleTokens: ['eau de parfum', 'perfume', 'parfum'],
+    negativeTitleTokens: ['mist', 'balm'],
+  }),
+});
 const EXPLICIT_BEAUTY_COMPOUND_INTENT_RULES = Object.freeze({
   face_wash: Object.freeze({
     id: 'face_wash',
@@ -6709,11 +6719,23 @@ function buildDiscoveryCandidateStructuredFilterText(candidate) {
 }
 
 function matchesExplicitExactBeautyStructuredQueryText(candidate, queryText) {
+  const normalizedQuery = normalizeText(queryText || '');
   const structuredTerms = resolveExplicitExactBeautyStructuredQueryTerms(queryText);
   if (structuredTerms.length <= 0) return false;
   const structuredText = buildDiscoveryCandidateStructuredFilterText(candidate);
   if (!structuredText) return false;
-  return hasAnyNormalizedClassToken(structuredText, structuredTerms);
+  if (!hasAnyNormalizedClassToken(structuredText, structuredTerms)) return false;
+
+  const exactRule = EXPLICIT_BEAUTY_EXACT_PHRASE_STRUCTURED_RULES[normalizedQuery] || null;
+  if (!exactRule) return true;
+
+  const raw = candidate?.raw || {};
+  const titleText = normalizeText(
+    [raw.title, raw.name, raw.external_seed_recall?.retrieval_title].filter(Boolean).join(' '),
+  );
+  if (!titleText) return false;
+  if (hasAnyNormalizedClassToken(titleText, exactRule.negativeTitleTokens || [])) return false;
+  return hasAnyNormalizedClassToken(titleText, exactRule.positiveTitleTokens || []);
 }
 
 function matchesQueryTextCandidate(candidate, queryText) {
