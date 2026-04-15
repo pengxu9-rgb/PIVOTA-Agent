@@ -4500,28 +4500,38 @@ function shouldSkipBroadStructuredSeedStagesForExplicitQuery(request, recallTerm
   return queryTokens.length >= 3;
 }
 
-function shouldSkipExplicitVerticalSeedStage(request, recallTerms = {}) {
-  if (!isExplicitQueryScopedBrowseRequest(request)) return false;
-  if (recallTerms?.compoundIntent) return false;
+function resolveExplicitExactBeautyPhraseHint(request, recallTerms = {}) {
+  if (!isExplicitQueryScopedBrowseRequest(request)) return null;
+  if (recallTerms?.compoundIntent) return null;
   const normalizedQuery = normalizeText(request?.query?.text || '');
-  if (!normalizedQuery) return false;
-  if (EXPLICIT_BEAUTY_VERTICAL_STAGE_BROAD_QUERY_ALLOWLIST.has(normalizedQuery)) return false;
-  return Boolean(BEAUTY_INTEREST_CATEGORY_BY_PHRASE[normalizedQuery]);
+  if (!normalizedQuery) return null;
+  if (EXPLICIT_BEAUTY_VERTICAL_STAGE_BROAD_QUERY_ALLOWLIST.has(normalizedQuery)) return null;
+  const exactHint = BEAUTY_INTEREST_CATEGORY_BY_PHRASE[normalizedQuery];
+  if (!exactHint || !Array.isArray(exactHint.categories) || exactHint.categories.length <= 0) return null;
+  return {
+    normalizedQuery,
+    categories: uniqStrings(
+      [normalizedQuery].concat(exactHint.categories).map((term) => normalizeText(term || '')).filter(Boolean),
+      8,
+    ),
+  };
+}
+
+function shouldSkipExplicitVerticalSeedStage(request, recallTerms = {}) {
+  return Boolean(resolveExplicitExactBeautyPhraseHint(request, recallTerms));
 }
 
 function shouldSkipExplicitCategorySeedStage(request, recallTerms = {}) {
-  if (!isExplicitQueryScopedBrowseRequest(request)) return false;
-  if (recallTerms?.compoundIntent) return false;
-  const normalizedQuery = normalizeText(request?.query?.text || '');
-  if (!normalizedQuery) return false;
-  if (EXPLICIT_BEAUTY_VERTICAL_STAGE_BROAD_QUERY_ALLOWLIST.has(normalizedQuery)) return false;
-  return Boolean(BEAUTY_INTEREST_CATEGORY_BY_PHRASE[normalizedQuery]);
+  return Boolean(resolveExplicitExactBeautyPhraseHint(request, recallTerms));
 }
 
 function resolveExplicitIndexedCategoryHeadTerms(request, recallTerms = {}) {
   if (!isExplicitQueryScopedBrowseRequest(request)) return [];
   if (recallTerms?.compoundIntent) return [];
   if (shouldSkipBroadStructuredSeedStagesForExplicitQuery(request, recallTerms)) return [];
+
+  const exactPhraseHint = resolveExplicitExactBeautyPhraseHint(request, recallTerms);
+  if (exactPhraseHint) return exactPhraseHint.categories;
 
   const normalizedQuery = normalizeText(request?.query?.text || '');
   if (!normalizedQuery) return [];
@@ -4538,6 +4548,10 @@ function resolveExplicitIndexedCategoryHeadTerms(request, recallTerms = {}) {
   // Keep this stage exact-only. Broad expansions like "skincare" and "hair care"
   // are useful later, but they should not preempt the title/summary mainline.
   return exactTerms.has(normalizedQuery) ? [normalizedQuery] : [];
+}
+
+function shouldUseExactPhraseTextUnionSeedStage(request, recallTerms = {}) {
+  return Boolean(resolveExplicitExactBeautyPhraseHint(request, recallTerms));
 }
 
 function buildBeautyInterestSeedSelect() {
@@ -5264,6 +5278,7 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
   );
   const skipExplicitCategoryStage = shouldSkipExplicitCategorySeedStage(request, recallTerms);
   const skipExplicitVerticalStage = shouldSkipExplicitVerticalSeedStage(request, recallTerms);
+  const useExactPhraseTextUnionStage = shouldUseExactPhraseTextUnionSeedStage(request, recallTerms);
   const indexedCategoryHeadTerms = resolveExplicitIndexedCategoryHeadTerms(request, recallTerms);
   if (!compoundIntent) {
     if (indexedCategoryHeadTerms.length > 0) {
@@ -5277,34 +5292,51 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
     }
 
     if (recallTerms.patterns.length > 0) {
-      stageDefinitions.push({
-        score: 48,
-        stage: 'recall_title',
-        cap: explicitStageQueryCap,
-        buildWhereSql: (stageBind) =>
-          `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${stageBind(recallTerms.patterns)}::text[])`,
-      });
-      if (explicitQueryScopedRecall) {
+      if (useExactPhraseTextUnionStage) {
         stageDefinitions.push({
-          score: 42,
-          stage: 'recall_summary',
+          score: 46,
+          stage: 'recall_exact_text_union',
+          cap: explicitStageQueryCap,
+          buildWhereSql: (stageBind) => {
+            const patternBind = stageBind(recallTerms.patterns);
+            return `(
+              ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${patternBind}::text[])
+              OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${patternBind}::text[])
+              OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokens} LIKE ANY(${patternBind}::text[])
+              OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY(${patternBind}::text[])
+            )`;
+          },
+        });
+      } else {
+        stageDefinitions.push({
+          score: 48,
+          stage: 'recall_title',
           cap: explicitStageQueryCap,
           buildWhereSql: (stageBind) =>
-            `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${stageBind(recallTerms.patterns)}::text[])`,
+            `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${stageBind(recallTerms.patterns)}::text[])`,
+        });
+        if (explicitQueryScopedRecall) {
+          stageDefinitions.push({
+            score: 42,
+            stage: 'recall_summary',
+            cap: explicitStageQueryCap,
+            buildWhereSql: (stageBind) =>
+              `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${stageBind(recallTerms.patterns)}::text[])`,
+          });
+        }
+        stageDefinitions.push({
+          score: 40,
+          stage: 'recall_tokens',
+          cap: explicitStageQueryCap,
+          buildWhereSql: (stageBind) => {
+            const patternBind = stageBind(recallTerms.patterns);
+            return `(
+              ${EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokens} LIKE ANY(${patternBind}::text[])
+              OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY(${patternBind}::text[])
+            )`;
+          },
         });
       }
-      stageDefinitions.push({
-        score: 40,
-        stage: 'recall_tokens',
-        cap: explicitStageQueryCap,
-        buildWhereSql: (stageBind) => {
-          const patternBind = stageBind(recallTerms.patterns);
-          return `(
-            ${EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokens} LIKE ANY(${patternBind}::text[])
-            OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY(${patternBind}::text[])
-          )`;
-        },
-      });
     }
 
     if (recallTerms.categoryTerms.length > 0 && !skipBroadStructuredStages && !skipExplicitCategoryStage) {
