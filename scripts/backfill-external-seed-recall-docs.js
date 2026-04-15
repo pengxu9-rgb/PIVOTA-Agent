@@ -155,6 +155,10 @@ async function fetchRows(options = {}) {
         seed_data->'snapshot'->>'category',
         ''
       )) > 0
+      OR (
+        length(coalesce(seed_data#>>'{derived,recall,category}', '')) > 0
+        AND length(coalesce(title, seed_data->>'title', seed_data->'snapshot'->>'title', '')) > 0
+      )
     )`);
   }
   if (options.onlyMissing !== false && !options.categoryRepair) {
