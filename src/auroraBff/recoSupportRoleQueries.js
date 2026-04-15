@@ -84,10 +84,14 @@ function buildSupportRoleQueryScore(query = '', { step = '', oilySignal = false,
     if (/^plumping hydrating serum$/.test(normalized)) score += 1.8;
   } else if (step === 'treatment') {
     if (/\b(treatment|serum|essence|ampoule)\b/.test(normalized)) score += 3;
-    if (/\b(azelaic|niacinamide|salicylic|bha|vitamin c|tranexamic|cica|panthenol|madecassoside|soothing|redness|brightening|dark spot|post acne|mark|blemish|pore|tone correcting)\b/.test(normalized)) score += 2;
+    if (/\b(azelaic|niacinamide|salicylic|bha|vitamin c|tranexamic|cica|panthenol|madecassoside|soothing|redness|brightening|radiance|glow|dull|dark spot|post acne|mark|blemish|pore|tone correcting|uneven tone)\b/.test(normalized)) score += 2;
     if (/^soothing serum sensitive skin$/.test(normalized)) score += 3;
     if (/^post acne marks serum$/.test(normalized)) score += 3;
     if (/^dark spot serum$/.test(normalized)) score += 2.4;
+    if (/^brightening serum$/.test(normalized)) score += 3.2;
+    if (/^tone correcting serum$/.test(normalized)) score += 2.8;
+    if (/^radiance serum$/.test(normalized)) score += 2.2;
+    if (/^uneven tone treatment$/.test(normalized)) score += 2.5;
     if (/^cica serum redness$/.test(normalized)) score += 2.4;
   }
   if (oilySignal && /\b(oily skin|oil control|oil free|lightweight|matte|non-greasy|non greasy)\b/.test(normalized)) {
@@ -129,11 +133,34 @@ function buildSupportRoleQueryVariants({
   const fluidSignal = /\b(fluid|invisible|water[- ]?fit|serum sunscreen|spf fluid)\b/.test(signalText);
   const hydrationSerumSignal = /\b(hydrat|dehydrat|hyaluronic|essence|plumping|water[- ]?fit|dull skin)\b/.test(signalText);
   const soothingTreatmentSignal = /\b(soothing|redness|calming|irritation|cica|panthenol|madecassoside)\b/.test(signalText);
-  const toneTreatmentSignal = /\b(post[- ]?acne|marks?|dark spot|tone|brighten|hyperpigmentation|uneven)\b/.test(signalText);
+  const toneTreatmentSignal = /\b(post[- ]?acne|marks?|dark spot|tone|brighten|radiance|glow|dull|hyperpigmentation|uneven)\b/.test(signalText);
   const acneTreatmentSignal = /\b(acne|blemish|clogged pore|congestion|salicylic|bha|clarifying)\b/.test(signalText);
 
+  const preferredCandidates = [];
+  const hasDullToneSignal = /\b(dull|radiance|glow|brighten|uneven tone)\b/.test(signalText);
+  const explicitMarkConcern = /\b(post[- ]?(?:acne|breakout)|breakout marks?|acne marks?|dark spots?|hyperpigmentation|melasma)\b/.test(
+    uniqueCaseInsensitiveStrings([
+      concernText,
+      ...(Array.isArray(fitKeywords) ? fitKeywords : []),
+    ], 24)
+      .map((value) => normalizeSupportRoleQueryToken(value))
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase(),
+  );
+  if (step === 'treatment' && toneTreatmentSignal && hasDullToneSignal) {
+    preferredCandidates.push('brightening serum', 'tone correcting serum', 'uneven tone treatment', 'radiance serum');
+  }
+
   const candidates = [
-    ...(Array.isArray(queryTerms) ? queryTerms : []),
+    ...preferredCandidates,
+    ...(Array.isArray(queryTerms)
+      ? queryTerms.filter((query) => {
+          const normalizedQuery = normalizeSupportRoleQueryToken(query).toLowerCase();
+          if (!hasDullToneSignal || explicitMarkConcern) return true;
+          return !/\b(post[- ]?acne|acne marks?|dark spots?|hyperpigmentation)\b/.test(normalizedQuery);
+        })
+      : []),
   ];
   if (step === 'moisturizer') {
     if (oilySignal) candidates.push('lightweight moisturizer oily skin');
@@ -162,10 +189,13 @@ function buildSupportRoleQueryVariants({
       candidates.push('panthenol treatment');
     }
     if (toneTreatmentSignal) {
-      candidates.push('post acne marks serum');
-      candidates.push('dark spot serum');
+      if (!hasDullToneSignal || explicitMarkConcern) {
+        candidates.push('post acne marks serum');
+        candidates.push('dark spot serum');
+      }
       candidates.push('tone correcting serum');
       candidates.push('brightening serum');
+      if (hasDullToneSignal) candidates.push('radiance serum');
     }
     if (acneTreatmentSignal) {
       candidates.push('salicylic acid serum clogged pores');

@@ -357,6 +357,21 @@ function repairRoutineMixRoleCoverage({
   const oilyIntent = /\b(oily|oil|shine|sebum|acne|breakout|clogged|pore)\b/.test(contextText)
     || existingIds.has('oil_control_treatment')
     || existingIds.has('acne_clogged_pore_treatment');
+  const makeupLayeringIntent = /\b(makeup|under makeup|pilling|pill\b|rolls? off|balls? up|layering|smooth layering)\b/.test(contextText)
+    || existingIds.has('layering_compatible_moisturizer_or_spf');
+
+  if (makeupLayeringIntent) {
+    const genericSunscreenIndex = repaired.findIndex((role) => String(role?.role_id || '').trim() === 'daily_sunscreen');
+    const finishFitSunscreen = cloneSemanticPlannerRole(pickOntologyRoleById(ontologyRoles, 'daily_sunscreen_finish_fit'));
+    if (genericSunscreenIndex >= 0 && finishFitSunscreen && !hasRole('daily_sunscreen_finish_fit')) {
+      repaired.splice(genericSunscreenIndex, 1, finishFitSunscreen);
+      repairCodes.push('routine_mix_replaced_generic_sunscreen_with_finish_fit');
+    } else if (!hasSunscreen && repaired.length < 3) {
+      insertRole('daily_sunscreen_finish_fit', {
+        code: 'routine_mix_added_finish_fit_sunscreen',
+      });
+    }
+  }
 
   if (hasTreatment && !hasMoisturizer) {
     if (sensitivityIntent) {

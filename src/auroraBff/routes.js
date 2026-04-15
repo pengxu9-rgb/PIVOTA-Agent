@@ -20476,6 +20476,22 @@ function cloneBeautySupportInternalRoundLevel(internalLevel, queryIndex, roundIn
   return cloneBeautySupportRoundLevel(internalLevel, queryIndex, roundIndex, { kind: 'internal' });
 }
 
+function capBeautyPrimaryInternalLevelForRoutineSupportBudget(level) {
+  const levelObj = isPlainObject(level) ? level : null;
+  const queries = Array.isArray(levelObj?.queries) ? levelObj.queries : [];
+  if (!levelObj || queries.length <= 1) return level;
+  return {
+    ...levelObj,
+    primary_internal_query_cap_applied: true,
+    primary_internal_original_query_count: queries.length,
+    queries: queries.slice(0, 1).map((query) => ({
+      ...query,
+      primary_internal_query_cap_applied: true,
+      primary_internal_original_query_count: queries.length,
+    })),
+  };
+}
+
 function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
   const levels = Array.isArray(queryLevels)
     ? queryLevels.filter((level) => level && typeof level === 'object' && !Array.isArray(level))
@@ -20489,6 +20505,8 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
   const maxRoutineSupportRoles = 2;
   let supportInternalFairRoundCount = 0;
   let supportExternalFairRoundCount = 0;
+  let shouldCapPrimaryInternal = false;
+  let primaryInternalOriginalQueryCount = 0;
   for (const level of levels) {
     const queries = Array.isArray(level?.queries) ? level.queries : [];
     const levelId = String(level?.ladder_level || level?.stage_id || '').trim().toLowerCase();
@@ -20513,6 +20531,7 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
       stagedLevels.find((level) =>
         String(level?.ladder_level || level?.stage_id || '').trim().toLowerCase() === 'framework_stage_a_primary_internal',
       ) || stagedLevels[0];
+    const primaryInternalInsertIndex = keptLevels.length;
     keptLevels.push(primaryInternalLevel);
     const supportGroups = [];
     const supportGroupById = new Map();
@@ -20571,6 +20590,16 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
     }
     const supportInternalGroups = supportGroups.filter((group) => group?.internalLevel);
     const supportExternalGroups = supportGroups.filter((group) => group?.externalLevel);
+    primaryInternalOriginalQueryCount = Array.isArray(primaryInternalLevel?.queries)
+      ? primaryInternalLevel.queries.length
+      : 0;
+    shouldCapPrimaryInternal =
+      supportGroups.length > 0 &&
+      primaryInternalOriginalQueryCount > 1;
+    if (shouldCapPrimaryInternal) {
+      keptLevels[primaryInternalInsertIndex] =
+        capBeautyPrimaryInternalLevelForRoutineSupportBudget(primaryInternalLevel);
+    }
     const maxSupportInternalQueryCount = supportInternalGroups.reduce((max, group) => {
       const queries = Array.isArray(group?.internalLevel?.queries) ? group.internalLevel.queries : [];
       return Math.max(max, queries.length);
@@ -20662,6 +20691,13 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
               ...executedSupportInternalLevels,
               ...executedSupportExternalSeedLevels,
             ],
+            ...(shouldCapPrimaryInternal
+              ? {
+                  primary_internal_query_cap_applied: true,
+                  primary_internal_original_query_count: primaryInternalOriginalQueryCount,
+                  primary_internal_executed_query_count: 1,
+                }
+              : {}),
           }
         : {}),
       ...(executedSupportInternalLevels.length
@@ -21624,6 +21660,23 @@ function shouldUseConcernFrameworkRoleCoverageFirst(targetContext = null, ordere
   return roles.length > 1 && !comparisonMode;
 }
 
+function shouldAllowConcernFrameworkPrimaryRoleTopUp(targetContext = null, orderedRoles = []) {
+  const roles = Array.isArray(orderedRoles)
+    ? orderedRoles.filter((role) => String(role?.role_id || '').trim())
+    : [];
+  if (roles.length <= 1) return true;
+  const semanticPlan = isPlainObject(targetContext?.semantic_plan) ? targetContext.semantic_plan : null;
+  const comparisonMode = String(
+    pickFirstTrimmed(
+      targetContext?.comparison_mode,
+      semanticPlan?.comparison_mode,
+      semanticPlan?.selection_constraints?.comparison_mode,
+    ) || '',
+  ).trim().toLowerCase();
+  if (comparisonMode === 'same_role_comparison' || comparisonMode === 'same_role') return true;
+  return !hasStrictBeautyMainlineNoRuntimeFallbackPolicy(targetContext);
+}
+
 function orderConcernFrameworkRolesForSelection(roles = [], { primaryRoleId = '' } = {}) {
   const roleList = Array.isArray(roles)
     ? roles.filter((role) => isPlainObject(role) && String(role?.role_id || '').trim())
@@ -21889,7 +21942,11 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     if (selected.length >= 3) break;
   }
 
-  if (roleCoverageFirst && selected.length < 3) {
+  if (
+    roleCoverageFirst
+    && selected.length < 3
+    && shouldAllowConcernFrameworkPrimaryRoleTopUp(targetContext, orderedRoles)
+  ) {
     for (const item of primaryBucket) {
       addSelectedCandidate(item);
       if (selected.length >= 3) break;
@@ -21946,6 +22003,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     comparison_fill_applied: comparisonFillCount > 0,
     comparison_fill_count: comparisonFillCount,
     comparison_fill_allowed: comparisonFillAllowed,
+    primary_role_top_up_allowed: shouldAllowConcernFrameworkPrimaryRoleTopUp(targetContext, orderedRoles),
     comparison_slot_reserved: reserveComparisonSlot,
     routine_support_fill_applied: routineSupportFillCount > 0,
     routine_support_fill_count: routineSupportFillCount,
