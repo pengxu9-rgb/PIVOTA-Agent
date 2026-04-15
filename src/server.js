@@ -20584,12 +20584,51 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      markPdpV2Phase('parse_request', parseRequestStartedAt);
 
 	      // Resolve the canonical product group first so every client sees the same details.
-	      let productGroupId = null;
-	      let groupMembers = [];
-	      let canonicalProductRef = null;
-        let canonicalizationApplied = false;
-        let canonicalizationReasonCode = null;
-        let identityResolutionSource = 'requested_route';
+		      let productGroupId = null;
+		      let groupMembers = [];
+		      let canonicalProductRef = null;
+	        let canonicalizationApplied = false;
+	        let canonicalizationReasonCode = null;
+	        let identityResolutionSource = 'requested_route';
+	      const shouldPrewarmSimilarForCorePdp =
+	        !wantsSimilar &&
+	        !bypassCache &&
+	        wantsProductIntel &&
+	        !wantsOffers &&
+	        !wantsReviewsPreview;
+	      let similarPrewarmStarted = false;
+	      const startPdpSimilarPrewarm = ({
+	        productForPdp = null,
+	        productRef = null,
+	        fallbackProduct = null,
+	      } = {}) => {
+	        const resolvedProductRef =
+	          productRef && typeof productRef === 'object' ? productRef : canonicalProductRef;
+	        if (
+	          !shouldPrewarmSimilarForCorePdp ||
+	          similarPrewarmStarted ||
+	          !resolvedProductRef?.product_id
+	        ) {
+	          return;
+	        }
+	        similarPrewarmStarted = true;
+	        void prewarmPdpSimilarForProduct({
+	          payload,
+	          canonicalProductForPdp: productForPdp || fallbackProduct || {},
+	          canonicalProductRef: resolvedProductRef,
+	          canonicalProduct: fallbackProduct || productForPdp || {},
+	          checkoutToken,
+	          bypassCache: false,
+	        }).catch((err) => {
+	          logger.debug?.(
+	            {
+	              err: err?.message || String(err),
+	              product_id: resolvedProductRef?.product_id || null,
+	            },
+	            'PDP similar prewarm failed',
+	          );
+	        });
+	      };
 
 	      const subject = payload.subject && typeof payload.subject === 'object' ? payload.subject : null;
 	      const subjectType = subject ? String(subject.type || '').trim().toLowerCase() : '';
@@ -20612,8 +20651,27 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        });
 	      }
 
-	      const entryProductId = productId;
-        requestedProductIdCtx = entryProductId || null;
+		      const entryProductId = productId;
+	      const entryProductIsExternalSeed = isExternalSeedProductId(entryProductId);
+	      if (
+	        entryProductIsExternalSeed &&
+	        (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID)
+	      ) {
+	        const entryMerchantId = requestedMerchantId || EXTERNAL_SEED_MERCHANT_ID;
+	        startPdpSimilarPrewarm({
+	          productForPdp: {
+	            merchant_id: entryMerchantId,
+	            product_id: entryProductId,
+	            source: 'external_seed',
+	            external_product_id: entryProductId,
+	          },
+	          productRef: {
+	            merchant_id: entryMerchantId,
+	            product_id: entryProductId,
+	          },
+	        });
+	      }
+	        requestedProductIdCtx = entryProductId || null;
         requestedMerchantIdCtx = requestedMerchantId || null;
         identityResolutionSourceCtx = identityResolutionSource;
 
@@ -20789,7 +20847,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      markPdpV2Phase('precheck_entry_product', precheckEntryProductStartedAt);
         entryPrecheckMissingCtx = precheckEntryProductMissing;
 
-	        const externalSeedRouteProductId = isExternalSeedProductId(productId);
+	        const externalSeedRouteProductId = entryProductIsExternalSeed || isExternalSeedProductId(productId);
 	        const shouldAttemptUnscopedExternalSeedResolve =
 	          externalSeedRouteProductId &&
 	          (
@@ -20906,34 +20964,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      let canonicalProductForPdp = canonicalProduct;
 	      let identityGraphLive = null;
 	      let identityGraphPublishedIntel = null;
-	      const shouldPrewarmSimilarForCorePdp =
-	        !wantsSimilar &&
-	        !bypassCache &&
-	        wantsProductIntel &&
-	        !wantsOffers &&
-	        !wantsReviewsPreview;
-	      let similarPrewarmStarted = false;
-	      const startPdpSimilarPrewarm = (productForPdp) => {
-	        if (!shouldPrewarmSimilarForCorePdp || similarPrewarmStarted) return;
-	        similarPrewarmStarted = true;
-	        void prewarmPdpSimilarForProduct({
-	          payload,
-	          canonicalProductForPdp: productForPdp || canonicalProductForPdp,
-	          canonicalProductRef,
-	          canonicalProduct,
-	          checkoutToken,
-	          bypassCache: false,
-	        }).catch((err) => {
-	          logger.debug?.(
-	            {
-	              err: err?.message || String(err),
-	              product_id: canonicalProductRef?.product_id || null,
-	            },
-	            'PDP similar prewarm failed',
-	          );
-	        });
-	      };
-	      startPdpSimilarPrewarm(canonicalProductForPdp);
+	      startPdpSimilarPrewarm({
+	        productForPdp: canonicalProductForPdp,
+	        productRef: canonicalProductRef,
+	        fallbackProduct: canonicalProduct,
+	      });
 	      const identityGraphLiveStartedAt = Date.now();
 	      identityGraphLive = await maybeBuildLiveSyntheticPdp({
           merchantId: requestedMerchantId || canonicalProductRef?.merchant_id,
