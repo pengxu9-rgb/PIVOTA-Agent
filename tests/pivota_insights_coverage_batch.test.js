@@ -31,6 +31,8 @@ describe('pivota_insights_coverage_batch', () => {
     expect(args.excludeCovered).toBe(true);
     expect(args.skipGemini).toBe(true);
     expect(args.model).toBe('gemini-3-flash-preview');
+    expect(args.fetchSourceFacts).toBe(true);
+    expect(args.fetchSourceReviews).toBe(false);
     expect(args.identityBeautyOnly).toBe(true);
     expect(args.identityBrands).toEqual(['Naturium', 'Olehenriksen']);
     expect(args.identityTopBrands).toBe(3);
@@ -54,6 +56,18 @@ describe('pivota_insights_coverage_batch', () => {
     ]);
 
     expect(args.productIds).toEqual(['ext_a', 'ext_b', 'ext_c']);
+  });
+
+  test('parses source page enrichment controls for strict coverage batches', () => {
+    const args = parseArgs([
+      'node',
+      'script',
+      '--fetch-source-reviews',
+      '--no-fetch-source-facts',
+    ]);
+
+    expect(args.fetchSourceReviews).toBe(true);
+    expect(args.fetchSourceFacts).toBe(false);
   });
 
   test('builds a pending review packet from compare rows', () => {

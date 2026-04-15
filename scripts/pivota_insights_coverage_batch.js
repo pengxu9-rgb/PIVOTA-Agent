@@ -27,6 +27,8 @@ function parseArgs(argv) {
     maxPerBrand: 3,
     maxPerCategory: 4,
     strictReview: true,
+    fetchSourceReviews: String(process.env.PIVOTA_INSIGHTS_FETCH_SOURCE_REVIEWS || '').trim() === '1',
+    fetchSourceFacts: String(process.env.PIVOTA_INSIGHTS_FETCH_SOURCE_FACTS || '1').trim() !== '0',
     supplementalProductIds: [],
     identityBrands: [],
     identityTopBrands: 0,
@@ -128,6 +130,14 @@ function parseArgs(argv) {
       out.identityBeautyOnly = false;
     } else if (token === '--allow-baseline-only') {
       out.strictReview = false;
+    } else if (token === '--fetch-source-reviews') {
+      out.fetchSourceReviews = true;
+    } else if (token === '--no-fetch-source-reviews') {
+      out.fetchSourceReviews = false;
+    } else if (token === '--fetch-source-facts') {
+      out.fetchSourceFacts = true;
+    } else if (token === '--no-fetch-source-facts') {
+      out.fetchSourceFacts = false;
     } else if (token === '--model' && next) {
       out.model = String(next);
       i += 1;
@@ -394,6 +404,8 @@ async function runCoverageBatch(rawArgs = {}) {
   }
   if (args.excludeCovered) buildArgs.push('--exclude-covered');
   if (args.requireBadgeEvidence) buildArgs.push('--require-badge-evidence');
+  if (args.fetchSourceReviews) buildArgs.push('--fetch-source-reviews');
+  if (args.fetchSourceFacts) buildArgs.push('--fetch-source-facts');
   await runNodeScript(path.join(rootDir, 'scripts/build_product_intel_live_pilot_cases.js'), buildArgs, {
     cwd: rootDir,
     timeoutMs: childTimeoutMs,

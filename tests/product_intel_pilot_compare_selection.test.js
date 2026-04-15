@@ -18,12 +18,14 @@ describe('product_intel pilot compare selection', () => {
         category: 'external',
         description:
           'Meet the Tint + SPF You’ll Actually Wear Naturally radiant, this tinted fluid sunscreen feels like ski…',
+        source_url: 'https://brand.example/products/daily-tinted-fluid-sunscreen',
         how_to_use: 'Shake well before use.',
         ingredients_inci: ['Zinc Oxide'],
       },
     });
 
     expect(facts.description).toBe('');
+    expect(facts.source_url).toBe('https://brand.example/products/daily-tinted-fluid-sunscreen');
     expect(facts.how_to_use).toBe('Shake well before use.');
     expect(facts.ingredients_inci).toEqual(['Zinc Oxide']);
   });
