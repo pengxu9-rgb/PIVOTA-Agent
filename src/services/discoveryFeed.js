@@ -360,22 +360,22 @@ const BEAUTY_INTEREST_CATEGORY_BY_PHRASE = Object.freeze({
     verticals: ['skincare'],
   },
   'glycolic acid': {
-    categories: ['exfoliant', 'toner', 'serum', 'treatment'],
+    categories: ['exfoliant'],
     textQueryTerms: ['glycolic acid', 'glycolic', 'aha', 'exfoliating'],
     verticals: ['skincare'],
   },
   'lactic acid': {
-    categories: ['exfoliant', 'toner', 'serum', 'treatment'],
+    categories: ['exfoliant'],
     textQueryTerms: ['lactic acid', 'lactic', 'aha', 'exfoliating'],
     verticals: ['skincare'],
   },
   aha: {
-    categories: ['exfoliant', 'toner', 'serum', 'treatment'],
+    categories: ['exfoliant'],
     textQueryTerms: ['aha', 'glycolic acid', 'lactic acid', 'exfoliating'],
     verticals: ['skincare'],
   },
   bha: {
-    categories: ['exfoliant', 'toner', 'serum', 'treatment'],
+    categories: ['exfoliant'],
     textQueryTerms: ['bha', 'salicylic acid', 'exfoliating'],
     verticals: ['skincare'],
   },
