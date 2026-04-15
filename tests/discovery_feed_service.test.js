@@ -6282,6 +6282,9 @@ describe('discovery feed service', () => {
       } else {
         expect(indexedHeadTerms).toEqual([]);
       }
+      if (queryText === 'exfoliant') {
+        expect(indexedHeadTerms).not.toContain('treatment');
+      }
       expect(_internals.shouldSkipExplicitCategorySeedStage(request, recallTerms)).toBe(true);
       expect(_internals.shouldSkipExplicitVerticalSeedStage(request, recallTerms)).toBe(true);
       expect(_internals.resolveExplicitQueryExternalSeedMainlineAcceptThreshold(request, 60)).toBe(18);
@@ -6814,7 +6817,7 @@ describe('discovery feed service', () => {
       'idx_external_product_seeds_recall_ingredient_tokens_trgm',
       'idx_external_product_seeds_recall_alias_tokens_trgm',
     ].map((indexname) => ({ tablename: 'external_product_seeds', indexname }));
-    const titleRows = Array.from({ length: 6 }, (_, index) =>
+    const titleRows = Array.from({ length: 10 }, (_, index) =>
       makeExternalSeedRow({
         id: `vitamin_title_${index + 1}`,
         title: `Vitamin C Serum ${index + 1}`,
@@ -6898,12 +6901,12 @@ describe('discovery feed service', () => {
         label: 'external_seed_pool',
       });
 
-	      expect(result.products).toHaveLength(18);
+	      expect(result.products).toHaveLength(22);
 	      expect(result.products.every((product) => /Vitamin C/.test(product.title))).toBe(true);
 	      expect(dbQueryMock).toHaveBeenCalledTimes(9);
       expect(result.recallSummary[0]).toEqual(
         expect.objectContaining({
-          external_seed_qualified_count: 18,
+          external_seed_qualified_count: 22,
           external_seed_filtered_query_text_count: 20,
         }),
       );
@@ -6913,13 +6916,13 @@ describe('discovery feed service', () => {
             stage: 'recall_tokens',
             raw_rows: 20,
             query_qualified_rows: 0,
-            final_eligible_rows: 6,
+            final_eligible_rows: 10,
           }),
           expect.objectContaining({
             stage: 'recall_category',
             raw_rows: 12,
             query_qualified_rows: 12,
-            final_eligible_rows: 18,
+            final_eligible_rows: 22,
           }),
         ]),
       );
