@@ -5852,7 +5852,7 @@ describe('discovery feed service', () => {
     expect(_internals.shouldSkipExplicitVerticalSeedStage(broadRequest, broadRecallTerms)).toBe(false);
   });
 
-  test('exact beauty phrase hints cover fragrance and conditioner exact-phrase variants', () => {
+  test('exact beauty phrase hints cover fragrance and compound conditioner variants', () => {
     const profile = buildDiscoveryProfile({
       auth_state: 'anonymous',
       locale: 'en-US',
@@ -5898,11 +5898,35 @@ describe('discovery feed service', () => {
       profile,
       ['leave in conditioner'],
     );
-    expect(_internals.resolveExplicitIndexedCategoryHeadTerms(leaveInRequest, leaveInRecallTerms)).toEqual(
-      expect.arrayContaining(['leave in conditioner', 'conditioner', 'deep conditioner']),
+    expect(leaveInRecallTerms.compoundIntent).toBe('leave_in_conditioner');
+    expect(leaveInRecallTerms.primaryCategoryTerms).toEqual(
+      expect.arrayContaining(['leave in conditioner', 'hair milk']),
     );
-    expect(_internals.shouldSkipExplicitCategorySeedStage(leaveInRequest, leaveInRecallTerms)).toBe(true);
-    expect(_internals.shouldSkipExplicitVerticalSeedStage(leaveInRequest, leaveInRecallTerms)).toBe(true);
+    expect(leaveInRecallTerms.weakCategoryTerms).toEqual(expect.arrayContaining(['conditioner']));
+    expect(_internals.resolveExplicitIndexedCategoryHeadTerms(leaveInRequest, leaveInRecallTerms)).toEqual([]);
+
+    const handCreamRequest = _internals.normalizeDiscoveryRequest({
+      surface: 'browse_products',
+      limit: 12,
+      query: {
+        text: 'hand cream',
+      },
+      context: {
+        auth_state: 'anonymous',
+        locale: 'en-US',
+        recent_views: [],
+        recent_queries: [],
+      },
+    });
+    const handCreamRecallTerms = _internals.buildBeautyInterestRecallTerms(
+      handCreamRequest,
+      profile,
+      ['hand cream'],
+    );
+    expect(_internals.resolveExplicitIndexedCategoryHeadTerms(handCreamRequest, handCreamRecallTerms)).toEqual(
+      expect.arrayContaining(['hand cream', 'hand lotion']),
+    );
+    expect(_internals.resolveExplicitQueryExternalSeedMainlineAcceptThreshold(handCreamRequest, 24)).toBe(12);
   });
 
   test('exact phrase indexed head treats fragrance as a safe structured synonym for perfume', async () => {
@@ -6153,7 +6177,7 @@ describe('discovery feed service', () => {
     }
   });
 
-  test('exact phrase structured head does not broaden leave in conditioner to generic conditioner rows', async () => {
+  test('compound leave in conditioner recall does not broaden to generic conditioner rows', async () => {
     jest.resetModules();
     const prevDatabaseUrl = process.env.DATABASE_URL;
     process.env.DATABASE_URL = 'postgres://discovery-leave-in-structured-head-guard-test';
@@ -6236,26 +6260,57 @@ describe('discovery feed service', () => {
       });
 
 	      expect(result.products).toHaveLength(0);
-	      expect(dbQueryMock).toHaveBeenCalledTimes(6);
+	      expect(dbQueryMock).toHaveBeenCalledTimes(12);
+	      expect(result.recallSummary[0].compound_intent).toBe('leave_in_conditioner');
 	      expect(result.recallSummary[0].external_seed_stage_counts).toEqual([
 	        expect.objectContaining({
-	          stage: 'recall_indexed_category_head',
+	          stage: 'recall_compound_primary_category',
 	          raw_rows: 6,
 	          query_qualified_rows: 0,
 	          final_eligible_rows: 0,
 	        }),
 	        expect.objectContaining({
-	          stage: 'recall_indexed_category_head',
+	          stage: 'recall_compound_primary_category',
 	          tool_scope: 'creator_agents',
 	          final_eligible_rows: 0,
 	        }),
 	        expect.objectContaining({
-	          stage: 'recall_exact_text_union',
+	          stage: 'recall_compound_exact_title',
 	          tool_scope: '*',
 	          final_eligible_rows: 0,
 	        }),
 	        expect.objectContaining({
-	          stage: 'recall_exact_text_union',
+	          stage: 'recall_compound_exact_title',
+	          tool_scope: 'creator_agents',
+	          final_eligible_rows: 0,
+	        }),
+	        expect.objectContaining({
+	          stage: 'recall_compound_weak_category',
+	          tool_scope: '*',
+	          final_eligible_rows: 0,
+	        }),
+	        expect.objectContaining({
+	          stage: 'recall_compound_weak_category',
+	          tool_scope: 'creator_agents',
+	          final_eligible_rows: 0,
+	        }),
+	        expect.objectContaining({
+	          stage: 'recall_compound_weak_vertical',
+	          tool_scope: '*',
+	          final_eligible_rows: 0,
+	        }),
+	        expect.objectContaining({
+	          stage: 'recall_compound_weak_vertical',
+	          tool_scope: 'creator_agents',
+	          final_eligible_rows: 0,
+	        }),
+	        expect.objectContaining({
+	          stage: 'recall_compound_title_conjunction',
+	          tool_scope: '*',
+	          final_eligible_rows: 0,
+	        }),
+	        expect.objectContaining({
+	          stage: 'recall_compound_title_conjunction',
 	          tool_scope: 'creator_agents',
 	          final_eligible_rows: 0,
 	        }),
@@ -8812,6 +8867,74 @@ describe('discovery feed service', () => {
           parentCategory: 'haircare',
         },
         'scalp_serum',
+      ),
+    ).toBe(false);
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
+            title: 'Brow Harmony Flexible Lifting Gel',
+            external_seed_recall: {
+              retrieval_title: 'brow harmony flexible lifting gel',
+              category: null,
+              vertical: 'Makeup',
+            },
+          },
+          category: null,
+          parentCategory: 'makeup',
+        },
+        'brow_gel',
+      ),
+    ).toBe(true);
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
+            title: 'Brow MVP Ultra Fine Brow Pencil & Styler',
+            external_seed_recall: {
+              retrieval_title: 'brow mvp ultra fine brow pencil and styler',
+              category: null,
+              vertical: 'Makeup',
+            },
+          },
+          category: null,
+          parentCategory: 'makeup',
+        },
+        'brow_gel',
+      ),
+    ).toBe(false);
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
+            title: 'Detangling Leave-in Hair Milk',
+            external_seed_recall: {
+              retrieval_title: 'detangling leave-in hair milk',
+              category: 'Hair Milk',
+              vertical: 'Haircare',
+            },
+          },
+          category: 'hair milk',
+          parentCategory: 'haircare',
+        },
+        'leave_in_conditioner',
+      ),
+    ).toBe(true);
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
+            title: 'The Rich One Moisture Repair Conditioner',
+            external_seed_recall: {
+              retrieval_title: 'the rich one moisture repair conditioner',
+              category: 'Conditioner',
+              vertical: 'Haircare',
+            },
+          },
+          category: 'conditioner',
+          parentCategory: 'haircare',
+        },
+        'leave_in_conditioner',
       ),
     ).toBe(false);
   });
