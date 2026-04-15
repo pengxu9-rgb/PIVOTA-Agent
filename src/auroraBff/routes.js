@@ -20259,14 +20259,14 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
       }
     }
     for (const group of supportGroups) {
-      if (!group?.externalLevel) continue;
-      keptLevels.push(group.externalLevel);
-      executedSupportExternalSeedLevels.push(group.externalLabel);
-    }
-    for (const group of supportGroups) {
-      if (!group?.internalLevel) continue;
-      keptLevels.push(group.internalLevel);
-      executedSupportInternalLevels.push(group.internalLabel);
+      if (group?.internalLevel) {
+        keptLevels.push(group.internalLevel);
+        executedSupportInternalLevels.push(group.internalLabel);
+      }
+      if (group?.externalLevel) {
+        keptLevels.push(group.externalLevel);
+        executedSupportExternalSeedLevels.push(group.externalLabel);
+      }
     }
   } else {
     keptLevels.push(...stagedLevels);
@@ -20291,15 +20291,15 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
         ? {
             routine_support_strategy:
               executedSupportInternalLevels.length && executedSupportExternalSeedLevels.length
-                ? 'primary_plus_external_then_internal_support'
+                ? 'primary_plus_internal_then_external_support'
                 : executedSupportInternalLevels.length
                   ? 'primary_plus_internal_support'
                   : 'primary_plus_external_support',
             executed_support_level_count:
               executedSupportInternalLevels.length + executedSupportExternalSeedLevels.length,
             executed_support_levels: [
-              ...executedSupportExternalSeedLevels,
               ...executedSupportInternalLevels,
+              ...executedSupportExternalSeedLevels,
             ],
           }
         : {}),

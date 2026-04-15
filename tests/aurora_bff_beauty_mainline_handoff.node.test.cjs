@@ -490,7 +490,7 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
         'oil control serum',
         'shine control serum',
         'lightweight moisturizer oily skin',
-        'oil free moisturizer',
+        'barrier lotion oily skin',
         'oil control sunscreen',
         'lightweight sunscreen oily skin',
         'lightweight sunscreen',
@@ -504,7 +504,9 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
         'salicylic acid serum oily skin',
         'oil control serum',
         'lightweight moisturizer oily skin',
+        'barrier lotion oily skin',
         'oil control sunscreen',
+        'lightweight sunscreen oily skin',
       ],
     );
     assert.equal(captured.every((row) => row.callerLane === 'beauty_chat_handoff'), true);
@@ -526,14 +528,14 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
       true,
     );
     assert.equal(
-      externalCaptured.slice(4, 5).every((row) =>
+      externalCaptured.slice(4, 6).every((row) =>
         row.roleId === 'lightweight_moisturizer'
         && row.preferredStep === 'moisturizer'
         && row.transportPolicyMode === 'framework_first_turn'),
       true,
     );
     assert.equal(
-      externalCaptured.slice(5).every((row) =>
+      externalCaptured.slice(6).every((row) =>
         row.roleId === 'daily_sunscreen'
         && row.preferredStep === 'sunscreen'
         && row.transportPolicyMode === 'framework_first_turn'),
@@ -542,7 +544,7 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
     assert.equal(out.searchResult?.query_source, 'beauty_mainline_local_handoff');
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.planned_level_count, 6);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_level_count, 6);
-    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_query_count, 14);
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_query_count, 16);
     assert.equal(
       out.searchResult?.metadata?.search_stage_ledger?.primary_search?.execution_lane,
       'beauty_mainline_local_handoff',
@@ -566,16 +568,16 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
     );
     assert.equal(
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.routine_support_strategy,
-      'primary_plus_external_then_internal_support',
+      'primary_plus_internal_then_external_support',
     );
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_support_level_count, 4);
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_support_levels,
       [
-        'framework_stage_c_support_lightweight_moisturizer_external_seed',
-        'framework_stage_c_support_daily_sunscreen_external_seed',
         'framework_stage_c_support_lightweight_moisturizer',
         'framework_stage_c_support_daily_sunscreen',
+        'framework_stage_c_support_lightweight_moisturizer_external_seed',
+        'framework_stage_c_support_daily_sunscreen_external_seed',
       ],
     );
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.skipped_support_level_count, undefined);
@@ -585,11 +587,11 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
     );
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts?.map((row) => row?.source_scope),
-      ['internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'internal', 'internal', 'internal'],
+      ['internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal', 'internal', 'internal', 'external_seed', 'external_seed'],
     );
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts?.map((row) => row?.source_scope),
-      ['internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'internal', 'internal', 'internal'],
+      ['internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal', 'internal', 'internal', 'external_seed', 'external_seed'],
     );
     const firstSupportExternalAttempt =
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
@@ -830,7 +832,7 @@ test('handoffRecoToBeautyMainlineSearch skips primary external seed when interna
         'oil control serum',
         'shine control serum',
         'lightweight moisturizer oily skin',
-        'oil free moisturizer',
+        'barrier lotion oily skin',
         'oil control sunscreen',
         'lightweight sunscreen oily skin',
         'lightweight sunscreen',
@@ -840,7 +842,9 @@ test('handoffRecoToBeautyMainlineSearch skips primary external seed when interna
       externalCaptured,
       [
         'lightweight moisturizer oily skin',
+        'barrier lotion oily skin',
         'oil control sunscreen',
+        'lightweight sunscreen oily skin',
       ],
     );
     const primaryExternalRows = out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
