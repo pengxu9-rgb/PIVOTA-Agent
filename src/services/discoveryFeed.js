@@ -310,6 +310,32 @@ const BEAUTY_INTEREST_CATEGORY_BY_PHRASE = Object.freeze({
     categories: ['hair care', 'haircare'],
     verticals: ['haircare'],
   },
+  'scalp treatment': {
+    categories: ['scalp treatment', 'scalp care', 'scalp tonic'],
+    textQueryTerms: ['scalp treatment', 'scalp tonic', 'scalp oil', 'for scalp'],
+    verticals: ['haircare'],
+  },
+  'heat protectant': {
+    categories: ['heat protectant', 'hair styling', 'hair treatment'],
+    textQueryTerms: ['heat protectant', 'heat protection', 'heat-protectant'],
+    verticals: ['haircare'],
+  },
+  'curl cream': {
+    categories: ['curl cream', 'curl-defining cream', 'hair styling'],
+    textQueryTerms: ['curl cream', 'curl-defining cream', 'curl defining cream'],
+    verticals: ['haircare'],
+  },
+  'hair spray': {
+    categories: ['hair spray', 'hairspray', 'hair styling'],
+    textQueryTerms: ['hair spray', 'hairspray'],
+    verticals: ['haircare'],
+  },
+  'hair gel': {
+    categories: ['hair gel', 'edge control gel', 'styling gel'],
+    textQueryTerms: ['hair gel', 'edge control gel', 'hair-thickening edge control gel', 'styling gel'],
+    negativeTextTerms: ['shower gel', 'body gel', 'beard'],
+    verticals: ['haircare'],
+  },
   'dry shampoo': {
     categories: ['dry shampoo', 'shampoo', 'hair care', 'haircare'],
     verticals: ['haircare'],
@@ -334,6 +360,17 @@ const BEAUTY_INTEREST_CATEGORY_BY_PHRASE = Object.freeze({
     categories: ['body oil'],
     verticals: ['skincare'],
   },
+  'hydrating mask': {
+    categories: ['hydrating mask', 'hydration mask', 'face mask'],
+    textQueryTerms: ['hydrating mask', 'hydration mask', 'hydrating face mask', 'hydration face mask'],
+    negativeTextTerms: ['pad', 'pads', 'ampoule', 'serum'],
+    verticals: ['skincare'],
+  },
+  'clay mask': {
+    categories: ['clay mask', 'clay stick mask', 'face mask'],
+    textQueryTerms: ['clay mask', 'clay stick mask'],
+    verticals: ['skincare'],
+  },
   'brow gel': {
     categories: ['brow gel'],
     verticals: ['makeup'],
@@ -355,6 +392,17 @@ const BEAUTY_INTEREST_CATEGORY_BY_PHRASE = Object.freeze({
   },
   'makeup bag': {
     categories: ['makeup bag', 'cosmetic bag'],
+    verticals: ['makeup'],
+  },
+  'makeup remover': {
+    categories: ['makeup remover', 'make-up remover', 'micellar water'],
+    textQueryTerms: ['makeup remover', 'make-up remover', 'makeup removing', 'makeup-melting', 'makeup melting', 'micellar'],
+    verticals: ['skincare', 'makeup'],
+  },
+  'makeup sponge': {
+    categories: ['makeup sponge', 'blending sponge', 'beauty sponge', 'powder puff'],
+    textQueryTerms: ['makeup sponge', 'blending sponge', 'beauty sponge', 'powder puff'],
+    negativeTextTerms: ['brush', 'brushes'],
     verticals: ['makeup'],
   },
   'face oil': {
@@ -4654,6 +4702,12 @@ function resolveExplicitExactBeautyPhraseHint(request, recallTerms = {}) {
         .filter(Boolean),
       10,
     ),
+    negativeTextTerms: uniqStrings(
+      (Array.isArray(exactHint.negativeTextTerms) ? exactHint.negativeTextTerms : [])
+        .map((term) => normalizeText(term || ''))
+        .filter(Boolean),
+      10,
+    ),
   };
 }
 
@@ -6908,6 +6962,15 @@ function shouldRejectExplicitExactBeautyStructuredQueryText(candidate, queryText
   return hasAnyNormalizedClassToken(titleText, exactRule.negativeTitleTokens || []);
 }
 
+function shouldRejectExplicitExactBeautyTextQueryCandidate(candidate, request, recallTerms = {}) {
+  const exactPhraseHint = resolveExplicitExactBeautyPhraseHint(request, recallTerms);
+  if (!exactPhraseHint || !Array.isArray(exactPhraseHint.negativeTextTerms)) return false;
+  if (exactPhraseHint.negativeTextTerms.length <= 0) return false;
+  const candidateText = buildDiscoveryCandidateQueryFilterText(candidate);
+  if (!candidateText) return false;
+  return hasAnyNormalizedClassToken(candidateText, exactPhraseHint.negativeTextTerms);
+}
+
 function matchesExplicitBeautyStructuredCategoryCandidate(candidate, queryText) {
   const normalizedQuery = normalizeText(queryText || '');
   if (!normalizedQuery) return false;
@@ -6925,6 +6988,15 @@ function matchesQueryTextCandidate(candidate, queryText) {
   if (!normalizedQuery) return true;
 
   if (shouldFilterExplicitBeautyBrowseNoiseCandidate(candidate, normalizedQuery)) return false;
+  if (
+    shouldRejectExplicitExactBeautyTextQueryCandidate(
+      candidate,
+      { surface: 'browse_products', query: { text: normalizedQuery } },
+      {},
+    )
+  ) {
+    return false;
+  }
   if (shouldRejectExplicitExactBeautyStructuredQueryText(candidate, normalizedQuery)) return false;
 
   const candidateText = normalizeText(
@@ -7242,6 +7314,7 @@ function matchesExplicitExactPhraseTextQueryCandidate(candidate, request, recall
 
   const normalizedQuery = normalizeText(request?.query?.text || exactPhraseHint.normalizedQuery || '');
   if (shouldFilterExplicitBeautyBrowseNoiseCandidate(candidate, normalizedQuery)) return false;
+  if (shouldRejectExplicitExactBeautyTextQueryCandidate(candidate, request, recallTerms)) return false;
   if (shouldRejectExplicitExactBeautyStructuredQueryText(candidate, normalizedQuery)) return false;
 
   const candidateText = normalizeText(

@@ -5890,6 +5890,80 @@ describe('discovery feed service', () => {
     expect(_internals.matchesQueryTextCandidate(sunscreenBundle, 'sunscreen')).toBe(true);
   });
 
+  test('exact hair gel text filtering rejects adjacent shower gel noise', () => {
+    const hairGel = _internals.normalizeCandidateProduct(
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'hair_gel_1',
+        title: 'The Controlling Type Hair-Thickening Edge Control Gel',
+        category: 'Hair Gel',
+        product_type: 'Hair Gel',
+      }),
+      0,
+    );
+    const showerGel = _internals.normalizeCandidateProduct(
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'shower_gel_1',
+        title: 'Multi-Use Shower Gel Face, Beard, Body, Hair',
+        category: 'Shower Gel',
+        product_type: 'Shower Gel',
+      }),
+      0,
+    );
+
+    expect(_internals.matchesQueryTextCandidate(hairGel, 'hair gel')).toBe(true);
+    expect(_internals.matchesQueryTextCandidate(showerGel, 'hair gel')).toBe(false);
+  });
+
+  test('exact product-type text filtering rejects adjacent tool and treatment noise', () => {
+    const makeupSponge = _internals.normalizeCandidateProduct(
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'makeup_sponge_1',
+        title: 'Mushroom Sponge 2-Piece Makeup Blending Sponge',
+        category: 'Makeup Sponge',
+        product_type: 'Makeup Sponge',
+      }),
+      0,
+    );
+    const powderBrush = _internals.normalizeCandidateProduct(
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'powder_brush_1',
+        title: 'Powder Puff Setting Brush 170',
+        category: 'Brush',
+        product_type: 'Brush',
+      }),
+      0,
+    );
+    const hydratingMask = _internals.normalizeCandidateProduct(
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'hydrating_mask_1',
+        title: 'Dew N Plump Hydrating Face Mask',
+        category: 'Face Mask',
+        product_type: 'Face Mask',
+      }),
+      0,
+    );
+    const hydratingPad = _internals.normalizeCandidateProduct(
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'hydrating_pad_1',
+        title: 'Hyalu-Cica Jelly-Fit Ampoule Pad',
+        category: 'Treatment Pad',
+        product_type: 'Treatment Pad',
+      }),
+      0,
+    );
+
+    expect(_internals.matchesQueryTextCandidate(makeupSponge, 'makeup sponge')).toBe(true);
+    expect(_internals.matchesQueryTextCandidate(powderBrush, 'makeup sponge')).toBe(false);
+    expect(_internals.matchesQueryTextCandidate(hydratingMask, 'hydrating mask')).toBe(true);
+    expect(_internals.matchesQueryTextCandidate(hydratingPad, 'hydrating mask')).toBe(false);
+  });
+
   test('exact beauty phrase hints skip broad category and vertical stages for narrow explicit queries', () => {
     const request = _internals.normalizeDiscoveryRequest({
       surface: 'browse_products',
@@ -5936,6 +6010,53 @@ describe('discovery feed service', () => {
 
     expect(_internals.shouldSkipExplicitCategorySeedStage(broadRequest, broadRecallTerms)).toBe(false);
     expect(_internals.shouldSkipExplicitVerticalSeedStage(broadRequest, broadRecallTerms)).toBe(false);
+  });
+
+  test('slow public beauty product-type queries use exact-intent external seed mainline', () => {
+    const profile = buildDiscoveryProfile({
+      auth_state: 'anonymous',
+      locale: 'en-US',
+      recent_views: [],
+      recent_queries: [],
+    });
+    const exactQueries = [
+      ['makeup remover', ['makeup remover', 'make-up remover']],
+      ['makeup sponge', ['makeup sponge', 'blending sponge']],
+      ['scalp treatment', ['scalp treatment', 'scalp tonic']],
+      ['heat protectant', ['heat protectant', 'hair styling']],
+      ['curl cream', ['curl cream', 'curl-defining cream']],
+      ['hair spray', ['hair spray', 'hairspray']],
+      ['hair gel', ['hair gel', 'edge control gel']],
+      ['hydrating mask', ['hydrating mask', 'hydration mask']],
+      ['clay mask', ['clay mask', 'clay stick mask']],
+    ];
+
+    for (const [queryText, expectedHeadTerms] of exactQueries) {
+      const request = _internals.normalizeDiscoveryRequest({
+        surface: 'browse_products',
+        limit: 12,
+        query: {
+          text: queryText,
+        },
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      });
+      const recallTerms = _internals.buildBeautyInterestRecallTerms(request, profile, [queryText]);
+
+      const indexedHeadTerms = _internals.resolveExplicitIndexedCategoryHeadTerms(request, recallTerms);
+      if (expectedHeadTerms.length > 0) {
+        expect(indexedHeadTerms).toEqual(expect.arrayContaining(expectedHeadTerms));
+      } else {
+        expect(indexedHeadTerms).toEqual([]);
+      }
+      expect(_internals.shouldSkipExplicitCategorySeedStage(request, recallTerms)).toBe(true);
+      expect(_internals.shouldSkipExplicitVerticalSeedStage(request, recallTerms)).toBe(true);
+      expect(_internals.resolveExplicitQueryExternalSeedMainlineAcceptThreshold(request, 60)).toBe(18);
+    }
   });
 
   test('exact beauty phrase hints cover fragrance and compound conditioner variants', () => {
