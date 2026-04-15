@@ -44,6 +44,26 @@ describe('backfill-external-seed-recall-docs', () => {
     expect(params).toEqual(['US', ['eps_beta', 'eps_alpha'], 2, 0]);
   });
 
+  test('fetchRows category-repair mode scans broad or raw-category candidates without missing-doc filter', async () => {
+    await fetchRows({
+      market: 'US',
+      limit: 50,
+      offset: 0,
+      categoryRepair: true,
+    });
+
+    const [sql, params] = query.mock.calls[0];
+    expect(sql).toContain("seed_data#>>'{derived,recall,category}'");
+    expect(sql).toContain("seed_data->>'product_type'");
+    expect(sql).toContain("seed_data->'snapshot'->>'product_type'");
+    expect(sql).not.toContain("seed_data#>>'{derived,recall,retrieval_title}'");
+    expect(sql).not.toContain("seed_data#>>'{derived,recall,retrieval_summary}'");
+    expect(sql).not.toContain("seed_data#>>'{derived,recall,retrieval_body}'");
+    expect(params[0]).toBe('US');
+    expect(params[1]).toEqual(expect.arrayContaining(['skincare', 'makeup', 'hair care']));
+    expect(params.slice(-2)).toEqual([50, 0]);
+  });
+
   test('buildRecallDocUpdate adds derived recall without mutating snapshot', () => {
     const row = {
       id: 'eps_one',
@@ -75,6 +95,38 @@ describe('backfill-external-seed-recall-docs', () => {
         version: 'v1',
       }),
     );
+  });
+
+  test('buildRecallDocUpdate repairs broad recall category to leaf product_type', () => {
+    const row = {
+      id: 'eps_serum_repair',
+      title: 'Brightening Vitamin C Serum',
+      seed_data: {
+        brand: 'Example Beauty',
+        category: 'Skincare',
+        product_type: 'Serum',
+        description: 'A brightening vitamin C serum for daily use.',
+        derived: {
+          recall: {
+            retrieval_title: 'Brightening Vitamin C Serum',
+            retrieval_summary: 'A brightening vitamin C serum for daily use.',
+            retrieval_body: 'A brightening vitamin C serum for daily use.',
+            brand: 'Example Beauty',
+            category: 'Skincare',
+            vertical: 'skincare',
+            version: 'v1',
+          },
+        },
+      },
+    };
+
+    const update = buildRecallDocUpdate(row);
+
+    expect(update.changed).toBe(true);
+    expect(update.category_changed).toBe(true);
+    expect(update.previous_recall_category).toBe('Skincare');
+    expect(update.next_recall_category).toBe('Serum');
+    expect(update.nextSeedData.derived.recall.category).toBe('Serum');
   });
 
   test('processRow dry-run does not persist updates', async () => {

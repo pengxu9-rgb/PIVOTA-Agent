@@ -217,6 +217,107 @@ describe('externalSeedRecall', () => {
     expect(doc.vertical).toBe('skincare');
   });
 
+  test('prefers leaf product_type over broad category for recall category', () => {
+    const doc = buildExternalSeedRecallDoc({
+      row: {
+        id: 'eps_serum_leaf',
+        title: 'Brightening Vitamin C Serum',
+      },
+      seedData: {
+        brand: 'Example Beauty',
+        category: 'Skincare',
+        product_type: 'Serum',
+        description: 'A brightening vitamin C serum for daily use.',
+      },
+      snapshot: {},
+    });
+
+    expect(doc.category).toBe('Serum');
+    expect(doc.vertical).toBe('skincare');
+  });
+
+  test('infers leaf category from title when stored category is broad', () => {
+    const doc = buildExternalSeedRecallDoc({
+      row: {
+        id: 'eps_lip_butter_balm',
+        title: 'Lip Butter Balm',
+      },
+      seedData: {
+        brand: 'Summer Fridays',
+        category: 'Makeup',
+        description: 'A buttery balm for cushiony lip hydration.',
+      },
+      snapshot: {},
+    });
+
+    expect(doc.category).toBe('Lip Balm');
+  });
+
+  test('uses title context before ambiguous product_type for compound recall category', () => {
+    const doc = buildExternalSeedRecallDoc({
+      row: {
+        id: 'eps_hair_oil_leaf',
+        title: 'Weightless Hair Oil',
+      },
+      seedData: {
+        brand: 'Example Hair',
+        category: 'Hair Care',
+        product_type: 'Oil',
+        description: 'A lightweight shine oil for soft hair.',
+      },
+      snapshot: {},
+    });
+
+    expect(doc.category).toBe('Hair Oil');
+    expect(doc.vertical).toBe('haircare');
+  });
+
+  test('canonicalizes category paths and plurals to leaf categories', () => {
+    const doc = buildExternalSeedRecallDoc({
+      row: {
+        id: 'eps_path_serum',
+        title: 'Barrier Support Drops',
+      },
+      seedData: {
+        brand: 'Example Beauty',
+        category: 'Skincare / Serums',
+        description: 'A barrier support serum for daily routines.',
+      },
+      snapshot: {},
+    });
+
+    expect(doc.category).toBe('Serum');
+  });
+
+  test('repairs broad stored recall category when resolving persisted docs', () => {
+    const doc = resolveExternalSeedRecallDoc({
+      row: {
+        id: 'eps_stored_broad_serum',
+        title: 'Brightening Vitamin C Serum',
+      },
+      seedData: {
+        brand: 'Example Beauty',
+        category: 'Skincare',
+        product_type: 'Serum',
+        description: 'A brightening vitamin C serum for daily use.',
+        derived: {
+          recall: {
+            retrieval_title: 'Brightening Vitamin C Serum',
+            retrieval_summary: 'A brightening vitamin C serum for daily use.',
+            retrieval_body: 'A brightening vitamin C serum for daily use.',
+            brand: 'Example Beauty',
+            category: 'Skincare',
+            vertical: 'skincare',
+            version: 'v1',
+          },
+        },
+      },
+      snapshot: {},
+    });
+
+    expect(doc.category).toBe('Serum');
+  });
+
   test('builds recall-first SQL with raw seed fallback only at the end', () => {
     const predicate = buildExternalSeedRecallLikePredicate('$3', { includeLegacyFallback: true });
     expect(predicate).toMatch(/retrieval_title/);

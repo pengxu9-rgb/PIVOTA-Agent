@@ -3,10 +3,20 @@
 const fs = require('node:fs');
 const { query } = require('../src/db');
 const { ensureJsonObject } = require('../src/services/externalSeedProducts');
-const { buildExternalSeedRecallDoc, readStoredRecallDoc } = require('../src/services/externalSeedRecall');
+const {
+  BROAD_RECALL_CATEGORY_KEYS,
+  buildExternalSeedRecallDoc,
+  readStoredRecallDoc,
+} = require('../src/services/externalSeedRecall');
+
+const CATEGORY_REPAIR_BROAD_CATEGORY_VALUES = Object.freeze(Array.from(BROAD_RECALL_CATEGORY_KEYS || []));
 
 function normalizeNonEmptyString(value) {
   return String(value || '').trim();
+}
+
+function normalizeComparableString(value) {
+  return normalizeNonEmptyString(value).toLowerCase();
 }
 
 function argValue(name) {
@@ -74,6 +84,7 @@ function comparableJson(value) {
 function buildRecallDocUpdate(row) {
   const seedData = ensureJsonObject(row?.seed_data);
   const snapshot = ensureJsonObject(seedData.snapshot);
+  const previousRecall = readStoredRecallDoc(seedData);
   const nextRecall = buildExternalSeedRecallDoc({ row, seedData, snapshot });
   const nextSeedData = {
     ...seedData,
@@ -82,12 +93,16 @@ function buildRecallDocUpdate(row) {
       recall: nextRecall,
     },
   };
-  const changed =
-    JSON.stringify(comparableJson(readStoredRecallDoc(seedData))) !== JSON.stringify(comparableJson(nextRecall));
+  const previousRecallCategory = normalizeNonEmptyString(previousRecall.category);
+  const nextRecallCategory = normalizeNonEmptyString(nextRecall.category);
+  const changed = JSON.stringify(comparableJson(previousRecall)) !== JSON.stringify(comparableJson(nextRecall));
   return {
     changed,
     nextSeedData,
     recall: nextRecall,
+    previous_recall_category: previousRecallCategory || null,
+    next_recall_category: nextRecallCategory || null,
+    category_changed: normalizeComparableString(previousRecallCategory) !== normalizeComparableString(nextRecallCategory),
   };
 }
 
@@ -123,7 +138,26 @@ async function fetchRows(options = {}) {
       `lower(coalesce(seed_data->>'brand', seed_data->'snapshot'->>'brand', '')) = lower(${addParam(options.brand)})`,
     );
   }
-  if (options.onlyMissing !== false) {
+  if (options.categoryRepair) {
+    const broadCategoryBind = addParam(CATEGORY_REPAIR_BROAD_CATEGORY_VALUES);
+    where.push(`(
+      length(coalesce(seed_data#>>'{derived,recall,category}', '')) = 0
+      OR lower(coalesce(seed_data#>>'{derived,recall,category}', '')) = ANY(${broadCategoryBind}::text[])
+      OR length(coalesce(
+        seed_data->>'product_type',
+        seed_data->'product'->>'product_type',
+        seed_data->'snapshot'->>'product_type',
+        ''
+      )) > 0
+      OR length(coalesce(
+        seed_data->>'category',
+        seed_data->'product'->>'category',
+        seed_data->'snapshot'->>'category',
+        ''
+      )) > 0
+    )`);
+  }
+  if (options.onlyMissing !== false && !options.categoryRepair) {
     where.push(`NOT (
       length(coalesce(seed_data#>>'{derived,recall,retrieval_title}', '')) > 0
       OR length(coalesce(seed_data#>>'{derived,recall,retrieval_summary}', '')) > 0
@@ -151,6 +185,12 @@ async function fetchRows(options = {}) {
         price_amount,
         price_currency,
         availability,
+        coalesce(seed_data->>'category', seed_data->'product'->>'category', seed_data->'snapshot'->>'category') AS seed_category,
+        coalesce(
+          seed_data->>'product_type',
+          seed_data->'product'->>'product_type',
+          seed_data->'snapshot'->>'product_type'
+        ) AS seed_product_type,
         seed_data,
         status,
         attached_product_key,
@@ -175,11 +215,23 @@ async function processRow(row, options = {}) {
   const update = buildRecallDocUpdate(row);
   const storedRecall = readStoredRecallDoc(ensureJsonObject(row?.seed_data));
   const hadRecall = recallDocHasSearchSurface(storedRecall);
+  const categoryMetadata = {
+    previous_recall_category: update.previous_recall_category,
+    next_recall_category: update.next_recall_category,
+    category_changed: update.category_changed,
+  };
   if (!update.changed) {
-    return { status: 'skipped', reason: 'unchanged', row, had_recall: hadRecall, recall: update.recall };
+    return {
+      status: 'skipped',
+      reason: 'unchanged',
+      row,
+      had_recall: hadRecall,
+      recall: update.recall,
+      ...categoryMetadata,
+    };
   }
   if (options.dryRun) {
-    return { status: 'dry_run', row, had_recall: hadRecall, recall: update.recall };
+    return { status: 'dry_run', row, had_recall: hadRecall, recall: update.recall, ...categoryMetadata };
   }
 
   await query(
@@ -196,7 +248,7 @@ async function processRow(row, options = {}) {
     `,
     [row.id, JSON.stringify(update.nextSeedData)],
   );
-  return { status: 'updated', row, had_recall: hadRecall, recall: update.recall };
+  return { status: 'updated', row, had_recall: hadRecall, recall: update.recall, ...categoryMetadata };
 }
 
 async function mapWithConcurrency(items, concurrency, fn) {
@@ -230,12 +282,15 @@ function summarizeResults(results) {
     dry_run: results.filter((result) => result.status === 'dry_run').length,
     skipped: results.filter((result) => result.status === 'skipped').length,
     had_recall: results.filter((result) => result.had_recall).length,
+    category_changed: results.filter((result) => result.category_changed).length,
     by_domain: byDomain,
   };
 }
 
 async function main() {
   const seedIds = readSeedIdFile(argValue('seed-id-file') || argValue('seedIdFile'));
+  const categoryRepair =
+    hasFlag('category-repair') || hasFlag('categoryRepair') || hasFlag('only-category-repair');
   const options = {
     seedId: argValue('seed-id') || argValue('seedId') || null,
     seedIds,
@@ -246,7 +301,8 @@ async function main() {
     limit: Math.max(1, Math.min(Number(argValue('limit') || 1000), 10000)),
     offset: Math.max(0, Number(argValue('offset') || 0)),
     concurrency: Math.max(1, Math.min(Number(argValue('concurrency') || 5), 20)),
-    onlyMissing: !(hasFlag('include-existing') || hasFlag('includeExisting') || hasFlag('all')),
+    categoryRepair,
+    onlyMissing: categoryRepair ? false : !(hasFlag('include-existing') || hasFlag('includeExisting') || hasFlag('all')),
     dryRun: hasFlag('dry-run') || hasFlag('dryRun'),
     touchUpdatedAt: hasFlag('touch-updated-at') || hasFlag('touchUpdatedAt'),
   };
