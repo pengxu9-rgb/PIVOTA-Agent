@@ -19093,7 +19093,10 @@ function buildRecoDerivedFeatureTokens({
     seen.add(key);
     out.push(token);
   };
-  for (const value of asStringArray(providedFeatures, 6)) push(value);
+  for (const value of asStringArray(providedFeatures, 8)) {
+    if (!shouldProjectRecoFeatureForRole(value, { roleText, productName })) continue;
+    push(value);
+  }
   const cleanName = String(productName || '').trim();
   if (cleanName) {
     for (const rawPart of cleanName.split(/\s*\+\s*/)) {
@@ -19108,6 +19111,20 @@ function buildRecoDerivedFeatureTokens({
     push(isCn ? '轻薄精华' : 'Lightweight serum');
   }
   return out.slice(0, 4);
+}
+
+function shouldProjectRecoFeatureForRole(value, { roleText = '', productName = '' } = {}) {
+  const feature = String(value || '').trim().toLowerCase();
+  if (!feature) return false;
+  const role = String(roleText || '').trim().toLowerCase();
+  const name = String(productName || '').trim().toLowerCase();
+  const hydrationOrToleranceRole = /\b(?:hydrat\w*|dehydrat\w*|barrier|moist\w*|sooth\w*|calm\w*|sensitive|redness|irritat\w*)\b/.test(role);
+  const activeTreatmentRole = /\b(oil|shine|sebum|acne|blemish|clogged|pore|tone|mark|dark spot|brighten|hyperpigmentation|uneven)\b/.test(role);
+  const treatmentActive = /\b(salicylic|azelaic|retinol|retinoid|glycolic|lactic|mandelic|benzoyl|peroxide|aha|bha|pha|exfoliat|vitamin c|ascorbic)\b/.test(feature);
+  if (hydrationOrToleranceRole && !activeTreatmentRole && treatmentActive) {
+    return name.includes(feature);
+  }
+  return true;
 }
 
 function buildRecoDerivedShopperCopy({
