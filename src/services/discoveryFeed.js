@@ -4845,11 +4845,6 @@ const EXPLICIT_QUERY_BROAD_STAGE_STOPWORDS = new Set([
   'of',
   'to',
 ]);
-const EXACT_PHRASE_PRODUCTS_SEARCH_SUPPLEMENT_QUERIES = new Set([
-  'conditioner',
-  'shampoo',
-]);
-
 function shouldSkipBroadStructuredSeedStagesForExplicitQuery(request, recallTerms = {}) {
   if (!isExplicitQueryScopedBrowseRequest(request)) return false;
   if (recallTerms?.compoundIntent) return false;
@@ -4989,39 +4984,6 @@ function shouldUseExplicitExactIntentExternalSeedMainline(request, recallTerms =
   if (recallTerms?.compoundIntent) return true;
   if (shouldSkipBroadStructuredSeedStagesForExplicitQuery(request, recallTerms)) return true;
   return Boolean(resolveExplicitExactBeautyPhraseHint(request, recallTerms));
-}
-
-function shouldSupplementExactPhraseQueryWithProductsSearch(request, recallTerms = {}, products = []) {
-  if (!isExplicitQueryScopedBrowseRequest(request)) return false;
-  if (recallTerms?.compoundIntent) return false;
-  const exactPhraseHint = resolveExplicitExactBeautyPhraseHint(request, recallTerms);
-  if (!exactPhraseHint) return false;
-  const requestedCoverage = getPrimaryPathEnoughThreshold(request);
-  if (Array.isArray(products) && products.length >= requestedCoverage) return false;
-  const normalizedQuery = normalizeText(request?.query?.text || '');
-  if (!normalizedQuery) return false;
-  if (!EXACT_PHRASE_PRODUCTS_SEARCH_SUPPLEMENT_QUERIES.has(normalizedQuery)) return false;
-  const phraseConfig = BEAUTY_INTEREST_CATEGORY_BY_PHRASE[normalizedQuery];
-  const exactCategoryTerms = new Set(
-    (Array.isArray(phraseConfig?.categories) ? phraseConfig.categories : [])
-      .map((term) => normalizeText(term || ''))
-      .filter(Boolean),
-  );
-  return exactCategoryTerms.has(normalizedQuery);
-}
-
-function filterExactPhraseSupplementProducts(products = [], request, recallTerms = {}) {
-  if (!Array.isArray(products) || products.length <= 0) return [];
-  if (!resolveExplicitExactBeautyPhraseHint(request, recallTerms)) return products;
-  return products.filter((product, index) => {
-    const normalized = normalizeCandidateProduct(product, index);
-    if (!normalized) return false;
-    return (
-      matchesExplicitExactPhraseStructuredCandidate(normalized, request, recallTerms) ||
-      matchesExplicitExactPhraseTextQueryCandidate(normalized, request, recallTerms) ||
-      matchesQueryTextCandidate(normalized, request?.query?.text)
-    );
-  });
 }
 
 function resolveExplicitExactIntentBufferedTarget(request) {
@@ -7258,41 +7220,6 @@ async function loadCatalogCandidates({
     }
 
     if (explicitExactPhraseQueryMainline) {
-      const exactPhraseRecallTerms = buildBeautyInterestRecallTerms(
-        request,
-        profile,
-        externalProviderQueries,
-      );
-      if (
-        shouldSupplementExactPhraseQueryWithProductsSearch(
-          request,
-          exactPhraseRecallTerms,
-          mergedProducts,
-        )
-      ) {
-        const productsSearchSupplement = await fetchProductsSearchProviderResult();
-        const filteredSupplementProducts = filterExactPhraseSupplementProducts(
-          productsSearchSupplement.products,
-          request,
-          exactPhraseRecallTerms,
-        );
-        const filteredProductsSearchSupplement = {
-          ...productsSearchSupplement,
-          products: filteredSupplementProducts,
-          recallSummary: Array.isArray(productsSearchSupplement.recallSummary)
-            ? productsSearchSupplement.recallSummary.map((step) => ({
-                ...step,
-                exact_phrase_supplement: true,
-                filtered_returned: filteredSupplementProducts.length,
-              }))
-            : [],
-        };
-        appendProviderResult(filteredProductsSearchSupplement);
-        candidateSource = 'external_seed_exact_intent+products_search';
-        primaryPathUsed = 'external_seed_exact_intent';
-        pushSkippedInternalProviderResult('explicit_exact_intent_products_search_supplement');
-        return finalizeProviderResult();
-      }
       candidateSource = 'external_seed_exact_intent';
       primaryPathUsed = 'external_seed_exact_intent';
       providerResults.push(
@@ -10590,8 +10517,6 @@ module.exports = {
     resolveExactPhraseTextUnionPatterns,
     resolveExactPhraseTextUnionFieldLabels,
     buildExactPhraseTextFieldStageDefinitions,
-    shouldSupplementExactPhraseQueryWithProductsSearch,
-    filterExactPhraseSupplementProducts,
     resolveDiscoveryExternalSeedToolScopes,
     buildDiscoveryInterestQuery,
     buildDiscoveryRecallPlan,

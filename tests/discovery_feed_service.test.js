@@ -544,7 +544,7 @@ describe('discovery feed service', () => {
     );
   });
 
-  test('category exact phrase browse supplements underfilled external seeds with products_search mainline', async () => {
+  test('category exact phrase browse does not run products_search supplement when external seeds underfill', async () => {
     process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
     process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY = 'bridge-key';
     delete process.env.PIVOTA_BACKEND_BASE_URL;
@@ -566,34 +566,23 @@ describe('discovery feed service', () => {
       ),
     );
     const internalSpy = jest.fn(async () => []);
-    const productsSearchProducts = Array.from({ length: 18 }, (_, idx) =>
-      makeProduct({
-        merchant_id: 'products_search',
-        product_id: `search_shampoo_${idx + 1}`,
-        title: `Search Shampoo ${idx + 1}`,
-        brand: `Search Beauty ${idx + 1}`,
-        category: 'Hair Care',
-        product_type: 'Shampoo',
-      }),
-    ).concat(
-      Array.from({ length: 4 }, (_, idx) =>
-        makeProduct({
-          merchant_id: 'products_search',
-          product_id: `search_conditioner_noise_${idx + 1}`,
-          title: `Search Conditioner ${idx + 1}`,
-          brand: `Search Beauty Noise ${idx + 1}`,
-          category: 'Hair Care',
-          product_type: 'Conditioner',
-        }),
-      ),
-    );
-
     const productsSearchScope = nock('http://discovery-catalog.test')
       .matchHeader('x-agent-api-key', 'bridge-key')
       .matchHeader('x-api-key', 'bridge-key')
       .get('/agent/v1/products/search')
       .query((query) => String(query.query || '') === 'shampoo')
-      .reply(200, { products: productsSearchProducts });
+      .reply(200, {
+        products: [
+          makeProduct({
+            merchant_id: 'products_search',
+            product_id: 'search_shampoo_should_not_be_called',
+            title: 'Search Shampoo Should Not Be Called',
+            brand: 'Search Beauty',
+            category: 'Hair Care',
+            product_type: 'Shampoo',
+          }),
+        ],
+      });
 
     const response = await getDiscoveryFeed(
       {
@@ -619,22 +608,26 @@ describe('discovery feed service', () => {
       },
     );
 
-    expect(productsSearchScope.isDone()).toBe(true);
+    expect(productsSearchScope.isDone()).toBe(false);
     expect(externalSpy).toHaveBeenCalledTimes(1);
     expect(internalSpy).not.toHaveBeenCalled();
-    expect(response.products).toHaveLength(12);
+    expect(response.products).toHaveLength(10);
     expect(response.products.every((product) => /shampoo/i.test(product.title))).toBe(true);
-    expect(response.metadata.candidate_source).toBe('external_seed_exact_intent+products_search');
-    expect(response.metadata.underfilled_reason).toBeUndefined();
-    expect(response.metadata.route_health.primary_quality_gate_passed).toBe(true);
+    expect(response.metadata.candidate_source).toBe('external_seed_exact_intent');
+    expect(response.metadata.underfilled_reason).toBe('public_search_underfilled_exact_intent');
+    expect(response.metadata.route_health.primary_quality_gate_passed).toBe(false);
     expect(response.metadata.provider_breakdown).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ provider: 'external_seeds', successful: true, returned: 10 }),
-        expect.objectContaining({ provider: 'products_search', successful: true, returned: 18 }),
+        expect.objectContaining({
+          provider: 'products_search',
+          skipped: true,
+          skip_reason: 'explicit_exact_intent_external_seed_mainline',
+        }),
         expect.objectContaining({
           provider: 'internal_catalog',
           skipped: true,
-          skip_reason: 'explicit_exact_intent_products_search_supplement',
+          skip_reason: 'explicit_exact_intent_external_seed_mainline',
         }),
       ]),
     );
