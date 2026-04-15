@@ -43,7 +43,11 @@ const PDP_RECS_EXTERNAL_BASE_FETCH_TIMEOUT_MS = Math.max(
 );
 const PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS = Math.max(
   50,
-  parseTimeoutMs(process.env.PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS, 700),
+  parseTimeoutMs(process.env.PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS, 2200),
+);
+const PDP_RECS_EXTERNAL_DOMAIN_QUERY_TIMEOUT_MS = Math.max(
+  PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS,
+  parseTimeoutMs(process.env.PDP_RECS_EXTERNAL_DOMAIN_QUERY_TIMEOUT_MS, 2200),
 );
 const PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS = Math.max(
   PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS,
@@ -51,7 +55,7 @@ const PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS = Math.max(
 );
 const PDP_RECS_IDENTITY_DEDUPE_TIMEOUT_MS = Math.max(
   100,
-  parseTimeoutMs(process.env.PDP_RECS_IDENTITY_DEDUPE_TIMEOUT_MS, 450),
+  parseTimeoutMs(process.env.PDP_RECS_IDENTITY_DEDUPE_TIMEOUT_MS, 1800),
 );
 const PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_MULTIPLIER = Math.max(
   1,
@@ -214,6 +218,9 @@ const STOPWORDS = new Set([
   'to',
   'with',
 ]);
+
+const BEAUTY_ACCESSORY_TITLE_RE =
+  /\b(pouch|bag|soap saver|gua sha|gwalsa|brush|tool|applicator|spatula|mirror|sharpener|headband)\b/i;
 
 function tokenize(text) {
   const s = normalizeText(text);
@@ -403,15 +410,41 @@ function buildRecommendationTitleDedupeKey(product) {
   return normalizeText(product?.title || product?.name);
 }
 
+function stripTerminalVariantToken(title) {
+  const normalized = normalizeText(title);
+  if (!normalized) return '';
+  return normalized
+    .replace(/\b(?:shade|color|colour|tone)\s+[a-z]{1,4}\d{1,4}$/i, '')
+    .replace(/\b[a-z]{1,4}\d{1,4}$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function buildVariantAgnosticTitleKey(product) {
+  const titleKey = buildRecommendationTitleDedupeKey(product);
+  if (!titleKey) return '';
+  const brand = getBrandName(product);
+  const titleWithoutBrand =
+    brand && titleKey.startsWith(`${brand} `)
+      ? titleKey.slice(brand.length + 1).trim()
+      : titleKey;
+  const strippedTitle = stripTerminalVariantToken(titleWithoutBrand);
+  if (!strippedTitle || strippedTitle === titleKey) return '';
+  return brand ? `${brand}::${strippedTitle}` : strippedTitle;
+}
+
 function buildExcludedCandidateState(items = []) {
   const exactKeys = new Set();
   const productIds = new Set();
   const titleKeys = new Set();
+  const variantAgnosticTitleKeys = new Set();
 
   for (const item of Array.isArray(items) ? items : []) {
     const productId = getProductId(item);
     const titleKey = buildRecommendationTitleDedupeKey(item);
+    const variantAgnosticTitleKey = buildVariantAgnosticTitleKey(item);
     if (titleKey) titleKeys.add(titleKey);
+    if (variantAgnosticTitleKey) variantAgnosticTitleKeys.add(variantAgnosticTitleKey);
     if (!productId) continue;
     const merchantId = getMerchantId(item);
     const parentExternalProductId = getParentExternalProductId(item);
@@ -423,22 +456,26 @@ function buildExcludedCandidateState(items = []) {
     if (parentExternalProductId) productIds.add(parentExternalProductId);
   }
 
-  return { exactKeys, productIds, titleKeys };
+  return { exactKeys, productIds, titleKeys, variantAgnosticTitleKeys };
 }
 
 function mergeExcludedCandidateStates(...states) {
   const exactKeys = new Set();
   const productIds = new Set();
   const titleKeys = new Set();
+  const variantAgnosticTitleKeys = new Set();
 
   for (const state of states) {
     if (!state || typeof state !== 'object') continue;
     for (const key of state.exactKeys || []) exactKeys.add(key);
     for (const productId of state.productIds || []) productIds.add(productId);
     for (const titleKey of state.titleKeys || []) titleKeys.add(titleKey);
+    for (const variantAgnosticTitleKey of state.variantAgnosticTitleKeys || []) {
+      variantAgnosticTitleKeys.add(variantAgnosticTitleKey);
+    }
   }
 
-  return { exactKeys, productIds, titleKeys };
+  return { exactKeys, productIds, titleKeys, variantAgnosticTitleKeys };
 }
 
 function isExcludedCandidate(product, state) {
@@ -450,6 +487,8 @@ function isExcludedCandidate(product, state) {
   if (parentExternalProductId && state.productIds?.has(parentExternalProductId)) return true;
   const titleKey = buildRecommendationTitleDedupeKey(product);
   if (titleKey && state.titleKeys?.has(titleKey)) return true;
+  const variantAgnosticTitleKey = buildVariantAgnosticTitleKey(product);
+  if (variantAgnosticTitleKey && state.variantAgnosticTitleKeys?.has(variantAgnosticTitleKey)) return true;
   const merchantId = getMerchantId(product);
   return merchantId ? state.exactKeys?.has(`${merchantId}::${productId}`) === true : false;
 }
@@ -882,6 +921,101 @@ function buildExternalSeedRecommendationCandidate(row, options = {}) {
   };
 }
 
+const EXTERNAL_SEED_RECOMMENDATION_SELECT = `
+            id,
+            external_product_id,
+            destination_url,
+            canonical_url,
+            domain,
+            title,
+            image_url,
+            price_amount,
+            price_currency,
+            availability,
+            updated_at,
+            created_at,
+            jsonb_strip_nulls(jsonb_build_object(
+              'title', seed_data->>'title',
+              'brand', coalesce(seed_data->>'brand', seed_data->'derived'->'recall'->>'brand'),
+              'brand_name', seed_data->>'brand_name',
+              'vendor', seed_data->>'vendor',
+              'vendor_name', seed_data->>'vendor_name',
+              'category', coalesce(seed_data->>'category', seed_data->'derived'->'recall'->>'category'),
+              'product_type', coalesce(seed_data->>'product_type', seed_data->'derived'->'recall'->>'category'),
+              'productType', seed_data->>'productType',
+              'image_url', seed_data->>'image_url',
+              'price_amount', seed_data->>'price_amount',
+              'price', seed_data->>'price',
+              'price_currency', seed_data->>'price_currency',
+              'availability', seed_data->>'availability',
+              'canonical_url', seed_data->>'canonical_url',
+              'destination_url', seed_data->>'destination_url',
+              'source_url', seed_data->>'source_url',
+              'external_product_id', seed_data->>'external_product_id',
+              'parent_external_product_id', seed_data->>'parent_external_product_id',
+              'source_listing_scope', seed_data->>'source_listing_scope',
+              'variant_title', seed_data->>'variant_title',
+              'snapshot', jsonb_strip_nulls(jsonb_build_object(
+                'title', seed_data->'snapshot'->>'title',
+                'brand', seed_data->'snapshot'->>'brand',
+                'brand_name', seed_data->'snapshot'->>'brand_name',
+                'vendor', seed_data->'snapshot'->>'vendor',
+                'vendor_name', seed_data->'snapshot'->>'vendor_name',
+                'category', seed_data->'snapshot'->>'category',
+                'product_type', seed_data->'snapshot'->>'product_type',
+                'productType', seed_data->'snapshot'->>'productType',
+                'image_url', seed_data->'snapshot'->>'image_url',
+                'image', seed_data->'snapshot'->'image',
+                'images',
+                  CASE
+                    WHEN jsonb_typeof(seed_data->'snapshot'->'images') = 'array'
+                    THEN jsonb_build_array(seed_data->'snapshot'->'images'->0)
+                    ELSE NULL
+                  END,
+                'price_amount', seed_data->'snapshot'->>'price_amount',
+                'price', seed_data->'snapshot'->>'price',
+                'price_currency', seed_data->'snapshot'->>'price_currency',
+                'availability', seed_data->'snapshot'->>'availability',
+                'canonical_url', seed_data->'snapshot'->>'canonical_url',
+                'destination_url', seed_data->'snapshot'->>'destination_url',
+                'source_url', seed_data->'snapshot'->>'source_url',
+                'product_id', seed_data->'snapshot'->>'product_id',
+                'parent_external_product_id', seed_data->'snapshot'->>'parent_external_product_id',
+                'source_listing_scope', seed_data->'snapshot'->>'source_listing_scope',
+                'variant_title', seed_data->'snapshot'->>'variant_title'
+              ))
+            )) AS seed_data
+`;
+
+const EXTERNAL_SEED_SEMANTIC_SELECT = `
+        id,
+        external_product_id,
+        title,
+        jsonb_strip_nulls(jsonb_build_object(
+          'title', seed_data->>'title',
+          'brand', coalesce(seed_data->>'brand', seed_data->'derived'->'recall'->>'brand'),
+          'brand_name', seed_data->>'brand_name',
+          'vendor', seed_data->>'vendor',
+          'vendor_name', seed_data->>'vendor_name',
+          'category', coalesce(seed_data->>'category', seed_data->'derived'->'recall'->>'category'),
+          'product_type', coalesce(seed_data->>'product_type', seed_data->'derived'->'recall'->>'category'),
+          'productType', seed_data->>'productType',
+          'description', seed_data->>'description',
+          'snapshot', jsonb_strip_nulls(jsonb_build_object(
+            'title', seed_data->'snapshot'->>'title',
+            'brand', seed_data->'snapshot'->>'brand',
+            'brand_name', seed_data->'snapshot'->>'brand_name',
+            'vendor', seed_data->'snapshot'->>'vendor',
+            'vendor_name', seed_data->'snapshot'->>'vendor_name',
+            'category', seed_data->'snapshot'->>'category',
+            'product_type', seed_data->'snapshot'->>'product_type',
+            'productType', seed_data->'snapshot'->>'productType',
+            'description', seed_data->'snapshot'->>'description'
+          ))
+        )) AS seed_data,
+        updated_at
+`;
+
 function extractProductDomains(product) {
   return uniqueByKey(
     [
@@ -965,6 +1099,7 @@ function buildCandidateFeatures(candidateProduct, baseCurrency) {
   const currency = normalizeCurrency(candidateProduct, baseCurrency);
   const verticalSignal = inferVerticalFromProduct(candidateProduct);
   const tokens = tokenize([candidateProduct.title, candidateProduct.name, brand, leafCategory, parentCategory].filter(Boolean).join(' '));
+  const normalizedTitle = normalizeText(candidateProduct.title || candidateProduct.name);
   return {
     productId: getProductId(candidateProduct),
     merchantId: getMerchantId(candidateProduct),
@@ -974,10 +1109,21 @@ function buildCandidateFeatures(candidateProduct, baseCurrency) {
     priceAmount,
     currency,
     tokens,
+    normalizedTitle,
     isExternal: isExternalProduct(candidateProduct),
     vertical: verticalSignal.vertical || UNKNOWN_VERTICAL,
     verticalInferred: Boolean(verticalSignal.inferred),
   };
+}
+
+function titleSupportsLeafCategory(features) {
+  const leaf = String(features?.leafCategory || '').trim();
+  const title = String(features?.normalizedTitle || '').trim();
+  if (!leaf || !title) return true;
+  if (leaf === 'sunscreen') {
+    return /\b(sunscreen|spf|sun\s*(?:milk|cream|lotion|fluid|stick|serum|gel|screen)?|uv)\b/i.test(title);
+  }
+  return true;
 }
 
 function countExternalSkipEligibleInternalCandidates(baseProduct, internalCandidates) {
@@ -1063,7 +1209,7 @@ function pickBalancedCandidates(candidates, k, baseIsExternal) {
   if (baseIsExternal) {
     for (const candidate of candidates) {
       if (selected.length >= K) break;
-      if (candidate.source !== 'external' || !candidate.brandMatch) continue;
+      if (candidate.source !== 'external' || !candidate.brandMatch || candidate.layerPriority > 2) continue;
       appendCandidate(candidate);
     }
   }
@@ -1130,7 +1276,7 @@ function pickLayeredRecommendations({
     {
       id: 'L2E',
       name: 'same_brand_external_synthetic',
-      priority: 2.5,
+      priority: 3.2,
       predicate: (c, features, baseFeatures) =>
         baseFeatures.isExternal &&
         c.brandMatch &&
@@ -1147,8 +1293,23 @@ function pickLayeredRecommendations({
     {
       id: 'L3',
       name: 'leaf_category+near_price',
-      priority: 3,
+      priority: 2.4,
       predicate: (c) => c.leafMatch && nearPriceTight(c.relDiff),
+    },
+    {
+      id: 'L3E',
+      name: 'external_leaf_category',
+      priority: 2.6,
+      predicate: (c, features, baseFeatures) =>
+        baseFeatures.isExternal &&
+        features.isExternal &&
+        c.leafMatch &&
+        (
+          nearPriceLoose(c.relDiff) ||
+          baseFeatures.vertical === UNKNOWN_VERTICAL ||
+          features.vertical === UNKNOWN_VERTICAL ||
+          baseFeatures.vertical === features.vertical
+        ),
     },
     {
       id: 'L4',
@@ -1198,6 +1359,24 @@ function pickLayeredRecommendations({
         !scoreDetail.brandMatch
       ) {
         filteredByExternalBrandAuthority += 1;
+        return null;
+      }
+
+      if (
+        base.isExternal &&
+        base.vertical !== UNKNOWN_VERTICAL &&
+        BEAUTY_ACCESSORY_TITLE_RE.test(features.normalizedTitle || '')
+      ) {
+        filteredByConfidence += 1;
+        return null;
+      }
+      if (
+        base.isExternal &&
+        !scoreDetail.brandMatch &&
+        scoreDetail.leafMatch &&
+        !titleSupportsLeafCategory(features)
+      ) {
+        filteredByConfidence += 1;
         return null;
       }
 
@@ -1484,6 +1663,7 @@ async function fetchExternalCandidates({
   domainHints = [],
   limit,
   minFocusedCandidates = 6,
+  deepDomainRecall = false,
 }) {
   if (!process.env.DATABASE_URL) return [];
   const safeLimit = Math.min(Math.max(1, Number(limit || 180)), 500);
@@ -1511,19 +1691,7 @@ async function fetchExternalCandidates({
       const res = await query(
         `
           SELECT
-            id,
-            external_product_id,
-            destination_url,
-            canonical_url,
-            domain,
-            title,
-            image_url,
-            price_amount,
-            price_currency,
-            availability,
-            seed_data,
-            updated_at,
-            created_at
+${EXTERNAL_SEED_RECOMMENDATION_SELECT}
           FROM external_product_seeds
           WHERE status = 'active'
             AND market = $1
@@ -1555,24 +1723,12 @@ async function fetchExternalCandidates({
       const res = await query(
         `
           SELECT
-            id,
-            external_product_id,
-            destination_url,
-            canonical_url,
-            domain,
-            title,
-            image_url,
-            price_amount,
-            price_currency,
-            availability,
-            seed_data,
-            updated_at,
-            created_at
+${EXTERNAL_SEED_RECOMMENDATION_SELECT}
           FROM external_product_seeds
           WHERE status = 'active'
             AND market = $1
             AND (tool = '*' OR tool = $2)
-            AND lower(coalesce(domain, '')) = ANY($4)
+            AND domain = ANY($4)
           ORDER BY updated_at DESC, created_at DESC
           LIMIT $3
         `,
@@ -1609,18 +1765,55 @@ async function fetchExternalCandidates({
     );
   }
 
+  const loadCategoryMatches = () =>
+    runTimedExternalQuery(
+      'external_category',
+      () => runQuery(
+        `AND (
+              lower(coalesce(seed_data->'derived'->'recall'->>'category','')) = ANY($4)
+              OR lower(coalesce(seed_data->>'category','')) = ANY($4)
+              OR lower(coalesce(seed_data->>'product_type','')) = ANY($4)
+              OR lower(coalesce(seed_data->>'productType','')) = ANY($4)
+              OR lower(coalesce(seed_data->'product'->>'category','')) = ANY($4)
+              OR lower(coalesce(seed_data->'snapshot'->>'category','')) = ANY($4)
+              OR lower(coalesce(seed_data->'snapshot'->>'product_type','')) = ANY($4)
+              OR lower(coalesce(seed_data->'snapshot'->>'productType','')) = ANY($4)
+            )`,
+        [categoryAliases],
+        deepDomainRecall
+          ? Math.min(safeLimit, Math.max(60, safeMinFocusedCandidates * 8))
+          : Math.min(120, safeLimit),
+        'external_category',
+      ),
+      deepDomainRecall ? PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS : PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS,
+    );
+
   const out = [];
+  let preloadedCategoryMatches = null;
+  if (deepDomainRecall && category) {
+    preloadedCategoryMatches = await loadCategoryMatches();
+    out.push(...preloadedCategoryMatches);
+    const categoryFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
+    if (categoryFocusedCandidates.length >= safeMinFocusedCandidates) {
+      return categoryFocusedCandidates.slice(0, safeLimit * 3);
+    }
+  }
+
+  const domainCap = deepDomainRecall
+    ? Math.min(safeLimit, Math.max(60, safeMinFocusedCandidates * 10))
+    : Math.min(safeLimit, Math.max(12, safeMinFocusedCandidates * 2));
   const domainMatches = await runTimedExternalQuery(
     'external_domain',
-    () => runDomainQuery(Math.min(safeLimit, Math.max(12, safeMinFocusedCandidates * 2))),
+    () => runDomainQuery(domainCap),
+    deepDomainRecall ? PDP_RECS_EXTERNAL_DOMAIN_QUERY_TIMEOUT_MS : PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS,
   );
   out.push(...domainMatches);
   const domainFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
-  if (domainFocusedCandidates.length >= safeMinFocusedCandidates) {
+  if (!deepDomainRecall && domainFocusedCandidates.length >= safeMinFocusedCandidates) {
     return domainFocusedCandidates.slice(0, safeLimit * 3);
   }
 
-  if (brand) {
+  if (brand && !deepDomainRecall) {
     const brandFieldMatches = await runTimedExternalQuery(
       'external_brand_fields',
       () => runQuery(
@@ -1641,7 +1834,7 @@ async function fetchExternalCandidates({
     );
     out.push(...brandFieldMatches);
     const brandFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
-    if (brandFocusedCandidates.length >= safeMinFocusedCandidates) {
+    if (!deepDomainRecall && brandFocusedCandidates.length >= safeMinFocusedCandidates) {
       return brandFocusedCandidates.slice(0, safeLimit * 3);
     }
 
@@ -1658,29 +1851,13 @@ async function fetchExternalCandidates({
       : [];
     out.push(...brandTitleMatches);
     const titleFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
-    if (titleFocusedCandidates.length >= safeMinFocusedCandidates) {
+    if (!deepDomainRecall && titleFocusedCandidates.length >= safeMinFocusedCandidates) {
       return titleFocusedCandidates.slice(0, safeLimit * 3);
     }
   }
 
   const categoryMatches = category
-    ? await runTimedExternalQuery(
-        'external_category',
-        () => runQuery(
-          `AND (
-              lower(coalesce(seed_data->>'category','')) = ANY($4)
-              OR lower(coalesce(seed_data->>'product_type','')) = ANY($4)
-              OR lower(coalesce(seed_data->>'productType','')) = ANY($4)
-              OR lower(coalesce(seed_data->'product'->>'category','')) = ANY($4)
-              OR lower(coalesce(seed_data->'snapshot'->>'category','')) = ANY($4)
-              OR lower(coalesce(seed_data->'snapshot'->>'product_type','')) = ANY($4)
-              OR lower(coalesce(seed_data->'snapshot'->>'productType','')) = ANY($4)
-            )`,
-          [categoryAliases],
-          Math.min(120, safeLimit),
-          'external_category',
-        ),
-      )
+    ? (preloadedCategoryMatches ? [] : await loadCategoryMatches())
     : [];
 
   out.push(...categoryMatches);
@@ -1761,7 +1938,8 @@ async function loadExternalSeedSemanticRecord(baseProduct) {
   try {
     const res = await query(
       `
-        SELECT id, external_product_id, title, seed_data, updated_at
+        SELECT
+${EXTERNAL_SEED_SEMANTIC_SELECT}
         FROM external_product_seeds
         WHERE status = 'active'
           AND (${clauses.join(' OR ')})
@@ -1990,6 +2168,7 @@ async function recommend({
           domainHints: baseDomains,
           limit: Math.max(120, safeK * 15),
           minFocusedCandidates: safeK,
+          deepDomainRecall: baseProductIsExternal,
         }),
     effectiveExternalFetchTimeoutMs,
     [],

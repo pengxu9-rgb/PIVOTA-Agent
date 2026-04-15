@@ -86,9 +86,8 @@ describe('RecommendationEngine external candidate fetch', () => {
     );
     expect(
       queryMock.mock.calls.some(([sql]) =>
-        String(sql).includes("seed_data->>'vendor'") &&
-        String(sql).includes("seed_data->'snapshot'->>'brand'") &&
-        !String(sql).includes("seed_data->'snapshot'->>'title'") &&
+        String(sql).includes("regexp_replace(lower(coalesce(seed_data->>'brand'") &&
+        String(sql).includes("lower(coalesce(seed_data->'snapshot'->>'brand'") &&
         !String(sql).includes('attached_product_key IS NULL'),
       ),
     ).toBe(true);
@@ -251,7 +250,7 @@ describe('RecommendationEngine external candidate fetch', () => {
 
     const queryMock = jest.fn(async (sql, params) => {
       const sqlText = String(sql);
-      if (sqlText.includes("lower(coalesce(domain, '')) = ANY($4)")) {
+      if (sqlText.includes('domain = ANY($4)')) {
         expect(params?.[3]).toEqual(['kravebeauty.com', 'www.kravebeauty.com']);
         return {
           rows: Array.from({ length: 6 }).map((_, index) =>
@@ -288,9 +287,11 @@ describe('RecommendationEngine external candidate fetch', () => {
           String(product.canonical_url || product.destination_url || '').includes('kravebeauty.com'),
       ),
     ).toBe(true);
-    expect(queryMock.mock.calls.some(([sql]) => String(sql).includes("lower(coalesce(domain, '')) = ANY($4)"))).toBe(true);
+    expect(queryMock.mock.calls.some(([sql]) => String(sql).includes('domain = ANY($4)'))).toBe(true);
     expect(
-      queryMock.mock.calls.some(([sql]) => String(sql).includes("seed_data->>'brand'")),
+      queryMock.mock.calls.some(([sql]) =>
+        String(sql).includes("regexp_replace(lower(coalesce(seed_data->>'brand'"),
+      ),
     ).toBe(false);
   });
 
@@ -332,7 +333,7 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(products.every((product) => product.brand === 'Winona')).toBe(true);
     expect(queryMock.mock.calls.some(([sql]) => String(sql).includes("seed_data->>'brand'"))).toBe(true);
     expect(
-      queryMock.mock.calls.some(([sql]) => String(sql).includes("seed_data->>'category'")),
+      queryMock.mock.calls.some(([sql]) => String(sql).includes("lower(coalesce(seed_data->'derived'->'recall'->>'category',''))")),
     ).toBe(false);
   });
 
@@ -356,7 +357,7 @@ describe('RecommendationEngine external candidate fetch', () => {
           ),
         };
       }
-      if (sqlText.includes("seed_data->>'category'")) {
+      if (sqlText.includes("lower(coalesce(seed_data->'derived'->'recall'->>'category',''))")) {
         return {
           rows: [
             makeExternalRow({
@@ -397,7 +398,7 @@ describe('RecommendationEngine external candidate fetch', () => {
       'ext_niacinamide_serum_1',
       'ext_niacinamide_serum_2',
     ]);
-    expect(queryMock.mock.calls.some(([sql]) => String(sql).includes("seed_data->>'category'"))).toBe(true);
+    expect(queryMock.mock.calls.some(([sql]) => String(sql).includes("lower(coalesce(seed_data->'derived'->'recall'->>'category',''))"))).toBe(true);
   });
 
   test('uses title category tokens when structured category rows underfill target', async () => {
@@ -420,7 +421,7 @@ describe('RecommendationEngine external candidate fetch', () => {
           ],
         };
       }
-      if (sqlText.includes("seed_data->>'category'")) {
+      if (sqlText.includes("lower(coalesce(seed_data->'derived'->'recall'->>'category',''))")) {
         return { rows: [] };
       }
       if (sqlText.includes("seed_data->'derived'->'recall'->>'retrieval_title'")) {
@@ -499,7 +500,7 @@ describe('RecommendationEngine external candidate fetch', () => {
           ],
         };
       }
-      if (sqlText.includes("seed_data->>'category'")) {
+      if (sqlText.includes("lower(coalesce(seed_data->'derived'->'recall'->>'category',''))")) {
         return { rows: [] };
       }
       if (sqlText.includes("seed_data->'derived'->'recall'->>'retrieval_title'")) {
@@ -548,7 +549,7 @@ describe('RecommendationEngine external candidate fetch', () => {
 
     const queryMock = jest.fn(async (sql, params) => {
       const sqlText = String(sql);
-      if (sqlText.includes("lower(coalesce(domain, '')) = ANY($4)")) {
+      if (sqlText.includes('domain = ANY($4)')) {
         expect(params?.[3]).toEqual(['kravebeauty.com', 'www.kravebeauty.com']);
         return {
           rows: Array.from({ length: 2 }).map((_, index) =>
@@ -591,7 +592,7 @@ describe('RecommendationEngine external candidate fetch', () => {
     });
 
     expect(products).toHaveLength(3);
-    expect(queryMock.mock.calls.some(([sql]) => String(sql).includes("lower(coalesce(domain, '')) = ANY($4)"))).toBe(true);
+    expect(queryMock.mock.calls.some(([sql]) => String(sql).includes('domain = ANY($4)'))).toBe(true);
     expect(
       queryMock.mock.calls.some(([sql]) => String(sql).includes("seed_data->>'brand'")),
     ).toBe(true);
@@ -602,7 +603,7 @@ describe('RecommendationEngine external candidate fetch', () => {
 
     const queryMock = jest.fn(async (sql, params) => {
       const sqlText = String(sql);
-      if (sqlText.includes("lower(coalesce(domain, '')) = ANY($4)")) {
+      if (sqlText.includes('domain = ANY($4)')) {
         expect(params?.[3]).toEqual(['tomfordbeauty.com', 'www.tomfordbeauty.com']);
         return {
           rows: Array.from({ length: 6 }).map((_, index) =>
@@ -633,7 +634,7 @@ describe('RecommendationEngine external candidate fetch', () => {
 
     expect(products).toHaveLength(6);
     expect(products.every((product) => product.domain === 'www.tomfordbeauty.com')).toBe(true);
-    expect(queryMock.mock.calls.some(([sql]) => String(sql).includes("lower(coalesce(domain, '')) = ANY($4)"))).toBe(true);
+    expect(queryMock.mock.calls.some(([sql]) => String(sql).includes('domain = ANY($4)'))).toBe(true);
   });
 
   test('recommend fetches internal and external pools in parallel instead of serially stacking source latency', async () => {
@@ -812,7 +813,7 @@ describe('RecommendationEngine external candidate fetch', () => {
           })),
         });
       }
-      if (sqlText.includes("lower(coalesce(domain, '')) = ANY($4)")) {
+      if (sqlText.includes('domain = ANY($4)')) {
         expect(params?.[3]).toEqual(['kravebeauty.com', 'www.kravebeauty.com']);
         return Promise.resolve({
           rows: [
@@ -904,10 +905,14 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(result.debug?.fetch_strategy?.external_timed_out).toBe(false);
     expect(result.debug?.fetch_strategy?.internal_count).toBe(0);
     expect(queryMock.mock.calls.every(([sql]) => !String(sql).includes('FROM products_cache'))).toBe(true);
-    expect(queryMock.mock.calls.some(([sql]) => String(sql).includes("lower(coalesce(domain, '')) = ANY($4)"))).toBe(true);
     expect(
       queryMock.mock.calls.some(
-        ([sql]) => String(sql).includes("seed_data->>'brand'") || String(sql).includes("seed_data->>'category'"),
+        ([sql]) => String(sql).includes('domain = ANY($4)'),
+      ),
+    ).toBe(true);
+    expect(
+      queryMock.mock.calls.some(
+        ([sql]) => String(sql).includes("regexp_replace(lower(coalesce(seed_data->>'brand'"),
       ),
     ).toBe(false);
   });
