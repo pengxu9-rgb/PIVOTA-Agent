@@ -5638,6 +5638,16 @@ describe('discovery feed service', () => {
           recent_queries: [],
         },
       });
+      expect(
+        freshInternals.resolveExplicitIndexedCategoryHeadTerms(
+          request,
+          freshInternals.buildBeautyInterestRecallTerms(
+            request,
+            freshBuildDiscoveryProfile(request.context),
+            ['vitamin c'],
+          ),
+        ),
+      ).toEqual([]);
 
       const result = await freshInternals.fetchBeautyInterestExternalSeedFastpathCandidates({
         request,
@@ -5681,7 +5691,7 @@ describe('discovery feed service', () => {
     }
   });
 
-  test('explicit non-compound browse stops seed stages once title rows satisfy mainline accept count', async () => {
+  test('explicit non-compound browse uses exact indexed category before title scan', async () => {
     jest.resetModules();
     const prevDatabaseUrl = process.env.DATABASE_URL;
     process.env.DATABASE_URL = 'postgres://discovery-noncompound-title-stop-test';
@@ -5754,6 +5764,16 @@ describe('discovery feed service', () => {
       expect(
         freshInternals.resolveExplicitQueryExternalSeedMainlineAcceptThreshold(request, 60),
       ).toBe(8);
+      expect(
+        freshInternals.resolveExplicitIndexedCategoryHeadTerms(
+          request,
+          freshInternals.buildBeautyInterestRecallTerms(
+            request,
+            freshBuildDiscoveryProfile(request.context),
+            ['conditioner'],
+          ),
+        ),
+      ).toEqual(['conditioner']);
 
       const result = await freshInternals.fetchBeautyInterestExternalSeedFastpathCandidates({
         request,
@@ -5768,9 +5788,10 @@ describe('discovery feed service', () => {
 
       expect(result.products).toHaveLength(8);
       expect(dbQueryMock).toHaveBeenCalledTimes(3);
+      expect(dbQueryMock.mock.calls[2][0]).toContain("seed_data->'derived'->'recall'->>'category'");
       expect(dbQueryMock.mock.calls[2][1].at(-1)).toBe(36);
       expect(result.recallSummary[0].external_seed_stage_counts.map((entry) => entry.stage)).toEqual([
-        'recall_title',
+        'recall_indexed_category_head',
       ]);
     } finally {
       if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
@@ -7433,7 +7454,7 @@ describe('discovery feed service', () => {
 		    }
 		  });
 
-  test('explicit compound browse stops after exact title covers first page', async () => {
+  test('explicit compound browse stops after exact intent stage covers first page', async () => {
     jest.resetModules();
     const prevDatabaseUrl = process.env.DATABASE_URL;
     process.env.DATABASE_URL = 'postgres://discovery-compound-exact-stop-test';
@@ -7516,7 +7537,7 @@ describe('discovery feed service', () => {
       expect(dbQueryMock.mock.calls[2][1].at(-1)).toBe(36);
       expect(result.recallSummary[0].external_seed_stage_counts).toEqual([
         expect.objectContaining({
-          stage: 'recall_compound_exact_title',
+          stage: 'recall_compound_primary_category',
           raw_rows: 12,
           compound_qualified_rows: 12,
         }),
