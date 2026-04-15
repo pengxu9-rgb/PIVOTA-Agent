@@ -286,6 +286,10 @@ describe('pdpProductIntel KB hydration', () => {
             provenance: {
               source: 'product_intel_pilot_compare',
               generator: 'curated_override',
+              reviewer_kind: 'assistant',
+              review_status: 'completed',
+              review_decision: 'rewrite',
+              selection_strategy: 'curated_override',
             },
           },
         },
@@ -352,6 +356,51 @@ describe('pdpProductIntel KB hydration', () => {
 
   test('hydrates synthetic product-line products from identity graph alternate refs before PDP options are built', async () => {
     const getProductIntelKbEntry = jest.fn(async (kbKey) => {
+      if (kbKey === 'product:ext_line_selected') {
+        return {
+          kb_key: kbKey,
+          source: 'pivota_product_intel_pilot_selected',
+          last_success_at: '2026-04-14T14:01:00.000Z',
+          analysis: {
+            product_intel_v1: {
+              contract_version: 'pivota.product_intel.v1',
+              display_name: 'Pivota Insights',
+              canonical_product_ref: {
+                merchant_id: 'external_seed',
+                product_id: 'ext_line_selected',
+              },
+              product_intel_core: {
+                what_it_is: {
+                  headline: 'Pending generic fallback',
+                  body: 'This entry should not block a reviewed product-line sibling.',
+                },
+                best_for: [],
+                why_it_stands_out: [],
+                routine_fit: { step: '', am_pm: [], pairing_notes: [] },
+                watchouts: [],
+                confidence: { overall: 'low' },
+                freshness: {
+                  generated_at: '2026-04-14T14:01:00.000Z',
+                  source_version: 'pilot_pending',
+                },
+                quality_state: 'limited',
+                evidence_profile: 'seller_only',
+              },
+              quality_state: 'limited',
+              evidence_profile: 'seller_only',
+              freshness: {
+                generated_at: '2026-04-14T14:01:00.000Z',
+                source_version: 'pilot_pending',
+              },
+              provenance: {
+                source: 'product_intel_pilot_compare',
+                generator: 'draft',
+                review_status: 'pending',
+              },
+            },
+          },
+        };
+      }
       if (kbKey !== 'product:ext_line_reviewed') return null;
       return {
         kb_key: kbKey,
@@ -401,6 +450,10 @@ describe('pdpProductIntel KB hydration', () => {
             provenance: {
               source: 'product_intel_pilot_compare',
               generator: 'curated_override',
+              reviewer_kind: 'assistant',
+              review_status: 'completed',
+              review_decision: 'rewrite',
+              selection_strategy: 'curated_override',
             },
           },
         },
@@ -437,6 +490,7 @@ describe('pdpProductIntel KB hydration', () => {
           product_id: 'ext_line_reviewed',
         },
       ],
+      requireReviewedBundle: true,
     });
 
     expect(getProductIntelKbEntry).toHaveBeenCalledWith('product:ext_line_selected');

@@ -742,6 +742,7 @@ async function hydrateProductWithPublishedIntel({
   const kbKeys = buildPublishedIntelKbKeys(sourceProduct, canonicalProductRef, {
     alternateCanonicalProductRefs,
   });
+  let firstUnavailableProduct = null;
   for (const kbKey of kbKeys) {
     let kbEntry = null;
     try {
@@ -787,7 +788,7 @@ async function hydrateProductWithPublishedIntel({
         };
     }
     if (directBundleSource) {
-      return {
+      const unavailableProduct = {
         ...sourceProduct,
         product_intel_unavailable: {
           reason: requireReviewedBundle ? 'needs_review' : 'invalid_product_intel_bundle',
@@ -804,6 +805,11 @@ async function hydrateProductWithPublishedIntel({
             new Date().toISOString(),
         },
       };
+      if (requireReviewedBundle) {
+        if (!firstUnavailableProduct) firstUnavailableProduct = unavailableProduct;
+        continue;
+      }
+      return unavailableProduct;
     }
     if (!allowLegacyAnalysisFallback) continue;
     const normalized = normalizeProductAnalysis(kbAnalysis);
@@ -840,6 +846,7 @@ async function hydrateProductWithPublishedIntel({
     };
   }
 
+  if (firstUnavailableProduct) return firstUnavailableProduct;
   if (embeddedBundle) return sourceProduct;
   return sourceProduct;
 }
