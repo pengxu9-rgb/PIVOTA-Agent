@@ -3749,6 +3749,54 @@ test('__internal: framework recall planner prefers oil-control ingredient-led se
   ]);
 });
 
+test('__internal: framework recall planner emits hydrating serum support queries instead of falling back to primary contract queries', () => {
+  const { __internal } = loadRoutesFresh();
+  const plan = __internal.buildRecoRecallPlan({
+    mode: 'framework_generic',
+    targetContext: {
+      primary_role_id: 'hydrating_barrier_moisturizer',
+      framework_summary: {
+        concern_text: 'my skin feels dry and tight after washing, what should i use first?',
+      },
+      semantic_plan: { routine_mode: 'routine_mix', comparison_mode: 'routine_mix' },
+      framework_roles: [
+        {
+          role_id: 'hydrating_barrier_moisturizer',
+          rank: 1,
+          preferred_step: 'moisturizer',
+          query_terms: ['hydrating moisturizer dry skin', 'barrier repair moisturizer', 'ceramide cream sensitive skin'],
+          fit_keywords: ['hydrating', 'barrier repair', 'ceramide', 'dry skin'],
+        },
+        {
+          role_id: 'hydrating_serum_or_essence',
+          rank: 2,
+          preferred_step: 'serum',
+          query_terms: ['hydrating serum dehydrated skin', 'hyaluronic acid serum', 'hydrating essence dull skin'],
+          fit_keywords: ['hydrating', 'dehydrated', 'hyaluronic acid', 'essence', 'plumping'],
+        },
+        {
+          role_id: 'daily_sunscreen',
+          rank: 3,
+          preferred_step: 'sunscreen',
+          query_terms: ['daily sunscreen skincare', 'broad spectrum sunscreen'],
+          fit_keywords: ['spf', 'uv filters', 'broad spectrum', 'lightweight'],
+        },
+      ],
+    },
+  });
+
+  const hydratingSerumStages = plan.stages.filter((stage) => stage?.role_id === 'hydrating_serum_or_essence');
+  assert.equal(hydratingSerumStages.length, 2);
+  assert.deepEqual(hydratingSerumStages.map((stage) => stage.source_scope), ['internal', 'external_seed']);
+  const hydratingSerumQueries = hydratingSerumStages.flatMap((stage) => stage.entries.map((entry) => entry.query));
+  assert.ok(hydratingSerumQueries.includes('hyaluronic acid serum'));
+  assert.ok(hydratingSerumQueries.includes('hydrating serum dehydrated skin'));
+  assert.ok(
+    hydratingSerumQueries.every((query) => /serum|essence|hyaluronic|hydrat/i.test(query)),
+    `unexpected hydrating serum support query set: ${hydratingSerumQueries.join(', ')}`,
+  );
+});
+
 test('__internal: beauty chat handoff uses effective framework target context for broad concern payload metadata', async () => {
   const observed = {
     payloadTargetContext: null,
@@ -6723,6 +6771,38 @@ test('__internal: framework pool keeps external seed skincare candidates when sk
   assert.equal(state.selected_recommendations[0]?.candidate_step, 'serum');
   assert.equal(state.selected_source_counts?.external_seed, 1);
   assert.equal(state.external_seed_used_count, 1);
+});
+
+test('__internal: reco catalog normalization removes placeholder seed copy from user-visible evidence fields', async () => {
+  const { __internal } = loadRoutesFresh();
+  const normalized = __internal.normalizeRecoCatalogProduct({
+    product_id: 'ext_placeholder_copy_1',
+    merchant_id: 'external_seed',
+    brand: 'Winona',
+    display_name: 'Winona Soothing Repair Serum',
+    category: 'Serum',
+    product_type: 'Serum',
+    source: 'external_seed',
+    retrieval_source: 'external_seed',
+    retrieval_role_id: 'soothing_treatment',
+    short_description: 'Replace with your own description if needed.',
+    description: 'Test fixture for PDP. Replace with your own description if needed.',
+    why_this_one: 'Replace with your own description if needed.',
+    key_features: ['Replace with your own description if needed.', 'Soothing serum'],
+    compare_highlights: ['Replace with your own description if needed.'],
+    benefit_tags: ['soothing', 'redness'],
+    search_aliases: ['soothing serum sensitive skin'],
+  });
+
+  assert.equal(normalized?.short_description, undefined);
+  assert.equal(normalized?.description, undefined);
+  assert.equal(normalized?.why_this_one, undefined);
+  assert.deepEqual(normalized?.key_features, ['Soothing serum']);
+  assert.equal(Array.isArray(normalized?.compare_highlights), false);
+  assert.ok(
+    !(Array.isArray(normalized?.description_tokens) ? normalized.description_tokens : [])
+      .some((item) => /replace with your own description/i.test(String(item || ''))),
+  );
 });
 
 test('__internal: framework pool promotes strong semantic serum evidence into the treatment primary slot', async () => {

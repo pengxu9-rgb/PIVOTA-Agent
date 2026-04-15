@@ -70,6 +70,8 @@ function buildConcernRoleProductTypeHypotheses(role = null, preferredStep = '') 
     aliases.push('moisturizer', 'lotion', 'cream', 'gel cream', 'water gel', 'water cream', 'emulsion');
   } else if (preferredStep === 'sunscreen') {
     aliases.push('sunscreen', 'spf', 'sun fluid', 'sun cream', 'sun lotion', 'uv');
+  } else if (preferredStep === 'serum') {
+    aliases.push('serum', 'essence', 'ampoule');
   } else if (preferredStep === 'treatment') {
     aliases.push('treatment', 'serum', 'ampoule', 'essence');
   }
@@ -140,7 +142,7 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
     // Promote only when the candidate text carries role-level semantics,
     // not when it matches by ingredient tokens alone.
     score += preferredStep === 'treatment'
-      ? (strongSemanticFitMatched ? 0.22 : 0.08)
+      ? (strongSemanticFitMatched ? 0.3 : 0.08)
       : 0.18;
   }
   score += Math.min(0.27, fitKeywordMatches * 0.12);
