@@ -2651,10 +2651,11 @@ test('beauty mainline reco rows filter off-role active features for hydrating su
     assert.equal(rows.length, 1);
     assert.ok(rows[0].key_features.includes('Hyaluronic acid'));
     assert.ok(rows[0].key_features.includes('Niacinamide'));
-    assert.ok(rows[0].key_features.includes('Lightweight serum'));
+    assert.ok(rows[0].key_features.includes('Quadruple Hyaluronic Acid Serum 5%'));
     assert.equal(rows[0].key_features.includes('Salicylic acid'), false);
     assert.equal(rows[0].key_features.includes('Azelaic acid'), false);
     assert.equal(rows[0].key_features.includes('Alpha Arbutin'), false);
+    assert.equal(rows[0].key_features.includes('Quadruple Hyaluronic Acid Serum 5% - Jumbo'), false);
   } finally {
     delete require.cache[moduleId];
   }

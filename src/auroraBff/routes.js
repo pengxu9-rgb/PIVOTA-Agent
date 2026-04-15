@@ -19102,7 +19102,8 @@ function buildRecoDerivedFeatureTokens({
     for (const rawPart of cleanName.split(/\s*\+\s*/)) {
       const part = String(rawPart || '').trim();
       if (!part) continue;
-      if (/[0-9]+(?:\.[0-9]+)?%/.test(part)) push(part);
+      const percentFeature = buildRecoPercentFeatureFromNamePart(part);
+      if (percentFeature) push(percentFeature);
     }
   }
   const roleHaystack = `${String(roleText || '')} ${cleanName}`.toLowerCase();
@@ -19111,6 +19112,24 @@ function buildRecoDerivedFeatureTokens({
     push(isCn ? '轻薄精华' : 'Lightweight serum');
   }
   return out.slice(0, 4);
+}
+
+function buildRecoPercentFeatureFromNamePart(value) {
+  const raw = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!raw) return '';
+  const percentMatch = raw.match(/\b\d+(?:\.\d+)?%/);
+  if (!percentMatch) return '';
+  const percent = percentMatch[0];
+  const before = raw
+    .slice(0, percentMatch.index)
+    .replace(/\s*[-–—]\s*(?:jumbo|value size|mini|travel size|refill|set)\b.*$/i, '')
+    .replace(/\b(?:the ordinary|naturium|kravebeauty|first aid beauty)\b/ig, ' ')
+    .replace(/[^\p{L}\p{N}\s-]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const words = before.split(/\s+/).filter(Boolean);
+  const compactPrefix = words.slice(-4).join(' ').trim();
+  return compactPrefix ? `${compactPrefix} ${percent}` : percent;
 }
 
 function shouldProjectRecoFeatureForRole(value, { roleText = '', productName = '' } = {}) {
