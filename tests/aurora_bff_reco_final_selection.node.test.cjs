@@ -2477,6 +2477,17 @@ test('beauty mainline routine selection covers support roles before same-role re
 test('beauty mainline reco rows promote visible nested product fields to top level', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
+    const normalized = __internal.normalizeRecoCatalogProduct({
+      product_id: 'fab_dark_spot_raw',
+      merchant_id: 'merch_efbc46b4619cfbdf',
+      brand: 'First Aid Beauty',
+      display_name: 'Dark Spot Serum with Niacinamide',
+      why_this_one: 'Glycerin',
+      key_ingredients: ['Glycerin', 'Niacinamide'],
+    });
+    assert.equal(normalized?.why_this_one, undefined);
+    assert.ok(normalized?.key_features.includes('Glycerin'));
+
     const rows = __internal.buildRecoRowsFromMainlineProducts(
       [
         {
