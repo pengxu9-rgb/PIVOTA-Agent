@@ -16659,10 +16659,13 @@ async function buildProductIntelTopLevelModuleData({
   offersData = null,
   canonicalProductRef = null,
   productGroupId = null,
+  requireReviewedBundle = true,
 }) {
   const productWithIntel = await hydrateProductWithPublishedIntel({
     product,
     canonicalProductRef,
+    requireReviewedBundle,
+    allowLegacyAnalysisFallback: !requireReviewedBundle,
   });
   return buildProductIntelBundle({
     product: productWithIntel,
@@ -16670,6 +16673,7 @@ async function buildProductIntelTopLevelModuleData({
     offersData,
     canonicalProductRef,
     productGroupId,
+    requireReviewedBundle,
   });
 }
 
@@ -21020,14 +21024,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         wantsProductIntel || Boolean(identityGraphLive?.synthetic_product);
       if (requiresProductIntelModule) {
         productIntel =
+          identityGraphPublishedIntel ||
           (await buildProductIntelTopLevelModuleData({
             product: canonicalProductForPdp,
             relatedProducts,
             offersData,
             canonicalProductRef,
             productGroupId,
-          })) ||
-          identityGraphPublishedIntel;
+          }));
         modules.push({
           type: 'product_intel',
           required: Boolean(identityGraphLive?.synthetic_product),
@@ -26766,46 +26770,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         upstreamData?.data?.product ||
         null;
       if (product) {
-        const pdpOptions = getPdpOptions(payload);
-        let relatedProducts = [];
-        if (pdpOptions.includeRecommendations) {
-          const bypassCache =
-            payload?.options?.no_cache === true ||
-            payload?.options?.cache_bypass === true ||
-            payload?.options?.bypass_cache === true;
-          try {
-            const rec = await recommendPdpProducts({
-              pdp_product: product,
-              k: payload.recommendations?.limit || 6,
-              locale: payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
-              currency: product.currency || 'USD',
-              options: {
-                debug: pdpOptions.debug,
-                no_cache: bypassCache,
-                cache_bypass: bypassCache,
-                bypass_cache: bypassCache,
-              },
-            });
-            relatedProducts = Array.isArray(rec?.items) ? rec.items : [];
-          } catch (err) {
-            logger.warn(
-              { err: err?.message || String(err), merchant_id: product.merchant_id, product_id: product.product_id },
-              'PDP recommendations failed (get_product_detail include=pdp); continuing without recommendations module',
-            );
-            relatedProducts = [];
-          }
-        }
         upstreamData = {
           ...upstreamData,
-          pdp_payload: buildPdpPayload({
-            product,
-            relatedProducts,
-            entryPoint: pdpOptions.entryPoint,
-            experiment: pdpOptions.experiment,
-            templateHint: pdpOptions.templateHint,
-            includeEmptyReviews: pdpOptions.includeEmptyReviews,
-            debug: pdpOptions.debug,
-          }),
+          metadata: {
+            ...(upstreamData && typeof upstreamData.metadata === 'object' ? upstreamData.metadata : {}),
+            legacy_pdp_include_disabled: true,
+            legacy_pdp_include_reason: 'get_pdp_v2_required',
+          },
         };
       }
     }
