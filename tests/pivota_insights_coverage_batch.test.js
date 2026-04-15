@@ -53,9 +53,14 @@ describe('pivota_insights_coverage_batch', () => {
       'script',
       '--product-ids',
       'ext_a,ext_b,ext_c',
+      '--product-refs',
+      'merch_demo:sku_a',
+      '--supplemental-product-refs',
+      'merch_demo:sku_b',
     ]);
 
-    expect(args.productIds).toEqual(['ext_a', 'ext_b', 'ext_c']);
+    expect(args.productIds).toEqual(['ext_a', 'ext_b', 'ext_c', 'merch_demo:sku_a']);
+    expect(args.supplementalProductIds).toEqual(['merch_demo:sku_b']);
   });
 
   test('parses source page enrichment controls for strict coverage batches', () => {

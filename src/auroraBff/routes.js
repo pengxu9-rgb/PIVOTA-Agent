@@ -3919,6 +3919,67 @@ function pickRecoProductIntelBundle(row) {
   return candidates.find((item) => isPlainObject(item) && isPlainObject(item.product_intel_core)) || null;
 }
 
+function extractRecoProductIntelBundleFromKbEntry(entry) {
+  const analysis = isPlainObject(entry?.analysis) ? entry.analysis : null;
+  if (!analysis) return null;
+  return pickRecoProductIntelBundle({ analysis });
+}
+
+async function hydrateRecoCandidateProductIntelFromKb(row) {
+  const item = isPlainObject(row) ? row : null;
+  if (!item || pickRecoProductIntelBundle(item)) return item || row;
+  const productId = pickFirstTrimmed(
+    item.canonical_product_ref?.product_id,
+    item.canonical_product_ref?.productId,
+    item.product_id,
+    item.productId,
+    item.sku?.canonical_product_ref?.product_id,
+    item.sku?.canonical_product_ref?.productId,
+    item.sku?.product_id,
+    item.sku?.productId,
+  );
+  if (!productId) return item;
+  let kbEntry = null;
+  try {
+    kbEntry = await getProductIntelKbEntry(normalizeProductIntelKbKey(`product:${productId}`));
+  } catch {
+    kbEntry = null;
+  }
+  const bundle = extractRecoProductIntelBundleFromKbEntry(kbEntry);
+  if (!bundle) return item;
+  const sourceRow = {
+    ...item,
+    product_intel: bundle,
+    ...(isPlainObject(bundle.shopping_card) ? { shopping_card: bundle.shopping_card } : {}),
+    ...(isPlainObject(bundle.search_card) ? { search_card: bundle.search_card } : {}),
+  };
+  const pivotaInsights = pickRecoPivotaInsights(sourceRow);
+  const shoppingCard = pickRecoShoppingCardPayload(sourceRow);
+  const searchCard = pickRecoSearchCardPayload(sourceRow);
+  return {
+    ...sourceRow,
+    ...(pivotaInsights ? { pivota_insights: pivotaInsights } : {}),
+    ...(shoppingCard ? { shopping_card: shoppingCard } : {}),
+    ...(searchCard ? { search_card: searchCard } : {}),
+    metadata: {
+      ...(isPlainObject(item.metadata) ? item.metadata : {}),
+      product_intel_kb_used: true,
+      ...(pickFirstTrimmed(kbEntry?.source_meta?.review_tier)
+        ? { product_intel_review_tier: pickFirstTrimmed(kbEntry.source_meta.review_tier) }
+        : {}),
+    },
+  };
+}
+
+async function hydrateRecoCandidatesProductIntelFromKb(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  if (!list.length) return list;
+  const settled = await Promise.allSettled(list.map((row) => hydrateRecoCandidateProductIntelFromKb(row)));
+  return settled.map((result, index) => (
+    result.status === 'fulfilled' && isPlainObject(result.value) ? result.value : list[index]
+  ));
+}
+
 function normalizeRecoInsightHighlight(item) {
   if (!item) return null;
   if (typeof item === 'string') {
@@ -23283,10 +23344,11 @@ async function buildRecoGenerateFromCatalog({
       : frameworkMode
         ? frameworkFallbackSelectedCandidates
         : stepAwareFallbackSelectedCandidates;
+  const hydratedSurfacedCandidates = await hydrateRecoCandidatesProductIntelFromKb(surfacedCandidates);
   const frameworkSummary = frameworkMode
     ? buildConcernFrameworkSummary({
         targetContext,
-        recommendations: surfacedCandidates,
+        recommendations: hydratedSurfacedCandidates,
         language: ctx && ctx.lang ? ctx.lang : 'EN',
       })
     : null;
@@ -23299,12 +23361,12 @@ async function buildRecoGenerateFromCatalog({
     : null;
 
   const recos = frameworkMode
-    ? buildConcernRecommendationsFromSelectedCandidates(surfacedCandidates, {
+    ? buildConcernRecommendationsFromSelectedCandidates(hydratedSurfacedCandidates, {
         targetContext,
         language: ctx && ctx.lang ? ctx.lang : 'EN',
         debug,
       })
-    : surfacedCandidates.map((picked, index) => {
+    : hydratedSurfacedCandidates.map((picked, index) => {
         const stepToken = pickFirstTrimmed(
           targetContext && targetContext.resolved_target_step,
           picked.product_type,
@@ -23343,6 +23405,10 @@ async function buildRecoGenerateFromCatalog({
           ...(pickFirstString(picked.canonical_pdp_url, picked.canonicalPdpUrl) ? { canonical_pdp_url: pickFirstString(picked.canonical_pdp_url, picked.canonicalPdpUrl) } : {}),
           ...(pickFirstString(picked.purchase_path, picked.purchasePath) ? { purchase_path: pickFirstString(picked.purchase_path, picked.purchasePath) } : {}),
           ...(isPlainObject(picked.pdp_open) ? { pdp_open: picked.pdp_open } : {}),
+          ...buildRecoVisibleProductFields(picked, {
+            role: null,
+            language: ctx && ctx.lang ? ctx.lang : 'EN',
+          }),
           sku: picked,
           notes: [
             ...(debug
@@ -90487,6 +90553,8 @@ const __internal = {
   handoffRecoToBeautyMainlineSearch,
   buildRecoPayloadFromBeautyMainlineHandoff,
   buildRecoRowsFromMainlineProducts,
+  hydrateRecoCandidateProductIntelFromKb,
+  hydrateRecoCandidatesProductIntelFromKb,
   buildRecoFinalSelectionContract,
   evaluateQualityContractForEnvelope,
   applyRecoContentSpineToPayload,

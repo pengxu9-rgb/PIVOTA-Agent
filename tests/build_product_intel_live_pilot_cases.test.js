@@ -22,6 +22,7 @@ const {
   loadManualOverrideProductIdSet,
   loadMissingIdentityCoverageProductIds,
   parseArgs,
+  parseProductRefInput,
   sampleWithoutReplacement,
   selectDiverseCases,
 } = require('../scripts/build_product_intel_live_pilot_cases');
@@ -41,6 +42,26 @@ describe('build_product_intel_live_pilot_cases', () => {
 
     expect(args.queries).toEqual(['cleanser', 'serum']);
     expect(args.coveredReviewMode).toBe('reviewed');
+  });
+
+  test('parses merchant-scoped product refs for coverage batches', () => {
+    const args = parseArgs([
+      'node',
+      'script',
+      '--product-ids',
+      'external_seed:ext_demo,plain_demo',
+      '--product-refs',
+      'merch_demo:shopify_demo',
+    ]);
+
+    expect(args.productIds).toEqual(['external_seed:ext_demo', 'plain_demo', 'merch_demo:shopify_demo']);
+    expect(parseProductRefInput('merch_demo:shopify_demo')).toEqual({
+      merchant_id: 'merch_demo',
+      product_id: 'shopify_demo',
+    });
+    expect(parseProductRefInput('plain_demo')).toEqual({
+      product_id: 'plain_demo',
+    });
   });
 
   test('defaults identity per-brand limit to 3 when not provided', () => {
@@ -358,13 +379,25 @@ describe('build_product_intel_live_pilot_cases', () => {
           review_decision: 'rewrite',
           reviewer: 'Human QA',
         },
+        'product:9886499864904': {
+          review_status: 'completed',
+          review_decision: 'rewrite',
+          reviewer: 'Human QA',
+        },
         live_ext_beta: { external_highlight_review_status: 'rewrite' },
         random_key: { notes: 'ignore' },
       }),
     );
 
-    expect(Array.from(loadManualOverrideProductIdSet(tmpOverrides, 'strict_human')).sort()).toEqual(['ext_alpha']);
-    expect(Array.from(loadManualOverrideProductIdSet(tmpOverrides, 'reviewed')).sort()).toEqual(['ext_alpha', 'ext_beta']);
+    expect(Array.from(loadManualOverrideProductIdSet(tmpOverrides, 'strict_human')).sort()).toEqual([
+      '9886499864904',
+      'ext_alpha',
+    ]);
+    expect(Array.from(loadManualOverrideProductIdSet(tmpOverrides, 'reviewed')).sort()).toEqual([
+      '9886499864904',
+      'ext_alpha',
+      'ext_beta',
+    ]);
   });
   test('selects a diverse subset across brands and categories', () => {
     const cases = [
@@ -1050,6 +1083,33 @@ describe('build_product_intel_live_pilot_cases', () => {
             product_id: 'ext_demo',
           },
           include: expect.arrayContaining(['canonical', 'product_intel', 'reviews_preview']),
+        }),
+      }),
+      expect.any(Object),
+    );
+  });
+
+  test('preserves merchant id when fetching merchant-scoped PDP responses', async () => {
+    axios.post.mockResolvedValueOnce({
+      data: {
+        status: 'success',
+      },
+    });
+
+    await fetchPdpResponse('https://agent.pivota.cc/api/gateway', '9886499864904', {
+      merchant_id: 'merch_efbc46b4619cfbdf',
+      product_id: '9886499864904',
+    });
+
+    expect(axios.post).toHaveBeenCalledWith(
+      'https://agent.pivota.cc/api/gateway',
+      expect.objectContaining({
+        operation: 'get_pdp_v2',
+        payload: expect.objectContaining({
+          product_ref: {
+            merchant_id: 'merch_efbc46b4619cfbdf',
+            product_id: '9886499864904',
+          },
         }),
       }),
       expect.any(Object),

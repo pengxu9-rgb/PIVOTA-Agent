@@ -93,6 +93,14 @@ function parseArgs(argv) {
         .map((item) => item.trim())
         .filter(Boolean);
       i += 1;
+    } else if (token === '--product-refs' && next) {
+      out.productIds = out.productIds.concat(
+        String(next)
+          .split(',')
+          .map((item) => item.trim())
+          .filter(Boolean),
+      );
+      i += 1;
     } else if (token === '--identity-brands' && next) {
       out.identityBrands = String(next)
         .split(',')
@@ -216,6 +224,62 @@ function asString(value) {
   if (typeof value === 'string') return value.trim();
   if (value == null) return '';
   return String(value).trim();
+}
+
+function parseProductRefInput(value) {
+  const raw = asString(value);
+  if (!raw) return null;
+  if (raw.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(raw);
+      const productId = asString(parsed.product_id || parsed.productId);
+      const merchantId = asString(parsed.merchant_id || parsed.merchantId);
+      if (!productId) return null;
+      return {
+        product_id: productId,
+        ...(merchantId ? { merchant_id: merchantId } : {}),
+      };
+    } catch {
+      return null;
+    }
+  }
+  const [left, ...rest] = raw.split(':');
+  if (rest.length > 0) {
+    const merchantId = asString(left);
+    const productId = asString(rest.join(':'));
+    if (!productId) return null;
+    return {
+      product_id: productId,
+      ...(merchantId ? { merchant_id: merchantId } : {}),
+    };
+  }
+  return { product_id: raw };
+}
+
+function normalizeProductRefInputs(values) {
+  const refs = [];
+  const seen = new Set();
+  for (const value of asArray(values)) {
+    const ref = parseProductRefInput(value);
+    if (!ref?.product_id) continue;
+    const key = `${asString(ref.merchant_id)}:${ref.product_id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    refs.push(ref);
+  }
+  return refs;
+}
+
+function productRefByProductId(values) {
+  const out = new Map();
+  for (const ref of normalizeProductRefInputs(values)) {
+    if (!ref?.product_id || !ref?.merchant_id) continue;
+    out.set(ref.product_id, {
+      merchant_id: ref.merchant_id,
+      product_id: ref.product_id,
+    });
+  }
+  return out;
 }
 
 function asArray(value) {
@@ -371,7 +435,7 @@ function loadManualOverrideProductIdSet(manualOverridesPath, reviewMode = 'stric
         isCoveredByReviewMode(deriveReviewContractFromManualOverride(value), reviewMode),
       )
       .map(([key]) => {
-        const match = String(key || '').match(/^(?:product:|live_)(ext_[A-Za-z0-9]+)/);
+        const match = String(key || '').match(/^(?:product:|live_)([^:\s]+)/);
         return match ? match[1] : '';
       })
       .filter(Boolean),
@@ -1574,13 +1638,19 @@ async function fetchFrontendProductIds(baseUrl, pagePath) {
   return extractProductIdsFromFrontendHtml(response.data);
 }
 
-async function fetchPdpResponse(gatewayUrl, productId) {
+async function fetchPdpResponse(gatewayUrl, productId, productRef = null) {
+  const normalizedRef = productRef && typeof productRef === 'object' && !Array.isArray(productRef)
+    ? {
+        ...(asString(productRef.merchant_id || productRef.merchantId)
+          ? { merchant_id: asString(productRef.merchant_id || productRef.merchantId) }
+          : {}),
+        product_id: asString(productRef.product_id || productRef.productId || productId),
+      }
+    : { product_id: productId };
   const body = {
     operation: 'get_pdp_v2',
     payload: {
-      product_ref: {
-        product_id: productId,
-      },
+      product_ref: normalizedRef,
       include: ['canonical', 'product_details', 'ingredients_inci', 'product_intel', 'reviews_preview', 'offers'],
       options: {
         debug: false,
@@ -1601,7 +1671,13 @@ async function fetchPdpResponse(gatewayUrl, productId) {
 async function main() {
   const args = parseArgs(process.argv);
   const rootDir = path.resolve(__dirname, '..');
-  let selectedIds = sampleWithoutReplacement(args.productIds, args.limit, args.seed);
+  const explicitProductRefs = normalizeProductRefInputs(args.productIds);
+  const explicitProductRefById = productRefByProductId(args.productIds);
+  let selectedIds = sampleWithoutReplacement(
+    explicitProductRefs.map((ref) => ref.product_id),
+    args.limit,
+    args.seed,
+  );
   let seedCases = [];
   const queryErrors = [];
   let coveredProductIds = new Set();
@@ -1700,7 +1776,13 @@ async function main() {
       args.identityBrands.length ||
       args.identityTopBrands > 0,
   );
-  let supplementalIds = [...args.supplementalProductIds];
+  const supplementalProductRefs = normalizeProductRefInputs(args.supplementalProductIds);
+  for (const ref of supplementalProductRefs) {
+    if (ref?.product_id && ref?.merchant_id && !explicitProductRefById.has(ref.product_id)) {
+      explicitProductRefById.set(ref.product_id, ref);
+    }
+  }
+  let supplementalIds = supplementalProductRefs.map((ref) => ref.product_id);
   if (hasIdentitySignal) {
     const missingCoverageIds = await loadMissingIdentityCoverageProductIds({
       explicitBrands: args.identityBrands,
@@ -1755,9 +1837,10 @@ async function main() {
   const cases = [];
   for (const productId of selectedIds) {
     const seedCase = seedCases.find((row) => row?.canonical_product_ref?.product_id === productId) || null;
+    const requestedProductRef = explicitProductRefById.get(productId) || null;
     try {
       // eslint-disable-next-line no-await-in-loop
-      const response = await fetchPdpResponse(args.gatewayUrl, productId);
+      const response = await fetchPdpResponse(args.gatewayUrl, productId, requestedProductRef);
       let row = buildPilotCaseFromPdpResponse(response, seedCase);
       if (!row) {
         // Fall back to external seed truth when invoke resolution is unavailable.
@@ -1780,7 +1863,7 @@ async function main() {
           ...(seedCase || {
             case_id: `live_${productId}`,
             canonical_product_ref: {
-              merchant_id: 'unknown',
+              merchant_id: asString(requestedProductRef?.merchant_id) || 'unknown',
               product_id: productId,
             },
           }),
@@ -1815,7 +1898,7 @@ async function main() {
         ...(seedCase || {
           case_id: `live_${productId}`,
           canonical_product_ref: {
-            merchant_id: 'unknown',
+            merchant_id: asString(requestedProductRef?.merchant_id) || 'unknown',
             product_id: productId,
           },
         }),
@@ -1891,6 +1974,8 @@ module.exports = {
   loadExistingIdentityRefsForProductRefs,
   loadMissingIdentityCoverageProductIds,
   parseArgs,
+  parseProductRefInput,
+  normalizeProductRefInputs,
   sampleWithoutReplacement,
   selectDiverseCases,
   extractProductIdsFromFrontendHtml,

@@ -50,11 +50,27 @@ function parseArgs(argv) {
         .map((item) => item.trim())
         .filter(Boolean);
       i += 1;
+    } else if (token === '--product-refs' && next) {
+      out.productIds = out.productIds.concat(
+        String(next)
+          .split(',')
+          .map((item) => item.trim())
+          .filter(Boolean),
+      );
+      i += 1;
     } else if (token === '--supplemental-product-ids' && next) {
       out.supplementalProductIds = String(next)
         .split(',')
         .map((item) => item.trim())
         .filter(Boolean);
+      i += 1;
+    } else if (token === '--supplemental-product-refs' && next) {
+      out.supplementalProductIds = out.supplementalProductIds.concat(
+        String(next)
+          .split(',')
+          .map((item) => item.trim())
+          .filter(Boolean),
+      );
       i += 1;
     } else if (token === '--identity-brands' && next) {
       out.identityBrands = String(next)
