@@ -588,6 +588,112 @@ describe('build_product_intel_live_pilot_cases', () => {
     });
   });
 
+  test('extracts full INCI from Shopify product description JSON instead of key-ingredient copy', () => {
+    const description = [
+      '<p><strong>Details</strong></p>',
+      '<p><strong>Key Features</strong></p>',
+      '<p>Replenish and Renew: Restore what skin loses with age. High-performance ingredients support the barrier.</p>',
+      '<p><strong>Ingredients</strong></p>',
+      '<p><strong>Key Ingredients</strong></p>',
+      '<p>2% NAD+ - Antioxidant / Skin cell turnover 5 Ceramide Complex - Barrier support</p>',
+      '<p><strong>Full ingredients</strong></p>',
+      '<p>Water, Butylene Glycol, Nicotinamide Adenine Dinucleotide, 1,2-Hexanediol, Coco-Caprylate/Caprate, Glycerin, Panthenol</p>',
+    ].join('');
+    const html = `
+      <script>
+        window.ShopifyAnalytics = {"meta":{"product":{"description":${JSON.stringify(description)}}};
+      </script>
+    `;
+
+    expect(extractSourceProductFactsFromHtml(html)).toEqual({
+      ingredients_inci: [
+        'Water',
+        'Butylene Glycol',
+        'Nicotinamide Adenine Dinucleotide',
+        '1,2-Hexanediol',
+        'Coco-Caprylate/Caprate',
+        'Glycerin',
+        'Panthenol',
+      ],
+    });
+  });
+
+  test('ignores short non-product JSON descriptions before Shopify product description payloads', () => {
+    const productDescription = [
+      '<p><strong>Full ingredients</strong></p>',
+      '<p>Water, Butylene Glycol, Glycerin, Panthenol, Ceramide NP</p>',
+    ].join('');
+    const html = `
+      <script>
+        window.Cart = {"description":"Package Protection"};
+        window.ShopifyAnalytics = {"meta":{"product":{"description":${JSON.stringify(productDescription)}}};
+      </script>
+    `;
+
+    expect(extractSourceProductFactsFromHtml(html)).toEqual({
+      ingredients_inci: ['Water', 'Butylene Glycol', 'Glycerin', 'Panthenol', 'Ceramide NP'],
+    });
+  });
+
+  test('extracts full INCI from product page ingredient paragraphs without explicit heading', () => {
+    const html = `
+      <div class="tab-content tab-content-1 rte">
+        <p><span class="metafield-multi_line_text_field">Zinc Oxide (CI 77947), Water, Butyloctyl Salicylate, Isopropyl Myristate, Coco-Caprylate/Caprate, Caprylic/Capric Triglyceride, Butylene Glycol, Propanediol, Silica, Tocopherol</span></p>
+      </div>
+    `;
+
+    expect(extractSourceProductFactsFromHtml(html)).toEqual({
+      ingredients_inci: [
+        'Zinc Oxide (CI 77947)',
+        'Water',
+        'Butyloctyl Salicylate',
+        'Isopropyl Myristate',
+        'Coco-Caprylate/Caprate',
+        'Caprylic/Capric Triglyceride',
+        'Butylene Glycol',
+        'Propanediol',
+        'Silica',
+        'Tocopherol',
+      ],
+    });
+  });
+
+  test('does not treat product feature headings as INCI names', () => {
+    const html = `
+      <script>
+        window.__remixContext = {"product":{"descriptionHtml":${JSON.stringify(
+          '<h3>Ingredients</h3><p>Key Features<br>Scent: Unscented<br>Size: 80ml<br>Water, Glycerin, Isononyl Isononanoate, Isododecane, Panthenol</p>',
+        )}}};
+      </script>
+    `;
+
+    expect(extractSourceProductFactsFromHtml(html).ingredients_inci).toEqual([
+      'Water',
+      'Glycerin',
+      'Isononyl Isononanoate',
+      'Isododecane',
+      'Panthenol',
+    ]);
+  });
+
+  test('trims source description section soup before insights candidate generation', () => {
+    const descriptionHtml = [
+      '<p>Meet the Tint + SPF You’ll Actually Wear Naturally radiant, this tinted fluid sunscreen balances hydration and control.</p>',
+      '<p>Infused with hydrating ingredients and shine control, it leaves skin glowing yet balanced.</p>',
+      '<p><strong>Effortless Skin Enhancement</strong><br>Designed to be your skin, but better.</p>',
+      '<p><strong>12 Versatile Shades</strong><br>Available in 12 sheer shades.</p>',
+    ].join('');
+    const html = `
+      <script>
+        window.__remixContext = {"product":{"descriptionHtml":${JSON.stringify(descriptionHtml)}}};
+      </script>
+    `;
+
+    expect(extractSourceProductFactsFromHtml(html).description).toBe(
+      'Meet the Tint + SPF You’ll Actually Wear Naturally radiant, this tinted fluid sunscreen balances hydration and control.',
+    );
+  });
+
   test('fetches source review aggregate from official product HTML', async () => {
     axios.get.mockResolvedValueOnce({
       data: '<script>var okendoProduct = {"reviewCount":1404,"reviewAverageValue":"4.9"};</script>',
@@ -693,6 +799,27 @@ describe('build_product_intel_live_pilot_cases', () => {
     });
   });
 
+  test('drops pseudo-ingredient phrases from external seed pilot cases', () => {
+    const row = buildPilotCaseFromExternalSeedProduct({
+      merchant_id: 'external_seed',
+      id: 'ext_bad_ingredients',
+      brand: 'INNBEAUTY PROJECT',
+      title: 'Extreme Cream',
+      category_path: ['Skincare', 'Moisturizer'],
+      description: 'A rich moisturizer.',
+      ingredients_inci: [
+        'including "lifting" peptides',
+        'biomimetic growth factors',
+        'and ceramides combine - Fast-acting',
+        'Water',
+        'Glycerin',
+        'Ceramide NP',
+      ],
+    });
+
+    expect(row.product.ingredients_inci).toEqual(['Water', 'Glycerin', 'Ceramide NP']);
+  });
+
   test('enriches live pilot case with source page buyer review aggregate', async () => {
     axios.get.mockResolvedValueOnce({
       data: '<script>var okendoProduct = {"reviewCount":1404,"reviewAverageValue":"4.9"};</script>',
@@ -771,6 +898,45 @@ describe('build_product_intel_live_pilot_cases', () => {
     expect(row.product.source_page_facts_url).toBe(
       'https://v1.goodmolecules.com/products/niacinamide-serum',
     );
+  });
+
+  test('replaces noisy long seed descriptions with cleaner official source facts', async () => {
+    axios.get.mockResolvedValueOnce({
+      data: `
+        <script>
+          window.__remixContext = {"product":{"descriptionHtml":${JSON.stringify(
+            '<p>A barrier mist with NAD+, fermented black rice, probiotics, and ceramides for lightweight hydration.</p>',
+          )}}};
+        </script>
+      `,
+    });
+
+    const row = await enrichCaseWithSourcePageEvidence(
+      {
+        case_id: 'live_ext_haruharu',
+        canonical_product_ref: {
+          merchant_id: 'external_seed',
+          product_id: 'ext_haruharu',
+        },
+        product: {
+          merchant_id: 'external_seed',
+          product_id: 'ext_haruharu',
+          brand: 'Haruharu Wonder',
+          title: 'Probiotics Barrier 2% NAD + Serum Mist',
+          description: `Details Benefits ${'Long page soup. '.repeat(120)}`,
+          source_url: 'https://haruharuwonder.com/products/mist',
+        },
+      },
+      {
+        includeFacts: true,
+        timeoutMs: 5000,
+      },
+    );
+
+    expect(row.product.description).toBe(
+      'A barrier mist with NAD+, fermented black rice, probiotics, and ceramides for lightweight hydration.',
+    );
+    expect(row.product.source_page_facts_url).toBe('https://haruharuwonder.com/products/mist');
   });
 
   test('fetches discovery candidates from get_discovery_feed card surface', async () => {

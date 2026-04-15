@@ -240,6 +240,19 @@ function normalizeProductIntelDescription(value) {
   return text;
 }
 
+function isNoisyProductIntelDescription(value) {
+  const text = normalizeProductIntelDescription(value);
+  if (!text) return true;
+  if (text.length > 900) return true;
+  if (/^(?:details|description|overview|benefits|key features|key benefits)\b/i.test(text)) {
+    return true;
+  }
+  if (/\b(?:Details Benefits|Details Key Features|Read More|Read more|Shade Finder Quiz)\b/i.test(text)) {
+    return true;
+  }
+  return false;
+}
+
 function toFiniteNumber(value) {
   const num = Number(value);
   return Number.isFinite(num) ? num : null;
@@ -542,6 +555,35 @@ function extractJsonStringProperty(source, propertyName) {
   return match ? parseJsonStringLiteral(match[1]) : '';
 }
 
+function extractJsonStringProperties(source, propertyName) {
+  const pattern = new RegExp(`"${propertyName}"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"`, 'gi');
+  return Array.from(asString(source).matchAll(pattern))
+    .map((match) => parseJsonStringLiteral(match[1]))
+    .filter(Boolean);
+}
+
+function extractLikelyProductDescriptionHtml(source, propertyName) {
+  const candidates = extractJsonStringProperties(source, propertyName)
+    .map((value) => asString(value))
+    .filter((value) => {
+      const text = stripHtmlToText(value);
+      if (text.length < 60) return false;
+      return /<p\b|<br\b|full\s+ingredients?|key\s+ingredients?|how\s+to\s+use|directions|benefits?/i.test(value);
+    });
+  candidates.sort((left, right) => {
+    const score = (value) => {
+      let out = 0;
+      if (/\bfull\s+ingredients?\b/i.test(value)) out += 10;
+      if (/\bhow\s+to\s+use\b/i.test(value)) out += 3;
+      if (/<p\b/i.test(value)) out += 2;
+      out += Math.min(4, Math.floor(stripHtmlToText(value).length / 500));
+      return out;
+    };
+    return score(right) - score(left);
+  });
+  return candidates[0] || '';
+}
+
 function extractHtmlAttributeValue(source, attrName) {
   const pattern = new RegExp(`${attrName}\\s*=\\s*["']([^"']*)["']`, 'i');
   const match = asString(source).match(pattern);
@@ -577,16 +619,42 @@ function isUsableSourceDescription(value) {
   const text = normalizeSourceFactText(value);
   if (text.length < 40) return false;
   if (/…$|\.\.\.$/.test(text)) return false;
-  return !/\b(?:ingredients?|how to use|other details|shipping|returns)\b/i.test(text.slice(0, 24));
+  if (/\b(?:ingredients?|how to use|other details|shipping|returns|secure checkout)\b/i.test(text.slice(0, 80))) {
+    return false;
+  }
+  if (looksLikeDelimitedIngredientBlock(text)) return false;
+  return true;
+}
+
+function stripLeadingDescriptionHeadings(value) {
+  let text = asString(value);
+  for (let i = 0; i < 4; i += 1) {
+    const next = text
+      .replace(/^(?:details|description|overview|benefits|key benefits|key features|features)\s*[:\-]?\s*/i, '')
+      .trim();
+    if (next === text) break;
+    text = next;
+  }
+  return text;
+}
+
+function trimSourceDescriptionSections(value) {
+  const text = stripLeadingDescriptionHeadings(value);
+  const markerMatch = text.match(
+    /\s(?:How to Use|Directions|Other Details|FAQ|Frequently Asked Questions|Results|Clinical Results|Key Features|Key Benefits|Benefits|How It Feels|When to Use|Effortless Skin Enhancement|Lightweight,\s*All-in-One Coverage|12 Versatile Shades|Shade Finder)\b/i,
+  );
+  const trimmed = markerMatch ? text.slice(0, markerMatch.index).trim() : text;
+  if (trimmed.length <= 420) return trimmed;
+  const sentenceEnd = trimmed.slice(0, 420).search(/[.!?](?=\s|$)(?!.*[.!?](?=\s|$))/);
+  if (sentenceEnd >= 120) return trimmed.slice(0, sentenceEnd + 1).trim();
+  const wordBoundary = trimmed.slice(0, 420).replace(/\s+\S*$/, '').trim();
+  return wordBoundary || trimmed.slice(0, 420).trim();
 }
 
 function cleanSourceDescription(value) {
   const text = normalizeSourceFactText(value);
   if (!isUsableSourceDescription(text)) return '';
-  const markerMatch = text.match(
-    /\s(?:Ingredients?|Key Ingredients?|How to Use|Directions|Other Details|FAQ|Frequently Asked Questions)\b/i,
-  );
-  const trimmed = markerMatch ? text.slice(0, markerMatch.index).trim() : text;
+  const trimmed = trimSourceDescriptionSections(text);
   return isUsableSourceDescription(trimmed) ? trimmed : '';
 }
 
@@ -596,17 +664,31 @@ function extractParagraphTextFromHtml(html) {
     const text = cleanSourceDescription(match[1]);
     if (text) paragraphs.push(text);
   }
+  if (
+    paragraphs.length >= 2 &&
+    paragraphs[0].length <= 70 &&
+    !/[.!?]$/.test(paragraphs[0])
+  ) {
+    const combined = cleanSourceDescription(`${paragraphs[0]} ${paragraphs[1]}`);
+    if (combined) return combined;
+  }
+  const substantial = paragraphs.find((text) => text.length >= 60);
+  if (substantial) return substantial;
   return paragraphs[0] || '';
 }
 
 function normalizeIngredientName(value) {
   let text = stripHtmlToText(value)
     .replace(/\s+/g, ' ')
-    .replace(/\s*[-–—:]\s*\d+(?:\.\d+)?\s*(?:%|ppm)?\s*.*$/i, '')
+    .replace(/\s+[-–—:]\s*\d+(?:\.\d+)?\s*(?:%|ppm)?\s*.*$/i, '')
     .replace(/\s+\d+(?:\.\d+)?\s*(?:%|ppm)\s*.*$/i, '')
     .trim();
   text = text.replace(/^[•*\-\s]+/, '').replace(/[.;,]+$/, '').trim();
   if (!text) return '';
+  if (/^(?:key features|how it works|scent|size)\b/i.test(text)) return '';
+  if (/\b(?:your|our|skin|order|checkout|glow|routine|texture|benefits?|results?|instantly|clinically|moisturiz(?:e|es|ing)|hydrate(?:s|d|ing)?|supports?|helps?|contains?|formulated|wear|coverage|shades?|versatile|tint|lightweight|makeup|finder|spf|including|combine|fast-acting|growth factors?)\b/i.test(text)) {
+    return '';
+  }
   if (
     /^(?:ingredients?|key ingredients?|version|other details|description|how to use|directions|disclaimer|size|pH|never tested|free shipping)$/i.test(
       text,
@@ -627,20 +709,93 @@ function pushIngredientName(out, value) {
   out.push(name);
 }
 
+function normalizeIngredientListForPilot(value) {
+  const out = [];
+  for (const item of asArray(value)) {
+    pushIngredientName(out, item?.inci || item);
+  }
+  return out;
+}
+
+function findIngredientBlockStart(source) {
+  const text = asString(source);
+  const strongPatterns = [
+    /\bfull\s+ingredients?\b/i,
+    /\bingredients?\s+list\b/i,
+    /\bINCI\b/i,
+  ];
+  for (const pattern of strongPatterns) {
+    const match = text.match(pattern);
+    if (match) return match.index + match[0].length;
+  }
+  const headingMatch = text.match(/(?:^|\n)\s*(?:ingredients?|key ingredients?)\b/i);
+  if (headingMatch) return headingMatch.index + headingMatch[0].length;
+  return -1;
+}
+
+function startsLikeIngredientList(value) {
+  const first = normalizeSourceFactText(value).split(/,\s+/)[0] || '';
+  return /^(?:water(?:\s|\(|$)|aqua(?:\s|\(|$)|eau(?:\s|\(|$)|zinc oxide\b|titanium dioxide\b|glycerin\b|butylene glycol\b|propanediol\b|niacinamide\b|alcohol denat\b|dimethicone\b|caprylic\/capric\b|coco-caprylate\b|isododecane\b|cyclopentasiloxane\b)/i.test(
+    first.trim(),
+  );
+}
+
+function looksLikeDelimitedIngredientBlock(value) {
+  const text = normalizeSourceFactText(value);
+  if (text.length < 35 || text.length > 3000) return false;
+  if ((text.match(/,/g) || []).length < 3) return false;
+  if (!startsLikeIngredientList(text)) return false;
+  if (
+    !/\b(?:water|aqua|eau|glycerin|zinc oxide|titanium dioxide|niacinamide|butylene glycol|propanediol|caprylic|sodium|dimethicone|alcohol denat)\b/i.test(
+      text,
+    )
+  ) {
+    return false;
+  }
+  return !/\b(?:shipping|returns|shade finder|secure checkout|review|quiz)\b/i.test(text.slice(0, 120));
+}
+
+function extractDelimitedIngredientNames(value) {
+  const text = normalizeSourceFactText(value)
+    .replace(/^(?:full\s+)?ingredients?\s*(?:list)?\s*[:\-]?\s*/i, '')
+    .trim();
+  if (!looksLikeDelimitedIngredientBlock(text)) return [];
+  return text
+    .split(/,\s+/)
+    .map((item) => normalizeIngredientName(item))
+    .filter(Boolean);
+}
+
 function extractIngredientNamesFromText(text) {
   const source = stripHtmlToText(text);
   if (!source) return [];
-  const ingredientStart = source.search(/\bIngredients?\b/i);
+  const ingredientStart = findIngredientBlockStart(source);
   const scoped = ingredientStart >= 0 ? source.slice(ingredientStart) : source;
   const stopMatch = scoped.match(
-    /\n\s*(?:Version|Other Details|How to Use|Directions|Disclaimer|FAQ|Frequently Asked Questions)\b/i,
+    /\n\s*(?:Version|Other Details|How to Use|Directions|Disclaimer|FAQ|Frequently Asked Questions|Results|Free From)\b/i,
   );
   const ingredientBlock = stopMatch ? scoped.slice(0, stopMatch.index) : scoped;
   const out = [];
   for (const line of ingredientBlock.split(/\n+/)) {
     const cleaned = line.replace(/^\s*(?:key\s+)?Ingredients?\s*/i, '').trim();
     if (!cleaned) continue;
+    const delimitedItems = extractDelimitedIngredientNames(cleaned);
+    for (const item of delimitedItems) {
+      pushIngredientName(out, item);
+    }
+    if (delimitedItems.length) continue;
+    if (cleaned.includes(',')) continue;
     pushIngredientName(out, cleaned);
+  }
+  return out;
+}
+
+function extractIngredientNamesFromHtmlParagraphs(html) {
+  const out = [];
+  for (const match of asString(html).matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)) {
+    for (const item of extractDelimitedIngredientNames(match[1])) {
+      pushIngredientName(out, item);
+    }
   }
   return out;
 }
@@ -659,6 +814,12 @@ function extractSourceIngredientsFromHtml(html, descriptionHtml = '') {
     pushIngredientName(out, item);
   }
   for (const item of extractIngredientNamesFromText(extractHtmlAttributeValue(source, 'data-description'))) {
+    pushIngredientName(out, item);
+  }
+  for (const item of extractIngredientNamesFromHtmlParagraphs(descriptionHtml)) {
+    pushIngredientName(out, item);
+  }
+  for (const item of extractIngredientNamesFromHtmlParagraphs(source)) {
     pushIngredientName(out, item);
   }
   return out;
@@ -706,14 +867,20 @@ function extractJsonLdProductDescriptions(html) {
 function extractSourceProductFactsFromHtml(html) {
   const source = asString(html);
   if (!source) return {};
-  const descriptionHtml = extractJsonStringProperty(source, 'descriptionHtml');
+  const descriptionHtml =
+    extractLikelyProductDescriptionHtml(source, 'descriptionHtml') ||
+    extractJsonStringProperty(source, 'descriptionHtml');
+  const productDescriptionHtml = extractLikelyProductDescriptionHtml(source, 'description');
   const descriptionCandidates = [
     extractParagraphTextFromHtml(descriptionHtml),
     cleanSourceDescription(extractHtmlAttributeValue(source, 'data-description')),
     ...extractJsonLdProductDescriptions(source),
     extractMetaDescription(source),
   ].filter(Boolean);
-  const ingredients = extractSourceIngredientsFromHtml(source, descriptionHtml);
+  const ingredients = extractSourceIngredientsFromHtml(
+    source,
+    [descriptionHtml, productDescriptionHtml].filter(Boolean).join('\n'),
+  );
   const howToUse = extractSourceHowToUseFromHtml(source);
   return {
     ...(descriptionCandidates[0] ? { description: descriptionCandidates[0] } : {}),
@@ -800,17 +967,18 @@ function mergeSourceProductFactsIntoCase(row, facts, sourceUrl) {
   if (!row || typeof row !== 'object' || row.error) return row;
   const product = row.product && typeof row.product === 'object' ? row.product : {};
   const sourceFacts = facts && typeof facts === 'object' ? facts : {};
-  const existingIngredients = asArray(product.ingredients_inci || product.ingredients)
-    .map((item) => asString(item?.inci || item))
-    .filter(Boolean);
-  const sourceIngredients = asArray(sourceFacts.ingredients_inci || sourceFacts.ingredients)
-    .map((item) => asString(item?.inci || item))
-    .filter(Boolean);
+  const existingIngredients = normalizeIngredientListForPilot(product.ingredients_inci || product.ingredients);
+  const sourceIngredients = normalizeIngredientListForPilot(sourceFacts.ingredients_inci || sourceFacts.ingredients);
   const nextProduct = { ...product };
   let changed = false;
 
   const sourceDescription = normalizeProductIntelDescription(sourceFacts.description);
-  if (!normalizeProductIntelDescription(nextProduct.description) && sourceDescription) {
+  const existingDescription = normalizeProductIntelDescription(nextProduct.description);
+  if (
+    sourceDescription &&
+    (!existingDescription ||
+      (isNoisyProductIntelDescription(existingDescription) && sourceDescription.length < existingDescription.length))
+  ) {
     nextProduct.description = sourceDescription;
     changed = true;
   }
@@ -966,9 +1134,7 @@ function buildPilotCaseFromPdpResponse(response, seedCase) {
       ingredientsModule?.data?.ingredients ||
       product.ingredients_inci ||
       product.ingredients,
-  )
-    .map((item) => asString(item?.inci || item))
-    .filter(Boolean);
+  );
   const normalizedReviewSummary =
     normalizeReviewSummary(productIntel.review_summary) ||
     reviewsPreviewSummary ||
@@ -1012,7 +1178,7 @@ function buildPilotCaseFromPdpResponse(response, seedCase) {
       tags: mergeLists(seedProduct.tags, categoryPath),
       texture: asString(product.texture),
       finish: asString(product.finish),
-      ingredients_inci: ingredients,
+      ingredients_inci: normalizeIngredientListForPilot(ingredients),
       how_to_use: howToUse,
       ...(sourceUrl ? { source_url: sourceUrl } : {}),
       review_summary: normalizedReviewSummary,
@@ -1087,7 +1253,7 @@ function buildPilotCaseFromExternalSeedProduct(product, seedCase) {
       tags: mergeLists(seedProduct.tags, categoryPath, product.alias_tokens, product.ingredient_tokens),
       texture: asString(product.texture || seedProduct.texture),
       finish: asString(product.finish || seedProduct.finish),
-      ingredients_inci: ingredients,
+      ingredients_inci: normalizeIngredientListForPilot(ingredients),
       how_to_use: asString(product.how_to_use || product.pdp_how_to_use_raw || product.usage || seedProduct.how_to_use),
       ...(sourceUrl ? { source_url: sourceUrl } : {}),
       review_summary: normalizedReviewSummary,
