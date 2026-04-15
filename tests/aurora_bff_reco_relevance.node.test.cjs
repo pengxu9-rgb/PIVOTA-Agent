@@ -6731,6 +6731,113 @@ test('__internal: framework pool keeps soothing serum as treatment role instead 
   assert.equal(state.selected_recommendations[0]?.candidate_step, 'serum');
 });
 
+test('__internal: framework pool preserves same product across planned retrieval roles before role-fit', () => {
+  const { __internal } = loadRoutesFresh();
+  const targetContext = {
+    framework_id: 'recofw_test_sensitive_barrier_duplicate_context',
+    primary_role_id: 'soothing_treatment',
+    routine_mode: 'routine_mix',
+    semantic_plan: { routine_mode: 'routine_mix', comparison_mode: 'routine_mix' },
+    mainline_fallback_policy: 'strict_no_runtime_fallback',
+    semantic_planner_required: true,
+    framework_roles: [
+      {
+        role_id: 'soothing_treatment',
+        rank: 70,
+        preferred_step: 'treatment',
+        alternate_steps: ['serum'],
+        label: 'Soothing treatment',
+        query_terms: ['soothing serum sensitive skin', 'cica serum redness', 'panthenol treatment'],
+        fit_keywords: ['soothing', 'cica', 'panthenol', 'redness', 'calming'],
+        ingredient_hypotheses: ['Panthenol', 'Madecassoside'],
+      },
+      {
+        role_id: 'barrier_moisturizer',
+        rank: 41,
+        preferred_step: 'moisturizer',
+        label: 'Barrier-support moisturizer',
+        query_terms: ['barrier repair moisturizer', 'ceramide cream sensitive skin', 'soothing moisturizer'],
+        fit_keywords: ['barrier repair', 'ceramide', 'soothing', 'sensitive skin', 'fragrance free'],
+        ingredient_hypotheses: ['Ceramide NP', 'Panthenol', 'Glycerin'],
+      },
+      {
+        role_id: 'daily_sunscreen',
+        rank: 30,
+        preferred_step: 'sunscreen',
+        label: 'Daily sunscreen',
+        query_terms: ['daily sunscreen skincare', 'broad spectrum sunscreen'],
+        fit_keywords: ['spf', 'uv filters', 'broad spectrum', 'lightweight'],
+        ingredient_hypotheses: ['UV filters'],
+      },
+    ],
+  };
+  const kraveBase = {
+    product_id: '10008793153864',
+    merchant_id: 'merch_efbc46b4619cfbdf',
+    brand: 'KraveBeauty',
+    name: 'KraveBeauty Great Barrier Relief',
+    display_name: 'KraveBeauty Great Barrier Relief',
+    description: 'A barrier-repair serum for over-sensitized or irritated skin, built around tamanu oil, niacinamide, and ceramides to calm the look of redness.',
+    retrieval_source: 'catalog',
+  };
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'ext_soothing_serum_1',
+        merchant_id: 'external_seed',
+        brand: 'Haruharu Wonder',
+        name: 'Soothing Serum',
+        display_name: 'Soothing Serum',
+        category: 'Serum',
+        product_type: 'Serum',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'soothing_treatment',
+        retrieval_step: 'treatment',
+        retrieval_query: 'soothing treatment',
+        short_description: 'A gentle serum to soothe redness with panthenol and cica.',
+      },
+      {
+        ...kraveBase,
+        retrieval_role_id: 'soothing_treatment',
+        retrieval_step: 'treatment',
+        retrieval_query: 'soothing serum sensitive skin',
+      },
+      {
+        ...kraveBase,
+        retrieval_role_id: 'barrier_moisturizer',
+        retrieval_step: 'moisturizer',
+        retrieval_query: 'barrier repair moisturizer',
+      },
+      {
+        product_id: 'daily_sunscreen_1',
+        merchant_id: 'external_seed',
+        brand: 'The Ordinary',
+        name: 'UV Filters SPF 45 Serum',
+        display_name: 'UV Filters SPF 45 Serum',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen',
+        retrieval_step: 'sunscreen',
+        retrieval_query: 'daily sunscreen',
+        short_description: 'A lightweight SPF 45 sunscreen serum for daily UV protection.',
+      },
+    ],
+    { targetContext },
+  );
+
+  assert.equal(state.selected_candidate_count, 3);
+  assert.deepEqual(
+    state.selected_recommendations.map((row) => row.matched_role_id),
+    ['soothing_treatment', 'barrier_moisturizer', 'daily_sunscreen'],
+  );
+  assert.equal(
+    state.selected_recommendations.find((row) => row.product_id === '10008793153864')?.candidate_step,
+    'moisturizer',
+  );
+  assert.equal(state.role_pool_stats.barrier_moisturizer.viable_count, 1);
+});
+
 test('__internal: framework pool preserves planner support-role order instead of canonical rank order', () => {
   const { __internal } = loadRoutesFresh();
   const state = __internal.finalizeConcernFrameworkCandidatePools(

@@ -21196,11 +21196,18 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
   for (const raw of Array.isArray(rawCandidates) ? rawCandidates : []) {
     const row = isPlainObject(raw) ? raw : null;
     if (!row) continue;
-    const key = [
+    const productKey = [
       pickFirstTrimmed(row.product_id, row.productId, row.id),
       pickFirstTrimmed(row.merchant_id, row.merchantId),
       pickFirstTrimmed(row.display_name, row.displayName, row.name, row.title),
     ].join('::').toLowerCase();
+    const retrievalRoleKey = pickFirstTrimmed(
+      row.retrieval_role_id,
+      row.retrievalRoleId,
+      row.role_id,
+      row.roleId,
+    ) || 'no_retrieval_role';
+    const key = `${productKey}::${String(retrievalRoleKey).trim().toLowerCase()}`;
     if (!key || seen.has(key)) continue;
     seen.add(key);
     deduped.push(row);
