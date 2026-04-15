@@ -915,12 +915,14 @@ test('reco assistant rewrite rejects candidate-pool product names that are not f
             display_name: 'First Aid Beauty Dark Spot Serum with Niacinamide',
             brand: 'First Aid Beauty',
             category: 'Serum',
+            short_description: 'A niacinamide serum for post-breakout dark spots and uneven tone.',
           },
           {
             product_id: 'dark_spot_2',
             display_name: 'Jurlique Brightening Serum',
             brand: 'Jurlique',
             category: 'Serum',
+            short_description: 'A brightening serum for uneven tone support.',
           },
         ],
         recommendation_meta: {
@@ -981,9 +983,8 @@ test('reco assistant rewrite rejects candidate-pool product names that are not f
       return {
         ok: true,
         json: {
-          lead_reason:
-            'A niacinamide treatment for post-breakout marks from the product record instead of Fenty Beauty Watch Ya Tone Niacinamide Dark Spot Serum Refill',
-          support_reasons: ['An alternate tone-focused serum option without treating Fenty Beauty Watch Ya Tone as the lead pick'],
+          lead_reason: 'Niacinamide',
+          support_reasons: ['Brightening'],
         },
         parse_status: 'parsed',
         provider: 'gemini',
@@ -1003,8 +1004,9 @@ test('reco assistant rewrite rejects candidate-pool product names that are not f
     assert.equal(rewrite.llm_used, true);
     assert.equal(rewrite.reason, null);
     assert.match(rewrite.text, /First Aid Beauty Dark Spot Serum with Niacinamide is your best first buy/);
-    assert.match(rewrite.text, /because a niacinamide treatment/);
+    assert.match(rewrite.text, /because a niacinamide serum/);
     assert.doesNotMatch(rewrite.text, /because (A|An|The)\b/);
+    assert.doesNotMatch(rewrite.text, /because (niacinamide|brightening)\b/i);
     assert.match(rewrite.text, /Jurlique Brightening Serum/);
     assert.doesNotMatch(rewrite.text, /Fenty Beauty|Watch Ya Tone/);
     assert.match(prompts[1], /Do not write the final assistant message\./);

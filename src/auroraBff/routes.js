@@ -51865,7 +51865,9 @@ function scoreRecoAssistantEvidenceForTarget(value, {
   if (!text) return Number.NEGATIVE_INFINITY;
   const targetFamilies = collectRecoAssistantConcernFamilies(targetText);
   const evidenceFamilies = collectRecoAssistantConcernFamilies(text);
+  const weakReasonFragment = isRecoAssistantWeakReasonFragment(text);
   let score = 100 - (Number.isFinite(Number(originalIndex)) ? Number(originalIndex) * 0.01 : 0);
+  if (weakReasonFragment) score -= 52;
   if (evidenceFamilies.size > 0 && targetFamilies.size > 0) {
     let aligned = 0;
     let offTarget = 0;
@@ -51885,6 +51887,25 @@ function scoreRecoAssistantEvidenceForTarget(value, {
     score -= 28;
   }
   return score;
+}
+
+function isRecoAssistantWeakReasonFragment(value) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text) return true;
+  const normalized = normalizeSemanticAuditText(text);
+  if (!normalized) return true;
+  if (/^(niacinamide|zinc|zinc pca|hyaluronic acid|ceramide|ceramides|glycerin|panthenol|vitamin c|uv filters?)$/i.test(normalized)) {
+    return true;
+  }
+  const tokens = normalized
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+  if (tokens.length >= 3) return false;
+  if (/\b(spf\s*\d{1,3}\+?|pa\+{2,4}|uv|broad spectrum|white cast|non greasy|non-greasy|matte finish|watery texture)\b/i.test(normalized)) {
+    return false;
+  }
+  return true;
 }
 
 function rankRecoAssistantEvidenceForTarget(values = [], {
@@ -53293,6 +53314,17 @@ function normalizeRecoAssistantReasonFragment(value, {
     return '';
   }
   text = text.replace(/^(a|an|the)\b/i, (match) => match.toLowerCase());
+  if (isRecoAssistantWeakReasonFragment(text)) {
+    const fallbackText = String(fallback || '').trim();
+    if (fallbackText && fallbackText !== value) {
+      return normalizeRecoAssistantReasonFragment(fallbackText, {
+        selectedNames,
+        forbiddenNames,
+        forbiddenAliases,
+      });
+    }
+    return '';
+  }
   if (/^[A-Z][a-z]/.test(text) && !/^(SPF|UV|PA\b)/.test(text)) {
     text = text.charAt(0).toLowerCase() + text.slice(1);
   }
