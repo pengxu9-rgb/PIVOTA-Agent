@@ -1549,6 +1549,7 @@ describe('discovery feed service', () => {
         page: 1,
         limit: 12,
         sort: 'popular',
+        debug: true,
         scope: {
           brand_names: ['Tom Ford Beauty'],
         },
@@ -1603,6 +1604,7 @@ describe('discovery feed service', () => {
         page: 1,
         limit: 12,
         sort: 'popular',
+        debug: true,
         scope: {
           brand_names: ['Tom Ford Beauty'],
         },
@@ -1987,6 +1989,80 @@ describe('discovery feed service', () => {
     );
   });
 
+  test('brand-scoped external seed recall matches normalized hyphenated brand names', async () => {
+    jest.resetModules();
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    const prevMarket = process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET;
+    process.env.DATABASE_URL = 'postgres://brand-hyphen-test';
+    process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET = 'US';
+
+    const dbQueryMock = jest.fn(async (sql, params) => {
+      const text = String(sql || '');
+      if (text.includes('FROM external_product_seeds')) {
+        if (text.includes('EXISTS')) return { rows: [] };
+        expect(text).toContain('regexp_replace');
+        expect(params[2]).toEqual(expect.arrayContaining(['la roche posay']));
+        expect(params[5]).toEqual(expect.arrayContaining(['larocheposay']));
+        return {
+          rows: [
+            {
+              id: 'eps_lrp_anthelios',
+              external_product_id: 'ext_lrp_anthelios',
+              destination_url: 'https://www.laroche-posay.us/anthelios-aox',
+              canonical_url: 'https://www.laroche-posay.us/anthelios-aox',
+              domain: 'laroche-posay.us',
+              title: 'Anthelios AOX Daily Antioxidant Face Serum SPF 50',
+              image_url: 'https://cdn.example.com/lrp.jpg',
+              price_amount: 44.99,
+              price_currency: 'USD',
+              availability: 'in_stock',
+              updated_at: '2026-04-15T10:00:00Z',
+              created_at: '2026-04-15T09:00:00Z',
+              seed_recall: {
+                retrieval_title: 'Anthelios AOX Daily Antioxidant Face Serum SPF 50',
+                retrieval_summary: 'Daily antioxidant face serum sunscreen.',
+                brand: 'La Roche-Posay',
+                category: 'Sunscreen',
+                vertical: 'skincare',
+              },
+              seed_brand: 'la roche-posay',
+              seed_category: 'sunscreen',
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../src/db', () => ({
+      query: dbQueryMock,
+    }));
+
+    try {
+      const fresh = require('../src/services/discoveryFeed');
+      const products = await fresh._internals.fetchBrandScopedExternalSeedCandidates({
+        brandAliases: ['la roche posay'],
+        limit: 24,
+        orderByRecency: false,
+      });
+      expect(products).toHaveLength(1);
+      expect(products[0]).toEqual(
+        expect.objectContaining({
+          merchant_id: 'external_seed',
+          product_id: 'ext_lrp_anthelios',
+          title: 'Anthelios AOX Daily Antioxidant Face Serum SPF 50',
+          brand: 'La Roche-Posay',
+        }),
+      );
+    } finally {
+      jest.dontMock('../src/db');
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+      if (prevMarket === undefined) delete process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET;
+      else process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET = prevMarket;
+    }
+  });
+
   test('brand-scoped browse keeps total stable across page-size budgets', async () => {
     process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
     delete process.env.PIVOTA_BACKEND_BASE_URL;
@@ -2265,15 +2341,15 @@ describe('discovery feed service', () => {
     expect(response.metadata.candidate_counts.identity_graph_deduped).toBe(1);
   });
 
-  test('brand-scoped discovery falls back to source-product recommendations when brand pool is empty', async () => {
+  test('brand-scoped discovery does not mix source-product recommendations into brand catalog when brand pool is empty', async () => {
     let recommendCalls = 0;
-    let capturedRecommendArgs = null;
     const response = await getDiscoveryFeed(
       {
         surface: 'browse_products',
         page: 1,
         limit: 12,
         sort: 'popular',
+        debug: true,
         scope: {
           brand_names: ['Tom Ford Beauty'],
         },
@@ -2298,9 +2374,8 @@ describe('discovery feed service', () => {
         ],
         brandFallbackFetchInternalCandidatesFn: async () => [],
         brandFallbackFetchExternalCandidatesFn: async () => [],
-        brandFallbackRecommendFn: async (args) => {
+        brandFallbackRecommendFn: async () => {
           recommendCalls += 1;
-          capturedRecommendArgs = args;
           return {
             items: [
               makeProduct({
@@ -2327,28 +2402,23 @@ describe('discovery feed service', () => {
       },
     );
 
-    expect(response.products.map((product) => product.product_id)).toEqual([
-      'rose_prick',
-      'electric_cherry',
-    ]);
-    expect(response.metadata.candidate_source).toBe('override+brand_recommendation_fallback');
-    expect(recommendCalls).toBe(1);
-    expect(capturedRecommendArgs).toEqual(
-      expect.objectContaining({
-        pdp_product: expect.objectContaining({
-          product_id: 'ext_seed_1',
-          merchant_id: 'external_seed',
-          brand: 'Tom Ford Beauty',
-          vendor: 'Tom Ford Beauty',
+    expect(response.products).toEqual([]);
+    expect(response.metadata.candidate_source).toBe('override');
+    expect(response.metadata.brand_empty_reason).toBe('no_matching_brand_candidates');
+    expect(response.metadata.route_health.brand_empty_reason).toBe('no_matching_brand_candidates');
+    expect(response.metadata.rank_debug.recall_summary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: 'brand_catalog',
+          skipped: true,
+          skip_reason: 'brand_recommendation_fallback_disabled',
         }),
-        k: 12,
-        locale: 'en-US',
-      }),
+      ]),
     );
-    expect(capturedRecommendArgs.options).toBeUndefined();
+    expect(recommendCalls).toBe(0);
   });
 
-  test('brand-scoped discovery continues to recommendation fallback when brand pool times out', async () => {
+  test('brand-scoped discovery returns empty brand results instead of recommendation fallback when brand pool times out', async () => {
     process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
     delete process.env.PIVOTA_BACKEND_BASE_URL;
     delete process.env.PIVOTA_API_BASE;
@@ -2399,9 +2469,11 @@ describe('discovery feed service', () => {
       },
     );
 
-    expect(response.products.map((product) => product.product_id)).toEqual(['krave_matcha']);
-    expect(response.metadata.candidate_source).toBe('multi_provider+brand_recommendation_fallback');
-    expect(recommendCalls).toBe(1);
+    expect(response.products).toEqual([]);
+    expect(response.metadata.candidate_source).toBe('multi_provider');
+    expect(response.metadata.brand_empty_reason).toBe('brand_catalog_providers_unavailable');
+    expect(response.metadata.route_health.brand_empty_reason).toBe('brand_catalog_providers_unavailable');
+    expect(recommendCalls).toBe(0);
     expect(axiosGetSpy).toHaveBeenCalled();
     expect(response.metadata.provider_breakdown).toEqual(
       expect.arrayContaining([

@@ -116,7 +116,6 @@ const COLD_START_PRIMARY_RECALL_LIMIT = 24;
 const COLD_START_FILL_RECALL_LIMIT = 24;
 const BROWSE_PRIMARY_RECALL_LIMIT = 24;
 const BROWSE_FILL_RECALL_LIMIT = 24;
-const BRAND_RECOMMENDATION_FALLBACK_LIMIT = 12;
 const MIN_COLD_START_NON_DEFERRED_RESULTS = 2;
 const COLD_START_DEFERRED_DOMAINS = new Set(['pet', 'sleepwear', 'apparel']);
 const COLD_START_DEFERRED_BEAUTY_BUCKETS = new Set(['tools']);
@@ -7418,42 +7417,6 @@ function buildDiscoveryCategoryFacets(entries = []) {
     }));
 }
 
-async function loadBrandScopedRecommendationFallback({
-  request,
-  limit = 24,
-  recommendFn = recommend,
-} = {}) {
-  const sourceProductId = String(request?.source_product_ref?.product_id || '').trim();
-  const merchantId = String(request?.source_product_ref?.merchant_id || '').trim() || null;
-  const brandName = Array.isArray(request?.scope?.brand_names) ? String(request.scope.brand_names[0] || '').trim() : '';
-  const safeLimit = clampInt(limit, BRAND_RECOMMENDATION_FALLBACK_LIMIT, 1, BRAND_RECOMMENDATION_FALLBACK_LIMIT);
-  const baseProduct = {
-    ...(sourceProductId ? { product_id: sourceProductId } : {}),
-    ...(merchantId ? { merchant_id: merchantId } : {}),
-    ...(brandName ? { brand: brandName, vendor: brandName } : {}),
-  };
-
-  if (!sourceProductId || typeof recommendFn !== 'function') return [];
-  try {
-    const result = await recommendFn({
-      pdp_product: baseProduct,
-      k: safeLimit,
-      locale: request?.context?.locale || 'en-US',
-    });
-    return Array.isArray(result?.items) ? result.items : [];
-  } catch (err) {
-    logger.warn(
-      {
-        err: err?.message || String(err),
-        product_id: sourceProductId,
-        merchant_id: merchantId,
-      },
-      'brand scoped discovery fallback failed',
-    );
-    return [];
-  }
-}
-
 async function fetchBrandScopedExternalSeedCandidates({
   brandAliases = [],
   limit = 120,
@@ -7471,6 +7434,10 @@ async function fetchBrandScopedExternalSeedCandidates({
   );
   const brandPrefixPatterns = uniqStrings(
     brandPrefixAliases.map((alias) => `${alias}%`),
+    16,
+  );
+  const compactAliases = uniqStrings(
+    normalizedAliases.map((alias) => compactBrandToken(alias)).filter(Boolean),
     16,
   );
 
@@ -7496,6 +7463,8 @@ async function fetchBrandScopedExternalSeedCandidates({
       ${EXTERNAL_SEED_RECALL_SQL_FIELDS.brand} AS seed_brand,
       ${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} AS seed_category
     `;
+    const normalizedBrandSql = `trim(regexp_replace(${EXTERNAL_SEED_RECALL_SQL_FIELDS.brand}, '[^a-z0-9]+', ' ', 'g'))`;
+    const compactBrandSql = `regexp_replace(${EXTERNAL_SEED_RECALL_SQL_FIELDS.brand}, '[^a-z0-9]+', '', 'g')`;
     const orderClause = orderByRecency
       ? 'ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST'
       : '';
@@ -7509,11 +7478,14 @@ async function fetchBrandScopedExternalSeedCandidates({
           AND (
             ${EXTERNAL_SEED_RECALL_SQL_FIELDS.brand} = ANY($3::text[])
             OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.brand} LIKE ANY($4::text[])
+            OR ${normalizedBrandSql} = ANY($3::text[])
+            OR ${normalizedBrandSql} LIKE ANY($4::text[])
+            OR ${compactBrandSql} = ANY($6::text[])
           )
         ${orderClause}
         LIMIT $5
       `,
-      [market, tool, normalizedAliases, brandPrefixPatterns, safeLimit],
+      [market, tool, normalizedAliases, brandPrefixPatterns, safeLimit, compactAliases],
     );
     const rows = Array.isArray(brandRes?.rows) ? [...brandRes.rows] : [];
     if (rows.length < safeLimit) {
@@ -7565,10 +7537,18 @@ async function fetchBrandScopedInternalCatalogCandidates({ brandAliases = [], li
     16,
   );
   if (!normalizedAliases.length) return [];
+  const compactAliases = uniqStrings(
+    normalizedAliases.map((alias) => compactBrandToken(alias)).filter(Boolean),
+    16,
+  );
 
   const safeLimit = clampInt(limit, Math.max(limit, 120), 24, 400);
 
   try {
+    const normalizedProductJsonTextSql = (key) =>
+      `trim(regexp_replace(lower(coalesce(product_data->>'${key}', '')), '[^a-z0-9]+', ' ', 'g'))`;
+    const compactProductJsonTextSql = (key) =>
+      `regexp_replace(lower(coalesce(product_data->>'${key}', '')), '[^a-z0-9]+', '', 'g')`;
     const res = await query(
       `
         SELECT merchant_id, product_data
@@ -7582,6 +7562,16 @@ async function fetchBrandScopedInternalCatalogCandidates({ brandAliases = [], li
             OR lower(coalesce(product_data->>'vendor', '')) = ANY($2::text[])
             OR lower(coalesce(product_data->>'vendor_name', '')) = ANY($2::text[])
             OR lower(coalesce(product_data->>'manufacturer', '')) = ANY($2::text[])
+            OR ${normalizedProductJsonTextSql('brand')} = ANY($2::text[])
+            OR ${normalizedProductJsonTextSql('brand_name')} = ANY($2::text[])
+            OR ${normalizedProductJsonTextSql('vendor')} = ANY($2::text[])
+            OR ${normalizedProductJsonTextSql('vendor_name')} = ANY($2::text[])
+            OR ${normalizedProductJsonTextSql('manufacturer')} = ANY($2::text[])
+            OR ${compactProductJsonTextSql('brand')} = ANY($4::text[])
+            OR ${compactProductJsonTextSql('brand_name')} = ANY($4::text[])
+            OR ${compactProductJsonTextSql('vendor')} = ANY($4::text[])
+            OR ${compactProductJsonTextSql('vendor_name')} = ANY($4::text[])
+            OR ${compactProductJsonTextSql('manufacturer')} = ANY($4::text[])
             OR EXISTS (
               SELECT 1
               FROM unnest($2::text[]) AS alias
@@ -7591,7 +7581,7 @@ async function fetchBrandScopedInternalCatalogCandidates({ brandAliases = [], li
         ORDER BY cached_at DESC NULLS LAST, id DESC
         LIMIT $3
       `,
-      [EXTERNAL_SEED_MERCHANT_ID, normalizedAliases, safeLimit],
+      [EXTERNAL_SEED_MERCHANT_ID, normalizedAliases, safeLimit, compactAliases],
     );
     return (res.rows || [])
       .map((row) => {
@@ -9526,6 +9516,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       brandScopeAliases.length > 0
         ? normalizedCandidates.filter((candidate) => matchesBrandScopeCandidate(candidate, brandScopeAliases))
         : normalizedCandidates;
+    let brandEmptyReason = null;
     const skipBrandDirectPool = shouldSkipBrandDirectPool(scopedCandidates, {
       request,
       limit: candidateLimit,
@@ -9593,31 +9584,24 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
     }
 
     if (brandScopeAliases.length > 0 && scopedCandidates.length === 0) {
-      const fallbackProducts = await loadBrandScopedRecommendationFallback({
-        request,
-        limit: options.candidateLimit || resolveDiscoveryCandidateLimit(request),
-        recommendFn: options.brandFallbackRecommendFn,
-      });
-      if (fallbackProducts.length > 0) {
-        effectiveCandidateSource = `${effectiveCandidateSource}+brand_recommendation_fallback`;
-        effectiveRawCandidates = effectiveRawCandidates.concat(fallbackProducts);
-        normalizedCandidates = [];
-        seenKeys.clear();
-        for (let idx = 0; idx < effectiveRawCandidates.length; idx += 1) {
-          const normalized = normalizeCandidateProduct(effectiveRawCandidates[idx], idx);
-          if (!normalized) continue;
-          const dedupKey = buildNormalizedCandidateKey(normalized, { brandScoped });
-          if (!dedupKey || seenKeys.has(dedupKey)) continue;
-          seenKeys.add(dedupKey);
-          normalizedCandidates.push(normalized);
-        }
-        scopedCandidates = normalizedCandidates.filter((candidate) =>
-          matchesBrandScopeCandidate(candidate, brandScopeAliases),
-        );
-      }
-    }
-    if (brandScopeAliases.length > 0 && scopedCandidates.length === 0 && catalogUnavailableError) {
-      throw catalogUnavailableError;
+      brandEmptyReason = catalogUnavailableError
+        ? 'brand_catalog_providers_unavailable'
+        : 'no_matching_brand_candidates';
+      recallSummary = recallSummary.concat([
+        {
+          provider: null,
+          label: 'brand_catalog',
+          query: brandScopeAliases.join(' | '),
+          offset: 0,
+          limit: request.limit,
+          status: null,
+          returned: 0,
+          latency_ms: 0,
+          cache_hit: false,
+          skipped: true,
+          skip_reason: 'brand_recommendation_fallback_disabled',
+        },
+      ]);
     }
     const identityGraphDedupe = await applyIdentityGraphDiscoveryDedupe(scopedCandidates, {
       request,
@@ -9808,6 +9792,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       sort_applied: request.sort,
       brand_scope_applied: request.scope.brand_names,
       category_scope_applied: request.scope.categories,
+      ...(brandEmptyReason ? { brand_empty_reason: brandEmptyReason } : {}),
       query_text: request.query.text,
       has_more: hasMore,
       facets: {
@@ -9843,16 +9828,17 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
         : {}),
       ...(underfilledReason ? { underfilled_reason: underfilledReason } : {}),
       ...(strictEmptyReason ? { strict_empty_reason: strictEmptyReason } : {}),
-	      route_health: {
-	        primary_path_used: primaryPathUsed,
-	        fallback_triggered: fallbackTriggered,
-	        fallback_reason: fallbackReason,
-	        primary_quality_gate_passed:
-	          selectedEntries.length > 0 && !underfilledReason && !strictEmptyReason,
-	        ...(compoundIntent ? { compound_intent: compoundIntent } : {}),
-	        ...(underfilledReason ? { underfilled_reason: underfilledReason } : {}),
-	        ...(strictEmptyReason ? { strict_empty_reason: strictEmptyReason } : {}),
-	      },
+      route_health: {
+        primary_path_used: primaryPathUsed,
+        fallback_triggered: fallbackTriggered,
+        fallback_reason: fallbackReason,
+        primary_quality_gate_passed:
+          selectedEntries.length > 0 && !underfilledReason && !strictEmptyReason,
+        ...(compoundIntent ? { compound_intent: compoundIntent } : {}),
+        ...(underfilledReason ? { underfilled_reason: underfilledReason } : {}),
+        ...(strictEmptyReason ? { strict_empty_reason: strictEmptyReason } : {}),
+        ...(brandEmptyReason ? { brand_empty_reason: brandEmptyReason } : {}),
+      },
       search_decision: {
         primary_path_used: primaryPathUsed,
         fallback_triggered: fallbackTriggered,
@@ -10006,6 +9992,7 @@ module.exports = {
     buildBeautyPersonalizedQueries,
     computeDiscoveryStepTimeoutMs,
     fetchExternalSeedCandidates,
+    fetchBrandScopedExternalSeedCandidates,
     fetchExternalSeedExactTitleCandidates,
     fetchBeautyInterestExternalSeedFastpathCandidates,
     buildDiscoveryExactTitleLookupVariants,
@@ -10031,7 +10018,6 @@ module.exports = {
     resolveDiscoveryExternalSeedMarketConfig,
     resolveDiscoveryProductsSearchApiKeyConfig,
     resolveDiscoveryProductsSearchBaseUrlConfig,
-    loadBrandScopedRecommendationFallback,
     loadCatalogCandidates,
     hydrateDiscoveryCandidateProductIntel,
     matchesQueryTextCandidate,

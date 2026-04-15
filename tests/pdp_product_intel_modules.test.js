@@ -179,6 +179,73 @@ describe('pdp product intel bundle shaping', () => {
     expect(specific.product_intel_core.what_it_is.body).toMatch(/SPF 40 tinted fluid sunscreen/i);
   });
 
+  test('accepts strict-human reviewed beauty insights that use format and role language', () => {
+    const strictHuman = normalizePublishedProductIntelBundle({
+      contract_version: 'pivota.product_intel.v1',
+      display_name: 'Pivota Insights',
+      evidence_profile: 'community_supported',
+      quality_state: 'eligible',
+      provenance: {
+        generator: 'strict_human_manual_rewrite',
+        selection_strategy: 'gemini_flash_first_then_strict_human_rewrite',
+        field_sources: {
+          what_it_is: 'human_standard',
+          why_it_stands_out: 'human_standard',
+        },
+        gemini_quality_gate: {
+          human_standard_rewrite: true,
+        },
+        reviewer_kind: 'human',
+        review_status: 'completed',
+        review_decision: 'rewrite',
+      },
+      product_intel_core: {
+        evidence_profile: 'community_supported',
+        quality_state: 'eligible',
+        freshness: {
+          generated_at: '2026-04-15T10:01:12.646Z',
+          source_version: 'pilot_selected:strict_human_reviewed',
+        },
+        what_it_is: {
+          headline: 'Travel retinol serum',
+          body: 'A deluxe travel-size retinol serum with hyaluronic acid support for visible aging routines.',
+        },
+        best_for: [{ label: 'Retinol serum routines', confidence: 'high' }],
+        why_it_stands_out: [
+          {
+            headline: 'Serum format, not moisturizer',
+            body: 'The review-approved PDP copy should preserve this as a retinol serum format rather than a moisturizer.',
+          },
+          {
+            headline: 'Buyer-review proof',
+            body: 'The official source page reports 4.8★ across 1002 buyer reviews.',
+          },
+        ],
+        routine_fit: { step: 'serum', am_pm: ['pm'] },
+      },
+      review_summary: { rating: 4.8, review_count: 1002 },
+      market_signal_badges: [{ badge_type: 'review_signal', badge_label: '4.8★ (1002)' }],
+      shopping_card: {
+        contract_version: 'pivota.shopping_card.v1',
+        title: 'Retinol Youth Renewal Serum',
+        subtitle: 'Deluxe Travel Retinol Serum',
+        proof_badge: '4.8★ (1002)',
+      },
+      search_card: {
+        title_candidate: 'Retinol Youth Renewal Serum',
+        compact_candidate: 'Deluxe Travel Retinol Serum',
+        proof_badge_candidate: '4.8★ (1002)',
+      },
+    });
+
+    expect(strictHuman).toBeTruthy();
+    expect(strictHuman.shopping_card.subtitle).toBe('Deluxe Travel Retinol Serum');
+    expect(strictHuman.shopping_card.proof_badge).toBe('4.8★ (1002)');
+    expect(strictHuman.product_intel_core.freshness.source_version).toBe(
+      'pilot_selected:strict_human_reviewed',
+    );
+  });
+
   test('rejects published insights that are title-grounded and category-shopper fallback only', () => {
     const generic = normalizePublishedProductIntelBundle({
       contract_version: 'pivota.product_intel.v1',
@@ -208,6 +275,32 @@ describe('pdp product intel bundle shaping', () => {
     expect(generic).toBeNull();
   });
 
+  test('keeps rejecting unreviewed generic format and role filler', () => {
+    const generic = normalizePublishedProductIntelBundle({
+      contract_version: 'pivota.product_intel.v1',
+      evidence_profile: 'seller_plus_formula',
+      quality_state: 'eligible',
+      product_intel_core: {
+        evidence_profile: 'seller_plus_formula',
+        quality_state: 'eligible',
+        what_it_is: {
+          headline: 'Routine role',
+          body: 'A product format focused on routine context and acting like a dedicated treatment step.',
+        },
+        best_for: [{ label: 'Routine role' }],
+        why_it_stands_out: [
+          {
+            headline: 'Format role',
+            body: 'Frames itself as a product role and anchors the product in routine context.',
+          },
+        ],
+        routine_fit: { step: 'treatment', am_pm: ['pm'] },
+      },
+    });
+
+    expect(generic).toBeNull();
+  });
+
   test('filters generic best-for fallback labels from otherwise specific published insights', () => {
     const bundle = normalizePublishedProductIntelBundle({
       contract_version: 'pivota.product_intel.v1',
@@ -217,6 +310,7 @@ describe('pdp product intel bundle shaping', () => {
         evidence_profile: 'seller_plus_formula',
         quality_state: 'eligible',
         what_it_is: {
+          headline: 'Mineral tinted sunscreen',
           body: 'A mineral SPF 40 tinted fluid sunscreen with sheer coverage and a balanced finish.',
         },
         best_for: [
@@ -238,6 +332,39 @@ describe('pdp product intel bundle shaping', () => {
     expect(bundle.product_intel_core.best_for).toEqual([
       expect.objectContaining({ label: 'Mineral SPF with tint' }),
     ]);
+  });
+
+  test('requires reviewed provenance when normalizing a public PDP bundle', () => {
+    const unreviewedSpecific = normalizePublishedProductIntelBundle(
+      {
+        contract_version: 'pivota.product_intel.v1',
+        evidence_profile: 'seller_plus_formula',
+        quality_state: 'eligible',
+        provenance: {
+          generator: 'baseline_plus_gemini',
+          review_status: 'pending',
+        },
+        product_intel_core: {
+          evidence_profile: 'seller_plus_formula',
+          quality_state: 'eligible',
+          what_it_is: {
+            headline: 'Vitamin C serum',
+            body: 'A vitamin C serum with niacinamide and hyaluronic acid for tone and texture routines.',
+          },
+          best_for: [{ label: 'Vitamin C serum routines' }],
+          why_it_stands_out: [
+            {
+              headline: 'Multi-active serum',
+              body: 'Combines vitamin C, niacinamide, and hyaluronic acid in one serum step.',
+            },
+          ],
+          routine_fit: { step: 'serum', am_pm: ['am', 'pm'] },
+        },
+      },
+      { requireReviewed: true },
+    );
+
+    expect(unreviewedSpecific).toBeNull();
   });
 
   test('draft bundles convert verified buyer review aggregates into community signals', () => {

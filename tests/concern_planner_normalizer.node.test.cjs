@@ -135,7 +135,7 @@ test('support role query variants prioritize dull-skin tone queries before post-
     roleLabel: 'Tone and post-breakout mark treatment',
     preferredStep: 'treatment',
     queryTerms: ['post acne marks serum', 'dark spot serum', 'tone correcting serum', 'brightening serum'],
-    fitKeywords: ['brightening', 'uneven tone', 'dull skin'],
+    fitKeywords: ['post acne marks', 'dark spots', 'brightening', 'uneven tone', 'dull skin'],
     concernText: 'dullness and dehydration',
     maxQueries: 4,
   });

@@ -603,4 +603,97 @@ describe('pdpProductIntel KB hydration', () => {
     expect(bundle.product_intel_core.why_it_stands_out[0].headline).toBe('Multi-concern treatment scope');
     expect(bundle.product_intel_core.why_it_stands_out[0].body).toMatch(/uneven tone, texture, and early fine-line concerns/i);
   });
+
+  test('does not downgrade rejected reviewed-path KB bundles into generated legacy insights', async () => {
+    jest.doMock('../src/auroraBff/productIntelKbStore', () => ({
+      getProductIntelKbEntry: jest.fn(async (kbKey) => {
+        if (kbKey !== 'product:ext_unreviewed_direct_1') return null;
+        return {
+          kb_key: kbKey,
+          source: 'pivota_product_intel_pilot_selected',
+          last_success_at: '2026-04-15T12:00:00.000Z',
+          analysis: {
+            product_intel_v1: {
+              contract_version: 'pivota.product_intel.v1',
+              display_name: 'Pivota Insights',
+              provenance: {
+                generator: 'baseline_plus_gemini',
+                review_status: 'pending',
+                review_decision: 'pending',
+              },
+              product_intel_core: {
+                what_it_is: {
+                  headline: 'Treatment serum',
+                  body: 'A product format focused on routine context and acting like a dedicated treatment step.',
+                },
+                best_for: [{ label: 'Routine role' }],
+                why_it_stands_out: [
+                  {
+                    headline: 'Formula focus',
+                    body: 'Anchors the product in routine context.',
+                  },
+                ],
+                routine_fit: { step: 'treatment', am_pm: ['pm'] },
+                quality_state: 'eligible',
+                evidence_profile: 'seller_plus_formula',
+              },
+              quality_state: 'eligible',
+              evidence_profile: 'seller_plus_formula',
+            },
+            assessment: {
+              summary: 'Legacy assessment that used to regenerate generic public insights.',
+              best_for: ['Routine role'],
+            },
+            evidence: {
+              social_signals: {
+                typical_positive: ['generic routine fit'],
+              },
+            },
+          },
+        };
+      }),
+    }));
+
+    jest.doMock('../src/auroraBff/normalize', () => ({
+      normalizeProductAnalysis: jest.fn((raw) => ({
+        payload: raw,
+      })),
+    }));
+
+    const { hydrateProductWithPublishedIntel, buildProductIntelBundle } = require('../src/pdpProductIntel');
+
+    const hydrated = await hydrateProductWithPublishedIntel({
+      product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_unreviewed_direct_1',
+        title: 'Generic Treatment Serum',
+        category: 'Skincare/Serum',
+      },
+      canonicalProductRef: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_unreviewed_direct_1',
+      },
+      requireReviewedBundle: true,
+      allowLegacyAnalysisFallback: false,
+    });
+
+    expect(hydrated.product_intel).toBeUndefined();
+    expect(hydrated.assessment).toBeUndefined();
+    expect(hydrated.product_intel_unavailable).toEqual(
+      expect.objectContaining({
+        reason: 'needs_review',
+        kb_key: 'product:ext_unreviewed_direct_1',
+      }),
+    );
+    expect(
+      buildProductIntelBundle({
+        product: hydrated,
+        canonicalProductRef: {
+          merchant_id: 'external_seed',
+          product_id: 'ext_unreviewed_direct_1',
+        },
+        requireReviewedBundle: true,
+      }),
+    ).toBeNull();
+  });
 });
