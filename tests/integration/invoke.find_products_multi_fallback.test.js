@@ -398,6 +398,9 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
   test.each([
     ['foundation', 'Liquid Touch Weightless Foundation'],
     ['mascara', 'Extreme Mascara'],
+    ['blush', 'Soft Pinch Liquid Blush'],
+    ['bronzer', 'Sun Stalkr Instant Warmth Bronzer'],
+    ['highlighter', 'Killawatt Freestyle Highlighter'],
   ])('public search defaults makeup category %s to discovery bridge instead of v2 upstream', async (query, title) => {
     let discoveryPayload = null;
     const getDiscoveryFeedMock = jest.fn(async (payload) => {

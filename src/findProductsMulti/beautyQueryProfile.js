@@ -129,6 +129,14 @@ function classifyBeautyBucketFromText(text) {
     return 'skincare';
   }
   if (
+    /\b(blush|blusher|bronzer|contour|highlighter|highlighting|illuminator|luminizer|luminiser|face palette)\b/i.test(
+      q,
+    ) ||
+    /腮红|腮紅|修容|阴影|陰影|高光|打亮/.test(q)
+  ) {
+    return 'cheek_makeup';
+  }
+  if (
     /\b(foundation|concealer|primer|powder|cushion|bb\s*cream|cc\s*cream|setting\s*powder)\b/i.test(
       q,
     ) ||
@@ -185,6 +193,7 @@ function detectBeautyQueryBucket(queryText) {
   if (
     bucket === 'general' ||
     bucket === 'base_makeup' ||
+    bucket === 'cheek_makeup' ||
     bucket === 'eye_makeup' ||
     bucket === 'lip_makeup'
   ) {
@@ -204,11 +213,13 @@ function isBeautyBucketCompatibleForQuery(candidateBucket, queryBucket) {
   if (query === 'lip_care') return bucket === 'lip_care';
   if (query === 'bodycare') return bucket === 'bodycare';
   if (query === 'base_makeup') return bucket === 'base_makeup';
+  if (query === 'cheek_makeup') return bucket === 'cheek_makeup' || bucket === 'base_makeup';
   if (query === 'eye_makeup') return bucket === 'eye_makeup';
   if (query === 'lip_makeup') return bucket === 'lip_makeup' || bucket === 'lip_care';
   if (query === 'general') {
     return (
       bucket === 'base_makeup' ||
+      bucket === 'cheek_makeup' ||
       bucket === 'eye_makeup' ||
       bucket === 'lip_makeup' ||
       bucket === 'lip_care' ||
@@ -238,6 +249,7 @@ function buildBeautyQueryProfile({ rawQuery, queryClass, intent } = {}) {
       'lip_care',
       'bodycare',
       'base_makeup',
+      'cheek_makeup',
       'eye_makeup',
       'lip_makeup',
     ].includes(String(bucket || ''));
@@ -300,6 +312,9 @@ function getBeautyCacheExpansionTerms(profile) {
   }
   if (bucket === 'base_makeup') {
     return ['foundation', 'concealer', 'primer', 'powder', 'skin tint', 'bb cream', 'cc cream'];
+  }
+  if (bucket === 'cheek_makeup') {
+    return ['blush', 'bronzer', 'contour', 'highlighter', 'illuminator', 'luminizer', 'face palette'];
   }
   if (bucket === 'eye_makeup') {
     return ['mascara', 'eyeliner', 'eyeshadow', 'eye shadow', 'brow', 'eyebrow'];
