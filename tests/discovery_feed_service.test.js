@@ -5664,12 +5664,77 @@ describe('discovery feed service', () => {
       }),
       0,
     );
+    const beautyMirror = _internals.normalizeCandidateProduct(
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'beauty_mirror_1',
+        title: "Smurfette n' Reflect Handheld Beauty Mirror",
+        category: 'Beauty Accessories',
+        product_type: 'Mirror',
+      }),
+      0,
+    );
+    const sweatpants = _internals.normalizeCandidateProduct(
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'beauty_sweatpants_1',
+        title: 'Comfy Sweatpants',
+        category: 'Beauty',
+        product_type: 'Apparel',
+      }),
+      0,
+    );
 
     expect(_internals.matchesQueryTextCandidate(makeupBag, 'makeup')).toBe(false);
     expect(_internals.matchesQueryTextCandidate(makeupBag, 'makeup bag')).toBe(true);
     expect(_internals.matchesQueryTextCandidate(foundationBrush, 'foundation')).toBe(false);
     expect(_internals.matchesQueryTextCandidate(foundationBrush, 'foundation brush')).toBe(true);
     expect(_internals.matchesQueryTextCandidate(giftCard, 'beauty')).toBe(false);
+    expect(_internals.matchesQueryTextCandidate(beautyMirror, 'beauty')).toBe(false);
+    expect(_internals.matchesQueryTextCandidate(sweatpants, 'beauty')).toBe(false);
+  });
+
+  test('exact beauty phrase hints skip broad vertical stage for narrow explicit queries', () => {
+    const request = _internals.normalizeDiscoveryRequest({
+      surface: 'browse_products',
+      query: {
+        text: 'setting spray',
+      },
+      context: {
+        auth_state: 'anonymous',
+        locale: 'en-US',
+        recent_views: [],
+        recent_queries: [],
+      },
+    });
+    const profile = buildDiscoveryProfile(request.context);
+    const recallTerms = _internals.buildBeautyInterestRecallTerms(request, profile, ['setting spray']);
+
+    expect(recallTerms.categoryTerms).toEqual(
+      expect.arrayContaining(['setting spray', 'fixing mist', 'makeup fixing mist']),
+    );
+    expect(recallTerms.verticalTerms).toEqual(expect.arrayContaining(['makeup']));
+    expect(_internals.shouldSkipExplicitVerticalSeedStage(request, recallTerms)).toBe(true);
+
+    const broadRequest = _internals.normalizeDiscoveryRequest({
+      surface: 'browse_products',
+      query: {
+        text: 'hair care',
+      },
+      context: {
+        auth_state: 'anonymous',
+        locale: 'en-US',
+        recent_views: [],
+        recent_queries: [],
+      },
+    });
+    const broadRecallTerms = _internals.buildBeautyInterestRecallTerms(
+      broadRequest,
+      profile,
+      ['hair care'],
+    );
+
+    expect(_internals.shouldSkipExplicitVerticalSeedStage(broadRequest, broadRecallTerms)).toBe(false);
   });
 
   test('explicit non-compound browse keeps running seed stages until query-qualified rows fill target', async () => {
