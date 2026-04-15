@@ -6432,7 +6432,7 @@ test('__internal: framework step inference trusts nested authority product type 
         product_type: 'Serum',
         name: 'Soothing Serum',
       },
-      short_description: 'A gentle serum to soothe redness and support a reactive barrier.',
+      short_description: 'A gentle serum to soothe redness and support a reactive barrier. Pro tip: follow with a moisturizing cream.',
     },
     {
       targetContext: {

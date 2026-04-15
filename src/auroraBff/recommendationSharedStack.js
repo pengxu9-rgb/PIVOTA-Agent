@@ -1087,6 +1087,13 @@ function buildCandidateNonStructuredStepText(product) {
     .join(' ');
 }
 
+function buildCandidateNonDescriptionStepText(product) {
+  return buildCandidateResolutionFragments(product)
+    .filter((item) => item && item.source !== 'structured_category' && item.source !== 'ingredient' && item.source !== 'brand' && item.source !== 'description')
+    .map((item) => item.value)
+    .join(' ');
+}
+
 function hasExplicitSunscreenSignal(text) {
   return EXPLICIT_SUNSCREEN_SIGNAL_RE.test(String(text || '').trim().toLowerCase());
 }
@@ -1097,6 +1104,7 @@ function normalizeCandidateStep(product, { targetContext } = {}) {
   const stepAwareIntent = Boolean(targetContext?.step_aware_intent && targetContext?.resolved_target_step);
   const resolutionText = buildCandidateResolutionText(row);
   const nonStructuredStepText = buildCandidateNonStructuredStepText(row);
+  const nonDescriptionStepText = buildCandidateNonDescriptionStepText(row);
   const skuStructuredRaw = pickFirstTrimmed(
     sku.product_type,
     sku.productType,
@@ -1129,15 +1137,16 @@ function normalizeCandidateStep(product, { targetContext } = {}) {
   }
   const structuredStep = normalizeProductType(structuredRaw);
   const nonStructuredStep = normalizeRecoTargetStep(nonStructuredStepText);
+  const nonDescriptionStep = normalizeRecoTargetStep(nonDescriptionStepText);
   if (structuredStep) {
     if (
       structuredStep === 'serum'
-      && nonStructuredStep
-      && nonStructuredStep !== 'serum'
-      && nonStructuredStep !== 'treatment'
+      && nonDescriptionStep
+      && nonDescriptionStep !== 'serum'
+      && nonDescriptionStep !== 'treatment'
     ) {
       return {
-        candidate_step: nonStructuredStep,
+        candidate_step: nonDescriptionStep,
         candidate_step_source: 'title_or_tag_alias',
         candidate_step_confidence: 'medium',
       };
