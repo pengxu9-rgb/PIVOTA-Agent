@@ -25,6 +25,7 @@ describe('find_similar_products mainline wrapper', () => {
           title: 'Similar Product 1',
           description: 'A verified similar product highlight for PDP card presentation.',
           card_highlight_status: 'ready',
+          card_highlight: 'Same routine fit with a stronger finish.',
         },
       ],
       metadata: {
