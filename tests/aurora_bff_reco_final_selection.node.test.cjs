@@ -173,6 +173,10 @@ test('reco assistant rewrite prompt frames multi-role selections as routine mix 
         selected_target_ids: ['oil_control_treatment'],
       },
     );
+    payload.recommendation_meta.ranked_targets[0].product_candidates = [
+      { product_id: 'dry_pick_1', name: 'KraveBeauty Great Barrier Relief' },
+      { product_id: 'blocked_pick', brand: 'Kylie Cosmetics', name: 'Hyaluronic Acid Serum' },
+    ];
     const prompt = __internal.buildRecoAssistantRewritePrompt({
       payload,
       language: 'EN',
@@ -367,6 +371,10 @@ test('reco assistant strict selected-only retry prompt drops expanded framework 
         selected_target_ids: ['hydrating_barrier_moisturizer', 'daily_sunscreen'],
       },
     );
+    payload.recommendation_meta.ranked_targets[0].product_candidates = [
+      { product_id: 'dry_pick_1', name: 'KraveBeauty Great Barrier Relief' },
+      { product_id: 'blocked_pick', brand: 'Kylie Cosmetics', name: 'Hyaluronic Acid Serum' },
+    ];
     const prompt = __internal.buildRecoAssistantRewritePrompt({
       payload,
       language: 'EN',
@@ -380,10 +388,11 @@ test('reco assistant strict selected-only retry prompt drops expanded framework 
     assert.match(prompt, /"prompt_profile":"strict_selected_only_retry"/);
     assert.match(prompt, /Strict selected-only retry: Context\.selected_products is the only allowed product-name list\./);
     assert.match(prompt, /Use no outside brand or product memory; every named product must be copied exactly from Context\.selected_products\./);
+    assert.match(prompt, /If Context\.forbidden_product_names is present, never output those names or partial product names from that list\./);
     assert.match(prompt, /"selected_products":\["KraveBeauty Great Barrier Relief","The Ordinary UV Filters SPF 45 Serum"\]/);
+    assert.match(prompt, /"forbidden_product_names":\["Kylie Cosmetics Hyaluronic Acid Serum"\]/);
     assert.doesNotMatch(prompt, /framework_roles/);
     assert.doesNotMatch(prompt, /ranked_target_ids/);
-    assert.doesNotMatch(prompt, /Kylie Cosmetics|Hyaluronic Acid Serum/);
     assert.ok(prompt.length < 5200);
   } finally {
     delete require.cache[moduleId];

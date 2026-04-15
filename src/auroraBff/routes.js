@@ -52083,6 +52083,7 @@ function buildCompactRecoAssistantPromptContext(context = {}) {
 function buildStrictSelectedOnlyRecoAssistantPromptContext(context = {}) {
   const row = isPlainObject(context) ? context : {};
   const selectedProducts = asStringArray(row.selected_products, 3);
+  const forbiddenProductNames = asStringArray(row.forbidden_product_names, 8);
   const compactWritePlan = buildCompactRecoAssistantWritePlan(row.assistant_write_plan);
   const strictWritePlan = isPlainObject(compactWritePlan)
     ? {
@@ -52115,6 +52116,7 @@ function buildStrictSelectedOnlyRecoAssistantPromptContext(context = {}) {
     user_relevant_concern_families: asStringArray(row.user_relevant_concern_families, 6),
     target_label: compactRecoAssistantPromptField(row.target_label, { maxLen: 60 }),
     selected_products: selectedProducts,
+    ...(forbiddenProductNames.length ? { forbidden_product_names: forbiddenProductNames } : {}),
     selected_product_role_mix: pickFirstTrimmed(row.selected_product_role_mix, 'single_product'),
     selected_target_ids: asStringArray(row.selected_target_ids, 4),
     selected_product_details: (Array.isArray(row.selected_product_details) ? row.selected_product_details : [])
@@ -52156,6 +52158,7 @@ function buildCompactRecoAssistantPromptLines({
   if (strictSelectedOnlyContext) {
     lines.push('Strict selected-only retry: Context.selected_products is the only allowed product-name list.');
     lines.push('Use no outside brand or product memory; every named product must be copied exactly from Context.selected_products.');
+    lines.push('If Context.forbidden_product_names is present, never output those names or partial product names from that list.');
     lines.push('If a detail is not present in Context.selected_product_details or assistant_write_plan, omit it.');
   }
   if (requestMode === 'buy') {
@@ -52542,6 +52545,9 @@ function buildRecoAssistantRewritePrompt({
       payload?.recommendation_meta?.request_text,
       payload?.request_text,
     ) || null,
+    forbidden_product_names: strictSelectedOnlyContext
+      ? collectRecoAssistantUnselectedCandidateDisplayNames(payload, 8)
+      : [],
     request_mode: requestMode,
     primary_focus: normalizeRecoContextPrimaryFocus(payload?.recommendation_meta?.primary_focus),
     target_label: primaryTargetLabel || null,
@@ -52712,6 +52718,46 @@ function collectRecoAssistantUnselectedCandidateAliases(payload = null) {
     }
   }
   return uniqCaseInsensitiveStrings(aliases, 24);
+}
+
+function collectRecoAssistantUnselectedCandidateDisplayNames(payload = null, max = 8) {
+  const basePayload = isPlainObject(payload) ? payload : {};
+  const recommendations = Array.isArray(basePayload.recommendations)
+    ? basePayload.recommendations.filter((item) => isPlainObject(item))
+    : [];
+  const selectedProductIds = new Set(
+    recommendations
+      .map((item) => pickFirstTrimmed(item.product_id, item.productId, item.sku?.product_id, item.sku?.productId))
+      .filter(Boolean)
+      .map((value) => String(value).trim().toLowerCase()),
+  );
+  const selectedAliases = new Set(
+    recommendations
+      .flatMap((item) => collectRecoAssistantProductMentionAliases(item))
+      .map((value) => String(value || '').trim().toLowerCase())
+      .filter(Boolean),
+  );
+  const rankedTargets = Array.isArray(basePayload?.recommendation_meta?.ranked_targets)
+    ? basePayload.recommendation_meta.ranked_targets.filter((target) => isPlainObject(target))
+    : [];
+  const names = [];
+  for (const target of rankedTargets) {
+    const productCandidates = Array.isArray(target.product_candidates)
+      ? target.product_candidates.filter((item) => isPlainObject(item))
+      : [];
+    for (const candidate of productCandidates) {
+      const productId = pickFirstTrimmed(candidate.product_id, candidate.productId, candidate.sku?.product_id, candidate.sku?.productId);
+      if (productId && selectedProductIds.has(String(productId).trim().toLowerCase())) continue;
+      const name = pickFirstTrimmed(candidate.display_name, candidate.displayName, candidate.name, candidate.title);
+      const brand = pickFirstTrimmed(candidate.brand, candidate.brand_name, candidate.brandName);
+      const displayName = pickFirstTrimmed([brand, name].filter(Boolean).join(' '), name);
+      if (!displayName) continue;
+      const normalizedName = normalizeSemanticAuditText(displayName);
+      if (normalizedName && selectedAliases.has(normalizedName)) continue;
+      names.push(displayName);
+    }
+  }
+  return uniqCaseInsensitiveStrings(names, Math.max(1, Number(max) || 1));
 }
 
 function assistantTextMentionsUnselectedRecoCandidate(text, payload = null) {
